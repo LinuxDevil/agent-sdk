@@ -8,52 +8,52 @@ export const agentTypesRegistry: AgentTypeDescriptor[] = [
   {
     type: AgentType.SmartAssistant,
     description: {
-      pl: "Inteligentni asystenci to **agenci ogólnego przeznaczenia**. Mogą korzystać z narzędzi, na przykład sprawdzając Twój kalendarz lub rezerwując nowe wydarzenia. Mogą być również używane do ankiet (mieszane z innymi zadaniami), ale muszą być dostosowane do tego na poziomie promptu.",
+      ar: "المساعدون الأذكياء هم **وكلاء متعددو الأغراض**. يمكنهم استخدام الأدوات، على سبيل المثال، للتحقق من التقويم الخاص بك أو حجز أحداث جديدة. يمكن استخدامها أيضًا للاستطلاعات (مع مهام أخرى) ولكن يجب تخصيصها للقيام بذلك على مستوى الموجه.",
       en: "Smart assistants are **general-purpose agents**. They can use tools, for example, checking your calendar or booking new events. They can also be used for surveys (mixed with other tasks) but need to be fine-tuned for doing so at the prompt level."    
     },
     supportsUserFacingUI: true,
     requiredTabs: ['prompt', 'expectedResult'],
     displayName: {
-      'pl': 'Inteligentny asystent [Chat]',
+      'ar': 'مساعد ذكي [محادثة]',
       'en': 'Smart assistant [Chat]'
     }
-  },    
+  },
   {
     type: AgentType.SurveyAgent,
     description: {
-      pl: "Agenci ankietowi służą do zbierania informacji lub opinii od użytkowników. Na podstawie poprzednich odpowiedzi mogą **dynamicznie dostosowywać** kolejne pytania. Ci agenci zapisują odpowiedzi do dalszego przetwarzania w pożądanym formacie. Mogą zastąpić narzędzia takie jak **Formularze, Ankiety, Formularze zgłoszeniowe** itp.",
+      ar: "يتم استخدام وكلاء الاستطلاع لجمع المعلومات أو الآراء من المستخدمين. بناءً على الإجابات السابقة، يمكنهم **ضبط الأسئلة التالية ديناميكيًا**. يحفظ هؤلاء الوكلاء الإجابات لمزيد من المعالجة بالتنسيق المطلوب. يمكنهم استبدال أدوات مثل **النماذج، الاستطلاعات، نماذج التسجيل** وما إلى ذلك.",
       en: "Survey agents are used to collect information or opinions from users. Based on previous answers, they can **dynamically adjust** the next questions. These agents save the answers for further processing in the desired format. They can replace tools like **Forms, Polls, Intake forms** etc."    
     },
     supportsUserFacingUI: true,
     requiredTabs: ['prompt', 'expectedResult'],
     displayName: {
-      'pl': 'Agent przeprowadzający ankiety [Chat]',
+      'ar': 'وكيل استطلاع [محادثة]',
       'en': 'Survey agent [Chat]'
     }
   },
   {
     type: AgentType.CommerceAgent,
     description: {
-      pl: "Agenci handlowi służą do **sprzedaży produktów lub usług**. Mogą być używane w **e-commerce**, **rezerwacji usług**, **b2b/cpq**. Operują na **katalogu produktów** i mogą być używane do **sprzedaży dodatkowej** lub **sprzedaży krzyżowej** produktów.",
+      ar: "يُستخدم الوكلاء التجاريون **لبيع المنتجات أو الخدمات**. يمكن استخدامها في **التجارة الإلكترونية**، **حجز الخدمات**، سيناريوهات **b2b/cpq**. يعملون على **كتالوج المنتجات** ويمكن استخدامها **للبيع الإضافي** أو **البيع المتقاطع** للمنتجات.",
       en: "Commerce agents are used to **sell products or services**. They can be used in **e-commerce**, **service booking**, **b2b/cpq** scenarios. They operate on the **product catalog** and can be used to **upsell** or **cross-sell** products."            
     },
     supportsUserFacingUI: true,
     requiredTabs: ['prompt', 'expectedResult'],
     displayName: {
-      'pl': 'Asystent sprzedaży [Chat]',
+      'ar': 'مساعد مبيعات [محادثة]',
       'en': 'Sales assistant [Chat]'
     }
   },
   {
     type: AgentType.Flow,
     description: {
-      pl: "Agenci oparte na przepływach pozwalają na tworzenie **złożonych scenariuszy**. Mogą być używane do **automatyzacji procesów** i rozwijania aplikacji, które są wywoływane przez API lub inne agenty, za pomocą **języka naturalnego**. Mogą być używane do **tworzenia drzew decyzyjnych** lub **integracji**.",
+      ar: "تتيح لك الوكلاء المعتمدون على التدفق إنشاء **سيناريوهات معقدة**. يمكن استخدامها **لأتمتة العمليات** وتطوير التطبيقات التي يتم استدعاؤها بواسطة API أو وكلاء آخرين، باستخدام **اللغة الطبيعية**. يمكن استخدامها **لإنشاء أشجار القرار** أو **التكاملات**.",
       en: "Flow-based agents let you create **complex scenarios**. They can be used to **automate processes** and develop apps that are called by API or other agents, using **natural language**. They can be used to **create decision trees** or **integrations**."    
     },
     supportsUserFacingUI: true,
     requiredTabs: [],
     displayName: {
-      'pl': 'Aplikacja / Workflow [API]',
+      'ar': 'تطبيق / سير عمل [API]',
       'en': 'App / Workflow [API]'
     }
   }

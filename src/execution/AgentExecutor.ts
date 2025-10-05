@@ -184,6 +184,7 @@ export class AgentExecutor {
               content: JSON.stringify(toolResult.result),
               name: toolCall.function.name,
               toolCallId: toolCall.id,
+              toolName: toolCall.function.name,
             });
           }
 

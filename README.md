@@ -174,18 +174,24 @@ const flow = new FlowBuilder()
 Support for multiple LLM providers:
 
 ```typescript
-import { OpenAIProvider, OllamaProvider } from '@tajwal/build-ai-agent';
+import { LLMProviderRegistry } from '@tajwal/build-ai-agent';
 
-// OpenAI
-const openai = new OpenAIProvider({
-  apiKey: process.env.OPENAI_API_KEY,
-  model: 'gpt-4'
+// OpenRouter - Access 100+ models from multiple providers
+const openrouter = LLMProviderRegistry.create('openrouter', {
+  apiKey: process.env.OPENROUTER_API_KEY,
+  defaultModel: 'openai/gpt-4o-mini'
 });
 
-// Ollama (local)
-const ollama = new OllamaProvider({
-  model: 'llama2',
-  baseUrl: 'http://localhost:11434'
+// OpenAI - Direct OpenAI integration
+const openai = LLMProviderRegistry.create('openai', {
+  apiKey: process.env.OPENAI_API_KEY,
+  defaultModel: 'gpt-4'
+});
+
+// Ollama - Local LLM support
+const ollama = LLMProviderRegistry.create('ollama', {
+  baseURL: 'http://localhost:11434',
+  defaultModel: 'llama3.1'
 });
 ```
 
@@ -332,7 +338,8 @@ const result = await executor.execute({ input: 'Product ideas' });
 
 ### Providers
 
-- **OpenAIProvider** - OpenAI integration
+- **OpenRouterProvider** - Access 100+ models from OpenAI, Anthropic, Google, Meta, and more
+- **OpenAIProvider** - Direct OpenAI integration
 - **OllamaProvider** - Local LLM support
 - **MockProvider** - Testing provider
 

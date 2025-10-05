@@ -16,6 +16,7 @@ export interface Message {
   content: string;
   name?: string;
   toolCallId?: string;
+  toolName?: string;
   toolCalls?: ToolCall[];
 }
 

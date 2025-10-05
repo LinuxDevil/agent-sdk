@@ -7,3 +7,5 @@ export * from './currentDate';
 export * from './dayName';
 export * from './http';
 export * from './email';
+export * from './jira';
+export * from './github';

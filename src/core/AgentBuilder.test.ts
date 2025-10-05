@@ -77,10 +77,10 @@ describe('AgentBuilder', () => {
     const agent = new AgentBuilder()
       .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
-      .setLocale('pl')
+      .setLocale('ar')
       .build();
 
-    expect(agent.locale).toBe('pl');
+    expect(agent.locale).toBe('ar');
   });
 
   it('should set metadata', () => {

@@ -49,8 +49,9 @@ describe('Built-in Tools', () => {
         { date: '2024-01-15', locale: 'en-US' },
         {}
       );
-      const resultPL = await dayNameTool.tool.execute(
-        { date: '2024-01-15', locale: 'pl-PL' },
+      // @ts-ignore
+        const resultPL = await dayNameTool.tool.execute(
+        { date: '2024-01-15', locale: 'ar-AR' },
         {}
       );
       expect(resultEN).not.toBe(resultPL);

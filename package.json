@@ -55,21 +55,22 @@
   "author": "Tajwal Team",
   "license": "MIT",
   "peerDependencies": {
-    "ai": "^4.1.54",
-    "zod": "^3.23.8",
     "@ai-sdk/openai": "^0.0.42",
-    "ollama-ai-provider": "^1.2.0"
+    "ai": "^4.3.19",
+    "ollama-ai-provider": "^1.2.0",
+    "zod": "^3.25.76"
   },
   "dependencies": {
-    "nanoid": "^5.0.7",
-    "dedent": "^1.5.3"
+    "dedent": "^1.5.3",
+    "dotenv": "^17.2.3",
+    "nanoid": "^5.0.7"
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@vitest/coverage-v8": "^1.0.0",
     "tsup": "^8.0.0",
-    "typescript": "^5",
-    "vitest": "^1.0.0",
-    "@vitest/coverage-v8": "^1.0.0"
+    "typescript": "^5.9.3",
+    "vitest": "^1.0.0"
   },
   "repository": {
     "type": "git",
