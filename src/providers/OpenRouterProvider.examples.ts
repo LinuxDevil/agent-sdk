@@ -4,7 +4,7 @@
  * This file demonstrates how to use the OpenRouter provider
  */
 
-import { LLMProviderRegistry, AgentBuilder, AgentType } from '../index';
+import { LLMProviderRegistry, AgentBuilder, AgentType, Message } from '../index';
 
 /**
  * Example 1: Basic text generation with OpenRouter
@@ -147,14 +147,17 @@ export async function agentBuilderExample() {
   const agent = new AgentBuilder()
     .setType(AgentType.SmartAssistant)
     .setName('Travel Assistant')
-    .setProvider('openrouter', {
-      apiKey: process.env.OPENROUTER_API_KEY || '',
-      defaultModel: 'anthropic/claude-3.5-sonnet',
-      siteUrl: 'https://myapp.com',
-      siteName: 'Travel App',
-    })
     .setPrompt(`You are a helpful travel assistant. You provide information about destinations, 
       travel tips, and help plan trips. Be concise and informative.`)
+    .setMetadata({
+      provider: 'openrouter',
+      providerConfig: {
+        apiKey: process.env.OPENROUTER_API_KEY || '',
+        defaultModel: 'anthropic/claude-3.5-sonnet',
+        siteUrl: 'https://myapp.com',
+        siteName: 'Travel App',
+      }
+    })
     .build();
 
   console.log('Agent created:', agent.name);
@@ -255,9 +258,9 @@ export async function conversationExample() {
     apiKey: process.env.OPENROUTER_API_KEY || '',
   });
 
-  const messages = [
-    { role: 'system' as const, content: 'You are a helpful programming tutor.' },
-    { role: 'user' as const, content: 'What is recursion?' },
+  const messages: Message[] = [
+    { role: 'system', content: 'You are a helpful programming tutor.' },
+    { role: 'user', content: 'What is recursion?' },
   ];
 
   // First response
@@ -330,7 +333,6 @@ async function main() {
   // await modelCapabilitiesExample();
 }
 
-// Run if executed directly
-if (require.main === module) {
-  main().catch(console.error);
-}
+// Export main for programmatic use
+export { main };
+
