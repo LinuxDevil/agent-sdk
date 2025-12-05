@@ -161,7 +161,7 @@ export interface LLMProvider {
  * LLM Provider configuration
  */
 export interface LLMProviderConfig {
-  name: string;
+  name?: string;
   apiKey?: string;
   baseURL?: string;
   defaultModel?: string;

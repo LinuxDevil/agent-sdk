@@ -32,13 +32,22 @@
       "require": "./dist/types/index.js"
     }
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md"
+  ],
+  "sideEffects": false,
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
     "test": "vitest",
     "test:coverage": "vitest --coverage",
     "lint": "eslint src",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "ai",
@@ -54,11 +63,30 @@
   ],
   "author": "Tajwal Team",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LinuxDevil/agent-sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/LinuxDevil/agent-sdk/issues"
+  },
+  "homepage": "https://github.com/LinuxDevil/agent-sdk#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "peerDependencies": {
     "@ai-sdk/openai": "^0.0.42",
     "ai": "^4.3.19",
     "ollama-ai-provider": "^1.2.0",
     "zod": "^3.25.76"
+  },
+  "peerDependenciesMeta": {
+    "@ai-sdk/openai": {
+      "optional": true
+    },
+    "ollama-ai-provider": {
+      "optional": true
+    }
   },
   "dependencies": {
     "dedent": "^1.5.3",
@@ -71,9 +99,5 @@
     "tsup": "^8.0.0",
     "typescript": "^5.9.3",
     "vitest": "^1.0.0"
-  },
-  "repository": {
-    "type": "git",
-    "directory": "src/packages/sdk"
   }
 }
