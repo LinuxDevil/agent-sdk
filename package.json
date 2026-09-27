@@ -1,5 +1,5 @@
 {
-  "name": "@tajwal/build-ai-agent",
+  "name": "@loushy/build-ai-agent",
   "version": "1.0.0-alpha.8",
   "description": "Framework-agnostic SDK for building AI agents",
   "main": "dist/index.js",
@@ -58,10 +58,10 @@
     "workflow",
     "automation",
     "framework-agnostic",
-    "tajwal",
+    "loushy",
     "build-ai-agent"
   ],
-  "author": "Tajwal Team",
+  "author": "Loushy Team",
   "license": "MIT",
   "repository": {
     "type": "git",

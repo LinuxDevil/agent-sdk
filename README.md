@@ -1,4 +1,4 @@
-# @tajwal/build-ai-agent
+# @loushy/build-ai-agent
 
 <div align="center">
 
@@ -37,11 +37,11 @@ Build AI Agent SDK is a powerful, framework-agnostic library for building intell
 ## Installation
 
 ```bash
-npm install @tajwal/build-ai-agent ai zod
+npm install @loushy/build-ai-agent ai zod
 # or
-pnpm add @tajwal/build-ai-agent ai zod
+pnpm add @loushy/build-ai-agent ai zod
 # or
-yarn add @tajwal/build-ai-agent ai zod
+yarn add @loushy/build-ai-agent ai zod
 ```
 
 ### Peer Dependencies
@@ -57,7 +57,7 @@ The SDK requires:
 ### 1. Build an Agent
 
 ```typescript
-import { AgentBuilder, AgentType } from '@tajwal/build-ai-agent';
+import { AgentBuilder, AgentType } from '@loushy/build-ai-agent';
 
 const agent = new AgentBuilder()
   .setType(AgentType.SmartAssistant)
@@ -73,20 +73,20 @@ const agent = new AgentBuilder()
 ### 2. Configure Repositories
 
 ```typescript
-import { createMockRepositories } from '@tajwal/build-ai-agent';
+import { createMockRepositories } from '@loushy/build-ai-agent';
 
 // For development/testing
 const repositories = createMockRepositories();
 
 // For production with Drizzle ORM
-import { createDrizzleRepositories } from '@tajwal/build-ai-agent-drizzle';
+import { createDrizzleRepositories } from '@loushy/build-ai-agent-drizzle';
 const repositories = createDrizzleRepositories(db);
 ```
 
 ### 3. Execute the Agent
 
 ```typescript
-import { AgentExecutor } from '@tajwal/build-ai-agent';
+import { AgentExecutor } from '@loushy/build-ai-agent';
 
 const executor = new AgentExecutor({
   agent,
@@ -128,7 +128,7 @@ Agents are the core abstraction. They combine:
 Tools extend agent capabilities:
 
 ```typescript
-import { ToolRegistry } from '@tajwal/build-ai-agent';
+import { ToolRegistry } from '@loushy/build-ai-agent';
 
 const registry = new ToolRegistry();
 
@@ -152,7 +152,7 @@ registry.register({
 Flows orchestrate multi-step workflows:
 
 ```typescript
-import { FlowBuilder, FlowNodeType } from '@tajwal/build-ai-agent';
+import { FlowBuilder, FlowNodeType } from '@loushy/build-ai-agent';
 
 const flow = new FlowBuilder()
   .addNode({
@@ -174,7 +174,7 @@ const flow = new FlowBuilder()
 Support for multiple LLM providers:
 
 ```typescript
-import { LLMProviderRegistry } from '@tajwal/build-ai-agent';
+import { LLMProviderRegistry } from '@loushy/build-ai-agent';
 
 // OpenRouter - Access 100+ models from multiple providers
 const openrouter = LLMProviderRegistry.create('openrouter', {
@@ -200,7 +200,7 @@ const ollama = LLMProviderRegistry.create('ollama', {
 ### Security & Encryption
 
 ```typescript
-import { EncryptionUtils, sha256 } from '@tajwal/build-ai-agent';
+import { EncryptionUtils, sha256 } from '@loushy/build-ai-agent';
 
 const encryption = new EncryptionUtils('your-secret-key');
 const encrypted = await encryption.encrypt('sensitive data');
@@ -212,7 +212,7 @@ const hash = await sha256('password', 'salt');
 ### Storage
 
 ```typescript
-import { StorageService } from '@tajwal/build-ai-agent';
+import { StorageService } from '@loushy/build-ai-agent';
 
 const storage = new StorageService('user-123', 'attachments');
 
@@ -224,7 +224,7 @@ await storage.deleteFile('document.pdf');
 ### Templates
 
 ```typescript
-import { renderTemplate } from '@tajwal/build-ai-agent';
+import { renderTemplate } from '@loushy/build-ai-agent';
 
 const template = 'Hello {{ name }}! You have {{ count }} messages.';
 const result = renderTemplate(template, { name: 'Alice', count: 5 });
@@ -234,7 +234,7 @@ const result = renderTemplate(template, { name: 'Alice', count: 5 });
 ### Memory Management
 
 ```typescript
-import { MemoryManager } from '@tajwal/build-ai-agent';
+import { MemoryManager } from '@loushy/build-ai-agent';
 
 const memory = new MemoryManager({
   maxMessages: 10,
@@ -252,7 +252,7 @@ const context = memory.getContext(); // Recent conversation
 ### Example 1: Simple Chatbot
 
 ```typescript
-import { AgentBuilder, AgentExecutor, OpenAIProvider } from '@tajwal/build-ai-agent';
+import { AgentBuilder, AgentExecutor, OpenAIProvider } from '@loushy/build-ai-agent';
 
 // Configure
 const agent = new AgentBuilder()
@@ -277,7 +277,7 @@ console.log(response.response); // "The capital of France is Paris."
 ### Example 2: Agent with Tools
 
 ```typescript
-import { AgentBuilder, AgentExecutor, ToolRegistry } from '@tajwal/build-ai-agent';
+import { AgentBuilder, AgentExecutor, ToolRegistry } from '@loushy/build-ai-agent';
 
 // Register tools
 const tools = new ToolRegistry();
@@ -311,7 +311,7 @@ const response = await executor.execute({
 ### Example 3: Workflow with Flows
 
 ```typescript
-import { FlowBuilder, FlowExecutor } from '@tajwal/build-ai-agent';
+import { FlowBuilder, FlowExecutor } from '@loushy/build-ai-agent';
 
 const flow = new FlowBuilder()
   .addNode({ id: '1', type: 'llm', data: { prompt: 'Generate ideas' } })
@@ -363,7 +363,7 @@ The SDK follows clean architecture principles:
 └──────────────┬──────────────────────┘
                │
 ┌──────────────▼──────────────────────┐
-│     @tajwal/build-ai-agent        │
+│     @loushy/build-ai-agent        │
 │  ┌────────────────────────────┐    │
 │  │  AgentBuilder/Executor     │    │
 │  ├────────────────────────────┤    │
@@ -406,7 +406,7 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 ## Support
 
-- 📖 [Documentation](https://docs.tajwal.com)
+- 📖 [Documentation](https://docs.loushy.dev)
 
 ## License
 
