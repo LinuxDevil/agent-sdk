@@ -7,6 +7,9 @@
  */
 
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { tool as aiTool } from 'ai';
+import { ToolDescriptor } from '../../types';
+import { jsonSchemaToZod } from './schema';
 
 /**
  * Minimal shape of a tool as returned by an MCP server's `tools/list`
@@ -38,4 +41,41 @@ export interface RawMcpTool {
 export async function listRemoteTools(client: Client): Promise<RawMcpTool[]> {
   const response = await client.listTools();
   return response.tools as unknown as RawMcpTool[];
+}
+
+/**
+ * Load a connected MCP client's tools and synthesize a ToolDescriptor for
+ * each one, keyed by `${connectionName}__${tool.name}` so tools from
+ * different MCP connections can never collide even if they share a bare
+ * name (e.g. two servers both exposing a `search` tool).
+ *
+ * Each synthesized descriptor's `execute` calls back through
+ * `client.callTool({ name: tool.name, arguments: args })` - the *raw*
+ * MCP tool name, not the namespaced key - since that's what the remote
+ * server actually knows about.
+ */
+export async function loadMcpTools(
+  client: Client,
+  connectionName: string
+): Promise<Record<string, ToolDescriptor>> {
+  const rawTools = await listRemoteTools(client);
+  const descriptors: Record<string, ToolDescriptor> = {};
+
+  for (const rawTool of rawTools) {
+    const key = `${connectionName}__${rawTool.name}`;
+    const parameters = jsonSchemaToZod(rawTool.inputSchema);
+
+    descriptors[key] = {
+      displayName: rawTool.description || rawTool.name,
+      tool: aiTool({
+        description: rawTool.description || '',
+        parameters: parameters as any,
+        execute: async (args: Record<string, unknown>) => {
+          return client.callTool({ name: rawTool.name, arguments: args });
+        },
+      }),
+    };
+  }
+
+  return descriptors;
 }
