@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
-import { createDelegateTool } from './DelegationTool';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { createDelegateTool, DelegationDepthExceededError } from './DelegationTool';
+import { AgentExecutor } from './AgentExecutor';
 import { AgentType } from '../types';
 import type { LLMProvider, GenerateResult } from '../providers';
 
@@ -69,5 +70,181 @@ describe('createDelegateTool', () => {
 
     const callArgs = generate.mock.calls[0][0];
     expect(callArgs.messages).toEqual([{ role: 'user', content: 'task 1' }]);
+  });
+
+  describe('contextMode: full-history', () => {
+    it('passes context history then the task message, in order', async () => {
+      const generate = vi.fn().mockResolvedValue(makeGenerateResult('done'));
+      const provider = makeMockProvider(generate);
+
+      const agent = { name: 'Contextual Agent', agentType: AgentType.SmartAssistant };
+      const delegateTool = createDelegateTool({ agent, provider, contextMode: 'full-history' });
+
+      const context = [
+        { role: 'user' as const, content: 'earlier question' },
+        { role: 'assistant' as const, content: 'earlier answer' },
+      ];
+
+      await delegateTool.tool.execute!({ task: 'follow-up task', context }, {} as any);
+
+      const callArgs = generate.mock.calls[0][0];
+      expect(callArgs.messages).toEqual([...context, { role: 'user', content: 'follow-up task' }]);
+    });
+
+    it('falls back to task-only input when contextMode is the default "none"', async () => {
+      const generate = vi.fn().mockResolvedValue(makeGenerateResult('done'));
+      const provider = makeMockProvider(generate);
+
+      const agent = { name: 'Contextual Agent', agentType: AgentType.SmartAssistant };
+      const delegateTool = createDelegateTool({ agent, provider });
+
+      const context = [{ role: 'user' as const, content: 'earlier question' }];
+      await delegateTool.tool.execute!({ task: 'follow-up task', context }, {} as any);
+
+      const callArgs = generate.mock.calls[0][0];
+      expect(callArgs.messages).toEqual([{ role: 'user', content: 'follow-up task' }]);
+    });
+  });
+
+  describe('maxDepth guard', () => {
+    // NOTE on how these tests are structured: AgentExecutor.executeToolCall
+    // deliberately catches every error thrown by a tool's execute() and
+    // converts it into a `{ error: message }` tool-result message (so the
+    // calling LLM can react to a failed tool call conversationally) rather
+    // than rethrowing it (see AgentExecutor.ts, established in LOU-C). That
+    // means a DelegationDepthExceededError thrown several hops deep inside
+    // a *real*, fully LLM-driven A -> B -> A chain would be swallowed
+    // by the nearest enclosing AgentExecutor.execute() and would never
+    // reach the outermost caller as a rejected promise - even though the
+    // depth guard has still done its job and stopped the recursion (the
+    // chain terminates gracefully, bounded by each level's own maxSteps,
+    // rather than growing the call stack unboundedly).
+    //
+    // To directly unit-test the depth-tracking/guard logic itself (which is
+    // this ticket's actual subject) independent of that swallowing
+    // behavior, these tests stub out AgentExecutor.execute so that a
+    // "child agent" immediately re-delegates by calling the *other* delegate
+    // tool's execute() function directly, in the same way AgentExecutor's
+    // real dispatch loop would - but without the try/catch that would
+    // otherwise absorb the thrown error. This still exercises the real
+    // AsyncLocalStorage-based depth propagation in DelegationTool.ts.
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('propagates depth across an A -> B -> A chain and throws once maxDepth is exceeded', async () => {
+      const provider = makeMockProvider(vi.fn());
+      const agentA = { name: 'Agent A', agentType: AgentType.SmartAssistant };
+      const agentB = { name: 'Agent B', agentType: AgentType.SmartAssistant };
+
+      const delegateToB = createDelegateTool({ agent: agentB, provider, maxDepth: 2 });
+      const delegateToA = createDelegateTool({ agent: agentA, provider, maxDepth: 2 });
+
+      vi.spyOn(AgentExecutor, 'execute').mockImplementation(async (options) => {
+        if (options.agent === agentA) {
+          const r = await delegateToB.tool.execute!({ task: 'to B' }, {} as any);
+          return { text: r.text, messages: [], toolCalls: [], usage: r.usage, finishReason: 'stop', steps: 1 };
+        }
+        if (options.agent === agentB) {
+          const r = await delegateToA.tool.execute!({ task: 'to A' }, {} as any);
+          return { text: r.text, messages: [], toolCalls: [], usage: r.usage, finishReason: 'stop', steps: 1 };
+        }
+        throw new Error('unexpected agent in test stub');
+      });
+
+      // A delegates to B (depth 0 -> 1), B delegates back to A (depth 1 ->
+      // 2), A tries to delegate to B again but depth (2) >= maxDepth (2).
+      await expect(delegateToB.tool.execute!({ task: 'start' }, {} as any)).rejects.toThrow(
+        DelegationDepthExceededError
+      );
+    });
+
+    it('succeeds when a delegation chain is exactly maxDepth hops long', async () => {
+      const provider = makeMockProvider(vi.fn());
+      const agent = { name: 'Recursive Agent', agentType: AgentType.SmartAssistant };
+      const maxDepth = 2;
+      const totalHops = maxDepth;
+
+      const delegateTool = createDelegateTool({ agent, provider, maxDepth });
+
+      let callCount = 0;
+      vi.spyOn(AgentExecutor, 'execute').mockImplementation(async () => {
+        callCount++;
+        if (callCount < totalHops) {
+          const r = await delegateTool.tool.execute!({ task: `hop ${callCount}` }, {} as any);
+          return { text: r.text, messages: [], toolCalls: [], usage: r.usage, finishReason: 'stop', steps: 1 };
+        }
+        return {
+          text: 'done',
+          messages: [],
+          toolCalls: [],
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+          finishReason: 'stop',
+          steps: 1,
+        };
+      });
+
+      await expect(delegateTool.tool.execute!({ task: 'start' }, {} as any)).resolves.toEqual(
+        expect.objectContaining({ text: 'done' })
+      );
+    });
+
+    it('fails when a delegation chain goes one hop beyond maxDepth', async () => {
+      const provider = makeMockProvider(vi.fn());
+      const agent = { name: 'Recursive Agent', agentType: AgentType.SmartAssistant };
+      const maxDepth = 2;
+      const totalHops = maxDepth + 1;
+
+      const delegateTool = createDelegateTool({ agent, provider, maxDepth });
+
+      let callCount = 0;
+      vi.spyOn(AgentExecutor, 'execute').mockImplementation(async () => {
+        callCount++;
+        if (callCount < totalHops) {
+          const r = await delegateTool.tool.execute!({ task: `hop ${callCount}` }, {} as any);
+          return { text: r.text, messages: [], toolCalls: [], usage: r.usage, finishReason: 'stop', steps: 1 };
+        }
+        return {
+          text: 'done',
+          messages: [],
+          toolCalls: [],
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+          finishReason: 'stop',
+          steps: 1,
+        };
+      });
+
+      await expect(delegateTool.tool.execute!({ task: 'start' }, {} as any)).rejects.toThrow(
+        DelegationDepthExceededError
+      );
+    });
+
+    it('defaults maxDepth to 3 when omitted', async () => {
+      const provider = makeMockProvider(vi.fn());
+      const agent = { name: 'Recursive Agent', agentType: AgentType.SmartAssistant };
+      const delegateTool = createDelegateTool({ agent, provider });
+
+      let callCount = 0;
+      const totalHops = 5; // well beyond the default maxDepth of 3
+      vi.spyOn(AgentExecutor, 'execute').mockImplementation(async () => {
+        callCount++;
+        if (callCount < totalHops) {
+          const r = await delegateTool.tool.execute!({ task: `hop ${callCount}` }, {} as any);
+          return { text: r.text, messages: [], toolCalls: [], usage: r.usage, finishReason: 'stop', steps: 1 };
+        }
+        return {
+          text: 'done',
+          messages: [],
+          toolCalls: [],
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+          finishReason: 'stop',
+          steps: 1,
+        };
+      });
+
+      await expect(delegateTool.tool.execute!({ task: 'start' }, {} as any)).rejects.toThrow(
+        DelegationDepthExceededError
+      );
+    });
   });
 });
