@@ -16,17 +16,24 @@ import { executeToolWithSandboxGuard } from './sandboxGuard';
  * once the deferred tool result (or rejection) has been appended to the
  * conversation.
  *
- * `sessionId`/`checkpointStore` are also omitted here (in addition to the
- * fields already omitted below): the resume path always fully reconstructs
- * `messages`/`steps` from the ApprovalGate's ExecutionSnapshot, so it must
- * never delegate to AgentExecutor's checkpoint-rehydration mechanism. Any
- * checkpoint that exists under a given sessionId at this point was written
- * BEFORE the pause (checkpoints are only saved after a tool *result*, and a
- * pause happens before the deferred tool runs), so it is stale by
- * construction and would silently clobber the just-reconstructed messages
- * (including the deferred tool's own result) and step count if allowed
- * through. See resumeAfterApproval() below for the belt-and-suspenders
- * runtime guard that backs this type-level omission.
+ * `sessionId`/`checkpointStore` are omitted here (in addition to the other
+ * fields already omitted below) for the same reason `agent`/`input` are:
+ * resumeAfterApproval() derives them itself rather than taking them from the
+ * caller's `executeOptions`. `sessionId` comes from `snapshot.sessionId`
+ * (the ExecutionSnapshot the paused run was paused with) and `checkpointStore`
+ * comes from this function's own dedicated `checkpointStore` parameter - see
+ * resumeAfterApproval() below for exactly what gets threaded through and why
+ * that's safe.
+ *
+ * LOU-K5 update: earlier, this file forced BOTH to `undefined` on the
+ * follow-up execute() call, as a "belt-and-suspenders" guard against
+ * re-rehydrating stale pre-pause state. That guard was overbroad: it also
+ * disabled checkpointing for the entire remainder of the resumed run, so a
+ * crash a few tool-calls after a human approval would lose all progress
+ * since the approval. resumeAfterApproval() now threads the real
+ * `sessionId`/`checkpointStore` through instead, once it has already
+ * deleted the stale pre-pause checkpoint - see the "Defense in depth"
+ * comment below for why that ordering still makes rehydration impossible.
  */
 export type ResumeExecuteOptions = Omit<
   ExecuteOptions,
@@ -49,14 +56,24 @@ export type ResumeExecuteOptions = Omit<
  * so this takes the LLMProvider needed to keep generating instead of an
  * `executor: AgentExecutor` instance.
  *
- * @param checkpointStore Optional durable-execution CheckpointStore. This
- * is NOT threaded through to the follow-up execute() call (see
- * ResumeExecuteOptions) - it is used only, when the paused run's
- * ExecutionSnapshot carries a sessionId, to proactively delete the stale
- * checkpoint left behind under that sessionId from before the pause. This
- * closes the gap for a LATER, unrelated execute() call against the same
- * sessionId+checkpointStore (one that doesn't go through resume at all)
- * so it can't silently rehydrate that stale pre-pause state either.
+ * @param checkpointStore Optional durable-execution CheckpointStore. When
+ * the paused run's ExecutionSnapshot carries a `sessionId`, this is used
+ * two ways: first, to proactively delete the stale checkpoint left behind
+ * under that sessionId from before the pause (this closes the gap for a
+ * LATER, unrelated execute() call against the same sessionId+checkpointStore
+ * that doesn't go through resume at all, so it can't silently rehydrate
+ * that stale pre-pause state either); second - LOU-K5 - it is then threaded
+ * through, together with `snapshot.sessionId`, to the follow-up
+ * AgentExecutor.execute() call that continues the run, so checkpointing
+ * resumes for the remainder of the run instead of staying silently
+ * disabled. This is safe because the delete happens first: by the time
+ * execute() runs its rehydration check (`checkpointStore.load(sessionId)`),
+ * there is nothing under that key, so it falls into the normal
+ * "build from scratch" path using the reconstructed `messages`/
+ * `initialSteps` below, exactly as if no checkpointStore had been passed at
+ * all - it never rehydrates. If `checkpointStore` is omitted entirely,
+ * both the delete and the pass-through are skipped and resume behaves
+ * exactly as it did before durable execution existed.
  */
 export async function resumeAfterApproval(
   decision: ApprovalDecision,
@@ -78,6 +95,24 @@ export async function resumeAfterApproval(
   // written before this pause and is therefore stale by construction -
   // clear it now so it can't be loaded by this resume or by some later,
   // unrelated execute() call against the same sessionId+checkpointStore.
+  //
+  // Doing this BEFORE the AgentExecutor.execute() call below (rather than
+  // just relying on `skipSystemPromptInjection`/`initialSteps` to make a
+  // rehydration "harmless") is what makes it safe to pass sessionId and
+  // checkpointStore through to that call: its rehydration branch only
+  // triggers when `checkpointStore.load(sessionId)` finds something, and
+  // by the time it runs (synchronously after this delete resolves, with no
+  // intervening await back to caller code) there is nothing left to find.
+  //
+  // Accepted race: if some OTHER process/caller writes a new checkpoint
+  // under this exact sessionId in the narrow window between this delete
+  // and the execute() call's load(), that checkpoint would be picked up
+  // instead of the freshly-reconstructed messages. This mirrors how
+  // ApprovalStore.resolve() above is documented as delete-on-read without
+  // an additional distributed lock (see the catch block below) - this
+  // codebase accepts same-sessionId-concurrent-caller races as an existing
+  // caller-responsibility invariant (a sessionId identifies a single
+  // logical run) rather than adding cross-process locking to CheckpointStore.
   if (snapshot.sessionId && checkpointStore) {
     await checkpointStore.delete(snapshot.sessionId);
   }
@@ -159,25 +194,35 @@ export async function resumeAfterApproval(
     input: messages,
     provider,
     toolRegistry,
-    // Belt-and-suspenders runtime guard backing the ResumeExecuteOptions
-    // type-level Omit above: `Omit<...>` only stops *type-checked* callers
-    // from passing sessionId/checkpointStore through executeOptions - it
-    // does nothing to stop a caller who bypasses the type (e.g. an `as
-    // any` cast, or a plain-JS caller) from putting them on the object at
-    // runtime, where `...executeOptions` would otherwise spread them
-    // straight into this call. Explicitly forcing both to undefined here,
-    // after the spread, guarantees AgentExecutor.execute() can never fall
-    // into its checkpoint-rehydration branch for a resume, regardless of
-    // what executeOptions actually contains.
-    sessionId: undefined,
-    checkpointStore: undefined,
+    // LOU-K5: thread sessionId/checkpointStore through so AgentExecutor
+    // resumes writing per-tool-result checkpoints for the rest of this run
+    // (previously both were forced to `undefined` here, which also killed
+    // forward checkpointing for the whole remainder of the resumed run -
+    // not just the resume step itself). `snapshot.sessionId` and this
+    // function's own `checkpointStore` parameter are used explicitly here
+    // rather than whatever (if anything) `executeOptions` carries, since
+    // `ResumeExecuteOptions` omits both fields - see that type's doc
+    // comment. This still can't rehydrate stale state: the stale
+    // pre-pause checkpoint under `snapshot.sessionId` was just deleted
+    // above, so AgentExecutor.execute()'s `checkpointStore.load(sessionId)`
+    // rehydration check finds nothing and falls into its normal
+    // "build from scratch" path, using exactly the `input`/
+    // `skipSystemPromptInjection`/`initialSteps` reconstructed below - it
+    // never re-triggers the rehydration branch this guard used to worry
+    // about. When no `checkpointStore` was passed to resumeAfterApproval()
+    // at all, this is `undefined` and AgentExecutor.execute() behaves
+    // exactly as it always has for callers that don't use durable
+    // execution.
+    sessionId: snapshot.sessionId,
+    checkpointStore,
     // `messages` was reconstructed from the ExecutionSnapshot's
     // currentMessages, which already include the original system message
     // (if any) that AgentExecutor.buildMessages() built the first time
-    // this agent ran. Since no checkpoint/sessionId is threaded through
-    // this call, execute() would otherwise fall into its "build from
-    // scratch" path and prepend a second, duplicate system message built
-    // fresh from agent.prompt.
+    // this agent ran. Because the stale checkpoint was just deleted above,
+    // execute() always falls into its "build from scratch" path here
+    // (never the rehydration path) - without skipSystemPromptInjection,
+    // that path would prepend a second, duplicate system message built
+    // fresh from agent.prompt on top of the one already in `messages`.
     skipSystemPromptInjection: true,
     // Continue step-budget accounting from where the paused run left off,
     // rather than silently resetting to a full fresh maxSteps allowance.

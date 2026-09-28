@@ -552,6 +552,184 @@ describe('Execution - resumeAfterApproval', () => {
     expect(await checkpointStore.load(sessionId)).toBeNull();
   });
 
+  it('LOU-K5: writes a NEW checkpoint for a tool-call step taken after a successful resume, when a checkpointStore is supplied', async () => {
+    // Reproduces/verifies the LOU-K5 fix: resumeAfterApproval() used to
+    // force sessionId/checkpointStore to `undefined` on the follow-up
+    // execute() call, which silently disabled checkpointing for the whole
+    // remainder of the resumed run. This test drives the resumed run
+    // through one MORE (non-approval-gated) tool call after the approved
+    // 'chargeCard' call, and asserts AgentExecutor's normal per-tool-result
+    // checkpoint.save() fires for that later step - proving durability is
+    // restored for the post-resume portion of the run, not just re-armed
+    // and immediately turned back off.
+    const chargeExecute = vi.fn().mockResolvedValue({ charged: true });
+    toolRegistry.register('chargeCard', {
+      displayName: 'Charge Card',
+      tool: { description: 'Charge a card', parameters: {}, execute: chargeExecute } as any,
+      needsApproval: true,
+    });
+
+    const lookupExecute = vi.fn().mockResolvedValue({ found: true });
+    toolRegistry.register('lookup', {
+      displayName: 'Lookup',
+      tool: { description: 'Look something up', parameters: {}, execute: lookupExecute } as any,
+      needsApproval: false,
+    });
+
+    const agent = AgentBuilder.create()
+      .setType(AgentType.SmartAssistant)
+      .setName('Test Agent')
+      .addTool('chargeCard', { tool: 'chargeCard', options: {} })
+      .addTool('lookup', { tool: 'lookup', options: {} })
+      .build();
+
+    // Generation 1: calls the approval-gated chargeCard tool (pauses).
+    // Generation 2 (post-resume): calls the unguarded lookup tool - this is
+    // the "one more tool-call step after resume" that must get checkpointed.
+    // Generation 3: stops with no further tool calls.
+    let call = 0;
+    const scriptedProvider = {
+      name: 'scripted',
+      supportsTools: () => true,
+      supportsStreaming: () => false,
+      getModels: async () => ['scripted'],
+      stream: async () => {
+        throw new Error('not implemented');
+      },
+      generate: async () => {
+        call++;
+        if (call === 1) {
+          return {
+            text: 'charging',
+            finishReason: 'tool_calls' as const,
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+            toolCalls: [
+              { id: 'call-charge', type: 'function' as const, function: { name: 'chargeCard', arguments: '{}' } },
+            ],
+          };
+        }
+        if (call === 2) {
+          return {
+            text: 'looking up',
+            finishReason: 'tool_calls' as const,
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+            toolCalls: [
+              { id: 'call-lookup', type: 'function' as const, function: { name: 'lookup', arguments: '{}' } },
+            ],
+          };
+        }
+        return {
+          text: 'all done',
+          finishReason: 'stop' as const,
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        };
+      },
+    };
+
+    const approvalStore = createInMemoryApprovalStore();
+    const checkpointStore = createInMemoryCheckpointStore();
+    const saveSpy = vi.spyOn(checkpointStore, 'save');
+    const sessionId = 'post-resume-checkpoint-session';
+
+    const paused = await AgentExecutor.execute({
+      agent,
+      input: 'go',
+      provider: scriptedProvider as any,
+      toolRegistry,
+      approvalStore,
+      sessionId,
+      checkpointStore,
+    });
+
+    expect(paused.finishReason).toBe('awaiting-approval');
+    expect(chargeExecute).not.toHaveBeenCalled();
+    saveSpy.mockClear();
+
+    const resumed = await resumeAfterApproval(
+      { id: paused.approvalId!, approved: true },
+      approvalStore,
+      toolRegistry,
+      scriptedProvider as any,
+      {},
+      checkpointStore
+    );
+
+    expect(resumed.finishReason).toBe('stop');
+    expect(chargeExecute).toHaveBeenCalledTimes(1);
+    expect(lookupExecute).toHaveBeenCalledTimes(1);
+
+    // A NEW checkpoint must have been saved (under the same sessionId) for
+    // the post-resume 'lookup' step - this is the forward-checkpointing
+    // this fix restores. Before the fix, sessionId/checkpointStore were
+    // forced to undefined on the resumed execute() call, so this save()
+    // would never have been reached at all.
+    expect(saveSpy).toHaveBeenCalled();
+    const savedCheckpoint = saveSpy.mock.calls[saveSpy.mock.calls.length - 1][1];
+    expect(savedCheckpoint.sessionId).toBe(sessionId);
+    // The saved checkpoint's messages must include BOTH the deferred
+    // chargeCard result (reconstructed by resume.ts) and the post-resume
+    // lookup result (checkpointed by AgentExecutor's normal loop) - proof
+    // this checkpoint reflects genuinely new, post-resume progress rather
+    // than a rehydrated/duplicated stale snapshot.
+    expect(savedCheckpoint.messages.some((m: any) => m.toolName === 'chargeCard')).toBe(true);
+    expect(savedCheckpoint.messages.some((m: any) => m.toolName === 'lookup')).toBe(true);
+
+    // The run reached a terminal state, so AgentExecutor's own
+    // "clear the checkpoint when finished" cleanup (unrelated to this fix)
+    // removes it afterwards - this is expected and not a regression.
+    expect(await checkpointStore.load(sessionId)).toBeNull();
+  });
+
+  it('LOU-K5: resuming without a checkpointStore still works exactly as before (no crash, no checkpoint attempted)', async () => {
+    // Guards the "fully optional/backward compatible" requirement: a
+    // caller that never passes a checkpointStore to resumeAfterApproval()
+    // must see identical behavior to before this fix - sessionId and
+    // checkpointStore simply stay undefined on the follow-up execute()
+    // call, so AgentExecutor's rehydration/save/delete branches (all
+    // gated on `sessionId && checkpointStore`) are never entered.
+    const execute = vi.fn().mockResolvedValue({ charged: true });
+    toolRegistry.register('chargeCard', {
+      displayName: 'Charge Card',
+      tool: { description: 'Charge a card', parameters: {}, execute } as any,
+      needsApproval: true,
+    });
+
+    const agent = AgentBuilder.create()
+      .setType(AgentType.SmartAssistant)
+      .setName('Test Agent')
+      .addTool('chargeCard', { tool: 'chargeCard', options: {} })
+      .build();
+
+    const provider = createMockProvider({
+      name: 'mock',
+      responses: ['Charging now', 'All done'],
+    });
+
+    const approvalStore = createInMemoryApprovalStore();
+
+    const paused = await AgentExecutor.execute({
+      agent,
+      input: 'Please call chargeCard now',
+      provider,
+      toolRegistry,
+      approvalStore,
+      // Deliberately no sessionId/checkpointStore anywhere in this test.
+    });
+
+    expect(paused.finishReason).toBe('awaiting-approval');
+
+    // No checkpointStore argument at all (not even undefined explicitly).
+    const resumed = await resumeAfterApproval(
+      { id: paused.approvalId!, approved: true },
+      approvalStore,
+      toolRegistry,
+      provider
+    );
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(resumed.finishReason).toBe('stop');
+  });
+
   it('should throw a clear error for an unknown or already-resolved approval id', async () => {
     const approvalStore = createInMemoryApprovalStore();
     const provider = createMockProvider({ name: 'mock' });
