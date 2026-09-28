@@ -11,6 +11,29 @@ import { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGat
 import { Checkpoint, CheckpointStore } from './checkpoint';
 
 /**
+ * Base class for tool errors that must NOT be swallowed by
+ * executeToolCall()'s catch-all and converted into a conversational
+ * `{error: ...}` tool-result message fed back to the LLM. Instead they
+ * should propagate up out of execute() as a rejected promise, terminating
+ * the run and giving the caller (which may itself be a parent delegate
+ * tool's execute(), see DelegationTool.ts) an unambiguous signal.
+ *
+ * DelegationTool.ts's DelegationDepthExceededError extends this so that a
+ * runaway delegation cycle (A -> B -> A -> ...) is stopped dead the moment
+ * any one level's maxDepth guard fires, rather than having that error
+ * re-enter the conversation as tool output that prompts the LLM to retry
+ * the delegation - which is what let the original bug grow unbounded
+ * (O(maxSteps^maxDepth) LLM calls) instead of failing fast.
+ *
+ * This lives here (not in DelegationTool.ts) because DelegationTool.ts
+ * already imports AgentExecutor from this file; having AgentExecutor.ts
+ * import back from DelegationTool.ts would be a circular import. Defining
+ * the shared marker in this lower-level file lets both directions work
+ * without a cycle.
+ */
+export class PropagatingToolError extends Error {}
+
+/**
  * Execution event types
  */
 export type ExecutionEventType =
@@ -467,6 +490,17 @@ export class AgentExecutor {
         result,
       };
     } catch (error) {
+      // Errors that mark themselves as `PropagatingToolError` (e.g.
+      // DelegationDepthExceededError) must NOT be converted into a
+      // conversational {error} tool-result - that would hand the LLM
+      // exactly the kind of "your tool call failed, try again" signal
+      // that triggers another delegation attempt, defeating the whole
+      // point of the depth guard. Rethrow so it propagates out of
+      // execute() as a rejected promise instead.
+      if (error instanceof PropagatingToolError) {
+        throw error;
+      }
+
       return {
         toolCallId: toolCall.id,
         toolName: toolCall.function.name,

@@ -475,6 +475,79 @@ describe('FlowExecutor', () => {
     });
   });
 
+  describe('LOU-D4: delegate tool compatibility', () => {
+    it('produces the same event sequence as a built-in tool step', async () => {
+      // Template: this mirrors "should execute tool" above (a single
+      // toolCall step against a registered tool) exactly, except the tool
+      // name points at a delegate tool created by createDelegateTool()
+      // instead of a hand-rolled built-in-style tool. If delegate tools are
+      // truly drop-in compatible with FlowExecutor's toolCall step, the two
+      // flows should produce an identical sequence of event *types* (only
+      // the event `data` payloads legitimately differ, since the tools do
+      // different things).
+      const { createDelegateTool } = await import('../execution/DelegationTool');
+      const { AgentType } = await import('../types');
+
+      const childProvider = new MockLLMProvider({
+        name: 'mock-child',
+        responses: ['delegated response'],
+      });
+
+      const childAgent = {
+        name: 'Delegate Test Agent',
+        agentType: AgentType.SmartAssistant,
+        prompt: 'You are a test child agent',
+      };
+
+      toolRegistry.register(
+        'delegate_test_agent',
+        createDelegateTool({ agent: childAgent, provider: childProvider })
+      );
+
+      const builtinFlow: AgentFlow = {
+        code: 'builtin-flow',
+        name: 'Builtin Flow',
+        flow: {
+          type: 'toolCall',
+          tool: 'testTool',
+          arguments: { value: 'test' },
+        },
+      };
+
+      const delegateFlow: AgentFlow = {
+        code: 'delegate-flow',
+        name: 'Delegate Flow',
+        flow: {
+          type: 'toolCall',
+          tool: 'delegate_test_agent',
+          arguments: { task: 'test' },
+        },
+      };
+
+      const builtinEvents: any[] = [];
+      const builtinResult = await FlowExecutor.execute(builtinFlow, context, (event) =>
+        builtinEvents.push(event)
+      );
+
+      const delegateEvents: any[] = [];
+      const delegateResult = await FlowExecutor.execute(delegateFlow, context, (event) =>
+        delegateEvents.push(event)
+      );
+
+      expect(delegateResult.success).toBe(true);
+      expect(builtinResult.success).toBe(true);
+      expect(delegateEvents.map((e) => e.type)).toEqual(builtinEvents.map((e) => e.type));
+
+      // Result shape: the delegate tool's own return value (text/usage) is
+      // naturally different from the built-in test tool's return value,
+      // but it is still a plain result object surfaced the same way a
+      // built-in tool's result would be - no new FlowStep type or special
+      // casing was needed in FlowExecutor for delegate tools to work.
+      expect(delegateResult.output).toHaveProperty('text');
+      expect(delegateResult.output).toHaveProperty('usage');
+    });
+  });
+
   describe('Events', () => {
     it('should emit execution events', async () => {
       const events: any[] = [];

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { resumeAfterApproval } from './resume';
 import { ApprovalStore, PendingApproval, ExecutionSnapshot } from './ApprovalGate';
-import { AgentExecutor } from './AgentExecutor';
+import { AgentExecutor, PropagatingToolError } from './AgentExecutor';
 import { Checkpoint, CheckpointStore } from './checkpoint';
 import { createMockProvider } from '../providers/mock';
 import { ToolRegistry } from '../tools';
@@ -238,6 +238,58 @@ describe('Execution - resumeAfterApproval', () => {
     expect(toolMessage.role).toBe('tool');
     const parsed = JSON.parse(toolMessage.content);
     expect(parsed.error).toBe('payment gateway timeout');
+  });
+
+  it('should reject (not resolve with an error-shaped tool message) when the deferred tool throws a PropagatingToolError on resume', async () => {
+    // Reproduces the LOU-D reviewer finding: resume.ts's own catch/convert
+    // block for the deferred tool's execute() call never got the same
+    // PropagatingToolError special-case that AgentExecutor.executeToolCall
+    // got in the AgentExecutor fix. A deferred tool that is itself a
+    // delegate tool hitting its delegation-depth limit throws a
+    // PropagatingToolError subclass (DelegationDepthExceededError); that
+    // must propagate out of resumeAfterApproval() as a rejected promise,
+    // not get swallowed into a {error} tool-result message that would let
+    // the LLM see a normal failure and retry the delegation.
+    const depthError = new PropagatingToolError('delegation depth exceeded');
+    const execute = vi.fn().mockRejectedValue(depthError);
+    toolRegistry.register('delegate', {
+      displayName: 'Delegate',
+      tool: { description: 'Delegate to a sub-agent', parameters: {}, execute } as any,
+      needsApproval: true,
+    });
+
+    const agent = AgentBuilder.create()
+      .setType(AgentType.SmartAssistant)
+      .setName('Test Agent')
+      .addTool('delegate', { tool: 'delegate', options: {} })
+      .build();
+
+    const provider = createMockProvider({
+      name: 'mock',
+      responses: ['Delegating now', 'All done'],
+    });
+
+    const approvalStore = createInMemoryApprovalStore();
+
+    const paused = await AgentExecutor.execute({
+      agent,
+      input: 'Please delegate now',
+      provider,
+      toolRegistry,
+      approvalStore,
+    });
+
+    expect(paused.finishReason).toBe('awaiting-approval');
+
+    // Before the fix, this would resolve with an {error}-shaped tool
+    // message (the exact swallow-and-silently-continue pattern the
+    // AgentExecutor fix exists to prevent). After the fix, it must reject
+    // with the same PropagatingToolError instance instead.
+    await expect(
+      resumeAfterApproval({ id: paused.approvalId!, approved: true }, approvalStore, toolRegistry, provider)
+    ).rejects.toBe(depthError);
+
+    expect(execute).toHaveBeenCalledTimes(1);
   });
 
   it('should continue step-count accounting from the pre-pause step count on resume', async () => {
