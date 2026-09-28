@@ -76,7 +76,7 @@ describe('Retry Logic', () => {
     });
 
     it('should use exponential backoff', async () => {
-      let delays: number[] = [];
+      const delays: number[] = [];
       const operation = vi
         .fn()
         .mockRejectedValue(new TimeoutError('Timeout'));
@@ -97,7 +97,7 @@ describe('Retry Logic', () => {
     });
 
     it('should respect max delay', async () => {
-      let delays: number[] = [];
+      const delays: number[] = [];
       const operation = vi
         .fn()
         .mockRejectedValue(new TimeoutError('Timeout'));

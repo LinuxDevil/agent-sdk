@@ -109,9 +109,9 @@ export class AgentExecutor {
     // Build tools
     const tools = this.buildTools(agent, toolRegistry);
 
-    let currentMessages = [...messages];
-    let allToolCalls: ToolCall[] = [];
-    let totalUsage = {
+    const currentMessages = [...messages];
+    const allToolCalls: ToolCall[] = [];
+    const totalUsage = {
       promptTokens: 0,
       completionTokens: 0,
       totalTokens: 0,
