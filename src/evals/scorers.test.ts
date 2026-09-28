@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { exactMatch, toolCallOrder, budget, describeBudgetFailure } from './scorers';
-import { ExecutionResult } from '../execution/AgentExecutor';
-import { ToolCall } from '../providers/llm';
+import { AgentExecutor, ExecutionResult } from '../execution/AgentExecutor';
+import { ToolCall, LLMProvider, GenerateOptions, GenerateResult } from '../providers/llm';
+import { ToolRegistry } from '../tools';
+import { AgentBuilder } from '../core';
+import { AgentType } from '../types';
 
 function fakeResult(
   text: string,
@@ -108,6 +111,139 @@ describe('budget', () => {
       steps: 15,
     });
     expect(scorer(result)).toBe(0);
+  });
+});
+
+describe('toolCallOrder() against a genuine AgentExecutor.execute() result', () => {
+  // LOU-G4's acceptance criteria requires toolCallOrder() to be verified
+  // against REAL AgentExecutor.execute() output, not just fakeResult()/
+  // fakeToolCall() fixtures - a scorer can type-check against the
+  // ExecutionResult/ToolCall shapes while silently drifting from how the
+  // real executor actually populates `toolCalls` (field naming, whether
+  // `arguments` is a JSON string vs. object, ordering guarantees, etc.).
+  // This runs a real agent loop with two real tools registered in a real
+  // ToolRegistry, driven by a scripted LLMProvider (the same
+  // "scripted provider" pattern AgentExecutor.test.ts uses for multi-step
+  // tool-calling tests), and feeds the genuine result.toolCalls into
+  // toolCallOrder().
+
+  it('scores 1 for the correct order and 0 for a wrong order, on a real execute() result', async () => {
+    const toolRegistry = new ToolRegistry();
+
+    const searchExecute = async (args: Record<string, unknown>) => ({ found: args.query });
+    const summarizeExecute = async (args: Record<string, unknown>) => ({
+      summary: `summary of ${args.maxWords} words`,
+    });
+
+    toolRegistry.register('search', {
+      displayName: 'Search',
+      tool: {
+        description: 'Searches for something',
+        parameters: {},
+        execute: searchExecute,
+      } as any,
+    });
+    toolRegistry.register('summarize', {
+      displayName: 'Summarize',
+      tool: {
+        description: 'Summarizes something',
+        parameters: {},
+        execute: summarizeExecute,
+      } as any,
+    });
+
+    const agent = AgentBuilder.create()
+      .setType(AgentType.SmartAssistant)
+      .setName('Test Agent')
+      .addTool('search', { tool: 'search', options: {} })
+      .addTool('summarize', { tool: 'summarize', options: {} })
+      .build();
+
+    // Scripted provider: on step 1 requests `search`, on step 2 requests
+    // `summarize`, then stops - mirroring the scripted-provider pattern
+    // used by AgentExecutor.test.ts (a plain object implementing
+    // LLMProvider with a generate() that counts calls and returns
+    // different ToolCall[] per step).
+    let call = 0;
+    const scriptedProvider: LLMProvider = {
+      name: 'scripted',
+      supportsTools: () => true,
+      supportsStreaming: () => false,
+      getModels: async () => ['scripted'],
+      stream: async () => {
+        throw new Error('not implemented');
+      },
+      generate: async (_options: GenerateOptions): Promise<GenerateResult> => {
+        call++;
+        if (call === 1) {
+          return {
+            text: '',
+            finishReason: 'tool_calls',
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+            toolCalls: [
+              {
+                id: 'call-1',
+                type: 'function',
+                function: { name: 'search', arguments: JSON.stringify({ query: 'cats' }) },
+              },
+            ],
+          };
+        }
+        if (call === 2) {
+          return {
+            text: '',
+            finishReason: 'tool_calls',
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+            toolCalls: [
+              {
+                id: 'call-2',
+                type: 'function',
+                function: { name: 'summarize', arguments: JSON.stringify({ maxWords: 50 }) },
+              },
+            ],
+          };
+        }
+        return {
+          text: 'done',
+          finishReason: 'stop',
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        };
+      },
+    };
+
+    // A genuine AgentExecutor.execute() call - not a stub, not a mock of
+    // execute() itself. Only the LLMProvider is scripted; the executor's
+    // own tool-calling loop, message building and toolCalls accumulation
+    // all run for real.
+    const result = await AgentExecutor.execute({
+      agent,
+      input: 'search then summarize',
+      provider: scriptedProvider,
+      toolRegistry,
+    });
+
+    // Sanity: the real executor really did call both tools, in order, and
+    // really did populate `arguments` as a JSON string (not an object) -
+    // exactly the drift risk this test exists to catch.
+    expect(result.toolCalls).toHaveLength(2);
+    expect(result.toolCalls[0].function.name).toBe('search');
+    expect(result.toolCalls[1].function.name).toBe('summarize');
+    expect(typeof result.toolCalls[0].function.arguments).toBe('string');
+
+    const correctScorer = toolCallOrder([
+      { tool: 'search', args: { query: 'cats' } },
+      { tool: 'summarize', args: { maxWords: 50 } },
+    ]);
+    expect(correctScorer(result)).toBe(1);
+
+    const reversedScorer = toolCallOrder([
+      { tool: 'summarize', args: { maxWords: 50 } },
+      { tool: 'search', args: { query: 'cats' } },
+    ]);
+    expect(reversedScorer(result)).toBe(0);
+
+    const missingCallScorer = toolCallOrder([{ tool: 'search', args: { query: 'cats' } }]);
+    expect(missingCallScorer(result)).toBe(0);
   });
 });
 
