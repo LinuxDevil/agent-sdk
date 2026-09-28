@@ -1,9 +1,9 @@
 /**
  * GitHub Integration Tools
- * 
+ *
  * Provides a comprehensive set of tools for interacting with GitHub API.
  * These tools can be used directly in agents without reimplementation.
- * 
+ *
  * @example
  * ```typescript
  * const githubTools = new GitHubTools({
@@ -11,16 +11,47 @@
  *   owner: 'myorg',
  *   repo: 'myrepo'
  * });
- * 
+ *
  * const agent = new AgentBuilder()
  *   .withTools(githubTools)
  *   .build();
  * ```
+ *
+ * ## Required token scope (LOU-E14)
+ *
+ * The `config.token` this class is constructed with is expected to be
+ * scoped to **PR creation and reading only**. Concretely, a fine-grained
+ * GitHub Personal Access Token (or GitHub App installation token) needs
+ * only:
+ *   - **Pull requests: Read and write** - covers every `pulls/*` and
+ *     `pulls/*\/files` endpoint this file calls: list/get/create/update/
+ *     merge/close a PR, and reading a PR's changed files.
+ *   - **Issues: Read and write** - GitHub's REST API backs PR
+ *     conversation comments with the *issues* endpoints
+ *     (`issues/{number}/comments`), so posting/reading a PR comment
+ *     needs this even though it's conceptually a "PR" operation.
+ *   - **Contents: Read-only** - covers `repos/{owner}/{repo}`,
+ *     `branches`, `commits`, and `compare`, all of which this file only
+ *     ever reads (never writes) in service of PR creation (e.g.
+ *     resolving the repository's default branch, or a PR's changed
+ *     commits).
+ *
+ * Endpoints this file calls that fall **outside** that scope - creating
+ * or deleting a branch or a file (needs `Contents: Read and write`),
+ * searching code, and every issue-CRUD endpoint that isn't a PR comment
+ * (needs `Issues: Read and write` used for something other than PR
+ * comments) - are NOT reachable with a PR-creation/reading-scoped token
+ * and are deliberately gated below (see `OUT_OF_SCOPE_TOOLS`): calling
+ * one of their tools throws before any HTTP request is made, rather than
+ * failing at GitHub with an opaque 403. This SDK never grants
+ * `Administration` or repository-deletion scopes to this class at all -
+ * there is no code path here that could delete a repository.
  */
 
 import { tool } from 'ai';
 import { z } from 'zod';
 import { ToolRegistry } from '../ToolRegistry';
+import { ToolDescriptor } from '../../types';
 
 // ============================================================================
 // Type Definitions
@@ -273,12 +304,57 @@ export class GitHubTools extends ToolRegistry {
   private authHeader: string;
   private baseUrl: string;
 
+  /**
+   * Tool names whose underlying GitHub endpoint requires more than the
+   * "Pull requests: write" + "Issues: write" + "Contents: read" scope
+   * documented above (branch/file mutation, code search, and non-PR
+   * issue CRUD). `register()` below wraps each of these tools' execute()
+   * so calling one throws immediately - before any `fetch()` - instead
+   * of only being caught by GitHub itself at request time.
+   */
+  private static readonly OUT_OF_SCOPE_TOOLS = new Set<string>([
+    'github_create_branch',
+    'github_delete_branch',
+    'github_create_or_update_file',
+    'github_delete_file',
+    'github_search_code',
+    'github_list_issues',
+    'github_get_issue',
+    'github_create_issue',
+    'github_update_issue',
+    'github_close_issue',
+    'github_add_issue_comment',
+  ]);
+
   constructor(config: GitHubConfig) {
     super();
     this.config = config;
     this.authHeader = `Bearer ${config.token}`;
     this.baseUrl = `https://api.github.com/repos/${config.owner}/${config.repo}`;
     this.registerAllTools();
+  }
+
+  /**
+   * Overrides ToolRegistry.register() to gate any tool named in
+   * OUT_OF_SCOPE_TOOLS behind an error thrown from its execute(), instead
+   * of the tool's real implementation - so an out-of-scope call fails
+   * fast, before constructing or sending any GitHub API request. Every
+   * registerX() method below still calls `this.register(...)` exactly as
+   * before; this override applies uniformly without touching their
+   * individual implementations.
+   */
+  public register(name: string, descriptor: ToolDescriptor): void {
+    if (GitHubTools.OUT_OF_SCOPE_TOOLS.has(name) && descriptor.tool) {
+      descriptor.tool.execute = (async () => {
+        throw new Error(
+          `GitHub tool '${name}' is out of scope for a PR-creation/reading-scoped token ` +
+            `(requires broader permissions than "Pull requests: write" + "Issues: write" + ` +
+            `"Contents: read" - see the scope documentation at the top of github.ts) and has ` +
+            `been disabled.`
+        );
+      }) as typeof descriptor.tool.execute;
+    }
+    super.register(name, descriptor);
   }
 
   private registerAllTools() {
