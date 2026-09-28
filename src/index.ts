@@ -32,6 +32,9 @@ export * from './providers';
 // Execution
 export * from './execution';
 
+// Evals
+export * from './evals';
+
 // Security
 export * from './security';
 

@@ -4,11 +4,30 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    // Adds '**/*.eval.ts' (LOU-G2) alongside vitest's own default
+    // '**/*.{test,spec}.?(c|m)[jt]s?(x)' pattern (there was no explicit
+    // `include` before this, so the default test/spec pattern is spelled
+    // out here too) so eval files defined via defineEval() run as part of
+    // the normal `vitest run` / `npm test` path.
+    include: ['**/*.{test,spec}.?(c|m)[jt]s?(x)', '**/*.eval.ts'],
     // Excludes the LOU-E11 fixture repo's own test file - it's a plain
     // node:test suite meant to be run by the fixture's own `npm test`
     // (via createTestRunGuardrail() against a scratch copy of it), not
     // collected by vitest here.
-    exclude: ['**/node_modules/**', '**/dist/**', 'src/execution/__fixtures__/**'],
+    //
+    // Also excludes '**/*.judge.eval.ts' (LOU-G6): llmJudge()-based evals
+    // call out to a real LLM provider and must NEVER run in the default
+    // `vitest run` path. Without this exclude, '**/*.eval.ts' above would
+    // also match 'foo.judge.eval.ts' (it still ends in '.eval.ts'), so the
+    // exclude is required, not just the more specific include pattern.
+    // Judge evals are run exclusively via vitest.judge.config.ts /
+    // `npm run test:evals:judge`.
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      'src/execution/__fixtures__/**',
+      '**/*.judge.eval.ts',
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

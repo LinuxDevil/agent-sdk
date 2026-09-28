@@ -50,6 +50,7 @@
     "dev": "tsup --watch",
     "test": "vitest",
     "test:coverage": "vitest run --coverage --config vitest.coverage.config.ts",
+    "test:evals:judge": "vitest run --config vitest.judge.config.ts",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "example:tracing:console": "tsx examples/tracing/run-console.ts",
