@@ -423,6 +423,170 @@ describe('AgentExecutor', () => {
       expect(lengths[2]).toBeGreaterThan(lengths[1]);
     });
 
+    it('should resume from a checkpoint after a simulated crash + restart with zero message loss', async () => {
+      const execute = vi.fn().mockResolvedValue({ ok: true });
+      toolRegistry.register('noop', {
+        displayName: 'Noop',
+        tool: { description: 'noop', parameters: {}, execute } as any,
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .addTool('noop', { tool: 'noop', options: {} })
+        .build();
+
+      function makeCheckpointStore() {
+        const records = new Map<string, any>();
+        return {
+          save: vi.fn(async (sessionId: string, checkpoint: any) => {
+            records.set(sessionId, checkpoint);
+          }),
+          load: vi.fn(async (sessionId: string) => records.get(sessionId) ?? null),
+          delete: vi.fn(async (sessionId: string) => {
+            records.delete(sessionId);
+          }),
+        };
+      }
+
+      function toolCallResponse(callNumber: number) {
+        return {
+          text: `step ${callNumber}`,
+          finishReason: 'tool_calls' as const,
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          toolCalls: [
+            {
+              id: `call-${callNumber}`,
+              type: 'function' as const,
+              function: { name: 'noop', arguments: '{}' },
+            },
+          ],
+        };
+      }
+
+      function stopResponse() {
+        return {
+          text: 'done',
+          finishReason: 'stop' as const,
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        };
+      }
+
+      // --- "Uninterrupted" baseline run: all 4 tool calls in one go ---
+      const baselineStore = makeCheckpointStore();
+      let baselineCall = 0;
+      const baselineProvider = {
+        name: 'scripted',
+        supportsTools: () => true,
+        supportsStreaming: () => false,
+        getModels: async () => ['scripted'],
+        stream: async () => {
+          throw new Error('not implemented');
+        },
+        generate: async () => {
+          baselineCall++;
+          return baselineCall <= 4 ? toolCallResponse(baselineCall) : stopResponse();
+        },
+      };
+
+      const baselineResult = await AgentExecutor.execute({
+        agent,
+        input: 'go',
+        provider: baselineProvider as any,
+        toolRegistry,
+        sessionId: 'baseline-session',
+        checkpointStore: baselineStore,
+      });
+
+      // --- Interrupted run: crashes after 2 of 4 tool calls ---
+      const sharedStore = makeCheckpointStore();
+      let crashCall = 0;
+      const crashingProvider = {
+        name: 'scripted-crash',
+        supportsTools: () => true,
+        supportsStreaming: () => false,
+        getModels: async () => ['scripted-crash'],
+        stream: async () => {
+          throw new Error('not implemented');
+        },
+        generate: async () => {
+          crashCall++;
+          if (crashCall <= 2) {
+            return toolCallResponse(crashCall);
+          }
+          throw new Error('simulated crash');
+        },
+      };
+
+      await expect(
+        AgentExecutor.execute({
+          agent,
+          input: 'go',
+          provider: crashingProvider as any,
+          toolRegistry,
+          sessionId: 'resume-session',
+          checkpointStore: sharedStore,
+        })
+      ).rejects.toThrow('simulated crash');
+
+      // "Restart": a brand new execute() call with the same sessionId/store,
+      // completing the remaining tool calls.
+      let resumeCall = 0;
+      const resumeProvider = {
+        name: 'scripted-resume',
+        supportsTools: () => true,
+        supportsStreaming: () => false,
+        getModels: async () => ['scripted-resume'],
+        stream: async () => {
+          throw new Error('not implemented');
+        },
+        generate: async () => {
+          resumeCall++;
+          return resumeCall <= 2 ? toolCallResponse(2 + resumeCall) : stopResponse();
+        },
+      };
+
+      const resumedResult = await AgentExecutor.execute({
+        agent,
+        input: 'go',
+        provider: resumeProvider as any,
+        toolRegistry,
+        sessionId: 'resume-session',
+        checkpointStore: sharedStore,
+      });
+
+      expect(sharedStore.load).toHaveBeenCalledWith('resume-session');
+      expect(resumedResult.messages).toHaveLength(baselineResult.messages.length);
+    });
+
+    it('should build messages from scratch when no checkpoint exists for a fresh sessionId', async () => {
+      const checkpointStore = {
+        save: vi.fn().mockResolvedValue(undefined),
+        load: vi.fn().mockResolvedValue(null),
+        delete: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .setPrompt('You are a pirate')
+        .build();
+
+      const result = await AgentExecutor.execute({
+        agent,
+        input: 'Hello',
+        provider,
+        sessionId: 'fresh-session',
+        checkpointStore,
+      });
+
+      expect(checkpointStore.load).toHaveBeenCalledWith('fresh-session');
+      const systemMessage = result.messages.find((m) => m.role === 'system');
+      expect(systemMessage?.content).toBe('You are a pirate');
+      const userMessage = result.messages.find((m) => m.role === 'user');
+      expect(userMessage?.content).toBe('Hello');
+    });
+
     it('should pass temperature and maxTokens', async () => {
       const agent = AgentBuilder.create()
         .setType(AgentType.SmartAssistant)

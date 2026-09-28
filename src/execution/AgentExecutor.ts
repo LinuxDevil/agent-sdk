@@ -113,20 +113,39 @@ export class AgentExecutor {
       agentName: agent.name,
     });
 
-    // Build messages
-    const messages = this.buildMessages(agent, input);
-
     // Build tools
     const tools = this.buildTools(agent, toolRegistry);
 
-    const currentMessages = [...messages];
-    const allToolCalls: ToolCall[] = [];
-    const totalUsage = {
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
-    };
-    let steps = 0;
+    // If a checkpoint exists for this sessionId, rehydrate state from it
+    // instead of building messages from scratch.
+    let checkpoint: Checkpoint | null = null;
+    if (sessionId && checkpointStore) {
+      checkpoint = await checkpointStore.load(sessionId);
+    }
+
+    let currentMessages: Message[];
+    let allToolCalls: ToolCall[];
+    let totalUsage: { promptTokens: number; completionTokens: number; totalTokens: number };
+    let steps: number;
+
+    if (checkpoint) {
+      currentMessages = [...checkpoint.messages];
+      allToolCalls = [...(checkpoint.toolCalls as ToolCall[])];
+      totalUsage = { ...checkpoint.usage };
+      steps = checkpoint.stepIndex;
+    } else {
+      // Build messages from scratch (fallback path)
+      const messages = this.buildMessages(agent, input);
+      currentMessages = [...messages];
+      allToolCalls = [];
+      totalUsage = {
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+      };
+      steps = 0;
+    }
+
     let finalText = '';
     let finishReason = 'stop';
 
