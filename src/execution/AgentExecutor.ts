@@ -9,6 +9,7 @@ import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
 import { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGate';
 import { Checkpoint, CheckpointStore } from './checkpoint';
+import { TraceExporter, withSpan } from './tracing';
 
 /**
  * Base class for tool errors that must NOT be swallowed by
@@ -143,6 +144,23 @@ export interface ExecuteOptions {
     latencyMs: number,
     error?: unknown
   ) => void | Promise<void>;
+  /**
+   * Trace exporter (LOU-E3/E4/E5). When provided, execute() wraps its run
+   * in a 3-level span tree: a top-level `agent.run` span, with a nested
+   * `llm.generate` span around each provider.generate() call and a nested
+   * `tool.call` span around each tool execution, both parented to
+   * `agent.run` via Span.parentId. Omitted (or no exporter) means
+   * withSpan() is a no-op wrapper - execute()'s behavior is unchanged.
+   */
+  exporter?: TraceExporter;
+  /**
+   * When true, span attributes omit potentially sensitive content (the
+   * `agent.run` input isn't captured differently, but `llm.generate`
+   * leaves out `prompt` and `tool.call` leaves out `args`/`result`).
+   * Token counts, finish reason, tool name and error/latency are never
+   * redacted. Defaults to false.
+   */
+  redactContent?: boolean;
 }
 
 /**
@@ -170,6 +188,34 @@ export class AgentExecutor {
    * Execute agent without streaming
    */
   static async execute(options: ExecuteOptions): Promise<ExecutionResult> {
+    const { input, exporter } = options;
+
+    // The entire run is wrapped in a top-level 'agent.run' span (LOU-E5).
+    // AgentExecutor is a static-function API (no `this` instance to hang a
+    // span/exporter off of), so the original execute() body below just
+    // moves, unchanged in behavior, into this withSpan() callback; the
+    // callback receives its own span (`agentSpan`) whose generated `id` is
+    // then threaded as `parentId` into the nested 'llm.generate' and
+    // 'tool.call' withSpan() calls, giving the 3-level span tree its
+    // parent/child relationships without any instance state.
+    return withSpan(
+      exporter,
+      'agent.run',
+      { input: typeof input === 'string' ? input : JSON.stringify(input) },
+      async (agentSpan) => this.runAgentLoop(options, agentSpan.id),
+      undefined
+    );
+  }
+
+  /**
+   * The actual execution loop, split out of execute() so the top-level
+   * 'agent.run' span (LOU-E5) can wrap it via withSpan() while still
+   * exposing execute() as the same static, instance-free entry point.
+   */
+  private static async runAgentLoop(
+    options: ExecuteOptions,
+    agentSpanId: string
+  ): Promise<ExecutionResult> {
     const {
       agent,
       input,
@@ -188,6 +234,8 @@ export class AgentExecutor {
       onLLMResponse,
       onToolCall,
       onToolResult,
+      exporter,
+      redactContent = false,
     } = options;
 
     // Emit start event
@@ -251,13 +299,35 @@ export class AgentExecutor {
           await onLLMRequest(generateRequest);
         }
 
-        const llmStart = Date.now();
-        const result = await provider.generate(generateRequest);
-        const llmLatencyMs = Date.now() - llmStart;
+        const result = await withSpan(
+          exporter,
+          'llm.generate',
+          {
+            model: generateRequest.model,
+            ...(redactContent ? {} : { prompt: JSON.stringify(generateRequest.messages) }),
+          },
+          async (llmSpan) => {
+            const llmStart = Date.now();
+            const generated = await provider.generate(generateRequest);
+            const llmLatencyMs = Date.now() - llmStart;
 
-        if (onLLMResponse) {
-          await onLLMResponse(result, llmLatencyMs);
-        }
+            // Token counts and finish reason are never redacted.
+            llmSpan.attributes = {
+              ...llmSpan.attributes,
+              promptTokens: generated.usage.promptTokens,
+              completionTokens: generated.usage.completionTokens,
+              totalTokens: generated.usage.totalTokens,
+              finishReason: generated.finishReason,
+            };
+
+            if (onLLMResponse) {
+              await onLLMResponse(generated, llmLatencyMs);
+            }
+
+            return generated;
+          },
+          agentSpanId
+        );
 
         // Update usage
         totalUsage.promptTokens += result.usage.promptTokens;
@@ -293,12 +363,36 @@ export class AgentExecutor {
               toolCall,
             });
 
-            const toolResult = await this.executeToolCall(
-              toolCall,
-              agent,
-              toolRegistry,
-              onToolCall,
-              onToolResult
+            const toolResult = await withSpan(
+              exporter,
+              'tool.call',
+              { toolName: toolCall.function.name },
+              async (toolSpan) => {
+                const toolCallStart = Date.now();
+                const executed = await this.executeToolCall(
+                  toolCall,
+                  agent,
+                  toolRegistry,
+                  onToolCall,
+                  onToolResult
+                );
+                let parsedArgs: unknown = executed.args;
+                if (parsedArgs === undefined) {
+                  try {
+                    parsedArgs = JSON.parse(toolCall.function.arguments);
+                  } catch {
+                    parsedArgs = toolCall.function.arguments;
+                  }
+                }
+                toolSpan.attributes = {
+                  ...toolSpan.attributes,
+                  ...(redactContent ? {} : { args: parsedArgs, result: executed.result }),
+                  error: !!executed.error,
+                  latencyMs: Date.now() - toolCallStart,
+                };
+                return executed;
+              },
+              agentSpanId
             );
 
             if (toolResult.requiresApproval) {
