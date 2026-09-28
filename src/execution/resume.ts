@@ -48,15 +48,34 @@ export async function resumeAfterApproval(
       throw new Error(`Tool '${pending.toolName}' not found in registry`);
     }
 
-    const result = await toolDesc.tool.execute(pending.args, {} as any);
+    try {
+      const result = await toolDesc.tool.execute(pending.args, {} as any);
 
-    messages.push({
-      role: 'tool',
-      content: JSON.stringify(result),
-      name: pending.toolName,
-      toolCallId: pending.toolCallId,
-      toolName: pending.toolName,
-    });
+      messages.push({
+        role: 'tool',
+        content: JSON.stringify(result),
+        name: pending.toolName,
+        toolCallId: pending.toolCallId,
+        toolName: pending.toolName,
+      });
+    } catch (error) {
+      // Mirror AgentExecutor.executeToolCall's handling of a thrown tool
+      // error: turn it into a graceful tool-result message instead of
+      // letting it reject this promise. By this point the pending-approval
+      // record has already been deleted (ApprovalGate.resolve() is
+      // delete-on-read), so failing to catch here would mean the whole
+      // resume just fails with no retry path. Uses the same
+      // `(error as Error).message` extraction AgentExecutor's catch block
+      // uses, wrapped in the `{error}`-shaped payload this file's own
+      // rejection branch (below) already uses for non-approved decisions.
+      messages.push({
+        role: 'tool',
+        content: JSON.stringify({ error: (error as Error).message }),
+        name: pending.toolName,
+        toolCallId: pending.toolCallId,
+        toolName: pending.toolName,
+      });
+    }
   } else {
     messages.push({
       role: 'tool',

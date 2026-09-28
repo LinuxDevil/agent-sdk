@@ -177,6 +177,52 @@ describe('Execution - resumeAfterApproval', () => {
     expect(resumedSystemMessages[0].content).toBe(systemPrompt);
   });
 
+  it('should resolve (not reject) with an error-shaped tool message when the deferred tool throws on resume', async () => {
+    const execute = vi.fn().mockRejectedValue(new Error('payment gateway timeout'));
+    toolRegistry.register('chargeCard', {
+      displayName: 'Charge Card',
+      tool: { description: 'Charge a card', parameters: {}, execute } as any,
+      needsApproval: true,
+    });
+
+    const agent = AgentBuilder.create()
+      .setType(AgentType.SmartAssistant)
+      .setName('Test Agent')
+      .addTool('chargeCard', { tool: 'chargeCard', options: {} })
+      .build();
+
+    const provider = createMockProvider({
+      name: 'mock',
+      responses: ['Charging now', 'All done'],
+    });
+
+    const approvalStore = createInMemoryApprovalStore();
+
+    const paused = await AgentExecutor.execute({
+      agent,
+      input: 'Please call chargeCard now',
+      provider,
+      toolRegistry,
+      approvalStore,
+    });
+
+    expect(paused.finishReason).toBe('awaiting-approval');
+
+    // Should resolve, not reject, even though the deferred tool throws.
+    const resumed = await resumeAfterApproval(
+      { id: paused.approvalId!, approved: true },
+      approvalStore,
+      toolRegistry,
+      provider
+    );
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    const toolMessage = resumed.messages[paused.messages.length];
+    expect(toolMessage.role).toBe('tool');
+    const parsed = JSON.parse(toolMessage.content);
+    expect(parsed.error).toBe('payment gateway timeout');
+  });
+
   it('should throw a clear error for an unknown or already-resolved approval id', async () => {
     const approvalStore = createInMemoryApprovalStore();
     const provider = createMockProvider({ name: 'mock' });
