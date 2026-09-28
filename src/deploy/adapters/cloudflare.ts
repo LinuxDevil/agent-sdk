@@ -33,8 +33,17 @@ import { agentConfigModuleSource, loadAgentSpecForDeploy } from './node-server';
 
 /** Built-in tools that work without Node builtins (see runtime.worker.ts). */
 export const WORKER_SUPPORTED_TOOLS = ['current-date', 'day-name'];
-/** Provider types registered in the Worker bundle (see runtime.worker.ts). */
-export const WORKER_SUPPORTED_PROVIDERS = ['mock'];
+/**
+ * Provider types registered in the Worker bundle (see runtime.worker.ts).
+ *
+ * 'openai' and 'anthropic' (LOU-K3) are real, network-calling providers -
+ * both implemented on the Vercel `ai` SDK's fetch()-based
+ * generateText/streamText plus @ai-sdk/openai / @ai-sdk/anthropic, which
+ * have no `node:*` imports anywhere in their dependency graph and are
+ * genuinely Workers-compatible. 'ollama' and 'openrouter' remain
+ * unsupported here (see runtime.worker.ts's doc comment for why).
+ */
+export const WORKER_SUPPORTED_PROVIDERS = ['mock', 'openai', 'anthropic'];
 
 /** Pinned so a given SDK version always generates the same, reproducible config. */
 export const COMPATIBILITY_DATE = '2024-09-23';

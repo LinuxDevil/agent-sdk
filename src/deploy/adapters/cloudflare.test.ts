@@ -29,6 +29,7 @@ import { createRequire } from 'node:module';
 import {
   CloudflareWorkerAdapter,
   WORKER_SIZE_LIMIT_BYTES,
+  WORKER_SUPPORTED_PROVIDERS,
   WORKER_SUPPORTED_TOOLS,
   findNodeBuiltinReferences,
   formatBundleSize,
@@ -37,6 +38,8 @@ import {
   wranglerTomlSource,
 } from './cloudflare';
 import { getAdapter, registerBuiltInAdapters } from '../index';
+import { LLMProviderRegistry } from '../../providers/llm';
+import { prepareWorkerSpec } from '../runtime.worker';
 
 let wranglerBin: string | undefined;
 try {
@@ -118,13 +121,40 @@ describe('CloudflareWorkerAdapter', () => {
     await expect(
       CloudflareWorkerAdapter.scaffold(writeSpec(dir, { ...SPEC, tools: ['http'] }), out)
     ).rejects.toThrow(/tool 'http' is not available on Cloudflare Workers/);
+    // 'ollama' stays unsupported (see runtime.worker.ts doc comment: it
+    // defaults to a local endpoint unreachable from a Worker) - 'openai'
+    // and 'anthropic' are now real, supported providers (LOU-K3).
     await expect(
       CloudflareWorkerAdapter.scaffold(
-        writeSpec(dir, { ...SPEC, provider: { type: 'openai', model: 'gpt-4o-mini' } }),
+        writeSpec(dir, { ...SPEC, provider: { type: 'ollama', model: 'llama3' } }),
         out
       )
-    ).rejects.toThrow(/provider 'openai' is not supported by the cloudflare-worker target/);
+    ).rejects.toThrow(/provider 'ollama' is not supported by the cloudflare-worker target/);
     expect(WORKER_SUPPORTED_TOOLS).not.toContain('http');
+    expect(WORKER_SUPPORTED_PROVIDERS).toEqual(['mock', 'openai', 'anthropic']);
+  });
+
+  it("registers 'openai' and 'anthropic' in the Worker's LLMProviderRegistry (LOU-K3)", () => {
+    // Importing runtime.worker.ts (done at module load via the top-level
+    // import above) must have registered both without throwing, and
+    // constructing each provider (no network call happens until
+    // generate()/stream() is actually invoked) must succeed with an API
+    // key sourced the way prepareWorkerSpec reads it - from Worker `env`
+    // bindings, never process.env.
+    expect(LLMProviderRegistry.has('openai')).toBe(true);
+    expect(LLMProviderRegistry.has('anthropic')).toBe(true);
+
+    const openaiPrepared = prepareWorkerSpec(
+      { ...SPEC, provider: { type: 'openai', model: 'gpt-4o-mini' } },
+      { OPENAI_API_KEY: 'sk-test' }
+    );
+    expect(openaiPrepared.provider.name).toBe('openai');
+
+    const anthropicPrepared = prepareWorkerSpec(
+      { ...SPEC, provider: { type: 'anthropic', model: 'claude-3-5-sonnet-latest' } },
+      { ANTHROPIC_API_KEY: 'sk-ant-test' }
+    );
+    expect(anthropicPrepared.provider.name).toBe('anthropic');
   });
 
   describe('scaffold + build', () => {
@@ -316,5 +346,47 @@ describe('CloudflareWorkerAdapter', () => {
         }
       }, 150_000);
     });
+  });
+
+  describe('scaffold + build with a real provider (LOU-K3)', () => {
+    it.each(['openai', 'anthropic'] as const)(
+      "scaffolds and builds a Worker bundle for provider '%s' with zero node: references",
+      async (providerType) => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), `loushy-cf-${providerType}-`));
+        const outDir = path.join(dir, 'out');
+        const model = providerType === 'openai' ? 'gpt-4o-mini' : 'claude-3-5-sonnet-latest';
+
+        await CloudflareWorkerAdapter.scaffold(
+          writeSpec(dir, { ...SPEC, provider: { type: providerType, model } }),
+          outDir
+        );
+        await CloudflareWorkerAdapter.build(outDir);
+
+        const bundlePath = path.join(outDir, 'dist', 'worker.js');
+        const bundle = fs.readFileSync(bundlePath, 'utf8');
+        expect(bundle.length).toBeGreaterThan(0);
+        expect(findNodeBuiltinReferences(bundle)).toEqual([]);
+        expect(bundle).not.toMatch(/node:/);
+
+        // Drive the real built bundle's fetch() handler end to end. The
+        // provider genuinely tries to call the real API (no network access
+        // in this sandbox / no real key), so assert it fails for a network
+        // reason - not because the provider is "unsupported" or missing
+        // from the Worker's registry, which is the thing LOU-K3 actually
+        // fixes. A registry/"not found" error would mean the wiring is
+        // broken; a network/auth error proves the provider was resolved
+        // and genuinely attempted a fetch()-based call.
+        const mod = await import(pathToFileURL(bundlePath).href);
+        const handler = mod.default as { fetch: (r: Request, env?: Record<string, unknown>) => Promise<Response> };
+        const chat = await handler.fetch(
+          new Request('http://worker/chat', { method: 'POST', body: JSON.stringify({ message: 'hi' }) }),
+          { [`${providerType.toUpperCase()}_API_KEY`]: 'sk-test-not-a-real-key' }
+        );
+        const body = await chat.json();
+        expect(chat.status).toBe(500);
+        expect(String(body.error)).not.toMatch(/not found\. Available:|not supported by the cloudflare-worker target/);
+      },
+      30_000
+    );
   });
 });
