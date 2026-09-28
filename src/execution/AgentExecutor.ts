@@ -198,6 +198,14 @@ export class AgentExecutor {
    * Execute agent without streaming
    */
   static async execute(options: ExecuteOptions): Promise<ExecutionResult> {
+    // AgentExecutor is a static, instance-free API - there is no
+    // constructor to guard these, so execute() is the first and only
+    // entry point where a missing required option can be caught before it
+    // fails deep inside runAgentLoop() with a generic "Cannot read
+    // properties of undefined" error (e.g. `provider.generate(...)`
+    // throwing because `provider` was never checked).
+    this.validateExecuteOptions(options);
+
     const { input, exporter } = options;
 
     // The entire run is wrapped in a top-level 'agent.run' span (LOU-E5).
@@ -728,6 +736,35 @@ export class AgentExecutor {
         result: null,
         error: (error as Error).message,
       };
+    }
+  }
+
+  /**
+   * Guards the options execute() truly cannot run without, throwing a
+   * clear error naming the missing field plus a corrective one-line code
+   * snippet - instead of the generic "Cannot read properties of
+   * undefined" TypeError that would otherwise surface deep inside
+   * runAgentLoop() (e.g. `provider.generate(...)` when `provider` is
+   * undefined).
+   */
+  private static validateExecuteOptions(options: ExecuteOptions): void {
+    if (!options || !options.provider) {
+      throw new Error(
+        "AgentExecutor.execute: 'provider' is required. " +
+          "Example: AgentExecutor.execute({ agent, input, provider: myProvider })"
+      );
+    }
+    if (!options.agent) {
+      throw new Error(
+        "AgentExecutor.execute: 'agent' is required. " +
+          'Example: AgentExecutor.execute({ agent: AgentBuilder.create()...build(), input, provider })'
+      );
+    }
+    if (options.input === undefined || options.input === null) {
+      throw new Error(
+        "AgentExecutor.execute: 'input' is required. " +
+          "Example: AgentExecutor.execute({ agent, input: 'hello', provider })"
+      );
     }
   }
 

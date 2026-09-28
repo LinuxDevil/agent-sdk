@@ -33,6 +33,12 @@ describe('AgentBuilder', () => {
     }).toThrow('Agent type is required');
   });
 
+  it('names the missing field and shows a corrective snippet (LOU-H12)', () => {
+    expect(() => {
+      new AgentBuilder().build();
+    }).toThrow(/Agent name is required\. Example:.*Agent type is required\. Example:/s);
+  });
+
   it('should add tools correctly', () => {
     const agent = new AgentBuilder()
       .setType(AgentType.SmartAssistant)

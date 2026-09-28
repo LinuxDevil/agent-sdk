@@ -5,6 +5,9 @@
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "bin": {
+    "loushy": "bin/loushy.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -39,12 +42,16 @@
   },
   "files": [
     "dist",
+    "bin",
     "README.md",
     "LICENSE",
     "CHANGELOG.md",
     "CONTRIBUTING.md"
   ],
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/providers/mock.ts",
+    "./src/providers/mock.js"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
@@ -55,6 +62,11 @@
     "typecheck": "tsc --noEmit",
     "example:tracing:console": "tsx examples/tracing/run-console.ts",
     "example:tracing:otel": "tsx examples/tracing/run-otel.ts",
+    "example:support-bot": "tsx examples/support-bot/index.ts",
+    "example:research-assistant": "tsx examples/research-assistant/index.ts",
+    "example:workflow-router": "tsx examples/workflow-router/index.ts",
+    "example:doc-qa": "tsx examples/doc-qa/index.ts",
+    "example:slack-notifier": "tsx examples/slack-notifier/index.ts",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -104,7 +116,8 @@
     "@modelcontextprotocol/sdk": "^1.30.1",
     "dockerode": "^5.0.1",
     "nanoid": "^5.0.7",
-    "undici": "^8.11.2"
+    "undici": "^8.11.2",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@ai-sdk/anthropic": "^0.0.42",

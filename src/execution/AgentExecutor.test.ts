@@ -1141,4 +1141,43 @@ describe('AgentExecutor', () => {
       expect(result.text).toBeDefined();
     });
   });
+
+  describe('guiding runtime error messages (LOU-H12)', () => {
+    it('throws naming "provider" with a corrective snippet when provider is omitted', async () => {
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .build();
+
+      await expect(
+        AgentExecutor.execute({
+          agent,
+          input: 'Hello',
+        } as any)
+      ).rejects.toThrow(/'provider' is required.*Example:/s);
+    });
+
+    it('throws naming "agent" with a corrective snippet when agent is omitted', async () => {
+      await expect(
+        AgentExecutor.execute({
+          input: 'Hello',
+          provider,
+        } as any)
+      ).rejects.toThrow(/'agent' is required.*Example:/s);
+    });
+
+    it('throws naming "input" with a corrective snippet when input is omitted', async () => {
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .build();
+
+      await expect(
+        AgentExecutor.execute({
+          agent,
+          provider,
+        } as any)
+      ).rejects.toThrow(/'input' is required.*Example:/s);
+    });
+  });
 });

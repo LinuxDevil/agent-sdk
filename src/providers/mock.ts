@@ -6,6 +6,7 @@
 import {
   LLMProvider,
   LLMProviderConfig,
+  LLMProviderRegistry,
   GenerateOptions,
   GenerateResult,
   StreamResult,
@@ -183,3 +184,30 @@ export class MockLLMProvider implements LLMProvider {
 export function createMockProvider(config: MockProviderConfig = { name: 'mock' }): MockLLMProvider {
   return new MockLLMProvider(config);
 }
+
+/**
+ * Self-registers 'mock' into the production LLMProviderRegistry (LOU-H fix).
+ *
+ * src/providers/index.ts also registers 'mock' in the same style as the
+ * real providers (openai/ollama/openrouter/anthropic), for readability and
+ * for consumers who import the full SDK barrel. But that barrel eagerly
+ * imports OpenAIProvider/OllamaProvider/OpenRouterProvider, which statically
+ * `import` their optional peer-dependency SDKs ('@ai-sdk/openai',
+ * 'ollama-ai-provider', ...) at module scope - fine for consumers who have
+ * those installed, but not for a bundle like `loushy dev`'s CLI entry
+ * (dist/cli/dev.js) or LOU-H10's starter templates, which must boot with
+ * zero API keys/SDKs installed via just the mock provider.
+ *
+ * This module (mock.ts) has no external dependencies at all, so it's always
+ * safe to load eagerly. Registering here too - and having specToAgent.ts
+ * import this file directly (see src/spec/specToAgent.ts) instead of the
+ * whole '../providers' barrel - guarantees 'mock' resolves via
+ * LLMProviderRegistry.create('mock', ...) in every entry point, without
+ * requiring any of the real provider SDKs to be installed.
+ *
+ * Registration is a plain LLMProviderRegistry.register() call (Map.set()
+ * under the hood), so re-registering 'mock' here after (or before)
+ * providers/index.ts's own registration is safe - it silently overwrites,
+ * it does not throw.
+ */
+LLMProviderRegistry.register('mock', (config) => new MockLLMProvider(config as MockProviderConfig));

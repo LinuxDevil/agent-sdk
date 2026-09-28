@@ -7,11 +7,15 @@ export function validateAgentConfig(config: Partial<AgentConfig>): { valid: bool
   const errors: string[] = [];
 
   if (!config.name || config.name.trim() === '') {
-    errors.push('Agent name is required');
+    errors.push(
+      "Agent name is required. Example: AgentBuilder.create().setName('my-agent')...build()"
+    );
   }
 
   if (!config.agentType) {
-    errors.push('Agent type is required');
+    errors.push(
+      'Agent type is required. Example: AgentBuilder.create().setType(AgentType.SmartAssistant)...build()'
+    );
   }
 
   if (config.agentType && !Object.values(AgentType).includes(config.agentType)) {
