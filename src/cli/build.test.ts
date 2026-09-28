@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { runBuild, parseBuildArgs, stubAdapterCalls, BuildIO } from './build';
 
@@ -83,7 +85,8 @@ describe('bin/loushy.js build (subprocess smoke test)', () => {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       return { code: 0, stdout, stderr: '' };
-    } catch (error: any) {
+    } catch (caught) {
+      const error = caught as { status?: number; stdout?: string; stderr?: string };
       return { code: error.status ?? 1, stdout: error.stdout ?? '', stderr: error.stderr ?? '' };
     }
   }
@@ -93,6 +96,21 @@ describe('bin/loushy.js build (subprocess smoke test)', () => {
     expect(result.code).toBe(0);
     expect(result.stdout).toContain('stub adapter calls: scaffold,build,describe');
   });
+
+  it('builds a real node-server target end to end through the bundled CLI', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-build-cli-'));
+    const specPath = path.join(dir, 'agent.yaml');
+    fs.writeFileSync(
+      specPath,
+      'name: cli-agent\nprompt: You are helpful.\nprovider:\n  type: mock\n  model: mock-1\n'
+    );
+    const outDir = path.join(dir, 'out');
+    const result = runBin(['build', '--target=node-server', `--agent=${specPath}`, `--out=${outDir}`]);
+    expect(result.stderr).toBe('');
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim()).toBe('node dist/server.js');
+    expect(fs.statSync(path.join(outDir, 'dist', 'server.js')).size).toBeGreaterThan(0);
+  }, 120_000);
 
   it('exits non-zero with "unknown target" on stderr for --target=doesnotexist', () => {
     const result = runBin(['build', '--target=doesnotexist']);

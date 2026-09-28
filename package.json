@@ -42,6 +42,10 @@
   },
   "files": [
     "dist",
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/*.eval.ts",
+    "!src/**/__fixtures__",
     "bin",
     "README.md",
     "LICENSE",
@@ -99,7 +103,8 @@
     "@ai-sdk/openai": "^0.0.42",
     "ai": "^4.3.19",
     "ollama-ai-provider": "^1.2.0",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "tsup": "^8.0.0"
   },
   "peerDependenciesMeta": {
     "@ai-sdk/anthropic": {
@@ -109,6 +114,9 @@
       "optional": true
     },
     "ollama-ai-provider": {
+      "optional": true
+    },
+    "tsup": {
       "optional": true
     }
   },

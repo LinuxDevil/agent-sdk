@@ -8,7 +8,7 @@ import { ToolRegistry } from '../tools';
 import { ApprovalDecision, ApprovalStore } from './ApprovalGate';
 import { AgentExecutor, ExecuteOptions, ExecutionResult, PropagatingToolError } from './AgentExecutor';
 import { CheckpointStore } from './checkpoint';
-import { NoopSandbox } from '../security/sandbox';
+import { NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
 
 /**

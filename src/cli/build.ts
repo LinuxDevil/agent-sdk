@@ -12,7 +12,13 @@
  * `--target stub` both work.
  */
 import * as path from 'node:path';
-import { DeploymentAdapter, getAdapter, listAdapters, registerAdapter } from '../deploy/types';
+import {
+  DeploymentAdapter,
+  getAdapter,
+  listAdapters,
+  registerAdapter,
+  registerBuiltInAdapters,
+} from '../deploy';
 
 export interface BuildArgs {
   target?: string;
@@ -59,6 +65,7 @@ export const stubAdapter: DeploymentAdapter = {
   },
 };
 
+registerBuiltInAdapters();
 registerAdapter('stub', stubAdapter);
 
 export interface BuildIO {

@@ -7,7 +7,7 @@ import { LLMProvider, Message } from '../providers';
 import { ToolRegistry } from '../tools';
 import { AgentFlow, EditorStep } from '../types';
 import { AgentConfig } from '../types';
-import { SandboxAdapter, NoopSandbox } from '../security/sandbox';
+import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from '../execution/sandboxGuard';
 
 /**

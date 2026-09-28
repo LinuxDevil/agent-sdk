@@ -1,5 +1,5 @@
 import { Tool as AITool } from 'ai';
-import { SandboxAdapter } from '../security/sandbox';
+import { SandboxAdapter } from '../security/sandboxCore';
 
 /**
  * Tool parameter definition
