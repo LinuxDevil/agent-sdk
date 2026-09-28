@@ -14,27 +14,34 @@
 
 ## Overview
 
-Build AI Agent SDK is a powerful, framework-agnostic library for building intelligent AI agents. It provides a clean, type-safe API for creating agents with tools, flows, and custom capabilities.
+Build AI Agent SDK is a framework-agnostic library for building AI agents that
+run safely in production: human-in-the-loop approval gates, durable
+checkpoint/resume, multi-agent delegation, guardrails, tracing, evals, and a
+CLI to scaffold, run locally, and deploy an agent to a Node server, Docker, or
+Cloudflare Workers.
 
 **Perfect for:**
 - 🤖 Building chatbots and virtual assistants
-- 🔄 Creating automated workflows
+- 🔄 Creating automated workflows that pause for human approval before a sensitive action
 - 🛠️ Integrating LLMs into existing applications
-- 🎯 Developing custom AI-powered tools
+- 🎯 Ops pipelines that watch for errors and open guardrail-gated PRs to fix them
 
 ## Features
 
 - 🎯 **Framework Agnostic** - Works with React, Vue, Svelte, Angular, Express, or vanilla JS
-- 🔧 **Extensible** - Easy to add custom tools, flows, and providers
-- 🧪 **Type-Safe** - Full TypeScript support with comprehensive type definitions
-- 📦 **Modular** - Use only what you need with tree-shakeable exports
-- 🚀 **Production Ready** - Built-in error handling, retries, and circuit breakers
-- 🔒 **Secure** - Built-in encryption, hashing, and security utilities
-- 💾 **Storage** - File storage with concurrency locking
-- 🎨 **Templates** - Jinja2-like template rendering for prompts
-- 🔄 **Streaming** - Real-time streaming responses
-- 🧠 **Memory** - Conversation context and memory management
-- ⚡ **Fast** - Optimized bundle size (~120KB)
+- ⚡ **Zero-config to full control** - `createAgent({ prompt, provider })` in one line, or the full `AgentBuilder` + `AgentExecutor` API when you need it
+- 🧑‍⚖️ **Human-in-the-loop** - flag a tool `needsApproval` and pause execution until a human approves or rejects it
+- 💾 **Durable execution** - checkpoint and resume a run across a crash or restart
+- 🤝 **Multi-agent delegation** - wrap a child agent as a tool a parent agent can call, with a `maxDepth` guard against delegation loops
+- 🛡️ **Guardrails** - fail-closed, concurrently-run checks (secret scan, diff size, test/lint commands) that gate a fixer agent's patch before it's used
+- 📊 **Tracing & evals** - `withSpan()`/`TraceExporter` hooks for observability, and a `defineEval()` API that runs agent-behavior regression tests under `vitest`
+- 🔌 **MCP client** - load any Model Context Protocol server's tools as `ToolDescriptor`s
+- 📦 **Sandboxing** - opt a tool into running through a `SandboxAdapter` (Docker-backed) instead of in-process
+- 🚀 **CLI** - `create-loushy-agent` scaffolds a project, `loushy dev` runs a local chat server with hot reload, `loushy build` deploys to a Node server, Docker, or Cloudflare Workers
+- 📝 **Declarative specs** - describe an agent as a YAML/JSON file instead of code
+- 🔧 **Extensible** - easy to add custom tools, flows, and providers
+- 🧪 **Type-Safe** - full TypeScript support with comprehensive type definitions
+- 🔒 **Secure** - random-salt encryption, an SSRF-hardened HTTP tool, a scope-limited GitHub tool
 
 ## Installation
 
@@ -46,183 +53,237 @@ pnpm add @loushy/build-ai-agent ai zod
 yarn add @loushy/build-ai-agent ai zod
 ```
 
-### Peer Dependencies
+### Peer dependencies
 
-The SDK requires:
-- `ai` ^4.1.54 - Vercel AI SDK
-- `zod` ^3.23.8 - Schema validation
-- `@ai-sdk/openai` ^0.0.42 (for OpenAI provider)
-- `ollama-ai-provider` ^1.2.0 (for Ollama provider)
+`ai` (the Vercel AI SDK, `^4.3.19`) and `zod` (`^3.25.76`) are required. Each
+real LLM provider is backed by an optional peer dependency:
+
+| Provider   | Package              | Range     |
+| ---------- | --------------------- | --------- |
+| OpenAI     | `@ai-sdk/openai`      | `^0.0.42` |
+| OpenRouter | `@ai-sdk/openai`      | `^0.0.42` |
+| Anthropic  | `@ai-sdk/anthropic`   | `^0.0.42` |
+| Ollama     | `ollama-ai-provider`  | `^1.2.0`  |
+
+> **Current limitation:** the package root currently loads every provider
+> module on import, so today all three provider packages need to be
+> installed even if you only use one (or only the built-in mock provider) —
+> see [Installation](docs/installation.md) for the exact command and the
+> tracked follow-up.
 
 ## Quick Start
 
-> For a verified, copy-paste-runnable walkthrough of the current API
-> (`createAgent()`, the static `AgentExecutor.execute()`, spec files), see
+> For the verified, copy-paste-runnable version of everything below (each
+> snippet is executed against a real packed build by
+> `npx tsx scripts/verify-docs-snippets.ts`), see
 > [docs/quick-start.md](docs/quick-start.md).
 
-### 1. Build an Agent
+### 1. The zero-config path: `createAgent()`
 
 ```typescript
-import { AgentBuilder, AgentType } from '@loushy/build-ai-agent';
+import { createAgent, resolveProvider } from '@loushy/build-ai-agent';
 
-const agent = new AgentBuilder()
+const agent = createAgent({
+  prompt: 'You are a helpful customer support assistant.',
+  provider: resolveProvider('openai/gpt-4o-mini'), // reads OPENAI_API_KEY
+});
+
+const result = await agent.send('Hello!');
+console.log(result.text);
+```
+
+No manually-constructed repositories, executor, or provider object required
+— `createAgent()` defaults everything else and hands back a `{ send }`
+agent. Swap `resolveProvider(...)` for `createMockProvider(...)` to run
+without any API key at all.
+
+### 2. Full control: `AgentBuilder` + `AgentExecutor`
+
+`createAgent()` is a thin wrapper over these two — use them directly when
+you need `maxSteps`, approval gates, checkpoints, tracing hooks, or a
+`ToolRegistry` with several tools wired in. `AgentExecutor` is a **static**
+API — there is no `new AgentExecutor()`.
+
+```typescript
+import { AgentBuilder, AgentExecutor, AgentType, resolveProvider } from '@loushy/build-ai-agent';
+
+const agent = AgentBuilder.create()
   .setType(AgentType.SmartAssistant)
   .setName('Customer Support Agent')
   .setPrompt('You are a helpful customer support assistant.')
-  .addTool('http', {
-    tool: 'httpRequest',
-    options: { method: 'GET' }
-  })
   .build();
-```
 
-### 2. Configure Repositories
-
-```typescript
-import { createMockRepositories } from '@loushy/build-ai-agent';
-
-// For development/testing
-const repositories = createMockRepositories();
-
-// For production with Drizzle ORM
-import { createDrizzleRepositories } from '@loushy/build-ai-agent-drizzle';
-const repositories = createDrizzleRepositories(db);
-```
-
-### 3. Execute the Agent
-
-```typescript
-import { AgentExecutor } from '@loushy/build-ai-agent';
-
-const executor = new AgentExecutor({
+const result = await AgentExecutor.execute({
   agent,
-  sessionId: 'session-123',
-  repositories,
-  llmProvider: myLLMProvider
+  input: 'My order arrived damaged.',
+  provider: resolveProvider('openai/gpt-4o-mini'),
+  maxSteps: 5,
 });
 
-// Simple execution
-const result = await executor.execute({
-  messages: [{ role: 'user', content: 'Hello!' }]
-});
+console.log(result.text);
+console.log(result.usage.totalTokens, result.finishReason, result.steps);
+```
 
-console.log(result.response); // Agent's response
+### 3. Or describe the agent as data: a spec file
 
-// Streaming execution
-const stream = await executor.executeStream({
-  messages: [{ role: 'user', content: 'Tell me a story' }]
-});
+```yaml
+# agent.yaml
+name: support-bot
+prompt: You are a friendly support agent.
+provider:
+  type: openai
+  model: gpt-4o-mini
+tools:
+  - current-date
+  - http
+```
 
-for await (const chunk of stream) {
-  process.stdout.write(chunk.content);
-}
+```bash
+npx loushy dev agent.yaml                                 # chat UI + hot reload
+npx loushy build --target=node-server --agent=agent.yaml   # deployable server
 ```
 
 ## Documentation
 
 - [Installation](docs/installation.md) - requirements, peer/provider packages, installing from a local build
 - [Quick Start](docs/quick-start.md) - runnable, verified snippets: `createAgent()`, tools, `AgentBuilder` + `AgentExecutor`, spec files
-- [Configuration](docs/configuration.md) - agent spec files, provider credentials, execution options, CLI flags
+- [Configuration](docs/configuration.md) - agent spec fields, provider env vars, `AgentExecutor.execute()` options, CLI flags
 - [Deployment](docs/deployment.md) - `loushy build` targets: Node server, Docker, Cloudflare Workers
 - [API Overview](docs/api-overview.md) - the main exports; `npm run docs:build` generates the full TypeDoc reference
+- Full guides site: [linuxdevil.github.io/agent-sdk-docs](https://linuxdevil.github.io/agent-sdk-docs/)
 
 ## Core Concepts
 
 ### Agents
 
-Agents are the core abstraction. They combine:
-- **Type**: Determines behavior (SmartAssistant, Workflow, DataAnalyst, etc.)
-- **Prompt**: System instructions
-- **Tools**: Available capabilities
-- **Flows**: Structured workflows
-- **Memory**: Conversation history
+Agents combine a **type** (`AgentType.SmartAssistant`, etc.), a **prompt**,
+**tools**, optional **flows**, and conversation **memory**. Build one with
+`createAgent()` for the common case, or `AgentBuilder` when you need full
+control over the resulting `AgentConfig`.
 
 ### Tools
 
-Tools extend agent capabilities:
-
 ```typescript
 import { ToolRegistry } from '@loushy/build-ai-agent';
+import { tool } from 'ai';
+import { z } from 'zod';
 
 const registry = new ToolRegistry();
 
-// Register a custom tool
-registry.register({
-  name: 'weather',
-  description: 'Get weather information',
-  parameters: z.object({
-    location: z.string(),
-    units: z.enum(['celsius', 'fahrenheit'])
+registry.register('weather', {
+  displayName: 'Get weather',
+  tool: tool({
+    description: 'Get weather information',
+    parameters: z.object({
+      location: z.string(),
+      units: z.enum(['celsius', 'fahrenheit']),
+    }),
+    execute: async ({ location, units }) => {
+      // Your implementation
+      return { temperature: 72, conditions: 'sunny' };
+    },
   }),
-  execute: async ({ location, units }) => {
-    // Your implementation
-    return { temperature: 72, conditions: 'sunny' };
-  }
+});
+```
+
+A `ToolDescriptor` can also opt into two safety primitives:
+
+```typescript
+registry.register('send_email', {
+  displayName: 'Send email',
+  tool: emailTool,
+  needsApproval: (args) => args.to.includes('@external.com'), // pauses for a human
+  requiresSandbox: true, // routes through the configured SandboxAdapter
+  sandboxExecute: async (args, sandbox) => sandbox.run('node', ['send-email.js', JSON.stringify(args)]),
 });
 ```
 
 ### Flows
 
-Flows orchestrate multi-step workflows:
+Flows orchestrate multi-step workflows within a single agent:
 
 ```typescript
-import { FlowBuilder, FlowNodeType } from '@loushy/build-ai-agent';
+import { FlowBuilder, FlowExecutor } from '@loushy/build-ai-agent';
 
 const flow = new FlowBuilder()
-  .addNode({
-    id: 'start',
-    type: FlowNodeType.LLM,
-    data: { prompt: 'Analyze user input' }
-  })
-  .addNode({
-    id: 'decide',
-    type: FlowNodeType.Conditional,
-    data: { condition: 'output.sentiment === "positive"' }
-  })
+  .addNode({ id: 'start', type: 'llm', data: { prompt: 'Analyze user input' } })
+  .addNode({ id: 'decide', type: 'conditional', data: { condition: 'output.sentiment === "positive"' } })
   .addEdge('start', 'decide')
   .build();
+
+// FlowExecutor is a static API too: execute(flow, context, onEvent?)
+const result = await FlowExecutor.execute(flow, { agent, provider, variables: {} });
 ```
 
 ### LLM Providers
 
-Support for multiple LLM providers:
-
 ```typescript
-import { LLMProviderRegistry } from '@loushy/build-ai-agent';
+import { resolveProvider, LLMProviderRegistry } from '@loushy/build-ai-agent';
 
-// OpenRouter - Access 100+ models from multiple providers
-const openrouter = LLMProviderRegistry.create('openrouter', {
-  apiKey: process.env.OPENROUTER_API_KEY,
-  defaultModel: 'openai/gpt-4o-mini'
-});
+// The convenient way — reads the credential from the environment
+const openai = resolveProvider('openai/gpt-4o-mini');       // OPENAI_API_KEY
+const anthropic = resolveProvider('anthropic/claude-sonnet-5'); // ANTHROPIC_API_KEY
+const openrouter = resolveProvider('openrouter/openai/gpt-4o-mini'); // OPENROUTER_API_KEY
+const ollama = resolveProvider('ollama/llama3.1');           // OLLAMA_BASE_URL
 
-// OpenAI - Direct OpenAI integration
-const openai = LLMProviderRegistry.create('openai', {
+// Or construct a provider directly via the registry
+const custom = LLMProviderRegistry.create('openai', {
   apiKey: process.env.OPENAI_API_KEY,
-  defaultModel: 'gpt-4'
-});
-
-// Ollama - Local LLM support
-const ollama = LLMProviderRegistry.create('ollama', {
-  baseURL: 'http://localhost:11434',
-  defaultModel: 'llama3.1'
+  defaultModel: 'gpt-4o-mini',
 });
 ```
 
 ## Advanced Features
 
-### Multi-agent Delegation
+### Human-in-the-loop approval gates
 
-Wrap a child `AgentConfig` as a tool so a parent agent can delegate a task
-to it, running the child through `AgentExecutor.execute()` under the hood:
+Flag a tool `needsApproval`; `AgentExecutor` pauses before calling it and
+persists an `ExecutionSnapshot` instead of invoking the tool. Resume later —
+after a real restart if you like — with `resumeAfterApproval()`:
 
 ```typescript
-import {
-  AgentExecutor,
-  createDelegateTool,
-  ToolRegistry,
-  AgentType,
-} from '@loushy/build-ai-agent';
+import { AgentExecutor, resumeAfterApproval, StorageServiceApprovalStore } from '@loushy/build-ai-agent';
+
+const approvalStore = new StorageServiceApprovalStore(storage);
+
+const paused = await AgentExecutor.execute({
+  agent, input, provider, toolRegistry, approvalStore,
+});
+// paused.finishReason === 'awaiting-approval', paused.approvalId is set
+
+// ...later, from any process, after a human approves...
+const result = await resumeAfterApproval(
+  { id: paused.approvalId!, approved: true },
+  approvalStore,
+  provider,
+  toolRegistry,
+);
+```
+
+### Durable execution / checkpoints
+
+Pass a `sessionId` and a `checkpointStore`; `AgentExecutor` saves a
+checkpoint after every tool result and rehydrates from it on the next call
+with the same `sessionId` — so a crash mid-conversation resumes rather than
+restarts:
+
+```typescript
+import { AgentExecutor, LocalStorageCheckpointStore } from '@loushy/build-ai-agent';
+
+const checkpointStore = new LocalStorageCheckpointStore(storage);
+
+await AgentExecutor.execute({ agent, input, provider, sessionId: 'session-123', checkpointStore });
+// ...process restarts...
+await AgentExecutor.execute({ agent, input: 'continue', provider, sessionId: 'session-123', checkpointStore });
+```
+
+### Multi-agent delegation
+
+Wrap a child `AgentConfig` as a tool so a parent agent can delegate a task to
+it, running the child through `AgentExecutor.execute()` under the hood:
+
+```typescript
+import { AgentExecutor, createDelegateTool, ToolRegistry, AgentType } from '@loushy/build-ai-agent';
 
 const billingAgent = {
   name: 'Billing Agent',
@@ -235,16 +296,10 @@ registry.register(
   'delegate_billing_agent',
   createDelegateTool({
     agent: billingAgent,
-    provider, // an LLMProvider instance
-    // contextMode: 'full-history' shares the `context` array the tool is
-    // called with (in addition to the delegated task); 'none' (default)
-    // gives the child agent only the task as a fresh message.
-    contextMode: 'none',
+    provider,
+    contextMode: 'none', // 'full-history' shares the parent's context array too
     maxSteps: 10,
-    // maxDepth (default 3) bounds how many hops a delegation chain may
-    // take (e.g. agent A delegates to B, which delegates back to A, ...)
-    // before a DelegationDepthExceededError is thrown.
-    maxDepth: 3,
+    maxDepth: 3, // bounds a delegation chain (e.g. A -> B -> A) before it throws
   })
 );
 
@@ -252,9 +307,7 @@ const supportAgent = {
   name: 'Support Agent',
   agentType: AgentType.SmartAssistant,
   prompt: 'You help customers. Delegate billing questions to the billing agent.',
-  tools: {
-    delegate_billing_agent: { tool: 'delegate_billing_agent' },
-  },
+  tools: { delegate_billing_agent: { tool: 'delegate_billing_agent' } },
 };
 
 const result = await AgentExecutor.execute({
@@ -265,14 +318,88 @@ const result = await AgentExecutor.execute({
 });
 ```
 
-### Security & Encryption
+### Guardrails
+
+Fail-closed, concurrently-run checks over a proposed patch/action — used to
+gate a fixer agent before it's trusted to open a PR:
+
+```typescript
+import { runGuardrails, secretScanGuardrail, createDiffSizeGuardrail, createCommandGuardrail } from '@loushy/build-ai-agent';
+
+const verdict = await runGuardrails(
+  { diff: patch },
+  [
+    secretScanGuardrail,
+    createDiffSizeGuardrail(500),
+    createCommandGuardrail('test-run', repoPath, 'npm', ['test']),
+  ],
+);
+
+if (!verdict.pass) {
+  console.log(verdict.failures); // [{ name, reason }, ...] — never call the write-side tool
+}
+```
+
+### Tracing & observability
+
+```typescript
+import { AgentExecutor, withSpan } from '@loushy/build-ai-agent';
+
+const exporter = {
+  onSpanStart: (span) => console.log('[start]', span.name, span.attributes),
+  onSpanEnd: (span) => console.log('[end]', span.name, span.endTime! - span.startTime, 'ms'),
+};
+
+await AgentExecutor.execute({
+  agent, input, provider, exporter,
+  redactContent: true, // omit prompt/tool-arg/result bodies from span attributes
+});
+```
+
+Ready-made exporters live in [examples/tracing](examples/tracing) (console
+and real OpenTelemetry bridges).
+
+### Evals
+
+Agent-behavior regression tests, run via `vitest run` alongside your normal
+test suite — no new test runner:
+
+```typescript
+// support-agent.eval.ts
+import { defineEval, exactMatch, toolCallOrder } from '@loushy/build-ai-agent';
+
+defineEval({
+  name: 'looks up the order before replying',
+  agent, provider, toolRegistry,
+  input: 'Where is order #123?',
+  score: toolCallOrder([{ tool: 'lookupOrder' }]),
+  threshold: 1,
+});
+```
+
+### MCP tools & sandboxing
+
+```typescript
+import { loadMcpTools } from '@loushy/build-ai-agent/tools/mcp/McpToolLoader';
+import { SubprocessSandbox } from '@loushy/build-ai-agent';
+
+// Turn any MCP server's tools into ToolDescriptors, namespaced <connection>__<tool>
+const linearTools = await loadMcpTools(mcpClient, 'linear');
+registry.registerMany(linearTools);
+
+// Route a flagged tool (requiresSandbox + sandboxExecute) through a real,
+// Docker-backed sandbox instead of the in-process NoopSandbox default
+await AgentExecutor.execute({ agent, input, provider, toolRegistry, sandbox: new SubprocessSandbox() });
+```
+
+### Security & encryption
 
 ```typescript
 import { EncryptionUtils, sha256 } from '@loushy/build-ai-agent';
 
 const encryption = new EncryptionUtils('your-secret-key');
-const encrypted = await encryption.encrypt('sensitive data');
-const decrypted = await encryption.decrypt(encrypted);
+const encrypted = await encryption.encrypt('sensitive data'); // fresh random salt every call
+const decrypted = await encryption.decrypt(encrypted);        // throws DecryptionError on tampering
 
 const hash = await sha256('password', 'salt');
 ```
@@ -281,12 +408,15 @@ const hash = await sha256('password', 'salt');
 
 ```typescript
 import { StorageService } from '@loushy/build-ai-agent';
+import fs from 'node:fs';
+import path from 'node:path';
 
-const storage = new StorageService('user-123', 'attachments');
+// fs/path are injected as typed adapters (LOU-A7) rather than `any`
+const storage = new StorageService('user-123', 'attachments', fs, path);
 
-await storage.saveFile('document.pdf', buffer);
-const file = await storage.readFile('document.pdf');
-await storage.deleteFile('document.pdf');
+await storage.saveAttachment(file, 'document.pdf');
+const buffer = storage.readAttachment('document.pdf');
+storage.deleteAttachment('document.pdf');
 ```
 
 ### Templates
@@ -299,135 +429,74 @@ const result = renderTemplate(template, { name: 'Alice', count: 5 });
 // "Hello Alice! You have 5 messages."
 ```
 
-### Memory Management
+## CLI
 
-```typescript
-import { MemoryManager } from '@loushy/build-ai-agent';
-
-const memory = new MemoryManager({
-  maxMessages: 10,
-  summarizeAfter: 20
-});
-
-memory.addMessage({ role: 'user', content: 'Hello' });
-memory.addMessage({ role: 'assistant', content: 'Hi there!' });
-
-const context = memory.getContext(); // Recent conversation
+```bash
+npx create-loushy-agent --name=my-agent --provider=openai --yes  # scaffold a project
+npx loushy dev agent.yaml                                        # local chat UI + hot reload
+npx loushy build --target=node-server --agent=agent.yaml         # or docker / cloudflare-worker
 ```
+
+See [Installation](docs/installation.md) and [Deployment](docs/deployment.md)
+for the full flag reference.
 
 ## Examples
 
 Runnable example agents (support bot, research assistant, workflow router,
-doc Q&A, Slack notifier, tracing) live in [examples/](examples/README.md) -
-see [the examples index](examples/README.md) for what each one does and how
-to run it.
+doc Q&A, Slack notifier, tracing) live in [examples/](examples/README.md).
+The flagship one is [examples/ops-pipeline](examples/ops-pipeline) — an
+end-to-end Grafana/Datadog → Slack "Fix it" button → human approval → fixer
+agent → guardrail-gated GitHub PR pipeline, runnable against mocks with zero
+external network access:
 
-### Example 1: Simple Chatbot
-
-```typescript
-import { AgentBuilder, AgentExecutor, OpenAIProvider } from '@loushy/build-ai-agent';
-
-// Configure
-const agent = new AgentBuilder()
-  .setType('chatbot')
-  .setPrompt('You are a helpful assistant.')
-  .build();
-
-const executor = new AgentExecutor({
-  agent,
-  sessionId: 'chat-1',
-  llmProvider: new OpenAIProvider({ apiKey: process.env.OPENAI_API_KEY })
-});
-
-// Execute
-const response = await executor.execute({
-  messages: [{ role: 'user', content: 'What is the capital of France?' }]
-});
-
-console.log(response.response); // "The capital of France is Paris."
-```
-
-### Example 2: Agent with Tools
-
-```typescript
-import { AgentBuilder, AgentExecutor, ToolRegistry } from '@loushy/build-ai-agent';
-
-// Register tools
-const tools = new ToolRegistry();
-tools.register({
-  name: 'calculator',
-  description: 'Perform calculations',
-  parameters: z.object({
-    expression: z.string()
-  }),
-  execute: async ({ expression }) => eval(expression)
-});
-
-// Build agent with tools
-const agent = new AgentBuilder()
-  .setType('smart-assistant')
-  .setPrompt('You are a math assistant. Use the calculator tool when needed.')
-  .addTool('calculator', { tool: 'calculator' })
-  .build();
-
-const executor = new AgentExecutor({
-  agent,
-  sessionId: 'math-1',
-  toolRegistry: tools
-});
-
-const response = await executor.execute({
-  messages: [{ role: 'user', content: 'What is 25 * 37?' }]
-});
-```
-
-### Example 3: Workflow with Flows
-
-```typescript
-import { FlowBuilder, FlowExecutor } from '@loushy/build-ai-agent';
-
-const flow = new FlowBuilder()
-  .addNode({ id: '1', type: 'llm', data: { prompt: 'Generate ideas' } })
-  .addNode({ id: '2', type: 'llm', data: { prompt: 'Evaluate ideas' } })
-  .addNode({ id: '3', type: 'llm', data: { prompt: 'Select best idea' } })
-  .addEdge('1', '2')
-  .addEdge('2', '3')
-  .build();
-
-const executor = new FlowExecutor({ flow, llmProvider });
-const result = await executor.execute({ input: 'Product ideas' });
+```bash
+npm run pipeline:demo
+npm run pipeline:demo:trigger   # POSTs a synthetic error to kick it off
 ```
 
 ## API Reference
 
-### Core Classes
+### Core
 
-- **AgentBuilder** - Build and configure agents
-- **AgentExecutor** - Execute agent conversations
-- **ToolRegistry** - Manage available tools
-- **FlowBuilder** - Build workflow graphs
-- **FlowExecutor** - Execute workflows
-- **MemoryManager** - Manage conversation context
+- **`createAgent()`** - zero-config `{ send }` agent
+- **`AgentBuilder`** - fluent `AgentConfig` builder
+- **`AgentExecutor`** - static executor (`execute()`, approvals, checkpoints, tracing)
+- **`ToolRegistry`** - manage available tools
+- **`FlowBuilder`** / **`FlowExecutor`** - multi-step workflow graphs
+- **`MemoryManager`** - conversation context
+
+### Safety & ops
+
+- **`resumeAfterApproval()`**, **`StorageServiceApprovalStore`** - human-in-the-loop
+- **`LocalStorageCheckpointStore`** - durable execution
+- **`createDelegateTool()`** - multi-agent delegation
+- **`runGuardrails()`**, **`secretScanGuardrail`**, **`createDiffSizeGuardrail()`**, **`createCommandGuardrail()`** - guardrails
+- **`withSpan()`**, **`TraceExporter`** - tracing
+- **`defineEval()`**, **`exactMatch`**, **`toolCallOrder`**, **`budget`**, **`llmJudge()`** - evals
+- **`NoopSandbox`**, **`SubprocessSandbox`** - sandboxing
 
 ### Providers
 
-- **OpenRouterProvider** - Access 100+ models from OpenAI, Anthropic, Google, Meta, and more
-- **OpenAIProvider** - Direct OpenAI integration
-- **OllamaProvider** - Local LLM support
-- **MockProvider** - Testing provider
+- **`resolveProvider()`** - `"provider/model"` string → configured provider
+- **`OpenAIProvider`**, **`AnthropicProvider`**, **`OllamaProvider`**, **`OpenRouterProvider`**
+- **`createMockProvider()`** - deterministic provider for tests and demos
+
+### Deploy & specs
+
+- **`loadSpec()`**, **`agentSpecSchema`**, **`specToAgent()`** - declarative agent files
+- **`registerAdapter()`**, **`getAdapter()`**, **`listAdapters()`** - `loushy build` targets
 
 ### Utilities
 
-- **EncryptionUtils** - Encryption/decryption
-- **StorageService** - File storage
-- **renderTemplate** - Template rendering
-- **validateTokenQuotas** - Quota validation
+- **`EncryptionUtils`**, **`sha256`** - encryption/hashing
+- **`StorageService`** - file storage
+- **`renderTemplate`** - template rendering
 
-For detailed API documentation, see the [API Overview](docs/api-overview.md), or run `npm run docs:build` to generate the full TypeDoc reference in `docs/api/`.
+For the complete, generated reference (every export, signature, and doc
+comment), see [docs/api-overview.md](docs/api-overview.md) or run
+`npm run docs:build`.
 
 ## Architecture
-
-The SDK follows clean architecture principles:
 
 ```
 ┌─────────────────────────────────────┐
@@ -436,33 +505,33 @@ The SDK follows clean architecture principles:
 └──────────────┬──────────────────────┘
                │
 ┌──────────────▼──────────────────────┐
-│     @loushy/build-ai-agent        │
+│     @loushy/build-ai-agent          │
 │  ┌────────────────────────────┐    │
-│  │  AgentBuilder/Executor     │    │
+│  │ createAgent / Builder /     │    │
+│  │ Executor (approvals,        │    │
+│  │ checkpoints, tracing)       │    │
 │  ├────────────────────────────┤    │
-│  │  Tools  │ Flows  │ Memory  │    │
+│  │ Tools │ Delegation │ MCP    │    │
+│  │ Flows │ Guardrails │ Evals  │    │
 │  ├────────────────────────────┤    │
 │  │       Core Engine          │    │
 │  └────────────────────────────┘    │
 └──────────────┬──────────────────────┘
                │
 ┌──────────────▼──────────────────────┐
-│    Your Data Layer & LLM Provider   │
-│   (Database, OpenAI, Ollama, etc.)  │
+│  Your LLM Provider & Deploy Target  │
+│ (OpenAI/Anthropic/Ollama/OpenRouter,│
+│  Node server / Docker / Workers)    │
 └─────────────────────────────────────┘
 ```
 
 ## Testing
 
 ```bash
-# Run tests
-pnpm test
-
-# With coverage
-pnpm test:coverage
-
-# Type checking
-pnpm typecheck
+npm test                # run tests
+npm run test:coverage   # with coverage thresholds enforced
+npm run typecheck       # tsc --noEmit
+npm run lint             # eslint
 ```
 
 ## Contributing
@@ -471,15 +540,20 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 ## Roadmap
 
-- [ ] Additional LLM providers (Anthropic Claude, Google Gemini)
-- [ ] More database adapters (Prisma, MongoDB)
-- [ ] Advanced flow patterns
-- [ ] Multi-agent collaboration
-- [ ] Plugin system
+Known, intentionally-deferred follow-ups (see the audit's
+[implementation status](https://claude.ai/artifact/HK4vf7D7EifeHowNB3f6Ub#status)
+for full context on each):
+
+- [ ] Make the root entry point's provider imports genuinely optional (currently all three peer SDKs must be installed even if only one provider is used)
+- [ ] Real provider support (OpenAI/Anthropic/Ollama/OpenRouter) for the Cloudflare Workers deploy target (currently mock-provider only)
+- [ ] Process-group kill for timed-out guardrail commands on POSIX (verified working on Windows; POSIX path untested against multi-process command trees)
+- [ ] Interactive, in-browser runnable Quick Start snippets (current verification is real but non-interactive - see `scripts/verify-docs-snippets.ts`)
+- [ ] Additional database adapters (Prisma, MongoDB) alongside the existing Drizzle support
 
 ## Support
 
-- 📖 [Documentation](https://docs.loushy.dev)
+- 📖 [Documentation site](https://linuxdevil.github.io/agent-sdk-docs/)
+- 📘 [In-repo docs](docs/) and [examples](examples/)
 
 ## License
 
