@@ -4,6 +4,11 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    // Excludes the LOU-E11 fixture repo's own test file - it's a plain
+    // node:test suite meant to be run by the fixture's own `npm test`
+    // (via createTestRunGuardrail() against a scratch copy of it), not
+    // collected by vitest here.
+    exclude: ['**/node_modules/**', '**/dist/**', 'src/execution/__fixtures__/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
