@@ -1,5 +1,7 @@
 import { parseArgs } from 'node:util';
+import path from 'node:path';
 import { collectAnswers, validateAnswers, AnswerConfig } from './prompts';
+import { generateProject } from './template';
 
 const USAGE = `create-loushy-agent - scaffold a new @loushy/build-ai-agent project
 
@@ -20,6 +22,7 @@ export interface ParsedCliArgs {
   name?: string;
   provider?: string;
   tools?: string;
+  dir?: string;
 }
 
 /**
@@ -38,6 +41,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
         name: { type: 'string' },
         provider: { type: 'string' },
         tools: { type: 'string' },
+        dir: { type: 'string' },
       },
       allowPositionals: true,
       strict: true,
@@ -60,6 +64,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     name: values.name as string | undefined,
     provider: values.provider as string | undefined,
     tools: values.tools as string | undefined,
+    dir: values.dir as string | undefined,
   };
 }
 
@@ -110,11 +115,16 @@ async function resolveAnswers(args: ParsedCliArgs): Promise<AnswerConfig> {
 }
 
 /**
- * Scaffold step: resolve answers, then generate the project (LOU-H4 wires
- * generateProject() in here).
+ * Scaffold step: resolve answers, then generate the project on disk.
+ * --dir overrides the target directory (defaults to ./<name>); used by
+ * tests to target a temp directory instead of the CLI's own cwd.
  */
 async function runScaffold(args: ParsedCliArgs): Promise<number> {
   const answers = await resolveAnswers(args);
-  process.stdout.write(`Scaffolding ${answers.name} (${answers.provider})...\n`);
+  const targetDir = args.dir || path.join(process.cwd(), answers.name);
+
+  process.stdout.write(`Scaffolding ${answers.name} (${answers.provider}) into ${targetDir}...\n`);
+  await generateProject(targetDir, answers);
+  process.stdout.write('Done.\n');
   return 0;
 }
