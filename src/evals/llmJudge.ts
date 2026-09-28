@@ -64,6 +64,19 @@ export function parseJudgeScore(rawText: string): { score: number; reason?: stri
  */
 export function llmJudge(config: LLMJudgeConfig): (result: ExecutionResult) => Promise<number> {
   return async (result: ExecutionResult): Promise<number> => {
+    // Structural guard, independent of file-naming conventions: this env var
+    // is only set by vitest.judge.config.ts. A *.eval.ts file that imports
+    // llmJudge() but is accidentally picked up by the main vitest run (e.g.
+    // a misnamed or mis-globbed file) fails loudly here instead of silently
+    // making a real, budgeted LLM call as part of default/CI test runs.
+    if (process.env.LOUSHY_ALLOW_LLM_JUDGE !== '1') {
+      throw new Error(
+        'llmJudge() was invoked outside the judge-eval runner. ' +
+          'llmJudge()-based evals must live in a "*.judge.eval.ts" file and run via ' +
+          '`npm run test:evals:judge` (vitest.judge.config.ts), never the default `vitest run`.'
+      );
+    }
+
     const gradePrompt = buildGradePrompt(config.rubric, result.text ?? '');
 
     const response = await config.provider.generate({
