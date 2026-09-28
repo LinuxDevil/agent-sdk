@@ -14,11 +14,46 @@ export interface AgentSpecProvider {
   model: string;
 }
 
+/**
+ * Optional cross-harness execution policy (LOU-J1+). Deliberately loose -
+ * different target harnesses (Claude Code, Codex, Pi, ...) each honor a
+ * different subset of this, and new fields are expected to be added by
+ * later generators without needing a schema migration every time, so this
+ * is intentionally an open record (`.passthrough()` on the zod side) rather
+ * than a closed, harness-specific shape.
+ */
+export interface AgentSpecPolicy {
+  /** Whether tool calls from this agent require human approval before running (LOU-C). */
+  requiresApproval?: boolean;
+  /** Named guardrails (see src/execution/guardrails.ts) this agent's actions must pass. */
+  guardrails?: string[];
+  /** Additional, harness-specific policy fields. */
+  [key: string]: unknown;
+}
+
+/**
+ * Optional trigger describing when/how this agent is invoked outside of a
+ * direct call (e.g. a monitoring webhook, a cron schedule). Open record for
+ * the same reason as AgentSpecPolicy above.
+ */
+export interface AgentSpecTrigger {
+  type: string;
+  [key: string]: unknown;
+}
+
 export interface AgentSpec {
   name: string;
   prompt: string;
   provider: AgentSpecProvider;
   tools?: string[];
+  /**
+   * Optional (LOU-J1+, backward-compatible with LOU-H9's original
+   * {name, prompt, provider, tools} shape - existing specs that omit this
+   * still validate and load unchanged).
+   */
+  policy?: AgentSpecPolicy;
+  /** Optional (LOU-J1+), same backward-compatibility note as `policy`. */
+  triggers?: AgentSpecTrigger[];
 }
 
 export const agentSpecProviderSchema = z.object({
@@ -30,6 +65,21 @@ export const agentSpecProviderSchema = z.object({
   }),
 });
 
+export const agentSpecPolicySchema = z
+  .object({
+    requiresApproval: z.boolean().optional(),
+    guardrails: z.array(z.string()).optional(),
+  })
+  .passthrough();
+
+export const agentSpecTriggerSchema = z
+  .object({
+    type: z.string({
+      required_error: "AgentSpec validation failed: missing required field 'triggers[].type'",
+    }),
+  })
+  .passthrough();
+
 export const agentSpecSchema = z.object({
   name: z.string({
     required_error: "AgentSpec validation failed: missing required field 'name'",
@@ -39,4 +89,6 @@ export const agentSpecSchema = z.object({
   }),
   provider: agentSpecProviderSchema,
   tools: z.array(z.string()).optional(),
+  policy: agentSpecPolicySchema.optional(),
+  triggers: z.array(agentSpecTriggerSchema).optional(),
 });
