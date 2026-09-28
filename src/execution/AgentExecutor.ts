@@ -4,7 +4,7 @@
  */
 
 import { nanoid } from 'nanoid';
-import { LLMProvider, Message, ToolCall } from '../providers';
+import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult } from '../providers';
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
 import { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGate';
@@ -108,6 +108,41 @@ export interface ExecuteOptions {
    * 0 (a genuinely fresh run) when omitted.
    */
   initialSteps?: number;
+  /**
+   * Tracing/observability hooks (LOU-E1/E2). These are invoked immediately
+   * before/after the underlying provider.generate() call and each tool
+   * execution inside executeToolCall(). They are plain synchronous or
+   * async callbacks - errors thrown from them are NOT swallowed and will
+   * propagate out of execute() like any other error, since a hook that
+   * silently fails to observe would be worse than one that fails loudly.
+   */
+  /** Invoked immediately before each provider.generate() call. */
+  onLLMRequest?: (request: GenerateOptions) => void | Promise<void>;
+  /**
+   * Invoked immediately after each provider.generate() call resolves,
+   * with the elapsed wall-clock time in milliseconds.
+   */
+  onLLMResponse?: (response: GenerateResult, latencyMs: number) => void | Promise<void>;
+  /** Invoked immediately before each tool execution. */
+  onToolCall?: (toolCall: ToolCall) => void | Promise<void>;
+  /**
+   * Invoked immediately after each tool execution settles (success or
+   * error), with the elapsed wall-clock time in milliseconds. Fired from a
+   * `finally` block so it runs even when the tool throws.
+   */
+  onToolResult?: (
+    toolCall: ToolCall,
+    result: {
+      toolCallId: string;
+      toolName: string;
+      result: any;
+      error?: string;
+      requiresApproval?: boolean;
+      args?: Record<string, unknown>;
+    } | undefined,
+    latencyMs: number,
+    error?: unknown
+  ) => void | Promise<void>;
 }
 
 /**
