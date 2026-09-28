@@ -31,6 +31,9 @@ describe('GitHubTools scope enforcement (LOU-E14)', () => {
     'github_update_issue',
     'github_close_issue',
     'github_add_issue_comment',
+    // LOU-E fix: merging a PR needs "Contents: Read and write", which a
+    // PR-creation/reading-scoped token doesn't have.
+    'github_merge_pull_request',
   ];
 
   it.each(outOfScopeTools)('%s throws before making any HTTP request', async (toolName) => {
