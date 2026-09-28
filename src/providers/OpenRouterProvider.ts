@@ -14,6 +14,7 @@ import {
   LLMProviderConfig,
   Message,
 } from './llm';
+import { Logger, noopLogger } from '../execution/logger';
 
 export interface OpenRouterProviderConfig extends LLMProviderConfig {
   apiKey: string;
@@ -77,10 +78,12 @@ export class OpenRouterProvider implements LLMProvider {
   readonly name = 'openrouter';
   private provider: ReturnType<typeof createOpenAI>;
   private config: OpenRouterProviderConfig;
+  private logger: Logger;
 
-  constructor(config: OpenRouterProviderConfig) {
+  constructor(config: OpenRouterProviderConfig, logger: Logger = noopLogger) {
     this.config = config;
-    
+    this.logger = logger;
+
     // Build headers with optional site attribution
     const headers: Record<string, string> = {
       ...(config.headers || {}),
@@ -323,7 +326,7 @@ export class OpenRouterProvider implements LLMProvider {
       const data = await response.json();
       return data.data?.map((model: any) => model.id) || [];
     } catch (error) {
-      console.warn('Failed to fetch OpenRouter models:', error);
+      this.logger.warn('Failed to fetch OpenRouter models', { error: (error as Error).message });
       
       // Return some popular models as fallback
       return [
@@ -362,7 +365,7 @@ export class OpenRouterProvider implements LLMProvider {
       const data = await response.json();
       return data.data?.find((model: any) => model.id === modelId);
     } catch (error) {
-      console.warn('Failed to fetch model info:', error);
+      this.logger.warn('Failed to fetch model info', { error: (error as Error).message });
       return null;
     }
   }

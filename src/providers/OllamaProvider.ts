@@ -14,6 +14,7 @@ import {
   LLMProviderConfig,
   Message,
 } from './llm';
+import { Logger, noopLogger } from '../execution/logger';
 
 export interface OllamaProviderConfig extends LLMProviderConfig {
   baseURL?: string;
@@ -54,9 +55,11 @@ export class OllamaProvider implements LLMProvider {
   readonly name = 'ollama';
   private provider: ReturnType<typeof createOllama>;
   private config: OllamaProviderConfig;
+  private logger: Logger;
 
-  constructor(config: OllamaProviderConfig) {
+  constructor(config: OllamaProviderConfig, logger: Logger = noopLogger) {
     this.config = config;
+    this.logger = logger;
     this.provider = createOllama({
       baseURL: config.baseURL || 'http://localhost:11434',
     });
@@ -266,7 +269,7 @@ export class OllamaProvider implements LLMProvider {
       const data = await response.json();
       return data.models?.map((m: any) => m.name) || [];
     } catch (error) {
-      console.warn('Failed to fetch Ollama models:', error);
+      this.logger.warn('Failed to fetch Ollama models', { error: (error as Error).message });
       return ['llama3.1', 'llama2', 'mistral'];
     }
   }

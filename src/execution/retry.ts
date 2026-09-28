@@ -40,7 +40,7 @@ export interface RetryResult<T> {
  *     maxAttempts: 3,
  *     initialDelayMs: 1000,
  *     onRetry: (error, attempt, delay) => {
- *       console.log(`Retry attempt ${attempt} after ${delay}ms: ${error.message}`);
+ *       logger.info('Retry attempt', { attempt, delay, error: error.message });
  *     },
  *   }
  * );
