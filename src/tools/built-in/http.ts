@@ -28,7 +28,7 @@ export interface HttpToolOptions {
 /**
  * Makes HTTP requests to external APIs
  */
-async function makeHttpRequest({
+export async function makeHttpRequest({
   url,
   method,
   headers,
@@ -41,6 +41,9 @@ async function makeHttpRequest({
   body?: string;
   options?: HttpToolOptions;
 }): Promise<string> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), options.timeout ?? 30000);
+
   try {
     const fetchOptions: RequestInit = {
       method,
@@ -49,9 +52,24 @@ async function makeHttpRequest({
         ...headers,
       },
       body: body && method !== 'GET' ? body : undefined,
+      signal: controller.signal,
+      redirect: 'manual',
     };
 
-    const response = await fetch(url, fetchOptions);
+    let currentUrl = url;
+    let redirectCount = 0;
+    let response = await fetch(currentUrl, fetchOptions);
+
+    while (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
+      redirectCount++;
+      if (redirectCount > (options.maxRedirects ?? 5)) {
+        throw new Error(`Exceeded maxRedirects (${options.maxRedirects ?? 5})`);
+      }
+      currentUrl = new URL(response.headers.get('location')!, currentUrl).toString();
+      response = await fetch(currentUrl, fetchOptions);
+    }
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -65,6 +83,10 @@ async function makeHttpRequest({
       return await response.text();
     }
   } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Request timed out after ${options.timeout ?? 30000}ms`);
+    }
     if (error instanceof Error) {
       throw new Error(`HTTP request failed: ${error.message}`);
     }
