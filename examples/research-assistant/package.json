@@ -1,0 +1,9 @@
+{
+  "name": "research-assistant-example",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Research agent with the http tool wired up, built with @loushy/build-ai-agent's createAgent()",
+  "scripts": {
+    "start": "tsx index.ts"
+  }
+}

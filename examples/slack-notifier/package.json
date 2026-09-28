@@ -1,0 +1,9 @@
+{
+  "name": "slack-notifier-example",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Drafts a Slack-ready notification from a raw event, built with @loushy/build-ai-agent's createAgent()",
+  "scripts": {
+    "start": "tsx index.ts"
+  }
+}
