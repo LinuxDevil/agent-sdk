@@ -7,9 +7,11 @@ import { nanoid } from 'nanoid';
 import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult } from '../providers';
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
+import { SandboxAdapter, NoopSandbox } from '../security/sandbox';
 import { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGate';
 import { Checkpoint, CheckpointStore } from './checkpoint';
 import { TraceExporter, withSpan } from './tracing';
+import { executeToolWithSandboxGuard } from './sandboxGuard';
 
 /**
  * Base class for tool errors that must NOT be swallowed by
@@ -161,6 +163,14 @@ export interface ExecuteOptions {
    * redacted. Defaults to false.
    */
   redactContent?: boolean;
+  /**
+   * SandboxAdapter used for tools flagged `requiresSandbox` (LOU-F5). Since
+   * AgentExecutor is a static, instance-free API, this is read per-call
+   * (`options.sandbox ?? NoopSandbox`) rather than held as construction
+   * state. Defaults to NoopSandbox - the zero-isolation, trusted-host
+   * adapter - when omitted, so existing callers see no behavior change.
+   */
+  sandbox?: SandboxAdapter;
 }
 
 /**
@@ -236,6 +246,7 @@ export class AgentExecutor {
       onToolResult,
       exporter,
       redactContent = false,
+      sandbox = NoopSandbox,
     } = options;
 
     // Emit start event
@@ -374,7 +385,8 @@ export class AgentExecutor {
                   agent,
                   toolRegistry,
                   onToolCall,
-                  onToolResult
+                  onToolResult,
+                  sandbox
                 );
                 let parsedArgs: unknown = executed.args;
                 if (parsedArgs === undefined) {
@@ -584,7 +596,8 @@ export class AgentExecutor {
     _agent: AgentConfig,
     toolRegistry?: ToolRegistry,
     onToolCall?: ExecuteOptions['onToolCall'],
-    onToolResult?: ExecuteOptions['onToolResult']
+    onToolResult?: ExecuteOptions['onToolResult'],
+    sandbox: SandboxAdapter = NoopSandbox
   ): Promise<{
     toolCallId: string;
     toolName: string;
@@ -611,7 +624,7 @@ export class AgentExecutor {
     let thrown: unknown;
 
     try {
-      outcome = await this.doExecuteToolCall(toolCall, toolRegistry);
+      outcome = await this.doExecuteToolCall(toolCall, toolRegistry, sandbox);
       return outcome;
     } catch (error) {
       thrown = error;
@@ -631,7 +644,8 @@ export class AgentExecutor {
    */
   private static async doExecuteToolCall(
     toolCall: ToolCall,
-    toolRegistry?: ToolRegistry
+    toolRegistry?: ToolRegistry,
+    sandbox: SandboxAdapter = NoopSandbox
   ): Promise<{
     toolCallId: string;
     toolName: string;
@@ -677,8 +691,19 @@ export class AgentExecutor {
         };
       }
 
-      // The 'ai' SDK tool.execute expects (args, context)
-      const result = await toolDesc.tool.execute(args, {} as any);
+      // The 'ai' SDK tool.execute expects (args, context). Tools flagged
+      // `requiresSandbox` (LOU-F5) are routed through the configured
+      // SandboxAdapter instead of being invoked directly here; a tool
+      // WITHOUT the flag takes this exact, unchanged branch. This
+      // branching now lives in the shared executeToolWithSandboxGuard()
+      // helper (LOU-F fix) so FlowExecutor.ts and resume.ts share the
+      // exact same fail-closed behavior instead of each reimplementing it.
+      const result = await executeToolWithSandboxGuard(
+        toolCall.function.name,
+        toolDesc,
+        args,
+        sandbox
+      );
 
       return {
         toolCallId: toolCall.id,

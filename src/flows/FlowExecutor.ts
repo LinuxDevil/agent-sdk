@@ -7,6 +7,8 @@ import { LLMProvider, Message } from '../providers';
 import { ToolRegistry } from '../tools';
 import { AgentFlow, EditorStep } from '../types';
 import { AgentConfig } from '../types';
+import { SandboxAdapter, NoopSandbox } from '../security/sandbox';
+import { executeToolWithSandboxGuard } from '../execution/sandboxGuard';
 
 /**
  * Flow execution context
@@ -20,6 +22,16 @@ export interface FlowExecutionContext {
   memory?: any[];
   maxDepth?: number;
   currentDepth?: number;
+  /**
+   * SandboxAdapter used for tool-call nodes whose tool is flagged
+   * `requiresSandbox` (LOU-F fix). Mirrors AgentExecutor's
+   * `ExecuteOptions.sandbox` (LOU-F5): read per-call
+   * (`context.sandbox ?? NoopSandbox`) rather than held as construction
+   * state, since FlowExecutor is a static, instance-free API. Defaults to
+   * NoopSandbox - the zero-isolation, trusted-host adapter - when omitted,
+   * so existing callers see no behavior change.
+   */
+  sandbox?: SandboxAdapter;
 }
 
 /**
@@ -489,8 +501,14 @@ export class FlowExecutor {
     events.push(callEvent);
     onEvent?.(callEvent);
 
-    // Execute tool
-    const result = toolDesc.tool.execute ? await toolDesc.tool.execute(args, {} as any) : null;
+    // Execute tool. Tools flagged `requiresSandbox` are routed through the
+    // configured SandboxAdapter instead of being invoked directly here -
+    // mirrors AgentExecutor.executeToolCall()'s fail-closed handling
+    // (LOU-F5) via the shared executeToolWithSandboxGuard() helper
+    // (LOU-F fix), so this entry point can't silently bypass the sandbox
+    // seam the way it previously did.
+    const sandbox = context.sandbox ?? NoopSandbox;
+    const result = await executeToolWithSandboxGuard(toolName, toolDesc, args, sandbox);
 
     // Emit tool result event
     const resultEvent: FlowExecutionEvent = {
