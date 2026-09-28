@@ -9,3 +9,4 @@ export * from './http';
 export * from './email';
 export * from './jira';
 export * from './github';
+export * from './slack';

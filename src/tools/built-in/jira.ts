@@ -21,6 +21,9 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { ToolRegistry } from '../ToolRegistry';
+import { ToolDescriptor } from '../../types';
+import { SandboxAdapter } from '../../security/sandboxCore';
+import { withSandboxedFetch } from './sandboxFetch';
 
 // ============================================================================
 // Type Definitions
@@ -81,6 +84,30 @@ export class JiraTools extends ToolRegistry {
       `${config.email}:${config.apiToken}`
     ).toString('base64')}`;
     this.registerAllTools();
+  }
+
+  /**
+   * LOU-K2: every Jira tool's execute() makes a real outbound HTTP call to
+   * the configured Jira instance via the ambient global `fetch`. Flag it
+   * requiresSandbox and route sandboxExecute() through withSandboxedFetch(),
+   * which swaps `fetch` for a SandboxAdapter-routed implementation just for
+   * the duration of the original execute() call - so a caller going through
+   * executeToolWithSandboxGuard() (AgentExecutor, resume.ts) gets the fetch
+   * call genuinely routed through the configured SandboxAdapter, without
+   * every one of this file's register*() methods needing its own
+   * hand-written sandboxed reimplementation. execute() itself is left
+   * completely unchanged - still a real, directly-callable implementation -
+   * for callers that invoke descriptor.tool.execute() directly rather than
+   * through the guard.
+   */
+  public register(name: string, descriptor: ToolDescriptor): void {
+    if (descriptor.tool?.execute) {
+      const originalExecute = descriptor.tool.execute;
+      descriptor.requiresSandbox = true;
+      descriptor.sandboxExecute = (args: unknown, sandbox: SandboxAdapter) =>
+        withSandboxedFetch(sandbox, async () => originalExecute(args as any, {} as any));
+    }
+    super.register(name, descriptor);
   }
 
   private registerAllTools() {

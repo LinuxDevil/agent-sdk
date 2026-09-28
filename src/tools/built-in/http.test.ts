@@ -4,7 +4,10 @@ import https from 'https';
 import dns from 'dns';
 import selfsigned from 'selfsigned';
 import type { AddressInfo } from 'net';
-import { makeHttpRequest } from './http';
+import { makeHttpRequest, createHttpTool } from './http';
+import { NoopSandbox } from '../../security/sandboxCore';
+import type { SandboxAdapter } from '../../security/sandboxCore';
+import { executeToolWithSandboxGuard } from '../../execution/sandboxGuard';
 
 function listen(server: http.Server): Promise<string> {
   return new Promise((resolve) => {
@@ -309,6 +312,73 @@ describe('makeHttpRequest', () => {
 
       expect(insecureResult).toBe('secure');
       expect(secureResult).not.toBe('unexpectedly-resolved');
+    });
+  });
+
+  describe('sandbox seam (LOU-K2)', () => {
+    it('flags requiresSandbox and implements sandboxExecute', () => {
+      const descriptor = createHttpTool();
+      expect(descriptor.requiresSandbox).toBe(true);
+      expect(typeof descriptor.sandboxExecute).toBe('function');
+    });
+
+    it('(a) NoopSandbox: sandboxExecute() gets the exact same real response as the unsandboxed execute() path', async () => {
+      const localServer = http.createServer((_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('sandboxed-ok');
+      });
+      const baseUrl = await listen(localServer);
+      try {
+        const descriptor = createHttpTool();
+
+        const direct = await descriptor.tool.execute!({ url: baseUrl, method: 'GET' }, {} as any);
+        const viaGuard = await executeToolWithSandboxGuard('http', descriptor, { url: baseUrl, method: 'GET' }, NoopSandbox);
+
+        expect(direct).toBe('sandboxed-ok');
+        expect(viaGuard).toBe('sandboxed-ok');
+      } finally {
+        await new Promise<void>((resolve) => localServer.close(() => resolve()));
+      }
+    }, 15000);
+
+    it('(b) a custom SandboxAdapter actually gets invoked for the outbound request', async () => {
+      const runSpy = vi.fn(async (cmd: string, args: string[]) => {
+        expect(cmd).toBe('node');
+        expect(args[0]).toBe('-e');
+        return {
+          stdout: JSON.stringify({ status: 200, statusText: 'OK', headers: {}, body: 'from-custom-sandbox' }),
+          stderr: '',
+          exitCode: 0,
+        };
+      });
+      const customSandbox: SandboxAdapter = {
+        name: 'custom-test-sandbox',
+        run: runSpy,
+        writeFile: vi.fn(),
+      };
+
+      const descriptor = createHttpTool();
+      // TEST-NET-3 (RFC 5737, 203.0.113.0/24): a real, non-blocked-range IP
+      // literal that skips isBlockedHost()'s DNS-resolution path entirely
+      // (isIP() short-circuits it) - so this test never touches real DNS.
+      const result = await executeToolWithSandboxGuard(
+        'http',
+        descriptor,
+        { url: 'https://203.0.113.10/', method: 'GET' },
+        customSandbox
+      );
+
+      expect(runSpy).toHaveBeenCalledTimes(1);
+      expect(result).toBe('from-custom-sandbox');
+    });
+
+    it('(c) fails closed when requiresSandbox is true but sandboxExecute is missing', async () => {
+      const descriptor = createHttpTool();
+      const broken = { ...descriptor, sandboxExecute: undefined };
+
+      await expect(
+        executeToolWithSandboxGuard('http', broken, { url: 'https://203.0.113.10/', method: 'GET' }, NoopSandbox)
+      ).rejects.toThrow(/requiresSandbox but does not implement sandboxExecute/);
     });
   });
 });
