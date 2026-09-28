@@ -70,15 +70,31 @@ npx wrangler deploy    # requires a Cloudflare account (`wrangler login`)
 
 Workers have no Node.js builtins, so this target currently supports:
 
-- the `mock` provider (real provider SDKs are not bundled into the Worker
-  yet - use `node-server` or `docker` for OpenAI/Anthropic/Ollama/OpenRouter);
-- the `current-date` and `day-name` tools (`http` depends on Node networking
-  modules).
+- providers: `mock`, `openai` and `anthropic`. The `openai`/`anthropic`
+  providers are built on the Vercel `ai` SDK's `generateText`/`streamText`
+  plus `@ai-sdk/openai`/`@ai-sdk/anthropic`, which are pure
+  `fetch()`/Web-standard implementations with no `node:*` imports anywhere
+  in their dependency graph, so they bundle and run on Workers cleanly.
+  `ollama` and `openrouter` are **not** supported here - `ollama` defaults
+  to a local `http://localhost:11434` endpoint that a Worker can't reach,
+  and `openrouter` hasn't had a Workers-compatibility audit; use
+  `node-server` or `docker` for those;
+- tools: `current-date` and `day-name`. `http` is **not** supported: its
+  SSRF protection resolves the hostname via `node:dns` and checks *every*
+  resolved address against a denylist before connecting (closing a
+  DNS-rebinding gap), then pins TLS settings per request via a dedicated
+  `undici` `Agent`. Workers' native `fetch()` has no equivalent hook to
+  resolve a hostname up front and pin the connection to the verified IP, so
+  a Workers version of this tool built on plain `fetch()` would silently
+  drop that protection rather than just losing convenience functionality -
+  it's left unsupported rather than shipped weaker under the same name.
 
 `loushy build` rejects a spec that uses anything else, with an error naming
-the unsupported provider or tool. Provider API keys, once real providers are
-supported, are read from Worker bindings named `<TYPE>_API_KEY`
-(`wrangler secret put OPENAI_API_KEY`).
+the unsupported provider or tool. Provider API keys are read from Worker
+bindings named `<TYPE>_API_KEY` (e.g. `wrangler secret put OPENAI_API_KEY`,
+`wrangler secret put ANTHROPIC_API_KEY`) - the `openai`/`anthropic`
+peer packages (`@ai-sdk/openai`/`@ai-sdk/anthropic`, `ai`) must be installed
+alongside `@loushy/build-ai-agent` for `loushy build` to bundle them.
 
 ## Custom targets
 
