@@ -6,6 +6,9 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 const execFileAsync = promisify(execFile);
 
@@ -57,7 +60,7 @@ export async function runGuardrailSafely(
   });
 
   try {
-    return await Promise.race([
+    const result = await Promise.race([
       guardrail.check(action).catch(
         (): GuardrailResult => ({
           pass: false,
@@ -66,6 +69,11 @@ export async function runGuardrailSafely(
       ),
       timeout,
     ]);
+    // Normalize pass to a strict boolean here too, so every caller of
+    // runGuardrailSafely (not just runGuardrails' own aggregation) gets a
+    // well-typed result even from a third-party/JS Guardrail that resolves
+    // with something truthy-but-non-boolean (e.g. `{ pass: 1 }`).
+    return { ...result, pass: result.pass === true };
   } finally {
     if (timer) {
       clearTimeout(timer);
@@ -125,41 +133,134 @@ export const secretScanGuardrail: Guardrail = {
 };
 
 /**
- * Builds a Guardrail that runs `command args...` in `cwd` and passes iff
- * the process exits 0. Used for both the test-run and lint guardrails
- * below (and reusable for any other "run this command, pass on exit 0"
- * check) so that logic isn't duplicated per guardrail.
+ * Options for {@link createCommandGuardrail}.
+ */
+export interface CommandGuardrailOptions {
+  /**
+   * How long (ms) the guardrail's own internal command execution is
+   * allowed to run before it aborts the child process itself. Defaults to
+   * 30000, matching runGuardrailSafely()'s own default timeout. Callers
+   * that pass a custom timeoutMs to runGuardrailSafely() should pass the
+   * same value here so the guardrail's own process-owning timeout - not
+   * just the outer race - is the one that actually fires first and kills
+   * the child (see the "process leak" note below).
+   */
+  timeoutMs?: number;
+}
+
+/**
+ * Builds a Guardrail that:
+ *  1. If `action.diff` is a non-empty string, applies it to a fresh
+ *     temporary copy of `cwd` via `git apply` (LOU-E fix: previously this
+ *     guardrail ignored `action.diff` entirely and just ran the command
+ *     against whatever was already on disk at `cwd`, so it never actually
+ *     gated the diff it was supposed to be checking). The diff is first
+ *     validated with `git apply --check`; if it doesn't apply cleanly,
+ *     that itself is reported as a guardrail failure rather than throwing.
+ *     `cwd` itself is never mutated - only the temp copy is.
+ *  2. If `action.diff` is empty/undefined, this is treated as a
+ *     deliberate "no diff to gate" case: the command just runs directly
+ *     against `cwd` as-is (this is also what lets existing "fixture repo
+ *     already broken" tests keep working unchanged).
+ *  3. Runs `command args...` in the (possibly patched) working directory
+ *     and passes iff the process exits 0.
  *
- * Deliberately has no timeout of its own - runGuardrailSafely() (LOU-E9)
- * already races every guardrail (including this one) against a timeout,
- * and a second, independent timeout mechanism here would just be
- * redundant complexity. When the outer race gives up first, the
- * underlying child process may keep running in the background; that's an
- * accepted tradeoff of not duplicating the timeout here.
+ * Used for both the test-run and lint guardrails below (and reusable for
+ * any other "run this command, pass on exit 0" check) so that logic isn't
+ * duplicated per guardrail.
+ *
+ * Process-leak note (LOU-E fix): runGuardrailSafely() (LOU-E9) races every
+ * guardrail (including this one) against its own outer timeout, and
+ * per LOU-E11's own design note, this function deliberately does NOT add a
+ * second, independent timeout mechanism competing with that race. Instead,
+ * the single timeout owned here is the one that actually executes the
+ * command and is able to kill it: it's implemented via an AbortController
+ * whose signal is passed straight into execFile, so Node kills the child
+ * process itself when `timeoutMs` elapses, rather than just abandoning it
+ * in the background the way an outer Promise.race alone would. Callers
+ * that also pass a custom timeoutMs to runGuardrailSafely() should pass a
+ * matching (or smaller) timeoutMs here so this internal timeout - the one
+ * that owns process cleanup - is the one that actually fires.
  */
 export function createCommandGuardrail(
   name: string,
   cwd: string,
   command: string,
-  args: string[]
+  args: string[],
+  options: CommandGuardrailOptions = {}
 ): Guardrail {
+  const { timeoutMs = 30000 } = options;
+
   return {
     name,
-    async check(_action: ProposedAction): Promise<GuardrailResult> {
+    async check(action: ProposedAction): Promise<GuardrailResult> {
+      let scratchDir: string | undefined;
+
       try {
-        // On Windows, npm (and other npm-installed CLIs) are .cmd shims
-        // that execFile can only invoke through a shell.
-        await execFileAsync(command, args, { cwd, shell: process.platform === 'win32' });
-        return { pass: true };
-      } catch (error) {
-        const err = error as { code?: number | string; stderr?: string; message: string };
-        const stderr = (err.stderr || '').toString().trim();
-        return {
-          pass: false,
-          reason: `${name} failed (exit code ${err.code ?? 'unknown'})${
-            stderr ? `: ${stderr}` : `: ${err.message}`
-          }`,
-        };
+        let workDir = cwd;
+
+        if (action.diff && action.diff.trim().length > 0) {
+          scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'guardrail-apply-'));
+          fs.cpSync(cwd, scratchDir, { recursive: true });
+          workDir = scratchDir;
+
+          const diffFile = path.join(scratchDir, '.guardrail-diff.patch');
+          fs.writeFileSync(diffFile, action.diff);
+
+          try {
+            await execFileAsync('git', ['apply', '--check', diffFile], { cwd: scratchDir });
+          } catch (checkError) {
+            const err = checkError as { stderr?: string; message: string };
+            const detail = (err.stderr || err.message || '').toString().trim();
+            return {
+              pass: false,
+              reason: `${name}: diff does not apply cleanly${detail ? `: ${detail}` : ''}`,
+            };
+          }
+
+          await execFileAsync('git', ['apply', diffFile], { cwd: scratchDir });
+          fs.rmSync(diffFile, { force: true });
+        }
+
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+        try {
+          // On Windows, npm (and other npm-installed CLIs) are .cmd shims
+          // that execFile can only invoke through a shell.
+          await execFileAsync(command, args, {
+            cwd: workDir,
+            shell: process.platform === 'win32',
+            signal: controller.signal,
+          });
+          return { pass: true };
+        } catch (error) {
+          const err = error as {
+            code?: number | string;
+            stderr?: string;
+            message: string;
+            name?: string;
+          };
+          if (err.name === 'AbortError') {
+            return {
+              pass: false,
+              reason: `${name} timed out after ${timeoutMs}ms and was killed`,
+            };
+          }
+          const stderr = (err.stderr || '').toString().trim();
+          return {
+            pass: false,
+            reason: `${name} failed (exit code ${err.code ?? 'unknown'})${
+              stderr ? `: ${stderr}` : `: ${err.message}`
+            }`,
+          };
+        } finally {
+          clearTimeout(timer);
+        }
+      } finally {
+        if (scratchDir) {
+          fs.rmSync(scratchDir, { recursive: true, force: true });
+        }
       }
     },
   };
@@ -168,15 +269,21 @@ export function createCommandGuardrail(
 /**
  * Runs `npm test` in `repoPath` and passes iff it exits 0.
  */
-export function createTestRunGuardrail(repoPath: string): Guardrail {
-  return createCommandGuardrail('test-run', repoPath, 'npm', ['test']);
+export function createTestRunGuardrail(
+  repoPath: string,
+  options?: CommandGuardrailOptions
+): Guardrail {
+  return createCommandGuardrail('test-run', repoPath, 'npm', ['test'], options);
 }
 
 /**
  * Runs `npm run lint` in `repoPath` and passes iff it exits 0.
  */
-export function createLintGuardrail(repoPath: string): Guardrail {
-  return createCommandGuardrail('lint', repoPath, 'npm', ['run', 'lint']);
+export function createLintGuardrail(
+  repoPath: string,
+  options?: CommandGuardrailOptions
+): Guardrail {
+  return createCommandGuardrail('lint', repoPath, 'npm', ['run', 'lint'], options);
 }
 
 /**
@@ -205,8 +312,13 @@ export async function runGuardrails(
     }))
   );
 
+  // Strict `=== true` check (not just truthiness) so a third-party/JS
+  // Guardrail resolving with a truthy-but-non-boolean `pass` (e.g.
+  // `{ pass: 1 }`) is correctly treated as a failure rather than silently
+  // passing - this is a security-relevant gate, so "well-typed TypeScript
+  // caller" isn't a safe assumption to lean on.
   const failures = results
-    .filter(({ result }) => !result.pass)
+    .filter(({ result }) => result.pass !== true)
     .map(({ name, result }) => ({ name, reason: result.reason }));
 
   return {
