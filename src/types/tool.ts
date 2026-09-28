@@ -1,4 +1,5 @@
 import { Tool as AITool } from 'ai';
+import { SandboxAdapter } from '../security/sandbox';
 
 /**
  * Tool parameter definition
@@ -43,6 +44,23 @@ export interface ToolDescriptor {
    * which is the exact pre-existing, unchanged execution path.
    */
   requiresSandbox?: boolean;
+  /**
+   * Explicit alternate execution path a tool author implements when they
+   * want their tool to be genuinely sandboxable (LOU-F fix). Receives the
+   * configured SandboxAdapter and is responsible for using
+   * `sandbox.run()`/`sandbox.writeFile()` itself to perform the tool's
+   * real work (e.g. writing input to a file, running a command that does
+   * the actual computation, parsing the command's stdout as the result).
+   *
+   * This is the tool author's contract for "how do I actually run inside
+   * a sandbox" - a generic bridge from an arbitrary in-process JS closure
+   * (`tool.execute`) to a subprocess isn't mechanically possible without
+   * the tool itself cooperating. When `requiresSandbox` is true,
+   * AgentExecutor requires this to be defined and calls it instead of
+   * `tool.execute()`; if it is missing, AgentExecutor throws rather than
+   * silently falling back to unsandboxed in-process execution.
+   */
+  sandboxExecute?: (args: unknown, sandbox: SandboxAdapter) => Promise<unknown>;
 }
 
 /**

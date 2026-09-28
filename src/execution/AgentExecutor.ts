@@ -695,7 +695,7 @@ export class AgentExecutor {
       // SandboxAdapter instead of being invoked directly here; a tool
       // WITHOUT the flag takes this exact, unchanged branch.
       const result = toolDesc.requiresSandbox
-        ? await this.executeToolViaSandbox(toolDesc, args, sandbox)
+        ? await this.executeToolViaSandbox(toolCall.function.name, toolDesc, args, sandbox)
         : await toolDesc.tool.execute(args, {} as any);
 
       return {
@@ -733,32 +733,38 @@ export class AgentExecutor {
    * shape - see src/types/tool.ts). Achieving *real* process-level
    * isolation for that closure would mean serializing its logic into a
    * script runnable inside a subprocess/container - a genuinely hard,
-   * tool-shape-specific problem that's out of scope here (SubprocessSandbox,
-   * LOU-F6, isolates the *sandbox adapter's own* `run`/`writeFile` calls,
-   * not arbitrary host-side closures).
+   * tool-shape-specific problem a generic bridge cannot solve without the
+   * tool itself cooperating.
    *
-   * So for this ticket, every sandboxed tool call is still routed through
-   * the adapter's real `writeFile()`/`run()` methods - this is the actual
-   * wiring/branch point the AC requires and tests verify via a spy - and
-   * then the tool's own `execute()` is invoked to obtain its real result.
-   * For NoopSandbox (the default, and in this environment the only
-   * available adapter - see SubprocessSandbox's Docker prerequisite in
-   * sandbox.ts) this loses nothing: NoopSandbox provides zero real
-   * isolation either way, so routing through it first and then still
-   * calling `execute()` directly is not a regression versus calling
-   * `execute()` directly with no indirection at all.
+   * So the contract is explicit: a tool that wants to be genuinely
+   * sandboxable implements `ToolDescriptor.sandboxExecute`, which receives
+   * the configured SandboxAdapter and is itself responsible for using
+   * `sandbox.run()`/`sandbox.writeFile()` to perform its real work (e.g.
+   * write input to a file, run a command that does the actual
+   * computation, parse the command's stdout as the result). When that's
+   * present, we call it and return its result - `tool.execute()` (the
+   * unsandboxed in-process closure) is never invoked for this path.
+   *
+   * If `requiresSandbox` is true but `sandboxExecute` is NOT implemented,
+   * there is no safe way to honor the flag: falling back to
+   * `tool.execute()` would run the tool's real code unsandboxed on the
+   * host while claiming it was isolated (exactly the bug this fixes). So
+   * we fail closed and throw instead, matching the codebase's established
+   * fail-closed philosophy (LOU-E's guardrails module).
    */
   private static async executeToolViaSandbox(
+    toolName: string,
     toolDesc: ToolDescriptor,
     args: Record<string, unknown>,
     sandbox: SandboxAdapter
   ): Promise<any> {
-    await sandbox.writeFile(
-      `${toolDesc.displayName || 'tool'}-args.json`,
-      JSON.stringify(args)
-    );
-    await sandbox.run(process.execPath, ['--version']);
-    return toolDesc.tool.execute!(args, {} as any);
+    if (!toolDesc.sandboxExecute) {
+      throw new Error(
+        `Tool "${toolName}" is flagged requiresSandbox but does not implement sandboxExecute() ` +
+          `- cannot be safely sandboxed, refusing to fall back to unsandboxed execution`
+      );
+    }
+    return toolDesc.sandboxExecute(args, sandbox);
   }
 
   /**
