@@ -89,8 +89,6 @@
     }
   },
   "dependencies": {
-    "dedent": "^1.5.3",
-    "dotenv": "^17.2.3",
     "nanoid": "^5.0.7",
     "undici": "^8.11.2"
   },
