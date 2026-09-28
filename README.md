@@ -1,5 +1,7 @@
 # @loushy/build-ai-agent
 
+![CI](https://github.com/LinuxDevil/agent-sdk/actions/workflows/ci.yml/badge.svg)
+
 <div align="center">
 
 **Framework-agnostic SDK for building AI agents**
