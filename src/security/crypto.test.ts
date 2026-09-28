@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { EncryptionUtils, generatePassword, DTOEncryptionFilter, sha256 } from './crypto';
+import { EncryptionUtils, generatePassword, DTOEncryptionFilter, sha256, DecryptionError } from './crypto';
 
 describe('Security - Crypto', () => {
   describe('EncryptionUtils', () => {
@@ -50,10 +50,21 @@ describe('Security - Crypto', () => {
       expect(await encryptionUtils.decrypt(encrypted2)).toBe(text);
     });
 
-    it('should return original text on decrypt failure', async () => {
+    it('should throw DecryptionError on decrypt failure', async () => {
       const invalidCiphertext = 'invalid-ciphertext';
-      const result = await encryptionUtils.decrypt(invalidCiphertext);
-      expect(result).toBe(invalidCiphertext);
+      await expect(encryptionUtils.decrypt(invalidCiphertext)).rejects.toThrow(DecryptionError);
+    });
+  });
+
+  describe('salt uniqueness', () => {
+    it('produces different salts for identical plaintext', async () => {
+      const testSecret = 'test-secret-key-12345';
+      const encryptionUtils = new EncryptionUtils(testSecret);
+      const a = await encryptionUtils.encrypt('same-plaintext');
+      const b = await encryptionUtils.encrypt('same-plaintext');
+      const saltA = a.slice(0, 32);
+      const saltB = b.slice(0, 32);
+      expect(saltA).not.toBe(saltB);
     });
   });
 
@@ -129,6 +140,11 @@ describe('Security - Crypto', () => {
 
       // Date is converted to ISO string during encryption
       expect(decrypted.timestamp).toBe(now.toISOString());
+    });
+
+    it('should propagate DecryptionError on tampered ciphertext', async () => {
+      const dto = { name: 'not-a-real-envelope' };
+      await expect(filter.decrypt(dto)).rejects.toThrow(DecryptionError);
     });
   });
 

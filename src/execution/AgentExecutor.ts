@@ -290,7 +290,7 @@ export class AgentExecutor {
    */
   private static async executeToolCall(
     toolCall: ToolCall,
-    agent: AgentConfig,
+    _agent: AgentConfig,
     toolRegistry?: ToolRegistry
   ): Promise<{
     toolCallId: string;

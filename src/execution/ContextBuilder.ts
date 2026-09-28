@@ -5,7 +5,6 @@
 
 import { AgentConfig } from '../types';
 import { Message } from '../providers';
-import { Memory } from '../data';
 import { MemoryManager } from './MemoryManager';
 
 /**

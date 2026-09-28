@@ -4,7 +4,7 @@
  */
 
 import { createOllama } from 'ollama-ai-provider';
-import { generateText, streamText, tool as aiTool, CoreMessage } from 'ai';
+import { generateText, streamText, tool as aiTool } from 'ai';
 import {
   LLMProvider,
   GenerateOptions,
@@ -189,7 +189,7 @@ export class OllamaProvider implements LLMProvider {
       }
 
       // Wait for final result to get usage stats
-      const [finalText, finalUsage, finalReason] = await Promise.all([
+      const [, finalUsage, finalReason] = await Promise.all([
         result.text,
         result.usage,
         result.finishReason,
@@ -253,7 +253,7 @@ export class OllamaProvider implements LLMProvider {
   /**
    * Check if model supports streaming
    */
-  supportsStreaming(model: string): boolean {
+  supportsStreaming(_model: string): boolean {
     return true; // All Ollama models support streaming
   }
 

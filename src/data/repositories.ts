@@ -5,7 +5,6 @@
  */
 
 import { Agent, Session, Result, Memory, Attachment } from './models';
-import { AgentConfig } from '../types';
 
 /**
  * Base Repository Interface

@@ -1,5 +1,5 @@
 import { AgentConfig } from './agent';
-import { PaginationParams, PaginatedResponse } from './common';
+import { PaginationParams } from './common';
 
 /**
  * Base repository interface
