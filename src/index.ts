@@ -52,3 +52,8 @@ export * from './createAgent';
 
 // Declarative agent spec file format (LOU-H9)
 export * from './spec';
+
+// Deployment adapter registry (LOU-I1). Only the interface + registry are
+// exported here; the built-in adapters (node-server, cloudflare-worker,
+// docker) are wired up by the `loushy build` CLI (src/cli/build.ts).
+export * from './deploy/types';

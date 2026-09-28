@@ -27,6 +27,7 @@ export default defineConfig({
     'types/index': 'src/types/index.ts',
     'data/mocks': 'src/data/mocks.ts',
     'cli/dev': 'src/cli/dev.ts',
+    'cli/build': 'src/cli/build.ts',
   },
   format: ['cjs', 'esm'],
   dts: true,

@@ -29,3 +29,6 @@ coverage/
 # Cache
 .cache/
 *.tsbuildinfo
+
+# Generated API docs (npm run docs:build)
+docs/api/

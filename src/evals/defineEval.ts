@@ -9,7 +9,7 @@
  * a threshold.
  */
 
-import { test, expect } from 'vitest';
+import type * as Vitest from 'vitest';
 import { AgentExecutor, ExecuteOptions, ExecutionResult } from '../execution/AgentExecutor';
 
 /**
@@ -48,12 +48,36 @@ export interface EvalConfig {
 }
 
 /**
+ * Returns the vitest API of the test run that is currently executing.
+ *
+ * This deliberately does NOT `import { test, expect } from 'vitest'`: this
+ * module is re-exported from the package root, and that value import made
+ * tsup bundle vitest itself into dist/index.js/.mjs, whose module-level
+ * setup throws ("Vitest failed to access its internal state") as soon as
+ * the SDK is imported anywhere outside a vitest worker - i.e. in every real
+ * application (found by LOU-I7's docs snippet verification). Every vitest
+ * worker exposes its own API as globalThis.__vitest_index__, which is also
+ * exactly the instance the running test file registers with; with vitest
+ * `globals` enabled, the global test/expect are used as a fallback.
+ */
+function currentVitest(): Pick<typeof Vitest, 'test' | 'expect'> {
+  const g = globalThis as Record<string, unknown>;
+  const api = g.__vitest_index__ as typeof Vitest | undefined;
+  if (api && typeof api.test === 'function') return api;
+  if (typeof g.test === 'function' && typeof g.expect === 'function') {
+    return { test: g.test as typeof Vitest.test, expect: g.expect as typeof Vitest.expect };
+  }
+  throw new Error('defineEval() must be called from a test file running under vitest');
+}
+
+/**
  * Define a single eval as a vitest test. Calls AgentExecutor.execute()
  * exactly once with the config's execution fields, scores the result, and
  * asserts `score >= threshold`.
  */
 export function defineEval(config: EvalConfig): void {
   const { name, score, threshold, ...executeFields } = config;
+  const { test, expect } = currentVitest();
 
   test(name, async () => {
     const result = await AgentExecutor.execute({

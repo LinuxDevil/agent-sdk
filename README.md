@@ -56,6 +56,10 @@ The SDK requires:
 
 ## Quick Start
 
+> For a verified, copy-paste-runnable walkthrough of the current API
+> (`createAgent()`, the static `AgentExecutor.execute()`, spec files), see
+> [docs/quick-start.md](docs/quick-start.md).
+
 ### 1. Build an Agent
 
 ```typescript
@@ -113,6 +117,14 @@ for await (const chunk of stream) {
   process.stdout.write(chunk.content);
 }
 ```
+
+## Documentation
+
+- [Installation](docs/installation.md) - requirements, peer/provider packages, installing from a local build
+- [Quick Start](docs/quick-start.md) - runnable, verified snippets: `createAgent()`, tools, `AgentBuilder` + `AgentExecutor`, spec files
+- [Configuration](docs/configuration.md) - agent spec files, provider credentials, execution options, CLI flags
+- [Deployment](docs/deployment.md) - `loushy build` targets: Node server, Docker, Cloudflare Workers
+- [API Overview](docs/api-overview.md) - the main exports; `npm run docs:build` generates the full TypeDoc reference
 
 ## Core Concepts
 
@@ -305,6 +317,11 @@ const context = memory.getContext(); // Recent conversation
 
 ## Examples
 
+Runnable example agents (support bot, research assistant, workflow router,
+doc Q&A, Slack notifier, tracing) live in [examples/](examples/README.md) -
+see [the examples index](examples/README.md) for what each one does and how
+to run it.
+
 ### Example 1: Simple Chatbot
 
 ```typescript
@@ -406,7 +423,7 @@ const result = await executor.execute({ input: 'Product ideas' });
 - **renderTemplate** - Template rendering
 - **validateTokenQuotas** - Quota validation
 
-For detailed API documentation, see the [TypeScript definitions](./dist/index.d.ts).
+For detailed API documentation, see the [API Overview](docs/api-overview.md), or run `npm run docs:build` to generate the full TypeDoc reference in `docs/api/`.
 
 ## Architecture
 

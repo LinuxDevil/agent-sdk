@@ -62,7 +62,12 @@ const RESOLVABLE_BUILT_IN_TOOLS: Record<string, ToolDescriptor> = {
 
 const CREDENTIALED_TOOLS = new Set(['github', 'jira']);
 
-function resolveTool(name: string): ToolDescriptor {
+/**
+ * Resolves one AgentSpec `tools` entry to its built-in ToolDescriptor.
+ * Exported (LOU-I2) so generated deployment servers (src/deploy) resolve
+ * spec tools exactly the way specToAgent()/`loushy dev` do.
+ */
+export function resolveSpecTool(name: string): ToolDescriptor {
   const tool = RESOLVABLE_BUILT_IN_TOOLS[name];
   if (tool) return tool;
 
@@ -90,7 +95,7 @@ export function specToAgent(spec: AgentSpec): SimpleAgent {
 
   const tools: CreateAgentConfig['tools'] = {};
   for (const name of spec.tools || []) {
-    tools[name] = resolveTool(name);
+    tools[name] = resolveSpecTool(name);
   }
 
   return createAgent({

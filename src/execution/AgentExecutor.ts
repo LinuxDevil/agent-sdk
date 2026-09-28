@@ -7,7 +7,7 @@ import { nanoid } from 'nanoid';
 import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult } from '../providers';
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
-import { SandboxAdapter, NoopSandbox } from '../security/sandbox';
+import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
 import { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGate';
 import { Checkpoint, CheckpointStore } from './checkpoint';
 import { TraceExporter, withSpan } from './tracing';

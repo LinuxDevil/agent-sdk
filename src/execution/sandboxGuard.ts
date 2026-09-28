@@ -19,7 +19,7 @@
  */
 
 import { ToolDescriptor } from '../types';
-import { SandboxAdapter } from '../security/sandbox';
+import { SandboxAdapter } from '../security/sandboxCore';
 
 /**
  * Execute `toolDesc` against `args`, honoring `requiresSandbox`:
