@@ -56,10 +56,15 @@ export class LocalStorageCheckpointStore implements CheckpointStore {
 
   async load(sessionId: string): Promise<Checkpoint | null> {
     const storageKey = this.getStorageKey(sessionId);
-    if (!this.storageService.fileExists(storageKey)) {
-      return null;
+    await this.storageService.acquireLock(storageKey);
+    try {
+      if (!this.storageService.fileExists(storageKey)) {
+        return null;
+      }
+      return this.storageService.readPlainJSONAttachment<Checkpoint>(storageKey);
+    } finally {
+      this.storageService.releaseLock(storageKey);
     }
-    return this.storageService.readPlainJSONAttachment<Checkpoint>(storageKey);
   }
 
   async delete(sessionId: string): Promise<void> {

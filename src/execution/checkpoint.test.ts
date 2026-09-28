@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { Checkpoint, LocalStorageCheckpointStore } from './checkpoint';
 import { StorageService, FileSystemAdapter, PathAdapter } from '../storage/StorageService';
 
@@ -86,5 +86,29 @@ describe('Execution - LocalStorageCheckpointStore', () => {
   it('should not throw when deleting a sessionId that was never saved', async () => {
     const store = createCheckpointStore();
     await expect(store.delete('never-saved')).resolves.toBeUndefined();
+  });
+
+  it('should acquire and release the same storage-key lock in load() as save()/delete() do', async () => {
+    const { fs, path } = createFakeFs();
+    const storageService = new StorageService('test-db-hash', 'test-schema', fs, path, '/test/root');
+    const store = new LocalStorageCheckpointStore(storageService);
+
+    const acquireSpy = vi.spyOn(storageService, 'acquireLock');
+    const releaseSpy = vi.spyOn(storageService, 'releaseLock');
+
+    const checkpoint = buildCheckpoint();
+    await store.save('session-lock', checkpoint);
+    acquireSpy.mockClear();
+    releaseSpy.mockClear();
+
+    await store.load('session-lock');
+
+    expect(acquireSpy).toHaveBeenCalledWith('checkpoints/session-lock.json');
+    expect(releaseSpy).toHaveBeenCalledWith('checkpoints/session-lock.json');
+    // Lock must be released even though load() returns from inside the
+    // try block (finally-based release, matching save()/delete()).
+    expect(acquireSpy.mock.invocationCallOrder[0]).toBeLessThan(
+      releaseSpy.mock.invocationCallOrder[0]
+    );
   });
 });
