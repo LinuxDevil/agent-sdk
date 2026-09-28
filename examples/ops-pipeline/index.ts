@@ -40,6 +40,7 @@ import {
 } from './slackInteractions';
 import { ApprovalStore } from '../../src/execution/ApprovalGate';
 import { ExecutionResult } from '../../src/execution/AgentExecutor';
+import { Guardrail } from '../../src/execution/guardrails';
 import { createDemoProvider } from './demoProvider';
 import { createMockGithubTool } from './mocks/mockGithubTool';
 import { createMockSlackTool } from './mocks/mockSlackTool';
@@ -81,6 +82,14 @@ export interface OpsPipelineDeps {
   slackHost?: string;
   slackPort?: number;
   channel?: string;
+  /**
+   * Guardrails to run before considering the GitHub PR call. Defaults to
+   * handleFixerPatch()'s own defaults (real secretScanGuardrail + a
+   * diff-size cap) when omitted. Exposed here so callers (e.g. LOU-J9's
+   * pipeline.eval.ts) can wrap the default guardrails to observe/record
+   * execution order without changing which guardrails actually run.
+   */
+  guardrails?: Guardrail[];
 }
 
 export interface OpsPipelineHandle {
@@ -203,6 +212,7 @@ export async function startOpsPipeline(deps: OpsPipelineDeps = {}): Promise<OpsP
                 channel,
                 approvalId,
                 head: `fix/auto-${approvalId}`,
+                guardrails: deps.guardrails,
               });
             }
           }
