@@ -1,0 +1,10 @@
+{
+  "name": "sample-repo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimal fixture repo for guardrails.test.ts (LOU-E11) - a passing test suite plus a trivial custom lint rule, deliberately dependency-free so tests don't need network/npm-install to mutate and run it.",
+  "scripts": {
+    "test": "node --test",
+    "lint": "node lint.js"
+  }
+}

@@ -4,6 +4,11 @@
  * diff about to be committed/PR'd) before it's allowed through (LOU-E9+).
  */
 
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
+
 /**
  * A proposed action for guardrails to vet. Minimal placeholder shape -
  * LOU-J (not yet landed) is expected to define the real ProposedAction
@@ -118,3 +123,58 @@ export const secretScanGuardrail: Guardrail = {
     return { pass: true };
   },
 };
+
+/**
+ * Builds a Guardrail that runs `command args...` in `cwd` and passes iff
+ * the process exits 0. Used for both the test-run and lint guardrails
+ * below (and reusable for any other "run this command, pass on exit 0"
+ * check) so that logic isn't duplicated per guardrail.
+ *
+ * Deliberately has no timeout of its own - runGuardrailSafely() (LOU-E9)
+ * already races every guardrail (including this one) against a timeout,
+ * and a second, independent timeout mechanism here would just be
+ * redundant complexity. When the outer race gives up first, the
+ * underlying child process may keep running in the background; that's an
+ * accepted tradeoff of not duplicating the timeout here.
+ */
+export function createCommandGuardrail(
+  name: string,
+  cwd: string,
+  command: string,
+  args: string[]
+): Guardrail {
+  return {
+    name,
+    async check(_action: ProposedAction): Promise<GuardrailResult> {
+      try {
+        // On Windows, npm (and other npm-installed CLIs) are .cmd shims
+        // that execFile can only invoke through a shell.
+        await execFileAsync(command, args, { cwd, shell: process.platform === 'win32' });
+        return { pass: true };
+      } catch (error) {
+        const err = error as { code?: number | string; stderr?: string; message: string };
+        const stderr = (err.stderr || '').toString().trim();
+        return {
+          pass: false,
+          reason: `${name} failed (exit code ${err.code ?? 'unknown'})${
+            stderr ? `: ${stderr}` : `: ${err.message}`
+          }`,
+        };
+      }
+    },
+  };
+}
+
+/**
+ * Runs `npm test` in `repoPath` and passes iff it exits 0.
+ */
+export function createTestRunGuardrail(repoPath: string): Guardrail {
+  return createCommandGuardrail('test-run', repoPath, 'npm', ['test']);
+}
+
+/**
+ * Runs `npm run lint` in `repoPath` and passes iff it exits 0.
+ */
+export function createLintGuardrail(repoPath: string): Guardrail {
+  return createCommandGuardrail('lint', repoPath, 'npm', ['run', 'lint']);
+}

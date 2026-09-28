@@ -1,10 +1,16 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   runGuardrailSafely,
   Guardrail,
   ProposedAction,
   createDiffSizeGuardrail,
   secretScanGuardrail,
+  createCommandGuardrail,
+  createTestRunGuardrail,
+  createLintGuardrail,
 } from './guardrails';
 
 const action: ProposedAction = { diff: 'diff --git a/foo.txt b/foo.txt\n+hello\n' };
@@ -99,4 +105,72 @@ describe('secretScanGuardrail', () => {
     const result = await secretScanGuardrail.check({ diff });
     expect(result.pass).toBe(true);
   });
+});
+
+describe('command guardrails (LOU-E11)', () => {
+  const fixtureRepo = path.join(__dirname, '__fixtures__', 'sample-repo');
+  let scratchDir: string;
+  const dummyAction: ProposedAction = { diff: '' };
+
+  beforeEach(() => {
+    scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'guardrails-fixture-'));
+    fs.cpSync(fixtureRepo, scratchDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    fs.rmSync(scratchDir, { recursive: true, force: true });
+  });
+
+  it('createTestRunGuardrail passes against the unmutated fixture repo', async () => {
+    const guardrail = createTestRunGuardrail(scratchDir);
+    const result = await guardrail.check(dummyAction);
+    expect(result.pass).toBe(true);
+  }, 30000);
+
+  it('createTestRunGuardrail fails when a test is mutated to fail', async () => {
+    const testFile = path.join(scratchDir, 'test', 'sample.test.js');
+    const original = fs.readFileSync(testFile, 'utf-8');
+    fs.writeFileSync(testFile, original.replace('add(2, 3), 5', 'add(2, 3), 999'));
+
+    const guardrail = createTestRunGuardrail(scratchDir);
+    const result = await guardrail.check(dummyAction);
+    expect(result.pass).toBe(false);
+    expect(result.reason).toContain('test-run');
+  }, 30000);
+
+  it('createLintGuardrail passes against the unmutated fixture repo', async () => {
+    const guardrail = createLintGuardrail(scratchDir);
+    const result = await guardrail.check(dummyAction);
+    expect(result.pass).toBe(true);
+  }, 30000);
+
+  it('createLintGuardrail fails when a lint violation is introduced', async () => {
+    const srcFile = path.join(scratchDir, 'src', 'index.js');
+    const original = fs.readFileSync(srcFile, 'utf-8');
+    fs.writeFileSync(srcFile, `var legacy = true;\n${original}`);
+
+    const guardrail = createLintGuardrail(scratchDir);
+    const result = await guardrail.check(dummyAction);
+    expect(result.pass).toBe(false);
+    expect(result.reason).toContain('lint');
+  }, 30000);
+
+  it('resolves to pass:false via the E9 timeout wrapper instead of hanging, for an artificially slow command', async () => {
+    // A command that sleeps far longer than the configured timeout below.
+    const slowGuardrail = createCommandGuardrail(
+      'slow-command',
+      scratchDir,
+      process.execPath,
+      ['-e', 'setTimeout(() => {}, 5000)']
+    );
+
+    const start = Date.now();
+    const result = await runGuardrailSafely(slowGuardrail, dummyAction, 100);
+    const elapsed = Date.now() - start;
+
+    expect(result.pass).toBe(false);
+    expect(result.reason).toContain('slow-command');
+    // Should resolve close to the 100ms timeout, not wait for the 5s sleep.
+    expect(elapsed).toBeLessThan(2000);
+  }, 10000);
 });
