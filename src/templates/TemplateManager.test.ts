@@ -199,6 +199,56 @@ No users found
     });
   });
 
+  describe('nested blocks (LOU-A9)', () => {
+    it('renders an if nested inside a for per-iteration', () => {
+      const template =
+        '{% for user in users %}{% if user.admin %}Admin: {{ user.name }}{% else %}User: {{ user.name }}{% endif %}, {% endfor %}';
+      const context = {
+        users: [
+          { name: 'Alice', admin: true },
+          { name: 'Bob', admin: false },
+          { name: 'Carol', admin: true },
+        ],
+      };
+      const result = renderTemplate(template, context);
+      expect(result).toBe('Admin: Alice, User: Bob, Admin: Carol, ');
+    });
+
+    it('does not leak state between two adjacent for-blocks using the same variable name', () => {
+      const template =
+        '{% for item in first %}A:{{ item }} {% endfor %}|{% for item in second %}B:{{ item }} {% endfor %}';
+      const context = { first: ['x', 'y'], second: ['1', '2', '3'] };
+      const result = renderTemplate(template, context);
+      expect(result).toBe('A:x A:y |B:1 B:2 B:3 ');
+    });
+
+    it('throws a parse error instead of returning a string for an unclosed if block', () => {
+      const template = '{% if user %}Hello {{ user }}';
+      expect(() => renderTemplate(template, { user: 'Alice' })).toThrow(/Unclosed block/);
+    });
+  });
+
+  describe('render performance', () => {
+    it('renders a moderately sized template without a large latency regression', () => {
+      const template =
+        '{% for item in items %}{% if item.active %}- {{ item.name }}: {{ item.value }}\n{% endif %}{% endfor %}';
+      const items = Array.from({ length: 500 }, (_, i) => ({
+        name: `item-${i}`,
+        value: i,
+        active: i % 2 === 0,
+      }));
+
+      const start = performance.now();
+      const result = renderTemplate(template, { items });
+      const elapsed = performance.now() - start;
+
+      expect(result).toContain('item-0');
+      // Not a strict perf gate, just a sanity bound that rendering 500
+      // for/if iterations stays fast (well under a second).
+      expect(elapsed).toBeLessThan(1000);
+    });
+  });
+
   describe('edge cases', () => {
     it('should handle undefined context', () => {
       const template = '{{ name }}';

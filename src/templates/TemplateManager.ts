@@ -8,8 +8,8 @@
  */
 
 import { TemplateContext, TemplateFilter, TemplateOptions, ITemplateManager } from './types';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- wired into the render path in LOU-A9
 import { tokenize } from './tokenizer';
+import { parseTokens, BlockNode } from './blockParser';
 
 /**
  * Basic HTML-escaper used in the "|escape" (or "|e") filter.
@@ -44,177 +44,92 @@ function evaluateCondition(conditionExpr: string, context: any): boolean {
 }
 
 /**
- * Parse if-blocks of the form:
- * 
- *    {% if something %}
- *      ...
- *    {% else %}
- *      ...
- *    {% endif %}
- */
-function parseIfBlocks(
-  template: string,
-  context: any,
-  filters: Record<string, TemplateFilter>
-): string {
-  const ifBlockRegex = /{%\s*if\s+(.+?)\s*%}([\s\S]*?){%\s*endif\s*%}/;
-
-  let match = ifBlockRegex.exec(template);
-  while (match) {
-    const [fullMatch, conditionExpr, blockContent] = match;
-
-    // Check for optional {% else %} inside the blockContent
-    let elseContent = '';
-    let thenContent = blockContent;
-
-    const elseRegex = /{%\s*else\s*%}([\s\S]*)$/;
-    const elseMatch = elseRegex.exec(blockContent);
-    if (elseMatch) {
-      thenContent = blockContent.slice(0, elseMatch.index);
-      elseContent = elseMatch[1];
-    }
-
-    // Evaluate condition
-    const conditionResult = evaluateCondition(conditionExpr, context);
-
-    // If condition is truthy, keep the "thenContent"
-    // otherwise, keep the "elseContent"
-    let chosenContent = conditionResult ? thenContent : elseContent;
-
-    // Recursively parse nested if-blocks within the chosen content
-    chosenContent = parseIfBlocks(chosenContent, context, filters);
-
-    // Also parse nested for-blocks inside this chunk
-    chosenContent = parseForBlocks(chosenContent, context, filters);
-
-    // And do variable replacement
-    chosenContent = replaceVariables(chosenContent, context, filters);
-
-    // Replace the entire if-block in the template
-    template =
-      template.slice(0, match.index) +
-      chosenContent +
-      template.slice(match.index + fullMatch.length);
-
-    match = ifBlockRegex.exec(template);
-  }
-
-  return template;
-}
-
-/**
- * Parse for-blocks of the form:
- * 
- *    {% for user in users %}
- *      ...
- *    {% else %}
- *      ...
- *    {% endfor %}
- */
-function parseForBlocks(
-  template: string,
-  context: any,
-  filters: Record<string, TemplateFilter>
-): string {
-  const forBlockRegex = /{%\s*for\s+(\w+)\s+in\s+(\w+(?:\.\w+)*)\s*%}([\s\S]*?){%\s*endfor\s*%}/;
-
-  let match = forBlockRegex.exec(template);
-  while (match) {
-    const [fullMatch, itemVar, arrayVar, blockContent] = match;
-
-    let elseContent = '';
-    let innerContent = blockContent;
-
-    // Check for optional {% else %} inside the blockContent
-    const elseRegex = /{%\s*else\s*%}([\s\S]*)$/;
-    const elseMatch = elseRegex.exec(blockContent);
-    if (elseMatch) {
-      innerContent = blockContent.slice(0, elseMatch.index);
-      elseContent = elseMatch[1];
-    }
-
-    // Resolve array from context
-    const arr = getValueFromContext(arrayVar, context) || [];
-    let replacement = '';
-
-    if (Array.isArray(arr) && arr.length > 0) {
-      for (const item of arr) {
-        // Extend context with current item
-        const newContext = { ...context, [itemVar]: item };
-
-        // Recursively parse if/for/variables in the loop content
-        let parsed = innerContent;
-        parsed = parseIfBlocks(parsed, newContext, filters);
-        parsed = parseForBlocks(parsed, newContext, filters);
-        parsed = replaceVariables(parsed, newContext, filters);
-
-        replacement += parsed;
-      }
-    } else if (typeof arr === 'object' && Object.values(arr).length > 0) {
-      for (const item of Object.values(arr)) {
-        // Extend context with current item
-        const newContext = { ...context, [itemVar]: item };
-
-        // Recursively parse if/for/variables in the loop content
-        let parsed = innerContent;
-        parsed = parseIfBlocks(parsed, newContext, filters);
-        parsed = parseForBlocks(parsed, newContext, filters);
-        parsed = replaceVariables(parsed, newContext, filters);
-
-        replacement += parsed;
-      }
-    } else {
-      // If array is empty, parse the else block
-      let parsedElse = elseContent;
-      parsedElse = parseIfBlocks(parsedElse, context, filters);
-      parsedElse = parseForBlocks(parsedElse, context, filters);
-      parsedElse = replaceVariables(parsedElse, context, filters);
-      replacement = parsedElse;
-    }
-
-    // Replace entire block with the loop expansion
-    template =
-      template.slice(0, match.index) +
-      replacement +
-      template.slice(match.index + fullMatch.length);
-
-    match = forBlockRegex.exec(template);
-  }
-
-  return template;
-}
-
-/**
- * Replace variable placeholders of the form:
- * 
+ * Render a single {{ expr }} expression, including any "|filter" chain.
+ *
  *    {{ var }}
  *    {{ var|escape }} or {{ var|e }}
  *    {{ var|someCustomFilter }}
  */
-function replaceVariables(
-  template: string,
+function renderExpression(
+  expr: string,
   context: any,
   filters: Record<string, TemplateFilter>
 ): string {
-  return template.replace(/\{\{\s*(.*?)\s*\}\}/g, (_, expr) => {
-    // e.g., "user.name|escape"
-    const parts = expr.split('|').map((p: string) => p.trim());
-    const varPath = parts.shift() ?? '';
+  const parts = expr.split('|').map((p) => p.trim());
+  const varPath = parts.shift() ?? '';
 
-    let value = getValueFromContext(varPath, context) ?? '';
+  let value = getValueFromContext(varPath, context) ?? '';
 
-    // Apply each filter if exists
-    for (const filterName of parts) {
-      // If user typed "|e", treat as "|escape"
-      const fn =
-        filters[filterName] || (filterName === 'e' ? filters['escape'] : undefined);
-      if (typeof fn === 'function') {
-        value = fn(value);
+  for (const filterName of parts) {
+    // If user typed "|e", treat as "|escape"
+    const fn = filters[filterName] || (filterName === 'e' ? filters['escape'] : undefined);
+    if (typeof fn === 'function') {
+      value = fn(value);
+    }
+  }
+
+  return String(value);
+}
+
+/**
+ * Walk a BlockNode tree (produced by parseTokens) and render it to a string.
+ * Handles nested {% if %}/{% for %} blocks correctly, since each {% for %}
+ * iteration gets its own extended context and adjacent for-blocks don't
+ * share any mutable state.
+ */
+function renderBlockTree(
+  nodes: BlockNode[],
+  context: any,
+  filters: Record<string, TemplateFilter>
+): string {
+  let output = '';
+
+  for (const node of nodes) {
+    switch (node.type) {
+      case 'text':
+        output += node.value;
+        break;
+
+      case 'expression':
+        output += renderExpression(node.expr, context, filters);
+        break;
+
+      case 'if': {
+        const conditionResult = evaluateCondition(node.expr, context);
+        output += renderBlockTree(
+          conditionResult ? node.children : node.elseChildren,
+          context,
+          filters
+        );
+        break;
+      }
+
+      case 'for': {
+        const arr = getValueFromContext(node.iterable, context) || [];
+        let items: any[] = [];
+        if (Array.isArray(arr)) {
+          items = arr;
+        } else if (typeof arr === 'object' && arr !== null) {
+          items = Object.values(arr);
+        }
+
+        if (items.length > 0) {
+          for (const item of items) {
+            // Extend context with current item; each iteration gets its own
+            // object, so adjacent for-blocks never leak state into one
+            // another.
+            const newContext = { ...context, [node.varName]: item };
+            output += renderBlockTree(node.children, newContext, filters);
+          }
+        } else {
+          output += renderBlockTree(node.elseChildren, context, filters);
+        }
+        break;
       }
     }
+  }
 
-    return String(value);
-  });
+  return output;
 }
 
 /**
@@ -232,16 +147,9 @@ export class TemplateManager implements ITemplateManager {
       ...(options?.customFilters || {}),
     };
 
-    // 1) Parse {% if %}
-    template = parseIfBlocks(template, context, filters);
-
-    // 2) Parse {% for %}
-    template = parseForBlocks(template, context, filters);
-
-    // 3) Finally, replace {{ var }} placeholders
-    template = replaceVariables(template, context, filters);
-
-    return template;
+    const tokens = tokenize(template);
+    const tree = parseTokens(tokens);
+    return renderBlockTree(tree, context, filters);
   }
 
   /**
