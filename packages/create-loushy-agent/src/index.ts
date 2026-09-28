@@ -1,4 +1,5 @@
 import { parseArgs } from 'node:util';
+import { collectAnswers, validateAnswers, AnswerConfig } from './prompts';
 
 const USAGE = `create-loushy-agent - scaffold a new @loushy/build-ai-agent project
 
@@ -88,10 +89,32 @@ export async function main(argv: string[]): Promise<number> {
 }
 
 /**
- * Placeholder scaffold step, overridden by LOU-H3/LOU-H4 wiring (prompts +
- * template generation) added in later commits of this same file.
+ * Resolves the AnswerConfig either from --yes/flag shortcuts (non-interactive,
+ * testable via a piped/scripted process) or by running the interactive
+ * prompts.ts flow. A flag-only invocation ("--yes" or both "--name" and
+ * "--provider" given) never touches the interactive prompts, which is what
+ * makes this reliably testable end-to-end without a real TTY.
  */
-async function runScaffold(_args: ParsedCliArgs): Promise<number> {
-  process.stdout.write('create-loushy-agent: nothing to do yet.\n');
+async function resolveAnswers(args: ParsedCliArgs): Promise<AnswerConfig> {
+  const useShortcut = args.yes || (!!args.name && !!args.provider);
+
+  if (!useShortcut) {
+    return collectAnswers();
+  }
+
+  return validateAnswers({
+    name: args.name || 'my-loushy-agent',
+    provider: args.provider || 'openai',
+    tools: args.tools ? args.tools.split(',').map((t) => t.trim()).filter(Boolean) : [],
+  });
+}
+
+/**
+ * Scaffold step: resolve answers, then generate the project (LOU-H4 wires
+ * generateProject() in here).
+ */
+async function runScaffold(args: ParsedCliArgs): Promise<number> {
+  const answers = await resolveAnswers(args);
+  process.stdout.write(`Scaffolding ${answers.name} (${answers.provider})...\n`);
   return 0;
 }
