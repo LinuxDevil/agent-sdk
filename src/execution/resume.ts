@@ -15,7 +15,7 @@ import { AgentExecutor, ExecuteOptions, ExecutionResult } from './AgentExecutor'
  */
 export type ResumeExecuteOptions = Omit<
   ExecuteOptions,
-  'agent' | 'input' | 'provider' | 'toolRegistry' | 'skipSystemPromptInjection'
+  'agent' | 'input' | 'provider' | 'toolRegistry' | 'skipSystemPromptInjection' | 'initialSteps'
 >;
 
 /**
@@ -103,5 +103,10 @@ export async function resumeAfterApproval(
     // scratch" path and prepend a second, duplicate system message built
     // fresh from agent.prompt.
     skipSystemPromptInjection: true,
+    // Continue step-budget accounting from where the paused run left off,
+    // rather than silently resetting to a full fresh maxSteps allowance.
+    // snapshot.steps is the step count AgentExecutor.execute() had already
+    // reached (see ExecutionSnapshot) at the moment it paused for approval.
+    initialSteps: snapshot.steps,
   });
 }

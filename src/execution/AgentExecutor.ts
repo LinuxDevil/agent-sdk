@@ -75,6 +75,16 @@ export interface ExecuteOptions {
    * system message anyway.
    */
   skipSystemPromptInjection?: boolean;
+  /**
+   * Starting value for the step counter (and therefore the maxSteps
+   * safety-limit budget), used when there is no checkpoint to rehydrate
+   * `steps` from but execution is still a continuation of prior work - e.g.
+   * resume.ts resuming a run that was paused for approval after already
+   * taking some steps. Ignored whenever a checkpoint is loaded, since
+   * `checkpoint.stepIndex` is the source of truth in that case. Defaults to
+   * 0 (a genuinely fresh run) when omitted.
+   */
+  initialSteps?: number;
 }
 
 /**
@@ -115,6 +125,7 @@ export class AgentExecutor {
       sessionId,
       checkpointStore,
       skipSystemPromptInjection,
+      initialSteps,
     } = options;
 
     // Emit start event
@@ -155,7 +166,7 @@ export class AgentExecutor {
         completionTokens: 0,
         totalTokens: 0,
       };
-      steps = 0;
+      steps = initialSteps ?? 0;
     }
 
     let finalText = '';

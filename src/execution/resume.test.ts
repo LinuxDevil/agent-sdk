@@ -223,6 +223,115 @@ describe('Execution - resumeAfterApproval', () => {
     expect(parsed.error).toBe('payment gateway timeout');
   });
 
+  it('should continue step-count accounting from the pre-pause step count on resume', async () => {
+    const execute = vi.fn().mockResolvedValue({ ok: true });
+    toolRegistry.register('chargeCard', {
+      displayName: 'Charge Card',
+      tool: { description: 'Charge a card', parameters: {}, execute } as any,
+      needsApproval: true,
+    });
+
+    const agent = AgentBuilder.create()
+      .setType(AgentType.SmartAssistant)
+      .setName('Test Agent')
+      .addTool('chargeCard', { tool: 'chargeCard', options: {} })
+      .build();
+
+    // Scripted provider: two plain (no tool call) generations first, to
+    // burn 2 steps, then a generation that triggers the approval-gated
+    // tool call, then a final stop response after resume.
+    let call = 0;
+    const scriptedProvider = {
+      name: 'scripted',
+      supportsTools: () => true,
+      supportsStreaming: () => false,
+      getModels: async () => ['scripted'],
+      stream: async () => {
+        throw new Error('not implemented');
+      },
+      generate: async () => {
+        call++;
+        if (call <= 2) {
+          return {
+            text: `thinking step ${call}`,
+            finishReason: 'stop' as const,
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          };
+        }
+        if (call === 3) {
+          return {
+            text: 'calling chargeCard',
+            finishReason: 'tool_calls' as const,
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+            toolCalls: [
+              {
+                id: 'call-1',
+                type: 'function' as const,
+                function: { name: 'chargeCard', arguments: '{}' },
+              },
+            ],
+          };
+        }
+        return {
+          text: 'done',
+          finishReason: 'stop' as const,
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        };
+      },
+    };
+
+    const approvalStore = createInMemoryApprovalStore();
+
+    // Force exactly one step per execute() call so the 2 "thinking" steps
+    // are pre-pause history the *next* execute() call must pick up from.
+    const firstStep = await AgentExecutor.execute({
+      agent,
+      input: 'go',
+      provider: scriptedProvider as any,
+      toolRegistry,
+      approvalStore,
+      maxSteps: 1,
+    });
+    expect(firstStep.steps).toBe(1);
+
+    const secondStep = await AgentExecutor.execute({
+      agent,
+      input: firstStep.messages,
+      provider: scriptedProvider as any,
+      toolRegistry,
+      approvalStore,
+      maxSteps: firstStep.steps + 1,
+      skipSystemPromptInjection: true,
+      initialSteps: firstStep.steps,
+    } as any);
+    expect(secondStep.steps).toBe(2);
+
+    // Third call actually triggers the approval-gated tool call, continuing
+    // from step 2.
+    const paused = await AgentExecutor.execute({
+      agent,
+      input: secondStep.messages,
+      provider: scriptedProvider as any,
+      toolRegistry,
+      approvalStore,
+      skipSystemPromptInjection: true,
+      initialSteps: secondStep.steps,
+    } as any);
+    expect(paused.finishReason).toBe('awaiting-approval');
+    expect(paused.steps).toBe(3);
+
+    const resumed = await resumeAfterApproval(
+      { id: paused.approvalId!, approved: true },
+      approvalStore,
+      toolRegistry,
+      scriptedProvider as any
+    );
+
+    // Continuation from step 3 (not reset to 0/1): one more generation
+    // happens on resume, so steps should be 4.
+    expect(resumed.steps).toBe(4);
+  });
+
   it('should throw a clear error for an unknown or already-resolved approval id', async () => {
     const approvalStore = createInMemoryApprovalStore();
     const provider = createMockProvider({ name: 'mock' });
