@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { tool } from 'ai';
+import { isIP } from 'net';
+import { promises as dnsPromises } from 'dns';
 import { ToolDescriptor } from '../../types';
 
 /**
@@ -29,6 +31,11 @@ export interface HttpToolOptions {
  * Default SSRF denylist: loopback, RFC1918 private ranges, link-local
  * (including the cloud metadata endpoint at 169.254.169.254), and their
  * IPv6 equivalents. Active by default with no opt-in flag.
+ *
+ * Note: fc00::/7 (unique local addresses) spans fc00:: through
+ * fdff:ffff:..., so the second hex nibble after "f" must match both "c"
+ * and "d" (case-insensitively, since IPv6 literals may be upper/lower/mixed
+ * case before normalization).
  */
 const BLOCKED_RANGES = [
   /^127\./,
@@ -37,12 +44,98 @@ const BLOCKED_RANGES = [
   /^172\.(1[6-9]|2\d|3[01])\./,
   /^169\.254\./,
   /^::1$/,
-  /^fc00:/,
-  /^fe80:/,
+  /^f[cd][0-9a-f]{2}:/i,
+  /^fe80:/i,
 ];
 
-function isBlockedHost(hostname: string): boolean {
-  return BLOCKED_RANGES.some((re) => re.test(hostname));
+/**
+ * Strip surrounding IPv6 brackets (`[::1]` -> `::1`) and lowercase, since
+ * `new URL(...).hostname` keeps the brackets for IPv6 literals and may
+ * preserve mixed case that our regexes assume is already lowercase.
+ */
+function normalizeHostLiteral(hostname: string): string {
+  return hostname.replace(/^\[|\]$/g, '').toLowerCase();
+}
+
+/**
+ * If `address` is an IPv4-mapped IPv6 address (`::ffff:a.b.c.d` or its
+ * compressed hex form `::ffff:HHHH:HHHH`), extract and return the embedded
+ * IPv4 address in dotted-decimal form. Returns null otherwise.
+ */
+function extractMappedIPv4(address: string): string | null {
+  const dotted = address.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i);
+  if (dotted) {
+    return dotted[1];
+  }
+
+  const hex = address.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
+  if (hex) {
+    const hi = parseInt(hex[1], 16);
+    const lo = parseInt(hex[2], 16);
+    return [
+      (hi >> 8) & 0xff,
+      hi & 0xff,
+      (lo >> 8) & 0xff,
+      lo & 0xff,
+    ].join('.');
+  }
+
+  return null;
+}
+
+/**
+ * Check a single resolved/literal IP address (v4 or v6, already stripped
+ * of brackets) against the SSRF denylist, unwrapping IPv4-mapped IPv6
+ * addresses first so `::ffff:127.0.0.1` (and its compressed hex form) is
+ * caught the same way `127.0.0.1` is.
+ */
+function isBlockedAddress(address: string): boolean {
+  const normalized = normalizeHostLiteral(address);
+
+  const mappedIPv4 = extractMappedIPv4(normalized);
+  if (mappedIPv4 && BLOCKED_RANGES.some((re) => re.test(mappedIPv4))) {
+    return true;
+  }
+
+  return BLOCKED_RANGES.some((re) => re.test(normalized));
+}
+
+/**
+ * Determine whether a request to `hostname` should be blocked by the SSRF
+ * denylist.
+ *
+ * - If `hostname` is already an IP literal (`net.isIP` != 0), it is checked
+ *   directly.
+ * - Otherwise `hostname` is a domain name. It is resolved via DNS *before*
+ *   any connection is attempted, and EVERY resolved address is checked
+ *   against the denylist. This closes the DNS-rebinding gap where an
+ *   attacker-controlled domain resolves to a blocked internal/loopback IP.
+ * - If DNS resolution itself fails, that is not treated as a block; the
+ *   normal fetch error is left to surface from the caller's own connection
+ *   attempt instead of being reported as an SSRF rejection.
+ *
+ * Decimal/octal/hex IPv4 encodings (e.g. `2130706433`, `017700000001`,
+ * `0x7f000001`) are not handled with bespoke parsing here: `new URL(...)`
+ * already normalizes all three forms to dotted-decimal (`127.0.0.1`) before
+ * `hostname` is ever read, which is verified by a regression test in
+ * http.test.ts.
+ */
+async function isBlockedHost(hostname: string): Promise<boolean> {
+  const bare = normalizeHostLiteral(hostname);
+
+  if (isIP(bare)) {
+    return isBlockedAddress(bare);
+  }
+
+  try {
+    const resolved = await dnsPromises.lookup(bare, { all: true });
+    return resolved.some((entry) => isBlockedAddress(entry.address));
+  } catch {
+    // DNS resolution failed (e.g. NXDOMAIN). Don't swallow this as a
+    // block - let the subsequent fetch() attempt fail with its own,
+    // more informative network error.
+    return false;
+  }
 }
 
 /**
@@ -62,7 +155,7 @@ export async function makeHttpRequest({
   options?: HttpToolOptions;
 }): Promise<string> {
   const parsedUrl = new URL(url);
-  if (isBlockedHost(parsedUrl.hostname)) {
+  if (await isBlockedHost(parsedUrl.hostname)) {
     throw new Error(`Request to blocked host ${parsedUrl.hostname} rejected by SSRF denylist`);
   }
 
@@ -102,7 +195,7 @@ export async function makeHttpRequest({
       }
       currentUrl = new URL(response.headers.get('location')!, currentUrl).toString();
       const redirectHostname = new URL(currentUrl).hostname;
-      if (isBlockedHost(redirectHostname)) {
+      if (await isBlockedHost(redirectHostname)) {
         throw new Error(`Request to blocked host ${redirectHostname} rejected by SSRF denylist`);
       }
       response = await fetch(currentUrl, fetchOptions);

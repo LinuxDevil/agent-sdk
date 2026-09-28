@@ -1,5 +1,6 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import http from 'http';
+import dns from 'dns';
 import type { AddressInfo } from 'net';
 import { makeHttpRequest } from './http';
 
@@ -14,12 +15,35 @@ function listen(server: http.Server): Promise<string> {
 
 describe('makeHttpRequest', () => {
   let server: http.Server | undefined;
+  let dnsLookupSpy: ReturnType<typeof vi.spyOn> | undefined;
+
+  beforeEach(() => {
+    // The behavioral tests below (timeout / redirects) spin up a real HTTP
+    // server bound to 'localhost' purely as test infrastructure - they are
+    // not exercising SSRF behavior. Since the hardened SSRF check now
+    // resolves domain names via DNS before connecting (to close the
+    // DNS-rebinding gap), and 'localhost' genuinely resolves to a loopback
+    // address that the denylist correctly blocks, we stub dns.lookup for
+    // this hostname to return a non-blocked address for the purposes of the
+    // SSRF pre-check only. The actual fetch() call still connects to the
+    // real local server via Node's own (unmocked) DNS resolution.
+    dnsLookupSpy = vi.spyOn(dns.promises, 'lookup').mockImplementation(async (hostname: any, opts?: any) => {
+      if (hostname === 'localhost') {
+        const entry = { address: '203.0.113.10', family: 4 };
+        return (opts && opts.all ? [entry] : entry) as any;
+      }
+      return vi.importActual<typeof dns>('dns').then((actual) =>
+        actual.promises.lookup(hostname, opts)
+      ) as any;
+    });
+  });
 
   afterEach(async () => {
     if (server) {
       await new Promise<void>((resolve) => server!.close(() => resolve()));
       server = undefined;
     }
+    dnsLookupSpy?.mockRestore();
   });
 
   it('rejects near the configured timeout when the server never responds', async () => {
@@ -105,6 +129,92 @@ describe('makeHttpRequest', () => {
       await expect(
         makeHttpRequest({
           url: 'http://192.168.1.1/',
+          method: 'GET',
+        })
+      ).rejects.toThrow(/blocked host/i);
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      fetchSpy.mockRestore();
+    });
+
+    it('rejects a domain name that DNS-resolves to a blocked IP (DNS rebinding)', async () => {
+      dnsLookupSpy?.mockImplementation(async (hostname: any, opts?: any) => {
+        if (hostname === 'evil.example.com') {
+          const entry = { address: '127.0.0.1', family: 4 };
+          return (opts && opts.all ? [entry] : entry) as any;
+        }
+        throw new Error(`unexpected lookup for ${hostname}`);
+      });
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await expect(
+        makeHttpRequest({
+          url: 'http://evil.example.com/',
+          method: 'GET',
+        })
+      ).rejects.toThrow(/blocked host/i);
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      fetchSpy.mockRestore();
+    });
+
+    it('rejects a bracketed IPv6 loopback literal ([::1])', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await expect(
+        makeHttpRequest({
+          url: 'http://[::1]/',
+          method: 'GET',
+        })
+      ).rejects.toThrow(/blocked host/i);
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      fetchSpy.mockRestore();
+    });
+
+    it('rejects a bracketed, mixed-case IPv6 link-local literal ([FE80::1])', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await expect(
+        makeHttpRequest({
+          url: 'http://[FE80::1]/',
+          method: 'GET',
+        })
+      ).rejects.toThrow(/blocked host/i);
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      fetchSpy.mockRestore();
+    });
+
+    it('rejects an IPv4-mapped-IPv6 literal pointing at a blocked range', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await expect(
+        makeHttpRequest({
+          url: 'http://[::ffff:127.0.0.1]/',
+          method: 'GET',
+        })
+      ).rejects.toThrow(/blocked host/i);
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      fetchSpy.mockRestore();
+    });
+
+    it("Node's URL parser normalizes decimal/octal/hex IPv4 hostnames to dotted-decimal", () => {
+      // Documents the behavior relied on by isBlockedHost: no bespoke
+      // decimal/octal/hex parsing is needed because `new URL(...)` already
+      // normalizes these encodings before `.hostname` is read.
+      expect(new URL('http://2130706433/').hostname).toBe('127.0.0.1');
+      expect(new URL('http://017700000001/').hostname).toBe('127.0.0.1');
+      expect(new URL('http://0x7f000001/').hostname).toBe('127.0.0.1');
+    });
+
+    it('rejects a decimal-encoded loopback IPv4 hostname', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await expect(
+        makeHttpRequest({
+          url: 'http://2130706433/',
           method: 'GET',
         })
       ).rejects.toThrow(/blocked host/i);
