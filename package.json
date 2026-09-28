@@ -91,11 +91,13 @@
   "dependencies": {
     "dedent": "^1.5.3",
     "dotenv": "^17.2.3",
-    "nanoid": "^5.0.7"
+    "nanoid": "^5.0.7",
+    "undici": "^8.11.2"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@vitest/coverage-v8": "^1.0.0",
+    "selfsigned": "^5.5.0",
     "tsup": "^8.0.0",
     "typescript": "^5.9.3",
     "vitest": "^1.0.0"

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { tool } from 'ai';
 import { isIP } from 'net';
 import { promises as dnsPromises } from 'dns';
+import { Agent, fetch as undiciFetch } from 'undici';
 import { ToolDescriptor } from '../../types';
 
 /**
@@ -162,18 +163,18 @@ export async function makeHttpRequest({
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), options.timeout ?? 30000);
 
-  // The runtime HTTP client here is the global `fetch` (undici under the
-  // hood in Node), which has no first-class per-request TLS option. There is
-  // no undici/https Agent exposed in this codebase to attach
-  // `rejectUnauthorized` to, so validateSSL is wired via the Node TLS env
-  // var for the duration of this request only, then restored.
-  const previousTlsRejectUnauthorized = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-  if (options.validateSSL === false) {
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-  }
+  // Per-request TLS verification is scoped to a dedicated undici Agent
+  // (dispatcher) rather than the process-wide NODE_TLS_REJECT_UNAUTHORIZED
+  // env var. The env var is global mutable state: toggling it around an
+  // await point is a race under concurrent requests, since one in-flight
+  // request's TLS setting can leak into another. A per-request dispatcher
+  // has no such cross-request interference.
+  const dispatcher = new Agent({
+    connect: { rejectUnauthorized: options.validateSSL !== false },
+  });
 
   try {
-    const fetchOptions: RequestInit = {
+    const fetchOptions = {
       method,
       headers: {
         'Content-Type': 'application/json',
@@ -181,12 +182,13 @@ export async function makeHttpRequest({
       },
       body: body && method !== 'GET' ? body : undefined,
       signal: controller.signal,
-      redirect: 'manual',
+      redirect: 'manual' as const,
+      dispatcher,
     };
 
     let currentUrl = url;
     let redirectCount = 0;
-    let response = await fetch(currentUrl, fetchOptions);
+    let response = await undiciFetch(currentUrl, fetchOptions);
 
     while (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
       redirectCount++;
@@ -198,7 +200,7 @@ export async function makeHttpRequest({
       if (await isBlockedHost(redirectHostname)) {
         throw new Error(`Request to blocked host ${redirectHostname} rejected by SSRF denylist`);
       }
-      response = await fetch(currentUrl, fetchOptions);
+      response = await undiciFetch(currentUrl, fetchOptions);
     }
 
     clearTimeout(timeoutId);
@@ -224,13 +226,8 @@ export async function makeHttpRequest({
     }
     throw new Error('HTTP request failed with unknown error');
   } finally {
-    if (options.validateSSL === false) {
-      if (previousTlsRejectUnauthorized === undefined) {
-        delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-      } else {
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = previousTlsRejectUnauthorized;
-      }
-    }
+    clearTimeout(timeoutId);
+    await dispatcher.close();
   }
 }
 

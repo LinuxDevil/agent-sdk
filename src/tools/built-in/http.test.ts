@@ -1,6 +1,8 @@
-import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, beforeAll, vi } from 'vitest';
 import http from 'http';
+import https from 'https';
 import dns from 'dns';
+import selfsigned from 'selfsigned';
 import type { AddressInfo } from 'net';
 import { makeHttpRequest } from './http';
 
@@ -9,6 +11,15 @@ function listen(server: http.Server): Promise<string> {
     server.listen(0, 'localhost', () => {
       const { port } = server.address() as AddressInfo;
       resolve(`http://localhost:${port}`);
+    });
+  });
+}
+
+function listenHttps(server: https.Server): Promise<string> {
+  return new Promise((resolve) => {
+    server.listen(0, 'localhost', () => {
+      const { port } = server.address() as AddressInfo;
+      resolve(`https://localhost:${port}`);
     });
   });
 }
@@ -221,6 +232,83 @@ describe('makeHttpRequest', () => {
 
       expect(fetchSpy).not.toHaveBeenCalled();
       fetchSpy.mockRestore();
+    });
+  });
+
+  describe('validateSSL (per-request TLS dispatcher)', () => {
+    let cert: string;
+    let key: string;
+    let httpsServer: https.Server | undefined;
+
+    beforeAll(async () => {
+      const pems = await selfsigned.generate(
+        [{ name: 'commonName', value: 'localhost' }],
+        { days: 1, keySize: 2048 }
+      );
+      cert = pems.cert;
+      key = pems.private;
+    });
+
+    afterEach(async () => {
+      if (httpsServer) {
+        await new Promise<void>((resolve) => httpsServer!.close(() => resolve()));
+        httpsServer = undefined;
+      }
+    });
+
+    it('rejects a self-signed certificate by default (validateSSL unset)', async () => {
+      httpsServer = https.createServer({ cert, key }, (_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('secure');
+      });
+      const baseUrl = await listenHttps(httpsServer);
+
+      await expect(
+        makeHttpRequest({ url: baseUrl, method: 'GET' })
+      ).rejects.toThrow();
+    });
+
+    it('accepts a self-signed certificate when validateSSL is false', async () => {
+      httpsServer = https.createServer({ cert, key }, (_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('secure');
+      });
+      const baseUrl = await listenHttps(httpsServer);
+
+      const result = await makeHttpRequest({
+        url: baseUrl,
+        method: 'GET',
+        options: { validateSSL: false },
+      });
+
+      expect(result).toBe('secure');
+    });
+
+    it('does not leak validateSSL between two concurrent requests with different settings', async () => {
+      httpsServer = https.createServer({ cert, key }, (_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('secure');
+      });
+      const baseUrl = await listenHttps(httpsServer);
+
+      const [insecureResult, secureResult] = await Promise.all([
+        makeHttpRequest({
+          url: baseUrl,
+          method: 'GET',
+          options: { validateSSL: false },
+        }),
+        makeHttpRequest({
+          url: baseUrl,
+          method: 'GET',
+          options: { validateSSL: true },
+        }).then(
+          () => 'unexpectedly-resolved',
+          (error: unknown) => (error instanceof Error ? error.message : String(error))
+        ),
+      ]);
+
+      expect(insecureResult).toBe('secure');
+      expect(secureResult).not.toBe('unexpectedly-resolved');
     });
   });
 });
