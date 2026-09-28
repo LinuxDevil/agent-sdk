@@ -1,7 +1,13 @@
 /**
  * Runnable example: AgentExecutor.execute() wired to a real OpenTelemetry
  * NodeTracerProvider, using OTel's own ConsoleSpanExporter so the emitted
- * spans are visible without needing a real collector (LOU-E6).
+ * spans are visible without needing a real collector (LOU-E6, LOU-K4).
+ *
+ * The TraceExporter itself comes from the bundled, opt-in
+ * `createOtelTraceExporter()` (src/execution/otel.ts) - this example only
+ * wires up the OTel SDK plumbing (a NodeTracerProvider + span processor)
+ * that decides *where* the spans go; the SDK-to-OTel translation is no
+ * longer hand-rolled here.
  *
  * Run with:
  *   npm run example:tracing:otel
@@ -15,11 +21,11 @@ import {
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-node';
 import { AgentExecutor } from '../../src/execution/AgentExecutor';
+import { createOtelTraceExporter } from '../../src/execution/otel';
 import { AgentBuilder } from '../../src/core';
 import { AgentType } from '../../src/types';
 import { ToolRegistry } from '../../src/tools';
 import { LLMProvider, GenerateOptions, GenerateResult } from '../../src/providers';
-import { createOtelExporter } from './otel-exporter';
 
 /** Same tiny mock provider as run-console.ts, so this needs no API key. */
 class MockProvider implements LLMProvider {
@@ -73,6 +79,11 @@ async function main() {
   provider.register();
   const tracer = provider.getTracer('loushy-tracing-example');
 
+  // In real usage the tracer name is enough - `createOtelTraceExporter()`
+  // will resolve one via `trace.getTracer(...)` for you. Passing the
+  // tracer explicitly here just reuses the one obtained above.
+  const exporter = createOtelTraceExporter({ tracer });
+
   const toolRegistry = new ToolRegistry();
   toolRegistry.register('getWeather', {
     displayName: 'Get Weather',
@@ -89,8 +100,6 @@ async function main() {
     .setPrompt('You are a helpful weather assistant.')
     .addTool('getWeather', { tool: 'getWeather', options: {} })
     .build();
-
-  const exporter = createOtelExporter(tracer);
 
   const result = await AgentExecutor.execute({
     agent,

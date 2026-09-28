@@ -5,7 +5,8 @@
  * console when a span starts and another when it ends, indenting child
  * spans (matched via Span.parentId) under their parent for readability.
  * Useful for local development, or as a template for writing a bridge
- * into a real tracing backend (see otel-exporter.ts for that).
+ * into a real tracing backend (see src/execution/otel.ts /
+ * createOtelTraceExporter() for a bundled OpenTelemetry bridge).
  */
 
 import { Span, TraceExporter } from '../../src/execution/tracing';

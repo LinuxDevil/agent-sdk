@@ -29,6 +29,7 @@ export default defineConfig({
     'data/mocks': 'src/data/mocks.ts',
     'cli/dev': 'src/cli/dev.ts',
     'cli/build': 'src/cli/build.ts',
+    'execution/otel': 'src/execution/otel.ts',
   },
   format: ['cjs', 'esm'],
   dts: true,
@@ -37,7 +38,7 @@ export default defineConfig({
   clean: true,
   treeshake: true,
   minify: false,
-  external: ['ai', 'zod'],
+  external: ['ai', 'zod', '@opentelemetry/api'],
   onSuccess: async () => {
     copyDevUi();
   },

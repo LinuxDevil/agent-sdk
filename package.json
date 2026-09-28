@@ -43,6 +43,11 @@
       "types": "./dist/data/mocks.d.ts",
       "import": "./dist/data/mocks.mjs",
       "require": "./dist/data/mocks.js"
+    },
+    "./otel": {
+      "types": "./dist/execution/otel.d.ts",
+      "import": "./dist/execution/otel.mjs",
+      "require": "./dist/execution/otel.js"
     }
   },
   "files": [
@@ -110,6 +115,7 @@
   "peerDependencies": {
     "@ai-sdk/anthropic": "^0.0.42",
     "@ai-sdk/openai": "^0.0.42",
+    "@opentelemetry/api": "^1.9.1",
     "ai": "^4.3.19",
     "ollama-ai-provider": "^1.2.0",
     "tsup": "^8.0.0",
@@ -120,6 +126,9 @@
       "optional": true
     },
     "@ai-sdk/openai": {
+      "optional": true
+    },
+    "@opentelemetry/api": {
       "optional": true
     },
     "ollama-ai-provider": {

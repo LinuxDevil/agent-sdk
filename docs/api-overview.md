@@ -56,6 +56,12 @@ const tools = await loadMcpTools(mcpClient, 'my-server');
 - `defineEval()`, scorers such as `exactMatch` and `toolCallOrder`, and
   `llmJudge()` - agent evals run under vitest.
 - `withSpan()` and `TraceExporter` - tracing for `AgentExecutor.execute()`.
+  `TraceExporter` is a bring-your-own-exporter interface (no exporter
+  ships by default); for real OpenTelemetry spans, import
+  `createOtelTraceExporter()` from the `@loushy/build-ai-agent/otel`
+  subpath (requires the optional peer dependency `@opentelemetry/api`)
+  instead of hand-rolling the OTel bridge - see
+  `examples/tracing/run-otel.ts`.
 - `NoopSandbox` / `SubprocessSandbox` - sandboxing for tools that opt in via
   `requiresSandbox`; guardrails such as `createCommandGuardrail()` and
   `secretScanGuardrail`.
