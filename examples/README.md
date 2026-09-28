@@ -9,6 +9,12 @@ to try.
 
 A question-answering agent scoped to a single fixed document (LOU-H10).
 
+## [ops-pipeline](./ops-pipeline)
+
+A flagship end-to-end pipeline: a Grafana/Datadog monitor delegates a fix (behind a real
+human approval gate, with a Slack "Fix it" button) to a fixer agent, whose patch is
+guardrail-gated before a GitHub PR is opened (LOU-J4-J9).
+
 ## [research-assistant](./research-assistant)
 
 A research agent with the built-in `http` tool wired up (LOU-H10).
