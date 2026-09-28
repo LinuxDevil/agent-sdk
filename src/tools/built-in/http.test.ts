@@ -1,13 +1,13 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import http from 'http';
 import type { AddressInfo } from 'net';
 import { makeHttpRequest } from './http';
 
 function listen(server: http.Server): Promise<string> {
   return new Promise((resolve) => {
-    server.listen(0, '127.0.0.1', () => {
+    server.listen(0, 'localhost', () => {
       const { port } = server.address() as AddressInfo;
-      resolve(`http://127.0.0.1:${port}`);
+      resolve(`http://localhost:${port}`);
     });
   });
 }
@@ -44,7 +44,7 @@ describe('makeHttpRequest', () => {
 
   it('throws when a redirect chain exceeds maxRedirects', async () => {
     server = http.createServer((req, res) => {
-      const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+      const url = new URL(req.url ?? '/', 'http://localhost');
       const hop = Number(url.searchParams.get('hop') ?? '0');
       // Always redirect one hop further, forever.
       res.writeHead(302, { Location: `/?hop=${hop + 1}` });
@@ -63,7 +63,7 @@ describe('makeHttpRequest', () => {
 
   it('follows redirects up to the cap and succeeds', async () => {
     server = http.createServer((req, res) => {
-      const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+      const url = new URL(req.url ?? '/', 'http://localhost');
       const hop = Number(url.searchParams.get('hop') ?? '0');
       if (hop < 2) {
         res.writeHead(302, { Location: `/?hop=${hop + 1}` });
@@ -82,5 +82,35 @@ describe('makeHttpRequest', () => {
     });
 
     expect(result).toBe('done');
+  });
+
+  describe('SSRF denylist', () => {
+    it('rejects a request to the cloud metadata endpoint with no network call', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await expect(
+        makeHttpRequest({
+          url: 'http://169.254.169.254/latest/meta-data',
+          method: 'GET',
+        })
+      ).rejects.toThrow(/blocked host/i);
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      fetchSpy.mockRestore();
+    });
+
+    it('rejects an RFC1918 private-range address by default (no opt-in flag)', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await expect(
+        makeHttpRequest({
+          url: 'http://192.168.1.1/',
+          method: 'GET',
+        })
+      ).rejects.toThrow(/blocked host/i);
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      fetchSpy.mockRestore();
+    });
   });
 });

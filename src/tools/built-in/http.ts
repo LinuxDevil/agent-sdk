@@ -26,6 +26,26 @@ export interface HttpToolOptions {
 }
 
 /**
+ * Default SSRF denylist: loopback, RFC1918 private ranges, link-local
+ * (including the cloud metadata endpoint at 169.254.169.254), and their
+ * IPv6 equivalents. Active by default with no opt-in flag.
+ */
+const BLOCKED_RANGES = [
+  /^127\./,
+  /^10\./,
+  /^192\.168\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^169\.254\./,
+  /^::1$/,
+  /^fc00:/,
+  /^fe80:/,
+];
+
+function isBlockedHost(hostname: string): boolean {
+  return BLOCKED_RANGES.some((re) => re.test(hostname));
+}
+
+/**
  * Makes HTTP requests to external APIs
  */
 export async function makeHttpRequest({
@@ -41,8 +61,23 @@ export async function makeHttpRequest({
   body?: string;
   options?: HttpToolOptions;
 }): Promise<string> {
+  const parsedUrl = new URL(url);
+  if (isBlockedHost(parsedUrl.hostname)) {
+    throw new Error(`Request to blocked host ${parsedUrl.hostname} rejected by SSRF denylist`);
+  }
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), options.timeout ?? 30000);
+
+  // The runtime HTTP client here is the global `fetch` (undici under the
+  // hood in Node), which has no first-class per-request TLS option. There is
+  // no undici/https Agent exposed in this codebase to attach
+  // `rejectUnauthorized` to, so validateSSL is wired via the Node TLS env
+  // var for the duration of this request only, then restored.
+  const previousTlsRejectUnauthorized = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  if (options.validateSSL === false) {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+  }
 
   try {
     const fetchOptions: RequestInit = {
@@ -66,6 +101,10 @@ export async function makeHttpRequest({
         throw new Error(`Exceeded maxRedirects (${options.maxRedirects ?? 5})`);
       }
       currentUrl = new URL(response.headers.get('location')!, currentUrl).toString();
+      const redirectHostname = new URL(currentUrl).hostname;
+      if (isBlockedHost(redirectHostname)) {
+        throw new Error(`Request to blocked host ${redirectHostname} rejected by SSRF denylist`);
+      }
       response = await fetch(currentUrl, fetchOptions);
     }
 
@@ -91,6 +130,14 @@ export async function makeHttpRequest({
       throw new Error(`HTTP request failed: ${error.message}`);
     }
     throw new Error('HTTP request failed with unknown error');
+  } finally {
+    if (options.validateSSL === false) {
+      if (previousTlsRejectUnauthorized === undefined) {
+        delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+      } else {
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = previousTlsRejectUnauthorized;
+      }
+    }
   }
 }
 
