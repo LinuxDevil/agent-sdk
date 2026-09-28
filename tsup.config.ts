@@ -8,6 +8,7 @@ export default defineConfig({
     'flows/index': 'src/flows/index.ts',
     'data/index': 'src/data/index.ts',
     'types/index': 'src/types/index.ts',
+    'data/mocks': 'src/data/mocks.ts',
   },
   format: ['cjs', 'esm'],
   dts: true,
