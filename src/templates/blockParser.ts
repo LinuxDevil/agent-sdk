@@ -28,7 +28,8 @@ export function parseTokens(tokens: Token[]): BlockNode[] {
 
     while (pos < tokens.length) {
       const token = tokens[pos];
-      if (stopTypes.has(token.type)) {
+      const tokenType = token.type;
+      if (stopTypes.has(tokenType)) {
         return nodes;
       }
 
@@ -78,10 +79,12 @@ export function parseTokens(tokens: Token[]): BlockNode[] {
         }
 
         // A stray 'else' / 'close-if' / 'close-for' at this point has no
-        // matching opener; skip it rather than looping forever.
+        // matching opener. Fail loudly instead of silently dropping the
+        // tag and rendering incorrect output.
         default:
-          pos++;
-          break;
+          throw new Error(
+            `Unexpected closing tag with no matching open block: {% ${tokenType === 'else' ? 'else' : tokenType === 'close-if' ? 'endif' : tokenType === 'close-for' ? 'endfor' : tokenType} %}`
+          );
       }
     }
 

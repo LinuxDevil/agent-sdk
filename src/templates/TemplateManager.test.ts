@@ -226,6 +226,20 @@ No users found
       const template = '{% if user %}Hello {{ user }}';
       expect(() => renderTemplate(template, { user: 'Alice' })).toThrow(/Unclosed block/);
     });
+
+    it('throws instead of silently swallowing a stray {% endif %} with no opener', () => {
+      const template = 'Hello {{ user }}{% endif %}';
+      expect(() => renderTemplate(template, { user: 'Alice' })).toThrow(
+        /Unexpected closing tag/
+      );
+    });
+
+    it('throws instead of silently swallowing a stray {% endfor %} with no opener', () => {
+      const template = 'Hello {{ user }}{% endfor %}';
+      expect(() => renderTemplate(template, { user: 'Alice' })).toThrow(
+        /Unexpected closing tag/
+      );
+    });
   });
 
   describe('render performance', () => {
