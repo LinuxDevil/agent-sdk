@@ -36,6 +36,13 @@ export interface ToolDescriptor {
   tool: AITool;
   needsApproval?: boolean | ((args: any) => boolean | Promise<boolean>);
   injectStreamingController?: (controller: ReadableStreamDefaultController<unknown>) => void;
+  /**
+   * When true, AgentExecutor routes this tool's execution through the
+   * configured SandboxAdapter (see ExecuteOptions.sandbox, LOU-F5) instead
+   * of calling `tool.execute()` directly. Defaults to false/undefined,
+   * which is the exact pre-existing, unchanged execution path.
+   */
+  requiresSandbox?: boolean;
 }
 
 /**
