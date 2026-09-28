@@ -11,6 +11,7 @@ import {
   createCommandGuardrail,
   createTestRunGuardrail,
   createLintGuardrail,
+  runGuardrails,
 } from './guardrails';
 
 const action: ProposedAction = { diff: 'diff --git a/foo.txt b/foo.txt\n+hello\n' };
@@ -173,4 +174,48 @@ describe('command guardrails (LOU-E11)', () => {
     // Should resolve close to the 100ms timeout, not wait for the 5s sleep.
     expect(elapsed).toBeLessThan(2000);
   }, 10000);
+});
+
+describe('runGuardrails (LOU-E12)', () => {
+  it('runs all guardrails and reports overall fail naming the failing one', async () => {
+    const passingA: Guardrail = { name: 'a', check: async () => ({ pass: true }) };
+    const passingB: Guardrail = { name: 'b', check: async () => ({ pass: true }) };
+    const failingC: Guardrail = {
+      name: 'c',
+      check: async () => ({ pass: false, reason: 'c is broken' }),
+    };
+
+    const result = await runGuardrails(action, [passingA, passingB, failingC]);
+
+    expect(result.pass).toBe(false);
+    expect(result.failures).toEqual([{ name: 'c', reason: 'c is broken' }]);
+  });
+
+  it('reports overall pass when every guardrail passes', async () => {
+    const passingA: Guardrail = { name: 'a', check: async () => ({ pass: true }) };
+    const passingB: Guardrail = { name: 'b', check: async () => ({ pass: true }) };
+
+    const result = await runGuardrails(action, [passingA, passingB]);
+
+    expect(result.pass).toBe(true);
+    expect(result.failures).toEqual([]);
+  });
+
+  it('runs guardrails concurrently, not sequentially (wall time tracks the max delay, not the sum)', async () => {
+    const delay = (ms: number): Guardrail => ({
+      name: `delay-${ms}`,
+      check: async () => {
+        await new Promise((resolve) => setTimeout(resolve, ms));
+        return { pass: true };
+      },
+    });
+
+    const start = Date.now();
+    await runGuardrails(action, [delay(50), delay(200)]);
+    const elapsed = Date.now() - start;
+
+    // Sequential would be ~250ms; concurrent should be close to ~200ms.
+    // Generous tolerance to avoid CI flakiness.
+    expect(elapsed).toBeLessThan(250);
+  });
 });

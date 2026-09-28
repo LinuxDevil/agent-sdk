@@ -178,3 +178,39 @@ export function createTestRunGuardrail(repoPath: string): Guardrail {
 export function createLintGuardrail(repoPath: string): Guardrail {
   return createCommandGuardrail('lint', repoPath, 'npm', ['run', 'lint']);
 }
+
+/**
+ * The result of running a full set of guardrails against a ProposedAction.
+ */
+export interface RunGuardrailsResult {
+  pass: boolean;
+  failures: { name: string; reason?: string }[];
+}
+
+/**
+ * Runs every guardrail in `guardrails` against `action` concurrently
+ * (Promise.all, not a sequential loop - so total wall time tracks the
+ * slowest guardrail rather than their sum) via runGuardrailSafely()
+ * (LOU-E9), and rolls the results up into a single pass/fail plus the
+ * list of guardrails that failed.
+ */
+export async function runGuardrails(
+  action: ProposedAction,
+  guardrails: Guardrail[]
+): Promise<RunGuardrailsResult> {
+  const results = await Promise.all(
+    guardrails.map(async (guardrail) => ({
+      name: guardrail.name,
+      result: await runGuardrailSafely(guardrail, action),
+    }))
+  );
+
+  const failures = results
+    .filter(({ result }) => !result.pass)
+    .map(({ name, result }) => ({ name, reason: result.reason }));
+
+  return {
+    pass: failures.length === 0,
+    failures,
+  };
+}
