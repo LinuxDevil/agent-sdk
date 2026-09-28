@@ -6,7 +6,7 @@
 import { LLMProvider, Message } from '../providers';
 import { ToolRegistry } from '../tools';
 import { ApprovalDecision, ApprovalStore } from './ApprovalGate';
-import { AgentExecutor, ExecuteOptions, ExecutionResult } from './AgentExecutor';
+import { AgentExecutor, ExecuteOptions, ExecutionResult, PropagatingToolError } from './AgentExecutor';
 import { CheckpointStore } from './checkpoint';
 
 /**
@@ -97,15 +97,28 @@ export async function resumeAfterApproval(
         toolName: pending.toolName,
       });
     } catch (error) {
-      // Mirror AgentExecutor.executeToolCall's handling of a thrown tool
-      // error: turn it into a graceful tool-result message instead of
-      // letting it reject this promise. By this point the pending-approval
-      // record has already been deleted (ApprovalGate.resolve() is
-      // delete-on-read), so failing to catch here would mean the whole
-      // resume just fails with no retry path. Uses the same
-      // `(error as Error).message` extraction AgentExecutor's catch block
-      // uses, wrapped in the `{error}`-shaped payload this file's own
-      // rejection branch (below) already uses for non-approved decisions.
+      // Mirror AgentExecutor.executeToolCall's (post-fix) handling of a
+      // thrown tool error: errors that mark themselves as
+      // `PropagatingToolError` (e.g. DelegationDepthExceededError) must NOT
+      // be converted into a conversational {error} tool-result - that would
+      // hand the LLM exactly the kind of "your tool call failed, try again"
+      // signal that triggers another delegation attempt, defeating the
+      // whole point of the depth guard. Rethrow so it propagates out of
+      // this function as a rejected promise instead, exactly like
+      // AgentExecutor.executeToolCall does.
+      if (error instanceof PropagatingToolError) {
+        throw error;
+      }
+
+      // Every other thrown tool error is turned into a graceful tool-result
+      // message instead of letting it reject this promise. By this point
+      // the pending-approval record has already been deleted
+      // (ApprovalGate.resolve() is delete-on-read), so failing to catch
+      // here would mean the whole resume just fails with no retry path.
+      // Uses the same `(error as Error).message` extraction AgentExecutor's
+      // catch block uses, wrapped in the `{error}`-shaped payload this
+      // file's own rejection branch (below) already uses for non-approved
+      // decisions.
       messages.push({
         role: 'tool',
         content: JSON.stringify({ error: (error as Error).message }),
