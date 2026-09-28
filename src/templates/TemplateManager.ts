@@ -8,6 +8,8 @@
  */
 
 import { TemplateContext, TemplateFilter, TemplateOptions, ITemplateManager } from './types';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- wired into the render path in LOU-A9
+import { tokenize } from './tokenizer';
 
 /**
  * Basic HTML-escaper used in the "|escape" (or "|e") filter.
