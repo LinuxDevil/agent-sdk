@@ -1,15 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { exactMatch } from './scorers';
+import { exactMatch, toolCallOrder } from './scorers';
 import { ExecutionResult } from '../execution/AgentExecutor';
+import { ToolCall } from '../providers/llm';
 
-function fakeResult(text: string): ExecutionResult {
+function fakeResult(text: string, toolCalls: ToolCall[] = []): ExecutionResult {
   return {
     text,
     messages: [],
-    toolCalls: [],
+    toolCalls,
     usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
     finishReason: 'stop',
     steps: 1,
+  };
+}
+
+function fakeToolCall(id: string, name: string, args: Record<string, unknown>): ToolCall {
+  return {
+    id,
+    type: 'function',
+    function: { name, arguments: JSON.stringify(args) },
   };
 }
 
@@ -36,5 +45,44 @@ describe('exactMatch', () => {
     });
     expect(() => throwingScorer(fakeResult('anything'))).not.toThrow();
     expect(throwingScorer(fakeResult('anything'))).toBe(0);
+  });
+});
+
+describe('toolCallOrder', () => {
+  const searchCall = fakeToolCall('call_1', 'search', { query: 'cats' });
+  const summarizeCall = fakeToolCall('call_2', 'summarize', { maxWords: 50 });
+
+  it('scores 1 for an exact-order, exact-args match', () => {
+    const scorer = toolCallOrder([
+      { tool: 'search', args: { query: 'cats' } },
+      { tool: 'summarize', args: { maxWords: 50 } },
+    ]);
+    expect(scorer(fakeResult('done', [searchCall, summarizeCall]))).toBe(1);
+  });
+
+  it('scores 0 for a shuffled order', () => {
+    const scorer = toolCallOrder([
+      { tool: 'search', args: { query: 'cats' } },
+      { tool: 'summarize', args: { maxWords: 50 } },
+    ]);
+    expect(scorer(fakeResult('done', [summarizeCall, searchCall]))).toBe(0);
+  });
+
+  it('scores 0 for a missing call (length mismatch)', () => {
+    const scorer = toolCallOrder([
+      { tool: 'search', args: { query: 'cats' } },
+      { tool: 'summarize', args: { maxWords: 50 } },
+    ]);
+    expect(scorer(fakeResult('done', [searchCall]))).toBe(0);
+  });
+
+  it('scores 0 on args mismatch even when tool names and order match', () => {
+    const scorer = toolCallOrder([{ tool: 'search', args: { query: 'dogs' } }]);
+    expect(scorer(fakeResult('done', [searchCall]))).toBe(0);
+  });
+
+  it('ignores args entirely when not specified in the expected call', () => {
+    const scorer = toolCallOrder([{ tool: 'search' }]);
+    expect(scorer(fakeResult('done', [searchCall]))).toBe(1);
   });
 });
