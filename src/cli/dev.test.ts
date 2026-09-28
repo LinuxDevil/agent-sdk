@@ -108,6 +108,70 @@ describe('startDevServer', () => {
   });
 });
 
+describe('hot reload (LOU-H8)', () => {
+  it('picks up an edited prompt without restarting the server/port, and keeps working on an invalid edit', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-dev-reload-'));
+    const configPath = writeConfig(dir);
+    handle = await startDevServer(configPath, 0);
+    const port = addressPort(handle);
+    const originalServer = handle.server;
+
+    const first = await (
+      await fetch(`http://localhost:${port}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'hi' }),
+      })
+    ).json();
+    expect(first.text).toBe(MOCK_RESPONSE);
+
+    // Register a second mock provider variant so the reload is observable.
+    const UPDATED_RESPONSE = 'Updated after hot reload.';
+    LLMProviderRegistry.register('mock', () =>
+      createMockProvider({ responses: [UPDATED_RESPONSE] })
+    );
+
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        name: 'dev-test-agent',
+        prompt: 'You are an UPDATED helpful test agent.',
+        provider: { type: 'mock', model: 'mock-model-1' },
+      })
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    const second = await (
+      await fetch(`http://localhost:${port}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'hi again' }),
+      })
+    ).json();
+    expect(second.text).toBe(UPDATED_RESPONSE);
+
+    // Same server/port the whole time - no restart happened.
+    expect(handle.server).toBe(originalServer);
+    expect(addressPort(handle)).toBe(port);
+
+    // Now write an invalid edit (missing required 'prompt') - the server
+    // must keep serving the last-good (UPDATED_RESPONSE) config rather
+    // than crashing.
+    fs.writeFileSync(configPath, JSON.stringify({ provider: { type: 'mock', model: 'x' } }));
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    const third = await (
+      await fetch(`http://localhost:${port}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'still there?' }),
+      })
+    ).json();
+    expect(third.text).toBe(UPDATED_RESPONSE);
+  });
+});
+
 function addressPort(h: DevServerHandle): number {
   const addr = h.server.address();
   if (addr && typeof addr === 'object') return addr.port;

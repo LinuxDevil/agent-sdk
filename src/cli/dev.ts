@@ -113,10 +113,19 @@ function serveChatUi(res: http.ServerResponse): void {
   res.end(html);
 }
 
+/**
+ * Mutable holder for the currently-loaded agent (LOU-H8), so /chat always
+ * reads the latest reloaded version without restarting the HTTP server or
+ * dropping connections.
+ */
+interface AgentHolder {
+  agent: SimpleAgent;
+}
+
 async function handleRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  agent: SimpleAgent
+  holder: AgentHolder
 ): Promise<void> {
   if (req.method === 'GET' && req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -144,7 +153,7 @@ async function handleRequest(
         return;
       }
 
-      const result = await agent.send(message);
+      const result = await holder.agent.send(message);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
     } catch (error) {
@@ -162,15 +171,36 @@ async function handleRequest(
  * Starts the dev server, binding to `port` (checked for availability up
  * front - EADDRINUSE is caught and rejected with a clear, port-naming
  * error rather than crashing uncaught).
+ *
+ * Watches configPath (LOU-H8) via fs.watch: on a valid edit, the live
+ * agent is swapped in-place through the mutable AgentHolder above; on an
+ * invalid edit (e.g. a JSON syntax error, or a missing required field),
+ * the error is logged and the previous working agent is kept - the server
+ * never crashes and never drops the port on a bad config edit.
  */
 export async function startDevServer(
   configPath: string,
   port = 3737
 ): Promise<DevServerHandle> {
-  const agent = loadAgentFromConfig(configPath);
+  const holder: AgentHolder = { agent: loadAgentFromConfig(configPath) };
+
+  const watcher = fs.watch(configPath, { persistent: false }, () => {
+    try {
+      holder.agent = loadAgentFromConfig(configPath);
+      // eslint-disable-next-line no-console
+      console.log(`[loushy dev] reloaded config from ${configPath}`);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[loushy dev] failed to reload ${configPath}, keeping previous config: ${
+          (error as Error).message
+        }`
+      );
+    }
+  });
 
   const server = http.createServer((req, res) => {
-    handleRequest(req, res, agent).catch((error) => {
+    handleRequest(req, res, holder).catch((error) => {
       // eslint-disable-next-line no-console
       console.error('[loushy dev] unhandled request error:', error);
       if (!res.headersSent) {
@@ -203,6 +233,7 @@ export async function startDevServer(
     port,
     close: () =>
       new Promise<void>((resolve, reject) => {
+        watcher.close();
         server.close((err) => (err ? reject(err) : resolve()));
       }),
   };
