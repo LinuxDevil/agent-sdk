@@ -46,3 +46,6 @@ export * from './templates';
 
 // Utils
 export * from './utils';
+
+// createAgent() convenience API (LOU-H1)
+export * from './createAgent';
