@@ -8,40 +8,26 @@ import { DTOEncryptionSettings } from './types';
  * Encryption utility class using AES-GCM encryption
  */
 export class EncryptionUtils {
-  private key: CryptoKey = {} as CryptoKey;
   private secretKey: string;
-  private keyGenerated: boolean = false;
 
   constructor(secretKey: string) {
     this.secretKey = secretKey;
   }
 
   /**
-   * Generate or retrieve cached encryption key
+   * Retained for API compatibility. Key derivation is now salt-dependent and
+   * happens per-encryption/decryption (see deriveKey/importKeyForSalt), so
+   * there is no longer a single cacheable key to pre-generate.
    */
   async generateKey(secretKey: string): Promise<void> {
-    if (this.keyGenerated && this.secretKey !== secretKey) {
-      this.keyGenerated = false; // key changed
-    }
-
-    if (this.keyGenerated) {
-      return;
-    }
     this.secretKey = secretKey;
-    const keyData = await this.deriveKey(secretKey);
-    this.key = await crypto.subtle.importKey('raw', keyData, { name: 'AES-GCM' }, false, [
-      'encrypt',
-      'decrypt',
-    ]);
-    this.keyGenerated = true;
   }
 
   /**
-   * Derive encryption key from secret using PBKDF2
+   * Derive encryption key bits from secret + salt using PBKDF2
    */
-  private async deriveKey(secretKey: string): Promise<ArrayBuffer> {
+  private async deriveKey(secretKey: string, salt: Uint8Array): Promise<ArrayBuffer> {
     const encoder = new TextEncoder();
-    const salt = encoder.encode('someSalt'); // Replace 'someSalt' with a suitable salt value
     const iterations = 100000; // Adjust the number of iterations as needed
     const keyLength = 256; // 256 bits (32 bytes)
     const derivedKey = await crypto.subtle.importKey(
@@ -64,21 +50,32 @@ export class EncryptionUtils {
   }
 
   /**
+   * Import an AES-GCM key derived from the current secret and the given salt
+   */
+  private async importKeyForSalt(salt: Uint8Array): Promise<CryptoKey> {
+    const keyData = await this.deriveKey(this.secretKey, salt);
+    return crypto.subtle.importKey('raw', keyData, { name: 'AES-GCM' }, false, [
+      'encrypt',
+      'decrypt',
+    ]);
+  }
+
+  /**
    * Encrypt ArrayBuffer data
    */
   async encryptArrayBuffer(data: ArrayBuffer): Promise<ArrayBuffer> {
-    await this.generateKey(this.secretKey);
-
+    const salt = crypto.getRandomValues(new Uint8Array(16)); // Random salt per encryption
     const iv = crypto.getRandomValues(new Uint8Array(16)); // Initialization vector
+    const key = await this.importKeyForSalt(salt);
     const encryptedData = await crypto.subtle.encrypt(
       {
         name: 'AES-GCM',
         iv: iv,
       },
-      this.key,
+      key,
       data
     );
-    return new Blob([iv, new Uint8Array(encryptedData)]).arrayBuffer(); // Prepend IV to the ciphertext
+    return new Blob([salt, iv, new Uint8Array(encryptedData)]).arrayBuffer(); // Prepend salt + IV to the ciphertext
   }
 
   /**
@@ -97,25 +94,25 @@ export class EncryptionUtils {
    * Decrypt ArrayBuffer data
    */
   async decryptArrayBuffer(encryptedData: ArrayBuffer | Blob): Promise<ArrayBuffer> {
+    let encryptedArrayBuffer: ArrayBuffer;
+    if (encryptedData instanceof Blob) {
+      encryptedArrayBuffer = await this.blobToArrayBuffer(encryptedData);
+    } else {
+      encryptedArrayBuffer = encryptedData;
+    }
+
     try {
-      await this.generateKey(this.secretKey);
-
-      let encryptedArrayBuffer: ArrayBuffer;
-      if (encryptedData instanceof Blob) {
-        encryptedArrayBuffer = await this.blobToArrayBuffer(encryptedData);
-      } else {
-        encryptedArrayBuffer = encryptedData;
-      }
-
-      const iv = new Uint8Array(encryptedArrayBuffer.slice(0, 16)); // Extract the IV
-      const cipherText = encryptedArrayBuffer.slice(16);
+      const salt = new Uint8Array(encryptedArrayBuffer.slice(0, 16)); // Extract the salt
+      const iv = new Uint8Array(encryptedArrayBuffer.slice(16, 32)); // Extract the IV
+      const cipherText = encryptedArrayBuffer.slice(32);
+      const key = await this.importKeyForSalt(salt);
 
       return await crypto.subtle.decrypt(
         {
           name: 'AES-GCM',
           iv: iv,
         },
-        this.key,
+        key,
         cipherText
       );
     } catch (e) {
@@ -132,18 +129,21 @@ export class EncryptionUtils {
    * Encrypt string text
    */
   async encrypt(text: string): Promise<string> {
-    await this.generateKey(this.secretKey);
-
     const encoder = new TextEncoder();
     const data = encoder.encode(text);
+    const salt = crypto.getRandomValues(new Uint8Array(16));
     const iv = crypto.getRandomValues(new Uint8Array(16));
-    const encryptedData = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, this.key, data);
+    const key = await this.importKeyForSalt(salt);
+    const encryptedData = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data);
     const encryptedArray = Array.from(new Uint8Array(encryptedData));
     const encryptedHex = encryptedArray.map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    const saltHex = Array.from(salt)
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('');
     const ivHex = Array.from(iv)
       .map((byte) => byte.toString(16).padStart(2, '0'))
       .join('');
-    return ivHex + encryptedHex;
+    return saltHex + ivHex + encryptedHex;
   }
 
   /**
@@ -152,10 +152,12 @@ export class EncryptionUtils {
   async decrypt(cipherText: string): Promise<string> {
     try {
       if (cipherText) {
-        await this.generateKey(this.secretKey);
-
-        const ivHex = cipherText.slice(0, 32);
-        const encryptedHex = cipherText.slice(32);
+        const saltHex = cipherText.slice(0, 32);
+        const ivHex = cipherText.slice(32, 64);
+        const encryptedHex = cipherText.slice(64);
+        const salt = new Uint8Array(
+          (saltHex.match(/.{1,2}/g) || []).map((byte) => parseInt(byte, 16))
+        );
         const iv = new Uint8Array(
           (ivHex.match(/.{1,2}/g) || []).map((byte) => parseInt(byte, 16))
         );
@@ -163,9 +165,10 @@ export class EncryptionUtils {
           (encryptedHex.match(/.{1,2}/g) || []).map((byte) => parseInt(byte, 16))
         );
 
+        const key = await this.importKeyForSalt(salt);
         const decryptedData = await crypto.subtle.decrypt(
           { name: 'AES-GCM', iv },
-          this.key,
+          key,
           encryptedArray
         );
         const decoder = new TextDecoder();
