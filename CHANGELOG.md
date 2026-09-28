@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - BREAKING: `encrypt()` now generates a random salt per call instead of a hardcoded one. Ciphertext produced before this change cannot be decrypted with the new code and must be re-encrypted.
+- BREAKING: The mock repositories (`MockAgentRepository`, `MockSessionRepository`, `MockResultRepository`, `MockMemoryRepository`, `MockAttachmentRepository` — previously re-exported from `src/data/mocks.ts` via the package root/`./data` subpath; this package has no `createMockRepositories` factory) are no longer exported from the package root. Import them from `@loushy/build-ai-agent/testing` instead.
 
 ## [1.0.0-alpha.8] - 2025-10-05
 

@@ -30,6 +30,11 @@
       "types": "./dist/types/index.d.ts",
       "import": "./dist/types/index.mjs",
       "require": "./dist/types/index.js"
+    },
+    "./testing": {
+      "types": "./dist/data/mocks.d.ts",
+      "import": "./dist/data/mocks.mjs",
+      "require": "./dist/data/mocks.js"
     }
   },
   "files": [
