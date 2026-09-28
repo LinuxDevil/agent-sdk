@@ -37,6 +37,17 @@ export interface ExecutionSnapshot {
   currentMessages: Message[];
   pendingToolCall: PendingApproval;
   steps: number;
+  /**
+   * The sessionId the paused AgentExecutor.execute() run was using for
+   * durable-execution checkpointing (LOU-C9/C10), if any. Recorded so that
+   * resume.ts can proactively invalidate any stale checkpoint left behind
+   * under this sessionId once the approval is resolved - a checkpoint
+   * saved before the pause is stale by construction, since a pause always
+   * happens before the paused tool's result (and thus the next checkpoint
+   * write) exists. Undefined when the paused run wasn't using durable
+   * execution at all.
+   */
+  sessionId?: string;
 }
 
 /**

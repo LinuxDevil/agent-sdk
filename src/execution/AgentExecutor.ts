@@ -245,6 +245,7 @@ export class AgentExecutor {
                 currentMessages,
                 pendingToolCall: pending,
                 steps,
+                sessionId,
               };
 
               await approvalStore.save(pending, snapshot);

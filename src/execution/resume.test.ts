@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { resumeAfterApproval } from './resume';
 import { ApprovalStore, PendingApproval, ExecutionSnapshot } from './ApprovalGate';
 import { AgentExecutor } from './AgentExecutor';
+import { Checkpoint, CheckpointStore } from './checkpoint';
 import { createMockProvider } from '../providers/mock';
 import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
@@ -21,6 +22,22 @@ function createInMemoryApprovalStore(): ApprovalStore {
       }
       records.delete(id);
       return record;
+    },
+  };
+}
+
+/** Simple in-memory CheckpointStore, good enough for resume tests. */
+function createInMemoryCheckpointStore(): CheckpointStore {
+  const checkpoints = new Map<string, Checkpoint>();
+  return {
+    async save(sessionId, checkpoint) {
+      checkpoints.set(sessionId, checkpoint);
+    },
+    async load(sessionId) {
+      return checkpoints.get(sessionId) ?? null;
+    },
+    async delete(sessionId) {
+      checkpoints.delete(sessionId);
     },
   };
 }
@@ -330,6 +347,157 @@ describe('Execution - resumeAfterApproval', () => {
     // Continuation from step 3 (not reset to 0/1): one more generation
     // happens on resume, so steps should be 4.
     expect(resumed.steps).toBe(4);
+  });
+
+  it('reviewer repro: a stale checkpoint under the paused session must not clobber the resume state, even when sessionId+checkpointStore are explicitly passed through resume executeOptions', async () => {
+    // Reproduces the LOU-C bug: combining sessionId+checkpointStore
+    // (durable execution, LOU-C9/C10) with resumeAfterApproval() (approval
+    // gate, LOU-C6) on the SAME session silently lost data, because
+    // AgentExecutor's checkpoint-rehydration branch would unconditionally
+    // override the resume's carefully-reconstructed messages/steps with
+    // whatever stale checkpoint existed under that sessionId from before
+    // the pause.
+    const chargeExecute = vi.fn().mockResolvedValue({ charged: true });
+    toolRegistry.register('chargeCard', {
+      displayName: 'Charge Card',
+      tool: { description: 'Charge a card', parameters: {}, execute: chargeExecute } as any,
+      needsApproval: true,
+    });
+
+    const lookupExecute = vi.fn().mockResolvedValue({ found: true });
+    toolRegistry.register('lookup', {
+      displayName: 'Lookup',
+      tool: { description: 'Look something up', parameters: {}, execute: lookupExecute } as any,
+      needsApproval: false,
+    });
+
+    const agent = AgentBuilder.create()
+      .setType(AgentType.SmartAssistant)
+      .setName('Test Agent')
+      .addTool('lookup', { tool: 'lookup', options: {} })
+      .addTool('chargeCard', { tool: 'chargeCard', options: {} })
+      .build();
+
+    // Deterministic scripted provider: generation 1 calls the (unguarded)
+    // 'lookup' tool - this is the "durable-execution step taken BEFORE the
+    // pause" that gets checkpointed. Generation 2 calls the
+    // approval-gated 'chargeCard' tool, which pauses execution before the
+    // checkpoint for THIS step is ever written - so the checkpoint saved
+    // after generation 1 is stale by construction from that point on.
+    // Generation 3 (post-resume) stops with no further tool calls.
+    let call = 0;
+    const scriptedProvider = {
+      name: 'scripted',
+      supportsTools: () => true,
+      supportsStreaming: () => false,
+      getModels: async () => ['scripted'],
+      stream: async () => {
+        throw new Error('not implemented');
+      },
+      generate: async () => {
+        call++;
+        if (call === 1) {
+          return {
+            text: 'looking up',
+            finishReason: 'tool_calls' as const,
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+            toolCalls: [
+              { id: 'call-lookup', type: 'function' as const, function: { name: 'lookup', arguments: '{}' } },
+            ],
+          };
+        }
+        if (call === 2) {
+          return {
+            text: 'charging',
+            finishReason: 'tool_calls' as const,
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+            toolCalls: [
+              {
+                id: 'call-charge',
+                type: 'function' as const,
+                function: { name: 'chargeCard', arguments: '{}' },
+              },
+            ],
+          };
+        }
+        return {
+          text: 'all done',
+          finishReason: 'stop' as const,
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        };
+      },
+    };
+
+    const approvalStore = createInMemoryApprovalStore();
+    const checkpointStore = createInMemoryCheckpointStore();
+    const sessionId = 'shared-session-1';
+
+    const paused = await AgentExecutor.execute({
+      agent,
+      input: 'go',
+      provider: scriptedProvider as any,
+      toolRegistry,
+      approvalStore,
+      sessionId,
+      checkpointStore,
+    });
+
+    expect(paused.finishReason).toBe('awaiting-approval');
+    expect(lookupExecute).toHaveBeenCalledTimes(1);
+    expect(chargeExecute).not.toHaveBeenCalled();
+
+    // Sanity: a checkpoint really was written under this sessionId from
+    // the pre-pause 'lookup' step, and it is stale relative to the pause
+    // point (it doesn't know about the pending 'chargeCard' call at all).
+    const preResumeCheckpoint = await checkpointStore.load(sessionId);
+    expect(preResumeCheckpoint).not.toBeNull();
+    expect(preResumeCheckpoint!.stepIndex).toBe(1);
+    expect(preResumeCheckpoint!.messages.some((m) => m.toolName === 'chargeCard')).toBe(false);
+
+    // The reviewer's repro: explicitly pass sessionId+checkpointStore
+    // through resume's executeOptions (bypassing the ResumeExecuteOptions
+    // Omit via `as any`, exactly as a caller not using strict TS - or one
+    // that force-casts - legally could at runtime).
+    const resumed = await resumeAfterApproval(
+      { id: paused.approvalId!, approved: true },
+      approvalStore,
+      toolRegistry,
+      scriptedProvider as any,
+      { sessionId, checkpointStore } as any,
+      checkpointStore
+    );
+
+    expect(chargeExecute).toHaveBeenCalledTimes(1);
+
+    // The deferred tool's result must NOT be lost: it must be present in
+    // the final message list, not silently dropped by falling back to the
+    // stale checkpoint's messages (which never saw the chargeCard call).
+    const chargeResultMessage = resumed.messages.find(
+      (m) => m.role === 'tool' && m.toolName === 'chargeCard'
+    );
+    expect(chargeResultMessage).toBeDefined();
+    expect(JSON.parse(chargeResultMessage!.content).charged).toBe(true);
+
+    // The lookup call/result from before the pause must also survive -
+    // the stale checkpoint's own data isn't what's wrong here, silently
+    // substituting it in place of the resume's own reconstruction is.
+    expect(resumed.messages.some((m) => m.role === 'tool' && m.toolName === 'lookup')).toBe(true);
+
+    // Full reconstructed history: user, assistant(lookup), tool(lookup),
+    // assistant(chargeCard), tool(chargeCard) - no 6th message is pushed
+    // since the final generation returns no further tool calls.
+    expect(resumed.messages).toHaveLength(5);
+
+    // Steps must continue from the ExecutionSnapshot's own step count
+    // (snapshot.steps was 2 at pause, +1 for the post-resume generation =
+    // 3), NOT from the stale checkpoint's stepIndex (which was 1, and
+    // would yield 2 if the checkpoint were wrongly rehydrated instead).
+    expect(resumed.steps).toBe(3);
+
+    // Defense in depth: the stale checkpoint must have been proactively
+    // cleared so a later, unrelated execute() call reusing this sessionId
+    // can't rehydrate this pre-pause state either.
+    expect(await checkpointStore.load(sessionId)).toBeNull();
   });
 
   it('should throw a clear error for an unknown or already-resolved approval id', async () => {
