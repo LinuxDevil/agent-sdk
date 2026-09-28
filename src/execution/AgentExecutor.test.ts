@@ -274,6 +274,89 @@ describe('AgentExecutor', () => {
       expect(result.result).toEqual({ ok: true });
     });
 
+    it('should pause and persist a snapshot when a tool needs approval', async () => {
+      const execute = vi.fn().mockResolvedValue({ ok: true });
+
+      toolRegistry.register('chargeCard', {
+        displayName: 'Charge Card',
+        tool: {
+          description: 'Charge a card',
+          parameters: {},
+          execute,
+        } as any,
+        needsApproval: true,
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .addTool('chargeCard', { tool: 'chargeCard', options: {} })
+        .build();
+
+      // MockLLMProvider simulates a tool call when the last user message
+      // mentions the tool's name.
+      const approvalProvider = createMockProvider({
+        name: 'mock',
+        responses: ['Charging your card now'],
+      });
+
+      const save = vi.fn().mockResolvedValue(undefined);
+      const resolve = vi.fn().mockResolvedValue(null);
+
+      const result = await AgentExecutor.execute({
+        agent,
+        input: 'Please call chargeCard now',
+        provider: approvalProvider,
+        toolRegistry,
+        approvalStore: { save, resolve },
+      });
+
+      expect(execute).not.toHaveBeenCalled();
+      expect(result.finishReason).toBe('awaiting-approval');
+      expect(result.approvalId).toBeDefined();
+      expect(save).toHaveBeenCalledTimes(1);
+
+      const [pendingArg, snapshotArg] = save.mock.calls[0];
+      expect(pendingArg.toolName).toBe('chargeCard');
+      expect(pendingArg.args).toEqual({ input: 'mock input' });
+      expect(snapshotArg.currentMessages).toEqual(result.messages);
+      expect(snapshotArg.currentMessages.some((m: any) => m.role === 'user')).toBe(true);
+    });
+
+    it('should throw a clear error when approval is needed but no approvalStore is provided', async () => {
+      const execute = vi.fn().mockResolvedValue({ ok: true });
+
+      toolRegistry.register('chargeCard', {
+        displayName: 'Charge Card',
+        tool: {
+          description: 'Charge a card',
+          parameters: {},
+          execute,
+        } as any,
+        needsApproval: true,
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .addTool('chargeCard', { tool: 'chargeCard', options: {} })
+        .build();
+
+      const approvalProvider = createMockProvider({
+        name: 'mock',
+        responses: ['Charging your card now'],
+      });
+
+      await expect(
+        AgentExecutor.execute({
+          agent,
+          input: 'Please call chargeCard now',
+          provider: approvalProvider,
+          toolRegistry,
+        })
+      ).rejects.toThrow(/requires approval/);
+    });
+
     it('should pass temperature and maxTokens', async () => {
       const agent = AgentBuilder.create()
         .setType(AgentType.SmartAssistant)

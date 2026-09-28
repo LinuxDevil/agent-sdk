@@ -3,9 +3,11 @@
  * Executes agents with streaming support and tool calling
  */
 
+import { nanoid } from 'nanoid';
 import { LLMProvider, Message, ToolCall } from '../providers';
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
+import { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGate';
 
 /**
  * Execution event types
@@ -58,6 +60,7 @@ export interface ExecuteOptions {
   temperature?: number;
   maxTokens?: number;
   onEvent?: (event: ExecutionEvent) => void;
+  approvalStore?: ApprovalStore;
 }
 
 /**
@@ -74,6 +77,7 @@ export interface ExecutionResult {
   };
   finishReason: string;
   steps: number;
+  approvalId?: string;
 }
 
 /**
@@ -93,6 +97,7 @@ export class AgentExecutor {
       temperature,
       maxTokens,
       onEvent,
+      approvalStore,
     } = options;
 
     // Emit start event
@@ -172,6 +177,48 @@ export class AgentExecutor {
               agent,
               toolRegistry
             );
+
+            if (toolResult.requiresApproval) {
+              if (!approvalStore) {
+                throw new Error(
+                  `Tool '${toolResult.toolName}' requires approval but no approvalStore was provided to AgentExecutor.execute()`
+                );
+              }
+
+              const pending: PendingApproval = {
+                id: nanoid(),
+                toolCallId: toolCall.id,
+                toolName: toolCall.function.name,
+                args: toolResult.args || {},
+                agentId: agent.id,
+                createdAt: new Date().toISOString(),
+              };
+              const snapshot: ExecutionSnapshot = {
+                agent,
+                currentMessages,
+                pendingToolCall: pending,
+                steps,
+              };
+
+              await approvalStore.save(pending, snapshot);
+
+              this.emitEvent(onEvent, {
+                type: 'finish',
+                timestamp: new Date(),
+                finishReason: 'awaiting-approval',
+                usage: totalUsage,
+              });
+
+              return {
+                text: '',
+                messages: currentMessages,
+                toolCalls: allToolCalls,
+                usage: totalUsage,
+                finishReason: 'awaiting-approval',
+                steps,
+                approvalId: pending.id,
+              };
+            }
 
             this.emitEvent(onEvent, {
               type: 'tool-result',
