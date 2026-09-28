@@ -184,6 +184,10 @@ export class AgentExecutor {
       checkpointStore,
       skipSystemPromptInjection,
       initialSteps,
+      onLLMRequest,
+      onLLMResponse,
+      onToolCall,
+      onToolResult,
     } = options;
 
     // Emit start event
@@ -235,13 +239,25 @@ export class AgentExecutor {
       steps++;
 
       try {
-        const result = await provider.generate({
+        const generateRequest: GenerateOptions = {
           model: agent.settings?.model || 'gpt-4',
           messages: currentMessages,
           temperature,
           maxTokens,
           tools: tools.length > 0 ? tools : undefined,
-        });
+        };
+
+        if (onLLMRequest) {
+          await onLLMRequest(generateRequest);
+        }
+
+        const llmStart = Date.now();
+        const result = await provider.generate(generateRequest);
+        const llmLatencyMs = Date.now() - llmStart;
+
+        if (onLLMResponse) {
+          await onLLMResponse(result, llmLatencyMs);
+        }
 
         // Update usage
         totalUsage.promptTokens += result.usage.promptTokens;
@@ -280,7 +296,9 @@ export class AgentExecutor {
             const toolResult = await this.executeToolCall(
               toolCall,
               agent,
-              toolRegistry
+              toolRegistry,
+              onToolCall,
+              onToolResult
             );
 
             if (toolResult.requiresApproval) {
@@ -470,6 +488,55 @@ export class AgentExecutor {
   private static async executeToolCall(
     toolCall: ToolCall,
     _agent: AgentConfig,
+    toolRegistry?: ToolRegistry,
+    onToolCall?: ExecuteOptions['onToolCall'],
+    onToolResult?: ExecuteOptions['onToolResult']
+  ): Promise<{
+    toolCallId: string;
+    toolName: string;
+    result: any;
+    error?: string;
+    requiresApproval?: boolean;
+    args?: Record<string, unknown>;
+  }> {
+    if (onToolCall) {
+      await onToolCall(toolCall);
+    }
+
+    const toolStart = Date.now();
+    let outcome:
+      | {
+          toolCallId: string;
+          toolName: string;
+          result: any;
+          error?: string;
+          requiresApproval?: boolean;
+          args?: Record<string, unknown>;
+        }
+      | undefined;
+    let thrown: unknown;
+
+    try {
+      outcome = await this.doExecuteToolCall(toolCall, toolRegistry);
+      return outcome;
+    } catch (error) {
+      thrown = error;
+      throw error;
+    } finally {
+      const latencyMs = Date.now() - toolStart;
+      if (onToolResult) {
+        await onToolResult(toolCall, outcome, latencyMs, thrown);
+      }
+    }
+  }
+
+  /**
+   * Actual tool-execution logic, split out from executeToolCall() so the
+   * onToolCall/onToolResult hooks (LOU-E2) can wrap it uniformly via
+   * try/finally regardless of which branch below returns or throws.
+   */
+  private static async doExecuteToolCall(
+    toolCall: ToolCall,
     toolRegistry?: ToolRegistry
   ): Promise<{
     toolCallId: string;
