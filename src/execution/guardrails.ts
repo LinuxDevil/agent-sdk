@@ -4,13 +4,108 @@
  * diff about to be committed/PR'd) before it's allowed through (LOU-E9+).
  */
 
-import { execFile } from 'node:child_process';
+import { execFile, ChildProcess } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Runs `command args...` in `cwd`, resolving to a GuardrailResult that
+ * passes iff the process exits 0 - and, if it doesn't settle within
+ * `timeoutMs`, kills it and resolves pass:false instead of leaving it
+ * running in the background (LOU-E fix; see createCommandGuardrail's own
+ * doc comment for why this timeout lives here rather than as a second
+ * mechanism competing with runGuardrailSafely's outer race).
+ *
+ * Uses `execFile` directly (not the promisified wrapper) specifically so
+ * the returned `ChildProcess` handle is available to kill on timeout. An
+ * earlier version of this used an AbortController's `signal` passed into
+ * the promisified execFile instead; that only killed the *direct* child,
+ * which on Windows (where this always runs with `shell: true` to invoke
+ * npm's .cmd shim) is the cmd.exe shell, not the real npm/node process -
+ * so the actual work kept running, orphaned, after "timeout" resolved.
+ * See killProcessTree() below for how this version actually reaches it.
+ */
+function runCommandWithTimeout(
+  name: string,
+  command: string,
+  args: string[],
+  cwd: string,
+  timeoutMs: number
+): Promise<GuardrailResult> {
+  return new Promise((resolve) => {
+    let timedOut = false;
+
+    const child: ChildProcess = execFile(
+      command,
+      args,
+      // On Windows, npm (and other npm-installed CLIs) are .cmd shims
+      // that execFile can only invoke through a shell.
+      { cwd, shell: process.platform === 'win32' },
+      (error, _stdout, stderr) => {
+        clearTimeout(timer);
+        if (timedOut) {
+          // The timeout branch below already resolved; a late exit/error
+          // callback after that must not resolve (or reason-overwrite) a
+          // second time.
+          return;
+        }
+        if (error) {
+          const err = error as { code?: number | string; message: string };
+          const stderrText = (stderr || '').toString().trim();
+          resolve({
+            pass: false,
+            reason: `${name} failed (exit code ${err.code ?? 'unknown'})${
+              stderrText ? `: ${stderrText}` : `: ${err.message}`
+            }`,
+          });
+          return;
+        }
+        resolve({ pass: true });
+      }
+    );
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killProcessTree(child);
+      resolve({
+        pass: false,
+        reason: `${name} timed out after ${timeoutMs}ms and was killed`,
+      });
+    }, timeoutMs);
+  });
+}
+
+/**
+ * Kills `child` and, on Windows, its whole descendant process tree.
+ *
+ * A plain `child.kill()` only signals the direct child. That's sufficient
+ * on POSIX, but on Windows this function always runs with `shell: true`
+ * (needed to invoke npm's .cmd shim), which means `child` is actually the
+ * cmd.exe shell process - the real `npm`/`node` work runs as ITS child.
+ * Killing just the shell leaves that real work orphaned and still running
+ * (verified directly: a plain `child.kill()` - and, before that, an
+ * AbortController `signal` passed into execFile, which has the same
+ * "only kills the direct child" limitation - both left the spawned
+ * process alive and holding an open file handle in its scratch dir even
+ * after the shell process itself was gone). `taskkill /T` walks and kills
+ * the entire process tree rooted at the shell's PID instead, which
+ * actually terminates the real work.
+ */
+function killProcessTree(child: ChildProcess): void {
+  if (child.pid === undefined) {
+    child.kill();
+    return;
+  }
+  if (process.platform === 'win32') {
+    execFile('taskkill', ['/pid', String(child.pid), '/T', '/F']);
+  } else {
+    child.kill('SIGTERM');
+  }
+}
 
 /**
  * A proposed action for guardrails to vet. Minimal placeholder shape -
@@ -138,7 +233,7 @@ export const secretScanGuardrail: Guardrail = {
 export interface CommandGuardrailOptions {
   /**
    * How long (ms) the guardrail's own internal command execution is
-   * allowed to run before it aborts the child process itself. Defaults to
+   * allowed to run before it kills the child process itself. Defaults to
    * 30000, matching runGuardrailSafely()'s own default timeout. Callers
    * that pass a custom timeoutMs to runGuardrailSafely() should pass the
    * same value here so the guardrail's own process-owning timeout - not
@@ -173,14 +268,17 @@ export interface CommandGuardrailOptions {
  * guardrail (including this one) against its own outer timeout, and
  * per LOU-E11's own design note, this function deliberately does NOT add a
  * second, independent timeout mechanism competing with that race. Instead,
- * the single timeout owned here is the one that actually executes the
- * command and is able to kill it: it's implemented via an AbortController
- * whose signal is passed straight into execFile, so Node kills the child
- * process itself when `timeoutMs` elapses, rather than just abandoning it
- * in the background the way an outer Promise.race alone would. Callers
- * that also pass a custom timeoutMs to runGuardrailSafely() should pass a
- * matching (or smaller) timeoutMs here so this internal timeout - the one
- * that owns process cleanup - is the one that actually fires.
+ * the single timeout owned here (see runCommandWithTimeout() below) is the
+ * one that actually executes the command and is able to kill it: it holds
+ * a direct handle to the spawned ChildProcess (via `execFile`, not its
+ * promisified wrapper) and kills it - and, on Windows, its whole
+ * descendant process tree via `taskkill /T` (see killProcessTree()'s doc
+ * comment for why a plain kill() isn't enough there) - when `timeoutMs`
+ * elapses, rather than just abandoning it in the background the way an
+ * outer Promise.race alone would. Callers that also pass a custom
+ * timeoutMs to runGuardrailSafely() should pass a matching (or smaller)
+ * timeoutMs here so this internal timeout - the one that owns process
+ * cleanup - is the one that actually fires.
  */
 export function createCommandGuardrail(
   name: string,
@@ -222,41 +320,7 @@ export function createCommandGuardrail(
           fs.rmSync(diffFile, { force: true });
         }
 
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-        try {
-          // On Windows, npm (and other npm-installed CLIs) are .cmd shims
-          // that execFile can only invoke through a shell.
-          await execFileAsync(command, args, {
-            cwd: workDir,
-            shell: process.platform === 'win32',
-            signal: controller.signal,
-          });
-          return { pass: true };
-        } catch (error) {
-          const err = error as {
-            code?: number | string;
-            stderr?: string;
-            message: string;
-            name?: string;
-          };
-          if (err.name === 'AbortError') {
-            return {
-              pass: false,
-              reason: `${name} timed out after ${timeoutMs}ms and was killed`,
-            };
-          }
-          const stderr = (err.stderr || '').toString().trim();
-          return {
-            pass: false,
-            reason: `${name} failed (exit code ${err.code ?? 'unknown'})${
-              stderr ? `: ${stderr}` : `: ${err.message}`
-            }`,
-          };
-        } finally {
-          clearTimeout(timer);
-        }
+        return await runCommandWithTimeout(name, command, args, workDir, timeoutMs);
       } finally {
         if (scratchDir) {
           fs.rmSync(scratchDir, { recursive: true, force: true });

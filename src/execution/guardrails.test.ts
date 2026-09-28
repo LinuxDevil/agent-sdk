@@ -174,6 +174,48 @@ describe('command guardrails (LOU-E11)', () => {
     // Should resolve close to the 100ms timeout, not wait for the 5s sleep.
     expect(elapsed).toBeLessThan(2000);
   }, 10000);
+
+  it('kills the underlying child process on timeout instead of leaking it (LOU-E fix)', async () => {
+    // A long-sleeping child that writes its own PID to a file as soon as
+    // it starts, so the test can check afterwards whether that PID is
+    // still alive - proving the process was actually terminated, not just
+    // abandoned by the outer race. Run from a script file (rather than
+    // `node -e "..."` inline) so this doesn't depend on shell-quoting
+    // behavior for paths/quotes on Windows.
+    const pidFile = path.join(scratchDir, 'child.pid');
+    const scriptFile = path.join(scratchDir, 'sleeper.js');
+    fs.writeFileSync(
+      scriptFile,
+      "require('fs').writeFileSync(process.argv[2], String(process.pid)); setTimeout(() => {}, 5000);"
+    );
+
+    const slowGuardrail = createCommandGuardrail(
+      'leak-check-command',
+      scratchDir,
+      'node',
+      [scriptFile, pidFile],
+      { timeoutMs: 150 }
+    );
+
+    const result = await runGuardrailSafely(slowGuardrail, dummyAction, 150);
+    expect(result.pass).toBe(false);
+
+    // Give the OS a moment to actually finish tearing the process down
+    // after it was signaled (taskkill on Windows, in particular, isn't
+    // instantaneous).
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    expect(fs.existsSync(pidFile)).toBe(true);
+    const pid = Number(fs.readFileSync(pidFile, 'utf-8').trim());
+
+    let alive = true;
+    try {
+      process.kill(pid, 0);
+    } catch {
+      alive = false;
+    }
+    expect(alive).toBe(false);
+  }, 10000);
 });
 
 describe('runGuardrails (LOU-E12)', () => {
