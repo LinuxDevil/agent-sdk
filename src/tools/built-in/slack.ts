@@ -24,6 +24,8 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { ToolDescriptor } from '../../types';
+import { SandboxAdapter } from '../../security/sandboxCore';
+import { sandboxHttpFetch } from './sandboxFetch';
 
 export const SLACK_WEBHOOK_URL_ENV_KEY = 'SLACK_WEBHOOK_URL';
 
@@ -128,6 +130,42 @@ export async function postSlackAlert(
 }
 
 /**
+ * Same as postSlackAlert(), but the outbound webhook POST is routed through
+ * `sandbox` (LOU-K2) via sandboxHttpFetch() rather than calling `fetch`
+ * directly in this process.
+ */
+export async function postSlackAlertViaSandbox(
+  channel: string,
+  message: string,
+  approvalId: string,
+  sandbox: SandboxAdapter,
+  options: SlackToolOptions = {}
+): Promise<{ ok: boolean }> {
+  const webhookUrl = options.webhookUrl ?? process.env[SLACK_WEBHOOK_URL_ENV_KEY];
+  if (!webhookUrl) {
+    throw new Error(
+      `Slack tool: no webhook URL configured. Set ${SLACK_WEBHOOK_URL_ENV_KEY} or pass options.webhookUrl.`
+    );
+  }
+
+  const payload = buildSlackAlertPayload(channel, message, approvalId);
+
+  const response = await sandboxHttpFetch(sandbox, {
+    url: webhookUrl,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Slack tool: webhook post failed: ${response.statusText} - ${errorText}`);
+  }
+
+  return { ok: true };
+}
+
+/**
  * Creates the Slack alert ToolDescriptor. Requires {channel, message,
  * approvalId} - `approvalId` is the id of a REAL LOU-C PendingApproval
  * (see ApprovalGate.ts) that the "Fix it" button, once clicked, resolves
@@ -148,6 +186,17 @@ export function createSlackTool(options: SlackToolOptions = {}): ToolDescriptor 
         return postSlackAlert(channel, message, approvalId, options);
       },
     }),
+    // LOU-K2: this tool POSTs to a webhook URL read from an env var /
+    // options (an external endpoint, not something the model chooses
+    // directly, but still a real outbound network call) - route it through
+    // executeToolWithSandboxGuard()'s sandboxExecute() path. execute()
+    // above is left unchanged for direct callers (e.g.
+    // examples/ops-pipeline, which calls descriptor.tool.execute() itself).
+    requiresSandbox: true,
+    sandboxExecute: async (args, sandbox) => {
+      const { channel, message, approvalId } = args as { channel: string; message: string; approvalId: string };
+      return postSlackAlertViaSandbox(channel, message, approvalId, sandbox, options);
+    },
   };
 }
 

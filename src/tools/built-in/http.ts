@@ -4,6 +4,8 @@ import { isIP } from 'net';
 import { promises as dnsPromises } from 'dns';
 import { Agent, fetch as undiciFetch } from 'undici';
 import { ToolDescriptor } from '../../types';
+import { SandboxAdapter } from '../../security/sandboxCore';
+import { sandboxHttpFetch } from './sandboxFetch';
 
 /**
  * HTTP Tool Configuration Options
@@ -140,21 +142,77 @@ async function isBlockedHost(hostname: string): Promise<boolean> {
 }
 
 /**
- * Makes HTTP requests to external APIs
+ * A minimal fetch-response-shaped transport function that actually performs
+ * the outbound request. `makeHttpRequest()` is transport-agnostic: the
+ * default transport calls undici's `fetch` directly (unchanged, original
+ * behavior); `makeHttpRequestViaSandbox()` below supplies a transport that
+ * routes the same request through a SandboxAdapter instead (LOU-K2).
  */
-export async function makeHttpRequest({
-  url,
-  method,
-  headers,
-  body,
-  options = {},
-}: {
-  url: string;
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-  headers?: Record<string, string>;
-  body?: string;
-  options?: HttpToolOptions;
-}): Promise<string> {
+type HttpTransport = (
+  url: string,
+  init: {
+    method: string;
+    headers: Record<string, string>;
+    body?: string;
+    signal: AbortSignal;
+    redirect: 'manual';
+  }
+) => Promise<Response>;
+
+/**
+ * Default transport: the exact undici `fetch` + per-request TLS dispatcher
+ * behavior this file always had. Per-request TLS verification is scoped to
+ * a dedicated undici Agent (dispatcher) rather than the process-wide
+ * NODE_TLS_REJECT_UNAUTHORIZED env var, since the env var is global mutable
+ * state and toggling it around an await point would race under concurrent
+ * requests.
+ */
+function createDirectTransport(validateSSL: boolean): { transport: HttpTransport; close: () => Promise<void> } {
+  const dispatcher = new Agent({ connect: { rejectUnauthorized: validateSSL } });
+  return {
+    transport: (url, init) => undiciFetch(url, { ...init, dispatcher }) as unknown as Promise<Response>,
+    close: () => dispatcher.close(),
+  };
+}
+
+/**
+ * Transport that routes the request through a SandboxAdapter (LOU-K2) via
+ * sandboxHttpFetch() rather than calling undici's fetch directly - the
+ * actual outbound network call happens inside `sandbox.run()` (a Node
+ * subprocess under NoopSandbox; a real isolated command under e.g.
+ * SubprocessSandbox) instead of in this process.
+ */
+function createSandboxTransport(sandbox: SandboxAdapter, validateSSL: boolean, timeoutMs: number): HttpTransport {
+  return (url, init) =>
+    sandboxHttpFetch(
+      sandbox,
+      { url, method: init.method, headers: init.headers, body: init.body, insecureTLS: !validateSSL },
+      { timeoutMs }
+    );
+}
+
+/**
+ * Core request/redirect/SSRF logic, parameterized by `transport` so it can
+ * be shared between the direct (unsandboxed) and sandboxed code paths
+ * without duplicating the SSRF-checking/redirect-following logic.
+ */
+async function performHttpRequest(
+  {
+    url,
+    method,
+    headers,
+    body,
+    options = {},
+  }: {
+    url: string;
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+    headers?: Record<string, string>;
+    body?: string;
+    options?: HttpToolOptions;
+  },
+  transport: HttpTransport,
+  getCleanup: () => (() => void | Promise<void>) | void
+): Promise<string> {
   const parsedUrl = new URL(url);
   if (await isBlockedHost(parsedUrl.hostname)) {
     throw new Error(`Request to blocked host ${parsedUrl.hostname} rejected by SSRF denylist`);
@@ -162,16 +220,7 @@ export async function makeHttpRequest({
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), options.timeout ?? 30000);
-
-  // Per-request TLS verification is scoped to a dedicated undici Agent
-  // (dispatcher) rather than the process-wide NODE_TLS_REJECT_UNAUTHORIZED
-  // env var. The env var is global mutable state: toggling it around an
-  // await point is a race under concurrent requests, since one in-flight
-  // request's TLS setting can leak into another. A per-request dispatcher
-  // has no such cross-request interference.
-  const dispatcher = new Agent({
-    connect: { rejectUnauthorized: options.validateSSL !== false },
-  });
+  const cleanup = getCleanup();
 
   try {
     const fetchOptions = {
@@ -183,12 +232,11 @@ export async function makeHttpRequest({
       body: body && method !== 'GET' ? body : undefined,
       signal: controller.signal,
       redirect: 'manual' as const,
-      dispatcher,
     };
 
     let currentUrl = url;
     let redirectCount = 0;
-    let response = await undiciFetch(currentUrl, fetchOptions);
+    let response = await transport(currentUrl, fetchOptions);
 
     while (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
       redirectCount++;
@@ -200,7 +248,7 @@ export async function makeHttpRequest({
       if (await isBlockedHost(redirectHostname)) {
         throw new Error(`Request to blocked host ${redirectHostname} rejected by SSRF denylist`);
       }
-      response = await undiciFetch(currentUrl, fetchOptions);
+      response = await transport(currentUrl, fetchOptions);
     }
 
     clearTimeout(timeoutId);
@@ -227,8 +275,49 @@ export async function makeHttpRequest({
     throw new Error('HTTP request failed with unknown error');
   } finally {
     clearTimeout(timeoutId);
-    await dispatcher.close();
+    await cleanup?.();
   }
+}
+
+/**
+ * Makes HTTP requests to external APIs. Unchanged, original behavior: goes
+ * straight to undici's fetch (with the per-request TLS dispatcher), never
+ * routed through any SandboxAdapter. This remains the implementation behind
+ * the HTTP tool's plain `execute()` - see makeHttpRequestViaSandbox() below
+ * for the sandboxed path used by `sandboxExecute()`.
+ */
+export async function makeHttpRequest(args: {
+  url: string;
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+  headers?: Record<string, string>;
+  body?: string;
+  options?: HttpToolOptions;
+}): Promise<string> {
+  const { transport, close } = createDirectTransport(args.options?.validateSSL !== false);
+  return performHttpRequest(args, transport, () => close);
+}
+
+
+
+/**
+ * Same request/redirect/SSRF logic as makeHttpRequest(), but the actual
+ * outbound fetch is performed through `sandbox` (LOU-K2) via
+ * sandboxHttpFetch() instead of calling undici's fetch directly in this
+ * process.
+ */
+export async function makeHttpRequestViaSandbox(
+  args: {
+    url: string;
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+    headers?: Record<string, string>;
+    body?: string;
+    options?: HttpToolOptions;
+  },
+  sandbox: SandboxAdapter
+): Promise<string> {
+  const timeoutMs = args.options?.timeout ?? 30000;
+  const transport = createSandboxTransport(sandbox, args.options?.validateSSL !== false, timeoutMs + 5000);
+  return performHttpRequest(args, transport, () => undefined);
 }
 
 /**
@@ -250,6 +339,23 @@ export function createHttpTool(options: HttpToolOptions = {}): ToolDescriptor {
         return makeHttpRequest({ url, method, headers, body, options });
       },
     }),
+    // LOU-K2: httpTool makes arbitrary, model-chosen outbound HTTP requests
+    // - the highest-risk built-in tool for a sandbox boundary to be
+    // meaningful on. A caller going through executeToolWithSandboxGuard()
+    // (AgentExecutor, resume.ts) gets the actual fetch routed through the
+    // configured SandboxAdapter via sandboxExecute(); execute() above is
+    // left unchanged (still real, directly callable) for callers that
+    // invoke descriptor.tool.execute() directly.
+    requiresSandbox: true,
+    sandboxExecute: async (args, sandbox) => {
+      const { url, method, headers, body } = args as {
+        url: string;
+        method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+        headers?: Record<string, string>;
+        body?: string;
+      };
+      return makeHttpRequestViaSandbox({ url, method, headers, body, options }, sandbox);
+    },
   };
 }
 

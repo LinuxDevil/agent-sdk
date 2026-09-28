@@ -61,6 +61,8 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { ToolRegistry } from '../ToolRegistry';
 import { ToolDescriptor } from '../../types';
+import { SandboxAdapter } from '../../security/sandboxCore';
+import { withSandboxedFetch } from './sandboxFetch';
 
 // ============================================================================
 // Type Definitions
@@ -369,7 +371,33 @@ export class GitHubTools extends ToolRegistry {
             `been disabled.`
         );
       }) as typeof descriptor.tool.execute;
+      // Out-of-scope tools above throw before ever making an HTTP request,
+      // so there's no real outbound call for a sandbox boundary to be
+      // meaningful on - they're deliberately left unflagged below.
+      super.register(name, descriptor);
+      return;
     }
+
+    // LOU-K2: every remaining GitHub tool's execute() makes a real outbound
+    // HTTP call to the GitHub API via the ambient global `fetch`. Flag it
+    // requiresSandbox and route sandboxExecute() through
+    // withSandboxedFetch(), which swaps `fetch` for a SandboxAdapter-routed
+    // implementation just for the duration of the original execute() call -
+    // so a caller going through executeToolWithSandboxGuard() (AgentExecutor,
+    // resume.ts) gets the fetch call genuinely routed through the
+    // configured SandboxAdapter, without every one of this file's ~30
+    // register*() methods needing its own hand-written sandboxed
+    // reimplementation. execute() itself is left completely unchanged -
+    // still a real, directly-callable implementation - for callers that
+    // invoke descriptor.tool.execute() directly rather than through the
+    // guard (e.g. examples/ops-pipeline's guardedPr.ts).
+    if (descriptor.tool?.execute) {
+      const originalExecute = descriptor.tool.execute;
+      descriptor.requiresSandbox = true;
+      descriptor.sandboxExecute = (args: unknown, sandbox: SandboxAdapter) =>
+        withSandboxedFetch(sandbox, async () => originalExecute(args as any, {} as any));
+    }
+
     super.register(name, descriptor);
   }
 
