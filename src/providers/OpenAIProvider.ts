@@ -4,7 +4,7 @@
  */
 
 import { createOpenAI } from '@ai-sdk/openai';
-import { generateText, streamText, tool as aiTool, CoreMessage } from 'ai';
+import { generateText, streamText, tool as aiTool } from 'ai';
 import {
   LLMProvider,
   GenerateOptions,
@@ -181,7 +181,7 @@ export class OpenAIProvider implements LLMProvider {
       }
 
       // Wait for final result to get usage stats
-      const [finalText, finalUsage, finalReason] = await Promise.all([
+      const [, finalUsage, finalReason] = await Promise.all([
         result.text,
         result.usage,
         result.finishReason,
@@ -245,7 +245,7 @@ export class OpenAIProvider implements LLMProvider {
   /**
    * Check if model supports streaming
    */
-  supportsStreaming(model: string): boolean {
+  supportsStreaming(_model: string): boolean {
     return true; // All OpenAI models support streaming
   }
 

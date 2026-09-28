@@ -121,11 +121,11 @@ export class MockLLMProvider implements LLMProvider {
     };
   }
 
-  supportsTools(model: string): boolean {
+  supportsTools(_model: string): boolean {
     return true;
   }
 
-  supportsStreaming(model: string): boolean {
+  supportsStreaming(_model: string): boolean {
     return true;
   }
 

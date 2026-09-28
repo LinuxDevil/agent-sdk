@@ -379,8 +379,8 @@ export class FlowExecutor {
   private static async executeEvaluator(
     node: any,
     context: FlowExecutionContext,
-    events: FlowExecutionEvent[],
-    onEvent?: (event: FlowExecutionEvent) => void
+    _events: FlowExecutionEvent[],
+    _onEvent?: (event: FlowExecutionEvent) => void
   ): Promise<any> {
     const expression = node.expression || '';
     return this.evaluateExpression(expression, context.variables);

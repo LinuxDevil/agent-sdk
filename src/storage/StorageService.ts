@@ -45,7 +45,6 @@ export interface PathAdapter {
 export class StorageService implements IStorageService {
   private rootPath: string;
   private uploadPath: string;
-  private schema: string;
   private fs: FileSystemAdapter;
   private path: PathAdapter;
 
@@ -61,7 +60,6 @@ export class StorageService implements IStorageService {
     // Use rootPath if provided, otherwise try to get current working directory
     this.rootPath = rootPath || (typeof process !== 'undefined' && process.cwd ? process.cwd() : '.');
     this.uploadPath = this.path.join(this.rootPath, 'data', databaseIdHash, schema);
-    this.schema = schema;
   }
 
   /**
