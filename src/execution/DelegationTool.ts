@@ -7,7 +7,7 @@
 import { z } from 'zod';
 import { tool } from 'ai';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { AgentExecutor } from './AgentExecutor';
+import { AgentExecutor, PropagatingToolError } from './AgentExecutor';
 import { LLMProvider, Message } from '../providers';
 import { AgentConfig, ToolDescriptor } from '../types';
 import { ToolRegistry } from '../tools';
@@ -17,7 +17,7 @@ import { ToolRegistry } from '../tools';
  * ever bottoming out (e.g. an A -> B -> A cycle). Prevents infinite
  * recursion / stack overflow from a runaway delegate chain.
  */
-export class DelegationDepthExceededError extends Error {
+export class DelegationDepthExceededError extends PropagatingToolError {
   constructor(maxDepth: number) {
     super(`Delegation depth exceeded maximum of ${maxDepth}`);
     this.name = 'DelegationDepthExceededError';

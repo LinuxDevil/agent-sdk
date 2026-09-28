@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createDelegateTool, DelegationDepthExceededError } from './DelegationTool';
 import { AgentExecutor } from './AgentExecutor';
 import { AgentType } from '../types';
+import { ToolRegistry } from '../tools';
 import type { LLMProvider, GenerateResult } from '../providers';
 
 function makeGenerateResult(text: string): GenerateResult {
@@ -245,6 +246,97 @@ describe('createDelegateTool', () => {
       await expect(delegateTool.tool.execute!({ task: 'start' }, {} as any)).rejects.toThrow(
         DelegationDepthExceededError
       );
+    });
+
+    // LOU-D regression test: unlike the tests above (which stub out
+    // AgentExecutor.execute to unit-test depth tracking in isolation), this
+    // one drives a *real* A <-> B delegation loop through the real
+    // AgentExecutor.execute() + createDelegateTool() dispatch path, with
+    // mock LLM providers that unconditionally request delegation to the
+    // other agent, forever. This is QA's exact reproduction scenario: it
+    // caught a bug the stubbed tests above could not, because
+    // executeToolCall's catch-all was silently converting
+    // DelegationDepthExceededError into a `{error}` tool-result message fed
+    // back to the LLM, which triggered another delegation attempt instead
+    // of terminating the run - causing O(maxSteps^maxDepth) LLM calls
+    // instead of a bounded, fast failure.
+    it('bounds total LLM calls and rejects the top-level execute() when A and B loop forever delegating to each other', async () => {
+      const maxDepth = 2;
+      const maxSteps = 5;
+
+      function makeDelegateToolCall(toolName: string, task: string): GenerateResult {
+        return {
+          text: '',
+          finishReason: 'tool_calls',
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          toolCalls: [
+            {
+              id: `call-${Math.random().toString(36).slice(2)}`,
+              type: 'function',
+              function: { name: toolName, arguments: JSON.stringify({ task }) },
+            },
+          ],
+        };
+      }
+
+      // Always requests delegation to the other agent - never stops on its
+      // own. Exactly the "neither agent ever stops" pathological case from
+      // the bug report.
+      const generateA = vi.fn(async () => makeDelegateToolCall('delegate', 'go to B'));
+      const generateB = vi.fn(async () => makeDelegateToolCall('delegate', 'go to A'));
+
+      const providerA = makeMockProvider(generateA);
+      const providerB = makeMockProvider(generateB);
+
+      const agentA = { name: 'Agent A', agentType: AgentType.SmartAssistant, tools: { delegate: { tool: 'delegate' } } };
+      const agentB = { name: 'Agent B', agentType: AgentType.SmartAssistant, tools: { delegate: { tool: 'delegate' } } };
+
+      const registryA = new ToolRegistry();
+      const registryB = new ToolRegistry();
+
+      // A's "delegate" tool hands off to B (running through registryB /
+      // providerB), and B's "delegate" tool hands off back to A - a genuine
+      // A -> B -> A -> ... cycle, each side wired with real
+      // AgentExecutor.execute() underneath (createDelegateTool does not
+      // stub anything).
+      const delegateToBFromA = createDelegateTool({
+        agent: agentB,
+        provider: providerB,
+        toolRegistry: registryB,
+        maxDepth,
+        maxSteps,
+      });
+      const delegateToAFromB = createDelegateTool({
+        agent: agentA,
+        provider: providerA,
+        toolRegistry: registryA,
+        maxDepth,
+        maxSteps,
+      });
+
+      registryA.register('delegate', delegateToBFromA);
+      registryB.register('delegate', delegateToAFromB);
+
+      const execution = AgentExecutor.execute({
+        agent: agentA,
+        input: 'start the loop',
+        provider: providerA,
+        toolRegistry: registryA,
+        maxSteps,
+      });
+
+      // (a) the top-level execute() call must reject with a clear
+      // depth-exceeded signal, not resolve with a normal-looking
+      // finishReason: 'tool-calls' result.
+      await expect(execution).rejects.toThrow(DelegationDepthExceededError);
+
+      // (b) total LLM calls across the whole run must stay small/bounded -
+      // roughly proportional to maxDepth, not maxSteps^maxDepth. Before the
+      // fix, QA measured 155 calls for maxDepth=2/maxSteps=5 (and 780 for
+      // maxDepth=3/maxSteps=5); after the fix this should be a handful of
+      // calls (one per hop until the guard fires), well under 20.
+      const totalCalls = generateA.mock.calls.length + generateB.mock.calls.length;
+      expect(totalCalls).toBeLessThan(20);
     });
   });
 });
