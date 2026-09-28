@@ -49,3 +49,6 @@ export * from './utils';
 
 // createAgent() convenience API (LOU-H1)
 export * from './createAgent';
+
+// Declarative agent spec file format (LOU-H9)
+export * from './spec';

@@ -3,90 +3,27 @@
  *
  * Serves:
  *   GET  /health  -> 200 'ok'
+ *   GET  /        -> the minimal chat UI (LOU-H7)
  *   POST /chat    -> { message } in, the agent's real ExecutionResult out
  *
- * Config loading: configPath is a small JSON file
- * { name, prompt, provider: { type, model }, tools?: string[] } describing
- * the agent to run. This is intentionally the simplest thing that works -
- * LOU-H9 (declarative agent spec files, .yaml/.json + zod validation) is
- * the natural, designed-for successor to this format; dev.ts is retrofitted
- * to load configs via loadSpec()+specToAgent() once LOU-H9 lands (see that
- * commit).
+ * Config loading (LOU-H9): configPath is a declarative agent spec file
+ * (.yaml/.yml or .json - see src/spec/schema.ts's AgentSpec), loaded and
+ * zod-validated via loadSpec() and turned into a live agent via
+ * specToAgent(). This retrofits LOU-H6's original ad-hoc
+ * {name, prompt, provider, tools} JSON loader now that LOU-H9 (the
+ * designed-for successor) exists - the two shapes are compatible (a plain
+ * .json config in the old shape is a valid AgentSpec), so no existing
+ * configs need to change.
  */
 import * as http from 'node:http';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { createAgent, SimpleAgent, CreateAgentConfig } from '../createAgent';
-import { resolveProvider } from '../providers/resolveProvider';
-import { LLMProvider, LLMProviderRegistry } from '../providers/llm';
-import { httpTool } from '../tools/built-in/http';
-import { ToolDescriptor } from '../types';
-
-const REAL_PROVIDER_TYPES = new Set(['openai', 'anthropic', 'ollama', 'openrouter']);
-
-/**
- * Resolves a dev-server provider config to an LLMProvider. Real provider
- * types go through LOU-F8's resolveProvider() (env-var driven credentials,
- * as usual). Any other registered type - notably 'mock', which
- * intentionally has no env var and is never part of resolveProvider()'s
- * whitelist - is created directly via LLMProviderRegistry, which is how
- * tests run the dev server end-to-end against a MockLLMProvider without
- * needing real API credentials.
- */
-function resolveDevProvider(type: string, model: string): LLMProvider {
-  if (REAL_PROVIDER_TYPES.has(type.toLowerCase())) {
-    return resolveProvider(`${type}/${model}`);
-  }
-  return LLMProviderRegistry.create(type, { defaultModel: model });
-}
-
-export interface DevAgentConfig {
-  name?: string;
-  prompt: string;
-  provider: { type: string; model: string };
-  tools?: string[];
-}
-
-const BUILT_IN_TOOLS: Record<string, ToolDescriptor> = {
-  http: httpTool,
-};
-
-/** Loads a DevAgentConfig JSON file, guarding the fields configToAgent() needs. */
-export function loadDevConfig(configPath: string): DevAgentConfig {
-  const raw = fs.readFileSync(configPath, 'utf8');
-  const config = JSON.parse(raw) as DevAgentConfig;
-
-  if (!config.prompt) {
-    throw new Error(`loadDevConfig: '${configPath}' is missing required field 'prompt'`);
-  }
-  if (!config.provider || !config.provider.type) {
-    throw new Error(`loadDevConfig: '${configPath}' is missing required field 'provider.type'`);
-  }
-
-  return config;
-}
-
-export function configToAgent(config: DevAgentConfig): SimpleAgent {
-  const provider = resolveDevProvider(config.provider.type, config.provider.model);
-
-  const tools: CreateAgentConfig['tools'] = {};
-  for (const toolName of config.tools || []) {
-    const tool = BUILT_IN_TOOLS[toolName];
-    if (tool) {
-      tools[toolName] = tool;
-    }
-  }
-
-  return createAgent({
-    name: config.name,
-    prompt: config.prompt,
-    provider,
-    tools: Object.keys(tools).length > 0 ? tools : undefined,
-  });
-}
+import { SimpleAgent } from '../createAgent';
+import { loadSpec } from '../spec/loadSpec';
+import { specToAgent } from '../spec/specToAgent';
 
 function loadAgentFromConfig(configPath: string): SimpleAgent {
-  return configToAgent(loadDevConfig(configPath));
+  return specToAgent(loadSpec(configPath));
 }
 
 export interface DevServerHandle {
