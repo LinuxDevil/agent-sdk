@@ -12,8 +12,32 @@ declare const Buffer: any;
 declare const process: any;
 
 /**
+ * Minimal shape of the Node.js `fs` module (or a compatible implementation)
+ * required by StorageService. Only the methods actually called on the
+ * injected `fs` instance are declared here.
+ */
+export interface FileSystemAdapter {
+  existsSync(path: string): boolean;
+  mkdirSync(path: string, options?: { recursive?: boolean }): void;
+  writeFileSync(path: string, data: string | Uint8Array, encoding?: string): void;
+  unlinkSync(path: string): void;
+  readFileSync(path: string, encoding: string): string;
+  readFileSync(path: string): Buffer;
+  rmSync(path: string): void;
+}
+
+/**
+ * Minimal shape of the Node.js `path` module (or a compatible implementation)
+ * required by StorageService.
+ */
+export interface PathAdapter {
+  join(...parts: string[]): string;
+  resolve(...parts: string[]): string;
+}
+
+/**
  * Storage service for managing file operations with locking
- * 
+ *
  * Note: This is a framework-agnostic interface. Actual implementations
  * should be provided by the consuming application (e.g., Node.js fs-based,
  * cloud storage, etc.)
@@ -22,14 +46,14 @@ export class StorageService implements IStorageService {
   private rootPath: string;
   private uploadPath: string;
   private schema: string;
-  private fs: any; // Will be provided by implementation
-  private path: any; // Will be provided by implementation
+  private fs: FileSystemAdapter;
+  private path: PathAdapter;
 
   constructor(
     databaseIdHash: string,
     schema: string,
-    fs: any,
-    path: any,
+    fs: FileSystemAdapter,
+    path: PathAdapter,
     rootPath?: string
   ) {
     this.fs = fs;

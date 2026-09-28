@@ -37,7 +37,7 @@ export class EncryptionUtils {
   /**
    * Derive encryption key bits from secret + salt using PBKDF2
    */
-  private async deriveKey(secretKey: string, salt: Uint8Array): Promise<ArrayBuffer> {
+  private async deriveKey(secretKey: string, salt: Uint8Array<ArrayBuffer>): Promise<ArrayBuffer> {
     const encoder = new TextEncoder();
     const iterations = 100000; // Adjust the number of iterations as needed
     const keyLength = 256; // 256 bits (32 bytes)
@@ -63,7 +63,7 @@ export class EncryptionUtils {
   /**
    * Import an AES-GCM key derived from the current secret and the given salt
    */
-  private async importKeyForSalt(salt: Uint8Array): Promise<CryptoKey> {
+  private async importKeyForSalt(salt: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
     const keyData = await this.deriveKey(this.secretKey, salt);
     return crypto.subtle.importKey('raw', keyData, { name: 'AES-GCM' }, false, [
       'encrypt',
