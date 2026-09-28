@@ -4,6 +4,7 @@
  */
 
 export * from './AgentExecutor';
+export * from './DelegationTool';
 export * from './MemoryManager';
 export * from './ContextBuilder';
 export * from './errors';

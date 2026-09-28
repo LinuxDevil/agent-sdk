@@ -199,6 +199,60 @@ const ollama = LLMProviderRegistry.create('ollama', {
 
 ## Advanced Features
 
+### Multi-agent Delegation
+
+Wrap a child `AgentConfig` as a tool so a parent agent can delegate a task
+to it, running the child through `AgentExecutor.execute()` under the hood:
+
+```typescript
+import {
+  AgentExecutor,
+  createDelegateTool,
+  ToolRegistry,
+  AgentType,
+} from '@loushy/build-ai-agent';
+
+const billingAgent = {
+  name: 'Billing Agent',
+  agentType: AgentType.SmartAssistant,
+  prompt: 'You answer billing questions and look up invoices.',
+};
+
+const registry = new ToolRegistry();
+registry.register(
+  'delegate_billing_agent',
+  createDelegateTool({
+    agent: billingAgent,
+    provider, // an LLMProvider instance
+    // contextMode: 'full-history' shares the `context` array the tool is
+    // called with (in addition to the delegated task); 'none' (default)
+    // gives the child agent only the task as a fresh message.
+    contextMode: 'none',
+    maxSteps: 10,
+    // maxDepth (default 3) bounds how many hops a delegation chain may
+    // take (e.g. agent A delegates to B, which delegates back to A, ...)
+    // before a DelegationDepthExceededError is thrown.
+    maxDepth: 3,
+  })
+);
+
+const supportAgent = {
+  name: 'Support Agent',
+  agentType: AgentType.SmartAssistant,
+  prompt: 'You help customers. Delegate billing questions to the billing agent.',
+  tools: {
+    delegate_billing_agent: { tool: 'delegate_billing_agent' },
+  },
+};
+
+const result = await AgentExecutor.execute({
+  agent: supportAgent,
+  input: 'Why was I charged twice this month?',
+  provider,
+  toolRegistry: registry,
+});
+```
+
 ### Security & Encryption
 
 ```typescript
