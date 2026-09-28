@@ -12,3 +12,6 @@ export * from './crypto';
 
 // Quota validation
 export * from './quotas';
+
+// Sandboxing (LOU-F4/F5/F6)
+export * from './sandbox';
