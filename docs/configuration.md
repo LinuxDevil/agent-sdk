@@ -40,6 +40,23 @@ tools:
 them throws an error telling you to build the agent with `createAgent()` and
 pass a configured tool instead.
 
+### MCP (Model Context Protocol) tools
+
+Tools advertised by a remote MCP server aren't referenced by name in a spec
+file - connect a `Client` from `@modelcontextprotocol/sdk` yourself and load
+its tools with `loadMcpTools()`, then pass the result to `createAgent()` (or
+register it on a `ToolRegistry`):
+
+```ts
+import { loadMcpTools } from '@loushy/build-ai-agent/mcp';
+
+const tools = await loadMcpTools(mcpClient, 'my-server');
+const agent = createAgent({ prompt: '...', provider, tools });
+```
+
+`loadMcpTools` is also available from the package root and from
+`@loushy/build-ai-agent/tools`.
+
 ## Provider credentials
 
 Real providers are resolved by `resolveProvider('<provider>/<model>')`
