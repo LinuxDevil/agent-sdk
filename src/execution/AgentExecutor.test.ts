@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AgentExecutor, ExecutionEvent } from './AgentExecutor';
 import { createMockProvider } from '../providers/mock';
 import { ToolRegistry } from '../tools';
@@ -203,6 +203,75 @@ describe('AgentExecutor', () => {
       const systemMessage = result.messages.find(m => m.role === 'system');
       expect(systemMessage).toBeDefined();
       expect(systemMessage?.content).toBe('You are a pirate');
+    });
+
+    it('should not invoke a tool flagged with needsApproval, evaluated with actual args', async () => {
+      const execute = vi.fn().mockResolvedValue({ ok: true });
+      const needsApproval = vi.fn((args: any) => args.amount > 100);
+
+      toolRegistry.register('chargeCard', {
+        displayName: 'Charge Card',
+        tool: { execute } as any,
+        needsApproval,
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .build();
+
+      const toolCall = {
+        id: 'call-1',
+        type: 'function' as const,
+        function: {
+          name: 'chargeCard',
+          arguments: JSON.stringify({ amount: 500 }),
+        },
+      };
+
+      const result = await (AgentExecutor as any).executeToolCall(
+        toolCall,
+        agent,
+        toolRegistry
+      );
+
+      expect(execute).not.toHaveBeenCalled();
+      expect(needsApproval).toHaveBeenCalledWith({ amount: 500 });
+      expect(result.requiresApproval).toBe(true);
+      expect(result.args).toEqual({ amount: 500 });
+    });
+
+    it('should leave unflagged tools unchanged', async () => {
+      const execute = vi.fn().mockResolvedValue({ ok: true });
+
+      toolRegistry.register('chargeCard', {
+        displayName: 'Charge Card',
+        tool: { execute } as any,
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .build();
+
+      const toolCall = {
+        id: 'call-2',
+        type: 'function' as const,
+        function: {
+          name: 'chargeCard',
+          arguments: JSON.stringify({ amount: 5 }),
+        },
+      };
+
+      const result = await (AgentExecutor as any).executeToolCall(
+        toolCall,
+        agent,
+        toolRegistry
+      );
+
+      expect(execute).toHaveBeenCalledWith({ amount: 5 }, {});
+      expect(result.requiresApproval).toBeUndefined();
+      expect(result.result).toEqual({ ok: true });
     });
 
     it('should pass temperature and maxTokens', async () => {

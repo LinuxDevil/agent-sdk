@@ -297,6 +297,8 @@ export class AgentExecutor {
     toolName: string;
     result: any;
     error?: string;
+    requiresApproval?: boolean;
+    args?: Record<string, unknown>;
   }> {
     if (!toolRegistry) {
       return {
@@ -319,6 +321,22 @@ export class AgentExecutor {
       }
 
       const args = JSON.parse(toolCall.function.arguments);
+
+      const needsApproval =
+        typeof toolDesc.needsApproval === 'function'
+          ? await toolDesc.needsApproval(args)
+          : !!toolDesc.needsApproval;
+
+      if (needsApproval) {
+        return {
+          toolCallId: toolCall.id,
+          toolName: toolCall.function.name,
+          result: null,
+          requiresApproval: true,
+          args,
+        };
+      }
+
       // The 'ai' SDK tool.execute expects (args, context)
       const result = await toolDesc.tool.execute(args, {} as any);
 
