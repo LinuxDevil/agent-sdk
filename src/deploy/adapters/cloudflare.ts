@@ -10,11 +10,16 @@
  *     - wrangler.toml    name / main / compatibility_date
  * build():    tsup, format 'esm', platform 'browser', everything bundled into
  *             dist/worker.js; then fails the build if any `node:` specifier
- *             leaked into the output.
- * describe(): 'wrangler deploy'.
+ *             leaked into the output, then measures the bundle's raw and
+ *             gzip size and warns (does not fail the build) if it exceeds
+ *             Workers' script size limit (see WORKER_SIZE_LIMIT_BYTES).
+ * describe(): 'wrangler deploy', plus the measured bundle size and a
+ *             pass/warn verdict against WORKER_SIZE_LIMIT_BYTES when a built
+ *             bundle is present in outDir.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as zlib from 'node:zlib';
 import { DeploymentAdapter } from '../types';
 import { AgentSpec } from '../../spec/schema';
 import {
@@ -33,6 +38,62 @@ export const WORKER_SUPPORTED_PROVIDERS = ['mock'];
 
 /** Pinned so a given SDK version always generates the same, reproducible config. */
 export const COMPATIBILITY_DATE = '2024-09-23';
+
+/**
+ * Cloudflare Workers script size limit (LOU-I3 AC: "bundle size stays under
+ * Workers' free-tier limit for a minimal agent").
+ *
+ * As of Cloudflare's 2026-09-04 Workers changelog
+ * (https://developers.cloudflare.com/changelog/post/2026-09-04-increased-worker-size-limit/,
+ * cross-checked against https://developers.cloudflare.com/workers/platform/limits/),
+ * Cloudflare replaced the old *compressed*-size limits - 3 MB gzip on the
+ * Free plan, 10 MB gzip on paid plans - with a single 64 MiB *uncompressed*
+ * limit that now applies to every plan, including Free. `wrangler`'s own
+ * dry-run output still prints a gzip figure for reference, but gzip size is
+ * no longer what Cloudflare enforces.
+ *
+ * Because this changed recently and Cloudflare has changed it before, this
+ * constant intentionally documents its source above rather than being
+ * asserted from memory - re-check
+ * https://developers.cloudflare.com/workers/platform/limits/ if it is ever
+ * suspected to be stale, and update this value (and the comment) rather than
+ * silently drifting from Cloudflare's real limit.
+ */
+export const WORKER_SIZE_LIMIT_BYTES = 64 * 1024 * 1024;
+
+export interface BundleSizeReport {
+  /** Absolute path of the measured bundle file. */
+  path: string;
+  /** Raw (uncompressed) size on disk, in bytes - what Cloudflare enforces. */
+  bytes: number;
+  /** gzip-compressed size, in bytes - informational only (see WORKER_SIZE_LIMIT_BYTES). */
+  gzipBytes: number;
+  /** The limit `bytes` was compared against. */
+  limitBytes: number;
+  /** True when `bytes` exceeds `limitBytes`. */
+  overLimit: boolean;
+}
+
+/** Formats a byte count as a human-readable KB/MB string for warnings and describe() output. */
+export function formatBundleSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+/**
+ * Reads `bundlePath` off disk and measures its raw and gzip size, comparing
+ * the raw (uncompressed) size against Cloudflare's real enforced limit - see
+ * WORKER_SIZE_LIMIT_BYTES for where that number comes from.
+ */
+export function measureBundleSize(
+  bundlePath: string,
+  limitBytes: number = WORKER_SIZE_LIMIT_BYTES
+): BundleSizeReport {
+  const buffer = fs.readFileSync(bundlePath);
+  const bytes = buffer.byteLength;
+  const gzipBytes = zlib.gzipSync(buffer).byteLength;
+  return { path: bundlePath, bytes, gzipBytes, limitBytes, overLimit: bytes > limitBytes };
+}
 
 export function workerName(spec: AgentSpec): string {
   const name = spec.name
@@ -173,9 +234,36 @@ export const CloudflareWorkerAdapter: DeploymentAdapter = {
         `cloudflare-worker build: Node builtins leaked into ${bundlePath}: ${leaked.join(', ')}`
       );
     }
+
+    // LOU-I3 AC: report the built bundle's size against Workers' script size
+    // limit (see WORKER_SIZE_LIMIT_BYTES) right away, not just when
+    // describe() is later called. A warning (not a thrown error) because
+    // Cloudflare's limits vary by plan and have changed over time - a build
+    // that's over budget for one plan may still be deployable on another.
+    const sizeReport = measureBundleSize(bundlePath);
+    if (sizeReport.overLimit) {
+      console.warn(
+        `loushy build: cloudflare-worker bundle is ${formatBundleSize(sizeReport.bytes)}, which exceeds the ` +
+          `${formatBundleSize(sizeReport.limitBytes)} Cloudflare Workers script size limit (see ` +
+          `WORKER_SIZE_LIMIT_BYTES in src/deploy/adapters/cloudflare.ts). \`wrangler deploy\` will likely reject it.`
+      );
+    }
   },
 
-  describe(): string {
-    return 'wrangler deploy';
+  describe(outDir: string): string {
+    try {
+      const report = measureBundleSize(path.join(outDir, 'dist', 'worker.js'));
+      const verdict = report.overLimit
+        ? `WARNING: exceeds the ${formatBundleSize(report.limitBytes)} limit`
+        : `within the ${formatBundleSize(report.limitBytes)} limit`;
+      return (
+        `wrangler deploy (bundle: ${formatBundleSize(report.bytes)} raw / ` +
+        `${formatBundleSize(report.gzipBytes)} gzip, ${verdict})`
+      );
+    } catch {
+      // Not built yet (or outDir doesn't hold a built bundle) - fall back to
+      // the plain command with no size info.
+      return 'wrangler deploy';
+    }
   },
 };

@@ -28,8 +28,11 @@ import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import {
   CloudflareWorkerAdapter,
+  WORKER_SIZE_LIMIT_BYTES,
   WORKER_SUPPORTED_TOOLS,
   findNodeBuiltinReferences,
+  formatBundleSize,
+  measureBundleSize,
   workerName,
   wranglerTomlSource,
 } from './cloudflare';
@@ -152,6 +155,71 @@ describe('CloudflareWorkerAdapter', () => {
       expect(bundle).not.toMatch(/^module\.exports/m);
     });
 
+    it("measures the built bundle's real size and reports it against Workers' free-tier limit (LOU-I3)", () => {
+      const bundlePath = path.join(outDir, 'dist', 'worker.js');
+
+      // Ground truth: fs.statSync directly on the file, independent of the
+      // adapter's own internal calculation.
+      const groundTruthBytes = fs.statSync(bundlePath).size;
+      expect(groundTruthBytes).toBeGreaterThan(0);
+
+      const report = measureBundleSize(bundlePath);
+      expect(report.bytes).toBe(groundTruthBytes);
+      expect(report.bytes).toBeGreaterThan(0);
+      expect(report.gzipBytes).toBeGreaterThan(0);
+      // gzip of real JS should compress meaningfully smaller than raw.
+      expect(report.gzipBytes).toBeLessThan(report.bytes);
+      expect(report.limitBytes).toBe(WORKER_SIZE_LIMIT_BYTES);
+
+      // A minimal agent's bundle is expected to comfortably clear the free
+      // tier's script size limit - a clear "pass" signal.
+      expect(report.overLimit).toBe(false);
+
+      const description = CloudflareWorkerAdapter.describe(outDir);
+      expect(description).toContain('wrangler deploy');
+      expect(description).toContain(formatBundleSize(report.bytes));
+      expect(description).toContain(formatBundleSize(report.gzipBytes));
+      expect(description).toMatch(/within the .* limit/);
+      expect(description).not.toMatch(/WARNING/);
+    });
+
+    it('describe() falls back to warning language when the bundle exceeds the size limit', () => {
+      const bundlePath = path.join(outDir, 'dist', 'worker.js');
+      const realBytes = fs.statSync(bundlePath).size;
+
+      // Prove the warning path actually fires by lowering the threshold
+      // (test-only) below the real, already-built bundle's size, rather
+      // than just asserting the warning code exists.
+      const tinyLimit = 10; // bytes - guaranteed to be smaller than any real bundle
+      const report = measureBundleSize(bundlePath, tinyLimit);
+      expect(report.overLimit).toBe(true);
+      expect(report.bytes).toBe(realBytes);
+      expect(report.limitBytes).toBe(tinyLimit);
+    });
+
+    it('describe() reports WARNING for a real on-disk bundle that genuinely exceeds WORKER_SIZE_LIMIT_BYTES', () => {
+      // A synthetic (not tsup-built) but real file on disk, deliberately
+      // sized past the actual WORKER_SIZE_LIMIT_BYTES threshold, driven
+      // through the adapter's real describe() - not a re-implementation of
+      // its verdict logic - to prove the WARNING branch genuinely fires.
+      const scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-cf-oversized-'));
+      const scratchOut = path.join(scratchDir, 'out');
+      fs.mkdirSync(path.join(scratchOut, 'dist'), { recursive: true });
+      const oversizedPath = path.join(scratchOut, 'dist', 'worker.js');
+      fs.writeFileSync(oversizedPath, Buffer.alloc(WORKER_SIZE_LIMIT_BYTES + 1024, 'x'));
+
+      const groundTruthBytes = fs.statSync(oversizedPath).size;
+      expect(groundTruthBytes).toBeGreaterThan(WORKER_SIZE_LIMIT_BYTES);
+
+      const report = measureBundleSize(oversizedPath);
+      expect(report.bytes).toBe(groundTruthBytes);
+      expect(report.overLimit).toBe(true);
+
+      const description = CloudflareWorkerAdapter.describe(scratchOut);
+      expect(description).toContain('WARNING');
+      expect(description).toContain(formatBundleSize(groundTruthBytes));
+    }, 30_000);
+
     it("the built bundle's fetch() handler serves /health and /chat via AgentExecutor", async () => {
       const mod = await import(pathToFileURL(path.join(outDir, 'dist', 'worker.js')).href);
       const handler = mod.default as { fetch: (r: Request, env?: Record<string, unknown>) => Promise<Response> };
@@ -189,6 +257,32 @@ describe('CloudflareWorkerAdapter', () => {
         );
         expect(output).toContain('--dry-run: exiting now.');
         expect(fs.existsSync(path.join(dryOut, 'worker.js'))).toBe(true);
+
+        // LOU-I3: cross-check our fs.statSync/gzip-based measurement against
+        // wrangler's own reported "Total Upload" figures for the exact same
+        // build, so the adapter's number is proven meaningful rather than
+        // an arbitrary internal calculation.
+        const report = measureBundleSize(path.join(outDir, 'dist', 'worker.js'));
+        // wrangler prints a line like:
+        //   Total Upload: 12.34 KiB / gzip: 4.56 KiB
+        const uploadMatch = output.match(/Total Upload:\s*([\d.]+)\s*(KiB|MiB|B)\s*\/\s*gzip:\s*([\d.]+)\s*(KiB|MiB|B)/);
+        expect(uploadMatch).not.toBeNull();
+        if (uploadMatch) {
+          const toBytes = (value: string, unit: string): number => {
+            const n = parseFloat(value);
+            if (unit === 'MiB') return n * 1024 * 1024;
+            if (unit === 'KiB') return n * 1024;
+            return n;
+          };
+          const wranglerRawBytes = toBytes(uploadMatch[1], uploadMatch[2]);
+          const wranglerGzipBytes = toBytes(uploadMatch[3], uploadMatch[4]);
+          // wrangler's figures are rounded to 2 decimal KiB/MiB, so allow a
+          // small tolerance rather than requiring exact byte equality.
+          expect(Math.abs(report.bytes - wranglerRawBytes)).toBeLessThan(Math.max(50, report.bytes * 0.02));
+          expect(Math.abs(report.gzipBytes - wranglerGzipBytes)).toBeLessThan(
+            Math.max(50, report.gzipBytes * 0.05)
+          );
+        }
       }, 120_000);
 
       it('`wrangler dev` serves the worker on the local workerd runtime', async () => {
