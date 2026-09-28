@@ -66,6 +66,25 @@ export function sdkRuntimePlugin(): Plugin {
 }
 
 /**
+ * esbuild plugin (cloudflare-worker target only) that redirects the SDK's
+ * internal `security/sandboxCore` imports to the Worker-safe shim in
+ * ./shims/sandboxCore.worker.ts - the real module's NoopSandbox needs
+ * node:child_process, which Workers don't have.
+ */
+export function workerSandboxShimPlugin(): Plugin {
+  const shim = path.join(findSdkRoot(), 'src', 'deploy', 'shims', 'sandboxCore.worker.ts');
+  return {
+    name: 'loushy-worker-sandbox-shim',
+    setup(build) {
+      build.onResolve({ filter: /[\\/]security[\\/]sandboxCore$|^\.\/sandboxCore$/ }, (args) => {
+        if (path.resolve(args.importer) === shim) return undefined;
+        return { path: shim };
+      });
+    },
+  };
+}
+
+/**
  * Loads tsup lazily: it is only needed by `loushy build`, so the SDK's
  * normal runtime entrypoints never import it.
  */

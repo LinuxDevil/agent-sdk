@@ -9,11 +9,13 @@
  */
 import { registerAdapter } from './types';
 import { NodeServerAdapter } from './adapters/node-server';
+import { CloudflareWorkerAdapter } from './adapters/cloudflare';
 
 export * from './types';
-export { NodeServerAdapter };
+export { NodeServerAdapter, CloudflareWorkerAdapter };
 
 /** Registers every built-in adapter under its target name. Idempotent. */
 export function registerBuiltInAdapters(): void {
   registerAdapter('node-server', NodeServerAdapter);
+  registerAdapter('cloudflare-worker', CloudflareWorkerAdapter);
 }
