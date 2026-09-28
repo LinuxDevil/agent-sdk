@@ -9,6 +9,7 @@ export default defineConfig({
     'data/index': 'src/data/index.ts',
     'types/index': 'src/types/index.ts',
     'data/mocks': 'src/data/mocks.ts',
+    'cli/dev': 'src/cli/dev.ts',
   },
   format: ['cjs', 'esm'],
   dts: true,

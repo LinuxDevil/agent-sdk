@@ -5,6 +5,9 @@
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "bin": {
+    "loushy": "bin/loushy.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -39,6 +42,7 @@
   },
   "files": [
     "dist",
+    "bin",
     "README.md",
     "LICENSE",
     "CHANGELOG.md",
