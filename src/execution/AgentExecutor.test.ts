@@ -357,6 +357,72 @@ describe('AgentExecutor', () => {
       ).rejects.toThrow(/requires approval/);
     });
 
+    it('should save a checkpoint after each tool result when sessionId + checkpointStore are provided', async () => {
+      const execute = vi.fn().mockResolvedValue({ ok: true });
+      toolRegistry.register('noop', {
+        displayName: 'Noop',
+        tool: { description: 'noop', parameters: {}, execute } as any,
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .addTool('noop', { tool: 'noop', options: {} })
+        .build();
+
+      // Custom provider: emits a tool call for the first 3 generations,
+      // then stops.
+      let call = 0;
+      const scriptedProvider = {
+        name: 'scripted',
+        supportsTools: () => true,
+        supportsStreaming: () => false,
+        getModels: async () => ['scripted'],
+        stream: async () => {
+          throw new Error('not implemented');
+        },
+        generate: async () => {
+          call++;
+          if (call <= 3) {
+            return {
+              text: `step ${call}`,
+              finishReason: 'tool_calls' as const,
+              usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+              toolCalls: [
+                {
+                  id: `call-${call}`,
+                  type: 'function' as const,
+                  function: { name: 'noop', arguments: '{}' },
+                },
+              ],
+            };
+          }
+          return {
+            text: 'done',
+            finishReason: 'stop' as const,
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          };
+        },
+      };
+
+      const save = vi.fn().mockResolvedValue(undefined);
+      const checkpointStore = { save, load: vi.fn(), delete: vi.fn() };
+
+      await AgentExecutor.execute({
+        agent,
+        input: 'go',
+        provider: scriptedProvider as any,
+        toolRegistry,
+        sessionId: 'session-checkpoint-test',
+        checkpointStore,
+      });
+
+      expect(save).toHaveBeenCalledTimes(3);
+      const lengths = save.mock.calls.map(([, checkpoint]) => checkpoint.messages.length);
+      expect(lengths[1]).toBeGreaterThan(lengths[0]);
+      expect(lengths[2]).toBeGreaterThan(lengths[1]);
+    });
+
     it('should pass temperature and maxTokens', async () => {
       const agent = AgentBuilder.create()
         .setType(AgentType.SmartAssistant)

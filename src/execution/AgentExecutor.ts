@@ -8,6 +8,7 @@ import { LLMProvider, Message, ToolCall } from '../providers';
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
 import { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGate';
+import { Checkpoint, CheckpointStore } from './checkpoint';
 
 /**
  * Execution event types
@@ -61,6 +62,8 @@ export interface ExecuteOptions {
   maxTokens?: number;
   onEvent?: (event: ExecutionEvent) => void;
   approvalStore?: ApprovalStore;
+  sessionId?: string;
+  checkpointStore?: CheckpointStore;
 }
 
 /**
@@ -98,6 +101,8 @@ export class AgentExecutor {
       maxTokens,
       onEvent,
       approvalStore,
+      sessionId,
+      checkpointStore,
     } = options;
 
     // Emit start event
@@ -233,6 +238,19 @@ export class AgentExecutor {
               toolCallId: toolCall.id,
               toolName: toolCall.function.name,
             });
+
+            if (sessionId && checkpointStore) {
+              const checkpoint: Checkpoint = {
+                agentId: agent.id || '',
+                sessionId,
+                stepIndex: steps,
+                messages: [...currentMessages],
+                toolCalls: [...allToolCalls],
+                usage: totalUsage,
+                finishReason,
+              };
+              await checkpointStore.save(sessionId, checkpoint);
+            }
           }
 
           // Continue loop for next generation
