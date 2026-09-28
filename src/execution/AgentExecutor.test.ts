@@ -587,6 +587,136 @@ describe('AgentExecutor', () => {
       expect(userMessage?.content).toBe('Hello');
     });
 
+    it('should delete the checkpoint once a run reaches a terminal finish reason', async () => {
+      const execute = vi.fn().mockResolvedValue({ ok: true });
+      toolRegistry.register('noop', {
+        displayName: 'Noop',
+        tool: { description: 'noop', parameters: {}, execute } as any,
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .addTool('noop', { tool: 'noop', options: {} })
+        .build();
+
+      let call = 0;
+      const scriptedProvider = {
+        name: 'scripted',
+        supportsTools: () => true,
+        supportsStreaming: () => false,
+        getModels: async () => ['scripted'],
+        stream: async () => {
+          throw new Error('not implemented');
+        },
+        generate: async () => {
+          call++;
+          if (call === 1) {
+            return {
+              text: 'calling noop',
+              finishReason: 'tool_calls' as const,
+              usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+              toolCalls: [
+                {
+                  id: 'call-1',
+                  type: 'function' as const,
+                  function: { name: 'noop', arguments: '{}' },
+                },
+              ],
+            };
+          }
+          return {
+            text: 'done',
+            finishReason: 'stop' as const,
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          };
+        },
+      };
+
+      function makeCheckpointStore() {
+        const records = new Map<string, any>();
+        return {
+          save: vi.fn(async (sessionId: string, checkpoint: any) => {
+            records.set(sessionId, checkpoint);
+          }),
+          load: vi.fn(async (sessionId: string) => records.get(sessionId) ?? null),
+          delete: vi.fn(async (sessionId: string) => {
+            records.delete(sessionId);
+          }),
+        };
+      }
+
+      const checkpointStore = makeCheckpointStore();
+
+      await AgentExecutor.execute({
+        agent,
+        input: 'go',
+        provider: scriptedProvider as any,
+        toolRegistry,
+        sessionId: 'terminal-session',
+        checkpointStore,
+      });
+
+      expect(checkpointStore.delete).toHaveBeenCalledWith('terminal-session');
+      await expect(checkpointStore.load('terminal-session')).resolves.toBeNull();
+    });
+
+    it('should use fresh input (not stale stored messages) when execute() is called again with the same sessionId after completion', async () => {
+      function makeCheckpointStore() {
+        const records = new Map<string, any>();
+        return {
+          save: vi.fn(async (sessionId: string, checkpoint: any) => {
+            records.set(sessionId, checkpoint);
+          }),
+          load: vi.fn(async (sessionId: string) => records.get(sessionId) ?? null),
+          delete: vi.fn(async (sessionId: string) => {
+            records.delete(sessionId);
+          }),
+        };
+      }
+
+      const checkpointStore = makeCheckpointStore();
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .build();
+
+      // First run: completes normally (no tool calls), reaching a terminal
+      // finish reason and clearing the checkpoint.
+      const firstProvider = createMockProvider({
+        name: 'mock',
+        responses: ['first response'],
+      });
+
+      await AgentExecutor.execute({
+        agent,
+        input: 'first input',
+        provider: firstProvider,
+        sessionId: 'reused-session',
+        checkpointStore,
+      });
+
+      // Second run: same sessionId, brand-new input. If the stale checkpoint
+      // were still around and rehydrated, this fresh input would be
+      // silently ignored.
+      const secondProvider = createMockProvider({
+        name: 'mock',
+        responses: ['second response'],
+      });
+
+      const secondResult = await AgentExecutor.execute({
+        agent,
+        input: 'second input, completely different',
+        provider: secondProvider,
+        sessionId: 'reused-session',
+        checkpointStore,
+      });
+
+      const userMessage = secondResult.messages.find((m) => m.role === 'user');
+      expect(userMessage?.content).toBe('second input, completely different');
+      expect(secondResult.text).toBe('second response');
+    });
+
     it('should pass temperature and maxTokens', async () => {
       const agent = AgentBuilder.create()
         .setType(AgentType.SmartAssistant)

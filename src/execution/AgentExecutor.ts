@@ -310,6 +310,17 @@ export class AgentExecutor {
       usage: totalUsage,
     });
 
+    // The run has reached a terminal state (either the model stopped
+    // requesting tools, or maxSteps was exhausted) - as opposed to the
+    // 'awaiting-approval' early-return above, which is a mid-flight pause
+    // where the checkpoint must stay in place so it can still be resumed.
+    // Clear the checkpoint here so a later execute() call reusing this
+    // sessionId builds fresh messages from its own `input` instead of
+    // silently resuming from this now-finished run.
+    if (sessionId && checkpointStore) {
+      await checkpointStore.delete(sessionId);
+    }
+
     return {
       text: finalText,
       messages: currentMessages,
