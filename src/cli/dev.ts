@@ -105,9 +105,14 @@ async function handleRequest(
 }
 
 /**
- * Starts the dev server, binding to `port` (checked for availability up
- * front - EADDRINUSE is caught and rejected with a clear, port-naming
+ * Starts the dev server, binding to `host`:`port` (checked for availability
+ * up front - EADDRINUSE is caught and rejected with a clear, port-naming
  * error rather than crashing uncaught).
+ *
+ * `host` defaults to '127.0.0.1' (localhost-only) since this is a local dev
+ * tool and should not be reachable from the network by default. Pass an
+ * explicit host (e.g. '0.0.0.0') to opt in to LAN access, such as testing
+ * from a phone on the same network.
  *
  * Watches configPath (LOU-H8) via fs.watch: on a valid edit, the live
  * agent is swapped in-place through the mutable AgentHolder above; on an
@@ -117,7 +122,8 @@ async function handleRequest(
  */
 export async function startDevServer(
   configPath: string,
-  port = 3737
+  port = 3737,
+  host = '127.0.0.1'
 ): Promise<DevServerHandle> {
   const holder: AgentHolder = { agent: loadAgentFromConfig(configPath) };
 
@@ -162,7 +168,7 @@ export async function startDevServer(
     };
     server.once('error', onError);
     server.once('listening', onListening);
-    server.listen(port);
+    server.listen(port, host);
   });
 
   return {

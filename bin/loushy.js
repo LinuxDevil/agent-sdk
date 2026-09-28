@@ -15,9 +15,11 @@ async function main() {
   const configPath = rest.find((arg) => !arg.startsWith('--'));
   const portFlag = rest.find((arg) => arg.startsWith('--port'));
   const port = portFlag ? Number(portFlag.split('=')[1] || rest[rest.indexOf(portFlag) + 1]) : 3737;
+  const hostFlag = rest.find((arg) => arg.startsWith('--host'));
+  const host = hostFlag ? (hostFlag.split('=')[1] || rest[rest.indexOf(hostFlag) + 1]) : '127.0.0.1';
 
   if (!configPath) {
-    console.error('loushy dev: a config file path is required. Usage: loushy dev <config.yaml|config.json> [--port N]');
+    console.error('loushy dev: a config file path is required. Usage: loushy dev <config.yaml|config.json> [--port N] [--host H]');
     process.exitCode = 1;
     return;
   }
@@ -25,8 +27,8 @@ async function main() {
   const { startDevServer } = require(path.join(__dirname, '..', 'dist', 'cli', 'dev.js'));
 
   try {
-    const handle = await startDevServer(path.resolve(configPath), port);
-    console.log(`loushy dev: listening on http://localhost:${handle.port}`);
+    const handle = await startDevServer(path.resolve(configPath), port, host);
+    console.log(`loushy dev: listening on http://${host}:${handle.port}`);
   } catch (error) {
     console.error(error && error.message ? error.message : String(error));
     process.exitCode = 1;

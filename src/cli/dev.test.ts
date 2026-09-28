@@ -96,6 +96,15 @@ describe('startDevServer', () => {
     expect(json.text).toBe(MOCK_RESPONSE);
   });
 
+  it('binds to 127.0.0.1 (localhost-only) by default, not all interfaces', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-dev-'));
+    const configPath = writeConfig(dir);
+    handle = await startDevServer(configPath, 0);
+
+    const addr = handle.server.address();
+    expect(addr && typeof addr === 'object' ? addr.address : addr).toBe('127.0.0.1');
+  });
+
   it('rejects with a clear message when the port is already in use', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-dev-'));
     const configPath = writeConfig(dir);
