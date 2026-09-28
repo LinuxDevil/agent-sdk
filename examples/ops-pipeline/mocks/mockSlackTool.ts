@@ -40,6 +40,11 @@ export function createMockSlackTool(): MockSlackTool {
       }) => {
         const payload = buildSlackAlertPayload(channel, message, approvalId);
         posts.push({ channel, message, approvalId, payload });
+        // Logged so the README's manual "click Fix it" step is actually
+        // followable when running the live demo from the terminal - the
+        // mock has no real Slack UI to click a button in.
+        console.log(`[mock-slack] alert posted to ${channel} — approvalId: ${approvalId}`);
+        console.log(`[mock-slack] ${message}`);
         return { ok: true };
       },
     } as any,

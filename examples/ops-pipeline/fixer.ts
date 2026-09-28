@@ -123,6 +123,14 @@ function looksLikeDiff(content: string): boolean {
  * Runs the fixer agent against `request` via the REAL static
  * AgentExecutor.execute() and extracts a unified diff from its response.
  * Throws EmptyPatchError if no non-empty patch could be extracted.
+ *
+ * SAFETY: this function only produces a patch candidate. It does NOT run
+ * guardrails and does NOT gate on human approval. In the shipped pipeline
+ * (index.ts) it is only ever reached from inside the delegate tool that
+ * AgentExecutor pauses on `needsApproval: true` before invoking. Do not
+ * call runFixer() directly from a new entry point without first routing
+ * through that same approval gate and through handleFixerPatch()'s
+ * guardrail check (guardedPr.ts) before any GitHub write action.
  */
 export async function runFixer(
   request: FixRequest,
