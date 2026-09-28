@@ -123,6 +123,60 @@ describe('Execution - resumeAfterApproval', () => {
     expect(parsed.note).toBe('Not authorized');
   });
 
+  it('should not duplicate the system message when resuming an agent that has agent.prompt set', async () => {
+    const execute = vi.fn().mockResolvedValue({ charged: true });
+    toolRegistry.register('chargeCard', {
+      displayName: 'Charge Card',
+      tool: { description: 'Charge a card', parameters: {}, execute } as any,
+      needsApproval: true,
+    });
+
+    const systemPrompt = 'You are a careful billing assistant.';
+    const agent = AgentBuilder.create()
+      .setType(AgentType.SmartAssistant)
+      .setName('Test Agent')
+      .setPrompt(systemPrompt)
+      .addTool('chargeCard', { tool: 'chargeCard', options: {} })
+      .build();
+
+    const provider = createMockProvider({
+      name: 'mock',
+      responses: ['Charging now', 'All done'],
+    });
+
+    const approvalStore = createInMemoryApprovalStore();
+
+    const paused = await AgentExecutor.execute({
+      agent,
+      input: 'Please call chargeCard now',
+      provider,
+      toolRegistry,
+      approvalStore,
+    });
+
+    expect(paused.finishReason).toBe('awaiting-approval');
+    expect(paused.approvalId).toBeDefined();
+
+    // Sanity check: exactly one system message before the pause too.
+    const pausedSystemMessages = paused.messages.filter((m) => m.role === 'system');
+    expect(pausedSystemMessages).toHaveLength(1);
+    expect(pausedSystemMessages[0].content).toBe(systemPrompt);
+
+    const resumed = await resumeAfterApproval(
+      { id: paused.approvalId!, approved: true },
+      approvalStore,
+      toolRegistry,
+      provider
+    );
+
+    // Regression check for the resume duplicate-system-message bug: after
+    // resuming, there must still be exactly ONE system message, matching
+    // the original agent.prompt content - not two.
+    const resumedSystemMessages = resumed.messages.filter((m) => m.role === 'system');
+    expect(resumedSystemMessages).toHaveLength(1);
+    expect(resumedSystemMessages[0].content).toBe(systemPrompt);
+  });
+
   it('should throw a clear error for an unknown or already-resolved approval id', async () => {
     const approvalStore = createInMemoryApprovalStore();
     const provider = createMockProvider({ name: 'mock' });

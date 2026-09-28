@@ -64,6 +64,17 @@ export interface ExecuteOptions {
   approvalStore?: ApprovalStore;
   sessionId?: string;
   checkpointStore?: CheckpointStore;
+  /**
+   * When true, `input` is treated as a complete, ready-to-send message
+   * array that already includes any system prompt it needs (e.g. messages
+   * reconstructed from an ExecutionSnapshot by resume.ts). buildMessages()
+   * will not prepend a fresh system message built from `agent.prompt` in
+   * this case, avoiding a duplicate system message. Only relevant on the
+   * "build from scratch" fallback path (no checkpoint loaded); ignored
+   * when a checkpoint is rehydrated, since that path never re-injects a
+   * system message anyway.
+   */
+  skipSystemPromptInjection?: boolean;
 }
 
 /**
@@ -103,6 +114,7 @@ export class AgentExecutor {
       approvalStore,
       sessionId,
       checkpointStore,
+      skipSystemPromptInjection,
     } = options;
 
     // Emit start event
@@ -135,7 +147,7 @@ export class AgentExecutor {
       steps = checkpoint.stepIndex;
     } else {
       // Build messages from scratch (fallback path)
-      const messages = this.buildMessages(agent, input);
+      const messages = this.buildMessages(agent, input, skipSystemPromptInjection);
       currentMessages = [...messages];
       allToolCalls = [];
       totalUsage = {
@@ -313,12 +325,14 @@ export class AgentExecutor {
    */
   private static buildMessages(
     agent: AgentConfig,
-    input: string | Message[]
+    input: string | Message[],
+    skipSystemPromptInjection = false
   ): Message[] {
     const messages: Message[] = [];
 
-    // Add system prompt
-    if (agent.prompt) {
+    // Add system prompt, unless the caller has indicated `input` already
+    // includes one (e.g. resume.ts rebuilding from an ExecutionSnapshot).
+    if (agent.prompt && !skipSystemPromptInjection) {
       messages.push({
         role: 'system',
         content: agent.prompt,

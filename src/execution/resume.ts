@@ -13,7 +13,10 @@ import { AgentExecutor, ExecuteOptions, ExecutionResult } from './AgentExecutor'
  * once the deferred tool result (or rejection) has been appended to the
  * conversation.
  */
-export type ResumeExecuteOptions = Omit<ExecuteOptions, 'agent' | 'input' | 'provider' | 'toolRegistry'>;
+export type ResumeExecuteOptions = Omit<
+  ExecuteOptions,
+  'agent' | 'input' | 'provider' | 'toolRegistry' | 'skipSystemPromptInjection'
+>;
 
 /**
  * Resume a paused AgentExecutor run after a human approves or rejects the
@@ -73,5 +76,13 @@ export async function resumeAfterApproval(
     input: messages,
     provider,
     toolRegistry,
+    // `messages` was reconstructed from the ExecutionSnapshot's
+    // currentMessages, which already include the original system message
+    // (if any) that AgentExecutor.buildMessages() built the first time
+    // this agent ran. Since no checkpoint/sessionId is threaded through
+    // this call, execute() would otherwise fall into its "build from
+    // scratch" path and prepend a second, duplicate system message built
+    // fresh from agent.prompt.
+    skipSystemPromptInjection: true,
   });
 }
