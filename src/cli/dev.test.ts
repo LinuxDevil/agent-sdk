@@ -96,6 +96,23 @@ describe('startDevServer', () => {
     expect(json.text).toBe(MOCK_RESPONSE);
   });
 
+  it('rejects a POST /chat body larger than the size cap with 413', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-dev-'));
+    const configPath = writeConfig(dir);
+    handle = await startDevServer(configPath, 0);
+    const port = addressPort(handle);
+
+    // 1MB cap - send a body comfortably over it.
+    const oversized = JSON.stringify({ message: 'x'.repeat(2 * 1024 * 1024) });
+
+    const res = await fetch(`http://localhost:${port}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: oversized,
+    });
+    expect(res.status).toBe(413);
+  });
+
   it('binds to 127.0.0.1 (localhost-only) by default, not all interfaces', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-dev-'));
     const configPath = writeConfig(dir);

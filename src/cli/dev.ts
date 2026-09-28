@@ -32,13 +32,35 @@ export interface DevServerHandle {
   close: () => Promise<void>;
 }
 
+/** Body-size cap for POST /chat, matching common Node.js body-size-limit conventions. */
+const MAX_BODY_BYTES = 1024 * 1024; // 1MB
+
+class PayloadTooLargeError extends Error {}
+
 function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let body = '';
+    let bytes = 0;
+    let tooLarge = false;
     req.on('data', (chunk) => {
+      bytes += chunk.length;
+      if (bytes > MAX_BODY_BYTES) {
+        // Stop growing `body` once over the cap, but keep draining the
+        // stream (rather than destroying it or dropping listeners) so the
+        // client can finish writing and the connection doesn't deadlock -
+        // we reject once the request actually ends.
+        tooLarge = true;
+        return;
+      }
       body += chunk;
     });
-    req.on('end', () => resolve(body));
+    req.on('end', () => {
+      if (tooLarge) {
+        reject(new PayloadTooLargeError(`Request body exceeds ${MAX_BODY_BYTES} byte limit`));
+        return;
+      }
+      resolve(body);
+    });
     req.on('error', reject);
   });
 }
@@ -94,6 +116,11 @@ async function handleRequest(
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
     } catch (error) {
+      if (error instanceof PayloadTooLargeError) {
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: error.message }));
+        return;
+      }
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: (error as Error).message }));
     }
