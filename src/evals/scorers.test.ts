@@ -1,16 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { exactMatch, toolCallOrder } from './scorers';
+import { exactMatch, toolCallOrder, budget, describeBudgetFailure } from './scorers';
 import { ExecutionResult } from '../execution/AgentExecutor';
 import { ToolCall } from '../providers/llm';
 
-function fakeResult(text: string, toolCalls: ToolCall[] = []): ExecutionResult {
+function fakeResult(
+  text: string,
+  toolCalls: ToolCall[] = [],
+  overrides: Partial<Pick<ExecutionResult, 'usage' | 'steps'>> = {}
+): ExecutionResult {
   return {
     text,
     messages: [],
     toolCalls,
-    usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+    usage: overrides.usage ?? { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
     finishReason: 'stop',
-    steps: 1,
+    steps: overrides.steps ?? 1,
   };
 }
 
@@ -84,5 +88,41 @@ describe('toolCallOrder', () => {
   it('ignores args entirely when not specified in the expected call', () => {
     const scorer = toolCallOrder([{ tool: 'search' }]);
     expect(scorer(fakeResult('done', [searchCall]))).toBe(1);
+  });
+});
+
+describe('budget', () => {
+  it('scores 1 at 50% of the budget', () => {
+    const scorer = budget({ maxTokens: 1000, maxSteps: 10 });
+    const result = fakeResult('done', [], {
+      usage: { promptTokens: 300, completionTokens: 200, totalTokens: 500 },
+      steps: 5,
+    });
+    expect(scorer(result)).toBe(1);
+  });
+
+  it('scores 0 at 150% of the budget', () => {
+    const scorer = budget({ maxTokens: 1000, maxSteps: 10 });
+    const result = fakeResult('done', [], {
+      usage: { promptTokens: 900, completionTokens: 600, totalTokens: 1500 },
+      steps: 15,
+    });
+    expect(scorer(result)).toBe(0);
+  });
+});
+
+describe('describeBudgetFailure', () => {
+  it('includes both the actual and budgeted numbers as substrings', () => {
+    const limits = { maxTokens: 1000, maxSteps: 10 };
+    const result = fakeResult('done', [], {
+      usage: { promptTokens: 900, completionTokens: 600, totalTokens: 1500 },
+      steps: 15,
+    });
+    const message = describeBudgetFailure(result, limits);
+
+    expect(message).toContain('1500');
+    expect(message).toContain('1000');
+    expect(message).toContain('15');
+    expect(message).toContain('10');
   });
 });

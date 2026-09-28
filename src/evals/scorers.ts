@@ -106,3 +106,57 @@ export function toolCallOrder(expected: ExpectedCall[]): (result: ExecutionResul
     return 1;
   };
 }
+
+// ---------------------------------------------------------------------------
+// LOU-G5: token/step budget scorer
+// ---------------------------------------------------------------------------
+
+export interface Budget {
+  maxTokens?: number;
+  maxSteps?: number;
+}
+
+/**
+ * Returns a scorer that checks `result.usage.totalTokens` and `result.steps`
+ * (the real field names on ExecutionResult) against `limits`. Returns 0 if
+ * either configured limit is exceeded, 1 otherwise. A limit left
+ * `undefined` is not checked.
+ */
+export function budget(limits: Budget): (result: ExecutionResult) => number {
+  return (result: ExecutionResult): number => {
+    if (limits.maxTokens !== undefined && result.usage.totalTokens > limits.maxTokens) {
+      return 0;
+    }
+    if (limits.maxSteps !== undefined && result.steps > limits.maxSteps) {
+      return 0;
+    }
+    return 1;
+  };
+}
+
+/**
+ * Produces a human-readable description of which budget(s) a result
+ * exceeded, e.g. "tokens 1500 exceeded maxTokens 1000 by 500". Checks both
+ * tokens and steps, and includes a clause for each that failed.
+ */
+export function describeBudgetFailure(result: ExecutionResult, limits: Budget): string {
+  const failures: string[] = [];
+
+  if (limits.maxTokens !== undefined && result.usage.totalTokens > limits.maxTokens) {
+    const over = result.usage.totalTokens - limits.maxTokens;
+    failures.push(
+      `tokens ${result.usage.totalTokens} exceeded maxTokens ${limits.maxTokens} by ${over}`
+    );
+  }
+
+  if (limits.maxSteps !== undefined && result.steps > limits.maxSteps) {
+    const over = result.steps - limits.maxSteps;
+    failures.push(`steps ${result.steps} exceeded maxSteps ${limits.maxSteps} by ${over}`);
+  }
+
+  if (failures.length === 0) {
+    return 'no budget exceeded';
+  }
+
+  return failures.join('; ');
+}
