@@ -5,6 +5,17 @@
 import { DTOEncryptionSettings } from './types';
 
 /**
+ * Thrown when decryption fails, instead of silently returning the raw
+ * ciphertext as if it were the decrypted value.
+ */
+export class DecryptionError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'DecryptionError';
+  }
+}
+
+/**
  * Encryption utility class using AES-GCM encryption
  */
 export class EncryptionUtils {
@@ -116,12 +127,7 @@ export class EncryptionUtils {
         cipherText
       );
     } catch (e) {
-      console.error('Error decrypting ArrayBuffer', e);
-      // Return the original data cast as ArrayBuffer
-      if (encryptedData instanceof Blob) {
-        return await this.blobToArrayBuffer(encryptedData);
-      }
-      return encryptedData as ArrayBuffer;
+      throw new DecryptionError('Failed to decrypt array buffer', { cause: e });
     }
   }
 
@@ -177,14 +183,7 @@ export class EncryptionUtils {
         return cipherText;
       }
     } catch (e) {
-      console.error(
-        'Error decoding: ' +
-          (cipherText && cipherText.length > 100
-            ? cipherText.slice(0, 100) + '...'
-            : cipherText),
-        e
-      );
-      return cipherText; // probably the text was not encrypted or in bad ivHex/encryptedHex format
+      throw new DecryptionError('Failed to decrypt value', { cause: e });
     }
   }
 }
