@@ -2,11 +2,12 @@
  * Flow Executor Tests
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { FlowExecutor, FlowExecutionContext, FlowExecutionResult } from './FlowExecutor';
 import { AgentFlow, AgentConfig } from '../types';
 import { MockLLMProvider } from '../providers/mock';
 import { ToolRegistry } from '../tools';
+import { SandboxAdapter } from '../security/sandbox';
 
 describe('FlowExecutor', () => {
   let mockProvider: MockLLMProvider;
@@ -472,6 +473,141 @@ describe('FlowExecutor', () => {
 
       expect(result.success).toBe(false);
       expect(result.error?.message).toContain('not found');
+    });
+  });
+
+  describe('LOU-F fix: sandbox seam wiring in executeToolCall()', () => {
+    it("routes a requiresSandbox:true tool with sandboxExecute() through the configured SandboxAdapter, never touching tool.execute()", async () => {
+      const toolExecute = vi.fn().mockResolvedValue({ done: true });
+      const sandboxExecute = vi.fn(async (args: unknown, sandbox: SandboxAdapter) => {
+        await sandbox.writeFile('args.json', JSON.stringify(args));
+        const runResult = await sandbox.run('echo', ['hello-from-real-work']);
+        return { stdout: runResult.stdout };
+      });
+
+      toolRegistry.register('sandboxedFlowTool', {
+        tool: {
+          description: 'Sandboxed flow tool',
+          parameters: {},
+          execute: toolExecute,
+        },
+        type: 'Test',
+        requiresSandbox: true,
+        sandboxExecute,
+      } as any);
+
+      const spySandbox: SandboxAdapter = {
+        name: 'spy',
+        run: vi.fn().mockResolvedValue({ stdout: 'hello-from-real-work', stderr: '', exitCode: 0 }),
+        writeFile: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const flow: AgentFlow = {
+        code: 'test-flow',
+        name: 'Test Flow',
+        flow: {
+          type: 'toolCall',
+          tool: 'sandboxedFlowTool',
+          arguments: { value: 'test' },
+        },
+      };
+
+      const result = await FlowExecutor.execute(flow, { ...context, sandbox: spySandbox });
+
+      // sandboxExecute() itself was invoked, with the real (interpolated)
+      // args and the configured sandbox adapter.
+      expect(sandboxExecute).toHaveBeenCalledTimes(1);
+      expect(sandboxExecute).toHaveBeenCalledWith({ value: 'test' }, spySandbox);
+      expect(spySandbox.writeFile).toHaveBeenCalledWith(
+        'args.json',
+        JSON.stringify({ value: 'test' })
+      );
+      expect(spySandbox.run).toHaveBeenCalledWith('echo', ['hello-from-real-work']);
+
+      // Critical assertion: the tool's own in-process execute() is NEVER
+      // called for a genuinely-sandboxed tool invoked through a Flow.
+      expect(toolExecute).not.toHaveBeenCalled();
+
+      expect(result.success).toBe(true);
+      expect(result.output).toEqual({ stdout: 'hello-from-real-work' });
+    });
+
+    it('a requiresSandbox:true tool with NO sandboxExecute() fails closed through a Flow - the run surfaces the error instead of silently running in-process', async () => {
+      const toolExecute = vi.fn().mockResolvedValue({ done: true });
+
+      toolRegistry.register('unsandboxableFlowTool', {
+        tool: {
+          description: 'Unsandboxable flow tool',
+          parameters: {},
+          execute: toolExecute,
+        },
+        type: 'Test',
+        requiresSandbox: true,
+        // no sandboxExecute implementation - this is the bug scenario
+      } as any);
+
+      const spySandbox: SandboxAdapter = {
+        name: 'spy',
+        run: vi.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 }),
+        writeFile: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const flow: AgentFlow = {
+        code: 'test-flow',
+        name: 'Test Flow',
+        flow: {
+          type: 'toolCall',
+          tool: 'unsandboxableFlowTool',
+          arguments: {},
+        },
+      };
+
+      const result = await FlowExecutor.execute(flow, { ...context, sandbox: spySandbox });
+
+      // FlowExecutor's established convention for a thrown step error: the
+      // flow result comes back with success:false and the error attached,
+      // rather than a rejected promise (see 'should handle errors' above).
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+      expect(result.error?.message).toContain('unsandboxableFlowTool');
+      expect(result.error?.message).toContain('requiresSandbox');
+      expect(result.error?.message).toContain('sandboxExecute');
+      expect(result.error?.message).toContain('refusing to fall back to unsandboxed execution');
+
+      // Fail-closed: neither the tool's real execute() NOR any real
+      // sandbox operation happens. Before this fix, tool.execute() would
+      // have run in-process on the host unconditionally, silently.
+      expect(toolExecute).not.toHaveBeenCalled();
+      expect(spySandbox.run).not.toHaveBeenCalled();
+      expect(spySandbox.writeFile).not.toHaveBeenCalled();
+    });
+
+    it('a tool WITHOUT requiresSandbox through a flow behaves exactly as before (regression guard)', async () => {
+      // Reuses the pre-existing 'testTool' registered in beforeEach, which
+      // has no requiresSandbox flag - this is the same flow as the
+      // "Tool Call Execution > should execute tool" test above.
+      const spySandbox: SandboxAdapter = {
+        name: 'spy',
+        run: vi.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 }),
+        writeFile: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const flow: AgentFlow = {
+        code: 'test-flow',
+        name: 'Test Flow',
+        flow: {
+          type: 'toolCall',
+          tool: 'testTool',
+          arguments: { value: 'test' },
+        },
+      };
+
+      const result = await FlowExecutor.execute(flow, { ...context, sandbox: spySandbox });
+
+      expect(result.success).toBe(true);
+      expect(result.output).toEqual({ success: true, input: { value: 'test' } });
+      expect(spySandbox.run).not.toHaveBeenCalled();
+      expect(spySandbox.writeFile).not.toHaveBeenCalled();
     });
   });
 

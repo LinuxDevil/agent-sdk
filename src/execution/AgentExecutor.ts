@@ -5,12 +5,13 @@
 
 import { nanoid } from 'nanoid';
 import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult } from '../providers';
-import { AgentConfig, ToolDescriptor } from '../types';
+import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
 import { SandboxAdapter, NoopSandbox } from '../security/sandbox';
 import { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGate';
 import { Checkpoint, CheckpointStore } from './checkpoint';
 import { TraceExporter, withSpan } from './tracing';
+import { executeToolWithSandboxGuard } from './sandboxGuard';
 
 /**
  * Base class for tool errors that must NOT be swallowed by
@@ -693,10 +694,16 @@ export class AgentExecutor {
       // The 'ai' SDK tool.execute expects (args, context). Tools flagged
       // `requiresSandbox` (LOU-F5) are routed through the configured
       // SandboxAdapter instead of being invoked directly here; a tool
-      // WITHOUT the flag takes this exact, unchanged branch.
-      const result = toolDesc.requiresSandbox
-        ? await this.executeToolViaSandbox(toolCall.function.name, toolDesc, args, sandbox)
-        : await toolDesc.tool.execute(args, {} as any);
+      // WITHOUT the flag takes this exact, unchanged branch. This
+      // branching now lives in the shared executeToolWithSandboxGuard()
+      // helper (LOU-F fix) so FlowExecutor.ts and resume.ts share the
+      // exact same fail-closed behavior instead of each reimplementing it.
+      const result = await executeToolWithSandboxGuard(
+        toolCall.function.name,
+        toolDesc,
+        args,
+        sandbox
+      );
 
       return {
         toolCallId: toolCall.id,
@@ -722,49 +729,6 @@ export class AgentExecutor {
         error: (error as Error).message,
       };
     }
-  }
-
-  /**
-   * Bridge a `requiresSandbox` tool's execution through a SandboxAdapter
-   * (LOU-F5).
-   *
-   * Design note / honest limitation: a ToolDescriptor's `tool.execute` is
-   * an arbitrary in-process JS closure (per the 'ai' SDK's `tool()`
-   * shape - see src/types/tool.ts). Achieving *real* process-level
-   * isolation for that closure would mean serializing its logic into a
-   * script runnable inside a subprocess/container - a genuinely hard,
-   * tool-shape-specific problem a generic bridge cannot solve without the
-   * tool itself cooperating.
-   *
-   * So the contract is explicit: a tool that wants to be genuinely
-   * sandboxable implements `ToolDescriptor.sandboxExecute`, which receives
-   * the configured SandboxAdapter and is itself responsible for using
-   * `sandbox.run()`/`sandbox.writeFile()` to perform its real work (e.g.
-   * write input to a file, run a command that does the actual
-   * computation, parse the command's stdout as the result). When that's
-   * present, we call it and return its result - `tool.execute()` (the
-   * unsandboxed in-process closure) is never invoked for this path.
-   *
-   * If `requiresSandbox` is true but `sandboxExecute` is NOT implemented,
-   * there is no safe way to honor the flag: falling back to
-   * `tool.execute()` would run the tool's real code unsandboxed on the
-   * host while claiming it was isolated (exactly the bug this fixes). So
-   * we fail closed and throw instead, matching the codebase's established
-   * fail-closed philosophy (LOU-E's guardrails module).
-   */
-  private static async executeToolViaSandbox(
-    toolName: string,
-    toolDesc: ToolDescriptor,
-    args: Record<string, unknown>,
-    sandbox: SandboxAdapter
-  ): Promise<any> {
-    if (!toolDesc.sandboxExecute) {
-      throw new Error(
-        `Tool "${toolName}" is flagged requiresSandbox but does not implement sandboxExecute() ` +
-          `- cannot be safely sandboxed, refusing to fall back to unsandboxed execution`
-      );
-    }
-    return toolDesc.sandboxExecute(args, sandbox);
   }
 
   /**

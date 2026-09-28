@@ -8,6 +8,8 @@ import { ToolRegistry } from '../tools';
 import { ApprovalDecision, ApprovalStore } from './ApprovalGate';
 import { AgentExecutor, ExecuteOptions, ExecutionResult, PropagatingToolError } from './AgentExecutor';
 import { CheckpointStore } from './checkpoint';
+import { NoopSandbox } from '../security/sandbox';
+import { executeToolWithSandboxGuard } from './sandboxGuard';
 
 /**
  * Options passed through to the underlying AgentExecutor.execute() call
@@ -82,12 +84,23 @@ export async function resumeAfterApproval(
 
   if (decision.approved) {
     const toolDesc = toolRegistry.get(pending.toolName);
-    if (!toolDesc || !toolDesc.tool || !toolDesc.tool.execute) {
+    // A `requiresSandbox` tool may have no `tool.execute` implementation at
+    // all - its real work happens in `sandboxExecute()` instead - so the
+    // "not found" guard below must not reject that case outright; it only
+    // means there is genuinely no way to run the tool (neither a direct
+    // `execute` nor a `sandboxExecute`).
+    if (!toolDesc || !toolDesc.tool || (!toolDesc.tool.execute && !toolDesc.sandboxExecute)) {
       throw new Error(`Tool '${pending.toolName}' not found in registry`);
     }
 
     try {
-      const result = await toolDesc.tool.execute(pending.args, {} as any);
+      // Mirrors AgentExecutor.executeToolCall()'s fail-closed handling of
+      // `requiresSandbox` tools (LOU-F5) via the shared
+      // executeToolWithSandboxGuard() helper (LOU-F fix), so a deferred
+      // tool executed after human approval can't silently bypass the
+      // sandbox seam the way it previously did.
+      const sandbox = executeOptions.sandbox ?? NoopSandbox;
+      const result = await executeToolWithSandboxGuard(pending.toolName, toolDesc, pending.args, sandbox);
 
       messages.push({
         role: 'tool',
