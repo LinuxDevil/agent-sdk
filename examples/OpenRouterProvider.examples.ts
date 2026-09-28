@@ -4,7 +4,7 @@
  * This file demonstrates how to use the OpenRouter provider
  */
 
-import { LLMProviderRegistry, AgentBuilder, AgentType, Message } from '../index';
+import { LLMProviderRegistry, AgentBuilder, AgentType, Message } from '../src/index';
 
 /**
  * Example 1: Basic text generation with OpenRouter
