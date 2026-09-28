@@ -1,9 +1,9 @@
 /**
  * GitHub Integration Tools
- * 
+ *
  * Provides a comprehensive set of tools for interacting with GitHub API.
  * These tools can be used directly in agents without reimplementation.
- * 
+ *
  * @example
  * ```typescript
  * const githubTools = new GitHubTools({
@@ -11,16 +11,56 @@
  *   owner: 'myorg',
  *   repo: 'myrepo'
  * });
- * 
+ *
  * const agent = new AgentBuilder()
  *   .withTools(githubTools)
  *   .build();
  * ```
+ *
+ * ## Required token scope (LOU-E14)
+ *
+ * The `config.token` this class is constructed with is expected to be
+ * scoped to **PR creation and reading only**. Concretely, a fine-grained
+ * GitHub Personal Access Token (or GitHub App installation token) needs
+ * only:
+ *   - **Pull requests: Read and write** - covers every `pulls/*` and
+ *     `pulls/*\/files` endpoint this file calls EXCEPT merging (see
+ *     below): list/get/create/update/close a PR, and reading a PR's
+ *     changed files.
+ *   - **Issues: Read and write** - GitHub's REST API backs PR
+ *     conversation comments with the *issues* endpoints
+ *     (`issues/{number}/comments`), so posting/reading a PR comment
+ *     needs this even though it's conceptually a "PR" operation.
+ *   - **Contents: Read-only** - covers `repos/{owner}/{repo}`,
+ *     `branches`, `commits`, and `compare`, all of which this file only
+ *     ever reads (never writes) in service of PR creation (e.g.
+ *     resolving the repository's default branch, or a PR's changed
+ *     commits).
+ *
+ * Endpoints this file calls that fall **outside** that scope - creating
+ * or deleting a branch or a file (needs `Contents: Read and write`),
+ * searching code, every issue-CRUD endpoint that isn't a PR comment
+ * (needs `Issues: Read and write` used for something other than PR
+ * comments), and **merging a PR** (LOU-E fix: `PUT pulls/{number}/merge`
+ * requires GitHub's `Contents: Read and write` permission, NOT just
+ * `Pull requests: write` - merging writes a merge commit to the base
+ * branch's tree, which is a repository-content mutation, not a
+ * PR-metadata one. A PR-creation/reading-scoped token as documented above
+ * genuinely cannot perform it, so it's treated the same as the other
+ * out-of-scope, higher-privilege operations below rather than as a PR
+ * operation this class supports) - are NOT reachable with a
+ * PR-creation/reading-scoped token and are deliberately gated below (see
+ * `OUT_OF_SCOPE_TOOLS`): calling one of their tools throws before any
+ * HTTP request is made, rather than failing at GitHub with an opaque 403.
+ * This SDK never grants `Administration` or repository-deletion scopes to
+ * this class at all - there is no code path here that could delete a
+ * repository.
  */
 
 import { tool } from 'ai';
 import { z } from 'zod';
 import { ToolRegistry } from '../ToolRegistry';
+import { ToolDescriptor } from '../../types';
 
 // ============================================================================
 // Type Definitions
@@ -67,6 +107,204 @@ export interface GitHubBranch {
 }
 
 // ============================================================================
+// GitHub REST API response shapes (LOU-E13)
+//
+// These intentionally capture only the fields this file actually reads
+// out of each response, not the full GitHub REST API schema.
+// ============================================================================
+
+interface GitHubApiRepository {
+  name: string;
+  full_name: string;
+  description: string | null;
+  default_branch: string;
+  language: string | null;
+  stargazers_count: number;
+  forks_count: number;
+  open_issues_count: number;
+}
+
+interface GitHubApiBranchSummary {
+  name: string;
+  commit: { sha: string };
+  protected: boolean;
+}
+
+interface GitHubApiBranchDetail {
+  name: string;
+  commit: { sha: string; commit: { message: string } };
+  protected: boolean;
+}
+
+/** Response of GET/POST git/refs/heads/{branch} */
+interface GitHubApiRef {
+  ref: string;
+  object: { sha: string };
+}
+
+interface GitHubApiContentItem {
+  name: string;
+  path: string;
+  type: 'file' | 'dir';
+  size: number;
+  sha: string;
+  /** Only present when fetching a single file's content (base64-encoded). */
+  content?: string;
+}
+
+interface GitHubApiFileCommitResult {
+  content: { path: string; sha: string; html_url: string };
+  commit: { sha: string };
+}
+
+interface GitHubApiSearchCodeItem {
+  name: string;
+  path: string;
+  sha: string;
+  html_url: string;
+}
+
+interface GitHubApiSearchCodeResponse {
+  total_count: number;
+  items: GitHubApiSearchCodeItem[];
+}
+
+interface GitHubApiPullRequestSummary {
+  number: number;
+  title: string;
+  state: string;
+  user: { login: string };
+  head: { ref: string };
+  base: { ref: string };
+  html_url: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface GitHubApiPullRequestDetail {
+  number: number;
+  title: string;
+  body: string | null;
+  state: string;
+  html_url: string;
+  head: { ref: string };
+  base: { ref: string };
+}
+
+interface GitHubApiMergeResult {
+  merged: boolean;
+  sha: string;
+  message: string;
+}
+
+interface GitHubApiPRFile {
+  filename: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  changes: number;
+  patch?: string;
+}
+
+interface GitHubApiComment {
+  id: number;
+  user: { login: string };
+  body: string;
+  path?: string;
+  line?: number;
+  created_at: string;
+  html_url: string;
+}
+
+interface GitHubApiIssueSummary {
+  number: number;
+  title: string;
+  state: string;
+  user: { login: string };
+  labels: Array<{ name: string }>;
+  assignees: Array<{ login: string }>;
+  html_url: string;
+  created_at: string;
+  /** Present (truthy) when this "issue" is actually a pull request. */
+  pull_request?: unknown;
+}
+
+interface GitHubApiIssueDetail {
+  number: number;
+  title: string;
+  body: string | null;
+  state: string;
+  user: { login: string };
+  labels: Array<{ name: string }>;
+  assignees: Array<{ login: string }>;
+  html_url: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface GitHubApiCreateResult {
+  number: number;
+  html_url: string;
+}
+
+interface GitHubApiCommentResult {
+  id: number;
+  html_url: string;
+}
+
+interface GitHubApiCommitSummary {
+  sha: string;
+  commit: { message: string; author: { name: string; date: string } };
+  html_url: string;
+}
+
+interface GitHubApiCommitDetail {
+  sha: string;
+  commit: { message: string; author: { name: string; date: string } };
+  stats?: { additions: number; deletions: number; total: number };
+  files: Array<{ filename: string; status: string; additions: number; deletions: number }>;
+}
+
+interface GitHubApiCompareResult {
+  status: string;
+  ahead_by: number;
+  behind_by: number;
+  total_commits: number;
+  files: Array<{ filename: string; status: string; additions: number; deletions: number }>;
+}
+
+/** Request body for PUT contents/{path} (create-or-update file). */
+interface CreateOrUpdateFileRequestBody {
+  message: string;
+  content: string;
+  branch: string;
+  sha?: string;
+}
+
+/** Request body for PATCH pulls/{number}. */
+interface UpdatePullRequestBody {
+  title?: string;
+  body?: string;
+  state?: 'open' | 'closed';
+}
+
+/** Request body for PUT pulls/{number}/merge. */
+interface MergePullRequestBody {
+  merge_method: 'merge' | 'squash' | 'rebase';
+  commit_title?: string;
+  commit_message?: string;
+}
+
+/** Request body for POST/PATCH issues. */
+interface IssueRequestBody {
+  title?: string;
+  body?: string;
+  assignees?: string[];
+  labels?: string[];
+  state?: 'open' | 'closed';
+}
+
+// ============================================================================
 // GitHub Tools Registry
 // ============================================================================
 
@@ -75,12 +313,64 @@ export class GitHubTools extends ToolRegistry {
   private authHeader: string;
   private baseUrl: string;
 
+  /**
+   * Tool names whose underlying GitHub endpoint requires more than the
+   * "Pull requests: write" + "Issues: write" + "Contents: read" scope
+   * documented above (branch/file mutation, code search, and non-PR
+   * issue CRUD). `register()` below wraps each of these tools' execute()
+   * so calling one throws immediately - before any `fetch()` - instead
+   * of only being caught by GitHub itself at request time.
+   */
+  private static readonly OUT_OF_SCOPE_TOOLS = new Set<string>([
+    'github_create_branch',
+    'github_delete_branch',
+    'github_create_or_update_file',
+    'github_delete_file',
+    'github_search_code',
+    'github_list_issues',
+    'github_get_issue',
+    'github_create_issue',
+    'github_update_issue',
+    'github_close_issue',
+    'github_add_issue_comment',
+    // LOU-E fix: merging a PR (PUT pulls/{number}/merge) needs GitHub's
+    // "Contents: Read and write" permission, not just "Pull requests:
+    // write" - see the scope documentation at the top of this file. A
+    // PR-creation/reading-scoped token genuinely can't merge, so this is
+    // out of scope the same as the other higher-privilege operations
+    // above, not a PR operation this class supports.
+    'github_merge_pull_request',
+  ]);
+
   constructor(config: GitHubConfig) {
     super();
     this.config = config;
     this.authHeader = `Bearer ${config.token}`;
     this.baseUrl = `https://api.github.com/repos/${config.owner}/${config.repo}`;
     this.registerAllTools();
+  }
+
+  /**
+   * Overrides ToolRegistry.register() to gate any tool named in
+   * OUT_OF_SCOPE_TOOLS behind an error thrown from its execute(), instead
+   * of the tool's real implementation - so an out-of-scope call fails
+   * fast, before constructing or sending any GitHub API request. Every
+   * registerX() method below still calls `this.register(...)` exactly as
+   * before; this override applies uniformly without touching their
+   * individual implementations.
+   */
+  public register(name: string, descriptor: ToolDescriptor): void {
+    if (GitHubTools.OUT_OF_SCOPE_TOOLS.has(name) && descriptor.tool) {
+      descriptor.tool.execute = (async () => {
+        throw new Error(
+          `GitHub tool '${name}' is out of scope for a PR-creation/reading-scoped token ` +
+            `(requires broader permissions than "Pull requests: write" + "Issues: write" + ` +
+            `"Contents: read" - see the scope documentation at the top of github.ts) and has ` +
+            `been disabled.`
+        );
+      }) as typeof descriptor.tool.execute;
+    }
+    super.register(name, descriptor);
   }
 
   private registerAllTools() {
@@ -146,7 +436,7 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to get repository: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
+          const data = (await response.json()) as GitHubApiRepository;
           return JSON.stringify({
             name: data.name,
             fullName: data.full_name,
@@ -190,8 +480,8 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to list branches: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
-          const branches: GitHubBranch[] = data.map((branch: any) => ({
+          const data = (await response.json()) as GitHubApiBranchSummary[];
+          const branches: GitHubBranch[] = data.map((branch) => ({
             name: branch.name,
             sha: branch.commit.sha,
             protected: branch.protected,
@@ -227,7 +517,7 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to get branch: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
+          const data = (await response.json()) as GitHubApiBranchDetail;
           return JSON.stringify({
             name: data.name,
             sha: data.commit.sha,
@@ -266,7 +556,7 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to get source branch: ${refResponse.statusText} - ${errorText}`);
           }
 
-          const refData = await refResponse.json();
+          const refData = (await refResponse.json()) as GitHubApiRef;
           const sha = refData.object.sha;
 
           // Create new branch
@@ -291,7 +581,7 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to create branch: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
+          const data = (await response.json()) as GitHubApiRef;
           return JSON.stringify({
             ref: data.ref,
             sha: data.object.sha,
@@ -364,10 +654,10 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to list files: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
+          const data = (await response.json()) as GitHubApiContentItem | GitHubApiContentItem[];
           const files = Array.isArray(data) ? data : [data];
-          
-          const result = files.map((file: any) => ({
+
+          const result = files.map((file) => ({
             name: file.name,
             path: file.path,
             type: file.type,
@@ -408,8 +698,8 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to get file: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
-          const content = Buffer.from(data.content, 'base64').toString('utf-8');
+          const data = (await response.json()) as GitHubApiContentItem;
+          const content = Buffer.from(data.content ?? '', 'base64').toString('utf-8');
           
           return JSON.stringify({
             path: data.path,
@@ -435,7 +725,7 @@ export class GitHubTools extends ToolRegistry {
           sha: z.string().optional().describe('File SHA (required for updates, leave empty for new files)'),
         }),
         execute: async ({ path, content, message, branch, sha }) => {
-          const body: any = {
+          const body: CreateOrUpdateFileRequestBody = {
             message,
             content: Buffer.from(content).toString('base64'),
             branch,
@@ -463,7 +753,7 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to create/update file: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
+          const data = (await response.json()) as GitHubApiFileCommitResult;
           return JSON.stringify({
             path: data.content.path,
             sha: data.content.sha,
@@ -551,11 +841,11 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to search code: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
-          
+          const data = (await response.json()) as GitHubApiSearchCodeResponse;
+
           const result: GitHubSearchResult = {
             totalCount: data.total_count,
-            items: data.items.slice(0, 10).map((item: any) => ({
+            items: data.items.slice(0, 10).map((item) => ({
               name: item.name,
               path: item.path,
               sha: item.sha,
@@ -603,9 +893,9 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to list PRs: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
-          
-          const prs = data.map((pr: any) => ({
+          const data = (await response.json()) as GitHubApiPullRequestSummary[];
+
+          const prs = data.map((pr) => ({
             number: pr.number,
             title: pr.title,
             state: pr.state,
@@ -647,8 +937,8 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to get PR: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
-          
+          const data = (await response.json()) as GitHubApiPullRequestDetail;
+
           const pr: GitHubPullRequest = {
             number: data.number,
             title: data.title,
@@ -704,7 +994,7 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to create PR: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
+          const data = (await response.json()) as GitHubApiCreateResult & { state: string };
           return JSON.stringify({
             number: data.number,
             url: data.html_url,
@@ -727,7 +1017,7 @@ export class GitHubTools extends ToolRegistry {
           state: z.enum(['open', 'closed']).optional().describe('New state'),
         }),
         execute: async ({ prNumber, title, body, state }) => {
-          const updates: any = {};
+          const updates: UpdatePullRequestBody = {};
           if (title) updates.title = title;
           if (body) updates.body = body;
           if (state) updates.state = state;
@@ -754,7 +1044,7 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to update PR: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
+          const data = (await response.json()) as GitHubApiPullRequestDetail;
           return JSON.stringify({
             number: data.number,
             state: data.state,
@@ -777,7 +1067,7 @@ export class GitHubTools extends ToolRegistry {
           mergeMethod: z.enum(['merge', 'squash', 'rebase']).optional().default('merge').describe('Merge method'),
         }),
         execute: async ({ prNumber, commitTitle, commitMessage, mergeMethod = 'merge' }) => {
-          const body: any = {
+          const body: MergePullRequestBody = {
             merge_method: mergeMethod,
           };
 
@@ -802,7 +1092,7 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to merge PR: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
+          const data = (await response.json()) as GitHubApiMergeResult;
           return JSON.stringify({
             merged: data.merged,
             sha: data.sha,
@@ -870,9 +1160,9 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to get PR files: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
-          
-          const files = data.map((file: any) => ({
+          const data = (await response.json()) as GitHubApiPRFile[];
+
+          const files = data.map((file) => ({
             filename: file.filename,
             status: file.status,
             additions: file.additions,
@@ -911,9 +1201,9 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to get PR comments: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
-          
-          const comments = data.map((comment: any) => ({
+          const data = (await response.json()) as GitHubApiComment[];
+
+          const comments = data.map((comment) => ({
             id: comment.id,
             user: comment.user.login,
             body: comment.body,
@@ -956,7 +1246,7 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to add PR comment: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
+          const data = (await response.json()) as GitHubApiCommentResult;
           return JSON.stringify({
             id: data.id,
             url: data.html_url,
@@ -1005,17 +1295,17 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to list issues: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
-          
+          const data = (await response.json()) as GitHubApiIssueSummary[];
+
           const issues = data
-            .filter((issue: any) => !issue.pull_request) // Exclude PRs
-            .map((issue: any) => ({
+            .filter((issue) => !issue.pull_request) // Exclude PRs
+            .map((issue) => ({
               number: issue.number,
               title: issue.title,
               state: issue.state,
               user: issue.user.login,
-              labels: issue.labels.map((l: any) => l.name),
-              assignees: issue.assignees.map((a: any) => a.login),
+              labels: issue.labels.map((l) => l.name),
+              assignees: issue.assignees.map((a) => a.login),
               url: issue.html_url,
               createdAt: issue.created_at,
             }));
@@ -1050,15 +1340,15 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to get issue: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
+          const data = (await response.json()) as GitHubApiIssueDetail;
           return JSON.stringify({
             number: data.number,
             title: data.title,
             body: data.body || '',
             state: data.state,
             user: data.user.login,
-            labels: data.labels.map((l: any) => l.name),
-            assignees: data.assignees.map((a: any) => a.login),
+            labels: data.labels.map((l) => l.name),
+            assignees: data.assignees.map((a) => a.login),
             url: data.html_url,
             createdAt: data.created_at,
             updatedAt: data.updated_at,
@@ -1080,7 +1370,7 @@ export class GitHubTools extends ToolRegistry {
           labels: z.array(z.string()).optional().describe('Label names'),
         }),
         execute: async ({ title, body, assignees, labels }) => {
-          const issueData: any = { title };
+          const issueData: IssueRequestBody = { title };
           
           if (body) issueData.body = body;
           if (assignees) issueData.assignees = assignees;
@@ -1104,7 +1394,7 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to create issue: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
+          const data = (await response.json()) as GitHubApiCreateResult;
           return JSON.stringify({
             number: data.number,
             url: data.html_url,
@@ -1127,7 +1417,7 @@ export class GitHubTools extends ToolRegistry {
           labels: z.array(z.string()).optional().describe('Labels to set'),
         }),
         execute: async ({ issueNumber, title, body, state, labels }) => {
-          const updates: any = {};
+          const updates: IssueRequestBody = {};
           if (title) updates.title = title;
           if (body) updates.body = body;
           if (state) updates.state = state;
@@ -1222,7 +1512,7 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to add issue comment: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
+          const data = (await response.json()) as GitHubApiCommentResult;
           return JSON.stringify({
             id: data.id,
             url: data.html_url,
@@ -1265,9 +1555,9 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to list commits: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
-          
-          const commits = data.map((commit: any) => ({
+          const data = (await response.json()) as GitHubApiCommitSummary[];
+
+          const commits = data.map((commit) => ({
             sha: commit.sha,
             message: commit.commit.message,
             author: commit.commit.author.name,
@@ -1305,14 +1595,14 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to get commit: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
+          const data = (await response.json()) as GitHubApiCommitDetail;
           return JSON.stringify({
             sha: data.sha,
             message: data.commit.message,
             author: data.commit.author.name,
             date: data.commit.author.date,
             stats: data.stats,
-            files: data.files.map((f: any) => ({
+            files: data.files.map((f) => ({
               filename: f.filename,
               status: f.status,
               additions: f.additions,
@@ -1349,13 +1639,13 @@ export class GitHubTools extends ToolRegistry {
             throw new Error(`Failed to compare commits: ${response.statusText} - ${errorText}`);
           }
 
-          const data = await response.json();
+          const data = (await response.json()) as GitHubApiCompareResult;
           return JSON.stringify({
             status: data.status,
             aheadBy: data.ahead_by,
             behindBy: data.behind_by,
             totalCommits: data.total_commits,
-            files: data.files.map((f: any) => ({
+            files: data.files.map((f) => ({
               filename: f.filename,
               status: f.status,
               additions: f.additions,
@@ -1383,7 +1673,7 @@ export class GitHubTools extends ToolRegistry {
       throw new Error('Failed to get repository information');
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as GitHubApiRepository;
     return data.default_branch;
   }
 }

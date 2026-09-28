@@ -4,6 +4,7 @@ import { createMockProvider } from '../providers/mock';
 import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
 import { AgentType } from '../types';
+import { Span, TraceExporter } from './tracing';
 
 describe('AgentExecutor', () => {
   let provider: ReturnType<typeof createMockProvider>;
@@ -729,6 +730,412 @@ describe('AgentExecutor', () => {
         provider,
         temperature: 0.7,
         maxTokens: 100,
+      });
+
+      expect(result.text).toBeDefined();
+    });
+  });
+
+  describe('tracing hooks (LOU-E2)', () => {
+    it('invokes onLLMRequest/onLLMResponse and onToolCall/onToolResult in order, with real latency', async () => {
+      const { tool } = await import('ai');
+      const { z } = await import('zod');
+
+      toolRegistry.register('slowTool', {
+        displayName: 'Slow Tool',
+        tool: tool({
+          description: 'A tool with an artificial delay',
+          parameters: z.object({}),
+          execute: async () => {
+            await new Promise((resolve) => setTimeout(resolve, 30));
+            return { ok: true };
+          },
+        }),
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .addTool('slowTool', { tool: 'slowTool', options: {} })
+        .build();
+
+      let callCount = 0;
+      const mockProvider = {
+        name: 'mock',
+        async generate(options: any) {
+          callCount++;
+          if (callCount === 1) {
+            return {
+              text: '',
+              finishReason: 'tool_calls' as const,
+              usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+              toolCalls: [
+                {
+                  id: 'call-1',
+                  type: 'function' as const,
+                  function: { name: 'slowTool', arguments: '{}' },
+                },
+              ],
+            };
+          }
+          return {
+            text: 'done',
+            finishReason: 'stop' as const,
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          };
+        },
+        async stream() {
+          throw new Error('not implemented');
+        },
+        supportsTools: () => true,
+        supportsStreaming: () => false,
+        async getModels() {
+          return [];
+        },
+      };
+
+      const onLLMRequest = vi.fn();
+      const onLLMResponse = vi.fn();
+      const onToolCall = vi.fn();
+      const onToolResult = vi.fn();
+
+      const order: string[] = [];
+      onLLMRequest.mockImplementation(() => order.push('llm-request'));
+      onLLMResponse.mockImplementation(() => order.push('llm-response'));
+      onToolCall.mockImplementation(() => order.push('tool-call'));
+      onToolResult.mockImplementation(() => order.push('tool-result'));
+
+      await AgentExecutor.execute({
+        agent,
+        input: 'please call slowTool',
+        provider: mockProvider as any,
+        toolRegistry,
+        onLLMRequest,
+        onLLMResponse,
+        onToolCall,
+        onToolResult,
+      });
+
+      expect(onLLMRequest).toHaveBeenCalledTimes(2);
+      expect(onLLMResponse).toHaveBeenCalledTimes(2);
+      expect(onToolCall).toHaveBeenCalledTimes(1);
+      expect(onToolResult).toHaveBeenCalledTimes(1);
+
+      // Order: request -> response for step 1, then the tool call/result,
+      // then request -> response for step 2.
+      expect(order).toEqual([
+        'llm-request',
+        'llm-response',
+        'tool-call',
+        'tool-result',
+        'llm-request',
+        'llm-response',
+      ]);
+
+      expect(onToolCall).toHaveBeenCalledWith(
+        expect.objectContaining({ function: expect.objectContaining({ name: 'slowTool' }) })
+      );
+
+      // Latency should be a real positive number, reflecting the tool's
+      // artificial 30ms delay.
+      const toolResultLatency = onToolResult.mock.calls[0][2];
+      expect(typeof toolResultLatency).toBe('number');
+      expect(toolResultLatency).toBeGreaterThan(0);
+
+      const llmResponseLatency = onLLMResponse.mock.calls[0][1];
+      expect(typeof llmResponseLatency).toBe('number');
+      expect(llmResponseLatency).toBeGreaterThanOrEqual(0);
+    });
+
+    it('propagates errors thrown by a hook callback', async () => {
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .build();
+
+      await expect(
+        AgentExecutor.execute({
+          agent,
+          input: 'Hello',
+          provider,
+          onLLMRequest: () => {
+            throw new Error('hook boom');
+          },
+        })
+      ).rejects.toThrow('hook boom');
+    });
+
+    it('fires onToolResult even when the tool execution throws', async () => {
+      const { tool } = await import('ai');
+      const { z } = await import('zod');
+
+      toolRegistry.register('failingTool', {
+        displayName: 'Failing Tool',
+        tool: tool({
+          description: 'A tool that always fails',
+          parameters: z.object({}),
+          execute: async () => {
+            throw new Error('tool exploded');
+          },
+        }),
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .addTool('failingTool', { tool: 'failingTool', options: {} })
+        .build();
+
+      let callCount = 0;
+      const mockProvider = {
+        name: 'mock',
+        async generate() {
+          callCount++;
+          if (callCount === 1) {
+            return {
+              text: '',
+              finishReason: 'tool_calls' as const,
+              usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+              toolCalls: [
+                {
+                  id: 'call-1',
+                  type: 'function' as const,
+                  function: { name: 'failingTool', arguments: '{}' },
+                },
+              ],
+            };
+          }
+          return {
+            text: 'done',
+            finishReason: 'stop' as const,
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          };
+        },
+        async stream() {
+          throw new Error('not implemented');
+        },
+        supportsTools: () => true,
+        supportsStreaming: () => false,
+        async getModels() {
+          return [];
+        },
+      };
+
+      const onToolResult = vi.fn();
+
+      const result = await AgentExecutor.execute({
+        agent,
+        input: 'please call failingTool',
+        provider: mockProvider as any,
+        toolRegistry,
+        onToolResult,
+      });
+
+      // The tool's error is swallowed into a conversational {error}
+      // tool-result (not a PropagatingToolError), so execute() itself
+      // completes rather than rejecting - but onToolResult must still
+      // have fired for that failed execution.
+      expect(result.text).toBe('done');
+      expect(onToolResult).toHaveBeenCalledTimes(1);
+      const [, toolResultArg, latencyMs] = onToolResult.mock.calls[0];
+      expect(toolResultArg?.error).toContain('tool exploded');
+      expect(typeof latencyMs).toBe('number');
+      expect(latencyMs).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  describe('withSpan tracing (LOU-E5)', () => {
+    function createSpyExporter() {
+      const starts: Span[] = [];
+      const ends: Span[] = [];
+      const exporter: TraceExporter = {
+        onSpanStart: vi.fn((span: Span) => starts.push({ ...span })),
+        onSpanEnd: vi.fn((span: Span) => ends.push({ ...span })),
+      };
+      return { exporter, starts, ends };
+    }
+
+    function buildToolAgentAndProvider() {
+      let callCount = 0;
+      const mockProvider = {
+        name: 'mock',
+        async generate() {
+          callCount++;
+          if (callCount === 1) {
+            return {
+              text: '',
+              finishReason: 'tool_calls' as const,
+              usage: { promptTokens: 3, completionTokens: 2, totalTokens: 5 },
+              toolCalls: [
+                {
+                  id: 'call-1',
+                  type: 'function' as const,
+                  function: { name: 'echoTool', arguments: '{"msg":"secret-value"}' },
+                },
+              ],
+            };
+          }
+          return {
+            text: 'done',
+            finishReason: 'stop' as const,
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          };
+        },
+        async stream() {
+          throw new Error('not implemented');
+        },
+        supportsTools: () => true,
+        supportsStreaming: () => false,
+        async getModels() {
+          return [];
+        },
+      };
+      return mockProvider;
+    }
+
+    it('produces a 3-level span tree: agent.run -> llm.generate, tool.call, with correct parent/child ids', async () => {
+      const { tool } = await import('ai');
+      const { z } = await import('zod');
+
+      toolRegistry.register('echoTool', {
+        displayName: 'Echo Tool',
+        tool: tool({
+          description: 'Echoes its input',
+          parameters: z.object({ msg: z.string() }),
+          execute: async ({ msg }) => ({ echoed: msg }),
+        }),
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .addTool('echoTool', { tool: 'echoTool', options: {} })
+        .build();
+
+      const { exporter, starts, ends } = createSpyExporter();
+
+      await AgentExecutor.execute({
+        agent,
+        input: 'please call echoTool',
+        provider: buildToolAgentAndProvider() as any,
+        toolRegistry,
+        exporter,
+      });
+
+      const names = starts.map((s) => s.name);
+      expect(names).toEqual(['agent.run', 'llm.generate', 'tool.call', 'llm.generate']);
+      expect(starts).toHaveLength(4);
+      expect(ends).toHaveLength(4);
+
+      const agentRunSpan = starts.find((s) => s.name === 'agent.run')!;
+      const llmSpans = starts.filter((s) => s.name === 'llm.generate');
+      const toolSpan = starts.find((s) => s.name === 'tool.call')!;
+
+      expect(agentRunSpan.parentId).toBeUndefined();
+      for (const llmSpan of llmSpans) {
+        expect(llmSpan.parentId).toBe(agentRunSpan.id);
+      }
+      expect(toolSpan.parentId).toBe(agentRunSpan.id);
+    });
+
+    it('includes content in span attributes by default (redactContent omitted)', async () => {
+      const { tool } = await import('ai');
+      const { z } = await import('zod');
+
+      toolRegistry.register('echoTool', {
+        displayName: 'Echo Tool',
+        tool: tool({
+          description: 'Echoes its input',
+          parameters: z.object({ msg: z.string() }),
+          execute: async ({ msg }) => ({ echoed: msg }),
+        }),
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .addTool('echoTool', { tool: 'echoTool', options: {} })
+        .build();
+
+      const { exporter, ends } = createSpyExporter();
+
+      await AgentExecutor.execute({
+        agent,
+        input: 'please call echoTool',
+        provider: buildToolAgentAndProvider() as any,
+        toolRegistry,
+        exporter,
+      });
+
+      const serialized = JSON.stringify(ends);
+      expect(serialized).toContain('secret-value');
+
+      const llmSpan = ends.find((s) => s.name === 'llm.generate');
+      expect(llmSpan?.attributes.prompt).toBeDefined();
+      expect(llmSpan?.attributes.promptTokens).toBeDefined();
+      expect(llmSpan?.attributes.finishReason).toBeDefined();
+
+      const toolSpan = ends.find((s) => s.name === 'tool.call');
+      expect(toolSpan?.attributes.args).toBeDefined();
+      expect(toolSpan?.attributes.result).toBeDefined();
+      expect(toolSpan?.attributes.error).toBe(false);
+      expect(typeof toolSpan?.attributes.latencyMs).toBe('number');
+    });
+
+    it('omits content from span attributes when redactContent is true, while keeping non-content fields', async () => {
+      const { tool } = await import('ai');
+      const { z } = await import('zod');
+
+      toolRegistry.register('echoTool', {
+        displayName: 'Echo Tool',
+        tool: tool({
+          description: 'Echoes its input',
+          parameters: z.object({ msg: z.string() }),
+          execute: async ({ msg }) => ({ echoed: msg }),
+        }),
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .addTool('echoTool', { tool: 'echoTool', options: {} })
+        .build();
+
+      const { exporter, ends } = createSpyExporter();
+
+      await AgentExecutor.execute({
+        agent,
+        input: 'please call echoTool',
+        provider: buildToolAgentAndProvider() as any,
+        toolRegistry,
+        exporter,
+        redactContent: true,
+      });
+
+      const serialized = JSON.stringify(ends);
+      expect(serialized).not.toContain('secret-value');
+
+      const llmSpan = ends.find((s) => s.name === 'llm.generate');
+      expect(llmSpan?.attributes.prompt).toBeUndefined();
+      expect(llmSpan?.attributes.promptTokens).toBeDefined();
+      expect(llmSpan?.attributes.finishReason).toBeDefined();
+
+      const toolSpan = ends.find((s) => s.name === 'tool.call');
+      expect(toolSpan?.attributes.args).toBeUndefined();
+      expect(toolSpan?.attributes.result).toBeUndefined();
+      expect(toolSpan?.attributes.error).toBe(false);
+    });
+
+    it('works without an exporter (execute() behaves as before)', async () => {
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .build();
+
+      const result = await AgentExecutor.execute({
+        agent,
+        input: 'Hello',
+        provider,
       });
 
       expect(result.text).toBeDefined();
