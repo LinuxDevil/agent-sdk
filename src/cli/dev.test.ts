@@ -37,6 +37,40 @@ afterEach(async () => {
 });
 
 describe('startDevServer', () => {
+  it('serves the chat UI on GET / with an id="msg" input', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-dev-'));
+    const configPath = writeConfig(dir);
+    handle = await startDevServer(configPath, 0);
+
+    const res = await fetch(`http://localhost:${addressPort(handle)}/`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    const html = await res.text();
+    expect(html).toContain('id="msg"');
+    expect(html).toContain('id="send"');
+    expect(html).toContain('id="log"');
+  });
+
+  it('a realistic message round-trip via the UI page\'s own /chat call produces a reply', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-dev-'));
+    const configPath = writeConfig(dir);
+    handle = await startDevServer(configPath, 0);
+    const port = addressPort(handle);
+
+    // Confirm the page itself posts to /chat (what its inline script does),
+    // then drive that exact same call to confirm the round trip works.
+    const page = await (await fetch(`http://localhost:${port}/`)).text();
+    expect(page).toContain("fetch('/chat'");
+
+    const res = await fetch(`http://localhost:${port}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'hello from the UI' }),
+    });
+    const json = await res.json();
+    expect(json.text).toBe(MOCK_RESPONSE);
+  });
+
   it('responds 200 ok on GET /health', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-dev-'));
     const configPath = writeConfig(dir);

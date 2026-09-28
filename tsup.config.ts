@@ -1,4 +1,21 @@
 import { defineConfig } from 'tsup';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
+/**
+ * tsup only bundles TS/JS entrypoints - src/cli/dev-ui/index.html (LOU-H7)
+ * is a plain static asset dev.ts reads at runtime relative to its own
+ * __dirname, so it has to be copied into dist/cli/dev-ui alongside the
+ * compiled dev.js by hand.
+ */
+function copyDevUi() {
+  const src = path.join(__dirname, 'src', 'cli', 'dev-ui');
+  const dest = path.join(__dirname, 'dist', 'cli', 'dev-ui');
+  fs.mkdirSync(dest, { recursive: true });
+  for (const file of fs.readdirSync(src)) {
+    fs.copyFileSync(path.join(src, file), path.join(dest, file));
+  }
+}
 
 export default defineConfig({
   entry: {
@@ -19,4 +36,7 @@ export default defineConfig({
   treeshake: true,
   minify: false,
   external: ['ai', 'zod'],
+  onSuccess: async () => {
+    copyDevUi();
+  },
 });

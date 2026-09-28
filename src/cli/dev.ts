@@ -15,6 +15,7 @@
  */
 import * as http from 'node:http';
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { createAgent, SimpleAgent, CreateAgentConfig } from '../createAgent';
 import { resolveProvider } from '../providers/resolveProvider';
 import { LLMProvider, LLMProviderRegistry } from '../providers/llm';
@@ -105,6 +106,13 @@ function readBody(req: http.IncomingMessage): Promise<string> {
   });
 }
 
+function serveChatUi(res: http.ServerResponse): void {
+  const uiPath = path.join(__dirname, 'dev-ui', 'index.html');
+  const html = fs.readFileSync(uiPath, 'utf8');
+  res.writeHead(200, { 'Content-Type': 'text/html' });
+  res.end(html);
+}
+
 async function handleRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -113,6 +121,16 @@ async function handleRequest(
   if (req.method === 'GET' && req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('ok');
+    return;
+  }
+
+  if (req.method === 'GET' && req.url === '/') {
+    try {
+      serveChatUi(res);
+    } catch {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('dev UI not found');
+    }
     return;
   }
 
