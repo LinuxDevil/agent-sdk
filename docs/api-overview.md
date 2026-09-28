@@ -42,6 +42,13 @@ npm run docs:build   # writes docs/api/index.html
 | -------------------------------------------- | --------------------------------------------- |
 | `ToolRegistry`                               | Holds the tools an agent config refers to.    |
 | `httpTool`, `currentDateTool`, `dayNameTool` | Built-in tools.                               |
+| `loadMcpTools(client, connectionName)`       | Load a connected MCP server's tools as `ToolDescriptor`s. Available from the package root, `@loushy/build-ai-agent/tools`, and `@loushy/build-ai-agent/mcp`. |
+
+```ts
+import { loadMcpTools } from '@loushy/build-ai-agent/mcp';
+
+const tools = await loadMcpTools(mcpClient, 'my-server');
+```
 
 ## Flows, evals, observability and security
 

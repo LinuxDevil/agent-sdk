@@ -29,6 +29,11 @@
       "import": "./dist/flows/index.mjs",
       "require": "./dist/flows/index.js"
     },
+    "./mcp": {
+      "types": "./dist/tools/mcp/index.d.ts",
+      "import": "./dist/tools/mcp/index.mjs",
+      "require": "./dist/tools/mcp/index.js"
+    },
     "./types": {
       "types": "./dist/types/index.d.ts",
       "import": "./dist/types/index.mjs",
