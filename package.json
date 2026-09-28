@@ -71,7 +71,8 @@
     "example:workflow-router": "tsx examples/workflow-router/index.ts",
     "example:doc-qa": "tsx examples/doc-qa/index.ts",
     "example:slack-notifier": "tsx examples/slack-notifier/index.ts",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "docs:build": "typedoc"
   },
   "keywords": [
     "ai",
@@ -141,6 +142,7 @@
     "selfsigned": "^5.5.0",
     "tsup": "^8.0.0",
     "tsx": "^4.23.15",
+    "typedoc": "^0.28.20",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.70.1",
     "vitest": "^1.0.0",
