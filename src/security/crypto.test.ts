@@ -57,6 +57,18 @@ describe('Security - Crypto', () => {
     });
   });
 
+  describe('salt uniqueness', () => {
+    it('produces different salts for identical plaintext', async () => {
+      const testSecret = 'test-secret-key-12345';
+      const encryptionUtils = new EncryptionUtils(testSecret);
+      const a = await encryptionUtils.encrypt('same-plaintext');
+      const b = await encryptionUtils.encrypt('same-plaintext');
+      const saltA = a.slice(0, 32);
+      const saltB = b.slice(0, 32);
+      expect(saltA).not.toBe(saltB);
+    });
+  });
+
   describe('generatePassword', () => {
     it('should generate a password', () => {
       const password = generatePassword();
