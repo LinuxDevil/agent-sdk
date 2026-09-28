@@ -3,9 +3,12 @@
  * Executes agents with streaming support and tool calling
  */
 
+import { nanoid } from 'nanoid';
 import { LLMProvider, Message, ToolCall } from '../providers';
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
+import { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGate';
+import { Checkpoint, CheckpointStore } from './checkpoint';
 
 /**
  * Execution event types
@@ -58,6 +61,30 @@ export interface ExecuteOptions {
   temperature?: number;
   maxTokens?: number;
   onEvent?: (event: ExecutionEvent) => void;
+  approvalStore?: ApprovalStore;
+  sessionId?: string;
+  checkpointStore?: CheckpointStore;
+  /**
+   * When true, `input` is treated as a complete, ready-to-send message
+   * array that already includes any system prompt it needs (e.g. messages
+   * reconstructed from an ExecutionSnapshot by resume.ts). buildMessages()
+   * will not prepend a fresh system message built from `agent.prompt` in
+   * this case, avoiding a duplicate system message. Only relevant on the
+   * "build from scratch" fallback path (no checkpoint loaded); ignored
+   * when a checkpoint is rehydrated, since that path never re-injects a
+   * system message anyway.
+   */
+  skipSystemPromptInjection?: boolean;
+  /**
+   * Starting value for the step counter (and therefore the maxSteps
+   * safety-limit budget), used when there is no checkpoint to rehydrate
+   * `steps` from but execution is still a continuation of prior work - e.g.
+   * resume.ts resuming a run that was paused for approval after already
+   * taking some steps. Ignored whenever a checkpoint is loaded, since
+   * `checkpoint.stepIndex` is the source of truth in that case. Defaults to
+   * 0 (a genuinely fresh run) when omitted.
+   */
+  initialSteps?: number;
 }
 
 /**
@@ -74,6 +101,7 @@ export interface ExecutionResult {
   };
   finishReason: string;
   steps: number;
+  approvalId?: string;
 }
 
 /**
@@ -93,6 +121,11 @@ export class AgentExecutor {
       temperature,
       maxTokens,
       onEvent,
+      approvalStore,
+      sessionId,
+      checkpointStore,
+      skipSystemPromptInjection,
+      initialSteps,
     } = options;
 
     // Emit start event
@@ -103,20 +136,39 @@ export class AgentExecutor {
       agentName: agent.name,
     });
 
-    // Build messages
-    const messages = this.buildMessages(agent, input);
-
     // Build tools
     const tools = this.buildTools(agent, toolRegistry);
 
-    const currentMessages = [...messages];
-    const allToolCalls: ToolCall[] = [];
-    const totalUsage = {
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
-    };
-    let steps = 0;
+    // If a checkpoint exists for this sessionId, rehydrate state from it
+    // instead of building messages from scratch.
+    let checkpoint: Checkpoint | null = null;
+    if (sessionId && checkpointStore) {
+      checkpoint = await checkpointStore.load(sessionId);
+    }
+
+    let currentMessages: Message[];
+    let allToolCalls: ToolCall[];
+    let totalUsage: { promptTokens: number; completionTokens: number; totalTokens: number };
+    let steps: number;
+
+    if (checkpoint) {
+      currentMessages = [...checkpoint.messages];
+      allToolCalls = [...(checkpoint.toolCalls as ToolCall[])];
+      totalUsage = { ...checkpoint.usage };
+      steps = checkpoint.stepIndex;
+    } else {
+      // Build messages from scratch (fallback path)
+      const messages = this.buildMessages(agent, input, skipSystemPromptInjection);
+      currentMessages = [...messages];
+      allToolCalls = [];
+      totalUsage = {
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+      };
+      steps = initialSteps ?? 0;
+    }
+
     let finalText = '';
     let finishReason = 'stop';
 
@@ -173,6 +225,49 @@ export class AgentExecutor {
               toolRegistry
             );
 
+            if (toolResult.requiresApproval) {
+              if (!approvalStore) {
+                throw new Error(
+                  `Tool '${toolResult.toolName}' requires approval but no approvalStore was provided to AgentExecutor.execute()`
+                );
+              }
+
+              const pending: PendingApproval = {
+                id: nanoid(),
+                toolCallId: toolCall.id,
+                toolName: toolCall.function.name,
+                args: toolResult.args || {},
+                agentId: agent.id,
+                createdAt: new Date().toISOString(),
+              };
+              const snapshot: ExecutionSnapshot = {
+                agent,
+                currentMessages,
+                pendingToolCall: pending,
+                steps,
+                sessionId,
+              };
+
+              await approvalStore.save(pending, snapshot);
+
+              this.emitEvent(onEvent, {
+                type: 'finish',
+                timestamp: new Date(),
+                finishReason: 'awaiting-approval',
+                usage: totalUsage,
+              });
+
+              return {
+                text: '',
+                messages: currentMessages,
+                toolCalls: allToolCalls,
+                usage: totalUsage,
+                finishReason: 'awaiting-approval',
+                steps,
+                approvalId: pending.id,
+              };
+            }
+
             this.emitEvent(onEvent, {
               type: 'tool-result',
               timestamp: new Date(),
@@ -186,6 +281,19 @@ export class AgentExecutor {
               toolCallId: toolCall.id,
               toolName: toolCall.function.name,
             });
+
+            if (sessionId && checkpointStore) {
+              const checkpoint: Checkpoint = {
+                agentId: agent.id || '',
+                sessionId,
+                stepIndex: steps,
+                messages: [...currentMessages],
+                toolCalls: [...allToolCalls],
+                usage: totalUsage,
+                finishReason,
+              };
+              await checkpointStore.save(sessionId, checkpoint);
+            }
           }
 
           // Continue loop for next generation
@@ -214,6 +322,17 @@ export class AgentExecutor {
       usage: totalUsage,
     });
 
+    // The run has reached a terminal state (either the model stopped
+    // requesting tools, or maxSteps was exhausted) - as opposed to the
+    // 'awaiting-approval' early-return above, which is a mid-flight pause
+    // where the checkpoint must stay in place so it can still be resumed.
+    // Clear the checkpoint here so a later execute() call reusing this
+    // sessionId builds fresh messages from its own `input` instead of
+    // silently resuming from this now-finished run.
+    if (sessionId && checkpointStore) {
+      await checkpointStore.delete(sessionId);
+    }
+
     return {
       text: finalText,
       messages: currentMessages,
@@ -229,12 +348,14 @@ export class AgentExecutor {
    */
   private static buildMessages(
     agent: AgentConfig,
-    input: string | Message[]
+    input: string | Message[],
+    skipSystemPromptInjection = false
   ): Message[] {
     const messages: Message[] = [];
 
-    // Add system prompt
-    if (agent.prompt) {
+    // Add system prompt, unless the caller has indicated `input` already
+    // includes one (e.g. resume.ts rebuilding from an ExecutionSnapshot).
+    if (agent.prompt && !skipSystemPromptInjection) {
       messages.push({
         role: 'system',
         content: agent.prompt,
@@ -297,6 +418,8 @@ export class AgentExecutor {
     toolName: string;
     result: any;
     error?: string;
+    requiresApproval?: boolean;
+    args?: Record<string, unknown>;
   }> {
     if (!toolRegistry) {
       return {
@@ -319,6 +442,22 @@ export class AgentExecutor {
       }
 
       const args = JSON.parse(toolCall.function.arguments);
+
+      const needsApproval =
+        typeof toolDesc.needsApproval === 'function'
+          ? await toolDesc.needsApproval(args)
+          : !!toolDesc.needsApproval;
+
+      if (needsApproval) {
+        return {
+          toolCallId: toolCall.id,
+          toolName: toolCall.function.name,
+          result: null,
+          requiresApproval: true,
+          args,
+        };
+      }
+
       // The 'ai' SDK tool.execute expects (args, context)
       const result = await toolDesc.tool.execute(args, {} as any);
 

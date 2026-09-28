@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AgentExecutor, ExecutionEvent } from './AgentExecutor';
 import { createMockProvider } from '../providers/mock';
 import { ToolRegistry } from '../tools';
@@ -203,6 +203,518 @@ describe('AgentExecutor', () => {
       const systemMessage = result.messages.find(m => m.role === 'system');
       expect(systemMessage).toBeDefined();
       expect(systemMessage?.content).toBe('You are a pirate');
+    });
+
+    it('should not invoke a tool flagged with needsApproval, evaluated with actual args', async () => {
+      const execute = vi.fn().mockResolvedValue({ ok: true });
+      const needsApproval = vi.fn((args: any) => args.amount > 100);
+
+      toolRegistry.register('chargeCard', {
+        displayName: 'Charge Card',
+        tool: { execute } as any,
+        needsApproval,
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .build();
+
+      const toolCall = {
+        id: 'call-1',
+        type: 'function' as const,
+        function: {
+          name: 'chargeCard',
+          arguments: JSON.stringify({ amount: 500 }),
+        },
+      };
+
+      const result = await (AgentExecutor as any).executeToolCall(
+        toolCall,
+        agent,
+        toolRegistry
+      );
+
+      expect(execute).not.toHaveBeenCalled();
+      expect(needsApproval).toHaveBeenCalledWith({ amount: 500 });
+      expect(result.requiresApproval).toBe(true);
+      expect(result.args).toEqual({ amount: 500 });
+    });
+
+    it('should leave unflagged tools unchanged', async () => {
+      const execute = vi.fn().mockResolvedValue({ ok: true });
+
+      toolRegistry.register('chargeCard', {
+        displayName: 'Charge Card',
+        tool: { execute } as any,
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .build();
+
+      const toolCall = {
+        id: 'call-2',
+        type: 'function' as const,
+        function: {
+          name: 'chargeCard',
+          arguments: JSON.stringify({ amount: 5 }),
+        },
+      };
+
+      const result = await (AgentExecutor as any).executeToolCall(
+        toolCall,
+        agent,
+        toolRegistry
+      );
+
+      expect(execute).toHaveBeenCalledWith({ amount: 5 }, {});
+      expect(result.requiresApproval).toBeUndefined();
+      expect(result.result).toEqual({ ok: true });
+    });
+
+    it('should pause and persist a snapshot when a tool needs approval', async () => {
+      const execute = vi.fn().mockResolvedValue({ ok: true });
+
+      toolRegistry.register('chargeCard', {
+        displayName: 'Charge Card',
+        tool: {
+          description: 'Charge a card',
+          parameters: {},
+          execute,
+        } as any,
+        needsApproval: true,
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .addTool('chargeCard', { tool: 'chargeCard', options: {} })
+        .build();
+
+      // MockLLMProvider simulates a tool call when the last user message
+      // mentions the tool's name.
+      const approvalProvider = createMockProvider({
+        name: 'mock',
+        responses: ['Charging your card now'],
+      });
+
+      const save = vi.fn().mockResolvedValue(undefined);
+      const resolve = vi.fn().mockResolvedValue(null);
+
+      const result = await AgentExecutor.execute({
+        agent,
+        input: 'Please call chargeCard now',
+        provider: approvalProvider,
+        toolRegistry,
+        approvalStore: { save, resolve },
+      });
+
+      expect(execute).not.toHaveBeenCalled();
+      expect(result.finishReason).toBe('awaiting-approval');
+      expect(result.approvalId).toBeDefined();
+      expect(save).toHaveBeenCalledTimes(1);
+
+      const [pendingArg, snapshotArg] = save.mock.calls[0];
+      expect(pendingArg.toolName).toBe('chargeCard');
+      expect(pendingArg.args).toEqual({ input: 'mock input' });
+      expect(snapshotArg.currentMessages).toEqual(result.messages);
+      expect(snapshotArg.currentMessages.some((m: any) => m.role === 'user')).toBe(true);
+    });
+
+    it('should throw a clear error when approval is needed but no approvalStore is provided', async () => {
+      const execute = vi.fn().mockResolvedValue({ ok: true });
+
+      toolRegistry.register('chargeCard', {
+        displayName: 'Charge Card',
+        tool: {
+          description: 'Charge a card',
+          parameters: {},
+          execute,
+        } as any,
+        needsApproval: true,
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .addTool('chargeCard', { tool: 'chargeCard', options: {} })
+        .build();
+
+      const approvalProvider = createMockProvider({
+        name: 'mock',
+        responses: ['Charging your card now'],
+      });
+
+      await expect(
+        AgentExecutor.execute({
+          agent,
+          input: 'Please call chargeCard now',
+          provider: approvalProvider,
+          toolRegistry,
+        })
+      ).rejects.toThrow(/requires approval/);
+    });
+
+    it('should save a checkpoint after each tool result when sessionId + checkpointStore are provided', async () => {
+      const execute = vi.fn().mockResolvedValue({ ok: true });
+      toolRegistry.register('noop', {
+        displayName: 'Noop',
+        tool: { description: 'noop', parameters: {}, execute } as any,
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .addTool('noop', { tool: 'noop', options: {} })
+        .build();
+
+      // Custom provider: emits a tool call for the first 3 generations,
+      // then stops.
+      let call = 0;
+      const scriptedProvider = {
+        name: 'scripted',
+        supportsTools: () => true,
+        supportsStreaming: () => false,
+        getModels: async () => ['scripted'],
+        stream: async () => {
+          throw new Error('not implemented');
+        },
+        generate: async () => {
+          call++;
+          if (call <= 3) {
+            return {
+              text: `step ${call}`,
+              finishReason: 'tool_calls' as const,
+              usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+              toolCalls: [
+                {
+                  id: `call-${call}`,
+                  type: 'function' as const,
+                  function: { name: 'noop', arguments: '{}' },
+                },
+              ],
+            };
+          }
+          return {
+            text: 'done',
+            finishReason: 'stop' as const,
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          };
+        },
+      };
+
+      const save = vi.fn().mockResolvedValue(undefined);
+      const checkpointStore = { save, load: vi.fn(), delete: vi.fn() };
+
+      await AgentExecutor.execute({
+        agent,
+        input: 'go',
+        provider: scriptedProvider as any,
+        toolRegistry,
+        sessionId: 'session-checkpoint-test',
+        checkpointStore,
+      });
+
+      expect(save).toHaveBeenCalledTimes(3);
+      const lengths = save.mock.calls.map(([, checkpoint]) => checkpoint.messages.length);
+      expect(lengths[1]).toBeGreaterThan(lengths[0]);
+      expect(lengths[2]).toBeGreaterThan(lengths[1]);
+    });
+
+    it('should resume from a checkpoint after a simulated crash + restart with zero message loss', async () => {
+      const execute = vi.fn().mockResolvedValue({ ok: true });
+      toolRegistry.register('noop', {
+        displayName: 'Noop',
+        tool: { description: 'noop', parameters: {}, execute } as any,
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .addTool('noop', { tool: 'noop', options: {} })
+        .build();
+
+      function makeCheckpointStore() {
+        const records = new Map<string, any>();
+        return {
+          save: vi.fn(async (sessionId: string, checkpoint: any) => {
+            records.set(sessionId, checkpoint);
+          }),
+          load: vi.fn(async (sessionId: string) => records.get(sessionId) ?? null),
+          delete: vi.fn(async (sessionId: string) => {
+            records.delete(sessionId);
+          }),
+        };
+      }
+
+      function toolCallResponse(callNumber: number) {
+        return {
+          text: `step ${callNumber}`,
+          finishReason: 'tool_calls' as const,
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          toolCalls: [
+            {
+              id: `call-${callNumber}`,
+              type: 'function' as const,
+              function: { name: 'noop', arguments: '{}' },
+            },
+          ],
+        };
+      }
+
+      function stopResponse() {
+        return {
+          text: 'done',
+          finishReason: 'stop' as const,
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        };
+      }
+
+      // --- "Uninterrupted" baseline run: all 4 tool calls in one go ---
+      const baselineStore = makeCheckpointStore();
+      let baselineCall = 0;
+      const baselineProvider = {
+        name: 'scripted',
+        supportsTools: () => true,
+        supportsStreaming: () => false,
+        getModels: async () => ['scripted'],
+        stream: async () => {
+          throw new Error('not implemented');
+        },
+        generate: async () => {
+          baselineCall++;
+          return baselineCall <= 4 ? toolCallResponse(baselineCall) : stopResponse();
+        },
+      };
+
+      const baselineResult = await AgentExecutor.execute({
+        agent,
+        input: 'go',
+        provider: baselineProvider as any,
+        toolRegistry,
+        sessionId: 'baseline-session',
+        checkpointStore: baselineStore,
+      });
+
+      // --- Interrupted run: crashes after 2 of 4 tool calls ---
+      const sharedStore = makeCheckpointStore();
+      let crashCall = 0;
+      const crashingProvider = {
+        name: 'scripted-crash',
+        supportsTools: () => true,
+        supportsStreaming: () => false,
+        getModels: async () => ['scripted-crash'],
+        stream: async () => {
+          throw new Error('not implemented');
+        },
+        generate: async () => {
+          crashCall++;
+          if (crashCall <= 2) {
+            return toolCallResponse(crashCall);
+          }
+          throw new Error('simulated crash');
+        },
+      };
+
+      await expect(
+        AgentExecutor.execute({
+          agent,
+          input: 'go',
+          provider: crashingProvider as any,
+          toolRegistry,
+          sessionId: 'resume-session',
+          checkpointStore: sharedStore,
+        })
+      ).rejects.toThrow('simulated crash');
+
+      // "Restart": a brand new execute() call with the same sessionId/store,
+      // completing the remaining tool calls.
+      let resumeCall = 0;
+      const resumeProvider = {
+        name: 'scripted-resume',
+        supportsTools: () => true,
+        supportsStreaming: () => false,
+        getModels: async () => ['scripted-resume'],
+        stream: async () => {
+          throw new Error('not implemented');
+        },
+        generate: async () => {
+          resumeCall++;
+          return resumeCall <= 2 ? toolCallResponse(2 + resumeCall) : stopResponse();
+        },
+      };
+
+      const resumedResult = await AgentExecutor.execute({
+        agent,
+        input: 'go',
+        provider: resumeProvider as any,
+        toolRegistry,
+        sessionId: 'resume-session',
+        checkpointStore: sharedStore,
+      });
+
+      expect(sharedStore.load).toHaveBeenCalledWith('resume-session');
+      expect(resumedResult.messages).toHaveLength(baselineResult.messages.length);
+    });
+
+    it('should build messages from scratch when no checkpoint exists for a fresh sessionId', async () => {
+      const checkpointStore = {
+        save: vi.fn().mockResolvedValue(undefined),
+        load: vi.fn().mockResolvedValue(null),
+        delete: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .setPrompt('You are a pirate')
+        .build();
+
+      const result = await AgentExecutor.execute({
+        agent,
+        input: 'Hello',
+        provider,
+        sessionId: 'fresh-session',
+        checkpointStore,
+      });
+
+      expect(checkpointStore.load).toHaveBeenCalledWith('fresh-session');
+      const systemMessage = result.messages.find((m) => m.role === 'system');
+      expect(systemMessage?.content).toBe('You are a pirate');
+      const userMessage = result.messages.find((m) => m.role === 'user');
+      expect(userMessage?.content).toBe('Hello');
+    });
+
+    it('should delete the checkpoint once a run reaches a terminal finish reason', async () => {
+      const execute = vi.fn().mockResolvedValue({ ok: true });
+      toolRegistry.register('noop', {
+        displayName: 'Noop',
+        tool: { description: 'noop', parameters: {}, execute } as any,
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .addTool('noop', { tool: 'noop', options: {} })
+        .build();
+
+      let call = 0;
+      const scriptedProvider = {
+        name: 'scripted',
+        supportsTools: () => true,
+        supportsStreaming: () => false,
+        getModels: async () => ['scripted'],
+        stream: async () => {
+          throw new Error('not implemented');
+        },
+        generate: async () => {
+          call++;
+          if (call === 1) {
+            return {
+              text: 'calling noop',
+              finishReason: 'tool_calls' as const,
+              usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+              toolCalls: [
+                {
+                  id: 'call-1',
+                  type: 'function' as const,
+                  function: { name: 'noop', arguments: '{}' },
+                },
+              ],
+            };
+          }
+          return {
+            text: 'done',
+            finishReason: 'stop' as const,
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          };
+        },
+      };
+
+      function makeCheckpointStore() {
+        const records = new Map<string, any>();
+        return {
+          save: vi.fn(async (sessionId: string, checkpoint: any) => {
+            records.set(sessionId, checkpoint);
+          }),
+          load: vi.fn(async (sessionId: string) => records.get(sessionId) ?? null),
+          delete: vi.fn(async (sessionId: string) => {
+            records.delete(sessionId);
+          }),
+        };
+      }
+
+      const checkpointStore = makeCheckpointStore();
+
+      await AgentExecutor.execute({
+        agent,
+        input: 'go',
+        provider: scriptedProvider as any,
+        toolRegistry,
+        sessionId: 'terminal-session',
+        checkpointStore,
+      });
+
+      expect(checkpointStore.delete).toHaveBeenCalledWith('terminal-session');
+      await expect(checkpointStore.load('terminal-session')).resolves.toBeNull();
+    });
+
+    it('should use fresh input (not stale stored messages) when execute() is called again with the same sessionId after completion', async () => {
+      function makeCheckpointStore() {
+        const records = new Map<string, any>();
+        return {
+          save: vi.fn(async (sessionId: string, checkpoint: any) => {
+            records.set(sessionId, checkpoint);
+          }),
+          load: vi.fn(async (sessionId: string) => records.get(sessionId) ?? null),
+          delete: vi.fn(async (sessionId: string) => {
+            records.delete(sessionId);
+          }),
+        };
+      }
+
+      const checkpointStore = makeCheckpointStore();
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .build();
+
+      // First run: completes normally (no tool calls), reaching a terminal
+      // finish reason and clearing the checkpoint.
+      const firstProvider = createMockProvider({
+        name: 'mock',
+        responses: ['first response'],
+      });
+
+      await AgentExecutor.execute({
+        agent,
+        input: 'first input',
+        provider: firstProvider,
+        sessionId: 'reused-session',
+        checkpointStore,
+      });
+
+      // Second run: same sessionId, brand-new input. If the stale checkpoint
+      // were still around and rehydrated, this fresh input would be
+      // silently ignored.
+      const secondProvider = createMockProvider({
+        name: 'mock',
+        responses: ['second response'],
+      });
+
+      const secondResult = await AgentExecutor.execute({
+        agent,
+        input: 'second input, completely different',
+        provider: secondProvider,
+        sessionId: 'reused-session',
+        checkpointStore,
+      });
+
+      const userMessage = secondResult.messages.find((m) => m.role === 'user');
+      expect(userMessage?.content).toBe('second input, completely different');
+      expect(secondResult.text).toBe('second response');
     });
 
     it('should pass temperature and maxTokens', async () => {
