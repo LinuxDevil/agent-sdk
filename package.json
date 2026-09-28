@@ -48,7 +48,10 @@
     "CHANGELOG.md",
     "CONTRIBUTING.md"
   ],
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/providers/mock.ts",
+    "./src/providers/mock.js"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
