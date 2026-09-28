@@ -216,6 +216,74 @@ describe('command guardrails (LOU-E11)', () => {
     }
     expect(alive).toBe(false);
   }, 10000);
+
+  it('applies action.diff to a scratch copy and evaluates the patched result, without mutating the fixture (LOU-E fix)', async () => {
+    // A small valid unified diff against the pristine fixture repo that
+    // breaks the one existing test when applied.
+    const diff = [
+      'diff --git a/test/sample.test.js b/test/sample.test.js',
+      'index 0000000..1111111 100644',
+      '--- a/test/sample.test.js',
+      '+++ b/test/sample.test.js',
+      '@@ -1,7 +1,7 @@',
+      " const test = require('node:test');",
+      " const assert = require('node:assert');",
+      " const { add } = require('../src/index');",
+      ' ',
+      " test('add() sums two numbers', () => {",
+      '-  assert.strictEqual(add(2, 3), 5);',
+      '+  assert.strictEqual(add(2, 3), 999);',
+      ' });',
+      '',
+    ].join('\n');
+
+    const originalFixtureContent = fs.readFileSync(
+      path.join(fixtureRepo, 'test', 'sample.test.js'),
+      'utf-8'
+    );
+
+    // Passed directly against the pristine, checked-in fixture (not the
+    // beforeEach-created scratchDir) - createCommandGuardrail must make
+    // its own internal copy to apply the diff into, never touching this.
+    const guardrail = createTestRunGuardrail(fixtureRepo);
+    const result = await guardrail.check({ diff });
+
+    expect(result.pass).toBe(false);
+    expect(result.reason).toContain('test-run');
+
+    // The checked-in fixture must remain byte-for-byte unmutated.
+    const afterFixtureContent = fs.readFileSync(
+      path.join(fixtureRepo, 'test', 'sample.test.js'),
+      'utf-8'
+    );
+    expect(afterFixtureContent).toBe(originalFixtureContent);
+  }, 30000);
+
+  it('an empty/undefined diff runs the command against repoPath as-is (deliberate "no diff to gate" case)', async () => {
+    const guardrail = createTestRunGuardrail(scratchDir);
+    const result = await guardrail.check({ diff: '' });
+    expect(result.pass).toBe(true);
+  }, 30000);
+
+  it('rejects a diff that does not apply cleanly with a clear reason', async () => {
+    const badDiff = [
+      'diff --git a/test/sample.test.js b/test/sample.test.js',
+      'index 0000000..1111111 100644',
+      '--- a/test/sample.test.js',
+      '+++ b/test/sample.test.js',
+      '@@ -1,3 +1,3 @@',
+      ' this context line does not exist in the real file',
+      '-neither does this one',
+      '+nor this replacement',
+      '',
+    ].join('\n');
+
+    const guardrail = createTestRunGuardrail(scratchDir);
+    const result = await guardrail.check({ diff: badDiff });
+
+    expect(result.pass).toBe(false);
+    expect(result.reason).toContain('does not apply cleanly');
+  }, 30000);
 });
 
 describe('runGuardrails (LOU-E12)', () => {
@@ -231,6 +299,22 @@ describe('runGuardrails (LOU-E12)', () => {
 
     expect(result.pass).toBe(false);
     expect(result.failures).toEqual([{ name: 'c', reason: 'c is broken' }]);
+  });
+
+  it('treats a truthy-but-non-boolean pass value as a failure, not a pass (LOU-E fix)', async () => {
+    const sloppy: Guardrail = {
+      name: 'sloppy',
+      // Simulates a third-party/JS guardrail that isn't well-typed and
+      // resolves `pass` to a truthy number instead of `true`.
+      check: async () => ({ pass: 1 as unknown as boolean }),
+    };
+
+    const safeResult = await runGuardrailSafely(sloppy, action);
+    expect(safeResult.pass).toBe(false);
+
+    const result = await runGuardrails(action, [sloppy]);
+    expect(result.pass).toBe(false);
+    expect(result.failures).toEqual([{ name: 'sloppy', reason: undefined }]);
   });
 
   it('reports overall pass when every guardrail passes', async () => {
