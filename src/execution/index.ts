@@ -10,3 +10,4 @@ export * from './errors';
 export * from './retry';
 export * from './ApprovalGate';
 export * from './resume';
+export * from './checkpoint';
