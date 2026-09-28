@@ -86,7 +86,7 @@ export async function generateProject(dir: string, answers: AnswerConfig): Promi
   // or a path generateProject() itself computed (never raw user input),
   // so this isn't a shell-injection risk in practice.
   const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const packOutput = execFileSync(npmCmd, ['pack', '--pack-destination', `"${dir}"`], {
+  const packOutput = execFileSync(npmCmd, ['pack', '--pack-destination', dir], {
     cwd: sdkRoot,
     encoding: 'utf8',
     shell: true,
