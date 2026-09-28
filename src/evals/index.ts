@@ -5,4 +5,5 @@
 
 export * from './defineEval';
 export * from './scorers';
+export * from './llmJudge';
 
