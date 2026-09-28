@@ -9,6 +9,7 @@ export * from './OpenAIProvider';
 export * from './OllamaProvider';
 export * from './OpenRouterProvider';
 export * from './AnthropicProvider';
+export * from './resolveProvider';
 
 // Auto-register built-in providers
 import { LLMProviderRegistry } from './llm';
