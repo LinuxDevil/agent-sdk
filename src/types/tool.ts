@@ -34,6 +34,7 @@ export interface ToolConfiguration {
 export interface ToolDescriptor {
   displayName: string;
   tool: AITool;
+  needsApproval?: boolean | ((args: any) => boolean | Promise<boolean>);
   injectStreamingController?: (controller: ReadableStreamDefaultController<unknown>) => void;
 }
 
