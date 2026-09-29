@@ -16,6 +16,7 @@ import {
   type DebugStatePayload,
   type ChatSessionMeta,
   type ChatSessionRecord,
+  type SettingsProfile,
 } from '../runtime/runtimeClient';
 import { appendLog } from './logReducer';
 import { upsertSpan } from './spanReducer';
@@ -134,6 +135,16 @@ interface AppState {
   viewChatSession: (sessionId: string) => Promise<void>;
   /** P3: switches the Chat tab back to the live session. */
   returnToLiveChat: () => void;
+
+  /**
+   * R3: the currently-active settings profile (env/provider/deploy-adapter
+   * bundle) - what the Topbar's env indicator now renders instead of the
+   * old static "local · mock provider" label. `undefined` until the first
+   * fetch resolves (e.g. runtime server not reachable yet).
+   */
+  activeProfile: SettingsProfile | undefined;
+  /** Re-fetches `activeProfile` from the server - called after any Settings-tab mutation (key/profile change) so the Topbar reflects it immediately. */
+  refreshActiveProfile: () => Promise<void>;
 }
 
 const AppStateContext = createContext<AppState | undefined>(undefined);
@@ -263,6 +274,21 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [chatActionError, setChatActionError] = useState<string | undefined>(undefined);
   const [chatSessions, setChatSessions] = useState<ChatSessionMeta[]>([]);
   const [viewedChatSession, setViewedChatSession] = useState<ChatSessionRecord | undefined>(undefined);
+  const [activeProfile, setActiveProfile] = useState<SettingsProfile | undefined>(undefined);
+
+  const refreshActiveProfile = useCallback(async () => {
+    try {
+      const { activeProfileId, profiles } = await runtimeClient.listSettingsProfiles();
+      setActiveProfile(profiles.find((p) => p.id === activeProfileId) ?? profiles[0]);
+    } catch {
+      // Runtime server may not be running yet - Topbar just keeps showing
+      // no env indicator rather than erroring the whole app.
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshActiveProfile();
+  }, [refreshActiveProfile]);
 
   // Keep one WS subscription per known agent id (for the LeftRail's status
   // pills), added/removed as `agents` (the saved-agent list) changes -
@@ -443,6 +469,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     viewedChatSession,
     viewChatSession,
     returnToLiveChat,
+    activeProfile,
+    refreshActiveProfile,
   };
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
