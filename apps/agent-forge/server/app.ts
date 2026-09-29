@@ -35,10 +35,19 @@ import {
   ApprovalPendingError,
 } from './runRegistry';
 import { isValidAgentId } from './types';
+import { SecretsStore, isSecretProvider } from './secretsStore';
+import { SettingsStore, type SettingsProfile } from './settingsStore';
+import { DEPLOY_ADAPTERS, isDeployAdapter, runDeploy } from './deployRunner';
 
 export interface CreateAppOptions {
   agentStore: AgentStore;
   runManager: RunManager;
+  /** Directory `.loushy/**` lives under - same `baseDir` the server was started with. Required for R1/R2/R3's routes. */
+  baseDir: string;
+  /** R1: defaults to `new SecretsStore(baseDir)` when omitted. */
+  secretsStore?: SecretsStore;
+  /** R3: defaults to `new SettingsStore(baseDir)` when omitted. */
+  settingsStore?: SettingsStore;
 }
 
 function asyncRoute(fn: (req: Request, res: Response) => Promise<void>) {
@@ -58,10 +67,13 @@ function paramId(req: Request): string {
   return Array.isArray(id) ? id[0] : id;
 }
 
-export function createApp({ agentStore, runManager }: CreateAppOptions): Express {
+export function createApp({ agentStore, runManager, baseDir, secretsStore, settingsStore }: CreateAppOptions): Express {
   const app = express();
   app.use(cors());
   app.use(express.json({ limit: '2mb' }));
+
+  const secrets = secretsStore ?? new SecretsStore(baseDir);
+  const settings = settingsStore ?? new SettingsStore(baseDir);
 
   app.get('/health', (_req, res) => res.status(200).send('ok'));
 
@@ -264,6 +276,126 @@ export function createApp({ agentStore, runManager }: CreateAppOptions): Express
     runManager.stepRun(paramId(req));
     res.json(runManager.debugState(paramId(req)));
   });
+
+  // ---------------------------------------------------------------------
+  // LOU-R1: provider key management. GET only ever returns masked status
+  // (never a real key - see secretsStore.ts's `list()`/`ProviderKeyStatus`).
+  // ---------------------------------------------------------------------
+  app.get('/settings/providers', (_req, res) => {
+    res.json(secrets.list());
+  });
+
+  app.put(
+    '/settings/providers/:provider',
+    (req, res) => {
+      const provider = req.params.provider;
+      if (!isSecretProvider(provider)) {
+        res.status(400).json({ error: `Unknown provider '${provider}'. Known: ${['openai', 'anthropic'].join(', ')}` });
+        return;
+      }
+      const { apiKey } = req.body as { apiKey?: string };
+      if (typeof apiKey !== 'string' || !apiKey.trim()) {
+        res.status(400).json({ error: "Request body must include a non-empty 'apiKey' string" });
+        return;
+      }
+      try {
+        secrets.setKey(provider, apiKey);
+      } catch (error) {
+        res.status(400).json({ error: (error as Error).message });
+        return;
+      }
+      // Never echo the key back - only the masked status, mirroring list().
+      res.status(200).json(secrets.list().find((p) => p.provider === provider));
+    }
+  );
+
+  app.delete('/settings/providers/:provider', (req, res) => {
+    const provider = req.params.provider;
+    if (!isSecretProvider(provider)) {
+      res.status(400).json({ error: `Unknown provider '${provider}'` });
+      return;
+    }
+    secrets.removeKey(provider);
+    res.status(204).end();
+  });
+
+  // ---------------------------------------------------------------------
+  // LOU-R3: per-environment settings profiles.
+  // ---------------------------------------------------------------------
+  app.get('/settings/profiles', (_req, res) => {
+    res.json(settings.list());
+  });
+
+  app.put('/settings/profiles/:profileId', (req, res) => {
+    const profileId = req.params.profileId;
+    const body = req.body as Partial<SettingsProfile>;
+    if (
+      typeof body.name !== 'string' ||
+      typeof body.providerType !== 'string' ||
+      typeof body.deployAdapter !== 'string' ||
+      typeof body.otelEnabled !== 'boolean' ||
+      typeof body.hookTimeoutMs !== 'number' ||
+      body.hookTimeoutMs <= 0
+    ) {
+      res.status(400).json({
+        error:
+          "Request body must include 'name' (string), 'providerType' (string), 'deployAdapter' (string), 'otelEnabled' (boolean) and a positive 'hookTimeoutMs' (number)",
+      });
+      return;
+    }
+    const profile: SettingsProfile = {
+      id: profileId,
+      name: body.name,
+      providerType: body.providerType,
+      providerKeyRef: body.providerKeyRef,
+      deployAdapter: body.deployAdapter,
+      otelEnabled: body.otelEnabled,
+      hookTimeoutMs: body.hookTimeoutMs,
+      sandboxBackend: 'noop',
+    };
+    res.json(settings.upsertProfile(profile));
+  });
+
+  app.delete('/settings/profiles/:profileId', (req, res) => {
+    try {
+      res.json(settings.removeProfile(req.params.profileId));
+    } catch (error) {
+      res.status(400).json({ error: (error as Error).message });
+    }
+  });
+
+  app.post('/settings/profiles/:profileId/activate', (req, res) => {
+    try {
+      res.json(settings.setActive(req.params.profileId));
+    } catch (error) {
+      res.status(400).json({ error: (error as Error).message });
+    }
+  });
+
+  // ---------------------------------------------------------------------
+  // LOU-R2: deploy target picker + "Deploy this agent" action.
+  // ---------------------------------------------------------------------
+  app.get('/settings/deploy-adapters', (_req, res) => {
+    res.json(DEPLOY_ADAPTERS);
+  });
+
+  app.post(
+    '/agents/:id/deploy',
+    asyncRoute(async (req, res) => {
+      const { adapter } = req.body as { adapter?: string };
+      if (typeof adapter !== 'string' || !isDeployAdapter(adapter)) {
+        res.status(400).json({ error: `'adapter' must be one of: ${DEPLOY_ADAPTERS.join(', ')}` });
+        return;
+      }
+      const saved = await agentStore.load(paramId(req));
+      if (!saved) {
+        res.status(404).json({ error: `No saved agent '${paramId(req)}' to deploy - save it first` });
+        return;
+      }
+      const result = await runDeploy(baseDir, paramId(req), adapter);
+      res.status(result.exitCode === 0 ? 200 : 422).json(result);
+    })
+  );
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {

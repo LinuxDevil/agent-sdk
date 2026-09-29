@@ -28,6 +28,8 @@ import { FileApprovalStore } from './approvalStore';
 import { DebugSession, type BreakpointKey } from './debugController';
 import { FileChatStore, previewFor } from './chatStore';
 import { reconcileChatMessages } from './chatReconcile';
+import type { SecretsStore } from './secretsStore';
+import type { SettingsStore } from './settingsStore';
 import type {
   AgentRunStatusPayload,
   RunStatus,
@@ -97,6 +99,10 @@ export interface RunManagerOptions {
   saveSpec?: (agentId: string, spec: AgentSpec) => Promise<void>;
   /** P1/P3: chat transcript persistence. Defaults to `new FileChatStore(baseDir)` when omitted. */
   chatStore?: FileChatStore;
+  /** R1: stored provider keys - see buildAgent.ts's resolveProviderForSpec(). Omitted (e.g. in older tests) means every real provider type falls back to mock, same as no keys configured. */
+  secretsStore?: SecretsStore;
+  /** R3: active settings profile source (hook timeout today; provider/deploy-adapter selection lives on the profile too, for the Settings UI). */
+  settingsStore?: SettingsStore;
 }
 
 export class AgentNotFoundError extends Error {}
@@ -501,7 +507,22 @@ export class RunManager extends EventEmitter {
     // entry would be stuck reporting 'running' forever (the .catch() chain
     // that would otherwise flip it to 'error' is never reached, since the
     // throw happens before AgentExecutor.execute() is even called).
-    const { agent, provider, toolRegistry, hooks, sandbox } = buildAgentFromSpec(resolvedSpec, agentId);
+    const { agent, provider, toolRegistry, hooks, sandbox, usedMockProviderFallback } = buildAgentFromSpec(
+      resolvedSpec,
+      agentId,
+      undefined,
+      { secretsStore: this.opts.secretsStore, hookTimeoutMs: this.opts.settingsStore?.activeProfile().hookTimeoutMs }
+    );
+    if (usedMockProviderFallback) {
+      this.emit('log', agentId, {
+        id: randomUUID(),
+        agentId,
+        timestamp: new Date().toISOString(),
+        level: 'warn' as LogLevel,
+        phase: 'trigger' as LogPhase,
+        message: `No stored/env API key found for provider '${resolvedSpec.provider.type}' - running with the mock provider instead (configure a key in Settings to use it for real).`,
+      } satisfies LogEntry);
+    }
 
     const sessionId = agentId;
     const controller = new AbortController();
@@ -656,7 +677,10 @@ export class RunManager extends EventEmitter {
 
     const spec = entry.lastSpec ?? (await this.opts.loadSpec(agentId));
     if (!spec) throw new AgentNotFoundError(`No saved agent spec for id '${agentId}'`);
-    const { provider, toolRegistry, hooks, sandbox } = buildAgentFromSpec(spec, agentId);
+    const { provider, toolRegistry, hooks, sandbox } = buildAgentFromSpec(spec, agentId, undefined, {
+      secretsStore: this.opts.secretsStore,
+      hookTimeoutMs: this.opts.settingsStore?.activeProfile().hookTimeoutMs,
+    });
 
     const controller = new AbortController();
     const debugSession = this.makeDebugSession(agentId);

@@ -37,16 +37,21 @@ export function isSerializedHookList(value: unknown): value is SerializedHook[] 
   );
 }
 
-function toolCallHook(hook: SerializedHook, sandbox: SandboxAdapter): AgentHook {
+function toolCallHook(hook: SerializedHook, sandbox: SandboxAdapter, timeoutMs?: number): AgentHook {
   const run = async (
     ctx: { toolName: string; args: Record<string, unknown> },
     extra: { result?: unknown; error?: string } = {}
   ) => {
-    const outcome = await sandboxRunHook(sandbox, hook.code, {
-      toolName: ctx.toolName,
-      args: ctx.args,
-      ...extra,
-    });
+    const outcome = await sandboxRunHook(
+      sandbox,
+      hook.code,
+      {
+        toolName: ctx.toolName,
+        args: ctx.args,
+        ...extra,
+      },
+      { timeoutMs }
+    );
     if (outcome && typeof outcome === 'object' && outcome.args && typeof outcome.args === 'object') {
       // Mutate the LIVE args object in place - this is what makes a
       // preToolCall/postToolCall hook (e.g. redact-pii) actually change
@@ -79,9 +84,9 @@ function toolCallHook(hook: SerializedHook, sandbox: SandboxAdapter): AgentHook 
   };
 }
 
-function generateHook(hook: SerializedHook, sandbox: SandboxAdapter): AgentHook {
+function generateHook(hook: SerializedHook, sandbox: SandboxAdapter, timeoutMs?: number): AgentHook {
   const run = async (messages: Message[], model: string) => {
-    const outcome = await sandboxRunHook(sandbox, hook.code, { messages, model });
+    const outcome = await sandboxRunHook(sandbox, hook.code, { messages, model }, { timeoutMs });
     if (outcome && Array.isArray((outcome as { messages?: unknown }).messages)) {
       messages.length = 0;
       messages.push(...((outcome as { messages: Message[] }).messages));
@@ -115,13 +120,17 @@ function generateHook(hook: SerializedHook, sandbox: SandboxAdapter): AgentHook 
  */
 export function compileHooksFromSpecPolicy(
   policyHooks: unknown,
-  sandbox: SandboxAdapter
+  sandbox: SandboxAdapter,
+  /** LOU-R3: configurable hook timeout (defaults to hookSandbox.ts's own 5s default when omitted - see settingsStore.ts's `SettingsProfile.hookTimeoutMs`). */
+  timeoutMs?: number
 ): HookRegistry | undefined {
   if (!isSerializedHookList(policyHooks) || policyHooks.length === 0) return undefined;
 
   const registry = new HookRegistry();
   for (const hook of policyHooks) {
-    registry.register(hook.point === 'toolCall' ? toolCallHook(hook, sandbox) : generateHook(hook, sandbox));
+    registry.register(
+      hook.point === 'toolCall' ? toolCallHook(hook, sandbox, timeoutMs) : generateHook(hook, sandbox, timeoutMs)
+    );
   }
   return registry;
 }
