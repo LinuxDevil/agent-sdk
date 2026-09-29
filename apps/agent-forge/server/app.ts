@@ -23,6 +23,8 @@
  * ticket) is built and documented around it; Fastify's JSON-schema-first
  * validation wasn't worth the extra learning cost for ~6 small routes.
  */
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import type { AgentSpec } from '@loushy/build-ai-agent';
@@ -39,6 +41,18 @@ import { isValidAgentId } from './types';
 export interface CreateAppOptions {
   agentStore: AgentStore;
   runManager: RunManager;
+  /**
+   * S1 (LOU-S): directory holding the pre-built Agent Forge client (the
+   * output of `vite build`, normally `apps/agent-forge/dist`). When set and
+   * it actually contains an `index.html`, this server serves it as static
+   * files plus a SPA fallback, so `loushy studio --prod` can serve the whole
+   * app - API and UI - from this one Express server/port instead of needing
+   * a separate Vite dev server process. Omitted (or pointing at a directory
+   * without a build) in dev mode, where the real Vite dev server (with HMR)
+   * serves the UI instead and proxies `/agents/**` to this server - see
+   * `src/cli/studio.ts`.
+   */
+  staticDir?: string;
 }
 
 function asyncRoute(fn: (req: Request, res: Response) => Promise<void>) {
@@ -58,7 +72,7 @@ function paramId(req: Request): string {
   return Array.isArray(id) ? id[0] : id;
 }
 
-export function createApp({ agentStore, runManager }: CreateAppOptions): Express {
+export function createApp({ agentStore, runManager, staticDir }: CreateAppOptions): Express {
   const app = express();
   app.use(cors());
   app.use(express.json({ limit: '2mb' }));
@@ -264,6 +278,23 @@ export function createApp({ agentStore, runManager }: CreateAppOptions): Express
     runManager.stepRun(paramId(req));
     res.json(runManager.debugState(paramId(req)));
   });
+
+  // S1: serve the pre-built client (production mode only - see `staticDir`'s
+  // doc comment above). Registered after every API route above so a real
+  // `/agents/**`/`/health` request is always handled by its own route first;
+  // this only ever runs for requests those routes didn't match.
+  const indexHtml = staticDir ? path.join(staticDir, 'index.html') : undefined;
+  if (staticDir && indexHtml && fs.existsSync(indexHtml)) {
+    app.use(express.static(staticDir));
+    // SPA fallback: any remaining GET that isn't `/health` or `/agents/**`
+    // (both already handled above) is a client-side route (React Router-less
+    // `App.tsx` view state, but still refresh-safe) - serve `index.html` and
+    // let the client app take over, the same as `vite preview`/most SPA
+    // hosts do.
+    app.get(/^(?!\/health|\/agents).*/, (_req, res) => {
+      res.sendFile(indexHtml);
+    });
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {

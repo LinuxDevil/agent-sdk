@@ -7,7 +7,7 @@ const USAGE = [
   'Usage:',
   '  loushy dev <config.yaml|config.json> [--port N] [--host H]',
   '  loushy build --target=<name> --agent=<path> [--out=<dir>]',
-  '  loushy studio [--port N] [--host H]',
+  '  loushy studio [--port N] [--host H] [--prod|--dev]',
 ].join('\n');
 
 async function runDev(rest) {
@@ -47,11 +47,15 @@ async function runStudio(rest) {
   const apiPort = portFlag ? Number(portFlag.split('=')[1] || rest[rest.indexOf(portFlag) + 1]) : 4750;
   const hostFlag = rest.find((arg) => arg.startsWith('--host'));
   const apiHost = hostFlag ? (hostFlag.split('=')[1] || rest[rest.indexOf(hostFlag) + 1]) : '127.0.0.1';
+  // Default 'auto': prod (single built server+UI) when apps/agent-forge has
+  // been built (`npm run build:studio`), dev (Vite + tsx, two processes)
+  // otherwise. --prod/--dev force one or the other - see src/cli/studio.ts.
+  const mode = rest.includes('--prod') ? 'prod' : rest.includes('--dev') ? 'dev' : 'auto';
 
   const { startStudio } = require(path.join(__dirname, '..', 'dist', 'cli', 'studio.js'));
 
   try {
-    startStudio({ repoRoot: process.cwd(), apiPort, apiHost });
+    startStudio({ repoRoot: process.cwd(), apiPort, apiHost, mode });
   } catch (error) {
     console.error(error && error.message ? error.message : String(error));
     process.exitCode = 1;

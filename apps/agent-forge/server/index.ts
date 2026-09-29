@@ -27,6 +27,17 @@ export interface StartStudioServerOptions {
   baseDir?: string;
   port?: number;
   host?: string;
+  /**
+   * S1: directory holding the built client (`vite build`'s output,
+   * `apps/agent-forge/dist`) to serve as static files - see
+   * `createApp`'s `staticDir` doc comment in `./app.ts`. Defaults to
+   * `<this file's directory>/../dist`, i.e. `apps/agent-forge/dist`
+   * alongside this server, which is where both `apps/agent-forge`'s own
+   * `npm run build` and the SDK's `build:studio` script put it. Pass
+   * `false` to explicitly disable static serving (dev mode, where Vite
+   * itself serves the UI).
+   */
+  staticDir?: string | false;
 }
 
 export async function startStudioServer(
@@ -35,6 +46,11 @@ export async function startStudioServer(
   const baseDir = options.baseDir ?? process.cwd();
   const port = options.port ?? 4750;
   const host = options.host ?? '127.0.0.1';
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  const staticDir =
+    options.staticDir === false
+      ? undefined
+      : (options.staticDir ?? path.join(moduleDir, '..', 'dist'));
 
   const agentStore = createFsAgentStore(baseDir);
   const checkpointStore = new FileCheckpointStore(baseDir);
@@ -48,7 +64,7 @@ export async function startStudioServer(
     saveSpec: (agentId, spec) => agentStore.save(agentId, spec),
   });
 
-  const app = createApp({ agentStore, runManager });
+  const app = createApp({ agentStore, runManager, staticDir });
   const server = http.createServer(app);
   attachWebSocketServer(server, runManager);
 
@@ -95,8 +111,12 @@ if (isMainModule) {
   // moduleDir is apps/agent-forge/server - the repo root (where `.loushy/`
   // should live) is three levels up, unless BASE_DIR is set explicitly.
   const baseDir = process.env.BASE_DIR ?? path.resolve(moduleDir, '..', '..', '..');
+  // `src/cli/studio.ts` sets NO_STATIC=1 in dev mode (separate Vite dev
+  // server process serves the UI there) and STATIC_DIR to override the
+  // default `apps/agent-forge/dist` lookup in prod mode.
+  const staticDir = process.env.NO_STATIC ? false : (process.env.STATIC_DIR ?? undefined);
 
-  startStudioServer({ port, host, baseDir })
+  startStudioServer({ port, host, baseDir, staticDir })
     .then((handle) => {
       console.log(`[loushy studio] API server listening on http://${host ?? '127.0.0.1'}:${handle.port}`);
     })

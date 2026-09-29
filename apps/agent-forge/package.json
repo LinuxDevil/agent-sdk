@@ -13,6 +13,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "server:dev": "tsx watch server/index.ts",
     "server:start": "tsx server/index.ts",
+    "server:build": "tsup --config server/tsup.config.ts",
+    "server:start:prod": "node dist-server/index.js",
+    "build:studio": "npm run build && npm run server:build",
     "test:server": "vitest run -c server/vitest.config.ts",
     "typecheck:server": "tsc --noEmit -p server/tsconfig.json"
   },
@@ -43,6 +46,7 @@
     "jsdom": "^25.0.1",
     "ollama-ai-provider": "^1.2.0",
     "supertest": "^7.3.0",
+    "tsup": "^8.0.0",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vite": "^5.4.11",
