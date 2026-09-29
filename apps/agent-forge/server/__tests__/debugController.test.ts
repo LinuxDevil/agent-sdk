@@ -71,4 +71,31 @@ describe('DebugSession', () => {
     await hookPromise;
     expect(session.snapshot().paused).toBe(false);
   });
+
+  it('auto-resumes (and flags autoResumed) if nobody continues/steps before pauseTimeoutMs elapses', async () => {
+    const states: Array<{ paused: boolean; autoResumed?: boolean }> = [];
+    // A tiny pauseTimeoutMs stands in for an abandoned pause (e.g. the only
+    // WS client disconnected) - this is the safety net that stops a run
+    // staying paused forever with no way to resume it.
+    const session = new DebugSession([llmBreakpointKey('before')], (s) => states.push({ paused: s.paused, autoResumed: s.autoResumed }), 15);
+
+    const hookPromise = session.hooks().onLLMRequest?.({ model: 'x', messages: [] });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(session.snapshot().paused).toBe(true);
+
+    // Nobody calls continue()/step() - just wait past the timeout.
+    await hookPromise;
+    expect(session.snapshot().paused).toBe(false);
+    expect(states.at(-1)).toEqual({ paused: false, autoResumed: true });
+  });
+
+  it('pauseTimeoutMs: 0 disables the safety net (pause never auto-resumes on its own)', async () => {
+    const session = new DebugSession([llmBreakpointKey('before')], () => {}, 0);
+    const hookPromise = session.hooks().onLLMRequest?.({ model: 'x', messages: [] });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(session.snapshot().paused).toBe(true);
+    session.continue();
+    await hookPromise;
+    expect(session.snapshot().paused).toBe(false);
+  });
 });

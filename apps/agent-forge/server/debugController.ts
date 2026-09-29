@@ -52,7 +52,29 @@ export interface DebugStateSnapshot {
   /** Number of completed LLM generate() calls so far (a proxy for AgentExecutor's internal step counter). */
   stepCount: number;
   breakpoints: BreakpointKey[];
+  /**
+   * True on the one onChange() notification that reports a pause ending
+   * because `pauseTimeoutMs` elapsed with nobody calling continue()/step()
+   * (e.g. the only WS client disconnected while paused) - see the
+   * `pauseTimeoutMs` doc comment below. False for every other transition.
+   */
+  autoResumed?: boolean;
 }
+
+/**
+ * Default safety-net timeout: how long a run may sit paused at a breakpoint
+ * before this session auto-continues it on its own. A local dev tool has no
+ * server-side notion of "the client went away" beyond the WS socket closing
+ * (see wsServer.ts), and `POST /agents/:id/debug/continue` is still callable
+ * with no live socket at all - so an abandoned pause (browser tab closed,
+ * laptop slept, WS dropped mid-pause) would otherwise block that run's
+ * AgentExecutor.execute() call - and the checkpointed conversation/tool call
+ * it's holding open - forever, with nothing to time it out. 15 minutes is
+ * long enough not to interrupt a human actually stepping through a run, but
+ * bounds the worst case to "paused a while, then resumed on its own" instead
+ * of "stuck until the server process is restarted".
+ */
+export const DEFAULT_PAUSE_TIMEOUT_MS = 15 * 60 * 1000;
 
 export type DebugHooks = Pick<
   import('@loushy/build-ai-agent').ExecuteOptions,
@@ -72,10 +94,14 @@ export class DebugSession {
   private lastMessages: Message[] = [];
   private stepCount = 0;
   private current: { phase: string; boundary: DebugBoundary } | undefined;
+  private pauseTimer?: ReturnType<typeof setTimeout>;
+  private lastResumeWasTimeout = false;
 
   constructor(
     initialBreakpoints: Iterable<BreakpointKey>,
-    private readonly onChange: (state: DebugStateSnapshot) => void
+    private readonly onChange: (state: DebugStateSnapshot) => void,
+    /** 0 (or any non-positive value) disables the safety net entirely. */
+    private readonly pauseTimeoutMs: number = DEFAULT_PAUSE_TIMEOUT_MS
   ) {
     this.breakpoints = new Set(initialBreakpoints);
   }
@@ -105,13 +131,14 @@ export class DebugSession {
     }
   }
 
-  snapshot(): DebugStateSnapshot {
+  snapshot(autoResumed = false): DebugStateSnapshot {
     return {
       paused: this.paused,
       atBreakpoint: this.current,
       messages: this.lastMessages,
       stepCount: this.stepCount,
       breakpoints: [...this.breakpoints],
+      autoResumed,
     };
   }
 
@@ -134,7 +161,12 @@ export class DebugSession {
     };
   }
 
-  private release(): void {
+  private release(timedOut = false): void {
+    if (this.pauseTimer) {
+      clearTimeout(this.pauseTimer);
+      this.pauseTimer = undefined;
+    }
+    this.lastResumeWasTimeout = timedOut;
     const resolve = this.resumeResolve;
     this.resumeResolve = undefined;
     resolve?.();
@@ -157,10 +189,23 @@ export class DebugSession {
     const pause = new Promise<void>((resolve) => {
       this.resumeResolve = resolve;
     });
+    // Safety net: if nobody (no WS client, nobody hitting the REST
+    // continue()/step() routes) ever resumes this pause - most plausibly
+    // because the only client watching this run's WS stream disconnected
+    // while it sat paused - auto-continue after `pauseTimeoutMs` rather than
+    // holding the underlying AgentExecutor.execute() call (and its
+    // checkpointed conversation) open indefinitely. See the doc comment on
+    // `DEFAULT_PAUSE_TIMEOUT_MS`.
+    if (this.pauseTimeoutMs > 0) {
+      this.pauseTimer = setTimeout(() => this.release(true), this.pauseTimeoutMs);
+      this.pauseTimer.unref?.();
+    }
     this.onChange(this.snapshot());
     await pause;
     this.paused = false;
     this.current = undefined;
-    this.onChange(this.snapshot());
+    const wasTimeout = this.lastResumeWasTimeout;
+    this.lastResumeWasTimeout = false;
+    this.onChange(this.snapshot(wasTimeout));
   }
 }

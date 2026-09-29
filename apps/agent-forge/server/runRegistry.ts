@@ -241,6 +241,19 @@ export class RunManager extends EventEmitter {
           phase: 'debug' as LogPhase,
           message: `Paused at breakpoint ${state.atBreakpoint?.phase} (${state.atBreakpoint?.boundary})`,
         } satisfies LogEntry);
+      } else if (state.autoResumed) {
+        // O3 safety net: nobody called continue()/step() before
+        // DEFAULT_PAUSE_TIMEOUT_MS elapsed (most plausibly the only WS
+        // client watching this run disconnected while it was paused) - see
+        // debugController.ts's DEFAULT_PAUSE_TIMEOUT_MS doc comment.
+        this.emit('log', agentId, {
+          id: randomUUID(),
+          agentId,
+          timestamp: new Date().toISOString(),
+          level: 'warn' as LogLevel,
+          phase: 'debug' as LogPhase,
+          message: 'Auto-resumed after sitting paused at a breakpoint with no client response',
+        } satisfies LogEntry);
       }
     });
     return session;
