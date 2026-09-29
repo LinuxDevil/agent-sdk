@@ -35,6 +35,11 @@
  *    drop that DNS-rebinding protection rather than just losing convenience
  *    functionality. Left unsupported here rather than shipping a weaker
  *    tool under the same name - see LOU-K3 PR description.
+ *  - LOU-T2: durable execution (CheckpointStore-backed pause/resume, see
+ *    src/execution/checkpoint.ts) is opt-in here via a Workers KV namespace
+ *    binding - see `CHECKPOINT_KV_BINDING`/`checkpointStoreFromEnv()` below,
+ *    the same "declare a binding, read it off `env`" pattern
+ *    `providerEnvKey()` already uses for provider API keys.
  */
 import '../providers/mock';
 import { OpenAIProvider, OpenAIProviderConfig } from '../providers/OpenAIProvider';
@@ -44,6 +49,8 @@ import { currentDateTool } from '../tools/built-in/currentDate';
 import { dayNameTool } from '../tools/built-in/dayName';
 import { ToolDescriptor } from '../types';
 import { AgentSpec } from '../spec/schema';
+import { CheckpointStore } from '../execution/checkpoint';
+import { KVBinding, KVCheckpointStore } from './kvCheckpointStore';
 import { prepareSpecExecution, PreparedExecution } from './specExecution';
 
 export { AgentExecutor } from '../execution/AgentExecutor';
@@ -67,6 +74,49 @@ export function providerEnvKey(type: string): string {
 }
 
 export type WorkerEnv = Record<string, unknown>;
+
+/**
+ * LOU-T2: the `env` binding name a Worker deployment must declare (in
+ * `wrangler.toml`, see `cloudflare.ts`'s scaffolded config) to opt in to
+ * durable execution - a KV namespace bound under this name lets a paused
+ * run's Checkpoint survive across requests/isolates, the same way a
+ * filesystem- or StorageService-backed CheckpointStore does off-Worker (see
+ * LocalStorageCheckpointStore in src/execution/checkpoint.ts and
+ * apps/agent-forge/server/checkpointStore.ts's FileCheckpointStore).
+ * Mirrors `providerEnvKey()` immediately below: a documented, fixed binding
+ * name a consumer wires up themselves rather than something this SDK
+ * provisions for them.
+ */
+export const CHECKPOINT_KV_BINDING = 'AGENT_CHECKPOINTS';
+
+/**
+ * Builds a `KVCheckpointStore` from the `env[CHECKPOINT_KV_BINDING]`
+ * binding, or returns `undefined` when it isn't declared/bound - durable
+ * execution on Workers is opt-in, not required, so a spec with no KV
+ * binding configured still runs (just without pause/resume durability,
+ * exactly like the pre-LOU-T2 behavior).
+ *
+ * A bound value that doesn't look like a KV namespace (missing
+ * get/put/delete) is also treated as "not configured" rather than thrown on
+ * - `env` is arbitrary platform-supplied input, not something this SDK
+ * controls the shape of, and failing open here (no durable store, run still
+ * works) is safer than failing every request over a misconfigured binding.
+ */
+export function checkpointStoreFromEnv(
+  env: WorkerEnv,
+  bindingName: string = CHECKPOINT_KV_BINDING
+): CheckpointStore | undefined {
+  const binding = env[bindingName] as Partial<KVBinding> | undefined;
+  if (
+    !binding ||
+    typeof binding.get !== 'function' ||
+    typeof binding.put !== 'function' ||
+    typeof binding.delete !== 'function'
+  ) {
+    return undefined;
+  }
+  return new KVCheckpointStore(binding as KVBinding);
+}
 
 export function prepareWorkerSpec(spec: AgentSpec, env: WorkerEnv = {}): PreparedExecution {
   return prepareSpecExecution(spec, {
