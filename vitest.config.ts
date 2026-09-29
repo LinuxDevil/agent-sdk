@@ -27,6 +27,14 @@ export default defineConfig({
       '**/dist/**',
       'src/execution/__fixtures__/**',
       '**/*.judge.eval.ts',
+      // apps/* are separate npm workspaces (LOU-L1) with their own Vite/
+      // vitest config and browser-only test environment (jsdom) - without
+      // this exclude, this root config's broad default include pattern
+      // would also sweep up e.g. apps/agent-forge's tests and run them
+      // under this config's `environment: 'node'`, which can't provide the
+      // DOM globals (File, Blob, HTMLAnchorElement, ...) those tests need.
+      // Each app is tested via its own `npm run test --workspace=apps/*`.
+      'apps/**',
     ],
     coverage: {
       provider: 'v8',

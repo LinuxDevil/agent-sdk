@@ -1,0 +1,108 @@
+/*
+ * Design tokens ported from .design-ref/agent-forge-mockup.html (LOU-L1).
+ * Keep these in lockstep with the mockup's :root / dark-mode custom
+ * properties - this file is the single source of truth for color/typography
+ * tokens consumed by every component's CSS module.
+ */
+:root {
+  color-scheme: light;
+  --bg: #f4f5f8;
+  --surface: #ffffff;
+  --surface-2: #eceef3;
+  --border: #d7dbe4;
+  --text: #171a21;
+  --text-muted: #61667a;
+  --text-faint: #8a8fa3;
+  --accent: #4c4ee8;
+  --accent-soft: #e7e7fc;
+  --success: #16a34a;
+  --success-soft: #dcf3e4;
+  --warning: #b7791f;
+  --warning-soft: #fbedd3;
+  --danger: #d92d20;
+  --danger-soft: #fbe2df;
+  --info: #0284c7;
+  --shadow: 0 1px 2px rgba(20, 22, 30, 0.06), 0 8px 24px -12px rgba(20, 22, 30, 0.18);
+  --font-ui: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --bg: #0b0d12;
+    --surface: #12151c;
+    --surface-2: #171b24;
+    --border: #262b39;
+    --text: #e7e9f2;
+    --text-muted: #9096ac;
+    --text-faint: #656b83;
+    --accent: #7678f0;
+    --accent-soft: #23234a;
+    --success: #34d399;
+    --success-soft: #113325;
+    --warning: #fbbf24;
+    --warning-soft: #3a2c0d;
+    --danger: #f87171;
+    --danger-soft: #3a1615;
+    --info: #38bdf8;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px -14px rgba(0, 0, 0, 0.6);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0b0d12;
+  --surface: #12151c;
+  --surface-2: #171b24;
+  --border: #262b39;
+  --text: #e7e9f2;
+  --text-muted: #9096ac;
+  --text-faint: #656b83;
+  --accent: #7678f0;
+  --accent-soft: #23234a;
+  --success: #34d399;
+  --success-soft: #113325;
+  --warning: #fbbf24;
+  --warning-soft: #3a2c0d;
+  --danger: #f87171;
+  --danger-soft: #3a1615;
+  --info: #38bdf8;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px -14px rgba(0, 0, 0, 0.6);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  line-height: 1.45;
+  overflow: hidden;
+}
+
+button {
+  font-family: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 20px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
