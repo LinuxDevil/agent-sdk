@@ -501,7 +501,7 @@ export class RunManager extends EventEmitter {
     // entry would be stuck reporting 'running' forever (the .catch() chain
     // that would otherwise flip it to 'error' is never reached, since the
     // throw happens before AgentExecutor.execute() is even called).
-    const { agent, provider, toolRegistry } = buildAgentFromSpec(resolvedSpec, agentId);
+    const { agent, provider, toolRegistry, hooks, sandbox } = buildAgentFromSpec(resolvedSpec, agentId);
 
     const sessionId = agentId;
     const controller = new AbortController();
@@ -536,6 +536,11 @@ export class RunManager extends EventEmitter {
       onEvent: (event) => this.emitEvent(agentId, event),
       exporter: this.makeTraceExporter(agentId),
       skipSystemPromptInjection: options.skipSystemPromptInjection,
+      // LOU-Q1/Q2: hooks compiled from this agent's graph (spec.policy.hooks)
+      // and the SandboxAdapter they (and any requiresSandbox tool) run
+      // through - see buildAgentFromSpec()/compileHooks.ts.
+      hooks,
+      sandbox,
       ...debugSession.hooks(),
     })
       .then((result) => this.handleRunSettled(agentId, result))
@@ -651,7 +656,7 @@ export class RunManager extends EventEmitter {
 
     const spec = entry.lastSpec ?? (await this.opts.loadSpec(agentId));
     if (!spec) throw new AgentNotFoundError(`No saved agent spec for id '${agentId}'`);
-    const { provider, toolRegistry } = buildAgentFromSpec(spec, agentId);
+    const { provider, toolRegistry, hooks, sandbox } = buildAgentFromSpec(spec, agentId);
 
     const controller = new AbortController();
     const debugSession = this.makeDebugSession(agentId);
@@ -671,6 +676,12 @@ export class RunManager extends EventEmitter {
       {
         onEvent: (event) => this.emitEvent(agentId, event),
         exporter: this.makeTraceExporter(agentId),
+        // LOU-Q1: hooks must fire on the deferred, post-approval tool
+        // execution path too (see resume.ts in the core SDK) - not just
+        // the initial run() - so the same compiled hooks/sandbox are
+        // threaded through here.
+        hooks,
+        sandbox,
         ...debugSession.hooks(),
       },
       this.opts.checkpointStore
