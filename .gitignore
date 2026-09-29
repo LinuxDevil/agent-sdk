@@ -35,5 +35,10 @@ docs/api/
 
 # LOU-N runtime control server's local run state (checkpoints/approvals/
 # saved agent specs) - see apps/agent-forge/server/{checkpointStore,
-# approvalStore}.ts and src/persistence/fsAgentStore.ts.
+# approvalStore}.ts and src/persistence/fsAgentStore.ts. Also covers
+# LOU-R's local secret/settings storage (encrypted provider API keys in
+# secrets.json + secrets.key, and settings.json's non-secret settings
+# profiles) - see apps/agent-forge/server/{secretsStore,settingsStore}.ts.
+# This MUST stay gitignored: secretsStore.ts's encrypted key store lives
+# here specifically so it never ends up alongside a committed AgentSpec.
 .loushy/
