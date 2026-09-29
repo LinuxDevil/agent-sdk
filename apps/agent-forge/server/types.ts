@@ -41,7 +41,72 @@ export interface AgentRunStatusPayload {
   error?: string;
   /** Final assistant text, once a run completes successfully. */
   resultText?: string;
+  /**
+   * O4: the full `ExecutionResult` (src/execution/AgentExecutor.ts -
+   * `messages`/`toolCalls`/`usage`/`steps`/`finishReason`, not just the
+   * final text) once a run completes OR pauses for approval - the Output
+   * tab's JSON tree source. `unknown` here (rather than importing
+   * `ExecutionResult`) since this file is also mirrored client-side
+   * (src/runtime/runtimeClient.ts) where it's rendered generically.
+   */
+  result?: unknown;
   updatedAt: string;
+}
+
+/**
+ * O1: structured log line severity, shown in the Logs tab's filter bar.
+ * `tool` is its own level (not folded into `info`) so the filter bar can
+ * isolate tool activity the way the mockup's log rows do.
+ */
+export type LogLevel = 'info' | 'warn' | 'error' | 'tool';
+
+/**
+ * O1: which part of the run a log line came from - reuses the same
+ * taxonomy the mockup's log rows are tagged with. Derived from
+ * `ExecutionEvent.type` (see runRegistry.ts's `toLogEntries()`), extended
+ * with 'sandbox'/'checkpoint'/'debug' for events the raw ExecutionEvent
+ * stream doesn't carry a dedicated type for.
+ */
+export type LogPhase = 'trigger' | 'llm' | 'tool' | 'sandbox' | 'checkpoint' | 'approval' | 'debug';
+
+export interface LogEntry {
+  id: string;
+  agentId: string;
+  timestamp: string;
+  level: LogLevel;
+  phase: LogPhase;
+  /** Tool name, when `phase === 'tool'`. */
+  toolName?: string;
+  message: string;
+  detail?: unknown;
+}
+
+/**
+ * O2: one span lifecycle notification, forwarded verbatim (real
+ * `Date.now()` timestamps, not synthetic ones) from the SDK's
+ * `TraceExporter.onSpanStart`/`onSpanEnd` (src/execution/tracing.ts).
+ */
+export interface SpanEvent {
+  id: string;
+  name: string;
+  parentId?: string;
+  startTime: number;
+  endTime?: number;
+  attributes: Record<string, unknown>;
+}
+
+/**
+ * O3: live step-through debugger state for one agent's run (see
+ * debugController.ts for exactly what "paused"/"breakpoint" mean given
+ * AgentExecutor's real control surface).
+ */
+export interface DebugStatePayload {
+  agentId: string;
+  paused: boolean;
+  atBreakpoint?: { phase: string; boundary: 'before' | 'after' };
+  messages: unknown[];
+  stepCount: number;
+  breakpoints: string[];
 }
 
 /**
@@ -50,12 +115,16 @@ export interface AgentRunStatusPayload {
  * status transition, and once immediately on connect). `type: 'event'`
  * forwards a raw AgentExecutor ExecutionEvent (start/text-complete/tool-call/
  * tool-result/finish/error) for lightweight visibility into an in-progress
- * run - the full log/trace UI is LOU-O's job, this is best-effort forwarding
- * only, not a durable log.
+ * run. `type: 'log'`/`'span'`/`'debug'` are LOU-O's structured log stream
+ * (O1), span waterfall (O2) and step-debugger state (O3), all derived from
+ * the same run rather than a second parallel event system.
  */
 export type StreamMessage =
   | { type: 'status'; payload: AgentRunStatusPayload }
-  | { type: 'event'; payload: Record<string, unknown> };
+  | { type: 'event'; payload: Record<string, unknown> }
+  | { type: 'log'; payload: LogEntry }
+  | { type: 'span'; payload: SpanEvent }
+  | { type: 'debug'; payload: DebugStatePayload };
 
 /**
  * Every `:id`/agentId this server touches ends up interpolated into a

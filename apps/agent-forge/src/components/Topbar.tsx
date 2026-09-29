@@ -12,7 +12,20 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export function Topbar() {
-  const { spec, setSpec, save, dirty, agentId, runStatus, runAgent, stopAgent, approveAgent } = useAppState();
+  const {
+    spec,
+    setSpec,
+    save,
+    dirty,
+    agentId,
+    runStatus,
+    runAgent,
+    stopAgent,
+    approveAgent,
+    debugMode,
+    setDebugMode,
+    setDrawerTab,
+  } = useAppState();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [actionError, setActionError] = useState<string | undefined>(undefined);
 
@@ -119,8 +132,20 @@ export function Topbar() {
       <div className="env-select">
         <span className="dot" /> local &middot; {spec.provider.type} provider
       </div>
-      {/* Debug is a chrome-only placeholder still - the full log/trace UI is LOU-O's job. */}
-      <button className="btn btn-ghost" disabled title="Wired up in LOU-O (debug console)">
+      {/*
+        O3: toggles debug mode - the Inspector exposes breakpoint toggles
+        on llm/tool nodes while on, and the Trace tab's DebugBar shows
+        Step/Continue controls (also shown automatically whenever a run is
+        actually paused at a breakpoint, even with this off).
+      */}
+      <button
+        className={`btn${debugMode ? ' btn-primary' : ' btn-ghost'}`}
+        onClick={() => {
+          setDebugMode(!debugMode);
+          if (!debugMode) setDrawerTab('trace');
+        }}
+        title="Toggle step-through debug mode (set breakpoints in the Inspector)"
+      >
         Debug
       </button>
       <button className="btn btn-danger" onClick={() => void handleStop()} disabled={!isRunning}>

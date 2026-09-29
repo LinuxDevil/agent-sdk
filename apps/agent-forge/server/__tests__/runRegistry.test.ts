@@ -117,6 +117,65 @@ describe('RunManager', () => {
     expect(afterResume).toBeNull();
   });
 
+  it('emits structured log entries derived from the ExecutionEvent stream (O1)', async () => {
+    const logs: any[] = [];
+    runManager.on('log', (agentId: string, entry: any) => {
+      if (agentId === 'agent-logs') logs.push(entry);
+    });
+
+    await runManager.run('agent-logs', 'please use current-date', SPEC);
+    await waitForStatus(runManager, 'agent-logs', (s) => s.status === 'stopped');
+
+    expect(logs.length).toBeGreaterThan(0);
+    expect(logs.every((l) => typeof l.id === 'string' && typeof l.timestamp === 'string')).toBe(true);
+    expect(logs.some((l) => l.phase === 'trigger' && l.message.includes('started'))).toBe(true);
+    expect(logs.some((l) => l.phase === 'tool' && l.toolName === 'current-date')).toBe(true);
+  });
+
+  it('emits real span start/end events from the SDK TraceExporter hook (O2)', async () => {
+    const spans: any[] = [];
+    runManager.on('span', (agentId: string, span: any) => {
+      if (agentId === 'agent-spans') spans.push(span);
+    });
+
+    await runManager.run('agent-spans', 'please use current-date', SPEC);
+    await waitForStatus(runManager, 'agent-spans', (s) => s.status === 'stopped');
+
+    const runSpans = spans.filter((s) => s.name === 'agent.run');
+    expect(runSpans).toHaveLength(2); // start + end
+    const [startSpan, endSpan] = runSpans;
+    expect(startSpan.endTime).toBeUndefined();
+    expect(endSpan.endTime).toBeGreaterThanOrEqual(endSpan.startTime);
+    expect(spans.some((s) => s.name === 'llm.generate')).toBe(true);
+    expect(spans.some((s) => s.name === 'tool.call' && s.parentId === startSpan.id)).toBe(true);
+  });
+
+  it('pauses a run at a configured breakpoint and resumes on continueRun() (O3)', async () => {
+    const debugStates: any[] = [];
+    let pauseCount = 0;
+    // The fixture SPEC's prompt drives the mock provider through a tool
+    // call then a final response - two provider.generate() calls, so a
+    // persistent 'llm:before' breakpoint pauses twice. continueRun() every
+    // time the run reports paused, same as a real client would on seeing
+    // `{type:'debug', payload:{paused:true}}` over the WS stream.
+    runManager.on('debug', (agentId: string, state: any) => {
+      if (agentId !== 'agent-debug') return;
+      debugStates.push(state);
+      if (state.paused) {
+        pauseCount += 1;
+        runManager.continueRun('agent-debug');
+      }
+    });
+
+    runManager.setBreakpoints('agent-debug', ['llm:before']);
+    await runManager.run('agent-debug', 'please use current-date', SPEC);
+    await waitForStatus(runManager, 'agent-debug', (s) => s.status === 'stopped');
+
+    expect(pauseCount).toBeGreaterThanOrEqual(1);
+    expect(runManager.debugState('agent-debug').paused).toBe(false);
+    expect(debugStates.some((s) => s.paused === true && s.atBreakpoint?.phase === 'llm')).toBe(true);
+  });
+
   it('surfaces a thrown provider error as status "error" without crashing the process', async () => {
     const errorSpec: AgentSpec = {
       name: 'erroring-agent',

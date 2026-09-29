@@ -167,6 +167,36 @@ export function createApp({ agentStore, runManager }: CreateAppOptions): Express
     })
   );
 
+  // O3: step-through debugger controls (Topbar's "Debug" button). See
+  // debugController.ts for exactly what "breakpoint"/"paused" mean given
+  // AgentExecutor's real control surface.
+  app.get('/agents/:id/debug', (req, res) => {
+    res.json(runManager.debugState(paramId(req)));
+  });
+
+  app.put(
+    '/agents/:id/debug/breakpoints',
+    (req, res) => {
+      const { breakpoints } = req.body as { breakpoints?: unknown };
+      if (!Array.isArray(breakpoints) || !breakpoints.every((b) => typeof b === 'string')) {
+        res.status(400).json({ error: "Request body must include a 'breakpoints' string array" });
+        return;
+      }
+      runManager.setBreakpoints(paramId(req), breakpoints);
+      res.json(runManager.debugState(paramId(req)));
+    }
+  );
+
+  app.post('/agents/:id/debug/continue', (req, res) => {
+    runManager.continueRun(paramId(req));
+    res.json(runManager.debugState(paramId(req)));
+  });
+
+  app.post('/agents/:id/debug/step', (req, res) => {
+    runManager.stepRun(paramId(req));
+    res.json(runManager.debugState(paramId(req)));
+  });
+
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     res.status(500).json({ error: err.message });

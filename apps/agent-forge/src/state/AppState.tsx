@@ -7,7 +7,15 @@ import { graphToSpec } from '../graph/graphToSpec';
 import { specToGraph } from '../graph/specToGraph';
 import type { AgentGraphSpec } from '../graph/types';
 import { graphFromTemplate, type TemplateId } from '../canvas/templates';
-import { runtimeClient, type AgentRunStatusPayload } from '../runtime/runtimeClient';
+import {
+  runtimeClient,
+  type AgentRunStatusPayload,
+  type LogEntry,
+  type SpanEvent,
+  type DebugStatePayload,
+} from '../runtime/runtimeClient';
+import { appendLog } from './logReducer';
+import { upsertSpan } from './spanReducer';
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
@@ -76,6 +84,30 @@ interface AppState {
    * has never reported a status (equivalent to 'idle').
    */
   agentStatuses: Record<string, AgentRunStatusPayload>;
+
+  /**
+   * O1: this agent's live log feed (LOU-O), a capped ring buffer reset on
+   * every agent switch and on every fresh `runAgent()` call (so an old
+   * run's logs don't linger under a new one, matching the mockup's
+   * per-run log panel).
+   */
+  logs: LogEntry[];
+  /** O2: this agent's live span list (LOU-O), reset the same way as `logs`. */
+  spans: SpanEvent[];
+  /** O3: this agent's live step-debugger state (LOU-O), or undefined before the first `/debug` fetch/push. */
+  debugState: DebugStatePayload | undefined;
+  /** Topbar's "Debug" toggle (O3) - when true, the canvas/inspector expose breakpoint controls. */
+  debugMode: boolean;
+  setDebugMode: (on: boolean) => void;
+  /** Replaces this agent's breakpoint set (O3) - see debugController.ts for the `llm:before`/`tool:<name>:before` key shape. */
+  setBreakpoints: (breakpoints: string[]) => Promise<void>;
+  /** Resumes a run paused at a breakpoint. */
+  continueDebug: () => Promise<void>;
+  /** Resumes a run paused at a breakpoint, or arms a pause at the next LLM/tool boundary. */
+  stepDebug: () => Promise<void>;
+  /** Node (on the canvas) currently highlighted because its log/span is selected in the drawer (O2). */
+  highlightedNodeId: string | undefined;
+  setHighlightedNodeId: (nodeId: string | undefined) => void;
 }
 
 const AppStateContext = createContext<AppState | undefined>(undefined);
@@ -196,6 +228,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const [runStatus, setRunStatus] = useState<AgentRunStatusPayload | undefined>(undefined);
   const [agentStatuses, setAgentStatuses] = useState<Record<string, AgentRunStatusPayload>>({});
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [spans, setSpans] = useState<SpanEvent[]>([]);
+  const [debugState, setDebugState] = useState<DebugStatePayload | undefined>(undefined);
+  const [debugMode, setDebugMode] = useState(false);
+  const [highlightedNodeId, setHighlightedNodeId] = useState<string | undefined>(undefined);
 
   // Keep one WS subscription per known agent id (for the LeftRail's status
   // pills), added/removed as `agents` (the saved-agent list) changes -
@@ -222,11 +259,19 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   // the server's stream is already scoped per agent id.
   useEffect(() => {
     setRunStatus(undefined);
+    setLogs([]);
+    setSpans([]);
+    setDebugState(undefined);
+    setHighlightedNodeId(undefined);
     const unsubscribe = runtimeClient.subscribe(agentId, (message) => {
       if (message.type === 'status') setRunStatus(message.payload);
+      else if (message.type === 'log') setLogs((prev) => appendLog(prev, message.payload));
+      else if (message.type === 'span') setSpans((prev) => upsertSpan(prev, message.payload));
+      else if (message.type === 'debug') setDebugState(message.payload);
     });
-    // Also fetch the current status immediately in case the WS connection
-    // is slow to open - avoids a flash of "unknown" status on agent switch.
+    // Also fetch the current status/debug-state immediately in case the WS
+    // connection is slow to open - avoids a flash of "unknown" status (or a
+    // stale breakpoint list) on agent switch.
     runtimeClient
       .status(agentId)
       .then(setRunStatus)
@@ -236,15 +281,40 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         // Run/Stop surface that as a real error when clicked instead of
         // failing silently here.
       });
+    runtimeClient.debugState(agentId).then(setDebugState).catch(() => {});
     return unsubscribe;
   }, [agentId]);
 
   const runAgent = useCallback(
     async (input: string) => {
+      // Reset the log/span feed on every Run click so stale rows from a
+      // previous run of this same agent don't linger alongside the new
+      // ones (including a checkpoint-resumed run - a fresh feed for it is
+      // preferable to conflating it with the aborted run's).
+      setLogs([]);
+      setSpans([]);
       await runtimeClient.run(agentId, input, spec);
     },
     [agentId, spec]
   );
+
+  const setBreakpoints = useCallback(
+    async (breakpoints: string[]) => {
+      const next = await runtimeClient.setBreakpoints(agentId, breakpoints);
+      setDebugState(next);
+    },
+    [agentId]
+  );
+
+  const continueDebug = useCallback(async () => {
+    const next = await runtimeClient.continueRun(agentId);
+    setDebugState(next);
+  }, [agentId]);
+
+  const stepDebug = useCallback(async () => {
+    const next = await runtimeClient.stepRun(agentId);
+    setDebugState(next);
+  }, [agentId]);
 
   const stopAgent = useCallback(async () => {
     await runtimeClient.stop(agentId);
@@ -284,6 +354,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     stopAgent,
     approveAgent,
     agentStatuses,
+    logs,
+    spans,
+    debugState,
+    debugMode,
+    setDebugMode,
+    setBreakpoints,
+    continueDebug,
+    stepDebug,
+    highlightedNodeId,
+    setHighlightedNodeId,
   };
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
