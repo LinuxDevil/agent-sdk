@@ -491,7 +491,21 @@ export class AgentExecutor {
           continue;
         }
 
-        // No tool calls, we're done
+        // No tool calls, we're done. Push the assistant's final reply onto
+        // currentMessages so `result.messages` (the returned conversation
+        // history) actually reflects it - previously this branch left
+        // `finalText`/`result.text` set but never appended a corresponding
+        // assistant message here (unlike the tool-call branch above, which
+        // always pushes one), so any caller treating `result.messages` as
+        // the authoritative conversation (e.g. to seed a follow-up turn)
+        // silently lost the agent's own last reply whenever a turn ended
+        // without a tool call - the common case for a plain chat exchange.
+        if (result.text) {
+          currentMessages.push({
+            role: 'assistant',
+            content: result.text,
+          });
+        }
         finishReason = result.finishReason;
         break;
       } catch (error) {

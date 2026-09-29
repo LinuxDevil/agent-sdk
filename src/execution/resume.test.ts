@@ -91,10 +91,16 @@ describe('Execution - resumeAfterApproval', () => {
 
     expect(execute).toHaveBeenCalledTimes(1);
     expect(resumed.finishReason).toBe('stop');
-    // pre-pause history (user + assistant) + 1 new tool-result message
-    expect(resumed.messages).toHaveLength(paused.messages.length + 1);
+    // pre-pause history (user + assistant) + 1 new tool-result message + the
+    // final assistant reply ('All done', since this turn ends without a
+    // further tool call).
+    expect(resumed.messages).toHaveLength(paused.messages.length + 2);
     expect(resumed.messages.slice(0, paused.messages.length)).toEqual(paused.messages);
-    expect(resumed.messages[resumed.messages.length - 1].role).toBe('tool');
+    expect(resumed.messages[paused.messages.length].role).toBe('tool');
+    expect(resumed.messages[resumed.messages.length - 1]).toEqual({
+      role: 'assistant',
+      content: 'All done',
+    });
   });
 
   it('should never invoke the tool and should produce a rejection message when rejected', async () => {
@@ -536,9 +542,11 @@ describe('Execution - resumeAfterApproval', () => {
     expect(resumed.messages.some((m) => m.role === 'tool' && m.toolName === 'lookup')).toBe(true);
 
     // Full reconstructed history: user, assistant(lookup), tool(lookup),
-    // assistant(chargeCard), tool(chargeCard) - no 6th message is pushed
-    // since the final generation returns no further tool calls.
-    expect(resumed.messages).toHaveLength(5);
+    // assistant(chargeCard), tool(chargeCard), assistant('all done') - the
+    // final generation returns no further tool calls, but its reply text is
+    // still appended as the closing assistant message.
+    expect(resumed.messages).toHaveLength(6);
+    expect(resumed.messages[5]).toEqual({ role: 'assistant', content: 'all done' });
 
     // Steps must continue from the ExecutionSnapshot's own step count
     // (snapshot.steps was 2 at pause, +1 for the post-resume generation =
