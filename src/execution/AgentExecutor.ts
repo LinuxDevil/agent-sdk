@@ -187,6 +187,18 @@ export interface ExecuteOptions {
    * sites handles a given tool call.
    */
   hooks?: HookRegistry;
+  /**
+   * LOU-T1: opaque, consumer-owned business/domain state (an order id, a
+   * ticket id, a workflow stage, ...) written into every checkpoint record
+   * alongside execution state, for the lifetime of this execute() call.
+   * See `Checkpoint.businessState` (src/execution/checkpoint.ts) for the
+   * full contract - the SDK never reads or interprets this value, it is
+   * simply copied verbatim into each checkpoint write below. Purely
+   * additive: omitted (the default), the checkpoint record's
+   * `businessState` field is simply absent, and behavior is identical to
+   * before this option existed.
+   */
+  businessState?: unknown;
 }
 
 /**
@@ -272,6 +284,7 @@ export class AgentExecutor {
       redactContent = false,
       sandbox = NoopSandbox,
       hooks,
+      businessState,
     } = options;
 
     // Emit start event
@@ -297,11 +310,25 @@ export class AgentExecutor {
     let totalUsage: { promptTokens: number; completionTokens: number; totalTokens: number };
     let steps: number;
 
+    // LOU-T1: on a rehydrated run (e.g. a fresh process resuming after a
+    // crash), the caller of this execute() call may have no way to know
+    // what businessState a *previous* process attached - that's exactly
+    // the "second store, hope it stays aligned" gap this field closes. So
+    // when a checkpoint is loaded and this call's own `businessState`
+    // option was left unset, fall back to the value already stored on the
+    // checkpoint rather than silently dropping it. An explicit
+    // `businessState` passed to *this* call always wins (e.g. a caller
+    // deliberately updating it as part of the resumed run).
+    let effectiveBusinessState = businessState;
+
     if (checkpoint) {
       currentMessages = [...checkpoint.messages];
       allToolCalls = [...(checkpoint.toolCalls as ToolCall[])];
       totalUsage = { ...checkpoint.usage };
       steps = checkpoint.stepIndex;
+      if (effectiveBusinessState === undefined) {
+        effectiveBusinessState = checkpoint.businessState;
+      }
     } else {
       // Build messages from scratch (fallback path)
       const messages = this.buildMessages(agent, input, skipSystemPromptInjection);
@@ -524,6 +551,7 @@ export class AgentExecutor {
                 toolCalls: [...allToolCalls],
                 usage: totalUsage,
                 finishReason,
+                businessState: effectiveBusinessState,
               };
               await checkpointStore.save(sessionId, checkpoint);
             }

@@ -111,4 +111,32 @@ describe('Execution - LocalStorageCheckpointStore', () => {
       releaseSpy.mock.invocationCallOrder[0]
     );
   });
+
+  // LOU-T1
+  it('should round-trip an arbitrary businessState blob deep-equal', async () => {
+    const store = createCheckpointStore();
+    const checkpoint = buildCheckpoint({
+      businessState: { orderId: 'ord_123', stage: 'awaiting-payment', retries: 2 },
+    });
+
+    await store.save('session-1', checkpoint);
+    const loaded = await store.load('session-1');
+
+    expect(loaded).toEqual(checkpoint);
+    expect(loaded?.businessState).toEqual({
+      orderId: 'ord_123',
+      stage: 'awaiting-payment',
+      retries: 2,
+    });
+  });
+
+  it('should leave businessState absent (undefined) when never set - backward compatible', async () => {
+    const store = createCheckpointStore();
+    const checkpoint = buildCheckpoint();
+
+    await store.save('session-1', checkpoint);
+    const loaded = await store.load('session-1');
+
+    expect(loaded?.businessState).toBeUndefined();
+  });
 });

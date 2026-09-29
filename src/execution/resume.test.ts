@@ -688,6 +688,247 @@ describe('Execution - resumeAfterApproval', () => {
     expect(await checkpointStore.load(sessionId)).toBeNull();
   });
 
+  it('LOU-T1: carries businessState across a pause-for-approval -> approve -> resume cycle without the resumed call re-passing it', async () => {
+    // AgentExecutor only writes a checkpoint AFTER a tool result is
+    // appended (see AgentExecutor.ts's requiresApproval early-return, which
+    // returns *before* reaching that save() call) - so the pause-for-
+    // approval step itself never gets its own checkpoint. To exercise the
+    // realistic "businessState carried forward via the stale checkpoint"
+    // path, this scenario runs one unguarded 'lookup' tool call first (that
+    // DOES get checkpointed, businessState included) before the
+    // approval-gated 'chargeCard' call pauses the run.
+    const lookupExecute = vi.fn().mockResolvedValue({ found: true });
+    toolRegistry.register('lookup', {
+      displayName: 'Lookup',
+      tool: { description: 'Look something up', parameters: {}, execute: lookupExecute } as any,
+      needsApproval: false,
+    });
+
+    const chargeExecute = vi.fn().mockResolvedValue({ charged: true });
+    toolRegistry.register('chargeCard', {
+      displayName: 'Charge Card',
+      tool: { description: 'Charge a card', parameters: {}, execute: chargeExecute } as any,
+      needsApproval: true,
+    });
+
+    const agent = AgentBuilder.create()
+      .setType(AgentType.SmartAssistant)
+      .setName('Test Agent')
+      .addTool('lookup', { tool: 'lookup', options: {} })
+      .addTool('chargeCard', { tool: 'chargeCard', options: {} })
+      .build();
+
+    let call = 0;
+    const scriptedProvider = {
+      name: 'scripted',
+      supportsTools: () => true,
+      supportsStreaming: () => false,
+      getModels: async () => ['scripted'],
+      stream: async () => {
+        throw new Error('not implemented');
+      },
+      generate: async () => {
+        call++;
+        if (call === 1) {
+          return {
+            text: 'looking up',
+            finishReason: 'tool_calls' as const,
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+            toolCalls: [
+              { id: 'call-lookup', type: 'function' as const, function: { name: 'lookup', arguments: '{}' } },
+            ],
+          };
+        }
+        if (call === 2) {
+          return {
+            text: 'charging',
+            finishReason: 'tool_calls' as const,
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+            toolCalls: [
+              { id: 'call-charge', type: 'function' as const, function: { name: 'chargeCard', arguments: '{}' } },
+            ],
+          };
+        }
+        if (call === 3) {
+          // A post-resume, unguarded tool call - needed so AgentExecutor's
+          // normal per-tool-result checkpoint.save() actually fires during
+          // the resumed run (approving 'chargeCard' alone triggers no
+          // further save() inside AgentExecutor's loop).
+          return {
+            text: 'looking up again',
+            finishReason: 'tool_calls' as const,
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+            toolCalls: [
+              { id: 'call-lookup-2', type: 'function' as const, function: { name: 'lookup', arguments: '{}' } },
+            ],
+          };
+        }
+        return {
+          text: 'all done',
+          finishReason: 'stop' as const,
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        };
+      },
+    };
+
+    const approvalStore = createInMemoryApprovalStore();
+    const checkpointStore = createInMemoryCheckpointStore();
+    const sessionId = 'business-state-pause-resume-session';
+
+    const paused = await AgentExecutor.execute({
+      agent,
+      input: 'go',
+      provider: scriptedProvider as any,
+      toolRegistry,
+      approvalStore,
+      sessionId,
+      checkpointStore,
+      businessState: { orderId: 'ord_777', stage: 'awaiting-approval' },
+    });
+
+    expect(paused.finishReason).toBe('awaiting-approval');
+    expect(lookupExecute).toHaveBeenCalledTimes(1);
+    expect(chargeExecute).not.toHaveBeenCalled();
+
+    // Confirm the pre-pause checkpoint (written for the 'lookup' step) does
+    // carry businessState, proving it was durably written before the pause
+    // (not just held in in-memory options).
+    const prePauseCheckpoint = await checkpointStore.load(sessionId);
+    expect(prePauseCheckpoint!.businessState).toEqual({
+      orderId: 'ord_777',
+      stage: 'awaiting-approval',
+    });
+
+    const saveSpy = vi.spyOn(checkpointStore, 'save');
+
+    // Deliberately do NOT pass businessState in executeOptions here - it
+    // must be carried forward by resumeAfterApproval() itself, read off the
+    // stale pre-pause checkpoint before that checkpoint is deleted.
+    const resumed = await resumeAfterApproval(
+      { id: paused.approvalId!, approved: true },
+      approvalStore,
+      toolRegistry,
+      scriptedProvider as any,
+      {},
+      checkpointStore
+    );
+
+    expect(resumed.finishReason).toBe('stop');
+    expect(chargeExecute).toHaveBeenCalledTimes(1);
+    expect(lookupExecute).toHaveBeenCalledTimes(2);
+
+    // The run reached a terminal state, so the checkpoint is deleted at the
+    // end - but every intermediate save the resumed run made along the way
+    // must have carried the businessState forward.
+    expect(saveSpy).toHaveBeenCalled();
+    for (const [, checkpoint] of saveSpy.mock.calls) {
+      expect((checkpoint as any).businessState).toEqual({
+        orderId: 'ord_777',
+        stage: 'awaiting-approval',
+      });
+    }
+    expect(await checkpointStore.load(sessionId)).toBeNull();
+  });
+
+  it('LOU-T1: an explicit businessState passed to resumeAfterApproval() overrides the stale pre-pause checkpoint value', async () => {
+    const chargeExecute = vi.fn().mockResolvedValue({ charged: true });
+    toolRegistry.register('chargeCard', {
+      displayName: 'Charge Card',
+      tool: { description: 'Charge a card', parameters: {}, execute: chargeExecute } as any,
+      needsApproval: true,
+    });
+
+    const lookupExecute = vi.fn().mockResolvedValue({ found: true });
+    toolRegistry.register('lookup', {
+      displayName: 'Lookup',
+      tool: { description: 'Look something up', parameters: {}, execute: lookupExecute } as any,
+      needsApproval: false,
+    });
+
+    const agent = AgentBuilder.create()
+      .setType(AgentType.SmartAssistant)
+      .setName('Test Agent')
+      .addTool('chargeCard', { tool: 'chargeCard', options: {} })
+      .addTool('lookup', { tool: 'lookup', options: {} })
+      .build();
+
+    let call = 0;
+    const scriptedProvider = {
+      name: 'scripted',
+      supportsTools: () => true,
+      supportsStreaming: () => false,
+      getModels: async () => ['scripted'],
+      stream: async () => {
+        throw new Error('not implemented');
+      },
+      generate: async () => {
+        call++;
+        if (call === 1) {
+          return {
+            text: 'charging',
+            finishReason: 'tool_calls' as const,
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+            toolCalls: [
+              { id: 'call-charge', type: 'function' as const, function: { name: 'chargeCard', arguments: '{}' } },
+            ],
+          };
+        }
+        if (call === 2) {
+          // Post-resume, unguarded tool call so AgentExecutor's normal
+          // per-tool-result checkpoint.save() actually fires during the
+          // resumed run.
+          return {
+            text: 'looking up',
+            finishReason: 'tool_calls' as const,
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+            toolCalls: [
+              { id: 'call-lookup', type: 'function' as const, function: { name: 'lookup', arguments: '{}' } },
+            ],
+          };
+        }
+        return {
+          text: 'all done',
+          finishReason: 'stop' as const,
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        };
+      },
+    };
+
+    const approvalStore = createInMemoryApprovalStore();
+    const checkpointStore = createInMemoryCheckpointStore();
+    const saveSpy = vi.spyOn(checkpointStore, 'save');
+    const sessionId = 'business-state-override-session';
+
+    const paused = await AgentExecutor.execute({
+      agent,
+      input: 'go',
+      provider: scriptedProvider as any,
+      toolRegistry,
+      approvalStore,
+      sessionId,
+      checkpointStore,
+      businessState: { stage: 'stale-value' },
+    });
+
+    expect(paused.finishReason).toBe('awaiting-approval');
+    saveSpy.mockClear();
+
+    const resumed = await resumeAfterApproval(
+      { id: paused.approvalId!, approved: true },
+      approvalStore,
+      toolRegistry,
+      scriptedProvider as any,
+      { businessState: { stage: 'explicitly-overridden' } },
+      checkpointStore
+    );
+
+    expect(resumed.finishReason).toBe('stop');
+    expect(saveSpy).toHaveBeenCalled();
+    for (const [, checkpoint] of saveSpy.mock.calls) {
+      expect((checkpoint as any).businessState).toEqual({ stage: 'explicitly-overridden' });
+    }
+  });
+
   it('LOU-K5: resuming without a checkpointStore still works exactly as before (no crash, no checkpoint attempted)', async () => {
     // Guards the "fully optional/backward compatible" requirement: a
     // caller that never passes a checkpointStore to resumeAfterApproval()

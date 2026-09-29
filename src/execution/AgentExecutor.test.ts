@@ -424,6 +424,122 @@ describe('AgentExecutor', () => {
       expect(lengths[2]).toBeGreaterThan(lengths[1]);
     });
 
+    it('should write the businessState option into every checkpoint record (LOU-T1)', async () => {
+      const execute = vi.fn().mockResolvedValue({ ok: true });
+      toolRegistry.register('noop', {
+        displayName: 'Noop',
+        tool: { description: 'noop', parameters: {}, execute } as any,
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .addTool('noop', { tool: 'noop', options: {} })
+        .build();
+
+      let call = 0;
+      const scriptedProvider = {
+        name: 'scripted',
+        supportsTools: () => true,
+        supportsStreaming: () => false,
+        getModels: async () => ['scripted'],
+        stream: async () => {
+          throw new Error('not implemented');
+        },
+        generate: async () => {
+          call++;
+          if (call <= 2) {
+            return {
+              text: `step ${call}`,
+              finishReason: 'tool_calls' as const,
+              usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+              toolCalls: [
+                {
+                  id: `call-${call}`,
+                  type: 'function' as const,
+                  function: { name: 'noop', arguments: '{}' },
+                },
+              ],
+            };
+          }
+          return {
+            text: 'done',
+            finishReason: 'stop' as const,
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          };
+        },
+      };
+
+      const save = vi.fn().mockResolvedValue(undefined);
+      const checkpointStore = { save, load: vi.fn().mockResolvedValue(null), delete: vi.fn() };
+
+      await AgentExecutor.execute({
+        agent,
+        input: 'go',
+        provider: scriptedProvider as any,
+        toolRegistry,
+        sessionId: 'session-business-state',
+        checkpointStore,
+        businessState: { orderId: 'ord_42', stage: 'processing' },
+      });
+
+      expect(save).toHaveBeenCalledTimes(2);
+      for (const [, checkpoint] of save.mock.calls) {
+        expect(checkpoint.businessState).toEqual({ orderId: 'ord_42', stage: 'processing' });
+      }
+    });
+
+    it('should leave checkpoint.businessState undefined when the option is omitted - backward compatible (LOU-T1)', async () => {
+      const execute = vi.fn().mockResolvedValue({ ok: true });
+      toolRegistry.register('noop', {
+        displayName: 'Noop',
+        tool: { description: 'noop', parameters: {}, execute } as any,
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .addTool('noop', { tool: 'noop', options: {} })
+        .build();
+
+      const scriptedProvider = {
+        name: 'scripted',
+        supportsTools: () => true,
+        supportsStreaming: () => false,
+        getModels: async () => ['scripted'],
+        stream: async () => {
+          throw new Error('not implemented');
+        },
+        generate: async () => ({
+          text: 'step',
+          finishReason: 'tool_calls' as const,
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          toolCalls: [
+            { id: 'call-1', type: 'function' as const, function: { name: 'noop', arguments: '{}' } },
+          ],
+        }),
+      };
+
+      const save = vi.fn().mockResolvedValue(undefined);
+      const checkpointStore = { save, load: vi.fn().mockResolvedValue(null), delete: vi.fn() };
+
+      // Only one step so the run doesn't loop forever with the always-tool-calls provider.
+      await expect(
+        AgentExecutor.execute({
+          agent,
+          input: 'go',
+          provider: scriptedProvider as any,
+          toolRegistry,
+          sessionId: 'session-no-business-state',
+          checkpointStore,
+          maxSteps: 1,
+        })
+      ).resolves.toBeDefined();
+
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(save.mock.calls[0][1].businessState).toBeUndefined();
+    });
+
     it('should resume from a checkpoint after a simulated crash + restart with zero message loss', async () => {
       const execute = vi.fn().mockResolvedValue({ ok: true });
       toolRegistry.register('noop', {
@@ -558,6 +674,131 @@ describe('AgentExecutor', () => {
 
       expect(sharedStore.load).toHaveBeenCalledWith('resume-session');
       expect(resumedResult.messages).toHaveLength(baselineResult.messages.length);
+    });
+
+    it('should carry businessState through a crash + restart without the resumed call re-passing it (LOU-T1)', async () => {
+      const execute = vi.fn().mockResolvedValue({ ok: true });
+      toolRegistry.register('noop', {
+        displayName: 'Noop',
+        tool: { description: 'noop', parameters: {}, execute } as any,
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .addTool('noop', { tool: 'noop', options: {} })
+        .build();
+
+      function makeCheckpointStore() {
+        const records = new Map<string, any>();
+        return {
+          save: vi.fn(async (sessionId: string, checkpoint: any) => {
+            records.set(sessionId, checkpoint);
+          }),
+          load: vi.fn(async (sessionId: string) => records.get(sessionId) ?? null),
+          delete: vi.fn(async (sessionId: string) => {
+            records.delete(sessionId);
+          }),
+        };
+      }
+
+      function toolCallResponse(callNumber: number) {
+        return {
+          text: `step ${callNumber}`,
+          finishReason: 'tool_calls' as const,
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          toolCalls: [
+            {
+              id: `call-${callNumber}`,
+              type: 'function' as const,
+              function: { name: 'noop', arguments: '{}' },
+            },
+          ],
+        };
+      }
+
+      function stopResponse() {
+        return {
+          text: 'done',
+          finishReason: 'stop' as const,
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        };
+      }
+
+      const sharedStore = makeCheckpointStore();
+      let crashCall = 0;
+      const crashingProvider = {
+        name: 'scripted-crash',
+        supportsTools: () => true,
+        supportsStreaming: () => false,
+        getModels: async () => ['scripted-crash'],
+        stream: async () => {
+          throw new Error('not implemented');
+        },
+        generate: async () => {
+          crashCall++;
+          if (crashCall <= 1) {
+            return toolCallResponse(crashCall);
+          }
+          throw new Error('simulated crash');
+        },
+      };
+
+      await expect(
+        AgentExecutor.execute({
+          agent,
+          input: 'go',
+          provider: crashingProvider as any,
+          toolRegistry,
+          sessionId: 'resume-session-bs',
+          checkpointStore: sharedStore,
+          businessState: { ticketId: 'tix_9', stage: 'in-progress' },
+        })
+      ).rejects.toThrow('simulated crash');
+
+      // Confirm the pre-crash checkpoint really has businessState attached
+      // (proves the field survived the "crash" - i.e. was durably written -
+      // rather than only ever living in in-memory options).
+      const staleCheckpoint = await sharedStore.load('resume-session-bs');
+      expect(staleCheckpoint.businessState).toEqual({ ticketId: 'tix_9', stage: 'in-progress' });
+
+      // "Restart": a brand new execute() call, same sessionId/store, that
+      // does NOT re-pass businessState - it must be rehydrated from the
+      // checkpoint written before the crash.
+      let resumeCall = 0;
+      const resumeProvider = {
+        name: 'scripted-resume',
+        supportsTools: () => true,
+        supportsStreaming: () => false,
+        getModels: async () => ['scripted-resume'],
+        stream: async () => {
+          throw new Error('not implemented');
+        },
+        generate: async () => {
+          resumeCall++;
+          return resumeCall <= 1 ? toolCallResponse(1 + resumeCall) : stopResponse();
+        },
+      };
+
+      await AgentExecutor.execute({
+        agent,
+        input: 'go',
+        provider: resumeProvider as any,
+        toolRegistry,
+        sessionId: 'resume-session-bs',
+        checkpointStore: sharedStore,
+      });
+
+      // The run finished (terminal finishReason), so AgentExecutor deletes
+      // the checkpoint - but every intermediate save during the resumed run
+      // must have carried the rehydrated businessState forward untouched.
+      const businessStatesWritten = sharedStore.save.mock.calls
+        .filter(([sessionId]) => sessionId === 'resume-session-bs')
+        .map(([, checkpoint]) => checkpoint.businessState);
+      expect(businessStatesWritten.length).toBeGreaterThan(0);
+      for (const bs of businessStatesWritten) {
+        expect(bs).toEqual({ ticketId: 'tix_9', stage: 'in-progress' });
+      }
     });
 
     it('should build messages from scratch when no checkpoint exists for a fresh sessionId', async () => {

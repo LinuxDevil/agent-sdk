@@ -10,6 +10,12 @@
  * different lifecycles/read-write patterns, so separate files/stores).
  *
  * Consumes only the public `CheckpointStore` interface - no SDK internals.
+ *
+ * LOU-T1: `Checkpoint.businessState` needs no changes here - `save()`/
+ * `load()` already serialize/deserialize the whole `Checkpoint` record
+ * verbatim via `JSON.stringify`/`JSON.parse`, so any JSON-serializable
+ * `businessState` a consumer attaches round-trips through this store for
+ * free, exactly like every other field.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
