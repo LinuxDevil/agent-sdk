@@ -45,6 +45,16 @@ export interface Checkpoint {
    * carried forward across an approval pause/resume by
    * `resumeAfterApproval()` (src/execution/resume.ts) unless the caller's
    * `ResumeExecuteOptions.businessState` explicitly overrides it.
+   *
+   * Known limitation: because the carry-forward check is `=== undefined`,
+   * an `undefined` `businessState` option is indistinguishable from
+   * omitting the option entirely - both mean "inherit whatever the loaded
+   * checkpoint already has". There is currently no way to explicitly
+   * *clear* a previously-attached businessState back to `undefined` on a
+   * rehydrated/resumed run. A caller that needs to intentionally blank it
+   * out can pass `businessState: null` instead - `null !== undefined`, so
+   * it is treated as an explicit override (stored as `null`) rather than
+   * "inherit".
    */
   businessState?: unknown;
 }
