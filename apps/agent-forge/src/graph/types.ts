@@ -45,6 +45,38 @@ export interface GraphPosition {
   y: number;
 }
 
+/**
+ * LOU-Q3: which execution point a hook attached to a node runs at.
+ * `toolCall` maps to the SDK's `preToolCall`/`postToolCall`, `generate`
+ * maps to `preGenerate`/`postGenerate` (see src/execution/hooks.ts in the
+ * core SDK). `phase` picks pre vs. post within that point.
+ */
+export type AgentNodeHookPhase = 'pre' | 'post';
+export type AgentNodeHookPoint = 'toolCall' | 'generate';
+
+/**
+ * One hook instance attached to a node (LOU-Q2/Q3) - either dragged onto
+ * the node from the LeftRail's Pre-hook/Post-hook palette item, or added
+ * from the Inspector's "+ Add hook" starter-template list. `code` is the
+ * editable JS function body a user authors in the Inspector's CodeMirror
+ * editor; it is never eval()'d in-process - the server sandboxes it via the
+ * same `SandboxAdapter` seam tool `sandboxExecute()` uses (see
+ * server/hookSandbox.ts).
+ */
+export interface AgentNodeHookInstance {
+  /** Stable id for this hook instance, unique within the node. */
+  id: string;
+  /** Which starter template (see src/hooks/hookTemplates.ts) this was created from, or 'custom'. */
+  templateId: string;
+  name: string;
+  phase: AgentNodeHookPhase;
+  point: AgentNodeHookPoint;
+  /** Whether this hook actually runs when the agent executes (Inspector's toggle chip). */
+  enabled: boolean;
+  /** Editable JS function body: `async function(ctx) { ...; return ctx; }`. */
+  code: string;
+}
+
 interface AgentGraphNodeBase<TType extends AgentGraphNodeType, TData> {
   id: string;
   type: TType;
@@ -52,6 +84,12 @@ interface AgentGraphNodeBase<TType extends AgentGraphNodeType, TData> {
   /** Display label shown on the node's canvas header. */
   label: string;
   data: TData;
+  /**
+   * Hooks attached to this node (LOU-Q3). Present on any node type in
+   * principle, but only `llm` (generate hooks) and `tool` (tool-call hooks)
+   * nodes are meaningful drop targets today - see dnd.ts/CanvasArea.tsx.
+   */
+  hooks?: AgentNodeHookInstance[];
 }
 
 /** A single raw trigger object, kept verbatim from `AgentSpecTrigger`. */

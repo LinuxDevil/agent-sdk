@@ -3,9 +3,11 @@ import type {
   AgentGraphNode,
   AgentGraphNodeType,
   AgentGraphSpec,
+  AgentNodeHookInstance,
   GraphPosition,
 } from '../graph/types';
 import { isEdgeTypeAllowed } from '../graph/connectionRules';
+import type { HookTemplate } from '../hooks/hookTemplates';
 
 /**
  * Pure, canvas-agnostic mutations over `AgentGraphSpec` (LOU-M2).
@@ -163,4 +165,66 @@ export function connectNodes(graph: AgentGraphSpec, sourceId: string, targetId: 
 
 export function removeEdge(graph: AgentGraphSpec, edgeId: string): AgentGraphSpec {
   return { ...graph, edges: graph.edges.filter((e) => e.id !== edgeId) };
+}
+
+let hookIdCounter = 0;
+/** Overridable so tests can assert on deterministic ids. */
+export function nextHookId(): string {
+  hookIdCounter += 1;
+  return `hook-${Date.now().toString(36)}-${hookIdCounter}`;
+}
+
+/**
+ * Attaches a new hook instance (from a starter template, LOU-Q2) to
+ * `nodeId`, appended to its `data.hooks` list (created if absent) and
+ * enabled by default. This is what dragging a Pre-hook/Post-hook palette
+ * item onto a node (LOU-Q3, see CanvasArea.tsx's onDrop) and the
+ * Inspector's "+ Add hook" both call.
+ */
+export function addHookToNode(graph: AgentGraphSpec, nodeId: string, template: HookTemplate): AgentGraphSpec {
+  const instance: AgentNodeHookInstance = {
+    id: nextHookId(),
+    templateId: template.id,
+    name: template.name,
+    phase: template.phase,
+    point: template.point,
+    enabled: true,
+    code: template.code,
+  };
+  return {
+    ...graph,
+    nodes: graph.nodes.map((n) => (n.id === nodeId ? { ...n, hooks: [...(n.hooks ?? []), instance] } : n)),
+  };
+}
+
+/** Flips a hook instance's `enabled` flag (the Inspector's toggle chip). */
+export function toggleNodeHook(graph: AgentGraphSpec, nodeId: string, hookId: string): AgentGraphSpec {
+  return {
+    ...graph,
+    nodes: graph.nodes.map((n) =>
+      n.id === nodeId
+        ? { ...n, hooks: (n.hooks ?? []).map((h) => (h.id === hookId ? { ...h, enabled: !h.enabled } : h)) }
+        : n
+    ),
+  };
+}
+
+/** Replaces a hook instance's editable code body (the Inspector's CodeMirror editor). */
+export function updateNodeHookCode(graph: AgentGraphSpec, nodeId: string, hookId: string, code: string): AgentGraphSpec {
+  return {
+    ...graph,
+    nodes: graph.nodes.map((n) =>
+      n.id === nodeId ? { ...n, hooks: (n.hooks ?? []).map((h) => (h.id === hookId ? { ...h, code } : h)) } : n
+    ),
+  };
+}
+
+/** Removes a hook instance from a node entirely. */
+export function removeNodeHook(graph: AgentGraphSpec, nodeId: string, hookId: string): AgentGraphSpec {
+  return {
+    ...graph,
+    nodes: graph.nodes.map((n) =>
+      n.id === nodeId ? { ...n, hooks: (n.hooks ?? []).filter((h) => h.id !== hookId) } : n
+    ),
+  };
 }

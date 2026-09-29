@@ -1,5 +1,25 @@
 import type { AgentSpec } from '@loushy/build-ai-agent';
-import type { AgentGraphEdge, AgentGraphNode, AgentGraphSpec } from './types';
+import type { AgentGraphEdge, AgentGraphNode, AgentGraphSpec, AgentNodeHookInstance } from './types';
+import { hookNodeKey } from './graphToSpec';
+
+/** Shape `graphToSpec()` serializes each hook as, under `spec.policy.hooks`. */
+interface SerializedHook {
+  nodeKey: string;
+  id: string;
+  name: string;
+  phase: AgentNodeHookInstance['phase'];
+  point: AgentNodeHookInstance['point'];
+  code: string;
+}
+
+function isSerializedHookArray(value: unknown): value is SerializedHook[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (h) => h && typeof h === 'object' && typeof (h as SerializedHook).nodeKey === 'string' && typeof (h as SerializedHook).id === 'string'
+    )
+  );
+}
 
 const COLUMN_WIDTH = 260;
 const ROW_HEIGHT = 140;
@@ -97,6 +117,36 @@ export function specToGraph(spec: AgentSpec): AgentGraphSpec {
     }
   } else {
     edges.push({ id: `edge-${llmId}-${outputId}`, source: llmId, target: outputId });
+  }
+
+  // LOU-Q3: re-attach hooks serialized under spec.policy.hooks (see
+  // graphToSpec.ts) back onto whichever freshly-built node has a matching
+  // `hookNodeKey()`. Best-effort by design: `spec.policy` is an open
+  // passthrough record (see AgentSpecPolicy), so anything there that isn't
+  // shaped like `SerializedHook[]` is silently ignored rather than thrown
+  // on - a hand-edited or older spec file without hooks still loads fine.
+  const rawHooks = spec.policy?.hooks;
+  if (isSerializedHookArray(rawHooks)) {
+    const byNodeKey = new Map<string, SerializedHook[]>();
+    for (const h of rawHooks) {
+      const list = byNodeKey.get(h.nodeKey) ?? [];
+      list.push(h);
+      byNodeKey.set(h.nodeKey, list);
+    }
+    for (const node of nodes) {
+      const matched = byNodeKey.get(hookNodeKey(node));
+      if (matched && matched.length > 0) {
+        node.hooks = matched.map((h) => ({
+          id: h.id,
+          templateId: 'custom',
+          name: h.name,
+          phase: h.phase,
+          point: h.point,
+          enabled: true,
+          code: h.code,
+        }));
+      }
+    }
   }
 
   return { version: 1, nodes, edges };
