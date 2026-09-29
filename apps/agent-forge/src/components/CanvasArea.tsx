@@ -18,6 +18,7 @@ import '@xyflow/react/dist/style.css';
 import { useAppState } from '../state/AppState';
 import { NODE_TYPES, type AgentNodeData } from '../canvas/AgentNode';
 import {
+  addHookToNode,
   addNode,
   connectNodes,
   duplicateNode,
@@ -28,8 +29,9 @@ import {
 } from '../canvas/graphMutations';
 import { autoLayout } from '../canvas/layout';
 import { isEdgeTypeAllowed } from '../graph/connectionRules';
-import { PALETTE_DRAG_MIME } from '../canvas/dnd';
-import type { AgentGraphNodeType, AgentGraphSpec } from '../graph/types';
+import { PALETTE_DRAG_MIME, HOOK_DRAG_MIME } from '../canvas/dnd';
+import { HOOK_TEMPLATES } from '../hooks/hookTemplates';
+import type { AgentGraphNodeType, AgentGraphSpec, AgentNodeHookPhase } from '../graph/types';
 
 function breakpointKeyForNode(n: AgentGraphSpec['nodes'][number]): string | undefined {
   if (n.type === 'llm') return 'llm:before';
@@ -166,20 +168,58 @@ function CanvasInner() {
   );
 
   const onDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
-    if (!e.dataTransfer.types.includes(PALETTE_DRAG_MIME)) return;
+    if (!e.dataTransfer.types.includes(PALETTE_DRAG_MIME) && !e.dataTransfer.types.includes(HOOK_DRAG_MIME)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   }, []);
 
+  /**
+   * LOU-Q3: which `AgentGraphNode` (by id) the pointer is currently over,
+   * found by walking up the real DOM from `document.elementFromPoint()` to
+   * the nearest element carrying AgentNode.tsx's `data-node-id` attribute.
+   * Native HTML5 drag-and-drop only gives `onDrop` a client point, not
+   * "which React node is under it" - ReactFlow doesn't expose that as a
+   * hit-test API - so this reads it straight from the rendered DOM, the
+   * same way a browser's own elementFromPoint-based drop targeting works.
+   */
+  function nodeIdAtPoint(clientX: number, clientY: number): string | undefined {
+    const el = document.elementFromPoint(clientX, clientY);
+    const nodeEl = el?.closest<HTMLElement>('[data-node-id]');
+    return nodeEl?.dataset.nodeId;
+  }
+
   const onDrop = useCallback(
     (e: DragEvent<HTMLDivElement>) => {
+      const hookPhase = e.dataTransfer.getData(HOOK_DRAG_MIME) as AgentNodeHookPhase | '';
+      if (hookPhase) {
+        e.preventDefault();
+        const targetNodeId = nodeIdAtPoint(e.clientX, e.clientY);
+        const targetNode = graph.nodes.find((n) => n.id === targetNodeId);
+        if (!targetNode || (targetNode.type !== 'llm' && targetNode.type !== 'tool')) {
+          flashError('Drop a hook onto an LLM or tool node to attach it');
+          return;
+        }
+        // Attach the first starter template matching both this palette
+        // item's phase (see LeftRail's HOOK_PALETTE) and the target node's
+        // hook point (llm -> generate, tool -> toolCall) as a sensible
+        // default; the Inspector lets the user pick a different
+        // template/edit the code afterward.
+        const point = targetNode.type === 'llm' ? 'generate' : 'toolCall';
+        const template =
+          HOOK_TEMPLATES.find((t) => t.phase === hookPhase && t.point === point) ??
+          HOOK_TEMPLATES.find((t) => t.point === point) ??
+          HOOK_TEMPLATES[0];
+        setGraph((g) => addHookToNode(g, targetNode.id, template));
+        return;
+      }
+
       const nodeType = e.dataTransfer.getData(PALETTE_DRAG_MIME) as AgentGraphNodeType | '';
       if (!nodeType) return;
       e.preventDefault();
       const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
       setGraph((g) => addNode(g, nodeType, position));
     },
-    [screenToFlowPosition, setGraph]
+    [screenToFlowPosition, setGraph, graph]
   );
 
   function handleAutoLayout() {
