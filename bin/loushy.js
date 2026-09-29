@@ -7,6 +7,7 @@ const USAGE = [
   'Usage:',
   '  loushy dev <config.yaml|config.json> [--port N] [--host H]',
   '  loushy build --target=<name> --agent=<path> [--out=<dir>]',
+  '  loushy studio [--port N] [--host H]',
 ].join('\n');
 
 async function runDev(rest) {
@@ -41,6 +42,22 @@ async function runBuildCommand(rest) {
   process.exitCode = await runBuild(rest);
 }
 
+async function runStudio(rest) {
+  const portFlag = rest.find((arg) => arg.startsWith('--port'));
+  const apiPort = portFlag ? Number(portFlag.split('=')[1] || rest[rest.indexOf(portFlag) + 1]) : 4750;
+  const hostFlag = rest.find((arg) => arg.startsWith('--host'));
+  const apiHost = hostFlag ? (hostFlag.split('=')[1] || rest[rest.indexOf(hostFlag) + 1]) : '127.0.0.1';
+
+  const { startStudio } = require(path.join(__dirname, '..', 'dist', 'cli', 'studio.js'));
+
+  try {
+    startStudio({ repoRoot: process.cwd(), apiPort, apiHost });
+  } catch (error) {
+    console.error(error && error.message ? error.message : String(error));
+    process.exitCode = 1;
+  }
+}
+
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
 
@@ -49,6 +66,8 @@ async function main() {
       return runDev(rest);
     case 'build':
       return runBuildCommand(rest);
+    case 'studio':
+      return runStudio(rest);
     default:
       console.error(`loushy: unknown command '${command || ''}'.\n${USAGE}`);
       process.exitCode = 1;

@@ -32,3 +32,8 @@ coverage/
 
 # Generated API docs (npm run docs:build)
 docs/api/
+
+# LOU-N runtime control server's local run state (checkpoints/approvals/
+# saved agent specs) - see apps/agent-forge/server/{checkpointStore,
+# approvalStore}.ts and src/persistence/fsAgentStore.ts.
+.loushy/

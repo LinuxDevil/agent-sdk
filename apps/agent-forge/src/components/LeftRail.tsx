@@ -34,8 +34,17 @@ const NODE_PALETTE: { section: string; items: { label: string; color: string; no
  * dragging in a node kind the graph model (and graphToSpec/validateGraph)
  * doesn't understand.
  */
+const STATUS_LABEL: Record<string, string> = {
+  idle: 'idle',
+  running: 'running',
+  stopped: 'stopped',
+  error: 'error',
+  paused: 'awaiting approval',
+};
+
 export function LeftRail() {
-  const { railTab, setRailTab, agents, agentId, graph, spec, switchAgent, createAgent } = useAppState();
+  const { railTab, setRailTab, agents, agentId, graph, spec, switchAgent, createAgent, agentStatuses } =
+    useAppState();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [newTemplate, setNewTemplate] = useState<TemplateId>('blank');
@@ -85,27 +94,35 @@ export function LeftRail() {
               </div>
             </div>
           )}
-          {agents.map((entry) => (
-            <div
-              className={`agent-card${entry.id === agentId ? ' selected' : ''}`}
-              key={entry.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => void switchAgent(entry.id)}
-              onKeyDown={(e) => e.key === 'Enter' && void switchAgent(entry.id)}
-            >
-              <div className="agent-card-top">
-                <span className="agent-name">{entry.id}</span>
-                <span className={`status-pill ${entry.id === agentId ? 'status-running' : 'status-stopped'}`}>
-                  <span className="dot" style={{ background: entry.id === agentId ? 'var(--success)' : 'var(--text-faint)' }} />
-                  {entry.id === agentId ? 'active' : 'idle'}
-                </span>
+          {agents.map((entry) => {
+            // LOU-N: real run status pushed over WS (see AppState's
+            // agentStatuses), replacing LOU-L/M's "active"/"idle"
+            // placeholder derived only from which agent is loaded in the
+            // canvas. An agent can be 'running' in the background even
+            // while a different agent is selected in the canvas.
+            const status = agentStatuses[entry.id]?.status ?? 'idle';
+            return (
+              <div
+                className={`agent-card${entry.id === agentId ? ' selected' : ''}`}
+                key={entry.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => void switchAgent(entry.id)}
+                onKeyDown={(e) => e.key === 'Enter' && void switchAgent(entry.id)}
+              >
+                <div className="agent-card-top">
+                  <span className="agent-name">{entry.id}</span>
+                  <span className={`status-pill status-${status}`}>
+                    <span className="dot" />
+                    {STATUS_LABEL[status] ?? status}
+                  </span>
+                </div>
+                <div className="agent-meta">
+                  {entry.spec.provider.model} &middot; {entry.spec.tools?.length ?? 0} tools
+                </div>
               </div>
-              <div className="agent-meta">
-                {entry.spec.provider.model} &middot; {entry.spec.tools?.length ?? 0} tools
-              </div>
-            </div>
-          ))}
+            );
+          })}
 
           {creating ? (
             <div className="agent-card" style={{ cursor: 'default' }}>

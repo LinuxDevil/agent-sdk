@@ -79,6 +79,34 @@
   box-shadow: 0 0 0 3px var(--success-soft);
 }
 
+/* LOU-N: inline human-in-the-loop approval card, shown in the Topbar while
+   a run is paused awaiting a tool-call decision (see AppState.runStatus /
+   Topbar.tsx). A minimal affordance by design - the richer version is
+   LOU-O/P's job (see server/types.ts's PendingApprovalInfo doc comment). */
+.approval-card {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  background: var(--warning-soft);
+  color: var(--warning);
+  border: 1px solid var(--warning);
+  border-radius: 7px;
+  padding: 4px 8px;
+}
+
+/* LOU-N: a run's error message, surfaced inline in the Topbar next to the
+   status pill - full log/trace display is LOU-O's job, this is just
+   "don't silently swallow it". */
+.run-error {
+  font-size: 11.5px;
+  color: var(--danger);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .btn {
   border: 1px solid var(--border);
   background: var(--surface-2);
@@ -232,12 +260,18 @@
   width: 5px;
   height: 5px;
   box-shadow: none;
+  /* LOU-N: match each status pill's own text color (success/danger/
+     warning/faint, set by .status-running/.status-error/.status-paused/
+     .status-stopped above) instead of always rendering the base `.dot`
+     rule's green - a status pill's dot should reflect that status. */
+  background: currentColor;
 }
 .status-running {
   background: var(--success-soft);
   color: var(--success);
 }
-.status-stopped {
+.status-stopped,
+.status-idle {
   background: var(--surface-2);
   color: var(--text-faint);
 }

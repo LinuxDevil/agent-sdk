@@ -1,10 +1,24 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useAppState } from '../state/AppState';
 import { downloadSpec, importSpecFile } from '../persistence/importExport';
+import { RuntimeApiError } from '../runtime/runtimeClient';
+
+const STATUS_LABEL: Record<string, string> = {
+  idle: 'idle',
+  running: 'running',
+  stopped: 'stopped',
+  error: 'error',
+  paused: 'awaiting approval',
+};
 
 export function Topbar() {
-  const { spec, setSpec, save, dirty, agentId } = useAppState();
+  const { spec, setSpec, save, dirty, agentId, runStatus, runAgent, stopAgent, approveAgent } = useAppState();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [actionError, setActionError] = useState<string | undefined>(undefined);
+
+  const status = runStatus?.status ?? 'idle';
+  const isRunning = status === 'running';
+  const isPaused = status === 'paused' && !!runStatus?.pendingApproval;
 
   function handleExport() {
     downloadSpec(spec, `${spec.name || agentId}.yaml`);
@@ -20,6 +34,37 @@ export function Topbar() {
     if (!file) return;
     const imported = await importSpecFile(file);
     setSpec(() => imported);
+  }
+
+  async function handleRun() {
+    setActionError(undefined);
+    try {
+      // A blank input is fine when resuming from a checkpoint (see
+      // runRegistry.ts's run() doc comment - AgentExecutor ignores `input`
+      // once a checkpoint exists), so this always sends *some* string
+      // rather than blocking Run on an empty prompt.
+      await runAgent('Run the agent.');
+    } catch (error) {
+      setActionError(error instanceof RuntimeApiError ? error.message : (error as Error).message);
+    }
+  }
+
+  async function handleStop() {
+    setActionError(undefined);
+    try {
+      await stopAgent();
+    } catch (error) {
+      setActionError(error instanceof RuntimeApiError ? error.message : (error as Error).message);
+    }
+  }
+
+  async function handleApprove(approved: boolean) {
+    setActionError(undefined);
+    try {
+      await approveAgent(approved);
+    } catch (error) {
+      setActionError(error instanceof RuntimeApiError ? error.message : (error as Error).message);
+    }
   }
 
   return (
@@ -40,19 +85,48 @@ export function Topbar() {
         {dirty && <span className="dirty-dot" title="Unsaved changes" />}
       </div>
       <div className="topbar-spacer" />
+
+      {isPaused && (
+        <div className="approval-card" title={JSON.stringify(runStatus?.pendingApproval?.args)}>
+          <span>
+            Approve <b>{runStatus?.pendingApproval?.toolName}</b>?
+          </span>
+          <button className="btn btn-success" onClick={() => void handleApprove(true)}>
+            Approve
+          </button>
+          <button className="btn btn-danger" onClick={() => void handleApprove(false)}>
+            Reject
+          </button>
+        </div>
+      )}
+
+      {status === 'error' && runStatus?.error && (
+        <span className="run-error" title={runStatus.error}>
+          {runStatus.error}
+        </span>
+      )}
+      {actionError && (
+        <span className="run-error" title={actionError}>
+          {actionError}
+        </span>
+      )}
+
+      <span className={`status-pill status-${status}`}>
+        <span className="dot" />
+        {STATUS_LABEL[status] ?? status}
+      </span>
+
       <div className="env-select">
         <span className="dot" /> local &middot; {spec.provider.type} provider
       </div>
-      {/* Debug/Stop/Run are chrome-only placeholders here - wiring them to a
-          real running agent needs LOU-N's runtime control server and
-          LOU-O's debug console, neither of which exist yet in this epic. */}
+      {/* Debug is a chrome-only placeholder still - the full log/trace UI is LOU-O's job. */}
       <button className="btn btn-ghost" disabled title="Wired up in LOU-O (debug console)">
         Debug
       </button>
-      <button className="btn btn-danger" disabled title="Wired up in LOU-N (runtime control server)">
+      <button className="btn btn-danger" onClick={() => void handleStop()} disabled={!isRunning}>
         Stop
       </button>
-      <button className="btn btn-success" disabled title="Wired up in LOU-N (runtime control server)">
+      <button className="btn btn-success" onClick={() => void handleRun()} disabled={isRunning}>
         Run
       </button>
       <button className="btn" onClick={handleImportClick}>
