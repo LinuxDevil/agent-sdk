@@ -593,6 +593,149 @@
   color: var(--text-muted);
 }
 
+/* ---------- O1: Logs tab ---------- */
+.logs-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.logs-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+  font-family: var(--font-ui);
+}
+.logs-filter-bar input[type='search'] {
+  flex: 1;
+  min-width: 100px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+.logs-filter-toggle {
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.logs-filter-toggle.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.logs-empty {
+  padding: 16px;
+  color: var(--text-faint);
+  font-family: var(--font-ui);
+}
+.logs-viewport {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+}
+.log-line { display: grid; grid-template-columns: 64px 60px 1fr; gap: 10px; padding: 3px 12px; border-radius: 5px; align-items: start; cursor: pointer; }
+.log-line:hover { background: var(--surface-2); }
+.log-line.highlighted { background: var(--accent-soft); }
+.log-time { color: var(--text-faint); }
+.log-level { font-weight: 700; }
+.lvl-info { color: var(--info); }
+.lvl-warn { color: var(--warning); }
+.lvl-error { color: var(--danger); }
+.lvl-tool { color: var(--accent); }
+.log-msg { color: var(--text); white-space: pre-wrap; word-break: break-word; }
+.log-msg b { color: var(--text-muted); font-weight: 600; }
+
+/* ---------- O2: Trace tab ---------- */
+.trace-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+}
+.trace-empty {
+  padding: 16px;
+  color: var(--text-faint);
+  font-family: var(--font-ui);
+}
+.trace-row { display: flex; align-items: center; gap: 8px; padding: 5px 12px; cursor: pointer; border-radius: 5px; }
+.trace-row:hover, .trace-row.selected { background: var(--surface-2); }
+.trace-bar-track { position: relative; flex: 1; height: 16px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+.trace-bar { position: absolute; top: 0; bottom: 0; border-radius: 4px; background: var(--accent); }
+.trace-bar.pending { background: repeating-linear-gradient(45deg, var(--accent), var(--accent) 4px, transparent 4px, transparent 8px); }
+.trace-name { width: 150px; flex: none; color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trace-dur { width: 56px; flex: none; text-align: right; color: var(--text-muted); }
+
+/* ---------- O4: Output tab ---------- */
+.output-json { padding: 10px 14px; white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono); font-size: 11.5px; }
+.json-key { color: var(--info); }
+.json-str { color: var(--success); }
+.json-num { color: var(--warning); }
+.json-bool { color: var(--accent); }
+.json-null { color: var(--text-faint); }
+.json-node { display: block; }
+.json-toggle {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  padding: 0 3px 0 0;
+  font-size: 11px;
+}
+.json-children {
+  margin-left: 14px;
+  border-left: 1px dashed var(--border);
+  padding-left: 8px;
+}
+
+/* ---------- O3: step-through debugger ---------- */
+.debug-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--warning-soft);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-family: var(--font-ui);
+}
+.debug-bar .step-count {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.breakpoint-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: 20px;
+  padding: 4px 9px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.breakpoint-toggle.on {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+.rf-node.has-breakpoint {
+  box-shadow: 0 0 0 2px var(--danger);
+}
+.rf-node.highlighted {
+  box-shadow: 0 0 0 3px var(--accent), var(--shadow);
+}
+
 @media (max-width: 860px) {
   .shell {
     grid-template-columns: 0 1fr 0;

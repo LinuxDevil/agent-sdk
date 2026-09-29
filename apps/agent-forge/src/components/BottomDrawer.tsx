@@ -1,5 +1,9 @@
 import { useAppState } from '../state/AppState';
 import type { DrawerTab } from '../state/AppState';
+import { LogsPanel } from './debug/LogsPanel';
+import { TracePanel } from './debug/TracePanel';
+import { OutputPanel } from './debug/OutputPanel';
+import { DebugBar } from './debug/DebugBar';
 
 const TABS: { id: DrawerTab; label: string }[] = [
   { id: 'chat', label: 'Chat' },
@@ -10,13 +14,16 @@ const TABS: { id: DrawerTab; label: string }[] = [
 ];
 
 /**
- * Tab-switching chrome only - each tab's real content is a later epic:
- * Chat -> LOU-P, Logs/Trace -> LOU-O, Settings -> LOU-R. "Output" shows the
- * current in-memory `AgentSpec` as JSON, which is real (LOU-L2 data), not a
- * placeholder.
+ * Tab-switching chrome (LOU-L), now with real content for LOU-O's
+ * Logs/Trace/Output tabs: `LogsPanel` (O1, a live filtered/virtualized log
+ * feed), `TracePanel` (O2, a real span waterfall) and `OutputPanel` (O4, a
+ * collapsible JSON tree of the final/paused ExecutionResult). `DebugBar`
+ * (O3) surfaces above Trace whenever debug mode is on or a run is paused
+ * at a breakpoint. Chat (LOU-P) and Settings (LOU-R) are still later
+ * epics' jobs.
  */
 export function BottomDrawer() {
-  const { drawerTab, setDrawerTab, spec } = useAppState();
+  const { drawerTab, setDrawerTab } = useAppState();
 
   return (
     <div className="drawer">
@@ -32,11 +39,15 @@ export function BottomDrawer() {
         ))}
         <div className="drawer-spacer" />
       </div>
-      <div className="drawer-body">
+      {drawerTab === 'trace' && <DebugBar />}
+      <div
+        className="drawer-body"
+        style={drawerTab === 'logs' || drawerTab === 'trace' ? { padding: 0, overflow: 'hidden' } : undefined}
+      >
         {drawerTab === 'chat' && <div>Chat with a running agent is wired up in LOU-P.</div>}
-        {drawerTab === 'logs' && <div>Live execution logs are wired up in LOU-O (debug console).</div>}
-        {drawerTab === 'trace' && <div>Execution trace spans are wired up in LOU-O (debug console).</div>}
-        {drawerTab === 'output' && <pre style={{ margin: 0 }}>{JSON.stringify(spec, null, 2)}</pre>}
+        {drawerTab === 'logs' && <LogsPanel />}
+        {drawerTab === 'trace' && <TracePanel />}
+        {drawerTab === 'output' && <OutputPanel />}
         {drawerTab === 'settings' && <div>Provider keys and deploy target settings are wired up in LOU-R.</div>}
       </div>
     </div>

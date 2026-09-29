@@ -4,6 +4,40 @@ import { updateNodeData, renameNode } from '../canvas/graphMutations';
 const KNOWN_PROVIDERS = ['mock', 'openai', 'anthropic', 'ollama', 'openrouter'];
 
 /**
+ * O3: breakpoint toggle for an llm/tool node's Inspector panel, shown only
+ * in debug mode. Breaks "before" that node runs - see
+ * server/debugController.ts's doc comment for why `before`/`after` on an
+ * llm/tool hook is the real granularity AgentExecutor's control surface
+ * supports (no per-line/per-node-inside-a-call breakpoints).
+ */
+function BreakpointField({
+  breakpointKey,
+  breakpoints,
+  setBreakpoints,
+}: {
+  breakpointKey: string;
+  breakpoints: string[];
+  setBreakpoints: (breakpoints: string[]) => Promise<void>;
+}) {
+  const on = breakpoints.includes(breakpointKey);
+  return (
+    <div className="field">
+      <label>Breakpoint</label>
+      <span
+        className={`breakpoint-toggle${on ? ' on' : ''}`}
+        role="button"
+        tabIndex={0}
+        onClick={() =>
+          void setBreakpoints(on ? breakpoints.filter((b) => b !== breakpointKey) : [...breakpoints, breakpointKey])
+        }
+      >
+        {on ? 'Break before this node ●' : 'Break before this node'}
+      </span>
+    </div>
+  );
+}
+
+/**
  * Inspector (LOU-M): reflects and edits whichever canvas node is currently
  * selected, wired through `AppState.graph`/`selectedNodeId` - the same
  * mechanism the canvas itself reads/writes (see CanvasArea.tsx), so there
@@ -14,7 +48,7 @@ const KNOWN_PROVIDERS = ['mock', 'openai', 'anthropic', 'ollama', 'openrouter'];
  * wiring) needs `AgentSpec` itself to grow those fields first.
  */
 export function Inspector() {
-  const { graph, setGraph, selectedNodeId } = useAppState();
+  const { graph, setGraph, selectedNodeId, debugMode, debugState, setBreakpoints } = useAppState();
   const selected = graph.nodes.find((n) => n.id === selectedNodeId);
 
   if (!selected) {
@@ -132,6 +166,16 @@ export function Inspector() {
           <div className="field">
             <div className="hint">The output node has no configurable fields today.</div>
           </div>
+        )}
+
+        {debugMode && (selected.type === 'llm' || selected.type === 'tool') && (
+          <BreakpointField
+            breakpointKey={
+              selected.type === 'llm' ? 'llm:before' : `tool:${selected.data.toolName}:before`
+            }
+            breakpoints={debugState?.breakpoints ?? []}
+            setBreakpoints={setBreakpoints}
+          />
         )}
 
         <div className="field">

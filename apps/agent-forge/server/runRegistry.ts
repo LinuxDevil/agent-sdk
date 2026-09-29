@@ -9,18 +9,23 @@
  * of the SDK's public execution API.
  */
 import { EventEmitter } from 'node:events';
+import { randomUUID } from 'node:crypto';
 import {
   AgentExecutor,
   ToolRegistry,
   type ExecutionEvent,
   type CheckpointStore,
+  type Span,
+  type TraceExporter,
+  type ExecutionResult,
   resumeAfterApproval,
   type AgentSpec,
 } from '@loushy/build-ai-agent';
 import { buildAgentFromSpec } from './buildAgent';
 import { withAbortSignal, RunAbortedError } from './abortableProvider';
 import { FileApprovalStore } from './approvalStore';
-import type { AgentRunStatusPayload, RunStatus } from './types';
+import { DebugSession, type BreakpointKey } from './debugController';
+import type { AgentRunStatusPayload, RunStatus, LogEntry, LogLevel, LogPhase } from './types';
 
 interface RunEntry {
   status: RunStatus;
@@ -35,6 +40,8 @@ interface RunEntry {
   reason?: 'awaiting_approval';
   pendingApproval?: AgentRunStatusPayload['pendingApproval'];
   resultText?: string;
+  /** O4: full ExecutionResult (messages/toolCalls/usage/steps/finishReason) for the Output tab's JSON tree. */
+  result?: ExecutionResult;
   updatedAt: string;
   /**
    * The AgentSpec this agent id was last run() with. approve() needs a spec
@@ -46,6 +53,8 @@ interface RunEntry {
    * the process.
    */
   lastSpec?: AgentSpec;
+  /** O3: live step-through debug session for this agent's in-flight run, if any. */
+  debugSession?: DebugSession;
 }
 
 export interface RunManagerOptions {
@@ -67,8 +76,82 @@ export class AgentNotFoundError extends Error {}
 export class AlreadyRunningError extends Error {}
 export class NoActiveRunError extends Error {}
 
+/**
+ * O1: translates one `ExecutionEvent` (the SDK's own execution-phase
+ * taxonomy - start/text-delta/text-complete/tool-call/tool-result/finish/
+ * error, see AgentExecutor.ts) into zero or more structured `LogEntry`
+ * rows. This reuses that taxonomy rather than inventing a second, parallel
+ * logging vocabulary - `LogPhase` is a coarser regrouping of the same
+ * events (e.g. both 'start' and 'finish' map to phase 'trigger', since
+ * those are this pipeline's entry/exit points) plus 'sandbox'/'checkpoint'/
+ * 'approval'/'debug' phases used by emitters elsewhere in this file for
+ * things ExecutionEvent has no dedicated type for.
+ */
+function toLogEntries(agentId: string, event: ExecutionEvent): LogEntry[] {
+  const timestamp = (event.timestamp instanceof Date ? event.timestamp : new Date()).toISOString();
+  const base = { id: randomUUID(), agentId, timestamp };
+
+  switch (event.type) {
+    case 'start':
+      return [{ ...base, level: 'info', phase: 'trigger', message: `Run started for agent '${event.agentName ?? agentId}'` }];
+    case 'text-complete':
+      return [{ ...base, level: 'info', phase: 'llm', message: event.text ? `LLM response: ${truncate(event.text)}` : 'LLM response received' }];
+    case 'tool-call':
+      return [
+        {
+          ...base,
+          level: 'tool',
+          phase: 'tool',
+          toolName: event.toolCall?.function?.name,
+          message: `Tool call: ${event.toolCall?.function?.name ?? 'unknown'}`,
+          detail: event.toolCall,
+        },
+      ];
+    case 'tool-result': {
+      const isError = !!event.toolResult?.error;
+      return [
+        {
+          ...base,
+          level: isError ? 'error' : 'tool',
+          phase: 'tool',
+          toolName: event.toolResult?.toolName,
+          message: isError
+            ? `Tool '${event.toolResult?.toolName}' failed: ${event.toolResult?.error}`
+            : `Tool '${event.toolResult?.toolName}' result: ${truncate(JSON.stringify(event.toolResult?.result))}`,
+          detail: event.toolResult,
+        },
+      ];
+    }
+    case 'finish':
+      return [
+        {
+          ...base,
+          level: 'info',
+          phase: event.finishReason === 'awaiting-approval' ? 'approval' : 'trigger',
+          message: `Run finished (${event.finishReason})`,
+        },
+      ];
+    case 'error':
+      return [{ ...base, level: 'error', phase: 'trigger', message: event.error?.message ?? 'Run failed' }];
+    default:
+      return [];
+  }
+}
+
+function truncate(text: string | undefined, max = 400): string {
+  if (!text) return '';
+  return text.length > max ? `${text.slice(0, max)}...` : text;
+}
+
 export class RunManager extends EventEmitter {
   private readonly entries = new Map<string, RunEntry>();
+  /**
+   * O3: breakpoints persist per agent id across runs (set them once, they
+   * apply to every future run() until cleared/changed), independent of the
+   * in-flight `RunEntry.debugSession` - a fresh DebugSession is created
+   * per-run() but seeded from this map.
+   */
+  private readonly breakpoints = new Map<string, Set<BreakpointKey>>();
 
   constructor(private readonly opts: RunManagerOptions) {
     super();
@@ -88,6 +171,7 @@ export class RunManager extends EventEmitter {
       pendingApproval: entry.pendingApproval,
       error: entry.error,
       resultText: entry.resultText,
+      result: entry.result,
       updatedAt: entry.updatedAt,
     };
   }
@@ -114,6 +198,65 @@ export class RunManager extends EventEmitter {
       finishReason: event.finishReason,
       error: event.error ? { message: event.error.message } : undefined,
     });
+    for (const log of toLogEntries(agentId, event)) {
+      this.emit('log', agentId, log);
+    }
+  }
+
+  private emitSpan(agentId: string, span: Span): void {
+    this.emit('span', agentId, {
+      id: span.id,
+      name: span.name,
+      parentId: span.parentId,
+      startTime: span.startTime,
+      endTime: span.endTime,
+      attributes: span.attributes,
+    });
+  }
+
+  /**
+   * O2: builds a `TraceExporter` (src/execution/tracing.ts) that forwards
+   * every real span start/end notification for this run over the existing
+   * WS channel (as `{type:'span', ...}` messages, see wsServer.ts) rather
+   * than a second tracing pipeline.
+   */
+  private makeTraceExporter(agentId: string): TraceExporter {
+    return {
+      onSpanStart: (span) => this.emitSpan(agentId, span),
+      onSpanEnd: (span) => this.emitSpan(agentId, span),
+    };
+  }
+
+  /** O3: (re)creates the debug session for a fresh run(), seeded from this agent's persisted breakpoints. */
+  private makeDebugSession(agentId: string): DebugSession {
+    const initial = this.breakpoints.get(agentId) ?? new Set<BreakpointKey>();
+    const session = new DebugSession(initial, (state) => {
+      this.emit('debug', agentId, { agentId, ...state });
+      if (state.paused) {
+        this.emit('log', agentId, {
+          id: randomUUID(),
+          agentId,
+          timestamp: new Date().toISOString(),
+          level: 'info' as LogLevel,
+          phase: 'debug' as LogPhase,
+          message: `Paused at breakpoint ${state.atBreakpoint?.phase} (${state.atBreakpoint?.boundary})`,
+        } satisfies LogEntry);
+      } else if (state.autoResumed) {
+        // O3 safety net: nobody called continue()/step() before
+        // DEFAULT_PAUSE_TIMEOUT_MS elapsed (most plausibly the only WS
+        // client watching this run disconnected while it was paused) - see
+        // debugController.ts's DEFAULT_PAUSE_TIMEOUT_MS doc comment.
+        this.emit('log', agentId, {
+          id: randomUUID(),
+          agentId,
+          timestamp: new Date().toISOString(),
+          level: 'warn' as LogLevel,
+          phase: 'debug' as LogPhase,
+          message: 'Auto-resumed after sitting paused at a breakpoint with no client response',
+        } satisfies LogEntry);
+      }
+    });
+    return session;
   }
 
   /**
@@ -163,6 +306,7 @@ export class RunManager extends EventEmitter {
 
     const sessionId = agentId;
     const controller = new AbortController();
+    const debugSession = this.makeDebugSession(agentId);
 
     const entry = this.setEntry(
       agentId,
@@ -175,6 +319,7 @@ export class RunManager extends EventEmitter {
         pendingApproval: undefined,
         resultText: undefined,
         lastSpec: resolvedSpec,
+        debugSession,
       },
       existing
     );
@@ -190,6 +335,8 @@ export class RunManager extends EventEmitter {
       checkpointStore: this.opts.checkpointStore,
       approvalStore: this.opts.approvalStore,
       onEvent: (event) => this.emitEvent(agentId, event),
+      exporter: this.makeTraceExporter(agentId),
+      ...debugSession.hooks(),
     })
       .then((result) => this.handleRunSettled(agentId, result))
       .catch((error: unknown) => this.handleRunFailed(agentId, error));
@@ -198,10 +345,12 @@ export class RunManager extends EventEmitter {
   }
 
   /** Shared success-path handling for both run() and approve()'s follow-up execute() call. */
-  private async handleRunSettled(
-    agentId: string,
-    result: { finishReason: string; approvalId?: string; text: string }
-  ): Promise<void> {
+  private async handleRunSettled(agentId: string, result: ExecutionResult): Promise<void> {
+    // O4: the full ExecutionResult (messages/toolCalls/usage/steps, not
+    // just the final text) is kept on the entry either way, so the
+    // client's Output tab can render it as a JSON tree whether the run
+    // finished or is paused for approval - "the final OR paused
+    // ExecutionResult" per the epic brief.
     if (result.finishReason === 'awaiting-approval' && result.approvalId) {
       const record = await this.opts.approvalStore.peek(agentId, result.approvalId);
       this.setEntry(agentId, {
@@ -213,10 +362,11 @@ export class RunManager extends EventEmitter {
           args: record?.pending.args ?? {},
           createdAt: record?.pending.createdAt ?? new Date().toISOString(),
         },
+        result,
       });
       return;
     }
-    this.setEntry(agentId, { status: 'stopped', resultText: result.text, controller: undefined });
+    this.setEntry(agentId, { status: 'stopped', resultText: result.text, result, controller: undefined });
   }
 
   /** Shared failure-path handling for both run() and approve()'s follow-up execute() call. */
@@ -265,11 +415,13 @@ export class RunManager extends EventEmitter {
     const { provider, toolRegistry } = buildAgentFromSpec(spec, agentId);
 
     const controller = new AbortController();
+    const debugSession = this.makeDebugSession(agentId);
     this.setEntry(agentId, {
       status: 'running',
       reason: undefined,
       pendingApproval: undefined,
       controller,
+      debugSession,
     });
 
     resumeAfterApproval(
@@ -277,10 +429,44 @@ export class RunManager extends EventEmitter {
       this.opts.approvalStore,
       toolRegistry ?? new ToolRegistry(),
       withAbortSignal(provider, controller.signal),
-      { onEvent: (event) => this.emitEvent(agentId, event) },
+      {
+        onEvent: (event) => this.emitEvent(agentId, event),
+        exporter: this.makeTraceExporter(agentId),
+        ...debugSession.hooks(),
+      },
       this.opts.checkpointStore
     )
       .then((result) => this.handleRunSettled(agentId, result))
       .catch((error: unknown) => this.handleRunFailed(agentId, error));
+  }
+
+  /**
+   * O3: replaces the breakpoint set for `agentId`, persisted across runs.
+   * If a run is currently in flight, its live DebugSession is updated too
+   * so the change takes effect on the very next hook call, not just future
+   * run()s.
+   */
+  setBreakpoints(agentId: string, keys: BreakpointKey[]): void {
+    this.breakpoints.set(agentId, new Set(keys));
+    this.entries.get(agentId)?.debugSession?.setBreakpoints(keys);
+  }
+
+  /** Resumes a run paused at a breakpoint. No-op if not currently paused. */
+  continueRun(agentId: string): void {
+    this.entries.get(agentId)?.debugSession?.continue();
+  }
+
+  /** Resumes a run paused at a breakpoint, or arms a pause at the very next LLM/tool boundary if not currently paused. */
+  stepRun(agentId: string): void {
+    this.entries.get(agentId)?.debugSession?.step();
+  }
+
+  debugState(agentId: string): { agentId: string; paused: boolean; breakpoints: BreakpointKey[] } & Record<string, unknown> {
+    const session = this.entries.get(agentId)?.debugSession;
+    const breakpoints = [...(this.breakpoints.get(agentId) ?? [])];
+    if (!session) {
+      return { agentId, paused: false, breakpoints, messages: [], stepCount: 0 };
+    }
+    return { agentId, ...session.snapshot() };
   }
 }

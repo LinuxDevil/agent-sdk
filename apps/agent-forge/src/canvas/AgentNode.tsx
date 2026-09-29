@@ -45,10 +45,14 @@ function rowsFor(node: AgentGraphNode): { k: string; v: string }[] {
 export interface AgentNodeData extends Record<string, unknown> {
   graphNode: AgentGraphNode;
   onRename: (nodeId: string, label: string) => void;
+  /** O2: true when this node's log/span is the one currently selected in the drawer. */
+  highlighted?: boolean;
+  /** O3: true when this node has an active breakpoint set. */
+  hasBreakpoint?: boolean;
 }
 
 function AgentNodeImpl({ data, selected }: NodeProps) {
-  const { graphNode, onRename } = data as unknown as AgentNodeData;
+  const { graphNode, onRename, highlighted, hasBreakpoint } = data as unknown as AgentNodeData;
   const meta = NODE_META[graphNode.type];
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(graphNode.label);
@@ -61,7 +65,10 @@ function AgentNodeImpl({ data, selected }: NodeProps) {
   }
 
   return (
-    <div className={`rf-node${selected ? ' selected' : ''}`} data-node-type={graphNode.type}>
+    <div
+      className={`rf-node${selected ? ' selected' : ''}${highlighted ? ' highlighted' : ''}${hasBreakpoint ? ' has-breakpoint' : ''}`}
+      data-node-type={graphNode.type}
+    >
       {meta.hasIn && <Handle type="target" position={Position.Left} className="rf-port rf-port-in" />}
       {meta.hasOut && <Handle type="source" position={Position.Right} className="rf-port rf-port-out" />}
       <div className="rf-node-head" style={{ borderBottom: '1px solid var(--border)' }}>

@@ -25,12 +25,49 @@ export interface AgentRunStatusPayload {
   pendingApproval?: PendingApprovalInfo;
   error?: string;
   resultText?: string;
+  /** O4: full ExecutionResult (messages/toolCalls/usage/steps/finishReason) once a run completes or pauses. */
+  result?: unknown;
   updatedAt: string;
+}
+
+export type LogLevel = 'info' | 'warn' | 'error' | 'tool';
+export type LogPhase = 'trigger' | 'llm' | 'tool' | 'sandbox' | 'checkpoint' | 'approval' | 'debug';
+
+export interface LogEntry {
+  id: string;
+  agentId: string;
+  timestamp: string;
+  level: LogLevel;
+  phase: LogPhase;
+  toolName?: string;
+  message: string;
+  detail?: unknown;
+}
+
+export interface SpanEvent {
+  id: string;
+  name: string;
+  parentId?: string;
+  startTime: number;
+  endTime?: number;
+  attributes: Record<string, unknown>;
+}
+
+export interface DebugStatePayload {
+  agentId: string;
+  paused: boolean;
+  atBreakpoint?: { phase: string; boundary: 'before' | 'after' };
+  messages: unknown[];
+  stepCount: number;
+  breakpoints: string[];
 }
 
 export type StreamMessage =
   | { type: 'status'; payload: AgentRunStatusPayload }
-  | { type: 'event'; payload: Record<string, unknown> };
+  | { type: 'event'; payload: Record<string, unknown> }
+  | { type: 'log'; payload: LogEntry }
+  | { type: 'span'; payload: SpanEvent }
+  | { type: 'debug'; payload: DebugStatePayload };
 
 /** Same-origin default: `loushy studio` prints the API server's own URL, but in dev the Vite server proxies to it (see vite.config.ts). */
 const DEFAULT_BASE_URL = '';
@@ -100,6 +137,31 @@ export class RuntimeClient {
       method: 'POST',
       body: JSON.stringify({ approvalId, approved, note }),
     });
+  }
+
+  /** O3: current breakpoints + pause state for `agentId` (see debugController.ts). */
+  async debugState(agentId: string): Promise<DebugStatePayload> {
+    const res = await fetch(`${this.baseUrl}/agents/${encodeURIComponent(agentId)}/debug`);
+    return (await res.json()) as DebugStatePayload;
+  }
+
+  async setBreakpoints(agentId: string, breakpoints: string[]): Promise<DebugStatePayload> {
+    const res = await fetch(`${this.baseUrl}/agents/${encodeURIComponent(agentId)}/debug/breakpoints`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ breakpoints }),
+    });
+    return (await res.json()) as DebugStatePayload;
+  }
+
+  async continueRun(agentId: string): Promise<DebugStatePayload> {
+    const res = await fetch(`${this.baseUrl}/agents/${encodeURIComponent(agentId)}/debug/continue`, { method: 'POST' });
+    return (await res.json()) as DebugStatePayload;
+  }
+
+  async stepRun(agentId: string): Promise<DebugStatePayload> {
+    const res = await fetch(`${this.baseUrl}/agents/${encodeURIComponent(agentId)}/debug/step`, { method: 'POST' });
+    return (await res.json()) as DebugStatePayload;
   }
 
   /**

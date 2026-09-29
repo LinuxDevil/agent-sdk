@@ -14,7 +14,7 @@ import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Socket } from 'node:net';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { RunManager } from './runRegistry';
-import { isValidAgentId, type StreamMessage } from './types';
+import { isValidAgentId, type StreamMessage, type LogEntry, type SpanEvent, type DebugStatePayload } from './types';
 
 const STREAM_PATH_RE = /^\/agents\/([^/]+)\/stream$/;
 
@@ -40,6 +40,26 @@ export function attachWebSocketServer(server: HttpServer, runManager: RunManager
     const sockets = subscribers.get(agentId);
     if (!sockets) return;
     for (const ws of sockets) send(ws, { type: 'event', payload });
+  });
+
+  // O1/O2/O3: same fan-out pattern as 'status'/'event' above, over the
+  // same WS connection - no second channel.
+  runManager.on('log', (agentId: string, payload: LogEntry) => {
+    const sockets = subscribers.get(agentId);
+    if (!sockets) return;
+    for (const ws of sockets) send(ws, { type: 'log', payload });
+  });
+
+  runManager.on('span', (agentId: string, payload: SpanEvent) => {
+    const sockets = subscribers.get(agentId);
+    if (!sockets) return;
+    for (const ws of sockets) send(ws, { type: 'span', payload });
+  });
+
+  runManager.on('debug', (agentId: string, payload: DebugStatePayload) => {
+    const sockets = subscribers.get(agentId);
+    if (!sockets) return;
+    for (const ws of sockets) send(ws, { type: 'debug', payload });
   });
 
   server.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {

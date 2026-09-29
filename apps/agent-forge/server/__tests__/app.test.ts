@@ -162,4 +162,46 @@ describe('LOU-N HTTP API', () => {
     const res = await request(app).post('/agents/foo/approve').send({ approvalId: 'x' });
     expect(res.status).toBe(400);
   });
+
+  it('GET /agents/:id/debug reports no breakpoints/not paused for an agent that never ran', async () => {
+    const res = await request(app).get('/agents/never-debugged/debug');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ agentId: 'never-debugged', paused: false, breakpoints: [] });
+  });
+
+  it('PUT /agents/:id/debug/breakpoints sets breakpoints, reflected by GET /agents/:id/debug', async () => {
+    const put = await request(app)
+      .put('/agents/debug-bp/debug/breakpoints')
+      .send({ breakpoints: ['llm:before', 'tool:current-date:after'] });
+    expect(put.status).toBe(200);
+    expect(put.body.breakpoints.sort()).toEqual(['llm:before', 'tool:current-date:after']);
+
+    const get = await request(app).get('/agents/debug-bp/debug');
+    expect(get.body.breakpoints.sort()).toEqual(['llm:before', 'tool:current-date:after']);
+  });
+
+  it('PUT /agents/:id/debug/breakpoints rejects a non-array body', async () => {
+    const res = await request(app).put('/agents/debug-bp/debug/breakpoints').send({ breakpoints: 'nope' });
+    expect(res.status).toBe(400);
+  });
+
+  it('a run paused at a breakpoint resumes via POST /agents/:id/debug/continue', async () => {
+    await request(app)
+      .put('/agents/debug-run/debug/breakpoints')
+      .send({ breakpoints: ['llm:before'] });
+
+    await request(app).post('/agents/debug-run/run').send({ input: 'hi', spec: SPEC });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const pausedState = await request(app).get('/agents/debug-run/debug');
+    expect(pausedState.body.paused).toBe(true);
+
+    // Clear breakpoints so a follow-up llm turn (if any) doesn't re-pause,
+    // then continue until the run reaches a terminal status.
+    await request(app).put('/agents/debug-run/debug/breakpoints').send({ breakpoints: [] });
+    const cont = await request(app).post('/agents/debug-run/debug/continue');
+    expect(cont.status).toBe(200);
+
+    await waitForStatus(runManager, 'debug-run', (s) => s.status === 'stopped');
+  });
 });

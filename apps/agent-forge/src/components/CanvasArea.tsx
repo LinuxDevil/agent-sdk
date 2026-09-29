@@ -31,17 +31,33 @@ import { isEdgeTypeAllowed } from '../graph/connectionRules';
 import { PALETTE_DRAG_MIME } from '../canvas/dnd';
 import type { AgentGraphNodeType, AgentGraphSpec } from '../graph/types';
 
+function breakpointKeyForNode(n: AgentGraphSpec['nodes'][number]): string | undefined {
+  if (n.type === 'llm') return 'llm:before';
+  if (n.type === 'tool') return `tool:${n.data.toolName}:before`;
+  return undefined;
+}
+
 function toRfNodes(
   graph: AgentGraphSpec,
   selectedNodeId: string | undefined,
-  onRename: (id: string, label: string) => void
+  onRename: (id: string, label: string) => void,
+  highlightedNodeId: string | undefined,
+  breakpoints: string[]
 ): Node<AgentNodeData>[] {
   return graph.nodes.map((n) => ({
     id: n.id,
     type: n.type,
     position: n.position,
     selected: n.id === selectedNodeId,
-    data: { graphNode: n, onRename },
+    data: {
+      graphNode: n,
+      onRename,
+      highlighted: n.id === highlightedNodeId,
+      hasBreakpoint: (() => {
+        const key = breakpointKeyForNode(n);
+        return !!key && breakpoints.includes(key);
+      })(),
+    },
   }));
 }
 
@@ -57,7 +73,7 @@ function toRfEdges(graph: AgentGraphSpec): Edge[] {
  * state, so there is nowhere for the two to drift apart.
  */
 function CanvasInner() {
-  const { graph, setGraph, selectedNodeId, setSelectedNodeId } = useAppState();
+  const { graph, setGraph, selectedNodeId, setSelectedNodeId, highlightedNodeId, debugState } = useAppState();
   const { screenToFlowPosition, fitView } = useReactFlow();
   const [connectError, setConnectError] = useState<string | undefined>(undefined);
   const errorTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -75,7 +91,12 @@ function CanvasInner() {
     [setGraph]
   );
 
-  const nodes = useMemo(() => toRfNodes(graph, selectedNodeId, onRename), [graph, selectedNodeId, onRename]);
+  const breakpoints = debugState?.breakpoints ?? [];
+  const breakpointsKey = breakpoints.join(',');
+  const nodes = useMemo(
+    () => toRfNodes(graph, selectedNodeId, onRename, highlightedNodeId, breakpoints),
+    [graph, selectedNodeId, onRename, highlightedNodeId, breakpointsKey]
+  );
   const edges = useMemo(() => toRfEdges(graph), [graph]);
 
   const onNodesChange = useCallback(
