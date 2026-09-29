@@ -156,6 +156,21 @@ export async function resumeAfterApproval(
       await hooks.runPreToolCall(hookCtx);
     }
 
+    // `result`/`toolError` are populated by the try/catch below, which
+    // handles ONLY the tool's own execution failure - NOT the postToolCall
+    // hook call that follows it. This split (rather than the previous
+    // single try wrapping both the tool call and the hook call) matters:
+    // hooks.ts's HookRegistry doc comment - and this file's own preToolCall
+    // comment above - both document that a hook's thrown error must
+    // propagate out of resumeAfterApproval() as a rejected promise, never
+    // be silently swallowed. With the hook call inside the same try as the
+    // tool execution, a postToolCall hook's error (e.g. a rate-limit hook
+    // meaning to HALT the run) was being caught by the generic
+    // "every other thrown tool error is turned into a graceful tool-result"
+    // branch below and converted into a benign {error} message instead of
+    // aborting - exactly the silent-swallow behavior that invariant forbids.
+    let result: unknown;
+    let toolError: string | undefined;
     try {
       // Mirrors AgentExecutor.executeToolCall()'s fail-closed handling of
       // `requiresSandbox` tools (LOU-F5) via the shared
@@ -163,19 +178,7 @@ export async function resumeAfterApproval(
       // tool executed after human approval can't silently bypass the
       // sandbox seam the way it previously did.
       const sandbox = executeOptions.sandbox ?? NoopSandbox;
-      const result = await executeToolWithSandboxGuard(pending.toolName, toolDesc, hookArgs, sandbox);
-
-      if (hooks) {
-        await hooks.runPostToolCall(hookCtx, { result });
-      }
-
-      messages.push({
-        role: 'tool',
-        content: JSON.stringify(result),
-        name: pending.toolName,
-        toolCallId: pending.toolCallId,
-        toolName: pending.toolName,
-      });
+      result = await executeToolWithSandboxGuard(pending.toolName, toolDesc, hookArgs, sandbox);
     } catch (error) {
       // Mirror AgentExecutor.executeToolCall's (post-fix) handling of a
       // thrown tool error: errors that mark themselves as
@@ -199,14 +202,26 @@ export async function resumeAfterApproval(
       // catch block uses, wrapped in the `{error}`-shaped payload this
       // file's own rejection branch (below) already uses for non-approved
       // decisions.
-      messages.push({
-        role: 'tool',
-        content: JSON.stringify({ error: (error as Error).message }),
-        name: pending.toolName,
-        toolCallId: pending.toolCallId,
-        toolName: pending.toolName,
-      });
+      toolError = (error as Error).message;
     }
+
+    // Fires (with the settled result/error) regardless of which branch
+    // above ran - matching AgentHook.postToolCall's documented contract
+    // ("Invoked immediately after a tool call settles (success, tool-level
+    // error, or approval-required)"). Deliberately OUTSIDE the try/catch
+    // above: a throw here is a hook error, not a tool error, and must
+    // propagate out of this function unconverted (see comment above).
+    if (hooks) {
+      await hooks.runPostToolCall(hookCtx, { result, error: toolError });
+    }
+
+    messages.push({
+      role: 'tool',
+      content: JSON.stringify(toolError ? { error: toolError } : result),
+      name: pending.toolName,
+      toolCallId: pending.toolCallId,
+      toolName: pending.toolName,
+    });
   } else {
     messages.push({
       role: 'tool',

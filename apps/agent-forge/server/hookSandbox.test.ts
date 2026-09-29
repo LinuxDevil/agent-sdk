@@ -42,4 +42,21 @@ describe('sandboxRunHook (LOU-Q2)', () => {
     expect(result.sawCanary).toBe('undefined');
     delete (globalThis as Record<string, unknown>).__hookSandboxCanary;
   });
+
+  it('kills a hook stuck in an infinite loop once its timeout elapses, rather than hanging forever', async () => {
+    // Real verification (not mocked) that the documented "5s hook timeout"
+    // is actually enforced by SandboxAdapter.run() -> execFile's `timeout`
+    // option, which SIGTERMs the child process. Uses a short override here
+    // so this doesn't add 5s to every test run; the mechanism is identical
+    // to the default-timeout path (sandboxRunHook always forwards
+    // `options.timeoutMs ?? 5000` into `sandbox.run(...)`'s `timeoutMs`).
+    const start = Date.now();
+    await expect(
+      sandboxRunHook(NoopSandbox, 'while (true) {}', {}, { timeoutMs: 800 })
+    ).rejects.toThrow();
+    // Generous upper bound (well under a hang) - proves the process was
+    // actually killed rather than the promise resolving/timing out some
+    // other way.
+    expect(Date.now() - start).toBeLessThan(5000);
+  }, 10000);
 });

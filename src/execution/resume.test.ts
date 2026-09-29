@@ -872,5 +872,69 @@ describe('Execution - resumeAfterApproval', () => {
 
       expect(execute).toHaveBeenCalledWith({ email: '[REDACTED]' }, {});
     });
+
+    it('a postToolCall hook that throws on the resume path propagates as a rejected promise, not a swallowed {error} tool-result', async () => {
+      // Regression test: resumeAfterApproval() used to run runPostToolCall()
+      // INSIDE the same try/catch that converts a thrown tool error into a
+      // graceful {error} tool-result message. That meant a postToolCall
+      // hook's own thrown error (e.g. a rate-limit hook meaning to HALT the
+      // run) was caught by that generic handler and silently turned into a
+      // benign tool-result instead of propagating - directly contradicting
+      // HookRegistry's documented "hook errors abort the step and
+      // propagate, never silently swallowed" contract (see hooks.ts).
+      const { HookRegistry } = await import('./hooks');
+      const hooks = new HookRegistry();
+      const hookError = new Error('rate limit exceeded');
+      hooks.register({
+        name: 'rate-limit',
+        postToolCall: () => {
+          throw hookError;
+        },
+      });
+
+      const execute = vi.fn().mockResolvedValue({ charged: true });
+      toolRegistry.register('chargeCard', {
+        displayName: 'Charge Card',
+        tool: { description: 'Charge a card', parameters: {}, execute } as any,
+        needsApproval: true,
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .addTool('chargeCard', { tool: 'chargeCard', options: {} })
+        .build();
+
+      const provider = createMockProvider({
+        name: 'mock',
+        responses: ['Charging now', 'All done'],
+      });
+
+      const approvalStore = createInMemoryApprovalStore();
+
+      const paused = await AgentExecutor.execute({
+        agent,
+        input: 'Please call chargeCard now',
+        provider,
+        toolRegistry,
+        approvalStore,
+      });
+
+      expect(paused.finishReason).toBe('awaiting-approval');
+
+      await expect(
+        resumeAfterApproval(
+          { id: paused.approvalId!, approved: true },
+          approvalStore,
+          toolRegistry,
+          provider,
+          { hooks }
+        )
+      ).rejects.toBe(hookError);
+
+      // The tool itself DID run (the hook fires AFTER the tool settles) -
+      // it's the hook's own error that must propagate, not be swallowed.
+      expect(execute).toHaveBeenCalledTimes(1);
+    });
   });
 });
