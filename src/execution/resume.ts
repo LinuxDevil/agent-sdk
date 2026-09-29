@@ -7,7 +7,7 @@ import { LLMProvider, Message } from '../providers';
 import { ToolRegistry } from '../tools';
 import { ApprovalDecision, ApprovalStore } from './ApprovalGate';
 import { AgentExecutor, ExecuteOptions, ExecutionResult, PropagatingToolError } from './AgentExecutor';
-import { CheckpointStore } from './checkpoint';
+import { Checkpoint, CheckpointStore } from './checkpoint';
 import { NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
 import { HookRegistry } from './hooks';
@@ -35,6 +35,12 @@ import { HookRegistry } from './hooks';
  * `sessionId`/`checkpointStore` through instead, once it has already
  * deleted the stale pre-pause checkpoint - see the "Defense in depth"
  * comment below for why that ordering still makes rehydration impossible.
+ *
+ * LOU-T1: `businessState` is deliberately NOT in the Omit list below - a
+ * caller may pass it here to explicitly override the value carried forward
+ * from the pre-pause checkpoint. See resumeAfterApproval()'s `businessState:`
+ * argument to the follow-up `AgentExecutor.execute()` call for the full
+ * carry-forward-unless-overridden contract.
  */
 export type ResumeExecuteOptions = Omit<
   ExecuteOptions,
@@ -114,7 +120,16 @@ export async function resumeAfterApproval(
   // codebase accepts same-sessionId-concurrent-caller races as an existing
   // caller-responsibility invariant (a sessionId identifies a single
   // logical run) rather than adding cross-process locking to CheckpointStore.
+  // LOU-T1: read the pre-pause checkpoint's businessState off before
+  // deleting it, so it can be carried forward into the resumed run's own
+  // checkpoint-writes below (see `businessState:` on the AgentExecutor.execute()
+  // call at the bottom of this function). This load is purely a data read -
+  // it does not touch, and has no bearing on, the rehydration-safety delete
+  // immediately below.
+  let staleBusinessState: unknown;
   if (snapshot.sessionId && checkpointStore) {
+    const staleCheckpoint: Checkpoint | null = await checkpointStore.load(snapshot.sessionId);
+    staleBusinessState = staleCheckpoint?.businessState;
     await checkpointStore.delete(snapshot.sessionId);
   }
 
@@ -262,6 +277,21 @@ export async function resumeAfterApproval(
     // execution.
     sessionId: snapshot.sessionId,
     checkpointStore,
+    // LOU-T1: carry the pre-pause checkpoint's businessState forward into
+    // the resumed run's own checkpoint-writes by default, so a consumer's
+    // domain state (order id, ticket id, workflow stage, ...) survives a
+    // pause-for-approval -> approve/reject -> resume cycle - the whole
+    // point of co-locating it with execution state in the first place. An
+    // explicit `executeOptions.businessState` always wins, so a caller can
+    // still deliberately override or drop it. See `staleBusinessState`
+    // above (read off the checkpoint BEFORE it was deleted) for why this
+    // has no bearing on the rehydration safety property this comment block
+    // otherwise documents - businessState is inert data, not execution
+    // state.
+    businessState:
+      executeOptions.businessState !== undefined
+        ? executeOptions.businessState
+        : staleBusinessState,
     // `messages` was reconstructed from the ExecutionSnapshot's
     // currentMessages, which already include the original system message
     // (if any) that AgentExecutor.buildMessages() built the first time
