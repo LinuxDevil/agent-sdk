@@ -29,6 +29,7 @@ export default defineConfig({
     'data/mocks': 'src/data/mocks.ts',
     'cli/dev': 'src/cli/dev.ts',
     'cli/build': 'src/cli/build.ts',
+    'cli/studio': 'src/cli/studio.ts',
     'execution/otel': 'src/execution/otel.ts',
   },
   format: ['cjs', 'esm'],

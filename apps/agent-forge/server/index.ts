@@ -1,0 +1,107 @@
+/**
+ * LOU-N runtime control server entry point.
+ *
+ * Started either directly (`tsx server/index.ts`, e.g. from `loushy studio`
+ * - see src/cli/studio.ts) or programmatically via `startStudioServer()`
+ * for tests/embedding.
+ */
+import * as http from 'node:http';
+import * as path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createFsAgentStore } from '../src/persistence/fsAgentStore';
+import { createApp } from './app';
+import { attachWebSocketServer } from './wsServer';
+import { RunManager } from './runRegistry';
+import { FileCheckpointStore } from './checkpointStore';
+import { FileApprovalStore } from './approvalStore';
+
+export interface StudioServerHandle {
+  server: http.Server;
+  port: number;
+  runManager: RunManager;
+  close: () => Promise<void>;
+}
+
+export interface StartStudioServerOptions {
+  /** Directory `.loushy/agents/**` is read from/written to. Defaults to process.cwd(). */
+  baseDir?: string;
+  port?: number;
+  host?: string;
+}
+
+export async function startStudioServer(
+  options: StartStudioServerOptions = {}
+): Promise<StudioServerHandle> {
+  const baseDir = options.baseDir ?? process.cwd();
+  const port = options.port ?? 4750;
+  const host = options.host ?? '127.0.0.1';
+
+  const agentStore = createFsAgentStore(baseDir);
+  const checkpointStore = new FileCheckpointStore(baseDir);
+  const approvalStore = new FileApprovalStore(baseDir);
+
+  const runManager = new RunManager({
+    baseDir,
+    checkpointStore,
+    approvalStore,
+    loadSpec: (agentId) => agentStore.load(agentId),
+    saveSpec: (agentId, spec) => agentStore.save(agentId, spec),
+  });
+
+  const app = createApp({ agentStore, runManager });
+  const server = http.createServer(app);
+  attachWebSocketServer(server, runManager);
+
+  await new Promise<void>((resolve, reject) => {
+    const onError = (err: NodeJS.ErrnoException) => {
+      server.removeListener('listening', onListening);
+      if (err.code === 'EADDRINUSE') {
+        reject(new Error(`[loushy studio] API server port ${port} is already in use.`));
+      } else {
+        reject(err);
+      }
+    };
+    const onListening = () => {
+      server.removeListener('error', onError);
+      resolve();
+    };
+    server.once('error', onError);
+    server.once('listening', onListening);
+    server.listen(port, host);
+  });
+
+  return {
+    server,
+    port,
+    runManager,
+    close: () => new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve()))),
+  };
+}
+
+// Allow `tsx server/index.ts` (or `node --import tsx server/index.ts`) to
+// boot the server directly, reading PORT/HOST/BASE_DIR from the
+// environment - this is how `loushy studio` (src/cli/studio.ts) launches it
+// as a child process. `apps/agent-forge/package.json` has `"type": "module"`,
+// so this module runs as real ESM under tsx - there is no CJS `require`/
+// `module` to compare against, hence the `import.meta.url` check instead of
+// the usual `require.main === module` idiom.
+const isMainModule =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isMainModule) {
+  const port = process.env.PORT ? Number(process.env.PORT) : undefined;
+  const host = process.env.HOST;
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  // moduleDir is apps/agent-forge/server - the repo root (where `.loushy/`
+  // should live) is three levels up, unless BASE_DIR is set explicitly.
+  const baseDir = process.env.BASE_DIR ?? path.resolve(moduleDir, '..', '..', '..');
+
+  startStudioServer({ port, host, baseDir })
+    .then((handle) => {
+      console.log(`[loushy studio] API server listening on http://${host ?? '127.0.0.1'}:${handle.port}`);
+    })
+    .catch((error) => {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    });
+}
