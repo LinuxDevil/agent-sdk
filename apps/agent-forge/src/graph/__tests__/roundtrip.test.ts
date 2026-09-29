@@ -68,4 +68,60 @@ describe('graph -> spec -> graph round trip', () => {
     expect(rebuiltGraph.nodes).toHaveLength(graph.nodes.length);
     expect(rebuiltGraph.edges).toHaveLength(graph.edges.length);
   });
+
+  describe('hooks (LOU-Q3)', () => {
+    it('serializes enabled hooks into spec.policy.hooks, keyed by node, and drops disabled ones', () => {
+      const graph = specToGraph(minimalSpec);
+      const llmNode = graph.nodes.find((n) => n.type === 'llm')!;
+      llmNode.hooks = [
+        { id: 'h1', templateId: 'inject-context', name: 'inject-context', phase: 'pre', point: 'generate', enabled: true, code: 'return ctx;' },
+        { id: 'h2', templateId: 'custom', name: 'disabled-one', phase: 'post', point: 'generate', enabled: false, code: 'return ctx;' },
+      ];
+
+      const spec = graphToSpec(graph);
+      expect(spec.policy?.hooks).toEqual([
+        { nodeKey: 'llm', id: 'h1', name: 'inject-context', phase: 'pre', point: 'generate', code: 'return ctx;' },
+      ]);
+    });
+
+    it('re-attaches hooks from spec.policy.hooks back onto the matching node on load', () => {
+      const specWithHooks: AgentSpec = {
+        ...minimalSpec,
+        policy: {
+          hooks: [
+            { nodeKey: 'llm', id: 'h1', name: 'inject-context', phase: 'pre', point: 'generate', code: 'return ctx;' },
+          ],
+        },
+      };
+
+      const graph = specToGraph(specWithHooks);
+      const llmNode = graph.nodes.find((n) => n.type === 'llm')!;
+      expect(llmNode.hooks).toEqual([
+        { id: 'h1', templateId: 'custom', name: 'inject-context', phase: 'pre', point: 'generate', enabled: true, code: 'return ctx;' },
+      ]);
+    });
+
+    it('round-trips hooks through graph -> spec -> graph -> spec losslessly', () => {
+      const graph = specToGraph(minimalSpec);
+      const toolNode = graph.nodes.find((n) => n.type === 'tool');
+      const llmNode = graph.nodes.find((n) => n.type === 'llm')!;
+      llmNode.hooks = [
+        { id: 'h1', templateId: 'inject-context', name: 'inject-context', phase: 'pre', point: 'generate', enabled: true, code: 'return ctx;' },
+      ];
+      void toolNode;
+
+      const spec1 = graphToSpec(graph);
+      const graph2 = specToGraph(spec1);
+      const spec2 = graphToSpec(graph2);
+
+      expect(spec2).toEqual(spec1);
+    });
+
+    it('ignores spec.policy.hooks that are not shaped like SerializedHook[] rather than throwing', () => {
+      const specWithBadHooks: AgentSpec = { ...minimalSpec, policy: { hooks: 'not-an-array' } };
+      expect(() => specToGraph(specWithBadHooks)).not.toThrow();
+      const graph = specToGraph(specWithBadHooks);
+      expect(graph.nodes.every((n) => !n.hooks)).toBe(true);
+    });
+  });
 });

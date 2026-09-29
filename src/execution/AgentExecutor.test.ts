@@ -1180,4 +1180,198 @@ describe('AgentExecutor', () => {
       ).rejects.toThrow(/'input' is required.*Example:/s);
     });
   });
+
+  describe('hooks (LOU-Q1)', () => {
+    it('runs preGenerate and postGenerate around each provider.generate() call', async () => {
+      const { HookRegistry } = await import('./hooks');
+      const hooks = new HookRegistry();
+      const events: string[] = [];
+      hooks.register({
+        name: 'observer',
+        preGenerate: () => { events.push('pre'); },
+        postGenerate: () => { events.push('post'); },
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .build();
+
+      await AgentExecutor.execute({
+        agent,
+        input: 'Hello',
+        provider,
+        hooks,
+      });
+
+      expect(events).toEqual(['pre', 'post']);
+    });
+
+    it('a preGenerate hook can inject a message that is actually sent to the provider', async () => {
+      const { HookRegistry } = await import('./hooks');
+      const hooks = new HookRegistry();
+      hooks.register({
+        name: 'inject-context',
+        preGenerate: (ctx) => {
+          ctx.request.messages.push({ role: 'system', content: 'injected-by-hook' });
+        },
+      });
+
+      const generateSpy = vi.fn(provider.generate.bind(provider));
+      const spiedProvider = { ...provider, generate: generateSpy };
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .build();
+
+      await AgentExecutor.execute({
+        agent,
+        input: 'Hello',
+        provider: spiedProvider as any,
+        hooks,
+      });
+
+      const sentMessages = generateSpy.mock.calls[0][0].messages;
+      expect(sentMessages.some((m: any) => m.content === 'injected-by-hook')).toBe(true);
+    });
+
+    it('runs preToolCall and postToolCall around tool execution, in registration order', async () => {
+      const { HookRegistry } = await import('./hooks');
+      const hooks = new HookRegistry();
+      const events: string[] = [];
+      hooks.register({
+        name: 'first',
+        preToolCall: () => { events.push('first:pre'); },
+        postToolCall: () => { events.push('first:post'); },
+      });
+      hooks.register({
+        name: 'second',
+        preToolCall: () => { events.push('second:pre'); },
+        postToolCall: () => { events.push('second:post'); },
+      });
+
+      const execute = vi.fn().mockResolvedValue({ ok: true });
+      toolRegistry.register('noop', {
+        displayName: 'Noop',
+        tool: { description: 'noop', parameters: {}, execute } as any,
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .addTool('noop', { tool: 'noop', options: {} })
+        .build();
+
+      let call = 0;
+      const scriptedProvider = {
+        name: 'scripted',
+        supportsTools: () => true,
+        supportsStreaming: () => false,
+        getModels: async () => ['scripted'],
+        stream: async () => { throw new Error('not implemented'); },
+        generate: async () => {
+          call++;
+          if (call === 1) {
+            return {
+              text: '',
+              finishReason: 'tool_calls' as const,
+              usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+              toolCalls: [
+                { id: 'call-1', type: 'function' as const, function: { name: 'noop', arguments: '{}' } },
+              ],
+            };
+          }
+          return {
+            text: 'done',
+            finishReason: 'stop' as const,
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          };
+        },
+      };
+
+      await AgentExecutor.execute({
+        agent,
+        input: 'go',
+        provider: scriptedProvider as any,
+        toolRegistry,
+        hooks,
+      });
+
+      expect(events).toEqual(['first:pre', 'second:pre', 'first:post', 'second:post']);
+    });
+
+    it('a preToolCall hook mutating ctx.args changes what the tool is actually invoked with (redact-pii style)', async () => {
+      const { HookRegistry } = await import('./hooks');
+      const hooks = new HookRegistry();
+      hooks.register({
+        name: 'redact-pii',
+        preToolCall: (ctx) => {
+          ctx.args.email = '[REDACTED]';
+        },
+      });
+
+      const execute = vi.fn().mockResolvedValue({ ok: true });
+      toolRegistry.register('sendEmail', {
+        displayName: 'Send Email',
+        tool: { description: 'send email', parameters: {}, execute } as any,
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .addTool('sendEmail', { tool: 'sendEmail', options: {} })
+        .build();
+
+      const toolCall = {
+        id: 'call-1',
+        type: 'function' as const,
+        function: { name: 'sendEmail', arguments: JSON.stringify({ email: 'real@example.com' }) },
+      };
+
+      await (AgentExecutor as any).executeToolCall(toolCall, agent, toolRegistry, undefined, undefined, undefined, hooks, undefined, []);
+
+      expect(execute).toHaveBeenCalledWith({ email: '[REDACTED]' }, {});
+    });
+
+    it('a thrown hook error aborts the run and rejects execute(), without being swallowed', async () => {
+      const { HookRegistry } = await import('./hooks');
+      const hooks = new HookRegistry();
+      hooks.register({
+        name: 'rate-limit',
+        preGenerate: () => {
+          throw new Error('rate limit exceeded');
+        },
+      });
+
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .build();
+
+      await expect(
+        AgentExecutor.execute({
+          agent,
+          input: 'Hello',
+          provider,
+          hooks,
+        })
+      ).rejects.toThrow('rate limit exceeded');
+    });
+
+    it('does not run any hooks when none are provided (backward compatible default)', async () => {
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .build();
+
+      const result = await AgentExecutor.execute({
+        agent,
+        input: 'Hello',
+        provider,
+      });
+
+      expect(result.finishReason).toBeDefined();
+    });
+  });
 });

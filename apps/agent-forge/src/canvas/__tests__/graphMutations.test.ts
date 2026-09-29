@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
+  addHookToNode,
   addNode,
   connectNodes,
   duplicateNode,
   moveNode,
   removeEdge,
   removeNode,
+  removeNodeHook,
   renameNode,
+  toggleNodeHook,
   updateNodeData,
+  updateNodeHookCode,
 } from '../graphMutations';
+import { HOOK_TEMPLATES } from '../../hooks/hookTemplates';
 import type { AgentGraphSpec } from '../../graph/types';
 
 function baseGraph(): AgentGraphSpec {
@@ -177,5 +182,65 @@ describe('removeEdge', () => {
   it('removes a single edge by id', () => {
     const g = removeEdge(baseGraph(), 'e1');
     expect(g.edges).toEqual([{ id: 'e2', source: 'llm-1', target: 'tool-1' }]);
+  });
+});
+
+describe('node hooks (LOU-Q3)', () => {
+  const redactPii = HOOK_TEMPLATES.find((t) => t.id === 'redact-pii')!;
+  const injectContext = HOOK_TEMPLATES.find((t) => t.id === 'inject-context')!;
+
+  it('addHookToNode attaches a new, enabled instance built from the template', () => {
+    const g = addHookToNode(baseGraph(), 'tool-1', redactPii);
+    const node = g.nodes.find((n) => n.id === 'tool-1')!;
+    expect(node.hooks).toHaveLength(1);
+    expect(node.hooks![0]).toMatchObject({
+      templateId: 'redact-pii',
+      name: 'redact-pii',
+      phase: 'pre',
+      point: 'toolCall',
+      enabled: true,
+      code: redactPii.code,
+    });
+    expect(node.hooks![0].id).toBeTruthy();
+  });
+
+  it('addHookToNode appends to an existing hooks list rather than replacing it', () => {
+    let g = addHookToNode(baseGraph(), 'llm-1', injectContext);
+    g = addHookToNode(g, 'llm-1', injectContext);
+    const node = g.nodes.find((n) => n.id === 'llm-1')!;
+    expect(node.hooks).toHaveLength(2);
+    expect(node.hooks![0].id).not.toBe(node.hooks![1].id);
+  });
+
+  it('toggleNodeHook flips enabled without touching other fields or other hooks', () => {
+    let g = addHookToNode(baseGraph(), 'tool-1', redactPii);
+    const hookId = g.nodes.find((n) => n.id === 'tool-1')!.hooks![0].id;
+    g = toggleNodeHook(g, 'tool-1', hookId);
+    expect(g.nodes.find((n) => n.id === 'tool-1')!.hooks![0].enabled).toBe(false);
+    g = toggleNodeHook(g, 'tool-1', hookId);
+    expect(g.nodes.find((n) => n.id === 'tool-1')!.hooks![0].enabled).toBe(true);
+  });
+
+  it('updateNodeHookCode replaces only that hook instance\'s code', () => {
+    let g = addHookToNode(baseGraph(), 'tool-1', redactPii);
+    const hookId = g.nodes.find((n) => n.id === 'tool-1')!.hooks![0].id;
+    g = updateNodeHookCode(g, 'tool-1', hookId, 'return ctx;');
+    expect(g.nodes.find((n) => n.id === 'tool-1')!.hooks![0].code).toBe('return ctx;');
+  });
+
+  it('removeNodeHook removes a hook instance by id, leaving others intact', () => {
+    let g = addHookToNode(baseGraph(), 'tool-1', redactPii);
+    g = addHookToNode(g, 'tool-1', redactPii);
+    const [first, second] = g.nodes.find((n) => n.id === 'tool-1')!.hooks!;
+    g = removeNodeHook(g, 'tool-1', first.id);
+    const remaining = g.nodes.find((n) => n.id === 'tool-1')!.hooks!;
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].id).toBe(second.id);
+  });
+
+  it('is a no-op (returns the graph unchanged) when the node id is unknown', () => {
+    const g = baseGraph();
+    expect(toggleNodeHook(g, 'ghost', 'h1')).toEqual(g);
+    expect(removeNodeHook(g, 'ghost', 'h1')).toEqual(g);
   });
 });

@@ -10,6 +10,7 @@ import { AgentExecutor, ExecuteOptions, ExecutionResult, PropagatingToolError } 
 import { CheckpointStore } from './checkpoint';
 import { NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
+import { HookRegistry } from './hooks';
 
 /**
  * Options passed through to the underlying AgentExecutor.execute() call
@@ -128,6 +129,48 @@ export async function resumeAfterApproval(
       throw new Error(`Tool '${pending.toolName}' not found in registry`);
     }
 
+    // LOU-Q1: hooks must fire for this deferred, post-approval execution
+    // path too - not just AgentExecutor's own main-loop tool call site -
+    // since this is a genuine, independent point where a tool actually
+    // runs. `args` is a mutable object a `preToolCall` hook (e.g.
+    // redact-pii) can rewrite in place before the real execution below, the
+    // same contract AgentExecutor.executeToolCall() offers.
+    const hooks: HookRegistry | undefined = executeOptions.hooks;
+    const hookArgs: Record<string, unknown> = { ...pending.args };
+    const hookCtx = {
+      agentId: snapshot.agent.id,
+      agentName: snapshot.agent.name,
+      sessionId: snapshot.sessionId,
+      messages,
+      toolCallId: pending.toolCallId,
+      toolName: pending.toolName,
+      args: hookArgs,
+      toolCall: {
+        id: pending.toolCallId,
+        type: 'function' as const,
+        function: { name: pending.toolName, arguments: JSON.stringify(pending.args) },
+      },
+    };
+
+    if (hooks) {
+      await hooks.runPreToolCall(hookCtx);
+    }
+
+    // `result`/`toolError` are populated by the try/catch below, which
+    // handles ONLY the tool's own execution failure - NOT the postToolCall
+    // hook call that follows it. This split (rather than the previous
+    // single try wrapping both the tool call and the hook call) matters:
+    // hooks.ts's HookRegistry doc comment - and this file's own preToolCall
+    // comment above - both document that a hook's thrown error must
+    // propagate out of resumeAfterApproval() as a rejected promise, never
+    // be silently swallowed. With the hook call inside the same try as the
+    // tool execution, a postToolCall hook's error (e.g. a rate-limit hook
+    // meaning to HALT the run) was being caught by the generic
+    // "every other thrown tool error is turned into a graceful tool-result"
+    // branch below and converted into a benign {error} message instead of
+    // aborting - exactly the silent-swallow behavior that invariant forbids.
+    let result: unknown;
+    let toolError: string | undefined;
     try {
       // Mirrors AgentExecutor.executeToolCall()'s fail-closed handling of
       // `requiresSandbox` tools (LOU-F5) via the shared
@@ -135,15 +178,7 @@ export async function resumeAfterApproval(
       // tool executed after human approval can't silently bypass the
       // sandbox seam the way it previously did.
       const sandbox = executeOptions.sandbox ?? NoopSandbox;
-      const result = await executeToolWithSandboxGuard(pending.toolName, toolDesc, pending.args, sandbox);
-
-      messages.push({
-        role: 'tool',
-        content: JSON.stringify(result),
-        name: pending.toolName,
-        toolCallId: pending.toolCallId,
-        toolName: pending.toolName,
-      });
+      result = await executeToolWithSandboxGuard(pending.toolName, toolDesc, hookArgs, sandbox);
     } catch (error) {
       // Mirror AgentExecutor.executeToolCall's (post-fix) handling of a
       // thrown tool error: errors that mark themselves as
@@ -167,14 +202,26 @@ export async function resumeAfterApproval(
       // catch block uses, wrapped in the `{error}`-shaped payload this
       // file's own rejection branch (below) already uses for non-approved
       // decisions.
-      messages.push({
-        role: 'tool',
-        content: JSON.stringify({ error: (error as Error).message }),
-        name: pending.toolName,
-        toolCallId: pending.toolCallId,
-        toolName: pending.toolName,
-      });
+      toolError = (error as Error).message;
     }
+
+    // Fires (with the settled result/error) regardless of which branch
+    // above ran - matching AgentHook.postToolCall's documented contract
+    // ("Invoked immediately after a tool call settles (success, tool-level
+    // error, or approval-required)"). Deliberately OUTSIDE the try/catch
+    // above: a throw here is a hook error, not a tool error, and must
+    // propagate out of this function unconverted (see comment above).
+    if (hooks) {
+      await hooks.runPostToolCall(hookCtx, { result, error: toolError });
+    }
+
+    messages.push({
+      role: 'tool',
+      content: JSON.stringify(toolError ? { error: toolError } : result),
+      name: pending.toolName,
+      toolCallId: pending.toolCallId,
+      toolName: pending.toolName,
+    });
   } else {
     messages.push({
       role: 'tool',

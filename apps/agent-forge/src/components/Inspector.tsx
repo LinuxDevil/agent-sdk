@@ -1,7 +1,121 @@
+import { useState } from 'react';
+import CodeMirror from '@uiw/react-codemirror';
+import { javascript } from '@codemirror/lang-javascript';
 import { useAppState } from '../state/AppState';
-import { updateNodeData, renameNode } from '../canvas/graphMutations';
+import { updateNodeData, renameNode, addHookToNode, toggleNodeHook, updateNodeHookCode, removeNodeHook } from '../canvas/graphMutations';
+import { HOOK_TEMPLATES } from '../hooks/hookTemplates';
+import type { AgentGraphNode, AgentGraphSpec, AgentNodeHookInstance } from '../graph/types';
+
+type SetGraph = (updater: (graph: AgentGraphSpec) => AgentGraphSpec) => void;
 
 const KNOWN_PROVIDERS = ['mock', 'openai', 'anthropic', 'ollama', 'openrouter'];
+
+/**
+ * LOU-Q2: Hooks section of the Inspector - lists pre/post-call hooks
+ * attached to the selected node (see graph/types.ts's
+ * `AgentNodeHookInstance`), lets you toggle each on/off, add one from a
+ * starter template (LOU-Q2's redact-pii/rate-limit/audit-log/
+ * inject-context), and edit its code body in a real CodeMirror editor
+ * (replacing the mockup's static `.hook-code` preview - see
+ * `.design-ref/agent-forge-mockup.html`). Only rendered for `llm`/`tool`
+ * nodes, the two node types a `toolCall`/`generate` hook can meaningfully
+ * attach to.
+ *
+ * Editing here only changes `AgentGraphSpec` client-side; the code is never
+ * executed in the browser. It's sandboxed server-side (see
+ * server/hookSandbox.ts) the same way tool `sandboxExecute()` is, the next
+ * time this agent is actually run - see graphToSpec.ts for how an enabled
+ * hook's code reaches the server via `spec.policy.hooks`.
+ */
+function HooksField({ node, setGraph }: { node: AgentGraphNode; setGraph: SetGraph }) {
+  const hooks = node.hooks ?? [];
+  const preHooks = hooks.filter((h) => h.phase === 'pre');
+  const postHooks = hooks.filter((h) => h.phase === 'post');
+  const [selectedHookId, setSelectedHookId] = useState<string | undefined>(hooks[0]?.id);
+  const selectedHook: AgentNodeHookInstance | undefined = hooks.find((h) => h.id === selectedHookId) ?? hooks[0];
+
+  function renderChip(hook: AgentNodeHookInstance) {
+    return (
+      <div
+        key={hook.id}
+        className={`hook-chip${selectedHook?.id === hook.id ? ' selected' : ''}`}
+        data-hook={hook.name}
+        role="button"
+        tabIndex={0}
+        onClick={() => setSelectedHookId(hook.id)}
+      >
+        <div
+          className={`switch${hook.enabled ? ' on' : ''}`}
+          role="button"
+          tabIndex={0}
+          title={hook.enabled ? 'Disable this hook' : 'Enable this hook'}
+          onClick={(e) => {
+            e.stopPropagation();
+            setGraph((g) => toggleNodeHook(g, node.id, hook.id));
+          }}
+        />
+        <span className="hook-chip-name">{hook.name}</span>
+        <span className="hook-chip-when">
+          {hook.phase === 'pre' ? 'before' : 'after'} {hook.point === 'toolCall' ? 'tool.call' : 'llm.generate'}
+        </span>
+        <button
+          className="btn btn-ghost"
+          style={{ padding: '2px 6px' }}
+          title="Remove this hook"
+          onClick={(e) => {
+            e.stopPropagation();
+            setGraph((g) => removeNodeHook(g, node.id, hook.id));
+            if (selectedHookId === hook.id) setSelectedHookId(undefined);
+          }}
+        >
+          &times;
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="field">
+      <label>Hooks</label>
+      <div className="hook-group">
+        <div className="hook-group-label">
+          Pre-call <span className="hook-count">({preHooks.filter((h) => h.enabled).length} active)</span>
+        </div>
+        {preHooks.map(renderChip)}
+      </div>
+      <div className="hook-group">
+        <div className="hook-group-label">
+          Post-call <span className="hook-count">({postHooks.filter((h) => h.enabled).length} active)</span>
+        </div>
+        {postHooks.map(renderChip)}
+      </div>
+
+      {selectedHook && (
+        <div className="hook-code">
+          <CodeMirror
+            value={selectedHook.code}
+            height="160px"
+            extensions={[javascript()]}
+            onChange={(value) => setGraph((g) => updateNodeHookCode(g, node.id, selectedHook.id, value))}
+          />
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+        {HOOK_TEMPLATES.filter((t) => t.point === (node.type === 'llm' ? 'generate' : 'toolCall')).map((t) => (
+          <button
+            key={t.id}
+            className="btn btn-add-hook"
+            title={`Add ${t.name} (${t.when})`}
+            onClick={() => setGraph((g) => addHookToNode(g, node.id, t))}
+          >
+            + {t.name}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /**
  * O3: breakpoint toggle for an llm/tool node's Inspector panel, shown only
@@ -178,9 +292,7 @@ export function Inspector() {
           />
         )}
 
-        <div className="field">
-          <div className="hint">Hooks (pre/post) are wired up in LOU-Q.</div>
-        </div>
+        {(selected.type === 'llm' || selected.type === 'tool') && <HooksField node={selected} setGraph={setGraph} />}
       </div>
     </div>
   );

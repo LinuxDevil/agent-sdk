@@ -135,6 +135,18 @@ export function validateGraph(graph: AgentGraphSpec): ValidationResult {
     }
   }
 
+  // LOU-Q3: an enabled hook with no code body would silently no-op at
+  // runtime (sandboxRunHook() would just run an empty function) - flag it
+  // here so the Inspector's hook-chip list can surface it inline, the same
+  // way a required node field is surfaced above.
+  for (const node of graph.nodes) {
+    for (const hook of node.hooks ?? []) {
+      if (hook.enabled && !hook.code.trim()) {
+        errors.push({ nodeId: node.id, message: `Hook '${hook.name}' on node '${node.id}' is enabled but has no code` });
+      }
+    }
+  }
+
   // Exactly one llm node is required for graphToSpec() to succeed.
   const llmNodes = graph.nodes.filter((n) => n.type === 'llm');
   if (llmNodes.length === 0) {

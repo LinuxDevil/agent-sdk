@@ -52,6 +52,11 @@
       "types": "./dist/execution/otel.d.ts",
       "import": "./dist/execution/otel.mjs",
       "require": "./dist/execution/otel.js"
+    },
+    "./hooks": {
+      "types": "./dist/execution/hooks.d.ts",
+      "import": "./dist/execution/hooks.mjs",
+      "require": "./dist/execution/hooks.js"
     }
   },
   "files": [

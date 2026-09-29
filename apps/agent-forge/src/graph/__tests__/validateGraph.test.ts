@@ -173,4 +173,26 @@ describe('validateGraph', () => {
     const result = validateGraph(twoLlm);
     expect(result.errors.filter((e) => e.message.includes('found 2'))).toHaveLength(2);
   });
+
+  describe('hooks (LOU-Q3)', () => {
+    it('flags an enabled hook with empty code', () => {
+      const g = graph({});
+      g.nodes[0].hooks = [
+        { id: 'h1', templateId: 'custom', name: 'empty-hook', phase: 'pre', point: 'generate', enabled: true, code: '   ' },
+      ];
+      const result = validateGraph(g);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(
+        expect.objectContaining({ nodeId: 'llm-1', message: expect.stringContaining("'empty-hook'") })
+      );
+    });
+
+    it('does not flag a disabled hook with empty code', () => {
+      const g = graph({});
+      g.nodes[0].hooks = [
+        { id: 'h1', templateId: 'custom', name: 'empty-hook', phase: 'pre', point: 'generate', enabled: false, code: '' },
+      ];
+      expect(validateGraph(g).valid).toBe(true);
+    });
+  });
 });

@@ -64,13 +64,28 @@ function AgentNodeImpl({ data, selected }: NodeProps) {
     else setDraft(graphNode.label);
   }
 
+  // LOU-Q3: pre·N / post·N badges, matching the mockup's `.hook-badge`
+  // (search `.design-ref/agent-forge-mockup.html` for `hook-badge`) - only
+  // ENABLED hooks count, since a disabled hook has no runtime effect (see
+  // graphToSpec.ts's serialization, which drops disabled hooks entirely).
+  const enabledHooks = (graphNode.hooks ?? []).filter((h) => h.enabled);
+  const preCount = enabledHooks.filter((h) => h.phase === 'pre').length;
+  const postCount = enabledHooks.filter((h) => h.phase === 'post').length;
+
   return (
     <div
       className={`rf-node${selected ? ' selected' : ''}${highlighted ? ' highlighted' : ''}${hasBreakpoint ? ' has-breakpoint' : ''}`}
       data-node-type={graphNode.type}
+      data-node-id={graphNode.id}
     >
       {meta.hasIn && <Handle type="target" position={Position.Left} className="rf-port rf-port-in" />}
       {meta.hasOut && <Handle type="source" position={Position.Right} className="rf-port rf-port-out" />}
+      {(preCount > 0 || postCount > 0) && (
+        <span className="node-hooks">
+          {preCount > 0 && <span className="hook-badge pre">pre&middot;{preCount}</span>}
+          {postCount > 0 && <span className="hook-badge post">post&middot;{postCount}</span>}
+        </span>
+      )}
       <div className="rf-node-head" style={{ borderBottom: '1px solid var(--border)' }}>
         <span className="node-swatch" style={{ background: meta.color, width: 16, height: 16, borderRadius: 5 }}>
           {meta.icon}

@@ -1,5 +1,19 @@
 import type { AgentSpec, AgentSpecTrigger } from '@loushy/build-ai-agent';
-import type { AgentGraphSpec } from './types';
+import type { AgentGraphNode, AgentGraphSpec } from './types';
+
+/**
+ * Stable key identifying which node a serialized hook belongs to, used
+ * instead of the node's own `id` because `specToGraph()` always
+ * regenerates fresh node ids on every load (see graph/types.ts's file
+ * header) - an id-keyed hook would never re-attach after a round trip.
+ * `llm` is unique per graph; `tool` nodes are keyed by tool name, which is
+ * unique within the fixed-pipeline shape this app supports today (see
+ * graph/types.ts).
+ */
+export function hookNodeKey(node: AgentGraphNode): string {
+  if (node.type === 'tool') return `tool:${node.data.toolName}`;
+  return node.type;
+}
 
 /**
  * Converts a canvas graph to the SDK's declarative `AgentSpec` (see
@@ -39,6 +53,27 @@ export function graphToSpec(graph: AgentGraphSpec): AgentSpec {
     spec.triggers = triggerNodes.map((n) =>
       n.type === 'trigger' ? ({ ...n.data.trigger } as AgentSpecTrigger) : ({} as AgentSpecTrigger)
     );
+  }
+
+  // LOU-Q3: serialize every ENABLED hook on every node into `spec.policy`,
+  // the one open/passthrough record `AgentSpec` already has (see
+  // src/spec/schema.ts's doc comment on `AgentSpecPolicy` - `[key: string]:
+  // unknown`, deliberately extensible without a core schema migration).
+  // This is what lets the app's runtime control server (LOU-N,
+  // server/runRegistry.ts) compile a real SDK `HookRegistry` and pass it
+  // into `AgentExecutor.execute()`'s `hooks` option purely from the
+  // `AgentSpec` it already transports over the wire - no separate endpoint
+  // or second source of truth for "what hooks does this agent run with".
+  // Disabled hooks are left out entirely: a disabled hook has no runtime
+  // effect, and there's no reason to make the compiled server side account
+  // for `enabled: false` when the Inspector's toggle already filtered it.
+  const serializedHooks = graph.nodes.flatMap((n) =>
+    (n.hooks ?? [])
+      .filter((h) => h.enabled)
+      .map((h) => ({ nodeKey: hookNodeKey(n), id: h.id, name: h.name, phase: h.phase, point: h.point, code: h.code }))
+  );
+  if (serializedHooks.length > 0) {
+    spec.policy = { ...spec.policy, hooks: serializedHooks };
   }
 
   return spec;

@@ -1,0 +1,213 @@
+/**
+ * Agent Hooks (LOU-Q1)
+ *
+ * User-authored extension points that run at well-defined points inside
+ * AgentExecutor's execution loop: immediately before/after each
+ * `provider.generate()` call, and immediately before/after each tool
+ * invocation. They are a DIFFERENT, complementary concept to the
+ * `onLLMRequest`/`onLLMResponse`/`onToolCall`/`onToolResult` callbacks on
+ * `ExecuteOptions` (LOU-E2/O): those are single, internal instrumentation
+ * callbacks wired up by apps/agent-forge's debugController.ts for the
+ * step-through debugger. `AgentHook`s are a registered, ordered LIST of
+ * independent, named, user-authored plugins (redact-pii, rate-limit,
+ * audit-log, inject-context, ...) - the kind of thing a HookRegistry
+ * manages, mirroring ToolRegistry's design (see src/tools/ToolRegistry.ts).
+ *
+ * Design notes on `ctx` shape: each hook receives the SAME live objects
+ * AgentExecutor is about to act on (the in-flight `GenerateOptions.messages`
+ * array, the parsed tool-call `args` object, etc.) rather than a snapshot
+ * copy. This is deliberate - it's what lets a hook actually DO its job
+ * instead of merely observing:
+ *   - `inject-context`: pushes an extra message onto `ctx.request.messages`
+ *     from `preGenerate`, so it's present in the very call about to be made.
+ *   - `redact-pii`: mutates `ctx.args` in `preToolCall` (or
+ *     `result.result`/`result.error` in `postToolCall`) in place, so the
+ *     redacted value is what actually gets executed/returned.
+ *   - `rate-limit`: throws from `preToolCall` to abort the step (see below).
+ *   - `audit-log`: reads `ctx` fields (agentId, sessionId, toolName, args)
+ *     without mutating anything.
+ *
+ * Error handling: hooks run in REGISTRATION ORDER, and a hook that throws
+ * (or rejects) aborts the current step - the error propagates out of
+ * `HookRegistry.runXxx()`, out of AgentExecutor.execute() (or
+ * resumeAfterApproval()), as a rejected promise. This mirrors how
+ * `executeToolWithSandboxGuard()` errors propagate (see sandboxGuard.ts):
+ * nothing here catches a hook's error and silently converts it into a
+ * conversational `{error}` tool-result the way a *tool's own* thrown error
+ * is handled in AgentExecutor.doExecuteToolCall(). A hook is trusted,
+ * user-authored control-plane code (e.g. a rate limiter that means to
+ * HALT the run) - swallowing its errors would silently defeat its purpose.
+ */
+
+import { GenerateOptions, GenerateResult, Message, ToolCall } from '../providers';
+
+/**
+ * Fields common to every hook invocation.
+ */
+export interface HookContext {
+  /** The agent's configured id, if any. */
+  agentId?: string;
+  /** The agent's display name. */
+  agentName?: string;
+  /** The durable-execution session id, if this run is using one. */
+  sessionId?: string;
+  /**
+   * Live reference to the conversation history at the moment the hook
+   * fires. Mutating this array (e.g. `inject-context` pushing a message)
+   * affects the actual run.
+   */
+  messages: Message[];
+  /** Free-form bag for hook-to-hook or hook-to-caller data passing. */
+  metadata?: Record<string, unknown>;
+}
+
+/** Context passed to `AgentHook.preToolCall` / `postToolCall`. */
+export interface ToolCallHookContext extends HookContext {
+  toolCallId: string;
+  toolName: string;
+  /**
+   * Live reference to the parsed tool-call arguments. Mutating this object
+   * in `preToolCall` changes what the tool is actually invoked with.
+   */
+  args: Record<string, unknown>;
+  /** The raw ToolCall as returned by the LLM provider. */
+  toolCall: ToolCall;
+}
+
+/** Result payload passed (mutable) to `AgentHook.postToolCall`. */
+export interface ToolCallHookResult {
+  result: unknown;
+  error?: string;
+  requiresApproval?: boolean;
+}
+
+/** Context passed to `AgentHook.preGenerate` / `postGenerate`. */
+export interface GenerateHookContext extends HookContext {
+  /**
+   * Live reference to the request about to be sent to
+   * `provider.generate()`. Mutating it (e.g. appending a message, changing
+   * `temperature`) changes the actual call `preGenerate` fires before.
+   */
+  request: GenerateOptions;
+}
+
+/**
+ * A user-authored extension point invoked at well-defined points in
+ * AgentExecutor's execution loop. Every method is optional - a hook only
+ * needs to implement the point(s) it cares about.
+ */
+export interface AgentHook {
+  /** Unique name, used for registration/lookup/unregister and for error messages. */
+  name: string;
+  /** Invoked immediately before a tool is executed (and before any approval-gate check). */
+  preToolCall?(ctx: ToolCallHookContext): void | Promise<void>;
+  /** Invoked immediately after a tool call settles (success, tool-level error, or approval-required). */
+  postToolCall?(ctx: ToolCallHookContext, result: ToolCallHookResult): void | Promise<void>;
+  /** Invoked immediately before each `provider.generate()` call. */
+  preGenerate?(ctx: GenerateHookContext): void | Promise<void>;
+  /** Invoked immediately after each `provider.generate()` call resolves. */
+  postGenerate?(ctx: GenerateHookContext, result: GenerateResult): void | Promise<void>;
+}
+
+/**
+ * Ordered collection of `AgentHook`s, mirroring `ToolRegistry`'s API shape
+ * (register/registerMany/get/has/list/unregister/clear/size) so both
+ * registries feel the same to consumers of this SDK.
+ *
+ * `runPreToolCall`/`runPostToolCall`/`runPreGenerate`/`runPostGenerate` run
+ * every registered hook's corresponding method IN REGISTRATION ORDER,
+ * sequentially (each hook is awaited before the next runs, so a later hook
+ * sees any mutation an earlier one made). The first hook to throw aborts
+ * the sequence immediately - subsequent hooks do NOT run - and the error
+ * propagates to the caller (see the file-level doc comment above).
+ */
+export class HookRegistry {
+  private hooks: AgentHook[] = [];
+
+  /** Register a hook. Registering a second hook with the same `name` replaces the first (a warning is logged). */
+  public register(hook: AgentHook): void {
+    const existingIndex = this.hooks.findIndex((h) => h.name === hook.name);
+    if (existingIndex !== -1) {
+      console.warn(`Hook '${hook.name}' is already registered. Overwriting.`);
+      this.hooks[existingIndex] = hook;
+      return;
+    }
+    this.hooks.push(hook);
+  }
+
+  /** Register multiple hooks at once, in the order given. */
+  public registerMany(hooks: AgentHook[]): void {
+    for (const hook of hooks) {
+      this.register(hook);
+    }
+  }
+
+  /** Look up a hook by name. */
+  public get(name: string): AgentHook | undefined {
+    return this.hooks.find((h) => h.name === name);
+  }
+
+  /** Whether a hook with this name is registered. */
+  public has(name: string): boolean {
+    return this.hooks.some((h) => h.name === name);
+  }
+
+  /** All registered hooks, in registration order. */
+  public list(): AgentHook[] {
+    return [...this.hooks];
+  }
+
+  /** Remove a hook by name. Returns whether one was found and removed. */
+  public unregister(name: string): boolean {
+    const index = this.hooks.findIndex((h) => h.name === name);
+    if (index === -1) return false;
+    this.hooks.splice(index, 1);
+    return true;
+  }
+
+  /** Remove every registered hook. */
+  public clear(): void {
+    this.hooks = [];
+  }
+
+  /** Number of registered hooks. */
+  public size(): number {
+    return this.hooks.length;
+  }
+
+  /** Run every registered `preToolCall`, in order. Throws (aborting the step) if any hook throws. */
+  public async runPreToolCall(ctx: ToolCallHookContext): Promise<void> {
+    for (const hook of this.hooks) {
+      if (hook.preToolCall) {
+        await hook.preToolCall(ctx);
+      }
+    }
+  }
+
+  /** Run every registered `postToolCall`, in order. Throws (aborting the step) if any hook throws. */
+  public async runPostToolCall(ctx: ToolCallHookContext, result: ToolCallHookResult): Promise<void> {
+    for (const hook of this.hooks) {
+      if (hook.postToolCall) {
+        await hook.postToolCall(ctx, result);
+      }
+    }
+  }
+
+  /** Run every registered `preGenerate`, in order. Throws (aborting the step) if any hook throws. */
+  public async runPreGenerate(ctx: GenerateHookContext): Promise<void> {
+    for (const hook of this.hooks) {
+      if (hook.preGenerate) {
+        await hook.preGenerate(ctx);
+      }
+    }
+  }
+
+  /** Run every registered `postGenerate`, in order. Throws (aborting the step) if any hook throws. */
+  public async runPostGenerate(ctx: GenerateHookContext, result: GenerateResult): Promise<void> {
+    for (const hook of this.hooks) {
+      if (hook.postGenerate) {
+        await hook.postGenerate(ctx, result);
+      }
+    }
+  }
+}

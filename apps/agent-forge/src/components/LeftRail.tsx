@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import type { DragEvent } from 'react';
 import { useAppState } from '../state/AppState';
-import { PALETTE_DRAG_MIME } from '../canvas/dnd';
+import { PALETTE_DRAG_MIME, HOOK_DRAG_MIME } from '../canvas/dnd';
 import { AGENT_TEMPLATES, type TemplateId } from '../canvas/templates';
-import type { AgentGraphNodeType } from '../graph/types';
+import type { AgentGraphNodeType, AgentNodeHookPhase } from '../graph/types';
 
 const NODE_PALETTE: { section: string; items: { label: string; color: string; nodeType: AgentGraphNodeType }[] }[] = [
   {
@@ -28,12 +28,17 @@ const NODE_PALETTE: { section: string; items: { label: string; color: string; no
 ];
 
 /**
- * Hooks (pre/post) shown as palette entries in the mockup have no
- * `AgentGraphNodeType` yet - hook wiring/execution is LOU-Q's scope - so
- * they're intentionally left out of the draggable palette rather than
- * dragging in a node kind the graph model (and graphToSpec/validateGraph)
- * doesn't understand.
+ * Hooks (pre/post) palette entries (LOU-Q3). Unlike NODE_PALETTE's items,
+ * dropping one of these does NOT add a new `AgentGraphNode` - it attaches
+ * an `AgentNodeHookInstance` onto whichever node the drop lands on (see
+ * dnd.ts's HOOK_DRAG_MIME and CanvasArea.tsx's onDrop), so this list is
+ * kept separate rather than folded into NODE_PALETTE.
  */
+const HOOK_PALETTE: { label: string; color: string; phase: AgentNodeHookPhase }[] = [
+  { label: 'Pre-hook', color: 'var(--info)', phase: 'pre' },
+  { label: 'Post-hook', color: 'var(--accent)', phase: 'post' },
+];
+
 const STATUS_LABEL: Record<string, string> = {
   idle: 'idle',
   running: 'running',
@@ -51,6 +56,11 @@ export function LeftRail() {
 
   function onDragStart(e: DragEvent<HTMLDivElement>, nodeType: AgentGraphNodeType) {
     e.dataTransfer.setData(PALETTE_DRAG_MIME, nodeType);
+    e.dataTransfer.effectAllowed = 'move';
+  }
+
+  function onHookDragStart(e: DragEvent<HTMLDivElement>, phase: AgentNodeHookPhase) {
+    e.dataTransfer.setData(HOOK_DRAG_MIME, phase);
     e.dataTransfer.effectAllowed = 'move';
   }
 
@@ -191,6 +201,21 @@ export function LeftRail() {
               ))}
             </div>
           ))}
+          <div>
+            <div className="rail-section-title">Hooks</div>
+            {HOOK_PALETTE.map((item) => (
+              <div
+                className="node-palette-item"
+                draggable
+                onDragStart={(e) => onHookDragStart(e, item.phase)}
+                key={item.label}
+                title="Drag onto a node to attach a hook"
+              >
+                <span className="node-swatch" style={{ background: item.color }} />
+                {item.label}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

@@ -12,6 +12,7 @@ import { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGat
 import { Checkpoint, CheckpointStore } from './checkpoint';
 import { TraceExporter, withSpan } from './tracing';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
+import { HookRegistry } from './hooks';
 
 /**
  * Base class for tool errors that must NOT be swallowed by
@@ -171,6 +172,21 @@ export interface ExecuteOptions {
    * adapter - when omitted, so existing callers see no behavior change.
    */
   sandbox?: SandboxAdapter;
+  /**
+   * Registered `AgentHook`s (LOU-Q1) to run at each pre/post tool-call and
+   * pre/post generate point in the execution loop. Purely additive: when
+   * omitted (the default), no hooks run and behavior is byte-for-byte
+   * identical to before hooks existed. Hooks run in registration order
+   * (see HookRegistry); a hook that throws aborts the current step and
+   * propagates out of execute() as a rejected promise, exactly like an
+   * unrecovered tool/provider error - it is never silently swallowed.
+   *
+   * This same option is honored by `resumeAfterApproval()` (resume.ts) for
+   * its deferred, post-approval tool execution, so a hook registered here
+   * fires consistently regardless of which of the two tool-execution call
+   * sites handles a given tool call.
+   */
+  hooks?: HookRegistry;
 }
 
 /**
@@ -255,6 +271,7 @@ export class AgentExecutor {
       exporter,
       redactContent = false,
       sandbox = NoopSandbox,
+      hooks,
     } = options;
 
     // Emit start event
@@ -318,6 +335,16 @@ export class AgentExecutor {
           await onLLMRequest(generateRequest);
         }
 
+        if (hooks) {
+          await hooks.runPreGenerate({
+            agentId: agent.id,
+            agentName: agent.name,
+            sessionId,
+            messages: currentMessages,
+            request: generateRequest,
+          });
+        }
+
         const result = await withSpan(
           exporter,
           'llm.generate',
@@ -341,6 +368,19 @@ export class AgentExecutor {
 
             if (onLLMResponse) {
               await onLLMResponse(generated, llmLatencyMs);
+            }
+
+            if (hooks) {
+              await hooks.runPostGenerate(
+                {
+                  agentId: agent.id,
+                  agentName: agent.name,
+                  sessionId,
+                  messages: currentMessages,
+                  request: generateRequest,
+                },
+                generated
+              );
             }
 
             return generated;
@@ -394,7 +434,10 @@ export class AgentExecutor {
                   toolRegistry,
                   onToolCall,
                   onToolResult,
-                  sandbox
+                  sandbox,
+                  hooks,
+                  sessionId,
+                  currentMessages
                 );
                 let parsedArgs: unknown = executed.args;
                 if (parsedArgs === undefined) {
@@ -615,11 +658,14 @@ export class AgentExecutor {
    */
   private static async executeToolCall(
     toolCall: ToolCall,
-    _agent: AgentConfig,
+    agent: AgentConfig,
     toolRegistry?: ToolRegistry,
     onToolCall?: ExecuteOptions['onToolCall'],
     onToolResult?: ExecuteOptions['onToolResult'],
-    sandbox: SandboxAdapter = NoopSandbox
+    sandbox: SandboxAdapter = NoopSandbox,
+    hooks?: HookRegistry,
+    sessionId?: string,
+    messages: Message[] = []
   ): Promise<{
     toolCallId: string;
     toolName: string;
@@ -630,6 +676,31 @@ export class AgentExecutor {
   }> {
     if (onToolCall) {
       await onToolCall(toolCall);
+    }
+
+    // Parse args up front (best-effort) so hooks get a real object to
+    // inspect/mutate even before doExecuteToolCall() parses them again for
+    // its own use (needsApproval/execute). A hook mutating this object has
+    // no effect on the actual call in this fallback case; see the
+    // `hooks.runPreToolCall` call below for the real, load-bearing parse.
+    let hookArgs: Record<string, unknown> = {};
+    try {
+      hookArgs = JSON.parse(toolCall.function.arguments);
+    } catch {
+      hookArgs = {};
+    }
+
+    if (hooks) {
+      await hooks.runPreToolCall({
+        agentId: agent.id,
+        agentName: agent.name,
+        sessionId,
+        messages,
+        toolCallId: toolCall.id,
+        toolName: toolCall.function.name,
+        args: hookArgs,
+        toolCall,
+      });
     }
 
     const toolStart = Date.now();
@@ -646,7 +717,26 @@ export class AgentExecutor {
     let thrown: unknown;
 
     try {
-      outcome = await this.doExecuteToolCall(toolCall, toolRegistry, sandbox);
+      outcome = await this.doExecuteToolCall(toolCall, toolRegistry, sandbox, hookArgs);
+      if (hooks) {
+        await hooks.runPostToolCall(
+          {
+            agentId: agent.id,
+            agentName: agent.name,
+            sessionId,
+            messages,
+            toolCallId: toolCall.id,
+            toolName: toolCall.function.name,
+            args: hookArgs,
+            toolCall,
+          },
+          {
+            result: outcome.result,
+            error: outcome.error,
+            requiresApproval: outcome.requiresApproval,
+          }
+        );
+      }
       return outcome;
     } catch (error) {
       thrown = error;
@@ -667,7 +757,8 @@ export class AgentExecutor {
   private static async doExecuteToolCall(
     toolCall: ToolCall,
     toolRegistry?: ToolRegistry,
-    sandbox: SandboxAdapter = NoopSandbox
+    sandbox: SandboxAdapter = NoopSandbox,
+    overrideArgs?: Record<string, unknown>
   ): Promise<{
     toolCallId: string;
     toolName: string;
@@ -696,7 +787,12 @@ export class AgentExecutor {
         };
       }
 
-      const args = JSON.parse(toolCall.function.arguments);
+      // `overrideArgs` is the (possibly hook-mutated) object built by
+      // executeToolCall() before preToolCall hooks ran - using it here
+      // instead of re-parsing `toolCall.function.arguments` is what makes a
+      // `preToolCall` hook (e.g. redact-pii) that mutates `ctx.args`
+      // actually affect what the tool is invoked with.
+      const args = overrideArgs ?? JSON.parse(toolCall.function.arguments);
 
       const needsApproval =
         typeof toolDesc.needsApproval === 'function'
