@@ -22,6 +22,31 @@ export interface Checkpoint {
     totalTokens: number;
   };
   finishReason?: string;
+  /**
+   * LOU-T1: opaque, consumer-owned business/domain state co-located with
+   * execution state on the same checkpoint record (an order id, a ticket
+   * id, a workflow stage - whatever a caller's application needs to stay
+   * aligned with this run across a crash or an approval pause/resume
+   * cycle).
+   *
+   * This is pure co-location, not validation: the SDK never reads,
+   * interprets, mutates, or acts on this value - it is stored and returned
+   * exactly as given, the same as any other JSON-serializable blob passed
+   * through a store. It must be JSON-serializable, since concrete
+   * `CheckpointStore` implementations may round-trip it through
+   * `JSON.stringify`/`JSON.parse` (see `LocalStorageCheckpointStore` and
+   * `apps/agent-forge/server/checkpointStore.ts`'s `FileCheckpointStore`).
+   * A consumer relying on this field for anything security- or
+   * correctness-critical should treat it exactly like any other
+   * unvalidated input they control both ends of - the SDK provides no
+   * integrity or schema guarantees on its contents.
+   *
+   * Set via `ExecuteOptions.businessState` (src/execution/AgentExecutor.ts);
+   * carried forward across an approval pause/resume by
+   * `resumeAfterApproval()` (src/execution/resume.ts) unless the caller's
+   * `ResumeExecuteOptions.businessState` explicitly overrides it.
+   */
+  businessState?: unknown;
 }
 
 /**
