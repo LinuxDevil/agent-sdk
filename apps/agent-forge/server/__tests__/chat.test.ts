@@ -189,7 +189,7 @@ describe('P1/P3 chat transport (HTTP routes)', () => {
       loadSpec: (id) => agentStore.load(id),
       saveSpec: (id, spec) => agentStore.save(id, spec),
     });
-    app = createApp({ agentStore, runManager });
+    app = createApp({ agentStore, runManager, baseDir });
   });
 
   afterEach(() => {

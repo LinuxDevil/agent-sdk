@@ -76,7 +76,9 @@
   ],
   "sideEffects": [
     "./src/providers/mock.ts",
-    "./src/providers/mock.js"
+    "./src/providers/mock.js",
+    "./src/providers/index.ts",
+    "./src/providers/index.js"
   ],
   "scripts": {
     "build": "tsup",

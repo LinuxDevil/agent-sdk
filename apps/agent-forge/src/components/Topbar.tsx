@@ -25,6 +25,7 @@ export function Topbar() {
     debugMode,
     setDebugMode,
     setDrawerTab,
+    activeProfile,
   } = useAppState();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [actionError, setActionError] = useState<string | undefined>(undefined);
@@ -110,8 +111,14 @@ export function Topbar() {
         {STATUS_LABEL[status] ?? status}
       </span>
 
-      <div className="env-select">
-        <span className="dot" /> local &middot; {spec.provider.type} provider
+      {/*
+        R3: real per-environment settings profile (name + provider type),
+        replacing the LOU-L/O mockup's static "local · mock provider" label.
+        Falls back to the current spec's own provider while the profile
+        fetch hasn't resolved yet (e.g. runtime server not reachable).
+      */}
+      <div className="env-select" title={activeProfile ? `Settings profile: ${activeProfile.name}` : undefined}>
+        <span className="dot" /> {activeProfile?.name ?? 'local'} &middot; {activeProfile?.providerType ?? spec.provider.type} provider
       </div>
       {/*
         O3: toggles debug mode - the Inspector exposes breakpoint toggles

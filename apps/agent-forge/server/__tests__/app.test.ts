@@ -62,7 +62,7 @@ describe('LOU-N HTTP API', () => {
       loadSpec: (id) => agentStore.load(id),
       saveSpec: (id, spec) => agentStore.save(id, spec),
     });
-    app = createApp({ agentStore, runManager });
+    app = createApp({ agentStore, runManager, baseDir });
   });
 
   afterEach(() => {
@@ -204,4 +204,124 @@ describe('LOU-N HTTP API', () => {
 
     await waitForStatus(runManager, 'debug-run', (s) => s.status === 'stopped');
   });
+});
+
+describe('LOU-R settings/secrets HTTP routes', () => {
+  let baseDir: string;
+  let app: ReturnType<typeof createApp>;
+
+  beforeEach(() => {
+    baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-r-app-test-'));
+    const agentStore = createFsAgentStore(baseDir);
+    const runManager = new RunManager({
+      baseDir,
+      checkpointStore: new FileCheckpointStore(baseDir),
+      approvalStore: new FileApprovalStore(baseDir),
+      loadSpec: (id) => agentStore.load(id),
+      saveSpec: (id, spec) => agentStore.save(id, spec),
+    });
+    app = createApp({ agentStore, runManager, baseDir });
+  });
+
+  afterEach(() => {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  });
+
+  it('GET /settings/providers starts with no keys configured', async () => {
+    const res = await request(app).get('/settings/providers');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([
+      { provider: 'openai', hasKey: false, masked: null },
+      { provider: 'anthropic', hasKey: false, masked: null },
+    ]);
+  });
+
+  it('PUT /settings/providers/:provider stores a key and never echoes it back', async () => {
+    const res = await request(app).put('/settings/providers/openai').send({ apiKey: 'sk-super-secret' });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ provider: 'openai', hasKey: true, masked: '••••••••cret' });
+    expect(JSON.stringify(res.body)).not.toContain('sk-super-secret');
+
+    const raw = fs.readFileSync(path.join(baseDir, '.loushy', 'secrets.json'), 'utf8');
+    expect(raw).not.toContain('sk-super-secret');
+  });
+
+  it('PUT /settings/providers/:provider rejects an unknown provider', async () => {
+    const res = await request(app).put('/settings/providers/notreal').send({ apiKey: 'sk-abc' });
+    expect(res.status).toBe(400);
+  });
+
+  it('PUT /settings/providers/:provider rejects a missing apiKey', async () => {
+    const res = await request(app).put('/settings/providers/openai').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('DELETE /settings/providers/:provider removes a stored key', async () => {
+    await request(app).put('/settings/providers/anthropic').send({ apiKey: 'sk-ant-abc' });
+    const del = await request(app).delete('/settings/providers/anthropic');
+    expect(del.status).toBe(204);
+    const list = await request(app).get('/settings/providers');
+    expect(list.body.find((p: { provider: string }) => p.provider === 'anthropic').hasKey).toBe(false);
+  });
+
+  it('GET /settings/profiles returns default local/staging/prod profiles with local active', async () => {
+    const res = await request(app).get('/settings/profiles');
+    expect(res.status).toBe(200);
+    expect(res.body.activeProfileId).toBe('local');
+    expect(res.body.profiles.map((p: { id: string }) => p.id)).toEqual(['local', 'staging', 'prod']);
+  });
+
+  it('POST /settings/profiles/:id/activate switches the active profile', async () => {
+    const res = await request(app).post('/settings/profiles/staging/activate');
+    expect(res.status).toBe(200);
+    expect(res.body.activeProfileId).toBe('staging');
+  });
+
+  it('POST /settings/profiles/:id/activate 400s for an unknown profile', async () => {
+    const res = await request(app).post('/settings/profiles/nope/activate');
+    expect(res.status).toBe(400);
+  });
+
+  it('PUT /settings/profiles/:id upserts a profile', async () => {
+    const res = await request(app)
+      .put('/settings/profiles/local')
+      .send({ name: 'local', providerType: 'openai', deployAdapter: 'docker', otelEnabled: true, hookTimeoutMs: 8000 });
+    expect(res.status).toBe(200);
+    const updated = res.body.profiles.find((p: { id: string }) => p.id === 'local');
+    expect(updated).toMatchObject({ providerType: 'openai', deployAdapter: 'docker', otelEnabled: true, hookTimeoutMs: 8000 });
+  });
+
+  it('PUT /settings/profiles/:id rejects a malformed body', async () => {
+    const res = await request(app).put('/settings/profiles/local').send({ name: 'local' });
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /settings/deploy-adapters lists the known deployment targets', async () => {
+    const res = await request(app).get('/settings/deploy-adapters');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(['node-server', 'cloudflare-worker', 'docker']);
+  });
+
+  it('POST /agents/:id/deploy 404s for an agent that was never saved', async () => {
+    const res = await request(app).post('/agents/never-saved/deploy').send({ adapter: 'node-server' });
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /agents/:id/deploy rejects an unknown adapter', async () => {
+    await request(app).put('/agents/deploy-me').send(SPEC);
+    const res = await request(app).post('/agents/deploy-me/deploy').send({ adapter: 'not-a-real-target' });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /agents/:id/deploy shells out to `loushy build` and reports a non-zero exit when the SDK has not been built', async () => {
+    await request(app).put('/agents/deploy-me-2').send(SPEC);
+    const res = await request(app).post('/agents/deploy-me-2/deploy').send({ adapter: 'node-server' });
+    // This test environment may or may not have `dist/` built - either way
+    // the route must resolve (never hang/throw) and report SOME exit code
+    // plus the exact command it ran, never silently swallow a failure.
+    expect([200, 422]).toContain(res.status);
+    expect(res.body).toHaveProperty('exitCode');
+    expect(res.body).toHaveProperty('command');
+    expect(res.body.command).toContain('build');
+  }, 30000);
 });

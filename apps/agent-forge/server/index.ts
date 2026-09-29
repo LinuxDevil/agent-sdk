@@ -14,6 +14,8 @@ import { attachWebSocketServer } from './wsServer';
 import { RunManager } from './runRegistry';
 import { FileCheckpointStore } from './checkpointStore';
 import { FileApprovalStore } from './approvalStore';
+import { SecretsStore } from './secretsStore';
+import { SettingsStore } from './settingsStore';
 
 export interface StudioServerHandle {
   server: http.Server;
@@ -55,6 +57,8 @@ export async function startStudioServer(
   const agentStore = createFsAgentStore(baseDir);
   const checkpointStore = new FileCheckpointStore(baseDir);
   const approvalStore = new FileApprovalStore(baseDir);
+  const secretsStore = new SecretsStore(baseDir);
+  const settingsStore = new SettingsStore(baseDir);
 
   const runManager = new RunManager({
     baseDir,
@@ -62,9 +66,11 @@ export async function startStudioServer(
     approvalStore,
     loadSpec: (agentId) => agentStore.load(agentId),
     saveSpec: (agentId, spec) => agentStore.save(agentId, spec),
+    secretsStore,
+    settingsStore,
   });
 
-  const app = createApp({ agentStore, runManager, staticDir });
+  const app = createApp({ agentStore, runManager, baseDir, secretsStore, settingsStore, staticDir });
   const server = http.createServer(app);
   attachWebSocketServer(server, runManager);
 

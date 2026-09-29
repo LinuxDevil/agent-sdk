@@ -23,11 +23,16 @@ import type { AgentStore, AgentStoreEntry } from './AgentStore';
  * browser app can call it remotely instead of only using
  * `LocalStorageAgentStore`.
  */
+/** Where `createFsAgentStore(baseDir)` reads/writes agent `id`'s spec - exposed (LOU-R2) so the runtime server's deploy route can hand `loushy build --agent=<path>` the exact file this store manages, without duplicating the `.loushy/agents/<id>.yaml` convention. */
+export function agentSpecFilePath(baseDir: string, id: string): string {
+  return path.join(baseDir, '.loushy', 'agents', `${id}.yaml`);
+}
+
 export function createFsAgentStore(baseDir: string): AgentStore {
   const agentsDir = path.join(baseDir, '.loushy', 'agents');
 
   function filePath(id: string): string {
-    return path.join(agentsDir, `${id}.yaml`);
+    return agentSpecFilePath(baseDir, id);
   }
 
   function ensureDir(): void {

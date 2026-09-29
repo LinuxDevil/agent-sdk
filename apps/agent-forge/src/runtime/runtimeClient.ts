@@ -99,6 +99,38 @@ export interface ChatSessionRecord extends ChatSessionMeta {
   messages: ChatMessage[];
 }
 
+/** R1: masked provider key status - see server/secretsStore.ts's `ProviderKeyStatus`. Never carries a real key. */
+export interface ProviderKeyStatus {
+  provider: 'openai' | 'anthropic';
+  hasKey: boolean;
+  masked: string | null;
+}
+
+/** R3: a settings profile - see server/settingsStore.ts's `SettingsProfile`. */
+export interface SettingsProfile {
+  id: string;
+  name: string;
+  providerType: string;
+  providerKeyRef?: string;
+  deployAdapter: string;
+  otelEnabled: boolean;
+  hookTimeoutMs: number;
+  sandboxBackend: 'noop';
+}
+
+export interface SettingsFile {
+  activeProfileId: string;
+  profiles: SettingsProfile[];
+}
+
+/** R2: `POST /agents/:id/deploy`'s result - the shelled-out `loushy build` child process's outcome. */
+export interface DeployResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  command: string;
+}
+
 export type StreamMessage =
   | { type: 'status'; payload: AgentRunStatusPayload }
   | { type: 'event'; payload: Record<string, unknown> }
@@ -236,6 +268,79 @@ export class RuntimeClient {
       throw new RuntimeApiError((body && body.error) || `Failed to load chat session '${sessionId}'`, res.status);
     }
     return (await res.json()) as ChatSessionRecord;
+  }
+
+  /** R1: masked status of every managed provider's stored key. */
+  async listProviderKeys(): Promise<ProviderKeyStatus[]> {
+    const res = await fetch(`${this.baseUrl}/settings/providers`);
+    return (await res.json()) as ProviderKeyStatus[];
+  }
+
+  /** R1: stores (or replaces) `provider`'s API key. Resolves with the new masked status - never the real key. */
+  async setProviderKey(provider: string, apiKey: string): Promise<ProviderKeyStatus> {
+    const res = await fetch(`${this.baseUrl}/settings/providers/${encodeURIComponent(provider)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey }),
+    });
+    const body = await res.json().catch(() => undefined);
+    if (!res.ok) throw new RuntimeApiError((body && body.error) || `Failed to set key for '${provider}'`, res.status);
+    return body as ProviderKeyStatus;
+  }
+
+  /** R1: removes `provider`'s stored key, if any. */
+  async removeProviderKey(provider: string): Promise<void> {
+    await fetch(`${this.baseUrl}/settings/providers/${encodeURIComponent(provider)}`, { method: 'DELETE' });
+  }
+
+  /** R3: every settings profile + which one is active. */
+  async listSettingsProfiles(): Promise<SettingsFile> {
+    const res = await fetch(`${this.baseUrl}/settings/profiles`);
+    return (await res.json()) as SettingsFile;
+  }
+
+  /** R3: creates or replaces a profile by id. */
+  async saveSettingsProfile(profile: SettingsProfile): Promise<SettingsFile> {
+    const res = await fetch(`${this.baseUrl}/settings/profiles/${encodeURIComponent(profile.id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(profile),
+    });
+    const body = await res.json().catch(() => undefined);
+    if (!res.ok) throw new RuntimeApiError((body && body.error) || 'Failed to save settings profile', res.status);
+    return body as SettingsFile;
+  }
+
+  /** R3: deletes a profile (refuses to delete the last remaining one). */
+  async deleteSettingsProfile(profileId: string): Promise<SettingsFile> {
+    const res = await fetch(`${this.baseUrl}/settings/profiles/${encodeURIComponent(profileId)}`, { method: 'DELETE' });
+    const body = await res.json().catch(() => undefined);
+    if (!res.ok) throw new RuntimeApiError((body && body.error) || 'Failed to delete settings profile', res.status);
+    return body as SettingsFile;
+  }
+
+  /** R3: switches the active profile. */
+  async activateSettingsProfile(profileId: string): Promise<SettingsFile> {
+    const res = await fetch(`${this.baseUrl}/settings/profiles/${encodeURIComponent(profileId)}/activate`, { method: 'POST' });
+    const body = await res.json().catch(() => undefined);
+    if (!res.ok) throw new RuntimeApiError((body && body.error) || 'Failed to activate settings profile', res.status);
+    return body as SettingsFile;
+  }
+
+  /** R2: deploy-target names this app's Settings dropdown offers - see server/deployRunner.ts's DEPLOY_ADAPTERS. */
+  async listDeployAdapters(): Promise<string[]> {
+    const res = await fetch(`${this.baseUrl}/settings/deploy-adapters`);
+    return (await res.json()) as string[];
+  }
+
+  /** R2: "Deploy this agent" - shells out to `loushy build --target=<adapter>` against this agent's saved spec. */
+  async deployAgent(agentId: string, adapter: string): Promise<DeployResult> {
+    const res = await fetch(`${this.baseUrl}/agents/${encodeURIComponent(agentId)}/deploy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ adapter }),
+    });
+    return (await res.json()) as DeployResult;
   }
 
   /**
