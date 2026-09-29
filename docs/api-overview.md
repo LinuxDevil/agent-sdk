@@ -65,6 +65,27 @@ const tools = await loadMcpTools(mcpClient, 'my-server');
 - `NoopSandbox` / `SubprocessSandbox` - sandboxing for tools that opt in via
   `requiresSandbox`; guardrails such as `createCommandGuardrail()` and
   `secretScanGuardrail`.
+- `HookRegistry`, `AgentHook`, `HookContext`, `ToolCallHookContext`,
+  `GenerateHookContext` - pre/post agent hooks (run before/after a tool call
+  or an LLM `generate`, can mutate args/messages/results or throw to abort
+  the step). Available from the package root and from
+  `@loushy/build-ai-agent/hooks`. Agent Forge's canvas hook editor
+  ([docs/agent-forge.md](./agent-forge.md#hooks)) compiles the hooks a user
+  attaches to a node into a `HookRegistry` this way, run sandboxed via
+  `SandboxAdapter` rather than in the host process.
+
+  ```ts
+  import { HookRegistry, type AgentHook } from '@loushy/build-ai-agent/hooks';
+
+  const redactPii: AgentHook = {
+    name: 'redact-pii',
+    async preToolCall(ctx) {
+      // mutate ctx.args, or throw to abort the tool call before it runs
+    },
+  };
+  const hooks = new HookRegistry();
+  hooks.register(redactPii);
+  ```
 - `EncryptionUtils`, `sha256`, `StorageService`, `renderTemplate`,
   `MemoryManager` - supporting utilities.
 

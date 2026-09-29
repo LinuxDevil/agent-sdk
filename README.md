@@ -38,6 +38,7 @@ Cloudflare Workers.
 - 🔌 **MCP client** - load any Model Context Protocol server's tools as `ToolDescriptor`s
 - 📦 **Sandboxing** - opt a tool into running through a `SandboxAdapter` (Docker-backed) instead of in-process
 - 🚀 **CLI** - `create-loushy-agent` scaffolds a project, `loushy dev` runs a local chat server with hot reload, `loushy build` deploys to a Node server, Docker, or Cloudflare Workers
+- 🎨 **Agent Forge** - `loushy studio` launches a visual dashboard for building, running and debugging agents: a drag-and-drop graph canvas, a live run/debug console with a step-through debugger, real chat (including inline approval-gate cards), and a sandboxed hook editor - see [Agent Forge](docs/agent-forge.md)
 - 📝 **Declarative specs** - describe an agent as a YAML/JSON file instead of code
 - 🔧 **Extensible** - easy to add custom tools, flows, and providers
 - 🧪 **Type-Safe** - full TypeScript support with comprehensive type definitions
@@ -150,6 +151,7 @@ npx loushy build --target=node-server --agent=agent.yaml   # deployable server
 - [Configuration](docs/configuration.md) - agent spec fields, provider env vars, `AgentExecutor.execute()` options, CLI flags
 - [Deployment](docs/deployment.md) - `loushy build` targets: Node server, Docker, Cloudflare Workers
 - [API Overview](docs/api-overview.md) - the main exports; `npm run docs:build` generates the full TypeDoc reference
+- [Agent Forge](docs/agent-forge.md) - the visual dashboard (`loushy studio`): quickstart, first-agent walkthrough, hook authoring
 - Full guides site: [linuxdevil.github.io/agent-sdk-docs](https://linuxdevil.github.io/agent-sdk-docs/)
 
 ## Core Concepts
@@ -439,6 +441,25 @@ npx loushy build --target=node-server --agent=agent.yaml         # or docker / c
 
 See [Installation](docs/installation.md) and [Deployment](docs/deployment.md)
 for the full flag reference.
+
+## Agent Forge
+
+Agent Forge is this SDK's companion visual dashboard: a ReactFlow canvas for
+building an agent's graph (trigger → LLM → tool → output), a run/debug
+console (live logs, a span trace waterfall, a step-through debugger), real
+chat with inline approval-gate cards, and a sandboxed pre/post hook editor -
+all reading and writing the same `AgentSpec` YAML `loushy dev`/`loushy build`
+use.
+
+```bash
+npx loushy studio                 # build an agent, run it (mock provider by
+                                   # default), watch it in the debug console
+```
+
+`loushy studio` serves the whole app - API and UI - from one local server and
+port; no separate dev server or extra setup needed. See
+[docs/agent-forge.md](docs/agent-forge.md) for the full quickstart, a
+first-agent walkthrough, and how to write and attach a hook.
 
 ## Examples
 
