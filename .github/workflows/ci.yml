@@ -9,10 +9,29 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # `undici` (a direct dependency, ^8.11.2 as of LOU-K3's Cloudflare
+          # Worker LLM provider support) declares an engines requirement of
+          # node >=22.19.0. Under Node 20, requiring it (indirectly, via
+          # anything that touches its Cache/fetch internals) throws
+          # `TypeError: webidl.util.markAsUncloneable is not a function`
+          # instead of just an EBADENGINE warning - which was crashing
+          # whichever vitest worker hit it first and cascading into "0 test"
+          # failures across the rest of that worker's queue. Node 20 was
+          # already below what a fresh dependency needs; bump to match.
+          node-version: '22'
           cache: 'npm'
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm run lint
-      - run: npm run test:coverage
+      # Build the root SDK's dist *before* running tests:
+      # packages/create-loushy-agent/src/template.e2e.test.ts `npm pack`s the
+      # root SDK's own source tree to install it into a generated project,
+      # which needs dist/ (package.json's main/module/types) to already
+      # exist - it was previously built only in the step after tests, so
+      # this test always failed once it actually got a chance to run.
       - run: npm run build
+      # packages/create-loushy-agent's own tests execFileSync its bin/cli.js,
+      # which requires ITS dist/index.js to exist too - build it before the
+      # test step (this is a separate package from the root SDK above).
+      - run: npm run build --workspace=packages/create-loushy-agent
+      - run: npm run test:coverage

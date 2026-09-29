@@ -2,6 +2,10 @@
   "name": "@loushy/build-ai-agent",
   "version": "1.0.0-alpha.8",
   "description": "Framework-agnostic SDK for building AI agents",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
