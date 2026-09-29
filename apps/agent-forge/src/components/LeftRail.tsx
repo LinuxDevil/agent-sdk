@@ -1,54 +1,58 @@
+import { useState } from 'react';
+import type { DragEvent } from 'react';
 import { useAppState } from '../state/AppState';
+import { PALETTE_DRAG_MIME } from '../canvas/dnd';
+import { AGENT_TEMPLATES, type TemplateId } from '../canvas/templates';
+import type { AgentGraphNodeType } from '../graph/types';
 
-/**
- * Static sample data for the "other agents in the workspace" list. This
- * epic (LOU-L) has no runtime/multi-agent workspace yet (that's LOU-N) - the
- * only agent with real state is the one in AppState, backed by the
- * AgentStore. These are chrome/visual placeholders only.
- */
-const SAMPLE_AGENTS = [
-  { name: 'doc-qa', status: 'stopped', meta: 'claude-3.7-sonnet · 6 nodes' },
-  { name: 'ops-pipeline', status: 'error', meta: 'gpt-4o · 8 nodes' },
-  { name: 'research-assistant', status: 'paused', meta: 'awaiting approval' },
-] as const;
-
-const NODE_PALETTE: { section: string; items: { label: string; color: string }[] }[] = [
+const NODE_PALETTE: { section: string; items: { label: string; color: string; nodeType: AgentGraphNodeType }[] }[] = [
   {
     section: 'Trigger',
-    items: [
-      { label: 'Input trigger', color: 'var(--info)' },
-      { label: 'Scheduled trigger', color: 'var(--info)' },
-    ],
+    items: [{ label: 'Input trigger', color: 'var(--info)', nodeType: 'trigger' }],
   },
   {
     section: 'Reasoning',
-    items: [
-      { label: 'LLM step', color: 'var(--accent)' },
-      { label: 'Router / condition', color: 'var(--accent)' },
-    ],
+    items: [{ label: 'LLM step', color: 'var(--accent)', nodeType: 'llm' }],
   },
   {
     section: 'Tools',
     items: [
-      { label: 'Tool call', color: 'var(--warning)' },
-      { label: 'Approval gate', color: 'var(--warning)' },
+      { label: 'Tool call', color: 'var(--warning)', nodeType: 'tool' },
+      { label: 'Approval gate', color: 'var(--warning)', nodeType: 'approval' },
     ],
   },
   {
     section: 'Output',
-    items: [{ label: 'Response / output', color: 'var(--success)' }],
-  },
-  {
-    section: 'Hooks',
-    items: [
-      { label: 'Pre-hook', color: 'var(--info)' },
-      { label: 'Post-hook', color: 'var(--accent)' },
-    ],
+    items: [{ label: 'Response / output', color: 'var(--success)', nodeType: 'output' }],
   },
 ];
 
+/**
+ * Hooks (pre/post) shown as palette entries in the mockup have no
+ * `AgentGraphNodeType` yet - hook wiring/execution is LOU-Q's scope - so
+ * they're intentionally left out of the draggable palette rather than
+ * dragging in a node kind the graph model (and graphToSpec/validateGraph)
+ * doesn't understand.
+ */
 export function LeftRail() {
-  const { railTab, setRailTab, spec } = useAppState();
+  const { railTab, setRailTab, agents, agentId, graph, spec, switchAgent, createAgent } = useAppState();
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newTemplate, setNewTemplate] = useState<TemplateId>('blank');
+
+  function onDragStart(e: DragEvent<HTMLDivElement>, nodeType: AgentGraphNodeType) {
+    e.dataTransfer.setData(PALETTE_DRAG_MIME, nodeType);
+    e.dataTransfer.effectAllowed = 'move';
+  }
+
+  async function handleCreate() {
+    const id = newName.trim();
+    if (!id) return;
+    await createAgent(id, newTemplate);
+    setCreating(false);
+    setNewName('');
+    setNewTemplate('blank');
+  }
 
   return (
     <div className="rail">
@@ -67,33 +71,89 @@ export function LeftRail() {
       {railTab === 'agents' ? (
         <div className="rail-body">
           <div className="rail-section-title">Workspace</div>
-          <div className="agent-card selected">
-            <div className="agent-card-top">
-              <span className="agent-name">{spec.name}</span>
-              <span className="status-pill status-running">
-                <span className="dot" style={{ background: 'var(--success)' }} />
-                running
-              </span>
-            </div>
-            <div className="agent-meta">
-              {spec.provider.model} &middot; {spec.tools?.length ?? 0} tools
-            </div>
-          </div>
-          {SAMPLE_AGENTS.map((agent) => (
-            <div className="agent-card" key={agent.name}>
+          {agents.length === 0 && (
+            <div className="agent-card selected">
               <div className="agent-card-top">
-                <span className="agent-name">{agent.name}</span>
-                <span className={`status-pill status-${agent.status}`}>
-                  <span className="dot" style={{ background: 'var(--text-faint)' }} />
-                  {agent.status}
+                <span className="agent-name">{spec.name}</span>
+                <span className="status-pill status-running">
+                  <span className="dot" style={{ background: 'var(--success)' }} />
+                  unsaved
                 </span>
               </div>
-              <div className="agent-meta">{agent.meta}</div>
+              <div className="agent-meta">
+                {spec.provider.model} &middot; {graph.nodes.length} nodes
+              </div>
+            </div>
+          )}
+          {agents.map((entry) => (
+            <div
+              className={`agent-card${entry.id === agentId ? ' selected' : ''}`}
+              key={entry.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => void switchAgent(entry.id)}
+              onKeyDown={(e) => e.key === 'Enter' && void switchAgent(entry.id)}
+            >
+              <div className="agent-card-top">
+                <span className="agent-name">{entry.id}</span>
+                <span className={`status-pill ${entry.id === agentId ? 'status-running' : 'status-stopped'}`}>
+                  <span className="dot" style={{ background: entry.id === agentId ? 'var(--success)' : 'var(--text-faint)' }} />
+                  {entry.id === agentId ? 'active' : 'idle'}
+                </span>
+              </div>
+              <div className="agent-meta">
+                {entry.spec.provider.model} &middot; {entry.spec.tools?.length ?? 0} tools
+              </div>
             </div>
           ))}
-          <button className="btn" style={{ width: '100%', justifyContent: 'center', marginTop: 8 }} disabled>
-            + New agent
-          </button>
+
+          {creating ? (
+            <div className="agent-card" style={{ cursor: 'default' }}>
+              <div className="field" style={{ marginBottom: 8 }}>
+                <label htmlFor="new-agent-name">Name</label>
+                <input
+                  id="new-agent-name"
+                  className="input"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="my-new-agent"
+                  autoFocus
+                />
+              </div>
+              <div className="field" style={{ marginBottom: 8 }}>
+                <label htmlFor="new-agent-template">Template</label>
+                <select
+                  id="new-agent-template"
+                  className="select"
+                  value={newTemplate}
+                  onChange={(e) => setNewTemplate(e.target.value as TemplateId)}
+                >
+                  {AGENT_TEMPLATES.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="hint">{AGENT_TEMPLATES.find((t) => t.id === newTemplate)?.description}</div>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => void handleCreate()} disabled={!newName.trim()}>
+                  Create
+                </button>
+                <button className="btn" onClick={() => setCreating(false)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              className="btn"
+              style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}
+              onClick={() => setCreating(true)}
+            >
+              + New agent
+            </button>
+          )}
         </div>
       ) : (
         <div className="rail-body">
@@ -101,7 +161,13 @@ export function LeftRail() {
             <div key={group.section}>
               <div className="rail-section-title">{group.section}</div>
               {group.items.map((item) => (
-                <div className="node-palette-item" draggable key={item.label}>
+                <div
+                  className="node-palette-item"
+                  draggable
+                  onDragStart={(e) => onDragStart(e, item.nodeType)}
+                  key={item.label}
+                  title="Drag onto the canvas to add"
+                >
                   <span className="node-swatch" style={{ background: item.color }} />
                   {item.label}
                 </div>

@@ -1,3 +1,4 @@
+import { isEdgeTypeAllowed } from './connectionRules';
 import type { AgentGraphSpec, ValidationError, ValidationResult } from './types';
 
 /**
@@ -31,6 +32,23 @@ export function validateGraph(graph: AgentGraphSpec): ValidationResult {
       errors.push({
         edgeId: edge.id,
         message: `Edge '${edge.id}' references missing target node '${edge.target}'`,
+      });
+    }
+  }
+
+  // Edge type compatibility (only over edges whose endpoints both exist -
+  // dangling edges are already reported above). See connectionRules.ts for
+  // the allowed-pairs table (e.g. trigger -> trigger, or anything -> trigger,
+  // is rejected).
+  const nodesById = new Map(graph.nodes.map((n) => [n.id, n]));
+  for (const edge of graph.edges) {
+    const source = nodesById.get(edge.source);
+    const target = nodesById.get(edge.target);
+    if (!source || !target) continue;
+    if (!isEdgeTypeAllowed(source.type, target.type)) {
+      errors.push({
+        edgeId: edge.id,
+        message: `Edge '${edge.id}' connects incompatible node types '${source.type}' -> '${target.type}'`,
       });
     }
   }
