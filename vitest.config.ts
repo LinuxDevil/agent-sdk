@@ -39,7 +39,17 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      exclude: ['**/*.test.ts', '**/*.spec.ts', 'dist/**', 'node_modules/**'],
+      // apps/** is excluded here too (mirroring the `test.exclude` entry
+      // above and its rationale): those workspaces are tested via their own
+      // `npm run test --workspace=apps/*`, never by this config, so their
+      // source was only ever showing up in this report as permanent 0%
+      // dead weight - not a real coverage gap, just this config's report
+      // counting lines it never had a chance to exercise. Left in as-is
+      // since LOU-L first added apps/agent-forge, this was latent until
+      // LOU-P's growth (new server/chat + ChatPanel/ApprovalCard code, all
+      // covered by apps/agent-forge's own 49/49 + 74/74 suites) tipped the
+      // denominator enough to trip the global threshold below.
+      exclude: ['**/*.test.ts', '**/*.spec.ts', 'dist/**', 'node_modules/**', 'apps/**'],
       // Floor set 1-2 points below the measured baseline (LOU-B4). Measured with
       // `npm run test:coverage`, excluding the 3 provider test suites that fail
       // to even load in this repo because @ai-sdk/openai and ollama-ai-provider

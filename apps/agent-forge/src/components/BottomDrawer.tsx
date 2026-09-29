@@ -4,6 +4,7 @@ import { LogsPanel } from './debug/LogsPanel';
 import { TracePanel } from './debug/TracePanel';
 import { OutputPanel } from './debug/OutputPanel';
 import { DebugBar } from './debug/DebugBar';
+import { ChatPanel } from './ChatPanel';
 
 const TABS: { id: DrawerTab; label: string }[] = [
   { id: 'chat', label: 'Chat' },
@@ -42,9 +43,9 @@ export function BottomDrawer() {
       {drawerTab === 'trace' && <DebugBar />}
       <div
         className="drawer-body"
-        style={drawerTab === 'logs' || drawerTab === 'trace' ? { padding: 0, overflow: 'hidden' } : undefined}
+        style={drawerTab === 'logs' || drawerTab === 'trace' || drawerTab === 'chat' ? { padding: 0, overflow: 'hidden' } : undefined}
       >
-        {drawerTab === 'chat' && <div>Chat with a running agent is wired up in LOU-P.</div>}
+        {drawerTab === 'chat' && <ChatPanel />}
         {drawerTab === 'logs' && <LogsPanel />}
         {drawerTab === 'trace' && <TracePanel />}
         {drawerTab === 'output' && <OutputPanel />}

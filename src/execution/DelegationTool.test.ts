@@ -69,8 +69,15 @@ describe('createDelegateTool', () => {
     const delegateTool = createDelegateTool({ agent: childAgent, provider });
     await delegateTool.tool.execute!({ task: 'task 1' }, {} as any);
 
+    // `callArgs.messages` is the same array reference AgentExecutor mutates
+    // in place, so after execute() resolves it also reflects the final
+    // assistant reply that gets pushed once the no-tool-calls exit path
+    // runs (see AgentExecutor.ts) - not just what was sent on the wire.
     const callArgs = generate.mock.calls[0][0];
-    expect(callArgs.messages).toEqual([{ role: 'user', content: 'task 1' }]);
+    expect(callArgs.messages).toEqual([
+      { role: 'user', content: 'task 1' },
+      { role: 'assistant', content: 'ok' },
+    ]);
   });
 
   describe('contextMode: full-history', () => {
@@ -88,8 +95,14 @@ describe('createDelegateTool', () => {
 
       await delegateTool.tool.execute!({ task: 'follow-up task', context }, {} as any);
 
+      // See the "no system prompt" test above re: this array reference
+      // reflecting the post-call assistant push too.
       const callArgs = generate.mock.calls[0][0];
-      expect(callArgs.messages).toEqual([...context, { role: 'user', content: 'follow-up task' }]);
+      expect(callArgs.messages).toEqual([
+        ...context,
+        { role: 'user', content: 'follow-up task' },
+        { role: 'assistant', content: 'done' },
+      ]);
     });
 
     it('falls back to task-only input when contextMode is the default "none"', async () => {
@@ -102,8 +115,13 @@ describe('createDelegateTool', () => {
       const context = [{ role: 'user' as const, content: 'earlier question' }];
       await delegateTool.tool.execute!({ task: 'follow-up task', context }, {} as any);
 
+      // See the "no system prompt" test above re: this array reference
+      // reflecting the post-call assistant push too.
       const callArgs = generate.mock.calls[0][0];
-      expect(callArgs.messages).toEqual([{ role: 'user', content: 'follow-up task' }]);
+      expect(callArgs.messages).toEqual([
+        { role: 'user', content: 'follow-up task' },
+        { role: 'assistant', content: 'done' },
+      ]);
     });
   });
 

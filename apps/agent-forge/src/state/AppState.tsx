@@ -9,13 +9,17 @@ import type { AgentGraphSpec } from '../graph/types';
 import { graphFromTemplate, type TemplateId } from '../canvas/templates';
 import {
   runtimeClient,
+  RuntimeApiError,
   type AgentRunStatusPayload,
   type LogEntry,
   type SpanEvent,
   type DebugStatePayload,
+  type ChatSessionMeta,
+  type ChatSessionRecord,
 } from '../runtime/runtimeClient';
 import { appendLog } from './logReducer';
 import { upsertSpan } from './spanReducer';
+import { applyChatState, emptyChatState, type ChatState } from './chatReducer';
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
@@ -108,6 +112,28 @@ interface AppState {
   /** Node (on the canvas) currently highlighted because its log/span is selected in the drawer (O2). */
   highlightedNodeId: string | undefined;
   setHighlightedNodeId: (nodeId: string | undefined) => void;
+
+  /**
+   * P1/P2: this agent's live chat transcript - the server's real
+   * `Message[]` history (see runRegistry.ts/chatReconcile.ts), pushed over
+   * `WS /agents/:id/stream` as `{type:'chat'}` and applied through the pure
+   * `applyChatState()` reducer (chatReducer.ts).
+   */
+  chat: ChatState;
+  /** POSTs `text` to `/agents/:id/message` (P1) - see runRegistry.ts's sendMessage() doc comment for continuation semantics. */
+  sendChatMessage: (text: string) => Promise<void>;
+  /** Set on a failed sendChatMessage()/startNewChat() call (e.g. already running, or paused awaiting approval) - cleared on the next attempt. */
+  chatActionError: string | undefined;
+  /** P3: metadata for every past (and current) chat session for this agent, newest first. */
+  chatSessions: ChatSessionMeta[];
+  /** P3: archives the current chat session and starts a fresh, empty one. */
+  startNewChat: () => Promise<void>;
+  /** P3: a past session's full transcript, loaded for read-only browsing (undefined = viewing the live session). */
+  viewedChatSession: ChatSessionRecord | undefined;
+  /** P3: loads a past session for read-only viewing in the Chat tab. */
+  viewChatSession: (sessionId: string) => Promise<void>;
+  /** P3: switches the Chat tab back to the live session. */
+  returnToLiveChat: () => void;
 }
 
 const AppStateContext = createContext<AppState | undefined>(undefined);
@@ -233,6 +259,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [debugState, setDebugState] = useState<DebugStatePayload | undefined>(undefined);
   const [debugMode, setDebugMode] = useState(false);
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | undefined>(undefined);
+  const [chat, setChat] = useState<ChatState>(emptyChatState());
+  const [chatActionError, setChatActionError] = useState<string | undefined>(undefined);
+  const [chatSessions, setChatSessions] = useState<ChatSessionMeta[]>([]);
+  const [viewedChatSession, setViewedChatSession] = useState<ChatSessionRecord | undefined>(undefined);
 
   // Keep one WS subscription per known agent id (for the LeftRail's status
   // pills), added/removed as `agents` (the saved-agent list) changes -
@@ -263,12 +293,21 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setSpans([]);
     setDebugState(undefined);
     setHighlightedNodeId(undefined);
+    setChat(emptyChatState());
+    setChatActionError(undefined);
+    setChatSessions([]);
+    setViewedChatSession(undefined);
     const unsubscribe = runtimeClient.subscribe(agentId, (message) => {
       if (message.type === 'status') setRunStatus(message.payload);
       else if (message.type === 'log') setLogs((prev) => appendLog(prev, message.payload));
       else if (message.type === 'span') setSpans((prev) => upsertSpan(prev, message.payload));
       else if (message.type === 'debug') setDebugState(message.payload);
+      else if (message.type === 'chat') setChat((prev) => applyChatState(prev, message.payload));
     });
+    runtimeClient
+      .listChats(agentId)
+      .then(setChatSessions)
+      .catch(() => {});
     // Also fetch the current status/debug-state immediately in case the WS
     // connection is slow to open - avoids a flash of "unknown" status (or a
     // stale breakpoint list) on agent switch.
@@ -331,6 +370,38 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [agentId, runStatus]
   );
 
+  const sendChatMessage = useCallback(
+    async (text: string) => {
+      setChatActionError(undefined);
+      try {
+        await runtimeClient.sendMessage(agentId, text);
+      } catch (error) {
+        setChatActionError(error instanceof RuntimeApiError ? error.message : (error as Error).message);
+        throw error;
+      }
+    },
+    [agentId]
+  );
+
+  const startNewChat = useCallback(async () => {
+    setChatActionError(undefined);
+    setViewedChatSession(undefined);
+    const next = await runtimeClient.newChat(agentId);
+    setChat({ sessionId: next.sessionId, messages: next.messages });
+    setChatSessions(await runtimeClient.listChats(agentId));
+  }, [agentId]);
+
+  const viewChatSession = useCallback(
+    async (sessionId: string) => {
+      setViewedChatSession(await runtimeClient.loadChatSession(agentId, sessionId));
+    },
+    [agentId]
+  );
+
+  const returnToLiveChat = useCallback(() => {
+    setViewedChatSession(undefined);
+  }, []);
+
   const value: AppState = {
     store,
     agentId,
@@ -364,6 +435,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     stepDebug,
     highlightedNodeId,
     setHighlightedNodeId,
+    chat,
+    sendChatMessage,
+    chatActionError,
+    chatSessions,
+    startNewChat,
+    viewedChatSession,
+    viewChatSession,
+    returnToLiveChat,
   };
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
