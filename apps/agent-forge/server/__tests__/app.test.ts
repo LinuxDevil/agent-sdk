@@ -81,6 +81,26 @@ describe('LOU-N HTTP API', () => {
     expect(res.body.status).toBe('idle');
   });
 
+  it('rejects a path-traversal agent id instead of writing outside .loushy/agents', async () => {
+    // Express URL-decodes `:id` before handing it to the route, so a
+    // percent-encoded `..%2F..%2Fpwned` arrives as a plain string
+    // containing `/` and `..` - without the isValidAgentId guard in app.ts,
+    // this would let PUT /agents/:id escape `.loushy/agents/` via
+    // fsAgentStore.ts's path.join(agentsDir, `${id}.yaml`).
+    const traversalId = encodeURIComponent('../../pwned');
+    const put = await request(app).put(`/agents/${traversalId}`).send(SPEC);
+    expect(put.status).toBe(400);
+
+    const escapedFile = path.join(baseDir, '..', 'pwned.yaml');
+    expect(fs.existsSync(escapedFile)).toBe(false);
+
+    const run = await request(app).post(`/agents/${traversalId}/run`).send({ input: 'hi', spec: SPEC });
+    expect(run.status).toBe(400);
+
+    const status = await request(app).get(`/agents/${traversalId}/status`);
+    expect(status.status).toBe(400);
+  });
+
   it('PUT then GET round-trips an AgentSpec', async () => {
     const put = await request(app).put('/agents/foo').send(SPEC);
     expect(put.status).toBe(204);

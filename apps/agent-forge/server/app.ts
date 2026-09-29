@@ -28,6 +28,7 @@ import cors from 'cors';
 import type { AgentSpec } from '@loushy/build-ai-agent';
 import type { AgentStore } from '../src/persistence/AgentStore';
 import { RunManager, AgentNotFoundError, AlreadyRunningError, NoActiveRunError } from './runRegistry';
+import { isValidAgentId } from './types';
 
 export interface CreateAppOptions {
   agentStore: AgentStore;
@@ -57,6 +58,21 @@ export function createApp({ agentStore, runManager }: CreateAppOptions): Express
   app.use(express.json({ limit: '2mb' }));
 
   app.get('/health', (_req, res) => res.status(200).send('ok'));
+
+  // Every `/agents/:id/**` route below eventually turns `:id` into a
+  // filesystem path segment (agent spec YAML, checkpoint/approval files -
+  // see fsAgentStore.ts/checkpointStore.ts/approvalStore.ts). Reject
+  // anything that isn't a safe single-segment token here, once, rather than
+  // trusting each store to sanitize it - closes off path traversal via a
+  // percent-encoded `..%2F..%2F...` id, which Express happily hands to
+  // `req.params.id` as a decoded string containing `/`/`..`.
+  app.use('/agents/:id', (req, res, next) => {
+    if (!isValidAgentId(paramId(req))) {
+      res.status(400).json({ error: 'Invalid agent id' });
+      return;
+    }
+    next();
+  });
 
   app.get(
     '/agents',

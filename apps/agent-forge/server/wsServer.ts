@@ -14,7 +14,7 @@ import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Socket } from 'node:net';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { RunManager } from './runRegistry';
-import type { StreamMessage } from './types';
+import { isValidAgentId, type StreamMessage } from './types';
 
 const STREAM_PATH_RE = /^\/agents\/([^/]+)\/stream$/;
 
@@ -50,6 +50,14 @@ export function attachWebSocketServer(server: HttpServer, runManager: RunManager
       return;
     }
     const agentId = decodeURIComponent(match[1]);
+    // Same path-traversal boundary as app.ts's `/agents/:id` middleware -
+    // this handler parses `:id` itself (see the module doc comment) rather
+    // than going through Express routing, so it needs its own check before
+    // `agentId` is used as a registry/status key alongside the HTTP routes.
+    if (!isValidAgentId(agentId)) {
+      socket.destroy();
+      return;
+    }
     wss.handleUpgrade(req, socket, head, (ws) => {
       let sockets = subscribers.get(agentId);
       if (!sockets) {
