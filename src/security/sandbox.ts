@@ -32,6 +32,13 @@ import { SandboxAdapter, SandboxResult, SandboxRunOptions } from './sandboxCore'
 
 export * from './sandboxCore';
 
+/** True if `err` is dockerode's 404 "no such image" rejection for `image`. */
+function isNoSuchImageError(err: unknown, image: string): boolean {
+  const e = err as { statusCode?: number; json?: { message?: string }; message?: string } | undefined;
+  const message = e?.json?.message ?? e?.message ?? '';
+  return e?.statusCode === 404 && message.toLowerCase().includes('no such image') && message.includes(image);
+}
+
 /**
  * Configuration for SubprocessSandbox.
  */
@@ -67,13 +74,48 @@ export class SubprocessSandbox implements SandboxAdapter {
   }
 
   /**
+   * `docker.createContainer()`, transparently pulling `this.image` and
+   * retrying once if the daemon doesn't have it locally yet (a fresh
+   * daemon, or a CI runner that hasn't pre-pulled it, rejects
+   * `createContainer` with a 404 "no such image" error rather than pulling
+   * on demand the way `docker run` does). A daemon that's simply
+   * unreachable (no daemon at all) still rejects normally here - callers
+   * are expected to have already checked `docker.ping()` before
+   * constructing a SubprocessSandbox in the first place (see the
+   * top-of-file Docker-prerequisite note).
+   */
+  private async createContainer(
+    options: Docker.ContainerCreateOptions
+  ): Promise<Docker.Container> {
+    try {
+      return await this.docker.createContainer(options);
+    } catch (err) {
+      if (!isNoSuchImageError(err, this.image)) {
+        throw err;
+      }
+      await new Promise<void>((resolve, reject) => {
+        this.docker.pull(this.image, (pullErr: Error | null, stream?: NodeJS.ReadableStream) => {
+          if (pullErr || !stream) {
+            reject(pullErr ?? new Error(`SubprocessSandbox: failed to start pulling image '${this.image}'`));
+            return;
+          }
+          this.docker.modem.followProgress(stream, (followErr: Error | null) =>
+            followErr ? reject(followErr) : resolve()
+          );
+        });
+      });
+      return this.docker.createContainer(options);
+    }
+  }
+
+  /**
    * Runs `cmd`/`args` inside a fresh, network-isolated container and
    * resolves with its captured stdout/stderr/exitCode.
    */
   async run(cmd: string, args: string[], opts: SandboxRunOptions = {}): Promise<SandboxResult> {
     const binds = opts.cwd ? [`${opts.cwd}:${opts.cwd}`] : undefined;
 
-    const container = await this.docker.createContainer({
+    const container = await this.createContainer({
       Image: this.image,
       Cmd: [cmd, ...args],
       WorkingDir: opts.cwd,
