@@ -14,9 +14,15 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm run lint
+      # Build the root SDK's dist *before* running tests:
+      # packages/create-loushy-agent/src/template.e2e.test.ts `npm pack`s the
+      # root SDK's own source tree to install it into a generated project,
+      # which needs dist/ (package.json's main/module/types) to already
+      # exist - it was previously built only in the step after tests, so
+      # this test always failed once it actually got a chance to run.
+      - run: npm run build
       # packages/create-loushy-agent's own tests execFileSync its bin/cli.js,
-      # which requires its dist/index.js to exist - build it before the test
-      # step (not just the root SDK, which `npm run build` below handles).
+      # which requires ITS dist/index.js to exist too - build it before the
+      # test step (this is a separate package from the root SDK above).
       - run: npm run build --workspace=packages/create-loushy-agent
       - run: npm run test:coverage
-      - run: npm run build
