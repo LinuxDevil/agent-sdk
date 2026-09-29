@@ -26,8 +26,44 @@ import {
   type HookRegistry,
   type LLMProvider,
   type SandboxAdapter,
+  type ToolDescriptor,
 } from '@loushy/build-ai-agent';
 import { compileHooksFromSpecPolicy } from './compileHooks';
+
+/**
+ * Local, server-only tools available to a spec's `tools` list in ADDITION
+ * to the core SDK's `resolveSpecTool()` built-ins (http/current-date/
+ * day-name - see `src/spec/specToAgent.ts`), none of which set
+ * `needsApproval`. Agent Forge's canvas "Tool call" node's "Tool name"
+ * field (`Inspector.tsx`) is a free-text input, so typing one of these
+ * names there and running the agent exercises the real human-in-the-loop
+ * approval gate (`AgentExecutor` pausing on `needsApproval`, `RunManager`
+ * persisting the pending approval, `POST /agents/:id/approve` resuming it)
+ * end-to-end through the actual app - not just via a hand-built
+ * `ToolDescriptor` in a server-side unit test the way
+ * `server/__tests__/approvalFlow.test.ts` does it. This is deliberately
+ * kept local to the Agent Forge server rather than added to the core SDK's
+ * own built-in tools: it exists to make that flow demonstrable/testable in
+ * the app, not as a tool anyone would want in a real deployed agent.
+ */
+const LOCAL_TOOLS: Record<string, ToolDescriptor> = {
+  'demo-approval': {
+    displayName: 'Demo approval-gated tool',
+    tool: {
+      description: 'A no-op tool that always requires human approval before running (for trying out the approval-gate flow in Agent Forge).',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      parameters: { type: 'object', properties: {} } as any,
+      execute: async () => ({ done: true }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any,
+    needsApproval: true,
+  },
+};
+
+function resolveAgentForgeTool(name: string): ToolDescriptor {
+  if (LOCAL_TOOLS[name]) return LOCAL_TOOLS[name];
+  return resolveSpecTool(name);
+}
 
 export interface BuiltAgent {
   agent: AgentConfig;
@@ -52,7 +88,7 @@ export function buildAgentFromSpec(spec: AgentSpec, agentId: string, sandbox: Sa
   const toolsConfig: Record<string, { tool: string }> = {};
   for (const name of spec.tools || []) {
     if (!toolRegistry) toolRegistry = new ToolRegistry();
-    toolRegistry.register(name, resolveSpecTool(name));
+    toolRegistry.register(name, resolveAgentForgeTool(name));
     toolsConfig[name] = { tool: name };
   }
 

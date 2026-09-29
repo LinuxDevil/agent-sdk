@@ -1,0 +1,45 @@
+name: E2E (Agent Forge studio)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/agent-forge/**'
+      - 'src/cli/studio.ts'
+      - 'src/cli/studio.test.ts'
+      - 'bin/loushy.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/e2e-studio.yml'
+jobs:
+  e2e-studio:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      # The bundled prod server (apps/agent-forge/dist-server/index.cjs)
+      # leaves `@loushy/build-ai-agent` external (see server/tsup.config.ts's
+      # doc comment) and resolves it at runtime via the workspace symlink -
+      # which points at the ROOT package's `dist/` (package.json
+      # main/exports), not its `src/`. Verified locally: without this build
+      # step, `node dist-server/index.cjs` (what playwright.config.ts's
+      # `webServer` runs) fails immediately with `Cannot find module
+      # '.../node_modules/@loushy/build-ai-agent/dist/index.js'`.
+      - run: npm run build
+      # Playwright's browser binaries aren't npm dependencies - install the
+      # Chromium build (+ OS-level deps) the E2E spec drives separately.
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/agent-forge
+      # `npm run test:e2e:studio` builds apps/agent-forge's own client+server
+      # (`build:studio`) on top of the root `dist/` from the step above, then
+      # runs Playwright against the real built prod server.
+      #
+      # This job is intentionally NOT required for merge yet (see
+      # `continue-on-error` below): full build + browser install make it
+      # noticeably slower than the main matrix, and it's new - giving it a
+      # few real PR cycles to prove non-flaky before making it blocking.
+      - run: npm run test:e2e:studio
+        continue-on-error: true

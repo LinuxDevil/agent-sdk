@@ -13,8 +13,12 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "server:dev": "tsx watch server/index.ts",
     "server:start": "tsx server/index.ts",
+    "server:build": "tsup --config server/tsup.config.ts",
+    "server:start:prod": "node dist-server/index.cjs",
+    "build:studio": "npm run build && npm run server:build",
     "test:server": "vitest run -c server/vitest.config.ts",
-    "typecheck:server": "tsc --noEmit -p server/tsconfig.json"
+    "typecheck:server": "tsc --noEmit -p server/tsconfig.json",
+    "test:e2e:studio": "npm run build:studio && playwright test"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.5",
@@ -32,6 +36,7 @@
   "devDependencies": {
     "@ai-sdk/anthropic": "^0.0.42",
     "@ai-sdk/openai": "^0.0.42",
+    "@playwright/test": "^1.63.0",
     "@types/cors": "^2.8.19",
     "@types/dagre": "^0.7.52",
     "@types/express": "^5.0.5",
@@ -43,6 +48,7 @@
     "jsdom": "^25.0.1",
     "ollama-ai-provider": "^1.2.0",
     "supertest": "^7.3.0",
+    "tsup": "^8.0.0",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vite": "^5.4.11",
