@@ -96,6 +96,7 @@
     "pipeline:demo": "tsx examples/ops-pipeline/index.ts",
     "pipeline:demo:trigger": "tsx examples/ops-pipeline/mocks/sendSyntheticError.ts",
     "build:studio": "npm run build:studio --workspace apps/agent-forge",
+    "test:e2e:studio": "npm run test:e2e:studio --workspace apps/agent-forge",
     "prepublishOnly": "npm run build && npm run build:studio",
     "docs:build": "typedoc",
     "docs:verify-snippets": "tsx scripts/verify-docs-snippets.ts"

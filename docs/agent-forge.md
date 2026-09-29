@@ -200,3 +200,24 @@ npx loushy studio       # now runs in production mode
 `npm run build:studio` also runs automatically as part of the root
 `prepublishOnly` script, so a published `npm publish` can never ship a
 stale or unbuilt studio.
+
+## E2E smoke test
+
+`apps/agent-forge/e2e/studio.spec.ts` is a headless Playwright test that
+drives the real, built `loushy studio` (the same `dist-server/index.cjs`
+production server, not a dev-mode Vite server) through a browser: it
+creates an agent from the "Support bot" template, retargets its tool node
+at a server-local `demo-approval` tool (always `needsApproval: true` -
+see `server/buildAgent.ts`'s doc comment for why this exists, since none
+of the SDK's spec-resolvable built-in tools require approval), sends it a
+chat message that triggers the mock provider's tool-call heuristic, waits
+for the run to pause on the approval gate, approves it via the Chat tab's
+inline approval card, and asserts the run completes. Run it with:
+
+```bash
+npm run test:e2e:studio   # from the repo root, or apps/agent-forge/
+```
+
+This builds Agent Forge first (`build:studio`), then runs Playwright
+against it.
+

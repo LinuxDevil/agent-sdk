@@ -27,6 +27,12 @@ npm-debug.log*
 # Coverage
 coverage/
 
+# Playwright E2E (apps/agent-forge)
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
 # Cache
 .cache/
 *.tsbuildinfo
