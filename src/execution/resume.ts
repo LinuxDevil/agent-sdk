@@ -10,6 +10,7 @@ import { AgentExecutor, ExecuteOptions, ExecutionResult, PropagatingToolError } 
 import { CheckpointStore } from './checkpoint';
 import { NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
+import { HookRegistry } from './hooks';
 
 /**
  * Options passed through to the underlying AgentExecutor.execute() call
@@ -128,6 +129,33 @@ export async function resumeAfterApproval(
       throw new Error(`Tool '${pending.toolName}' not found in registry`);
     }
 
+    // LOU-Q1: hooks must fire for this deferred, post-approval execution
+    // path too - not just AgentExecutor's own main-loop tool call site -
+    // since this is a genuine, independent point where a tool actually
+    // runs. `args` is a mutable object a `preToolCall` hook (e.g.
+    // redact-pii) can rewrite in place before the real execution below, the
+    // same contract AgentExecutor.executeToolCall() offers.
+    const hooks: HookRegistry | undefined = executeOptions.hooks;
+    const hookArgs: Record<string, unknown> = { ...pending.args };
+    const hookCtx = {
+      agentId: snapshot.agent.id,
+      agentName: snapshot.agent.name,
+      sessionId: snapshot.sessionId,
+      messages,
+      toolCallId: pending.toolCallId,
+      toolName: pending.toolName,
+      args: hookArgs,
+      toolCall: {
+        id: pending.toolCallId,
+        type: 'function' as const,
+        function: { name: pending.toolName, arguments: JSON.stringify(pending.args) },
+      },
+    };
+
+    if (hooks) {
+      await hooks.runPreToolCall(hookCtx);
+    }
+
     try {
       // Mirrors AgentExecutor.executeToolCall()'s fail-closed handling of
       // `requiresSandbox` tools (LOU-F5) via the shared
@@ -135,7 +163,11 @@ export async function resumeAfterApproval(
       // tool executed after human approval can't silently bypass the
       // sandbox seam the way it previously did.
       const sandbox = executeOptions.sandbox ?? NoopSandbox;
-      const result = await executeToolWithSandboxGuard(pending.toolName, toolDesc, pending.args, sandbox);
+      const result = await executeToolWithSandboxGuard(pending.toolName, toolDesc, hookArgs, sandbox);
+
+      if (hooks) {
+        await hooks.runPostToolCall(hookCtx, { result });
+      }
 
       messages.push({
         role: 'tool',

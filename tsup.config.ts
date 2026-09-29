@@ -31,6 +31,7 @@ export default defineConfig({
     'cli/build': 'src/cli/build.ts',
     'cli/studio': 'src/cli/studio.ts',
     'execution/otel': 'src/execution/otel.ts',
+    'execution/hooks': 'src/execution/hooks.ts',
   },
   format: ['cjs', 'esm'],
   dts: true,
