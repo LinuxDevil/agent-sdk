@@ -14,6 +14,8 @@
   },
   "dependencies": {
     "@loushy/build-ai-agent": "file:../..",
+    "@xyflow/react": "^12.12.0",
+    "dagre": "^0.8.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "yaml": "^2.9.1"
@@ -21,6 +23,7 @@
   "devDependencies": {
     "@ai-sdk/anthropic": "^0.0.42",
     "@ai-sdk/openai": "^0.0.42",
+    "@types/dagre": "^0.7.52",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",

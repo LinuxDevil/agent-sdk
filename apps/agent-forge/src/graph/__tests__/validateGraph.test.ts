@@ -134,6 +134,25 @@ describe('validateGraph', () => {
     );
   });
 
+  it('flags an edge connecting incompatible node types (trigger -> trigger)', () => {
+    const g = graph({
+      nodes: [
+        ...graph({}).nodes,
+        { id: 'trigger-1', type: 'trigger', position: { x: 0, y: 0 }, label: 't1', data: { trigger: { type: 'input' } } },
+        { id: 'trigger-2', type: 'trigger', position: { x: 0, y: 0 }, label: 't2', data: { trigger: { type: 'input' } } },
+      ],
+      edges: [{ id: 'e1', source: 'trigger-1', target: 'trigger-2' }],
+    });
+    const result = validateGraph(g);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({
+        edgeId: 'e1',
+        message: expect.stringContaining("connects incompatible node types 'trigger' -> 'trigger'"),
+      })
+    );
+  });
+
   it('flags zero llm nodes and more than one llm node', () => {
     expect(validateGraph({ version: 1, nodes: [], edges: [] }).errors).toContainEqual(
       expect.objectContaining({ message: expect.stringContaining('found none') })
