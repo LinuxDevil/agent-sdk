@@ -96,6 +96,74 @@ bindings named `<TYPE>_API_KEY` (e.g. `wrangler secret put OPENAI_API_KEY`,
 peer packages (`@ai-sdk/openai`/`@ai-sdk/anthropic`, `ai`) must be installed
 alongside `@loushy/build-ai-agent` for `loushy build` to bundle them.
 
+### Durable execution (pause/resume) on Workers
+
+A Worker's request lifetime is too short-lived for an in-memory or
+filesystem-backed `CheckpointStore` (see
+[Configuration](./configuration.md) / `src/execution/checkpoint.ts` for
+what `CheckpointStore` is and why a run needs one to survive a crash or an
+approval-gate pause). To make that work on this target, `loushy build
+--target=cloudflare-worker` supports an **opt-in, KV-backed
+`CheckpointStore`**:
+
+1. Create a Workers KV namespace and bind it to your Worker under the name
+   `AGENT_CHECKPOINTS` - `wrangler.toml` is scaffolded with a commented-out
+   `[[kv_namespaces]]` block spelling out the exact commands
+   (`npx wrangler kv namespace create AGENT_CHECKPOINTS`, plus a `--preview`
+   variant) and where to paste the resulting ids. Uncomment it and fill in
+   the ids to opt in.
+2. `POST /chat` accepts an optional `sessionId` string alongside `message`.
+   When a request includes `sessionId` **and** the Worker has an
+   `AGENT_CHECKPOINTS` binding configured, that request's run is
+   checkpointed to KV after each tool result and rehydrated from KV on a
+   later request that reuses the same `sessionId` (e.g. after a crash, a
+   redeploy, or the isolate simply being recycled between requests) -
+   exactly the `sessionId`+`CheckpointStore` mechanism the rest of this SDK
+   already uses (see `AgentExecutor.execute()`), just backed by KV instead
+   of the filesystem. A request with `sessionId` but **no** KV binding
+   configured still works normally - checkpointing is silently skipped,
+   the same as calling `AgentExecutor.execute()` with no `checkpointStore`
+   at all.
+3. Without a `sessionId`, requests behave exactly as before this feature
+   existed - durable execution is entirely opt-in.
+
+**Why KV, not D1 or Durable Objects:** a `Checkpoint` is one JSON blob keyed
+by `sessionId`, read and written whole - exactly the shape Workers KV is
+built for, with zero extra infrastructure beyond a namespace binding. D1
+would buy relational query power this store never needs; a Durable Object
+would buy strict per-session consistency at the cost of provisioning a DO
+class/migration and paying for a stateful object per session. If your
+workload genuinely needs strict read-after-write consistency across edge
+locations (see the caveat below), a Durable-Object-backed `CheckpointStore`
+is the natural upgrade path - implementing the same `CheckpointStore`
+interface (`save`/`load`/`delete`) against a Durable Object namespace
+instead of a KV namespace.
+
+**Eventual consistency - read this before relying on it for approval
+workflows:** Workers KV is an *eventually consistent* store. A `put()` is
+immediately visible to the edge location that wrote it, but can take up to
+~60 seconds to propagate to other Cloudflare edge locations globally. In
+practice this means: if a session's checkpoint is written on one edge
+location and a follow-up request for the *same* `sessionId` lands on a
+*different* edge location shortly after, that request could still observe
+stale data (an older checkpoint, or a miss) rather than what was just
+written. This matters most for approval-gated pauses, where the pause and
+the human's later approval-triggered resume are naturally two separate
+requests that may hit different locations. This SDK does not - and, given
+KV's guarantees, cannot - promise strict read-after-write consistency here.
+If your approval workflow can't tolerate that window, route a given
+session's requests to a single Cloudflare location yourself (e.g. via
+Durable Object-based request routing) or use a strongly-consistent store
+instead of `AGENT_CHECKPOINTS`/KV.
+
+The KV-backed store itself
+(`KVCheckpointStore`/`checkpointStoreFromEnv()`/`CHECKPOINT_KV_BINDING`, in
+`src/deploy/kvCheckpointStore.ts` and `src/deploy/runtime.worker.ts`) has no
+`node:*` references anywhere in its dependency graph, verified the same way
+as the rest of this target: the built `dist/worker.js` bundle is grepped
+for `node:` specifiers as part of `loushy build`, and fails the build if
+any are found.
+
 ## Custom targets
 
 Targets are `DeploymentAdapter` objects (`scaffold`, `build`, `describe`)
