@@ -62,12 +62,50 @@ export interface DebugStatePayload {
   breakpoints: string[];
 }
 
+/**
+ * P1/P2: one message in the chat thread - mirrors the server's `ChatMessage`
+ * (server/types.ts), itself a 1:1 mapping of the SDK's real `Message`
+ * (src/providers/llm.ts) plus `id`/`timestamp` for React keys and the
+ * mockup's per-bubble timestamp. `role: 'system'` messages are part of the
+ * real conversation but are filtered out of the rendered bubble list by
+ * ChatPanel, matching the mockup (user/agent bubbles only).
+ */
+export interface ChatMessage {
+  id: string;
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string;
+  name?: string;
+  toolCallId?: string;
+  toolName?: string;
+  toolCalls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
+  timestamp: string;
+}
+
+export interface ChatStatePayload {
+  agentId: string;
+  sessionId: string;
+  messages: ChatMessage[];
+}
+
+export interface ChatSessionMeta {
+  sessionId: string;
+  startedAt: string;
+  updatedAt: string;
+  messageCount: number;
+  preview: string;
+}
+
+export interface ChatSessionRecord extends ChatSessionMeta {
+  messages: ChatMessage[];
+}
+
 export type StreamMessage =
   | { type: 'status'; payload: AgentRunStatusPayload }
   | { type: 'event'; payload: Record<string, unknown> }
   | { type: 'log'; payload: LogEntry }
   | { type: 'span'; payload: SpanEvent }
-  | { type: 'debug'; payload: DebugStatePayload };
+  | { type: 'debug'; payload: DebugStatePayload }
+  | { type: 'chat'; payload: ChatStatePayload };
 
 /** Same-origin default: `loushy studio` prints the API server's own URL, but in dev the Vite server proxies to it (see vite.config.ts). */
 const DEFAULT_BASE_URL = '';
@@ -162,6 +200,42 @@ export class RuntimeClient {
   async stepRun(agentId: string): Promise<DebugStatePayload> {
     const res = await fetch(`${this.baseUrl}/agents/${encodeURIComponent(agentId)}/debug/step`, { method: 'POST' });
     return (await res.json()) as DebugStatePayload;
+  }
+
+  /** P1: sends a chat message - continues the agent's conversation (or starts one), replying over the WS `subscribe()` stream as `{type:'chat'}`. */
+  async sendMessage(agentId: string, message: string): Promise<AgentRunStatusPayload> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/message`, {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    });
+  }
+
+  /** P1: REST snapshot of the current live chat transcript (mirrors the WS stream's initial `{type:'chat'}` push). */
+  async getChat(agentId: string): Promise<ChatStatePayload> {
+    const res = await fetch(`${this.baseUrl}/agents/${encodeURIComponent(agentId)}/chat`);
+    return (await res.json()) as ChatStatePayload;
+  }
+
+  /** P3: archives the current chat session and starts a fresh, empty one. */
+  async newChat(agentId: string): Promise<ChatStatePayload> {
+    const res = await fetch(`${this.baseUrl}/agents/${encodeURIComponent(agentId)}/chat/new`, { method: 'POST' });
+    return (await res.json()) as ChatStatePayload;
+  }
+
+  /** P3: metadata for every past (and current) chat session for `agentId`, newest first. */
+  async listChats(agentId: string): Promise<ChatSessionMeta[]> {
+    const res = await fetch(`${this.baseUrl}/agents/${encodeURIComponent(agentId)}/chats`);
+    return (await res.json()) as ChatSessionMeta[];
+  }
+
+  /** P3: a full past chat session's transcript. */
+  async loadChatSession(agentId: string, sessionId: string): Promise<ChatSessionRecord> {
+    const res = await fetch(`${this.baseUrl}/agents/${encodeURIComponent(agentId)}/chats/${encodeURIComponent(sessionId)}`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => undefined);
+      throw new RuntimeApiError((body && body.error) || `Failed to load chat session '${sessionId}'`, res.status);
+    }
+    return (await res.json()) as ChatSessionRecord;
   }
 
   /**

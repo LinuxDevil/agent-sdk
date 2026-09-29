@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useAppState } from '../state/AppState';
 import { downloadSpec, importSpecFile } from '../persistence/importExport';
 import { RuntimeApiError } from '../runtime/runtimeClient';
+import { ApprovalCard } from './ApprovalCard';
 
 const STATUS_LABEL: Record<string, string> = {
   idle: 'idle',
@@ -21,7 +22,6 @@ export function Topbar() {
     runStatus,
     runAgent,
     stopAgent,
-    approveAgent,
     debugMode,
     setDebugMode,
     setDrawerTab,
@@ -71,15 +71,6 @@ export function Topbar() {
     }
   }
 
-  async function handleApprove(approved: boolean) {
-    setActionError(undefined);
-    try {
-      await approveAgent(approved);
-    } catch (error) {
-      setActionError(error instanceof RuntimeApiError ? error.message : (error as Error).message);
-    }
-  }
-
   return (
     <div className="topbar">
       <div className="brand">
@@ -99,18 +90,8 @@ export function Topbar() {
       </div>
       <div className="topbar-spacer" />
 
-      {isPaused && (
-        <div className="approval-card" title={JSON.stringify(runStatus?.pendingApproval?.args)}>
-          <span>
-            Approve <b>{runStatus?.pendingApproval?.toolName}</b>?
-          </span>
-          <button className="btn btn-success" onClick={() => void handleApprove(true)}>
-            Approve
-          </button>
-          <button className="btn btn-danger" onClick={() => void handleApprove(false)}>
-            Reject
-          </button>
-        </div>
+      {isPaused && runStatus?.pendingApproval && (
+        <ApprovalCard toolName={runStatus.pendingApproval.toolName} args={runStatus.pendingApproval.args} />
       )}
 
       {status === 'error' && runStatus?.error && (

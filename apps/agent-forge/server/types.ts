@@ -110,6 +110,49 @@ export interface DebugStatePayload {
 }
 
 /**
+ * P1/P2: one message in the chat thread, mapped 1:1 from the SDK's real
+ * `Message` (src/providers/llm.ts) rather than a separate invented shape -
+ * only `id`/`timestamp` are added (the SDK's `Message` carries neither),
+ * for React keys and the mockup's per-bubble timestamp. `role: 'system'`
+ * messages are included for completeness (they're part of the real
+ * conversation AgentExecutor sees) but the client filters them out of the
+ * rendered bubble list, matching the mockup (which only ever shows
+ * user/agent bubbles).
+ */
+export interface ChatMessage {
+  id: string;
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string;
+  name?: string;
+  toolCallId?: string;
+  toolName?: string;
+  toolCalls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
+  timestamp: string;
+}
+
+/** P1: the live chat transcript for one agent's current session, pushed over WS and returned by `GET /agents/:id/chat`. */
+export interface ChatStatePayload {
+  agentId: string;
+  sessionId: string;
+  messages: ChatMessage[];
+}
+
+/** P3: metadata for one past (or current) chat session, as listed by `GET /agents/:id/chats`. */
+export interface ChatSessionMeta {
+  sessionId: string;
+  startedAt: string;
+  updatedAt: string;
+  messageCount: number;
+  /** Truncated text of the first user message, for a browsable session list. */
+  preview: string;
+}
+
+/** P3: a full past chat session, as returned by `GET /agents/:id/chats/:sessionId`. */
+export interface ChatSessionRecord extends ChatSessionMeta {
+  messages: ChatMessage[];
+}
+
+/**
  * A single WS message pushed to `WS /agents/:id/stream` subscribers.
  * `type: 'status'` carries the full AgentRunStatusPayload (sent on every
  * status transition, and once immediately on connect). `type: 'event'`
@@ -117,14 +160,17 @@ export interface DebugStatePayload {
  * tool-result/finish/error) for lightweight visibility into an in-progress
  * run. `type: 'log'`/`'span'`/`'debug'` are LOU-O's structured log stream
  * (O1), span waterfall (O2) and step-debugger state (O3), all derived from
- * the same run rather than a second parallel event system.
+ * the same run rather than a second parallel event system. `type: 'chat'`
+ * (P1) is the live chat transcript, sent on every reconciled update and
+ * once immediately on connect (mirroring 'status').
  */
 export type StreamMessage =
   | { type: 'status'; payload: AgentRunStatusPayload }
   | { type: 'event'; payload: Record<string, unknown> }
   | { type: 'log'; payload: LogEntry }
   | { type: 'span'; payload: SpanEvent }
-  | { type: 'debug'; payload: DebugStatePayload };
+  | { type: 'debug'; payload: DebugStatePayload }
+  | { type: 'chat'; payload: ChatStatePayload };
 
 /**
  * Every `:id`/agentId this server touches ends up interpolated into a

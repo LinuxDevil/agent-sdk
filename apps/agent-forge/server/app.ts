@@ -27,7 +27,13 @@ import express, { type Express, type Request, type Response, type NextFunction }
 import cors from 'cors';
 import type { AgentSpec } from '@loushy/build-ai-agent';
 import type { AgentStore } from '../src/persistence/AgentStore';
-import { RunManager, AgentNotFoundError, AlreadyRunningError, NoActiveRunError } from './runRegistry';
+import {
+  RunManager,
+  AgentNotFoundError,
+  AlreadyRunningError,
+  NoActiveRunError,
+  ApprovalPendingError,
+} from './runRegistry';
 import { isValidAgentId } from './types';
 
 export interface CreateAppOptions {
@@ -166,6 +172,68 @@ export function createApp({ agentStore, runManager }: CreateAppOptions): Express
       }
     })
   );
+
+  // P1: chat transport. `POST /agents/:id/message` appends a user message
+  // and either continues the agent's existing conversation or starts a
+  // fresh one (see RunManager.sendMessage()'s doc comment for the exact
+  // continuation semantics); replies stream back over the existing
+  // `WS /agents/:id/stream` channel as `{type:'chat', ...}` events, not a
+  // separate response body here.
+  app.post(
+    '/agents/:id/message',
+    asyncRoute(async (req, res) => {
+      const { message, spec } = req.body as { message?: string; spec?: AgentSpec };
+      if (typeof message !== 'string' || !message) {
+        res.status(400).json({ error: "Request body must include a non-empty 'message' string" });
+        return;
+      }
+      try {
+        await runManager.sendMessage(paramId(req), message, spec);
+        res.status(202).json(runManager.status(paramId(req)));
+      } catch (error) {
+        if (error instanceof AlreadyRunningError || error instanceof ApprovalPendingError) {
+          res.status(409).json({ error: error.message });
+          return;
+        }
+        if (error instanceof AgentNotFoundError) {
+          res.status(404).json({ error: error.message });
+          return;
+        }
+        throw error;
+      }
+    })
+  );
+
+  // P1: current live chat transcript (a REST snapshot mirroring the WS
+  // stream's initial `{type:'chat'}` push, for a client that wants it
+  // without opening a socket).
+  app.get('/agents/:id/chat', (req, res) => {
+    res.json(runManager.chatState(paramId(req)));
+  });
+
+  // P3: multi-session chat history - archives the current transcript and
+  // starts a new, empty one.
+  app.post('/agents/:id/chat/new', (req, res) => {
+    res.json(runManager.newChat(paramId(req)));
+  });
+
+  app.get('/agents/:id/chats', (req, res) => {
+    res.json(runManager.listChats(paramId(req)));
+  });
+
+  app.get('/agents/:id/chats/:sessionId', (req, res) => {
+    const sessionId = Array.isArray(req.params.sessionId) ? req.params.sessionId[0] : req.params.sessionId;
+    if (!isValidAgentId(sessionId)) {
+      res.status(400).json({ error: 'Invalid session id' });
+      return;
+    }
+    const record = runManager.loadChatSession(paramId(req), sessionId);
+    if (!record) {
+      res.status(404).json({ error: `No chat session '${sessionId}' for agent '${paramId(req)}'` });
+      return;
+    }
+    res.json(record);
+  });
 
   // O3: step-through debugger controls (Topbar's "Debug" button). See
   // debugController.ts for exactly what "breakpoint"/"paused" mean given

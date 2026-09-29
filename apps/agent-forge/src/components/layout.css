@@ -745,3 +745,178 @@
     display: none;
   }
 }
+
+/* ---------- Chat (LOU-P) ----------
+   Ported from .design-ref/agent-forge-mockup.html's `.chat-*` classes -
+   user/agent bubbles, avatars, timestamps, a typing indicator, and inline
+   tool-call/approval cards under an agent bubble. See ChatPanel.tsx. */
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-family: var(--font-ui);
+}
+.chat-session-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+.chat-session-bar select {
+  font-size: 11.5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 3px 6px;
+  max-width: 260px;
+}
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chat-empty {
+  color: var(--text-faint);
+  font-size: 12.5px;
+  margin: auto;
+}
+.chat-msg {
+  display: flex;
+  gap: 8px;
+  max-width: 72%;
+}
+.chat-msg.user {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+.chat-avatar {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #fff;
+}
+.chat-msg.agent .chat-avatar {
+  background: var(--accent);
+}
+.chat-msg.user .chat-avatar {
+  background: var(--text-faint);
+}
+.chat-bubble {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+.chat-msg.user .chat-bubble {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.chat-msg.agent .chat-bubble {
+  border-top-left-radius: 3px;
+}
+.chat-msg.user .chat-bubble {
+  border-top-right-radius: 3px;
+}
+.chat-bubble .chat-tool-call {
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  opacity: 0.85;
+}
+.chat-tool-result {
+  margin-top: 2px;
+  opacity: 0.75;
+}
+.chat-time {
+  font-size: 9.5px;
+  color: var(--text-faint);
+  margin-top: 3px;
+  font-family: var(--font-mono);
+}
+.chat-msg.user .chat-time {
+  text-align: right;
+}
+.chat-typing {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  padding: 2px 2px;
+}
+.chat-typing span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  animation: typing-bounce 1.1s infinite ease-in-out;
+}
+.chat-typing span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.chat-typing span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes typing-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+/* Inline-in-thread approval card (P2) - reuses .approval-card's base look
+   (Topbar.tsx's compact version) with a couple of thread-specific tweaks. */
+.chat-approval-card {
+  flex-wrap: wrap;
+}
+.chat-action-error {
+  padding: 4px 12px;
+  font-size: 11.5px;
+  color: var(--danger);
+}
+.chat-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+}
+.chat-input {
+  flex: 1;
+  resize: none;
+  max-height: 90px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  padding: 7px 9px;
+}
+.chat-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.chat-input:disabled {
+  opacity: 0.6;
+}

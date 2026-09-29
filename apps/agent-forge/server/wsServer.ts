@@ -14,7 +14,14 @@ import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Socket } from 'node:net';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { RunManager } from './runRegistry';
-import { isValidAgentId, type StreamMessage, type LogEntry, type SpanEvent, type DebugStatePayload } from './types';
+import {
+  isValidAgentId,
+  type StreamMessage,
+  type LogEntry,
+  type SpanEvent,
+  type DebugStatePayload,
+  type ChatStatePayload,
+} from './types';
 
 const STREAM_PATH_RE = /^\/agents\/([^/]+)\/stream$/;
 
@@ -62,6 +69,15 @@ export function attachWebSocketServer(server: HttpServer, runManager: RunManager
     for (const ws of sockets) send(ws, { type: 'debug', payload });
   });
 
+  // P1: same fan-out pattern - the chat transcript, reconciled from the
+  // real ExecutionResult.messages (see chatReconcile.ts), over this same
+  // channel rather than a second WS connection.
+  runManager.on('chat', (agentId: string, payload: ChatStatePayload) => {
+    const sockets = subscribers.get(agentId);
+    if (!sockets) return;
+    for (const ws of sockets) send(ws, { type: 'chat', payload });
+  });
+
   server.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {
     const url = new URL(req.url ?? '', 'http://localhost');
     const match = STREAM_PATH_RE.exec(url.pathname);
@@ -89,6 +105,9 @@ export function attachWebSocketServer(server: HttpServer, runManager: RunManager
       // Send current status immediately so a client connecting mid-run (or
       // after a pause) doesn't have to wait for the next transition.
       send(ws, { type: 'status', payload: runManager.status(agentId) });
+      // P1: same for the chat transcript, so opening the Chat tab shows
+      // history immediately rather than waiting for the next message.
+      send(ws, { type: 'chat', payload: runManager.chatState(agentId) });
 
       ws.on('close', () => {
         sockets!.delete(ws);
