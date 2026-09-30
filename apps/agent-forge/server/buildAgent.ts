@@ -23,6 +23,7 @@ import {
   resolveSpecProvider,
   resolveSpecTool,
   type AgentConfig,
+  type AgentFlow,
   type AgentSpec,
   type HookRegistry,
   type LLMProvider,
@@ -188,4 +189,27 @@ export function buildAgentFromSpec(
   const hooks = compileHooksFromSpecPolicy(spec.policy?.hooks, sandbox, options.hookTimeoutMs);
 
   return { agent, provider, toolRegistry, hooks, sandbox, usedMockProviderFallback };
+}
+
+/**
+ * LOU-T3: reads back the `AgentFlow` a branching (`router`-node) canvas
+ * graph's `graphToSpec()` stashed under `spec.policy.flow` (see
+ * `apps/agent-forge/src/graph/graphToFlow.ts`/`graphToSpec.ts`) - the
+ * signal `runRegistry.ts` uses to run this agent through `FlowExecutor`
+ * instead of `AgentExecutor.execute()`. Deliberately best-effort/lenient
+ * (mirrors `specToGraph.ts`'s `isSerializedHookArray()` for the same
+ * `spec.policy` open-passthrough-record reasoning): a spec whose
+ * `policy.flow` isn't shaped like an `AgentFlow` (hand-edited, or from an
+ * older spec file that predates this field) is treated as "no flow" rather
+ * than thrown on, so it falls back to the flat-spec `AgentExecutor` path
+ * exactly like it always has.
+ */
+export function extractFlowFromSpec(spec: AgentSpec): AgentFlow | undefined {
+  const raw = spec.policy?.flow;
+  if (!raw || typeof raw !== 'object') return undefined;
+  const candidate = raw as Partial<AgentFlow>;
+  if (typeof candidate.code !== 'string' || typeof candidate.name !== 'string' || !candidate.flow) {
+    return undefined;
+  }
+  return candidate as AgentFlow;
 }
