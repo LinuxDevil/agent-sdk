@@ -13,6 +13,11 @@ import { Checkpoint, CheckpointStore } from './checkpoint';
 import { TraceExporter, withSpan } from './tracing';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
 import { HookRegistry } from './hooks';
+import {
+  CompactedLLMProviderError,
+  compactProviderError,
+  isModelActionableProviderErrorCategory,
+} from './errors';
 
 /**
  * Base class for tool errors that must NOT be swallowed by
@@ -199,6 +204,43 @@ export interface ExecuteOptions {
    * before this option existed.
    */
   businessState?: unknown;
+  /**
+   * LOU-T4: opt-in to Factor-9-style compaction of a `provider.generate()`
+   * failure INTO the conversation (as a small `{error, category, ...}`
+   * message the model itself sees on its next turn) for categories where
+   * that's actually useful - 'rate-limit', 'timeout' and
+   * 'context-length-exceeded' (see `isModelActionableProviderErrorCategory()`
+   * in errors.ts). Defaults to `false`.
+   *
+   * Regardless of this flag, EVERY provider.generate() failure is always
+   * compacted via `compactProviderError()` before it reaches a caller - the
+   * flag only controls WHERE the compacted form goes:
+   *
+   * - `false` (default, and the only behavior for 'auth-failure'/'unknown'
+   *   regardless of this flag): `execute()` rejects with a
+   *   `CompactedLLMProviderError` (small message, no raw response
+   *   body/stack, original error on `.cause`). This is a strict, ADDITIVE
+   *   improvement over the pre-LOU-T4 behavior of rejecting with whatever
+   *   raw error the specific provider adapter happened to throw - an
+   *   existing `catch` block keeps working (still a rejected promise, still
+   *   `instanceof LLMProviderError`, still has `.message`), it just sees a
+   *   smaller/friendlier error object. No opt-in needed for this part: it's
+   *   a pure correctness/ergonomics fix in the same spirit as this
+   *   codebase's other Strong-scored factors, not a control-flow change.
+   * - `true`: for the three model-actionable categories above, the
+   *   compacted error is instead pushed onto `messages` (tagged so it's
+   *   distinguishable from real user input - see the `[provider-error]`
+   *   prefix in runAgentLoop()) and the loop retries generation, consuming
+   *   one `maxSteps` step exactly like any other turn. THIS part is
+   *   opt-in-only because it is a genuine behavior change for those three
+   *   categories: today they always reject; with this flag set, a
+   *   persistently-failing provider call instead keeps consuming steps
+   *   until either it succeeds, a non-actionable failure occurs, or
+   *   `maxSteps` is exhausted (at which point `execute()` still rejects
+   *   with the last compacted error - see runAgentLoop() - rather than
+   *   silently returning a hollow "successful" result).
+   */
+  surfaceRetryableProviderErrors?: boolean;
 }
 
 /**
@@ -285,6 +327,7 @@ export class AgentExecutor {
       sandbox = NoopSandbox,
       hooks,
       businessState,
+      surfaceRetryableProviderErrors = false,
     } = options;
 
     // Emit start event
@@ -344,6 +387,16 @@ export class AgentExecutor {
 
     let finalText = '';
     let finishReason = 'stop';
+    // LOU-T4: set right before a compacted, model-actionable provider error
+    // is pushed onto `messages` and the loop retries; cleared on any turn
+    // that actually produces a result (text or tool calls). If the loop
+    // exits because `maxSteps` was exhausted while this is still set, the
+    // very last thing that happened was a provider failure, not a genuine
+    // stop/tool-calls turn - see the post-loop check below for why
+    // `execute()` still rejects in that case instead of returning a hollow
+    // "successful" result whose `finishReason` would otherwise misleadingly
+    // read as if the model actually gave up on its own.
+    let lastSurfacedProviderError: CompactedLLMProviderError | undefined;
 
     // Execution loop with tool calling
     while (steps < maxSteps) {
@@ -372,48 +425,120 @@ export class AgentExecutor {
           });
         }
 
-        const result = await withSpan(
-          exporter,
-          'llm.generate',
-          {
-            model: generateRequest.model,
-            ...(redactContent ? {} : { prompt: JSON.stringify(generateRequest.messages) }),
-          },
-          async (llmSpan) => {
-            const llmStart = Date.now();
-            const generated = await provider.generate(generateRequest);
-            const llmLatencyMs = Date.now() - llmStart;
+        let result: GenerateResult;
+        try {
+          result = await withSpan(
+            exporter,
+            'llm.generate',
+            {
+              model: generateRequest.model,
+              ...(redactContent ? {} : { prompt: JSON.stringify(generateRequest.messages) }),
+            },
+            async (llmSpan) => {
+              const llmStart = Date.now();
+              const generated = await provider.generate(generateRequest);
+              const llmLatencyMs = Date.now() - llmStart;
 
-            // Token counts and finish reason are never redacted.
-            llmSpan.attributes = {
-              ...llmSpan.attributes,
-              promptTokens: generated.usage.promptTokens,
-              completionTokens: generated.usage.completionTokens,
-              totalTokens: generated.usage.totalTokens,
-              finishReason: generated.finishReason,
-            };
+              // Token counts and finish reason are never redacted.
+              llmSpan.attributes = {
+                ...llmSpan.attributes,
+                promptTokens: generated.usage.promptTokens,
+                completionTokens: generated.usage.completionTokens,
+                totalTokens: generated.usage.totalTokens,
+                finishReason: generated.finishReason,
+              };
 
-            if (onLLMResponse) {
-              await onLLMResponse(generated, llmLatencyMs);
-            }
+              if (onLLMResponse) {
+                await onLLMResponse(generated, llmLatencyMs);
+              }
 
-            if (hooks) {
-              await hooks.runPostGenerate(
-                {
-                  agentId: agent.id,
-                  agentName: agent.name,
-                  sessionId,
-                  messages: currentMessages,
-                  request: generateRequest,
-                },
-                generated
-              );
-            }
+              if (hooks) {
+                await hooks.runPostGenerate(
+                  {
+                    agentId: agent.id,
+                    agentName: agent.name,
+                    sessionId,
+                    messages: currentMessages,
+                    request: generateRequest,
+                  },
+                  generated
+                );
+              }
 
-            return generated;
-          },
-          agentSpanId
-        );
+              return generated;
+            },
+            agentSpanId
+          );
+        } catch (generateError) {
+          // LOU-T4 (Factor 9): compact whatever the provider adapter threw
+          // - a raw 'ai'-SDK APICallError/LoadAPIKeyError/RetryError, or a
+          // bare network error - into a small CompactedProviderError before
+          // it goes anywhere near the caller or `messages`. See errors.ts's
+          // `compactProviderError()` doc comment for the full mapping
+          // evidence (all four adapters share the same 'ai'-SDK error
+          // taxonomy).
+          const compacted = compactProviderError(generateError, provider.name);
+          const compactedError = new CompactedLLMProviderError(
+            compacted,
+            generateError as Error
+          );
+
+          if (
+            surfaceRetryableProviderErrors &&
+            isModelActionableProviderErrorCategory(compacted.category)
+          ) {
+            // Fold the compacted error into the conversation so the MODEL
+            // sees it on its next turn and can react (back off, shorten its
+            // own ask, etc.) - this is what Factor 9 actually asks for
+            // ("compact errors into the CONTEXT WINDOW"), for the
+            // categories where handing it to the model is productive.
+            //
+            // This is pushed as a `role: 'user'` message, not `role:
+            // 'tool'`, despite using the same `{error: ...}` shape the
+            // tool-error compaction pattern uses: a `tool` message is only
+            // valid, for every provider here, when it's paired with a
+            // `toolCallId` from an assistant tool-call turn that actually
+            // happened - and a provider.generate() failure means no such
+            // assistant turn exists yet. Sending an orphaned `tool` message
+            // would itself be rejected by the next generate() call (OpenAI/
+            // Anthropic both require tool results to follow a matching
+            // tool-call), compounding the failure instead of compacting it.
+            // The `[provider-error]` prefix keeps this distinguishable from
+            // genuine human input in transcripts/logs.
+            currentMessages.push({
+              role: 'user',
+              content: `[provider-error] ${JSON.stringify({
+                error: compacted.error,
+                category: compacted.category,
+                retryable: compacted.retryable,
+                ...(compacted.retryAfterMs !== undefined
+                  ? { retryAfterMs: compacted.retryAfterMs }
+                  : {}),
+              })}`,
+            });
+
+            this.emitEvent(onEvent, {
+              type: 'error',
+              timestamp: new Date(),
+              error: compactedError,
+            });
+
+            lastSurfacedProviderError = compactedError;
+            continue;
+          }
+
+          // Non-actionable category ('auth-failure', 'unknown'), or the
+          // opt-in flag is off: reject execute() cleanly, exactly like
+          // before LOU-T4 - just with the small compacted error instead of
+          // the raw provider error. The outer catch block (below) emits the
+          // 'error' event for this, same as it does for every other thrown
+          // error in this loop - no need to duplicate that here.
+          throw compactedError;
+        }
+
+        // A turn produced a real result - any pending "the last thing that
+        // happened was a provider failure" tracking no longer applies.
+        lastSurfacedProviderError = undefined;
 
         // Update usage
         totalUsage.promptTokens += result.usage.promptTokens;
@@ -587,6 +712,22 @@ export class AgentExecutor {
         });
         throw error;
       }
+    }
+
+    // LOU-T4: `maxSteps` was exhausted, but the very last thing that
+    // happened was a surfaced-to-the-model provider failure (not a genuine
+    // model stop/tool-calls turn) - every retry the model got a chance to
+    // take failed the same way. Reject with that last compacted error
+    // instead of silently returning a "successful-looking" ExecutionResult
+    // (finishReason would otherwise read as a stale value from before the
+    // failures started, misrepresenting what actually happened).
+    if (lastSurfacedProviderError) {
+      this.emitEvent(onEvent, {
+        type: 'error',
+        timestamp: new Date(),
+        error: lastSurfacedProviderError,
+      });
+      throw lastSurfacedProviderError;
     }
 
     // Emit finish event
