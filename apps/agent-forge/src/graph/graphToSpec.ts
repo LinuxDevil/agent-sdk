@@ -1,5 +1,6 @@
 import type { AgentSpec, AgentSpecTrigger } from '@loushy/build-ai-agent';
 import type { AgentGraphNode, AgentGraphSpec } from './types';
+import { graphToFlow, hasRouterNode } from './graphToFlow';
 
 /**
  * Stable key identifying which node a serialized hook belongs to, used
@@ -74,6 +75,19 @@ export function graphToSpec(graph: AgentGraphSpec): AgentSpec {
   );
   if (serializedHooks.length > 0) {
     spec.policy = { ...spec.policy, hooks: serializedHooks };
+  }
+
+  // LOU-T3: a graph with a `router` node compiles to a real branching
+  // `AgentFlow` (graphToFlow.ts) rather than the fixed
+  // trigger->llm->tool->[approval]->output pipeline shape `AgentSpec`
+  // itself can express. There is nowhere else in `AgentSpec` to carry this
+  // - it's stashed under `spec.policy.flow`, the same deliberately open
+  // passthrough record LOU-Q3 already uses for `spec.policy.hooks` above,
+  // so it round-trips over the exact same wire contract (PUT/POST
+  // `AgentSpec` JSON) without any server API change. `server/buildAgent.ts`
+  // reads it back to decide `AgentExecutor.execute()` vs. `FlowExecutor`.
+  if (hasRouterNode(graph)) {
+    spec.policy = { ...spec.policy, flow: graphToFlow(graph, llmNode.data.name) };
   }
 
   return spec;

@@ -31,6 +31,17 @@ const ROW_HEIGHT = 140;
  * (trigger -> llm -> tool -> approval -> output), stacking multiple nodes
  * in the same stage vertically.
  */
+/**
+ * LOU-T3 known limitation: `spec.policy.flow` (the compiled `AgentFlow` a
+ * router graph's `graphToSpec()` stashes there - see that file) is NOT
+ * read back here. A saved branching graph still round-trips through its
+ * `llm`/`tool`/`output`/etc. node data exactly like today, but reloading it
+ * regenerates the plain auto-layout pipeline (no `router` node, no branch
+ * edges) rather than reconstructing the original branching shape - the
+ * same category of loss `graph/types.ts`'s file header already documents
+ * for edges/position. A future pass could add a `flowToGraph()` the same
+ * way `specToGraph()` exists today; out of scope for this ticket.
+ */
 export function specToGraph(spec: AgentSpec): AgentGraphSpec {
   const nodes: AgentGraphNode[] = [];
   const edges: AgentGraphEdge[] = [];
