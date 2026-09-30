@@ -32,6 +32,7 @@ export default defineConfig({
     'cli/studio': 'src/cli/studio.ts',
     'execution/otel': 'src/execution/otel.ts',
     'execution/hooks': 'src/execution/hooks.ts',
+    'triggers/index': 'src/triggers/index.ts',
   },
   format: ['cjs', 'esm'],
   dts: true,

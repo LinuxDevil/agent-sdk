@@ -57,6 +57,11 @@
       "types": "./dist/execution/hooks.d.ts",
       "import": "./dist/execution/hooks.mjs",
       "require": "./dist/execution/hooks.js"
+    },
+    "./triggers": {
+      "types": "./dist/triggers/index.d.ts",
+      "import": "./dist/triggers/index.mjs",
+      "require": "./dist/triggers/index.js"
     }
   },
   "files": [

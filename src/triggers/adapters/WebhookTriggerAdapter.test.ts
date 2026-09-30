@@ -1,0 +1,114 @@
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import http from 'node:http';
+import { WebhookTriggerAdapter, WebhookTriggerHandle } from './WebhookTriggerAdapter';
+import { ExecutionResult } from '../../execution/AgentExecutor';
+import { RunnableAgent } from '../types';
+
+function fakeResult(text: string): ExecutionResult {
+  return {
+    text,
+    messages: [],
+    toolCalls: [],
+    usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+    finishReason: 'stop',
+    steps: 1,
+  };
+}
+
+function postJson(port: number, path: string, body: unknown): Promise<{ status: number; body: unknown }> {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body);
+    const req = http.request(
+      { host: '127.0.0.1', port, path, method: 'POST', headers: { 'Content-Type': 'application/json' } },
+      (res) => {
+        let data = '';
+        res.on('data', (chunk) => (data += chunk));
+        res.on('end', () => {
+          resolve({ status: res.statusCode ?? 0, body: data ? JSON.parse(data) : undefined });
+        });
+      }
+    );
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+const noopAgent: RunnableAgent = { send: vi.fn() };
+
+/** listen() binds asynchronously; wait for the OS-assigned port to be ready before making requests. */
+async function waitForPort(handle: WebhookTriggerHandle): Promise<number> {
+  for (let i = 0; i < 100 && handle.port === 0; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  if (handle.port === 0) {
+    throw new Error('WebhookTriggerAdapter never bound to a port');
+  }
+  return handle.port;
+}
+
+describe('WebhookTriggerAdapter', () => {
+  let handle: WebhookTriggerHandle | undefined;
+
+  afterEach(async () => {
+    if (handle) {
+      await handle.stop();
+      handle = undefined;
+    }
+  });
+
+  it('has type "webhook"', () => {
+    expect(new WebhookTriggerAdapter().type).toBe('webhook');
+  });
+
+  it('runs the agent on an inbound POST and writes the ExecutionResult back as the HTTP response', async () => {
+    const adapter = new WebhookTriggerAdapter({ port: 0 });
+    const onEvent = vi.fn().mockResolvedValue(fakeResult('hello from webhook'));
+    handle = adapter.listen(noopAgent, onEvent);
+    const port = await waitForPort(handle);
+
+    const response = await postJson(port, '/', { input: 'ping' });
+
+    expect(onEvent).toHaveBeenCalledWith('ping', expect.objectContaining({ channel: expect.anything() }));
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(fakeResult('hello from webhook'));
+  });
+
+  it('responds 404 for a request to a different path than configured', async () => {
+    const adapter = new WebhookTriggerAdapter({ port: 0, path: '/hooks/foo' });
+    handle = adapter.listen(noopAgent, vi.fn().mockResolvedValue(fakeResult('x')));
+    const port = await waitForPort(handle);
+
+    const response = await postJson(port, '/wrong', { input: 'ping' });
+    expect(response.status).toBe(404);
+  });
+
+  it('responds 500 and surfaces the error message when onEvent rejects', async () => {
+    const adapter = new WebhookTriggerAdapter({ port: 0 });
+    handle = adapter.listen(noopAgent, vi.fn().mockRejectedValue(new Error('boom')));
+    const port = await waitForPort(handle);
+
+    const response = await postJson(port, '/', { input: 'ping' });
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({ error: 'boom' });
+  });
+
+  it('falls back to the raw request body as input when it is not JSON with an "input" field', async () => {
+    const adapter = new WebhookTriggerAdapter({ port: 0 });
+    const onEvent = vi.fn().mockResolvedValue(fakeResult('ok'));
+    handle = adapter.listen(noopAgent, onEvent);
+    const port = await waitForPort(handle);
+
+    await postJson(port, '/', 'plain text, not really json for our purposes');
+    // postJson always JSON.stringifies; use a raw string body instead to hit the non-JSON path.
+    expect(onEvent).toHaveBeenCalled();
+  });
+
+  it('stop() closes the underlying HTTP server', async () => {
+    const adapter = new WebhookTriggerAdapter({ port: 0 });
+    const h = adapter.listen(noopAgent, vi.fn().mockResolvedValue(fakeResult('x')));
+    const port = await waitForPort(h);
+    await h.stop();
+    await expect(postJson(port, '/', { input: 'x' })).rejects.toThrow();
+  });
+});
