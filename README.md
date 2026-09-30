@@ -1,16 +1,108 @@
 # @loushy/build-ai-agent
 
 ![CI](https://github.com/LinuxDevil/agent-sdk/actions/workflows/ci.yml/badge.svg)
+[![npm](https://img.shields.io/npm/v/@loushy/build-ai-agent)](https://www.npmjs.com/package/@loushy/build-ai-agent)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-<div align="center">
+**A composable, framework-agnostic SDK for building AI agents that run safely
+in production.** Zero-config to full control, human-in-the-loop approval
+gates, durable checkpoints, multi-agent delegation, guardrails, and a visual
+dashboard — any provider, any deploy target, no lock-in.
 
-**Framework-agnostic SDK for building AI agents**
-
-[Features](#features) • [Installation](#installation) • [Quick Start](#quick-start) • [Documentation](#documentation) • [Examples](#examples)
-
-</div>
+[Get started](docs/quick-start.md) &nbsp;·&nbsp;
+[View on GitHub](https://github.com/LinuxDevil/agent-sdk) &nbsp;·&nbsp;
+[Docs site](https://linuxdevil.github.io/agent-sdk-docs/) &nbsp;·&nbsp;
+[npm](https://www.npmjs.com/package/@loushy/build-ai-agent)
 
 ---
+
+## Features
+
+- **Zero-config to full control** — `createAgent({ prompt, provider })` in one line, or the full `AgentBuilder` + `AgentExecutor` API when you need `maxSteps`, checkpoints, or tracing hooks
+- **Human-in-the-loop** — flag a tool `needsApproval` and pause execution until a human approves or rejects it, then `resumeAfterApproval()` from any process
+- **Durable execution** — pass a `sessionId` + `checkpointStore` and a crash mid-conversation resumes instead of restarting
+- **Multi-agent delegation** — wrap a child agent as a tool with `createDelegateTool()`, with a `maxDepth` guard against delegation loops
+- **Pre/post hooks** — a `HookRegistry` of `AgentHook`s that can inspect or mutate a tool call/LLM generate step, or throw to abort it, run sandboxed by Agent Forge's hook editor
+- **Guardrails** — fail-closed, concurrently-run checks (secret scan, diff size, test/lint commands) that gate a fixer agent's patch before it's used
+- **MCP client** — `loadMcpTools()` turns any Model Context Protocol server's tools into `ToolDescriptor`s
+- **Sandboxed tools** — opt a tool into `requiresSandbox` to route it through a Docker-backed `SandboxAdapter` instead of in-process
+- **Tracing & evals** — `withSpan()`/`TraceExporter` (with an OpenTelemetry bridge at `/otel`) for observability, and `defineEval()` for agent-behavior regression tests under `vitest`
+- **Any provider, any deploy target** — OpenAI, Anthropic, Ollama, OpenRouter, or a deterministic mock provider for tests; `loushy build` ships to a Node server, Docker, or Cloudflare Workers
+- **Agent Forge** — `loushy studio` launches a visual dashboard: drag-and-drop graph canvas, live run/debug console with a step-through debugger, real chat with inline approval-gate cards, and a sandboxed hook editor
+
+## Quick example
+
+The zero-config path — one function call, no manually-wired executor or
+registry:
+
+```typescript
+import { createAgent, resolveProvider } from '@loushy/build-ai-agent';
+
+const agent = createAgent({
+  prompt: 'You are a helpful customer support assistant.',
+  provider: resolveProvider('openai/gpt-4o-mini'), // reads OPENAI_API_KEY
+});
+
+const result = await agent.send('Hello!');
+console.log(result.text);
+```
+
+The same agent with an approval gate on a sensitive tool — `AgentExecutor`
+pauses before calling it and persists a resumable snapshot instead:
+
+```typescript
+import { AgentExecutor, resumeAfterApproval, StorageServiceApprovalStore, ToolRegistry } from '@loushy/build-ai-agent';
+
+const registry = new ToolRegistry();
+registry.register('send_email', {
+  displayName: 'Send email',
+  tool: emailTool,
+  needsApproval: (args) => args.to.includes('@external.com'), // pauses for a human
+});
+
+const approvalStore = new StorageServiceApprovalStore(storage);
+const paused = await AgentExecutor.execute({
+  agent, input, provider, toolRegistry: registry, approvalStore,
+});
+// paused.finishReason === 'awaiting-approval', paused.approvalId is set
+
+// ...later, from any process, after a human approves...
+const result = await resumeAfterApproval(
+  { id: paused.approvalId!, approved: true },
+  approvalStore,
+  provider,
+  registry,
+);
+```
+
+## Quickstart
+
+**1. Install**
+
+```bash
+npm install @loushy/build-ai-agent ai zod
+```
+
+**2. Configure** — describe the agent as data:
+
+```yaml
+# agent.yaml
+name: support-bot
+prompt: You are a friendly support agent.
+provider:
+  type: openai
+  model: gpt-4o-mini
+tools:
+  - current-date
+  - http
+```
+
+**3. Run**
+
+```bash
+npx loushy dev agent.yaml                                 # chat UI + hot reload
+npx loushy build --target=node-server --agent=agent.yaml   # deployable server
+```
 
 ## Overview
 
@@ -18,31 +110,14 @@ Build AI Agent SDK is a framework-agnostic library for building AI agents that
 run safely in production: human-in-the-loop approval gates, durable
 checkpoint/resume, multi-agent delegation, guardrails, tracing, evals, and a
 CLI to scaffold, run locally, and deploy an agent to a Node server, Docker, or
-Cloudflare Workers.
+Cloudflare Workers. Works with React, Vue, Svelte, Angular, Express, or
+vanilla JS — nothing about the SDK is tied to a particular framework.
 
 **Perfect for:**
 - 🤖 Building chatbots and virtual assistants
 - 🔄 Creating automated workflows that pause for human approval before a sensitive action
 - 🛠️ Integrating LLMs into existing applications
 - 🎯 Ops pipelines that watch for errors and open guardrail-gated PRs to fix them
-
-## Features
-
-- 🎯 **Framework Agnostic** - Works with React, Vue, Svelte, Angular, Express, or vanilla JS
-- ⚡ **Zero-config to full control** - `createAgent({ prompt, provider })` in one line, or the full `AgentBuilder` + `AgentExecutor` API when you need it
-- 🧑‍⚖️ **Human-in-the-loop** - flag a tool `needsApproval` and pause execution until a human approves or rejects it
-- 💾 **Durable execution** - checkpoint and resume a run across a crash or restart
-- 🤝 **Multi-agent delegation** - wrap a child agent as a tool a parent agent can call, with a `maxDepth` guard against delegation loops
-- 🛡️ **Guardrails** - fail-closed, concurrently-run checks (secret scan, diff size, test/lint commands) that gate a fixer agent's patch before it's used
-- 📊 **Tracing & evals** - `withSpan()`/`TraceExporter` hooks for observability, and a `defineEval()` API that runs agent-behavior regression tests under `vitest`
-- 🔌 **MCP client** - load any Model Context Protocol server's tools as `ToolDescriptor`s
-- 📦 **Sandboxing** - opt a tool into running through a `SandboxAdapter` (Docker-backed) instead of in-process
-- 🚀 **CLI** - `create-loushy-agent` scaffolds a project, `loushy dev` runs a local chat server with hot reload, `loushy build` deploys to a Node server, Docker, or Cloudflare Workers
-- 🎨 **Agent Forge** - `loushy studio` launches a visual dashboard for building, running and debugging agents: a drag-and-drop graph canvas, a live run/debug console with a step-through debugger, real chat (including inline approval-gate cards), and a sandboxed hook editor - see [Agent Forge](docs/agent-forge.md)
-- 📝 **Declarative specs** - describe an agent as a YAML/JSON file instead of code
-- 🔧 **Extensible** - easy to add custom tools, flows, and providers
-- 🧪 **Type-Safe** - full TypeScript support with comprehensive type definitions
-- 🔒 **Secure** - random-salt encryption, an SSRF-hardened HTTP tool, a scope-limited GitHub tool
 
 ## Installation
 
@@ -72,33 +147,12 @@ real LLM provider is backed by an optional peer dependency:
 > see [Installation](docs/installation.md) for the exact command and the
 > tracked follow-up.
 
-## Quick Start
+## Full control: `AgentBuilder` + `AgentExecutor`
 
-> For the verified, copy-paste-runnable version of everything below (each
-> snippet is executed against a real packed build by
+> For the verified, copy-paste-runnable version of every snippet in this
+> README (each is executed against a real packed build by
 > `npx tsx scripts/verify-docs-snippets.ts`), see
 > [docs/quick-start.md](docs/quick-start.md).
-
-### 1. The zero-config path: `createAgent()`
-
-```typescript
-import { createAgent, resolveProvider } from '@loushy/build-ai-agent';
-
-const agent = createAgent({
-  prompt: 'You are a helpful customer support assistant.',
-  provider: resolveProvider('openai/gpt-4o-mini'), // reads OPENAI_API_KEY
-});
-
-const result = await agent.send('Hello!');
-console.log(result.text);
-```
-
-No manually-constructed repositories, executor, or provider object required
-— `createAgent()` defaults everything else and hands back a `{ send }`
-agent. Swap `resolveProvider(...)` for `createMockProvider(...)` to run
-without any API key at all.
-
-### 2. Full control: `AgentBuilder` + `AgentExecutor`
 
 `createAgent()` is a thin wrapper over these two — use them directly when
 you need `maxSteps`, approval gates, checkpoints, tracing hooks, or a
@@ -123,25 +177,6 @@ const result = await AgentExecutor.execute({
 
 console.log(result.text);
 console.log(result.usage.totalTokens, result.finishReason, result.steps);
-```
-
-### 3. Or describe the agent as data: a spec file
-
-```yaml
-# agent.yaml
-name: support-bot
-prompt: You are a friendly support agent.
-provider:
-  type: openai
-  model: gpt-4o-mini
-tools:
-  - current-date
-  - http
-```
-
-```bash
-npx loushy dev agent.yaml                                 # chat UI + hot reload
-npx loushy build --target=node-server --agent=agent.yaml   # deployable server
 ```
 
 ## Documentation
