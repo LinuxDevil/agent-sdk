@@ -6,6 +6,8 @@ import type { AgentSpec } from '@loushy/build-ai-agent';
 import { RunManager } from '../runRegistry';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
+import { graphToSpec } from '../../src/graph/graphToSpec';
+import type { AgentGraphSpec } from '../../src/graph/types';
 
 const SPEC: AgentSpec = {
   name: 'test-agent',
@@ -187,5 +189,67 @@ describe('RunManager', () => {
       provider: { type: 'definitely-not-a-real-provider', model: 'x' },
     };
     await expect(runManager.run('agent-4', 'hi', errorSpec)).rejects.toThrow();
+  });
+
+  describe('LOU-T3: branching graphs run through FlowExecutor', () => {
+    function branchingGraph(): AgentGraphSpec {
+      return {
+        version: 1,
+        nodes: [
+          {
+            id: 'llm-1',
+            type: 'llm',
+            position: { x: 0, y: 0 },
+            label: 'classify',
+            data: { name: 'classify', prompt: 'classify this', provider: { type: 'mock', model: 'mock-1' } },
+          },
+          { id: 'router-1', type: 'router', position: { x: 200, y: 0 }, label: 'Router', data: {} },
+          { id: 'tool-1', type: 'tool', position: { x: 400, y: -40 }, label: 'current-date', data: { toolName: 'current-date' } },
+          { id: 'out-1', type: 'output', position: { x: 600, y: -40 }, label: 'Output', data: {} },
+          { id: 'out-2', type: 'output', position: { x: 400, y: 40 }, label: 'Output (default)', data: {} },
+        ],
+        edges: [
+          { id: 'e1', source: 'llm-1', target: 'router-1' },
+          // The mock provider's fixed default response text - see SPEC's
+          // runs above ('This is a mock response.') - makes this branch
+          // deterministically true end-to-end through the real server
+          // plumbing (buildAgentFromSpec's mock provider has no per-spec
+          // `responses` override), proving the compiled-spec -> RunManager
+          // -> FlowExecutor wiring actually runs a router branch's tool
+          // step. graph/__tests__/graphToFlow.test.ts is where BOTH branches
+          // of the same graph are proven reachable, with a directly
+          // controlled MockLLMProvider.
+          { id: 'e2', source: 'router-1', target: 'tool-1', condition: "'{{classify}}' === 'This is a mock response.'" },
+          { id: 'e3', source: 'tool-1', target: 'out-1' },
+          { id: 'e4', source: 'router-1', target: 'out-2' },
+        ],
+      };
+    }
+
+    it('compiles a router graph to spec.policy.flow and runs it to completion via FlowExecutor, not AgentExecutor', async () => {
+      const spec = graphToSpec(branchingGraph());
+      expect((spec.policy as { flow?: unknown })?.flow).toBeDefined();
+
+      await runManager.run('branch-agent', 'unused for a flow run', spec);
+      const final = await waitForStatus(runManager, 'branch-agent', (s) => s.status === 'stopped');
+
+      // The router's conditioned branch matched (see the condition above),
+      // so the tool step ran (current-date returns an ISO timestamp string)
+      // and its result became the flow's final output - proving the
+      // compiled-spec -> RunManager -> FlowExecutor wiring actually
+      // executed the branch's tool step, not just returned the LLM text.
+      expect(final.resultText).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    });
+
+    it('non-regression: an agent whose graph has no router node still runs the unchanged flat-spec AgentExecutor path', async () => {
+      // SPEC (module-level, used by every other test in this file) has no
+      // router node and therefore no spec.policy.flow - graphToSpec/
+      // extractFlowFromSpec never touch it, so this is exactly the original
+      // pre-LOU-T3 code path with the exact original result text.
+      expect((SPEC.policy as { flow?: unknown } | undefined)?.flow).toBeUndefined();
+      await runManager.run('flat-agent', 'please use current-date', SPEC);
+      const final = await waitForStatus(runManager, 'flat-agent', (s) => s.status === 'stopped');
+      expect(final.resultText).toBe('This is a mock response.');
+    });
   });
 });

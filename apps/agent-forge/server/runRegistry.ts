@@ -12,17 +12,19 @@ import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import {
   AgentExecutor,
+  FlowExecutor,
   ToolRegistry,
   type ExecutionEvent,
   type CheckpointStore,
   type Span,
   type TraceExporter,
   type ExecutionResult,
+  type FlowExecutionEvent,
   type Message,
   resumeAfterApproval,
   type AgentSpec,
 } from '@loushy/build-ai-agent';
-import { buildAgentFromSpec } from './buildAgent';
+import { buildAgentFromSpec, extractFlowFromSpec } from './buildAgent';
 import { withAbortSignal, RunAbortedError } from './abortableProvider';
 import { FileApprovalStore } from './approvalStore';
 import { DebugSession, type BreakpointKey } from './debugController';
@@ -168,6 +170,51 @@ function toLogEntries(agentId: string, event: ExecutionEvent): LogEntry[] {
       ];
     case 'error':
       return [{ ...base, level: 'error', phase: 'trigger', message: event.error?.message ?? 'Run failed' }];
+    default:
+      return [];
+  }
+}
+
+/**
+ * LOU-T3: translates one `FlowExecutionEvent` (`src/flows/FlowExecutor.ts`'s
+ * own, unrelated event taxonomy - flow-start/step-start/llm-call/
+ * llm-response/tool-call/tool-result/condition-evaluated/loop-iteration/
+ * step-complete/flow-complete/flow-error, NOT `AgentExecutor`'s
+ * `ExecutionEvent`) into `LogEntry` rows, the same way `toLogEntries()`
+ * does for a normal run. This is the extent of debug-console observability
+ * for a `FlowExecutor` run today: these land in the Logs tab, but NOT the
+ * structured Trace tab (`emitSpan`/`makeTraceExporter` needs a real
+ * `TraceExporter`/`Span` stream, which `FlowExecutor.execute()` has no
+ * parameter for) or the O3 step-debugger (`DebugSession`'s breakpoints hook
+ * into `AgentExecutor`'s `preGenerate`/`postGenerate`/`preToolCall`/
+ * `postToolCall` hook points via `hooks`/`sandbox` options that
+ * `FlowExecutor.execute()` simply doesn't accept - see its signature). A
+ * branching run is therefore only PARTIALLY observable in Agent Forge's
+ * debug console: logs yes, trace graph and breakpoint stepping no. Noted
+ * here rather than silently left blank; see the LOU-T3 report for the full
+ * writeup.
+ */
+function toFlowLogEntries(agentId: string, event: FlowExecutionEvent): LogEntry[] {
+  const timestamp = (event.timestamp instanceof Date ? event.timestamp : new Date()).toISOString();
+  const base = { id: randomUUID(), agentId, timestamp };
+
+  switch (event.type) {
+    case 'flow-start':
+      return [{ ...base, level: 'info', phase: 'trigger', message: `Flow run started (${event.data?.flowName ?? 'unnamed flow'})` }];
+    case 'llm-call':
+      return [{ ...base, level: 'info', phase: 'llm', message: `LLM call (model: ${event.data?.model ?? 'unknown'})` }];
+    case 'llm-response':
+      return [{ ...base, level: 'info', phase: 'llm', message: `LLM response: ${truncate(event.data?.text)}` }];
+    case 'tool-call':
+      return [{ ...base, level: 'tool', phase: 'tool', toolName: event.data?.tool, message: `Tool call: ${event.data?.tool ?? 'unknown'}`, detail: event.data }];
+    case 'tool-result':
+      return [{ ...base, level: 'tool', phase: 'tool', toolName: event.data?.tool, message: `Tool '${event.data?.tool}' result: ${truncate(JSON.stringify(event.data?.result))}`, detail: event.data }];
+    case 'condition-evaluated':
+      return [{ ...base, level: 'info', phase: 'debug', message: `Router branch condition '${event.data?.condition ?? '(default)'}' -> ${event.data?.result}` }];
+    case 'flow-complete':
+      return [{ ...base, level: 'info', phase: 'trigger', message: 'Flow run finished' }];
+    case 'flow-error':
+      return [{ ...base, level: 'error', phase: 'trigger', message: event.error?.message ?? 'Flow run failed' }];
     default:
       return [];
   }
@@ -546,6 +593,21 @@ export class RunManager extends EventEmitter {
 
     const abortableProvider = withAbortSignal(provider, controller.signal);
 
+    // LOU-T3: a graph containing a `router` node compiles (graphToSpec.ts)
+    // to a real branching `AgentFlow` stashed under `spec.policy.flow`
+    // rather than being runnable through the flat AgentSpec/AgentExecutor
+    // path at all (there's no router/branch concept in `AgentConfig`). Every
+    // OTHER agent - which is every existing template/example, and every
+    // agent this app could build before this ticket - has no such field and
+    // takes the exact same `AgentExecutor.execute()` path it always has,
+    // completely unchanged below.
+    const flow = extractFlowFromSpec(resolvedSpec);
+    if (flow) {
+      this.runFlow(agentId, flow, { agent, provider: abortableProvider, toolRegistry, sandbox });
+      void entry;
+      return;
+    }
+
     AgentExecutor.execute({
       agent,
       input,
@@ -568,6 +630,74 @@ export class RunManager extends EventEmitter {
       .catch((error: unknown) => this.handleRunFailed(agentId, error));
 
     void entry; // status already broadcast by setEntry() above
+  }
+
+  /**
+   * LOU-T3: runs a branching graph's compiled `AgentFlow` through
+   * `FlowExecutor.execute()` instead of `AgentExecutor.execute()`.
+   *
+   * Known, DELIBERATE gaps vs. the flat-spec path (see this ticket's
+   * report for the full writeup - not silently papered over):
+   *  - No checkpointStore/approvalStore: `FlowExecutor` has no
+   *    pause/resume or human-in-the-loop-approval primitive at all, so a
+   *    branching run cannot pause for approval and Stop-then-Run cannot
+   *    resume it from a mid-flight checkpoint the way a flat-spec run can -
+   *    it always runs to completion or failure in one call.
+   *  - No abort support: `FlowExecutor.execute()` takes no
+   *    AbortSignal/controller, so `stop()`'s `controller.abort()` cannot
+   *    actually interrupt an in-flight flow step the way
+   *    `abortableProvider.ts` does for the flat-spec path; the Stop button
+   *    only prevents a NOT-yet-started flow from starting.
+   *  - No hooks/sandbox-gated tool calls beyond `requiresSandbox` itself:
+   *    `FlowExecutor.executeToolCall()` does route through the same
+   *    `executeToolWithSandboxGuard()` seam, but there is no `hooks`
+   *    parameter at all, so LOU-Q pre/post hooks attached to a node never
+   *    fire on a branching run.
+   *  - Debug console: logs only, not trace spans or step-debugger
+   *    breakpoints - see `toFlowLogEntries()`'s doc comment above.
+   */
+  private runFlow(
+    agentId: string,
+    flow: import('@loushy/build-ai-agent').AgentFlow,
+    deps: {
+      agent: import('@loushy/build-ai-agent').AgentConfig;
+      provider: import('@loushy/build-ai-agent').LLMProvider;
+      toolRegistry?: ToolRegistry;
+      sandbox: import('@loushy/build-ai-agent').SandboxAdapter;
+    }
+  ): void {
+    FlowExecutor.execute(
+      flow,
+      { agent: deps.agent, provider: deps.provider, toolRegistry: deps.toolRegistry, variables: {}, sandbox: deps.sandbox },
+      (event) => {
+        for (const log of toFlowLogEntries(agentId, event)) {
+          this.emit('log', agentId, log);
+        }
+      }
+    )
+      .then((flowResult) => {
+        const text =
+          typeof flowResult.output === 'string' ? flowResult.output : JSON.stringify(flowResult.output ?? null);
+        if (!flowResult.success) {
+          this.handleRunFailed(agentId, flowResult.error ?? new Error('Flow run failed'));
+          return;
+        }
+        // Forged into the same `ExecutionResult` shape `handleRunSettled()`
+        // already knows how to reconcile into the chat transcript/Output
+        // tab - `FlowExecutor` has no per-message conversation model
+        // (`context.variables`, not `Message[]`), so this is a single
+        // synthetic assistant turn carrying the flow's final output.
+        const result: ExecutionResult = {
+          text,
+          messages: [{ role: 'assistant', content: text }],
+          toolCalls: [],
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+          finishReason: 'stop',
+          steps: flowResult.steps,
+        };
+        void this.handleRunSettled(agentId, result);
+      })
+      .catch((error: unknown) => this.handleRunFailed(agentId, error));
   }
 
   /** Shared success-path handling for both run() and approve()'s follow-up execute() call. */

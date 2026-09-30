@@ -10,6 +10,7 @@ import {
   removeNodeHook,
   renameNode,
   toggleNodeHook,
+  updateEdgeCondition,
   updateNodeData,
   updateNodeHookCode,
 } from '../graphMutations';
@@ -242,5 +243,30 @@ describe('node hooks (LOU-Q3)', () => {
     const g = baseGraph();
     expect(toggleNodeHook(g, 'ghost', 'h1')).toEqual(g);
     expect(removeNodeHook(g, 'ghost', 'h1')).toEqual(g);
+  });
+});
+
+describe('LOU-T3: updateEdgeCondition', () => {
+  function graphWithEdge(): AgentGraphSpec {
+    const g = baseGraph();
+    return { ...g, edges: [...g.edges, { id: 'e-router', source: 'llm-1', target: 'tool-1' }] };
+  }
+
+  it('sets a condition on the given edge, leaving others untouched', () => {
+    const g = updateEdgeCondition(graphWithEdge(), 'e-router', "'{{classify}}' === 'refund'");
+    const edge = g.edges.find((e) => e.id === 'e-router')!;
+    expect(edge.condition).toBe("'{{classify}}' === 'refund'");
+  });
+
+  it('trims whitespace and stores an empty/whitespace-only condition as undefined (the default branch)', () => {
+    let g = updateEdgeCondition(graphWithEdge(), 'e-router', '  ');
+    expect(g.edges.find((e) => e.id === 'e-router')!.condition).toBeUndefined();
+    g = updateEdgeCondition(g, 'e-router', "  '{{x}}' === 'y'  ");
+    expect(g.edges.find((e) => e.id === 'e-router')!.condition).toBe("'{{x}}' === 'y'");
+  });
+
+  it('is a no-op for an unknown edge id', () => {
+    const g = graphWithEdge();
+    expect(updateEdgeCondition(g, 'ghost', 'x')).toEqual(g);
   });
 });

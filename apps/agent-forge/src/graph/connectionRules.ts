@@ -15,8 +15,18 @@ import type { AgentGraphNodeType } from './types';
  */
 const ALLOWED_EDGE_TYPES: Record<AgentGraphNodeType, AgentGraphNodeType[]> = {
   trigger: ['llm'],
-  llm: ['tool', 'approval', 'output'],
-  tool: ['tool', 'approval', 'output'],
+  // LOU-T3: an `llm`/`tool` step can now feed a `router` node instead of
+  // going straight to a tool/approval/output, letting the pipeline branch
+  // on the result of that step.
+  llm: ['tool', 'approval', 'output', 'router'],
+  tool: ['tool', 'approval', 'output', 'router'],
+  // LOU-T3: a router's branches can each continue into another llm/tool
+  // step or terminate at output. Deliberately NOT `approval`:
+  // `FlowExecutor` (src/flows/FlowExecutor.ts) has no
+  // approval/needsApproval node type or checkpoint/resume concept, so an
+  // approval-gated branch has nothing to compile to - see graphToFlow.ts's
+  // doc comment for this same limitation, enforced there as a hard error.
+  router: ['llm', 'tool', 'output'],
   approval: ['output'],
   output: [],
 };

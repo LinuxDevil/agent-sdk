@@ -2,7 +2,16 @@ import { useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { useAppState } from '../state/AppState';
-import { updateNodeData, renameNode, addHookToNode, toggleNodeHook, updateNodeHookCode, removeNodeHook } from '../canvas/graphMutations';
+import {
+  updateNodeData,
+  renameNode,
+  addHookToNode,
+  toggleNodeHook,
+  updateNodeHookCode,
+  removeNodeHook,
+  removeEdge,
+  updateEdgeCondition,
+} from '../canvas/graphMutations';
 import { HOOK_TEMPLATES } from '../hooks/hookTemplates';
 import type { AgentGraphNode, AgentGraphSpec, AgentNodeHookInstance } from '../graph/types';
 
@@ -113,6 +122,76 @@ function HooksField({ node, setGraph }: { node: AgentGraphNode; setGraph: SetGra
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * LOU-T3: branch editor for a `router` node - lists its outgoing edges
+ * (each one IS a branch; see `graph/types.ts`'s `AgentGraphEdge.condition`),
+ * with an editable condition expression per branch and a remove button.
+ * "Add a branch" isn't a button here: a branch is created by dragging a new
+ * connection off the router node on the canvas (the same `connectNodes()`
+ * path every other edge is made through - no second mutation path, per the
+ * epic's "graphMutations.ts is the only way the canvas mutates graph state"
+ * constraint), so this section's hint just points at that.
+ *
+ * The condition text is the literal `{{variable}} expression` string
+ * `FlowExecutor.evaluateCondition()` interpolates and `eval()`s at runtime
+ * (see `graphToFlow.ts`'s doc comment) - e.g. `'{{classify}}' === 'refund'`
+ * (the placeholder itself must be quoted when comparing a string value -
+ * `graphToFlow.ts` explains why). Leaving it blank makes that branch the router's default (taken when no
+ * earlier branch's condition is true); `validateGraph.ts` flags it if more
+ * than one branch is left blank.
+ */
+function BranchesField({
+  node,
+  graph,
+  setGraph,
+}: {
+  node: AgentGraphNode;
+  graph: AgentGraphSpec;
+  setGraph: SetGraph;
+}) {
+  const branches = graph.edges.filter((e) => e.source === node.id);
+  const nodesById = new Map(graph.nodes.map((n) => [n.id, n]));
+
+  return (
+    <div className="field">
+      <label>Branches ({branches.length})</label>
+      {branches.length === 0 && (
+        <div className="hint">
+          No branches yet - drag a connection from this router to another node on the canvas to add one. A router
+          needs at least 2 branches to actually route.
+        </div>
+      )}
+      {branches.map((edge) => {
+        const target = nodesById.get(edge.target);
+        return (
+          <div key={edge.id} className="branch-row" style={{ marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <span className="hint" style={{ flex: 1 }}>
+                &rarr; {target?.label ?? edge.target}
+                {!edge.condition?.trim() && ' (default)'}
+              </span>
+              <button
+                className="btn btn-ghost"
+                style={{ padding: '2px 6px' }}
+                title="Remove this branch"
+                onClick={() => setGraph((g) => removeEdge(g, edge.id))}
+              >
+                &times;
+              </button>
+            </div>
+            <input
+              className="input"
+              placeholder="Condition, e.g. '{{classify}}' === 'refund' (quote the placeholder; blank = default branch)"
+              value={edge.condition ?? ''}
+              onChange={(e) => setGraph((g) => updateEdgeCondition(g, edge.id, e.target.value))}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -281,6 +360,8 @@ export function Inspector() {
             <div className="hint">The output node has no configurable fields today.</div>
           </div>
         )}
+
+        {selected.type === 'router' && <BranchesField node={selected} graph={graph} setGraph={setGraph} />}
 
         {debugMode && (selected.type === 'llm' || selected.type === 'tool') && (
           <BreakpointField

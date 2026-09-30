@@ -50,7 +50,7 @@ describe('README.md documentation links', () => {
   });
 
   it('the header nav anchors (#documentation, #examples, ...) have matching headings', () => {
-    for (const heading of ['Features', 'Installation', 'Quick Start', 'Documentation', 'Examples']) {
+    for (const heading of ['Features', 'Installation', 'Quickstart', 'Documentation', 'Examples']) {
       expect(readme).toMatch(new RegExp(`^## ${heading}\\s*$`, 'm'));
     }
   });

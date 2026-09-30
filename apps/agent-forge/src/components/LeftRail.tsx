@@ -21,6 +21,13 @@ const NODE_PALETTE: { section: string; items: { label: string; color: string; no
       { label: 'Approval gate', color: 'var(--warning)', nodeType: 'approval' },
     ],
   },
+  // LOU-T3: router/condition node - drag onto the canvas, then wire 2+
+  // outgoing edges from it (each becomes a branch, edited in the Inspector)
+  // to make the graph actually branch instead of following one fixed path.
+  {
+    section: 'Routing',
+    items: [{ label: 'Router / condition', color: 'var(--danger)', nodeType: 'router' }],
+  },
   {
     section: 'Output',
     items: [{ label: 'Response / output', color: 'var(--success)', nodeType: 'output' }],

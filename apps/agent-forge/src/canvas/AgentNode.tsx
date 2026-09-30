@@ -22,6 +22,15 @@ const NODE_META: Record<AgentGraphNodeType, { color: string; icon: string; hasIn
   tool: { color: 'var(--warning)', icon: '🔧', hasIn: true, hasOut: true },
   approval: { color: 'var(--warning)', icon: '✓', hasIn: true, hasOut: true },
   output: { color: 'var(--success)', icon: '→', hasIn: true, hasOut: false },
+  // LOU-T3: router shares tool's warning-orange swatch family (both are
+  // "control" nodes in the mockup's visual language, see
+  // .design-ref/agent-forge-mockup.html) but with its own icon so it reads
+  // distinctly on the canvas; `hasOut: true` matters here more than
+  // anywhere else - it's the one node type actually expected to carry
+  // MULTIPLE outgoing edges (its branches), which ReactFlow already
+  // supports from a single source `Handle` (see llm -> multiple tool nodes,
+  // an existing pattern this reuses rather than needing per-branch ports).
+  router: { color: 'var(--danger)', icon: '⑂', hasIn: true, hasOut: true },
 };
 
 function rowsFor(node: AgentGraphNode): { k: string; v: string }[] {
@@ -38,6 +47,8 @@ function rowsFor(node: AgentGraphNode): { k: string; v: string }[] {
     case 'approval':
       return [{ k: 'requiresApproval', v: node.data.policy.requiresApproval ? 'yes' : 'no' }];
     case 'output':
+      return [];
+    case 'router':
       return [];
   }
 }
@@ -139,4 +150,5 @@ export const NODE_TYPES = {
   tool: AgentNode,
   approval: AgentNode,
   output: AgentNode,
+  router: AgentNode,
 };

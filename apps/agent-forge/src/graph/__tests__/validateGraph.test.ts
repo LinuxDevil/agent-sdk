@@ -195,4 +195,61 @@ describe('validateGraph', () => {
       expect(validateGraph(g).valid).toBe(true);
     });
   });
+
+  describe('LOU-T3: router branch checks', () => {
+    function routerGraph(edges: AgentGraphSpec['edges']): AgentGraphSpec {
+      return graph({
+        nodes: [
+          ...graph({}).nodes,
+          { id: 'router-1', type: 'router', position: { x: 100, y: 0 }, label: 'Router', data: {} },
+          { id: 'out-1', type: 'output', position: { x: 200, y: -40 }, label: 'Output 1', data: {} },
+          { id: 'out-2', type: 'output', position: { x: 200, y: 40 }, label: 'Output 2', data: {} },
+        ],
+        edges,
+      });
+    }
+
+    it('accepts a router with 2 branches, one conditioned and one default', () => {
+      const g = routerGraph([
+        { id: 'e1', source: 'router-1', target: 'out-1', condition: "'{{a}}' === 'x'" },
+        { id: 'e2', source: 'router-1', target: 'out-2' },
+      ]);
+      expect(validateGraph(g).valid).toBe(true);
+    });
+
+    it('flags a router with fewer than 2 branches', () => {
+      const g = routerGraph([{ id: 'e1', source: 'router-1', target: 'out-1' }]);
+      const result = validateGraph(g);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(
+        expect.objectContaining({ nodeId: 'router-1', message: expect.stringContaining('at least 2 outgoing branches') })
+      );
+    });
+
+    it('flags a router with more than one default (conditionless) branch', () => {
+      const g = routerGraph([
+        { id: 'e1', source: 'router-1', target: 'out-1' },
+        { id: 'e2', source: 'router-1', target: 'out-2' },
+      ]);
+      const result = validateGraph(g);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(
+        expect.objectContaining({ nodeId: 'router-1', message: expect.stringContaining('at most one default branch') })
+      );
+    });
+
+    it('flags an edge type incompatible with a router (e.g. router -> approval)', () => {
+      const g = routerGraph([
+        { id: 'e1', source: 'router-1', target: 'out-1', condition: "'{{a}}' === 'x'" },
+        { id: 'e2', source: 'router-1', target: 'out-2' },
+      ]);
+      g.nodes.push({ id: 'approval-1', type: 'approval', position: { x: 300, y: 0 }, label: 'Approval', data: { policy: {} } });
+      g.edges.push({ id: 'e3', source: 'router-1', target: 'approval-1' });
+      const result = validateGraph(g);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(
+        expect.objectContaining({ edgeId: 'e3', message: expect.stringContaining("'router' -> 'approval'") })
+      );
+    });
+  });
 });
