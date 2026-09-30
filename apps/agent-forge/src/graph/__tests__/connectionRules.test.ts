@@ -31,4 +31,26 @@ describe('isEdgeTypeAllowed', () => {
     expect(isEdgeTypeAllowed('approval', 'llm')).toBe(false);
     expect(isEdgeTypeAllowed('output', 'approval')).toBe(false);
   });
+
+  describe('LOU-T3: router edges', () => {
+    it('allows llm/tool to feed a router', () => {
+      expect(isEdgeTypeAllowed('llm', 'router')).toBe(true);
+      expect(isEdgeTypeAllowed('tool', 'router')).toBe(true);
+    });
+
+    it('allows a router to branch into llm, tool, or output', () => {
+      expect(isEdgeTypeAllowed('router', 'llm')).toBe(true);
+      expect(isEdgeTypeAllowed('router', 'tool')).toBe(true);
+      expect(isEdgeTypeAllowed('router', 'output')).toBe(true);
+    });
+
+    it('rejects a router branching into an approval node (FlowExecutor has no approval node type)', () => {
+      expect(isEdgeTypeAllowed('router', 'approval')).toBe(false);
+    });
+
+    it('rejects a trigger feeding a router directly, and anything out of output into a router', () => {
+      expect(isEdgeTypeAllowed('trigger', 'router')).toBe(false);
+      expect(isEdgeTypeAllowed('output', 'router')).toBe(false);
+    });
+  });
 });

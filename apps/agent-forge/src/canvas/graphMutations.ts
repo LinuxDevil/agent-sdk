@@ -40,6 +40,8 @@ export function defaultNodeData(type: AgentGraphNodeType): AgentGraphNode['data'
       return { policy: { requiresApproval: true } };
     case 'output':
       return {};
+    case 'router':
+      return {};
   }
 }
 
@@ -55,6 +57,8 @@ export function defaultNodeLabel(type: AgentGraphNodeType): string {
       return 'Human approval';
     case 'output':
       return 'Output';
+    case 'router':
+      return 'Router';
   }
 }
 
@@ -165,6 +169,25 @@ export function connectNodes(graph: AgentGraphSpec, sourceId: string, targetId: 
 
 export function removeEdge(graph: AgentGraphSpec, edgeId: string): AgentGraphSpec {
   return { ...graph, edges: graph.edges.filter((e) => e.id !== edgeId) };
+}
+
+/**
+ * LOU-T3: sets (or clears) a branch's condition. Only meaningful on an edge
+ * whose source is a `router` node (see `AgentGraphEdge.condition`'s doc
+ * comment), but this doesn't check the source type - the Inspector's branch
+ * editor only ever calls it for edges it renders under a router node's
+ * "Branches" section, and an unrelated edge simply carrying an unused
+ * `condition` field is harmless (graphToFlow.ts only ever reads `condition`
+ * off a router node's own outgoing edges). Passing an empty/whitespace
+ * string clears it to `undefined` rather than storing `''`, so "no
+ * condition" (this branch is the default) has exactly one representation.
+ */
+export function updateEdgeCondition(graph: AgentGraphSpec, edgeId: string, condition: string): AgentGraphSpec {
+  const trimmed = condition.trim();
+  return {
+    ...graph,
+    edges: graph.edges.map((e) => (e.id === edgeId ? { ...e, condition: trimmed || undefined } : e)),
+  };
 }
 
 let hookIdCounter = 0;

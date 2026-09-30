@@ -38,7 +38,7 @@
  *    single fixed anchor node by `specToGraph()`.
  */
 
-export type AgentGraphNodeType = 'trigger' | 'llm' | 'tool' | 'approval' | 'output';
+export type AgentGraphNodeType = 'trigger' | 'llm' | 'tool' | 'approval' | 'output' | 'router';
 
 export interface GraphPosition {
   x: number;
@@ -115,17 +115,52 @@ export interface ApprovalNodeData {
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- output node carries no AgentSpec data (see file header)
 export interface OutputNodeData {}
 
+/**
+ * LOU-T3: a "router" node has no config of its own - all of its behavior
+ * lives on its OUTGOING EDGES (see `AgentGraphEdge.condition` below), the
+ * same way `AgentGraphEdge` already carries no data for every other node
+ * type today. Kept as an empty data object (like `OutputNodeData`) rather
+ * than folding branch conditions into node `data`, so `graphMutations.ts`'s
+ * existing edge-centric add/remove-connection functions are also the branch
+ * add/remove functions - no second mutation path.
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- branch data lives on edges, not the node (see comment above)
+export interface RouterNodeData {}
+
 export type AgentGraphNode =
   | AgentGraphNodeBase<'trigger', TriggerNodeData>
   | AgentGraphNodeBase<'llm', LlmNodeData>
   | AgentGraphNodeBase<'tool', ToolNodeData>
   | AgentGraphNodeBase<'approval', ApprovalNodeData>
-  | AgentGraphNodeBase<'output', OutputNodeData>;
+  | AgentGraphNodeBase<'output', OutputNodeData>
+  | AgentGraphNodeBase<'router', RouterNodeData>;
 
 export interface AgentGraphEdge {
   id: string;
   source: string;
   target: string;
+  /**
+   * LOU-T3: present only on an edge whose `source` is a `router` node - the
+   * branch condition, evaluated by `FlowExecutor.evaluateCondition()` at
+   * runtime (see `src/flows/FlowExecutor.ts`): a `{{variable}}`-interpolated
+   * JS expression string, `eval()`'d after interpolation against the flow's
+   * runtime `variables` (the running conversation's message/tool-result
+   * state - see `graphToFlow.ts`'s doc comment for exactly what's bound).
+   * `interpolate()` is a raw, unquoted text substitution - comparing a
+   * string variable needs the placeholder itself quoted (e.g.
+   * `'{{classify}}' === 'refund'`, NOT `{{classify}} === 'refund'`, which
+   * interpolates to an invalid bare identifier and always evaluates false)
+   * - see `graphToFlow.ts`'s doc comment for the full explanation.
+   * An edge out of a router with `condition` left `undefined`/empty is that
+   * router's DEFAULT branch: `graphToFlow()` always compiles it last in the
+   * generated `oneOf` node's `options` list regardless of the edges' order
+   * in this array, since `FlowExecutor.executeOneOf()` takes the first
+   * option whose condition is true OR the first option with no condition at
+   * all - so a default sorted earlier would short-circuit every later
+   * branch. At most one outgoing edge per router may omit `condition` (see
+   * `validateGraph.ts`).
+   */
+  condition?: string;
 }
 
 export interface AgentGraphSpec {

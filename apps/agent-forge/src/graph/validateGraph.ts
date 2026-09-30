@@ -132,6 +132,33 @@ export function validateGraph(graph: AgentGraphSpec): ValidationResult {
       case 'output':
         // No required fields for these node types today.
         break;
+      case 'router':
+        // No node-level fields - see the router branch-edge checks below.
+        break;
+    }
+  }
+
+  // LOU-T3: router branch checks - each router's OUTGOING edges are its
+  // branches (see graph/types.ts's `AgentGraphEdge.condition`). A router
+  // with fewer than two outgoing edges isn't actually branching (it's just
+  // an expensive pass-through), and more than one edge with no condition
+  // is ambiguous about which one is "the" default - graphToFlow() can only
+  // honor the first it walks.
+  for (const node of graph.nodes) {
+    if (node.type !== 'router') continue;
+    const outgoing = graph.edges.filter((e) => e.source === node.id);
+    if (outgoing.length < 2) {
+      errors.push({
+        nodeId: node.id,
+        message: `Router node '${node.id}' must have at least 2 outgoing branches, found ${outgoing.length}`,
+      });
+    }
+    const defaults = outgoing.filter((e) => !e.condition?.trim());
+    if (defaults.length > 1) {
+      errors.push({
+        nodeId: node.id,
+        message: `Router node '${node.id}' has ${defaults.length} branches with no condition - at most one default branch is allowed`,
+      });
     }
   }
 
