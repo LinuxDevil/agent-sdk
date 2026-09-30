@@ -28,6 +28,7 @@ import * as path from 'node:path';
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import type { AgentSpec } from '@loushy/build-ai-agent';
+import { TriggerRegistry } from '@loushy/build-ai-agent/triggers';
 import type { AgentStore } from '../src/persistence/AgentStore';
 import {
   RunManager,
@@ -36,6 +37,7 @@ import {
   NoActiveRunError,
   ApprovalPendingError,
 } from './runRegistry';
+import { ChatTriggerAdapter } from './chatTriggerAdapter';
 import { isValidAgentId } from './types';
 import { SecretsStore, isSecretProvider } from './secretsStore';
 import { SettingsStore, type SettingsProfile } from './settingsStore';
@@ -95,6 +97,13 @@ export function createApp({
 
   const secrets = secretsStore ?? new SecretsStore(baseDir);
   const settings = settingsStore ?? new SettingsStore(baseDir);
+
+  // LOU-T5: `POST /agents/:id/message` below is routed through a
+  // TriggerRegistry-registered ChatTriggerAdapter rather than calling
+  // `runManager.sendMessage()` directly - see chatTriggerAdapter.ts for why
+  // this is a behavior-preserving wrapper, not a rewrite.
+  const triggerRegistry = new TriggerRegistry();
+  triggerRegistry.register('chat', new ChatTriggerAdapter(runManager));
 
   app.get('/health', (_req, res) => res.status(200).send('ok'));
 
@@ -221,7 +230,8 @@ export function createApp({
         return;
       }
       try {
-        await runManager.sendMessage(paramId(req), message, spec);
+        const chatTrigger = triggerRegistry.get('chat') as ChatTriggerAdapter;
+        await chatTrigger.trigger(paramId(req), message, spec);
         res.status(202).json(runManager.status(paramId(req)));
       } catch (error) {
         if (error instanceof AlreadyRunningError || error instanceof ApprovalPendingError) {
