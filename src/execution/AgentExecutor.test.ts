@@ -1,10 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { APICallError } from 'ai';
 import { AgentExecutor, ExecutionEvent } from './AgentExecutor';
+import { CompactedLLMProviderError } from './errors';
 import { createMockProvider } from '../providers/mock';
 import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
 import { AgentType } from '../types';
 import { Span, TraceExporter } from './tracing';
+import { LLMProvider, GenerateResult } from '../providers';
 
 describe('AgentExecutor', () => {
   let provider: ReturnType<typeof createMockProvider>;
@@ -1613,6 +1616,244 @@ describe('AgentExecutor', () => {
       });
 
       expect(result.finishReason).toBeDefined();
+    });
+  });
+
+  describe('LOU-T4: provider.generate() failure compaction', () => {
+    /**
+     * A minimal, hand-rolled LLMProvider whose `generate()` is fully
+     * scripted - throws a caller-supplied sequence of errors, then
+     * (optionally) succeeds - so these tests control EXACTLY what
+     * provider.generate() throws without depending on real network I/O or
+     * a specific adapter's HTTP client.
+     */
+    function makeScriptedProvider(script: Array<unknown | 'success'>): LLMProvider {
+      let call = 0;
+      return {
+        name: 'scripted',
+        async generate(): Promise<GenerateResult> {
+          const step = script[Math.min(call, script.length - 1)];
+          call++;
+          if (step === 'success') {
+            return {
+              text: 'ok',
+              finishReason: 'stop',
+              usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+            };
+          }
+          throw step;
+        },
+        async stream() {
+          throw new Error('not implemented');
+        },
+        supportsTools: () => false,
+        supportsStreaming: () => false,
+        async getModels() {
+          return [];
+        },
+      };
+    }
+
+    it('rejects with a CompactedLLMProviderError (not the raw provider error) by default', async () => {
+      const rawError = new APICallError({
+        message: 'Incorrect API key provided',
+        url: 'https://api.openai.com/v1/chat/completions',
+        requestBodyValues: {},
+        statusCode: 401,
+        responseBody: '{"error":{"message":"Incorrect API key provided: sk-***, huge multi-kilobyte diagnostic body here"}}',
+        isRetryable: false,
+      });
+
+      const scripted = makeScriptedProvider([rawError]);
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .build();
+
+      let caught: unknown;
+      try {
+        await AgentExecutor.execute({ agent, input: 'Hello', provider: scripted });
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toBeInstanceOf(CompactedLLMProviderError);
+      const compactedError = caught as CompactedLLMProviderError;
+      expect(compactedError.compacted.category).toBe('auth-failure');
+      expect(compactedError.compacted.retryable).toBe(false);
+      expect(compactedError.statusCode).toBe(401);
+      expect(compactedError.cause).toBe(rawError);
+      // The raw provider error (and its response body) must never leak into
+      // the compacted message - only the short APICallError#message does.
+      expect(compactedError.message).not.toContain('multi-kilobyte');
+      expect(compactedError.message).toContain('Incorrect API key provided');
+    });
+
+    it('does not surface a non-actionable category (auth-failure) into messages even when the opt-in flag is set', async () => {
+      const rawError = new APICallError({
+        message: 'Incorrect API key provided',
+        url: 'https://api.openai.com/v1/chat/completions',
+        requestBodyValues: {},
+        statusCode: 401,
+        isRetryable: false,
+      });
+      const scripted = makeScriptedProvider([rawError]);
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .build();
+
+      await expect(
+        AgentExecutor.execute({
+          agent,
+          input: 'Hello',
+          provider: scripted,
+          surfaceRetryableProviderErrors: true,
+        })
+      ).rejects.toBeInstanceOf(CompactedLLMProviderError);
+    });
+
+    it('leaves the existing tool-error {error} compaction pattern (resume.ts/executeToolCall) completely unaffected', async () => {
+      // A tool that throws should still be compacted into a conversational
+      // {error} tool-result message and the run should still complete
+      // normally - this is the pre-existing pattern LOU-T4 must not touch.
+      const { tool } = await import('ai');
+      const { z } = await import('zod');
+      toolRegistry.register('boom', {
+        displayName: 'Boom',
+        tool: tool({
+          description: 'always throws',
+          parameters: z.object({}),
+          execute: async () => {
+            throw new Error('tool exploded');
+          },
+        }),
+      });
+
+      const toolProvider = createMockProvider({
+        name: 'mock',
+        responses: ['calling boom', 'done'],
+      });
+      const agent = AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Test Agent')
+        .addTool('boom', { tool: 'boom', options: {} })
+        .build();
+
+      const events: ExecutionEvent[] = [];
+      const result = await AgentExecutor.execute({
+        agent,
+        input: 'please call boom',
+        provider: toolProvider,
+        toolRegistry,
+        onEvent: (event) => events.push(event),
+      });
+
+      // Pre-existing pattern (unrelated to LOU-T4): a thrown tool error is
+      // compacted to `{error: message}` on the `tool-result` event/return
+      // value (see AgentExecutor.doExecuteToolCall()'s catch block) - the
+      // run itself completes normally rather than rejecting.
+      const toolResultEvent = events.find((e) => e.type === 'tool-result');
+      expect(toolResultEvent?.toolResult?.error).toBe('tool exploded');
+      const toolMessage = result.messages.find((m) => m.role === 'tool');
+      expect(toolMessage).toBeDefined();
+      // No CompactedLLMProviderError anywhere near this run.
+      expect(result.finishReason).toBeDefined();
+    });
+
+    describe('with surfaceRetryableProviderErrors: true', () => {
+      it('surfaces a rate-limit failure into messages (tagged, not a raw stack) and retries generation', async () => {
+        const rawError = new APICallError({
+          message: 'Rate limit reached for requests',
+          url: 'https://api.openai.com/v1/chat/completions',
+          requestBodyValues: {},
+          statusCode: 429,
+          responseHeaders: { 'retry-after': '2' },
+          isRetryable: true,
+        });
+        const scripted = makeScriptedProvider([rawError, 'success']);
+        const agent = AgentBuilder.create()
+          .setType(AgentType.SmartAssistant)
+          .setName('Test Agent')
+          .build();
+
+        const result = await AgentExecutor.execute({
+          agent,
+          input: 'Hello',
+          provider: scripted,
+          surfaceRetryableProviderErrors: true,
+        });
+
+        expect(result.text).toBe('ok');
+        const surfaced = result.messages.find(
+          (m) => m.role === 'user' && m.content.startsWith('[provider-error]')
+        );
+        expect(surfaced).toBeDefined();
+        expect(surfaced!.content).toContain('rate-limit');
+        expect(surfaced!.content).not.toContain('at APICallError');
+        expect(surfaced!.content).not.toMatch(/\bat\s+.*:\d+:\d+/); // no stack frames
+      });
+
+      it('rejects with the last compacted error once maxSteps is exhausted by repeated retryable failures', async () => {
+        const rawError = new APICallError({
+          message: 'Request timed out',
+          url: 'https://api.openai.com/v1/chat/completions',
+          requestBodyValues: {},
+          statusCode: 408,
+          isRetryable: true,
+        });
+        const scripted = makeScriptedProvider([rawError]); // always throws
+        const agent = AgentBuilder.create()
+          .setType(AgentType.SmartAssistant)
+          .setName('Test Agent')
+          .build();
+
+        let caught: unknown;
+        try {
+          await AgentExecutor.execute({
+            agent,
+            input: 'Hello',
+            provider: scripted,
+            surfaceRetryableProviderErrors: true,
+            maxSteps: 3,
+          });
+        } catch (error) {
+          caught = error;
+        }
+
+        expect(caught).toBeInstanceOf(CompactedLLMProviderError);
+        expect((caught as CompactedLLMProviderError).compacted.category).toBe('timeout');
+      });
+
+      it('surfaces a context-length-exceeded failure into messages', async () => {
+        const rawError = new APICallError({
+          message:
+            "This model's maximum context length is 8192 tokens. However, your messages resulted in 9000 tokens.",
+          url: 'https://api.openai.com/v1/chat/completions',
+          requestBodyValues: {},
+          statusCode: 400,
+          isRetryable: false,
+        });
+        const scripted = makeScriptedProvider([rawError, 'success']);
+        const agent = AgentBuilder.create()
+          .setType(AgentType.SmartAssistant)
+          .setName('Test Agent')
+          .build();
+
+        const result = await AgentExecutor.execute({
+          agent,
+          input: 'Hello',
+          provider: scripted,
+          surfaceRetryableProviderErrors: true,
+        });
+
+        expect(result.text).toBe('ok');
+        const surfaced = result.messages.find(
+          (m) => m.role === 'user' && m.content.startsWith('[provider-error]')
+        );
+        expect(surfaced).toBeDefined();
+        expect(surfaced!.content).toContain('context-length-exceeded');
+      });
     });
   });
 });
