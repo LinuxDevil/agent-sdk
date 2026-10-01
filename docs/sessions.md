@@ -40,7 +40,7 @@ A `send()` that pauses on a `needsApproval` tool resolves with
 `finishReason: 'awaiting-approval'`. `agent.approvals.resolve({ id, approved })`
 then continues the run as the session's next turn, so the tool call, its result
 and the final answer join the transcript (see
-[approval gates](../README.md#human-in-the-loop-approval-gates)).
+[Approvals](./approvals.md)).
 
 ## Streaming a session turn
 
@@ -124,7 +124,7 @@ Session ids must match `^[A-Za-z0-9_-]{1,128}$` (they become file names, so
 `../x` and `a/b` are refused with an error that says so). Implement
 `SessionStore` yourself to keep transcripts in a database or Redis.
 
-## Stores
+## Choosing a store
 
 Sessions, durable-execution checkpoints and approvals each have a store
 interface (`SessionStore`, `CheckpointStore`, `ApprovalStore`). Pick the

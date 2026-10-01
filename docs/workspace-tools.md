@@ -19,10 +19,12 @@ const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistr
 // paused.finishReason === 'awaiting-approval' -> resumeAfterApproval(...) once a human approves
 ```
 
-`createAgent()` has no approval store. If you use it, choose which commands
-may run without asking: pass `needsApproval: false` together with an `allow`
-list, or a `needsApproval` predicate that returns `false` for the commands
-you trust. A tool call that needs approval makes a `createAgent()` run throw.
+A `createAgent()` agent pauses the same way: `send()` resolves with
+`finishReason: 'awaiting-approval'` and `agent.approvals.resolve()` runs (or
+rejects) the command and continues (see [Approvals](./approvals.md)). To let
+some commands run without asking, pass `needsApproval: false` together with an
+`allow` list, or a `needsApproval` predicate that returns `false` for the
+commands you trust.
 
 ```ts
 import { createAgent, NodeWorkspace, createFsTools, createShellTool } from '@loushy/build-ai-agent';

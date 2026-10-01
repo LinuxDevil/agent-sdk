@@ -8,6 +8,9 @@
 
 ## Install the package
 
+> **Not on npm yet.** The package is not published to the npm registry yet;
+> until it is, use [Installing from a local build](#installing-from-a-local-build).
+
 ```bash
 npm install @loushy/build-ai-agent ai zod
 # or
@@ -102,16 +105,10 @@ runs `loushy init` with the same arguments.
 
 ## The `loushy` CLI
 
-Installing the package also installs the `loushy` command:
-
-- `loushy init [dir]` - scaffold a new project (see above).
-- `loushy dev <spec.yaml|spec.json>` - local dev server with a chat UI and hot
-  reload (see [Configuration](./configuration.md)).
-- `loushy build --target=<target> --agent=<spec>` - build a deployable
-  artifact (see [Deployment](./deployment.md)). Building requires `tsup`
-  (`npm install --save-dev tsup`).
-
-- `loushy doctor [agent.yaml|json] [--json]` - diagnose your setup (see below).
+Installing the package also installs the `loushy` command: `init`, `doctor`,
+`dev`, `mcp`, `eval`, `build` and `studio`. See [CLI](./cli.md) for what each
+one does and its flags. Building requires `tsup`
+(`npm install --save-dev tsup`).
 
 ## Troubleshooting: loushy doctor
 
