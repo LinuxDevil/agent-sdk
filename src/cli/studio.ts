@@ -47,6 +47,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { parseCommand, portValue, stringValue, usageError, type CommandSpec } from './args';
 
 export type StudioMode = 'auto' | 'dev' | 'prod';
 
@@ -240,4 +241,36 @@ function startDevStudio(appDir: string, repoRoot: string, apiPort: number, apiHo
   console.log('[loushy studio] Agent Forge UI: see the Vite dev server output above for its URL (default http://localhost:5173)');
 
   return { apiProcess, viteProcess, mode: 'dev', stop };
+}
+
+const USAGE = 'Usage: loushy studio [--port N] [--host H] [--prod|--dev]';
+
+const SPEC: CommandSpec = {
+  command: 'studio',
+  usage: USAGE,
+  options: { port: { type: 'string' }, host: { type: 'string' }, prod: { type: 'boolean' }, dev: { type: 'boolean' } },
+};
+
+/** Parses the arguments after `studio`; `--prod` with `--dev` is `LOUSHY_CONFIG_INVALID`. */
+export function parseStudioArgs(rest: string[]): StudioOptions & { help?: boolean } {
+  const { values, help } = parseCommand(SPEC, rest);
+  if (values.prod && values.dev) throw usageError(SPEC, '--prod and --dev cannot be combined.');
+  const mode: StudioMode = values.prod ? 'prod' : values.dev ? 'dev' : 'auto';
+  return { apiPort: portValue(SPEC, values.port, 4750), apiHost: stringValue(values.host) ?? '127.0.0.1', mode, help: help || undefined };
+}
+
+/** Runs `loushy studio` with the arguments after `studio`; resolves with the exit code (the children keep the process alive). */
+export async function runStudio(rest: string[]): Promise<number> {
+  try {
+    const { help, ...options } = parseStudioArgs(rest);
+    if (help) {
+      console.log(USAGE);
+      return 0;
+    }
+    startStudio({ ...options, repoRoot: process.cwd() });
+    return 0;
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
 }
