@@ -22,6 +22,27 @@
  */
 export class PropagatingToolError extends Error {}
 
+const propagatingErrors = new WeakSet<object>();
+
+/**
+ * Makes an error that is not a {@link PropagatingToolError} propagate like
+ * one - used for a hook error thrown inside a sub-agent (LOU-Y1), which must
+ * halt the whole run, not become the sub-agent tool's error result.
+ */
+export function markPropagating(error: unknown): void {
+  if (typeof error === 'object' && error !== null) {
+    propagatingErrors.add(error);
+  }
+}
+
+/** Whether a thrown tool error must propagate out of execute() instead of becoming a tool result. */
+export function isPropagatingToolError(error: unknown): boolean {
+  return (
+    error instanceof PropagatingToolError ||
+    (typeof error === 'object' && error !== null && propagatingErrors.has(error))
+  );
+}
+
 /**
  * Converts a thrown tool error into the message string used for the
  * conversational `{error}` tool-result - EXCEPT for a
@@ -33,7 +54,7 @@ export class PropagatingToolError extends Error {}
  * deferred, post-approval tool execution so both handle it identically.
  */
 export function toolErrorMessage(error: unknown): string {
-  if (error instanceof PropagatingToolError) {
+  if (isPropagatingToolError(error)) {
     throw error;
   }
   return (error as Error | undefined)?.message ?? String(error);

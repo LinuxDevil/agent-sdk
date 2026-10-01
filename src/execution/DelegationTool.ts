@@ -7,7 +7,9 @@
 import { z } from 'zod';
 import { tool } from 'ai';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { AgentExecutor, PropagatingToolError } from './AgentExecutor';
+import { PropagatingToolError } from './propagatingToolError';
+import { runSubagent } from './delegation';
+import { AgentExecutor } from './AgentExecutor';
 import { LLMProvider, Message } from '../providers';
 import { AgentConfig, ToolDescriptor } from '../types';
 import { ToolRegistry } from '../tools';
@@ -90,6 +92,13 @@ export interface DelegateAgentResult {
  * Create a ToolDescriptor that lets an agent delegate a task to a child
  * agent, running the child through AgentExecutor.execute() and returning
  * its final text/usage.
+ *
+ * LOU-Y1: the child inherits the calling run's runtime - abort signal,
+ * hooks (with `ctx.subagent` set), trace parent, approval store (a child
+ * call that needs approval pauses the whole run; `resumeAfterApproval()`
+ * finishes it), `toolConcurrency`, `onEvent` (events tagged with
+ * `subagent`) - and its token usage is added to the parent run's. See
+ * docs/sub-agents.md; for named sub-agents prefer the `subagents` option.
  */
 export function createDelegateTool(opts: DelegateAgentOptions): ToolDescriptor {
   const maxDepth = opts.maxDepth ?? 3;
@@ -134,19 +143,16 @@ export function createDelegateTool(opts: DelegateAgentOptions): ToolDescriptor {
             : [{ role: 'user', content: task }];
 
         return delegationDepthStorage.run(currentDepth + 1, async () => {
-          const result = await AgentExecutor.execute({
-            agent: opts.agent,
-            input: childInput,
-            provider: opts.provider,
-            toolRegistry: opts.toolRegistry,
-            maxSteps: opts.maxSteps,
+          const result = await runSubagent(
+            { agent: opts.agent, provider: opts.provider, toolRegistry: opts.toolRegistry, maxSteps: opts.maxSteps },
             // LOU-V1: aborting the parent run aborts the child with it.
-            signal: options?.abortSignal,
-          });
+            { name: opts.agent.name, input: childInput, toolOptions: options },
+            (childOptions) => AgentExecutor.execute(childOptions)
+          );
 
-          // LOU-V5: the child's full usage rolls up into the parent run's
-          // totals (`usage.delegated`); the model only sees the token counts.
-          options?.onDelegatedUsage?.(result.usage);
+          // LOU-V5: runSubagent() rolled the child's full usage into the
+          // parent run's totals (`usage.delegated`); the model only sees the
+          // token counts.
           const { promptTokens, completionTokens, totalTokens } = result.usage;
           return {
             text: result.text,

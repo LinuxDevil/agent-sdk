@@ -18,6 +18,12 @@ export interface PendingApproval {
   args: Record<string, unknown>;
   agentId?: string;
   createdAt: string;
+  /**
+   * LOU-Y1: set when the call belongs to a sub-agent - the names of the
+   * sub-agents it runs inside, outermost first (e.g. `['researcher']`).
+   * Absent for the top-level agent's own tool calls.
+   */
+  subagentPath?: string[];
 }
 
 /**
@@ -62,6 +68,29 @@ export interface ExecutionSnapshot {
   remainingToolCalls?: ToolCall[];
   /** Usage the paused run had spent (LOU-V5), so the resumed run continues its totals. */
   usage?: RunUsage;
+  /**
+   * LOU-Y1: set when the run paused because a sub-agent it called paused for
+   * approval. `pendingToolCall` is then the sub-agent's call, and
+   * `resumeAfterApproval()` re-enters the sub-agent instead of running a tool
+   * of this run.
+   */
+  subagent?: SubagentSuspension;
+}
+
+/**
+ * A tool call of a paused run (a `task` or delegate tool call) whose
+ * sub-agent is itself paused for approval. Plain data, so it is stored with
+ * the rest of the snapshot.
+ */
+export interface SubagentSuspension {
+  /** The parent's tool call that is waiting on the sub-agent. */
+  toolCallId: string;
+  toolName: string;
+  args: Record<string, unknown>;
+  /** The sub-agent's name. */
+  agentName: string;
+  /** The sub-agent's own paused run (which may itself wait on a sub-agent). */
+  snapshot: ExecutionSnapshot;
 }
 
 /**

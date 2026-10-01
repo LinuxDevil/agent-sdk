@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import type { AgentConfig } from '../types';
-import { defineTool } from '../tools/defineTool';
+import { defineTool, type DefinedTool } from '../tools/defineTool';
 import { ToolRegistry } from '../tools/ToolRegistry';
 import type { Skill } from './defineSkill';
+import { extendAgent } from '../execution/subagentRuntime';
 
 /** Name of the tool the model uses to load a skill's full content. */
 const LOAD_SKILL_TOOL = 'load_skill';
@@ -52,6 +53,30 @@ function assertUsable(skills: readonly Skill[], agent: AgentConfig, registry?: T
 }
 
 /**
+ * Adds `tool` and a system-prompt `block` to an agent run, without mutating
+ * the inputs. Shared by skills and sub-agents (the `task` tool).
+ */
+export function withPromptTool(
+  agent: AgentConfig,
+  toolRegistry: ToolRegistry | undefined,
+  tool: DefinedTool,
+  block: string
+): { agent: AgentConfig; toolRegistry: ToolRegistry } {
+  const registry = new ToolRegistry();
+  for (const [name, descriptor] of Object.entries(toolRegistry?.getAll() ?? {})) {
+    registry.register(name, descriptor);
+  }
+  registry.register(tool);
+  return {
+    agent: extendAgent(agent, {
+      prompt: agent.prompt ? `${agent.prompt}\n\n${block}` : block,
+      tools: { ...agent.tools, [tool.name]: { tool: tool.name } },
+    }),
+    toolRegistry: registry,
+  };
+}
+
+/**
  * Applies skills to an agent run: appends the "Available skills" block to the
  * system prompt and adds a `load_skill` tool. Inputs are not mutated; with no
  * skills they are returned as is.
@@ -63,20 +88,5 @@ export function withSkills(
 ): { agent: AgentConfig; toolRegistry: ToolRegistry | undefined } {
   if (!skills || skills.length === 0) return { agent, toolRegistry };
   assertUsable(skills, agent, toolRegistry);
-
-  const registry = new ToolRegistry();
-  for (const [name, descriptor] of Object.entries(toolRegistry?.getAll() ?? {})) {
-    registry.register(name, descriptor);
-  }
-  registry.register(createLoadSkillTool(skills));
-
-  const block = skillsPromptBlock(skills);
-  return {
-    agent: {
-      ...agent,
-      prompt: agent.prompt ? `${agent.prompt}\n\n${block}` : block,
-      tools: { ...agent.tools, [LOAD_SKILL_TOOL]: { tool: LOAD_SKILL_TOOL } },
-    },
-    toolRegistry: registry,
-  };
+  return withPromptTool(agent, toolRegistry, createLoadSkillTool(skills), skillsPromptBlock(skills));
 }
