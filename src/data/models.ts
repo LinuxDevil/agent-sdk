@@ -12,7 +12,7 @@ import { AgentConfig, AgentFlow } from '../types';
 export class Agent {
   id?: string;
   name: string;
-  agentType: string;
+  agentType?: string;
   locale: string;
   prompt?: string;
   expectedResult?: any;

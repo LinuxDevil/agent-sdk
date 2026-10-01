@@ -133,6 +133,9 @@ export async function resumeAfterApproval(
   };
   const step = await decidedToolMessage(ctx, pending);
   if ('paused' in step) {
+    // LOU-U8: the sub-agent paused again, so the session still awaits an approval.
+    const businessState = executeOptions.businessState !== undefined ? executeOptions.businessState : staleBusinessState;
+    await markAwaitingApproval(snapshot, step.paused, checkpointStore, businessState);
     return step.paused;
   }
   // LOU-Y1: a call whose sub-agent paused already has a placeholder result.
@@ -225,6 +228,37 @@ async function clearStaleCheckpoint(
   const staleCheckpoint: Checkpoint | null = await checkpointStore.load(sessionId);
   await checkpointStore.delete(sessionId);
   return staleCheckpoint?.businessState;
+}
+
+/**
+ * LOU-U8 + LOU-Y1: when a resumed sub-agent pauses again, no execute() call
+ * of this run writes a checkpoint (the stale one was just deleted), so mark
+ * the session 'awaiting-approval' here - a later execute() on it then throws
+ * SessionAwaitingApprovalError instead of starting over. Only the status,
+ * approval id and businessState are read back: the next resumeAfterApproval()
+ * rebuilds the run from its approval snapshot.
+ */
+async function markAwaitingApproval(
+  snapshot: ExecutionSnapshot,
+  paused: ExecutionResult,
+  checkpointStore: CheckpointStore | undefined,
+  businessState: unknown
+): Promise<void> {
+  if (!snapshot.sessionId || !checkpointStore) {
+    return;
+  }
+  await checkpointStore.save(snapshot.sessionId, {
+    agentId: snapshot.agent.id || '',
+    sessionId: snapshot.sessionId,
+    stepIndex: paused.steps,
+    messages: paused.messages,
+    toolCalls: [],
+    usage: structuredClone(paused.usage),
+    finishReason: paused.finishReason,
+    businessState,
+    status: 'awaiting-approval',
+    approvalId: paused.approvalId,
+  });
 }
 
 /**

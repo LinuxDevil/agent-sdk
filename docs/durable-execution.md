@@ -29,7 +29,7 @@ A checkpoint is the run's whole transcript plus its step count, usage,
 | Right after each model response that asks for tools, before any tool runs | `'in-progress'` |
 | Each time a tool result is recorded (results are recorded in call order) | `'in-progress'` |
 | When the run is aborted (`signal`) | `'in-progress'` |
-| When the run pauses for an approval | `'awaiting-approval'` (with `approvalId`) |
+| When the run pauses for an approval (its own tool call's, or a [sub-agent](sub-agents.md)'s, also when a resumed sub-agent pauses again) | `'awaiting-approval'` (with `approvalId`) |
 | When the run finishes (the model stopped calling tools, or `maxSteps` ran out) | `'finished'` |
 
 A run that rejects (a provider error, a throwing hook, a

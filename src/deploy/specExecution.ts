@@ -9,7 +9,7 @@
  * resolving providers/tools in a way that works on its own platform.
  */
 import { AgentBuilder } from '../core/AgentBuilder';
-import { AgentType, ToolConfiguration, ToolDescriptor } from '../types';
+import { ToolConfiguration, ToolDescriptor } from '../types';
 import { ToolRegistry } from '../tools/ToolRegistry';
 import { ExecuteOptions } from '../execution/AgentExecutor';
 import { LLMProvider } from '../providers/llm';
@@ -37,7 +37,6 @@ export function prepareSpecExecution(spec: AgentSpec, resolvers: SpecResolvers):
   }
 
   const agent = AgentBuilder.create()
-    .setType(AgentType.SmartAssistant)
     .setName(spec.name)
     .setPrompt(spec.prompt)
     .setTools(toolsConfig)

@@ -60,6 +60,28 @@ const result = await run.result; // no iteration needed
 console.log(result.finishReason, result.text);
 ```
 
+## Streaming a session turn
+
+`session.stream(input, { signal })` streams one turn of a multi-turn
+[session](./sessions.md) and returns the same `AgentRun`. The run sees the
+conversation so far, and when it ends its turn is saved to the session's
+store, just as `session.send()` saves it. `run.done` is delivered after the
+save, so the transcript is complete when the loop ends. An aborted or failed
+run, or one you stop reading early, is not saved.
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini' });
+const session = agent.session({ id: 'user-42' });
+
+for await (const event of session.stream('My name is Ali.')) {
+  if (event.type === 'text.delta') process.stdout.write(event.text);
+}
+const again = session.stream('What is my name?'); // streams with the first turn in its history
+console.log((await again.result).text);
+```
+
 ## Event schema (version 1)
 
 Every event has these fields:
