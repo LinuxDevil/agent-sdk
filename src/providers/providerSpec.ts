@@ -178,9 +178,10 @@ function createProvider(caller: string, providerName: string, entry: ProviderEnt
 
 /**
  * Resolve a "<provider>/<model>" spec into a configured LLMProvider, with
- * errors reported in `caller`'s name. See `resolveProvider()`.
+ * errors reported in `caller`'s name. See `resolveProvider()`. `extra` is
+ * merged into the provider config (createAgent() sets `maxRetries: 0`).
  */
-export function resolveProviderSpec(spec: string, caller: string): LLMProvider {
+export function resolveProviderSpec(spec: string, caller: string, extra: LLMProviderConfig = {}): LLMProvider {
   const separatorIndex = spec.indexOf('/');
   if (separatorIndex <= 0 || separatorIndex === spec.length - 1) {
     throw new Error(
@@ -199,6 +200,7 @@ export function resolveProviderSpec(spec: string, caller: string): LLMProvider {
   if (!envValue && entry.envRequired) throw missingKeyError(caller, entry.envKey);
 
   return createProvider(caller, providerName, entry, {
+    ...extra,
     defaultModel: model,
     [entry.configField]: envValue,
   });

@@ -29,6 +29,8 @@ import {
 import { parseToolArguments } from './toolCallExecution';
 import { canStream, generateViaStream } from './streamStep';
 import { measureUsage } from './runUsage';
+import { compactProviderError } from './errors';
+import { withProviderEvents, type ProviderEventListener } from '../providers/providerEvents';
 import type { Usage } from '../models/usage';
 
 /**
@@ -332,12 +334,26 @@ class AgentRunImpl implements AgentRun {
         });
       },
       generate: async (provider, request) => {
-        const generated = await this.generateStep(provider, request, subagent);
+        const call = withProviderEvents(request, this.providerEvents(subagent));
+        const generated = await this.generateStep(provider, call, subagent);
         const measured = measureUsage(request.model ?? provider.name, request.messages, generated);
         stepResult = { finishReason: generated.finishReason, ...measured, usage: measured.usage };
         return generated;
       },
       forSubagent: (child) => this.sink(subagent ? { ...child, depth: subagent.depth + 1, parent: subagent } : child),
+    };
+  }
+
+  /** Reports what `withRetry()` / `withFallback()` do with this run's model calls (LOU-V7.2). */
+  private providerEvents(subagent: SubagentInfo | undefined): ProviderEventListener {
+    return {
+      retry: ({ attempt, maxRetries, delayMs, error, provider }) => {
+        const { error: message, category } = compactProviderError(error);
+        const eventError = { message, ...(category !== 'unknown' && { category }) };
+        this.emit({ type: 'provider.retry', attempt, maxRetries, delayMs, error: eventError, provider }, subagent);
+      },
+      fallback: ({ from, to, error }) =>
+        this.emit({ type: 'provider.fallback', from, to, error: { message: compactProviderError(error).error } }, subagent),
     };
   }
 

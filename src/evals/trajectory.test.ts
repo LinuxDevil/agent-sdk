@@ -101,7 +101,7 @@ describe('trajectory assertions: diagnostic failures', () => {
     );
     expect(result.passed).toBe(false);
     expect(failedMessages(result)).toEqual([
-      "completed() failed: finishReason was 'tool_calls' (the run hit maxSteps while still calling tools)",
+      "completed() failed: finishReason was 'max-steps' (the run hit maxSteps while still calling tools)",
     ]);
   });
 
