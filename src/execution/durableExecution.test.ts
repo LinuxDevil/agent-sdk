@@ -429,6 +429,67 @@ describe('LOU-U8: resume with new input', () => {
   });
 });
 
+describe('usage continuity across resumes (LOU-V5 x LOU-U7/U9)', () => {
+  const callTurn = (...names: string[]): MockTurn => ({ ...(turnCalling(...names) as object), usage: { inputTokens: 100, outputTokens: 10 } });
+  const finalTurn: MockTurn = { text: 'done', usage: { inputTokens: 200, outputTokens: 20 } };
+
+  it('a crash-resume with pending tool calls continues the checkpointed totals', async () => {
+    const runs: Runs = {};
+    const h: Harness = { tools: [tool('a', runs), tool('b', runs, { crashOnce: true })], checkpoints: checkpointStore() };
+    await expect(execute(h, [callTurn('a', 'b')]).result).rejects.toThrow('process died');
+
+    const result = await execute(h, [finalTurn]).result;
+
+    expect(result.usage).toMatchObject({ inputTokens: 300, outputTokens: 30, totalTokens: 330, modelCalls: 2 });
+    expect(result.stepUsage).toHaveLength(2);
+  });
+
+  it('an approval pause -> resume with remaining calls continues the snapshotted totals', async () => {
+    const runs: Runs = {};
+    const h: Harness = {
+      tools: [tool('a', runs), tool('b', runs, { needsApproval: true }), tool('c', runs)],
+      approvals: approvalStore(),
+      checkpoints: checkpointStore(),
+    };
+    const paused = await execute(h, [callTurn('a', 'b', 'c')]).result;
+    expect(paused.usage).toMatchObject({ inputTokens: 100, outputTokens: 10, modelCalls: 1 });
+
+    const { result } = await resume(h, paused, [finalTurn]);
+
+    expect(runs).toEqual({ a: 1, b: 1, c: 1 });
+    expect(result.usage).toMatchObject({ inputTokens: 300, outputTokens: 30, totalTokens: 330, modelCalls: 2 });
+  });
+
+  it('tool execute options carry toolCallId, abortSignal and onDelegatedUsage together', async () => {
+    let seen: Record<string, unknown> = {};
+    const probe = defineTool({
+      name: 'probe',
+      description: 'records its options',
+      input: z.object({}),
+      execute: async (_args, ctx) => {
+        seen = { ...ctx };
+        return 'ok';
+      },
+    });
+    const controller = new AbortController();
+
+    await execute({ tools: [probe] }, [turnCalling('probe'), 'done'], { signal: controller.signal }).result;
+
+    expect(seen.toolCallId).toBe('call_probe');
+    expect(seen.abortSignal).toBe(controller.signal);
+    expect(typeof seen.onDelegatedUsage).toBe('function');
+  });
+
+  it('a new turn of a finished session counts its own usage from zero', async () => {
+    const h: Harness = { tools: [], checkpoints: checkpointStore() };
+    await execute(h, [finalTurn], { input: 'hi' }).result;
+
+    const next = await execute(h, [{ text: 'again', usage: { inputTokens: 50, outputTokens: 5 } }], { input: 'more' }).result;
+
+    expect(next.usage).toMatchObject({ inputTokens: 50, outputTokens: 5, modelCalls: 1 });
+  });
+});
+
 describe('newSessionMessages (LOU-U8 input merging)', () => {
   const stored: Message[] = [
     { role: 'system', content: 'p' },

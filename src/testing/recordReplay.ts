@@ -9,6 +9,7 @@ import type {
   GenerateOptions,
   GenerateResult,
   LLMProvider,
+  ProviderUsage,
   StreamChunk,
   StreamResult,
 } from '../providers/llm';
@@ -135,6 +136,13 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+/** Only the token counts are stored; a call that reported no usage records none. */
+function recordedUsage(usage: ProviderUsage | undefined): { usage?: ProviderUsage } {
+  if (!usage) return {};
+  const { promptTokens, completionTokens, totalTokens } = usage;
+  return { usage: { promptTokens, completionTokens, totalTokens } };
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -157,7 +165,7 @@ function replayStream(response: CassetteResponse, replayTiming: boolean): Stream
     fullStream: fullStream(),
     textStream: textStream(),
     text: Promise.resolve(response.text),
-    usage: Promise.resolve(clone(response.usage)),
+    usage: Promise.resolve(response.usage && clone(response.usage)),
     finishReason: Promise.resolve(response.finishReason),
     toolCalls: Promise.resolve(clone(response.toolCalls ?? [])),
   };
@@ -167,7 +175,7 @@ function toGenerateResult(response: CassetteResponse): GenerateResult {
   return {
     text: response.text,
     finishReason: response.finishReason as GenerateResult['finishReason'],
-    usage: clone(response.usage),
+    ...(response.usage ? { usage: clone(response.usage) } : {}),
     ...(response.toolCalls?.length ? { toolCalls: clone(response.toolCalls) } : {}),
   };
 }
@@ -257,11 +265,7 @@ class Recorder implements RecordReplayProvider {
     return this.sanitizer.redact({
       text: result.text,
       finishReason: result.finishReason,
-      usage: {
-        promptTokens: result.usage.promptTokens,
-        completionTokens: result.usage.completionTokens,
-        totalTokens: result.usage.totalTokens,
-      },
+      ...recordedUsage(result.usage),
       ...(result.toolCalls?.length ? { toolCalls: result.toolCalls } : {}),
     });
   }
@@ -283,11 +287,7 @@ class Recorder implements RecordReplayProvider {
     return this.sanitizer.redact({
       text,
       finishReason,
-      usage: {
-        promptTokens: usage.promptTokens,
-        completionTokens: usage.completionTokens,
-        totalTokens: usage.totalTokens,
-      },
+      ...recordedUsage(usage),
       ...(toolCalls.length ? { toolCalls } : {}),
       chunks,
     });

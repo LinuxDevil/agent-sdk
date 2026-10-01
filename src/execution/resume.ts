@@ -58,6 +58,7 @@ export type ResumeExecuteOptions = Omit<
   | 'toolRegistry'
   | 'skipSystemPromptInjection'
   | 'initialSteps'
+  | 'initialUsage'
   | 'sessionId'
   | 'checkpointStore'
 >;
@@ -318,7 +319,7 @@ async function executeApprovedTool(
         args,
         sandbox,
         executeOptions.signal,
-        pending.toolCallId
+        { toolCallId: pending.toolCallId }
       ),
     };
   } catch (error) {
@@ -420,5 +421,7 @@ function continueResumedRun(
     // snapshot.steps is the step count AgentExecutor.execute() had already
     // reached (see ExecutionSnapshot) at the moment it paused for approval.
     initialSteps: snapshot.steps,
+    // LOU-V5: and usage totals, rather than restarting them at zero.
+    initialUsage: snapshot.usage,
   });
 }

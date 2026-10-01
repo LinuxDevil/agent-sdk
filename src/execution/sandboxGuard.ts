@@ -21,6 +21,19 @@
 import type { ToolExecutionOptions } from 'ai';
 import { ToolDescriptor } from '../types';
 import { SandboxAdapter } from '../security/sandboxCore';
+import type { RunUsage } from '../models/usage';
+
+/** Extra context the executor hands a tool next to the 'ai' SDK's own execute options (LOU-V5). */
+export interface ToolRunContext {
+  /** Called by the delegate tool with a finished child run's usage, so the parent run adds it to its totals. */
+  onDelegatedUsage?: (usage: RunUsage) => void;
+  /**
+   * LOU-U9: the model's id for this tool call - unchanged when a call that
+   * was running when the process died is re-run on resume, so tools can use
+   * it as an idempotency key.
+   */
+  toolCallId?: string;
+}
 
 /**
  * Execute `toolDesc` against `args`, honoring `requiresSandbox`:
@@ -47,7 +60,7 @@ export async function executeToolWithSandboxGuard(
   args: Record<string, unknown>,
   sandbox: SandboxAdapter,
   signal?: AbortSignal,
-  toolCallId?: string
+  runContext?: ToolRunContext
 ): Promise<unknown> {
   if (toolDesc.requiresSandbox) {
     if (!toolDesc.sandboxExecute) {
@@ -63,8 +76,8 @@ export async function executeToolWithSandboxGuard(
 
   // The 'ai' SDK types toolCallId/messages as required, but tools invoked
   // here are not part of an 'ai' SDK generation, so `messages` is not set
-  // (LOU-U15). `toolCallId` (LOU-U9) is the model's id for this call - the
-  // same on a resumed re-run - so tools can use it as an idempotency key.
-  const executeOptions = { abortSignal: signal, toolCallId } as ToolExecutionOptions;
+  // (LOU-U15). `runContext` carries `toolCallId` (LOU-U9) and
+  // `onDelegatedUsage` (LOU-V5).
+  const executeOptions = { abortSignal: signal, ...runContext } as ToolExecutionOptions;
   return toolDesc.tool.execute ? toolDesc.tool.execute(args, executeOptions) : null;
 }

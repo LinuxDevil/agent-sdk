@@ -5,3 +5,4 @@
 
 export * from './estimateTokens';
 export * from './registry';
+export * from './usage';

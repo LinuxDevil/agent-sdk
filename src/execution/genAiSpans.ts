@@ -15,8 +15,10 @@
 import type { GenerateOptions, GenerateResult, LLMProvider, Message, ToolCall } from '../providers';
 import type { ToolRegistry } from '../tools';
 import type { AgentConfig } from '../types';
-import { ErrorAttr, GenAiAttr, GenAiOperation, LegacyAttr, TOOL_TYPE_FUNCTION, CAPTURE_CONTENT_ENV } from './semconv';
+import { ErrorAttr, GenAiAttr, GenAiOperation, LegacyAttr, SdkAttr, TOOL_TYPE_FUNCTION, CAPTURE_CONTENT_ENV } from './semconv';
 import type { Span, SpanKind } from './tracing';
+import { normalizeUsage } from '../models/usage';
+import type { Usage } from '../models/usage';
 
 /** Name, kind and starting attributes for a span about to be opened. */
 interface SpanInit {
@@ -158,8 +160,18 @@ function responseModel(generated: GenerateResult): string | undefined {
   return typeof model === 'string' ? model : undefined;
 }
 
-/** Records usage, finish reason, response model (and output content) on a `chat` span. */
-export function recordLlmResult(span: Span, generated: GenerateResult, captureContent: boolean): void {
+/**
+ * Records usage, finish reason, response model (and output content) on a `chat` span.
+ * Usage is the same normalized `Usage` the run totals use: pass the executor's
+ * `measured` figures (which may be estimates), else what the provider reported.
+ */
+export function recordLlmResult(
+  span: Span,
+  generated: GenerateResult,
+  captureContent: boolean,
+  measured?: { usage: Usage; estimated: boolean }
+): void {
+  const usage = measured?.usage ?? normalizeUsage(generated.usage);
   const parts: unknown[] = generated.text ? [textPart(generated.text)] : [];
   parts.push(...(generated.toolCalls ?? []).map(toolCallPart));
   // Token counts and finish reason are never redacted.
@@ -168,11 +180,12 @@ export function recordLlmResult(span: Span, generated: GenerateResult, captureCo
     ...defined({
       [GenAiAttr.RESPONSE_MODEL]: responseModel(generated),
       [GenAiAttr.RESPONSE_FINISH_REASONS]: [genAiFinishReason(generated.finishReason)],
-      [GenAiAttr.USAGE_INPUT_TOKENS]: generated.usage.promptTokens,
-      [GenAiAttr.USAGE_OUTPUT_TOKENS]: generated.usage.completionTokens,
-      [LegacyAttr.PROMPT_TOKENS]: generated.usage.promptTokens,
-      [LegacyAttr.COMPLETION_TOKENS]: generated.usage.completionTokens,
-      [LegacyAttr.TOTAL_TOKENS]: generated.usage.totalTokens,
+      [GenAiAttr.USAGE_INPUT_TOKENS]: usage?.inputTokens,
+      [GenAiAttr.USAGE_OUTPUT_TOKENS]: usage?.outputTokens,
+      [LegacyAttr.PROMPT_TOKENS]: usage?.inputTokens,
+      [LegacyAttr.COMPLETION_TOKENS]: usage?.outputTokens,
+      [LegacyAttr.TOTAL_TOKENS]: usage?.totalTokens,
+      [SdkAttr.USAGE_ESTIMATED]: measured?.estimated ? true : undefined,
       [LegacyAttr.FINISH_REASON]: generated.finishReason,
       [GenAiAttr.OUTPUT_MESSAGES]: captureContent
         ? JSON.stringify([{ role: 'assistant', parts }])

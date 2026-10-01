@@ -27,6 +27,8 @@ import {
 } from './agentEvents';
 import { parseToolArguments } from './toolCallExecution';
 import { canStream, generateViaStream } from './streamStep';
+import { measureUsage } from './runUsage';
+import type { Usage } from '../models/usage';
 
 /**
  * The handle returned by `agent.stream()` and `AgentExecutor.stream()`.
@@ -97,11 +99,25 @@ function toEventError(error: unknown): AgentEventError {
   };
 }
 
-function toEventUsage(usage: AgentEventUsage): AgentEventUsage {
+/** Usage of one step, or (with `modelCalls`) of the whole run, as event usage. */
+function toEventUsage(usage: {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  estimated: boolean;
+  costUsd?: number;
+  modelCalls?: number;
+}): AgentEventUsage {
+  const { inputTokens, outputTokens, totalTokens, estimated, costUsd, modelCalls } = usage;
   return {
-    promptTokens: usage.promptTokens,
-    completionTokens: usage.completionTokens,
-    totalTokens: usage.totalTokens,
+    promptTokens: inputTokens,
+    completionTokens: outputTokens,
+    totalTokens,
+    inputTokens,
+    outputTokens,
+    estimated,
+    ...(costUsd !== undefined && { costUsd }),
+    ...(modelCalls !== undefined && { modelCalls }),
   };
 }
 
@@ -125,7 +141,7 @@ class AgentRunImpl implements AgentRun {
   private closed = false;
   private iterated = false;
   private wake: (() => void) | undefined;
-  private stepResult: GenerateResult | undefined;
+  private stepResult: { finishReason: GenerateResult['finishReason']; usage: Usage; estimated: boolean; costUsd?: number } | undefined;
   private lastError: unknown;
 
   constructor(start: RunStarter, signal: AbortSignal | undefined) {
@@ -265,12 +281,12 @@ class AgentRunImpl implements AgentRun {
         this.emit({ type: 'step.start', step });
       },
       stepDone: (step, finishReason) => {
-        const usage = this.stepResult?.usage;
+        const measured = this.stepResult;
         this.emit({
           type: 'step.done',
           step,
-          finishReason: finishReason ?? this.stepResult?.finishReason ?? 'error',
-          ...(usage && { usage: toEventUsage(usage) }),
+          finishReason: finishReason ?? measured?.finishReason ?? 'error',
+          ...(measured && { usage: toEventUsage({ ...measured.usage, estimated: measured.estimated, costUsd: measured.costUsd }) }),
         });
       },
       approvalRequested: (pending) =>
@@ -282,8 +298,10 @@ class AgentRunImpl implements AgentRun {
           args: toJsonValue(pending.args) as Record<string, unknown>,
         }),
       generate: async (provider, request) => {
-        this.stepResult = await this.generateStep(provider, request);
-        return this.stepResult;
+        const generated = await this.generateStep(provider, request);
+        const measured = measureUsage(request.model ?? provider.name, request.messages, generated);
+        this.stepResult = { finishReason: generated.finishReason, ...measured, usage: measured.usage };
+        return generated;
       },
     };
   }

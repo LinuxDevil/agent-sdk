@@ -6,6 +6,7 @@
 import { Message, ToolCall } from '../providers';
 import { AgentConfig } from '../types';
 import { StorageService } from '../storage';
+import type { RunUsage } from '../models/usage';
 
 /**
  * A tool call that is waiting on a human decision before it can execute.
@@ -59,6 +60,8 @@ export interface ExecutionSnapshot {
    * so the transcript stays valid for the provider.
    */
   remainingToolCalls?: ToolCall[];
+  /** Usage the paused run had spent (LOU-V5), so the resumed run continues its totals. */
+  usage?: RunUsage;
 }
 
 /**

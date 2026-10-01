@@ -45,7 +45,8 @@ It depends on the stored `status`:
   without a result, exactly those calls run first, through the normal tool
   path (argument validation, hooks, `needsApproval`, `toolConcurrency`),
   **without calling the model again**. Then the loop continues, with the
-  remaining `maxSteps` budget.
+  remaining `maxSteps` budget; `usage` continues from the checkpointed
+  totals (the same holds for `resumeAfterApproval()`, from the snapshot).
   - New `input` is appended as a user message after those tool results.
     It is never placed between a tool-call turn and its results, so the
     transcript stays valid for every provider. This is what lets a user

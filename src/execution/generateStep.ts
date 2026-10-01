@@ -9,6 +9,8 @@ import { GenerateOptions, GenerateResult, Message, ToolDefinition } from '../pro
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
 import { withSpan } from './tracing';
+import type { CallUsage } from '../models/usage';
+import { measureUsage } from './runUsage';
 import { llmSpanInit, recordLlmResult, resolveCaptureContent } from './genAiSpans';
 import { GenerateHookContext } from './hooks';
 import {
@@ -69,6 +71,11 @@ function generateHookContext(
   };
 }
 
+/** The model a call is made with: agent.settings.model > the provider's configured model > unknown. */
+function resolveModel(options: ExecuteOptions): string | undefined {
+  return options.agent.settings?.model || options.provider.defaultModel;
+}
+
 /**
  * Builds the next provider.generate() request and runs the onLLMRequest
  * callback and preGenerate hooks for it. Errors thrown here are NOT
@@ -79,12 +86,12 @@ export async function prepareGenerateRequest(
   messages: Message[],
   tools: ToolDefinition[]
 ): Promise<GenerateOptions> {
-  const { agent, provider, temperature, maxTokens, onLLMRequest, hooks, signal } = options;
+  const { temperature, maxTokens, onLLMRequest, hooks, signal } = options;
 
   const generateRequest: GenerateOptions = {
     // agent.settings.model > the model the provider was configured with >
     // undefined (the provider then applies its own built-in default).
-    model: agent.settings?.model || provider.defaultModel,
+    model: resolveModel(options),
     messages,
     temperature,
     maxTokens,
@@ -104,6 +111,12 @@ export async function prepareGenerateRequest(
   return generateRequest;
 }
 
+/** A generate() reply with what the call spent (LOU-V5). */
+export interface GeneratedStep {
+  generated: GenerateResult;
+  measured: CallUsage;
+}
+
 /**
  * Runs provider.generate() inside a `chat {model}` span parented to the
  * run's `invoke_agent` span, followed by the onLLMResponse callback and
@@ -114,7 +127,7 @@ export function generateInSpan(
   generateRequest: GenerateOptions,
   messages: Message[],
   agentSpanId: string
-): Promise<GenerateResult> {
+): Promise<GeneratedStep> {
   const { provider, exporter, onLLMResponse, hooks, redactContent = false } = options;
   const captureContent = resolveCaptureContent(options.captureContent);
   const init = llmSpanInit(provider, generateRequest, { redactContent, captureContent });
@@ -133,10 +146,11 @@ export function generateInSpan(
         : await provider.generate(generateRequest);
       const llmLatencyMs = Date.now() - llmStart;
 
-      recordLlmResult(llmSpan, generated, captureContent);
+      const measured = measureUsage(resolveModel(options) ?? provider.name, messages, generated);
+      recordLlmResult(llmSpan, generated, captureContent, measured);
 
       if (onLLMResponse) {
-        await onLLMResponse(generated, llmLatencyMs);
+        await onLLMResponse(generated, llmLatencyMs, measured);
       }
 
       if (hooks) {
@@ -146,7 +160,7 @@ export function generateInSpan(
         );
       }
 
-      return generated;
+      return { generated, measured };
     },
     agentSpanId,
     init.kind

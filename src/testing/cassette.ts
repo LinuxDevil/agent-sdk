@@ -55,7 +55,8 @@ const requestSchema = z.object({
 const responseSchema = z.object({
   text: z.string(),
   finishReason: z.string(),
-  usage: usageSchema,
+  /** Absent when the provider reported no usage for the call. */
+  usage: usageSchema.optional(),
   toolCalls: z.array(toolCallSchema).optional(),
   /** Present for `stream()` entries: the chunks and the delay before each. */
   chunks: z.array(z.object({ delayMs: z.number(), chunk: chunkSchema })).optional(),
