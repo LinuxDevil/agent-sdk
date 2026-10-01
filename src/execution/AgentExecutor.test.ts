@@ -344,7 +344,10 @@ describe('AgentExecutor', () => {
           provider: approvalProvider,
           toolRegistry,
         })
-      ).rejects.toThrow(/requires approval/);
+      ).rejects.toMatchObject({
+        message: expect.stringMatching(/requires approval/),
+        code: 'LOUSHY_APPROVAL_STORE_MISSING',
+      });
     });
 
     it('should save a checkpoint after each tool result when sessionId + checkpointStore are provided', async () => {
@@ -1384,6 +1387,9 @@ describe('AgentExecutor', () => {
           input: 'Hello',
         } as any)
       ).rejects.toThrow(/'provider' is required.*Example:/s);
+      await expect(
+        AgentExecutor.execute({ agent, input: 'Hello' } as never)
+      ).rejects.toMatchObject({ code: 'LOUSHY_CONFIG_MISSING_PROVIDER', field: 'provider' });
     });
 
     it('throws naming "agent" with a corrective snippet when agent is omitted', async () => {
@@ -1393,6 +1399,9 @@ describe('AgentExecutor', () => {
           provider,
         } as any)
       ).rejects.toThrow(/'agent' is required.*Example:/s);
+      await expect(
+        AgentExecutor.execute({ input: 'Hello', provider } as never)
+      ).rejects.toMatchObject({ code: 'LOUSHY_CONFIG_MISSING_AGENT' });
     });
 
     it('throws naming "input" with a corrective snippet when input is omitted', async () => {
@@ -1406,6 +1415,9 @@ describe('AgentExecutor', () => {
           provider,
         } as any)
       ).rejects.toThrow(/'input' is required.*Example:/s);
+      await expect(
+        AgentExecutor.execute({ agent, provider } as never)
+      ).rejects.toMatchObject({ code: 'LOUSHY_CONFIG_MISSING_INPUT' });
     });
   });
 

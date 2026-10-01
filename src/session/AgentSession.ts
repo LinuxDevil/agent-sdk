@@ -10,7 +10,7 @@ import type { Message } from '../providers/llm';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import type { AgentRun } from '../execution/agentRun';
 import type { Checkpoint, CheckpointStore } from '../execution/checkpoint';
-import { SessionAwaitingApprovalError } from '../execution/errors';
+import { SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 import { streamSessionTurn } from './sessionStream';
 import { MemorySessionStore, assertSessionId, type SessionStore } from './sessionStore';
 
@@ -208,7 +208,12 @@ export class AgentSession {
    */
   stream(input: string, options: { signal?: AbortSignal } = {}): AgentRun {
     const streamRun = this.streamRun;
-    if (!streamRun) throw new Error('This AgentSession was created without a streaming runner, so it cannot stream().');
+    if (!streamRun) {
+      throw new SDKError(
+        'This AgentSession was created without a streaming runner, so it cannot stream().',
+        'LOUSHY_SESSION_STREAM_UNSUPPORTED'
+      );
+    }
     return streamSessionTurn(
       (signal, started) =>
         this.enqueue(async () => {

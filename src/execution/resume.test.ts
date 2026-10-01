@@ -980,7 +980,7 @@ describe('Execution - resumeAfterApproval', () => {
 
     await expect(
       resumeAfterApproval({ id: 'never-existed', approved: true }, approvalStore, toolRegistry, provider)
-    ).rejects.toThrow(/No pending approval/);
+    ).rejects.toMatchObject({ message: expect.stringMatching(/No pending approval/), code: 'LOUSHY_APPROVAL_NOT_FOUND' });
   });
 
   describe('hooks (LOU-Q1)', () => {

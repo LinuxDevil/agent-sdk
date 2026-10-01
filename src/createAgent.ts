@@ -38,6 +38,7 @@ import type { SubagentSpec } from './execution/delegation';
 import type { ApprovalStore } from './execution/ApprovalGate';
 import { InMemoryApprovalStore } from './execution/InMemoryApprovalStore';
 import { resumeAfterApproval } from './execution/resume';
+import { ConfigurationError } from './execution/errors';
 import { createAgentApprovals, type AgentApprovals, type ApproveToolCall } from './createAgentApprovals';
 import type { z } from 'zod';
 
@@ -424,9 +425,11 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
   const durable = (sessionId: string | undefined): Partial<SessionTurnCheckpoint> => {
     if (sessionId === undefined) return {};
     if (!checkpoints) {
-      throw new Error(
+      throw new ConfigurationError(
         `createAgent: a run with sessionId '${sessionId}' needs a checkpoint store - ` +
-          'pass createAgent({ store }) with `checkpoints` (e.g. a SqliteStore or memoryStore()).'
+          'pass createAgent({ store }) with `checkpoints` (e.g. a SqliteStore or memoryStore()).',
+        'store',
+        'LOUSHY_CONFIG_MISSING_CHECKPOINT_STORE'
       );
     }
     return { sessionId, checkpointStore: checkpoints };
@@ -497,9 +500,11 @@ const DEFAULT_INSTRUCTIONS = 'You are a helpful assistant.';
 
 function resolveInstructions(config: CreateAgentConfig): string {
   if (config.instructions !== undefined && config.prompt !== undefined) {
-    throw new Error(
+    throw new ConfigurationError(
       "createAgent: both 'instructions' and 'prompt' were given. They are the same option - " +
-        "use 'instructions' (and drop 'prompt', its alias)."
+        "use 'instructions' (and drop 'prompt', its alias).",
+      'prompt',
+      'LOUSHY_CONFIG_CONFLICTING_OPTIONS'
     );
   }
   return config.instructions ?? config.prompt ?? DEFAULT_INSTRUCTIONS;

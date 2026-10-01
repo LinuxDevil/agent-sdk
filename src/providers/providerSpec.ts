@@ -7,6 +7,8 @@
  */
 
 import { LLMProvider, LLMProviderConfig, LLMProviderRegistry } from './llm';
+import { ConfigurationError } from '../execution/errors';
+import { closestMatch } from '../utils/closestMatch';
 
 interface ProviderEntry {
   /** Env var holding the credential (or, for Ollama, the base URL). */
@@ -108,48 +110,23 @@ const PROVIDER_NAMES = Object.keys(PROVIDERS);
 /** Env var that overrides the automatic provider choice, e.g. `LOUSHY_MODEL=anthropic/claude-3-5-sonnet-latest`. */
 const MODEL_ENV_VAR = 'LOUSHY_MODEL';
 
-/** Levenshtein edit distance between two short strings. */
-function editDistance(a: string, b: string): number {
-  let previous = Array.from({ length: b.length + 1 }, (_, j) => j);
-  for (let i = 1; i <= a.length; i++) {
-    const current = [i];
-    for (let j = 1; j <= b.length; j++) {
-      const substitution = previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1);
-      current[j] = Math.min(previous[j] + 1, current[j - 1] + 1, substitution);
-    }
-    previous = current;
-  }
-  return previous[b.length];
-}
-
-/** The supported provider prefix closest to `name`, if it is plausibly a typo of one. */
-function closestProvider(name: string): string | undefined {
-  const lower = name.toLowerCase();
-  let best: string | undefined;
-  let bestDistance = Infinity;
-  for (const candidate of PROVIDER_NAMES) {
-    const distance = editDistance(lower, candidate);
-    if (distance < bestDistance) {
-      best = candidate;
-      bestDistance = distance;
-    }
-  }
-  return bestDistance <= Math.max(2, Math.floor(lower.length / 3)) ? best : undefined;
-}
-
 function unknownProviderError(caller: string, providerName: string, spec: string): Error {
-  const suggestion = closestProvider(providerName);
-  return new Error(
+  const suggestion = closestMatch(providerName, PROVIDER_NAMES);
+  return new ConfigurationError(
     `${caller}: unrecognized provider '${providerName}' in spec '${spec}'. ` +
       `Supported prefixes: ${PROVIDER_NAMES.join(', ')}.` +
-      (suggestion ? ` Did you mean '${suggestion}/${spec.slice(providerName.length + 1)}'?` : '')
+      (suggestion ? ` Did you mean '${suggestion}/${spec.slice(providerName.length + 1)}'?` : ''),
+    'model',
+    'LOUSHY_PROVIDER_UNKNOWN'
   );
 }
 
 function missingKeyError(caller: string, envKey: string): Error {
-  return new Error(
+  return new ConfigurationError(
     `${caller}: ${envKey} is not set. Set it in your environment, ` +
-      'or pass a provider instance: createAgent({ provider: ... })'
+      'or pass a provider instance: createAgent({ provider: ... })',
+    envKey,
+    'LOUSHY_PROVIDER_MISSING_API_KEY'
   );
 }
 
@@ -168,9 +145,11 @@ function createProvider(caller: string, providerName: string, entry: ProviderEnt
     return LLMProviderRegistry.create(providerName, config);
   } catch (error) {
     if (!isModuleNotFound(error)) throw error;
-    throw new Error(
+    throw new ConfigurationError(
       `${caller}: the '${providerName}' provider needs an optional peer dependency that is not installed. ` +
         `Run: ${peerInstallCommand(peerPackageName(entry.peer))}`,
+      'model',
+      'LOUSHY_PEER_MISSING',
       { cause: error }
     );
   }
@@ -184,9 +163,11 @@ function createProvider(caller: string, providerName: string, entry: ProviderEnt
 export function resolveProviderSpec(spec: string, caller: string, extra: LLMProviderConfig = {}): LLMProvider {
   const separatorIndex = spec.indexOf('/');
   if (separatorIndex <= 0 || separatorIndex === spec.length - 1) {
-    throw new Error(
+    throw new ConfigurationError(
       `${caller}: expected a "<provider>/<model>" spec, got '${spec}'. ` +
-        `Example: 'openai/gpt-4o-mini'. Supported prefixes: ${PROVIDER_NAMES.join(', ')}.`
+        `Example: 'openai/gpt-4o-mini'. Supported prefixes: ${PROVIDER_NAMES.join(', ')}.`,
+      'model',
+      'LOUSHY_PROVIDER_SPEC_INVALID'
     );
   }
 
@@ -221,11 +202,13 @@ export function modelFromEnv(caller: string, env: Record<string, string | undefi
   }
 
   const envKeys = Object.values(PROVIDERS).map((p) => p.envKey);
-  throw new Error(
+  throw new ConfigurationError(
     `${caller}: no model configured. Do one of the following: ` +
       "(1) pass a model: createAgent({ model: 'openai/gpt-4o-mini' }); " +
       '(2) pass a provider instance: createAgent({ provider: ... }); ' +
       `(3) set ${MODEL_ENV_VAR} (e.g. ${MODEL_ENV_VAR}=openai/gpt-4o-mini); ` +
-      `(4) set one of ${envKeys.join(', ')} (checked in that order).`
+      `(4) set one of ${envKeys.join(', ')} (checked in that order).`,
+    'model',
+    'LOUSHY_CONFIG_MISSING_PROVIDER'
   );
 }

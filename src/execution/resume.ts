@@ -19,6 +19,7 @@ import { NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
 import { HookRegistry } from './hooks';
 import { toolErrorMessage } from './propagatingToolError';
+import { SDKError } from './errors';
 import { toolErrorResult, type ToolErrorResult } from './toolErrors';
 import { splitPendingTurn } from './transcript';
 import { replaceToolResult, type ToolCallScope } from './subagentRuntime';
@@ -113,7 +114,7 @@ export async function resumeAfterApproval(
 ): Promise<ExecutionResult> {
   const record = await approvalStore.resolve(decision.id);
   if (!record) {
-    throw new Error(`No pending approval found for id '${decision.id}' (unknown or already resolved)`);
+    throw new SDKError(`No pending approval found for id '${decision.id}' (unknown or already resolved)`, 'LOUSHY_APPROVAL_NOT_FOUND');
   }
 
   const { pending, snapshot } = record;

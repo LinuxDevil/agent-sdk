@@ -33,7 +33,7 @@ import {
   suspensionRecord,
   type ToolCallScope,
 } from './subagentRuntime';
-import { isAbortError } from './errors';
+import { ConfigurationError, isAbortError } from './errors';
 import {
   PreparedToolCall,
   ToolCallContext,
@@ -1112,8 +1112,10 @@ export class AgentExecutor {
   ): Promise<ExecutionResult> {
     const { agent, approvalStore, sessionId } = options;
     if (!approvalStore) {
-      throw new Error(
-        `Tool '${toolResult.toolName}' requires approval but no approvalStore was provided to AgentExecutor.execute()`
+      throw new ConfigurationError(
+        `Tool '${toolResult.toolName}' requires approval but no approvalStore was provided to AgentExecutor.execute()`,
+        'approvalStore',
+        'LOUSHY_APPROVAL_STORE_MISSING'
       );
     }
 
@@ -1294,21 +1296,27 @@ export class AgentExecutor {
     caller = 'AgentExecutor.execute'
   ): void {
     if (!options || !options.provider) {
-      throw new Error(
+      throw new ConfigurationError(
         `${caller}: 'provider' is required. ` +
-          "Example: AgentExecutor.execute({ agent, input, provider: myProvider })"
+          "Example: AgentExecutor.execute({ agent, input, provider: myProvider })",
+        'provider',
+        'LOUSHY_CONFIG_MISSING_PROVIDER'
       );
     }
     if (!options.agent) {
-      throw new Error(
+      throw new ConfigurationError(
         `${caller}: 'agent' is required. ` +
-          'Example: AgentExecutor.execute({ agent: AgentBuilder.create()...build(), input, provider })'
+          'Example: AgentExecutor.execute({ agent: AgentBuilder.create()...build(), input, provider })',
+        'agent',
+        'LOUSHY_CONFIG_MISSING_AGENT'
       );
     }
     if (options.input === undefined || options.input === null) {
-      throw new Error(
+      throw new ConfigurationError(
         `${caller}: 'input' is required. ` +
-          "Example: AgentExecutor.execute({ agent, input: 'hello', provider })"
+          "Example: AgentExecutor.execute({ agent, input: 'hello', provider })",
+        'input',
+        'LOUSHY_CONFIG_MISSING_INPUT'
       );
     }
     assertToolConcurrency(options.toolConcurrency, caller);
