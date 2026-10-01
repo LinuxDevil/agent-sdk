@@ -3170,17 +3170,15 @@ deploy the result). `tsup` must be installed (`npm install --save-dev tsup`).
 | `docker`            | everything `node-server` writes, plus `Dockerfile`       | `docker build -t loushy-agent . && docker run -p 3000:3000 loushy-agent` |
 | `cloudflare-worker` | `worker.ts`, `agent.config.js`, `wrangler.toml`, `dist/worker.js` | `wrangler deploy`                                                      |
 
-Every target answers `GET /health` (`200 ok`) and `POST /chat`. The
-`node-server` and `docker` targets serve the full [HTTP API](#http-api) below;
-the `cloudflare-worker` target still serves the single-turn `{ "message" }`
-call (sessions, SSE and bearer auth there are tracked as LOU-D51).
+Every target answers `GET /health` (`200 ok`) and serves the full
+[HTTP API](#http-api) below: sessions, SSE streaming, approvals and bearer auth.
 
 ## HTTP API
 
-The `node-server` and `docker` targets serve the same `/chat` protocol as
-`loushy dev` ([CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md#loushy-dev)), from the same code
-(`src/server/chatRoutes.ts`), so a page or script written against the dev
-server works against the deployed one.
+Every target serves the same `/chat` protocol as `loushy dev`
+([CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md#loushy-dev)), from the same code (the Fetch-native
+`src/server/fetchRoutes.ts`, which the Node server and the Worker both call), so
+a page or script written against the dev server works against the deployed one.
 
 | Endpoint | What it does |
 | -------- | ------------ |
@@ -3200,7 +3198,8 @@ curl -N http://127.0.0.1:3000/chat \
 
 ### Auth
 
-Set `LOUSHY_API_TOKEN` and every route except `/health` requires
+Set `LOUSHY_API_TOKEN` (on the Worker target, as a secret: `npx wrangler secret
+put LOUSHY_API_TOKEN`) and every route except `/health` requires
 `Authorization: Bearer <token>`; anything else gets `401` with a JSON error
 (the token is compared in constant time). Without it the server is open: that
 is fine on `127.0.0.1`, but **treat the token as required for anything that is
@@ -3211,9 +3210,10 @@ text over plain HTTP. Pass the token at run time (`docker run -e
 LOUSHY_API_TOKEN=...`).
 
 Programmatically, `adapter.scaffold(agentPath, outDir, { auth: { token } })`
-bakes a token into the built server for when the variable is not set. The
-variable wins, and a baked token is readable in `dist/server.js`, so prefer the
-variable.
+bakes a token into the built `node-server` or `docker` server for when the
+variable is not set. The variable wins, and a baked token is readable in
+`dist/server.js`, so prefer the variable. The Worker reads the token from its
+`LOUSHY_API_TOKEN` binding only.
 
 ### Sessions and the store
 
@@ -3298,36 +3298,65 @@ bindings named `<TYPE>_API_KEY` (e.g. `wrangler secret put OPENAI_API_KEY`,
 peer packages (`@ai-sdk/openai`/`@ai-sdk/anthropic`, `ai`) must be installed
 alongside `@loushy/build-ai-agent` for `loushy build` to bundle them.
 
+### Bindings, sessions and the API on Workers
+
+The Worker serves the [HTTP API](#http-api) above: `GET /health`, `POST /chat`
+streamed as SSE (`ReadableStream`), `GET /chat/:sessionId`, the approvals
+endpoint and the deprecated `{ "message" }` body. Its two bindings:
+
+| Binding | Kind | What it does |
+| ------- | ---- | ------------ |
+| `LOUSHY_API_TOKEN` | secret (`npx wrangler secret put LOUSHY_API_TOKEN`) | Makes every route except `/health` require `Authorization: Bearer <token>` (constant-time compare, `401` JSON otherwise). Without it the Worker is open to anyone who has its URL, so **set it before you deploy**. |
+| `AGENT_CHECKPOINTS` | KV namespace | Holds sessions, checkpoints and paused approvals, in one namespace, as `KVStore` (below). Without it they live in the memory of one isolate, which Cloudflare recycles at will: fine for trying a deploy out, not for production. |
+
+`wrangler.toml` is scaffolded with the `[[kv_namespaces]]` block for
+`AGENT_CHECKPOINTS` commented out, with the commands to create the namespace
+(`npx wrangler kv namespace create AGENT_CHECKPOINTS`, plus a `--preview`
+variant) and where to paste the resulting ids. Uncomment it and fill in the ids.
+
+```bash
+cd .loushy/build/cloudflare-worker
+npx wrangler secret put LOUSHY_API_TOKEN
+npx wrangler secret put OPENAI_API_KEY
+npx wrangler deploy
+curl -N https://<your-worker>.workers.dev/chat \
+  -H "Authorization: Bearer $LOUSHY_API_TOKEN" -H 'Content-Type: application/json' \
+  -d '{ "sessionId": "alice", "input": "Hello" }'
+```
+
+`KVStore(kvBinding, { prefix?, ttl? })` (`src/deploy/kvStore.ts`) is the
+`AgentStore` the Worker builds from the binding; use it yourself with
+`createAgent({ store: new KVStore(env.AGENT_CHECKPOINTS) })` in a Worker you
+write. Keys, with an optional `prefix` before each:
+
+| Key | Value |
+| --- | ----- |
+| `sessions/<id>` | The transcript as JSON (image and file bytes as `{ "$bytes": "<base64>" }`, like `FileSessionStore`). |
+| `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, no history). |
+| `approvals/<id>` | A paused approval and the snapshot that resumes it (deleted when it is decided). |
+
+`ttl: { sessions?, checkpoints?, approvals? }` (seconds, KV accepts 60 or more)
+makes each kind of record expire that long after its last write; by default
+records are kept until deleted.
+
+An approval that pauses a turn on one request can be decided by a later request
+on another isolate: the checkpointed session names its pending approval, and the
+approvals endpoint continues it from KV. That continuation's events skip the
+decided tool call's `tool.done`; its `run.done` carries the final text.
+
+The deprecated `POST /chat { "message", "sessionId"? }` keeps its earlier
+behaviour on Workers: with a `sessionId` the run is checkpointed to
+`checkpoints/<sessionId>` after each tool result and rehydrated by a later
+request that reuses the `sessionId` (after a crash or a recycled isolate).
+
 ### Durable execution (pause/resume) on Workers
 
 A Worker's request lifetime is too short-lived for an in-memory or
 filesystem-backed `CheckpointStore` (see
 [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md) / `src/execution/checkpoint.ts` for
 what `CheckpointStore` is and why a run needs one to survive a crash or an
-approval-gate pause). To make that work on this target, `loushy build
---target=cloudflare-worker` supports an **opt-in, KV-backed
-`CheckpointStore`**:
-
-1. Create a Workers KV namespace and bind it to your Worker under the name
-   `AGENT_CHECKPOINTS` - `wrangler.toml` is scaffolded with a commented-out
-   `[[kv_namespaces]]` block spelling out the exact commands
-   (`npx wrangler kv namespace create AGENT_CHECKPOINTS`, plus a `--preview`
-   variant) and where to paste the resulting ids. Uncomment it and fill in
-   the ids to opt in.
-2. `POST /chat` accepts an optional `sessionId` string alongside `message`.
-   When a request includes `sessionId` **and** the Worker has an
-   `AGENT_CHECKPOINTS` binding configured, that request's run is
-   checkpointed to KV after each tool result and rehydrated from KV on a
-   later request that reuses the same `sessionId` (e.g. after a crash, a
-   redeploy, or the isolate simply being recycled between requests) -
-   exactly the `sessionId`+`CheckpointStore` mechanism the rest of this SDK
-   already uses (see `AgentExecutor.execute()`), just backed by KV instead
-   of the filesystem. A request with `sessionId` but **no** KV binding
-   configured still works normally - checkpointing is silently skipped,
-   the same as calling `AgentExecutor.execute()` with no `checkpointStore`
-   at all.
-3. Without a `sessionId`, requests behave exactly as before this feature
-   existed - durable execution is entirely opt-in.
+approval-gate pause). `AGENT_CHECKPOINTS` is that store, backed by KV
+(`KVCheckpointStore`), and the one binding above is all it takes to opt in.
 
 **Why KV, not D1 or Durable Objects:** a `Checkpoint` is one JSON blob keyed
 by `sessionId`, read and written whole - exactly the shape Workers KV is
@@ -3356,15 +3385,21 @@ KV's guarantees, cannot - promise strict read-after-write consistency here.
 If your approval workflow can't tolerate that window, route a given
 session's requests to a single Cloudflare location yourself (e.g. via
 Durable Object-based request routing) or use a strongly-consistent store
-instead of `AGENT_CHECKPOINTS`/KV.
+instead of `AGENT_CHECKPOINTS`/KV. The same holds for sessions: two requests of
+one session at the same moment can overwrite each other's turn, since a KV
+read-modify-write is not atomic.
 
-The KV-backed store itself
-(`KVCheckpointStore`/`checkpointStoreFromEnv()`/`CHECKPOINT_KV_BINDING`, in
-`src/deploy/kvCheckpointStore.ts` and `src/deploy/runtime.worker.ts`) has no
-`node:*` references anywhere in its dependency graph, verified the same way
-as the rest of this target: the built `dist/worker.js` bundle is grepped
-for `node:` specifiers as part of `loushy build`, and fails the build if
-any are found.
+The KV-backed stores (`KVStore`, `KVCheckpointStore` and `CHECKPOINT_KV_BINDING`,
+in `src/deploy/kvStore.ts`, `src/deploy/kvCheckpointStore.ts` and
+`src/deploy/checkpointBinding.ts`) have no `node:*` references anywhere in their
+dependency graph. The Worker runs the spec as a `createAgent()` agent, whose
+Node-only imports (project instructions, the file session store, guardrail
+patches, MCP over stdio) the build points at a shim that fails when used
+(`src/deploy/shims/node.worker.ts`). The built `dist/worker.js` bundle is then
+checked for `node:` and bare Node builtin specifiers as part of `loushy build`,
+and fails the build if any are found. The bundle is larger than a single-turn
+Worker (about 1.7 MB raw, 335 KB gzip for a `mock` agent): `loushy build` reports
+its size, and `describe()` compares it to Cloudflare's script size limit.
 
 ## Custom targets
 

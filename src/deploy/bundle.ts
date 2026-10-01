@@ -89,6 +89,29 @@ export function workerSandboxShimPlugin(): Plugin {
 }
 
 /**
+ * The only SDK modules whose Node-only imports `workerNodeShimPlugin` replaces:
+ * what `createAgent()` reaches. A Node builtin imported anywhere else (a
+ * provider, a tool) is not shimmed, so the build's `node:` leak check fails it.
+ */
+const NODE_SHIMMED_IMPORTERS = ['createAgent', 'execution/guardrails', 'session/sessionStore', 'session/AgentSession', 'projectInstructions', 'tools/mcp/connect'];
+
+/**
+ * esbuild plugin (cloudflare-worker target only) that redirects the `node:*`
+ * and MCP stdio imports of the modules in NODE_SHIMMED_IMPORTERS to the
+ * Worker-safe shim in ./shims/node.worker.ts (LOU-D51).
+ */
+export function workerNodeShimPlugin(): Plugin {
+  const shim = path.join(findSdkRoot(), 'src', 'deploy', 'shims', 'node.worker.ts');
+  const shimmed = (importer: string) => NODE_SHIMMED_IMPORTERS.some((name) => importer.replace(/\\/g, '/').endsWith(`/src/${name}.ts`));
+  return {
+    name: 'loushy-worker-node-shim',
+    setup(build) {
+      build.onResolve({ filter: /^node:|^@modelcontextprotocol\/sdk\/client\/stdio\.js$/ }, (args) => (shimmed(args.importer) ? { path: shim } : undefined));
+    },
+  };
+}
+
+/**
  * Loads tsup lazily: it is only needed by `loushy build`, so the SDK's
  * normal runtime entrypoints never import it.
  */

@@ -42,6 +42,11 @@
  */
 import { Checkpoint, CheckpointStore } from '../execution/checkpoint';
 
+/** The `put()` option the stores use: seconds until the key expires (KV accepts 60 or more). */
+export interface KVPutOptions {
+  expirationTtl?: number;
+}
+
 /**
  * The minimal structural subset of Cloudflare's real `KVNamespace` binding
  * type that `KVCheckpointStore` needs. Deliberately NOT imported from
@@ -52,7 +57,7 @@ import { Checkpoint, CheckpointStore } from '../execution/checkpoint';
  */
 export interface KVBinding {
   get(key: string): Promise<string | null>;
-  put(key: string, value: string): Promise<void>;
+  put(key: string, value: string, options?: KVPutOptions): Promise<void>;
   delete(key: string): Promise<void>;
 }
 
@@ -68,7 +73,9 @@ export const DEFAULT_KV_KEY_PREFIX = 'checkpoints/';
 export class KVCheckpointStore implements CheckpointStore {
   constructor(
     private readonly kv: KVBinding,
-    private readonly keyPrefix: string = DEFAULT_KV_KEY_PREFIX
+    private readonly keyPrefix: string = DEFAULT_KV_KEY_PREFIX,
+    /** Seconds a saved checkpoint is kept (LOU-D51); omit to keep it until deleted. */
+    private readonly expirationTtl?: number
   ) {}
 
   private key(sessionId: string): string {
@@ -76,7 +83,7 @@ export class KVCheckpointStore implements CheckpointStore {
   }
 
   async save(sessionId: string, checkpoint: Checkpoint): Promise<void> {
-    await this.kv.put(this.key(sessionId), JSON.stringify(checkpoint));
+    await this.kv.put(this.key(sessionId), JSON.stringify(checkpoint), this.expirationTtl ? { expirationTtl: this.expirationTtl } : undefined);
   }
 
   async load(sessionId: string): Promise<Checkpoint | null> {
