@@ -47,6 +47,11 @@ then continues the run as the session's next turn, so the tool call, its result
 and the final answer join the transcript (see
 [Approvals](./approvals.md)).
 
+`agent.session({ id, limits })` sets budgets across all of the session's turns
+(for example `{ maxCostUsd: 1 }`), counted from the usage saved with the
+transcript; `createAgent({ limits })` limits each turn on its own. See
+[Budgets](./configuration.md#budgets).
+
 ## Streaming a session turn
 
 `session.stream(input, { signal })` is `agent.stream()` for a conversation: it

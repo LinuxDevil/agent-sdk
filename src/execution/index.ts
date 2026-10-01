@@ -61,7 +61,10 @@ export type {
   AgentErrorEvent,
   ProviderRetryEvent,
   ProviderFallbackEvent,
+  BudgetExceededEvent,
   RunDoneEvent,
 } from './agentEvents';
+export { BudgetExceededError } from './budget';
+export type { BudgetExceeded, BudgetLimit, BudgetSpent, RunLimits, SessionBudget } from './budget';
 export type { AgentRun } from './agentRun';
 export { emptyRunUsage } from './runUsage';

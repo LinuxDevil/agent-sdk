@@ -5,6 +5,7 @@ import { createJiraTools } from './jira';
 import { NoopSandbox } from '../../security/sandboxCore';
 import type { SandboxAdapter } from '../../security/sandboxCore';
 import { executeToolWithSandboxGuard } from '../../execution/sandboxGuard';
+import { getToolExecute, getToolInputSchema } from '../toolContract';
 
 describe('JiraTools sandbox seam (LOU-K2)', () => {
   afterEach(() => {
@@ -22,6 +23,21 @@ describe('JiraTools sandbox seam (LOU-K2)', () => {
       const descriptor = jiraTools.get(name)!;
       expect(descriptor.requiresSandbox, `${name} should require sandbox`).toBe(true);
       expect(typeof descriptor.sandboxExecute, `${name} should implement sandboxExecute`).toBe('function');
+    }
+  });
+
+  it('every tool exposes a canonical inputSchema and execute', () => {
+    const jiraTools = createJiraTools({
+      baseUrl: 'https://jira.test',
+      email: 'bot@example.com',
+      apiToken: 'token',
+    });
+
+    expect(jiraTools.list()).toHaveLength(20);
+    for (const name of jiraTools.list()) {
+      const descriptor = jiraTools.get(name)!;
+      expect(getToolInputSchema(descriptor), `${name} inputSchema`).toBeDefined();
+      expect(getToolExecute(descriptor), `${name} execute`).toBeTypeOf('function');
     }
   });
 

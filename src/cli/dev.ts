@@ -4,7 +4,10 @@
  * Serves:
  *   GET  /health  -> 200 'ok'
  *   GET  /        -> the minimal chat UI (LOU-H7)
- *   POST /chat    -> { message } in, the agent's real ExecutionResult out
+ *   POST /chat    -> { sessionId, input } in, the turn streamed as SSE out (LOU-D32);
+ *                    the deprecated { message } still returns the ExecutionResult
+ *   GET  /chat/:sessionId                     -> the session's transcript
+ *   POST /chat/:sessionId/approvals/:id       -> { approved, note } or { answer }, the continuation streamed
  *
  * Config loading (LOU-H9): configPath is a declarative agent spec file
  * (.yaml/.yml or .json - see src/spec/schema.ts's AgentSpec), loaded and
@@ -22,7 +25,12 @@
 import * as http from 'node:http';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { detectTarget, startReloader, type DevOptions, type DevState } from './devReload';
+import type { AgentInput } from '../providers/content';
+import type { AgentEvent } from '../execution/agentEvents';
+import { assertSessionId } from '../session/sessionStore';
+import type { AgentSession } from '../session/AgentSession';
+import { continuationEvents, errorEvents } from './devEvents';
+import { detectTarget, hasOwnStore, startReloader, type DevOptions, type DevState } from './devReload';
 
 export type { DevOptions } from './devReload';
 
@@ -82,7 +90,8 @@ type AgentHolder = DevState;
 type RouteHandler = (
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  holder: AgentHolder
+  holder: AgentHolder,
+  params: string[]
 ) => void | Promise<void>;
 
 function sendText(res: http.ServerResponse, status: number, text: string): void {
@@ -103,37 +112,98 @@ function handleChatUi(_req: http.IncomingMessage, res: http.ServerResponse): voi
   }
 }
 
-/** The `message` string of a POST /chat body, or undefined when missing/invalid. */
-function parseChatMessage(body: string): string | undefined {
-  const { message } = JSON.parse(body || '{}');
-  return typeof message === 'string' && message ? message : undefined;
+const DONE_FRAME = 'event: done\ndata: {}\n\n';
+let warnedLegacy = false;
+
+/** Streams `events` as SSE (`data: <AgentEvent JSON>`, then `event: done`); a failure becomes `error` + `run.done` events. */
+async function sendSse(res: http.ServerResponse, events: (signal: AbortSignal) => AsyncIterable<AgentEvent>): Promise<void> {
+  const controller = new AbortController();
+  res.on('close', () => controller.abort());
+  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+  const write = (event: AgentEvent) => res.write(`data: ${JSON.stringify(event)}\n\n`);
+  try {
+    for await (const event of events(controller.signal)) write(event);
+  } catch (error) {
+    errorEvents(error).forEach(write);
+  }
+  res.end(DONE_FRAME);
 }
 
-async function runChat(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  holder: AgentHolder
-): Promise<void> {
-  const message = parseChatMessage(await readBody(req));
-  if (!message) {
-    sendJson(res, 400, { error: "Request body must be JSON with a 'message' string" });
+async function readJson(req: http.IncomingMessage): Promise<Record<string, unknown>> {
+  return ((JSON.parse((await readBody(req)) || '{}') as Record<string, unknown> | null) ?? {}) as Record<string, unknown>;
+}
+
+/** Sends the error status for a failed handler: 413 over the size cap, 400 for bad JSON, else 500. */
+function sendFailure(res: http.ServerResponse, error: unknown): void {
+  const status = error instanceof PayloadTooLargeError ? 413 : error instanceof SyntaxError ? 400 : 500;
+  sendJson(res, status, { error: (error as Error).message });
+}
+
+/** The session `sessionId` of the live agent, kept in the dev store (or the agent's own); sends 400 and returns undefined for an invalid id. */
+function openSession(res: http.ServerResponse, holder: AgentHolder, sessionId: string): AgentSession | undefined {
+  try {
+    assertSessionId(sessionId);
+  } catch (error) {
+    sendJson(res, 400, { error: (error as Error).message });
+    return undefined;
+  }
+  return holder.agent.session(hasOwnStore(holder.agent) ? { id: sessionId } : { id: sessionId, store: holder.store });
+}
+
+async function runChat(req: http.IncomingMessage, res: http.ServerResponse, holder: AgentHolder): Promise<void> {
+  const { sessionId, input, message } = await readJson(req);
+  if (typeof sessionId === 'string' && (typeof input === 'string' ? input : Array.isArray(input))) {
+    const session = openSession(res, holder, sessionId);
+    if (session) await sendSse(res, (signal) => session.stream(input as AgentInput, { signal }));
     return;
   }
-
-  sendJson(res, 200, await holder.agent.send(message));
+  if (typeof message === 'string' && message) {
+    if (!warnedLegacy) console.warn('[loushy dev] POST /chat { message } is deprecated: send { sessionId, input } for a session and a streamed turn.');
+    warnedLegacy = true;
+    res.setHeader('Deprecation', 'true');
+    sendJson(res, 200, await holder.agent.send(message));
+    return;
+  }
+  sendJson(res, 400, { error: "Request body must be JSON with 'sessionId' and 'input' strings (or the deprecated 'message')" });
 }
 
-async function handleChat(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  holder: AgentHolder
-): Promise<void> {
-  try {
-    await runChat(req, res, holder);
-  } catch (error) {
-    const status = error instanceof PayloadTooLargeError ? 413 : 500;
-    sendJson(res, status, { error: (error as Error).message });
+async function runApproval(req: http.IncomingMessage, res: http.ServerResponse, holder: AgentHolder, [sessionId, id]: string[]): Promise<void> {
+  if (!openSession(res, holder, sessionId)) return;
+  const { approved, note, answer } = await readJson(req);
+  if (typeof answer !== 'string' && typeof approved !== 'boolean') {
+    sendJson(res, 400, { error: "Request body must be JSON with 'approved' (and optional 'note') or 'answer'" });
+    return;
   }
+  const { agent } = holder;
+  const request = (await agent.approvals.list()).find((pending) => pending.id === id);
+  if (!request) {
+    sendJson(res, 404, { error: `No pending approval '${id}' (it was decided already, or the agent was reloaded)` });
+    return;
+  }
+  await sendSse(res, async function* (signal) {
+    const result =
+      typeof answer === 'string'
+        ? await agent.approvals.answer({ id, answer }, { signal })
+        : await agent.approvals.resolve({ id, approved: approved === true, note: typeof note === 'string' ? note : undefined }, { signal });
+    const pausedAgain = (await agent.approvals.list()).find((pending) => pending.id === result.approvalId);
+    yield* continuationEvents(result, request, pausedAgain);
+  });
+}
+
+async function runTranscript(_req: http.IncomingMessage, res: http.ServerResponse, holder: AgentHolder, [sessionId]: string[]): Promise<void> {
+  const session = openSession(res, holder, sessionId);
+  if (session) sendJson(res, 200, { sessionId, messages: await session.load(), pending: await session.pending() });
+}
+
+/** Wraps a handler so a failure before streaming starts answers with a JSON error. */
+function guarded(run: RouteHandler): RouteHandler {
+  return async (req, res, holder, params) => {
+    try {
+      await run(req, res, holder, params);
+    } catch (error) {
+      sendFailure(res, error);
+    }
+  };
 }
 
 function handleStatus(_req: http.IncomingMessage, res: http.ServerResponse, holder: AgentHolder): void {
@@ -145,20 +215,32 @@ const ROUTES = new Map<string, RouteHandler>([
   ['GET /health', (_req, res) => sendText(res, 200, 'ok')],
   ['GET /dev/status', handleStatus],
   ['GET /', handleChatUi],
-  ['POST /chat', handleChat],
+  ['POST /chat', guarded(runChat)],
 ]);
+
+/** Routes with path parameters, passed to the handler as `params` (already URL-decoded). */
+const PARAM_ROUTES: Array<[method: string, pattern: RegExp, handler: RouteHandler]> = [
+  ['GET', /^\/chat\/([^/]+)$/, guarded(runTranscript)],
+  ['POST', /^\/chat\/([^/]+)\/approvals\/([^/]+)$/, guarded(runApproval)],
+];
 
 async function handleRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   holder: AgentHolder
 ): Promise<void> {
-  const handler = ROUTES.get(`${req.method} ${req.url}`);
+  const { pathname } = new URL(req.url ?? '/', 'http://localhost');
+  let handler = ROUTES.get(`${req.method} ${pathname}`);
+  let params: string[] = [];
+  for (const [method, pattern, route] of PARAM_ROUTES) {
+    const match = method === req.method ? pattern.exec(pathname) : null;
+    if (match) [handler, params] = [route, match.slice(1).map(decodeURIComponent)];
+  }
   if (!handler) {
     sendText(res, 404, 'not found');
     return;
   }
-  await handler(req, res, holder);
+  await handler(req, res, holder, params);
 }
 
 function createDevHttpServer(holder: AgentHolder): http.Server {

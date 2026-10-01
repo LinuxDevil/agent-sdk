@@ -50,6 +50,7 @@ Each entry sets exactly one of `command` / `url`; `args`/`env` apply only to
 stdio and `headers` only to HTTP. The field is validated by `loadSpec()`, and
 an invalid entry fails with the entry name in the message, e.g.
 `'mcpServers.files': AgentSpec validation failed: missing 'command' (stdio server) or 'url' (HTTP server)`.
+An optional `approval` (`annotations`, `always` or `never`) says which of the server's tools ask for approval; see [MCP tool approval](#mcp-tool-approval-approval).
 `loushy doctor` checks each stdio `command` is resolvable.
 
 ```yaml
@@ -140,6 +141,44 @@ stdio servers are spawned with `command` and `args`; `env` is added to the
 default environment (`PATH` and the like), not a replacement for it. HTTP
 servers use the streamable HTTP transport with `headers` on every request.
 `@modelcontextprotocol/sdk` is an optional peer: install it to use MCP.
+
+### MCP tool approval (`approval`)
+
+MCP servers describe each tool with annotations (`readOnlyHint`,
+`destructiveHint`, `idempotentHint`, `openWorldHint` and a `title`). They are
+hints, but the SDK uses them as the default for [approvals](./approvals.md):
+a tool with `readOnlyHint: true` runs; a tool with `destructiveHint: true`, or
+one that sends no `destructiveHint` (the MCP spec's default is destructive),
+pauses the run until a human approves; `destructiveHint: false` runs. A tool
+without annotations therefore asks. The raw annotations stay on
+`descriptor.metadata.mcp.annotations`, and `title` becomes the `displayName`.
+
+Set `approval` on a server entry (`mcpServers`, `createAgent`, `connectMcp()`) or
+in `loadMcpTools(client, name, { approval })`:
+
+- `'annotations'` (default): as above.
+- `'always'` / `'never'`: ask for every tool / none of them.
+- A function `({ name, annotations }) => boolean` decides per tool (`name` is
+  the bare tool name; `annotations` is `{}` when the server sent none). Only
+  in code; a spec file takes the three strings.
+
+[Permission rules](./approvals.md#permission-policies) run first and can still
+`allow`, `deny` or `ask`.
+
+```ts no-run
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  mcpServers: {
+    files: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'] },
+    // Ask before anything except tools whose name starts with `search`.
+    docs: { url: 'https://example.com/mcp', approval: ({ name }) => !name.startsWith('search') },
+    // A server you trust: never ask.
+    scratch: { command: 'node', args: ['./scratch-server.js'], approval: 'never' },
+  },
+});
+```
 
 ### MCP (Model Context Protocol) tools
 
@@ -325,6 +364,7 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `name`     | Agent name (default `'agent'`).                                    |
 | `description` | What the agent does, in a sentence. Required when it is used as a sub-agent. |
 | `maxSteps` | Passed through to `AgentExecutor.execute()`.                        |
+| `limits`   | Budgets of each run: `{ maxTokens?, maxInputTokens?, maxOutputTokens?, maxCostUsd?, maxDurationMs?, maxSteps?, onExceeded? }`. A tripped limit ends the run with `finishReason: 'budget-exceeded'`. See [Budgets](#budgets). |
 | `toolConcurrency` | How many tool calls of one model turn run at once: a positive integer or `'unbounded'` (default). See [Parallel tool calls](./api-overview.md#parallel-tool-calls). |
 | `skills`   | Skills from `defineSkill()` / `loadSkills()`; see [Skills](./skills.md). |
 | `subagents`, `maxSubagentDepth` | Named sub-agents behind one `task` tool, and how deep they may nest (default 1); see [Sub-agents](./sub-agents.md). |
@@ -350,6 +390,74 @@ Misconfiguration errors say how to fix themselves: a missing key names the
 variable (`createAgent: OPENAI_API_KEY is not set. ...`), an unknown prefix
 lists the supported ones and suggests the closest, and a missing optional peer
 dependency prints the exact `npm install` command.
+
+## Budgets
+
+`limits` caps what a run may spend. Set it on `createAgent()` (every run of the
+agent) or on `AgentExecutor.execute()` / `stream()`:
+
+| Limit             | Counts |
+| ----------------- | ------ |
+| `maxTokens`       | Prompt plus completion tokens of the run (`usage.totalTokens`). |
+| `maxInputTokens`  | Prompt tokens (`usage.inputTokens`). |
+| `maxOutputTokens` | Completion tokens (`usage.outputTokens`). |
+| `maxCostUsd`      | Estimated USD (`usage.costUsd`, from the [price table](./api-overview.md#models-tokens-and-cost)). Not checked while a model used has unknown pricing (`costUsd` is `undefined`). |
+| `maxDurationMs`   | Wall-clock time of the `execute()` / `stream()` call. |
+| `maxSteps`        | Model steps. An alias of the `maxSteps` option: when both are set the stricter wins (the option's tie reports `'max-steps'`); alone, it replaces the default of 10. |
+
+Limits are checked before every model call (so after every tool batch) and
+after a model call that asks for tools; `maxDurationMs` also aborts an
+in-flight model or tool call through the run's signal. A limit trips once the
+run reaches it. Usage of sub-agents counts toward their lead's budget: it is
+added when the sub-agent returns, so the lead stops before its next model call.
+A run that finishes on its own within the step that reached a limit keeps its
+own finish reason, like `maxSteps`.
+
+When a limit trips, the run stops with `finishReason: 'budget-exceeded'` and
+`result.budget` (`{ limit, value, max, scope }`). Tool calls the model asked
+for in that step get a "cancelled" result, so the transcript stays valid, and
+with a checkpoint store it is checkpointed as finished, like `'max-steps'`.
+`stream()` emits a `budget.exceeded` event before `run.done`. With
+`onExceeded: 'throw'` the run rejects with `BudgetExceededError`
+(`LOUSHY_BUDGET_EXCEEDED`, with the same `budget`) instead.
+
+```ts
+import { BudgetExceededError, createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({
+  provider,
+  limits: { maxTokens: 50_000, maxCostUsd: 0.25, maxDurationMs: 60_000 },
+});
+const result = await agent.send('Research this thoroughly');
+if (result.finishReason === 'budget-exceeded') {
+  console.warn(`Stopped by ${result.budget?.limit}: ${result.budget?.value} of ${result.budget?.max}`);
+}
+
+try {
+  await createAgent({ provider, limits: { maxCostUsd: 0.01, onExceeded: 'throw' } }).send('Go');
+} catch (error) {
+  if (error instanceof BudgetExceededError) console.error(error.budget);
+}
+```
+
+**Run and session limits.** `createAgent({ limits })` applies to each run on
+its own: every `send()`, and every turn of a session, starts from zero.
+`agent.session({ id, limits })` adds limits across all of the session's turns:
+a turn stops once what the session has spent, in all its turns, reaches a
+limit (`budget.scope` is then `'session'`), and later turns stop before calling
+the model. What the turns spent (tokens, cost, steps and run time) is saved with
+the transcript, as `metadata.sessionUsage` on its last message, so a session
+continued from its store keeps its budget. Both apply together; the first limit
+reached stops the turn. A turn that was aborted is not counted.
+
+```ts
+import { createAgent, memoryStore } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ provider, store: memoryStore(), limits: { maxTokens: 20_000 } });
+const session = agent.session({ id: 'user-42', limits: { maxCostUsd: 1 } });
+const reply = await session.send('Hello');
+if (reply.budget?.scope === 'session') console.log('This conversation used up its budget.');
+```
 
 ## Project instructions
 
@@ -392,6 +500,7 @@ use `loadProjectInstructions({ cwd, files, stopAt, maxChars })`, which returns
 | `provider`                              | The `LLMProvider` to generate with.                             |
 | `toolRegistry`                          | A `ToolRegistry` holding the tools the agent config refers to.  |
 | `maxSteps`                              | Upper bound on LLM/tool steps.                                  |
+| `limits`                                | Token, cost, time and step budgets of the run; see [Budgets](#budgets). |
 | `temperature`, `maxTokens`              | Generation parameters.                                          |
 | `onEvent`                               | Callback for execution events (`start`, `tool-call`, `finish`, ...). |
 | `approvalStore`, `sessionId`            | Human-in-the-loop approvals (see `resumeAfterApproval()`).       |

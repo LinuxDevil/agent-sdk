@@ -28,7 +28,7 @@ import { withAskQuestion } from './tools/built-in/askQuestion';
 import { ToolConcurrency, assertToolConcurrency } from './execution/toolBatch';
 import type { Skill } from './skills/defineSkill';
 import type { Message } from './providers/llm';
-import { AgentSession, withDefaultStores, type SessionOptions, type SessionTurnCheckpoint } from './session/AgentSession';
+import { AgentSession, withDefaultStores, type SessionOptions, type SessionTurnCheckpoint, type SessionTurnOptions } from './session/AgentSession';
 import type { AgentStore } from './storage/agentStore';
 import { loadProjectInstructions } from './projectInstructions';
 import { basename } from 'node:path';
@@ -51,6 +51,7 @@ import { toMessages, type AgentInput } from './providers/content';
 import { compactionHookFor, type AgentCompaction } from './context/agentCompaction';
 import type { MemoryScopeContext, MemorySlot } from './memory/defineMemory';
 import { agentMemory } from './memory/withMemory';
+import type { RunLimits } from './execution/budget';
 
 /**
  * Options for createAgent() that do not depend on how the instructions and
@@ -129,6 +130,19 @@ export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> ex
   maxSubagentDepth?: number;
   /** Optional maxSteps passed through to AgentExecutor.execute(). */
   maxSteps?: number;
+  /**
+   * Budgets of each run (LOU-V6): `maxTokens`, `maxInputTokens`,
+   * `maxOutputTokens`, `maxCostUsd`, `maxDurationMs`, `maxSteps` and
+   * `onExceeded`. A tripped limit ends the run with
+   * `finishReason: 'budget-exceeded'`; see `ExecuteOptions.limits`. For a
+   * budget across a session's turns, use `agent.session({ limits })`.
+   *
+   * @example
+   * ```ts
+   * createAgent({ model: 'openai/gpt-4o-mini', limits: { maxTokens: 50_000, maxCostUsd: 0.25 } });
+   * ```
+   */
+  limits?: RunLimits;
   /**
    * How many tool calls from one model turn may run at once (LOU-V3).
    * Defaults to `'unbounded'`; `1` runs them one at a time. Results always
@@ -512,6 +526,7 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     subagents: subagentsWithOptions(config.subagents, config.subagentOptions),
     maxSubagentDepth: config.maxSubagentDepth,
     maxSteps: config.maxSteps,
+    limits: config.limits,
     toolConcurrency: config.toolConcurrency,
   };
   const spec: SubagentSpec = { agent, provider, toolRegistry, ...runOptions };
@@ -547,7 +562,7 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
   const executeOptions = (
     input: string | Message[],
     signal?: AbortSignal,
-    turn?: Partial<SessionTurnCheckpoint>,
+    turn?: SessionTurnOptions,
     scope: MemoryScopeContext = { sessionId: turn?.sessionId }
   ): ExecuteOptions => ({
     ...spec,
@@ -563,7 +578,7 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
   const run = async (
     input: string | Message[],
     signal?: AbortSignal,
-    turn?: Partial<SessionTurnCheckpoint>,
+    turn?: SessionTurnOptions,
     scope?: MemoryScopeContext
   ) => {
     await mcp.ready();

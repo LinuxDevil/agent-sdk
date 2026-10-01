@@ -19,6 +19,24 @@ describe('AgentSpec.mcpServers (LOU-D20)', () => {
     expect(agentSpecSchema.parse({ ...base, mcpServers }).mcpServers).toEqual(mcpServers);
   });
 
+  it("accepts a per-server 'approval' mode (or a predicate in code) on both shapes (LOU-Z5)", () => {
+    const predicate = () => true;
+    const mcpServers: AgentSpec['mcpServers'] = {
+      fs: { command: 'npx', approval: 'always' },
+      docs: { url: 'https://example.com/mcp', approval: 'never' },
+      vcs: { command: 'uvx', approval: 'annotations' },
+      custom: { command: 'x', approval: predicate },
+    };
+    expect(agentSpecSchema.parse({ ...base, mcpServers }).mcpServers).toEqual(mcpServers);
+  });
+
+  it("rejects an unknown 'approval' value, naming the entry (LOU-Z5)", () => {
+    expect(issues({ fs: { command: 'npx', approval: 'sometimes' } })).toEqual([
+      "mcpServers.fs.approval: AgentSpec validation failed: 'approval' must be 'annotations', 'always' or 'never'",
+    ]);
+    expect(issues({ fs: { command: 'npx', approval: true } })[0]).toMatch(/'approval' must be/);
+  });
+
   it('still validates specs without the field', () => {
     expect(agentSpecSchema.parse(base)).toEqual(base);
   });

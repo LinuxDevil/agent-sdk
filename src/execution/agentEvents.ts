@@ -12,6 +12,7 @@ import type { SubagentInfo } from './hooks';
 import type { CompactedProviderErrorCategory } from './errors';
 import type { PermissionDecisionEntry } from './permissions';
 import type { ApprovalKind, ApprovalQuestion } from './ApprovalGate';
+import type { BudgetExceeded } from './budget';
 
 /**
  * Version of the {@link AgentEvent} schema, carried on every event as `v`.
@@ -230,6 +231,13 @@ export interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
 }
 
 /**
+ * A `limits` budget tripped (LOU-V6): which limit, what was spent and its
+ * maximum. `run.done { finishReason: 'budget-exceeded' }` follows (or, with
+ * `onExceeded: 'throw'`, `error` and `run.done { finishReason: 'error' }`).
+ */
+export interface BudgetExceededEvent extends AgentEventBase<'budget.exceeded'>, BudgetExceeded {}
+
+/**
  * Last event of every run, emitted exactly once - also for aborted, failed
  * and awaiting-approval runs.
  */
@@ -271,6 +279,7 @@ export type AgentEvent =
   | ProviderFallbackEvent
   | CompactionStartEvent
   | CompactionDoneEvent
+  | BudgetExceededEvent
   | RunDoneEvent;
 
 /** The `type` of an {@link AgentEvent}. */
@@ -307,6 +316,7 @@ const EVENT_TYPES: ReadonlySet<string> = new Set<AgentEventType>([
   'provider.fallback',
   'compaction.start',
   'compaction.done',
+  'budget.exceeded',
   'run.done',
 ]);
 
