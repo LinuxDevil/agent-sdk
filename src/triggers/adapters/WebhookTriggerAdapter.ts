@@ -11,10 +11,15 @@
  * Reply semantics: the reply target IS the still-open HTTP response - no
  * separate `reply()` method is implemented (see types.ts's doc comment for
  * why this differs from Slack/cron).
+ *
+ * Authentication (LOU-D13): `options.auth` verifies every request (HMAC over
+ * the raw body, bearer token, or a custom verifier) before the agent runs.
  */
 import * as http from 'node:http';
 import type { ExecutionResult } from '../../execution/AgentExecutor';
+import { Logger, noopLogger } from '../../execution/logger';
 import { RunnableAgent, TriggerAdapter, TriggerContext, TriggerHandle } from '../types';
+import { WebhookAuth, assertValidWebhookAuth, checkWebhookAuth } from '../webhookAuth';
 
 export interface WebhookTriggerAdapterOptions {
   /** Port to listen on. Defaults to 0 (OS-assigned ephemeral port - inspect `handle.port` after `listen()`). */
@@ -23,6 +28,21 @@ export interface WebhookTriggerAdapterOptions {
   host?: string;
   /** Only requests to this path are handled; everything else gets a 404. Defaults to '/'. */
   path?: string;
+  /**
+   * Authenticate every request (HMAC signature over the raw body, bearer
+   * token, or a custom verifier). Failures get a generic `401`. Strongly
+   * recommended for any webhook reachable from outside your machine.
+   *
+   * @example
+   * ```ts
+   * new WebhookTriggerAdapter({
+   *   auth: { type: 'hmac', secret: process.env.WEBHOOK_SECRET ?? '' },
+   * });
+   * ```
+   */
+  auth?: WebhookAuth;
+  /** Receives auth failures and the "no auth configured" warning. Defaults to a no-op logger. */
+  logger?: Logger;
 }
 
 export interface WebhookTriggerHandle extends TriggerHandle {
@@ -30,13 +50,13 @@ export interface WebhookTriggerHandle extends TriggerHandle {
   readonly port: number;
 }
 
-function readBody(req: http.IncomingMessage): Promise<string> {
+function readBody(req: http.IncomingMessage): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    let data = '';
-    req.on('data', (chunk) => {
-      data += chunk;
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer | string) => {
+      chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
     });
-    req.on('end', () => resolve(data));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });
 }
@@ -58,14 +78,41 @@ function parseWebhookInput(raw: string): string {
 
 type WebhookOnEvent = (input: string, context: TriggerContext) => Promise<ExecutionResult>;
 
-async function respondWithAgentResult(
+interface WebhookRuntime {
+  path: string;
+  onEvent: WebhookOnEvent;
+  auth?: WebhookAuth;
+  logger: Logger;
+}
+
+/** Authenticates the request (when configured); on failure writes a generic 401 and returns false. */
+async function authorize(
+  runtime: WebhookRuntime,
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  onEvent: WebhookOnEvent
+  rawBody: Buffer
+): Promise<boolean> {
+  if (!runtime.auth) return true;
+  const failure = await checkWebhookAuth(runtime.auth, req, rawBody);
+  if (failure === undefined) return true;
+  runtime.logger.warn('webhook request rejected: authentication failed', {
+    reason: failure,
+    remoteAddress: req.socket.remoteAddress,
+  });
+  writeJson(res, 401, { error: 'Unauthorized' });
+  return false;
+}
+
+async function respondWithAgentResult(
+  runtime: WebhookRuntime,
+  req: http.IncomingMessage,
+  res: http.ServerResponse
 ): Promise<void> {
   try {
-    const input = parseWebhookInput(await readBody(req));
-    const result = await onEvent(input, { channel: res, request: req });
+    const rawBody = await readBody(req);
+    if (!(await authorize(runtime, req, res, rawBody))) return;
+    const input = parseWebhookInput(rawBody.toString('utf8'));
+    const result = await runtime.onEvent(input, { channel: res, request: req });
     writeJson(res, 200, result);
   } catch (error) {
     writeJson(res, 500, { error: (error as Error).message });
@@ -73,34 +120,53 @@ async function respondWithAgentResult(
 }
 
 async function handleWebhookRequest(
+  runtime: WebhookRuntime,
   req: http.IncomingMessage,
-  res: http.ServerResponse,
-  path: string,
-  onEvent: WebhookOnEvent
+  res: http.ServerResponse
 ): Promise<void> {
-  if (req.method !== 'POST' || req.url !== path) {
+  if (req.method !== 'POST' || req.url !== runtime.path) {
     writeJson(res, 404, { error: 'Not found' });
     return;
   }
-  await respondWithAgentResult(req, res, onEvent);
+  await respondWithAgentResult(runtime, req, res);
+}
+
+function isLoopbackHost(host: string): boolean {
+  return host === 'localhost' || host === '::1' || host === '[::1]' || /^127\./.test(host);
 }
 
 export class WebhookTriggerAdapter implements TriggerAdapter<http.ServerResponse> {
   public readonly type = 'webhook';
 
-  constructor(private readonly options: WebhookTriggerAdapterOptions = {}) {}
+  private warnedUnauthenticated = false;
+
+  constructor(private readonly options: WebhookTriggerAdapterOptions = {}) {
+    if (options.auth) assertValidWebhookAuth(options.auth);
+  }
+
+  private warnIfUnauthenticated(host: string, logger: Logger): void {
+    if (this.options.auth || this.warnedUnauthenticated || isLoopbackHost(host)) return;
+    this.warnedUnauthenticated = true;
+    logger.warn(
+      `WebhookTriggerAdapter is listening on ${host} without \`auth\`: anyone who can reach it can run your agent. ` +
+        'Configure options.auth (hmac, bearer or custom); see docs/api-overview.md#triggers.'
+    );
+  }
 
   public listen(
     agent: RunnableAgent,
     onEvent: WebhookOnEvent
   ): WebhookTriggerHandle {
-    const path = this.options.path ?? '/';
+    const host = this.options.host ?? '0.0.0.0';
+    const logger = this.options.logger ?? noopLogger;
+    const runtime: WebhookRuntime = { path: this.options.path ?? '/', onEvent, auth: this.options.auth, logger };
+    this.warnIfUnauthenticated(host, logger);
 
     const server = http.createServer((req, res) => {
-      void handleWebhookRequest(req, res, path, onEvent);
+      void handleWebhookRequest(runtime, req, res);
     });
 
-    server.listen(this.options.port ?? 0, this.options.host ?? '0.0.0.0');
+    server.listen(this.options.port ?? 0, host);
 
     void agent; // available for adapters/callers that want a default onEvent; unused by this adapter's own logic.
 
