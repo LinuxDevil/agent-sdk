@@ -184,6 +184,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Tracing and observability](docs/observability.md) | OpenTelemetry GenAI spans, attribute table, content opt-in |
 | [Deployment](docs/deployment.md) | `loushy build` targets: Node server, Docker, Cloudflare Workers (with KV checkpoints) |
 | [Agent Forge](docs/agent-forge.md) | The visual dashboard: quickstart, first-agent walkthrough, hooks |
+| [Errors](docs/errors.md) | Every error code (`LOUSHY_*`): what it means, how to fix it, an example |
 | [API Overview](docs/api-overview.md) | The main exports, triggers, tokens and cost; `npm run docs:build` generates the full TypeDoc reference |
 | [Utilities](docs/utilities.md) | Encryption, file storage and templates |
 

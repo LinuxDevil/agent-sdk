@@ -7,6 +7,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { Message } from '../providers/llm';
+import { ConfigurationError, SDKError } from '../execution/errors';
 
 /**
  * Persistence for session transcripts. A transcript is the conversation
@@ -36,9 +37,11 @@ const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
  */
 export function assertSessionId(id: string): void {
   if (typeof id !== 'string' || !SESSION_ID_PATTERN.test(id)) {
-    throw new Error(
+    throw new ConfigurationError(
       `Invalid session id ${JSON.stringify(id)}: use 1-128 characters from A-Z, a-z, 0-9, '_' and '-' ` +
-        "(e.g. 'user-42'). Omit the id to get a generated one."
+        "(e.g. 'user-42'). Omit the id to get a generated one.",
+      'id',
+      'LOUSHY_SESSION_ID_INVALID'
     );
   }
 }
@@ -107,7 +110,7 @@ export class FileSessionStore implements SessionStore {
     }
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) {
-      throw new Error(`Session file ${file} is corrupt: expected a JSON array of messages.`);
+      throw new SDKError(`Session file ${file} is corrupt: expected a JSON array of messages.`, 'LOUSHY_SESSION_FILE_CORRUPT');
     }
     return parsed as Message[];
   }

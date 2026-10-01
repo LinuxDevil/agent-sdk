@@ -18,7 +18,6 @@ import { ApprovalStore, PendingApproval, ExecutionSnapshot } from '../execution/
 import { AgentExecutor } from '../execution/AgentExecutor';
 import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
-import { AgentType } from '../types';
 
 /** Simple in-memory stand-in for a real Cloudflare KV namespace binding. */
 function createMockKV(): KVBinding & { data: Map<string, string>; putCalls: [string, string][] } {
@@ -163,7 +162,6 @@ describe('KVCheckpointStore', () => {
     });
 
     const agent = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .addTool('chargeCard', { tool: 'chargeCard', options: {} })
       .addTool('lookup', { tool: 'lookup', options: {} })

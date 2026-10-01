@@ -4,14 +4,67 @@
  */
 
 import { APICallError, LoadAPIKeyError, RetryError } from 'ai';
+import { errorHelp, type ErrorCode } from '../utils/errorCodes';
+
+/** Options of {@link SDKError}. */
+export interface SDKErrorOptions {
+  /** One sentence on how to fix it; defaults to the registry's hint for `code`. */
+  hint?: string;
+  /** A docs link; defaults to the code's section of docs/errors.md. */
+  docs?: string;
+  cause?: unknown;
+  /**
+   * `false` keeps `message` exactly as given, for errors whose message is
+   * also handed to the model (tool and provider errors); `toString()` still
+   * shows the code, hint and docs link. Default `true`.
+   */
+  appendHelp?: boolean;
+}
+
+/** `message` plus a `[code] hint (docs)` line, the format every SDKError uses. */
+function withHelp(message: string, code: string, hint?: string, docs?: string): string {
+  const help = [`[${code}]`, hint, docs && `(${docs})`].filter(Boolean).join(' ');
+  return `${message}\n${help}`;
+}
 
 /**
- * Base SDK error
+ * Base SDK error. `code` is stable (see docs/errors.md), `hint` says how to
+ * fix it and `docs` links to its section; `message` ends with a
+ * `[code] hint (docs)` line.
+ *
+ * @example
+ * ```ts
+ * try {
+ *   await agent.send('hi');
+ * } catch (error) {
+ *   if (error instanceof SDKError && error.code === 'LOUSHY_APPROVAL_STORE_MISSING') console.error(error.hint);
+ * }
+ * ```
  */
 export class SDKError extends Error {
-  constructor(message: string, public readonly code?: string) {
-    super(message);
+  readonly code: string;
+  readonly hint?: string;
+  readonly docs?: string;
+  /** The message without the appended `[code] hint (docs)` line. */
+  readonly detail: string;
+
+  constructor(message: string, code: ErrorCode | (string & {}) = 'LOUSHY_GENERIC_ERROR', options: SDKErrorOptions = {}) {
+    const help = errorHelp(code);
+    const hint = options.hint ?? help?.hint;
+    const docs = options.docs ?? help?.docs;
+    super(
+      options.appendHelp === false ? message : withHelp(message, code, hint, docs),
+      options.cause === undefined ? undefined : { cause: options.cause }
+    );
     this.name = 'SDKError';
+    this.code = code;
+    this.hint = hint;
+    this.docs = docs;
+    this.detail = message;
+  }
+
+  override toString(): string {
+    return `${this.name}: ${withHelp(this.detail, this.code, this.hint, this.docs)}`;
   }
 }
 
@@ -24,7 +77,7 @@ export class AgentExecutionError extends SDKError {
     public readonly agentId?: string,
     public readonly cause?: Error
   ) {
-    super(message, 'AGENT_EXECUTION_ERROR');
+    super(message, 'LOUSHY_AGENT_EXECUTION_FAILED');
     this.name = 'AgentExecutionError';
   }
 }
@@ -38,7 +91,7 @@ export class ToolExecutionError extends SDKError {
     public readonly toolName?: string,
     public readonly cause?: Error
   ) {
-    super(message, 'TOOL_EXECUTION_ERROR');
+    super(message, 'LOUSHY_TOOL_EXECUTION_FAILED', { appendHelp: false });
     this.name = 'ToolExecutionError';
   }
 }
@@ -53,7 +106,7 @@ export class LLMProviderError extends SDKError {
     public readonly statusCode?: number,
     public readonly cause?: Error
   ) {
-    super(message, 'LLM_PROVIDER_ERROR');
+    super(message, 'LOUSHY_PROVIDER_REQUEST_FAILED', { appendHelp: false });
     this.name = 'LLMProviderError';
   }
 }
@@ -84,7 +137,7 @@ export class SessionAwaitingApprovalError extends SDKError {
         'cannot add new input to it. Resolve the approval with resumeAfterApproval({ id: approvalId, approved: true }, ' +
         'approvalStore, toolRegistry, provider, options, checkpointStore) - passing the same checkpointStore so the ' +
         'session is marked as resumed - then call execute() again with your new input.',
-      'SESSION_AWAITING_APPROVAL'
+      'LOUSHY_SESSION_AWAITING_APPROVAL'
     );
     this.name = 'SessionAwaitingApprovalError';
   }
@@ -100,7 +153,7 @@ export class FlowExecutionError extends SDKError {
     public readonly step?: string,
     public readonly cause?: Error
   ) {
-    super(message, 'FLOW_EXECUTION_ERROR');
+    super(message, 'LOUSHY_FLOW_EXECUTION_FAILED');
     this.name = 'FlowExecutionError';
   }
 }
@@ -109,8 +162,8 @@ export class FlowExecutionError extends SDKError {
  * Configuration error
  */
 export class ConfigurationError extends SDKError {
-  constructor(message: string, public readonly field?: string) {
-    super(message, 'CONFIGURATION_ERROR');
+  constructor(message: string, public readonly field?: string, code: ErrorCode = 'LOUSHY_CONFIG_INVALID', options?: SDKErrorOptions) {
+    super(message, code, options);
     this.name = 'ConfigurationError';
   }
 }
@@ -121,9 +174,10 @@ export class ConfigurationError extends SDKError {
 export class ValidationError extends SDKError {
   constructor(
     message: string,
-    public readonly errors?: Record<string, string[]>
+    public readonly errors?: Record<string, string[]>,
+    code: ErrorCode = 'LOUSHY_VALIDATION_FAILED'
   ) {
-    super(message, 'VALIDATION_ERROR');
+    super(message, code);
     this.name = 'ValidationError';
   }
 }
@@ -137,7 +191,7 @@ export class TimeoutError extends SDKError {
     public readonly timeoutMs?: number,
     public readonly operation?: string
   ) {
-    super(message, 'TIMEOUT_ERROR');
+    super(message, 'LOUSHY_OPERATION_TIMEOUT', { appendHelp: false });
     this.name = 'TimeoutError';
   }
 }
@@ -151,7 +205,7 @@ export class RateLimitError extends SDKError {
     public readonly retryAfter?: number,
     public readonly limit?: number
   ) {
-    super(message, 'RATE_LIMIT_ERROR');
+    super(message, 'LOUSHY_PROVIDER_RATE_LIMITED', { appendHelp: false });
     this.name = 'RateLimitError';
   }
 }

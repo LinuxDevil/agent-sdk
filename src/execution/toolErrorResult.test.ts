@@ -5,7 +5,6 @@ import { PropagatingToolError } from './propagatingToolError';
 import { HookRegistry } from './hooks';
 import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
-import { AgentType } from '../types';
 
 const usage = { promptTokens: 1, completionTokens: 1, totalTokens: 2 };
 
@@ -52,7 +51,6 @@ function setup(execute: () => Promise<unknown>) {
     tool: { parameters: z.object({}), execute } as any,
   });
   const agent = AgentBuilder.create()
-    .setType(AgentType.SmartAssistant)
     .setName('Test Agent')
     .addTool('boom', { tool: 'boom', options: {} })
     .build();

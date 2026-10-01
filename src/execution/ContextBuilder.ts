@@ -31,7 +31,7 @@ export interface ExecutionContext {
   metadata: {
     agentId: string;
     agentName: string;
-    agentType: string;
+    agentType?: string;
     hasMemories: boolean;
     memoryCount: number;
     historyCount: number;
@@ -104,7 +104,7 @@ export class ContextBuilder {
     const metadata = {
       agentId: agent.id || '',
       agentName: agent.name,
-      agentType: agent.agentType as string,
+      ...(agent.agentType !== undefined && { agentType: agent.agentType }),
       hasMemories: !!memoryManager,
       memoryCount: 0, // Will be updated if memories are recalled
       historyCount: sessionHistory.length,
@@ -317,7 +317,7 @@ export class ContextBuilder {
     return {
       agentId,
       agentName,
-      agentType,
+      ...(agentType !== undefined && { agentType }),
       hasMemories: contexts.some((c) => c.metadata.hasMemories),
       memoryCount: contexts.reduce((sum, c) => sum + c.metadata.memoryCount, 0),
       historyCount: contexts.reduce((sum, c) => sum + c.metadata.historyCount, 0),

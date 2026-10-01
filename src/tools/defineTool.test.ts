@@ -6,7 +6,6 @@ import { createAgent } from '../createAgent';
 import { createMockProvider } from '../providers/mock';
 import { AgentBuilder } from '../core/AgentBuilder';
 import { createDelegateTool } from '../execution/DelegationTool';
-import { AgentType } from '../types';
 
 const input = z.object({ to: z.string(), subject: z.string() });
 
@@ -137,7 +136,6 @@ describe('entry points', () => {
 
   it('AgentBuilder.addTool(tool) keys the config by tool name', () => {
     const agent = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('a')
       .setPrompt('p')
       .addTool(makeEmail())
@@ -154,7 +152,6 @@ describe('entry points', () => {
     const registry = new ToolRegistry();
     registry.register(makeEmail('child_tool'));
     const child = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('child')
       .setPrompt('p')
       .addTool(makeEmail('child_tool'))
