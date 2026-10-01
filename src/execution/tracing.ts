@@ -10,7 +10,7 @@
  * for a console bridge and a real OTel bridge.
  */
 
-import { nanoid } from 'nanoid';
+import { newId } from '../utils/id';
 import { ErrorAttr, LegacyAttr } from './semconv';
 
 /** OpenTelemetry span kind, for the kinds this SDK emits. */
@@ -90,7 +90,7 @@ export async function withSpan<T>(
   kind?: SpanKind
 ): Promise<T> {
   const span: Span = {
-    id: nanoid(),
+    id: newId(),
     name,
     attributes,
     startTime: Date.now(),

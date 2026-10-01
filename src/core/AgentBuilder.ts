@@ -1,6 +1,6 @@
 import { AgentConfig, AgentType, ToolConfiguration, AgentFlow } from '../types';
 import { validateAgentConfig, validateAgentTools } from '../agent-types';
-import { nanoid } from 'nanoid';
+import { newId } from '../utils/id';
 import type { DefinedTool } from '../tools/defineTool';
 
 /**
@@ -153,7 +153,7 @@ export class AgentBuilder {
     this.validate();
     
     return {
-      id: this.config.id || nanoid(),
+      id: this.config.id || newId(),
       name: this.config.name!,
       ...(this.config.agentType !== undefined && { agentType: this.config.agentType }),
       locale: this.config.locale || 'en',

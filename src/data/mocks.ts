@@ -13,7 +13,7 @@ import {
   PaginatedResult,
 } from './repositories';
 import { Agent, Session, Result, Memory, Attachment } from './models';
-import { nanoid } from 'nanoid';
+import { newId } from '../utils/id';
 
 /**
  * Base Mock Repository
@@ -89,7 +89,7 @@ export class MockAgentRepository
   implements AgentRepository
 {
   protected generateId(): string {
-    return nanoid();
+    return newId();
   }
 
   async findByType(type: string): Promise<Agent[]> {
@@ -138,7 +138,7 @@ export class MockSessionRepository
   implements SessionRepository
 {
   protected generateId(): string {
-    return nanoid();
+    return newId();
   }
 
   async findByAgentId(agentId: string): Promise<Session[]> {
@@ -183,7 +183,7 @@ export class MockResultRepository
   implements ResultRepository
 {
   protected generateId(): string {
-    return nanoid();
+    return newId();
   }
 
   async findBySessionId(sessionId: string): Promise<Result | null> {
@@ -214,7 +214,7 @@ export class MockMemoryRepository
   implements MemoryRepository
 {
   protected generateId(): string {
-    return nanoid();
+    return newId();
   }
 
   /**

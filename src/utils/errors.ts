@@ -1,5 +1,5 @@
 import { ZodError, type ZodIssue } from 'zod';
-import { nanoid } from 'nanoid';
+import { newId } from './id';
 
 type ErrorWithMessage = {
   message: string;
@@ -53,7 +53,7 @@ export function formatZodError(err: unknown): { type: string; message: string; [
       .join('\n\n');
 
     errorChunk = {
-      flowNodeId: nanoid(),
+      flowNodeId: newId(),
       type: 'error',
       message: formattedIssues,
     };

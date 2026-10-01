@@ -7,7 +7,7 @@ import type { Skill } from '../skills/defineSkill';
 import { withSkills } from '../skills/withSkills';
 import type { Subagents } from '../subagents/types';
 import { assertMaxSubagentDepth, withSubagents } from '../subagents/withSubagents';
-import { nanoid } from 'nanoid';
+import { newId } from '../utils/id';
 import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult, ToolDefinition } from '../providers';
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
@@ -1022,7 +1022,7 @@ export class AgentExecutor {
     }
 
     const pending: PendingApproval = {
-      id: nanoid(),
+      id: newId(),
       toolCallId: toolCall.id,
       toolName: toolCall.function.name,
       args: toolResult.args || {},
