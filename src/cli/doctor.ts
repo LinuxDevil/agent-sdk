@@ -8,7 +8,6 @@
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
-import { parse as parseYaml } from 'yaml';
 import { loadSpec } from '../spec/loadSpec';
 import { resolveSpecTool } from '../spec/specToAgent';
 import { runDoctor } from './doctorCore';
@@ -87,10 +86,6 @@ export function buildEnvironment(args: DoctorArgs, cwd: string = process.cwd()):
     resolvePackageVersion: (name) => resolveVersion(cwd, name),
     specPath: args.specPath ? resolveSpecFile(args.specPath) : undefined,
     loadSpec,
-    readRawSpec: (file) => {
-      const raw = fs.readFileSync(file, 'utf8');
-      return path.extname(file).toLowerCase() === '.json' ? JSON.parse(raw) : parseYaml(raw);
-    },
     resolveTool: resolveSpecTool,
     commandExists: (command) => commandExists(command, process.env),
     fetch: (url, init) => fetch(url, init),
