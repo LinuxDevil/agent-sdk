@@ -46,7 +46,7 @@ describe('subagents option and the task tool (LOU-Y3)', () => {
 
     const [toolResult] = toolMessages(result.messages);
     const text = JSON.parse(toolResult.content as string) as string;
-    expect(text).toBe("Paris is the capital of France.\n\n[sub-agent 'researcher': 1 step(s), finish reason 'stop']");
+    expect(text).toBe("Paris is the capital of France.\n\n[sub-agent 'researcher': 1 step(s), finish reason 'stop', taskId 'task_1']");
     expect(result.text).toBe('Paris.');
   });
 

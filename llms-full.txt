@@ -5236,6 +5236,31 @@ session id); check the URL, `GET <url>/health` and the deployment's logs.
 
 **Example:** `loushy eval --url http://localhost:1` with nothing listening.
 
+### LOUSHY_SUBAGENT_TASK_NOT_FOUND
+
+**Means:** a `task` call asked to resume or fork a `taskId` that this lead
+session has no conversation for (never started, started in another lead
+session or run, or not finished), or that belongs to another sub-agent. The
+lead model gets it as a structured tool error.
+
+**Fix:** use a `taskId` from an earlier `task` result of the same lead
+session, with the same `agent`; or omit `taskId` to start a new task. See
+[Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md#continuing-a-task).
+
+**Example:** `task({ agent: 'researcher', taskId: 'task_7', prompt })` when the
+session has only `task_1`.
+
+### LOUSHY_SUBAGENT_TASK_BUSY
+
+**Means:** a `task` call asked to resume or fork a task whose sub-agent is
+still running, for example a background task that has not ended.
+
+**Fix:** wait for it with `agent_await` (or stop it with `agent_cancel`),
+then continue it.
+
+**Example:** `task({ agent: 'researcher', taskId: 'task_1', prompt })` right
+after starting `task_1` with `background: true`.
+
 ### LOUSHY_CHECKPOINT_NOT_FOUND
 
 **Means:** `AgentExecutor.fork()` or `agent.fork()` was asked for a step the
@@ -8274,8 +8299,9 @@ With `subagents`, the lead agent gets:
    sub-agent (`- name: description`), plus a sentence saying that a sub-agent
    sees only the prompt it is given.
 2. ONE tool, `task`, with the input
-   `{ agent: <one of the names>, prompt: string, description: string, background?: boolean }`
-   (`description` is a 3-5 word label used in events and hooks).
+   `{ agent: <one of the names>, prompt: string, description: string, background?: boolean, taskId?: string, mode?: 'new' | 'resume' | 'fork' }`
+   (`description` is a 3-5 word label used in events and hooks; `taskId` and
+   `mode` continue an earlier task, see [Continuing a task](#continuing-a-task)).
 3. Three tools for background tasks: `agent_status`, `agent_await` and
    `agent_cancel` (see [Background sub-agents](#background-sub-agents)).
 
@@ -8286,7 +8312,7 @@ use:
 ```text
 The first bicycles appeared in the 1810s ...
 
-[sub-agent 'researcher': 3 step(s), finish reason 'stop']
+[sub-agent 'researcher': 3 step(s), finish reason 'stop', taskId 'task_1']
 ```
 
 If the sub-agent does not finish - it throws, runs out of `maxSteps`, or is
@@ -8298,6 +8324,65 @@ the valid names. Sub-agent token usage is added to the lead's `result.usage`.
 Errors at setup time are thrown with a fix: a sub-agent without a
 `description`, a value that is not a `createAgent()` agent, or a tool of your
 own already named `task` (or `agent_status`, `agent_await`, `agent_cancel`).
+
+## Continuing a task
+
+Each `task` call runs in a child conversation with a `taskId` (`task_1`,
+`task_2`, ... in the footer). The lead can come back to it:
+
+| `task` input | What runs |
+| --- | --- |
+| no `taskId` (`mode: 'new'`) | A fresh sub-agent, as above, with a new `taskId`. |
+| `taskId` (`mode: 'resume'`, the default with a `taskId`) | The same sub-agent with its whole transcript (its earlier prompts, tool calls and answers) and `prompt` as the next user turn. The result keeps the `taskId`. |
+| `taskId` and `mode: 'fork'` | A new task (new `taskId`) that starts from a copy of that transcript. The original task is left as it was and can still be resumed. |
+
+The model learns this from the `task` tool description, so asking a follow-up
+needs no code. A lead that keeps its work across turns or restarts needs a
+store and a session:
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
+
+const store = new SqliteStore('./.loushy/agent.db');
+const researcher = createAgent({ provider, instructions: 'You research.', description: 'Finds and summarizes sources' });
+const lead = createAgent({ provider, instructions: 'You coordinate research.', store, subagents: { researcher } });
+
+const chat = lead.session({ id: 'user-42' });
+await chat.send('Research the history of the bicycle.'); // the lead calls task -> taskId 'task_1'
+await chat.send('Ask the researcher which source it trusted most.'); // the lead calls task({ taskId: 'task_1', ... })
+```
+
+Where the conversations live:
+
+- With `createAgent({ store })` (`store.sessions`) and a lead run that has a
+  `sessionId` (a checkpointed `send(message, { sessionId })` or a session
+  turn), each task is saved in `store.sessions` after its run, under a key
+  hashed from the lead session id and the `taskId`. They outlive the lead run:
+  later turns of the same session, a lead resumed with `agent.resume()` or
+  `approvals.resolve()`, and a new process on the same durable store can
+  continue them. A `taskId` from another lead session never matches. The
+  session store has no list API, so these entries are not listed or deleted
+  with the lead session; delete the store's data to drop them. For
+  `AgentExecutor.execute()`, set the store with
+  `withSubagentOptions(subagents, { sessions })`.
+- Otherwise (no session store, or a lead run without a `sessionId`) a task
+  lives in memory for that one `execute()` / `send()` call: a run that pauses
+  for approval and is resumed starts with none.
+
+Only tasks that finished (`stop`, `length` or `max-steps`) are saved, so a
+task that failed or was cancelled cannot be continued. Errors reach the lead
+as structured tool errors: an unknown `taskId`, one of another lead session,
+or one that belongs to another sub-agent fails with
+`LOUSHY_SUBAGENT_TASK_NOT_FOUND`; a task that is still running (a background
+task that has not ended) fails with `LOUSHY_SUBAGENT_TASK_BUSY`, telling the
+model to `agent_await` or `agent_cancel` it first.
+
+A resumed or forked task is a normal `task` call otherwise: it can run in the
+background (it keeps its `taskId`), an approval inside it pauses and resumes
+the lead like any sub-agent approval, and its usage counts toward the lead's
+`usage` and `limits`. The child sees its whole transcript again on every
+resume, so a long-lived task costs more tokens each time.
 
 ## Parallel tasks
 
@@ -8440,7 +8525,10 @@ const lead = createAgent({
 Each task opens a new session on the remote agent (`POST <url>/chat` with
 `{ sessionId, input }`, read as the SSE event stream, see
 [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#http-api)), sends the task prompt and returns the
-remote agent's final text, followed by a footer naming the session. The remote
+remote agent's final text, followed by a footer naming the session and the
+`taskId`. A `task` call that resumes that `taskId` posts to the same remote
+session, so the remote agent continues with its own history (keep it in a
+store on the remote side); a remote task cannot be forked. The remote
 agent sees only that prompt, and runs with its own model, tools and limits, so
 the lead's runtime (hooks, sandbox, approval store) does not reach it. The
 lead run's abort signal aborts the request. Options: `url`, `auth`, `name`,
@@ -8453,7 +8541,8 @@ structured tool error with the code `LOUSHY_REMOTE_REQUEST_FAILED` (`LOUSHY_REMO
 never part of an error or an event. If the remote run pauses for an approval,
 the task fails with `LOUSHY_SESSION_AWAITING_APPROVAL`, naming the remote
 session and approval id: approvals are not proxied to the lead yet, so decide
-it on the remote agent or leave tools that need approval off it.
+it on the remote agent (the lead can then continue the task by its `taskId`)
+or leave tools that need approval off it.
 
 ## Depth
 
@@ -8484,7 +8573,7 @@ inherits:
 | `maxSubagentDepth` | The remaining budget | See [Depth](#depth). |
 | `onLLMRequest`, `onToolCall` and the other single-run callbacks | No | They describe one run; use hooks or `onEvent` to observe sub-agents. |
 | `sessionId` / `checkpointStore` | No | A sub-agent is not checkpointed on its own. If the process dies while a sub-agent runs, the resumed lead runs that `task` call again. |
-| Conversation history | No | The sub-agent sees only the task prompt. |
+| Conversation history | No | The sub-agent sees only the task prompt (plus its own earlier turns when the lead [resumes the task](#continuing-a-task)). |
 
 `createDelegateTool()` children inherit the same way.
 
