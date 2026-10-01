@@ -75,3 +75,35 @@ describe('withSpan', () => {
     expect(exporter.onSpanStart).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('withSpan kind and error status (LOU-D9)', () => {
+  it('records the span kind when given and leaves it unset otherwise', async () => {
+    const { exporter, starts } = createSpyExporter();
+    await withSpan(exporter, 'a', {}, async () => 1, undefined, 'client');
+    await withSpan(exporter, 'b', {}, async () => 2);
+    expect(starts[0].kind).toBe('client');
+    expect(starts[1].kind).toBeUndefined();
+  });
+
+  it('sets error.type (the error name) and an error status when fn throws', async () => {
+    const { exporter, ends } = createSpyExporter();
+    await expect(
+      withSpan(exporter, 's', {}, async () => {
+        throw new TypeError('bad');
+      })
+    ).rejects.toThrow('bad');
+    expect(ends[0].attributes).toMatchObject({ error: 'bad', 'error.type': 'TypeError' });
+    expect(ends[0].status).toEqual({ code: 'error', message: 'bad' });
+  });
+
+  it('uses _OTHER as error.type when a non-Error is thrown', async () => {
+    const { exporter, ends } = createSpyExporter();
+    await expect(
+      withSpan(exporter, 's', {}, async () => {
+        throw 'plain string';
+      })
+    ).rejects.toBe('plain string');
+    expect(ends[0].attributes['error.type']).toBe('_OTHER');
+    expect(ends[0].status).toEqual({ code: 'error', message: 'plain string' });
+  });
+});

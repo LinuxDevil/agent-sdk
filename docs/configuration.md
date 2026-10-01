@@ -175,7 +175,8 @@ dependency prints the exact `npm install` command.
 | `onEvent`                               | Callback for execution events (`start`, `tool-call`, `finish`, ...). |
 | `approvalStore`, `sessionId`            | Human-in-the-loop approvals (see `resumeAfterApproval()`).       |
 | `checkpointStore`                       | Persist/resume execution checkpoints.                           |
-| `exporter`                              | A `TraceExporter` for tracing spans.                            |
+| `exporter`                              | A `TraceExporter` for tracing spans (OpenTelemetry GenAI conventions, see [observability](observability.md)). |
+| `captureContent`, `redactContent`       | Record message/tool content on `gen_ai.*` span attributes (opt-in) / omit the deprecated content attributes. |
 | `onLLMRequest`, `onLLMResponse`, `onToolCall`, `onToolResult` | Observability hooks.                |
 
 It resolves to an `ExecutionResult`: `{ text, messages, toolCalls, usage,

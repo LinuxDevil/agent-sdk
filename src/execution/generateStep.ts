@@ -1,7 +1,7 @@
 /**
  * The provider.generate() half of one AgentExecutor loop step: building the
  * request and tool definitions, the onLLMRequest/onLLMResponse callbacks,
- * pre/post generate hooks, the `llm.generate` span, and LOU-T4's
+ * pre/post generate hooks, the `chat {model}` span, and LOU-T4's
  * compaction of a generate() failure.
  */
 
@@ -9,6 +9,7 @@ import { GenerateOptions, GenerateResult, Message, ToolDefinition } from '../pro
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
 import { withSpan } from './tracing';
+import { llmSpanInit, recordLlmResult, resolveCaptureContent } from './genAiSpans';
 import { GenerateHookContext } from './hooks';
 import {
   CompactedLLMProviderError,
@@ -103,8 +104,8 @@ export async function prepareGenerateRequest(
 }
 
 /**
- * Runs provider.generate() inside an `llm.generate` span parented to the
- * run's `agent.run` span, followed by the onLLMResponse callback and
+ * Runs provider.generate() inside a `chat {model}` span parented to the
+ * run's `invoke_agent` span, followed by the onLLMResponse callback and
  * postGenerate hooks.
  */
 export function generateInSpan(
@@ -114,27 +115,19 @@ export function generateInSpan(
   agentSpanId: string
 ): Promise<GenerateResult> {
   const { provider, exporter, onLLMResponse, hooks, redactContent = false } = options;
+  const captureContent = resolveCaptureContent(options.captureContent);
+  const init = llmSpanInit(provider, generateRequest, { redactContent, captureContent });
 
   return withSpan(
     exporter,
-    'llm.generate',
-    {
-      model: generateRequest.model,
-      ...(redactContent ? {} : { prompt: JSON.stringify(generateRequest.messages) }),
-    },
+    init.name,
+    init.attributes,
     async (llmSpan) => {
       const llmStart = Date.now();
       const generated = await provider.generate(generateRequest);
       const llmLatencyMs = Date.now() - llmStart;
 
-      // Token counts and finish reason are never redacted.
-      llmSpan.attributes = {
-        ...llmSpan.attributes,
-        promptTokens: generated.usage.promptTokens,
-        completionTokens: generated.usage.completionTokens,
-        totalTokens: generated.usage.totalTokens,
-        finishReason: generated.finishReason,
-      };
+      recordLlmResult(llmSpan, generated, captureContent);
 
       if (onLLMResponse) {
         await onLLMResponse(generated, llmLatencyMs);
@@ -149,7 +142,8 @@ export function generateInSpan(
 
       return generated;
     },
-    agentSpanId
+    agentSpanId,
+    init.kind
   );
 }
 

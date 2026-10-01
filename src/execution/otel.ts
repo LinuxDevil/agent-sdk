@@ -22,7 +22,16 @@
  * time.
  */
 
-import { trace, context, Context, Span as OtelSpan, Tracer } from '@opentelemetry/api';
+import {
+  trace,
+  context,
+  AttributeValue,
+  Context,
+  Span as OtelSpan,
+  SpanKind as OtelSpanKind,
+  SpanStatusCode,
+  Tracer,
+} from '@opentelemetry/api';
 import { Span, TraceExporter } from './tracing';
 
 /**
@@ -52,8 +61,11 @@ export interface OtelTraceExporterOptions {
  * Creates a {@link TraceExporter} that starts/ends a real OpenTelemetry
  * span for every `Span` this SDK produces, propagating parent/child
  * relationships (`Span.parentId`) into OTel's context API so a real OTel
- * backend sees the same `agent.run` -> `llm.generate`/`tool.call` span
- * tree that `withSpan()` builds internally.
+ * backend sees the same `invoke_agent` -> `chat`/`execute_tool` span
+ * tree that `withSpan()` builds internally, with span kind and error status
+ * carried over. Span names and attributes follow the OpenTelemetry GenAI
+ * semantic conventions (see `semconv.ts`; message content is opt-in via
+ * `captureContent` on `AgentExecutor.execute()`/`FlowExecutor`).
  *
  * This only depends on `@opentelemetry/api` (the OTel instrumentation
  * API), not any concrete SDK/exporter backend - the host application is
@@ -85,7 +97,11 @@ export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}):
       const parentEntry = span.parentId ? otelSpansById.get(span.parentId) : undefined;
       const parentContext = parentEntry ? parentEntry.ctx : context.active();
 
-      const otelSpan = tracer.startSpan(span.name, { startTime: span.startTime }, parentContext);
+      const otelSpan = tracer.startSpan(
+        span.name,
+        { startTime: span.startTime, kind: span.kind === 'client' ? OtelSpanKind.CLIENT : OtelSpanKind.INTERNAL },
+        parentContext
+      );
 
       // Seed OTel span attributes with whatever this SDK already knew at
       // span-start time (e.g. model, toolName). onSpanEnd below adds
@@ -103,6 +119,9 @@ export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}):
       }
 
       setAttributes(entry.span, span.attributes);
+      if (span.status?.code === 'error') {
+        entry.span.setStatus({ code: SpanStatusCode.ERROR, message: span.status.message });
+      }
       entry.span.end(span.endTime);
       otelSpansById.delete(span.id);
     },
@@ -120,9 +139,21 @@ function setAttributes(otelSpan: OtelSpan, attributes: Record<string, unknown>):
 // OTel attribute values must be a primitive or an array of a single
 // primitive type - stringify anything else (objects/arrays of
 // objects, e.g. `prompt`/`args`/`result`) so nothing throws.
-function toOtelAttributeValue(value: unknown): string | number | boolean {
+function toOtelAttributeValue(value: unknown): AttributeValue {
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
     return value;
   }
+  if (isHomogeneousPrimitiveArray(value)) {
+    return value;
+  }
   return JSON.stringify(value);
+}
+
+// e.g. `gen_ai.response.finish_reasons` is a string[] attribute in the spec.
+function isHomogeneousPrimitiveArray(value: unknown): value is string[] | number[] | boolean[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    ['string', 'number', 'boolean'].some((type) => value.every((item) => typeof item === type))
+  );
 }
