@@ -52,3 +52,6 @@ docs/api/
 
 # fallow cache/snapshots
 .fallow/
+
+# docs snippet verifier temp dirs
+.docs-snippets-*/
