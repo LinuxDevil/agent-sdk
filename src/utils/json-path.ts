@@ -1,4 +1,4 @@
-import { nanoid } from 'nanoid';
+import { newId } from './id';
 
 /**
  * Recursively traverses the given object (and its children via "input" and "item")
@@ -11,7 +11,7 @@ export function setRecursiveNames(obj: any, path: string[] = []): void {
   }
 
   if (!obj.id) {
-    obj.id = nanoid();
+    obj.id = newId();
   }
 
   // If this node has an 'agent', extend our path

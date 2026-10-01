@@ -6,7 +6,7 @@
  * `run.done` is delivered only after the turn has been persisted.
  */
 
-import { nanoid } from 'nanoid';
+import { newId } from '../utils/id';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import { AGENT_EVENT_SCHEMA_VERSION, type AgentEvent, type AgentEventPayload } from '../execution/agentEvents';
 import type { AgentRun } from '../execution/agentRun';
@@ -18,7 +18,7 @@ import type { AgentRun } from '../execution/agentRun';
 export type SessionTurn = (signal: AbortSignal, started: (run: AgentRun) => void) => Promise<ExecutionResult>;
 
 class SessionRun implements AgentRun {
-  readonly runId = nanoid();
+  readonly runId = newId();
   readonly result: Promise<ExecutionResult>;
   private readonly controller = new AbortController();
   private readonly started: Promise<AgentRun>;

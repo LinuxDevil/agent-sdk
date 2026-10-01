@@ -38,6 +38,7 @@ export default defineConfig({
     'execution/hooks': 'src/execution/hooks.ts',
     'storage/sqlite/index': 'src/storage/sqlite/index.ts',
     'triggers/index': 'src/triggers/index.ts',
+    'react/index': 'src/react/index.ts',
   },
   format: ['cjs', 'esm'],
   dts: true,

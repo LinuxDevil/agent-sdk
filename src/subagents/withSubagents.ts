@@ -138,7 +138,7 @@ function failureReason(name: string, result: ExecutionResult, maxSteps: number):
   if (result.finishReason === 'aborted') {
     return `Sub-agent '${name}' was aborted before it finished.${last}`;
   }
-  if (result.steps >= maxSteps) {
+  if (result.finishReason === 'max-steps' || result.steps >= maxSteps) {
     return `Sub-agent '${name}' used all ${maxSteps} of its steps (maxSteps) without giving a final answer.${last}`;
   }
   return `Sub-agent '${name}' ended with finish reason '${result.finishReason}' without a final answer.${last}`;

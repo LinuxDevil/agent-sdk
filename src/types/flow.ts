@@ -110,8 +110,7 @@ export type FlowOutputMode = 'stream' | 'buffer';
 /**
  * A flow node: every shape `FlowExecutor` can run, discriminated on `type`.
  *
- * The first group are the editor-side shapes (also what the flows-ai
- * converters understand); the second group are the executor-side shapes the
+ * The first group are the editor-side shapes; the second group are the executor-side shapes the
  * handler map in `FlowExecutor` reads. `oneOf`, `forEach` and `evaluator`
  * appear in both groups with different fields: `oneOf` has `branches`
  * (editor) or `options` (executor), and so on, so narrow on those fields too.
@@ -135,7 +134,7 @@ export type FlowOutputMode = 'stream' | 'buffer';
  */
 export type EditorStep = EditorShapeStep | RuntimeStep;
 
-/** Editor-side node shapes (what the flows-ai converters accept). */
+/** Editor-side node shapes (what visual editors produce). */
 export type EditorShapeStep =
   | StepNode
   | SequenceNode

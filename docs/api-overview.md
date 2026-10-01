@@ -52,6 +52,15 @@ How the pieces fit:
 | `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](./durable-execution.md)). |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
 
+### UI bindings
+
+`@loushy/build-ai-agent/react` exports `useLoushyAgent(source, options?)`, a
+React hook that runs an agent in process (`{ agent, sessionId? }`) or over HTTP
+(`{ url }`) and returns `messages`, `status`, `pendingApproval`,
+`send()`, `stop()`, `approve()` and `reject()`. Its framework-neutral parts,
+`reduceAgentEvents()` and `parseEventStream()`, are exported too. See
+[React](./react.md).
+
 ### Sub-agents
 
 Pass `subagents: { researcher, writer }` (agents from `createAgent()` with a
@@ -138,6 +147,26 @@ How it behaves:
   reached get an `{ error }` result saying they were cancelled, so the
   conversation stays valid for the provider.
 - An already-aborted signal returns at once without calling the provider.
+
+### Finish reasons
+
+`result.finishReason` says why a run ended: the model's own reason for its last
+turn (`'stop'`, `'length'`, `'tool_calls'`, `'content_filter'`, `'error'`),
+`'awaiting-approval'` (paused on a tool call that needs a human), `'aborted'`
+(cancelled with `signal`), or `'max-steps'`. `'max-steps'` means the `maxSteps`
+budget (default 10) ran out while the model still wanted to continue, so the
+reply may be empty or partial; a run that finishes naturally within the budget
+keeps its `'stop'`. Steps carried over by `initialSteps` or an approval resume
+count against the budget, and `result.steps` is the number of steps taken. The
+same reason is on the `finish` event and on `run.done` in
+[streaming](streaming.md).
+
+```ts
+import { createAgent, createMockProvider } from '@loushy/build-ai-agent';
+const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider(), maxSteps: 3 });
+const result = await agent.send('Research this thoroughly');
+if (result.finishReason === 'max-steps') console.warn(`Gave up after ${result.steps} steps`);
+```
 
 ### Parallel tool calls
 
@@ -461,9 +490,12 @@ returns an `AgentHook` that, before each model call above 90% (by default) of
 the model's context window, replaces tool results older than the newest
 40,000 tokens with a `[pruned: <tool> result, N chars]` marker. It edits the
 run's transcript in place, so pruning persists in checkpoints and
-`result.messages`. `compactMessages(messages, options)` does the same once,
-by hand, and `pruneToolResultsStrategy()` / `CompactionStrategy` are the
-built-in and pluggable strategies. See [Context compaction](./compaction.md).
+`result.messages`. `twoPhaseStrategy({ model })` (recommended) prunes first
+and, if the run is still too big, replaces old turns with a summary written
+by `model`; `summarizeStrategy()` only summarizes. `pinMessage(message)` marks
+a message that is never pruned or summarized. `compactMessages(messages, options)`
+does the same once, by hand (async), and `CompactionStrategy` is the
+pluggable interface (`compact()` may be async). See [Context compaction](./compaction.md).
 
 ## Flows, evals, observability and security
 

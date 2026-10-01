@@ -45,6 +45,8 @@ export type {
   ApprovalRequestedEvent,
   StepDoneEvent,
   AgentErrorEvent,
+  ProviderRetryEvent,
+  ProviderFallbackEvent,
   RunDoneEvent,
 } from './agentEvents';
 export type { AgentRun } from './agentRun';

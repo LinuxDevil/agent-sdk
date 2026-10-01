@@ -3,6 +3,7 @@ import { createAgent } from '../createAgent';
 import { createMockProvider } from '../providers/mock';
 import type { ExecutionResult } from './AgentExecutor';
 import type { AgentRun } from './agentRun';
+import type { CompactedProviderErrorCategory } from './errors';
 import {
   AGENT_EVENT_SCHEMA_VERSION,
   isToolEvent,
@@ -57,6 +58,14 @@ describe('AgentEvent types', () => {
     }
   });
 
+  it('narrows provider retry/fallback events on event.type (LOU-V7.2)', () => {
+    if (event.type === 'provider.retry') {
+      expectTypeOf(event.attempt).toBeNumber();
+      expectTypeOf(event.error.category).toEqualTypeOf<CompactedProviderErrorCategory | undefined>();
+    }
+    if (event.type === 'provider.fallback') expectTypeOf(event.error).toEqualTypeOf<{ message: string }>();
+  });
+
   it('covers every event type', () => {
     expectTypeOf<AgentEventType>().toEqualTypeOf<
       | 'run.start'
@@ -69,6 +78,8 @@ describe('AgentEvent types', () => {
       | 'approval.requested'
       | 'step.done'
       | 'error'
+      | 'provider.retry'
+      | 'provider.fallback'
       | 'run.done'
     >();
   });
