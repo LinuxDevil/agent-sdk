@@ -25,6 +25,7 @@ import { httpTool } from '../tools/built-in/http';
 import { currentDateTool } from '../tools/built-in/currentDate';
 import { dayNameTool } from '../tools/built-in/dayName';
 import { ToolDescriptor } from '../types';
+import { compilePolicy } from './policy';
 
 const REAL_PROVIDER_TYPES = new Set(['openai', 'anthropic', 'ollama', 'openrouter']);
 
@@ -98,6 +99,10 @@ export type SpecAgent = SimpleAgent & {
  * Maps a validated AgentSpec to a live agent via createAgent() (LOU-H1),
  * resolving each spec tool name against the SDK's real built-in tools.
  *
+ * `spec.policy` is compiled by `compilePolicy()` into `createAgent`'s `permissions`,
+ * `guardrails`, `limits`, `askQuestion` and `compaction` (LOU-X5); an invalid
+ * policy throws a `ValidationError`.
+ *
  * `spec.mcpServers` go to `createAgent({ mcpServers })` (LOU-Z4): they connect
  * on `agent.ready()` or the first `send()` / `stream()`, and `agent.close()`
  * disconnects them. They stay readable as `agent.mcpServers`. `options.store`
@@ -119,6 +124,7 @@ export function specToAgent(spec: AgentSpec, options: Pick<CreateAgentConfig, 's
     tools: Object.keys(tools).length > 0 ? tools : undefined,
     mcpServers,
     store: options.store,
+    ...compilePolicy(spec.policy),
   });
   return Object.assign(agent, { mcpServers });
 }
