@@ -11,7 +11,7 @@ import type { ExecutionResult } from '../execution/AgentExecutor';
 import { AGENT_EVENT_SCHEMA_VERSION, type AgentEvent, type AgentEventPayload } from '../execution/agentEvents';
 import type { AgentRun } from '../execution/agentRun';
 import { SDKError } from '../execution/errors';
-import { InputQueue, type EnqueueResult } from '../execution/inputQueue';
+import { InputQueue, type EnqueueResult, type SteerResult } from '../execution/inputQueue';
 import type { AgentInput } from '../providers/content';
 
 /**
@@ -48,6 +48,11 @@ class SessionRun implements AgentRun {
     });
     this.result.catch(() => undefined);
     this.inputs.closeAfter(this.result);
+  }
+
+  /** Like `AgentRun.steer()`; before the turn's run starts, the input waits for it (`'queued'`). */
+  steer(input: AgentInput): SteerResult {
+    return this.inputs.steer(input);
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<AgentEvent> {

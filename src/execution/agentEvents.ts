@@ -150,7 +150,8 @@ export interface StepDoneEvent extends AgentEventBase<'step.done'> {
   step: number;
   /**
    * The model's finish reason for this step (`'stop'`, `'tool_calls'`, ...),
-   * or `'awaiting-approval'`, `'aborted'` or `'error'` when the step ended that way.
+   * or `'awaiting-approval'`, `'aborted'`, `'steered'` (LOU-V10: its model call
+   * was aborted by `run.steer()`) or `'error'` when the step ended that way.
    */
   finishReason: ExecutionFinishReason;
   /** Tokens used by this step's model call, when it produced a response. */
@@ -246,6 +247,19 @@ export interface InputQueuedEvent extends AgentEventBase<'input.queued'> {
   text: string;
 }
 
+/**
+ * LOU-V10: `run.steer()` took an input. `mode` is `'immediate'` when the
+ * in-flight model call was aborted for it (that step ends with `step.done`
+ * `'steered'`), `'queued'` when it waits for the next safe point.
+ * `input.applied` follows when it joins the transcript.
+ */
+export interface InputSteeredEvent extends AgentEventBase<'input.steered'> {
+  /** `SteerResult.id`. */
+  id: string;
+  text: string;
+  mode: 'immediate' | 'queued';
+}
+
 /** LOU-V9: a queued input joined the transcript, right before the model call of `step` (whose `step.start` follows). */
 export interface InputAppliedEvent extends AgentEventBase<'input.applied'> {
   id: string;
@@ -306,6 +320,7 @@ export type AgentEvent =
   | CompactionDoneEvent
   | BudgetExceededEvent
   | InputQueuedEvent
+  | InputSteeredEvent
   | InputAppliedEvent
   | GuardrailTrippedEvent
   | GuardrailRewroteEvent
@@ -347,6 +362,7 @@ const EVENT_TYPES: ReadonlySet<string> = new Set<AgentEventType>([
   'compaction.done',
   'budget.exceeded',
   'input.queued',
+  'input.steered',
   'input.applied',
   'guardrail.tripped',
   'guardrail.rewrote',

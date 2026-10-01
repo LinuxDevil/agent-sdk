@@ -24,15 +24,40 @@ export interface EnqueueResult {
   applied: false | Promise<boolean>;
 }
 
+/**
+ * What `run.steer()` / `InputQueue.steer()` return (LOU-V10). `applied` is
+ * `'immediate'` when the in-flight model call had not produced any output
+ * yet: it was aborted and is made again with the input; `'queued'` when it
+ * had (or no model call was in flight): the input waits for the next safe
+ * point like `enqueue()`; `false` when the run had already finished.
+ */
+export interface SteerResult {
+  /** The id the `input.steered` / `input.applied` events carry. */
+  id: string;
+  applied: 'immediate' | 'queued' | false;
+  /** Like {@link EnqueueResult.applied}: whether the input joined the transcript (`false` at once when `applied` is). */
+  joined: Promise<boolean>;
+}
+
 /** An input waiting in an {@link InputQueue}. */
 export interface QueuedInput {
   id: string;
   /** The input's user text (see `describeInput()`). */
   text: string;
   messages: Message[];
+  /** LOU-V10: how a steered input was taken; absent for `push()`. */
+  steered?: 'immediate' | 'queued';
 }
 
 type Entry = QueuedInput & { settle: (applied: boolean) => void };
+
+/** @internal LOU-V10: the run's signal and a steer's, as one (either may be absent). */
+export function withSteerSignal(signal: AbortSignal | undefined, steer: AbortSignal | undefined): AbortSignal | undefined {
+  return signal && steer ? AbortSignal.any([signal, steer]) : (signal ?? steer);
+}
+
+/** LOU-V10: the reason a steer aborts the in-flight model call (or tool batch) with. */
+const steeredAbort = () => new DOMException('The run was steered: new user input replaces this model call', 'AbortError');
 
 /**
  * Input for one run, pushed while it runs: pass it as
@@ -52,17 +77,65 @@ export class InputQueue {
   private entries: Entry[] = [];
   private closed = false;
   private listener: ((input: QueuedInput) => void) | undefined;
+  /** LOU-V10: the model call in flight (`output` once it emitted text or tool calls), or the running tool batch. */
+  private call: { controller: AbortController; output: boolean } | undefined;
+  private batch: AbortController | undefined;
 
   /** Queues `input` for the run's next model call (see {@link EnqueueResult}). */
   push(input: AgentInput): EnqueueResult {
     const id = newId();
-    if (this.closed) return { id, applied: false };
+    return { id, applied: this.closed ? false : this.add(id, input) };
+  }
+
+  /**
+   * LOU-V10: queues `input` and redirects the run to it: a model call in
+   * flight that has not emitted text or tool calls yet is aborted (its
+   * partial output discarded) and made again with the input; tool calls of
+   * a running batch that have not started are not run. See {@link SteerResult}.
+   */
+  steer(input: AgentInput): SteerResult {
+    const id = newId();
+    if (this.closed) return { id, applied: false, joined: Promise.resolve(false) };
+    const call = this.call && !this.call.output ? this.call.controller : undefined;
+    const applied = call ? 'immediate' : 'queued';
+    const joined = this.add(id, input, applied);
+    call?.abort(steeredAbort());
+    this.batch?.abort(steeredAbort());
+    return { id, applied, joined };
+  }
+
+  private add(id: string, input: AgentInput, steered?: QueuedInput['steered']): Promise<boolean> {
     let settle!: (applied: boolean) => void;
     const applied = new Promise<boolean>((resolve) => (settle = resolve));
-    const entry: Entry = { id, text: describeInput(input), messages: [...toMessages(input)], settle };
+    const entry: Entry = { id, text: describeInput(input), messages: [...toMessages(input)], ...(steered && { steered }), settle };
     this.entries.push(entry);
     this.listener?.(entry);
-    return { id, applied };
+    return applied;
+  }
+
+  /** @internal LOU-V10: a model call starts; its signal aborts on `steer()` until `callOutput()`. */
+  startCall(): AbortSignal {
+    this.call = { controller: new AbortController(), output: false };
+    return this.call.controller.signal;
+  }
+
+  /** @internal The model call emitted text or a tool call: a steer now waits for the next safe point. */
+  callOutput(): void {
+    if (this.call) this.call.output = true;
+  }
+
+  /** @internal A tool batch starts: its signal aborts on `steer()` (at once if a steered input waits). */
+  startBatch(): AbortSignal {
+    this.call = undefined;
+    this.batch = new AbortController();
+    if (this.entries.some((entry) => entry.steered)) this.batch.abort(steeredAbort());
+    return this.batch.signal;
+  }
+
+  /** @internal The model call or tool batch is over. */
+  endPhase(): void {
+    this.call = undefined;
+    this.batch = undefined;
   }
 
   /** @internal The messages still waiting, in order (they ride at the end of checkpoints). */

@@ -23,6 +23,7 @@ import {
 import type { ExecuteOptions } from './AgentExecutor';
 import { runEventsOf } from './agentRun';
 import { outputResponseFormat } from './structuredOutput';
+import { withSteerSignal } from './inputQueue';
 
 /**
  * Build tools from agent and registry
@@ -87,9 +88,12 @@ function resolveModel(options: ExecuteOptions): string | undefined {
 export async function prepareGenerateRequest(
   options: ExecuteOptions,
   messages: Message[],
-  tools: ToolDefinition[]
+  tools: ToolDefinition[],
+  callSignal?: AbortSignal
 ): Promise<GenerateOptions> {
-  const { temperature, maxTokens, onLLMRequest, hooks, signal } = options;
+  const { temperature, maxTokens, onLLMRequest, hooks } = options;
+  // LOU-V10: a steer aborts this call alone (`callSignal`), the run's signal all of them.
+  const signal = withSteerSignal(options.signal, callSignal);
 
   const generateRequest: GenerateOptions = {
     // agent.settings.model > the model the provider was configured with >
@@ -123,15 +127,30 @@ export interface GeneratedStep {
 }
 
 /**
+ * LOU-V10: `call`, or its rejection with `signal`'s reason as soon as
+ * `signal` aborts - a provider that ignores the signal is not waited for.
+ */
+function abortable<T>(call: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return call;
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    call.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
+/**
  * Runs provider.generate() inside a `chat {model}` span parented to the
  * run's `invoke_agent` span, followed by the onLLMResponse callback and
- * postGenerate hooks.
+ * postGenerate hooks. A steer (`callSignal`, LOU-V10) rejects it at once.
  */
 export function generateInSpan(
   options: ExecuteOptions,
   generateRequest: GenerateOptions,
   messages: Message[],
-  agentSpanId: string
+  agentSpanId: string,
+  callSignal?: AbortSignal
 ): Promise<GeneratedStep> {
   const { provider, exporter, onLLMResponse, hooks, redactContent = false } = options;
   const captureContent = resolveCaptureContent(options.captureContent);
@@ -146,9 +165,11 @@ export function generateInSpan(
       // LOU-V2: a streaming run obtains the step through its sink (streamed
       // when the provider can); everything around it is the same.
       const runEvents = runEventsOf(options);
-      const generated = runEvents
-        ? await runEvents.generate(provider, generateRequest)
-        : await provider.generate(generateRequest);
+      const onOutput = () => options.inputQueue?.callOutput();
+      const generated = await abortable(
+        runEvents ? runEvents.generate(provider, generateRequest, onOutput) : provider.generate(generateRequest),
+        callSignal
+      );
       const llmLatencyMs = Date.now() - llmStart;
 
       const measured = measureUsage(resolveModel(options) ?? provider.name, messages, generated);

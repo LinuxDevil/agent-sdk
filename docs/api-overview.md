@@ -633,6 +633,12 @@ Trigger adapters (`@loushy/build-ai-agent/triggers`) wake an agent up from an
 inbound webhook, a schedule or a Slack message. Wire any of them with
 `listen(agent, onEvent)`, where `onEvent` runs the agent.
 
+For a surface people talk to, use a [channel](channels.md) instead:
+`defineChannel()` and `mountChannels()` (package root) map each conversation
+on the surface to a session and send the reply, and any approval or question
+the agent pauses on, back to it. `httpChannel()` and `webhookChannel()` are
+built in; `WebhookTriggerAdapter` uses `webhookChannel()` for its auth.
+
 ### Webhook authentication
 
 `WebhookTriggerAdapter` starts an HTTP server. **Always set `auth` for a

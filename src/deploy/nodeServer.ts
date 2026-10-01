@@ -2,16 +2,17 @@
  * The HTTP server of the node-server and docker targets (LOU-I2, LOU-D14).
  *
  * Serves the `/chat` API shared with `loushy dev` (src/server/chatRoutes.ts)
- * over a `node:http` server: `GET /health`, sessions, SSE streaming, approvals
- * and the legacy `POST /chat { message }`. When a bearer token is configured,
+ * over a `node:http` server (the routes are Fetch-native, src/server/fetchRoutes.ts,
+ * and shared with the Worker target): `GET /health`, sessions, SSE streaming,
+ * approvals and the legacy `POST /chat { message }`. When a bearer token is configured,
  * every route except `/health` requires `Authorization: Bearer <token>`.
  *
  * Node-only (the Worker target has its own runtime, runtime.worker.ts).
  */
 import * as http from 'node:http';
 import type { SimpleAgent } from '../createAgent';
-import { handleChatRequest, sendText } from '../server/chatRoutes';
-import { authorize } from '../server/bearerAuth';
+import { relayFetch } from '../server/chatRoutes';
+import { serveFetch } from '../server/fetchRoutes';
 import { specToAgent } from '../spec/specToAgent';
 import type { AgentSpec } from '../spec/schema';
 import { memoryStore, type AgentStore } from '../storage/agentStore';
@@ -58,11 +59,8 @@ function replyUnhandled(res: http.ServerResponse, error: unknown): void {
 export function createDeployedServer(agent: SimpleAgent, options: DeployedServerOptions = {}): { server: http.Server; authenticated: boolean } {
   const token = (options.env ?? process.env)[API_TOKEN_ENV] || options.auth?.token || undefined;
   const chat = { name: 'loushy server', agent: () => agent };
-  const route = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
-    if (req.method === 'GET' && new URL(req.url ?? '/', 'http://localhost').pathname === '/health') return sendText(res, 200, 'ok');
-    if (token && !authorize(req, res, token)) return;
-    if (!(await handleChatRequest(req, res, chat))) sendText(res, 404, 'not found');
-  };
-  const server = http.createServer((req, res) => void route(req, res).catch((error) => replyUnhandled(res, error)));
+  const server = http.createServer(
+    (req, res) => void relayFetch(req, res, (request) => serveFetch(request, chat, token)).catch((error) => replyUnhandled(res, error))
+  );
   return { server, authenticated: token !== undefined };
 }

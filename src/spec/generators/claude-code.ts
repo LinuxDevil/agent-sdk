@@ -75,7 +75,7 @@ function buildApprovalLine(policy: NonNullable<AgentSpec['policy']>): string {
 }
 
 function buildGuardrailLines(policy: NonNullable<AgentSpec['policy']>): string[] {
-  const guardrails = policy.guardrails ?? [];
+  const guardrails = (policy.guardrails ?? []).map((entry) => (typeof entry === 'string' ? entry : entry.name));
   return guardrails.length > 0 ? [`- Guardrails: ${guardrails.join(', ')}`] : [];
 }
 

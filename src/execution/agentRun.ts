@@ -35,7 +35,7 @@ import { withProviderEvents, type ProviderEventListener } from '../providers/pro
 import type { Usage } from '../models/usage';
 import type { BudgetExceeded } from './budget';
 import type { AgentInput } from '../providers/content';
-import { InputQueue, type EnqueueResult, type QueuedInput } from './inputQueue';
+import { InputQueue, type EnqueueResult, type QueuedInput, type SteerResult } from './inputQueue';
 import type { GuardrailTrip } from './ioGuardrails';
 
 /**
@@ -81,6 +81,22 @@ export interface AgentRun<TObject = unknown> extends AsyncIterable<AgentEvent> {
    * ```
    */
   enqueue(input: AgentInput): EnqueueResult;
+  /**
+   * LOU-V10: redirects the running run to `input`. When the model call in
+   * flight has not emitted text or tool calls yet, it is aborted, its partial
+   * output discarded, and the run calls the model again with `input` appended
+   * (`applied: 'immediate'`); otherwise `input` waits for the next safe point
+   * like `enqueue()` (`'queued'`). Tool calls already running finish; those
+   * not started yet get a "not run" result. `false` once the run has
+   * finished. Emits `input.steered`, then `input.applied`. See {@link SteerResult}.
+   *
+   * @example
+   * ```ts
+   * const run = agent.stream('Plan a trip to Rome.');
+   * run.steer('Actually, make it Paris.');
+   * ```
+   */
+  steer(input: AgentInput): SteerResult;
 }
 
 /**
@@ -96,15 +112,15 @@ export interface RunEventSink {
   permissionDecision(entry: PermissionDecisionEntry): void;
   /** LOU-V6: a `limits` budget tripped. */
   budgetExceeded(budget: BudgetExceeded): void;
-  /** LOU-V9: an input was queued, then applied before the model call of `step`. */
+  /** LOU-V9: an input was queued (LOU-V10: or steered), then applied before the model call of `step`. */
   inputQueued(input: QueuedInput): void;
   inputApplied(id: string, step: number): void;
   /** LOU-X4: a guardrail blocked or rewrote. */
   guardrail(event: GuardrailTrip & { type: 'guardrail.tripped' | 'guardrail.rewrote' }): void;
   /** LOU-W3.2: an event a hook emits (`GenerateHookContext.emit`). */
   hookEvent(event: HookEventPayload): void;
-  /** Obtains one model step - streamed when the provider can. */
-  generate(provider: LLMProvider, request: GenerateOptions): Promise<GenerateResult>;
+  /** Obtains one model step - streamed when the provider can; `onOutput` before its first text or tool call is reported. */
+  generate(provider: LLMProvider, request: GenerateOptions, onOutput?: () => void): Promise<GenerateResult>;
   /** LOU-Y1: the sink for a sub-agent's run, whose events carry `subagent`. */
   forSubagent(subagent: SubagentInfo): RunEventSink;
 }
@@ -218,6 +234,10 @@ class AgentRunImpl implements AgentRun {
 
   enqueue(input: AgentInput): EnqueueResult {
     return this.inputs.push(input);
+  }
+
+  steer(input: AgentInput): SteerResult {
+    return this.inputs.steer(input);
   }
 
   private async *drain(): AsyncGenerator<AgentEvent> {
@@ -383,13 +403,14 @@ class AgentRunImpl implements AgentRun {
           subagent
         ),
       budgetExceeded: (budget) => this.emit({ type: 'budget.exceeded', ...budget }, subagent),
-      inputQueued: ({ id, text }) => this.emit({ type: 'input.queued', id, text }, subagent),
+      inputQueued: ({ id, text, steered }) =>
+        this.emit(steered ? { type: 'input.steered', id, text, mode: steered } : { type: 'input.queued', id, text }, subagent),
       inputApplied: (id, step) => this.emit({ type: 'input.applied', id, step }, subagent),
       hookEvent: (event) => this.emit(event, subagent),
       guardrail: (event) => this.emit(event, subagent),
-      generate: async (provider, request) => {
+      generate: async (provider, request, onOutput) => {
         const call = withProviderEvents(request, this.providerEvents(subagent));
-        const generated = await this.generateStep(provider, call, subagent);
+        const generated = await this.generateStep(provider, call, subagent, onOutput);
         const measured = measureUsage(request.model ?? provider.name, request.messages, generated);
         stepResult = { finishReason: generated.finishReason, ...measured, usage: measured.usage };
         return generated;
@@ -415,13 +436,17 @@ class AgentRunImpl implements AgentRun {
   private async generateStep(
     provider: LLMProvider,
     request: GenerateOptions,
-    subagent: SubagentInfo | undefined
+    subagent: SubagentInfo | undefined,
+    onOutput?: () => void
   ): Promise<GenerateResult> {
     const onTextDelta = (text: string) => this.emit({ type: 'text.delta', text }, subagent);
     if (canStream(provider, request)) {
-      return generateViaStream(provider, request, onTextDelta);
+      return generateViaStream(provider, request, onTextDelta, onOutput);
     }
     const generated = await provider.generate(request);
+    // LOU-V10: a call steered away from while it ran reports nothing.
+    request.signal?.throwIfAborted();
+    onOutput?.();
     if (generated.text) onTextDelta(generated.text);
     return generated;
   }
