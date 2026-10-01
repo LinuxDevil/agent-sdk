@@ -21,6 +21,7 @@ import {
   type ExecutionResult,
   type Message,
   resumeAfterApproval,
+  emptyRunUsage,
   type AgentSpec,
 } from '@loushy/build-ai-agent';
 import { buildAgentFromSpec, extractFlowFromSpec } from './buildAgent';
@@ -616,7 +617,7 @@ export class RunManager extends EventEmitter {
           text,
           messages: [{ role: 'assistant', content: text }],
           toolCalls: [],
-          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+          usage: emptyRunUsage(),
           finishReason: 'stop',
           steps: flowResult.steps,
         };
