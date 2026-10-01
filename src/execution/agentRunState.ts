@@ -10,6 +10,8 @@ import { AgentConfig } from '../types';
 import { Checkpoint } from './checkpoint';
 import { CompactedLLMProviderError } from './errors';
 import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
+import type { ToolCallOutcome } from './toolCallExecution';
+import type { UnrecordedToolCall } from './toolBatch';
 
 type TokenUsage = ExecutionResult['usage'];
 
@@ -156,23 +158,60 @@ export async function saveStepCheckpoint(
   await checkpointStore.save(sessionId, checkpoint);
 }
 
+/** Appends one settled tool call's result to the transcript. */
+export function pushToolResult(
+  state: AgentRunState,
+  toolCall: ToolCall,
+  outcome: ToolCallOutcome
+): void {
+  // A failed tool carries its message as `{error}` (the same shape
+  // resume.ts uses) - `result` is null then, so the model would otherwise
+  // see a bare "null" and never learn the call failed. A failure that
+  // already has a structured result (argument validation) keeps it, so the
+  // model gets the per-issue detail.
+  const failed = outcome.error !== undefined;
+  const failurePayload = outcome.result ?? { error: outcome.error };
+  state.messages.push({
+    role: 'tool',
+    content: JSON.stringify(failed ? failurePayload : outcome.result),
+    name: toolCall.function.name,
+    toolCallId: toolCall.id,
+    toolName: toolCall.function.name,
+    ...(failed && { isError: true }),
+  });
+}
+
 /**
- * LOU-V1: gives each tool call the run was aborted before reaching a
- * `{error}` tool result, so the transcript stays well-formed (every
- * assistant tool call has a matching result) and a checkpointed run can be
- * resumed without the provider rejecting an unanswered tool call.
+ * LOU-V1: gives a tool call the run was aborted before reaching a `{error}`
+ * tool result, so the transcript stays well-formed (every assistant tool
+ * call has a matching result) and a checkpointed run can be resumed without
+ * the provider rejecting an unanswered tool call.
  */
-export function pushCancelledToolResults(state: AgentRunState, toolCalls: ToolCall[]): void {
-  for (const toolCall of toolCalls) {
-    state.messages.push({
-      role: 'tool',
-      content: JSON.stringify({
-        error: 'Tool call was cancelled before it ran because the run was aborted',
-      }),
-      name: toolCall.function.name,
-      toolCallId: toolCall.id,
-      toolName: toolCall.function.name,
-    });
+function pushCancelledToolResult(state: AgentRunState, toolCall: ToolCall): void {
+  state.messages.push({
+    role: 'tool',
+    content: JSON.stringify({
+      error: 'Tool call was cancelled before it ran because the run was aborted',
+    }),
+    name: toolCall.function.name,
+    toolCallId: toolCall.id,
+    toolName: toolCall.function.name,
+  });
+}
+
+/**
+ * LOU-V3: closes out a batch cut short by an abort - in call order, each
+ * call that was not yet in the transcript gets its result if it finished,
+ * or a cancelled result if it never started, was waiting on an approval,
+ * or ended in a fatal error.
+ */
+export function pushAbortedBatchResults(state: AgentRunState, calls: UnrecordedToolCall[]): void {
+  for (const { toolCall, outcome } of calls) {
+    if (outcome && !outcome.requiresApproval) {
+      pushToolResult(state, toolCall, outcome);
+    } else {
+      pushCancelledToolResult(state, toolCall);
+    }
   }
 }
 

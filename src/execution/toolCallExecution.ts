@@ -76,47 +76,102 @@ function toolHookContext(
 }
 
 /**
+ * A tool call that has passed its pre-execution gate - onToolCall, argument
+ * validation, pre-tool hooks and the `needsApproval` check - but has not run.
+ * LOU-V3: the executor gates the calls of a batch one at a time, in call
+ * order, so it knows whether a call needs approval before it starts the next.
+ */
+export interface PreparedToolCall {
+  toolCall: ToolCall;
+  /** The validated (and possibly hook-mutated) arguments `execute` will get. */
+  args: Record<string, unknown>;
+  /** Set when the call must not execute (invalid args, or `needsApproval` threw). */
+  rejection?: ToolCallOutcome;
+  /** True when the call must wait for a human decision instead of running. */
+  requiresApproval: boolean;
+}
+
+/**
  * Execute a tool call, wrapped in the onToolCall/onToolResult callbacks
- * and pre/post tool-call hooks.
+ * and pre/post tool-call hooks. `onPrepared` (LOU-V3) is told the moment
+ * the call has passed its gate (see {@link PreparedToolCall}), before it runs.
  */
 export async function runToolCall(
   toolCall: ToolCall,
-  ctx: ToolCallContext
+  ctx: ToolCallContext,
+  onPrepared?: (prepared: PreparedToolCall) => void
 ): Promise<ToolCallOutcome> {
+  const prepared = await prepareToolCall(toolCall, ctx);
+  onPrepared?.(prepared);
+  return settleToolCall(prepared, ctx);
+}
+
+/** Runs a tool call's gate: onToolCall, validation, pre-tool hooks, approval check. */
+async function prepareToolCall(toolCall: ToolCall, ctx: ToolCallContext): Promise<PreparedToolCall> {
   if (ctx.onToolCall) {
     await ctx.onToolCall(toolCall);
   }
 
   // Parse args up front (best-effort) so hooks get a real object to
-  // inspect/mutate even before doExecuteToolCall() parses them again for
-  // its own use (needsApproval/execute). A hook mutating this object has
-  // no effect on the actual call in this fallback case; see the
-  // `hooks.runPreToolCall` call below for the real, load-bearing parse.
-  //
-  // LOU-U4: the args are then validated against the tool's schema FIRST,
-  // so pre-tool hooks, `needsApproval` and `execute` all see the parsed
-  // (defaults/transforms applied) value. Invalid args skip the pre-hooks
-  // and `execute`; the structured error flows through the normal
+  // inspect/mutate. LOU-U4: the args are then validated against the tool's
+  // schema FIRST, so pre-tool hooks, `needsApproval` and `execute` all see
+  // the parsed (defaults/transforms applied) value. Invalid args skip the
+  // pre-hooks and `execute`; the structured error flows through the normal
   // error-outcome path (post hook, onToolResult, events, tracing).
   const checked = await checkToolArguments(
     toolCall,
     ctx.toolRegistry,
     parseToolArguments(toolCall, {})
   );
-  const hookArgs = checked.args;
-
-  if (ctx.hooks && !checked.rejection) {
-    await ctx.hooks.runPreToolCall(toolHookContext(toolCall, ctx, hookArgs));
+  if (checked.rejection) {
+    return { toolCall, args: checked.args, rejection: checked.rejection, requiresApproval: false };
   }
 
+  // A `preToolCall` hook (e.g. redact-pii) may mutate `args` in place; that
+  // same object is what `needsApproval` and `execute` receive.
+  if (ctx.hooks) {
+    await ctx.hooks.runPreToolCall(toolHookContext(toolCall, ctx, checked.args));
+  }
+
+  const approval = await checkNeedsApproval(toolCall, ctx.toolRegistry, checked.args);
+  return { toolCall, args: checked.args, ...approval };
+}
+
+/**
+ * Resolves the called tool's `needsApproval`. A throwing `needsApproval`
+ * becomes the call's error outcome (a `PropagatingToolError` is rethrown).
+ */
+async function checkNeedsApproval(
+  toolCall: ToolCall,
+  toolRegistry: ToolRegistry | undefined,
+  args: Record<string, unknown>
+): Promise<Pick<PreparedToolCall, 'rejection' | 'requiresApproval'>> {
+  const toolDesc = toolRegistry && findExecutableTool(toolRegistry, toolCall.function.name);
+  if (!toolDesc) {
+    return { requiresApproval: false };
+  }
+  try {
+    return { requiresApproval: await resolveNeedsApproval(toolDesc, args) };
+  } catch (error) {
+    return { requiresApproval: false, rejection: thrownToolFailure(toolCall, error) };
+  }
+}
+
+/**
+ * Runs a prepared tool call (or settles it as rejected / awaiting approval),
+ * followed by the post-tool hooks and onToolResult.
+ */
+async function settleToolCall(
+  prepared: PreparedToolCall,
+  ctx: ToolCallContext
+): Promise<ToolCallOutcome> {
+  const { toolCall, args: hookArgs } = prepared;
   const toolStart = Date.now();
   let outcome: ToolCallOutcome | undefined;
   let thrown: unknown;
 
   try {
-    outcome =
-      checked.rejection ??
-      (await doExecuteToolCall(toolCall, ctx.toolRegistry, ctx.sandbox, hookArgs, ctx.signal));
+    outcome = await executePrepared(prepared, ctx);
     if (ctx.hooks) {
       await ctx.hooks.runPostToolCall(toolHookContext(toolCall, ctx, hookArgs), {
         result: outcome.result,
@@ -134,6 +189,20 @@ export async function runToolCall(
       await ctx.onToolResult(toolCall, outcome, latencyMs, thrown);
     }
   }
+}
+
+/** The outcome of a prepared call: its rejection, its approval pause, or its actual run. */
+async function executePrepared(
+  prepared: PreparedToolCall,
+  ctx: ToolCallContext
+): Promise<ToolCallOutcome> {
+  if (prepared.rejection) {
+    return prepared.rejection;
+  }
+  if (prepared.requiresApproval) {
+    return approvalOutcome(prepared);
+  }
+  return doExecuteToolCall(prepared.toolCall, ctx.toolRegistry, ctx.sandbox, prepared.args, ctx.signal);
 }
 
 /**
@@ -195,6 +264,32 @@ async function resolveNeedsApproval(
     : !!toolDesc.needsApproval;
 }
 
+/** The outcome of a call that is paused for a human approval decision. */
+function approvalOutcome(prepared: PreparedToolCall): ToolCallOutcome {
+  return {
+    toolCallId: prepared.toolCall.id,
+    toolName: prepared.toolCall.function.name,
+    result: null,
+    requiresApproval: true,
+    args: prepared.args,
+  };
+}
+
+/**
+ * The outcome for a thrown tool error. Errors that mark themselves as
+ * `PropagatingToolError` (e.g. DelegationDepthExceededError) are rethrown
+ * by toolErrorMessage() so they propagate out of execute() as a rejected
+ * promise instead of becoming a conversational {error} tool-result.
+ * LOU-U12: the model gets a structured error (not the string "null"),
+ * while `outcome.error` keeps the plain message for events/hooks.
+ */
+function thrownToolFailure(toolCall: ToolCall, error: unknown): ToolCallOutcome {
+  return {
+    ...toolFailure(toolCall, toolErrorMessage(error)),
+    result: toolErrorResult(toolCall.function.name, error),
+  };
+}
+
 /**
  * Actual tool-execution logic, split out from runToolCall() so the
  * onToolCall/onToolResult hooks (LOU-E2) can wrap it uniformly via
@@ -218,21 +313,11 @@ async function doExecuteToolCall(
     }
 
     // `overrideArgs` is the (possibly hook-mutated) object built by
-    // runToolCall() before preToolCall hooks ran - using it here
+    // prepareToolCall() before preToolCall hooks ran - using it here
     // instead of re-parsing `toolCall.function.arguments` is what makes a
     // `preToolCall` hook (e.g. redact-pii) that mutates `ctx.args`
     // actually affect what the tool is invoked with.
     const args = overrideArgs ?? JSON.parse(toolCall.function.arguments);
-
-    if (await resolveNeedsApproval(toolDesc, args)) {
-      return {
-        toolCallId: toolCall.id,
-        toolName: toolCall.function.name,
-        result: null,
-        requiresApproval: true,
-        args,
-      };
-    }
 
     // The 'ai' SDK tool.execute expects (args, context). Tools flagged
     // `requiresSandbox` (LOU-F5) are routed through the configured
@@ -255,15 +340,6 @@ async function doExecuteToolCall(
       result,
     };
   } catch (error) {
-    // Errors that mark themselves as `PropagatingToolError` (e.g.
-    // DelegationDepthExceededError) are rethrown by toolErrorMessage() so
-    // they propagate out of execute() as a rejected promise instead of
-    // becoming a conversational {error} tool-result.
-    // LOU-U12: the model gets a structured error (not the string "null"),
-    // while `outcome.error` keeps the plain message for events/hooks.
-    return {
-      ...toolFailure(toolCall, toolErrorMessage(error)),
-      result: toolErrorResult(toolCall.function.name, error),
-    };
+    return thrownToolFailure(toolCall, error);
   }
 }

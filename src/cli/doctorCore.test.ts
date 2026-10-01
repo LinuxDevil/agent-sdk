@@ -74,7 +74,7 @@ describe('required peers', () => {
     const env = makeEnv({ resolvePackageVersion: (n) => (n === 'zod' ? null : INSTALLED[n] ?? null) });
     const result = await check(env, 'peer.zod');
     expect(result.status).toBe('fail');
-    expect(result.fix).toBe('npm install zod@"^3.25.76"');
+    expect(result.fix).toBe('npm install zod@^3.25.76');
   });
   it('fail when the version is outside the peer range', async () => {
     const env = makeEnv({ resolvePackageVersion: (n) => (n === 'ai' ? '3.0.0' : INSTALLED[n] ?? null) });
@@ -100,7 +100,7 @@ describe('optional provider peers', () => {
       'optional-peer.@ai-sdk/anthropic'
     );
     expect(result.status).toBe('warn');
-    expect(result.fix).toBe('npm install @ai-sdk/anthropic@"^0.0.42"');
+    expect(result.fix).toBe('npm install @ai-sdk/anthropic@^0.0.42');
   });
   it('fail when missing and the spec needs it', async () => {
     const env = makeEnv({
@@ -142,6 +142,18 @@ describe('API keys', () => {
       loadSpec: () => spec({ provider: { type: 'ollama', model: 'llama3' } }),
     });
     expect((await check(env, 'env.ollama')).status).toBe('ok');
+  });
+  it('says which provider createAgent() would pick from the env, without the key', async () => {
+    const picked = await check(makeEnv({ env: { ANTHROPIC_API_KEY: SECRET } }), 'env.default');
+    expect(picked.status).toBe('ok');
+    expect(picked.finding).toContain('anthropic/');
+    const explicit = await check(makeEnv({ env: { LOUSHY_MODEL: 'openai/gpt-4o' } }), 'env.default');
+    expect(explicit.finding).toContain('openai/gpt-4o');
+  });
+  it('warns when createAgent() would have nothing to pick', async () => {
+    const result = await check(makeEnv(), 'env.default');
+    expect(result.status).toBe('warn');
+    expect(result.fix).toContain('LOUSHY_MODEL');
   });
   it('never leaks a key value into text or JSON output', async () => {
     const env = makeEnv({
@@ -304,18 +316,18 @@ describe('report, rendering and exit codes', () => {
       [ ok ] Provider package @ai-sdk/openai: 0.0.42 installed
       [ ok ] Provider package @ai-sdk/anthropic: 0.0.42 installed
       [warn] Provider package ollama-ai-provider: not installed (optional)
-             fix: npm install ollama-ai-provider@"^1.2.0"
+             fix: npm install ollama-ai-provider@^1.2.0
       [ ok ] openai (OPENAI_API_KEY): set
       [warn] anthropic (ANTHROPIC_API_KEY): not set
              fix: Set ANTHROPIC_API_KEY in your environment, e.g. export ANTHROPIC_API_KEY=<your key>
-      [ ok ] ollama (OLLAMA_BASE_URL): not set (optional; the provider default endpoint is used)
       [warn] openrouter (OPENROUTER_API_KEY): not set
              fix: Set OPENROUTER_API_KEY in your environment, e.g. export OPENROUTER_API_KEY=<your key>
+      [ ok ] ollama (OLLAMA_BASE_URL): not set (optional; the provider default endpoint is used)
+      [ ok ] Default provider for createAgent(): would use 'openai/gpt-4o-mini'
       [ ok ] Docker: daemon not reachable (only needed for sandboxed tools; none configured)
 
-      7 ok, 3 warnings, 1 failure"
+      8 ok, 3 warnings, 1 failure"
     `);
-    // eslint-disable-next-line no-control-regex
     expect(text).not.toMatch(/[^\x20-\x7e\n]/);
   });
 

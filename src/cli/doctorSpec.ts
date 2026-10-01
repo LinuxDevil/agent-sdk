@@ -3,7 +3,7 @@
  * and checks what the spec references (provider, built-in tools, MCP servers).
  */
 import type { AgentSpec } from '../spec/schema';
-import { PROVIDER_ENV_TABLE } from '../providers/providerEnv';
+import { listProviders } from '../providers/providerSpec';
 import { NO_SPEC_NEEDS, type SpecNeeds } from './doctorChecks';
 import type { DoctorCheck, DoctorEnvironment } from './doctorTypes';
 
@@ -47,14 +47,15 @@ function mcpReferences(raw: unknown): McpReference[] {
 function checkProvider(spec: AgentSpec): DoctorCheck {
   const type = spec.provider.type.toLowerCase();
   const base = { id: 'spec.provider', title: 'Spec provider' };
-  if (type === 'mock' || PROVIDER_ENV_TABLE[type]) {
+  const known = listProviders().map((info) => info.name);
+  if (type === 'mock' || known.includes(type)) {
     return { ...base, status: 'ok', finding: `'${spec.provider.type}' with model '${spec.provider.model}'` };
   }
   return {
     ...base,
     status: 'fail',
     finding: `unknown provider type '${spec.provider.type}'`,
-    fix: `Set provider.type to one of: ${Object.keys(PROVIDER_ENV_TABLE).join(', ')}.`,
+    fix: `Set provider.type to one of: ${known.join(', ')}.`,
   };
 }
 

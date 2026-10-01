@@ -92,15 +92,17 @@ loushy doctor
 [ ok ] Node.js: v22.19.0 satisfies >=22.19.0
 [ ok ] Required peer ai: 4.3.19 satisfies ^4.3.19
 [FAIL] Required peer zod: not installed
-       fix: npm install zod@"^3.25.76"
+       fix: npm install zod@^3.25.76
 [ ok ] Provider package @ai-sdk/openai: 0.0.42 installed
 [warn] Provider package @ai-sdk/anthropic: not installed (optional)
-       fix: npm install @ai-sdk/anthropic@"^0.0.42"
+       fix: npm install @ai-sdk/anthropic@^0.0.42
 [warn] openai (OPENAI_API_KEY): not set
        fix: Set OPENAI_API_KEY in your environment, e.g. export OPENAI_API_KEY=<your key>
+[warn] Default provider for createAgent(): none configured (createAgent() needs a model, a provider instance, or an env var)
+       fix: Set LOUSHY_MODEL (e.g. openai/gpt-4o-mini) or one of the API key variables above.
 [ ok ] Docker: daemon not reachable (only needed for sandboxed tools; none configured)
 
-4 ok, 2 warnings, 1 failure
+4 ok, 3 warnings, 1 failure
 ```
 
 What it checks:
@@ -111,7 +113,8 @@ What it checks:
 3. The optional provider packages (`@ai-sdk/openai`, `@ai-sdk/anthropic`,
    `ollama-ai-provider`), with the `npm install` command for each missing one.
 4. Whether each provider's API key variable is set. Only the variable name and
-   `set` / `not set` are printed, never the value.
+   `set` / `not set` are printed, never the value. It also shows which
+   provider `createAgent()` would pick by default with your environment.
 5. With a spec path (`loushy doctor agent.yaml`): the spec is validated with
    field paths for every error, its provider package and key are checked
    (missing ones become failures), its `tools` must be built-in tools, and any

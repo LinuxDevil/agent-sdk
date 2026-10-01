@@ -2,7 +2,7 @@
  * The individual `loushy doctor` checks. Each is a small function over the
  * injected DoctorEnvironment returning one or more DoctorCheck lines.
  */
-import { PROVIDER_ENV_TABLE } from '../providers/providerEnv';
+import { listProviders, modelFromEnv, type ProviderInfo } from '../providers/providerSpec';
 import type { DoctorCheck, DoctorEnvironment } from './doctorTypes';
 import { satisfiesRange } from './versionRange';
 
@@ -25,7 +25,7 @@ function message(error: unknown): string {
 
 function installCommand(env: DoctorEnvironment, name: string): string {
   const range = env.sdk.peerDependencies?.[name];
-  return range ? `npm install ${name}@"${range}"` : `npm install ${name}`;
+  return range ? `npm install ${name}@${range}` : `npm install ${name}`;
 }
 
 export function checkNode(env: DoctorEnvironment): DoctorCheck {
@@ -67,11 +67,21 @@ export function checkRequiredPeers(env: DoctorEnvironment): DoctorCheck[] {
   return REQUIRED_PEERS.map((name) => checkRequiredPeer(env, name));
 }
 
+interface OptionalPeer {
+  providers: string[];
+  /** The `npm install` argument from providerSpec.ts, e.g. `@ai-sdk/openai@^0.0.42`. */
+  install: string;
+}
+
 /** The optional peer packages behind the providers, each with the providers that need it. */
-function optionalPeerProviders(): Map<string, string[]> {
-  const peers = new Map<string, string[]>();
-  for (const [provider, entry] of Object.entries(PROVIDER_ENV_TABLE)) {
-    peers.set(entry.peerPackage, [...(peers.get(entry.peerPackage) ?? []), provider]);
+function optionalPeerProviders(): Map<string, OptionalPeer> {
+  const peers = new Map<string, OptionalPeer>();
+  for (const info of listProviders()) {
+    const existing = peers.get(info.peerPackage);
+    peers.set(info.peerPackage, {
+      providers: [...(existing?.providers ?? []), info.name],
+      install: info.peerInstall,
+    });
   }
   return peers;
 }
@@ -79,10 +89,11 @@ function optionalPeerProviders(): Map<string, string[]> {
 function checkOptionalPeer(
   env: DoctorEnvironment,
   name: string,
-  providers: string[],
+  peer: OptionalPeer,
   needs: SpecNeeds
 ): DoctorCheck {
-  const required = providers.some((provider) => needs.providers.has(provider));
+  const required = peer.providers.some((provider) => needs.providers.has(provider));
+  const fix = `npm install ${peer.install}`;
   const base = { id: `optional-peer.${name}`, title: `Provider package ${name}` };
   const version = env.resolvePackageVersion(name);
   if (version === null) {
@@ -90,7 +101,7 @@ function checkOptionalPeer(
       ...base,
       status: required ? 'fail' : 'warn',
       finding: required ? 'not installed, and the agent spec needs it' : 'not installed (optional)',
-      fix: installCommand(env, name),
+      fix,
     };
   }
   const range = env.sdk.peerDependencies?.[name];
@@ -99,37 +110,49 @@ function checkOptionalPeer(
       ...base,
       status: required ? 'fail' : 'warn',
       finding: `${version} installed, but the SDK expects ${range}`,
-      fix: installCommand(env, name),
+      fix,
     };
   }
   return { ...base, status: 'ok', finding: `${version} installed` };
 }
 
 export function checkOptionalPeers(env: DoctorEnvironment, needs: SpecNeeds): DoctorCheck[] {
-  return [...optionalPeerProviders()].map(([name, providers]) =>
-    checkOptionalPeer(env, name, providers, needs)
-  );
+  return [...optionalPeerProviders()].map(([name, peer]) => checkOptionalPeer(env, name, peer, needs));
 }
 
-function checkApiKey(env: DoctorEnvironment, provider: string, needs: SpecNeeds): DoctorCheck {
-  const entry = PROVIDER_ENV_TABLE[provider];
-  const isSet = Boolean(env.env[entry.envKey]);
-  const base = { id: `env.${provider}`, title: `${provider} (${entry.envKey})` };
-  if (isSet) return { ...base, status: 'ok', finding: 'set' };
-  if (entry.configField === 'baseURL') {
+function checkApiKey(env: DoctorEnvironment, info: ProviderInfo, needs: SpecNeeds): DoctorCheck {
+  const base = { id: `env.${info.name}`, title: `${info.name} (${info.envKey})` };
+  if (env.env[info.envKey]) return { ...base, status: 'ok', finding: 'set' };
+  if (!info.envRequired) {
     return { ...base, status: 'ok', finding: 'not set (optional; the provider default endpoint is used)' };
   }
+  const needed = needs.providers.has(info.name);
   return {
     ...base,
-    status: needs.providers.has(provider) ? 'fail' : 'warn',
-    finding: needs.providers.has(provider) ? 'not set, and the agent spec needs it' : 'not set',
-    fix: `Set ${entry.envKey} in your environment, e.g. export ${entry.envKey}=<your key>`,
+    status: needed ? 'fail' : 'warn',
+    finding: needed ? 'not set, and the agent spec needs it' : 'not set',
+    fix: `Set ${info.envKey} in your environment, e.g. export ${info.envKey}=<your key>`,
   };
+}
+
+/** Which provider `createAgent()` would pick with no model or provider argument. */
+function checkDefaultProvider(env: DoctorEnvironment): DoctorCheck {
+  const base = { id: 'env.default', title: 'Default provider for createAgent()' };
+  try {
+    return { ...base, status: 'ok', finding: `would use '${modelFromEnv('createAgent', env.env)}'` };
+  } catch {
+    return {
+      ...base,
+      status: 'warn',
+      finding: 'none configured (createAgent() needs a model, a provider instance, or an env var)',
+      fix: 'Set LOUSHY_MODEL (e.g. openai/gpt-4o-mini) or one of the API key variables above.',
+    };
+  }
 }
 
 /** Reports only whether each provider's env var is set - never its value. */
 export function checkApiKeys(env: DoctorEnvironment, needs: SpecNeeds): DoctorCheck[] {
-  return Object.keys(PROVIDER_ENV_TABLE).map((provider) => checkApiKey(env, provider, needs));
+  return [...listProviders().map((info) => checkApiKey(env, info, needs)), checkDefaultProvider(env)];
 }
 
 function ollamaBaseUrl(env: DoctorEnvironment): string {
