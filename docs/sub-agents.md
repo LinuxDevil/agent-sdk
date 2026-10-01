@@ -329,6 +329,7 @@ inherits:
 | `maxSubagentDepth` | The remaining budget | See [Depth](#depth). |
 | `onLLMRequest`, `onToolCall` and the other single-run callbacks | No | They describe one run; use hooks or `onEvent` to observe sub-agents. |
 | `sessionId` / `checkpointStore` | No | A sub-agent is not checkpointed on its own. If the process dies while a sub-agent runs, the resumed lead runs that `task` call again. |
+| `output` schema | No | A sub-agent's output is its own: with one, `task` returns its validated object as JSON (see [Structured output](./structured-output.md#sub-agents)); without, text. |
 | Conversation history | No | The sub-agent sees only the task prompt (plus its own earlier turns when the lead [resumes the task](#continuing-a-task)). |
 
 `createDelegateTool()` children inherit the same way.

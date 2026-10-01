@@ -53,7 +53,7 @@ import { ConfigurationError, SDKError } from './execution/errors';
 import { newId } from './utils/id';
 import { createAgentApprovals, type AgentApprovals, type ApproveToolCall } from './createAgentApprovals';
 import type { PermissionOptions } from './execution/permissions';
-import type { z } from 'zod';
+import type { InferSchemaOutput, StandardSchemaV1 } from './utils/zodCompat';
 import type { McpServerSpec } from './spec/schema';
 import { agentMcp, streamAfter, streamPrepared } from './tools/mcp/agentMcp';
 import { HookRegistry, type AgentHook } from './execution/hooks';
@@ -94,7 +94,7 @@ type AgentToolsOption = readonly DefinedTool[] | Record<string, ToolDescriptor>;
  * AgentConfig.tools) will refer to them by - createAgent() registers each
  * one into a fresh ToolRegistry under that key.
  */
-export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> extends PermissionOptions {
+export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSchemaV1> extends PermissionOptions {
   /**
    * Optional tools: an array of `defineTool()` results (named by the tool),
    * or a record of descriptors keyed by the name the agent should call them by.
@@ -312,10 +312,10 @@ export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> ex
    */
   fallbackModels?: readonly string[];
   /**
-   * A zod schema for the agent's final reply (LOU-V4): the model is asked
+   * A zod schema (zod 3 or 4, or any Standard Schema that can produce JSON Schema) for the agent's final reply (LOU-V4): the model is asked
    * to answer with a JSON object matching it, and `send()` / `stream()`
    * resolve with it parsed and validated as `result.object`, typed
-   * `z.output<typeof output>` (`result.text` keeps the raw JSON). An invalid
+   * the schema's output type (`result.text` keeps the raw JSON). An invalid
    * reply gets one repair step; still invalid, the run ends with
    * `finishReason: 'output-invalid'` and `outputError`. See
    * docs/structured-output.md and `ExecuteOptions.output`.
@@ -433,7 +433,7 @@ export type CreateAgentModelSource =
  * @example
  * createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are a helpful assistant.' });
  */
-export type CreateAgentConfig<TOutput extends z.ZodTypeAny = z.ZodTypeAny> = CreateAgentBase<TOutput> &
+export type CreateAgentConfig<TOutput extends StandardSchemaV1 = StandardSchemaV1> = CreateAgentBase<TOutput> &
   CreateAgentInstructions &
   CreateAgentModelSource;
 
@@ -512,7 +512,7 @@ export interface SimpleAgent<TObject = unknown> {
    * const { text } = await session.send('What is my name?');
    * ```
    */
-  session: (options?: SessionOptions) => AgentSession;
+  session: (options?: SessionOptions) => AgentSession<TObject>;
   /**
    * Finishes what was interrupted under `sessionId` (LOU-D30), from the
    * agent's `store.checkpoints`: a `send(message, { sessionId })` run, or
@@ -575,9 +575,9 @@ export interface SimpleAgent<TObject = unknown> {
  * const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are a helpful assistant.' });
  * const { text } = await agent.send('Hello!');
  */
-export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
+export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>(
   config: CreateAgentConfig<TOutput> = {}
-): SimpleAgent<z.output<TOutput>> {
+): SimpleAgent<InferSchemaOutput<TOutput>> {
   assertToolConcurrency(config.toolConcurrency, 'createAgent');
   assertMaxSubagentDepth(config.maxSubagentDepth, 'createAgent');
   assertSubagents(config.subagents, 'createAgent');
@@ -699,7 +699,7 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     return hasMcp ? streamAfter(mcp.ready, options) : AgentExecutor.stream(options);
   };
   // LOU-W9: a checkpointed session's turn runs under its own sessionId + checkpointStore.
-  const session = (options: SessionOptions = {}): AgentSession => {
+  const session = (options: SessionOptions = {}): AgentSession<Typed> => {
     // The id is chosen here so memory scoped to the session sees it on every turn.
     const sessionId = options.id ?? globalThis.crypto.randomUUID();
     const ctxOf = (input: Message[], call?: SessionTurnCall): RunConfigContext => ({
@@ -712,11 +712,11 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
       (input, signal, turn, call) => stream(input, ctxOf(input, call), signal, turn),
       // LOU-W8 follow-up: `session.compact()` uses the agent's `compaction` unless the session sets its own.
       withDefaultStores({ ...options, compaction: options.compaction ?? config.compaction, id: sessionId }, config.store)
-    );
+    ) as AgentSession<Typed>;
   };
 
   // `object` was validated with `config.output`, so it has its output type.
-  type Typed = z.output<TOutput>;
+  type Typed = InferSchemaOutput<TOutput>;
   const simpleAgent: SimpleAgent<Typed> = {
     async send(message: AgentInput, options: SendOptions = {}): Promise<ExecutionResult<Typed>> {
       const { sessionId, metadata } = options;
@@ -742,7 +742,9 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     close: mcp.close,
   };
   // As a sub-agent, a dynamic agent resolves its config with the task prompt as `input`.
-  registerSubagent(simpleAgent, { spec: staticSpec ?? ((prompt) => specs.resolve({ input: prompt })), description: config.description });
+  // LOU-V4.2: a sub-agent answers with its own `output` object, never the lead's schema.
+  const subagentSpec = async (prompt: string): Promise<SubagentSpec> => ({ ...(await specs.resolve({ input: prompt })), output: config.output });
+  registerSubagent(simpleAgent, { spec: staticSpec ? { ...staticSpec, output: config.output } : subagentSpec, description: config.description });
   return simpleAgent;
 }
 
