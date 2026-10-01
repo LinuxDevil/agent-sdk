@@ -65,6 +65,25 @@ export interface ToolExecutionContext {
 /**
  * Tool descriptor with display name
  */
+/** An MCP server's `ToolAnnotations` for a tool: hints, not guarantees (LOU-Z5). */
+export interface McpToolAnnotations {
+  title?: string;
+  /** The tool does not change its environment. */
+  readOnlyHint?: boolean;
+  /** The tool may destroy or overwrite data (the MCP spec's default when absent). */
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+  openWorldHint?: boolean;
+}
+
+/** Extra facts about a tool; `mcp` is set on tools loaded from an MCP server (LOU-Z5). */
+export interface ToolMetadata {
+  mcp?: {
+    /** The server's raw annotations for this tool, when it sent any. */
+    annotations?: McpToolAnnotations;
+  };
+}
+
 export interface ToolDescriptor {
   displayName: string;
   /**
@@ -84,6 +103,8 @@ export interface ToolDescriptor {
    */
   tool: AITool;
   needsApproval?: boolean | ((args: any) => boolean | Promise<boolean>);
+  /** Where the tool came from, e.g. an MCP server's annotations (LOU-Z5). */
+  metadata?: ToolMetadata;
   injectStreamingController?: (controller: ReadableStreamDefaultController<unknown>) => void;
   /**
    * When true, AgentExecutor routes this tool's execution through the
