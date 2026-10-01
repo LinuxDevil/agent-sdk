@@ -1116,7 +1116,7 @@ describe('Execution - resumeAfterApproval', () => {
       const execute = vi.fn().mockResolvedValue({ sent: true });
       toolRegistry.register('sendEmail', {
         displayName: 'Send Email',
-        tool: { description: 'send email', parameters: {}, execute } as any,
+        tool: { description: 'send email', parameters: {}, execute } as never,
         needsApproval: true,
       });
       const agent = AgentBuilder.create().setName('Test Agent').addTool('sendEmail', { tool: 'sendEmail', options: {} }).build();
@@ -1130,7 +1130,7 @@ describe('Execution - resumeAfterApproval', () => {
         generate: async () => ({ text: '', finishReason: 'tool_calls' as const, usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 }, toolCalls: [call] }),
       };
       const approvalStore = createInMemoryApprovalStore();
-      const paused = await AgentExecutor.execute({ agent, input: 'email', provider: scripted as any, toolRegistry, approvalStore });
+      const paused = await AgentExecutor.execute({ agent, input: 'email', provider: scripted as never, toolRegistry, approvalStore });
 
       const resumed = await resumeAfterApproval(
         { id: paused.approvalId!, approved: true },
@@ -1151,7 +1151,7 @@ describe('Execution - resumeAfterApproval', () => {
       const execute = vi.fn().mockResolvedValue({ ok: true });
       toolRegistry.register('reorder', {
         displayName: 'Reorder',
-        tool: { description: 'x', parameters: {}, execute } as any,
+        tool: { description: 'x', parameters: {}, execute } as never,
         needsApproval: true,
       });
       const agent = AgentBuilder.create().setName('Test Agent').addTool('reorder', { tool: 'reorder', options: {} }).build();
@@ -1165,7 +1165,7 @@ describe('Execution - resumeAfterApproval', () => {
         generate: async () => ({ text: '', finishReason: 'tool_calls' as const, usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 }, toolCalls: [call] }),
       };
       const approvalStore = createInMemoryApprovalStore();
-      const paused = await AgentExecutor.execute({ agent, input: 'go', provider: scripted as any, toolRegistry, approvalStore });
+      const paused = await AgentExecutor.execute({ agent, input: 'go', provider: scripted as never, toolRegistry, approvalStore });
 
       await resumeAfterApproval({ id: paused.approvalId!, approved: true }, approvalStore, toolRegistry, createMockProvider({ name: 'mock', responses: ['Done'] }), { hooks });
 

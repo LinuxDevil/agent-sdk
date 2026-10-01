@@ -157,6 +157,8 @@ export async function loadRunState(options: ExecuteOptions): Promise<AgentRunSta
     queuedInput: turn.queuedInput,
     finalText: '',
     finishReason: 'stop',
+    // LOU-W9.2: with checkpointing on, known before the first (synchronous) checkpoint write.
+    ...(sessionId && checkpointStore && { fingerprint: await fingerprintOf(baseAgentOf(options.agent), options.toolRegistry, options.provider) }),
     ...(checkpoint && checkpoint.status !== 'finished' && { resumedFrom: { fingerprint: checkpoint.agentFingerprint } }),
   };
 }
@@ -225,7 +227,7 @@ export async function saveStepCheckpoint(
     businessState: state.businessState,
     status,
     ...(approvalId !== undefined && { approvalId }),
-    agentFingerprint: await ensureFingerprint(options, state),
+    ...(state.fingerprint && { agentFingerprint: state.fingerprint }),
     ...(agent.metadata?.[RUN_CONFIG_KEY] !== undefined && { runConfig: agent.metadata[RUN_CONFIG_KEY] }),
   };
   const save = () => checkpointStore.save(sessionId, checkpoint);
