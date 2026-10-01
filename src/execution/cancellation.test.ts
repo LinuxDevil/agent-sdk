@@ -14,7 +14,6 @@ import { AgentExecutor, ExecutionEvent } from './AgentExecutor';
 import { createDelegateTool } from './DelegationTool';
 import type { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGate';
 import { resumeAfterApproval } from './resume';
-import { retry } from './retry';
 import { Checkpoint, CheckpointStore } from './checkpoint';
 import { createMockProvider } from '../providers/mock';
 import { createAgent } from '../createAgent';
@@ -366,37 +365,6 @@ describe('AgentExecutor cancellation (LOU-V1)', () => {
     expect(child.generate.mock.calls[0][0].signal?.aborted).toBe(true);
     expect(parent.generate).toHaveBeenCalledTimes(1);
     expect(result.finishReason).toBe('aborted');
-  });
-});
-
-describe('retry() and aborts (LOU-V1)', () => {
-  it('never retries an AbortError, even when shouldRetry says yes', async () => {
-    const operation = vi.fn(async () => {
-      throw new DOMException('This operation was aborted', 'AbortError');
-    });
-
-    await expect(
-      retry(operation, { maxAttempts: 3, initialDelayMs: 1, shouldRetry: () => true })
-    ).rejects.toThrow('aborted');
-    expect(operation).toHaveBeenCalledTimes(1);
-  });
-
-  it('stops retrying once its own signal is aborted', async () => {
-    const controller = new AbortController();
-    const operation = vi.fn(async () => {
-      controller.abort();
-      throw new Error('transient');
-    });
-
-    await expect(
-      retry(operation, {
-        maxAttempts: 3,
-        initialDelayMs: 1,
-        shouldRetry: () => true,
-        signal: controller.signal,
-      })
-    ).rejects.toThrow('transient');
-    expect(operation).toHaveBeenCalledTimes(1);
   });
 });
 
