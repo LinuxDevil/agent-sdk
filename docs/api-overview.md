@@ -183,6 +183,7 @@ Guarantees, whatever the limit:
 | `LLMProviderRegistry`           | Registry of provider factories (`create`, `register`, `has`). |
 | `OpenAIProvider`, `AnthropicProvider`, `OllamaProvider`, `OpenRouterProvider` | Provider classes. |
 | `createMockProvider()`, `MockLLMProvider` | Deterministic mock provider for tests and demos.   |
+| `withRetry(provider, opts?)`, `withFallback(providers, opts?)` | Retry transient provider failures with backoff; fall back to the next provider. See [Configuration](configuration.md#provider-retries-and-fallback). |
 
 ## Testing
 

@@ -134,6 +134,48 @@ Real providers are resolved by `resolveProvider('<provider>/<model>')`
 The `mock` provider needs no credentials and returns canned responses; it is
 what the examples and the Quick Start use by default.
 
+## Provider retries and fallback
+
+`withRetry(provider, options)` and `withFallback(providers, options)` wrap any
+`LLMProvider` and return another one, so they compose and can be passed
+anywhere a provider is accepted:
+
+```ts
+import { createAgent, resolveProvider, withFallback, withRetry } from '@loushy/build-ai-agent';
+
+const provider = withFallback(
+  [
+    withRetry(resolveProvider('openai/gpt-4o-mini'), {
+      maxRetries: 3,
+      backoff: { initialMs: 500, maxMs: 10_000 },
+      onRetry: ({ attempt, delayMs }) => console.warn(`retry ${attempt} in ${delayMs}ms`),
+    }),
+    withRetry(resolveProvider('anthropic/claude-3-5-haiku-latest')),
+  ],
+  { onFallback: ({ from, to }) => console.warn(`falling back from ${from} to ${to}`) }
+);
+
+const agent = createAgent({ prompt: 'You are helpful.', provider });
+```
+
+- `withRetry` retries `generate()` and `stream()` (default `maxRetries: 2`)
+  on rate limits, timeouts, network errors and 5xx responses, using the same
+  classification as `compactProviderError()`. Auth failures, invalid requests
+  and context-length errors are not retried; neither is a cancellation. A
+  provider's `retryAfterMs` hint (a `Retry-After` header) replaces the backoff
+  delay. Pass `retryOn(error, attempt)` to change the rule, `timeoutMs` for a
+  per-attempt time limit, and `signal` to stop retrying.
+- A `stream()` call is retried only when it rejects. An error inside a stream
+  that was already returned is not retried.
+- `withFallback` tries each provider in order and rethrows the last error
+  when all fail. By default it falls back on any error except a cancellation
+  (`fallbackOn` changes that). Each fallback runs on its own `defaultModel`.
+  `name` and `defaultModel` report the provider that served the latest call.
+- `resilientProvider(provider, { maxRetries, timeout })` applies the
+  `LLMProviderConfig` fields of the same names.
+- The built-in providers also run the `ai` SDK's own internal retries (2 by
+  default) inside each attempt.
+
 ## `createAgent()` options
 
 | Option         | Description                                                    |
