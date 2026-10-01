@@ -71,3 +71,47 @@ export async function relayFetch(
 export function handleChatRequest(req: http.IncomingMessage, res: http.ServerResponse, ctx: ChatRoutesContext): Promise<boolean> {
   return relayFetch(req, res, (request) => handleChatFetch(request, ctx));
 }
+
+/** Body-size cap for raw-body routes (channels, LOU-P7), matching the Fetch routes' 1MB limit. */
+const MAX_BODY_BYTES = 1024 * 1024; // 1MB
+
+class PayloadTooLargeError extends Error {}
+
+/**
+ * The request body's exact bytes (signatures are checked over these), at
+ * most 1MB: a larger body rejects with an error `sendFailure()` answers with
+ * 413. Shared with the channel handler (src/channels/mountChannels.ts).
+ */
+export function readRawBody(req: http.IncomingMessage): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const chunks: Uint8Array[] = [];
+    let bytes = 0;
+    req.on('data', (chunk: Uint8Array | string) => {
+      const data = typeof chunk === 'string' ? new TextEncoder().encode(chunk) : chunk;
+      bytes += data.length;
+      // Over the cap: stop keeping chunks but keep draining so the client can
+      // finish writing and the connection doesn't deadlock; reject on end.
+      if (bytes <= MAX_BODY_BYTES) chunks.push(data);
+    });
+    req.on('end', () => {
+      if (bytes > MAX_BODY_BYTES) {
+        reject(new PayloadTooLargeError(`Request body exceeds ${MAX_BODY_BYTES} byte limit`));
+        return;
+      }
+      const body = new Uint8Array(bytes);
+      let offset = 0;
+      for (const chunk of chunks) {
+        body.set(chunk, offset);
+        offset += chunk.length;
+      }
+      resolve(body);
+    });
+    req.on('error', reject);
+  });
+}
+
+/** Sends the error status for a failed handler: 413 over the size cap, 400 for bad JSON, else 500. */
+export function sendFailure(res: http.ServerResponse, error: unknown): void {
+  const status = error instanceof PayloadTooLargeError ? 413 : error instanceof SyntaxError ? 400 : 500;
+  sendJson(res, status, { error: (error as Error).message });
+}

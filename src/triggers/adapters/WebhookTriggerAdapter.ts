@@ -14,12 +14,17 @@
  *
  * Authentication (LOU-D13): `options.auth` verifies every request (HMAC over
  * the raw body, bearer token, or a custom verifier) before the agent runs.
+ *
+ * LOU-P7: auth and input parsing are `webhookChannel()`'s (src/channels),
+ * which this adapter delegates to; it keeps its own server and response.
  */
 import * as http from 'node:http';
 import type { ExecutionResult } from '../../execution/AgentExecutor';
 import { Logger, noopLogger } from '../../execution/logger';
 import { RunnableAgent, TriggerAdapter, TriggerContext, TriggerHandle } from '../types';
-import { WebhookAuth, assertValidWebhookAuth, checkWebhookAuth } from '../webhookAuth';
+import type { WebhookAuth } from '../webhookAuth';
+import { toChannelRequest } from '../../channels/defineChannel';
+import { webhookChannel, type WebhookChannel } from '../../channels/webhookChannel';
 
 export interface WebhookTriggerAdapterOptions {
   /** Port to listen on. Defaults to 0 (OS-assigned ephemeral port - inspect `handle.port` after `listen()`). */
@@ -65,42 +70,13 @@ function writeJson(res: http.ServerResponse, status: number, value: unknown): vo
   res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(value));
 }
 
-/** The agent input for a raw request body: its JSON `input` string if it has one, else the body itself. */
-function parseWebhookInput(raw: string): string {
-  if (!raw) return '';
-  try {
-    const parsed = JSON.parse(raw) as { input?: unknown };
-    return typeof parsed.input === 'string' ? parsed.input : raw;
-  } catch {
-    return raw;
-  }
-}
-
 type WebhookOnEvent = (input: string, context: TriggerContext) => Promise<ExecutionResult>;
 
 interface WebhookRuntime {
   path: string;
   onEvent: WebhookOnEvent;
-  auth?: WebhookAuth;
+  channel: WebhookChannel;
   logger: Logger;
-}
-
-/** Authenticates the request (when configured); on failure writes a generic 401 and returns false. */
-async function authorize(
-  runtime: WebhookRuntime,
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  rawBody: Buffer
-): Promise<boolean> {
-  if (!runtime.auth) return true;
-  const failure = await checkWebhookAuth(runtime.auth, req, rawBody);
-  if (failure === undefined) return true;
-  runtime.logger.warn('webhook request rejected: authentication failed', {
-    reason: failure,
-    remoteAddress: req.socket.remoteAddress,
-  });
-  writeJson(res, 401, { error: 'Unauthorized' });
-  return false;
 }
 
 async function respondWithAgentResult(
@@ -109,9 +85,15 @@ async function respondWithAgentResult(
   res: http.ServerResponse
 ): Promise<void> {
   try {
-    const rawBody = await readBody(req);
-    if (!(await authorize(runtime, req, res, rawBody))) return;
-    const input = parseWebhookInput(rawBody.toString('utf8'));
+    const request = toChannelRequest(req, await readBody(req));
+    const { ok, reason } = await runtime.channel.verify(request);
+    if (!ok) {
+      runtime.logger.warn('webhook request rejected: authentication failed', { reason, remoteAddress: req.socket.remoteAddress });
+      writeJson(res, 401, { error: 'Unauthorized' });
+      return;
+    }
+    const inbound = await runtime.channel.parse(request);
+    const input = typeof inbound?.input === 'string' ? inbound.input : '';
     const result = await runtime.onEvent(input, { channel: res, request: req });
     writeJson(res, 200, result);
   } catch (error) {
@@ -140,8 +122,10 @@ export class WebhookTriggerAdapter implements TriggerAdapter<http.ServerResponse
 
   private warnedUnauthenticated = false;
 
+  private readonly channel: WebhookChannel;
+
   constructor(private readonly options: WebhookTriggerAdapterOptions = {}) {
-    if (options.auth) assertValidWebhookAuth(options.auth);
+    this.channel = webhookChannel({ auth: options.auth });
   }
 
   private warnIfUnauthenticated(host: string, logger: Logger): void {
@@ -159,7 +143,7 @@ export class WebhookTriggerAdapter implements TriggerAdapter<http.ServerResponse
   ): WebhookTriggerHandle {
     const host = this.options.host ?? '0.0.0.0';
     const logger = this.options.logger ?? noopLogger;
-    const runtime: WebhookRuntime = { path: this.options.path ?? '/', onEvent, auth: this.options.auth, logger };
+    const runtime: WebhookRuntime = { path: this.options.path ?? '/', onEvent, channel: this.channel, logger };
     this.warnIfUnauthenticated(host, logger);
 
     const server = http.createServer((req, res) => {
