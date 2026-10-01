@@ -19,6 +19,13 @@ npm run docs:build   # writes docs/api/index.html
 | `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
 
+### Skills
+
+Pass `skills: [defineSkill({ name, description, content }), ...(await loadSkills(dir))]` to
+`createAgent()` or `AgentExecutor.execute()`: only names and descriptions go in
+the system prompt and the model loads bodies through an auto-registered
+`load_skill` tool. See [Skills](./skills.md).
+
 ### Cancellation
 
 Pass an `AbortSignal` to stop a run: `agent.send(input, { signal })`,
