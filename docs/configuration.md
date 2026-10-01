@@ -76,18 +76,74 @@ const spec = agentSpecSchema.parse({
   mcpServers: { filesystem, docs: { url: 'https://example.com/mcp' } },
 });
 
-// specToAgent() does not connect the servers yet (TODO(LOU-D20.2)); it
-// exposes the validated entries so a host can connect them.
+// The servers connect on agent.ready() or the first send() / stream().
 const agent = specToAgent(spec);
 console.log(Object.keys(agent.mcpServers)); // ['filesystem', 'docs']
 ```
 
-Connecting the servers and registering their tools automatically is tracked
-as LOU-D20.2; until then use `loadMcpTools()` as described next.
+`specToAgent()` passes the servers to `createAgent({ mcpServers })`, described
+next, so `loushy dev` and `loushy mcp` agents get their tools.
+
+### Connect MCP servers (`mcpServers`, `connectMcp()`)
+
+`createAgent({ mcpServers })` takes the same map. The servers connect on
+`await agent.ready()` or, automatically, on the first `send()` / `stream()`;
+each server's tools are added as `<server>__<tool>` (e.g. `docs__search`).
+A server that cannot connect fails that call, and the next call tries again.
+`agent.close()` disconnects them (stops stdio processes); a later tool call
+reconnects. Without `mcpServers`, `ready()` and `close()` do nothing.
+
+```ts no-run
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  mcpServers: {
+    files: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'] },
+    docs: { url: 'https://example.com/mcp', headers: { Authorization: 'Bearer <token>' } },
+  },
+});
+const { text } = await agent.send('List the files here.');
+await agent.close();
+```
+
+To share servers between agents, or to choose how failures are handled, call
+`connectMcp(servers, options?)` and pass its `tools` yourself. It connects every
+server and lists its tools before it resolves, so tools are known up front.
+Options:
+
+- `onError`: `'throw'` (default) rejects when a server cannot connect, after
+  closing the others; `'skip'` leaves that server out and warns through `logger`.
+- `lazy` (default `true`): after `close()` or a dropped connection, the next
+  tool call reconnects. With `false` that call fails instead. Listing tools
+  needs a connection, so `lazy` never delays the first connect.
+- `logger`: receives skipped-server and skipped-tool warnings (default: none).
+
+It returns `{ tools, close(), status() }`; `status()` maps each server to
+`'idle'`, `'connected'` or `'failed'`.
+
+```ts no-run
+import { createAgent } from '@loushy/build-ai-agent';
+import { connectMcp } from '@loushy/build-ai-agent/mcp';
+
+const mcp = await connectMcp(
+  { files: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'] } },
+  { onError: 'skip', logger: console }
+);
+console.log(mcp.status()); // { files: 'connected' }
+const agent = createAgent({ model: 'openai/gpt-4o-mini', tools: mcp.tools });
+await agent.send('List the files here.');
+await mcp.close();
+```
+
+stdio servers are spawned with `command` and `args`; `env` is added to the
+default environment (`PATH` and the like), not a replacement for it. HTTP
+servers use the streamable HTTP transport with `headers` on every request.
+`@modelcontextprotocol/sdk` is an optional peer: install it to use MCP.
 
 ### MCP (Model Context Protocol) tools
 
-Tools advertised by a remote MCP server can also be loaded by hand - connect a `Client` from `@modelcontextprotocol/sdk` yourself and load
+Tools of a `Client` you connected yourself can also be loaded by hand - connect a `Client` from `@modelcontextprotocol/sdk` yourself and load
 its tools with `loadMcpTools()`, then pass the result to `createAgent()` (or
 register it on a `ToolRegistry`):
 

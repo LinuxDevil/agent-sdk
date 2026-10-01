@@ -121,6 +121,7 @@ its kind by carrying a `toolErrorKind` property. An error extending
 | `createTodoTools()` | `todo_write` / `todo_read` so an agent can plan multi-step work; see [Todo tools](./api-overview.md#todo-tools). |
 | `createFsTools()`, `createShellTool()` | File system and shell tools for coding agents; see [Workspace tools](./workspace-tools.md). |
 | `createEmailTool()`, `createSlackTool()`, `createGitHubTools()`, `createJiraTools()` | Integrations that need credentials, so they are built with options. |
+| `createAgent({ mcpServers })`, `connectMcp(servers)` | Every tool of MCP servers given as config (stdio `command` or HTTP `url`), named `<server>__<tool>`; see [Connect MCP servers](./configuration.md#connect-mcp-servers-mcpservers-connectmcp). |
 | `loadMcpTools(client, name)` | Every tool of a connected MCP server; see [MCP tools](./configuration.md#mcp-model-context-protocol-tools). |
 
 Built-in descriptors are passed keyed by the name the agent uses:

@@ -41,6 +41,8 @@ import { resumeAfterApproval } from './execution/resume';
 import { ConfigurationError } from './execution/errors';
 import { createAgentApprovals, type AgentApprovals, type ApproveToolCall } from './createAgentApprovals';
 import type { z } from 'zod';
+import type { McpServerSpec } from './spec/schema';
+import { agentMcp, streamAfter } from './tools/mcp/agentMcp';
 
 /**
  * Options for createAgent() that do not depend on how the instructions and
@@ -57,6 +59,18 @@ export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> {
    * createAgent({ prompt: '...', provider, tools: [sendEmail] });
    */
   tools?: readonly DefinedTool[] | Record<string, ToolDescriptor>;
+  /**
+   * MCP servers to connect (LOU-Z4), keyed by name: stdio `{ command, args?, env? }`
+   * or HTTP `{ url, headers? }`. Connected on `agent.ready()` or the first
+   * `send()` / `stream()`; their tools are named `<server>__<tool>`. A server
+   * that fails to connect fails that call. `agent.close()` disconnects them.
+   *
+   * @example
+   * ```ts
+   * const agent = createAgent({ model: 'openai/gpt-4o-mini', mcpServers: { docs: { url: 'https://example.com/mcp' } } });
+   * ```
+   */
+  mcpServers?: Record<string, McpServerSpec>;
   /**
    * Optional skills (LOU-Y2): only name + description go in the system
    * prompt; the model loads a skill's full content with the auto-registered
@@ -362,6 +376,13 @@ export interface SimpleAgent<TObject = unknown> {
    * ```
    */
   approvals: AgentApprovals;
+  /**
+   * Connects the `mcpServers` and registers their tools (LOU-Z4); `send()`
+   * and `stream()` await it. Resolves at once without `mcpServers`.
+   */
+  ready: () => Promise<void>;
+  /** Disconnects the `mcpServers` (a later tool call reconnects); a no-op without them. */
+  close: () => Promise<void>;
 }
 
 /**
@@ -387,7 +408,17 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
   const instructions = withProjectInstructions(resolveInstructions(config), config.projectInstructions);
   const provider = resolveModelSource(config);
 
-  const { toolRegistry, toolsConfig } = registerTools(config.tools ?? {});
+  const hasMcp = Object.keys(config.mcpServers ?? {}).length > 0;
+  const { toolRegistry, toolsConfig } = registerTools(config.tools ?? {}, hasMcp);
+  // LOU-Z4: MCP tools join the registry and the agent's tools once connected.
+  const mcp = agentMcp(config.mcpServers, (tools) => {
+    for (const [name, descriptor] of Object.entries(tools)) {
+      toolRegistry?.register(name, descriptor);
+      toolsConfig[name] = { tool: name };
+    }
+  });
+  const startStream = (options: ExecuteOptions) =>
+    hasMcp ? streamAfter(mcp.ready, options) : AgentExecutor.stream(options);
 
   const builder = AgentBuilder.create()
     .setName(config.name || 'agent')
@@ -446,13 +477,15 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     signal,
     ...turn,
   });
-  const run = (input: string | Message[], signal?: AbortSignal, turn?: Partial<SessionTurnCheckpoint>) =>
-    AgentExecutor.execute(executeOptions(input, signal, turn));
+  const run = async (input: string | Message[], signal?: AbortSignal, turn?: Partial<SessionTurnCheckpoint>) => {
+    await mcp.ready();
+    return AgentExecutor.execute(executeOptions(input, signal, turn));
+  };
   // LOU-W9: a checkpointed session's turn runs under its own sessionId + checkpointStore.
   const session = (options?: SessionOptions): AgentSession =>
     approvals.session(
       run,
-      (input, signal, turn) => AgentExecutor.stream(executeOptions(input, signal, turn)),
+      (input, signal, turn) => startStream(executeOptions(input, signal, turn)),
       withDefaultStores(options, config.store)
     );
 
@@ -464,7 +497,7 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
       return approvals.settle(result, options.signal) as Promise<ExecutionResult<Typed>>;
     },
     stream(message: string, options: SendOptions = {}): AgentRun<Typed> {
-      return AgentExecutor.stream(executeOptions(message, options.signal, durable(options.sessionId))) as AgentRun<Typed>;
+      return startStream(executeOptions(message, options.signal, durable(options.sessionId))) as AgentRun<Typed>;
     },
     session,
     async resume(sessionId: string, { signal } = {}): Promise<ExecutionResult<Typed> | null> {
@@ -475,6 +508,8 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
       return approvals.settle(await run([], signal, durable(sessionId)), signal) as Promise<ExecutionResult<Typed>>;
     },
     approvals: approvals.approvals,
+    ready: mcp.ready,
+    close: mcp.close,
   };
   registerSubagent(simpleAgent, { spec, description: config.description });
   return simpleAgent;
@@ -537,9 +572,12 @@ function resolveModelSource(config: CreateAgentConfig): LLMProvider {
 /**
  * Registers each tool into a fresh ToolRegistry under its key, and builds
  * the matching AgentConfig.tools entries. No registry is built when there
- * are no tools.
+ * are no tools, unless `alwaysRegistry` (MCP tools are added later).
  */
-function registerTools(tools: readonly DefinedTool[] | Record<string, ToolDescriptor>): {
+function registerTools(
+  tools: readonly DefinedTool[] | Record<string, ToolDescriptor>,
+  alwaysRegistry = false
+): {
   toolRegistry: ToolRegistry | undefined;
   toolsConfig: Record<string, { tool: string }>;
 } {
@@ -548,7 +586,7 @@ function registerTools(tools: readonly DefinedTool[] | Record<string, ToolDescri
     : Object.entries(tools as Record<string, ToolDescriptor>);
   const toolsConfig: Record<string, { tool: string }> = {};
 
-  if (entries.length === 0) {
+  if (entries.length === 0 && !alwaysRegistry) {
     return { toolRegistry: undefined, toolsConfig };
   }
 
