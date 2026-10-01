@@ -29,7 +29,7 @@ const agent = createAgent({ prompt: '...', provider, tools: [weather] });
 | ------ | -------- | ----------- |
 | `name` | yes | What the model calls the tool by. Must match `^[a-zA-Z0-9_-]{1,64}$` (the limit LLM providers put on function names). |
 | `description` | yes | What the tool does. The model reads it to decide when to call the tool. |
-| `input` | yes | Zod schema of the arguments. `execute`, `needsApproval` and `sandboxExecute` receive its parsed (output) type. |
+| `input` | yes | Zod schema of the arguments (zod 3 or zod 4, or another Standard Schema that exposes `~standard.jsonSchema`). `execute`, `needsApproval` and `sandboxExecute` receive its parsed (output) type. |
 | `execute(args, ctx)` | yes | Runs the tool. `ctx` carries the call's `toolCallId` and `abortSignal`. The return type is kept on the tool (`ToolOutput`). |
 | `displayName` | no | Label for UIs. Defaults to `name`. |
 | `needsApproval` | no | `true`, or a predicate typed from `input`, to pause for a human decision before the call runs. See [Approvals](./approvals.md). |

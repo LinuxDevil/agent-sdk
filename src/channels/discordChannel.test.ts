@@ -11,6 +11,8 @@ import { z } from 'zod';
 import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import { mockModel } from '../testing';
+import { InMemoryApprovalStore } from '../execution/InMemoryApprovalStore';
+import { MemorySessionStore } from '../session/sessionStore';
 import type { Message } from '../providers';
 import { mountChannels, type ChannelsHandler } from './mountChannels';
 import { discordChannel } from './discordChannel';
@@ -67,11 +69,25 @@ function command(prompt: string, extra: Record<string, unknown> = {}) {
   return { type: 2, token: `tok-${prompt}`, guild_id: 'G1', channel_id: 'C1', channel: { id: 'C1', type: 0 }, member: { user: { id: 'U1' } }, data: { name: 'ask', options: [{ name: 'prompt', type: 3, value: prompt }] }, ...extra };
 }
 
-function setup(responses: Parameters<typeof mockModel>[0], agentOptions: Partial<Parameters<typeof createAgent>[0]> = {}) {
+interface SetupOptions {
+  channel?: Partial<Parameters<typeof discordChannel>[0]>;
+  mount?: Parameters<typeof mountChannels>[2];
+}
+
+/** A button click of `user` (default: the command's author U1) on the approval message. */
+function click(customId: string, user = 'U1', extra: Record<string, unknown> = {}) {
+  return { type: 3, token: 'tok-click', guild_id: 'G1', channel_id: 'C1', channel: { id: 'C1', type: 0 }, member: { user: { id: user, username: `name-${user}` }, roles: ['R1'] }, message: { content: 'Approve?' }, data: { custom_id: customId }, ...extra };
+}
+
+const emailTool = (execute = vi.fn(async ({ to }: { to: string }) => `sent to ${to}`)) =>
+  defineTool({ name: 'send_email', description: 'Sends an email', input: z.object({ to: z.string() }), needsApproval: true, execute });
+const emailCall = { toolCalls: [{ name: 'send_email', args: { to: 'sam@example.com' }, id: 'call_email' }] };
+
+function setup(responses: Parameters<typeof mockModel>[0], agentOptions: Partial<Parameters<typeof createAgent>[0]> = {}, extra: SetupOptions = {}) {
   const discord = fakeDiscord();
   const model = mockModel(responses);
   const agent = createAgent({ provider: model, ...agentOptions });
-  const handler = mountChannels(agent, [discordChannel({ publicKey, applicationId: APP, fetch: discord.fetch })]);
+  const handler = mountChannels(agent, [discordChannel({ publicKey, applicationId: APP, fetch: discord.fetch, ...extra.channel })], extra.mount);
   const userTexts = (call: number) => (model.calls[call].messages as Message[]).filter((m) => m.role === 'user').map((m) => m.content);
   return { ...discord, model, userTexts, send: (payload: unknown, options?: SendOptions) => send(handler, discord.log, payload, options) };
 }
@@ -144,12 +160,89 @@ describe('discordChannel (LOU-P6)', () => {
     expect(deny.custom_id).toMatch(/^loushy_deny:/);
     expect(execute).not.toHaveBeenCalled();
 
-    const click = { type: 3, token: 'tok-click', message: { content: 'Approve?' }, data: { custom_id: approve.custom_id } };
-    expect((await t.send(click, { badSignature: true })).status).toBe(401);
-    expect(await t.send(click)).toEqual({ status: 200, json: { type: 7, data: { content: 'Approve?\nApproved.', components: [] } } });
+    const approval = click(approve.custom_id);
+    expect((await t.send(approval, { badSignature: true })).status).toBe(401);
+    expect(await t.send(approval)).toEqual({ status: 200, json: { type: 7, data: { content: 'Approve?\nApproved by <@U1>.', components: [], allowed_mentions: { parse: [] } } } });
 
     expect(execute).toHaveBeenCalledTimes(1);
     expect(t.calls[1]).toMatchObject({ method: 'POST', url: 'tok-click', body: { content: 'Email sent.' } });
+  });
+
+  /** Runs a command that pauses on `send_email` and returns the custom id of its Approve button. */
+  async function pause(t: ReturnType<typeof setup>) {
+    await t.send(command('Email Sam'));
+    return t.calls[0].body.components?.[0].components[0].custom_id ?? '';
+  }
+
+  it('only the user who ran the command may approve by default; others get an ephemeral refusal and it stays pending', async () => {
+    const execute = vi.fn(async ({ to }: { to: string }) => `sent to ${to}`);
+    const t = setup([emailCall, 'Email sent.'], { tools: [emailTool(execute)] });
+    const id = await pause(t);
+
+    expect(await t.send(click(id, 'U2'))).toEqual({ status: 200, json: { type: 4, data: { content: 'You are not allowed to approve this request.', flags: 64 } } });
+
+    expect(execute).not.toHaveBeenCalled();
+    expect((await t.send(click(id, 'U1'))).json).toMatchObject({ type: 7 });
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('approvers as a list of user ids', async () => {
+    const execute = vi.fn(async ({ to }: { to: string }) => `sent to ${to}`);
+    const t = setup([emailCall, 'Email sent.'], { tools: [emailTool(execute)] }, { channel: { approvers: ['U9'] } });
+    const id = await pause(t);
+
+    expect((await t.send(click(id, 'U1'))).json).toMatchObject({ type: 4 });
+    expect(execute).not.toHaveBeenCalled();
+    expect((await t.send(click(id, 'U9'))).json).toMatchObject({ type: 7 });
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('approvers as a function sees the user (with roles) and the tool request, and the approver is recorded', async () => {
+    const execute = vi.fn(async ({ to }: { to: string }) => `sent to ${to}`);
+    const approvers = vi.fn(async (user: { roles?: string[] }) => user.roles?.includes('ADMIN') === true);
+    const onDecision = vi.fn();
+    const t = setup([emailCall, 'Email sent.'], { tools: [emailTool(execute)] }, { channel: { approvers }, mount: { onDecision } });
+    const id = await pause(t);
+
+    expect((await t.send(click(id))).json).toMatchObject({ type: 4 });
+    expect((await t.send(click(id, 'U3', { member: { user: { id: 'U3' }, roles: ['ADMIN'] } }))).json).toMatchObject({ type: 7 });
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(approvers).toHaveBeenLastCalledWith({ id: 'U3', name: undefined, roles: ['ADMIN'] }, { toolName: 'send_email', input: { to: 'sam@example.com' }, sessionId: expect.stringMatching(/^discord_G1_C1-/) });
+    expect(onDecision).toHaveBeenCalledWith(expect.objectContaining({ approver: expect.objectContaining({ id: 'U3' }), channel: 'discord' }));
+  });
+
+  it('reports a failed reply to onError (never throws)', async () => {
+    const onError = vi.fn();
+    const failing = vi.fn(async () => new Response('{}', { status: 500 })) as unknown as typeof globalThis.fetch;
+    const t = setup(['Hello'], {}, { channel: { onError, fetch: failing } });
+
+    expect((await t.send(command('hi'))).json).toEqual({ type: 5 });
+
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('500') }), { channel: 'discord', stage: 'reply', sessionId: expect.stringContaining('discord') });
+  });
+
+  it('a failed turn goes to onError and the user is told in the channel', async () => {
+    const onError = vi.fn();
+    const t = setup([{ error: new Error('model down') }], {}, { channel: { onError } });
+
+    await t.send(command('hi'));
+
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'model down' }), { channel: 'discord', stage: 'turn', sessionId: expect.stringContaining('discord') });
+    expect(t.calls.map((c) => c.body.content)).toEqual(['Sorry, that request failed.']);
+  });
+
+  it('a click still resolves after a restart: a second channel over the same stores', async () => {
+    const approvalStore = new InMemoryApprovalStore();
+    const store = new MemorySessionStore();
+    const execute = vi.fn(async ({ to }: { to: string }) => `sent to ${to}`);
+    const id = await pause(setup([emailCall], { tools: [emailTool(execute)], approvalStore }, { mount: { store } }));
+
+    const second = setup(['Email sent.'], { tools: [emailTool(execute)], approvalStore }, { mount: { store } });
+    await second.send(click(id));
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(second.calls[0]).toMatchObject({ method: 'POST', url: 'tok-click', body: { content: 'Email sent.' } });
   });
 
   it('posts an ask_question as text and takes the next /ask as the answer', async () => {

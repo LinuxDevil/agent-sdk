@@ -14,6 +14,7 @@ import type {
 import { normalizeWorkspacePath, WorkspaceError } from './paths';
 import { runShellCommand } from './nodeProcess';
 import { commandEnv } from '../../security/commandEnv';
+import { ConfigurationError } from '../../execution/errors';
 
 const DEFAULT_MAX_OUTPUT_BYTES = 1_000_000;
 
@@ -77,16 +78,16 @@ function defaultShell(): string {
 /** The real path of an existing root directory, or a descriptive error. */
 function resolveRoot(root: string | undefined): string {
   if (typeof root !== 'string' || root === '') {
-    throw new Error("NodeWorkspace: 'root' is required. Example: new NodeWorkspace({ root: './project' })");
+    throw new ConfigurationError("NodeWorkspace: 'root' is required. Example: new NodeWorkspace({ root: './project' })", 'root');
   }
   let real: string;
   try {
     real = realpathSync.native(nodePath.resolve(root));
   } catch {
-    throw new Error(`NodeWorkspace: root directory ${JSON.stringify(root)} does not exist. Create it first or pass an existing directory.`);
+    throw new ConfigurationError(`NodeWorkspace: root directory ${JSON.stringify(root)} does not exist. Create it first or pass an existing directory.`, 'root');
   }
   if (!statSync(real).isDirectory()) {
-    throw new Error(`NodeWorkspace: root ${JSON.stringify(root)} is a file, not a directory.`);
+    throw new ConfigurationError(`NodeWorkspace: root ${JSON.stringify(root)} is a file, not a directory.`, 'root');
   }
   return real;
 }

@@ -50,6 +50,9 @@ default code of `ConfigurationError`; `error.field` names the option when known.
 **Fix:** change the option the message names.
 
 **Example:** `withFallback([])` throws "withFallback() needs at least one provider".
+`new NodeWorkspace({ root })` with a missing or non-directory root, a duplicate tool
+name in a `ToolRegistry`, a bad `toolConcurrency`, `serveMcp()` without a `name`
+and `loushy studio` without Agent Forge's files are the same code.
 
 ### LOUSHY_CONFIG_MISSING_PROVIDER
 
@@ -239,7 +242,10 @@ result and the run carries on.
 **Fix:** look at `error.toolName` and `error.cause`, and fix the tool or the
 input it was given.
 
-**Example:** a tool's `execute` threw.
+**Example:** a tool's `execute` threw. The built-in tools (`http`, `email`,
+`github`, `jira`, `slack`, `ask_question`) throw an `SDKError` with this code for
+a failed call; their message is the tool's result, so it carries no appended
+`[code] hint (docs)` line.
 
 ## Approvals and sessions
 
@@ -346,6 +352,31 @@ session id); check the URL, `GET <url>/health` and the deployment's logs.
 
 **Example:** `loushy eval --url http://localhost:1` with nothing listening.
 
+### LOUSHY_SUBAGENT_TASK_NOT_FOUND
+
+**Means:** a `task` call asked to resume or fork a `taskId` that this lead
+session has no conversation for (never started, started in another lead
+session or run, or not finished), or that belongs to another sub-agent. The
+lead model gets it as a structured tool error.
+
+**Fix:** use a `taskId` from an earlier `task` result of the same lead
+session, with the same `agent`; or omit `taskId` to start a new task. See
+[Sub-agents](./sub-agents.md#continuing-a-task).
+
+**Example:** `task({ agent: 'researcher', taskId: 'task_7', prompt })` when the
+session has only `task_1`.
+
+### LOUSHY_SUBAGENT_TASK_BUSY
+
+**Means:** a `task` call asked to resume or fork a task whose sub-agent is
+still running, for example a background task that has not ended.
+
+**Fix:** wait for it with `agent_await` (or stop it with `agent_cancel`),
+then continue it.
+
+**Example:** `task({ agent: 'researcher', taskId: 'task_1', prompt })` right
+after starting `task_1` with `background: true`.
+
 ### LOUSHY_CHECKPOINT_NOT_FOUND
 
 **Means:** `AgentExecutor.fork()` or `agent.fork()` was asked for a step the
@@ -357,6 +388,35 @@ The message lists the steps that are kept.
 See [Durable execution](./durable-execution.md#fork-and-replay).
 
 **Example:** `agent.fork('job-1', { fromStep: 9 })` after a 3-step run.
+
+### LOUSHY_AGENT_DRIFT
+
+**Means:** a paused or interrupted run was resumed by an agent that differs
+from the one that saved it, and `onAgentDrift` is `'error'`. The message names
+what changed: the model, tools added, removed or with a changed input schema,
+or the instructions. It is thrown before any model call or tool runs; the
+checkpoint (and, for an approval, the pending record) is left as it was.
+
+**Fix:** resume with the agent that paused the run, or set `onAgentDrift` to
+`'warn'` (the default) or `'ignore'` to continue anyway. See
+[Durable execution](./durable-execution.md#resuming-with-a-changed-agent).
+
+**Example:** `createAgent({ store, onAgentDrift: 'error' })` after a deploy that
+renamed a tool, then `agent.resume('job-1')`.
+
+### LOUSHY_RESUME_TOOL_MISSING
+
+**Means:** a resumed run is waiting on a tool call (an approved call, or a call
+of the model's last turn that has no result yet) whose tool the resuming agent
+no longer has. This is an error whatever `onAgentDrift` is, because the call
+cannot run.
+
+**Fix:** give the tool back under the same name, or drop the paused run (delete
+its checkpoint, reject its approval). See
+[Durable execution](./durable-execution.md#resuming-with-a-changed-agent).
+
+**Example:** a run paused on `charge_card`, then a deploy removes that tool and
+`agent.approvals.resolve({ id, approved: true })` is called.
 
 ### LOUSHY_RUN_ALREADY_ITERATED
 
@@ -451,6 +511,23 @@ See [Registry](./registry.md#safety-rules).
 **Fix:** pass `--overwrite`, or move your file away first.
 
 **Example:** `loushy add web-search` twice.
+
+## Sandbox
+
+### LOUSHY_SANDBOX_EGRESS_UNSUPPORTED
+
+**Means:** a `SubprocessSandbox` with `network: { allow }` and a `broker` cannot make
+the credential broker the container's only route out on this Docker daemon, so it
+started no container instead of granting open egress. The message names the reason:
+Docker Desktop (containers run in a VM, so the host has no address on the internal
+network), rootless Docker, a daemon on another machine (the broker cannot listen on
+the network's gateway), a reused network that is not internal, or an Engine older
+than 25.0.5, which forwards DNS from internal networks.
+
+**Fix:** run the agent on the Linux host of a Docker Engine 25.0.5 or later, or use
+`network: 'none'`. See [Workspace tools](./workspace-tools.md#sandboxed-shell-sandboxshell).
+
+**Example:** `new SubprocessSandbox({ network: { allow: ['api.github.com'] }, broker })` with Docker Desktop.
 
 ## General
 

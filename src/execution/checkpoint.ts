@@ -7,6 +7,11 @@ import { Message } from '../providers';
 import { StorageService } from '../storage';
 import type { StepUsage } from '../models/usage';
 import type { CheckpointUsage } from './runUsage';
+import type { AgentFingerprint } from './agentFingerprint';
+import { ConfigurationError } from './errors';
+
+/** Key of `AgentConfig.metadata` holding a dynamic run's `ctx` and model (LOU-V15): saved in approval snapshots and checkpoints. */
+export const RUN_CONFIG_KEY = 'loushyRunConfig';
 
 /**
  * Where the run recorded in a {@link Checkpoint} stands (LOU-U8):
@@ -85,6 +90,18 @@ export interface Checkpoint {
   status?: CheckpointStatus;
   /** LOU-U8: with `status: 'awaiting-approval'`, the id of the pending approval. */
   approvalId?: string;
+  /**
+   * LOU-W9.2: the fingerprint of the agent that wrote this checkpoint. A
+   * resume compares it with the resuming agent's (`onAgentDrift`). Absent on
+   * older checkpoints, which resume without any check.
+   */
+  agentFingerprint?: AgentFingerprint;
+  /**
+   * LOU-V15.2: with `createAgent({ model | instructions | tools: fn })`, the
+   * run's `ctx` and the model it chose, so a crash resume re-resolves the
+   * agent the same way the run started. Opaque; absent for static agents.
+   */
+  runConfig?: unknown;
 }
 
 /**
@@ -187,7 +204,7 @@ export async function getCheckpointHistory(
 export function resolveHistoryLimit(limit: number | undefined): number {
   const value = limit ?? DEFAULT_CHECKPOINT_HISTORY_LIMIT;
   if (!Number.isInteger(value) || value < 0) {
-    throw new Error(`historyLimit must be a non-negative integer, got ${limit}.`);
+    throw new ConfigurationError(`historyLimit must be a non-negative integer, got ${limit}.`, 'historyLimit');
   }
   return value;
 }

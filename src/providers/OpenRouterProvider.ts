@@ -67,7 +67,9 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
   }
 
   protected async createModel(modelId: string): Promise<LanguageModel> {
-    return (await this.loadProvider())(modelId);
+    // `.chat()` is the Chat Completions API, the only one OpenRouter implements. `@ai-sdk/openai`
+    // 2+ makes the bare call a Responses API model, so the factory is named on every major.
+    return (await this.loadProvider()).chat(modelId);
   }
 
   /**

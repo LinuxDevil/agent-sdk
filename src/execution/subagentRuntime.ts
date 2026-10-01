@@ -22,6 +22,7 @@ import type {
 } from './ApprovalGate';
 import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
 import type { RunUsage } from '../models/usage';
+import type { AgentFingerprint } from './agentFingerprint';
 import type { ResumeExecuteOptions } from './resume';
 import { PropagatingToolError } from './propagatingToolError';
 import { toolErrorResult } from './toolErrors';
@@ -103,6 +104,9 @@ export function subagentBudget(maxSubagentDepth: number | undefined): number {
  * pauses the parent run once the turn's tool calls are done.
  */
 export class SubagentApprovalPause extends PropagatingToolError {
+  /** Args the paused tool call is re-entered with on resume, over its own (LOU-Y6: the `task` call's taskId). */
+  resumeArgs?: Record<string, unknown>;
+
   constructor(
     readonly agentName: string,
     readonly snapshot: ExecutionSnapshot
@@ -139,7 +143,7 @@ export function toSuspension(
   return {
     toolCallId: call.toolCallId,
     toolName: call.toolName,
-    args: call.args,
+    args: pause.resumeArgs ? { ...call.args, ...pause.resumeArgs } : call.args,
     agentName: pause.agentName,
     snapshot: pause.snapshot,
   };
@@ -158,7 +162,7 @@ function pendingForSuspension(suspension: SubagentSuspension): PendingApproval {
 /** The approval record that pauses a parent run on a suspended sub-agent. */
 export function suspensionRecord(
   run: { agent: AgentConfig; sessionId?: string },
-  state: { messages: Message[]; steps: number; usage: RunUsage; queuedInput?: Message[] },
+  state: { messages: Message[]; steps: number; usage: RunUsage; queuedInput?: Message[]; fingerprint?: AgentFingerprint },
   suspension: SubagentSuspension
 ): { pending: PendingApproval; snapshot: ExecutionSnapshot } {
   const pending = pendingForSuspension(suspension);
@@ -173,6 +177,7 @@ export function suspensionRecord(
       sessionId: run.sessionId,
       usage: structuredClone(state.usage),
       subagent: suspension,
+      agentFingerprint: state.fingerprint,
     },
   };
 }

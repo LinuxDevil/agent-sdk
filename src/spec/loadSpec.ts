@@ -1,17 +1,14 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { ZodError } from 'zod';
 import { AgentSpec, agentSpecSchema } from './schema';
 import { ConfigurationError, ValidationError } from '../execution/errors';
 import { closestMatch } from '../utils/closestMatch';
+import { issueMessage, issuePath, type SchemaIssue } from '../utils/zodCompat';
 
-function formatZodError(filePath: string, error: ZodError, typos: string[]): string {
+function formatZodError(filePath: string, error: { issues: readonly SchemaIssue[] }, typos: string[]): string {
   const details = error.issues
-    .map((issue) => {
-      const field = issue.path.length > 0 ? issue.path.join('.') : '(root)';
-      return `'${field}': ${issue.message}`;
-    })
+    .map((issue) => `'${issuePath(issue)}': ${issueMessage(issue)}`)
     .concat(typos)
     .join('; ');
   return `loadSpec: '${filePath}' failed validation - ${details}`;

@@ -18,6 +18,7 @@ import { ToolArgumentsValidationError, parseToolArguments, validateToolArguments
 import { checkPermission, reportHookDenial, reportPermission, type PermissionDecisionEntry, type PermissionRuntime } from './permissions';
 import { checkToolGuardrails } from './ioGuardrails';
 import type { ExecuteOptions } from './AgentExecutor';
+import { stableStringify } from '../testing/fingerprint';
 import type { SubagentSuspension } from './ApprovalGate';
 import { SubagentApprovalPause, suspendedToolResult, toSuspension, type ToolCallScope } from './subagentRuntime';
 
@@ -197,17 +198,20 @@ export async function runPreToolHooks(
   if (stop) {
     return { args, outcome: hookStopOutcome(hookCtx, stop, opts.runtime) };
   }
-  if (inputBy.length === 0) {
-    return { args };
+  let final = args;
+  if (inputBy.length > 0) {
+    const checked = await checkToolArguments(toolCall, opts.toolRegistry, args);
+    if (checked.rejection) {
+      return { args, outcome: hookInputFailure(checked.rejection, inputBy, checked.rejection.error ?? '') };
+    }
+    final = checked.args;
   }
-  const checked = await checkToolArguments(toolCall, opts.toolRegistry, args);
-  if (checked.rejection) {
-    return { args, outcome: hookInputFailure(checked.rejection, inputBy, checked.rejection.error ?? '') };
-  }
-  if (opts.approvedArgs && JSON.stringify(checked.args) !== JSON.stringify(opts.approvedArgs)) {
+  // LOU-X3.2: whether a hook supplied the input or changed `ctx.args` in place,
+  // the call runs with what the human approved (key order does not matter).
+  if (opts.approvedArgs && stableStringify(final) !== stableStringify(opts.approvedArgs)) {
     return { args, outcome: hookInputFailure(toolFailure(toolCall, 'validation', ''), inputBy, 'the call was approved with different input') };
   }
-  return { args: checked.args };
+  return { args: final };
 }
 
 /** The outcome of a call a pre-tool hook denied or answered (LOU-X3). */
@@ -222,8 +226,8 @@ function hookStopOutcome(hookCtx: ToolCallHookContext, stop: NonNullable<PreTool
 
 /** A hook-caused validation error (LOU-X3): `failure`, with a message naming the hooks that supplied the input. */
 function hookInputFailure(failure: ToolCallOutcome, hooks: string[], why: string): ToolCallOutcome {
-  const names = hooks.map((name) => `'${name}'`).join(', ');
-  const error = `Input from hook ${names} for tool '${failure.toolName}' was refused: ${why}`;
+  const names = hooks.length > 0 ? `hook ${hooks.map((name) => `'${name}'`).join(', ')}` : 'a hook changing the arguments in place';
+  const error = `Input from ${names} for tool '${failure.toolName}' was refused: ${why}`;
   return { ...failure, error, result: { ...(failure.result as object), message: error, hook: hooks.at(-1) } };
 }
 

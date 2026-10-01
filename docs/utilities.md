@@ -1,7 +1,7 @@
 # Utilities
 
 Supporting helpers exported from the package root: encryption and hashing,
-file storage for attachments, and template rendering. None of them is needed
+and file storage for attachments. None of them is needed
 to build an agent; they are here for the apps around one.
 
 ## Encryption and hashing
@@ -38,14 +38,4 @@ const storage = new StorageService('user-123', 'attachments', fs, path);
 await storage.saveAttachment(file, 'document.pdf');
 const buffer = storage.readAttachment('document.pdf');
 storage.deleteAttachment('document.pdf');
-```
-
-## Templates
-
-```ts
-import { renderTemplate } from '@loushy/build-ai-agent';
-
-const template = 'Hello {{ name }}! You have {{ count }} messages.';
-const result = renderTemplate(template, { name: 'Alice', count: 5 });
-// "Hello Alice! You have 5 messages."
 ```

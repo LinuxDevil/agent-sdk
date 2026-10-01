@@ -54,12 +54,11 @@ export async function resumeSubagentCall(
 ): Promise<{ message: Message } | { paused: ExecutionResult }> {
   const { executeOptions } = ctx;
   // The `task` tool is per run: rebuild it from the same `subagents` option.
-  const { toolRegistry } = await withSubagents(
-    ctx.snapshot.agent,
-    ctx.toolRegistry,
-    executeOptions.subagents,
-    executeOptions.maxSubagentDepth
-  );
+  // LOU-Y6: under the paused run's sessionId, so the child's transcript is saved where the lead finds it.
+  const { toolRegistry } = await withSubagents(ctx.snapshot.agent, ctx.toolRegistry, executeOptions.subagents, {
+    maxSubagentDepth: executeOptions.maxSubagentDepth,
+    sessionId: ctx.snapshot.sessionId,
+  });
   const parentCall: PendingApproval = {
     ...ctx.snapshot.pendingToolCall,
     toolCallId: suspension.toolCallId,
@@ -85,7 +84,7 @@ export async function resumeSubagentCall(
 async function pauseAgain(ctx: ResumeContext, suspension: SubagentSuspension): Promise<ExecutionResult> {
   const { snapshot, messages } = ctx;
   const { usage } = ctx;
-  const record = suspensionRecord(snapshot, { messages, steps: snapshot.steps, usage }, suspension);
+  const record = suspensionRecord(snapshot, { messages, steps: snapshot.steps, usage, fingerprint: snapshot.agentFingerprint }, suspension);
   await ctx.approvalStore.save(record.pending, record.snapshot);
   // LOU-V14: a streamed resume reports the new pause like a fresh run does.
   runEventsOf(ctx.executeOptions as ExecuteOptions)?.approvalRequested(record.pending);

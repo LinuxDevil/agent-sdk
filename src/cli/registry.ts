@@ -8,6 +8,7 @@ import * as path from 'node:path';
 import { z } from 'zod';
 import { SDKError } from '../execution/errors';
 import { closestMatch } from '../utils/closestMatch';
+import { issueMessage, issuePath, type SafeParser } from '../utils/zodCompat';
 
 const FETCH_TIMEOUT_MS = 15_000;
 /** The most a registry document may be, in characters; each file and each item have their own caps in addWrite.ts. */
@@ -85,7 +86,7 @@ async function readSource(source: string, options: RegistryOptions): Promise<str
   return text;
 }
 
-async function readJson<T>(source: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, options: RegistryOptions): Promise<T> {
+async function readJson<T>(source: string, schema: SafeParser<T>, options: RegistryOptions): Promise<T> {
   const text = await readSource(source, options);
   let json: unknown;
   try {
@@ -95,7 +96,7 @@ async function readJson<T>(source: string, schema: z.ZodType<T, z.ZodTypeDef, un
   }
   const parsed = schema.safeParse(json);
   if (parsed.success) return parsed.data;
-  const problems = parsed.error.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`).join('; ');
+  const problems = parsed.error.issues.map((issue) => `${issuePath(issue)}: ${issueMessage(issue)}`).join('; ');
   throw new SDKError(`loushy add: ${source} is not a valid registry document: ${problems}`, 'LOUSHY_REGISTRY_INVALID');
 }
 

@@ -5,10 +5,7 @@
 
 export * from './AgentExecutor';
 export * from './DelegationTool';
-export * from './MemoryManager';
-export * from './ContextBuilder';
 export * from './errors';
-export * from './retry';
 export * from './ApprovalGate';
 export { InMemoryApprovalStore } from './InMemoryApprovalStore';
 export * from './resume';
@@ -69,11 +66,13 @@ export type {
   InputAppliedEvent,
   GuardrailTrippedEvent,
   GuardrailRewroteEvent,
+  AgentDriftEvent,
   RunDoneEvent,
 } from './agentEvents';
 export { BudgetExceededError } from './budget';
 export type { BudgetExceeded, BudgetLimit, BudgetSpent, RunLimits, SessionBudget } from './budget';
 export type { AgentRun } from './agentRun';
+export type { AgentDrift, AgentDriftMode, AgentFingerprint } from './agentFingerprint';
 export { InputQueue } from './inputQueue';
 export type { EnqueueResult, SteerResult } from './inputQueue';
 export { emptyRunUsage } from './runUsage';

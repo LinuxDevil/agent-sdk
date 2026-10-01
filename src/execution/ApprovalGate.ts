@@ -7,6 +7,7 @@ import { Message, ToolCall } from '../providers';
 import { AgentConfig } from '../types';
 import { StorageService } from '../storage';
 import type { RunUsage } from '../models/usage';
+import type { AgentFingerprint } from './agentFingerprint';
 
 /**
  * A tool call that is waiting on a human decision before it can execute.
@@ -118,6 +119,13 @@ export interface ExecutionSnapshot {
    * of this run.
    */
   subagent?: SubagentSuspension;
+  /**
+   * LOU-W9.2: the fingerprint of the agent that paused (for a sub-agent's
+   * nested snapshot, of that sub-agent). `resumeAfterApproval()` compares it
+   * with the resuming agent's (`onAgentDrift`). Absent on older snapshots,
+   * which resume without any check.
+   */
+  agentFingerprint?: AgentFingerprint;
 }
 
 /**
@@ -157,12 +165,7 @@ export interface ApprovalStore {
 /**
  * Default ApprovalStore backed by the SDK's StorageService.
  *
- * Note: MemoryManager.ts (referenced by the LOU-C3 ticket as the source of
- * the "lock then read/write JSON" pattern) actually stores memories through
- * a MemoryRepository/data-layer abstraction, not StorageService directly -
- * there is no existing lock+JSON-against-StorageService usage elsewhere in
- * this codebase to copy verbatim. This implementation instead follows the
- * pattern StorageService itself documents and tests: acquireLock ->
+ * Follows the pattern StorageService documents and tests: acquireLock ->
  * read/write*JSON*Attachment -> releaseLock.
  */
 export class StorageServiceApprovalStore implements ApprovalStore {

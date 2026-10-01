@@ -117,6 +117,31 @@ export function workerNodeShimPlugin(): Plugin {
 }
 
 /**
+ * The SDK's optional peers: the keys of `peerDependenciesMeta` in its own
+ * package.json whose `optional` is true. The SDK imports them lazily and
+ * reports a coded missing-peer error when a code path needs one that is not
+ * installed, so a build that bundles the SDK must leave them external.
+ */
+export function optionalPeers(): string[] {
+  const pkg = JSON.parse(fs.readFileSync(path.join(findSdkRoot(), 'package.json'), 'utf8')) as {
+    peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+  };
+  return Object.entries(pkg.peerDependenciesMeta ?? {})
+    .filter(([, meta]) => meta.optional)
+    .map(([name]) => name);
+}
+
+/** Optional peers of the SDK that `ai` (a hard dependency) imports statically, so they must stay in the bundle. */
+const ALWAYS_BUNDLED = new Set(['@opentelemetry/api']);
+
+/** tsup's `noExternal`/`external` for a build that bundles the SDK: everything inlined except the optional peers and their subpaths. */
+export function bundleExternals(): { noExternal: RegExp[]; external: string[] } {
+  const peers = optionalPeers().filter((name) => !ALWAYS_BUNDLED.has(name));
+  const escaped = peers.map((name) => name.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'));
+  return { noExternal: [new RegExp(`^(?!(?:${escaped.join('|')})(?:/|$))`)], external: peers };
+}
+
+/**
  * Loads tsup lazily: it is only needed by `loushy build`, so the SDK's
  * normal runtime entrypoints never import it.
  */

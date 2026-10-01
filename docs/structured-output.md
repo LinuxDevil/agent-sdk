@@ -25,6 +25,12 @@ if (result.object) {
 `result.object` is typed as `z.output<typeof schema>`, so zod defaults and
 transforms apply. `result.text` keeps the raw JSON text the model wrote.
 
+The schema can come from zod 3 or zod 4: it is rendered with `z.toJSONSchema`
+for zod 4 and with the `ai` SDK's converter for zod 3, and validated with the
+schema's own `safeParse` either way. The `output` option is typed with the
+installed `zod`'s `ZodType`, so a schema from the other major (`zod/v4` on zod
+3.25, `zod/v3` on zod 4) runs but needs a cast until that type is widened.
+
 ## How it works
 
 1. The system prompt gets an `## Output format` section asking for the final

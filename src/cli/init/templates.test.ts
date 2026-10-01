@@ -26,7 +26,7 @@ const ENV_KEYS: Record<string, string> = {
 const SCAFFOLD_PAIRINGS: Record<string, Record<string, string>> = {
   openai: { ai: '^7.0.0', '@ai-sdk/openai': '^4.0.0' },
   anthropic: { ai: '^7.0.0', '@ai-sdk/anthropic': '^4.0.0' },
-  openrouter: { ai: '^4.3.19', '@ai-sdk/openai': '^0.0.42' },
+  openrouter: { ai: '^7.0.0', '@ai-sdk/openai': '^4.0.0' },
   ollama: { ai: '^4.3.19', 'ollama-ai-provider': '^1.2.0' },
 };
 
@@ -54,6 +54,13 @@ describe('renderProject', () => {
     expect(JSON.parse(files['tsconfig.json']!).compilerOptions).toMatchObject({ strict: true, module: 'NodeNext' });
     expect(files['README.md']).toContain(ENV_KEYS[provider]);
     expect(files['README.md']).toContain('npm run dev');
+  });
+
+  it.each(PROVIDER_NAMES)('%s: zod pairs with the scaffolded ai major (LOU-D29)', (provider) => {
+    const sdk = { ...SDK, peerDependencies: { ...SDK.peerDependencies, zod: '^3.25.76 || ^4.0.0' } };
+    const pkg = JSON.parse(renderProject({ ...config(provider, 'minimal'), sdk })['package.json']!);
+    const zod3Only = SCAFFOLD_PAIRINGS[provider]!.ai === '^4.3.19';
+    expect(pkg.dependencies.zod).toBe(zod3Only ? '^3.25.76' : '^3.25.76 || ^4.0.0');
   });
 
   it.each(combos.filter(([, template]) => template !== 'yaml'))(

@@ -159,7 +159,7 @@ on each major today:
 | `ai` | `generate()` | `stream()` | Notes |
 | ---- | ------------ | ---------- | ----- |
 | v4 (`^4.3.19`) | Yes | Yes | Everything in these docs. |
-| v6 (`^6.0.0`), v7 (`^7.0.0`) | Yes, through a compatibility layer (LOU-D26) | Yes, through the same layer (LOU-D27) | Ollama needs zod 4 (below). |
+| v6 (`^6.0.0`), v7 (`^7.0.0`) | Yes, through a compatibility layer (LOU-D26) | Yes, through the same layer (LOU-D27) | Ollama needs zod 4 installed (below). |
 
 The peer ranges accept all three majors (LOU-D28d). Pair each with its
 provider packages:
@@ -174,11 +174,21 @@ The install hint of a missing provider package and `loushy doctor` name the
 version for the `ai` you have installed, and `loushy doctor` flags a mismatched
 pair (for example `ai` 7 with `@ai-sdk/openai` 1.x). `OllamaProvider` loads
 `ollama-ai-provider` on `ai` 4 and `ollama-ai-provider-v2` on `ai` 6/7; the v2
-package needs zod 4, which this SDK does not support yet, so use Ollama with
-`ai` 4 for now. `loushy init` scaffolds `ai@^7.0.0` with `@ai-sdk/*@^4.0.0` for
-OpenAI and Anthropic, and `ai@^4.3.19` for Ollama and OpenRouter (whose
-`@ai-sdk/openai` 2+ default, the Responses API, is not verified against
-OpenRouter yet).
+package peers on zod 4, which the SDK accepts since LOU-D29, so install zod 4
+with it (zod 3 projects use Ollama with `ai` 4). `loushy init` scaffolds `ai@^7.0.0` with `@ai-sdk/*@^4.0.0` for
+OpenAI, Anthropic and OpenRouter, and `ai@^4.3.19` for Ollama.
+
+OpenRouter uses `@ai-sdk/openai` against OpenRouter's base URL. From
+`@ai-sdk/openai` 2 on, the default `openai(modelId)` call targets the Responses
+API, which OpenRouter does not implement, so `OpenRouterProvider` asks for the
+Chat Completions model (`provider.chat(modelId)`) on every major; it works on
+`ai` 4, 6 and 7 with the pairing above.
+
+`OllamaProvider` takes the server's base URL (`baseURL`, or `OLLAMA_BASE_URL`
+for `resolveProvider()`) and appends `/api` to a bare host, as both Ollama
+packages expect it: `http://host:11434` and `http://host:11434/` become
+`http://host:11434/api`. A URL that already ends in `/api` (or `/api/`), or has
+any other path such as a reverse-proxy prefix, is used as it is.
 
 `generate()` and `stream()` pick the call shape from the installed `ai`
 module: when it exports `stepCountIs` (v5 and later), the request is sent in

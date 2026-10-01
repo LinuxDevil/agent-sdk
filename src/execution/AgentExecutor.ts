@@ -16,6 +16,7 @@ import { ToolRegistry } from '../tools';
 import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
 import { ApprovalStore, ExecutionSnapshot, PendingApproval, SubagentSuspension } from './ApprovalGate';
 import { CheckpointStore, ForkOptions, ForkResult } from './checkpoint';
+import type { AgentDriftMode } from './agentFingerprint';
 import { forkSession } from './fork';
 import type { CallUsage, RunUsage, StepUsage } from '../models/usage';
 import { mergeDelegatedUsage } from './runUsage';
@@ -60,6 +61,8 @@ import {
 } from './generateStep';
 import {
   AgentRunState,
+  checkResumedAgent,
+  ensureFingerprint,
   loadRunState,
   pushAbortedBatchResults,
   pushToolResult,
@@ -534,6 +537,20 @@ export interface ExecuteOptions extends PermissionOptions {
    * The run settles after it returns; an error it throws rejects the run.
    */
   onRunEnd?: (end: { result?: ExecutionResult; error?: unknown }) => void | Promise<void>;
+  /**
+   * LOU-W9.2: what to do when a checkpointed run is resumed (`sessionId`
+   * + `checkpointStore`, an unfinished run) or paused run is continued
+   * (`resumeAfterApproval()`) by an agent that differs from the one that saved
+   * it: a different model, tools with other names or input schemas, other
+   * instructions. `'warn'` (default) reports an `agent.drift` event and a
+   * `console.warn`, then continues; `'error'` rejects with
+   * `LOUSHY_AGENT_DRIFT` before any model call or tool runs, leaving the
+   * checkpoint untouched; `'ignore'` does nothing. A pending tool call whose
+   * tool no longer exists always rejects with `LOUSHY_RESUME_TOOL_MISSING`.
+   * Checkpoints and snapshots saved before this option existed are not checked.
+   * See docs/durable-execution.md#resuming-with-a-changed-agent.
+   */
+  onAgentDrift?: AgentDriftMode;
 }
 
 /**
@@ -630,13 +647,7 @@ export class AgentExecutor {
   /** Applies `skills` and `subagents`: their prompt blocks and their tools. */
   private static async withExtensions(options: ExecuteOptions): Promise<ExecuteOptions> {
     const skilled = withSkills(options.agent, options.toolRegistry, options.skills);
-    const extended = await withSubagents(
-      skilled.agent,
-      skilled.toolRegistry,
-      options.subagents,
-      options.maxSubagentDepth,
-      options.onRunEnd
-    );
+    const extended = await withSubagents(skilled.agent, skilled.toolRegistry, options.subagents, options);
     // LOU-V4: the output instruction goes last in the system prompt.
     const { agent } = extended;
     if (!options.output) return { ...options, ...extended };
@@ -728,6 +739,7 @@ export class AgentExecutor {
     const tools = buildTools(agent, toolRegistry);
 
     const state = await loadRunState(options);
+    await checkResumedAgent(options, state, tools);
     state.budget = budget;
     // LOU-X4: the new input is checked before anything else runs.
     const blocked = await checkInputGuardrails(options, [state.messages, state.queuedInput]);
@@ -1332,7 +1344,10 @@ export class AgentExecutor {
     const { approvalStore, onEvent } = options;
     // Approval first: a crash between the two writes then leaves a
     // resumable 'in-progress' checkpoint, never one naming a lost approval.
-    await approvalStore?.save(pending, snapshot);
+    if (approvalStore) {
+      snapshot.agentFingerprint ??= await ensureFingerprint(options, state);
+      await approvalStore.save(pending, snapshot);
+    }
     await saveStepCheckpoint(options, state, 'awaiting-approval', pending.id);
     runEventsOf(options)?.approvalRequested(pending);
 

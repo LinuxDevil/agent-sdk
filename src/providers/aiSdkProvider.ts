@@ -29,6 +29,7 @@ import {
   TextContentPart,
 } from './llm';
 import { textOf } from './content';
+import { schemaToJsonSchema } from '../utils/zodCompat';
 import { type AiSdkMessage, type AiSdkModule, compatGenerateText, streamCompat } from './aiSdkCompat';
 
 // The `ai` v4 request shapes built here, as our own structural types (LOU-D28a):
@@ -142,15 +143,24 @@ function toCoreMessages(messages: Message[], support: PartSupport): AiSdkMessage
 }
 
 /**
+ * A tool's `parameters` for `ai` v4, whose own converter only reads zod 3:
+ * a zod 4 / Standard JSON Schema goes as its JSON Schema (LOU-D29).
+ */
+function v4Parameters(ai: AiSdkModule, parameters: unknown): unknown {
+  const json = schemaToJsonSchema(parameters);
+  return json ? ai.jsonSchema(json as never) : parameters;
+}
+
+/**
  * Convert our tool definitions to 'ai' SDK tools, or `undefined` when there
  * are none (the 'ai' SDK treats an empty tool set differently from no tools).
  */
-function convertTools(toolDefs: ToolDefinition[] | undefined): Record<string, AiSdkTool> | undefined {
+function convertTools(ai: AiSdkModule, toolDefs: ToolDefinition[] | undefined): Record<string, AiSdkTool> | undefined {
   const tools: Record<string, AiSdkTool> = {};
   for (const toolDef of toolDefs ?? []) {
     tools[toolDef.function.name] = {
       description: toolDef.function.description,
-      parameters: toolDef.function.parameters,
+      parameters: v4Parameters(ai, toolDef.function.parameters),
       // A placeholder: the actual execution happens in AgentExecutor.
       execute: async () => null,
     };
@@ -251,7 +261,7 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
       frequencyPenalty: options.frequencyPenalty,
       presencePenalty: options.presencePenalty,
       seed: options.seed,
-      tools: convertTools(options.tools),
+      tools: convertTools(this.ai, options.tools),
       maxSteps: 1, // Single step - tool execution happens in AgentExecutor
       // The 'ai' SDK's own retries (its default is 2). createAgent() resolves
       // providers with 0 and retries in its withRetry() wrapper instead.

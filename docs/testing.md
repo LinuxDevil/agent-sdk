@@ -9,9 +9,6 @@ model. No network, no API keys, no flakiness.
 npm install --save-dev vitest
 ```
 
-The same subpath still exports the in-memory repository mocks
-(`MockAgentRepository`, `MockSessionRepository`, ...).
-
 ## A text reply
 
 A bare string is shorthand for `{ text }`.

@@ -8,6 +8,7 @@ import type { AddressInfo } from 'node:net';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { loadOptionalPeer } from '../../../providers/optionalPeer';
 import { checkWebhookAuth } from '../../../triggers/webhookAuth';
+import { ConfigurationError } from '../../../execution/errors';
 
 /** Options of the `{ type: 'http' }` transport. */
 export interface McpHttpTransportOptions {
@@ -120,8 +121,9 @@ async function handle(
 
 function assertAuth(auth: McpHttpTransportOptions['auth']): void {
   if (auth && !auth.token) {
-    throw new Error(
-      "serveMcp: transport.auth.token must be a non-empty string (e.g. auth: { type: 'bearer', token: process.env.MCP_TOKEN })."
+    throw new ConfigurationError(
+      "serveMcp: transport.auth.token must be a non-empty string (e.g. auth: { type: 'bearer', token: process.env.MCP_TOKEN }).",
+      'transport'
     );
   }
 }

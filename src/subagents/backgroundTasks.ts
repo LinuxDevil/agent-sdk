@@ -5,6 +5,7 @@
  */
 
 import { SubagentApprovalPause } from '../execution/subagentRuntime';
+import type { SessionStore } from '../session/sessionStore';
 import type { Subagents } from './types';
 
 /** State of a background sub-agent task. */
@@ -20,6 +21,15 @@ export interface SubagentOptions {
    * before the run resolves. Either way `result.backgroundTasks` reports them.
    */
   awaitBackgroundOnFinish?: boolean;
+  /**
+   * LOU-Y6: where the child conversations of `task` calls are kept, so the
+   * lead can resume or fork them by `taskId` in later runs of its session
+   * (also after a restart, with a durable store). Used by lead runs with a
+   * `sessionId` (checkpointed `send()` and session turns); other runs keep
+   * them in memory for the run. `createAgent({ store })` sets it to
+   * `store.sessions`.
+   */
+  sessions?: SessionStore;
 }
 
 /** What `agent_status` / `agent_await` report for a task. */
@@ -86,15 +96,16 @@ export class BackgroundTasks {
   constructor(private readonly maxConcurrent = DEFAULT_MAX_CONCURRENT) {}
 
   /**
-   * Queues `run` (the child run, resolving to the `task` result text) and
-   * starts it when a slot is free. Aborting `parentSignal` cancels every task.
+   * Queues `run` (the child run of task `taskId`, resolving to the `task`
+   * result text) and starts it when a slot is free. Aborting `parentSignal`
+   * cancels every task.
    */
-  start(agent: string, run: (signal: AbortSignal) => Promise<string>, parentSignal: AbortSignal | undefined): BackgroundTaskView {
+  start(taskId: string, agent: string, run: (signal: AbortSignal) => Promise<string>, parentSignal: AbortSignal | undefined): BackgroundTaskView {
     this.watch(parentSignal);
     const controller = new AbortController();
     let settle!: () => void;
     const task: BackgroundTask = {
-      taskId: `task_${this.tasks.size + 1}`,
+      taskId,
       agent,
       status: 'queued',
       elapsedMs: 0,
@@ -117,6 +128,12 @@ export class BackgroundTasks {
     if (parentSignal?.aborted) this.cancel(task.taskId);
     this.pump();
     return this.view(task);
+  }
+
+  /** Whether `taskId` is a background task still queued or running. */
+  isActive(taskId: string): boolean {
+    const task = this.tasks.get(taskId);
+    return task !== undefined && isActive(task);
   }
 
   /** One task, or all of them. */
