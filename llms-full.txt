@@ -3234,6 +3234,29 @@ await server.close();
   to require an `Authorization: Bearer` header; binding a non-loopback host
   without `auth` logs a warning.
 
+#### Annotations
+
+`tools/list` carries MCP annotations so clients can tell what a tool does. A tool
+that needs approval is advertised `readOnlyHint: false, destructiveHint: true`;
+state hints yourself with `annotations` (sent verbatim). A tool with no hints sends
+none, so a Loushy agent consuming this server keeps asking before it runs (see
+`approval` on `connectMcp()`); `readOnlyHint: true` runs without asking. A tool that
+needs approval is never advertised read-only. The built-in `read_file`, `list_dir`,
+`glob`, `grep`, `todo_read`, `current_date` and `day_name` tools are read-only.
+
+```ts
+import { defineTool } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+
+const lookupOrder = defineTool({
+  name: 'lookup_order',
+  description: 'Look up an order',
+  input: z.object({ id: z.string() }),
+  annotations: { readOnlyHint: true, destructiveHint: false, title: 'Look up order' },
+  execute: ({ id }) => ({ id, status: 'shipped' }),
+});
+```
+
 From the command line, `loushy mcp` serves an agent spec file (stdio by default):
 
 ```sh
