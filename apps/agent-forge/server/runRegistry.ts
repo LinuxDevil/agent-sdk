@@ -22,7 +22,12 @@ import {
   type Message,
   resumeAfterApproval,
   emptyRunUsage,
+  compareTrajectories,
+  getCheckpointHistory,
   type AgentSpec,
+  type CheckpointHistoryEntry,
+  type ForkPatch,
+  type TrajectoryComparison,
 } from '@loushy/build-ai-agent';
 import { buildAgentFromSpec, extractFlowFromSpec } from './buildAgent';
 import { withAbortSignal, RunAbortedError } from './abortableProvider';
@@ -43,6 +48,7 @@ import type {
   ChatStatePayload,
   ChatSessionMeta,
   ChatSessionRecord,
+  RunHistoryStep,
 } from '../shared/wireTypes';
 
 interface RunEntry {
@@ -146,6 +152,22 @@ function toSdkMessage(m: ChatMessage): Message {
     toolCallId: m.toolCallId,
     toolName: m.toolName,
     toolCalls: m.toolCalls,
+  };
+}
+
+/** LOU-D45: a history entry as the History panel lists it. */
+function toHistoryStep({ step, status, savedAt, checkpoint }: CheckpointHistoryEntry): RunHistoryStep {
+  const call = checkpoint.stepUsage?.filter((usage) => usage.step === step).at(-1);
+  // The step's model turn is the transcript's last assistant message.
+  const toolCalls = compareTrajectories(checkpoint, []).a.at(-1)?.tools ?? [];
+  return {
+    step,
+    status,
+    savedAt,
+    // checkpoint.finishReason is the previous step's while this one's tool calls run.
+    finishReason: toolCalls.length > 0 ? 'tool_calls' : checkpoint.finishReason,
+    toolCalls,
+    ...(call && { tokens: call.usage.totalTokens, costUsd: call.costUsd }),
   };
 }
 
@@ -466,7 +488,7 @@ export class RunManager extends EventEmitter {
   private async launch(
     agentId: string,
     input: string | Message[],
-    spec: AgentSpec | undefined,
+    spec?: AgentSpec,
     options: { skipSystemPromptInjection?: boolean } = {}
   ): Promise<void> {
     const existing = this.entries.get(agentId);
@@ -745,6 +767,46 @@ export class RunManager extends EventEmitter {
     )
       .then((result) => this.handleRunSettled(agentId, result))
       .catch((error: unknown) => this.handleRunFailed(agentId, error));
+  }
+
+  /**
+   * LOU-D45: the steps of run `runId`'s latest execution (a run id is a
+   * checkpoint session id: the agent id, or a fork's id), oldest first, each
+   * the newest checkpoint saved at that step - the one fork() forks from.
+   * Undefined when the run has no history.
+   */
+  async history(runId: string): Promise<RunHistoryStep[] | undefined> {
+    const entries = (await getCheckpointHistory(this.opts.checkpointStore, runId)) ?? [];
+    const rows: CheckpointHistoryEntry[] = [];
+    for (const entry of entries) {
+      const last = rows.at(-1);
+      if (last && entry.step > last.step) break; // an earlier execution of the conversation
+      if (last?.step !== entry.step) rows.push(entry);
+    }
+    return rows.length > 0 ? rows.reverse().map(toHistoryStep) : undefined;
+  }
+
+  /**
+   * LOU-D45: forks run `runId` at `fromStep` (`AgentExecutor.fork()`, with
+   * `patch`) and starts the fork as a run of its own, under the returned id,
+   * with the source run's spec - same lifecycle, status and WS stream as any
+   * other run (`/agents/<id>/status`, `WS /agents/<id>/stream`).
+   */
+  async fork(runId: string, fromStep: number, patch: ForkPatch): Promise<string> {
+    const spec = this.entries.get(runId)?.lastSpec ?? (await this.opts.loadSpec(runId));
+    if (!spec) throw new AgentNotFoundError(`No agent spec for run '${runId}'`);
+    const { checkpointStore } = this.opts;
+    const fork = await AgentExecutor.fork({ sessionId: runId, fromStep, checkpointStore, patch });
+    // Not via launch()'s `spec` argument, which would save the fork as an agent.
+    this.setEntry(fork.sessionId, { lastSpec: spec });
+    await this.launch(fork.sessionId, []);
+    return fork.sessionId;
+  }
+
+  /** LOU-D45: `compareTrajectories()` of two runs' latest checkpoints, or undefined when either has none. */
+  async compare(a: string, b: string): Promise<TrajectoryComparison | undefined> {
+    const [left, right] = await Promise.all([this.opts.checkpointStore.load(a), this.opts.checkpointStore.load(b)]);
+    return left && right ? compareTrajectories(left, right) : undefined;
   }
 
   /**
