@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import type { ToolExecutionOptions } from 'ai';
 import { AgentExecutor } from './AgentExecutor';
 import { resumeAfterApproval } from './resume';
 import type { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGate';
@@ -7,14 +6,14 @@ import { executeToolWithSandboxGuard } from './sandboxGuard';
 import { buildToolRunContext } from './toolRunContext';
 import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
-import { AgentType } from '../types';
+import { AgentType, type ToolExecutionContext } from '../types';
 import type { SandboxAdapter } from '../security/sandboxCore';
 import { NoopSandbox } from '../security/sandboxCore';
 import { mockModel } from '../testing';
 
 /** What a tool saw as its execute context. */
 interface Seen {
-  ctx: ToolExecutionOptions;
+  ctx: ToolExecutionContext;
 }
 
 function inMemoryApprovalStore(): ApprovalStore {
@@ -38,20 +37,20 @@ const sandbox: SandboxAdapter = {
 };
 
 function register(registry: ToolRegistry, seen: Partial<Seen>, flags: { sandboxed: boolean; approval: boolean }) {
-  const record = (ctx: ToolExecutionOptions) => {
+  const record = (ctx: ToolExecutionContext) => {
     seen.ctx = ctx;
     return { ok: true };
   };
   registry.register('probe', {
     displayName: 'Probe',
-    tool: { description: 'probe', parameters: {}, execute: async (_a: unknown, ctx: ToolExecutionOptions) => record(ctx) } as never,
+    tool: { description: 'probe', parameters: {}, execute: async (_a: unknown, ctx: ToolExecutionContext) => record(ctx) } as never,
     needsApproval: flags.approval,
     ...(flags.sandboxed && {
       requiresSandbox: true,
       // Records the third argument, as a tool author would read it.
-      sandboxExecute: async (_args: unknown, sb: SandboxAdapter, ctx?: ToolExecutionOptions) => {
+      sandboxExecute: async (_args: unknown, sb: SandboxAdapter, ctx?: ToolExecutionContext) => {
         expect(sb).toBe(sandbox);
-        return record(ctx as ToolExecutionOptions);
+        return record(ctx as ToolExecutionContext);
       },
     }),
   });
