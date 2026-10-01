@@ -179,6 +179,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md) | An agent as a folder: layout, mapping to `createAgent()`, security |
 | [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md) | Prune old tool results with `createCompactionHook()` |
 | [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) | `defineChannel()`, `mountChannels()`, `httpChannel()`, `webhookChannel()`: surfaces mapped to sessions, replies and approvals sent back |
+| [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md) | `defineSchedule()` cron schedules, `schedules/` in an agent directory, `startSchedules()` |
 | [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md) | Fixed multi-step workflows with `FlowBuilder` and `FlowExecutor` |
 | [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md) | File system and shell tools for coding agents, and their security model |
 | [Guardrails and sandboxing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md) | `runGuardrails()`, built-in guardrails, `requiresSandbox`, `SubprocessSandbox` |
@@ -1487,6 +1488,7 @@ my-agent/
   tools/*.ts | *.js                                # defineTool() tools
   skills/                                          # same layouts as loadSkills()
   subagents/<name>/                                # nested agent directories
+  schedules/*.ts|js                                # defineSchedule() cron schedules (see schedules.md)
 ```
 
 Only one config file may exist. Files inside `tools/` and the entries of
@@ -4312,6 +4314,19 @@ again for a new run. See [Streaming](https://github.com/LinuxDevil/agent-sdk/blo
 
 **Example:** two `for await (const event of run)` loops over the same `run`.
 
+## Schedules
+
+### LOUSHY_SCHEDULE_INVALID
+
+**Means:** `defineSchedule()` was given an invalid definition: a cron expression
+that does not parse (the message names the field), or not exactly one of
+`prompt` and `run`. Agent directories hit this while loading `schedules/`.
+
+**Fix:** correct the expression or give the schedule one of `prompt` / `run`.
+See [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md).
+
+**Example:** `defineSchedule({ cron: '61 * * * *', prompt: 'hi' })`.
+
 ## General
 
 ### LOUSHY_GENERIC_ERROR
@@ -5741,6 +5756,81 @@ console.log(state.status, state.messages.at(-1)?.text, state.usage?.totalTokens)
 `parseEventStream()` skips blank lines, SSE comments and `event:`/`id:`
 fields, and any line that is not a known event, so it reads both framings.
 Breaking out of its loop cancels the response body.
+
+# Schedules
+
+Source: docs/schedules.md
+
+A **schedule** runs the agent on a cron expression, with nobody asking: a
+morning summary, a nightly cleanup. `defineSchedule()` declares one, an
+[agent directory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md) picks them up from `schedules/`, and
+`startSchedules()` (or the node server) runs them in process.
+
+## Define a schedule
+
+Give a cron expression and exactly one of `prompt` (text sent to the agent as a
+new turn) or `run` (your own function).
+
+```ts
+import { createAgent, createMockProvider, defineSchedule, startSchedules } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ instructions: 'You write reports.', provider: createMockProvider() });
+
+const morning = defineSchedule({ cron: '0 9 * * MON-FRI', timezone: 'Europe/Paris', prompt: 'Summarise yesterday.' });
+const cleanup = defineSchedule({
+  name: 'cleanup',
+  cron: '@daily',
+  run: async ({ agent, firedAt }) => {
+    await agent.send(`Clean up, as of ${firedAt.toISOString()}.`);
+  },
+});
+
+const running = startSchedules(agent, [morning, cleanup]);
+// later, on shutdown:
+running.stop();
+```
+
+- `cron`: five fields (`minute hour day-of-month month day-of-week`) or
+  `@hourly`, `@daily`, `@weekly`, `@monthly`; evaluated in `timezone` (an IANA
+  name, default the machine's zone). An invalid expression, or both/neither of
+  `prompt` and `run`, throws `LOUSHY_SCHEDULE_INVALID` from `defineSchedule()`,
+  not at the first fire. See [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#loushy_schedule_invalid).
+- `run` receives `{ agent, firedAt, name }`.
+
+`startSchedules(agent, schedules, { now?, setTimer?, onError? })` keeps one
+timer per schedule. A run that throws goes to `onError` (default: `console.error`)
+and never stops the other schedules. A schedule does not overlap itself: if the
+previous fire is still running, the next one is skipped and reported to
+`onError`. Fires missed while the process was suspended are skipped, not
+replayed. `now` and `setTimer` are injectable so tests never sleep.
+
+## In an agent directory
+
+```text
+my-agent/
+  instructions.md
+  schedules/
+    daily-report.ts    # export default defineSchedule({ cron: '0 9 * * *', prompt: '...' })
+    nightly.ts         # name defaults to the file name ("nightly") unless the schedule sets `name`
+```
+
+`resolveAgentDir()` returns them as `schedules` (and their names in
+`manifest.schedules`); `loadAgentDir()` does not start them. A directory without
+`schedules/` loads exactly as before.
+
+```ts
+import { createAgent, resolveAgentDir, startSchedules } from '@loushy/build-ai-agent';
+
+const { config, schedules } = await resolveAgentDir('./my-agent');
+const agent = createAgent(config);
+const running = startSchedules(agent, schedules);
+```
+
+## On the node server
+
+`createDeployedServer(agent, { schedules })` (the server of the `node-server`
+and `docker` targets) starts the schedules when it listens and stops them when it
+closes. The Cloudflare Worker target does not run schedules yet.
 
 # Sessions
 

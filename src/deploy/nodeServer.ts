@@ -13,6 +13,8 @@ import * as http from 'node:http';
 import type { SimpleAgent } from '../createAgent';
 import { relayFetch } from '../server/chatRoutes';
 import { serveFetch } from '../server/fetchRoutes';
+import { startSchedules, type StartSchedulesOptions } from '../schedules/startSchedules';
+import type { DefinedSchedule } from '../schedules/defineSchedule';
 import { specToAgent } from '../spec/specToAgent';
 import type { AgentSpec } from '../spec/schema';
 import { memoryStore, type AgentStore } from '../storage/agentStore';
@@ -28,6 +30,10 @@ export interface DeployedServerOptions {
   auth?: { token?: string };
   /** Defaults to `process.env`. */
   env?: NodeJS.ProcessEnv;
+  /** Schedules of the served agent directory (`resolveAgentDir()`'s `schedules`): started when the server listens, stopped when it closes. */
+  schedules?: readonly DefinedSchedule[];
+  /** Overrides for the scheduler (clock, timers, error sink); mainly for tests. */
+  scheduler?: StartSchedulesOptions;
 }
 
 /** The store `LOUSHY_STORE` names: `memory` (the default, lost on restart) or `sqlite:<path>` (Node >= 22). */
@@ -62,5 +68,10 @@ export function createDeployedServer(agent: SimpleAgent, options: DeployedServer
   const server = http.createServer(
     (req, res) => void relayFetch(req, res, (request) => serveFetch(request, chat, token)).catch((error) => replyUnhandled(res, error))
   );
+  if (options.schedules?.length) {
+    let running: ReturnType<typeof startSchedules> | undefined;
+    server.on('listening', () => (running = startSchedules(agent, options.schedules ?? [], options.scheduler)));
+    server.on('close', () => running?.stop());
+  }
   return { server, authenticated: token !== undefined };
 }

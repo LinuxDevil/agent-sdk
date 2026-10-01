@@ -29,6 +29,7 @@ export const ERROR_CODES = {
   LOUSHY_SPEC_INVALID: 'Fix the spec fields named in the message (each is shown as its path and the problem).',
   LOUSHY_SPEC_UNKNOWN_FIELD: 'Rename the field to the suggested spec field, or remove it.',
   LOUSHY_SPEC_UNSUPPORTED_FORMAT: 'Save the spec as .yaml, .yml or .json.',
+  LOUSHY_SCHEDULE_INVALID: 'Fix the cron expression named in the message, and give the schedule exactly one of `prompt` or `run`.',
   LOUSHY_TOOL_NOT_FOUND: 'Use one of the tool names listed in the message, or register the tool yourself.',
   LOUSHY_TOOL_NEEDS_CREDENTIALS: 'Build the agent with createAgent() and pass the configured tool.',
   LOUSHY_TOOL_EXECUTION_FAILED: "Look at the tool's own error (the `cause`) and fix the tool or its input.",

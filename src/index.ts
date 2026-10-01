@@ -77,6 +77,9 @@ export * from './subagents';
 // Filesystem agent loader: an agent as a directory (LOU-Y5)
 export * from './agentDir';
 
+// Schedules: defineSchedule() and startSchedules() (LOU-P8)
+export * from './schedules';
+
 // Channels: inbound surfaces mapped to sessions, replies back to the surface (LOU-P7)
 export * from './channels';
 

@@ -332,6 +332,19 @@ again for a new run. See [Streaming](./streaming.md).
 
 **Example:** two `for await (const event of run)` loops over the same `run`.
 
+## Schedules
+
+### LOUSHY_SCHEDULE_INVALID
+
+**Means:** `defineSchedule()` was given an invalid definition: a cron expression
+that does not parse (the message names the field), or not exactly one of
+`prompt` and `run`. Agent directories hit this while loading `schedules/`.
+
+**Fix:** correct the expression or give the schedule one of `prompt` / `run`.
+See [Schedules](./schedules.md).
+
+**Example:** `defineSchedule({ cron: '61 * * * *', prompt: 'hi' })`.
+
 ## General
 
 ### LOUSHY_GENERIC_ERROR
