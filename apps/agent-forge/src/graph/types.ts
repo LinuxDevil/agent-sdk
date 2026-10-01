@@ -38,6 +38,8 @@
  *    single fixed anchor node by `specToGraph()`.
  */
 
+import type { AgentSpec } from '@loushy/build-ai-agent';
+
 export type AgentGraphNodeType = 'trigger' | 'llm' | 'tool' | 'approval' | 'output' | 'router';
 
 export interface GraphPosition {
@@ -109,7 +111,7 @@ export interface ToolNodeData {
 
 /** Kept verbatim from `AgentSpecPolicy` so unknown/passthrough fields round-trip. */
 export interface ApprovalNodeData {
-  policy: { requiresApproval?: boolean; guardrails?: string[]; [key: string]: unknown };
+  policy: NonNullable<AgentSpec['policy']>;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- output node carries no AgentSpec data (see file header)
