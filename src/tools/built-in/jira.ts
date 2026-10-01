@@ -18,10 +18,9 @@
  * ```
  */
 
-import { tool } from 'ai';
 import { z } from 'zod';
 import { ToolRegistry } from '../ToolRegistry';
-import type { DefinedTool } from '../defineTool';
+import { defineTool, type DefinedTool } from '../defineTool';
 import { ToolDescriptor } from '../../types';
 import { routeFetchThroughSandbox } from './sandboxFetch';
 import { assertOk } from './assertOk';
@@ -109,11 +108,11 @@ export class JiraTools extends ToolRegistry {
   public register(tool: DefinedTool): void;
   public register(name: string, descriptor: ToolDescriptor): void;
   public register(...args: [DefinedTool] | [string, ToolDescriptor]): void {
+    routeFetchThroughSandbox(args.length === 1 ? args[0] : args[1]);
     if (args.length === 1) {
       super.register(args[0]);
       return;
     }
-    routeFetchThroughSandbox(args[1]);
     super.register(args[0], args[1]);
   }
 
@@ -145,11 +144,12 @@ export class JiraTools extends ToolRegistry {
   // ========================================================================
 
   private registerGetTicket() {
-    this.register('jira_get_ticket', {
-      displayName: 'Get Jira Ticket',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'jira_get_ticket',
+        displayName: 'Get Jira Ticket',
         description: 'Get detailed information about a Jira ticket including all fields, comments, and metadata',
-        parameters: z.object({
+        input: z.object({
           ticketKey: z.string().describe('The Jira ticket key (e.g., PROJ-123)'),
           expand: z.array(z.enum(['renderedFields', 'names', 'schema', 'transitions', 'operations', 'editmeta', 'changelog', 'versionedRepresentations']))
             .optional()
@@ -174,16 +174,17 @@ export class JiraTools extends ToolRegistry {
 
           return JSON.stringify(ticket, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerSearchTickets() {
-    this.register('jira_search_tickets', {
-      displayName: 'Search Jira Tickets',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'jira_search_tickets',
+        displayName: 'Search Jira Tickets',
         description: 'Search for Jira tickets using JQL (Jira Query Language). Returns matching tickets.',
-        parameters: z.object({
+        input: z.object({
           jql: z.string().describe('JQL query string (e.g., "project = PROJ AND status = Open")'),
           maxResults: z.number().optional().default(50).describe('Maximum number of results to return'),
           startAt: z.number().optional().default(0).describe('Starting index for pagination'),
@@ -222,16 +223,17 @@ export class JiraTools extends ToolRegistry {
             issues: tickets,
           }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerCreateTicket() {
-    this.register('jira_create_ticket', {
-      displayName: 'Create Jira Ticket',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'jira_create_ticket',
+        displayName: 'Create Jira Ticket',
         description: 'Create a new Jira ticket/issue',
-        parameters: z.object({
+        input: z.object({
           projectKey: z.string().describe('Project key (e.g., PROJ)'),
           issueType: z.string().describe('Issue type (e.g., Task, Bug, Story)'),
           summary: z.string().describe('Issue summary/title'),
@@ -276,16 +278,17 @@ export class JiraTools extends ToolRegistry {
             self: data.self,
           }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerUpdateTicket() {
-    this.register('jira_update_ticket', {
-      displayName: 'Update Jira Ticket',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'jira_update_ticket',
+        displayName: 'Update Jira Ticket',
         description: 'Update fields of an existing Jira ticket',
-        parameters: z.object({
+        input: z.object({
           ticketKey: z.string().describe('Ticket key to update'),
           summary: z.string().optional().describe('New summary'),
           description: z.string().optional().describe('New description'),
@@ -321,16 +324,17 @@ export class JiraTools extends ToolRegistry {
 
           return JSON.stringify({ success: true, ticketKey }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerDeleteTicket() {
-    this.register('jira_delete_ticket', {
-      displayName: 'Delete Jira Ticket',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'jira_delete_ticket',
+        displayName: 'Delete Jira Ticket',
         description: 'Delete a Jira ticket permanently',
-        parameters: z.object({
+        input: z.object({
           ticketKey: z.string().describe('Ticket key to delete'),
         }),
         execute: async ({ ticketKey }) => {
@@ -349,16 +353,17 @@ export class JiraTools extends ToolRegistry {
 
           return JSON.stringify({ success: true, ticketKey, message: 'Ticket deleted successfully' });
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerCreateSubtask() {
-    this.register('jira_create_subtask', {
-      displayName: 'Create Jira Subtask',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'jira_create_subtask',
+        displayName: 'Create Jira Subtask',
         description: 'Create a subtask under a parent Jira ticket',
-        parameters: z.object({
+        input: z.object({
           parentKey: z.string().describe('Parent ticket key'),
           summary: z.string().describe('Subtask summary'),
           description: z.string().describe('Detailed description'),
@@ -396,16 +401,17 @@ export class JiraTools extends ToolRegistry {
           const data = await response.json();
           return JSON.stringify({ key: data.key, id: data.id }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerLinkIssues() {
-    this.register('jira_link_issues', {
-      displayName: 'Link Jira Issues',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'jira_link_issues',
+        displayName: 'Link Jira Issues',
         description: 'Create a link between two Jira issues',
-        parameters: z.object({
+        input: z.object({
           inwardIssue: z.string().describe('Inward issue key'),
           outwardIssue: z.string().describe('Outward issue key'),
           linkType: z.string().describe('Link type (e.g., "Blocks", "Relates to", "Duplicates")'),
@@ -444,8 +450,8 @@ export class JiraTools extends ToolRegistry {
             linkType,
           });
         },
-      }),
-    });
+      })
+    );
   }
 
   // ========================================================================
@@ -453,11 +459,12 @@ export class JiraTools extends ToolRegistry {
   // ========================================================================
 
   private registerAddComment() {
-    this.register('jira_add_comment', {
-      displayName: 'Add Jira Comment',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'jira_add_comment',
+        displayName: 'Add Jira Comment',
         description: 'Add a comment to a Jira ticket',
-        parameters: z.object({
+        input: z.object({
           ticketKey: z.string().describe('Ticket key'),
           comment: z.string().describe('Comment text'),
         }),
@@ -486,16 +493,17 @@ export class JiraTools extends ToolRegistry {
             author: data.author.displayName,
           });
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerGetComments() {
-    this.register('jira_get_comments', {
-      displayName: 'Get Jira Comments',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'jira_get_comments',
+        displayName: 'Get Jira Comments',
         description: 'Get all comments for a Jira ticket',
-        parameters: z.object({
+        input: z.object({
           ticketKey: z.string().describe('Ticket key'),
           maxResults: z.number().optional().default(50).describe('Maximum number of comments to return'),
           startAt: z.number().optional().default(0).describe('Starting index for pagination'),
@@ -530,16 +538,17 @@ export class JiraTools extends ToolRegistry {
             comments,
           }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerUpdateComment() {
-    this.register('jira_update_comment', {
-      displayName: 'Update Jira Comment',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'jira_update_comment',
+        displayName: 'Update Jira Comment',
         description: 'Update an existing comment on a Jira ticket',
-        parameters: z.object({
+        input: z.object({
           ticketKey: z.string().describe('Ticket key'),
           commentId: z.string().describe('Comment ID to update'),
           newComment: z.string().describe('New comment text'),
@@ -568,16 +577,17 @@ export class JiraTools extends ToolRegistry {
             updated: data.updated,
           });
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerDeleteComment() {
-    this.register('jira_delete_comment', {
-      displayName: 'Delete Jira Comment',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'jira_delete_comment',
+        displayName: 'Delete Jira Comment',
         description: 'Delete a comment from a Jira ticket',
-        parameters: z.object({
+        input: z.object({
           ticketKey: z.string().describe('Ticket key'),
           commentId: z.string().describe('Comment ID to delete'),
         }),
@@ -597,8 +607,8 @@ export class JiraTools extends ToolRegistry {
 
           return JSON.stringify({ success: true, commentId });
         },
-      }),
-    });
+      })
+    );
   }
 
   // ========================================================================
@@ -606,11 +616,12 @@ export class JiraTools extends ToolRegistry {
   // ========================================================================
 
   private registerTransitionIssue() {
-    this.register('jira_transition_issue', {
-      displayName: 'Transition Jira Issue',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'jira_transition_issue',
+        displayName: 'Transition Jira Issue',
         description: 'Transition a Jira issue to a different status (e.g., In Progress, Done)',
-        parameters: z.object({
+        input: z.object({
           ticketKey: z.string().describe('Ticket key'),
           transitionId: z.string().describe('Transition ID (get from jira_get_transitions)'),
           comment: z.string().optional().describe('Optional comment for the transition'),
@@ -645,16 +656,17 @@ export class JiraTools extends ToolRegistry {
 
           return JSON.stringify({ success: true, ticketKey, transitionId });
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerGetTransitions() {
-    this.register('jira_get_transitions', {
-      displayName: 'Get Jira Transitions',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'jira_get_transitions',
+        displayName: 'Get Jira Transitions',
         description: 'Get available transitions for a Jira issue (what statuses it can move to)',
-        parameters: z.object({
+        input: z.object({
           ticketKey: z.string().describe('Ticket key'),
         }),
         execute: async ({ ticketKey }) => {
@@ -683,8 +695,8 @@ export class JiraTools extends ToolRegistry {
 
           return JSON.stringify({ transitions }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   // ========================================================================
@@ -692,11 +704,12 @@ export class JiraTools extends ToolRegistry {
   // ========================================================================
 
   private registerAssignIssue() {
-    this.register('jira_assign_issue', {
-      displayName: 'Assign Jira Issue',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'jira_assign_issue',
+        displayName: 'Assign Jira Issue',
         description: 'Assign a Jira issue to a user',
-        parameters: z.object({
+        input: z.object({
           ticketKey: z.string().describe('Ticket key'),
           accountId: z.string().describe('User account ID (use null or "-1" to unassign)'),
         }),
@@ -722,16 +735,17 @@ export class JiraTools extends ToolRegistry {
 
           return JSON.stringify({ success: true, ticketKey, assignee: accountId });
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerAddWatcher() {
-    this.register('jira_add_watcher', {
-      displayName: 'Add Jira Watcher',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'jira_add_watcher',
+        displayName: 'Add Jira Watcher',
         description: 'Add a watcher to a Jira issue',
-        parameters: z.object({
+        input: z.object({
           ticketKey: z.string().describe('Ticket key'),
           accountId: z.string().describe('User account ID to add as watcher'),
         }),
@@ -753,8 +767,8 @@ export class JiraTools extends ToolRegistry {
 
           return JSON.stringify({ success: true, ticketKey, watcher: accountId });
         },
-      }),
-    });
+      })
+    );
   }
 
   // ========================================================================
@@ -762,11 +776,12 @@ export class JiraTools extends ToolRegistry {
   // ========================================================================
 
   private registerGetIssueTypes() {
-    this.register('jira_get_issue_types', {
-      displayName: 'Get Jira Issue Types',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'jira_get_issue_types',
+        displayName: 'Get Jira Issue Types',
         description: 'Get all available issue types in Jira (e.g., Task, Bug, Story, Sub-task)',
-        parameters: z.object({
+        input: z.object({
           projectKey: z.string().optional().describe('Optional project key to filter issue types'),
         }),
         execute: async ({ projectKey }) => {
@@ -797,16 +812,17 @@ export class JiraTools extends ToolRegistry {
 
           return JSON.stringify({ issueTypes: types }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerGetProjects() {
-    this.register('jira_get_projects', {
-      displayName: 'Get Jira Projects',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'jira_get_projects',
+        displayName: 'Get Jira Projects',
         description: 'Get all accessible Jira projects',
-        parameters: z.object({
+        input: z.object({
           maxResults: z.number().optional().default(50).describe('Maximum number of projects to return'),
         }),
         execute: async ({ maxResults = 50 }) => {
@@ -833,8 +849,8 @@ export class JiraTools extends ToolRegistry {
 
           return JSON.stringify({ projects }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   // ========================================================================
@@ -842,11 +858,12 @@ export class JiraTools extends ToolRegistry {
   // ========================================================================
 
   private registerAddAttachment() {
-    this.register('jira_add_attachment', {
-      displayName: 'Add Jira Attachment',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'jira_add_attachment',
+        displayName: 'Add Jira Attachment',
         description: 'Add an attachment to a Jira issue',
-        parameters: z.object({
+        input: z.object({
           ticketKey: z.string().describe('Ticket key'),
           fileName: z.string().describe('Name of the file'),
           fileContent: z.string().describe('Base64 encoded file content'),
@@ -879,16 +896,17 @@ export class JiraTools extends ToolRegistry {
             size: data[0].size,
           });
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerAddWorklog() {
-    this.register('jira_add_worklog', {
-      displayName: 'Add Jira Worklog',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'jira_add_worklog',
+        displayName: 'Add Jira Worklog',
         description: 'Log time spent on a Jira issue',
-        parameters: z.object({
+        input: z.object({
           ticketKey: z.string().describe('Ticket key'),
           timeSpent: z.string().describe('Time spent (e.g., "3h 30m", "1d", "2w")'),
           comment: z.string().optional().describe('Optional worklog comment'),
@@ -929,16 +947,17 @@ export class JiraTools extends ToolRegistry {
             started: data.started,
           });
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerGetWorklogs() {
-    this.register('jira_get_worklogs', {
-      displayName: 'Get Jira Worklogs',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'jira_get_worklogs',
+        displayName: 'Get Jira Worklogs',
         description: 'Get all worklogs for a Jira issue',
-        parameters: z.object({
+        input: z.object({
           ticketKey: z.string().describe('Ticket key'),
         }),
         execute: async ({ ticketKey }) => {
@@ -966,8 +985,8 @@ export class JiraTools extends ToolRegistry {
 
           return JSON.stringify({ worklogs }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   // ========================================================================
