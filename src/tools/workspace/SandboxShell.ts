@@ -47,10 +47,10 @@ function joinCwd(base: string | undefined, sub: string | undefined): string | un
  * `cwd`. Commands get only the variables in `env` and the host variables
  * named in `inheritEnv` - never the rest of the host environment.
  *
- * Limitation: `SandboxAdapter` has no cancellation hook, so an aborted run
- * stops waiting at once (the result says `aborted: true`) but the container
- * keeps running until its timeout kills it. The shell tool always passes a
- * timeout, so it is bounded.
+ * Cancellation: the abort signal goes to the adapter, so `SubprocessSandbox`
+ * kills and removes the container, and the result says `aborted: true`. An
+ * adapter that ignores the signal still stops being waited on at once, but
+ * its command runs on until the timeout the shell tool always passes.
  *
  * @example
  * ```ts
@@ -79,10 +79,12 @@ export class SandboxShell implements ShellProvider {
         env: { ...this.env, ...options.env },
         inheritEnv: this.options.inheritEnv === true,
         timeoutMs: options.timeoutMs,
+        signal: options.signal,
       })
       .then(
         (result): ShellExecResult => ({ ...result, timedOut: false }),
         (error: unknown): ShellExecResult => {
+          if (options.signal?.aborted && (error as Error | undefined)?.name === 'AbortError') return aborted;
           if (options.timeoutMs !== undefined && isTimeoutError(error)) {
             return { stdout: '', stderr: '', exitCode: null, timedOut: true };
           }
