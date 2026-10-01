@@ -5,7 +5,6 @@
  * `recordReplay` VCR provider.
  */
 
-export * from '../data/mocks';
 export { mockModel } from './mockModel';
 export type {
   DeepReadonly,

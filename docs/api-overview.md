@@ -207,8 +207,8 @@ How it behaves:
 - An aborted run **resolves** (it does not reject) with
   `finishReason: 'aborted'` and the messages and steps so far. A rejection
   caused by the abort, such as an `AbortError`, is not treated as a failure:
-  it is not retried (including by `retry()`) and is not compacted into a
-  provider error.
+  it is not retried by the provider retry and fallback wrappers and is not
+  compacted into a provider error.
 - `onEvent` receives an `abort` event (its `abortReason` is the signal's
   `reason`), then `finish` with `finishReason: 'aborted'`.
 - With `sessionId` + `checkpointStore`, the state is checkpointed. Calling
@@ -336,7 +336,7 @@ Exported from `@loushy/build-ai-agent/testing` (see [Testing agents](testing.md)
 | Export                | Description                                                                              |
 | --------------------- | ---------------------------------------------------------------------------------------- |
 | `mockModel(script)`   | Scripted, deterministic `LLMProvider` that records every request (`calls`, `lastCall`, `reset()`, `assertExhausted()`). |
-| `Mock*Repository`     | In-memory repository mocks (`MockAgentRepository`, `MockSessionRepository`, ...).        |
+| `recordReplay(options)` | Record/replay VCR provider that serves model responses from a cassette. |
 
 ## Tools
 
@@ -629,8 +629,8 @@ See [Context compaction](./compaction.md).
   const hooks = new HookRegistry();
   hooks.register(redactPii);
   ```
-- `EncryptionUtils`, `sha256`, `StorageService`, `renderTemplate`,
-  `MemoryManager` - supporting utilities; see [Utilities](./utilities.md).
+- `EncryptionUtils`, `sha256`, `StorageService` - supporting utilities; see
+  [Utilities](./utilities.md).
 
 ### Hook outcomes
 
