@@ -72,7 +72,7 @@ describe('NodeServerAdapter', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-node-server-auth-'));
     const outDir = path.join(dir, 'out');
     await NodeServerAdapter.scaffold(writeSpec(dir, SPEC), outDir, { auth: { token: 'build-time-token' } });
-    expect(fs.readFileSync(path.join(outDir, 'server.ts'), 'utf8')).toContain('createDeployedServer(agent, {"auth":{"token":"build-time-token"}})');
+    expect(fs.readFileSync(path.join(outDir, 'server.ts'), 'utf8')).toContain('createDeployedServer(agent, { ...{"auth":{"token":"build-time-token"}}, schedules })');
   });
 
   describe('scaffold + build + run (real subprocess)', () => {
@@ -88,7 +88,7 @@ describe('NodeServerAdapter', () => {
 
     it('scaffolds server.ts, agent.config.js and package.json, and builds dist/server.js', () => {
       const server = fs.readFileSync(path.join(outDir, 'server.ts'), 'utf8');
-      expect(server).toContain('createDeployedServer(agent, {})');
+      expect(server).toContain('createDeployedServer(agent, { ...{}, schedules })');
       expect(server).toContain("'127.0.0.1'");
       expect(fs.readFileSync(path.join(outDir, 'agent.config.js'), 'utf8')).toContain('deploy-test-agent');
       expect(JSON.parse(fs.readFileSync(path.join(outDir, 'package.json'), 'utf8')).scripts.start).toBe(
