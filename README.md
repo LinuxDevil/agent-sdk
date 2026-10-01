@@ -248,16 +248,15 @@ Flows orchestrate multi-step workflows within a single agent:
 import { FlowBuilder, FlowExecutor, type EditorStep } from '@loushy/build-ai-agent';
 
 // FlowBuilder is a metadata builder: setCode/setName/setInputs/setFlow(...).build().
-// The executable node types ('sequence', 'llmCall', 'oneOf', 'setVariable', ...) are
-// those handled by FlowExecutor; EditorStep currently types the editor-side shapes,
-// hence the cast.
-const steps = {
+// EditorStep covers every node type FlowExecutor runs ('sequence', 'llmCall',
+// 'oneOf', 'setVariable', ...).
+const steps: EditorStep = {
   type: 'sequence',
   steps: [
     { type: 'llmCall', prompt: 'Classify this message as billing, technical or sales: {{message}}', outputVariable: 'category' },
     { type: 'llmCall', prompt: 'Write a one-line reply for a {{category}} request: {{message}}' },
   ],
-} as unknown as EditorStep;
+};
 
 const flow = new FlowBuilder()
   .setCode('triage')
@@ -468,13 +467,12 @@ const hash = await sha256('password', 'salt');
 ### Storage
 
 ```typescript
-import { StorageService, type FileSystemAdapter } from '@loushy/build-ai-agent';
-import fs from 'node:fs';
-import path from 'node:path';
+import { StorageService } from '@loushy/build-ai-agent';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
-// fs/path are injected as adapters (LOU-A7). Node's `fs` is structurally close
-// but its writeFileSync options type is wider, so it needs a cast.
-const storage = new StorageService('user-123', 'attachments', fs as unknown as FileSystemAdapter, path);
+// fs/path are injected as adapters (LOU-A7); the Node modules satisfy them as-is.
+const storage = new StorageService('user-123', 'attachments', fs, path);
 
 await storage.saveAttachment(file, 'document.pdf');
 const buffer = storage.readAttachment('document.pdf');

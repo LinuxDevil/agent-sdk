@@ -693,11 +693,10 @@ export class FlowExecutor {
    */
   private static evaluateCondition(condition: string, variables: Record<string, any>): boolean {
     try {
-      // Interpolate {{vars}}, then evaluate with the safe expression evaluator
-      // (./safeExpression). Invalid/unsupported syntax is a failed condition
-      // (false), exactly as a throwing eval() was before.
-      const interpolated = this.interpolate(condition, variables);
-      return !!evaluateSafeExpression(interpolated, variables);
+      // Evaluate with the safe expression evaluator (./safeExpression), which
+      // binds {{vars}} as values. Invalid/unsupported syntax is a failed
+      // condition (false), exactly as a throwing eval() was before.
+      return !!evaluateSafeExpression(condition, variables, { bindPlaceholders: true });
     } catch {
       return false;
     }
@@ -708,8 +707,7 @@ export class FlowExecutor {
    */
   private static evaluateExpression(expression: string, variables: Record<string, any>): any {
     try {
-      const interpolated = this.interpolate(expression, variables);
-      return evaluateSafeExpression(interpolated, variables);
+      return evaluateSafeExpression(expression, variables, { bindPlaceholders: true });
     } catch (error) {
       const detail = error instanceof ExpressionError ? ` (${error.message})` : '';
       throw new Error(`Failed to evaluate expression: ${expression}${detail}`);
