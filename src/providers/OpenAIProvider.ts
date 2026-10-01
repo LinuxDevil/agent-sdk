@@ -3,9 +3,9 @@
  * Uses the 'ai' SDK for unified interface (shared logic in ./aiSdkProvider)
  */
 
-import { createOpenAI } from '@ai-sdk/openai';
 import { LanguageModel } from 'ai';
 import { AiSdkProvider, AiSdkProviderConfig } from './aiSdkProvider';
+import { lazyValue, loadOptionalPeer } from './optionalPeer';
 
 export interface OpenAIProviderConfig extends AiSdkProviderConfig {
   apiKey: string;
@@ -20,20 +20,19 @@ export interface OpenAIProviderConfig extends AiSdkProviderConfig {
 export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
   readonly name = 'openai';
   protected readonly fallbackModel = 'gpt-4';
-  private provider: ReturnType<typeof createOpenAI>;
-
-  constructor(config: OpenAIProviderConfig) {
-    super(config);
-    this.provider = createOpenAI({
-      apiKey: config.apiKey,
-      organization: config.organization,
-      baseURL: config.baseURL,
-      headers: config.headers,
+  /** Loads `@ai-sdk/openai` on first use (it is an optional peer). */
+  private readonly loadProvider = lazyValue(async () => {
+    const { createOpenAI } = await loadOptionalPeer('@ai-sdk/openai', () => import('@ai-sdk/openai'));
+    return createOpenAI({
+      apiKey: this.config.apiKey,
+      organization: this.config.organization,
+      baseURL: this.config.baseURL,
+      headers: this.config.headers,
     });
-  }
+  });
 
-  protected createModel(modelId: string): LanguageModel {
-    return this.provider(modelId);
+  protected async createModel(modelId: string): Promise<LanguageModel> {
+    return (await this.loadProvider())(modelId);
   }
 
   /**
