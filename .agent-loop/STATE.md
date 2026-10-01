@@ -3,7 +3,7 @@
 Mission: make `@loushy/build-ai-agent` the best TypeScript AI agent SDK (capabilities and DX) against
 Vercel eve and MaxGfeller/open-harness. This file is the loop's memory: read it first, update it last.
 
-- Loop started: 2026-10-01. Iterations completed: 3.
+- Loop started: 2026-10-01. Iterations completed: 4.
 - Audit: `.agent-loop/AUDIT.md`, refreshed 2026-10-01 at main `a03b1a3` (eve 0.69.0 @682c7a6, open-harness 0.7.0 @026e8d9).
   Reference agents (3 agents x 3 SDKs, measured): `.agent-loop/reference-agents/`. Older material: `docs/research/*.md`, `docs/plan/tickets.md`.
   Audit is stale when: a competitor ships a new major, or more than ~25 PRs land after `a03b1a3` (re-run the DX measurement then).
@@ -29,13 +29,13 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 
 | Row | us | eve | OH | flips with |
 |---|---|---|---|---|
-| Durability / resume | ⚠️ (U7-U9 merged; stores not unified) | ✅ | ⚠️ | W9, D30 |
+| Durability / resume | ✅ flipped (W9: sessions checkpoint per step, `session.resume()` #89) | ✅ | ⚠️ | D30 (one `store` option), W9.2 (fingerprint) |
 | Durable stores (SQLite/file/KV) | ✅ | ✅ | ❌ | - |
 | Sandboxing | ⚠️ | ✅ | ⚠️ | X11 |
 | Workspace fs + shell tools | ✅ | ✅ | ✅ | - |
 | Compaction | ✅ flipped (W2 prune #80, W3 summarize/two-phase/pinned #84) | ✅ | ✅ | W3.2 (`compaction.*` events, `createAgent({ compaction })`) |
 | Subagents | ✅ | ✅ | ✅ | - |
-| Background / resumable subagents | ❌ | ✅ | ✅ | Y4, Y6 |
+| Background / resumable subagents | ⚠️ flipped (Y4 #91: background task, status/await/cancel, maxConcurrent) | ✅ | ✅ | Y4.2 (end-of-run cancel/await, needs executor hook), Y6 |
 | Remote subagents | ❌ | ✅ | ❌ | Y7 |
 | Approvals / HITL | ✅ flipped (D21, #75) | ✅ | ⚠️ | X8 (policies) |
 | Agent asks the user a question | ❌ | ✅ | ❌ | X9 |
@@ -52,7 +52,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Metrics / trace viewer | ❌ | ✅ | ❌ | D48 |
 | Multi-provider | ⚠️ (`ai` v4) | ✅ | ✅ | D22-D29 |
 | Fallbacks / retry policy | ✅ (V7.1 #74, V7.2 agent-level + events #86) | ⚠️ | ⚠️ | - |
-| Structured output | ❌ | ✅ | ❌ | V4 |
+| Structured output | ✅ flipped (V4 #90: `output` schema, repair step, `output-invalid`) | ✅ | ❌ | - |
 | Multimodal input | ❌ | ✅ | ✅ | V11, V12 |
 | Reasoning control / events | ❌ | ✅ | ⚠️ | V13 |
 | MCP client | ⚠️ (spec field D20 #73; no connect helper) | ✅ | ✅ | Z4 |
@@ -81,7 +81,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Published on npm | ❌ (owner action) | ✅ | ✅ | D49 |
 | Current `ai` major | ❌ | ✅ | ✅ | D22-D29 |
 
-Score (us): 20 ✅ / 15 ⚠️ / 16 ❌ of 51 after iteration 3 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
+Score (us): 22 ✅ / 15 ⚠️ / 14 ❌ of 51 after iteration 4 (iteration 3: 20/15/16 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
 
 Differentiators shipped (target: 3): 0 of 8 (candidates in AUDIT section 7: host-agnostic durable sessions D30; record/replay evals D46; Forge time-travel D43-D45; MCP+ACP+HTTP reach Z6/D14; both authoring modes with hot reload D31-D33; OTel metrics D48; trajectory evals remote D47; edge-native agents D51/P9).
 
@@ -108,7 +108,8 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | ID | Title | Status | Deps |
 |---|---|---|---|
 | V1 cancellation, V2 typed stream, V3 parallel tools, V5 usage/cost | | ✅ | |
-| V4 | Structured output (`output: zodSchema`) | ⬜ | |
+| V4 | Structured output (`output: zodSchema`, `result.object`, one repair step, `'output-invalid'`) | ✅ #90 | |
+| V4.2 | Sub-agents inherit `output`; typed `session.send()` object | ⬜ | V4 |
 | V6 | Budgets (`limits`) | ⬜ | |
 | V7.1 | Provider retry + fallback wrappers | ✅ #74 | |
 | V7.2 | `createAgent({ retry, fallbackModels })` + `provider.retry`/`provider.fallback` events; retries no longer stack | ✅ #86 | |
@@ -130,7 +131,8 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | W3.2 | Typed `compaction.*` stream events + `createAgent({ compaction })` option | ⬜ | W3 |
 | W6 | Scoped memory slots | ⬜ | |
 | W8 | Manual compact and clear | ⬜ | W2, W3 |
-| W9 | Sessions that checkpoint | ⬜ | V8 |
+| W9 | Sessions that checkpoint (`checkpointStore`, `session.resume()/pending()/discardPending()`) | ✅ #89 | |
+| W9.2 | Agent fingerprint on resume (warn/refuse on drift) | ⬜ | W9 |
 
 ### Epic X — Tools, permissions, hooks
 | ID | Title | Status | Deps |
@@ -150,7 +152,8 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | ID | Title | Status | Deps |
 |---|---|---|---|
 | Y1, Y2, Y3, Y5 | | ✅ | |
-| Y4 | Background sub-agents | ⬜ | |
+| Y4 | Background sub-agents (`background: true`, `agent_status/await/cancel`, `withSubagentOptions({ maxConcurrent })`) | ✅ #91 | |
+| Y4.2 | Executor `onRunEnd` hook: cancel (default) or await background children at run end; `subagentOptions` on createAgent | ⬜ | Y4 |
 | Y6 | Resumable sub-agent sessions | ⬜ | Y4 |
 | Y7 | Remote sub-agent | ⬜ | D14 |
 
@@ -187,11 +190,11 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D33 | `loushy chat` REPL | ⬜ | V14 |
 | D34 | `AgentType` off the user path (deprecated; apps/examples still call `setType`, follow-up D34.2) | ✅ #76 | |
 | D35 | Delete flow converters, drop `nanoid` (`newId()` on `crypto.randomUUID`) | ✅ #82 | |
-| D36 | Delete SaaS/donor utilities | ⬜ | |
+| D36 | Delete SaaS/donor utilities (quotas, ConfigManager, formatters, json-path, file-extractor) | ✅ #87 | |
 | D37 | Templates out of the root entry | ⬜ | |
 | D38 | Remove unwired memory/context/retry modules | ⬜ | V7.1, W6 |
 | D39 | Clean `/testing`; deprecate `data/` | ⬜ | |
-| D40 | Heavy deps to optional peers | ⬜ | |
+| D40 | Heavy deps to optional peers (dockerode, MCP SDK, prompts; undici/yaml stay) | ✅ #88 | |
 | D41 | One event system | ⬜ | |
 | D42 | Shared chunks across entries | ⬜ | |
 | D43 | Checkpoint history | ⬜ | |
@@ -240,6 +243,11 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | #84 | W3 | merged (squash) | summarize compaction |
 | #85 | D15 | merged (squash) | React hook |
 | #82 | D35 | merged (squash) | converters + nanoid removed |
+| #87 | D36 | merged (squash) | donor utilities removed |
+| #88 | D40 | merged (squash) | optional heavy peers |
+| #91 | Y4 | merged (squash) | background sub-agents |
+| #90 | V4 | merged (squash) | structured output |
+| #89 | W9 | merged (squash; createAgent.ts conflict with V4 combined by hand) | durable sessions |
 
 ## Main health
 
@@ -264,14 +272,19 @@ CI runs only on `pull_request`, so "main is green" means the last PR's CI run pa
 - Matrix flips: Compaction ⚠️->✅, UI bindings ❌->⚠️.
 - Lint warnings: 433 -> 420 (D35).
 
-## Next batch (iteration 4)
+### Iteration 4 (2026-10-01)
+- Merged: #87 (D36), #88 (D40), #91 (Y4), #90 (V4), #89 (W9). Lint warnings 420 -> 405 (D36).
+- Matrix flips: Durability/resume ⚠️->✅, Structured output ❌->✅, Background sub-agents ❌->⚠️.
+- Differentiator 1 (host-agnostic durable sessions) is one ticket (D30) from shipped.
 
-1. V4 (opus): structured output `createAgent({ output: zodSchema })` -> typed `result.object` with one repair attempt; touches createAgent.ts (send/stream region), generateStep/AgentExecutor final-answer path.
-2. W9 (opus): sessions that checkpoint (`agent.session({ id, store })` with checkpoints; `session.resume()`); touches src/session/*, createAgent.ts session() wiring only.
-3. Y4 (opus): background sub-agents (`task` with `background: true`, `agent_status/await/cancel`, `maxConcurrent`); src/subagents/*.
-4. D36 (sonnet): delete SaaS/donor utilities (`security/quotas`, `core/ConfigManager`, `utils/{formatters,json-path,file-extractor}`).
-5. D40 (sonnet): heavy deps to optional peers (`dockerode`, `undici`, `@modelcontextprotocol/sdk`; lazy `prompts`); doctor reports them.
-Then: U14, U15, X8, Z4, W3.2, D34.2, D2, D30.
+## Next batch (iteration 5)
+
+1. D30 (opus): one `store` option on createAgent wiring sessions, checkpoints and approvals (differentiator 1); createAgent.ts options/session region.
+2. Y4.2 (opus): executor `onRunEnd` hook; background children cancelled (default) or awaited at run end; AgentExecutor.ts + src/subagents.
+3. U14 (sonnet): one tool-error shape everywhere; resume.ts, toolCallExecution.ts.
+4. D46 (opus): `loushy eval --record/--replay/--drift` (differentiator 2); src/cli/eval.ts, src/evals, src/testing.
+5. D48 (sonnet): OTel GenAI metrics + `loushy.cost_usd` span attribute (differentiator 6); src/execution/otel.ts, genAiSpans.ts.
+Then: U15, X8, Z4, W3.2, D34.2, D2, X2, D43.
 
 ## Subagent brief (canonical copy)
 
