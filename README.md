@@ -180,6 +180,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Agent directories](docs/agent-directories.md) | An agent as a folder: layout, mapping to `createAgent()`, security |
 | [Context compaction](docs/compaction.md) | Prune old tool results with `createCompactionHook()` |
 | [Channels](docs/channels.md) | `defineChannel()`, `mountChannels()`, `httpChannel()`, `webhookChannel()`, `slackChannel()`: surfaces mapped to sessions, replies and approvals sent back |
+| [Schedules](docs/schedules.md) | `defineSchedule()` cron schedules, `schedules/` in an agent directory, `startSchedules()` |
 | [Flows](docs/flows.md) | Fixed multi-step workflows with `FlowBuilder` and `FlowExecutor` |
 | [Workspace tools](docs/workspace-tools.md) | File system and shell tools for coding agents, and their security model |
 | [Guardrails and sandboxing](docs/guardrails.md) | `runGuardrails()`, built-in guardrails, `requiresSandbox`, `SubprocessSandbox` |
