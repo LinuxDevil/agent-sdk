@@ -19,9 +19,10 @@ const NEVER_LOADED_AT_IMPORT = [
   'undici',
   'dockerode',
   '@modelcontextprotocol/sdk',
+  'node:sqlite', // LOU-W5: only the lazily-loaded /sqlite subpath may use it, and only when a store is constructed
 ];
 
-const ENTRY_POINTS = ['index', 'core/index', 'tools/index', 'tools/mcp/index', 'flows/index', 'testing/index'];
+const ENTRY_POINTS = ['index', 'core/index', 'tools/index', 'tools/mcp/index', 'flows/index', 'testing/index', 'storage/sqlite/index'];
 
 /** Records every module specifier resolved while `body` runs, via synchronous module hooks. */
 const RECORDER = `

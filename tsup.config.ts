@@ -34,6 +34,7 @@ export default defineConfig({
     'cli/doctor': 'src/cli/doctor.ts',
     'execution/otel': 'src/execution/otel.ts',
     'execution/hooks': 'src/execution/hooks.ts',
+    'storage/sqlite/index': 'src/storage/sqlite/index.ts',
     'triggers/index': 'src/triggers/index.ts',
   },
   format: ['cjs', 'esm'],

@@ -23,6 +23,7 @@ dashboard — any provider, any deploy target, no lock-in.
 - **Durable execution** — pass a `sessionId` + `checkpointStore` and a crash mid-conversation resumes instead of restarting
 - **Cancellation** — pass an `AbortSignal` (`agent.send(input, { signal })`) to stop a run; it resolves with `finishReason: 'aborted'` and the transcript so far, and the signal reaches the provider, tools and delegated agents
 - **Sessions** — `agent.session()` keeps a multi-turn conversation (in memory, or persisted with `FileSessionStore`)
+- **SQLite store** — `new SqliteStore('./.loushy/agent.db')` from `@loushy/build-ai-agent/sqlite` keeps sessions, checkpoints and approvals in one durable, transactional file (built-in `node:sqlite`, no native dependency) — see [Sessions](docs/sessions.md#stores)
 - **Project instructions** — `createAgent({ projectInstructions: true })` appends the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (opt-in)
 - **Parallel tool calls** — when the model asks for several tools in one turn they run concurrently (cap it with `toolConcurrency`, or `1` for sequential), and results still reach the transcript in the model's call order
 - **Skills** — `defineSkill()` / `loadSkills('./skills')`: only each skill's name and description sit in the system prompt; the model loads the full markdown on demand through an auto-registered `load_skill` tool

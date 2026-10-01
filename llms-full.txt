@@ -21,6 +21,7 @@ dashboard — any provider, any deploy target, no lock-in.
 - **Durable execution** — pass a `sessionId` + `checkpointStore` and a crash mid-conversation resumes instead of restarting
 - **Cancellation** — pass an `AbortSignal` (`agent.send(input, { signal })`) to stop a run; it resolves with `finishReason: 'aborted'` and the transcript so far, and the signal reaches the provider, tools and delegated agents
 - **Sessions** — `agent.session()` keeps a multi-turn conversation (in memory, or persisted with `FileSessionStore`)
+- **SQLite store** — `new SqliteStore('./.loushy/agent.db')` from `@loushy/build-ai-agent/sqlite` keeps sessions, checkpoints and approvals in one durable, transactional file (built-in `node:sqlite`, no native dependency) — see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#stores)
 - **Project instructions** — `createAgent({ projectInstructions: true })` appends the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (opt-in)
 - **Parallel tool calls** — when the model asks for several tools in one turn they run concurrently (cap it with `toolConcurrency`, or `1` for sequential), and results still reach the transcript in the model's call order
 - **Skills** — `defineSkill()` / `loadSkills('./skills')`: only each skill's name and description sit in the system prompt; the model loads the full markdown on demand through an auto-registered `load_skill` tool
@@ -2503,6 +2504,50 @@ await again.send('What is my name?'); // "Ali"
 Session ids must match `^[A-Za-z0-9_-]{1,128}$` (they become file names, so
 `../x` and `a/b` are refused with an error that says so). Implement
 `SessionStore` yourself to keep transcripts in a database or Redis.
+
+## Stores
+
+Sessions, durable-execution checkpoints and approvals each have a store
+interface (`SessionStore`, `CheckpointStore`, `ApprovalStore`). Pick the
+implementation by where the process runs:
+
+| Store | Sessions | Checkpoints | Approvals | Use it when |
+| --- | --- | --- | --- | --- |
+| In memory | `MemorySessionStore` | (supply your own) | (supply your own) | Tests, scripts, one process that never restarts |
+| Files | `FileSessionStore(dir)` | `LocalStorageCheckpointStore` | `StorageServiceApprovalStore` | One machine, you want plain inspectable files |
+| SQLite | `store.sessions` | `store.checkpoints` | `store.approvals` | A Node server: one durable, transactional file, shared safely by several processes |
+| Cloudflare KV | - | `KVCheckpointStore` | - | Workers deployments (see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)) |
+
+`SqliteStore` keeps all three in one database file, using Node's built-in
+`node:sqlite` (no native dependency; needs Node 22.13 or newer, and it is not
+re-exported from the root entry, so importing the SDK never loads it):
+
+```ts
+import { createAgent, AgentExecutor } from '@loushy/build-ai-agent';
+import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
+
+const store = new SqliteStore('./.loushy/agent.db'); // or ':memory:'
+const session = createAgent({ provider }).session({ id: 'user-42', store: store.sessions });
+await session.send('Hello');
+
+// Same file, same store, for durable runs with approvals:
+// AgentExecutor.execute({ ..., sessionId, checkpointStore: store.checkpoints, approvalStore: store.approvals })
+
+store.prune({ olderThanMs: 7 * 24 * 60 * 60 * 1000 }); // { sessions, checkpoints, approvals } deleted
+store.close();
+```
+
+- The directory is created if missing. The schema is versioned with
+  `PRAGMA user_version` and migrated on open; a database written by a newer
+  release is refused.
+- WAL mode and a 5 s busy timeout let two processes share the file. An approval
+  can be resolved by only one of them.
+- Checkpoints and approval snapshots are stored as opaque JSON, so new fields
+  round-trip unchanged.
+- `prune()` removes sessions and checkpoints not updated within `olderThanMs`,
+  and approvals resolved that long ago; unresolved approvals are kept.
+- A file that is not a SQLite database fails with an error naming the path;
+  using the store after `close()` throws a clear error.
 
 ## Project instructions
 
