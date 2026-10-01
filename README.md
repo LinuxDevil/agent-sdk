@@ -47,18 +47,26 @@ const result = await agent.send('Hello!');
 console.log(result.text);
 ```
 
-The same agent with an approval gate on a sensitive tool — `AgentExecutor`
-pauses before calling it and persists a resumable snapshot instead:
+The same agent with an approval gate on a sensitive tool — `defineTool()`
+infers the argument types from the zod `input`, and `AgentExecutor` pauses
+before calling the tool and persists a resumable snapshot instead:
 
 ```typescript
-import { AgentExecutor, resumeAfterApproval, StorageServiceApprovalStore, ToolRegistry } from '@loushy/build-ai-agent';
+import { AgentExecutor, resumeAfterApproval, StorageServiceApprovalStore, ToolRegistry, defineTool } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+
+const sendEmail = defineTool({
+  name: 'send_email',
+  description: 'Send an email',
+  input: z.object({ to: z.string().email(), subject: z.string(), body: z.string() }),
+  needsApproval: ({ to }) => !to.endsWith('@mycompany.com'), // `to` is typed; pauses for a human
+  async execute({ to, subject, body }) {
+    return { messageId: '...' };
+  },
+});
 
 const registry = new ToolRegistry();
-registry.register('send_email', {
-  displayName: 'Send email',
-  tool: emailTool,
-  needsApproval: (args) => args.to.includes('@external.com'), // pauses for a human
-});
+registry.register(sendEmail);
 
 const approvalStore = new StorageServiceApprovalStore(storage);
 const paused = await AgentExecutor.execute({
@@ -200,40 +208,35 @@ control over the resulting `AgentConfig`.
 
 ### Tools
 
+Define a tool with `defineTool()` — argument and result types are inferred from
+the zod `input`, and the result drops in anywhere tools are accepted
+(`createAgent({ tools: [...] })`, `ToolRegistry.register(tool)`,
+`AgentBuilder.addTool(tool)`):
+
 ```typescript
-import { ToolRegistry } from '@loushy/build-ai-agent';
-import { tool } from 'ai';
+import { defineTool, createAgent, type ToolInput, type ToolOutput } from '@loushy/build-ai-agent';
 import { z } from 'zod';
 
-const registry = new ToolRegistry();
-
-registry.register('weather', {
-  displayName: 'Get weather',
-  tool: tool({
-    description: 'Get weather information',
-    parameters: z.object({
-      location: z.string(),
-      units: z.enum(['celsius', 'fahrenheit']),
-    }),
-    execute: async ({ location, units }) => {
-      // Your implementation
-      return { temperature: 72, conditions: 'sunny' };
-    },
-  }),
+const weather = defineTool({
+  name: 'weather', // 1-64 chars: letters, digits, _ and -
+  description: 'Get weather information',
+  input: z.object({ location: z.string(), units: z.enum(['celsius', 'fahrenheit']) }),
+  execute: async ({ location, units }) => ({ temperature: 72, conditions: 'sunny' }),
 });
+
+type WeatherArgs = ToolInput<typeof weather>;   // { location: string; units: 'celsius' | 'fahrenheit' }
+type WeatherResult = ToolOutput<typeof weather>; // { temperature: number; conditions: string }
+
+const agent = createAgent({ prompt: '...', provider, tools: [weather] });
 ```
 
-A `ToolDescriptor` can also opt into two safety primitives:
+Optional fields mirror `ToolDescriptor`: `displayName`, `needsApproval` (boolean
+or a predicate typed from `input`), `requiresSandbox` and `sandboxExecute`
+(routes through the configured `SandboxAdapter`).
 
-```typescript
-registry.register('send_email', {
-  displayName: 'Send email',
-  tool: emailTool,
-  needsApproval: (args) => args.to.includes('@external.com'), // pauses for a human
-  requiresSandbox: true, // routes through the configured SandboxAdapter
-  sandboxExecute: async (args, sandbox) => sandbox.run('node', ['send-email.js', JSON.stringify(args)]),
-});
-```
+**Advanced: `ToolRegistry`.** For raw `ToolDescriptor`s (built-in tools, MCP
+tools, an existing `tool()` from the `ai` SDK) register by name:
+`registry.register('weather', { displayName: 'Get weather', tool: aiSdkTool })`.
 
 ### Flows
 

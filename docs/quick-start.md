@@ -58,25 +58,43 @@ console.log(result.text);
 
 ## 3. Adding tools
 
-Tools are passed to `createAgent()` keyed by the name the agent calls them
-by. The SDK ships several built-in tools (`currentDateTool`, `dayNameTool`,
-`httpTool`, ...). The mock provider simulates a tool call whenever the user
-message mentions a tool's name, so this snippet exercises a real tool round
-trip without an LLM.
+Define a tool with `defineTool()`: the `execute` and `needsApproval` arguments
+are typed from the zod `input`, and the result goes straight into
+`createAgent({ tools: [...] })`. The mock provider simulates a tool call
+whenever the user message mentions a tool's name, so this snippet exercises a
+real tool round trip without an LLM.
 
 ```ts
-import { createAgent, createMockProvider, currentDateTool } from '@loushy/build-ai-agent';
+import { createAgent, createMockProvider, defineTool } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+
+const currentDate = defineTool({
+  name: 'current_date',
+  description: 'Get the current date',
+  input: z.object({}),
+  async execute() {
+    return { date: new Date().toISOString().slice(0, 10) };
+  },
+});
 
 const agent = createAgent({
   prompt: 'You are a scheduling assistant. Use tools when helpful.',
   provider: createMockProvider({ responses: ['Let me check.', 'Here is the date you asked for.'] }),
-  tools: { current_date: currentDateTool },
+  tools: [currentDate],
 });
 
 const result = await agent.send('Please call current_date for me');
 console.log(result.toolCalls.map((call) => call.function.name)); // [ 'current_date' ]
 console.log(result.text);
 ```
+
+Names must be 1-64 characters of letters, digits, `_` or `-`. The SDK also
+ships built-in tools (`currentDateTool`, `dayNameTool`, `httpTool`, ...) that
+you pass keyed by name: `tools: { current_date: currentDateTool }`.
+
+*Advanced: `ToolRegistry`.* To share tools across agents or register raw
+`ToolDescriptor`s, use `registry.register(tool)` for a defined tool or
+`registry.register(name, descriptor)` for a descriptor.
 
 ## 4. Full control: `AgentBuilder` + `AgentExecutor`
 

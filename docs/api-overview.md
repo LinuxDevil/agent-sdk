@@ -40,9 +40,31 @@ npm run docs:build   # writes docs/api/index.html
 
 | Export                                       | Description                                   |
 | -------------------------------------------- | --------------------------------------------- |
-| `ToolRegistry`                               | Holds the tools an agent config refers to.    |
+| `defineTool({ name, description, input, execute, ... })` | Define a tool; `execute`/`needsApproval` args are inferred from the zod `input`. Accepted by `createAgent({ tools: [...] })`, `ToolRegistry.register(tool)` and `AgentBuilder.addTool(tool)`. |
+| `ToolInput<typeof t>`, `ToolOutput<typeof t>` | Argument and result types of a defined tool. |
+| `ToolRegistry`                               | Holds the tools an agent config refers to (advanced: `register(tool)` or `register(name, descriptor)`). |
 | `httpTool`, `currentDateTool`, `dayNameTool` | Built-in tools.                               |
 | `loadMcpTools(client, connectionName)`       | Load a connected MCP server's tools as `ToolDescriptor`s. Available from the package root, `@loushy/build-ai-agent/tools`, and `@loushy/build-ai-agent/mcp`. |
+
+```ts
+import { defineTool } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+
+const sendEmail = defineTool({
+  name: 'send_email', // 1-64 chars: letters, digits, _ and -
+  description: 'Send an email',
+  input: z.object({ to: z.string().email(), subject: z.string() }),
+  needsApproval: ({ to }) => !to.endsWith('@mycompany.com'), // `to` is typed
+  async execute({ to, subject }) {
+    return { messageId: `${to}:${subject}` };
+  },
+});
+```
+
+Optional fields: `displayName`, `needsApproval` (boolean or predicate),
+`requiresSandbox` and `sandboxExecute`. Defining a tool validates its name,
+description and zod `input` immediately; registering two tools with the same
+name throws an error naming the conflict.
 
 ```ts
 import { loadMcpTools } from '@loushy/build-ai-agent/mcp';

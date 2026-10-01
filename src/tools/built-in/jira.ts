@@ -21,6 +21,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { ToolRegistry } from '../ToolRegistry';
+import type { DefinedTool } from '../defineTool';
 import { ToolDescriptor } from '../../types';
 import { routeFetchThroughSandbox } from './sandboxFetch';
 import { assertOk } from './assertOk';
@@ -105,9 +106,15 @@ export class JiraTools extends ToolRegistry {
    * for callers that invoke descriptor.tool.execute() directly rather than
    * through the guard.
    */
-  public register(name: string, descriptor: ToolDescriptor): void {
-    routeFetchThroughSandbox(descriptor);
-    super.register(name, descriptor);
+  public register(tool: DefinedTool): void;
+  public register(name: string, descriptor: ToolDescriptor): void;
+  public register(...args: [DefinedTool] | [string, ToolDescriptor]): void {
+    if (args.length === 1) {
+      super.register(args[0]);
+      return;
+    }
+    routeFetchThroughSandbox(args[1]);
+    super.register(args[0], args[1]);
   }
 
   private registerAllTools() {
