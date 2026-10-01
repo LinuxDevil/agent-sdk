@@ -27,7 +27,6 @@ import { AgentExecutor } from '../../execution/AgentExecutor';
 import { resumeAfterApproval } from '../../execution/resume';
 import { ToolRegistry } from '../../tools';
 import { AgentBuilder } from '../../core';
-import { AgentType } from '../../types';
 import { mockModel } from '../../testing';
 
 const tempDirs: string[] = [];
@@ -268,7 +267,6 @@ describe('SqliteStore end to end', () => {
       needsApproval: true,
     });
     const agent = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .addTool('chargeCard', { tool: 'chargeCard', options: {} })
       .build();

@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createDelegateTool, DelegationDepthExceededError } from './DelegationTool';
 import { AgentExecutor } from './AgentExecutor';
-import { AgentType } from '../types';
 import { ToolRegistry } from '../tools';
 import type { LLMProvider } from '../providers';
 import { mockModel } from '../testing';
@@ -23,7 +22,6 @@ describe('createDelegateTool', () => {
 
     const childAgent = {
       name: 'Child Agent',
-      agentType: AgentType.SmartAssistant,
       prompt: 'You are a helpful child agent',
     };
 
@@ -54,7 +52,6 @@ describe('createDelegateTool', () => {
 
     const childAgent = {
       name: 'Bare Agent',
-      agentType: AgentType.SmartAssistant,
     };
 
     const delegateTool = createDelegateTool({ agent: childAgent, provider });
@@ -67,7 +64,7 @@ describe('createDelegateTool', () => {
     it('passes context history then the task message, in order', async () => {
       const provider = mockModel(['done']);
 
-      const agent = { name: 'Contextual Agent', agentType: AgentType.SmartAssistant };
+      const agent = { name: 'Contextual Agent' };
       const delegateTool = createDelegateTool({ agent, provider, contextMode: 'full-history' });
 
       const context = [
@@ -86,7 +83,7 @@ describe('createDelegateTool', () => {
     it('falls back to task-only input when contextMode is the default "none"', async () => {
       const provider = mockModel(['done']);
 
-      const agent = { name: 'Contextual Agent', agentType: AgentType.SmartAssistant };
+      const agent = { name: 'Contextual Agent' };
       const delegateTool = createDelegateTool({ agent, provider });
 
       const context = [{ role: 'user' as const, content: 'earlier question' }];
@@ -124,8 +121,8 @@ describe('createDelegateTool', () => {
 
     it('propagates depth across an A -> B -> A chain and throws once maxDepth is exceeded', async () => {
       const provider = makeMockProvider(vi.fn());
-      const agentA = { name: 'Agent A', agentType: AgentType.SmartAssistant };
-      const agentB = { name: 'Agent B', agentType: AgentType.SmartAssistant };
+      const agentA = { name: 'Agent A' };
+      const agentB = { name: 'Agent B' };
 
       const delegateToB = createDelegateTool({ agent: agentB, provider, maxDepth: 2 });
       const delegateToA = createDelegateTool({ agent: agentA, provider, maxDepth: 2 });
@@ -151,7 +148,7 @@ describe('createDelegateTool', () => {
 
     it('succeeds when a delegation chain is exactly maxDepth hops long', async () => {
       const provider = makeMockProvider(vi.fn());
-      const agent = { name: 'Recursive Agent', agentType: AgentType.SmartAssistant };
+      const agent = { name: 'Recursive Agent' };
       const maxDepth = 2;
       const totalHops = maxDepth;
 
@@ -181,7 +178,7 @@ describe('createDelegateTool', () => {
 
     it('fails when a delegation chain goes one hop beyond maxDepth', async () => {
       const provider = makeMockProvider(vi.fn());
-      const agent = { name: 'Recursive Agent', agentType: AgentType.SmartAssistant };
+      const agent = { name: 'Recursive Agent' };
       const maxDepth = 2;
       const totalHops = maxDepth + 1;
 
@@ -211,7 +208,7 @@ describe('createDelegateTool', () => {
 
     it('defaults maxDepth to 3 when omitted', async () => {
       const provider = makeMockProvider(vi.fn());
-      const agent = { name: 'Recursive Agent', agentType: AgentType.SmartAssistant };
+      const agent = { name: 'Recursive Agent' };
       const delegateTool = createDelegateTool({ agent, provider });
 
       let callCount = 0;
@@ -263,8 +260,8 @@ describe('createDelegateTool', () => {
       const providerA = mockModel([delegating('go to B')], { onExhausted: 'repeat-last' });
       const providerB = mockModel([delegating('go to A')], { onExhausted: 'repeat-last' });
 
-      const agentA = { name: 'Agent A', agentType: AgentType.SmartAssistant, tools: { delegate: { tool: 'delegate' } } };
-      const agentB = { name: 'Agent B', agentType: AgentType.SmartAssistant, tools: { delegate: { tool: 'delegate' } } };
+      const agentA = { name: 'Agent A', tools: { delegate: { tool: 'delegate' } } };
+      const agentB = { name: 'Agent B', tools: { delegate: { tool: 'delegate' } } };
 
       const registryA = new ToolRegistry();
       const registryB = new ToolRegistry();

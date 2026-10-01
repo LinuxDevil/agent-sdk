@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { AgentExecutor } from '../../execution/AgentExecutor';
 import { AgentBuilder } from '../../core';
-import { AgentType } from '../../types';
 import { mockModel } from '../../testing';
 import { ToolRegistry } from '..';
 import { loadMcpTools } from './McpToolLoader';
@@ -110,7 +109,6 @@ describe('MCP result handling (LOU-Z2)', () => {
     const toolRegistry = new ToolRegistry();
     toolRegistry.registerMany(await loadMcpTools(client, 'srv'));
     const agent = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .addTool('srv__do_it', { tool: 'srv__do_it', options: {} })
       .build();

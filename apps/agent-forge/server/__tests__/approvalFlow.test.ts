@@ -22,7 +22,6 @@ import {
   AgentExecutor,
   ToolRegistry,
   AgentBuilder,
-  AgentType,
   createMockProvider,
   resumeAfterApproval,
   type ToolDescriptor,
@@ -65,7 +64,6 @@ describe('approval-gate pause/resume (FileApprovalStore + FileCheckpointStore)',
 
     const agent = AgentBuilder.create()
       .setId(agentId)
-      .setType(AgentType.SmartAssistant)
       .setName('gated-agent')
       .setPrompt('You are a helpful agent.')
       .setTools({ dangerous: { tool: 'dangerous' } })
