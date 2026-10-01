@@ -1,26 +1,12 @@
-// (c) Long-running durable job: checkpoint, crash, resume, continue with new input.
-//   npx tsx durable-job.ts start job-1            # CRASH_AT=3 kills the process mid-run
-//   npx tsx durable-job.ts resume job-1           # rehydrates from the last checkpoint
-//   npx tsx durable-job.ts continue job-1 "Now write a summary"
-// Checkpoints are saved after each tool result (after each model turn once
-// LOU-U9 lands); a finished run deletes its checkpoint, so "continue" re-sends
-// the stored transcript. createAgent() takes no checkpointStore, hence AgentExecutor.
+// (c) Durable job: checkpoint, crash, resume, continue. CRASH_AT=3 kills `start` mid-run;
+// `resume` finishes the turn from its last checkpoint (`continue` resumes first, too).
+//   npx tsx durable-job.ts start job-1 | resume job-1 | continue job-1 "Now write a summary"
 import { z } from 'zod';
-import {
-  AgentBuilder,
-  AgentExecutor,
-  AgentType,
-  ToolRegistry,
-  defineTool,
-  resolveProvider,
-  type ExecuteOptions,
-  type Message,
-} from '@loushy/build-ai-agent';
+import { createAgent, defineTool } from '@loushy/build-ai-agent';
 import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
 
-const [command = 'start', sessionId = 'job-1', newInput] = process.argv.slice(2);
-const store = new SqliteStore('./.loushy/jobs.db');
-
+const [command = 'start', id = 'job-1', input = command === 'start' ? 'Run the import.' : 'Summarize the run.'] = process.argv.slice(2);
+const store = new SqliteStore('./.loushy/jobs.db'); // transcript, per-step checkpoints, approvals
 const processBatch = defineTool({
   name: 'process_batch',
   description: 'Process one batch of the import (0-9). Slow.',
@@ -31,38 +17,10 @@ const processBatch = defineTool({
     return { batch, rows: 1_000 };
   },
 });
-const toolRegistry = new ToolRegistry();
-toolRegistry.register(processBatch);
-
-const agent = AgentBuilder.create()
-  .setType(AgentType.SmartAssistant)
-  .setId('importer')
-  .setName('importer')
-  .setPrompt('Process batches 0 to 9 one at a time with process_batch, then report the total rows.')
-  .addTool(processBatch)
-  .build();
-
-const base: Omit<ExecuteOptions, 'input'> = {
-  agent,
-  provider: resolveProvider('openai/gpt-4o-mini'),
-  toolRegistry,
-  sessionId,
-  checkpointStore: store.checkpoints,
-  maxSteps: 40,
-};
-
-let input: string | Message[] = 'Run the import.';
-if (command === 'resume') input = 'continue'; // ignored while a checkpoint exists (LOU-U8 open)
-if (command === 'continue') {
-  const transcript = (await store.sessions.load(sessionId)) ?? [];
-  input = [...transcript, { role: 'user', content: newInput ?? 'Summarize the run.' }];
-}
-
-const result = await AgentExecutor.execute({
-  ...base,
-  input,
-  skipSystemPromptInjection: command === 'continue',
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini', tools: [processBatch], maxSteps: 40, store,
+  instructions: 'Process batches 0 to 9 one at a time with process_batch, then report the total rows.',
 });
-await store.sessions.save(sessionId, result.messages); // keep the thread for "continue"
-console.log(result.finishReason, result.text);
+const result = command === 'resume' ? await agent.resume(id) : await agent.session({ id }).send(input);
+console.log(result?.finishReason, result?.text);
 store.close();
