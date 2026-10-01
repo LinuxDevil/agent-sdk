@@ -224,6 +224,35 @@ behaviour on Workers: with a `sessionId` the run is checkpointed to
 `checkpoints/<sessionId>` after each tool result and rehydrated by a later
 request that reuses the `sessionId` (after a crash or a recycled isolate).
 
+### Cron triggers and `handleScheduled`
+
+Cron triggers in the spec (`triggers: [{ type: 'cron', cron: '0 9 * * MON', input: '...' }]`)
+become `[triggers] crons = [...]` in `wrangler.toml`, and the generated Worker
+exports a `scheduled()` handler that runs them as agent turns (session
+`schedule:<name>`, see [Schedules](schedules.md#on-cloudflare-workers)). Cloudflare
+evaluates the expressions in **UTC** with a granularity of one minute; the
+build rejects a `timezone`, a seconds field, an `@daily` shortcut or a numeric
+day-of-week (`LOUSHY_SCHEDULE_INVALID`).
+
+In a Worker you write yourself, wire an agent defined in code with
+`handleScheduled(agent, schedules, controller, ctx)` (also exported from
+`@loushy/build-ai-agent/deploy-runtime-worker`). It runs the schedules whose
+`cron` equals `controller.cron` inside `ctx.waitUntil()` and never throws; list
+the same expressions under `[triggers] crons` yourself:
+
+```ts
+import { createAgent, createMockProvider, defineSchedule, handleScheduled } from '@loushy/build-ai-agent';
+import type { ScheduledContext, ScheduledController } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ instructions: 'You write reports.', provider: createMockProvider() });
+const schedules = [defineSchedule({ name: 'weekly', cron: '0 9 * * MON', prompt: 'Summarise last week.' })];
+
+export default {
+  scheduled: (controller: ScheduledController, _env: unknown, ctx: ScheduledContext) =>
+    handleScheduled(agent, schedules, controller, ctx),
+};
+```
+
 ### Durable execution (pause/resume) on Workers
 
 A Worker's request lifetime is too short-lived for an in-memory or
