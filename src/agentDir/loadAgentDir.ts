@@ -14,6 +14,8 @@ import type { LLMProvider } from '../providers/llm';
 import { loadSkills } from '../skills/loadSkills';
 import type { Skill } from '../skills/defineSkill';
 import { isDirectory, isFile, readText } from './fsUtil';
+import type { DefinedSchedule } from '../schedules/defineSchedule';
+import { loadSchedules } from './loadSchedules';
 import { loadTools, type LoadedTool } from './loadTools';
 import { readConfig, type AgentDirConfig } from './readConfig';
 import { delegateTool, listSubagentDirs, requireDescription, type LoadedSubagent } from './subagents';
@@ -48,6 +50,8 @@ export interface AgentDirManifest {
   skills: string[];
   /** Sub-agent directory names discovered in `subagents/`. */
   subagents: string[];
+  /** Schedule names discovered in `schedules/` (the file name unless the schedule sets its own). */
+  schedules: string[];
 }
 
 /** The result of {@link resolveAgentDir}: ready-to-use `createAgent()` options plus what was discovered. */
@@ -55,6 +59,8 @@ export interface ResolvedAgentDir {
   /** Pass to `createAgent()` to get the agent (this is exactly what `loadAgentDir` does). */
   config: CreateAgentConfig;
   manifest: AgentDirManifest;
+  /** The schedules of `schedules/`; run them with `startSchedules(agent, schedules)`. `loadAgentDir()` does not start them. */
+  schedules: DefinedSchedule[];
 }
 
 /** The model source a parent hands down to sub-agents that do not choose their own. */
@@ -156,6 +162,7 @@ async function resolveWith(
   const tools: LoadedTool[] = await loadTools(dir);
   const skills = await skillsFor(dir, overrides);
   const subagents = await loadSubagents(dir, overrides, source);
+  const schedules = await loadSchedules(dir);
   const name = overrides.name ?? config.name ?? path.basename(dir);
 
   const fileTools = [...tools.map((t) => t.tool), ...subagents.map(delegateTool)];
@@ -176,6 +183,7 @@ async function resolveWith(
   );
   return {
     config: assembled,
+    schedules,
     manifest: {
       dir,
       name,
@@ -184,6 +192,7 @@ async function resolveWith(
       tools: tools.map((t) => t.tool.name),
       skills: skills.map((s) => s.name),
       subagents: subagents.map((s) => s.name),
+      schedules: schedules.map((s) => s.name as string),
     },
   };
 }
@@ -209,6 +218,7 @@ async function skillsFor(dir: string, overrides: AgentDirOverrides): Promise<Ski
  *   tools/*.ts|js                                    each exports defineTool() tools
  *   skills/                                          same layouts as loadSkills()
  *   subagents/<name>/                                nested agent directories (need a description)
+ *   schedules/*.ts|js                                each default-exports defineSchedule(); run with startSchedules()
  * ```
  *
  * Loading executes the directory's code. Only load directories you trust.
