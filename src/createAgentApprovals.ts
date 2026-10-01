@@ -8,7 +8,8 @@
 
 import type { ApprovalDecision, ApprovalStore, PendingApproval } from './execution/ApprovalGate';
 import type { ExecutionResult } from './execution/AgentExecutor';
-import { AgentSession, type SessionOptions, type SessionRunner } from './session/AgentSession';
+import type { AgentRun } from './execution/agentRun';
+import { AgentSession, type SessionOptions, type SessionRunner, type SessionStreamRunner } from './session/AgentSession';
 
 /**
  * Decides a tool call that needs approval without pausing the run: `true`
@@ -84,6 +85,20 @@ export function createAgentApprovals(options: { store: ApprovalStore; approve?: 
     return result;
   }
 
+  /** `run`, with a pause it reports (as an event or in its result) bound to `session`. */
+  function inSessionRun(session: ApprovalSession, run: AgentRun): AgentRun {
+    return {
+      runId: run.runId,
+      result: run.result.then((result) => inSession(session, result)),
+      async *[Symbol.asyncIterator]() {
+        for await (const event of run) {
+          if (event.type === 'approval.requested') sessions.set(event.approvalId, session);
+          yield event;
+        }
+      },
+    };
+  }
+
   const approvals: AgentApprovals = {
     list: async () => [...pending.values()],
     resolve(decision, { signal } = {}) {
@@ -99,10 +114,11 @@ export function createAgentApprovals(options: { store: ApprovalStore; approve?: 
     store,
     approvals,
     settle,
-    session(run: SessionRunner, sessionOptions?: SessionOptions): AgentSession {
+    session(run: SessionRunner, stream: SessionStreamRunner, sessionOptions?: SessionOptions): AgentSession {
       const session: ApprovalSession = new ApprovalSession(
         async (input, signal) => inSession(session, await settle(await run(input, signal), signal)),
-        sessionOptions
+        sessionOptions,
+        (input, signal) => inSessionRun(session, stream(input, signal))
       );
       return session;
     },
