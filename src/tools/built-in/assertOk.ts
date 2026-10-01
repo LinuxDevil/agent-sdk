@@ -1,3 +1,4 @@
+import { toolFailure } from './toolFailure';
 /**
  * Shared non-OK response handling for the REST-backed built-in tools
  * (github.ts, jira.ts).
@@ -10,6 +11,6 @@
 export async function assertOk(response: Response, failure: string): Promise<void> {
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`${failure}: ${response.statusText} - ${errorText}`);
+    throw toolFailure(`${failure}: ${response.statusText} - ${errorText}`);
   }
 }

@@ -7,6 +7,7 @@
 
 import type { ToolCall } from '../providers';
 import type { PreparedToolCall, ToolCallOutcome } from './toolCallExecution';
+import { ConfigurationError } from './errors';
 
 /**
  * How many tool calls of one model turn may run at the same time:
@@ -25,10 +26,9 @@ export function assertToolConcurrency(value: unknown, caller: string): void {
   if (typeof value === 'number' && Number.isInteger(value) && value >= 1) {
     return;
   }
-  throw new Error(
+  throw new ConfigurationError(
     `${caller}: 'toolConcurrency' must be a positive integer or 'unbounded', got ${describe(value)}. ` +
-      "Use 1 to run a turn's tool calls one at a time, e.g. { toolConcurrency: 4 } or { toolConcurrency: 'unbounded' }."
-  );
+      "Use 1 to run a turn's tool calls one at a time, e.g. { toolConcurrency: 4 } or { toolConcurrency: 'unbounded' }.", 'toolConcurrency');
 }
 
 function describe(value: unknown): string {

@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { defineTool } from '../defineTool';
 import { ToolDescriptor } from '../../types';
+import { toolFailure } from './toolFailure';
+import { ConfigurationError } from '../../execution/errors';
 
 /**
  * Email Tool Configuration Options
@@ -63,16 +65,16 @@ async function sendEmail({
 
     if (!response.ok) {
       const errorData = await response.text();
-      throw new Error(`Email sending failed (${response.status}): ${errorData}`);
+      throw toolFailure(`Email sending failed (${response.status}): ${errorData}`);
     }
 
     const data = await response.json();
     return JSON.stringify(data);
   } catch (error) {
     if (error instanceof Error) {
-      throw new Error(`Failed to send email: ${error.message}`);
+      throw toolFailure(`Failed to send email: ${error.message}`, error);
     }
-    throw new Error('Failed to send email with unknown error');
+    throw toolFailure('Failed to send email with unknown error');
   }
 }
 
@@ -84,7 +86,7 @@ export function createEmailTool(options: EmailToolOptions): ToolDescriptor {
   const { apiKey, apiUrl, defaultFrom } = options;
 
   if (!apiKey) {
-    throw new Error('Email tool requires an apiKey in options');
+    throw new ConfigurationError('Email tool requires an apiKey in options', 'apiKey');
   }
 
   return defineTool({
@@ -102,7 +104,7 @@ export function createEmailTool(options: EmailToolOptions): ToolDescriptor {
       const senderEmail = from || defaultFrom;
 
       if (!senderEmail) {
-        throw new Error('Email "from" address is required. Provide it in the parameters or set defaultFrom in options.');
+        throw toolFailure('Email "from" address is required. Provide it in the parameters or set defaultFrom in options.');
       }
 
       return sendEmail({

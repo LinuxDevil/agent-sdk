@@ -647,13 +647,7 @@ export class AgentExecutor {
   /** Applies `skills` and `subagents`: their prompt blocks and their tools. */
   private static async withExtensions(options: ExecuteOptions): Promise<ExecuteOptions> {
     const skilled = withSkills(options.agent, options.toolRegistry, options.skills);
-    const extended = await withSubagents(
-      skilled.agent,
-      skilled.toolRegistry,
-      options.subagents,
-      options.maxSubagentDepth,
-      options.onRunEnd
-    );
+    const extended = await withSubagents(skilled.agent, skilled.toolRegistry, options.subagents, options);
     // LOU-V4: the output instruction goes last in the system prompt.
     const { agent } = extended;
     if (!options.output) return { ...options, ...extended };

@@ -9,6 +9,7 @@
 import { execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { ConfigurationError } from '../../execution/errors';
 
 /** The fields of the SDK's own package.json that generation needs. */
 export interface SdkManifest {
@@ -32,12 +33,12 @@ function packSdk(sdkRoot: string, dest: string): string {
 function vendorSdk(sdkPath: string, projectDir: string): string {
   const resolved = path.resolve(sdkPath);
   if (!fs.existsSync(resolved)) {
-    throw new Error(`loushy init: --sdk-path '${sdkPath}' does not exist. Pass an SDK checkout directory or a packed .tgz file.`);
+    throw new ConfigurationError(`loushy init: --sdk-path '${sdkPath}' does not exist. Pass an SDK checkout directory or a packed .tgz file.`, 'sdk-path');
   }
   fs.mkdirSync(projectDir, { recursive: true });
   if (fs.statSync(resolved).isDirectory()) return packSdk(resolved, projectDir);
   if (!isTarball(resolved)) {
-    throw new Error(`loushy init: --sdk-path '${sdkPath}' is a file but not a .tgz tarball. Pass a checkout directory or a packed .tgz file.`);
+    throw new ConfigurationError(`loushy init: --sdk-path '${sdkPath}' is a file but not a .tgz tarball. Pass a checkout directory or a packed .tgz file.`, 'sdk-path');
   }
   fs.copyFileSync(resolved, path.join(projectDir, path.basename(resolved)));
   return path.basename(resolved);

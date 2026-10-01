@@ -30,7 +30,7 @@ import { parseToolArguments } from './toolArgsValidation';
 import type { PermissionDecisionEntry } from './permissions';
 import { canStream, generateViaStream } from './streamStep';
 import { measureUsage } from './runUsage';
-import { compactProviderError } from './errors';
+import { SDKError, compactProviderError } from './errors';
 import { withProviderEvents, type ProviderEventListener } from '../providers/providerEvents';
 import type { Usage } from '../models/usage';
 import type { BudgetExceeded } from './budget';
@@ -220,9 +220,10 @@ class AgentRunImpl implements AgentRun {
 
   async *[Symbol.asyncIterator](): AsyncIterator<AgentEvent> {
     if (this.iterated) {
-      throw new Error(
+      throw new SDKError(
         'AgentRun can only be iterated once. Collect the events in the first for-await loop, ' +
-          'or call agent.stream() again for a new run.'
+          'or call agent.stream() again for a new run.',
+        'LOUSHY_RUN_ALREADY_ITERATED'
       );
     }
     this.iterated = true;
