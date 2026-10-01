@@ -61,7 +61,10 @@ export interface MockTurnObject {
   toolCalls?: readonly MockToolCall[];
   /** Make `generate()` / `stream()` reject with this error instead of replying. */
   error?: Error;
-  /** Token usage to report. Defaults to zero. */
+  /**
+   * Token usage to report. When omitted the model reports no usage at all, like a
+   * backend that omits token counts (the executor then estimates and flags it).
+   */
   usage?: { inputTokens: number; outputTokens: number };
   /** Finish reason to report. Defaults to `'tool_calls'` when there are tool calls, else `'stop'`. */
   finishReason?: GenerateResult['finishReason'];
@@ -280,16 +283,14 @@ class ScriptedMockModel implements MockModel {
 
   private toResolved(turn: MockTurnObject): ResolvedTurn {
     const toolCalls = (turn.toolCalls ?? []).map((call) => this.toToolCall(call));
-    const inputTokens = turn.usage?.inputTokens ?? 0;
-    const outputTokens = turn.usage?.outputTokens ?? 0;
     return {
       text: turn.text ?? '',
       toolCalls,
       finishReason: turn.finishReason ?? (toolCalls.length > 0 ? 'tool_calls' : 'stop'),
-      usage: {
-        promptTokens: inputTokens,
-        completionTokens: outputTokens,
-        totalTokens: inputTokens + outputTokens,
+      usage: turn.usage && {
+        promptTokens: turn.usage.inputTokens,
+        completionTokens: turn.usage.outputTokens,
+        totalTokens: turn.usage.inputTokens + turn.usage.outputTokens,
       },
     };
   }

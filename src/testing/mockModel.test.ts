@@ -7,7 +7,7 @@ import type { GenerateOptions, StreamChunk } from '../providers/llm';
 const request = (content = 'hi'): GenerateOptions => ({ messages: [{ role: 'user', content }] });
 
 describe('mockModel turns', () => {
-  it('treats a bare string as { text } and reports zero usage by default', async () => {
+  it('treats a bare string as { text } and reports no usage by default', async () => {
     const model = mockModel(['Hello!']);
 
     const result = await model.generate(request());
@@ -15,8 +15,8 @@ describe('mockModel turns', () => {
     expect(result).toEqual({
       text: 'Hello!',
       finishReason: 'stop',
-      usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
     });
+    expect(result.usage).toBeUndefined();
   });
 
   it('emits tool calls with stable generated ids and JSON-encoded args', async () => {

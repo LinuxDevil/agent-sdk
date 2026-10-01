@@ -9,6 +9,7 @@ import { AgentConfig, ToolDescriptor } from '../types';
 import { ToolRegistry } from '../tools';
 import { SandboxAdapter } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
+import type { ToolRunContext } from './sandboxGuard';
 import { HookRegistry, ToolCallHookContext } from './hooks';
 import { toolErrorMessage, toolErrorResult } from './propagatingToolError';
 import { ToolArgumentsValidationError, validateToolArguments } from './toolArgsValidation';
@@ -39,6 +40,8 @@ export interface ToolCallContext {
   messages: Message[];
   /** LOU-V1: the run's signal, handed to the tool as `abortSignal`. */
   signal?: AbortSignal;
+  /** LOU-V5: where a delegated child's usage is reported (see ToolRunContext). */
+  onDelegatedUsage?: ToolRunContext['onDelegatedUsage'];
 }
 
 /**
@@ -202,7 +205,9 @@ async function executePrepared(
   if (prepared.requiresApproval) {
     return approvalOutcome(prepared);
   }
-  return doExecuteToolCall(prepared.toolCall, ctx.toolRegistry, ctx.sandbox, prepared.args, ctx.signal);
+  return doExecuteToolCall(prepared.toolCall, ctx.toolRegistry, ctx.sandbox, prepared.args, ctx.signal, {
+    onDelegatedUsage: ctx.onDelegatedUsage,
+  });
 }
 
 /**
@@ -300,7 +305,8 @@ async function doExecuteToolCall(
   toolRegistry: ToolRegistry | undefined,
   sandbox: SandboxAdapter,
   overrideArgs?: Record<string, unknown>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  runContext?: ToolRunContext
 ): Promise<ToolCallOutcome> {
   if (!toolRegistry) {
     return toolFailure(toolCall, 'No tool registry available');
@@ -331,7 +337,8 @@ async function doExecuteToolCall(
       toolDesc,
       args,
       sandbox,
-      signal
+      signal,
+      runContext
     );
 
     return {

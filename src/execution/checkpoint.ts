@@ -5,6 +5,8 @@
 
 import { Message } from '../providers';
 import { StorageService } from '../storage';
+import type { StepUsage } from '../models/usage';
+import type { CheckpointUsage } from './runUsage';
 
 /**
  * A snapshot of an in-progress agent run, saved after each tool result so
@@ -16,11 +18,14 @@ export interface Checkpoint {
   stepIndex: number;
   messages: Message[];
   toolCalls: unknown[];
-  usage: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-  };
+  /**
+   * Running usage of the run so far (LOU-V5). A resumed run continues from
+   * these totals. Checkpoints written before LOU-V5 hold only the three
+   * token counts and still load (their tokens are kept, cost is unknown).
+   */
+  usage: CheckpointUsage;
+  /** Per-call usage so far (LOU-V5); absent on older checkpoints. */
+  stepUsage?: StepUsage[];
   finishReason?: string;
   /**
    * LOU-T1: opaque, consumer-owned business/domain state co-located with

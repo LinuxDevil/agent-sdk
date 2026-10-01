@@ -36,6 +36,7 @@ import {
   Message,
   ToolCall,
   ToolDefinition,
+  ProviderUsage,
 } from './llm';
 
 /** Config fields shared by every 'ai'-SDK-backed provider. */
@@ -43,7 +44,7 @@ export interface AiSdkProviderConfig extends LLMProviderConfig {
   defaultModel?: string;
 }
 
-type TokenUsage = GenerateResult['usage'];
+type TokenUsage = ProviderUsage;
 
 /** The subset of an 'ai' SDK tool call this module reads. */
 interface AiSdkToolCall {
@@ -181,6 +182,43 @@ function toUsage(usage: TokenUsage): TokenUsage {
   };
 }
 
+/** A finite, non-negative count from untyped provider metadata, else `undefined`. */
+function metadataCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+/** The first documented cache/reasoning token field a provider's metadata carries. */
+function pickCount(metadata: Record<string, unknown> | undefined, keys: string[]): number | undefined {
+  for (const provider of Object.values(metadata ?? {})) {
+    const fields = provider as Record<string, unknown> | undefined;
+    for (const key of keys) {
+      const count = metadataCount(fields?.[key]);
+      if (count !== undefined) return count;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The call's usage, or `undefined` when the backend reported none (the 'ai'
+ * SDK yields `NaN` counts then; never zeros). Cache and reasoning tokens are
+ * read from `providerMetadata` when the provider package documents them
+ * (OpenAI `cachedPromptTokens`/`reasoningTokens`, Anthropic `cacheReadInputTokens`).
+ */
+function toGenerateUsage(
+  usage: TokenUsage,
+  metadata: Record<string, unknown> | undefined
+): ProviderUsage | undefined {
+  if (!Number.isFinite(usage.promptTokens) || !Number.isFinite(usage.completionTokens)) return undefined;
+  const cachedInputTokens = pickCount(metadata, ['cachedPromptTokens', 'cacheReadInputTokens']);
+  const reasoningTokens = pickCount(metadata, ['reasoningTokens']);
+  return {
+    ...toUsage(usage),
+    ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
+    ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
+  };
+}
+
 /** Yield every text delta, then a single finish chunk carrying usage stats. */
 async function* toFullStream(result: AiSdkStreamResult): AsyncGenerator<StreamChunk> {
   for await (const delta of result.textStream) {
@@ -202,7 +240,7 @@ async function* toFullStream(result: AiSdkStreamResult): AsyncGenerator<StreamCh
   const chunk: StreamChunk = {
     type: 'finish',
     finishReason: finalReason,
-    usage: toUsage(finalUsage),
+    usage: toGenerateUsage(finalUsage, undefined),
   };
   yield chunk;
 }
@@ -220,7 +258,7 @@ function toStreamResult(result: AiSdkStreamResult): StreamResult {
     textStream: toTextStream(result),
     fullStream: toFullStream(result),
     text: (async () => result.text)(),
-    usage: (async () => toUsage(await result.usage))(),
+    usage: (async () => toGenerateUsage(await result.usage, undefined))(),
     finishReason: (async () => result.finishReason)(),
     toolCalls: (async () => convertToolCalls(await result.toolCalls))(),
   };
@@ -281,7 +319,7 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
     return {
       text: result.text,
       finishReason: mapFinishReason(result.finishReason),
-      usage: toUsage(result.usage),
+      usage: toGenerateUsage(result.usage, result.providerMetadata),
       toolCalls: result.toolCalls && convertToolCalls(result.toolCalls),
       rawResponse: result,
     };

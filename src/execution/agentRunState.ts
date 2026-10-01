@@ -9,16 +9,18 @@ import { Message, ToolCall } from '../providers';
 import { AgentConfig } from '../types';
 import { Checkpoint } from './checkpoint';
 import { CompactedLLMProviderError } from './errors';
+import type { CallUsage, RunUsage, StepUsage } from '../models/usage';
+import { emptyRunUsage, recordStepUsage, restoreRunUsage } from './runUsage';
 import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
 import type { ToolCallOutcome } from './toolCallExecution';
 import type { UnrecordedToolCall } from './toolBatch';
 
-type TokenUsage = ExecutionResult['usage'];
-
 export interface AgentRunState {
   messages: Message[];
   toolCalls: ToolCall[];
-  usage: TokenUsage;
+  usage: RunUsage;
+  /** One entry per model call (LOU-V5). */
+  stepUsage: StepUsage[];
   steps: number;
   businessState: unknown;
   finalText: string;
@@ -71,7 +73,7 @@ function buildMessages(
 
 type InitialRunState = Pick<
   AgentRunState,
-  'messages' | 'toolCalls' | 'usage' | 'steps' | 'businessState'
+  'messages' | 'toolCalls' | 'usage' | 'stepUsage' | 'steps' | 'businessState'
 >;
 
 /** Rehydrates run state from a checkpoint left by an earlier process. */
@@ -88,7 +90,9 @@ function stateFromCheckpoint(checkpoint: Checkpoint, businessState: unknown): In
   return {
     messages: [...checkpoint.messages],
     toolCalls: [...(checkpoint.toolCalls as ToolCall[])],
-    usage: { ...checkpoint.usage },
+    // LOU-V5: continue from the checkpointed totals (older checkpoints: token counts only).
+    usage: restoreRunUsage(checkpoint.usage),
+    stepUsage: [...(checkpoint.stepUsage ?? [])],
     steps: checkpoint.stepIndex,
     businessState: businessState === undefined ? checkpoint.businessState : businessState,
   };
@@ -100,11 +104,8 @@ function freshState(options: ExecuteOptions): InitialRunState {
   return {
     messages: buildMessages(agent, input, skipSystemPromptInjection),
     toolCalls: [],
-    usage: {
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
-    },
+    usage: options.initialUsage ? restoreRunUsage(options.initialUsage) : emptyRunUsage(),
+    stepUsage: [],
     steps: initialSteps ?? 0,
     businessState,
   };
@@ -128,11 +129,12 @@ export async function loadRunState(options: ExecuteOptions): Promise<AgentRunSta
   return { ...initial, finalText: '', finishReason: 'stop' };
 }
 
-/** Accumulates one generate() call's token usage into the run total. */
-export function addUsage(total: TokenUsage, usage: TokenUsage): void {
-  total.promptTokens += usage.promptTokens;
-  total.completionTokens += usage.completionTokens;
-  total.totalTokens += usage.totalTokens;
+/** Accumulates one generate() call's usage into the run total and the per-step list. */
+export function recordStep(state: AgentRunState, measured: CallUsage): StepUsage {
+  recordStepUsage(state.usage, measured);
+  const stepUsage: StepUsage = { step: state.steps, ...measured };
+  state.stepUsage.push(stepUsage);
+  return stepUsage;
 }
 
 /** Persists the run's progress after a tool result, when checkpointing is on. */
@@ -151,7 +153,8 @@ export async function saveStepCheckpoint(
     stepIndex: state.steps,
     messages: [...state.messages],
     toolCalls: [...state.toolCalls],
-    usage: state.usage,
+    usage: structuredClone(state.usage),
+    stepUsage: [...state.stepUsage],
     finishReason: state.finishReason,
     businessState: state.businessState,
   };
@@ -226,6 +229,7 @@ export function toExecutionResult(
     messages: state.messages,
     toolCalls: state.toolCalls,
     usage: state.usage,
+    stepUsage: state.stepUsage,
     finishReason,
     steps: state.steps,
   };
