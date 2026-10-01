@@ -187,7 +187,37 @@ export interface ExecuteOptions {
   maxTokens?: number;
   onEvent?: (event: ExecutionEvent) => void;
   approvalStore?: ApprovalStore;
+  /**
+   * Durable execution: with `checkpointStore`, the run is checkpointed under
+   * this id after every model response, as tool results are recorded, and
+   * when it pauses, aborts or finishes. Calling `execute()` again with the
+   * same id (from any process) picks the session up (LOU-U8):
+   *
+   * - Unfinished run (crashed or aborted): resumes it. Tool calls of its last
+   *   model turn that have no result run first, without calling the model.
+   *   New `input` is appended as a user message after those results; input
+   *   that re-sends the run's own starting message is treated as a retry
+   *   and not appended again (`input: []` also just resumes).
+   * - Finished run: continues the conversation - the stored messages are
+   *   kept and `input` is appended as the next user turn. Pass only the new
+   *   message(s); a re-sent copy of the stored history is not duplicated.
+   *   `steps`, `usage` and `toolCalls` count from zero for the new run.
+   * - Paused awaiting approval: throws `SessionAwaitingApprovalError`;
+   *   resolve it with `resumeAfterApproval()` first.
+   *
+   * A tool that was running when the process died runs again on resume
+   * (at-least-once): make side-effecting tools idempotent - e.g. keyed on
+   * the `toolCallId` their `execute` receives - or approval-gated.
+   * Delete the session with `checkpointStore.delete(sessionId)`.
+   *
+   * @example
+   * ```ts
+   * await AgentExecutor.execute({ agent, input: 'Book a table for 2', provider, sessionId: 'chat-42', checkpointStore });
+   * await AgentExecutor.execute({ agent, input: 'Make it 3 people', provider, sessionId: 'chat-42', checkpointStore });
+   * ```
+   */
   sessionId?: string;
+  /** Where `sessionId` checkpoints are stored - see `sessionId` for the semantics. */
   checkpointStore?: CheckpointStore;
   /**
    * When true, `input` is treated as a complete, ready-to-send message
@@ -400,15 +430,17 @@ export interface ExecuteOptions {
    * - Approval: the first call that needs approval stops the batch. Calls
    *   before it run (concurrently) and are recorded; the run then pauses
    *   on that call (`finishReason: 'awaiting-approval'`); calls after it
-   *   never start in this run.
+   *   never start in this run. `resumeAfterApproval()` records the paused
+   *   call's result and then runs the calls after it the same way (LOU-U7).
    * - A failing tool does not affect its siblings - each gets its own error
    *   result. A propagating error (`PropagatingToolError`, a throwing hook)
    *   stops new calls from starting, waits for the running ones, then
    *   rejects `execute()` - no tool is left running detached.
    * - An abort (`signal`) mid-batch resolves with `finishReason: 'aborted'`:
    *   finished calls keep their results, the rest get a "cancelled" result.
-   * - With checkpointing, results are checkpointed as the in-order prefix
-   *   of finished calls grows, so a resumed run never re-runs a recorded call.
+   * - With checkpointing, the model's turn is checkpointed before any call
+   *   starts, and results as the in-order prefix of finished calls grows,
+   *   so a resumed run never re-runs a recorded call.
    *
    * @example
    * ```ts
@@ -552,6 +584,18 @@ export class AgentExecutor {
 
     const state = await loadRunState(options);
 
+    // LOU-U7/U9: a resumed transcript may end with a model turn whose tool
+    // calls (some of them) have no result yet - finish those first, without
+    // calling the model again.
+    if (state.pendingToolCalls.length > 0) {
+      const resumed = await this.runStepOrAbort(options, state, () =>
+        this.runPendingToolCalls(options, state, agentSpanId)
+      );
+      if (resumed !== 'continue') {
+        return resumed;
+      }
+    }
+
     return this.runSteps(options, state, tools, agentSpanId);
   }
 
@@ -572,7 +616,9 @@ export class AgentExecutor {
       }
       state.steps++;
 
-      const outcome = await this.runStepOrAbort(options, state, tools, agentSpanId);
+      const outcome = await this.runStepOrAbort(options, state, () =>
+        this.runStep(options, state, tools, agentSpanId)
+      );
       if (outcome === 'stop') {
         return this.finishRun(options, state);
       }
@@ -585,21 +631,22 @@ export class AgentExecutor {
   }
 
   /**
-   * runStep(), with a thrown error emitted as an `error` event and
-   * rethrown - unless the run's signal was aborted, in which case the
-   * rejection is the abort itself (e.g. the provider's AbortError) and the
-   * run ends as 'aborted' instead (LOU-V1).
+   * Runs one step (runStep(), or the resumed pending tool calls of the
+   * current step - LOU-U7/U9), bracketed by the stream's step events, with
+   * a thrown error emitted as an `error` event and rethrown - unless the
+   * run's signal was aborted, in which case the rejection is the abort
+   * itself (e.g. the provider's AbortError) and the run ends as 'aborted'
+   * instead (LOU-V1).
    */
-  private static async runStepOrAbort(
+  private static async runStepOrAbort<T extends string>(
     options: ExecuteOptions,
     state: AgentRunState,
-    tools: ToolDefinition[],
-    agentSpanId: string
-  ): Promise<'continue' | 'stop' | ExecutionResult> {
+    step: () => Promise<T | ExecutionResult>
+  ): Promise<T | ExecutionResult> {
     const runEvents = runEventsOf(options);
     runEvents?.stepStart(state.steps);
     try {
-      const outcome = await this.runStep(options, state, tools, agentSpanId);
+      const outcome = await step();
       runEvents?.stepDone(state.steps, typeof outcome === 'string' ? undefined : outcome.finishReason);
       return outcome;
     } catch (error) {
@@ -751,10 +798,7 @@ export class AgentExecutor {
     toolCalls: ToolCall[],
     agentSpanId: string
   ): Promise<ExecutionResult | undefined> {
-    const { onEvent } = options;
     state.toolCalls.push(...toolCalls);
-    // LOU-Y1: tool calls whose sub-agent paused for approval, in call order.
-    const suspensions: SubagentSuspension[] = [];
 
     // Add assistant message with tool calls
     state.messages.push({
@@ -763,6 +807,49 @@ export class AgentExecutor {
       toolCalls,
     });
 
+    // LOU-U9: checkpoint the model's turn before any tool runs, so a crash
+    // from here on resumes by running the calls - never by asking the
+    // model again.
+    await saveStepCheckpoint(options, state);
+
+    return this.runBatch(options, state, toolCalls, agentSpanId);
+  }
+
+  /**
+   * LOU-U7/U9: runs the tool calls of the last model turn that have no
+   * result yet (left by a crash, or by an approval pause mid-batch), then
+   * appends any input queued behind them. Resolves to 'continue', or the
+   * ExecutionResult when the run pauses again or is aborted.
+   */
+  private static async runPendingToolCalls(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    agentSpanId: string
+  ): Promise<'continue' | ExecutionResult> {
+    const calls = state.pendingToolCalls;
+    state.pendingToolCalls = [];
+    const stopped = await this.runBatch(options, state, calls, agentSpanId);
+    if (stopped) {
+      return stopped;
+    }
+    state.messages.push(...state.queuedInput);
+    state.queuedInput = [];
+    return 'continue';
+  }
+
+  /**
+   * Runs one batch of tool calls through the LOU-V3 scheduler, recording
+   * results in call order and checkpointing as they are recorded.
+   */
+  private static async runBatch(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    toolCalls: ToolCall[],
+    agentSpanId: string
+  ): Promise<ExecutionResult | undefined> {
+    const { onEvent } = options;
+    // LOU-Y1: tool calls whose sub-agent paused for approval, in call order.
+    const suspensions: SubagentSuspension[] = [];
     const batch = await runToolBatch(
       toolCalls,
       options.toolConcurrency ?? 'unbounded',
@@ -805,7 +892,10 @@ export class AgentExecutor {
     }
     const suspension = settleSuspensions(state.messages, suspensions, Boolean(batch.approval));
     if (batch.approval) {
-      return this.pauseForApproval(options, state, batch.approval.toolCall, batch.approval.outcome);
+      const { toolCall, outcome } = batch.approval;
+      const pausedAt = batch.unrecorded.findIndex((call) => call.toolCall === toolCall);
+      const remaining = batch.unrecorded.slice(pausedAt + 1).map((call) => call.toolCall);
+      return this.pauseForApproval(options, state, toolCall, outcome, remaining);
     }
     if (suspension) {
       return this.savePause(options, state, suspensionRecord(options, state, suspension));
@@ -912,15 +1002,17 @@ export class AgentExecutor {
   }
 
   /**
-   * Persists a pending approval (plus the snapshot resume.ts needs) and
-   * ends this execute() call with an 'awaiting-approval' result. The
-   * checkpoint is deliberately left in place so the run can be resumed.
+   * Persists a pending approval (plus the snapshot resume.ts needs, with
+   * the turn's not-yet-run calls - LOU-U7) and ends this execute() call
+   * with an 'awaiting-approval' result. The checkpoint is marked
+   * 'awaiting-approval' (LOU-U8) so new input cannot bypass the decision.
    */
   private static async pauseForApproval(
     options: ExecuteOptions,
     state: AgentRunState,
     toolCall: ToolCall,
-    toolResult: ToolCallOutcome
+    toolResult: ToolCallOutcome,
+    remainingToolCalls: ToolCall[]
   ): Promise<ExecutionResult> {
     const { agent, approvalStore, sessionId } = options;
     if (!approvalStore) {
@@ -940,10 +1032,12 @@ export class AgentExecutor {
     const snapshot: ExecutionSnapshot = {
       // The agent as configured: resume re-applies skills and sub-agents.
       agent: baseAgentOf(agent),
-      currentMessages: state.messages,
+      // Queued input rides at the end; resume moves it behind the results.
+      currentMessages: [...state.messages, ...state.queuedInput],
       pendingToolCall: pending,
       steps: state.steps,
       sessionId,
+      remainingToolCalls,
       usage: structuredClone(state.usage),
     };
     return this.savePause(options, state, { pending, snapshot });
@@ -951,7 +1045,8 @@ export class AgentExecutor {
 
   /**
    * Saves an approval record and ends this execute() call with an
-   * 'awaiting-approval' result.
+   * 'awaiting-approval' result. The checkpoint is marked
+   * 'awaiting-approval' (LOU-U8) so new input cannot bypass the decision.
    */
   private static async savePause(
     options: ExecuteOptions,
@@ -959,7 +1054,10 @@ export class AgentExecutor {
     { pending, snapshot }: { pending: PendingApproval; snapshot: ExecutionSnapshot }
   ): Promise<ExecutionResult> {
     const { approvalStore, onEvent } = options;
+    // Approval first: a crash between the two writes then leaves a
+    // resumable 'in-progress' checkpoint, never one naming a lost approval.
     await approvalStore?.save(pending, snapshot);
+    await saveStepCheckpoint(options, state, 'awaiting-approval', pending.id);
     runEventsOf(options)?.approvalRequested(pending);
 
     this.emitEvent(onEvent, {
@@ -1012,7 +1110,7 @@ export class AgentExecutor {
     options: ExecuteOptions,
     state: AgentRunState
   ): Promise<ExecutionResult> {
-    const { onEvent, sessionId, checkpointStore } = options;
+    const { onEvent } = options;
 
     // LOU-T4: `maxSteps` was exhausted, but the very last thing that
     // happened was a surfaced-to-the-model provider failure (not a genuine
@@ -1039,15 +1137,11 @@ export class AgentExecutor {
     });
 
     // The run has reached a terminal state (either the model stopped
-    // requesting tools, or maxSteps was exhausted) - as opposed to the
-    // 'awaiting-approval' early return in pauseForApproval(), which is a
-    // mid-flight pause where the checkpoint must stay in place so it can
-    // still be resumed. Clear the checkpoint here so a later execute() call
-    // reusing this sessionId builds fresh messages from its own `input`
-    // instead of silently resuming from this now-finished run.
-    if (sessionId && checkpointStore) {
-      await checkpointStore.delete(sessionId);
-    }
+    // requesting tools, or maxSteps was exhausted). LOU-U8: keep the
+    // transcript, marked 'finished', so a later execute() call reusing this
+    // sessionId continues the conversation with its new input instead of
+    // resuming this run (or forgetting it).
+    await saveStepCheckpoint(options, state, 'finished');
 
     return toExecutionResult(state, state.finalText, state.finishReason);
   }

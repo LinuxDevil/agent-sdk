@@ -37,8 +37,10 @@ contains an assistant tool-call turn without the matching tool results.
 
 Sessions are a thin layer: the session owns the transcript and hands it to the
 executor on each turn. They do not use the checkpoint/resume mechanism
-(`sessionId` + `checkpointStore` on `AgentExecutor.execute()`), which is for
-resuming one interrupted run, not for continuing a conversation.
+(`sessionId` + `checkpointStore` on `AgentExecutor.execute()`). That lower-level
+mechanism also continues a finished conversation, and additionally resumes a
+run interrupted mid-turn (a crash, an abort, an approval pause) without
+re-running finished tools - see [Durable execution](./durable-execution.md).
 
 ## Stores
 

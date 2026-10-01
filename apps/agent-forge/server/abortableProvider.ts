@@ -22,11 +22,10 @@
  * provider is itself abort-aware) throws, which propagates out of
  * AgentExecutor.execute()'s catch block (it only emits an 'error' event and
  * rethrows - it does not swallow) as a rejected promise. Crucially,
- * AgentExecutor only clears the CheckpointStore entry on a *successful*
- * terminal completion (see the bottom of runAgentLoop(), reached only after
- * the while-loop `break`s) - never from the catch block - so an abort
- * leaves the last-saved checkpoint (written after each completed tool
- * result) intact. The next `run()` call for the same agent reuses the same
+ * AgentExecutor only marks the CheckpointStore entry 'finished' on a
+ * *successful* terminal completion - never from the catch block - so an
+ * abort leaves the last-saved 'in-progress' checkpoint (written after each
+ * model response and each completed tool result) intact. The next `run()` call for the same agent reuses the same
  * sessionId, so AgentExecutor.execute() rehydrates from exactly that
  * checkpoint instead of starting over. This is what makes Stop-then-Run
  * "resume from the last checkpoint" rather than "restart from scratch".

@@ -3,7 +3,7 @@
  * Types and storage for human-in-the-loop tool approval.
  */
 
-import { Message } from '../providers';
+import { Message, ToolCall } from '../providers';
 import { AgentConfig } from '../types';
 import { StorageService } from '../storage';
 import type { RunUsage } from '../models/usage';
@@ -55,6 +55,17 @@ export interface ExecutionSnapshot {
    * execution at all.
    */
   sessionId?: string;
+  /**
+   * LOU-U7: the tool calls of the same model turn that come after the
+   * paused one and have not run yet, in call order. `resumeAfterApproval()`
+   * records the paused call's result (or rejection) and then runs these
+   * through the normal batch path - they can run, fail validation, or pause
+   * the run again on another approval. Absent on snapshots saved before
+   * this field existed, which means "no remaining calls": any call of that
+   * turn still without a result gets an error result saying it was not run,
+   * so the transcript stays valid for the provider.
+   */
+  remainingToolCalls?: ToolCall[];
   /** Usage the paused run had spent (LOU-V5), so the resumed run continues its totals. */
   usage?: RunUsage;
   /**
