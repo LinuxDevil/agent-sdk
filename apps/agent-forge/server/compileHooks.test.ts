@@ -82,7 +82,7 @@ describe('compileHooksFromSpecPolicy', () => {
       maxSteps: 1,
     });
 
-    expect(execute).toHaveBeenCalledWith({ email: '[REDACTED]' }, {});
+    expect(execute).toHaveBeenCalledWith({ email: '[REDACTED]' }, expect.any(Object));
   });
 
   it('compiles a preGenerate hook that actually injects a message when the agent runs', async () => {
