@@ -118,7 +118,7 @@ function delegatedTotals(before: DelegatedUsage | undefined, child: RunUsage): D
 }
 
 /** Rolls a finished child agent run's total into the parent's (mutates the parent). */
-export function mergeDelegatedUsage(run: RunUsage, child: RunUsage): void {
+function mergeDelegatedUsage(run: RunUsage, child: RunUsage): void {
   run.inputTokens += child.inputTokens;
   run.outputTokens += child.outputTokens;
   run.totalTokens += child.totalTokens;

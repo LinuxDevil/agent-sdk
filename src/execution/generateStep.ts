@@ -71,7 +71,7 @@ function generateHookContext(
 }
 
 /** The model a call is made with: agent.settings.model > the provider's configured model > unknown. */
-export function resolveModel(options: ExecuteOptions): string | undefined {
+function resolveModel(options: ExecuteOptions): string | undefined {
   return options.agent.settings?.model || options.provider.defaultModel;
 }
 
