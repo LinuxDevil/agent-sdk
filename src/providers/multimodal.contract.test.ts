@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LanguageModel, LanguageModelV1CallOptions } from 'ai';
 import { MockLanguageModelV1 } from 'ai/test';
+import { describeOnAiV4 } from './aiMajor.testkit';
 import { OpenAIProvider } from './OpenAIProvider';
 import { AnthropicProvider } from './AnthropicProvider';
 import { OllamaProvider } from './OllamaProvider';
@@ -50,7 +51,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe.each(providers)('%s provider: multimodal user content (LOU-V11)', (_name, make) => {
+// v4 only: asserts the ai v4 message shapes (LOU-D28b); the v7 shapes of these scenarios are asserted in aiSdkCompat.v7.test.ts.
+describeOnAiV4.each(providers)('%s provider: multimodal user content (LOU-V11)', (_name, make) => {
   it('sends text and image parts (bytes and data URL) to the model', async () => {
     const provider = make();
     const { prompts } = withMockModel(provider);
@@ -138,7 +140,8 @@ describe.each(providers)('%s provider: multimodal user content (LOU-V11)', (_nam
   });
 });
 
-describe('file parts for a provider that accepts them (LOU-V11)', () => {
+// v4 only: asserts the ai v4 message shapes (LOU-D28b); the v7 shapes of these scenarios are asserted in aiSdkCompat.v7.test.ts.
+describeOnAiV4('file parts for a provider that accepts them (LOU-V11)', () => {
   it('maps a file part to the ai v4 FilePart', async () => {
     class FileProvider extends OpenAIProvider {
       protected readonly acceptsFileParts = true;

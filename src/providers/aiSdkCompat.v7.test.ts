@@ -17,6 +17,7 @@ import { OllamaProvider } from './OllamaProvider';
 import { OpenRouterProvider } from './OpenRouterProvider';
 import type { LLMProvider, Message } from './llm';
 import { isModernAi, type AiSdkModule } from './aiSdkCompat';
+import { installedAiMajor } from './aiMajor.testkit';
 import { AgentExecutor } from '../execution/AgentExecutor';
 import { AgentBuilder } from '../core';
 import { ToolRegistry, defineTool } from '../tools';
@@ -87,9 +88,10 @@ const history: Message[] = [
 ];
 
 describe('the compat layer detects the ai major', () => {
-  it('treats ai v7 as modern and the installed ai v4 as v4', async () => {
+  it('treats ai v7 as modern, and the installed ai as modern only from v5 on', async () => {
     expect(isModernAi(aiV7)).toBe(true);
-    expect(isModernAi(await import('ai'))).toBe(false);
+    // Agnostic (LOU-D28b): `ai` is v4 on the default install and v7 on the ai-7 CI job.
+    expect(isModernAi(await import('ai'))).toBe(installedAiMajor >= 5);
   });
 });
 
