@@ -422,8 +422,10 @@ describe('stateful streaming chat (LOU-D32)', () => {
 
     const { approvalId } = requested as { approvalId: string };
     const continued = await eventsOf(await post(handle, `/chat/s2/approvals/${approvalId}`, { approved: true }));
-    expect(continued.map((e) => e.type)).toEqual(['run.start', 'tool.done', 'text.delta', 'text.done', 'run.done']);
-    expect(continued[1]).toMatchObject({ toolName: 'ping', result: 'pong' });
+    // LOU-D32.2: the continuation is a live stream, as a fresh turn's: the decided call, then the model's reply.
+    expect(continued.map((e) => e.type)).toContain('tool.start');
+    expect(continued.find((e) => e.type === 'tool.done')).toMatchObject({ toolName: 'ping', result: 'pong' });
+    expect(continued.flatMap((e) => (e.type === 'text.delta' ? [e.text] : [])).join('')).toBe('The tool said pong.');
     expect(continued.at(-1)).toMatchObject({ finishReason: 'stop', text: 'The tool said pong.' });
 
     const saved = await transcript(handle, 's2');
@@ -432,6 +434,17 @@ describe('stateful streaming chat (LOU-D32)', () => {
 
     // Decided already: nothing pending under that id any more.
     expect((await post(handle, `/chat/s2/approvals/${approvalId}`, { approved: true })).status).toBe(404);
+  });
+
+  it('a second pause inside the streamed continuation arrives as approval.requested (LOU-D32.2)', async () => {
+    handle = await serve(mockModel([pinged, pinged, 'Both pinged.']));
+    const first = (await turn(handle, 's4', 'ping twice')).find((e) => e.type === 'approval.requested') as { approvalId: string };
+    const second = await eventsOf(await post(handle, `/chat/s4/approvals/${first.approvalId}`, { approved: true }));
+    expect(second.at(-1)).toMatchObject({ type: 'run.done', finishReason: 'awaiting-approval' });
+    const again = second.find((e) => e.type === 'approval.requested') as { approvalId: string };
+    expect(again.approvalId).not.toBe(first.approvalId);
+    const done = await eventsOf(await post(handle, `/chat/s4/approvals/${again.approvalId}`, { approved: true }));
+    expect(done.at(-1)).toMatchObject({ finishReason: 'stop', text: 'Both pinged.' });
   });
 
   it('rejects an approval with a note, and answers a question', async () => {

@@ -93,7 +93,10 @@ When a tool with `needsApproval` is called, the run stops with
   `'awaiting-approval'` if the run pauses again.
 - **Remote**, pass `{ approvalsUrl }` as the second argument. The hook POSTs
   `{ "approved": true, "note": "..." }` to `${approvalsUrl}/${approvalId}` and
-  expects the `ApprovalOutcome` JSON the server below returns.
+  shows the continuation live from the SSE stream the session API answers
+  with (the same events as a chat turn; a second pause arrives as
+  `approval.requested`). A server that answers with an `ApprovalOutcome` JSON
+  instead (the one below) still works.
 - **Remote without `approvalsUrl`**, `approve()` and `reject()` do nothing.
   Show `pendingApproval` and resolve it through your own API, then `send()`
   the next turn.
