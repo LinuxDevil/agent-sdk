@@ -5,6 +5,12 @@ pr="$1"; b="$2"; shift 2
 cd /e/agent-sdk/.claude/worktrees/loop-orch || exit 1
 bash "$S/syncverify-win.sh" "$b" "$@" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -v "^warning" | tail -14 > "$S/sv.out"; cat "$S/sv.out"
 H=$(grep -oE "^HEAD [0-9a-f]+" "$S/sv.out" | cut -d' ' -f2)
-if [ -n "$H" ]; then gh pr merge "$pr" --repo LinuxDevil/agent-sdk --squash --match-head-commit "$H" 2>&1 | tail -1; else echo "NOT MERGED"; fi
+if [ -n "$H" ]; then
+  for i in 1 2 3 4; do
+    sleep 6
+    if gh pr merge "$pr" --repo LinuxDevil/agent-sdk --squash --match-head-commit "$H" 2>&1 | tail -1 | grep -q .; then echo "merge attempt $i refused, retrying"; else break; fi
+  done
+  [ "$(gh pr view "$pr" --repo LinuxDevil/agent-sdk --json state -q .state)" = "MERGED" ] && echo "MERGED #$pr" || echo "NOT MERGED #$pr"
+else echo "NOT MERGED"; fi
 git fetch origin main -q; echo "main: $(git log origin/main --oneline -1)"
 [ -n "$H" ] && git checkout -q loush/blissful-volta-i76xiy
