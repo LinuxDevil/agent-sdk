@@ -14,6 +14,8 @@ import { AgentExecutor, ExecuteOptions, ExecutionResult } from '../execution/Age
 import { withEvalCassettes } from './cassettes';
 import { scoreAssertion } from './evalResult';
 import { matchesTagFilter, recordEvalResult } from './recorder';
+import { remoteTargetFromEnv } from './remoteTarget';
+import { SDKError } from '../execution/errors';
 import { parseToolCalls } from './toolMatch';
 import {
   describeFailure,
@@ -86,7 +88,12 @@ export interface TrajectoryEvalConfig<C = Record<string, never>> {
    * fresh one per case so cases cannot share state. Use `mockModel` as its
    * provider for a deterministic CI eval.
    */
-  agent: AgentSource;
+  agent?: AgentSource;
+  /**
+   * Run the cases against this instead of `agent`, e.g. `remoteTarget({ url })`
+   * for a deployed agent. `loushy eval --url` overrides both.
+   */
+  target?: AgentSource;
   /** Tags for `loushy eval --tag`. */
   tags?: string[];
   /** Dataset: `test` runs once per case. A case's `label` (or `name`, or its `input`) names it in reports. */
@@ -124,10 +131,16 @@ async function runAndReport(
   label: string | undefined,
   file: string | undefined
 ): Promise<void> {
-  const result = await withEvalCassettes({ file, name: config.name, label }, () => runTrajectoryCase(config, c, label, file));
+  const agent = remoteTargetFromEnv() ?? config.target ?? config.agent;
+  const spec = { ...config, agent: agent ?? missingAgent };
+  const result = await withEvalCassettes({ file, name: config.name, label }, () => runTrajectoryCase(spec, c, label, file));
   recordEvalResult(result);
   if (!result.passed) throw new Error(describeFailure(result));
 }
+
+const missingAgent: AgentSource = () => {
+  throw new SDKError("defineEval() needs an `agent` (or a `target`) to run the cases against", 'LOUSHY_CONFIG_MISSING_AGENT');
+};
 
 function defineTrajectoryEval(config: TrajectoryEvalConfig<unknown>): void {
   const { test, expect } = currentVitest();
@@ -174,6 +187,9 @@ function defineClassicEval(config: EvalConfig): void {
   const register = matchesTagFilter(tags ?? []) ? test : test.skip;
 
   register(name, async () => {
+    if (remoteTargetFromEnv()) {
+      throw new SDKError(`eval '${name}' is a score/threshold eval, which runs an in-process provider and cannot run with --url; use a trajectory eval`, 'LOUSHY_CONFIG_CONFLICTING_OPTIONS');
+    }
     const file = currentTestPath(expect);
     const evalResult = await withEvalCassettes({ file, name }, async () => {
       const started = Date.now();

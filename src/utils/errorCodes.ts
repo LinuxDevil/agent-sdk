@@ -38,6 +38,8 @@ export const ERROR_CODES = {
   LOUSHY_SESSION_ID_INVALID: "Use 1-128 characters from A-Z, a-z, 0-9, '_' and '-', or omit the id.",
   LOUSHY_SESSION_FILE_CORRUPT: 'Restore or delete the session file named in the message.',
   LOUSHY_SESSION_STREAM_UNSUPPORTED: 'Create the session with agent.session(), which can stream, or call send() instead.',
+  LOUSHY_REMOTE_UNAUTHORIZED: "Pass the deployment's bearer token with --token or LOUSHY_EVAL_TOKEN (its LOUSHY_API_TOKEN).",
+  LOUSHY_REMOTE_REQUEST_FAILED: 'Check the --url, that the deployment is up (GET /health), and its logs.',
   LOUSHY_CHECKPOINT_NOT_FOUND:
     "Fork at a step the session's checkpoint history still keeps (checkpointStore.history() lists them), or raise the store's historyLimit.",
   LOUSHY_RUN_ALREADY_ITERATED: 'Iterate an AgentRun once; call stream() again for a new run.',
