@@ -21,6 +21,30 @@ deploy the result). `tsup` must be installed (`npm install --save-dev tsup`).
 Every target answers `GET /health` (`200 ok`) and serves the full
 [HTTP API](#http-api) below: sessions, SSE streaming, approvals and bearer auth.
 
+## Agent directories
+
+`node-server` and `docker` also take an [agent directory](./agent-directories.md)
+in place of a spec file (the path may be positional or `--agent`):
+
+```bash
+npx loushy build ./my-agent --target=node-server
+node .loushy/build/node-server/dist/server.js
+```
+
+The generated `server.ts` calls `resolveAgentDir()` on `dist/agent` and
+`createDeployedServer(agent, { schedules, channels })`, so the process starts the
+directory's [schedules](./schedules.md) when it listens, mounts its
+[channels](./channels.md) under `/channels` (they verify themselves; the chat
+routes keep the bearer token), and logs `schedules: ...; channels: ...`.
+The directory's code files are pre-bundled with the build's tsup step into
+`dist/agent/**.js` (one ESM build sharing one copy of the SDK, so a `from
+'@loushy/build-ai-agent'` import in a tool is the SDK the server runs), and the
+rest of the directory is copied; nothing needs a TypeScript loader at run time.
+`dist/` is then ESM (`dist/package.json` says so). The Docker image copies it as
+before. The optional `dockerode` sandbox is not bundled (it loads lazily), so a
+directory that uses `SubprocessSandbox` must install it where it runs. The
+Cloudflare Worker target still takes spec files only.
+
 ## HTTP API
 
 Every target serves the same `/chat` protocol as `loushy dev`
