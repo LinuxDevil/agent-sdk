@@ -1,4 +1,17 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { pathToFileURL } from 'node:url';
+
+const cacheBust = new AsyncLocalStorage<string>();
+
+/**
+ * Runs `fn` so every file `importModule()` loads inside it is imported with a
+ * `?t=<token>` query: a fresh module instance instead of the cached one
+ * (`loushy dev` hot reload, LOU-D31). Only the file itself is re-evaluated;
+ * modules it imports stay cached by the runtime.
+ */
+export function withFreshImports<T>(token: string, fn: () => Promise<T>): Promise<T> {
+  return cacheBust.run(token, fn);
+}
 
 /** Node error codes that mean "this process cannot load a TypeScript file". */
 const NO_TS_LOADER_CODES = new Set(['ERR_UNKNOWN_FILE_EXTENSION', 'ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX']);
@@ -29,7 +42,9 @@ export function explainImportError(file: string, error: unknown): Error {
 /** Dynamically imports a user file, with path-bearing errors (see {@link explainImportError}). */
 export async function importModule(file: string): Promise<Record<string, unknown>> {
   try {
-    return (await import(pathToFileURL(file).href)) as Record<string, unknown>;
+    const token = cacheBust.getStore();
+    const href = pathToFileURL(file).href;
+    return (await import(token === undefined ? href : `${href}?t=${token}`)) as Record<string, unknown>;
   } catch (error) {
     throw explainImportError(file, error);
   }
