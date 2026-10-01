@@ -21,6 +21,29 @@ interface ProviderEntry {
   envDefaultModel: string;
 }
 
+/** What `loushy doctor` needs to know about one provider. */
+export interface ProviderInfo {
+  name: string;
+  envKey: string;
+  /** False when the provider has a built-in default (Ollama's local endpoint). */
+  envRequired: boolean;
+  /** The optional peer package, without a version range. */
+  peerPackage: string;
+  /** The `npm install` argument for the peer, e.g. `@ai-sdk/openai@^0.0.42`. */
+  peerInstall: string;
+}
+
+/** Every supported provider, in env-detection order. */
+export function listProviders(): ProviderInfo[] {
+  return Object.entries(PROVIDERS).map(([name, entry]) => ({
+    name,
+    envKey: entry.envKey,
+    envRequired: entry.envRequired,
+    peerPackage: entry.peer.slice(0, entry.peer.lastIndexOf('@')),
+    peerInstall: entry.peer,
+  }));
+}
+
 /** Providers in env-detection order (see `modelFromEnv()`). */
 const PROVIDERS: Record<string, ProviderEntry> = {
   openai: {
@@ -160,12 +183,12 @@ export function resolveProviderSpec(spec: string, caller: string): LLMProvider {
  * openrouter, ollama) whose env var is set. Throws, listing every fix, when
  * nothing is configured.
  */
-export function modelFromEnv(caller: string): string {
-  const explicit = process.env[MODEL_ENV_VAR];
+export function modelFromEnv(caller: string, env: Record<string, string | undefined> = process.env): string {
+  const explicit = env[MODEL_ENV_VAR];
   if (explicit) return explicit;
 
   for (const [name, entry] of Object.entries(PROVIDERS)) {
-    if (process.env[entry.envKey]) return `${name}/${entry.envDefaultModel}`;
+    if (env[entry.envKey]) return `${name}/${entry.envDefaultModel}`;
   }
 
   const envKeys = Object.values(PROVIDERS).map((p) => p.envKey);

@@ -13,6 +13,12 @@ import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
 import { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGate';
 import { CheckpointStore } from './checkpoint';
 import { TraceExporter, withSpan } from './tracing';
+import {
+  agentRunSpanInit,
+  recordToolOutcome,
+  resolveCaptureContent,
+  toolSpanInit,
+} from './genAiSpans';
 import { HookRegistry } from './hooks';
 import { isAbortError } from './errors';
 import {
@@ -194,21 +200,32 @@ export interface ExecuteOptions {
   ) => void | Promise<void>;
   /**
    * Trace exporter (LOU-E3/E4/E5). When provided, execute() wraps its run
-   * in a 3-level span tree: a top-level `agent.run` span, with a nested
-   * `llm.generate` span around each provider.generate() call and a nested
-   * `tool.call` span around each tool execution, both parented to
-   * `agent.run` via Span.parentId. Omitted (or no exporter) means
+   * in a 3-level span tree following the OpenTelemetry GenAI conventions
+   * (LOU-D9): an `invoke_agent {name}` span, with a nested `chat {model}`
+   * span around each provider.generate() call and a nested
+   * `execute_tool {tool}` span around each tool execution, both parented to
+   * the agent span via Span.parentId. Omitted (or no exporter) means
    * withSpan() is a no-op wrapper - execute()'s behavior is unchanged.
    */
   exporter?: TraceExporter;
   /**
-   * When true, span attributes omit potentially sensitive content (the
-   * `agent.run` input isn't captured differently, but `llm.generate`
-   * leaves out `prompt` and `tool.call` leaves out `args`/`result`).
-   * Token counts, finish reason, tool name and error/latency are never
-   * redacted. Defaults to false.
+   * When true, the DEPRECATED span attributes omit potentially sensitive
+   * content (`chat` leaves out `prompt` and `execute_tool` leaves out
+   * `args`/`result`; the agent span's `input` is not redacted). Token
+   * counts, finish reason, tool name and error/latency are never redacted.
+   * Defaults to false. The `gen_ai.*` content attributes are governed by
+   * `captureContent` instead.
    */
   redactContent?: boolean;
+  /**
+   * Record message and tool-argument content on the OpenTelemetry GenAI
+   * attributes (`gen_ai.input.messages`, `gen_ai.output.messages`,
+   * `gen_ai.system_instructions`, `gen_ai.tool.call.arguments`,
+   * `gen_ai.tool.call.result`). Off by default; falls back to the
+   * `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` environment
+   * variable when omitted.
+   */
+  captureContent?: boolean;
   /**
    * SandboxAdapter used for tools flagged `requiresSandbox` (LOU-F5). Since
    * AgentExecutor is a static, instance-free API, this is read per-call
@@ -386,16 +403,21 @@ export class AgentExecutor {
     // then threaded as `parentId` into the nested 'llm.generate' and
     // 'tool.call' withSpan() calls, giving the 3-level span tree its
     // parent/child relationships without any instance state.
+    const init = agentRunSpanInit(
+      { ...options, input },
+      resolveCaptureContent(options.captureContent)
+    );
     return withSpan(
       exporter,
-      'agent.run',
-      { input: typeof input === 'string' ? input : JSON.stringify(input) },
+      init.name,
+      init.attributes,
       async (agentSpan) =>
         this.runAgentLoop(
           { ...options, ...withSkills(options.agent, options.toolRegistry, options.skills) },
           agentSpan.id
         ),
-      undefined
+      undefined,
+      init.kind
     );
   }
 
@@ -701,10 +723,11 @@ export class AgentExecutor {
       signal,
     } = options;
 
+    const init = toolSpanInit({ id: toolCall.id, name: toolCall.function.name }, { agent, toolRegistry, sessionId });
     return withSpan(
       exporter,
-      'tool.call',
-      { toolName: toolCall.function.name },
+      init.name,
+      init.attributes,
       async (toolSpan) => {
         const toolCallStart = Date.now();
         const executed = await this.executeToolCall(
@@ -724,15 +747,20 @@ export class AgentExecutor {
           executed.args === undefined
             ? parseToolArguments(toolCall, toolCall.function.arguments)
             : executed.args;
-        toolSpan.attributes = {
-          ...toolSpan.attributes,
-          ...(redactContent ? {} : { args: parsedArgs, result: executed.result }),
-          error: !!executed.error,
-          latencyMs: Date.now() - toolCallStart,
-        };
+        recordToolOutcome(
+          toolSpan,
+          {
+            args: parsedArgs,
+            result: executed.result,
+            error: executed.error,
+            latencyMs: Date.now() - toolCallStart,
+          },
+          { redactContent, captureContent: resolveCaptureContent(options.captureContent) }
+        );
         return executed;
       },
-      agentSpanId
+      agentSpanId,
+      init.kind
     );
   }
 

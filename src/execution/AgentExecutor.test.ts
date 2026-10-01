@@ -1237,7 +1237,7 @@ describe('AgentExecutor', () => {
       return mockProvider;
     }
 
-    it('produces a 3-level span tree: agent.run -> llm.generate, tool.call, with correct parent/child ids', async () => {
+    it('produces a 3-level span tree: invoke_agent -> chat, execute_tool, with correct parent/child ids', async () => {
       const { tool } = await import('ai');
       const { z } = await import('zod');
 
@@ -1267,13 +1267,18 @@ describe('AgentExecutor', () => {
       });
 
       const names = starts.map((s) => s.name);
-      expect(names).toEqual(['agent.run', 'llm.generate', 'tool.call', 'llm.generate']);
+      expect(names).toEqual([
+        'invoke_agent Test Agent',
+        expect.stringMatching(/^chat/),
+        'execute_tool echoTool',
+        expect.stringMatching(/^chat/),
+      ]);
       expect(starts).toHaveLength(4);
       expect(ends).toHaveLength(4);
 
-      const agentRunSpan = starts.find((s) => s.name === 'agent.run')!;
-      const llmSpans = starts.filter((s) => s.name === 'llm.generate');
-      const toolSpan = starts.find((s) => s.name === 'tool.call')!;
+      const agentRunSpan = starts.find((s) => s.name.startsWith('invoke_agent'))!;
+      const llmSpans = starts.filter((s) => s.name.startsWith('chat'));
+      const toolSpan = starts.find((s) => s.name.startsWith('execute_tool'))!;
 
       expect(agentRunSpan.parentId).toBeUndefined();
       for (const llmSpan of llmSpans) {
@@ -1314,12 +1319,12 @@ describe('AgentExecutor', () => {
       const serialized = JSON.stringify(ends);
       expect(serialized).toContain('secret-value');
 
-      const llmSpan = ends.find((s) => s.name === 'llm.generate');
+      const llmSpan = ends.find((s) => s.name.startsWith('chat'));
       expect(llmSpan?.attributes.prompt).toBeDefined();
       expect(llmSpan?.attributes.promptTokens).toBeDefined();
       expect(llmSpan?.attributes.finishReason).toBeDefined();
 
-      const toolSpan = ends.find((s) => s.name === 'tool.call');
+      const toolSpan = ends.find((s) => s.name.startsWith('execute_tool'));
       expect(toolSpan?.attributes.args).toBeDefined();
       expect(toolSpan?.attributes.result).toBeDefined();
       expect(toolSpan?.attributes.error).toBe(false);
@@ -1359,12 +1364,12 @@ describe('AgentExecutor', () => {
       const serialized = JSON.stringify(ends);
       expect(serialized).not.toContain('secret-value');
 
-      const llmSpan = ends.find((s) => s.name === 'llm.generate');
+      const llmSpan = ends.find((s) => s.name.startsWith('chat'));
       expect(llmSpan?.attributes.prompt).toBeUndefined();
       expect(llmSpan?.attributes.promptTokens).toBeDefined();
       expect(llmSpan?.attributes.finishReason).toBeDefined();
 
-      const toolSpan = ends.find((s) => s.name === 'tool.call');
+      const toolSpan = ends.find((s) => s.name.startsWith('execute_tool'));
       expect(toolSpan?.attributes.args).toBeUndefined();
       expect(toolSpan?.attributes.result).toBeUndefined();
       expect(toolSpan?.attributes.error).toBe(false);

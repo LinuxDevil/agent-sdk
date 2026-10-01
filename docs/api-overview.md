@@ -344,7 +344,9 @@ The built-in context windows and prices are a dated snapshot (see the retrieval 
   `createOtelTraceExporter()` from the `@loushy/build-ai-agent/otel`
   subpath (requires the optional peer dependency `@opentelemetry/api`)
   instead of hand-rolling the OTel bridge - see
-  `examples/tracing/run-otel.ts`.
+  `examples/tracing/run-otel.ts`. Spans follow the OpenTelemetry GenAI
+  semantic conventions (flows are traced too); see
+  [observability](observability.md).
 - `NoopSandbox` / `SubprocessSandbox` - sandboxing for tools that opt in via
   `requiresSandbox`; guardrails such as `createCommandGuardrail()` and
   `secretScanGuardrail`.

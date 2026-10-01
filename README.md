@@ -107,6 +107,7 @@ const result = await resumeAfterApproval(
 
 ```bash
 npm install @loushy/build-ai-agent ai zod
+npx loushy doctor        # checks Node, peers and API keys, and tells you how to fix anything
 ```
 
 **2. Configure** — describe the agent as data:
@@ -213,6 +214,7 @@ console.log(result.usage.totalTokens, result.finishReason, result.steps);
 - [Deployment](docs/deployment.md) - `loushy build` targets: Node server, Docker, Cloudflare Workers
 - [API Overview](docs/api-overview.md) - the main exports; `npm run docs:build` generates the full TypeDoc reference
 - [Workspace tools](docs/workspace-tools.md) - file system and shell tools for coding agents, and their security model
+- [Tracing and observability](docs/observability.md) - OpenTelemetry GenAI spans, attribute table, content opt-in
 - [Testing](docs/testing.md) - unit-test agents deterministically with the scripted `mockModel`
 - [Skills](docs/skills.md) - on-demand instructions: `defineSkill()`, `loadSkills()`, how they save context
 - [Agent Forge](docs/agent-forge.md) - the visual dashboard (`loushy studio`): quickstart, first-agent walkthrough, hook authoring
@@ -447,6 +449,12 @@ await AgentExecutor.execute({
   redactContent: true, // omit prompt/tool-arg/result bodies from span attributes
 });
 ```
+
+Spans follow the OpenTelemetry GenAI semantic conventions (`invoke_agent`,
+`chat {model}`, `execute_tool {tool}`; flows are traced too). Message and
+tool-argument content is only recorded with `captureContent: true`. See
+[Tracing and observability](docs/observability.md) for the attribute table,
+the opt-in and the deprecated pre-GenAI names.
 
 Ready-made exporters live in [examples/tracing](examples/tracing) (console
 and real OpenTelemetry bridges).
