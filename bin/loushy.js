@@ -80,6 +80,10 @@ async function runEvalCommand(rest) {
   process.exitCode = await runEval(rest);
 }
 
+function runHelp() {
+  console.log(USAGE);
+}
+
 const COMMANDS = new Map([
   ['init', runInitCommand],
   ['dev', runDev],
@@ -91,6 +95,10 @@ const COMMANDS = new Map([
   ['mcp', runMcp],
   ['doctor', runDoctorCommand],
   ['eval', runEvalCommand],
+  // `loushy --help` / `-h` / `help` print the usage and succeed (a bare `loushy` is still an error).
+  ['--help', runHelp],
+  ['-h', runHelp],
+  ['help', runHelp],
 ]);
 
 async function main() {
