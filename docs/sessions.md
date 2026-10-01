@@ -35,6 +35,12 @@ exactly as it was before that call. An aborted `send()` resolves with
 `finishReason: 'aborted'`, as `agent.send()` does. The stored transcript never
 contains an assistant tool-call turn without the matching tool results.
 
+A `send()` that pauses on a `needsApproval` tool resolves with
+`finishReason: 'awaiting-approval'`. `agent.approvals.resolve({ id, approved })`
+then continues the run as the session's next turn, so the tool call, its result
+and the final answer join the transcript (see
+[approval gates](../README.md#human-in-the-loop-approval-gates)).
+
 Sessions are a thin layer: the session owns the transcript and hands it to the
 executor on each turn. They do not use the checkpoint/resume mechanism
 (`sessionId` + `checkpointStore` on `AgentExecutor.execute()`). That lower-level
@@ -87,7 +93,7 @@ implementation by where the process runs:
 
 | Store | Sessions | Checkpoints | Approvals | Use it when |
 | --- | --- | --- | --- | --- |
-| In memory | `MemorySessionStore` | (supply your own) | (supply your own) | Tests, scripts, one process that never restarts |
+| In memory | `MemorySessionStore` | (supply your own) | `InMemoryApprovalStore` | Tests, scripts, one process that never restarts |
 | Files | `FileSessionStore(dir)` | `LocalStorageCheckpointStore` | `StorageServiceApprovalStore` | One machine, you want plain inspectable files |
 | SQLite | `store.sessions` | `store.checkpoints` | `store.approvals` | A Node server: one durable, transactional file, shared safely by several processes |
 | Cloudflare KV | - | `KVCheckpointStore` | - | Workers deployments (see [Deployment](deployment.md)) |

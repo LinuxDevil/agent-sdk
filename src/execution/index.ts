@@ -10,6 +10,7 @@ export * from './ContextBuilder';
 export * from './errors';
 export * from './retry';
 export * from './ApprovalGate';
+export { InMemoryApprovalStore } from './InMemoryApprovalStore';
 export * from './resume';
 export * from './checkpoint';
 export * from './tracing';

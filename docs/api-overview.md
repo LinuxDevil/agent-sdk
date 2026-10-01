@@ -17,6 +17,7 @@ npm run docs:build   # writes docs/api/index.html
 | `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. |
 | `AgentType`                   | Agent type enum (e.g. `AgentType.SmartAssistant`).                          |
 | `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
+| `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
 | `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](./durable-execution.md)). |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
 
@@ -29,6 +30,18 @@ each sub-agent runs on the task prompt alone, and it inherits the lead run's
 signal, hooks (`ctx.subagent`), tracing, approval store and `onEvent`
 (`event.subagent`). `maxSubagentDepth` (default 1) bounds nesting. See
 [Sub-agents](./sub-agents.md).
+
+### Approvals
+
+A `createAgent()` agent pauses on a `needsApproval` tool instead of failing:
+`send()` (and `session.send()`) resolves with `finishReason: 'awaiting-approval'`
+and an `approvalId`. `agent.approvals.list()` returns the pending calls and
+`agent.approvals.resolve({ id, approved, note? })` runs or rejects the call and
+resolves with the continued run's result (continuing the session it paused
+in). Pauses are kept in a per-agent `InMemoryApprovalStore` unless you pass
+`approvalStore` (e.g. `SqliteStore.approvals`); `approve: (call) => boolean`
+decides each call in code without pausing (`stream()` still ends at the
+pause). See [Human-in-the-loop approval gates](../README.md#human-in-the-loop-approval-gates).
 
 ### Skills
 

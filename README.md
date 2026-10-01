@@ -374,9 +374,43 @@ fallback model.
 
 ### Human-in-the-loop approval gates
 
-Flag a tool `needsApproval`; `AgentExecutor` pauses before calling it and
-persists an `ExecutionSnapshot` instead of invoking the tool. Resume later —
-after a real restart if you like — with `resumeAfterApproval()`:
+Flag a tool `needsApproval` and the run pauses before calling it. A
+`createAgent()` agent saves the pause in its own `InMemoryApprovalStore`
+(or the `approvalStore` you pass): `send()` resolves with
+`finishReason: 'awaiting-approval'` and an `approvalId`,
+`agent.approvals.list()` shows what is waiting, and
+`agent.approvals.resolve({ id, approved, note? })` runs (or rejects) the call
+and continues the run — in the same session, if it paused inside
+`agent.session()`. Pass `approve` to decide each call in code instead of
+pausing (`stream()` still ends at the pause):
+
+```typescript
+import { createAgent, defineTool } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+
+const sendEmail = defineTool({
+  name: 'send_email',
+  description: 'Send an email',
+  input: z.object({ to: z.string() }),
+  needsApproval: true,
+  execute: async ({ to }) => `sent to ${to}`,
+});
+const agent = createAgent({ provider, instructions: 'You send emails.', tools: [sendEmail] });
+
+const paused = await agent.send('Email the report to sam@example.com');
+if (paused.finishReason === 'awaiting-approval') {
+  console.log(await agent.approvals.list()); // [{ id, toolName: 'send_email', args: { to: '...' }, ... }]
+  const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true }); // or approved: false, note: 'why'
+  console.log(result.text);
+}
+
+// Or decide in code, with no pause: true runs the tool, false sends the model a rejection.
+const trusted = createAgent({ provider, tools: [sendEmail], approve: ({ args }) => String(args.to).endsWith('@example.com') });
+```
+
+With `AgentExecutor` directly, pass an `approvalStore`: it persists an
+`ExecutionSnapshot` instead of invoking the tool. Resume later — after a real
+restart if you like — with `resumeAfterApproval()`:
 
 ```typescript
 import { AgentExecutor, resumeAfterApproval, StorageServiceApprovalStore } from '@loushy/build-ai-agent';
@@ -671,7 +705,7 @@ npm run pipeline:demo:trigger   # POSTs a synthetic error to kick it off
 
 ### Core
 
-- **`createAgent()`** - zero-config `{ send, stream }` agent
+- **`createAgent()`** - zero-config `{ send, stream, session, approvals }` agent
 - **`AgentBuilder`** - fluent `AgentConfig` builder
 - **`AgentExecutor`** - static executor (`execute()`, approvals, checkpoints, tracing)
 - **`ToolRegistry`** - manage available tools
@@ -680,7 +714,7 @@ npm run pipeline:demo:trigger   # POSTs a synthetic error to kick it off
 
 ### Safety & ops
 
-- **`resumeAfterApproval()`**, **`StorageServiceApprovalStore`** - human-in-the-loop
+- **`resumeAfterApproval()`**, **`StorageServiceApprovalStore`**, **`InMemoryApprovalStore`** - human-in-the-loop
 - **`LocalStorageCheckpointStore`** - durable execution
 - **`createDelegateTool()`** - delegate to one child agent through a tool (see `subagents` for named sub-agents)
 - **`runGuardrails()`**, **`secretScanGuardrail`**, **`createDiffSizeGuardrail()`**, **`createCommandGuardrail()`** - guardrails
