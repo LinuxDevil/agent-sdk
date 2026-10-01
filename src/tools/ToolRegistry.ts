@@ -1,5 +1,6 @@
 import { ToolDescriptor } from '../types';
 import { DefinedTool, isDefinedTool } from './defineTool';
+import { ConfigurationError } from '../execution/errors';
 
 /**
  * Tool Registry
@@ -27,10 +28,9 @@ export class ToolRegistry {
       return;
     }
     if (!descriptor) {
-      throw new Error(
+      throw new ConfigurationError(
         `ToolRegistry.register('${nameOrTool}'): a descriptor is required. ` +
-          `Pass one (register('${nameOrTool}', descriptor)) or register a defineTool() result directly.`
-      );
+          `Pass one (register('${nameOrTool}', descriptor)) or register a defineTool() result directly.`, 'tools');
     }
     if (this.tools.has(nameOrTool)) {
       console.warn(`Tool '${nameOrTool}' is already registered. Overwriting.`);
@@ -40,18 +40,16 @@ export class ToolRegistry {
 
   private registerDefined(tool: DefinedTool): void {
     if (!isDefinedTool(tool)) {
-      throw new Error(
+      throw new ConfigurationError(
         'ToolRegistry.register(tool): expected a tool created with defineTool(). ' +
-          'For a raw descriptor pass a name: register(name, descriptor).'
-      );
+          'For a raw descriptor pass a name: register(name, descriptor).', 'tools');
     }
     const existing = this.tools.get(tool.name);
     if (existing) {
       const describe = (t: ToolDescriptor) => `"${t.displayName}"`;
-      throw new Error(
+      throw new ConfigurationError(
         `Tool name '${tool.name}' is already registered: existing tool ${describe(existing)} ` +
-          `conflicts with new tool ${describe(tool)}. Give one of them a different name.`
-      );
+          `conflicts with new tool ${describe(tool)}. Give one of them a different name.`, 'tools');
     }
     this.tools.set(tool.name, tool);
   }

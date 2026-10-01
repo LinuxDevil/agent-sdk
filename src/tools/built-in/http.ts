@@ -6,6 +6,7 @@ import { ToolDescriptor, ToolExecutionContext } from '../../types';
 import { SandboxAdapter } from '../../security/sandboxCore';
 import { sandboxHttpFetch } from './sandboxFetch';
 import { defineTool } from '../defineTool';
+import { toolFailure } from './toolFailure';
 
 /**
  * HTTP Tool Configuration Options
@@ -224,7 +225,7 @@ const DEFAULT_MAX_REDIRECTS = 5;
 /** Reject `hostname` if it is on the SSRF denylist. */
 async function assertHostAllowed(hostname: string): Promise<void> {
   if (await isBlockedHost(hostname)) {
-    throw new Error(`Request to blocked host ${hostname} rejected by SSRF denylist`);
+    throw toolFailure(`Request to blocked host ${hostname} rejected by SSRF denylist`);
   }
 }
 
@@ -251,7 +252,7 @@ async function fetchFollowingRedirects(
   while (location) {
     redirectCount++;
     if (redirectCount > maxRedirects) {
-      throw new Error(`Exceeded maxRedirects (${maxRedirects})`);
+      throw toolFailure(`Exceeded maxRedirects (${maxRedirects})`);
     }
     currentUrl = new URL(location, currentUrl).toString();
     await assertHostAllowed(new URL(currentUrl).hostname);
@@ -264,7 +265,7 @@ async function fetchFollowingRedirects(
 /** Throw on a non-2xx response; otherwise return the body (JSON re-serialized). */
 async function readResponseBody(response: Response): Promise<string> {
   if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    throw toolFailure(`HTTP ${response.status}: ${response.statusText}`);
   }
 
   const contentType = response.headers.get('content-type');

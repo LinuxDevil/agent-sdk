@@ -48,6 +48,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { parseCommand, portValue, stringValue, usageError, type CommandSpec } from './args';
+import { ConfigurationError } from '../execution/errors';
 
 export type StudioMode = 'auto' | 'dev' | 'prod';
 
@@ -116,11 +117,10 @@ export function startStudio(options: StudioOptions = {}): StudioHandle {
 
 function assertAgentForgeApp(appDir: string, repoRoot: string): void {
   if (!fs.existsSync(path.join(appDir, 'package.json'))) {
-    throw new Error(
+    throw new ConfigurationError(
       `loushy studio: could not find apps/agent-forge under '${repoRoot}'. ` +
         'Run this from the root of a repo that includes the Agent Forge app ' +
-        '(this SDK monorepo, or a project that vendors apps/agent-forge the same way).'
-    );
+        '(this SDK monorepo, or a project that vendors apps/agent-forge the same way).', 'studio');
   }
 }
 
@@ -134,12 +134,11 @@ function reportUnexpectedExit(label: string, code: number | null): void {
 
 function assertProdBuildPresent(appDir: string, entry: string): void {
   if (!fs.existsSync(entry)) {
-    throw new Error(
+    throw new ConfigurationError(
       `loushy studio --prod: '${entry}' does not exist. Build Agent Forge first: ` +
         "run 'npm run build:studio' from the repo root (this bundles both the client " +
         "'vite build' output into apps/agent-forge/dist and the server into " +
-        'apps/agent-forge/dist-server).'
-    );
+        'apps/agent-forge/dist-server).', 'studio');
   }
   const clientIndex = path.join(appDir, 'dist', 'index.html');
   if (!fs.existsSync(clientIndex)) {
@@ -178,12 +177,11 @@ function startProdStudio(appDir: string, repoRoot: string, apiPort: number, apiH
 
 function assertDevSourcePresent(appDir: string): void {
   if (!fs.existsSync(path.join(appDir, 'server', 'index.ts'))) {
-    throw new Error(
+    throw new ConfigurationError(
       `loushy studio --dev: '${path.join(appDir, 'server', 'index.ts')}' does not exist - dev mode ` +
         'needs the Agent Forge TypeScript source (this only works from inside the SDK monorepo, ' +
         "not from an installed npm package). Use the default/--prod mode instead, after running " +
-        "'npm run build:studio'."
-    );
+        "'npm run build:studio'.", 'studio');
   }
 }
 

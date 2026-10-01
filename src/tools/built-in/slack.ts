@@ -24,6 +24,7 @@ import { ToolDescriptor, ToolExecutionContext } from '../../types';
 import { defineTool } from '../defineTool';
 import { SandboxAdapter } from '../../security/sandboxCore';
 import { sandboxHttpFetch } from './sandboxFetch';
+import { toolFailure } from './toolFailure';
 
 export const SLACK_WEBHOOK_URL_ENV_KEY = 'SLACK_WEBHOOK_URL';
 
@@ -106,7 +107,7 @@ export async function postSlackAlert(
 ): Promise<{ ok: boolean }> {
   const webhookUrl = options.webhookUrl ?? process.env[SLACK_WEBHOOK_URL_ENV_KEY];
   if (!webhookUrl) {
-    throw new Error(
+    throw toolFailure(
       `Slack tool: no webhook URL configured. Set ${SLACK_WEBHOOK_URL_ENV_KEY} or pass options.webhookUrl.`
     );
   }
@@ -123,7 +124,7 @@ export async function postSlackAlert(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Slack tool: webhook post failed: ${response.statusText} - ${errorText}`);
+    throw toolFailure(`Slack tool: webhook post failed: ${response.statusText} - ${errorText}`);
   }
 
   return { ok: true };
@@ -144,7 +145,7 @@ export async function postSlackAlertViaSandbox(
 ): Promise<{ ok: boolean }> {
   const webhookUrl = options.webhookUrl ?? process.env[SLACK_WEBHOOK_URL_ENV_KEY];
   if (!webhookUrl) {
-    throw new Error(
+    throw toolFailure(
       `Slack tool: no webhook URL configured. Set ${SLACK_WEBHOOK_URL_ENV_KEY} or pass options.webhookUrl.`
     );
   }
@@ -164,7 +165,7 @@ export async function postSlackAlertViaSandbox(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Slack tool: webhook post failed: ${response.statusText} - ${errorText}`);
+    throw toolFailure(`Slack tool: webhook post failed: ${response.statusText} - ${errorText}`);
   }
 
   return { ok: true };

@@ -24,6 +24,7 @@ import { defineTool, type DefinedTool } from '../defineTool';
 import { ToolDescriptor } from '../../types';
 import { routeFetchThroughSandbox } from './sandboxFetch';
 import { assertOk } from './assertOk';
+import { toolFailure } from './toolFailure';
 
 // ============================================================================
 // Type Definitions
@@ -304,7 +305,7 @@ export class JiraTools extends ToolRegistry {
           if (labels) fields.labels = labels;
 
           if (Object.keys(fields).length === 0) {
-            throw new Error('At least one field must be provided to update');
+            throw toolFailure('At least one field must be provided to update');
           }
 
           const response = await fetch(
