@@ -32,9 +32,8 @@ const MOCK_CLASS: Record<number, string> = { 4: 'MockLanguageModelV1', 6: 'MockL
 
 /** v5+ wraps part data as `{ type: 'data' | 'url', ... }`; v4 holds the bytes, base64 string or URL itself. */
 function unwrapData(data: unknown): unknown {
-  const wrapped = data as { type?: string; data?: unknown; url?: unknown } | null;
-  if (wrapped?.type === 'data') return wrapped.data;
-  return wrapped?.type === 'url' ? wrapped.url : data;
+  const wrapped = data as { type?: string; data?: unknown; url?: unknown };
+  return wrapped.type === 'data' ? wrapped.data : wrapped.type === 'url' ? wrapped.url : data;
 }
 
 /** v5+ keeps image bytes base64-encoded where v4 decoded them; a URL stays a URL. */
@@ -48,26 +47,32 @@ function base64Of(data: unknown): unknown {
   return data instanceof Uint8Array ? Buffer.from(data).toString('base64') : data;
 }
 
-/** A v5+ prompt part as the v4 prompt part it stands for: an image is a `file` part with an `image/*` type, `mediaType` is `mimeType`. */
-function neutralPart(part: NeutralPart): NeutralPart {
-  if (part.type !== 'file' && part.type !== 'image') return part;
-  const { type, mediaType, data, image, ...rest } = part;
-  const mimeType = (mediaType ?? rest.mimeType) as string | undefined;
-  const isImage = type === 'image' || mimeType?.startsWith('image');
-  // A URL's type is not known to the SDK ('image' or 'image/*'): the v4 part had none.
-  const known = mimeType === 'image/*' || mimeType === 'image' ? undefined : mimeType;
-  return isImage
-    ? { ...rest, type: 'image', image: imageBytes(unwrapData(image ?? data)), mimeType: known }
-    : { ...rest, type, data: base64Of(unwrapData(data)), mimeType: known };
+/** The SDK does not know a URL's type and says `image` or `image/*`; the v4 part had none. */
+function knownMimeType(mediaType: unknown): unknown {
+  return mediaType === 'image' || mediaType === 'image/*' ? undefined : mediaType;
 }
 
-/** A model prompt as the v4 prompt shape, whatever the installed major (a v4 prompt is returned as it is). */
-export function normalizePrompt(prompt: ReadonlyArray<{ role: string; content: unknown }>): NeutralMessage[] {
-  if (installedAiMajor === 4) return prompt as NeutralMessage[];
+/** A v5+ prompt part as the v4 prompt part it stands for: an image is a `file` part with an `image/*` type, `mediaType` is `mimeType`. */
+function neutralPart(part: NeutralPart): NeutralPart {
+  if (part.type !== 'file') return part;
+  const { mediaType, data, ...rest } = part;
+  const mimeType = knownMimeType(mediaType);
+  return String(mediaType).startsWith('image')
+    ? { ...rest, type: 'image', image: imageBytes(unwrapData(data)), mimeType }
+    : { ...rest, data: base64Of(unwrapData(data)), mimeType };
+}
+
+/** A v5+ model prompt as the v4 prompt shape (see `neutralPart()`). */
+export function normalizeModernPrompt(prompt: ReadonlyArray<{ role: string; content: unknown }>): NeutralMessage[] {
   return prompt.map(({ role, content }) => ({
     role,
     content: typeof content === 'string' ? content : (content as NeutralPart[]).map(neutralPart),
   }));
+}
+
+/** A model prompt as the v4 prompt shape, whatever the installed major (a v4 prompt is returned as it is). */
+function normalizePrompt(prompt: ReadonlyArray<{ role: string; content: unknown }>): NeutralMessage[] {
+  return installedAiMajor === 4 ? (prompt as NeutralMessage[]) : normalizeModernPrompt(prompt);
 }
 
 /**
