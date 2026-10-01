@@ -20,10 +20,16 @@ dashboard — any provider, any deploy target, no lock-in.
 - **Human-in-the-loop** — flag a tool `needsApproval` and pause execution until a human approves or rejects it, then `resumeAfterApproval()` from any process
 - **Durable execution** — pass a `sessionId` + `checkpointStore` and a crash mid-conversation resumes instead of restarting
 - **Cancellation** — pass an `AbortSignal` (`agent.send(input, { signal })`) to stop a run; it resolves with `finishReason: 'aborted'` and the transcript so far, and the signal reaches the provider, tools and delegated agents
+<<<<<<< HEAD
+- **Streaming events** — `for await (const event of agent.stream(input))` yields a typed, versioned, JSON-serializable event stream (`text.delta` tokens as they arrive, `tool.start`/`tool.done`, steps, approvals, a final `run.done`) ready to forward over SSE or WebSockets; `await run.result` gives the same result as `send()` ([docs/streaming.md](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md))
+=======
 - **Sessions** — `agent.session()` keeps a multi-turn conversation (in memory, or persisted with `FileSessionStore`)
+- **SQLite store** — `new SqliteStore('./.loushy/agent.db')` from `@loushy/build-ai-agent/sqlite` keeps sessions, checkpoints and approvals in one durable, transactional file (built-in `node:sqlite`, no native dependency) — see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#stores)
 - **Project instructions** — `createAgent({ projectInstructions: true })` appends the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (opt-in)
+>>>>>>> origin/main
 - **Parallel tool calls** — when the model asks for several tools in one turn they run concurrently (cap it with `toolConcurrency`, or `1` for sequential), and results still reach the transcript in the model's call order
 - **Skills** — `defineSkill()` / `loadSkills('./skills')`: only each skill's name and description sit in the system prompt; the model loads the full markdown on demand through an auto-registered `load_skill` tool
+- **Agents as directories** — `loadAgentDir('./my-agent')` turns `instructions.md`, `tools/*.ts`, `skills/` and `subagents/<name>/` into the same object `createAgent()` returns, so you can start with files and drop to code later — see [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md)
 - **Multi-agent delegation** — wrap a child agent as a tool with `createDelegateTool()`, with a `maxDepth` guard against delegation loops
 - **Pre/post hooks** — a `HookRegistry` of `AgentHook`s that can inspect or mutate a tool call/LLM generate step, or throw to abort it, run sandboxed by Agent Forge's hook editor
 - **Guardrails** — fail-closed, concurrently-run checks (secret scan, diff size, test/lint commands) that gate a fixer agent's patch before it's used
@@ -52,6 +58,17 @@ console.log(text);
 `model` out and the agent uses `LOUSHY_MODEL` if set, otherwise the first of
 `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`,
 `OLLAMA_BASE_URL` that is present.
+
+Stream the reply token by token instead (see [docs/streaming.md](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md) for every event):
+
+```typescript
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini' });
+for await (const event of agent.stream('Hello!')) {
+  if (event.type === 'text.delta') process.stdout.write(event.text);
+}
+```
 
 When you need a custom provider (your own `LLMProvider`, a mock, extra
 config), pass the instance instead:
@@ -102,6 +119,15 @@ const result = await resumeAfterApproval(
 ```
 
 ## Quickstart
+
+**Start a new project** with one command: it scaffolds an agent, an example tool and an offline test, installs dependencies and runs `git init`:
+
+```bash
+npx loushy init my-agent        # or: npm create loushy-agent my-agent
+cd my-agent && npm run dev      # set your API key in .env first; `npm test` runs offline
+```
+
+See [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md#start-a-new-project) for the flags (`--provider`, `--template`, `--yes`, ...). Or add the SDK to an existing project by hand:
 
 **1. Install**
 
@@ -224,11 +250,14 @@ console.log(session.id, session.messages.length);
 - [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md) - agent spec fields, provider env vars, `AgentExecutor.execute()` options, CLI flags
 - [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md) - `loushy build` targets: Node server, Docker, Cloudflare Workers
 - [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md) - the main exports; `npm run docs:build` generates the full TypeDoc reference
+- [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md) - `agent.stream()`: the typed event schema, terminal and SSE examples
 - [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md) - file system and shell tools for coding agents, and their security model
 - [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md) - OpenTelemetry GenAI spans, attribute table, content opt-in
 - [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md) - unit-test agents deterministically with the scripted `mockModel`
+- [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md) - trajectory evals with `defineEval()`, datasets, `mockModel`, judge evals, `loushy eval` with JUnit/JSON reports
 - [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md) - multi-turn conversations: `agent.session()`, `MemorySessionStore`, `FileSessionStore`
 - [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md) - on-demand instructions: `defineSkill()`, `loadSkills()`, how they save context
+- [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md) - define an agent as a folder: layout, mapping to `createAgent()`, moving to code, security
 - [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md) - the visual dashboard (`loushy studio`): quickstart, first-agent walkthrough, hook authoring
 - Full guides site: [linuxdevil.github.io/agent-sdk-docs](https://linuxdevil.github.io/agent-sdk-docs/)
 
@@ -473,21 +502,50 @@ and real OpenTelemetry bridges).
 
 ### Evals
 
-Agent-behavior regression tests, run via `vitest run` alongside your normal
-test suite — no new test runner:
+Agent-behavior regression tests: assert on the tools an agent called, their
+order and arguments, its steps and its reply. Deterministic with `mockModel`,
+datasets via `cases`, soft vs gate assertions, and `loushy eval` for a summary
+table plus JUnit/JSON reports in CI:
 
 ```typescript
 // support-agent.eval.ts
-import { defineEval, exactMatch, toolCallOrder } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+import { createAgent, defineEval, defineTool, includes } from '@loushy/build-ai-agent';
+import { mockModel } from '@loushy/build-ai-agent/testing';
+
+const lookupOrder = defineTool({
+  name: 'lookup_order',
+  description: 'Look up an order',
+  input: z.object({ orderId: z.string() }),
+  execute: ({ orderId }) => ({ orderId, status: 'shipped' }),
+});
 
 defineEval({
   name: 'looks up the order before replying',
-  agent, provider, toolRegistry,
-  input: 'Where is order #123?',
-  score: toolCallOrder([{ tool: 'lookupOrder' }]),
-  threshold: 1,
+  agent: () =>
+    createAgent({
+      tools: [lookupOrder],
+      provider: mockModel([
+        { toolCalls: [{ name: 'lookup_order', args: { orderId: '123' } }] },
+        { text: 'Order 123 has shipped.' },
+      ]),
+    }),
+  async test(t) {
+    await t.send('Where is order #123?');
+    t.completed();
+    t.calledTool('lookup_order', { args: { orderId: '123' } });
+    t.check('says shipped', t.reply, includes('shipped'));
+  },
 });
 ```
+
+```bash
+npx loushy eval --junit reports/evals.xml
+```
+
+See [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md) for the assertions table, datasets, judge evals and
+a CI example. The original `{ agent, input, provider, score, threshold }` form
+of `defineEval()` keeps working.
 
 ### MCP tools & sandboxing
 
@@ -544,9 +602,9 @@ const result = renderTemplate(template, { name: 'Alice', count: 5 });
 ## CLI
 
 ```bash
-npx create-loushy-agent --name=my-agent --provider=openai --yes  # scaffold a project
-npx loushy dev agent.yaml                                        # local chat UI + hot reload
-npx loushy build --target=node-server --agent=agent.yaml         # or docker / cloudflare-worker
+npx loushy init my-agent                                  # scaffold a project (or: npm create loushy-agent my-agent)
+npx loushy dev agent.yaml                                 # local chat UI + hot reload
+npx loushy build --target=node-server --agent=agent.yaml  # or docker / cloudflare-worker
 ```
 
 See [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md) and [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)
@@ -589,7 +647,7 @@ npm run pipeline:demo:trigger   # POSTs a synthetic error to kick it off
 
 ### Core
 
-- **`createAgent()`** - zero-config `{ send }` agent
+- **`createAgent()`** - zero-config `{ send, stream }` agent
 - **`AgentBuilder`** - fluent `AgentConfig` builder
 - **`AgentExecutor`** - static executor (`execute()`, approvals, checkpoints, tracing)
 - **`ToolRegistry`** - manage available tools
@@ -755,7 +813,7 @@ feature needs them: `undici` (the built-in `http` tool), `dockerode`
 
 To try an unreleased version, build and pack the SDK from a checkout of this
 repository, then install the tarball into your project - the same approach
-`create-loushy-agent` uses for the projects it generates:
+`loushy init --sdk-path` uses for the projects it generates:
 
 ```bash
 # in the SDK checkout
@@ -769,21 +827,36 @@ npm install ./loushy-build-ai-agent-<version>.tgz ai zod
 
 ## Scaffolding a new project
 
-`packages/create-loushy-agent` in this repository scaffolds a ready-to-build
-project (`package.json`, `tsconfig.json`, `src/agent.ts` calling
-`createAgent()`, and a `.env.example` naming your provider's credential
-variable):
+`loushy init` creates a ready-to-run project: `package.json` (ESM, depending
+on this SDK by version range), a strict `tsconfig.json`, `src/agent.ts` calling
+`createAgent({ model, instructions })` with an example `defineTool()` tool, an
+offline `src/agent.test.ts` using `mockModel`, a `.env.example` naming your
+provider's key variable, `.gitignore` and a README. It then installs the
+dependencies and runs `git init`.
 
 ```bash
-# from a checkout of this repository
-cd packages/create-loushy-agent && npm install && npm run build && cd ../..
-node packages/create-loushy-agent/bin/cli.js --name=my-agent --provider=openai --yes
+npx loushy init my-agent                 # or: npm create loushy-agent my-agent
+npx loushy init my-agent --yes --provider anthropic --template tools --no-install
 ```
+
+| Flag | Meaning |
+| ---- | ------- |
+| `--provider openai\|anthropic\|openrouter\|ollama` | Default: the provider whose API key variable is set, else `openai`. |
+| `--template minimal\|tools\|yaml` | `minimal` (one tool), `tools` (three tools) or `yaml` (an `agent.yaml` spec run by `loushy dev`). Default `minimal`. |
+| `--package-manager npm\|pnpm\|yarn\|bun` | Default: the one that launched the command (`npm_config_user_agent`), else `npm`. |
+| `--yes`, `-y` | Never prompt; use defaults for anything not given. Prompts only appear on a terminal. |
+| `--no-install`, `--no-git` | Skip installing dependencies / `git init`. |
+| `--force` | Write into a directory that is not empty (otherwise `init` refuses). |
+| `--sdk-path <dir\|tarball>` | For SDK development: depend on a checkout (it is `npm pack`ed) or a packed `.tgz` instead of the published version. Also read from `LOUSHY_SDK_PATH`. |
+
+`create-loushy-agent` (`packages/create-loushy-agent`) is a thin wrapper that
+runs `loushy init` with the same arguments.
 
 ## The `loushy` CLI
 
 Installing the package also installs the `loushy` command:
 
+- `loushy init [dir]` - scaffold a new project (see above).
 - `loushy dev <spec.yaml|spec.json>` - local dev server with a chat UI and hot
   reload (see [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md)).
 - `loushy build --target=<target> --agent=<spec>` - build a deployable
@@ -851,7 +924,32 @@ with the real API. All of them run as-is with the SDK's built-in mock
 provider - no API key needed - except the first, which talks to a real model
 and is therefore only type-checked.
 
-Install first (see [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md)):
+## Start a new project
+
+The fastest way in is one command, which creates a runnable project (an
+agent, an example tool, an offline test, a `.env.example` for your provider),
+installs its dependencies and runs `git init`:
+
+```bash
+npx loushy init my-agent
+cd my-agent
+cp .env.example .env     # put your API key in .env
+npm run dev              # chat with your agent in the terminal
+npm test                 # offline tests: no API key needed
+```
+
+`npm create loushy-agent my-agent` is equivalent, and so is
+`npx @loushy/build-ai-agent init my-agent` when the SDK is not installed yet
+(a bare `npx loushy` only finds the `loushy` command once the SDK is in your
+`node_modules`). Without arguments, `init` asks for the directory, provider and
+template; for scripts pass `--yes` (defaults: the `minimal` template and the
+provider whose API key variable is set, else OpenAI). Useful flags:
+`--provider openai|anthropic|openrouter|ollama`, `--template minimal|tools|yaml`,
+`--package-manager npm|pnpm|yarn|bun`, `--no-install`, `--no-git`, `--force`
+(write into a non-empty directory). `loushy init --help` lists them all.
+
+Prefer to add the SDK to an existing project? Install it by hand (see
+[Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md)):
 
 ```bash
 npm install @loushy/build-ai-agent ai zod
@@ -1386,8 +1484,9 @@ The built-in context windows and prices are a dated snapshot (see the retrieval 
 ## Flows, evals, observability and security
 
 - `FlowBuilder` / `FlowExecutor` - multi-step workflow graphs.
-- `defineEval()`, scorers such as `exactMatch` and `toolCallOrder`, and
-  `llmJudge()` - agent evals run under vitest.
+- `defineEval()`, scorers such as `exactMatch` and `toolCallOrder`, checks such
+  as `includes` and `atLeast`, and `llmJudge()` - agent evals run under vitest
+  or `loushy eval`; see [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md).
 - `withSpan()` and `TraceExporter` - tracing for `AgentExecutor.execute()`.
   `TraceExporter` is a bring-your-own-exporter interface (no exporter
   ships by default); for real OpenTelemetry spans, import
@@ -1606,6 +1705,161 @@ run from the scheduled time (no drift, no double fire), and `stop()` clears it.
 
 - `DeploymentAdapter`, `registerAdapter()`, `getAdapter()`, `listAdapters()` -
   the adapter registry behind `loushy build` (see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)).
+
+# Agent directories
+
+Source: docs/agent-directories.md
+
+An agent can be defined as a directory. `loadAgentDir()` reads it and calls
+`createAgent()` with the options the files describe, so it returns exactly what
+`createAgent()` returns. The typed code API stays the source of truth: a
+directory is a different way to write the same options, and you can switch to
+code at any time without a rewrite.
+
+> **Security:** loading an agent directory **executes its code** (`agent.ts`,
+> everything in `tools/`). Only load directories you trust. No sandboxing is
+> implied; the files run with your process's full permissions.
+
+```ts
+import { loadAgentDir } from '@loushy/build-ai-agent';
+
+const agent = await loadAgentDir('./my-agent');
+const { text } = await agent.send('Hello!');
+```
+
+## Layout
+
+```text
+my-agent/
+  agent.ts | agent.js | agent.json | agent.yaml   # optional config
+  instructions.md                                  # system prompt
+  tools/*.ts | *.js                                # defineTool() tools
+  skills/                                          # same layouts as loadSkills()
+  subagents/<name>/                                # nested agent directories
+```
+
+Only one config file may exist. Files inside `tools/` and the entries of
+`skills/` and `subagents/` are read in sorted order, so loading is
+deterministic.
+
+### Config file
+
+```ts
+// agent.ts
+export default {
+  model: 'openai/gpt-4o-mini',
+  description: 'Triages bug reports',
+  maxSteps: 8,
+  toolConcurrency: 2,
+};
+```
+
+| Key | Maps to |
+| --- | ------- |
+| `name` | `createAgent({ name })` (default: the directory name) |
+| `description` | not a `createAgent` option; what a parent agent reads for a sub-agent (required there) |
+| `model` | `createAgent({ model })` |
+| `provider` | `createAgent({ provider })` (code config files only) |
+| `instructions` | `createAgent({ instructions })` (use this or `instructions.md`, not both) |
+| `maxSteps` | `createAgent({ maxSteps })` |
+| `toolConcurrency` | `createAgent({ toolConcurrency })` |
+| `projectInstructions` | `createAgent({ projectInstructions })` |
+
+Unknown keys are an error with a suggestion (`'modle' (did you mean 'model'?)`).
+
+### Tools
+
+Each file in `tools/` default-exports a `defineTool()` tool, and may also export
+more tools by name (or an array of tools). Other exports are ignored, but a file
+that exports no tool at all is an error, as are two tools with the same name
+(both files are named in the message).
+
+```ts no-verify
+// tools/send_email.ts
+import { z } from 'zod';
+import { defineTool } from '@loushy/build-ai-agent';
+
+export default defineTool({
+  name: 'send_email',
+  description: 'Send an email',
+  input: z.object({ to: z.string(), body: z.string() }),
+  execute: async ({ to, body }) => ({ sent: true, to, length: body.length }),
+});
+```
+
+### Skills
+
+`skills/` accepts what `loadSkills()` accepts: `skills/<name>/SKILL.md` and
+`skills/<name>.md`, each with a `description` in its frontmatter. See
+[Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md).
+
+### Sub-agents
+
+Every directory in `subagents/` is itself an agent directory (and can have its
+own `subagents/`). It must have a `description` in its config. The parent gets a
+`delegate_to_<name>` tool that runs the sub-agent with the task text and returns
+its final answer. A sub-agent uses its own `model` if it sets one, otherwise it
+inherits the parent's; a `provider` override passed to `loadAgentDir()` reaches
+all of them.
+
+## How it maps to `createAgent()`
+
+| Directory | `createAgent()` option |
+| --------- | ---------------------- |
+| `instructions.md` | `instructions` |
+| `agent.*` keys | the options in the table above |
+| `tools/` | `tools: [...]` |
+| `skills/` | `skills: await loadSkills('./skills')` |
+| `subagents/<name>/` | one `delegate_to_<name>` entry in `tools` |
+
+`resolveAgentDir()` returns the assembled options and a manifest, which is
+handy for tests and tooling:
+
+```ts
+import { resolveAgentDir, createAgent } from '@loushy/build-ai-agent';
+
+const { config, manifest } = await resolveAgentDir('./my-agent');
+console.log(manifest.tools, manifest.skills, manifest.subagents);
+const agent = createAgent({ ...config, maxSteps: 3 });
+```
+
+## Overrides
+
+The second argument takes the same options as `createAgent()` and wins over the
+files. Use it to swap the model in tests:
+
+```ts
+import { loadAgentDir } from '@loushy/build-ai-agent';
+import { mockModel } from '@loushy/build-ai-agent/testing';
+
+const agent = await loadAgentDir('./my-agent', { provider: mockModel(['Hi there.']) });
+```
+
+`tools` and `skills` overrides replace the discovered ones (they are not
+merged). A `provider/model` string in a file is dropped when you override
+`provider`, so the instance is used as-is.
+
+## Moving from files to code
+
+Call `resolveAgentDir()`, print `config`, and paste what you need into a
+`createAgent()` call; or load the directory and override just the parts you want
+to own in code. Tools are plain `defineTool()` values, so a tool file can be
+imported from code unchanged.
+
+## Loading TypeScript
+
+`.ts` files are loaded with a dynamic `import()`, so the process must already
+run under a TypeScript loader: `npx tsx your-script.ts` (or ts-node, bun, deno,
+or Node's built-in type stripping). Without one, loading fails with an error that
+says so. Compile the directory first, or use `.js`/`.mjs` tools with an
+`agent.json` / `agent.yaml` config, which work everywhere. A `.js` tool using
+`import` syntax needs `"type": "module"` in the nearest `package.json` (or the
+`.mjs` extension).
+
+## What is not covered
+
+`loushy dev` and `loushy mcp` still take an agent spec file
+([Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md)), not a directory.
 
 # Agent Forge
 
@@ -2240,6 +2494,240 @@ Targets are `DeploymentAdapter` objects (`scaffold`, `build`, `describe`)
 registered by name with `registerAdapter()`; both are exported from the
 package root.
 
+# Evals
+
+Source: docs/evals.md
+
+Evals are regression tests for agent *behaviour*: which tools the agent called,
+in what order, with which arguments, how many steps it took, and what it said.
+They are written with `defineEval()`, live in `*.eval.ts` files, run under
+[vitest](https://vitest.dev), and are best run in CI with `loushy eval`, which
+prints a summary and writes JUnit and JSON reports.
+
+```bash
+npm install --save-dev vitest
+npx loushy eval
+```
+
+## Writing a trajectory eval
+
+Give `defineEval()` an agent (from `createAgent()`) and a `test` function. Send
+messages with `t.send()`, then assert on the run. Using `mockModel` as the
+agent's provider makes the eval deterministic: no network, no API key, no
+flakiness. **This is the default way to write an eval**; use a real model only
+for the [judge evals](#judge-evals) below.
+
+```ts
+// refund.eval.ts
+import { z } from 'zod';
+import { createAgent, defineEval, defineTool, includes } from '@loushy/build-ai-agent';
+import { mockModel } from '@loushy/build-ai-agent/testing';
+
+const lookupOrder = defineTool({
+  name: 'lookup_order',
+  description: 'Look up an order by id',
+  input: z.object({ orderId: z.string() }),
+  execute: ({ orderId }) => ({ orderId, status: 'delivered' }),
+});
+
+defineEval({
+  name: 'refund flow',
+  tags: ['smoke'],
+  // A factory builds a fresh agent (and a fresh script) for every case.
+  agent: () =>
+    createAgent({
+      prompt: 'You handle refund requests.',
+      tools: [lookupOrder],
+      provider: mockModel([
+        { toolCalls: [{ name: 'lookup_order', args: { orderId: '42' } }] },
+        { text: 'Order 42 can be refunded within 30 days.' },
+      ]),
+    }),
+  async test(t) {
+    await t.send('Refund order 42');
+    t.completed();
+    t.calledTool('lookup_order', { args: { orderId: '42' } });
+    t.notCalledTool('issue_refund');
+    t.check('mentions policy', t.reply, includes('30 days'));
+    t.maxSteps(4);
+  },
+});
+```
+
+`defineEval()` also still accepts the original form
+(`{ name, agent, input, provider, score, threshold }`): it keeps working
+unchanged, and its result shows up in `loushy eval` as one `score` assertion.
+
+### Assertions
+
+Every assertion is recorded; the case fails at the end and lists **every**
+failed gate, so one run shows all that is wrong.
+
+| Call | Kind | Passes when |
+| --- | --- | --- |
+| `t.completed()` | gate | the latest run ended with a normal `stop` (not an error, abort, pending approval, or `maxSteps` cut-off) |
+| `t.calledTool(name, { args?, times? })` | gate | the tool was called; `args` is a partial deep match (the call's arguments must contain these keys with equal values); `times` is an exact count of matching calls |
+| `t.notCalledTool(name)` | gate | the tool was never called |
+| `t.toolOrder([a, b])` | gate | the tools were called in this order (other calls may sit in between) |
+| `t.maxSteps(n)` | gate | the agent took at most `n` model steps |
+| `t.maxTokens(n)` | gate | the agent used at most `n` tokens |
+| `t.maxCostUsd(n)` | gate | the run's reported cost is at most `n` USD. Skipped (counts as passed, marked `skipped`) when the SDK reports no cost |
+| `t.check(name, value, check)` | gate | `check` passes for `value` |
+| `t.soft(name, value, check)` | soft | never fails the run (unless `--strict`); the score is recorded and reported |
+| `await t.judge(rubric)` | n/a | returns a 0 to 1 score from an LLM judge (see [Judge evals](#judge-evals)) |
+
+Checks, for `t.check()` and `t.soft()`: `includes(text)`, `matches(regex)`,
+`equals(value)` (yes/no, score 1 or 0), and `atLeast(n)`, `atMost(n)` (the
+number is the score).
+
+Failure messages say what was actually seen:
+
+```text
+calledTool('lookup_order') failed: tools called were [search_docs, issue_refund]
+calledTool('lookup_order', {"args":{"orderId":"41"}}) failed: 'lookup_order' was called 1 time(s) but no call matched the expected args; closest call differs in orderId: expected "41", got "42"
+completed() failed: finishReason was 'tool_calls' (the run hit maxSteps while still calling tools)
+```
+
+Other context members: `t.reply` (latest reply text), `t.result` (latest
+`ExecutionResult`), `t.toolCalls` (every call so far, with parsed arguments).
+You can `send()` more than once; steps, tokens and tool calls add up.
+
+### Datasets
+
+Pass `cases` and `test` runs once per case, each reported separately. A case is
+any object; its `label` (or `name`, or its `input`) names it.
+
+```ts
+import { z } from 'zod';
+import { createAgent, defineEval, defineTool } from '@loushy/build-ai-agent';
+import { mockModel } from '@loushy/build-ai-agent/testing';
+
+const lookupOrder = defineTool({
+  name: 'lookup_order',
+  description: 'Look up an order by id',
+  input: z.object({ orderId: z.string() }),
+  execute: ({ orderId }) => ({ orderId }),
+});
+
+defineEval({
+  name: 'order lookups',
+  agent: () =>
+    createAgent({
+      tools: [lookupOrder],
+      provider: mockModel([
+        { toolCalls: [{ name: 'lookup_order', args: { orderId: '7' } }] },
+        { text: 'Found it.' },
+      ]),
+    }),
+  cases: [
+    { input: 'Where is order 7?', orderId: '7' },
+    { input: 'Status of #7', orderId: '7', label: 'hash syntax' },
+  ],
+  async test(t, c) {
+    await t.send(c.input);
+    t.calledTool('lookup_order', { args: { orderId: c.orderId } });
+  },
+});
+```
+
+Pass a **factory** (`agent: () => createAgent(...)`) so each case gets its own
+agent and its own `mockModel` script. With a single shared agent, a scripted
+model runs out of turns on the second case.
+
+## Judge evals
+
+`t.judge(rubric)` grades the latest reply with an LLM and returns a score from
+0 to 1. It needs a judge provider, and loushy never calls a real LLM unless you
+configured one: without `judge`, `t.judge()` throws an error saying how to fix
+it.
+
+```ts
+// tone.judge.eval.ts: run with `loushy eval --judge`
+import { createAgent, defineEval, atLeast } from '@loushy/build-ai-agent';
+import { mockModel } from '@loushy/build-ai-agent/testing';
+
+defineEval({
+  name: 'tone',
+  agent: createAgent({ provider: mockModel(['Happy to help with that refund!']) }),
+  // A real provider in practice; mockModel keeps this example offline.
+  judge: { provider: mockModel(['0.9']), model: 'judge-model' },
+  async test(t) {
+    await t.send('I want my money back');
+    t.soft('polite', await t.judge('Is the reply polite?'), atLeast(0.7));
+  },
+});
+```
+
+Files named `*.judge.eval.ts` are never picked up by a normal run (and
+`npm test`); only `loushy eval --judge` (or `npm run test:evals:judge` in this
+repository) runs them.
+
+## `loushy eval`
+
+```text
+loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge]
+```
+
+| Option | Meaning |
+| --- | --- |
+| `globs...` | eval files to run (default: every `**/*.eval.ts`, or `**/*.judge.eval.ts` with `--judge`) |
+| `--tag t` | only run evals whose `tags` include `t` (repeat or comma-separate for several) |
+| `--junit path` | write a JUnit XML report |
+| `--json path` | write the summary and every structured result as JSON |
+| `--strict` | soft failures fail the run |
+| `--judge` | run `*.judge.eval.ts` files instead of the normal ones |
+| `--config path` | use your own vitest config instead of the generated one |
+
+It spawns the vitest installed in your project (vitest is *your* dependency; if
+it is missing the command prints `npm install --save-dev vitest` and exits 2),
+then prints one row per case with its scores and duration, totals, and the gate
+failures and soft failures listed separately.
+
+**Exit code:** `1` on any gate failure (or soft failure with `--strict`, or when
+vitest itself fails, for example a file that does not load), `2` when it cannot
+run at all (bad arguments, vitest missing), otherwise `0`.
+
+How results are collected: each case appends one JSON line to a file named by
+the `LOUSHY_EVAL_RESULTS` environment variable, which `loushy eval` sets and
+reads back. This is more robust than a custom vitest reporter: it works across
+vitest versions and worker pools, and needs no module loaded from your project.
+
+### JUnit
+
+The report is standard JUnit: one `testsuite` per eval, one `testcase` per case.
+A failed gate is a `<failure message="...">` carrying the diagnostic message; a
+case that threw is an `<error>`; soft failures are `<system-out>` notes (or
+failures under `--strict`).
+
+### In CI
+
+```yaml no-verify
+# .github/workflows/evals.yml
+name: evals
+on: [pull_request]
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - run: npx loushy eval --junit reports/evals.xml --json reports/evals.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-reports
+          path: reports/
+      - uses: mikepenz/action-junit-report@v4
+        if: always()
+        with:
+          report_paths: reports/evals.xml
+```
+
+Run `--tag smoke` on every pull request and the full set nightly; run
+`--judge` only where you accept real LLM calls and their cost.
+
 # Tracing and observability
 
 Source: docs/observability.md
@@ -2504,6 +2992,50 @@ Session ids must match `^[A-Za-z0-9_-]{1,128}$` (they become file names, so
 `../x` and `a/b` are refused with an error that says so). Implement
 `SessionStore` yourself to keep transcripts in a database or Redis.
 
+## Stores
+
+Sessions, durable-execution checkpoints and approvals each have a store
+interface (`SessionStore`, `CheckpointStore`, `ApprovalStore`). Pick the
+implementation by where the process runs:
+
+| Store | Sessions | Checkpoints | Approvals | Use it when |
+| --- | --- | --- | --- | --- |
+| In memory | `MemorySessionStore` | (supply your own) | (supply your own) | Tests, scripts, one process that never restarts |
+| Files | `FileSessionStore(dir)` | `LocalStorageCheckpointStore` | `StorageServiceApprovalStore` | One machine, you want plain inspectable files |
+| SQLite | `store.sessions` | `store.checkpoints` | `store.approvals` | A Node server: one durable, transactional file, shared safely by several processes |
+| Cloudflare KV | - | `KVCheckpointStore` | - | Workers deployments (see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)) |
+
+`SqliteStore` keeps all three in one database file, using Node's built-in
+`node:sqlite` (no native dependency; needs Node 22.13 or newer, and it is not
+re-exported from the root entry, so importing the SDK never loads it):
+
+```ts
+import { createAgent, AgentExecutor } from '@loushy/build-ai-agent';
+import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
+
+const store = new SqliteStore('./.loushy/agent.db'); // or ':memory:'
+const session = createAgent({ provider }).session({ id: 'user-42', store: store.sessions });
+await session.send('Hello');
+
+// Same file, same store, for durable runs with approvals:
+// AgentExecutor.execute({ ..., sessionId, checkpointStore: store.checkpoints, approvalStore: store.approvals })
+
+store.prune({ olderThanMs: 7 * 24 * 60 * 60 * 1000 }); // { sessions, checkpoints, approvals } deleted
+store.close();
+```
+
+- The directory is created if missing. The schema is versioned with
+  `PRAGMA user_version` and migrated on open; a database written by a newer
+  release is refused.
+- WAL mode and a 5 s busy timeout let two processes share the file. An approval
+  can be resolved by only one of them.
+- Checkpoints and approval snapshots are stored as opaque JSON, so new fields
+  round-trip unchanged.
+- `prune()` removes sessions and checkpoints not updated within `olderThanMs`,
+  and approvals resolved that long ago; unresolved approvals are kept.
+- A file that is not a SQLite database fails with an error naming the path;
+  using the store after `close()` throws a clear error.
+
 ## Project instructions
 
 Not part of sessions, but often wanted together: see "Project instructions" in
@@ -2618,6 +3150,295 @@ const agent = createAgent({
 Use [`mockModel`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md) to assert the model sees descriptions but not
 bodies until it loads one: the first request's system prompt lists the skills,
 and the request after a `load_skill` call contains the body in the tool result.
+
+# Streaming
+
+Source: docs/streaming.md
+
+`agent.stream()` runs an agent exactly like `agent.send()` and reports the run
+as a stream of typed events: model text as it arrives, every tool call,
+step boundaries, approval requests, and a final `run.done`. Every event is a
+plain JSON object, so you can forward it to a browser over Server-Sent Events
+or a WebSocket without converting it.
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini' });
+
+for await (const event of agent.stream('Weather in Paris?')) {
+  if (event.type === 'text.delta') process.stdout.write(event.text);
+}
+```
+
+The full API has the same method: `AgentExecutor.stream(options)` takes the
+same options as `AgentExecutor.execute()` (approval store, checkpoints, hooks,
+tracing, `toolConcurrency`, ...).
+
+## The `AgentRun` handle
+
+`stream()` returns an `AgentRun`:
+
+```ts no-verify
+interface AgentRun extends AsyncIterable<AgentEvent> {
+  readonly runId: string;                   // the runId on every event
+  readonly result: Promise<ExecutionResult>; // what send() / execute() would return
+}
+```
+
+- **The run starts immediately.** You do not have to iterate: `await run.result`
+  on its own drives the run to completion.
+- **`result`** resolves with the same `ExecutionResult` that `send()` returns,
+  and rejects with the same error `send()` would reject with. An aborted run
+  resolves with `finishReason: 'aborted'`; a run paused for approval resolves
+  with `finishReason: 'awaiting-approval'` and `approvalId`. Leaving `result`
+  unawaited never causes an unhandled rejection.
+- **Breaking out of the `for await` loop early aborts the run** (through the
+  same path as `signal`, see [Cancellation](#cancellation)). `result` then
+  resolves with `finishReason: 'aborted'`.
+- **No backpressure; nothing is dropped.** The run never waits for the
+  consumer. Events are buffered until you read them, so a slow consumer sees
+  every event, in order. Iterating after the run finished still yields all of
+  its events.
+- **One consumer.** An `AgentRun` can be iterated once; a second `for await`
+  throws. To fan out, collect the events yourself.
+- Invalid options (no `provider`, `agent` or `input`, a bad `toolConcurrency`)
+  throw synchronously from `stream()`.
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini' });
+
+const run = agent.stream('Summarize the report', { signal: AbortSignal.timeout(30_000) });
+const result = await run.result; // no iteration needed
+console.log(result.finishReason, result.text);
+```
+
+## Event schema (version 1)
+
+Every event has these fields:
+
+| Field       | Type     | Meaning |
+| ----------- | -------- | ------- |
+| `type`      | string   | The event type (table below). Narrow on it in TypeScript. |
+| `runId`     | string   | Identifies the run. The same on every event of one `stream()` call. |
+| `seq`       | number   | `0` for the first event, then `+1` per event, with no gaps. |
+| `timestamp` | string   | When the event was emitted, ISO 8601 (`2026-10-01T09:30:00.000Z`). |
+| `v`         | `1`      | Schema version, exported as `AGENT_EVENT_SCHEMA_VERSION`. |
+
+The event types and their extra fields:
+
+| `type`               | Extra fields | Emitted |
+| -------------------- | ------------ | ------- |
+| `run.start`          | `agentName: string`, `agentId?: string` | First event of every run. |
+| `step.start`         | `step: number` | A model step begins: one model call plus the tool calls it asks for. `step` counts from 1 (a run resumed from a checkpoint continues the count). |
+| `text.delta`         | `text: string` | A chunk of model text, as it arrives. |
+| `text.done`          | `text: string` | The step's complete text: the concatenation of its `text.delta` events. Only for steps with text. |
+| `tool.start`         | `toolCallId: string`, `toolName: string`, `args: Record<string, unknown>` | A tool call starts. `args` are the model's arguments parsed from JSON (`{}` when they are not valid JSON). |
+| `tool.done`          | `toolCallId`, `toolName`, `result: unknown`, `durationMs: number` | A tool call returned. `result` is the value as it would be JSON-encoded (`undefined` becomes `null`, a `Date` becomes a string). `durationMs` counts from its `tool.start`. |
+| `tool.error`         | `toolCallId`, `toolName`, `error: { name: string, message: string }`, `durationMs: number` | A tool call failed: it threw, its arguments did not match its schema (`name: 'ToolArgumentsValidationError'`), or the tool does not exist. The model gets the error as the call's result and the run continues. |
+| `approval.requested` | `approvalId: string`, `toolCallId`, `toolName`, `args: Record<string, unknown>` | A tool call needs a human decision. The run then stops; resume it with `resumeAfterApproval()` (see the README). |
+| `step.done`          | `step: number`, `finishReason: string`, `usage?: { promptTokens, completionTokens, totalTokens }` | A step ends. `finishReason` is the model's (`'stop'`, `'tool_calls'`, `'length'`, ...), or `'awaiting-approval'`, `'aborted'` or `'error'` when the step ended that way. `usage` is this step's model call, absent when the call produced no response. |
+| `error`              | `error: { name: string, message: string }` | An error. If it ends the run, `run.done` with `finishReason: 'error'` follows. A provider error retried under `surfaceRetryableProviderErrors` is followed by further steps instead. |
+| `run.done`           | `finishReason: string`, `text: string`, `usage?: { promptTokens, completionTokens, totalTokens }` | Last event of every run, exactly once, including aborted, failed and awaiting-approval runs. `finishReason` and `text` match `run.result`; a failed run has `finishReason: 'error'`, `text: ''` and no `usage`. |
+
+Optional fields are left out when they have no value. They are never
+`undefined`, so `JSON.parse(JSON.stringify(event))` returns an equal object.
+
+### Ordering guarantees
+
+- `run.start` is first and `run.done` is last, each exactly once.
+- Each `step.start` is followed by exactly one `step.done` with the same
+  `step`, before the next `step.start`. Everything a step does happens between
+  the two.
+- Inside a step: `text.delta` events, then `text.done`, then the tool events.
+- Tool calls of one step run in parallel (see `toolConcurrency`):
+  `tool.start` events come in the model's call order and `tool.done` /
+  `tool.error` events in completion order. Match them by `toolCallId`.
+- When a call needs approval, the calls before it run and report, then
+  `approval.requested`, `step.done` (`'awaiting-approval'`) and `run.done`
+  (`'awaiting-approval'`) follow. Calls after it never start.
+
+A text-only run:
+
+```
+run.start → step.start → text.delta × n → text.done → step.done → run.done
+```
+
+A run with one tool call:
+
+```
+run.start
+step.start(1) → tool.start → tool.done → step.done(1, 'tool_calls')
+step.start(2) → text.delta × n → text.done → step.done(2, 'stop')
+run.done('stop')
+```
+
+### TypeScript
+
+`AgentEvent` is a discriminated union: narrowing on `event.type` gives the
+payload. Each event type is exported too (`TextDeltaEvent`, `ToolDoneEvent`,
+`RunDoneEvent`, ...), and `AgentEventOf<'tool.done'>` picks one by name.
+
+```ts
+import { isAgentEvent, isToolEvent, type AgentEvent } from '@loushy/build-ai-agent';
+
+function render(event: AgentEvent): string {
+  switch (event.type) {
+    case 'text.delta':
+      return event.text;
+    case 'tool.start':
+      return `\n[${event.toolName}] ${JSON.stringify(event.args)}\n`;
+    case 'tool.error':
+      return `\n[${event.toolName} failed: ${event.error.message}]\n`;
+    case 'run.done':
+      return `\n(${event.finishReason})\n`;
+    default:
+      return '';
+  }
+}
+
+// isToolEvent / isTextEvent / isStepEvent narrow to an event family:
+const toolNames = (events: AgentEvent[]) => events.filter(isToolEvent).map((e) => e.toolName);
+
+// isAgentEvent validates an event received over the wire:
+const received: unknown = JSON.parse('{"type":"run.start","runId":"r","seq":0,"timestamp":"","v":1,"agentName":"a"}');
+if (isAgentEvent(received)) console.log(render(received), toolNames([received]));
+```
+
+### Versioning
+
+`v` changes only when an existing event changes incompatibly (a field
+removed, renamed or retyped). New event types and new optional fields can be
+added without changing `v`, so ignore event types you do not know.
+
+## Token streaming and providers
+
+When the provider implements `stream()` (all built-in providers and
+`mockModel` do), each model step is streamed and `text.delta` events arrive
+as the model produces text. Tool calls are assembled from the stream. When a
+provider has no `stream()`, or its `supportsStreaming(model)` returns
+`false`, the step falls back to `generate()` and its text arrives as a single
+`text.delta` followed by `text.done`.
+
+Streaming changes only how one model step is obtained. Hooks, argument
+validation, approvals, parallel tool calls, checkpoints, cancellation,
+tracing spans and the other `execute()` callbacks behave exactly as in
+`send()`. `send()` and `execute()` themselves still use `generate()`.
+
+A custom provider's `stream()` should yield `text-delta` chunks and a final
+`finish` chunk with `finishReason` and `usage`. Tool calls can be yielded as
+`tool-call` chunks, or resolved on the `toolCalls` promise of the
+`StreamResult`. An `error` chunk fails the step.
+
+## Cancellation
+
+Pass `signal` to stop a run from outside, or break out of the loop. Both end
+the run the same way as an aborted `send()`: the signal is checked between
+stream chunks, before every model call and every tool call, and reaches the
+provider and the tools. The stream ends with `step.done` (`'aborted'`, when a
+step was running) and `run.done` (`'aborted'`), and `result` resolves with
+`finishReason: 'aborted'`.
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini' });
+const run = agent.stream('Write a long story');
+
+let chars = 0;
+for await (const event of run) {
+  if (event.type === 'text.delta') chars += event.text.length;
+  if (chars > 500) break; // aborts the run
+}
+console.log((await run.result).finishReason); // 'aborted'
+```
+
+## Example: terminal
+
+```ts
+import { createAgent, defineTool } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+
+const getWeather = defineTool({
+  name: 'get_weather',
+  description: 'Current weather for a city',
+  input: z.object({ city: z.string() }),
+  execute: async ({ city }) => ({ city, tempC: 21 }),
+});
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', tools: [getWeather] });
+
+for await (const event of agent.stream('Weather in Paris?')) {
+  switch (event.type) {
+    case 'text.delta':
+      process.stdout.write(event.text);
+      break;
+    case 'tool.start':
+      console.log(`\n→ ${event.toolName}(${JSON.stringify(event.args)})`);
+      break;
+    case 'tool.done':
+      console.log(`← ${event.toolName} in ${event.durationMs}ms`);
+      break;
+    case 'run.done':
+      console.log(`\n[${event.finishReason}, ${event.usage?.totalTokens ?? 0} tokens]`);
+      break;
+  }
+}
+```
+
+## Example: Server-Sent Events
+
+Events are JSON-serializable, so an SSE endpoint is one `res.write` per
+event. Abort the run when the client disconnects.
+
+```ts
+import { createServer } from 'node:http';
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini' });
+
+createServer(async (req, res) => {
+  const question = new URL(req.url ?? '/', 'http://localhost').searchParams.get('q') ?? 'Hello!';
+  const controller = new AbortController();
+  res.on('close', () => controller.abort());
+
+  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+  for await (const event of agent.stream(question, { signal: controller.signal })) {
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  }
+  res.end();
+}).listen(3000);
+```
+
+In the browser:
+
+```ts no-verify
+const source = new EventSource('/chat?q=Weather%20in%20Paris%3F');
+source.onmessage = (message) => {
+  const event = JSON.parse(message.data);
+  if (event.type === 'text.delta') output.textContent += event.text;
+  if (event.type === 'run.done') source.close();
+};
+```
+
+## Example: the full API
+
+`AgentExecutor.stream()` accepts every `execute()` option. Here a tool that
+needs approval ends the stream with `approval.requested`:
+
+```ts
+import { AgentExecutor } from '@loushy/build-ai-agent';
+
+const run = AgentExecutor.stream({ agent, input, provider, toolRegistry, approvalStore });
+for await (const event of run) {
+  if (event.type === 'approval.requested') {
+    console.log(`Approve ${event.toolName}(${JSON.stringify(event.args)})? id=${event.approvalId}`);
+  }
+}
+const paused = await run.result; // paused.finishReason === 'awaiting-approval'
+```
 
 # Testing agents
 
@@ -2776,6 +3597,124 @@ Other helpers: `model.reset()` rewinds the script and clears recorded calls, and
 `mockModel` also implements `stream()`: the scripted text is emitted as
 `text-delta` chunks (split on word boundaries), followed by any `tool-call`
 chunks and a final `finish` chunk, so streaming consumers can be tested too.
+
+## Record and replay
+
+`mockModel` scripts turns by hand. `recordReplay` is the complementary tool: a
+VCR for real model behavior. Run your test once against the real provider and
+every `generate()` / `stream()` exchange is written to a cassette file. In CI
+the same test replays the cassette with no network, no API key and no installed
+provider peer package.
+
+```ts
+import { createAgent, resolveProvider } from '@loushy/build-ai-agent';
+import { recordReplay } from '@loushy/build-ai-agent/testing';
+
+const provider = recordReplay(() => resolveProvider('openai/gpt-4o-mini'), {
+  cassette: './__cassettes__/refund-flow.json',
+  mode: process.env.LOUSHY_RECORD ? 'record' : 'replay', // or 'auto'
+});
+const agent = createAgent({ provider, prompt: 'You handle refund requests.' });
+```
+
+The first argument is the real provider, or a `() => provider` factory that is
+only called when recording (so replay never constructs it). It may be
+`undefined` if you only ever replay.
+
+### Workflow
+
+1. Record locally with a key: `LOUSHY_RECORD=1 OPENAI_API_KEY=... npx vitest run`.
+2. Review and commit the cassette (it is stable, 2-space indented JSON, so
+   diffs are readable).
+3. CI runs `npx vitest run` and replays it. Nothing else is needed.
+4. When you change the prompt, tools or flow, replay fails with a
+   `CassetteMismatchError`; re-record with `LOUSHY_RECORD=1`.
+
+`mode: 'auto'` replays if the cassette file exists and records otherwise.
+
+### What replay checks
+
+By default call N is answered by entry N, but only if the request still matches
+what was recorded: model, each message's role, content and tool calls, tool
+names and parameter schemas, `temperature` and `maxTokens`. On a mismatch the
+error shows the first difference and the re-record hint:
+
+```text
+Call #2 does not match the recorded request in ./__cassettes__/refund-flow.json.
+First difference at request.messages[1].content:
+  recorded: "Refund order 1234"
+  actual:   "Refund order 9999"
+If the change is intentional, re-record the cassette (run with LOUSHY_RECORD=1, or set mode: 'record').
+```
+
+For parallel or unordered calls pass `match: 'request'`: each call finds the
+first unused entry with an identical request, in any order. Running out of
+entries is also a `CassetteMismatchError`.
+
+Volatile values do not break matching. Timestamps, dates (`2026-10-01`,
+`October 1, 2026`), UUIDs and prefixed ids (`call_...`, `toolu_...`,
+`chatcmpl_...`) are replaced by placeholders on both sides, and tool-call ids
+are ignored (tool calls match by name and arguments). For anything else, pass
+`normalize`:
+
+```ts
+import { mockModel, recordReplay } from '@loushy/build-ai-agent/testing';
+
+const provider = recordReplay(mockModel(['ok']), {
+  cassette: './__cassettes__/users.json',
+  normalize: (request) => ({
+    ...request,
+    messages: request.messages.map((m) => ({ ...m, content: m.content.replace(/user-\d+/g, 'user-N') })),
+  }),
+});
+```
+
+### Errors, streaming and usage
+
+- A provider rejection is recorded and replayed as a rejection with the same
+  `name` and `message`.
+- `stream()` records the chunks and replays them as an async iterable without
+  delays; pass `replayTiming: true` to reproduce the inter-chunk timing. While
+  recording, the real stream is read to the end before it is returned.
+- Token usage is recorded and replayed, so cost and usage features behave the
+  same in replay.
+
+### When the cassette is written
+
+Recording writes the cassette atomically (temp file plus rename) after every
+call, so a test that fails midway leaves a valid cassette with every call made
+so far, never a half-written one. `await provider.save()` forces a write. There
+is no process-exit hook. Each record session starts a fresh cassette and
+replaces the old file.
+
+### Redaction (read this before committing)
+
+Cassettes are meant to be committed, so the wrapper only writes a fixed set of
+request fields (never headers or provider option bags), never writes
+`rawResponse`, and redacts strings that look like API keys (`sk-...`,
+`sk-ant-...`, `Bearer ...` tokens and a few other common formats) with
+`[REDACTED]`. That is a safety net, not a guarantee: prompts and model replies
+are stored verbatim, so personal data, internal URLs and customer text end up in
+the file. Pass `redact` to scrub them (it runs on every recorded string, in both
+requests and responses, and replay applies it when matching):
+
+```ts
+import { mockModel, recordReplay } from '@loushy/build-ai-agent/testing';
+
+const provider = recordReplay(mockModel(['ok']), {
+  cassette: './__cassettes__/support.json',
+  redact: (text) => text.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, '<email>'),
+});
+```
+
+### mockModel or cassettes?
+
+Use `mockModel` for unit tests of your own logic: you control every turn, can
+inject errors and delays, and nothing depends on a model. Use cassettes when
+the point is real model behavior (does this prompt and tool set actually lead
+to the right tool call?) and hand-scripting turns would only encode your
+assumptions. Cassettes need re-recording when prompts change; `mockModel` tests
+only change when the behavior you assert on changes.
 
 # Workspace tools
 

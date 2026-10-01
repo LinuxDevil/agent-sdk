@@ -86,6 +86,54 @@ describe('subagents option and the task tool (LOU-Y3)', () => {
     expect(results.some((m) => m.isError)).toBe(false);
   });
 
+  it("streams the sub-agent's events inside the lead's agent.stream(), tagged with subagent", async () => {
+    const researcher = createAgent({
+      name: 'researcher',
+      provider: mockModel([{ toolCalls: [{ name: 'lookup' }] }, 'found it']),
+      tools: [defineTool({ name: 'lookup', description: 'Looks up', input: z.object({}), execute: () => 'data' })],
+      description: 'Researches',
+    });
+    const lead = createAgent({
+      name: 'lead',
+      provider: mockModel([{ toolCalls: [task('researcher', 'look', 'lead-1')] }, 'done']),
+      subagents: { researcher },
+    });
+
+    const events = [];
+    for await (const event of lead.stream('go')) events.push(event);
+
+    const tag = { name: 'researcher', depth: 1, toolCallId: 'lead-1', description: 'researcher task' };
+    const child = events.filter((e) => e.subagent).map((e) => [e.type, e.subagent]);
+    // (The child's text is streamed: one or more text.delta, collapsed here.)
+    const types = child.map(([type]) => type).filter((type, i, all) => type !== 'text.delta' || all[i - 1] !== type);
+    expect(types).toEqual([
+      'run.start',
+      'step.start',
+      'tool.start',
+      'tool.done',
+      'step.done',
+      'step.start',
+      'text.delta',
+      'text.done',
+      'step.done',
+      'run.done',
+    ]);
+    expect(child.every(([, subagent]) => JSON.stringify(subagent) === JSON.stringify(tag))).toBe(true);
+    const childDone = events.find((e) => e.type === 'run.done' && e.subagent);
+    expect(childDone).toMatchObject({ finishReason: 'stop', text: 'found it' });
+
+    const top = events.filter((e) => !e.subagent);
+    expect(top[0].type).toBe('run.start');
+    expect(top.at(-1)).toMatchObject({ type: 'run.done', text: 'done' });
+    expect(events.at(-1)).toBe(top.at(-1));
+    expect(events.map((e) => e.seq)).toEqual(events.map((_, i) => i));
+    // The child runs inside the lead's task call.
+    const taskStart = events.findIndex((e) => e.type === 'tool.start' && !e.subagent);
+    const taskDone = events.findIndex((e) => e.type === 'tool.done' && !e.subagent);
+    expect(events.findIndex((e) => e.subagent)).toBeGreaterThan(taskStart);
+    expect(events.findLastIndex((e) => e.subagent)).toBeLessThan(taskDone);
+  });
+
   describe('maxSubagentDepth', () => {
     function nestedTree(maxSubagentDepth?: number) {
       const helperModel = mockModel(['helped']);

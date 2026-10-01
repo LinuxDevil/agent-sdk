@@ -5,6 +5,10 @@ is runnable directly (see its own README for exact instructions); most use
 `tsx` and a free mock provider by default, so nothing here needs an API key
 to try.
 
+## [agent-dir](./agent-dir)
+
+An agent defined as a directory (`instructions.md`, `tools/`, `skills/`, `agent.json`) and loaded with `loadAgentDir()`; runs offline with a mock model (LOU-Y5).
+
 ## [doc-qa](./doc-qa)
 
 A question-answering agent scoped to a single fixed document (LOU-H10).

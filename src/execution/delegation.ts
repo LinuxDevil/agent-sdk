@@ -25,6 +25,7 @@ import type { ToolConcurrency } from './toolBatch';
 import { HookRegistry, type AgentHook, type HookContext, type SubagentInfo } from './hooks';
 import { markPropagating } from './propagatingToolError';
 import { SubagentApprovalPause, subagentBudget, toolCallScopeOf, type ToolCallScope } from './subagentRuntime';
+import { RUN_EVENTS, runEventsOf, type StreamingExecuteOptions } from './agentRun';
 
 /** Everything needed to run an agent as a child: its own configuration. */
 export interface SubagentSpec {
@@ -153,9 +154,15 @@ function childOptions(
 }
 
 /** Tracing, content capture, hooks and events, as inherited from the parent run. */
-function inheritedObservability(scope: ToolCallScope | undefined, info: SubagentInfo): ResumeExecuteOptions {
+function inheritedObservability(
+  scope: ToolCallScope | undefined,
+  info: SubagentInfo
+): ResumeExecuteOptions & Pick<StreamingExecuteOptions, typeof RUN_EVENTS> {
   const runtime = scope?.runtime ?? {};
+  // A streaming parent (agent.stream()) gets the child's steps and text deltas too.
+  const sink = runEventsOf(runtime as StreamingExecuteOptions)?.forSubagent(info);
   return {
+    ...(sink && { [RUN_EVENTS]: sink }),
     exporter: runtime.exporter,
     parentSpanId: scope?.spanId,
     captureContent: runtime.captureContent,

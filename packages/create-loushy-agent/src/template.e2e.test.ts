@@ -1,59 +1,68 @@
 /**
- * LOU-H4 real, end-to-end integration test: runs the CLI in a FRESH TEMP
- * DIRECTORY (os.tmpdir()+mkdtemp, never inside this worktree), then
- * actually runs `npm install && npm run build` inside the generated
- * project and asserts both succeed. This is slow (npm install downloads
- * real packages) so it's kept in its own file / a generous timeout.
+ * End-to-end test of `create-loushy-agent` (which runs `loushy init`): scaffolds
+ * a project in a FRESH TEMP DIRECTORY (never inside this checkout) with
+ * `--sdk-path` pointing at this checkout, so the generator `npm pack`s the
+ * local SDK build instead of fetching a published version. It lets `init`
+ * run the real `npm install`, then typechecks the generated project and runs
+ * its own `npm test` offline. Slow (a real install), hence the long timeout.
+ *
+ * Needs the SDK built first: `npm run build` at the repository root.
  */
 import { describe, it, expect, afterAll } from 'vitest';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 const CLI = path.join(__dirname, '..', 'bin', 'cli.js');
+const SDK_ROOT = path.join(__dirname, '..', '..', '..');
 
-describe('end-to-end scaffold + install + build', () => {
-  let dir: string | undefined;
+/** Environment without any provider credentials, to prove the generated tests need none. */
+function offlineEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  for (const key of ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'OLLAMA_BASE_URL', 'LOUSHY_MODEL']) {
+    delete env[key];
+  }
+  return env;
+}
+
+function npm(args: string[], cwd: string): string {
+  return execSync(`npm ${args.join(' ')}`, { cwd, encoding: 'utf8', env: offlineEnv() });
+}
+
+describe('end-to-end scaffold + install + typecheck + test', () => {
+  let base: string | undefined;
 
   afterAll(() => {
-    if (dir) fs.rmSync(dir, { recursive: true, force: true });
+    if (base) fs.rmSync(base, { recursive: true, force: true });
   });
 
   it(
-    'generates an installable, buildable project pinned to the SDK\'s exact own version',
+    'generates a project that installs from the locally packed SDK, typechecks, and passes its own tests',
     () => {
-      const base = fs.mkdtempSync(path.join(os.tmpdir(), 'create-loushy-agent-e2e-'));
-      dir = path.join(base, 'test-agent');
+      base = fs.mkdtempSync(path.join(os.tmpdir(), 'create-loushy-agent-e2e-'));
+      const dir = path.join(base, 'test-agent');
 
       execFileSync(
         process.execPath,
-        [CLI, '--name=test-agent', '--provider=openai', '--yes', `--dir=${dir}`],
-        { encoding: 'utf8' }
+        [CLI, dir, '--yes', '--no-git', '--provider', 'openai', '--package-manager', 'npm', '--sdk-path', SDK_ROOT],
+        { encoding: 'utf8', env: offlineEnv(), stdio: 'pipe' }
       );
 
-      expect(fs.existsSync(path.join(dir, 'package.json'))).toBe(true);
+      const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+      expect(pkg.dependencies['@loushy/build-ai-agent']).toMatch(/^file:\.\/.*\.tgz$/);
+      expect(fs.existsSync(path.join(dir, 'node_modules', '@loushy', 'build-ai-agent'))).toBe(true);
 
-      execFileSync('npm', ['install'], { cwd: dir, encoding: 'utf8', shell: true });
-      const buildOutput = execFileSync('npm', ['run', 'build'], {
-        cwd: dir,
-        encoding: 'utf8',
-        shell: true,
-      });
-      expect(buildOutput).toBeDefined();
+      npm(['run', 'typecheck'], dir);
+      const testOutput = npm(['test'], dir);
+      expect(testOutput).toMatch(/2 passed/);
 
-      const sdkRootPkg = JSON.parse(
-        fs.readFileSync(path.join(__dirname, '..', '..', '..', 'package.json'), 'utf8')
+      const sdkPkg = JSON.parse(fs.readFileSync(path.join(SDK_ROOT, 'package.json'), 'utf8'));
+      const installed = JSON.parse(
+        fs.readFileSync(path.join(dir, 'node_modules', '@loushy', 'build-ai-agent', 'package.json'), 'utf8')
       );
-      const installedPkg = JSON.parse(
-        fs.readFileSync(
-          path.join(dir, 'node_modules', '@loushy', 'build-ai-agent', 'package.json'),
-          'utf8'
-        )
-      );
-
-      expect(installedPkg.version).toBe(sdkRootPkg.version);
+      expect(installed.version).toBe(sdkPkg.version);
     },
-    180_000
+    300_000
   );
 });

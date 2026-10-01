@@ -329,6 +329,27 @@ describe('approval inside a sub-agent (LOU-Y1)', () => {
     expect(JSON.stringify(result.messages)).not.toContain('awaiting-approval');
   });
 
+  it('a streaming lead reports the child call in one top-level approval.requested', async () => {
+    const approvals = memoryApprovals();
+    const { agent: researcher } = approvingChild('researcher', [{ toolCalls: [{ name: 'send', args: { to: 'ana' } }] }]);
+
+    const run = AgentExecutor.stream({
+      agent: lead,
+      input: 'go',
+      provider: mockModel([{ toolCalls: [task('researcher')] }]),
+      subagents: { researcher },
+      approvalStore: approvals.store,
+    });
+    const events = [];
+    for await (const event of run) events.push(event);
+
+    const requested = events.filter((e) => e.type === 'approval.requested');
+    expect(requested).toHaveLength(1);
+    expect(requested[0]).toMatchObject({ approvalId: (await run.result).approvalId, toolName: 'send', args: { to: 'ana' } });
+    expect(requested[0].subagent).toBeUndefined();
+    expect(events.at(-1)).toMatchObject({ type: 'run.done', finishReason: 'awaiting-approval' });
+  });
+
   it('a rejection reaches the child, which carries on without running the call', async () => {
     const approvals = memoryApprovals();
     const { agent: researcher, model: childModel, sent } = approvingChild('researcher', [

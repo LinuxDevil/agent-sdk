@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
   "entry": [
-    "src/cli/{dev,build,studio,mcp,doctor}.ts",
+    "src/cli/{dev,build,studio,mcp,doctor,init,eval}.ts",
     "src/data/index.ts",
     "**/*.test-d.ts",
     "**/*.{test,spec}.{ts,tsx}",
@@ -13,7 +13,9 @@
   "dynamicallyLoaded": [
     "src/deploy/runtime.ts",
     "src/deploy/runtime.worker.ts",
-    "src/deploy/shims/sandboxCore.worker.ts"
+    "src/deploy/shims/sandboxCore.worker.ts",
+    "src/agentDir/__fixtures__/**/*.{ts,js}",
+    "examples/agent-dir/tools/*.ts"
   ],
   "ignoreDependencies": [
     "@ai-sdk/anthropic",

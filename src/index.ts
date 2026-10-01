@@ -65,6 +65,9 @@ export * from './skills';
 // Sub-agents: the `subagents` option and its `task` tool (LOU-Y3)
 export * from './subagents';
 
+// Filesystem agent loader: an agent as a directory (LOU-Y5)
+export * from './agentDir';
+
 // Declarative agent spec file format (LOU-H9)
 export * from './spec';
 

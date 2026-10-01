@@ -58,6 +58,11 @@
       "import": "./dist/execution/hooks.mjs",
       "require": "./dist/execution/hooks.js"
     },
+    "./sqlite": {
+      "types": "./dist/storage/sqlite/index.d.ts",
+      "import": "./dist/storage/sqlite/index.mjs",
+      "require": "./dist/storage/sqlite/index.js"
+    },
     "./triggers": {
       "types": "./dist/triggers/index.d.ts",
       "import": "./dist/triggers/index.mjs",
@@ -100,6 +105,7 @@
     "test:types": "tsc -p tsconfig.test-d.json && vitest run --typecheck.only",
     "example:tracing:console": "tsx examples/tracing/run-console.ts",
     "example:tracing:otel": "tsx examples/tracing/run-otel.ts",
+    "example:agent-dir": "tsx examples/agent-dir/index.ts",
     "example:support-bot": "tsx examples/support-bot/index.ts",
     "example:research-assistant": "tsx examples/research-assistant/index.ts",
     "example:workflow-router": "tsx examples/workflow-router/index.ts",
@@ -173,6 +179,7 @@
     "@modelcontextprotocol/sdk": "^1.30.1",
     "dockerode": "^5.0.1",
     "nanoid": "^5.0.7",
+    "prompts": "^2.4.2",
     "undici": "^8.11.2",
     "yaml": "^2.9.1"
   },
@@ -183,6 +190,7 @@
     "@opentelemetry/sdk-trace-node": "^2.11.0",
     "@types/dockerode": "^4.0.1",
     "@types/node": "^20",
+    "@types/prompts": "^2.4.9",
     "@vitest/coverage-v8": "^1.0.0",
     "esbuild": "^0.25.12",
     "eslint": "^10.11.0",

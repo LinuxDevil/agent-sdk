@@ -26,6 +26,8 @@ export default defineConfig({
       '**/node_modules/**',
       '**/dist/**',
       'src/execution/__fixtures__/**',
+      // Fixture evals that src/cli/eval.test.ts runs through `loushy eval`.
+      'src/cli/__fixtures__/**',
       '**/*.judge.eval.ts',
       // apps/* are separate npm workspaces (LOU-L1) with their own Vite/
       // vitest config and browser-only test environment (jsdom) - without

@@ -5,11 +5,13 @@ const path = require('node:path');
 
 const USAGE = [
   'Usage:',
+  '  loushy init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force]',
   '  loushy dev <config.yaml|config.json> [--port N] [--host H]',
   '  loushy build --target=<name> --agent=<path> [--out=<dir>]',
   '  loushy studio [--port N] [--host H] [--prod|--dev]',
   '  loushy mcp <agent.yaml|json> [--http --port N --host H]',
   '  loushy doctor [agent.yaml|json] [--json]',
+  '  loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge]',
 ].join('\n');
 
 /**
@@ -79,6 +81,12 @@ async function runStudio(rest) {
   }
 }
 
+// Scaffolds a new project (LOU-D3); see src/cli/init.ts. Also what `npm create loushy-agent` runs.
+async function runInitCommand(rest) {
+  const { runInit } = require(path.join(__dirname, '..', 'dist', 'cli', 'init.js'));
+  process.exitCode = await runInit(rest);
+}
+
 async function runDoctorCommand(rest) {
   const { runDoctorCommand: run } = require(path.join(__dirname, '..', 'dist', 'cli', 'doctor.js'));
   process.exitCode = await run(rest);
@@ -91,12 +99,21 @@ async function runMcp(rest) {
   process.exitCode = await start(rest);
 }
 
+// Runs eval files under the project's vitest and reports the results; the
+// exit code is the verdict (see src/cli/eval.ts).
+async function runEvalCommand(rest) {
+  const { runEval } = require(path.join(__dirname, '..', 'dist', 'cli', 'eval.js'));
+  process.exitCode = await runEval(rest);
+}
+
 const COMMANDS = new Map([
+  ['init', runInitCommand],
   ['dev', runDev],
   ['build', runBuildCommand],
   ['studio', runStudio],
   ['mcp', runMcp],
   ['doctor', runDoctorCommand],
+  ['eval', runEvalCommand],
 ]);
 
 async function main() {

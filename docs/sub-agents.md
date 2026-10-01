@@ -128,7 +128,7 @@ inherits:
 | Tracing (`exporter`) | Yes | The sub-agent's `invoke_agent` span is a child of the lead's `execute_tool task` span. `captureContent` and `redactContent` are inherited too. |
 | Hooks (`hooks`) | Yes | They run on the sub-agent's model calls and tool calls, with `ctx.subagent` set (see below). A hook that throws inside a sub-agent halts the whole run. |
 | Approval store (`approvalStore`) | Yes | See [Approvals](#approvals-inside-a-sub-agent). |
-| `onEvent` | Yes | The sub-agent's events are forwarded with an `event.subagent` field. |
+| `onEvent` and `stream()` | Yes | The sub-agent's events are forwarded with a `subagent` field. |
 | `toolConcurrency` | Yes, unless the sub-agent sets its own | |
 | `sandbox` | Yes | |
 | Token usage | Rolls up | Added to the lead's `result.usage`. |
@@ -162,11 +162,16 @@ hooks.register({
 
 ### Events
 
+`agent.stream()` / `AgentExecutor.stream()` on the lead stream each
+sub-agent's run inside the same stream - steps, text deltas, tool events -
+with a `subagent` field on every one of its events, so a UI can nest
+sub-agent activity under the lead's `task` call (`subagent.toolCallId`). See
+[Streaming: sub-agents](./streaming.md#sub-agents).
+
 With `onEvent` on the lead, every event a sub-agent emits (`start`,
 `tool-call`, `tool-result`, `text-complete`, `finish`, ...) reaches the same
-listener with `event.subagent` set, so a UI can nest sub-agent activity under
-the lead's `task` call (`event.subagent.toolCallId`). The lead's own events
-have no `subagent` field.
+listener with `event.subagent` set. The lead's own events have no `subagent`
+field.
 
 ## Approvals inside a sub-agent
 
