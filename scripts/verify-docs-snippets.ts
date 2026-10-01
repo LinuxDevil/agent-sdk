@@ -44,7 +44,9 @@
  * Snippets run with provider credential env vars (OPENAI_API_KEY, ...)
  * removed, so they exercise the mock-provider path deterministically and
  * never make network calls. A fence whose info string contains
- * `no-verify` (e.g. ```ts no-verify) is skipped.
+ * `no-verify` (e.g. ```ts no-verify) is skipped. One containing `no-run`
+ * (e.g. ```ts no-run) is still type-checked by both stages but not executed,
+ * for snippets that need a real API key to run (LOU-D1).
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
@@ -82,6 +84,8 @@ export interface Snippet {
   /** 1-based line number of the opening fence. */
   line: number;
   source: string;
+  /** The fence says `no-run`: type-check only, never execute. */
+  noRun: boolean;
 }
 
 /** Index of the closing fence at or after `from`, or lines.length when the block is unterminated. */
@@ -99,7 +103,8 @@ export function extractSnippets(markdown: string, file: string): Snippet[] {
     if (!open) continue;
     const end = findFenceEnd(lines, i + 1);
     if (!open[2].includes('no-verify')) {
-      snippets.push({ file, line: i + 1, source: lines.slice(i + 1, end).join('\n') + '\n' });
+      const source = lines.slice(i + 1, end).join('\n') + '\n';
+      snippets.push({ file, line: i + 1, source, noRun: open[2].includes('no-run') });
     }
     i = end;
   }
@@ -264,6 +269,10 @@ function runSnippets(projectDir: string, files: string[], snippets: Snippet[], t
   const failures: Failure[] = [];
   files.forEach((name, index) => {
     const snippet = snippets[index];
+    if (snippet.noRun) {
+      console.log(`  SKIP (no-run) ${snippet.file}:${snippet.line} (${name})`);
+      return;
+    }
     const typeOk = !typeFailures.some((f) => f.snippet === snippet);
     const failure = runSnippet(projectDir, env, name, snippet, typeOk);
     if (failure) failures.push(failure);

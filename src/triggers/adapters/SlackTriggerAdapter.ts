@@ -25,7 +25,9 @@
  */
 import type { ExecutionResult } from '../../execution/AgentExecutor';
 import { SLACK_WEBHOOK_URL_ENV_KEY } from '../../tools/built-in/slack';
+import { Logger, noopLogger } from '../../execution/logger';
 import { RunnableAgent, TriggerAdapter, TriggerContext, TriggerHandle } from '../types';
+import { checkSlackSignature } from '../webhookAuth';
 
 export interface SlackMessageEvent {
   channel: string;
@@ -37,6 +39,58 @@ export interface SlackTriggerAdapterOptions {
   webhookUrl?: string;
   /** Overrides the fetch implementation used to POST replies (testing). */
   fetchImpl?: typeof fetch;
+  /**
+   * Your Slack app's signing secret. When set, `handleRequest()` verifies every
+   * inbound request (HMAC-SHA256 over `v0:{timestamp}:{raw body}`, five-minute
+   * replay window) and answers a generic 401 otherwise. **Set it for any
+   * endpoint reachable from outside your machine**: without it anyone who can
+   * reach the endpoint can run your agent.
+   *
+   * @example
+   * ```ts
+   * new SlackTriggerAdapter({ signingSecret: process.env.SLACK_SIGNING_SECRET });
+   * ```
+   */
+  signingSecret?: string;
+  /** Receives signature failures and the "no signingSecret" warning. Defaults to a no-op logger. */
+  logger?: Logger;
+}
+
+/** A raw inbound Slack HTTP request, as handed to {@link SlackTriggerAdapter.handleRequest}. */
+export interface SlackInboundRequest {
+  /** Request headers (Node's `req.headers` works as is). */
+  headers: Record<string, string | string[] | undefined>;
+  /** The exact body bytes received. Do not re-serialize a parsed body: the signature covers the raw bytes. */
+  rawBody: Buffer | string;
+}
+
+/** What your HTTP handler should send back to Slack. */
+export interface SlackHttpResponse {
+  status: number;
+  body: Record<string, unknown>;
+}
+
+function headerValue(headers: SlackInboundRequest['headers'], name: string): string | undefined {
+  const value = headers[name];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function parseJsonObject(raw: Buffer | string): Record<string, unknown> | undefined {
+  try {
+    const parsed: unknown = JSON.parse(raw.toString());
+    return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The `{ channel, text }` of a plain user message in an Events API `event_callback`, if the payload is one. */
+function extractMessageEvent(payload: Record<string, unknown>): SlackMessageEvent | undefined {
+  const event = payload.event as Record<string, unknown> | undefined;
+  if (payload.type !== 'event_callback' || event?.type !== 'message') return undefined;
+  if (event.subtype !== undefined || event.bot_id !== undefined) return undefined;
+  if (typeof event.channel !== 'string' || typeof event.text !== 'string') return undefined;
+  return { channel: event.channel, text: event.text };
 }
 
 export class SlackTriggerAdapter implements TriggerAdapter<string> {
@@ -44,6 +98,7 @@ export class SlackTriggerAdapter implements TriggerAdapter<string> {
 
   private onEventHandler?: (input: string, context: TriggerContext) => Promise<ExecutionResult>;
   private listening = false;
+  private warnedUnauthenticated = false;
 
   constructor(private readonly options: SlackTriggerAdapterOptions = {}) {}
 
@@ -54,6 +109,7 @@ export class SlackTriggerAdapter implements TriggerAdapter<string> {
     void agent;
     this.onEventHandler = onEvent;
     this.listening = true;
+    this.warnIfUnauthenticated();
 
     return {
       stop: () => {
@@ -61,6 +117,50 @@ export class SlackTriggerAdapter implements TriggerAdapter<string> {
         this.onEventHandler = undefined;
       },
     };
+  }
+
+  private warnIfUnauthenticated(): void {
+    if (this.options.signingSecret || this.warnedUnauthenticated) return;
+    this.warnedUnauthenticated = true;
+    (this.options.logger ?? noopLogger).warn(
+      'SlackTriggerAdapter has no `signingSecret`: Slack request signatures are not verified, so anyone who can reach ' +
+        'your endpoint can run your agent. Pass options.signingSecret; see docs/api-overview.md#slack-request-signatures.'
+    );
+  }
+
+  /**
+   * Handles a raw Slack Events API HTTP request and returns the response to send.
+   * With `signingSecret` set, the signature is verified against the raw body
+   * before anything is parsed (so the signed `url_verification` handshake works
+   * too); failures get a generic 401 and are logged without secrets or signatures.
+   *
+   * @example
+   * ```ts
+   * const { status, body } = await adapter.handleRequest({ headers: req.headers, rawBody });
+   * res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
+   * ```
+   */
+  public async handleRequest(request: SlackInboundRequest): Promise<SlackHttpResponse> {
+    const { signingSecret } = this.options;
+    if (signingSecret) {
+      // Scheme: https://docs.slack.dev/authentication/verifying-requests-from-slack
+      const failure = checkSlackSignature({
+        signingSecret,
+        timestamp: headerValue(request.headers, 'x-slack-request-timestamp'),
+        signature: headerValue(request.headers, 'x-slack-signature'),
+        rawBody: request.rawBody,
+      });
+      if (failure !== undefined) {
+        (this.options.logger ?? noopLogger).warn('slack request rejected: signature verification failed', { reason: failure });
+        return { status: 401, body: { error: 'Unauthorized' } };
+      }
+    }
+    const payload = parseJsonObject(request.rawBody);
+    if (!payload) return { status: 400, body: { error: 'Invalid JSON body' } };
+    if (payload.type === 'url_verification') return { status: 200, body: { challenge: payload.challenge } };
+    const event = extractMessageEvent(payload);
+    if (event) await this.handleEvent(event);
+    return { status: 200, body: { ok: true } };
   }
 
   /**

@@ -122,14 +122,11 @@ function buildAgentSource(answers: AnswerConfig): string {
   const toolsSource = toolsObjectSource(answers.tools);
 
   return `import { createAgent } from '@loushy/build-ai-agent';
-import { resolveProvider } from '@loushy/build-ai-agent';
 ${toolImports}
 
-const provider = resolveProvider('${answers.provider}/${defaultModelFor(answers.provider)}');
-
 const agent = createAgent({
-  prompt: 'You are a helpful assistant built with @loushy/build-ai-agent.',
-  provider,
+  model: '${answers.provider}/${defaultModelFor(answers.provider)}',
+  instructions: 'You are a helpful assistant built with @loushy/build-ai-agent.',
 ${toolsSource ? `  tools: {\n${toolsSource}\n  },\n` : ''}});
 
 async function main() {

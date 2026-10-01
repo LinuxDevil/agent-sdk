@@ -3,6 +3,8 @@
  * Executes agents with streaming support and tool calling
  */
 
+import type { Skill } from '../skills/defineSkill';
+import { withSkills } from '../skills/withSkills';
 import { nanoid } from 'nanoid';
 import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult, ToolDefinition } from '../providers';
 import { AgentConfig } from '../types';
@@ -13,7 +15,19 @@ import { CheckpointStore } from './checkpoint';
 import { TraceExporter, withSpan } from './tracing';
 import { HookRegistry } from './hooks';
 import { isAbortError } from './errors';
-import { ToolCallOutcome, parseToolArguments, runToolCall } from './toolCallExecution';
+import {
+  PreparedToolCall,
+  ToolCallOutcome,
+  parseToolArguments,
+  runToolCall,
+} from './toolCallExecution';
+import {
+  StartedToolCall,
+  ToolBatchResult,
+  ToolConcurrency,
+  assertToolConcurrency,
+  runToolBatch,
+} from './toolBatch';
 import {
   buildTools,
   compactGenerateError,
@@ -26,7 +40,8 @@ import {
   AgentRunState,
   addUsage,
   loadRunState,
-  pushCancelledToolResults,
+  pushAbortedBatchResults,
+  pushToolResult,
   saveStepCheckpoint,
   toExecutionResult,
 } from './agentRunState';
@@ -103,6 +118,16 @@ export interface ExecuteOptions {
   input: string | Message[];
   provider: LLMProvider;
   toolRegistry?: ToolRegistry;
+  /**
+   * Skills (LOU-Y2): instructions the model loads on demand. Their names and
+   * descriptions are appended to the system prompt and a `load_skill` tool is
+   * registered; bodies only enter the conversation when the model loads them.
+   * Throws if a tool named `load_skill` is already registered.
+   *
+   * @example
+   * AgentExecutor.execute({ agent, input, provider, skills: [defineSkill({ name, description, content })] });
+   */
+  skills?: readonly Skill[];
   streaming?: boolean;
   maxSteps?: number;
   temperature?: number;
@@ -282,6 +307,40 @@ export interface ExecuteOptions {
    * ```
    */
   signal?: AbortSignal;
+  /**
+   * LOU-V3: how many tool calls from ONE model turn may run at the same
+   * time. Defaults to `'unbounded'` (every call of the turn runs
+   * concurrently); `1` restores strictly sequential execution. Must be a
+   * positive integer or `'unbounded'`.
+   *
+   * Guarantees, whatever the limit:
+   * - Tool-result messages are appended to the transcript in the model's
+   *   call order, never completion order, so the next provider request is
+   *   deterministic.
+   * - Calls are started in call order. Each call's `tool-call` event,
+   *   `onToolCall`, argument validation, `preToolCall` hooks and
+   *   `needsApproval` check run before it starts, one call at a time; its
+   *   `tool-result` event fires as soon as it completes (completion order).
+   *   With `1`, events alternate call/result exactly as before.
+   * - Approval: the first call that needs approval stops the batch. Calls
+   *   before it run (concurrently) and are recorded; the run then pauses
+   *   on that call (`finishReason: 'awaiting-approval'`); calls after it
+   *   never start in this run.
+   * - A failing tool does not affect its siblings - each gets its own error
+   *   result. A propagating error (`PropagatingToolError`, a throwing hook)
+   *   stops new calls from starting, waits for the running ones, then
+   *   rejects `execute()` - no tool is left running detached.
+   * - An abort (`signal`) mid-batch resolves with `finishReason: 'aborted'`:
+   *   finished calls keep their results, the rest get a "cancelled" result.
+   * - With checkpointing, results are checkpointed as the in-order prefix
+   *   of finished calls grows, so a resumed run never re-runs a recorded call.
+   *
+   * @example
+   * ```ts
+   * await AgentExecutor.execute({ agent, input: 'Compare 3 cities', provider, toolConcurrency: 2 });
+   * ```
+   */
+  toolConcurrency?: ToolConcurrency;
 }
 
 /**
@@ -331,7 +390,11 @@ export class AgentExecutor {
       exporter,
       'agent.run',
       { input: typeof input === 'string' ? input : JSON.stringify(input) },
-      async (agentSpan) => this.runAgentLoop(options, agentSpan.id),
+      async (agentSpan) =>
+        this.runAgentLoop(
+          { ...options, ...withSkills(options.agent, options.toolRegistry, options.skills) },
+          agentSpan.id
+        ),
       undefined
     );
   }
@@ -526,9 +589,11 @@ export class AgentExecutor {
   }
 
   /**
-   * Executes the tool calls of one assistant turn in order, appending each
-   * result to the conversation and checkpointing after it. Resolves to the
-   * ExecutionResult to return when a tool call requires approval.
+   * Executes the tool calls of one assistant turn - concurrently up to
+   * `toolConcurrency` (LOU-V3, see that option for the ordering contract) -
+   * appending the results to the conversation in call order and
+   * checkpointing as they are recorded. Resolves to the ExecutionResult to
+   * return when the run pauses for approval or is aborted.
    */
   private static async runToolCalls(
     options: ExecuteOptions,
@@ -547,51 +612,69 @@ export class AgentExecutor {
       toolCalls,
     });
 
-    // Execute tools and add results
-    for (const [index, toolCall] of toolCalls.entries()) {
-      if (options.signal?.aborted) {
-        pushCancelledToolResults(state, toolCalls.slice(index));
-        return this.abortRun(options, state);
-      }
+    const batch = await runToolBatch(
+      toolCalls,
+      options.toolConcurrency ?? 'unbounded',
+      {
+        start: (toolCall) => {
+          this.emitEvent(onEvent, { type: 'tool-call', timestamp: new Date(), toolCall });
+          return this.startToolCall(options, state, toolCall, agentSpanId);
+        },
+        onComplete: (toolResult) =>
+          this.emitEvent(onEvent, { type: 'tool-result', timestamp: new Date(), toolResult }),
+        record: (toolCall, outcome) => pushToolResult(state, toolCall, outcome),
+        persist: () => saveStepCheckpoint(options, state),
+      },
+      options.signal
+    );
 
-      this.emitEvent(onEvent, {
-        type: 'tool-call',
-        timestamp: new Date(),
-        toolCall,
-      });
+    return this.settleToolBatch(options, state, batch);
+  }
 
-      const toolResult = await this.runToolCallInSpan(options, state, toolCall, agentSpanId);
-
-      if (toolResult.requiresApproval) {
-        return this.pauseForApproval(options, state, toolCall, toolResult);
-      }
-
-      this.emitEvent(onEvent, {
-        type: 'tool-result',
-        timestamp: new Date(),
-        toolResult,
-      });
-
-      // A failed tool carries its message as `{error}` (the same shape
-      // resume.ts uses) - `result` is null then, so the model would
-      // otherwise see a bare "null" and never learn the call failed. A
-      // failure that already has a structured result (argument validation)
-      // keeps it, so the model gets the per-issue detail.
-      const failed = toolResult.error !== undefined;
-      const failurePayload = toolResult.result ?? { error: toolResult.error };
-      state.messages.push({
-        role: 'tool',
-        content: JSON.stringify(failed ? failurePayload : toolResult.result),
-        name: toolCall.function.name,
-        toolCallId: toolCall.id,
-        toolName: toolCall.function.name,
-        ...(failed && { isError: true }),
-      });
-
-      await saveStepCheckpoint(options, state);
+  /**
+   * Turns a finished batch into the run's next move: abort (finished calls
+   * keep their results, the rest are cancelled), reject with the first
+   * fatal error, pause for approval, or carry on (`undefined`).
+   */
+  private static settleToolBatch(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    batch: ToolBatchResult
+  ): Promise<ExecutionResult> | undefined {
+    if (options.signal?.aborted) {
+      pushAbortedBatchResults(state, batch.unrecorded);
+      return this.abortRun(options, state);
     }
-
+    if (batch.failure) {
+      throw batch.failure.error;
+    }
+    if (batch.approval) {
+      return this.pauseForApproval(options, state, batch.approval.toolCall, batch.approval.outcome);
+    }
     return undefined;
+  }
+
+  /**
+   * Starts one tool call. `gate` settles once it passed its pre-execution
+   * checks (or rejects with the error that stopped it); `done` settles with
+   * its outcome.
+   */
+  private static startToolCall(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    toolCall: ToolCall,
+    agentSpanId: string
+  ): StartedToolCall {
+    let openGate!: (prepared: PreparedToolCall) => void;
+    let failGate!: (error: unknown) => void;
+    const gate = new Promise<PreparedToolCall>((resolve, reject) => {
+      openGate = resolve;
+      failGate = reject;
+    });
+    const done = this.runToolCallInSpan(options, state, toolCall, agentSpanId, openGate);
+    // Rejecting an already-resolved gate is a no-op.
+    done.catch(failGate);
+    return { gate, done };
   }
 
   /**
@@ -602,7 +685,8 @@ export class AgentExecutor {
     options: ExecuteOptions,
     state: AgentRunState,
     toolCall: ToolCall,
-    agentSpanId: string
+    agentSpanId: string,
+    onPrepared?: (prepared: PreparedToolCall) => void
   ): Promise<ToolCallOutcome> {
     const {
       agent,
@@ -633,7 +717,8 @@ export class AgentExecutor {
           hooks,
           sessionId,
           state.messages,
-          signal
+          signal,
+          onPrepared
         );
         const parsedArgs =
           executed.args === undefined
@@ -791,19 +876,24 @@ export class AgentExecutor {
     hooks?: HookRegistry,
     sessionId?: string,
     messages: Message[] = [],
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    onPrepared?: (prepared: PreparedToolCall) => void
   ): Promise<ToolCallOutcome> {
-    return runToolCall(toolCall, {
-      agent,
-      toolRegistry,
-      onToolCall,
-      onToolResult,
-      sandbox,
-      hooks,
-      sessionId,
-      messages,
-      signal,
-    });
+    return runToolCall(
+      toolCall,
+      {
+        agent,
+        toolRegistry,
+        onToolCall,
+        onToolResult,
+        sandbox,
+        hooks,
+        sessionId,
+        messages,
+        signal,
+      },
+      onPrepared
+    );
   }
 
   /**
@@ -833,6 +923,7 @@ export class AgentExecutor {
           "Example: AgentExecutor.execute({ agent, input: 'hello', provider })"
       );
     }
+    assertToolConcurrency(options.toolConcurrency, 'AgentExecutor.execute');
   }
 
   /**

@@ -21,18 +21,18 @@ import { AgentExecutor, ExecutionResult } from './execution/AgentExecutor';
 import { LLMProvider } from './providers/llm';
 import { ToolRegistry } from './tools/ToolRegistry';
 import { ToolDescriptor } from './types';
+import { modelFromEnv, resolveProviderSpec } from './providers/providerSpec';
 import type { DefinedTool } from './tools/defineTool';
+import { ToolConcurrency, assertToolConcurrency } from './execution/toolBatch';
+import type { Skill } from './skills/defineSkill';
 
 /**
- * Configuration for createAgent(). Tools are keyed by the name the agent
- * (and AgentConfig.tools) will refer to them by - createAgent() registers
- * each one into a fresh ToolRegistry under that key.
+ * Options for createAgent() that do not depend on how the instructions and
+ * model are given. Tools are keyed by the name the agent (and
+ * AgentConfig.tools) will refer to them by - createAgent() registers each
+ * one into a fresh ToolRegistry under that key.
  */
-export interface CreateAgentConfig {
-  /** System prompt for the agent. */
-  prompt: string;
-  /** LLM provider instance (real or mock) used to generate responses. */
-  provider: LLMProvider;
+export interface CreateAgentBase {
   /**
    * Optional tools: an array of `defineTool()` results (named by the tool),
    * or a record of descriptors keyed by the name the agent should call them by.
@@ -41,11 +41,93 @@ export interface CreateAgentConfig {
    * createAgent({ prompt: '...', provider, tools: [sendEmail] });
    */
   tools?: readonly DefinedTool[] | Record<string, ToolDescriptor>;
+  /**
+   * Optional skills (LOU-Y2): only name + description go in the system
+   * prompt; the model loads a skill's full content with the auto-registered
+   * `load_skill` tool. Build them with `defineSkill()` or `loadSkills()`.
+   *
+   * @example
+   * createAgent({ prompt: '...', provider, skills: await loadSkills('./skills') });
+   */
+  skills?: readonly Skill[];
   /** Optional agent name; defaults to 'agent'. */
   name?: string;
   /** Optional maxSteps passed through to AgentExecutor.execute(). */
   maxSteps?: number;
+  /**
+   * How many tool calls from one model turn may run at once (LOU-V3).
+   * Defaults to `'unbounded'`; `1` runs them one at a time. Results always
+   * reach the transcript in the model's call order. See
+   * `ExecuteOptions.toolConcurrency` for the full contract.
+   *
+   * @example
+   * ```ts
+   * const agent = createAgent({ prompt: '...', provider, tools: [sendEmail], toolConcurrency: 1 });
+   * ```
+   */
+  toolConcurrency?: ToolConcurrency;
 }
+
+/**
+ * The system prompt. `instructions` is the preferred name; `prompt` is a
+ * working alias. Give at most one - both is an error. Omit both for a
+ * minimal default ("You are a helpful assistant.").
+ */
+export type CreateAgentInstructions =
+  | {
+      /** System prompt for the agent (preferred name). */
+      instructions?: string;
+      /** Alias of `instructions`; do not pass both. */
+      prompt?: undefined;
+    }
+  | {
+      /** Preferred name of `prompt`; do not pass both. */
+      instructions?: undefined;
+      /** System prompt for the agent (alias of `instructions`). */
+      prompt?: string;
+    };
+
+/**
+ * How the LLM is chosen - exactly one of these alternatives:
+ *
+ * 1. `model: 'provider/model'` - resolved with `resolveProvider()`, the key
+ *    read from the provider's conventional env var (`OPENAI_API_KEY`,
+ *    `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, or `OLLAMA_BASE_URL`).
+ * 2. `provider: <LLMProvider>` - your own (or the mock) provider instance.
+ *    You may also pass `model` here (a bare model id, e.g. `'gpt-4o'`): it
+ *    becomes this agent's model setting, overriding the provider's default
+ *    model.
+ * 3. Neither - resolved from the environment: `LOUSHY_MODEL` (a
+ *    `provider/model` string) if set, otherwise the first provider whose key
+ *    is set, checked in the order OPENAI_API_KEY, ANTHROPIC_API_KEY,
+ *    OPENROUTER_API_KEY, OLLAMA_BASE_URL. Throws, listing the fixes, when
+ *    none is set.
+ */
+export type CreateAgentModelSource =
+  | {
+      /** A `provider/model` string, e.g. `'openai/gpt-4o-mini'`. */
+      model: string;
+      provider?: undefined;
+    }
+  | {
+      /** An LLM provider instance (real or mock). */
+      provider: LLMProvider;
+      /** Per-agent model id sent to `provider`, overriding its default model. */
+      model?: string;
+    }
+  | {
+      model?: undefined;
+      provider?: undefined;
+    };
+
+/**
+ * Configuration for createAgent(): the common options plus one way to give
+ * the instructions and one way to choose the model (see the two unions).
+ *
+ * @example
+ * createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are a helpful assistant.' });
+ */
+export type CreateAgentConfig = CreateAgentBase & CreateAgentInstructions & CreateAgentModelSource;
 
 /** Per-call options for `SimpleAgent.send()`. */
 export interface SendOptions {
@@ -68,47 +150,68 @@ export interface SimpleAgent {
 }
 
 /**
- * Build a ready-to-use agent from a prompt + provider (+ optional tools) in
- * one call. Does NOT modify AgentBuilder or AgentExecutor - it is purely a
- * thin composition of the existing public APIs.
+ * Build a ready-to-use agent in one call. The smallest useful form is a
+ * model string, instructions, and `send()`.
+ *
+ * See `CreateAgentModelSource` for how the model is chosen (a
+ * `provider/model` string, a provider instance, or the environment) and
+ * `CreateAgentInstructions` for `instructions` vs its alias `prompt`. Does
+ * NOT modify AgentBuilder or AgentExecutor - it is purely a thin
+ * composition of the existing public APIs.
+ *
+ * @example
+ * const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are a helpful assistant.' });
+ * const { text } = await agent.send('Hello!');
  */
-export function createAgent(config: CreateAgentConfig): SimpleAgent {
-  assertCreateAgentConfig(config);
+export function createAgent(config: CreateAgentConfig = {}): SimpleAgent {
+  assertToolConcurrency(config.toolConcurrency, 'createAgent');
+  const instructions = resolveInstructions(config);
+  const provider = resolveModelSource(config);
 
   const { toolRegistry, toolsConfig } = registerTools(config.tools ?? {});
 
-  const agent = AgentBuilder.create()
+  const builder = AgentBuilder.create()
     .setType(AgentType.SmartAssistant)
     .setName(config.name || 'agent')
-    .setPrompt(config.prompt)
-    .setTools(toolsConfig)
-    .build();
+    .setPrompt(instructions)
+    .setTools(toolsConfig);
+  // With an explicit provider, `model` is a per-agent model setting.
+  if (config.provider && config.model) builder.setSettings({ model: config.model });
+  const agent = builder.build();
 
   return {
     async send(message: string, options: SendOptions = {}): Promise<ExecutionResult> {
       return AgentExecutor.execute({
         agent,
         input: message,
-        provider: config.provider,
+        provider,
         toolRegistry,
+        skills: config.skills,
         maxSteps: config.maxSteps,
+        toolConcurrency: config.toolConcurrency,
         signal: options.signal,
       });
     },
   };
 }
 
-function assertCreateAgentConfig(config: CreateAgentConfig): void {
-  if (!config || !config.provider) {
+/** Used when neither `instructions` nor `prompt` is given. */
+const DEFAULT_INSTRUCTIONS = 'You are a helpful assistant.';
+
+function resolveInstructions(config: CreateAgentConfig): string {
+  if (config.instructions !== undefined && config.prompt !== undefined) {
     throw new Error(
-      "createAgent: 'provider' is required. Example: createAgent({ prompt: '...', provider: myProvider })"
+      "createAgent: both 'instructions' and 'prompt' were given. They are the same option - " +
+        "use 'instructions' (and drop 'prompt', its alias)."
     );
   }
-  if (!config.prompt) {
-    throw new Error(
-      "createAgent: 'prompt' is required. Example: createAgent({ prompt: 'You are a helpful assistant', provider: myProvider })"
-    );
-  }
+  return config.instructions ?? config.prompt ?? DEFAULT_INSTRUCTIONS;
+}
+
+/** The provider to run with: the given instance, else `model` resolved from env, else the env's choice. */
+function resolveModelSource(config: CreateAgentConfig): LLMProvider {
+  if (config.provider) return config.provider;
+  return resolveProviderSpec(config.model ?? modelFromEnv('createAgent'), 'createAgent');
 }
 
 /**

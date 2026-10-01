@@ -8,6 +8,7 @@ const USAGE = [
   '  loushy dev <config.yaml|config.json> [--port N] [--host H]',
   '  loushy build --target=<name> --agent=<path> [--out=<dir>]',
   '  loushy studio [--port N] [--host H] [--prod|--dev]',
+  '  loushy mcp <agent.yaml|json> [--http --port N --host H]',
 ].join('\n');
 
 /**
@@ -77,10 +78,18 @@ async function runStudio(rest) {
   }
 }
 
+// Serves an agent spec over MCP (stdio by default). The server keeps the
+// process alive; see src/cli/mcp.ts. Only the exit code is set on failure.
+async function runMcp(rest) {
+  const { runMcp: start } = require(path.join(__dirname, '..', 'dist', 'cli', 'mcp.js'));
+  process.exitCode = await start(rest);
+}
+
 const COMMANDS = new Map([
   ['dev', runDev],
   ['build', runBuildCommand],
   ['studio', runStudio],
+  ['mcp', runMcp],
 ]);
 
 async function main() {
