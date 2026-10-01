@@ -46,9 +46,11 @@ const SUPPORTED_SUMMARY =
 type Scope = Record<string, unknown>;
 
 interface Token {
-  readonly kind: 'num' | 'str' | 'id' | 'op' | 'eof';
+  readonly kind: 'num' | 'str' | 'id' | 'op' | 'val' | 'eof';
   readonly value: string | number;
   readonly pos: number;
+  /** The bound value of a bare `{{name}}` placeholder (kind `val` only). */
+  readonly data?: unknown;
 }
 
 type Node =
@@ -100,20 +102,43 @@ function readNumber(src: string, start: number): { token: Token; end: number } {
   return { token: { kind: 'num', value: Number(src.slice(start, end)), pos: start }, end };
 }
 
-function readString(src: string, start: number): { token: Token; end: number } {
+const PLACEHOLDER = /\{\{(\w+)\}\}/y;
+
+/** Match a `{{name}}` placeholder starting exactly at `start`. */
+function matchPlaceholder(src: string, start: number): { name: string; end: number } | undefined {
+  PLACEHOLDER.lastIndex = start;
+  const match = PLACEHOLDER.exec(src);
+  return match ? { name: match[1], end: start + match[0].length } : undefined;
+}
+
+/**
+ * Text a placeholder contributes inside a string literal: the variable's
+ * string form, or '' when it is missing or null (as the former text
+ * substitution did).
+ */
+function placeholderText(name: string, scope: Scope): string {
+  const value = Object.hasOwn(scope, name) ? scope[name] : undefined;
+  return value === undefined || value === null ? '' : String(value);
+}
+
+/** One piece of a string literal: an interpolated placeholder, an escape, or a plain character. */
+function readStringPiece(src: string, i: number, scope?: Scope): { text: string; end: number } {
+  const placeholder = scope && src[i] === '{' ? matchPlaceholder(src, i) : undefined;
+  if (placeholder && scope) return { text: placeholderText(placeholder.name, scope), end: placeholder.end };
+  if (src[i] !== '\\') return { text: src[i], end: i + 1 };
+  const escaped = ESCAPES[src[i + 1] ?? ''];
+  if (escaped === undefined) throw new ExpressionError(src, i + 1, 'unsupported escape sequence in string');
+  return { text: escaped, end: i + 2 };
+}
+
+function readString(src: string, start: number, scope?: Scope): { token: Token; end: number } {
   const quote = src[start];
   let out = '';
   let i = start + 1;
   while (i < src.length && src[i] !== quote) {
-    if (src[i] === '\\') {
-      i++;
-      const escaped = ESCAPES[src[i] ?? ''];
-      if (escaped === undefined) throw new ExpressionError(src, i, 'unsupported escape sequence in string');
-      out += escaped;
-    } else {
-      out += src[i];
-    }
-    i++;
+    const piece = readStringPiece(src, i, scope);
+    out += piece.text;
+    i = piece.end;
   }
   if (i >= src.length) throw new ExpressionError(src, start, 'unterminated string literal');
   return { token: { kind: 'str', value: out, pos: start }, end: i + 1 };
@@ -128,31 +153,51 @@ function readOperator(src: string, start: number): Token {
   throw new ExpressionError(src, start, `unexpected character '${src[start]}'`);
 }
 
-function tokenize(src: string): Token[] {
+/**
+ * Token for a bare `{{name}}`: the variable's value, bound as data. A missing
+ * or null variable contributes no token (the old text substitution produced
+ * an empty string there, so `{{x}} > 1` stays a syntax error).
+ */
+function readBoundPlaceholder(name: string, pos: number, scope: Scope): Token[] {
+  const value = Object.hasOwn(scope, name) ? scope[name] : undefined;
+  return value === undefined || value === null ? [] : [{ kind: 'val', value: '', pos, data: value }];
+}
+
+function readIdentifier(src: string, start: number): { token: Token; end: number } {
+  let end = start + 1;
+  while (isIdentPart(src[end])) end++;
+  return { token: { kind: 'id', value: src.slice(start, end), pos: start }, end };
+}
+
+interface Read {
+  tokens: Token[];
+  end: number;
+}
+
+/** Read whatever token starts at `i` (none, for whitespace and missing placeholders). */
+function readNext(src: string, i: number, scope?: Scope): Read {
+  const ch = src[i];
+  const placeholder = scope && ch === '{' ? matchPlaceholder(src, i) : undefined;
+  if (placeholder && scope) return { tokens: readBoundPlaceholder(placeholder.name, i, scope), end: placeholder.end };
+  if (/\s/.test(ch)) return { tokens: [], end: i + 1 };
+  let read: { token: Token; end: number };
+  if (isDigit(ch)) read = readNumber(src, i);
+  else if (ch === "'" || ch === '"') read = readString(src, i, scope);
+  else if (isIdentStart(ch)) read = readIdentifier(src, i);
+  else {
+    const token = readOperator(src, i);
+    read = { token, end: i + String(token.value).length };
+  }
+  return { tokens: [read.token], end: read.end };
+}
+
+function tokenize(src: string, scope?: Scope): Token[] {
   const tokens: Token[] = [];
   let i = 0;
   while (i < src.length) {
-    const ch = src[i];
-    if (/\s/.test(ch)) {
-      i++;
-    } else if (isDigit(ch)) {
-      const { token, end } = readNumber(src, i);
-      tokens.push(token);
-      i = end;
-    } else if (ch === "'" || ch === '"') {
-      const { token, end } = readString(src, i);
-      tokens.push(token);
-      i = end;
-    } else if (isIdentStart(ch)) {
-      let end = i + 1;
-      while (isIdentPart(src[end])) end++;
-      tokens.push({ kind: 'id', value: src.slice(i, end), pos: i });
-      i = end;
-    } else {
-      const token = readOperator(src, i);
-      tokens.push(token);
-      i += String(token.value).length;
-    }
+    const read = readNext(src, i, scope);
+    tokens.push(...read.tokens);
+    i = read.end;
   }
   tokens.push({ kind: 'eof', value: '', pos: src.length });
   return tokens;
@@ -278,6 +323,7 @@ class Parser {
   private parsePrimary(): Node {
     const token = this.next();
     if (token.kind === 'num' || token.kind === 'str') return { t: 'lit', value: token.value };
+    if (token.kind === 'val') return { t: 'lit', value: token.data };
     if (token.kind === 'id') {
       const name = token.value as string;
       if (Object.hasOwn(LITERAL_KEYWORDS, name)) return { t: 'lit', value: LITERAL_KEYWORDS[name] };
@@ -422,14 +468,32 @@ class Evaluator {
   }
 }
 
+/** Options for {@link evaluateSafeExpression}. */
+export interface EvaluateOptions {
+  /**
+   * Bind `{{name}}` placeholders from the scope as values. Bare, `{{score}}`
+   * is the variable's value; inside a string literal, `'{{name}}'`
+   * interpolates the value's string form into that literal. Values are never
+   * re-parsed, so quotes, backslashes or operators in them stay data.
+   * Missing and null variables read as an empty string inside a literal and
+   * as nothing when bare.
+   */
+  readonly bindPlaceholders?: boolean;
+}
+
 /**
  * Evaluate an expression string against a variable scope without executing
  * any host code. An empty expression evaluates to `undefined`.
  *
  * @throws {ExpressionError} on malformed or unsupported syntax.
  */
-export function evaluateSafeExpression(expression: string, scope: Scope): unknown {
-  if (expression.trim() === '') return undefined;
-  const ast = new Parser(expression, tokenize(expression)).parse();
+export function evaluateSafeExpression(
+  expression: string,
+  scope: Scope,
+  options: EvaluateOptions = {}
+): unknown {
+  const tokens = tokenize(expression, options.bindPlaceholders ? scope : undefined);
+  if (tokens.length === 1) return undefined; // only the eof token: empty expression
+  const ast = new Parser(expression, tokens).parse();
   return new Evaluator(expression, scope).eval(ast);
 }
