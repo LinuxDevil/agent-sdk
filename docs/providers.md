@@ -151,6 +151,40 @@ To use another backend, implement the `LLMProvider` interface (`name`,
 `getModels()`, optionally `defaultModel`) and pass the instance as `provider`,
 or register a factory with `LLMProviderRegistry.register(name, factory)`.
 
+## Vercel AI SDK versions
+
+The built-in providers are adapters over the Vercel AI SDK (`ai`). What works
+on each major today:
+
+| `ai` | `generate()` | `stream()` | Notes |
+| ---- | ------------ | ---------- | ----- |
+| v4 (`^4.3.19`, the peer range) | Yes | Yes | Everything in these docs. |
+| v6, v7 | Yes, through a compatibility layer (LOU-D26) | Not yet (LOU-D27): it throws an error naming LOU-D27 | Peer ranges still name v4 (LOU-D28). |
+
+`generate()` picks the call shape from the installed `ai` module: when it
+exports `stepCountIs` (v5 and later), the request is sent in the v6/v7 shape
+and the result is read back into the same `GenerateResult`:
+
+- messages become `ModelMessage`s: a tool call's arguments are its `input`, a
+  tool result is an `output` (`json` or `text`, `error-json` or `error-text`
+  when the tool failed), and an image or file part's `mimeType` is its
+  `mediaType`. System messages are kept in place (`allowSystemInMessages`).
+- `maxTokens` is sent as `maxOutputTokens`, one step as `stopWhen:
+  stepCountIs(1)`, tools as `inputSchema` (a zod schema as it is, a JSON
+  Schema through `jsonSchema()`) with no `execute`, and `responseFormat` as a
+  JSON-mode `output` that leaves the reply text alone.
+- usage comes from `inputTokens` / `outputTokens` / `totalTokens`, with
+  `cachedInputTokens` from `inputTokenDetails.cacheReadTokens` and
+  `reasoningTokens` from `outputTokenDetails.reasoningTokens`.
+
+On v6/v7 the model must come from a provider package for that major (for
+example `@ai-sdk/openai` v3 or `@ai-sdk/anthropic` v3); the `0.0.x`
+packages the peer ranges name produce models `ai` v7 rejects. Image parts are
+sent as `image` parts, which `ai` v7 accepts with a deprecation warning per
+part (`globalThis.AI_SDK_LOG_WARNINGS = false` turns `ai`'s warnings off).
+`ai` v5 is not supported. Until LOU-D28 widens the peer
+ranges, npm reports a peer conflict when `ai` v6 or v7 is installed.
+
 ## Where each provider runs
 
 All providers run on Node. The `cloudflare-worker` deploy target supports

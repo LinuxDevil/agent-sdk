@@ -13,8 +13,8 @@
  * Subclasses load their peer lazily inside `createModel()`, on first use.
  */
 
+import * as aiModule from 'ai';
 import {
-  generateText,
   streamText,
   tool as aiTool,
   LanguageModel,
@@ -43,6 +43,7 @@ import {
   ContentPart,
 } from './llm';
 import { textOf } from './content';
+import { type AiSdkModule, compatGenerateText, convertToolCalls, isModernAi, toGenerateUsage } from './aiSdkCompat';
 
 /** Config fields shared by every 'ai'-SDK-backed provider. */
 export interface AiSdkProviderConfig extends LLMProviderConfig {
@@ -184,77 +185,6 @@ function convertTools(toolDefs: ToolDefinition[] | undefined): ToolSet | undefin
   return Object.keys(tools).length > 0 ? tools : undefined;
 }
 
-/**
- * Convert tool calls from 'ai' SDK format to our format
- */
-function convertToolCalls(calls: AiSdkToolCall[]): ToolCall[] {
-  return calls.map((tc) => ({
-    id: tc.toolCallId,
-    type: 'function' as const,
-    function: {
-      name: tc.toolName,
-      arguments: JSON.stringify(tc.args),
-    },
-  }));
-}
-
-const FINISH_REASONS = new Map<string, GenerateResult['finishReason']>([
-  ['stop', 'stop'],
-  ['length', 'length'],
-  ['tool-calls', 'tool_calls'],
-  ['content-filter', 'content_filter'],
-]);
-
-/** Map an 'ai' SDK finish reason to ours; anything unrecognised is 'error'. */
-function mapFinishReason(reason: string): GenerateResult['finishReason'] {
-  return FINISH_REASONS.get(reason) ?? 'error';
-}
-
-function toUsage(usage: TokenUsage): TokenUsage {
-  return {
-    promptTokens: usage.promptTokens,
-    completionTokens: usage.completionTokens,
-    totalTokens: usage.totalTokens,
-  };
-}
-
-/** A finite, non-negative count from untyped provider metadata, else `undefined`. */
-function metadataCount(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
-}
-
-/** The first documented cache/reasoning token field a provider's metadata carries. */
-function pickCount(metadata: Record<string, unknown> | undefined, keys: string[]): number | undefined {
-  for (const provider of Object.values(metadata ?? {})) {
-    const fields = provider as Record<string, unknown> | undefined;
-    for (const key of keys) {
-      const count = metadataCount(fields?.[key]);
-      if (count !== undefined) return count;
-    }
-  }
-  return undefined;
-}
-
-/**
- * The call's usage, or `undefined` when the backend reported none (the 'ai'
- * SDK yields `NaN` counts then; never zeros). Cache and reasoning tokens are
- * read from `providerMetadata` when the provider package documents them
- * (OpenAI `cachedPromptTokens`/`reasoningTokens`, Anthropic `cacheReadInputTokens`).
- */
-function toGenerateUsage(
-  usage: TokenUsage,
-  metadata: Record<string, unknown> | undefined
-): ProviderUsage | undefined {
-  if (!Number.isFinite(usage.promptTokens) || !Number.isFinite(usage.completionTokens)) return undefined;
-  const cachedInputTokens = pickCount(metadata, ['cachedPromptTokens', 'cacheReadInputTokens']);
-  const reasoningTokens = pickCount(metadata, ['reasoningTokens']);
-  return {
-    ...toUsage(usage),
-    ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
-    ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
-  };
-}
-
 /** Yield every text delta, then a single finish chunk carrying usage stats. */
 async function* toFullStream(result: AiSdkStreamResult): AsyncGenerator<StreamChunk> {
   for await (const delta of result.textStream) {
@@ -329,6 +259,9 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
   abstract readonly name: string;
   protected config: TConfig;
 
+  /** The 'ai' module calls go through: the installed one (v4, v6 or v7); tests swap it. */
+  protected readonly ai: AiSdkModule = aiModule;
+
   /** Model id used when neither the call nor the config names one. */
   protected abstract readonly fallbackModel: string;
 
@@ -378,24 +311,21 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
   }
 
   /**
-   * Generate text without streaming
+   * Generate text without streaming, on `ai` v4 or v6/v7 (LOU-D26).
    */
   async generate(options: GenerateOptions): Promise<GenerateResult> {
-    const result = await generateText(await this.buildCallSettings(options));
-
-    return {
-      text: result.text,
-      finishReason: mapFinishReason(result.finishReason),
-      usage: toGenerateUsage(result.usage, result.providerMetadata),
-      toolCalls: result.toolCalls && convertToolCalls(result.toolCalls),
-      rawResponse: result,
-    };
+    return compatGenerateText(this.ai, await this.buildCallSettings(options), options);
   }
 
   /**
-   * Generate text with streaming
+   * Generate text with streaming. `ai` v4 only until LOU-D27.
    */
   async stream(options: GenerateOptions): Promise<StreamResult> {
+    if (isModernAi(this.ai)) {
+      throw new Error(
+        `The ${this.name} provider cannot stream on 'ai' v5 or later yet (LOU-D27); use generate(), or 'ai' v4.`
+      );
+    }
     const result = await streamText(await this.buildCallSettings(options));
     return toStreamResult(result);
   }
