@@ -85,12 +85,14 @@ fallback model.
 `Message.content` is a string or a list of parts: `{ type: 'text', text }`,
 `{ type: 'image', image, mimeType? }` (an `http(s)` URL, a `data:` URL or the
 bytes as a `Uint8Array`) and `{ type: 'file', data, mimeType, filename? }`.
-Pass such messages as the `input` of `AgentExecutor.execute()` or
-`stream()` (`agent.send()` and `session.send()` take a string for now):
+`agent.send()`, `agent.stream()`, `session.send()` / `stream()`, `t.send()` in
+evals and the React hook's `send()` all take an `AgentInput`: a string, a list
+of parts (sent as one user message) or a `Message[]` (passed through as it is).
+`AgentExecutor.execute()` takes the same messages as its `input`:
 
 ```ts
 import { readFileSync } from 'node:fs';
-import { AgentBuilder, AgentExecutor, resolveProvider, textOf, type Message } from '@loushy/build-ai-agent';
+import { AgentBuilder, AgentExecutor, createAgent, resolveProvider, textOf, type Message } from '@loushy/build-ai-agent';
 
 const agent = AgentBuilder.create().setName('vision').setPrompt('Describe images briefly.').build();
 const input: Message[] = [
@@ -106,6 +108,13 @@ const input: Message[] = [
 
 const result = await AgentExecutor.execute({ agent, input, provider: resolveProvider('openai/gpt-4o-mini') });
 console.log(textOf(input[0]), '->', result.text); // textOf(): the text parts of a message
+
+// The same through the public API: parts become one user message.
+const answer = await createAgent({ prompt: 'Describe images briefly.', model: 'openai/gpt-4o-mini' }).send([
+  { type: 'text', text: 'What is in this picture?' },
+  { type: 'image', image: 'https://example.com/cat.png' },
+]);
+console.log(answer.text);
 ```
 
 - **Images** go to the model on `user` messages with every built-in provider
@@ -123,7 +132,8 @@ console.log(textOf(input[0]), '->', result.text); // textOf(): the text parts of
   (each image or file part counts as a flat 1,000 tokens), compaction,
   `recordReplay()` cassettes (which store the text and a digest of each
   image or file, or its URL) and `mockModel()`. `FileSessionStore` saves bytes
-  as base64 (`{ "$bytes": "..." }`) and loads them back as `Uint8Array`s.
+  as base64 (`{ "$bytes": "..." }`) and loads them back as `Uint8Array`s;
+  `SqliteStore` (sessions and checkpoints) does the same.
 
 ## Provider classes
 
