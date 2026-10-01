@@ -164,3 +164,60 @@ export async function checkWebhookAuth(
   if (auth.type === 'bearer') return checkBearer(auth, req);
   return checkCustom(auth, req, rawBody);
 }
+
+/** Slack's documented replay window: reject requests more than five minutes from local time. */
+const SLACK_TOLERANCE_SECONDS = 300;
+const SLACK_SIGNATURE_PATTERN = /^v0=[0-9a-f]{64}$/i;
+
+/** Inputs of {@link verifySlackSignature}. */
+export interface SlackSignatureInput {
+  /** Your Slack app's signing secret (Basic Information > App Credentials). */
+  signingSecret: string;
+  /** The `X-Slack-Request-Timestamp` header value (Unix seconds). */
+  timestamp: string | undefined;
+  /** The `X-Slack-Signature` header value (`v0=<hex>`). */
+  signature: string | undefined;
+  /** The exact request body bytes, before any parsing. */
+  rawBody: Buffer | string;
+  /** Current time in milliseconds. Defaults to `Date.now()`; for tests. */
+  now?: number;
+}
+
+/**
+ * Internal check behind {@link verifySlackSignature}: resolves to a short
+ * reason (safe to log - it contains no secret or signature) when the request
+ * is not authentic, or `undefined` when it is.
+ *
+ * Scheme: https://docs.slack.dev/authentication/verifying-requests-from-slack
+ * (formerly https://api.slack.com/authentication/verifying-requests-from-slack):
+ * HMAC-SHA256 over `v0:{timestamp}:{raw body}`, sent as `v0=<hex>` in
+ * `X-Slack-Signature`; requests more than five minutes old are rejected.
+ */
+export function checkSlackSignature(input: SlackSignatureInput): string | undefined {
+  const { signingSecret, timestamp, signature, rawBody, now = Date.now() } = input;
+  if (!signingSecret) return 'no signing secret configured';
+  if (timestamp === undefined || signature === undefined) return 'missing signature headers';
+  if (!SLACK_SIGNATURE_PATTERN.test(signature)) return 'malformed signature';
+  if (!/^\d+$/.test(timestamp) || !isFresh(timestamp, SLACK_TOLERANCE_SECONDS, now)) return 'stale or invalid timestamp';
+  const expected = createHmac('sha256', signingSecret).update(`v0:${timestamp}:`).update(rawBody).digest('hex');
+  return safeEqual(signature.slice(3).toLowerCase(), expected) ? undefined : 'signature mismatch';
+}
+
+/**
+ * Verify a request really came from Slack. Use it in your own HTTP handler
+ * (slash commands, interactivity, Events API) with the RAW body, before parsing.
+ * Returns `false` for any invalid, missing, stale or tampered input; never throws.
+ *
+ * @example
+ * ```ts
+ * const ok = verifySlackSignature({
+ *   signingSecret: process.env.SLACK_SIGNING_SECRET ?? '',
+ *   timestamp: req.headers['x-slack-request-timestamp'] as string | undefined,
+ *   signature: req.headers['x-slack-signature'] as string | undefined,
+ *   rawBody,
+ * });
+ * ```
+ */
+export function verifySlackSignature(input: SlackSignatureInput): boolean {
+  return checkSlackSignature(input) === undefined;
+}
