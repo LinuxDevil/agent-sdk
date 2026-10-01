@@ -61,7 +61,7 @@ describe('DockerAdapter', () => {
     await DockerAdapter.scaffold(specPath, outDir);
 
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy).toHaveBeenCalledWith(specPath, outDir);
+    expect(spy).toHaveBeenCalledWith(specPath, outDir, undefined);
     // NodeServerAdapter's own outputs are there (written by it, not duplicated here)...
     for (const file of ['server.ts', 'agent.config.js', 'package.json']) {
       expect(fs.existsSync(path.join(outDir, file))).toBe(true);
@@ -70,7 +70,7 @@ describe('DockerAdapter', () => {
     const dockerfile = fs.readFileSync(path.join(outDir, 'Dockerfile'), 'utf8');
     expect(dockerfile).toBe(DOCKERFILE);
     const lines = dockerfile.split('\n');
-    expect(lines).toContain('FROM node:20-slim');
+    expect(lines).toContain('FROM node:22-slim');
     expect(lines).toContain('WORKDIR /app');
     expect(lines).toContain('COPY dist/ ./dist/');
     expect(lines).toContain('COPY package.json ./');

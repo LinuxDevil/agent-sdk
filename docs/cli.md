@@ -79,6 +79,10 @@ The continuation of an approval is not streamed token by token: the endpoint
 runs it with `agent.approvals.resolve()` and sends the turn's tool results and
 text as events once it finishes.
 
+`loushy build` servers (`node-server`, `docker`) serve these same endpoints from
+the same code, with sessions in a store chosen by `LOUSHY_STORE` and optional
+bearer auth: see [Deployment: HTTP API](./deployment.md#http-api).
+
 **Hot reload.** The agent is rebuilt a moment (100 ms) after a file changes,
 without restarting the server or dropping the port:
 
