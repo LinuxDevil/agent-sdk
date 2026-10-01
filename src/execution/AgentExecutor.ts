@@ -90,11 +90,15 @@ export type ExecutionEventType =
  * - `'awaiting-approval'`: paused on a tool call that needs a human
  *   decision (see `resumeAfterApproval()`).
  * - `'aborted'`: cancelled through `ExecuteOptions.signal` (LOU-V1).
+ * - `'max-steps'`: the `maxSteps` budget ran out while the model still
+ *   wanted to continue (LOU-U19). A run that finishes naturally within the
+ *   budget keeps the model's own reason (usually `'stop'`).
  */
 export type ExecutionFinishReason =
   | GenerateResult['finishReason']
   | 'awaiting-approval'
   | 'aborted'
+  | 'max-steps'
   | (string & {});
 
 /**
@@ -627,7 +631,14 @@ export class AgentExecutor {
       }
     }
 
-    return signal?.aborted ? this.abortRun(options, state) : this.finishRun(options, state);
+    if (signal?.aborted) {
+      return this.abortRun(options, state);
+    }
+    // LOU-U19: every non-final turn 'continue's, so leaving the loop here
+    // means the step budget (counting `initialSteps` of a resumed run) is
+    // spent while the model still wanted to go on.
+    state.finishReason = 'max-steps';
+    return this.finishRun(options, state);
   }
 
   /**
