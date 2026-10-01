@@ -51,7 +51,7 @@ describe('parseEvalArgs', () => {
   });
 
   it('explains how to fix an unknown option or a missing value', () => {
-    expect(() => parseEvalArgs(['--bogus'])).toThrow(/unknown option '--bogus'.*Usage: loushy eval/);
+    expect(() => parseEvalArgs(['--bogus'])).toThrow(/unknown option '--bogus'[\s\S]*Usage: loushy eval/);
     expect(() => parseEvalArgs(['--junit'])).toThrow(/--junit needs a value/);
     expect(() => parseEvalArgs(['--tag', '--strict'])).toThrow(/--tag needs a value/);
   });
