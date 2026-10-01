@@ -2,6 +2,7 @@
  * SandboxShell: a ShellProvider backed by a SandboxAdapter (LOU-X6).
  */
 import type { SandboxAdapter } from '../../security/sandboxCore';
+import { commandEnv } from '../../security/commandEnv';
 import type { ShellExecOptions, ShellExecResult, ShellProvider } from './types';
 import { normalizeWorkspacePath } from './paths';
 
@@ -16,6 +17,17 @@ export interface SandboxShellOptions {
   cwd?: string;
   /** Shell binary inside the sandbox. Defaults to `'sh'`. */
   shell?: string;
+  /** Values set for every command (a per-call `env` wins). Visible to the model's commands. */
+  env?: Record<string, string>;
+  /**
+   * Names of host environment variables to copy into every command, e.g.
+   * `['CI']`. Nothing else from the host is passed. A container brings its own
+   * `PATH` and `HOME`; a host-process adapter (`NoopSandbox`) adds the same
+   * small base `NodeWorkspace` uses. `true` lets a host-process adapter pass
+   * the whole host environment (the behavior before LOU-X11); a container
+   * still never gets it.
+   */
+  inheritEnv?: readonly string[] | true;
 }
 
 function isTimeoutError(error: unknown): boolean {
@@ -32,8 +44,8 @@ function joinCwd(base: string | undefined, sub: string | undefined): string | un
  * Runs the `shell` tool's commands through a {@link SandboxAdapter}, e.g.
  * the Docker-backed `SubprocessSandbox`: each command runs as
  * `sh -c "<command>"` in a fresh, network-less container that sees only
- * `cwd`. Commands get only the variables in `options.env` - nothing from the
- * host environment.
+ * `cwd`. Commands get only the variables in `env` and the host variables
+ * named in `inheritEnv` - never the rest of the host environment.
  *
  * Limitation: `SandboxAdapter` has no cancellation hook, so an aborted run
  * stops waiting at once (the result says `aborted: true`) but the container
@@ -48,10 +60,15 @@ function joinCwd(base: string | undefined, sub: string | undefined): string | un
  * ```
  */
 export class SandboxShell implements ShellProvider {
+  private readonly env: Record<string, string>;
+
   constructor(
     private readonly sandbox: SandboxAdapter,
     private readonly options: SandboxShellOptions = {}
-  ) {}
+  ) {
+    const names = options.inheritEnv === true ? [] : options.inheritEnv;
+    this.env = commandEnv({ env: options.env, inheritEnv: names }, { base: false });
+  }
 
   async exec(command: string, options: ShellExecOptions = {}): Promise<ShellExecResult> {
     const aborted: ShellExecResult = { stdout: '', stderr: '', exitCode: null, timedOut: false, aborted: true };
@@ -59,7 +76,8 @@ export class SandboxShell implements ShellProvider {
     const run = this.sandbox
       .run(this.options.shell ?? 'sh', ['-c', command], {
         cwd: joinCwd(this.options.cwd, options.cwd),
-        env: options.env,
+        env: { ...this.env, ...options.env },
+        inheritEnv: this.options.inheritEnv === true,
         timeoutMs: options.timeoutMs,
       })
       .then(
