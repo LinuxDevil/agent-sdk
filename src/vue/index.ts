@@ -1,7 +1,6 @@
 /**
- * `@loushy/build-ai-agent/react` (LOU-D15): the `useLoushyAgent()` hook, and
- * the framework-neutral reducer and stream parser it is built on (now in
- * src/ui, shared with the Vue binding, LOU-P2).
+ * `@loushy/build-ai-agent/vue` (LOU-P2): the `useLoushyAgent()` composable,
+ * and the framework-neutral reducer and stream parser it is built on.
  */
 
 export {
