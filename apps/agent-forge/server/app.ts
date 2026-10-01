@@ -193,25 +193,27 @@ function registerRunRoutes(app: Express, runManager: RunManager): void {
   );
 }
 
-const FORK_PATCH_KEYS = new Set(['toolResult', 'appendInput', 'businessState']);
+/** LOU-D45: the `ForkPatch` fields a fork request may carry, each with its check. */
+const FORK_PATCH_CHECKS = new Map<string, (value: unknown) => boolean>([
+  ['toolResult', (v) => isObject(v) && typeof v.toolCallId === 'string' && 'result' in v],
+  ['appendInput', (v) => typeof v === 'string' && v.trim() !== ''],
+  ['businessState', () => true],
+]);
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 /** LOU-D45: a validated `POST /runs/:id/fork` body, or the 400 message. */
 function parseForkRequest(body: Partial<ForkRunRequest> | undefined): { fromStep: number; patch: ForkPatch } | string {
   const { fromStep, patch = {} } = body ?? {};
-  if (typeof fromStep !== 'number' || !Number.isInteger(fromStep) || fromStep < 0) {
-    return "'fromStep' must be a non-negative integer";
+  if (!Number.isInteger(fromStep) || (fromStep as number) < 0) return "'fromStep' must be a non-negative integer";
+  if (!isObject(patch)) return "'patch' must be an object";
+  const invalid = Object.entries(patch).find(([key, value]) => !FORK_PATCH_CHECKS.get(key)?.(value));
+  if (invalid) {
+    return `'patch.${invalid[0]}' is invalid: 'patch' takes toolResult { toolCallId: string, result }, appendInput (a non-empty string) and businessState`;
   }
-  if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) return "'patch' must be an object";
-  const unknownKey = Object.keys(patch).find((key) => !FORK_PATCH_KEYS.has(key));
-  if (unknownKey) return `'patch.${unknownKey}' is not supported (use toolResult, appendInput or businessState)`;
-  const { toolResult, appendInput } = patch;
-  if (appendInput !== undefined && (typeof appendInput !== 'string' || !appendInput.trim())) {
-    return "'patch.appendInput' must be a non-empty string";
-  }
-  if (toolResult !== undefined && (typeof toolResult?.toolCallId !== 'string' || !('result' in toolResult))) {
-    return "'patch.toolResult' must be { toolCallId: string, result }";
-  }
-  return { fromStep, patch };
+  return { fromStep: fromStep as number, patch };
 }
 
 /** LOU-D45 time travel: a run's step history, forking it from a step, and comparing two runs. */
