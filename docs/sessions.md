@@ -89,28 +89,33 @@ ends, so a crash in the middle of a turn loses it; see the next section.
 
 ## Durable sessions
 
-Give the session a `CheckpointStore` and every turn is checkpointed after each
-model response and tool result, using the [durable execution](./durable-execution.md)
-mechanism. A turn interrupted by a crash, a failed checkpoint write or a
-`PropagatingToolError` can then be finished later, in another process:
+Give the agent a `store` with checkpoints and every session turn is
+checkpointed after each model response and tool result, using the
+[durable execution](./durable-execution.md) mechanism. A turn interrupted by a
+crash, a failed checkpoint write or a `PropagatingToolError` can then be
+finished later, in another process:
 
 ```ts
-import { createAgent, FileSessionStore, type CheckpointStore } from '@loushy/build-ai-agent';
+import { createAgent } from '@loushy/build-ai-agent';
+import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
 
-declare const checkpointStore: CheckpointStore; // e.g. LocalStorageCheckpointStore, or SqliteStore's `checkpoints`
-
-const agent = createAgent({ provider });
-const store = new FileSessionStore('./.loushy/sessions');
+const agent = createAgent({ provider, store: new SqliteStore('./.loushy/agent.db') });
 
 // After a restart: finish the turn that was running, if any.
-const session = agent.session({ id: 'user-42', store, checkpointStore });
-const finished = await session.resume(); // ExecutionResult, or null when nothing was pending
-console.log(finished?.text, await session.pending()); // pending() is null now
+const finished = await agent.resume('user-42'); // ExecutionResult, or null when nothing was pending
+console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); // pending() is null now
 ```
 
-- Pass `checkpointStore`, or a `store` that carries both stores: any
-  `{ sessions, checkpoints }` object, such as a `SqliteStore`
-  (`agent.session({ id, store: sqliteStore })`).
+- `createAgent({ store })` takes any `AgentStore`
+  (`{ sessions?, checkpoints?, approvals? }`, see [Choosing a store](#choosing-a-store)):
+  `agent.session({ id })` keeps its transcript in `store.sessions` and
+  checkpoints in `store.checkpoints`, and `store.approvals` holds approval
+  pauses. A session's own `store` (a `SessionStore`, or a
+  `{ sessions, checkpoints }` object) and `checkpointStore` win over the
+  agent's, part by part.
+- `agent.resume(id)` is `agent.session({ id }).resume()`, except that it first
+  finishes a run started with `agent.send(message, { sessionId: id })` (see
+  [Durable execution](./durable-execution.md)).
 - Each turn runs with `sessionId: '<session id>.turn-<n>'` (`n` is the length
   of the transcript when the turn started), so a new process finds the
   interrupted turn without any extra bookkeeping. A finished turn joins the
@@ -130,7 +135,7 @@ console.log(finished?.text, await session.pending()); // pending() is null now
   `agent.approvals.resolve({ id, approved })` continues the turn in this
   session. After a restart, open the session and call `resume()` (or `send()`)
   once before resolving, so the agent knows which session the approval belongs
-  to; give both agents the same durable `approvalStore`.
+  to; give both agents the same durable `store` (or `approvalStore`).
 - An aborted turn is dropped (its checkpoint is deleted), as without a
   checkpoint store. `clear()` deletes a pending turn too.
 
@@ -179,10 +184,37 @@ implementation by where the process runs:
 
 | Store | Sessions | Checkpoints | Approvals | Use it when |
 | --- | --- | --- | --- | --- |
-| In memory | `MemorySessionStore` | (supply your own) | `InMemoryApprovalStore` | Tests, scripts, one process that never restarts |
+| In memory (`memoryStore()`) | `MemorySessionStore` | in memory | `InMemoryApprovalStore` | Tests, scripts, one process that never restarts |
 | Files | `FileSessionStore(dir)` | `LocalStorageCheckpointStore` | `StorageServiceApprovalStore` | One machine, you want plain inspectable files |
 | SQLite | `store.sessions` | `store.checkpoints` | `store.approvals` | A Node server: one durable, transactional file, shared safely by several processes |
 | Cloudflare KV | - | `KVCheckpointStore` | - | Workers deployments (see [Deployment](deployment.md)) |
+
+Each one is an `AgentStore` part: pass them together as
+`createAgent({ store: { sessions, checkpoints, approvals } })`. `memoryStore()`
+and `SqliteStore` are ready-made `AgentStore`s; for plain files, combine the
+file stores:
+
+```ts
+import {
+  createAgent,
+  FileSessionStore,
+  LocalStorageCheckpointStore,
+  StorageServiceApprovalStore,
+  type AgentStore,
+} from '@loushy/build-ai-agent';
+
+// `storage` is a StorageService rooted where the files should go.
+const store: AgentStore = {
+  sessions: new FileSessionStore('./.loushy/sessions'),
+  checkpoints: new LocalStorageCheckpointStore(storage),
+  approvals: new StorageServiceApprovalStore(storage),
+};
+const agent = createAgent({ provider, store });
+```
+
+Any object with the three methods of a part works there too: a Redis
+`SessionStore`, or a KV-backed `CheckpointStore` on Cloudflare Workers (the
+generated Worker uses `KVCheckpointStore`, see [Deployment](deployment.md)).
 
 `SqliteStore` keeps all three in one database file, using Node's built-in
 `node:sqlite` (no native dependency; needs Node 22.13 or newer, and it is not
@@ -193,10 +225,10 @@ import { createAgent, AgentExecutor } from '@loushy/build-ai-agent';
 import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
 
 const store = new SqliteStore('./.loushy/agent.db'); // or ':memory:'
-const session = createAgent({ provider }).session({ id: 'user-42', store }); // transcript + per-step checkpoints
-await session.send('Hello');
+const agent = createAgent({ provider, store }); // transcripts, per-step checkpoints and approvals
+await agent.session({ id: 'user-42' }).send('Hello');
 
-// Same file, same store, for durable runs with approvals:
+// With AgentExecutor directly, pass the parts:
 // AgentExecutor.execute({ ..., sessionId, checkpointStore: store.checkpoints, approvalStore: store.approvals })
 
 store.prune({ olderThanMs: 7 * 24 * 60 * 60 * 1000 }); // { sessions, checkpoints, approvals } deleted

@@ -49,6 +49,7 @@ How the pieces fit:
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
 | `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](./approvals.md), [Durable execution](./durable-execution.md)). |
 | `SqliteStore` (from `/sqlite`) | Sessions, checkpoints and approvals in one SQLite file (see [Sessions](./sessions.md#choosing-a-store)). |
+| `AgentStore`, `memoryStore()` | The `createAgent({ store })` option: `{ sessions?, checkpoints?, approvals? }`, and an in-memory one (see [Sessions](./sessions.md#choosing-a-store)). |
 | `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](./durable-execution.md)). |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
 
@@ -79,7 +80,7 @@ and an `approvalId`. `agent.approvals.list()` returns the pending calls and
 `agent.approvals.resolve({ id, approved, note? })` runs or rejects the call and
 resolves with the continued run's result (continuing the session it paused
 in). Pauses are kept in a per-agent `InMemoryApprovalStore` unless you pass
-`approvalStore` (e.g. `SqliteStore.approvals`); `approve: (call) => boolean`
+`approvalStore` (e.g. `SqliteStore.approvals`) or a `store`; `approve: (call) => boolean`
 decides each call in code without pausing (`stream()` still ends at the
 pause). See [Approvals](./approvals.md).
 
