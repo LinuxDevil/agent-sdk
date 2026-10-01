@@ -1,0 +1,57 @@
+<div class="wrap">
+  <header>
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1>Loushy Loop Scorecard</h1>
+    <p class="sub">What the autonomous loop has shipped against eve and open-harness, and what is still open. Source of truth: <code>.agent-loop/STATE.md</code> on branch <code>loush/blissful-volta-i76xiy</code>.</p>
+  </header>
+
+  <section>
+    <h2>At a glance</h2>
+    <div class="strip" id="tiles"></div>
+    <div class="bar" id="bar" aria-label="Matrix rows by status"></div>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <section>
+    <h2>Feature matrix (51 rows)</h2>
+    <p class="sub">Us against eve (Vercel) and open-harness (OH). The last column names the one-point ticket that moves our cell. Rows marked in flight have an agent working on that ticket now.</p>
+    <div class="controls" role="group" aria-label="Filter rows">
+      <button type="button" data-f="all" aria-pressed="true">All</button>
+      <button type="button" data-f="ok" aria-pressed="false">Done</button>
+      <button type="button" data-f="warn" aria-pressed="false">Partial</button>
+      <button type="button" data-f="bad" aria-pressed="false">Missing</button>
+      <button type="button" data-f="pend" aria-pressed="false">In flight</button>
+    </div>
+    <div class="tablewrap"><table id="matrix">
+      <thead><tr><th>Capability</th><th>Us</th><th>eve</th><th>OH</th><th>Flips with</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Differentiators (where we win outright)</h2>
+    <div class="two" id="diffs"></div>
+  </section>
+
+  <section>
+    <h2 id="doneTitle">Done</h2>
+    <p class="sub">Every PR was squash-merged after the local suite (typecheck, lint, vitest, build, docs snippets, fallow) passed. Numbers link to GitHub.</p>
+    <div id="done"></div>
+  </section>
+
+  <section>
+    <h2 id="openTitle">In flight</h2>
+    <div class="card" id="open"></div>
+  </section>
+
+  <section>
+    <h2 id="remTitle">Remaining</h2>
+    <p class="sub">Ordered by epic. "Deps" names what must land first. The batch column says which iteration the ticket is planned for.</p>
+    <div id="remaining"></div>
+  </section>
+
+  <section>
+    <h2>Decisions and notes</h2>
+    <div class="card"><ul id="notes"></ul></div>
+  </section>
+</div>

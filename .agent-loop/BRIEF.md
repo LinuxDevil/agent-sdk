@@ -15,7 +15,7 @@ The loop ran on Linux until now, so a few tests may fail on Windows for reasons 
 
 ## Conventions
 - Tests live next to source as `*.test.ts` (vitest). Deterministic agent tests use `mockModel` from `src/testing` (see src/testing/mockModel.ts and existing tests such as src/execution/durableExecution.test.ts or src/subagents/subagents.test.ts for patterns).
-- No `any` in new code (eslint warns; the warning count must not grow: it is 400 on main). No new runtime dependencies unless your task says so.
+- No `any` in new code (eslint warns; the warning count must not grow: it is 399 on main). No new runtime dependencies unless your task says so.
 - Public API changes: export from the right `src/**/index.ts` and, if user-facing, the root `src/index.ts`. Breaking changes get a CHANGELOG.md entry under [Unreleased] with a migration note. New features get a CHANGELOG entry too.
 - Docs: README.md stays the short front page; details go under docs/. README.md and docs/*.md ```ts blocks are type-checked in CI (`npm run docs:verify-snippets -- --skip-build`, needs `npm run build` first). `llms.txt`/`llms-full.txt` are generated from README + docs: if you touch any .md under docs/ or README.md, run `npm run docs:llms` and commit the regenerated files.
 - Keep the diff focused: roughly <= 200 lines of non-test, non-doc, non-generated change. If the ticket is bigger than that, STOP, do not ship a big PR; report a proposed split instead.
@@ -28,7 +28,7 @@ Nothing under src/execution, src/providers, src/context, src/tools, src/server (
 ## Verification (all must pass before you push, apart from failures proven to exist on main on Windows)
 ```
 npx tsc --noEmit
-npm run lint              # 0 errors; warning count must not exceed 400
+npm run lint              # 0 errors; warning count must not exceed 399
 npm run test:types
 npm run build && npm run build --workspace=packages/create-loushy-agent
 npx vitest run            # full suite, after the builds
