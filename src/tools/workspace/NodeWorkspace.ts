@@ -13,11 +13,8 @@ import type {
 } from './types';
 import { normalizeWorkspacePath, WorkspaceError } from './paths';
 import { runShellCommand } from './nodeProcess';
+import { commandEnv } from '../../security/commandEnv';
 
-/** Host environment variables a command gets by default (everything else, e.g. API keys, is withheld). */
-const DEFAULT_ENV_ALLOW_LIST = ['PATH', 'HOME', 'USERPROFILE', 'TEMP', 'TMP', 'TMPDIR', 'LANG'] as const;
-/** Without these, cmd.exe and most Windows programs cannot start. They hold no secrets. */
-const WINDOWS_ENV_ALLOW_LIST = ['SystemRoot', 'SystemDrive', 'ComSpec', 'PATHEXT', 'WINDIR'] as const;
 const DEFAULT_MAX_OUTPUT_BYTES = 1_000_000;
 
 /** Options for {@link NodeWorkspace}. */
@@ -32,10 +29,12 @@ export interface NodeWorkspaceOptions {
   /**
    * Names of additional host environment variables to pass through, e.g.
    * `['NODE_OPTIONS', 'CI']`. By default only `PATH`, `HOME`, `USERPROFILE`,
-   * `TEMP`, `TMP`, `TMPDIR` and `LANG` (plus `SystemRoot`, `SystemDrive`,
-   * `ComSpec`, `PATHEXT` and `WINDIR` on Windows) are inherited.
+   * `TEMP`, `TMP`, `TMPDIR`, `LANG`, `LC_*` and `TERM` (plus `SystemRoot`,
+   * `SystemDrive`, `ComSpec`, `PATHEXT` and `WINDIR` on Windows) are
+   * inherited. `true` passes the whole host environment, API keys included
+   * (the behavior before LOU-X11); only use it for trusted commands.
    */
-  inheritEnv?: readonly string[];
+  inheritEnv?: readonly string[] | true;
   /** Shell used to run commands. Defaults to `/bin/sh`, or `%ComSpec%` (cmd.exe) on Windows. */
   shell?: string;
   /** Per-stream cap on captured output in bytes; the middle is dropped beyond it. Defaults to 1,000,000. */
@@ -69,22 +68,6 @@ function entryType(entry: Dirent | Stats): WorkspaceEntryType {
   if (entry.isSymbolicLink()) return 'symlink';
   if (entry.isDirectory()) return 'directory';
   return entry.isFile() ? 'file' : 'other';
-}
-
-/** Copies the allow-listed variables from the host environment. */
-function inheritedEnv(names: readonly string[]): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const name of names) {
-    const value = process.env[name];
-    if (value !== undefined) env[name] = value;
-  }
-  return env;
-}
-
-/** The host variables commands inherit: the defaults, the Windows essentials, and `extra`. */
-function envAllowList(extra: readonly string[] = []): string[] {
-  const platformNames = process.platform === 'win32' ? WINDOWS_ENV_ALLOW_LIST : [];
-  return [...DEFAULT_ENV_ALLOW_LIST, ...platformNames, ...extra];
 }
 
 function defaultShell(): string {
@@ -139,7 +122,7 @@ export class NodeWorkspace implements Workspace {
 
   constructor(options: NodeWorkspaceOptions) {
     this.root = resolveRoot(options?.root);
-    this.env = { ...inheritedEnv(envAllowList(options.inheritEnv)), ...options.env };
+    this.env = commandEnv({ env: options.env, inheritEnv: options.inheritEnv });
     this.shell = options.shell ?? defaultShell();
     this.maxOutputBytes = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
   }

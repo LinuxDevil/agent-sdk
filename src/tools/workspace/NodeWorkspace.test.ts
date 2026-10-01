@@ -237,6 +237,31 @@ describe('NodeWorkspace shell (LOU-X6)', () => {
     }
   });
 
+  it('a command printing its environment sees only allowlisted names, never planted secrets (LOU-X11)', async () => {
+    const planted = { FAKE_SECRET_FOR_TEST: 'fake-secret-x11', FAKE_API_KEY_FOR_TEST: 'fake-key-x11' };
+    Object.assign(process.env, planted, { FAKE_ALLOWED_FOR_TEST: 'allowed-x11' });
+    try {
+      const printEnv = node('process.stdout.write(JSON.stringify(process.env))');
+      const allowed = new NodeWorkspace({ root: rootDir, inheritEnv: ['FAKE_ALLOWED_FOR_TEST'], env: { FOO: 'bar' } });
+      const env = JSON.parse((await allowed.exec(printEnv)).stdout) as Record<string, string>;
+      const base = ['PATH', 'HOME', 'USERPROFILE', 'TMP', 'TEMP', 'TMPDIR', 'LANG', 'TERM', 'SYSTEMROOT', 'SYSTEMDRIVE', 'COMSPEC', 'PATHEXT', 'WINDIR'];
+      // Shells add bookkeeping names (and hidden `=C:` entries on Windows); on Windows libuv also
+      // re-adds the session variables every process needs (HOMEDRIVE, USERNAME, ...). None is a secret.
+      const shellOwn = ['PWD', 'SHLVL', '_', 'PROMPT', 'OLDPWD', 'HOMEDRIVE', 'HOMEPATH', 'LOGONSERVER', 'USERDOMAIN', 'USERNAME'];
+      const unexpected = Object.keys(env).filter(
+        (name) => !name.startsWith('=') && !name.startsWith('LC_') && ![...base, ...shellOwn, 'FAKE_ALLOWED_FOR_TEST', 'FOO'].includes(name.toUpperCase())
+      );
+      expect(unexpected).toEqual([]);
+      expect(env).toMatchObject({ FAKE_ALLOWED_FOR_TEST: 'allowed-x11', FOO: 'bar' });
+      expect(JSON.stringify(env)).not.toMatch(/fake-secret-x11|fake-key-x11/);
+      const optedOut = new NodeWorkspace({ root: rootDir, inheritEnv: true });
+      const script = "process.stdout.write(process.env.FAKE_SECRET_FOR_TEST||'absent')";
+      expect((await optedOut.exec(node(script))).stdout).toBe('fake-secret-x11');
+    } finally {
+      for (const name of [...Object.keys(planted), 'FAKE_ALLOWED_FOR_TEST']) delete process.env[name];
+    }
+  });
+
   it('caps captured output, keeping head and tail', async () => {
     const small = new NodeWorkspace({ root: rootDir, maxOutputBytes: 1000 });
     const { stdout } = await small.exec(node("process.stdout.write('S'+'a'.repeat(100000)+'END')"));
