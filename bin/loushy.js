@@ -8,6 +8,7 @@ const USAGE = [
   '  loushy dev <config.yaml|config.json> [--port N] [--host H]',
   '  loushy build --target=<name> --agent=<path> [--out=<dir>]',
   '  loushy studio [--port N] [--host H] [--prod|--dev]',
+  '  loushy doctor [agent.yaml|json] [--json]',
 ].join('\n');
 
 /**
@@ -77,10 +78,16 @@ async function runStudio(rest) {
   }
 }
 
+async function runDoctorCommand(rest) {
+  const { runDoctorCommand: run } = require(path.join(__dirname, '..', 'dist', 'cli', 'doctor.js'));
+  process.exitCode = await run(rest);
+}
+
 const COMMANDS = new Map([
   ['dev', runDev],
   ['build', runBuildCommand],
   ['studio', runStudio],
+  ['doctor', runDoctorCommand],
 ]);
 
 async function main() {

@@ -78,4 +78,49 @@ Installing the package also installs the `loushy` command:
   artifact (see [Deployment](./deployment.md)). Building requires `tsup`
   (`npm install --save-dev tsup`).
 
+- `loushy doctor [agent.yaml|json] [--json]` - diagnose your setup (see below).
+
+## Troubleshooting: loushy doctor
+
+Run `npx loushy doctor` right after installing. It prints one line per check
+with a status (`ok`, `warn`, `FAIL`), what it found, and, for anything that is
+not ok, the command to run or the setting to change:
+
+```text
+loushy doctor
+
+[ ok ] Node.js: v22.19.0 satisfies >=22.19.0
+[ ok ] Required peer ai: 4.3.19 satisfies ^4.3.19
+[FAIL] Required peer zod: not installed
+       fix: npm install zod@"^3.25.76"
+[ ok ] Provider package @ai-sdk/openai: 0.0.42 installed
+[warn] Provider package @ai-sdk/anthropic: not installed (optional)
+       fix: npm install @ai-sdk/anthropic@"^0.0.42"
+[warn] openai (OPENAI_API_KEY): not set
+       fix: Set OPENAI_API_KEY in your environment, e.g. export OPENAI_API_KEY=<your key>
+[ ok ] Docker: daemon not reachable (only needed for sandboxed tools; none configured)
+
+4 ok, 2 warnings, 1 failure
+```
+
+What it checks:
+
+1. Your Node version against the package's `engines.node`.
+2. The required peers `ai` and `zod`: installed, and within the SDK's
+   `peerDependencies` range (resolved from the current directory).
+3. The optional provider packages (`@ai-sdk/openai`, `@ai-sdk/anthropic`,
+   `ollama-ai-provider`), with the `npm install` command for each missing one.
+4. Whether each provider's API key variable is set. Only the variable name and
+   `set` / `not set` are printed, never the value.
+5. With a spec path (`loushy doctor agent.yaml`): the spec is validated with
+   field paths for every error, its provider package and key are checked
+   (missing ones become failures), its `tools` must be built-in tools, and any
+   `mcpServers` command must be resolvable.
+6. Ollama reachability, only when the spec uses Ollama or `OLLAMA_HOST` is set.
+7. Docker availability, a warning only when the spec uses a sandboxed tool.
+
+The exit code is `1` if any check fails and `0` otherwise (warnings do not
+fail), so it can gate CI. Add `--json` for machine-readable output. Colour is
+used only when stdout is a terminal and `NO_COLOR` is unset.
+
 Next: [Quick Start](./quick-start.md).

@@ -10,19 +10,8 @@
  * instance, pre-configured with `defaultModel` set to the parsed model.
  */
 
+import { PROVIDER_ENV_TABLE } from './providerEnv';
 import { LLMProvider, LLMProviderConfig, LLMProviderRegistry } from './llm';
-
-/**
- * Which env var holds a given provider's credential/config, and which
- * LLMProviderConfig field that value belongs in. Most providers need an
- * API key; Ollama instead needs a base URL (it has no API key concept).
- */
-const PROVIDER_ENV_TABLE: Record<string, { envKey: string; configField: 'apiKey' | 'baseURL' }> = {
-  openai: { envKey: 'OPENAI_API_KEY', configField: 'apiKey' },
-  anthropic: { envKey: 'ANTHROPIC_API_KEY', configField: 'apiKey' },
-  ollama: { envKey: 'OLLAMA_BASE_URL', configField: 'baseURL' },
-  openrouter: { envKey: 'OPENROUTER_API_KEY', configField: 'apiKey' },
-};
 
 /**
  * Resolve a "<provider>/<model>" spec into a configured LLMProvider
