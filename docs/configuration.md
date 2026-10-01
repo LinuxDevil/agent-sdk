@@ -58,6 +58,67 @@ const agent = createAgent({ prompt: '...', provider, tools });
 `loadMcpTools` is also available from the package root and from
 `@loushy/build-ai-agent/tools`.
 
+### Serve an agent over MCP
+
+`serveMcp()` is the reverse of `loadMcpTools()`: it exposes an agent (and,
+optionally, some of its tools) as an MCP server, so Claude Code, Cursor and
+other MCP clients can call it.
+
+```ts
+import { createAgent, defineTool } from '@loushy/build-ai-agent';
+import { serveMcp } from '@loushy/build-ai-agent/mcp';
+import { z } from 'zod';
+
+const searchDocs = defineTool({
+  name: 'search_docs',
+  description: 'Search the docs',
+  input: z.object({ query: z.string() }),
+  execute: ({ query }) => `results for ${query}`,
+});
+
+const supportAgent = createAgent({ prompt: 'You answer support questions.', provider, tools: [searchDocs] });
+
+const server = await serveMcp({
+  agent: supportAgent,            // exposed as ONE tool taking { message: string }
+  name: 'support-bot',            // server name; the tool name defaults to a sanitized version
+  description: 'Ask the support agent a question',
+  tools: [searchDocs],            // optional: also expose these tools directly
+  transport: { type: 'http', port: 3920, host: '127.0.0.1', path: '/mcp' }, // default: 'stdio'
+});
+await server.close();
+```
+
+- **Stateless.** Every call to the agent tool is a fresh conversation.
+- **Cancellation.** Cancelling the MCP request aborts the agent run
+  (`agent.send(message, { signal })`).
+- **Errors.** An agent failure comes back as an MCP result with `isError: true`.
+- **Approvals.** Approval-gated tools cannot be approved over MCP. A run that
+  pauses for approval returns `isError: true` with a message saying so. Tools
+  flagged `needsApproval` are not exposed directly unless you pass
+  `allowApprovalTools: true`; if you do, clients run them with **no human gate**.
+- **stdio.** Nothing but the MCP protocol is written to stdout; warnings go to stderr.
+- **HTTP.** Binds `127.0.0.1` by default. Add `auth: { type: 'bearer', token }`
+  to require an `Authorization: Bearer` header; binding a non-loopback host
+  without `auth` logs a warning.
+
+From the command line, `loushy mcp` serves an agent spec file (stdio by default):
+
+```sh
+npx loushy mcp agent.yaml
+npx loushy mcp agent.yaml --http --port 3920 --host 127.0.0.1
+```
+
+To use it from an MCP client, add it to the client's MCP config (for example
+`.mcp.json` for Claude Code):
+
+```json
+{
+  "mcpServers": {
+    "support-bot": { "command": "npx", "args": ["loushy", "mcp", "agent.yaml"] }
+  }
+}
+```
+
 ## Provider credentials
 
 Real providers are resolved by `resolveProvider('<provider>/<model>')`
@@ -75,13 +136,28 @@ what the examples and the Quick Start use by default.
 
 ## `createAgent()` options
 
-| Option     | Description                                                        |
-| ---------- | ------------------------------------------------------------------ |
-| `prompt`   | System prompt (required).                                          |
-| `provider` | An `LLMProvider` instance (required).                              |
+| Option         | Description                                                    |
+| -------------- | -------------------------------------------------------------- |
+| `model`        | A `'provider/model'` string such as `'openai/gpt-4o-mini'`, resolved with `resolveProvider()` (key from the env var above). Alternative to `provider`. |
+| `provider`     | An `LLMProvider` instance (real or mock). Alternative to `model`. If you pass both, `provider` is used and `model` becomes the agent's per-run model setting (a bare model id such as `'gpt-4o'`). |
+| `instructions` | System prompt. Optional (defaults to `'You are a helpful assistant.'`). |
+| `prompt`       | Working alias of `instructions`; passing both is an error.      |
 | `tools`    | `Record<string, ToolDescriptor>`, keyed by the name the agent uses. |
 | `name`     | Agent name (default `'agent'`).                                    |
 | `maxSteps` | Passed through to `AgentExecutor.execute()`.                        |
+
+With neither `model` nor `provider`, `createAgent()` resolves from the
+environment: `LOUSHY_MODEL` (a `'provider/model'` string) if set, otherwise
+the first provider whose variable is set, checked in this order:
+`OPENAI_API_KEY` (`openai/gpt-4o-mini`), `ANTHROPIC_API_KEY`
+(`anthropic/claude-3-5-sonnet-latest`), `OPENROUTER_API_KEY`
+(`openrouter/openai/gpt-4o-mini`), `OLLAMA_BASE_URL` (`ollama/llama3`). If none
+is set it throws an error listing exactly which options or variables fix it.
+
+Misconfiguration errors say how to fix themselves: a missing key names the
+variable (`createAgent: OPENAI_API_KEY is not set. ...`), an unknown prefix
+lists the supported ones and suggests the closest, and a missing optional peer
+dependency prints the exact `npm install` command.
 
 ## `AgentExecutor.execute()` options
 

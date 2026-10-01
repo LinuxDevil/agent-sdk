@@ -12,12 +12,19 @@ npm run docs:build   # writes docs/api/index.html
 
 | Export                        | Description                                                                 |
 | ----------------------------- | --------------------------------------------------------------------------- |
-| `createAgent(config)`         | Zero-config `{ send(message) }` agent from a prompt + provider (+ tools).   |
+| `createAgent(config)`         | Zero-config `{ send(message) }` agent from a `model` string or provider (+ instructions, tools). |
 | `AgentBuilder`                | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). |
 | `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. |
 | `AgentType`                   | Agent type enum (e.g. `AgentType.SmartAssistant`).                          |
 | `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
+
+### Skills
+
+Pass `skills: [defineSkill({ name, description, content }), ...(await loadSkills(dir))]` to
+`createAgent()` or `AgentExecutor.execute()`: only names and descriptions go in
+the system prompt and the model loads bodies through an auto-registered
+`load_skill` tool. See [Skills](./skills.md).
 
 ### Cancellation
 
@@ -62,6 +69,63 @@ How it behaves:
   Tool calls the run never reached get an `{ error }` result saying they were
   cancelled, so the conversation stays valid for the provider.
 - An already-aborted signal returns at once without calling the provider.
+
+### Parallel tool calls
+
+When the model asks for several tools in one turn, they run concurrently.
+`toolConcurrency` (on `createAgent()` and `AgentExecutor.execute()`) caps how
+many run at once: a positive integer, or `'unbounded'` (the default). Use `1`
+for strictly sequential execution, e.g. when your tools share state that is
+not safe to touch concurrently.
+
+```ts
+import { createAgent, createMockProvider, defineTool } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+
+const getWeather = defineTool({
+  name: 'get_weather',
+  description: 'Current weather for a city',
+  input: z.object({ city: z.string() }),
+  execute: async ({ city }) => ({ city, tempC: 21 }),
+});
+
+const agent = createAgent({
+  prompt: 'You are a travel assistant.',
+  provider: createMockProvider(),
+  tools: [getWeather],
+  toolConcurrency: 4, // at most 4 tool calls of a turn in flight
+});
+```
+
+Guarantees, whatever the limit:
+
+- **Transcript order is call order.** Tool results are appended in the order
+  the model requested the calls, not the order they finish, so the next
+  provider request is deterministic.
+- **Events.** Calls start in call order. A call's `tool-call` event,
+  `onToolCall`, argument validation, `preToolCall` hooks and `needsApproval`
+  check run just before it starts, one call at a time. Its `tool-result`
+  event fires when it finishes, so results arrive in completion order. With
+  `toolConcurrency: 1` events alternate call/result exactly as before.
+- **Approvals.** The first call that needs approval stops the batch: the
+  calls before it run (concurrently) and their results are recorded, then the
+  run pauses on that call (`finishReason: 'awaiting-approval'`). Calls after
+  it never start in this run. **Known gap:** after `resumeAfterApproval()`
+  those later calls are still not run and get no result (tracked as LOU-U7).
+  Until that lands, use `toolConcurrency: 1` and keep approval tools out of
+  multi-call turns if this matters to you.
+- **Failures are isolated.** A tool that throws gets its own error result;
+  its siblings carry on. A propagating error (`PropagatingToolError`, such as
+  the delegation depth guard, or a throwing hook) stops new calls from
+  starting, waits for the running ones to settle, then rejects the run. No
+  tool is left running detached.
+- **Cancellation.** An abort while a batch runs resolves with
+  `finishReason: 'aborted'`. Calls that finished keep their results; the rest
+  get a "cancelled" result. Running tools see the abort through their
+  `abortSignal`.
+- **Checkpoints.** With `sessionId` + `checkpointStore`, a checkpoint is
+  written each time the in-order run of finished calls grows (with `1`, after
+  every call, as before). A resumed run never runs a recorded call again.
 
 ## Declarative specs
 

@@ -30,6 +30,7 @@ export default defineConfig({
     'cli/dev': 'src/cli/dev.ts',
     'cli/build': 'src/cli/build.ts',
     'cli/studio': 'src/cli/studio.ts',
+    'cli/mcp': 'src/cli/mcp.ts',
     'execution/otel': 'src/execution/otel.ts',
     'execution/hooks': 'src/execution/hooks.ts',
     'triggers/index': 'src/triggers/index.ts',
