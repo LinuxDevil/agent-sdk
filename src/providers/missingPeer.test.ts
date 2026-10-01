@@ -71,7 +71,7 @@ describe.each(CASES)('$label with its peer not installed', ({ packageName, insta
 
     // vi.resetModules() gave the provider a fresh copy of the class, so load the same one.
     expect(error).toBeInstanceOf((await import('./optionalPeer')).MissingPeerDependencyError);
-    expect(error).toMatchObject({ packageName, installCommand });
+    expect(error).toMatchObject({ packageName, installCommand, code: 'LOUSHY_PEER_MISSING' });
     expect((error as Error).message).toContain(`Run: ${installCommand}`);
   });
 

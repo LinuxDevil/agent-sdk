@@ -2,6 +2,7 @@ import { AgentSpec, McpServerSpec } from './schema';
 import { createAgent, SimpleAgent, CreateAgentConfig } from '../createAgent';
 import { resolveProvider } from '../providers/resolveProvider';
 import { LLMProvider, LLMProviderRegistry } from '../providers/llm';
+import { ConfigurationError } from '../execution/errors';
 // Side-effect import: '../providers/mock' self-registers 'mock' into
 // LLMProviderRegistry (see the bottom of src/providers/mock.ts for why).
 // specToAgent resolves provider types dynamically by string via
@@ -72,17 +73,19 @@ export function resolveSpecTool(name: string): ToolDescriptor {
   if (tool) return tool;
 
   if (CREDENTIALED_TOOLS.has(name)) {
-    throw new Error(
+    throw new ConfigurationError(
       `specToAgent: tool '${name}' needs credentials (see src/tools/built-in/${name}.ts's ` +
         `create${name === 'github' ? 'GitHub' : 'Jira'}Tools(config)) that an AgentSpec has no ` +
-        `field for. Build this agent with createAgent() directly and pass the configured tool instead.`
+        `field for. Build this agent with createAgent() directly and pass the configured tool instead.`,
+      'tools',
+      'LOUSHY_TOOL_NEEDS_CREDENTIALS'
     );
   }
 
-  throw new Error(
-    `specToAgent: unknown tool '${name}'. Known built-in tools: ${Object.keys(
-      RESOLVABLE_BUILT_IN_TOOLS
-    ).join(', ')}`
+  throw new ConfigurationError(
+    `specToAgent: unknown tool '${name}'. Known built-in tools: ${Object.keys(RESOLVABLE_BUILT_IN_TOOLS).join(', ')}`,
+    'tools',
+    'LOUSHY_TOOL_NOT_FOUND'
   );
 }
 

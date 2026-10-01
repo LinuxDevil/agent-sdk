@@ -108,6 +108,9 @@ describe('createAgent', () => {
       expect(() => createAgent({ instructions: 'x' })).toThrow(
         /createAgent: no model configured.*model: 'openai\/gpt-4o-mini'.*provider: \.\.\..*LOUSHY_MODEL.*OPENAI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OLLAMA_BASE_URL/
       );
+      expect(() => createAgent({ instructions: 'x' })).toThrow(
+        expect.objectContaining({ code: 'LOUSHY_CONFIG_MISSING_PROVIDER', hint: expect.stringContaining('createAgent') })
+      );
     });
   });
 
@@ -128,6 +131,7 @@ describe('createAgent', () => {
       const provider = mockModel([]);
       const both = { provider, instructions: 'a', prompt: 'b' } as unknown as Parameters<typeof createAgent>[0];
       expect(() => createAgent(both)).toThrow(/both 'instructions' and 'prompt'/);
+      expect(() => createAgent(both)).toThrow(expect.objectContaining({ code: 'LOUSHY_CONFIG_CONFLICTING_OPTIONS' }));
     });
   });
 

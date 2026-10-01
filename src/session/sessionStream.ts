@@ -10,6 +10,7 @@ import { newId } from '../utils/id';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import { AGENT_EVENT_SCHEMA_VERSION, type AgentEvent, type AgentEventPayload } from '../execution/agentEvents';
 import type { AgentRun } from '../execution/agentRun';
+import { SDKError } from '../execution/errors';
 
 /**
  * Runs one session turn. Call `started` with the run as soon as it exists;
@@ -42,9 +43,10 @@ class SessionRun implements AgentRun {
 
   async *[Symbol.asyncIterator](): AsyncIterator<AgentEvent> {
     if (this.iterated) {
-      throw new Error(
+      throw new SDKError(
         'AgentRun can only be iterated once. Collect the events in the first for-await loop, ' +
-          'or call session.stream() again for a new run.'
+          'or call session.stream() again for a new run.',
+        'LOUSHY_RUN_ALREADY_ITERATED'
       );
     }
     this.iterated = true;

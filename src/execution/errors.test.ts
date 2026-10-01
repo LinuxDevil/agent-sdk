@@ -26,9 +26,32 @@ describe('Error Classes', () => {
   describe('SDKError', () => {
     it('should create SDK error', () => {
       const error = new SDKError('Test error', 'TEST_CODE');
-      expect(error.message).toBe('Test error');
+      expect(error.message).toBe('Test error\n[TEST_CODE]');
+      expect(error.detail).toBe('Test error');
       expect(error.code).toBe('TEST_CODE');
       expect(error.name).toBe('SDKError');
+    });
+
+    it('appends [code] hint (docs) from the registry to message and toString() (LOU-D2)', () => {
+      const error = new SDKError('Boom', 'LOUSHY_CONFIG_INVALID');
+      const help =
+        '[LOUSHY_CONFIG_INVALID] Fix the option named in the message. ' +
+        '(https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#loushy_config_invalid)';
+      expect(error.hint).toBe('Fix the option named in the message.');
+      expect(error.docs).toBe('https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#loushy_config_invalid');
+      expect(error.message).toBe(`Boom\n${help}`);
+      expect(error.toString()).toBe(`SDKError: Boom\n${help}`);
+      expect(new SDKError('x').code).toBe('LOUSHY_GENERIC_ERROR');
+    });
+
+    it('keeps a model-facing message as given but still formats toString() (LOU-D2)', () => {
+      const error = new ToolExecutionError('Tool error', 'http');
+      expect(error.message).toBe('Tool error');
+      expect(error.code).toBe('LOUSHY_TOOL_EXECUTION_FAILED');
+      expect(error.toString()).toMatch(/^ToolExecutionError: Tool error\n\[LOUSHY_TOOL_EXECUTION_FAILED\] .+ \(https:\/\/.+#loushy_tool_execution_failed\)$/);
+      expect(new LLMProviderError('x').code).toBe('LOUSHY_PROVIDER_REQUEST_FAILED');
+      expect(new TimeoutError('x').code).toBe('LOUSHY_OPERATION_TIMEOUT');
+      expect(new RateLimitError('x').code).toBe('LOUSHY_PROVIDER_RATE_LIMITED');
     });
   });
 
@@ -37,10 +60,10 @@ describe('Error Classes', () => {
       const cause = new Error('Original error');
       const error = new AgentExecutionError('Agent failed', 'agent-1', cause);
 
-      expect(error.message).toBe('Agent failed');
+      expect(error.detail).toBe('Agent failed');
       expect(error.agentId).toBe('agent-1');
       expect(error.cause).toBe(cause);
-      expect(error.code).toBe('AGENT_EXECUTION_ERROR');
+      expect(error.code).toBe('LOUSHY_AGENT_EXECUTION_FAILED');
     });
   });
 
@@ -82,7 +105,8 @@ describe('Error Classes', () => {
         cause
       );
 
-      expect(error.message).toBe('Flow failed');
+      expect(error.detail).toBe('Flow failed');
+      expect(error.code).toBe('LOUSHY_FLOW_EXECUTION_FAILED');
       expect(error.flowCode).toBe('my-flow');
       expect(error.step).toBe('step-1');
       expect(error.cause).toBe(cause);
@@ -93,7 +117,8 @@ describe('Error Classes', () => {
     it('should create configuration error', () => {
       const error = new ConfigurationError('Invalid config', 'apiKey');
 
-      expect(error.message).toBe('Invalid config');
+      expect(error.detail).toBe('Invalid config');
+      expect(error.code).toBe('LOUSHY_CONFIG_INVALID');
       expect(error.field).toBe('apiKey');
     });
   });
@@ -106,7 +131,8 @@ describe('Error Classes', () => {
       };
       const error = new ValidationError('Validation failed', errors);
 
-      expect(error.message).toBe('Validation failed');
+      expect(error.detail).toBe('Validation failed');
+      expect(error.code).toBe('LOUSHY_VALIDATION_FAILED');
       expect(error.errors).toEqual(errors);
     });
   });

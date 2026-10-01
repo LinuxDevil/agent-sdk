@@ -11,6 +11,7 @@
  */
 
 import { peerInstallCommand } from './providerSpec';
+import { SDKError } from '../execution/errors';
 
 /** An optional peer that enables one SDK feature rather than one LLM provider. */
 export interface FeaturePeer {
@@ -53,7 +54,7 @@ function installCommandFor(packageName: string): string {
  * }
  * ```
  */
-export class MissingPeerDependencyError extends Error {
+export class MissingPeerDependencyError extends SDKError {
   readonly name = 'MissingPeerDependencyError';
 
   constructor(
@@ -65,7 +66,8 @@ export class MissingPeerDependencyError extends Error {
   ) {
     super(
       `The optional package '${packageName}' is not installed, but ${options?.feature ?? 'this feature'} needs it. Run: ${installCommand}`,
-      options?.cause === undefined ? undefined : { cause: options.cause }
+      'LOUSHY_PEER_MISSING',
+      { cause: options?.cause }
     );
     this.feature = options?.feature;
   }

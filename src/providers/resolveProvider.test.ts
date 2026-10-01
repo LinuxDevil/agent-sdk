@@ -2,6 +2,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { LLMProviderRegistry, LLMProvider } from './llm';
 import { resolveProvider } from './resolveProvider';
 
+/** Matches an SDKError with this stable `code` (LOU-D2). */
+const withCode = (code: string) => expect.objectContaining({ code });
+
 function fakeProvider(name: string): LLMProvider {
   return {
     name,
@@ -80,13 +83,14 @@ describe('resolveProvider', () => {
     const createSpy = vi.spyOn(LLMProviderRegistry, 'create');
 
     expect(() => resolveProvider('nonexistent/foo')).toThrow(/unrecognized provider/i);
+    expect(() => resolveProvider('nonexistent/foo')).toThrow(withCode('LOUSHY_PROVIDER_UNKNOWN'));
     expect(createSpy).not.toHaveBeenCalled();
   });
 
   it('throws for a spec that is not "provider/model" shaped', () => {
     expect(() => resolveProvider('openai')).toThrow();
     expect(() => resolveProvider('/gpt-4')).toThrow();
-    expect(() => resolveProvider('openai/')).toThrow();
+    expect(() => resolveProvider('openai/')).toThrow(withCode('LOUSHY_PROVIDER_SPEC_INVALID'));
   });
 });
 
@@ -103,6 +107,7 @@ describe('resolveProvider errors (LOU-D1)', () => {
     expect(() => resolveProvider('openai/gpt-4o')).toThrow(
       'resolveProvider: OPENAI_API_KEY is not set. Set it in your environment, or pass a provider instance: createAgent({ provider: ... })'
     );
+    expect(() => resolveProvider('openai/gpt-4o')).toThrow(withCode('LOUSHY_PROVIDER_MISSING_API_KEY'));
     expect(createSpy).not.toHaveBeenCalled();
   });
 
@@ -120,7 +125,7 @@ describe('resolveProvider errors (LOU-D1)', () => {
   });
 
   it('lists supported prefixes without a suggestion when nothing is close', () => {
-    expect(() => resolveProvider('zzzzzzzzzz/m')).toThrow(/Supported prefixes: openai, anthropic, openrouter, ollama\.$/);
+    expect(() => resolveProvider('zzzzzzzzzz/m')).toThrow(/Supported prefixes: openai, anthropic, openrouter, ollama\.$/m);
   });
 
   it('shows an example for a spec without a provider prefix', () => {
@@ -138,6 +143,7 @@ describe('resolveProvider errors (LOU-D1)', () => {
     });
 
     expect(() => resolveProvider(spec)).toThrow(`Run: npm install ${pkg}`);
+    expect(() => resolveProvider(spec)).toThrow(withCode('LOUSHY_PEER_MISSING'));
   });
 
   it('rethrows unrelated registry errors unchanged', () => {

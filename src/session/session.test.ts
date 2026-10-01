@@ -3,7 +3,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createAgent } from '../createAgent';
@@ -11,7 +11,7 @@ import { defineTool } from '../tools/defineTool';
 import { PropagatingToolError } from '../execution/AgentExecutor';
 import { mockModel } from '../testing';
 import { FileSessionStore, MemorySessionStore } from './index';
-import { providerValidPrefix } from './AgentSession';
+import { AgentSession, providerValidPrefix } from './AgentSession';
 import type { Message } from '../providers/llm';
 
 const convo = (call: { messages: readonly Message[] } | undefined): readonly Message[] =>
@@ -150,6 +150,7 @@ describe('AgentSession', () => {
     const agent = createAgent({ provider: mockModel([]) });
     for (const id of ['../evil', 'a/b', 'a.b', '', 'x'.repeat(129)]) {
       expect(() => agent.session({ id })).toThrow(/Invalid session id/);
+      expect(() => agent.session({ id })).toThrow(expect.objectContaining({ code: 'LOUSHY_SESSION_ID_INVALID' }));
     }
     expect(() => agent.session({ id: 'user_42-A' })).not.toThrow();
   });
@@ -194,6 +195,19 @@ describe('AgentSession', () => {
         rmSync(dir, { recursive: true, force: true });
       }
     });
+
+    it('rejects a corrupt session file with LOUSHY_SESSION_FILE_CORRUPT (LOU-D2)', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'sessions-'));
+      try {
+        writeFileSync(join(dir, 'bad.json'), '{"not":"an array"}');
+        await expect(new FileSessionStore(dir).load('bad')).rejects.toMatchObject({
+          message: expect.stringMatching(/is corrupt/),
+          code: 'LOUSHY_SESSION_FILE_CORRUPT',
+        });
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
   });
 });
 
@@ -215,5 +229,14 @@ describe('providerValidPrefix', () => {
     ];
     expect(providerValidPrefix(partial)).toEqual([]);
     expect(providerValidPrefix([{ role: 'tool', content: '"x"', toolCallId: 'c1' }])).toEqual([]);
+  });
+});
+
+describe('AgentSession errors (LOU-D2)', () => {
+  it('stream() without a streaming runner throws LOUSHY_SESSION_STREAM_UNSUPPORTED', () => {
+    const session = new AgentSession(async () => {
+      throw new Error('not called');
+    });
+    expect(() => session.stream('hi')).toThrow(expect.objectContaining({ code: 'LOUSHY_SESSION_STREAM_UNSUPPORTED' }));
   });
 });
