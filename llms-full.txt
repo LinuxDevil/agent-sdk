@@ -77,6 +77,7 @@ agent can be an `agent.yaml` spec served with `npx loushy dev agent.yaml`
 - **Streaming**: `agent.stream()` and `session.stream()` yield typed, versioned JSON events ready for SSE. [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)
 - **UI bindings**: `useLoushyAgent()` from `@loushy/build-ai-agent/react` (and `/vue`; `loushyAgent()` store from `/svelte`) turns the event stream into chat state, with approvals. [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md), [Vue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/vue.md), [Svelte](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/svelte.md)
 - **AI SDK UI**: `toUIMessageStreamResponse(agent.stream(...))` renders a run with the Vercel AI SDK's `useChat`. [AI SDK UI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/ai-sdk-ui.md)
+- **Next.js and Fetch frameworks**: `createRouteHandler(agent)` serves the session API from an App Router, SvelteKit, Hono or Bun route. [Next.js](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md)
 - **Durable execution**: `sessionId` + `checkpointStore` resume a crashed or paused run without redoing finished tools. [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)
 - **Cancellation, usage and cost**: pass an `AbortSignal`; every result carries token usage and USD cost for priced models. [API overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#cancellation)
 - **Providers**: OpenAI, Anthropic, OpenRouter, Ollama or a mock, with `withRetry()` and `withFallback()`. [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md)
@@ -176,6 +177,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md) | `output: zodSchema`: typed `result.object`, the repair step, `'output-invalid'` |
 | [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md) | `agent.stream()`: the typed event schema, terminal and SSE examples |
 | [AI SDK UI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/ai-sdk-ui.md) | `useChat` on a Loushy run: `toUIMessageStreamResponse()`, `fromUIMessages()`, approvals |
+| [Next.js](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md) | `createRouteHandler(agent)`: the session API as a Fetch route (App Router, SvelteKit, Hono), auth, `useChat` endpoint |
 | [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md) | `useLoushyAgent()`: chat state from the event stream, in process or over HTTP; `reduceAgentEvents()`, `parseEventStream()` |
 | [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md) | Checkpoints, crash resume, approvals mid-batch, at-least-once tools |
 | [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md) | The `subagents` option and its `task` tool, inheritance, approvals in sub-agents |
@@ -1758,7 +1760,7 @@ const handler = mountChannels(createAgent(config), channels);
 createServer((req, res) => void handler(req, res).then((handled) => handled || res.writeHead(404).end())).listen(3000);
 ```
 
-`loushy dev` does not mount `channels/` yet.
+`loushy dev` mounts them too, and `loushy build` deploys them (see below).
 
 ### Memory
 
@@ -1848,6 +1850,27 @@ Serves the chat UI and `POST /chat` for the directory and reloads it when
 imported afresh on each reload, so an edit to `tools/*.ts` takes effect on the
 next message. A failed reload (a syntax error, an empty `instructions.md`) is
 logged and shown in the chat page, and the previous agent keeps answering.
+
+The directory's `channels/` are mounted under `/channels` and its `schedules/`
+are started, and a reload swaps both: the old schedules are stopped before the
+new ones start, so no timer or route outlives its file. Pass `--no-schedules` to
+mount the channels but not fire the crons (see [Schedules in
+dev](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md#in-loushy-dev)).
+
+## Deploy it with `loushy build`
+
+```bash
+npx loushy build ./my-agent --target=node-server    # or docker
+```
+
+The agent directory is the unit of deployment: the built server loads it with
+`resolveAgentDir()` at start-up, starts its `schedules/` and mounts its
+`channels/` under `/channels`, and prints which it found. The code files (the
+config, `tools/`, `schedules/`, `channels/`, `memory/`, and the same in each
+sub-agent) are bundled to `dist/agent/**.js`, and `instructions.md`, `skills/`
+and JSON/YAML config are copied next to them, so the server needs no TypeScript
+loader, sources or `node_modules`. See [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#agent-directories).
+The Cloudflare Worker target takes spec files only.
 
 ## What is not covered
 
@@ -2962,10 +2985,10 @@ Every command that takes a `<spec>` reads an agent spec file (`.yaml`,
 
 ```text
 loushy init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force]
-loushy dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H]
+loushy dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--no-schedules]
 loushy chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>]
 loushy acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]
-loushy build --target=<name> --agent=<path> [--out=<dir>]
+loushy build <agent-dir|spec> --target=<name> [--out=<dir>]    (or --agent=<path>)
 loushy studio [--port N] [--host H] [--prod|--dev]
 loushy mcp <agent.yaml|json> [--http --port N --host H]
 loushy doctor [agent.yaml|json] [--json]
@@ -2992,7 +3015,13 @@ npx loushy dev agent.yaml                  # a spec file
 npx loushy dev ./my-agent                  # an agent directory
 npx loushy dev src/agent.ts                # a TypeScript (or JavaScript) module
 npx loushy dev agent.yaml --port 4000 --host 0.0.0.0
+npx loushy dev ./my-agent --no-schedules   # do not fire the directory's cron schedules
 ```
+
+For an agent directory, `channels/` are mounted under `/channels` and
+`schedules/` are started (and both are swapped on reload, the old schedules
+stopped first); `--no-schedules` starts none. See
+[Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md#run-it-with-loushy-dev).
 
 Serves a chat UI on `GET /`, `GET /health`, `GET /dev/status` and the chat
 endpoints below (1MB body limit). What `<path>` is follows from the path:
@@ -3122,6 +3151,7 @@ scripted lines and a `mockModel` agent and no terminal.
 
 ```bash
 npx loushy build --target=node-server --agent=agent.yaml        # or docker / cloudflare-worker
+npx loushy build ./my-agent --target=node-server                # an agent directory (node-server, docker)
 ```
 
 Writes the artifact to `--out` (default `.loushy/build/<target>`) and prints
@@ -4054,6 +4084,30 @@ deploy the result). `tsup` must be installed (`npm install --save-dev tsup`).
 
 Every target answers `GET /health` (`200 ok`) and serves the full
 [HTTP API](#http-api) below: sessions, SSE streaming, approvals and bearer auth.
+
+## Agent directories
+
+`node-server` and `docker` also take an [agent directory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md)
+in place of a spec file (the path may be positional or `--agent`):
+
+```bash
+npx loushy build ./my-agent --target=node-server
+node .loushy/build/node-server/dist/server.js
+```
+
+The generated `server.ts` calls `resolveAgentDir()` on `dist/agent` and
+`createDeployedServer(agent, { schedules, channels })`, so the process starts the
+directory's [schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md) when it listens, mounts its
+[channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) under `/channels` (they verify themselves; the chat
+routes keep the bearer token), and logs `schedules: ...; channels: ...`.
+The directory's code files are pre-bundled with the build's tsup step into
+`dist/agent/**.js` (one ESM build sharing one copy of the SDK, so a `from
+'@loushy/build-ai-agent'` import in a tool is the SDK the server runs), and the
+rest of the directory is copied; nothing needs a TypeScript loader at run time.
+`dist/` is then ESM (`dist/package.json` says so). The Docker image copies it as
+before. The optional `dockerode` sandbox is not bundled (it loads lazily), so a
+directory that uses `SubprocessSandbox` must install it where it runs. The
+Cloudflare Worker target still takes spec files only.
 
 ## HTTP API
 
@@ -5843,6 +5897,106 @@ console.log((await store.list('global')).map((item) => item.text)); // ['Lives i
 - An agent directory's `memory/` folder is part of the agent: see
   [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md#memory).
 
+# Next.js and other Fetch-API frameworks
+
+Source: docs/nextjs.md
+
+`createRouteHandler(agent, options?)` serves an agent from a route file of any
+framework whose handlers take a Web `Request` and return a `Response`: the
+Next.js App Router, SvelteKit, Remix / React Router, Hono, Bun.serve. It is a
+thin wrapper over the same session API as `loushy dev` and the deployed server
+(docs/deployment.md), so the React, Vue and Svelte bindings work against it
+unchanged. It imports no framework and no `node:*` module.
+
+## Next.js App Router
+
+```ts
+// app/api/agent/[[...path]]/route.ts
+import { createAgent, createRouteHandler } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are helpful.' });
+
+export const { GET, POST } = createRouteHandler(agent, {
+  basePath: '/api/agent',
+  auth: process.env.AGENT_TOKEN,
+  uiMessageStream: true,
+});
+```
+
+**A route with no `auth` is public**: anyone who can reach it can run your agent
+and spend your model budget. Pass a bearer token, or a function that checks your
+own session or cookie:
+
+```ts
+import { createAgent, createRouteHandler } from '@loushy/build-ai-agent';
+
+declare function isSignedIn(request: Request): Promise<boolean>;
+
+export const { GET, POST } = createRouteHandler(createAgent({ model: 'openai/gpt-4o-mini' }), {
+  auth: (request) => isSignedIn(request),
+});
+```
+
+## Routes
+
+All paths are under `basePath` (default `/api/agent`; a trailing slash is
+accepted, and a request outside the base path is a 404).
+
+| Route | What it does |
+| --- | --- |
+| `POST <basePath>` | `{ input, sessionId? }`: the turn streamed as SSE. This is what `useLoushyAgent({ url })` posts; without a `sessionId` each turn is a fresh session |
+| `POST <basePath>/approvals/:id` | `{ approved, note? }` or `{ answer }`: the continuation streamed (`useLoushyAgent`'s `approvalsUrl`) |
+| `POST <basePath>/chat` | `{ sessionId, input }`: the session API of the deployed server |
+| `GET <basePath>/chat/:sessionId` | the session's transcript and pending approvals |
+| `POST <basePath>/chat/:sessionId/approvals/:id` | decide an approval in a session |
+| `POST <basePath>/ui` | with `uiMessageStream: true`: the AI SDK `useChat` endpoint |
+| `GET <basePath>/health` | `ok`, never behind `auth` |
+
+Sessions are kept by the agent's `store` (`createAgent({ store })`), so give
+the agent one that outlives a serverless invocation when you use sessions.
+
+## Client: `useLoushyAgent`
+
+```tsx no-verify
+'use client';
+import { useLoushyAgent } from '@loushy/build-ai-agent/react';
+
+export function Chat() {
+  const agent = useLoushyAgent({ url: '/api/agent', headers: { Authorization: `Bearer ${token}` } }, { approvalsUrl: '/api/agent/approvals' });
+  // agent.messages, agent.send(text), agent.approve() ...
+}
+```
+
+## Client: `useChat`
+
+With `uiMessageStream: true`, point `useChat` at the `ui` route. The chat `id`
+names the session, so only the newest user message is sent to the agent
+(docs/ai-sdk-ui.md).
+
+```tsx no-verify
+import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport } from 'ai';
+
+const { messages, sendMessage } = useChat({ transport: new DefaultChatTransport({ api: '/api/agent/ui' }) });
+```
+
+## Other frameworks
+
+The same handler, mounted where the framework wants it:
+
+```ts
+import { createAgent, createRouteHandler } from '@loushy/build-ai-agent';
+
+const { handler } = createRouteHandler(createAgent({ model: 'openai/gpt-4o-mini' }), { basePath: '/agent', auth: 'secret' });
+
+// SvelteKit: src/routes/agent/[...path]/+server.ts
+export const GET = ({ request }: { request: Request }) => handler(request);
+export const POST = ({ request }: { request: Request }) => handler(request);
+
+// Hono: app.all('/agent/*', (c) => handler(c.req.raw))
+// Bun.serve: fetch: handler
+```
+
 # Tracing and observability
 
 Source: docs/observability.md
@@ -6546,7 +6700,18 @@ const running = startSchedules(agent, schedules);
 
 `createDeployedServer(agent, { schedules })` (the server of the `node-server`
 and `docker` targets) starts the schedules when it listens and stops them when it
-closes. The Cloudflare Worker target does not run schedules yet.
+closes. `loushy build ./my-agent --target=node-server` (or `docker`) builds an
+agent directory into such a server, so its `schedules/` run in the deployed
+process ([Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#agent-directories)). The Cloudflare Worker
+target does not run schedules yet.
+
+## In `loushy dev`
+
+`loushy dev ./my-agent` starts the directory's schedules, so a cron fires while
+you develop, and a hot reload stops the old schedules before starting the new
+ones. Starting is the default so that dev behaves like the deployed server;
+because firing crons (and spending model calls) while you edit is often
+unwanted, `--no-schedules` mounts the channels but starts no schedule.
 
 # Sessions
 

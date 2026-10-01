@@ -74,6 +74,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   const { pathname } = new URL(req.url ?? '/', 'http://localhost');
   const handler = ROUTES.get(`${req.method} ${pathname}`);
   if (handler) return handler(req, res, holder);
+  if (await holder.channels?.(req, res)) return;
   const chat: ChatRoutesContext = {
     name: 'loushy dev',
     agent: () => holder.agent,
@@ -159,19 +160,21 @@ export async function startDevServer(
   };
 }
 
-const USAGE = 'Usage: loushy dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H]';
+const USAGE = 'Usage: loushy dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--no-schedules]';
 
 const SPEC: CommandSpec = {
   command: 'dev',
   usage: USAGE,
   positionals: 1,
-  options: { port: { type: 'string' }, host: { type: 'string' } },
+  options: { port: { type: 'string' }, host: { type: 'string' }, 'no-schedules': { type: 'boolean' } },
 };
 
 export interface DevCliArgs {
   path: string;
   port: number;
   host: string;
+  /** `--no-schedules`: an agent directory's schedules are not started. */
+  noSchedules?: boolean;
   /** `-h` / `--help` was given: print the usage, run nothing. */
   help?: boolean;
 }
@@ -181,7 +184,8 @@ export function parseDevArgs(rest: string[]): DevCliArgs {
   const { values, positionals, help } = parseCommand(SPEC, rest);
   if (help) return { path: '', port: 3737, host: '127.0.0.1', help };
   if (positionals.length === 0) throw usageError(SPEC, 'a path is required (a spec file, an agent directory or a .ts/.js agent module).');
-  return { path: positionals[0], port: portValue(SPEC, values.port, 3737), host: stringValue(values.host) ?? '127.0.0.1' };
+  const noSchedules = values['no-schedules'] === true || undefined;
+  return { path: positionals[0], port: portValue(SPEC, values.port, 3737), host: stringValue(values.host) ?? '127.0.0.1', noSchedules };
 }
 
 /** Runs `loushy dev` with the arguments after `dev`; resolves with the exit code once the server listens. */
@@ -192,7 +196,7 @@ export async function runDev(rest: string[]): Promise<number> {
       console.log(USAGE);
       return 0;
     }
-    const handle = await startDevServer(path.resolve(args.path), args.port, args.host);
+    const handle = await startDevServer(path.resolve(args.path), args.port, args.host, { schedules: !args.noSchedules });
     console.log(`loushy dev: listening on http://${args.host}:${handle.port}`);
     return 0;
   } catch (error) {

@@ -24,10 +24,10 @@ Every command that takes a `<spec>` reads an agent spec file (`.yaml`,
 
 ```text
 loushy init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force]
-loushy dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H]
+loushy dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--no-schedules]
 loushy chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>]
 loushy acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]
-loushy build --target=<name> --agent=<path> [--out=<dir>]
+loushy build <agent-dir|spec> --target=<name> [--out=<dir>]    (or --agent=<path>)
 loushy studio [--port N] [--host H] [--prod|--dev]
 loushy mcp <agent.yaml|json> [--http --port N --host H]
 loushy doctor [agent.yaml|json] [--json]
@@ -54,7 +54,13 @@ npx loushy dev agent.yaml                  # a spec file
 npx loushy dev ./my-agent                  # an agent directory
 npx loushy dev src/agent.ts                # a TypeScript (or JavaScript) module
 npx loushy dev agent.yaml --port 4000 --host 0.0.0.0
+npx loushy dev ./my-agent --no-schedules   # do not fire the directory's cron schedules
 ```
+
+For an agent directory, `channels/` are mounted under `/channels` and
+`schedules/` are started (and both are swapped on reload, the old schedules
+stopped first); `--no-schedules` starts none. See
+[Agent directories](./agent-directories.md#run-it-with-loushy-dev).
 
 Serves a chat UI on `GET /`, `GET /health`, `GET /dev/status` and the chat
 endpoints below (1MB body limit). What `<path>` is follows from the path:
@@ -184,6 +190,7 @@ scripted lines and a `mockModel` agent and no terminal.
 
 ```bash
 npx loushy build --target=node-server --agent=agent.yaml        # or docker / cloudflare-worker
+npx loushy build ./my-agent --target=node-server                # an agent directory (node-server, docker)
 ```
 
 Writes the artifact to `--out` (default `.loushy/build/<target>`) and prints

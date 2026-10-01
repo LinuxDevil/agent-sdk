@@ -11,7 +11,11 @@ import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createAgent, type CreateAgentConfig, type SimpleAgent } from '../createAgent';
 import { SDKError } from '../execution/errors';
-import { loadAgentDir } from '../agentDir';
+import { resolveAgentDir } from '../agentDir';
+import type { Channel } from '../channels/defineChannel';
+import { mountChannels, type ChannelsHandler } from '../channels/mountChannels';
+import type { DefinedSchedule } from '../schedules/defineSchedule';
+import { startSchedules, type RunningSchedules, type StartSchedulesOptions } from '../schedules/startSchedules';
 import { explainImportError, withFreshImports } from '../agentDir/importModule';
 import { memoryStore } from '../storage/agentStore';
 import { loadSpec } from '../spec/loadSpec';
@@ -31,6 +35,8 @@ export interface DevState {
   target: DevTarget;
   /** Where `/chat` sessions live (LOU-D32): kept across reloads, so they continue on the new agent. */
   store: ReturnType<typeof memoryStore>;
+  /** The agent directory's channels, mounted under `/channels` (LOU-P8.2); undefined when it has none. Replaced on reload. */
+  channels?: ChannelsHandler;
   /** Successful reloads since start. */
   reloads: number;
   /** The last failed reload's message; cleared by the next good one. */
@@ -42,6 +48,17 @@ export interface DevOptions {
   overrides?: CreateAgentConfig;
   /** Wait this long after the last file change before reloading. Default 100. */
   debounceMs?: number;
+  /** Start an agent directory's `schedules/` (default true); `false` is `--no-schedules`. */
+  schedules?: boolean;
+  /** Overrides for the scheduler (clock, timers, error sink); mainly for tests. */
+  scheduler?: StartSchedulesOptions;
+}
+
+/** What a target loads into: the agent and, for an agent directory, its schedules and channels. */
+interface LoadedTarget {
+  agent: SimpleAgent;
+  schedules: DefinedSchedule[];
+  channels: Channel[];
 }
 
 const SPEC_EXT = new Set(['.yaml', '.yml', '.json']);
@@ -117,12 +134,24 @@ let loads = 0;
  * connection errors surface here.
  */
 export async function loadTarget(target: DevTarget, options: DevOptions = {}): Promise<SimpleAgent> {
+  return (await loadDevTarget(target, options)).agent;
+}
+
+async function loadDirTarget(dir: string, overrides: CreateAgentConfig): Promise<LoadedTarget> {
+  const { config, schedules, channels } = await resolveAgentDir(dir, overrides);
+  return { agent: createAgent(config), schedules, channels };
+}
+
+async function loadDevTarget(target: DevTarget, options: DevOptions): Promise<LoadedTarget> {
   const overrides = options.overrides ?? {};
-  if (target.kind === 'spec') return specToAgent(loadSpec(target.path));
+  if (target.kind === 'spec') return { agent: specToAgent(loadSpec(target.path)), schedules: [], channels: [] };
   const token = `${Date.now()}-${loads++}`;
-  const agent = await withFreshImports(token, () =>
-    target.kind === 'dir' ? loadAgentDir(target.path, overrides) : loadModuleAgent(target.path, token, overrides)
+  const loaded = await withFreshImports(token, async () =>
+    target.kind === 'dir'
+      ? loadDirTarget(target.path, overrides)
+      : { agent: await loadModuleAgent(target.path, token, overrides), schedules: [], channels: [] }
   );
+  const { agent } = loaded;
   if (overrides.store) storeOwners.add(agent);
   try {
     await agent.ready();
@@ -130,7 +159,18 @@ export async function loadTarget(target: DevTarget, options: DevOptions = {}): P
     await agent.close().catch(() => undefined);
     throw error;
   }
-  return agent;
+  return loaded;
+}
+
+/** Makes `loaded` the live target: its agent, its channels mounted, its schedules started (unless disabled). Returns the schedules to stop on the next swap. */
+function activate(state: DevState, loaded: LoadedTarget, options: DevOptions): RunningSchedules | undefined {
+  state.agent = loaded.agent;
+  state.channels = loaded.channels.length > 0 ? mountChannels(loaded.agent, loaded.channels, { store: state.store }) : undefined;
+  if (loaded.schedules.length === 0) return undefined;
+  const names = loaded.schedules.map((s) => s.name).join(', ');
+  if (options.schedules === false) return void log(`schedules not started (--no-schedules): ${names}`);
+  log(`started schedules: ${names}`);
+  return startSchedules(loaded.agent, loaded.schedules, options.scheduler);
 }
 
 const IMPORT_SPECIFIER = /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)['"](\.{1,2}\/[^'"]*)['"]/g;
@@ -203,7 +243,9 @@ export interface DevReloader {
  * stays, `state.error` is set and the error is logged.
  */
 export async function startReloader(target: DevTarget, options: DevOptions = {}): Promise<DevReloader> {
-  const state: DevState = { agent: await loadTarget(target, options), target, store: memoryStore(), reloads: 0 };
+  const first = await loadDevTarget(target, options);
+  const state: DevState = { agent: first.agent, target, store: memoryStore(), reloads: 0 };
+  let schedules = activate(state, first, options);
   const changed = new Set<string>();
   const name = path.basename(target.path);
   let timer: NodeJS.Timeout | undefined;
@@ -214,10 +256,12 @@ export async function startReloader(target: DevTarget, options: DevOptions = {})
     const what = [...changed].filter(Boolean).join(', ') || name;
     changed.clear();
     try {
-      const next = await loadTarget(target, options);
-      if (closed) return void (await next.close());
+      const next = await loadDevTarget(target, options);
+      if (closed) return void (await next.agent.close());
       const previous = state.agent;
-      state.agent = next;
+      // The old schedules stop before the new ones start, so a reload never leaves two sets of timers.
+      schedules?.stop();
+      schedules = activate(state, next, options);
       state.reloads += 1;
       delete state.error;
       await previous.close().catch(() => undefined);
@@ -243,6 +287,7 @@ export async function startReloader(target: DevTarget, options: DevOptions = {})
       clearTimeout(timer);
       stop();
       await running;
+      schedules?.stop();
       await state.agent.close().catch(() => undefined);
     },
   };

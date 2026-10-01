@@ -12,5 +12,7 @@
  */
 export { agentSpecSchema } from '../spec/schema';
 export type { AgentSpec } from '../spec/schema';
-export { createDeployedAgent, createDeployedServer } from './nodeServer';
+export { createDeployedAgent, createDeployedServer, storeFromEnv } from './nodeServer';
+export { createAgent } from '../createAgent';
+export { resolveAgentDir } from '../agentDir';
 export type { DeployedServerOptions } from './nodeServer';

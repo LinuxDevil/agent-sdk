@@ -96,3 +96,6 @@ export * from './deploy/types';
 
 // AI SDK UI stream adapter (LOU-P1): Fetch/Worker-safe, no node:* imports.
 export * from './server/uiMessageStream';
+
+// Route handler for Next.js and other Fetch-API frameworks (LOU-P4).
+export * from './server/routeHandler';
