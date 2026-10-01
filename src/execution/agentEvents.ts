@@ -9,6 +9,7 @@
 
 import type { ExecutionFinishReason } from './AgentExecutor';
 import type { SubagentInfo } from './hooks';
+import type { CompactedProviderErrorCategory } from './errors';
 
 /**
  * Version of the {@link AgentEvent} schema, carried on every event as `v`.
@@ -150,6 +151,37 @@ export interface AgentErrorEvent extends AgentEventBase<'error'> {
 }
 
 /**
+ * A model call failed and a `withRetry()` wrapper (e.g. `createAgent({ retry })`)
+ * retries it after `delayMs` (LOU-V7.2). Emitted inside the step, before
+ * the retried call.
+ */
+export interface ProviderRetryEvent extends AgentEventBase<'provider.retry'> {
+  /** The attempt that failed (1 = the first call). */
+  attempt: number;
+  /** Retries the wrapper allows after the first attempt. */
+  maxRetries: number;
+  /** How long the wrapper waits before the next attempt. */
+  delayMs: number;
+  /** The failure, compacted like `compactProviderError()`; `category` (e.g. `'rate-limit'`) is absent when it is `'unknown'`. */
+  error: { message: string; category?: CompactedProviderErrorCategory };
+  /** Name of the provider that failed. */
+  provider: string;
+}
+
+/**
+ * A model call failed (after its retries) and the next provider of a
+ * `withFallback()` wrapper (e.g. `createAgent({ fallbackModels })`) takes
+ * over the call (LOU-V7.2). Emitted inside the step.
+ */
+export interface ProviderFallbackEvent extends AgentEventBase<'provider.fallback'> {
+  /** Name of the provider that failed. */
+  from: string;
+  /** Name of the provider that takes over. */
+  to: string;
+  error: { message: string };
+}
+
+/**
  * Last event of every run, emitted exactly once - also for aborted, failed
  * and awaiting-approval runs.
  */
@@ -184,6 +216,8 @@ export type AgentEvent =
   | ApprovalRequestedEvent
   | StepDoneEvent
   | AgentErrorEvent
+  | ProviderRetryEvent
+  | ProviderFallbackEvent
   | RunDoneEvent;
 
 /** The `type` of an {@link AgentEvent}. */
@@ -215,6 +249,8 @@ const EVENT_TYPES: ReadonlySet<string> = new Set<AgentEventType>([
   'approval.requested',
   'step.done',
   'error',
+  'provider.retry',
+  'provider.fallback',
   'run.done',
 ]);
 
