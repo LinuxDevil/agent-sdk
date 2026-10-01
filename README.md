@@ -25,6 +25,7 @@ dashboard — any provider, any deploy target, no lock-in.
 - **Multi-agent delegation** — wrap a child agent as a tool with `createDelegateTool()`, with a `maxDepth` guard against delegation loops
 - **Pre/post hooks** — a `HookRegistry` of `AgentHook`s that can inspect or mutate a tool call/LLM generate step, or throw to abort it, run sandboxed by Agent Forge's hook editor
 - **Guardrails** — fail-closed, concurrently-run checks (secret scan, diff size, test/lint commands) that gate a fixer agent's patch before it's used
+- **Workspace tools** — `createFsTools()` (`read_file`, `write_file`, `edit_file`, `list_dir`, `glob`, `grep`) and `createShellTool()` over pluggable `FsProvider`/`ShellProvider` backends (`NodeWorkspace`, `MemoryWorkspace`, Docker-backed `SandboxShell`), with paths confined to the workspace root (symlinks included) and shell commands approval-gated by default — see [Workspace tools](docs/workspace-tools.md)
 - **MCP client** — `loadMcpTools()` turns any Model Context Protocol server's tools into `ToolDescriptor`s
 - **Sandboxed tools** — opt a tool into `requiresSandbox` to route it through a Docker-backed `SandboxAdapter` instead of in-process
 - **Tracing & evals** — `withSpan()`/`TraceExporter` (with an OpenTelemetry bridge at `/otel`) for observability, and `defineEval()` for agent-behavior regression tests under `vitest`
@@ -195,6 +196,7 @@ console.log(result.usage.totalTokens, result.finishReason, result.steps);
 - [Configuration](docs/configuration.md) - agent spec fields, provider env vars, `AgentExecutor.execute()` options, CLI flags
 - [Deployment](docs/deployment.md) - `loushy build` targets: Node server, Docker, Cloudflare Workers
 - [API Overview](docs/api-overview.md) - the main exports; `npm run docs:build` generates the full TypeDoc reference
+- [Workspace tools](docs/workspace-tools.md) - file system and shell tools for coding agents, and their security model
 - [Testing](docs/testing.md) - unit-test agents deterministically with the scripted `mockModel`
 - [Agent Forge](docs/agent-forge.md) - the visual dashboard (`loushy studio`): quickstart, first-agent walkthrough, hook authoring
 - Full guides site: [linuxdevil.github.io/agent-sdk-docs](https://linuxdevil.github.io/agent-sdk-docs/)
