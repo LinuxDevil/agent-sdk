@@ -9,6 +9,7 @@ import type { AgentEvent, AgentEventOf, AgentEventType } from '../execution/agen
 import type { AgentSession } from '../session/AgentSession';
 import type { AgentStore } from '../storage/agentStore';
 import { newId } from '../utils/id';
+import { SDKError } from '../execution/errors';
 
 /** Options of {@link serveAcp}. */
 export interface ServeAcpOptions {
@@ -186,7 +187,7 @@ export async function serveAcp(agent: SimpleAgent, options: ServeAcpOptions): Pr
     try {
       const outcome = await turn(sessionId, session, input, controller.signal);
       if (controller.signal.aborted) return { stopReason: 'cancelled' };
-      if (outcome.finishReason === 'error') throw new Error(outcome.error ?? 'The run failed.');
+      if (outcome.finishReason === 'error') throw new SDKError(outcome.error ?? 'The run failed.', 'LOUSHY_AGENT_EXECUTION_FAILED');
       return { stopReason: STOP_REASONS[outcome.finishReason] ?? 'end_turn' };
     } finally {
       session.abort = undefined;

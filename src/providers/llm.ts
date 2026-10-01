@@ -1,3 +1,4 @@
+import { SDKError } from '../execution/errors';
 /**
  * LLM Provider Abstraction
  * Framework-agnostic interface for LLM providers
@@ -296,7 +297,7 @@ export class LLMProviderRegistry {
   static create(name: string, config: LLMProviderConfig): LLMProvider {
     const factory = this.providers.get(name.toLowerCase());
     if (!factory) {
-      throw new Error(`Provider '${name}' not found. Available: ${Array.from(this.providers.keys()).join(', ')}`);
+      throw new SDKError(`Provider '${name}' not found. Available: ${Array.from(this.providers.keys()).join(', ')}`, 'LOUSHY_PROVIDER_UNKNOWN');
     }
     return factory(config);
   }

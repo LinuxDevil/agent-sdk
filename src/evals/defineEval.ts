@@ -135,7 +135,7 @@ async function runAndReport(
   const spec = { ...config, agent: agent ?? missingAgent };
   const result = await withEvalCassettes({ file, name: config.name, label }, () => runTrajectoryCase(spec, c, label, file));
   recordEvalResult(result);
-  if (!result.passed) throw new Error(describeFailure(result));
+  if (!result.passed) throw new SDKError(describeFailure(result), 'LOUSHY_TEST_FAILED');
 }
 
 const missingAgent: AgentSource = () => {
@@ -177,7 +177,7 @@ function currentVitest(): Pick<typeof Vitest, 'test' | 'expect'> {
   if (typeof g.test === 'function' && typeof g.expect === 'function') {
     return { test: g.test as typeof Vitest.test, expect: g.expect as typeof Vitest.expect };
   }
-  throw new Error('defineEval() must be called from a test file running under vitest');
+  throw new SDKError('defineEval() must be called from a test file running under vitest', 'LOUSHY_EVALS_INVALID');
 }
 
 

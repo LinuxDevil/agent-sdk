@@ -23,6 +23,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { DeploymentAdapter, DeployOptions } from '../types';
+import { SDKError } from '../../execution/errors';
 import { loadSpec } from '../../spec/loadSpec';
 import { AgentSpec } from '../../spec/schema';
 import { specSchedules } from '../../schedules/specSchedules';
@@ -40,16 +41,17 @@ const SPEC_EXTENSIONS = new Set(['.yaml', '.yml', '.json']);
  */
 export function loadAgentSpecForDeploy(agentPath: string): AgentSpec {
   if (!agentPath) {
-    throw new Error('--agent=<path> is required (an AgentSpec .yaml/.yml/.json file)');
+    throw new SDKError('--agent=<path> is required (an AgentSpec .yaml/.yml/.json file)', 'LOUSHY_DEPLOY_FAILED');
   }
   if (!fs.existsSync(agentPath)) {
-    throw new Error(`agent config not found: ${agentPath}`);
+    throw new SDKError(`agent config not found: ${agentPath}`, 'LOUSHY_DEPLOY_FAILED');
   }
   const ext = path.extname(agentPath).toLowerCase();
   if (!SPEC_EXTENSIONS.has(ext)) {
-    throw new Error(
+    throw new SDKError(
       `unsupported agent config '${agentPath}': expected an AgentSpec .yaml/.yml/.json file ` +
-        `(the same format \`loushy dev\` loads)`
+        `(the same format \`loushy dev\` loads)`,
+      'LOUSHY_DEPLOY_FAILED'
     );
   }
   return loadSpec(agentPath);

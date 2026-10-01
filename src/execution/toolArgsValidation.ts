@@ -58,7 +58,7 @@ export class ToolArgumentsValidationError extends ToolExecutionError {
     toolName: string,
     public readonly issues: ToolArgumentIssue[]
   ) {
-    super(`Invalid arguments for tool '${toolName}': ${formatIssues(issues)}`, toolName);
+    super(`Invalid arguments for tool '${toolName}': ${formatIssues(issues)}`, toolName, undefined, 'LOUSHY_TOOL_ARGS_INVALID');
     this.name = 'ToolArgumentsValidationError';
   }
 

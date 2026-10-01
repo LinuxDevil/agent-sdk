@@ -15,6 +15,7 @@ import {
   type ChannelRequest,
   type ChannelRespond,
 } from './defineChannel';
+import { SDKError } from '../execution/errors';
 
 /** Options of {@link discordChannel}. */
 export interface DiscordChannelOptions {
@@ -157,7 +158,7 @@ export function discordChannel(options: DiscordChannelOptions): Channel<DiscordI
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ content, allowed_mentions: { parse: [] }, ...(components ? { components } : {}) }),
     });
-    if (!res.ok) throw new Error(`discordChannel: ${method} ${path.split('/').slice(1).join('/')} failed: ${res.status}`);
+    if (!res.ok) throw new SDKError(`discordChannel: ${method} ${path.split('/').slice(1).join('/')} failed: ${res.status}`, 'LOUSHY_CHANNEL_REQUEST_FAILED');
   }
 
   /** The first message edits the interaction's original response; the rest (and later replies) are follow-ups. */

@@ -20,6 +20,7 @@ import {
   toolSpanInit,
 } from '../execution/genAiSpans';
 import { FLOW_NODE_SPAN_NAME, FlowAttr, GenAiAttr, GenAiOperation } from '../execution/semconv';
+import { SDKError } from '../execution/errors';
 
 /**
  * Flow execution context
@@ -265,7 +266,7 @@ export class FlowExecutor {
   ): any {
     const handler = this.nodeHandlers.get(node.type);
     if (!handler) {
-      throw new Error(`Unknown node type: ${(node as any).type}`);
+      throw new SDKError(`Unknown node type: ${(node as any).type}`, 'LOUSHY_FLOW_INVALID');
     }
     return handler(node, context, events, onEvent);
   }
@@ -278,7 +279,7 @@ export class FlowExecutor {
     const maxDepth = context.maxDepth || 100;
     const currentDepth = context.currentDepth || 0;
     if (currentDepth > maxDepth) {
-      throw new Error(`Maximum flow depth ${maxDepth} exceeded`);
+      throw new SDKError(`Maximum flow depth ${maxDepth} exceeded`, 'LOUSHY_FLOW_EXECUTION_FAILED');
     }
   }
 
@@ -635,7 +636,7 @@ export class FlowExecutor {
 
   private static requireToolRegistry(context: FlowExecutionContext): ToolRegistry {
     if (!context.toolRegistry) {
-      throw new Error('Tool registry not available');
+      throw new SDKError('Tool registry not available', 'LOUSHY_FLOW_EXECUTION_FAILED');
     }
     return context.toolRegistry;
   }
@@ -653,7 +654,7 @@ export class FlowExecutor {
     const toolDesc = toolRegistry.get(toolName);
 
     if (!toolDesc || !toolDesc.tool) {
-      throw new Error(`Tool '${toolName}' not found`);
+      throw new SDKError(`Tool '${toolName}' not found`, 'LOUSHY_TOOL_NOT_FOUND');
     }
 
     return { toolName, toolDesc };
@@ -847,7 +848,7 @@ export class FlowExecutor {
       return evaluateSafeExpression(expression, variables, { bindPlaceholders: true });
     } catch (error) {
       const detail = error instanceof ExpressionError ? ` (${error.message})` : '';
-      throw new Error(`Failed to evaluate expression: ${expression}${detail}`);
+      throw new SDKError(`Failed to evaluate expression: ${expression}${detail}`, 'LOUSHY_FLOW_EXECUTION_FAILED');
     }
   }
 }

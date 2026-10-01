@@ -11,6 +11,7 @@
 
 import { LLMProvider } from '../providers/llm';
 import { ExecutionResult } from '../execution/AgentExecutor';
+import { SDKError } from '../execution/errors';
 
 export interface LLMJudgeConfig {
   /** Real LLMProvider instance used to grade the output. */
@@ -75,10 +76,11 @@ export function llmJudge(config: LLMJudgeConfig): (result: ExecutionResult) => P
     // a misnamed or mis-globbed file) fails loudly here instead of silently
     // making a real, budgeted LLM call as part of default/CI test runs.
     if (!config.allowOutsideJudgeRunner && process.env.LOUSHY_ALLOW_LLM_JUDGE !== '1') {
-      throw new Error(
+      throw new SDKError(
         'llmJudge() was invoked outside the judge-eval runner. ' +
           'llmJudge()-based evals must live in a "*.judge.eval.ts" file and run via ' +
-          '`npm run test:evals:judge` (vitest.judge.config.ts), never the default `vitest run`.'
+          '`npm run test:evals:judge` (vitest.judge.config.ts), never the default `vitest run`.',
+        'LOUSHY_EVALS_INVALID'
       );
     }
 
