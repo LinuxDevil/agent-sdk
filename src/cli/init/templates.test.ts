@@ -22,6 +22,14 @@ const ENV_KEYS: Record<string, string> = {
   ollama: 'OLLAMA_BASE_URL',
 };
 
+/** The `ai` / provider-package pairing each provider is scaffolded with (LOU-D28d). */
+const SCAFFOLD_PAIRINGS: Record<string, Record<string, string>> = {
+  openai: { ai: '^7.0.0', '@ai-sdk/openai': '^4.0.0' },
+  anthropic: { ai: '^7.0.0', '@ai-sdk/anthropic': '^4.0.0' },
+  openrouter: { ai: '^4.3.19', '@ai-sdk/openai': '^0.0.42' },
+  ollama: { ai: '^4.3.19', 'ollama-ai-provider': '^1.2.0' },
+};
+
 const combos = PROVIDER_NAMES.flatMap((provider) => TEMPLATES.map((template) => [provider, template] as const));
 
 describe('renderProject', () => {
@@ -41,7 +49,7 @@ describe('renderProject', () => {
     expect(Object.keys(pkg.scripts)).toEqual(expect.arrayContaining(['dev', 'test', 'doctor']));
     expect(pkg.scripts.doctor).toMatch(/^loushy doctor/);
     expect(pkg.dependencies['@loushy/build-ai-agent']).toBe('^1.0.0-alpha.8');
-    expect(pkg.dependencies).toMatchObject({ ai: '^4.3.19', zod: '^3.25.76' });
+    expect(pkg.dependencies).toMatchObject({ ai: SCAFFOLD_PAIRINGS[provider]!.ai, zod: '^3.25.76' });
 
     expect(JSON.parse(files['tsconfig.json']!).compilerOptions).toMatchObject({ strict: true, module: 'NodeNext' });
     expect(files['README.md']).toContain(ENV_KEYS[provider]);
@@ -72,11 +80,16 @@ describe('renderProject', () => {
     ['openai', '@ai-sdk/openai', ['@ai-sdk/anthropic', 'ollama-ai-provider']],
     ['openrouter', '@ai-sdk/openai', ['@ai-sdk/anthropic', 'ollama-ai-provider']],
     ['anthropic', '@ai-sdk/anthropic', ['@ai-sdk/openai', 'ollama-ai-provider']],
-    ['ollama', 'ollama-ai-provider', ['@ai-sdk/openai', '@ai-sdk/anthropic']],
+    ['ollama', 'ollama-ai-provider', ['@ai-sdk/openai', '@ai-sdk/anthropic', 'ollama-ai-provider-v2']],
   ])('%s depends on its own provider package only', (provider, peer, others) => {
     const dependencies = JSON.parse(renderProject(config(provider, 'minimal'))['package.json']!).dependencies;
     expect(Object.keys(dependencies)).toContain(peer);
     for (const other of others) expect(Object.keys(dependencies)).not.toContain(other);
+  });
+
+  it.each(Object.entries(SCAFFOLD_PAIRINGS))('%s gets one consistent ai / provider package pairing', (provider, pairing) => {
+    const dependencies = JSON.parse(renderProject(config(provider, 'minimal'))['package.json']!).dependencies;
+    expect(dependencies).toMatchObject(pairing);
   });
 
   it('the yaml template ships agent.yaml and runs it with loushy dev', () => {
