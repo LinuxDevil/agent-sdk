@@ -54,12 +54,11 @@ export async function resumeSubagentCall(
 ): Promise<{ message: Message } | { paused: ExecutionResult }> {
   const { executeOptions } = ctx;
   // The `task` tool is per run: rebuild it from the same `subagents` option.
-  const { toolRegistry } = await withSubagents(
-    ctx.snapshot.agent,
-    ctx.toolRegistry,
-    executeOptions.subagents,
-    executeOptions.maxSubagentDepth
-  );
+  // LOU-Y6: under the paused run's sessionId, so the child's transcript is saved where the lead finds it.
+  const { toolRegistry } = await withSubagents(ctx.snapshot.agent, ctx.toolRegistry, executeOptions.subagents, {
+    maxSubagentDepth: executeOptions.maxSubagentDepth,
+    sessionId: ctx.snapshot.sessionId,
+  });
   const parentCall: PendingApproval = {
     ...ctx.snapshot.pendingToolCall,
     toolCallId: suspension.toolCallId,

@@ -5,6 +5,7 @@ import { defineTool } from '../tools/defineTool';
 import { mockModel, type MockTurn } from '../testing';
 import { serveFetch } from '../server/fetchRoutes';
 import type { Message } from '../providers';
+import { memoryStore } from '../storage/agentStore';
 import { remoteAgent } from './remoteAgent';
 
 const TOKEN = 'secret-token-123';
@@ -42,7 +43,7 @@ describe('remoteAgent (LOU-Y7)', () => {
 
     const result = await agent.send('go');
 
-    expect(String(toolResult(result.messages))).toMatch(/^The answer is 42\.\n\n\[remote sub-agent 'remote': session 'task_[\w-]+', finish reason 'stop'\]$/);
+    expect(String(toolResult(result.messages))).toMatch(/^The answer is 42\.\n\n\[remote sub-agent 'remote': session 'task_[\w-]+', finish reason 'stop', taskId 'task_1'\]$/);
     expect(result.text).toBe('done');
     expect(remoteModel.calls[0].messages.at(-1)).toEqual({ role: 'user', content: 'research this' });
     expect(model.calls[0].messages[0].content).toContain('- remote: A remote researcher');
@@ -52,6 +53,21 @@ describe('remoteAgent (LOU-Y7)', () => {
     const body = (await request.json()) as { sessionId: string; input: string };
     expect(body.input).toBe('research this');
     expect(body.sessionId).toMatch(/^task_/);
+  });
+
+  it('resuming a task continues its remote session (LOU-Y7.2)', async () => {
+    const remoteModel = mockModel(['First answer.', 'Second answer.']);
+    const server = deployed(createAgent({ provider: remoteModel, instructions: 'remote', store: memoryStore() }));
+    const resume = { toolCalls: [{ name: 'task', args: { agent: 'remote', prompt: 'and then?', description: 'more', taskId: 'task_1' } }] };
+    const { agent } = lead(remoteAgent({ url: 'https://remote.test', auth: TOKEN, fetch: server.fetch }), [delegate(), resume, 'done']);
+
+    const result = await agent.send('go');
+
+    const [first, second] = await Promise.all(server.requests.map(async (r) => ((await r.json()) as { sessionId: string }).sessionId));
+    expect(second).toBe(first);
+    expect(remoteModel.calls[1].messages.map((m) => m.content)).toEqual(['remote', 'research this', 'First answer.', 'and then?']);
+    const last = JSON.parse(result.messages.filter((m) => m.role === 'tool').at(-1)?.content as string) as string;
+    expect(last).toMatch(/^Second answer\.\n\n\[remote sub-agent 'remote': session 'task_[\w-]+', finish reason 'stop', taskId 'task_1'\]$/);
   });
 
   it('accepts a token function and extra headers', async () => {
@@ -109,6 +125,7 @@ describe('remoteAgent (LOU-Y7)', () => {
     expect(message).toContain('awaiting approval');
     expect(message).toMatch(/session 'task_[\w-]+'/);
     expect(message).toContain('LOUSHY_SESSION_AWAITING_APPROVAL');
+    expect(message).toContain("then continue task 'task_1'");
   });
 
   it("aborts the in-flight request when the lead run's signal aborts", async () => {

@@ -11,13 +11,16 @@ import type { AgentConfig } from '../types';
 import type { ToolRegistry } from '../tools/ToolRegistry';
 import { defineTool, type DefinedTool } from '../tools/defineTool';
 import { withPromptTool } from '../skills/withSkills';
+import type { Message } from '../providers';
+import { newId } from '../utils/id';
 import { runSubagent, type SubagentSpec } from '../execution/delegation';
-import { bindToolCallScope, extendAgent, subagentBudget, toolCallScopeOf } from '../execution/subagentRuntime';
+import { bindToolCallScope, extendAgent, SubagentApprovalPause, subagentBudget, toolCallScopeOf } from '../execution/subagentRuntime';
 import { isPropagatingToolError } from '../execution/propagatingToolError';
 import type { ExecuteOptions, ExecutionResult } from '../execution/AgentExecutor';
 import type { RemoteSubagent, SubagentCatalog, SubagentSummary, Subagents } from './types';
 import { isRemoteSubagent } from './remoteAgent';
 import { BackgroundTasks, subagentOptionsOf, withSubagentOptions, type SubagentOptions } from './backgroundTasks';
+import { busy, taskNotFound, TaskSessions, type TaskMode, type TaskRecord } from './taskSessions';
 
 /** Name of the tool the lead model delegates with. */
 const TASK_TOOL = 'task';
@@ -148,7 +151,7 @@ function subagentsPromptBlock(summaries: readonly SubagentSummary[]): string {
   return [
     '## Available sub-agents',
     '',
-    `Delegate a self-contained task to one of these with the \`${TASK_TOOL}\` tool. A sub-agent sees only the prompt you give it, not this conversation, so include everything it needs. Several \`${TASK_TOOL}\` calls in one turn run in parallel. With \`background: true\` a task runs while you keep working: check it with \`agent_status\`, collect its answer with \`agent_await\` before you finish, or stop it with \`agent_cancel\`.`,
+    `Delegate a self-contained task to one of these with the \`${TASK_TOOL}\` tool. A sub-agent sees only the prompt you give it, not this conversation, so include everything it needs. Several \`${TASK_TOOL}\` calls in one turn run in parallel. With \`background: true\` a task runs while you keep working: check it with \`agent_status\`, collect its answer with \`agent_await\` before you finish, or stop it with \`agent_cancel\`. Every result ends with a taskId: pass it back as \`taskId\` to ask that sub-agent a follow-up with its earlier work in context, or with \`mode: 'fork'\` to branch a copy of that conversation.`,
     '',
     ...summaries.map((s) => `- ${s.name}: ${s.description.replace(/\s+/g, ' ').trim()}`),
   ].join('\n');
@@ -167,33 +170,52 @@ function failureReason(name: string, result: ExecutionResult, maxSteps: number):
 }
 
 /** The `task` tool result: the sub-agent's final text plus a metadata footer. Throws when it did not finish. */
-function taskResult(name: string, result: ExecutionResult, maxSteps: number): string {
+function taskResult(name: string, result: ExecutionResult, maxSteps: number, taskId: string): string {
   if (result.finishReason !== 'stop' && result.finishReason !== 'length') {
     throw new Error(failureReason(name, result, maxSteps));
   }
-  const footer = `[sub-agent '${name}': ${result.steps} step(s), finish reason '${result.finishReason}']`;
+  const footer = `[sub-agent '${name}': ${result.steps} step(s), finish reason '${result.finishReason}', taskId '${taskId}']`;
   return result.text ? `${result.text}\n\n${footer}` : footer;
 }
 
-type TaskArgs = { agent: string; prompt: string; description: string; background?: boolean };
+type TaskArgs = { agent: string; prompt: string; description: string; background?: boolean; taskId?: string; mode?: TaskMode };
 type ToolOptions = { abortSignal?: AbortSignal } | undefined;
 
-async function runTask(registered: RegisteredSubagent['spec'], args: TaskArgs, toolOptions: ToolOptions): Promise<string> {
+/** The child conversation a `task` call runs in (LOU-Y6). */
+interface ChildTask {
+  taskId: string;
+  /** The earlier turns of a resumed or forked task. */
+  history: Message[];
+  remoteSessionId?: string;
+  save: (record: TaskRecord) => Promise<void>;
+}
+
+/** The transcript (without the system prompt) of a child run that can be continued. */
+function transcriptOf(result: ExecutionResult): Message[] | undefined {
+  if (!['stop', 'length', 'max-steps'].includes(result.finishReason)) return undefined;
+  return result.messages[0]?.role === 'system' ? result.messages.slice(1) : result.messages;
+}
+
+async function runTask(registered: RegisteredSubagent['spec'], args: TaskArgs, toolOptions: ToolOptions, task: ChildTask): Promise<string> {
   let spec: SubagentSpec;
   let result: ExecutionResult;
   try {
     spec = typeof registered === 'function' ? await registered(args.prompt) : registered;
     result = await runSubagent(spec, {
       name: args.agent,
-      input: [{ role: 'user', content: args.prompt }],
+      input: [...task.history, { role: 'user', content: args.prompt }],
       toolOptions,
       description: args.description,
     });
   } catch (error) {
+    // A paused child: on resume this call is re-entered with the taskId it saves under.
+    if (error instanceof SubagentApprovalPause) error.resumeArgs = { taskId: task.taskId };
     if (isPropagatingToolError(error)) throw error;
     throw new Error(`Sub-agent '${args.agent}' failed: ${(error as Error | undefined)?.message ?? String(error)}`);
   }
-  return taskResult(args.agent, result, spec.maxSteps ?? DEFAULT_MAX_STEPS);
+  const messages = transcriptOf(result);
+  if (messages) await task.save({ messages });
+  return taskResult(args.agent, result, spec.maxSteps ?? DEFAULT_MAX_STEPS, task.taskId);
 }
 
 /** The tool options a background child runs with: the same parent run, its own abort signal. */
@@ -203,24 +225,60 @@ function withAbortSignal(toolOptions: ToolOptions, abortSignal: AbortSignal): { 
   return options;
 }
 
-/** A deployed sub-agent's task: its final text, or a thrown coded error (never wrapped, so the code stays visible). */
-function runRemoteTask(remote: RemoteSubagent, args: TaskArgs, toolOptions: ToolOptions): Promise<string> {
-  return remote.run(args.prompt, { name: args.agent, signal: toolOptions?.abortSignal });
+/**
+ * A deployed sub-agent's task: its final text, or a thrown coded error (never wrapped, so the code stays visible).
+ * A resumed task continues in its remote session (LOU-Y7.2), saved up front so a task whose remote run paused for
+ * approval can be continued once that approval was decided on the remote agent.
+ */
+async function runRemoteTask(remote: RemoteSubagent, args: TaskArgs, toolOptions: ToolOptions, task: ChildTask): Promise<string> {
+  const sessionId = task.remoteSessionId ?? newId('task');
+  await task.save({ messages: [], remoteSessionId: sessionId });
+  return remote.run(args.prompt, { name: args.agent, signal: toolOptions?.abortSignal, sessionId, taskId: task.taskId });
 }
 
-async function startTask(
-  subagents: Subagents,
-  names: readonly string[],
-  background: BackgroundTasks,
-  args: TaskArgs,
-  toolOptions: ToolOptions
-): Promise<unknown> {
-  const resolved = await resolveSubagent(subagents, args.agent, names);
-  const run = (options: ToolOptions) => ('remote' in resolved ? runRemoteTask(resolved.remote, args, options) : runTask(resolved.spec, args, options));
+/** What the `task` tool of one run works with. */
+interface TaskContext {
+  subagents: Subagents;
+  names: readonly string[];
+  background: BackgroundTasks;
+  sessions: TaskSessions;
+}
+
+/**
+ * The child conversation of a `task` call (LOU-Y6): a new one, the one of
+ * `taskId` (resume), or a new one starting from a copy of it (fork). A call
+ * re-entered after an approval keeps the taskId it paused with.
+ */
+async function openTask(ctx: TaskContext, args: TaskArgs, reentered: boolean): Promise<ChildTask> {
+  const child = (taskId: string, record?: TaskRecord): ChildTask => ({
+    taskId,
+    history: record?.messages ?? [],
+    remoteSessionId: record?.remoteSessionId,
+    save: (saved) => ctx.sessions.save(taskId, args.agent, saved),
+  });
+  const mode = args.mode ?? (args.taskId === undefined ? 'new' : 'resume');
+  if (reentered && args.taskId) return child(args.taskId);
+  if (mode === 'new') return child(await ctx.sessions.allocate());
+  if (args.taskId === undefined) throw taskNotFound(`mode '${mode}' needs the taskId of an earlier task.`);
+  if (ctx.background.isActive(args.taskId)) throw busy(args.taskId);
+  const record = await ctx.sessions.load(args.taskId, args.agent);
+  if (mode === 'resume') return child(args.taskId, record);
+  if (record.remoteSessionId) throw new Error(`Task '${args.taskId}' ran on a remote agent, whose session cannot be copied: use mode 'resume' or 'new'.`);
+  return child(await ctx.sessions.allocate(), record);
+}
+
+async function startTask(ctx: TaskContext, args: TaskArgs, toolOptions: ToolOptions): Promise<unknown> {
+  const resolved = await resolveSubagent(ctx.subagents, args.agent, ctx.names);
+  const task = await openTask(ctx, args, toolCallScopeOf(toolOptions)?.resume !== undefined);
+  const run = (options: ToolOptions) =>
+    ctx.sessions.run(task.taskId, () =>
+      'remote' in resolved ? runRemoteTask(resolved.remote, args, options, task) : runTask(resolved.spec, args, options, task)
+    );
   if (!args.background) {
     return run(toolOptions);
   }
-  const { taskId, status, agent } = background.start(
+  const { taskId, status, agent } = ctx.background.start(
+    task.taskId,
     args.agent,
     (signal) => run(withAbortSignal(toolOptions, signal)),
     toolOptions?.abortSignal
@@ -228,23 +286,28 @@ async function startTask(
   return { taskId, status, agent };
 }
 
-function createTaskTool(subagents: Subagents, summaries: readonly SubagentSummary[], background: BackgroundTasks): DefinedTool {
-  const names = summaries.map((s) => s.name);
+function createTaskTool(ctx: TaskContext): DefinedTool {
   return defineTool({
     name: TASK_TOOL,
     description:
       'Delegate a self-contained task to a sub-agent listed under "Available sub-agents" and get its final answer back. ' +
-      'The sub-agent sees only your prompt, not this conversation.',
+      'The sub-agent sees only your prompt, not this conversation. The result ends with a taskId: pass it back as taskId ' +
+      'to send that sub-agent a follow-up with its earlier work still in context, or with mode "fork" to branch a copy of it.',
     input: z.object({
-      agent: z.enum(names as [string, ...string[]]).describe('Name of the sub-agent, exactly as listed'),
+      agent: z.enum(ctx.names as [string, ...string[]]).describe('Name of the sub-agent, exactly as listed'),
       prompt: z.string().describe('Complete instructions for the sub-agent, including all context it needs'),
       description: z.string().describe('A short (3-5 word) label for this task'),
       background: z
         .boolean()
         .optional()
         .describe('true: start the sub-agent and return a taskId at once; collect the answer later with agent_await'),
+      taskId: z.string().optional().describe('The taskId of an earlier task of the same agent, to continue (or fork) it'),
+      mode: z
+        .enum(['new', 'resume', 'fork'])
+        .optional()
+        .describe("'new' (default without taskId): a fresh sub-agent. 'resume' (default with taskId): continue that task. 'fork': a new task starting from a copy of it"),
     }),
-    execute: (args, ctx) => startTask(subagents, names, background, args, ctx),
+    execute: (args, options) => startTask(ctx, args, options),
   });
 }
 
@@ -318,10 +381,10 @@ export async function withSubagents(
   agent: AgentConfig,
   toolRegistry: ToolRegistry | undefined,
   subagents: Subagents | undefined,
-  maxSubagentDepth: number | undefined,
-  onRunEnd?: OnRunEnd
+  run: Pick<ExecuteOptions, 'maxSubagentDepth' | 'onRunEnd' | 'sessionId'>
 ): Promise<{ agent: AgentConfig; toolRegistry: ToolRegistry | undefined; onRunEnd: OnRunEnd }> {
-  if (!subagents || subagentBudget(maxSubagentDepth) <= 0) {
+  const { onRunEnd } = run;
+  if (!subagents || subagentBudget(run.maxSubagentDepth) <= 0) {
     return { agent, toolRegistry, onRunEnd };
   }
   assertNoTaskTool(agent, toolRegistry);
@@ -331,7 +394,9 @@ export async function withSubagents(
   }
   const options = subagentOptionsOf(subagents);
   const background = new BackgroundTasks(options.maxConcurrent);
-  const extended = withPromptTool(agent, toolRegistry, createTaskTool(subagents, summaries, background), subagentsPromptBlock(summaries));
+  const sessions = TaskSessions.of(options.sessions, run.sessionId);
+  const ctx: TaskContext = { subagents, names: summaries.map((s) => s.name), background, sessions };
+  const extended = withPromptTool(agent, toolRegistry, createTaskTool(ctx), subagentsPromptBlock(summaries));
   const tools = { ...extended.agent.tools };
   for (const tool of createBackgroundTools(background)) {
     extended.toolRegistry.register(tool);
