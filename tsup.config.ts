@@ -26,7 +26,7 @@ export default defineConfig({
     'flows/index': 'src/flows/index.ts',
     'data/index': 'src/data/index.ts',
     'types/index': 'src/types/index.ts',
-    'data/mocks': 'src/data/mocks.ts',
+    'testing/index': 'src/testing/index.ts',
     'cli/dev': 'src/cli/dev.ts',
     'cli/build': 'src/cli/build.ts',
     'cli/studio': 'src/cli/studio.ts',

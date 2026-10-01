@@ -4,46 +4,11 @@ import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
 import { AgentType } from '../types';
 import { SandboxAdapter } from '../security/sandbox';
+import { mockModel } from '../testing';
 
-/**
- * Builds a scripted provider that emits exactly one tool call (for
- * `toolName`) and then stops - enough to drive AgentExecutor through a
- * single tool execution without depending on MockLLMProvider's
- * content-sniffing heuristics.
- */
+/** A model that emits exactly one tool call (for `toolName`) and then stops. */
 function makeSingleToolCallProvider(toolName: string) {
-  let call = 0;
-  return {
-    name: 'scripted',
-    supportsTools: () => true,
-    supportsStreaming: () => false,
-    getModels: async () => ['scripted'],
-    stream: async () => {
-      throw new Error('not implemented');
-    },
-    generate: async () => {
-      call++;
-      if (call === 1) {
-        return {
-          text: '',
-          finishReason: 'tool_calls' as const,
-          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
-          toolCalls: [
-            {
-              id: 'call-1',
-              type: 'function' as const,
-              function: { name: toolName, arguments: '{}' },
-            },
-          ],
-        };
-      }
-      return {
-        text: 'done',
-        finishReason: 'stop' as const,
-        usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
-      };
-    },
-  };
+  return mockModel([{ toolCalls: [{ name: toolName }] }, 'done']);
 }
 
 describe('AgentExecutor sandbox wiring (LOU-F5 / LOU-F fix)', () => {
@@ -85,7 +50,7 @@ describe('AgentExecutor sandbox wiring (LOU-F5 / LOU-F fix)', () => {
     const result = await AgentExecutor.execute({
       agent,
       input: 'go',
-      provider: makeSingleToolCallProvider('sandboxed') as any,
+      provider: makeSingleToolCallProvider('sandboxed'),
       toolRegistry,
       sandbox: spySandbox,
       onToolResult,
@@ -143,7 +108,7 @@ describe('AgentExecutor sandbox wiring (LOU-F5 / LOU-F fix)', () => {
     const result = await AgentExecutor.execute({
       agent,
       input: 'go',
-      provider: makeSingleToolCallProvider('unsandboxable') as any,
+      provider: makeSingleToolCallProvider('unsandboxable'),
       toolRegistry,
       sandbox: spySandbox,
       onToolResult,
@@ -196,7 +161,7 @@ describe('AgentExecutor sandbox wiring (LOU-F5 / LOU-F fix)', () => {
     await AgentExecutor.execute({
       agent,
       input: 'go',
-      provider: makeSingleToolCallProvider('plain') as any,
+      provider: makeSingleToolCallProvider('plain'),
       toolRegistry,
       sandbox: spySandbox,
     });
@@ -235,7 +200,7 @@ describe('AgentExecutor sandbox wiring (LOU-F5 / LOU-F fix)', () => {
     const result = await AgentExecutor.execute({
       agent,
       input: 'go',
-      provider: makeSingleToolCallProvider('sandboxed-noop') as any,
+      provider: makeSingleToolCallProvider('sandboxed-noop'),
       toolRegistry,
     });
 

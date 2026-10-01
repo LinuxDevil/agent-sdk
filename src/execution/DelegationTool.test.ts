@@ -3,15 +3,8 @@ import { createDelegateTool, DelegationDepthExceededError } from './DelegationTo
 import { AgentExecutor } from './AgentExecutor';
 import { AgentType } from '../types';
 import { ToolRegistry } from '../tools';
-import type { LLMProvider, GenerateResult } from '../providers';
-
-function makeGenerateResult(text: string): GenerateResult {
-  return {
-    text,
-    finishReason: 'stop',
-    usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
-  };
-}
+import type { LLMProvider } from '../providers';
+import { mockModel } from '../testing';
 
 function makeMockProvider(generate: LLMProvider['generate']): LLMProvider {
   return {
@@ -26,8 +19,7 @@ function makeMockProvider(generate: LLMProvider['generate']): LLMProvider {
 
 describe('createDelegateTool', () => {
   it('invokes the child agent with only the delegated task as input', async () => {
-    const generate = vi.fn().mockResolvedValue(makeGenerateResult('child response'));
-    const provider = makeMockProvider(generate);
+    const provider = mockModel([{ text: 'child response', usage: { inputTokens: 1, outputTokens: 1 } }]);
 
     const childAgent = {
       name: 'Child Agent',
@@ -42,13 +34,13 @@ describe('createDelegateTool', () => {
 
     const result = await delegateTool.tool.execute!({ task: 'Do the thing' }, {} as any);
 
-    expect(generate).toHaveBeenCalledTimes(1);
-    const callArgs = generate.mock.calls[0][0];
+    expect(provider.calls).toHaveLength(1);
+    const callArgs = provider.calls[0];
 
     // messages should contain the system prompt (from agent.prompt) plus
     // exactly one user message with the delegated task - no unrelated
     // parent conversation history leaking in.
-    const userMessages = callArgs.messages.filter((m: any) => m.role === 'user');
+    const userMessages = callArgs.messages.filter((m) => m.role === 'user');
     expect(userMessages).toEqual([{ role: 'user', content: 'Do the thing' }]);
 
     expect(result).toEqual({
@@ -58,8 +50,7 @@ describe('createDelegateTool', () => {
   });
 
   it('works with an agent that has no system prompt', async () => {
-    const generate = vi.fn().mockResolvedValue(makeGenerateResult('ok'));
-    const provider = makeMockProvider(generate);
+    const provider = mockModel(['ok']);
 
     const childAgent = {
       name: 'Bare Agent',
@@ -69,21 +60,12 @@ describe('createDelegateTool', () => {
     const delegateTool = createDelegateTool({ agent: childAgent, provider });
     await delegateTool.tool.execute!({ task: 'task 1' }, {} as any);
 
-    // `callArgs.messages` is the same array reference AgentExecutor mutates
-    // in place, so after execute() resolves it also reflects the final
-    // assistant reply that gets pushed once the no-tool-calls exit path
-    // runs (see AgentExecutor.ts) - not just what was sent on the wire.
-    const callArgs = generate.mock.calls[0][0];
-    expect(callArgs.messages).toEqual([
-      { role: 'user', content: 'task 1' },
-      { role: 'assistant', content: 'ok' },
-    ]);
+    expect(provider.calls[0].messages).toEqual([{ role: 'user', content: 'task 1' }]);
   });
 
   describe('contextMode: full-history', () => {
     it('passes context history then the task message, in order', async () => {
-      const generate = vi.fn().mockResolvedValue(makeGenerateResult('done'));
-      const provider = makeMockProvider(generate);
+      const provider = mockModel(['done']);
 
       const agent = { name: 'Contextual Agent', agentType: AgentType.SmartAssistant };
       const delegateTool = createDelegateTool({ agent, provider, contextMode: 'full-history' });
@@ -95,19 +77,14 @@ describe('createDelegateTool', () => {
 
       await delegateTool.tool.execute!({ task: 'follow-up task', context }, {} as any);
 
-      // See the "no system prompt" test above re: this array reference
-      // reflecting the post-call assistant push too.
-      const callArgs = generate.mock.calls[0][0];
-      expect(callArgs.messages).toEqual([
+      expect(provider.calls[0].messages).toEqual([
         ...context,
         { role: 'user', content: 'follow-up task' },
-        { role: 'assistant', content: 'done' },
       ]);
     });
 
     it('falls back to task-only input when contextMode is the default "none"', async () => {
-      const generate = vi.fn().mockResolvedValue(makeGenerateResult('done'));
-      const provider = makeMockProvider(generate);
+      const provider = mockModel(['done']);
 
       const agent = { name: 'Contextual Agent', agentType: AgentType.SmartAssistant };
       const delegateTool = createDelegateTool({ agent, provider });
@@ -115,13 +92,7 @@ describe('createDelegateTool', () => {
       const context = [{ role: 'user' as const, content: 'earlier question' }];
       await delegateTool.tool.execute!({ task: 'follow-up task', context }, {} as any);
 
-      // See the "no system prompt" test above re: this array reference
-      // reflecting the post-call assistant push too.
-      const callArgs = generate.mock.calls[0][0];
-      expect(callArgs.messages).toEqual([
-        { role: 'user', content: 'follow-up task' },
-        { role: 'assistant', content: 'done' },
-      ]);
+      expect(provider.calls[0].messages).toEqual([{ role: 'user', content: 'follow-up task' }]);
     });
   });
 
@@ -282,29 +253,15 @@ describe('createDelegateTool', () => {
       const maxDepth = 2;
       const maxSteps = 5;
 
-      function makeDelegateToolCall(toolName: string, task: string): GenerateResult {
-        return {
-          text: '',
-          finishReason: 'tool_calls',
-          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
-          toolCalls: [
-            {
-              id: `call-${Math.random().toString(36).slice(2)}`,
-              type: 'function',
-              function: { name: toolName, arguments: JSON.stringify({ task }) },
-            },
-          ],
-        };
-      }
-
       // Always requests delegation to the other agent - never stops on its
       // own. Exactly the "neither agent ever stops" pathological case from
       // the bug report.
-      const generateA = vi.fn(async () => makeDelegateToolCall('delegate', 'go to B'));
-      const generateB = vi.fn(async () => makeDelegateToolCall('delegate', 'go to A'));
-
-      const providerA = makeMockProvider(generateA);
-      const providerB = makeMockProvider(generateB);
+      const delegating = (task: string) => ({
+        toolCalls: [{ name: 'delegate', args: { task } }],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      });
+      const providerA = mockModel([delegating('go to B')], { onExhausted: 'repeat-last' });
+      const providerB = mockModel([delegating('go to A')], { onExhausted: 'repeat-last' });
 
       const agentA = { name: 'Agent A', agentType: AgentType.SmartAssistant, tools: { delegate: { tool: 'delegate' } } };
       const agentB = { name: 'Agent B', agentType: AgentType.SmartAssistant, tools: { delegate: { tool: 'delegate' } } };
@@ -353,7 +310,7 @@ describe('createDelegateTool', () => {
       // fix, QA measured 155 calls for maxDepth=2/maxSteps=5 (and 780 for
       // maxDepth=3/maxSteps=5); after the fix this should be a handful of
       // calls (one per hop until the guard fires), well under 20.
-      const totalCalls = generateA.mock.calls.length + generateB.mock.calls.length;
+      const totalCalls = providerA.calls.length + providerB.calls.length;
       expect(totalCalls).toBeLessThan(20);
     });
   });

@@ -36,6 +36,15 @@ npm run docs:build   # writes docs/api/index.html
 | `OpenAIProvider`, `AnthropicProvider`, `OllamaProvider`, `OpenRouterProvider` | Provider classes. |
 | `createMockProvider()`, `MockLLMProvider` | Deterministic mock provider for tests and demos.   |
 
+## Testing
+
+Exported from `@loushy/build-ai-agent/testing` (see [Testing agents](testing.md)).
+
+| Export                | Description                                                                              |
+| --------------------- | ---------------------------------------------------------------------------------------- |
+| `mockModel(script)`   | Scripted, deterministic `LLMProvider` that records every request (`calls`, `lastCall`, `reset()`, `assertExhausted()`). |
+| `Mock*Repository`     | In-memory repository mocks (`MockAgentRepository`, `MockSessionRepository`, ...).        |
+
 ## Tools
 
 | Export                                       | Description                                   |

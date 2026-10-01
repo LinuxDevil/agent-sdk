@@ -44,9 +44,9 @@
       "require": "./dist/types/index.js"
     },
     "./testing": {
-      "types": "./dist/data/mocks.d.ts",
-      "import": "./dist/data/mocks.mjs",
-      "require": "./dist/data/mocks.js"
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.mjs",
+      "require": "./dist/testing/index.js"
     },
     "./otel": {
       "types": "./dist/execution/otel.d.ts",
