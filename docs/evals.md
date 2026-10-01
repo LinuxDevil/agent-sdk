@@ -167,7 +167,7 @@ repository) runs them.
 ## `loushy eval`
 
 ```text
-loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]]
+loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]]
 ```
 
 | Option | Meaning |
@@ -178,6 +178,7 @@ loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judg
 | `--json path` | write the summary and every structured result as JSON |
 | `--strict` | soft failures fail the run |
 | `--judge` | run `*.judge.eval.ts` files instead of the normal ones |
+| `--url base` | run every case against the deployed agent at `base` instead of in-process; `--token` (or `LOUSHY_EVAL_TOKEN`) is the bearer token. See [Run evals against a deployment](#run-evals-against-a-deployment) |
 | `--config path` | use your own vitest config instead of the generated one |
 | `--record` | run against the real provider and write one cassette per case ([below](#record-replay-and-drift)) |
 | `--replay` | run every case from its cassette, with no network; a missing cassette fails the case |
@@ -285,3 +286,52 @@ How it works: while a case runs under one of these modes, every
 `AgentExecutor.execute()` call (which `createAgent()` agents, streaming,
 sub-agents and approval resumes go through) gets its provider wrapped with
 `recordReplay()` for that case's cassette.
+
+## Run evals against a deployment
+
+The same eval file that gates CI in-process can smoke-test a deployed agent (the
+[node server or Cloudflare Worker](./deployment.md#http-api)). Point `loushy eval` at its base
+URL and every case runs against the deployment instead of the in-process agent:
+
+```bash
+npx loushy eval --url https://agent.example.com --token "$DEPLOY_TOKEN"   # or LOUSHY_EVAL_TOKEN
+```
+
+Each case gets its own remote session (`POST /chat { sessionId, input }`, one
+session per case, shared by its `t.send()` calls) and the SSE stream is read to
+`run.done`. The events become the same result an in-process run produces: tool
+calls, final reply, finish reason, steps and usage. So `t.calledTool()`,
+`t.completed()`, scorers, `t.judge()`, the summary and `--junit` work
+unchanged. The `agent` in the file is not used; give the deployment's own model
+and tools the behaviour you want to check.
+
+- A check that needs data the stream does not carry fails and says so (for
+  example `maxTokens` when `run.done` has no usage); `maxCostUsd` is reported as
+  skipped when there is no cost.
+- `--url` cannot be combined with `--record`, `--replay` or `--drift`
+  (`LOUSHY_CONFIG_CONFLICTING_OPTIONS`): cassettes record a provider in-process.
+  Score/threshold evals (`score:` form) also need an in-process provider and fail
+  with the same code; use trajectory evals.
+- An unreachable deployment, a non-2xx answer or a truncated stream fails that
+  case with `LOUSHY_REMOTE_REQUEST_FAILED`, and `401` with
+  `LOUSHY_REMOTE_UNAUTHORIZED`; the run goes on. The token is never printed or
+  written to a report.
+
+In code, pass a `target` (this overrides `agent`; `--url` overrides both):
+
+```ts
+import { defineEval, remoteTarget } from '@loushy/build-ai-agent';
+
+defineEval({
+  name: 'deployed refund flow',
+  target: remoteTarget({ url: 'https://agent.example.com', auth: process.env.LOUSHY_EVAL_TOKEN }),
+  async test(t) {
+    await t.send('Refund order 42');
+    t.completed();
+    t.calledTool('lookup_order');
+  },
+});
+```
+
+`remoteTarget({ url, auth?, fetch? })` takes an injectable `fetch`, which is how
+the SDK's own tests run the real routes in-process without a socket.
