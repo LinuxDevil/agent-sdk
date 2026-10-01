@@ -133,7 +133,22 @@ export class AgentSession {
 
   private async turn(input: string, signal?: AbortSignal): Promise<ExecutionResult> {
     await this.ensureLoaded();
-    const result = await this.run([...this.history, { role: 'user', content: input }], signal);
+    return this.record(await this.run([...this.history, { role: 'user', content: input }], signal));
+  }
+
+  /**
+   * Runs `next` as this session's next turn (after any queued `send()`) and
+   * records the transcript it returns. `createAgent()` uses it to continue a
+   * session whose turn paused for approval (LOU-D21).
+   */
+  protected continueTurn(next: () => Promise<ExecutionResult>): Promise<ExecutionResult> {
+    return this.enqueue(async () => {
+      await this.ensureLoaded();
+      return this.record(await next());
+    });
+  }
+
+  private async record(result: ExecutionResult): Promise<ExecutionResult> {
     if (result.finishReason === 'aborted') return result;
     const withoutSystem = result.messages[0]?.role === 'system' ? result.messages.slice(1) : result.messages;
     const next = providerValidPrefix(withoutSystem);

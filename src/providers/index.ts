@@ -10,6 +10,7 @@ export * from './OllamaProvider';
 export * from './OpenRouterProvider';
 export * from './AnthropicProvider';
 export * from './resolveProvider';
+export * from './resilience';
 export { MissingPeerDependencyError } from './optionalPeer';
 
 // Auto-register built-in providers. The factories only construct provider

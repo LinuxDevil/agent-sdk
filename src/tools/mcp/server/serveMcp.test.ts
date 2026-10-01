@@ -128,13 +128,13 @@ describe('serveMcp agent tool', () => {
     expect(textOf(result)).toMatch(/needs human approval.*cannot be approved over MCP/s);
   });
 
-  it('returns isError when an approval-gated tool is hit by an agent without an approval store', async () => {
+  it('returns isError when a createAgent() agent pauses on an approval-gated tool (LOU-D21)', async () => {
     const model = mockModel([{ toolCalls: [{ name: 'delete_all' }] }, 'done']);
     const agent = createAgent({ prompt: 'p', provider: model, tools: [deleteAll] });
     const client = await connect(spec(agent));
     const result = await client.callTool({ name: 'support-bot', arguments: { message: 'wipe' } });
     expect(result.isError).toBe(true);
-    expect(textOf(result)).toContain('requires approval');
+    expect(textOf(result)).toMatch(/needs human approval.*cannot be approved over MCP/s);
   });
 
   it('reports an aborted run as an error', async () => {

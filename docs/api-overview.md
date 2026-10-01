@@ -17,6 +17,8 @@ npm run docs:build   # writes docs/api/index.html
 | `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. |
 | `AgentType`                   | Agent type enum (e.g. `AgentType.SmartAssistant`).                          |
 | `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
+| `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
+| `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](./durable-execution.md)). |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
 
 ### Sub-agents
@@ -29,12 +31,36 @@ signal, hooks (`ctx.subagent`), tracing, approval store and `onEvent`
 (`event.subagent`). `maxSubagentDepth` (default 1) bounds nesting. See
 [Sub-agents](./sub-agents.md).
 
+### Approvals
+
+A `createAgent()` agent pauses on a `needsApproval` tool instead of failing:
+`send()` (and `session.send()`) resolves with `finishReason: 'awaiting-approval'`
+and an `approvalId`. `agent.approvals.list()` returns the pending calls and
+`agent.approvals.resolve({ id, approved, note? })` runs or rejects the call and
+resolves with the continued run's result (continuing the session it paused
+in). Pauses are kept in a per-agent `InMemoryApprovalStore` unless you pass
+`approvalStore` (e.g. `SqliteStore.approvals`); `approve: (call) => boolean`
+decides each call in code without pausing (`stream()` still ends at the
+pause). See [Human-in-the-loop approval gates](../README.md#human-in-the-loop-approval-gates).
+
 ### Skills
 
 Pass `skills: [defineSkill({ name, description, content }), ...(await loadSkills(dir))]` to
 `createAgent()` or `AgentExecutor.execute()`: only names and descriptions go in
 the system prompt and the model loads bodies through an auto-registered
 `load_skill` tool. See [Skills](./skills.md).
+
+### Durable execution
+
+`sessionId` + `checkpointStore` make a run crash-safe and a session
+multi-turn: the run is checkpointed after every model response, every tool
+result and every pause, and calling `execute()` again with the same
+`sessionId` resumes an unfinished run (without re-calling the model for a
+turn it already has), continues a finished conversation with the new
+input, or throws `SessionAwaitingApprovalError` while an approval is
+pending. Tools run at-least-once across a crash; `execute` receives the
+call's `toolCallId` to use as an idempotency key. See
+[Durable execution](./durable-execution.md) for the exact guarantees.
 
 ### Cancellation
 
@@ -75,9 +101,11 @@ How it behaves:
 - `onEvent` receives an `abort` event (its `abortReason` is the signal's
   `reason`), then `finish` with `finishReason: 'aborted'`.
 - With `sessionId` + `checkpointStore`, the state is checkpointed. Calling
-  `execute()` again with the same `sessionId` resumes where the run stopped.
-  Tool calls the run never reached get an `{ error }` result saying they were
-  cancelled, so the conversation stays valid for the provider.
+  `execute()` again with the same `sessionId` resumes where the run stopped;
+  new `input` is appended as the next user message (see
+  [Durable execution](./durable-execution.md)). Tool calls the run never
+  reached get an `{ error }` result saying they were cancelled, so the
+  conversation stays valid for the provider.
 - An already-aborted signal returns at once without calling the provider.
 
 ### Parallel tool calls
@@ -120,10 +148,10 @@ Guarantees, whatever the limit:
 - **Approvals.** The first call that needs approval stops the batch: the
   calls before it run (concurrently) and their results are recorded, then the
   run pauses on that call (`finishReason: 'awaiting-approval'`). Calls after
-  it never start in this run. **Known gap:** after `resumeAfterApproval()`
-  those later calls are still not run and get no result (tracked as LOU-U7).
-  Until that lands, use `toolConcurrency: 1` and keep approval tools out of
-  multi-call turns if this matters to you.
+  it never start in this run. `resumeAfterApproval()` records the paused
+  call's result (or rejection) and then runs those later calls the same way,
+  so every call of the turn gets exactly one result - see
+  [Durable execution](./durable-execution.md#approvals-in-the-middle-of-a-tool-batch).
 - **Failures are isolated.** A tool that throws gets its own error result;
   its siblings carry on. A propagating error (`PropagatingToolError`, such as
   the delegation depth guard, or a throwing hook) stops new calls from
@@ -133,9 +161,11 @@ Guarantees, whatever the limit:
   `finishReason: 'aborted'`. Calls that finished keep their results; the rest
   get a "cancelled" result. Running tools see the abort through their
   `abortSignal`.
-- **Checkpoints.** With `sessionId` + `checkpointStore`, a checkpoint is
-  written each time the in-order run of finished calls grows (with `1`, after
-  every call, as before). A resumed run never runs a recorded call again.
+- **Checkpoints.** With `sessionId` + `checkpointStore`, the model's turn is
+  checkpointed before any call starts, then again each time the in-order run
+  of finished calls grows (with `1`, after every call). A resumed run never
+  runs a recorded call again, and never asks the model again for a turn it
+  already checkpointed.
 
 ## Declarative specs
 
@@ -153,6 +183,7 @@ Guarantees, whatever the limit:
 | `LLMProviderRegistry`           | Registry of provider factories (`create`, `register`, `has`). |
 | `OpenAIProvider`, `AnthropicProvider`, `OllamaProvider`, `OpenRouterProvider` | Provider classes. |
 | `createMockProvider()`, `MockLLMProvider` | Deterministic mock provider for tests and demos.   |
+| `withRetry(provider, opts?)`, `withFallback(providers, opts?)` | Retry transient provider failures with backoff; fall back to the next provider. See [Configuration](configuration.md#provider-retries-and-fallback). |
 
 ## Testing
 

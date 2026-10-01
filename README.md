@@ -250,6 +250,7 @@ console.log(session.id, session.messages.length);
 - [Configuration](docs/configuration.md) - agent spec fields, provider env vars, `AgentExecutor.execute()` options, CLI flags
 - [Deployment](docs/deployment.md) - `loushy build` targets: Node server, Docker, Cloudflare Workers
 - [API Overview](docs/api-overview.md) - the main exports; `npm run docs:build` generates the full TypeDoc reference
+- [Durable execution](docs/durable-execution.md) - checkpoints, crash resume, multi-turn sessions, approvals mid-batch, at-least-once tools
 - [Streaming](docs/streaming.md) - `agent.stream()`: the typed event schema, terminal and SSE examples
 - [Workspace tools](docs/workspace-tools.md) - file system and shell tools for coding agents, and their security model
 - [Tracing and observability](docs/observability.md) - OpenTelemetry GenAI spans, attribute table, content opt-in
@@ -373,9 +374,43 @@ fallback model.
 
 ### Human-in-the-loop approval gates
 
-Flag a tool `needsApproval`; `AgentExecutor` pauses before calling it and
-persists an `ExecutionSnapshot` instead of invoking the tool. Resume later —
-after a real restart if you like — with `resumeAfterApproval()`:
+Flag a tool `needsApproval` and the run pauses before calling it. A
+`createAgent()` agent saves the pause in its own `InMemoryApprovalStore`
+(or the `approvalStore` you pass): `send()` resolves with
+`finishReason: 'awaiting-approval'` and an `approvalId`,
+`agent.approvals.list()` shows what is waiting, and
+`agent.approvals.resolve({ id, approved, note? })` runs (or rejects) the call
+and continues the run — in the same session, if it paused inside
+`agent.session()`. Pass `approve` to decide each call in code instead of
+pausing (`stream()` still ends at the pause):
+
+```typescript
+import { createAgent, defineTool } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+
+const sendEmail = defineTool({
+  name: 'send_email',
+  description: 'Send an email',
+  input: z.object({ to: z.string() }),
+  needsApproval: true,
+  execute: async ({ to }) => `sent to ${to}`,
+});
+const agent = createAgent({ provider, instructions: 'You send emails.', tools: [sendEmail] });
+
+const paused = await agent.send('Email the report to sam@example.com');
+if (paused.finishReason === 'awaiting-approval') {
+  console.log(await agent.approvals.list()); // [{ id, toolName: 'send_email', args: { to: '...' }, ... }]
+  const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true }); // or approved: false, note: 'why'
+  console.log(result.text);
+}
+
+// Or decide in code, with no pause: true runs the tool, false sends the model a rejection.
+const trusted = createAgent({ provider, tools: [sendEmail], approve: ({ args }) => String(args.to).endsWith('@example.com') });
+```
+
+With `AgentExecutor` directly, pass an `approvalStore`: it persists an
+`ExecutionSnapshot` instead of invoking the tool. Resume later — after a real
+restart if you like — with `resumeAfterApproval()`:
 
 ```typescript
 import { AgentExecutor, resumeAfterApproval, StorageServiceApprovalStore } from '@loushy/build-ai-agent';
@@ -398,20 +433,25 @@ const result = await resumeAfterApproval(
 
 ### Durable execution / checkpoints
 
-Pass a `sessionId` and a `checkpointStore`; `AgentExecutor` saves a
-checkpoint after every tool result and rehydrates from it on the next call
-with the same `sessionId` — so a crash mid-conversation resumes rather than
-restarts:
+Pass a `sessionId` and a `checkpointStore`; `AgentExecutor` checkpoints
+after every model response and every tool result, on any host. The next
+call with the same `sessionId` resumes an unfinished run (running only the
+tool calls that have no result yet, without asking the model again),
+continues a finished one as a multi-turn conversation, and refuses to
+bypass a pending approval:
 
 ```typescript
 import { AgentExecutor, LocalStorageCheckpointStore } from '@loushy/build-ai-agent';
 
 const checkpointStore = new LocalStorageCheckpointStore(storage);
 
-await AgentExecutor.execute({ agent, input, provider, sessionId: 'session-123', checkpointStore });
-// ...process restarts...
-await AgentExecutor.execute({ agent, input: 'continue', provider, sessionId: 'session-123', checkpointStore });
+await AgentExecutor.execute({ agent, input: 'Book a table for 2', provider, sessionId: 'session-123', checkpointStore });
+// ...process restarts, or the user simply replies...
+await AgentExecutor.execute({ agent, input: 'Make it 3 people', provider, sessionId: 'session-123', checkpointStore });
 ```
+
+See [Durable execution](docs/durable-execution.md) for the exact guarantees
+(including the at-least-once caveat for tools that were mid-flight).
 
 ### Sub-agents and delegation
 
@@ -665,7 +705,7 @@ npm run pipeline:demo:trigger   # POSTs a synthetic error to kick it off
 
 ### Core
 
-- **`createAgent()`** - zero-config `{ send, stream }` agent
+- **`createAgent()`** - zero-config `{ send, stream, session, approvals }` agent
 - **`AgentBuilder`** - fluent `AgentConfig` builder
 - **`AgentExecutor`** - static executor (`execute()`, approvals, checkpoints, tracing)
 - **`ToolRegistry`** - manage available tools
@@ -674,7 +714,7 @@ npm run pipeline:demo:trigger   # POSTs a synthetic error to kick it off
 
 ### Safety & ops
 
-- **`resumeAfterApproval()`**, **`StorageServiceApprovalStore`** - human-in-the-loop
+- **`resumeAfterApproval()`**, **`StorageServiceApprovalStore`**, **`InMemoryApprovalStore`** - human-in-the-loop
 - **`LocalStorageCheckpointStore`** - durable execution
 - **`createDelegateTool()`** - delegate to one child agent through a tool (see `subagents` for named sub-agents)
 - **`runGuardrails()`**, **`secretScanGuardrail`**, **`createDiffSizeGuardrail()`**, **`createCommandGuardrail()`** - guardrails

@@ -28,6 +28,12 @@ import type { RunUsage } from '../models/usage';
 export interface ToolRunContext {
   /** Called by the delegate tool with a finished child run's usage, so the parent run adds it to its totals. */
   onDelegatedUsage?: (usage: RunUsage) => void;
+  /**
+   * LOU-U9: the model's id for this tool call - unchanged when a call that
+   * was running when the process died is re-run on resume, so tools can use
+   * it as an idempotency key.
+   */
+  toolCallId?: string;
 }
 
 /**
@@ -71,7 +77,9 @@ export async function executeToolWithSandboxGuard(
   }
 
   // The 'ai' SDK types toolCallId/messages as required, but tools invoked
-  // here are not part of an 'ai' SDK generation, so only abortSignal is set.
+  // here are not part of an 'ai' SDK generation, so `messages` is not set
+  // (LOU-U15). `runContext` carries `toolCallId` (LOU-U9) and
+  // `onDelegatedUsage` (LOU-V5).
   const executeOptions = { abortSignal: signal, ...runContext } as ToolExecutionOptions;
   // LOU-Y1: lets a delegate/`task` tool's sub-agent inherit from this run.
   bindToolCallScope(executeOptions, scope);

@@ -43,8 +43,9 @@ const { text } = await lead.send('Write a short article about the history of the
 ```
 
 `AgentExecutor.execute()` takes the same `subagents` and `maxSubagentDepth`
-options. Use it when you need hooks, tracing or approvals on the lead run -
-sub-agents inherit those (see [Inheritance](#what-a-sub-agent-inherits)).
+options. Use it when you need hooks or tracing on the lead run - sub-agents
+inherit those (see [Inheritance](#what-a-sub-agent-inherits)). Approvals work
+from `createAgent()` too (see [Approvals](#approvals-inside-a-sub-agent)).
 
 ## How it works
 
@@ -206,6 +207,10 @@ continues the lead. If the sub-agent needs another approval, the run pauses
 again with a new `approvalId`. This works at any depth and for
 `createDelegateTool()` children (pass the registry that holds the delegate
 tool).
+
+With a `createAgent()` lead, `lead.send()` pauses the same way and
+`lead.approvals.resolve({ id, approved })` resumes it (the lead already knows
+its `subagents`); the lead's `approve` option decides its sub-agents' calls too.
 
 Guarantees and limits:
 

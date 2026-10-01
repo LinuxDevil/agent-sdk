@@ -511,7 +511,11 @@ describe('Execution - resumeAfterApproval', () => {
     // point (it doesn't know about the pending 'chargeCard' call at all).
     const preResumeCheckpoint = await checkpointStore.load(sessionId);
     expect(preResumeCheckpoint).not.toBeNull();
-    expect(preResumeCheckpoint!.stepIndex).toBe(1);
+    // LOU-U8/U9: the checkpoint now records the pause itself (the model's
+    // chargeCard turn was checkpointed before the tool gate ran).
+    expect(preResumeCheckpoint!.status).toBe('awaiting-approval');
+    expect(preResumeCheckpoint!.approvalId).toBe(paused.approvalId);
+    expect(preResumeCheckpoint!.stepIndex).toBe(2);
     expect(preResumeCheckpoint!.messages.some((m) => m.toolName === 'chargeCard')).toBe(false);
 
     // The reviewer's repro: explicitly pass sessionId+checkpointStore
@@ -556,10 +560,12 @@ describe('Execution - resumeAfterApproval', () => {
     // would yield 2 if the checkpoint were wrongly rehydrated instead).
     expect(resumed.steps).toBe(3);
 
-    // Defense in depth: the stale checkpoint must have been proactively
-    // cleared so a later, unrelated execute() call reusing this sessionId
-    // can't rehydrate this pre-pause state either.
-    expect(await checkpointStore.load(sessionId)).toBeNull();
+    // Defense in depth: the pre-pause checkpoint was cleared before the
+    // resumed run started; what is stored now is that run's own 'finished'
+    // checkpoint (LOU-U8), which includes the deferred chargeCard result.
+    const finalCheckpoint = await checkpointStore.load(sessionId);
+    expect(finalCheckpoint?.status).toBe('finished');
+    expect(finalCheckpoint?.messages).toEqual(resumed.messages);
   });
 
   it('LOU-K5: writes a NEW checkpoint for a tool-call step taken after a successful resume, when a checkpointStore is supplied', async () => {
@@ -684,10 +690,9 @@ describe('Execution - resumeAfterApproval', () => {
     expect(savedCheckpoint.messages.some((m: any) => m.toolName === 'chargeCard')).toBe(true);
     expect(savedCheckpoint.messages.some((m: any) => m.toolName === 'lookup')).toBe(true);
 
-    // The run reached a terminal state, so AgentExecutor's own
-    // "clear the checkpoint when finished" cleanup (unrelated to this fix)
-    // removes it afterwards - this is expected and not a regression.
-    expect(await checkpointStore.load(sessionId)).toBeNull();
+    // The run reached a terminal state, so its checkpoint is kept, marked
+    // 'finished', for session continuation (LOU-U8).
+    expect((await checkpointStore.load(sessionId))?.status).toBe('finished');
   });
 
   it('LOU-T1: carries businessState across a pause-for-approval -> approve -> resume cycle without the resumed call re-passing it', async () => {
@@ -819,8 +824,8 @@ describe('Execution - resumeAfterApproval', () => {
     expect(chargeExecute).toHaveBeenCalledTimes(1);
     expect(lookupExecute).toHaveBeenCalledTimes(2);
 
-    // The run reached a terminal state, so the checkpoint is deleted at the
-    // end - but every intermediate save the resumed run made along the way
+    // The run reached a terminal state, so the checkpoint is kept, marked
+    // 'finished' (LOU-U8) - and every save the resumed run made along the way
     // must have carried the businessState forward.
     expect(saveSpy).toHaveBeenCalled();
     for (const [, checkpoint] of saveSpy.mock.calls) {
@@ -829,7 +834,7 @@ describe('Execution - resumeAfterApproval', () => {
         stage: 'awaiting-approval',
       });
     }
-    expect(await checkpointStore.load(sessionId)).toBeNull();
+    expect((await checkpointStore.load(sessionId))?.status).toBe('finished');
   });
 
   it('LOU-T1: an explicit businessState passed to resumeAfterApproval() overrides the stale pre-pause checkpoint value', async () => {
@@ -1113,7 +1118,7 @@ describe('Execution - resumeAfterApproval', () => {
         { hooks }
       );
 
-      expect(execute).toHaveBeenCalledWith({ email: '[REDACTED]' }, {});
+      expect(execute).toHaveBeenCalledWith({ email: '[REDACTED]' }, { toolCallId: 'call-1' });
     });
 
     it('a postToolCall hook that throws on the resume path propagates as a rejected promise, not a swallowed {error} tool-result', async () => {

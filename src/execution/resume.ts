@@ -3,7 +3,7 @@
  * tool-call approval.
  */
 
-import { LLMProvider, Message } from '../providers';
+import { LLMProvider, Message, ToolCall } from '../providers';
 import { ToolRegistry } from '../tools';
 import { ToolDescriptor } from '../types';
 import {
@@ -18,6 +18,7 @@ import { NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
 import { HookRegistry } from './hooks';
 import { toolErrorMessage } from './propagatingToolError';
+import { splitPendingTurn } from './transcript';
 import { replaceToolResult, type ToolCallScope } from './subagentRuntime';
 import type { RunUsage } from '../models/usage';
 import { emptyRunUsage, mergeDelegatedUsage, restoreRunUsage } from './runUsage';
@@ -135,12 +136,17 @@ export async function resumeAfterApproval(
   }
   // LOU-Y1: a call whose sub-agent paused already has a placeholder result.
   replaceToolResult(messages, step.message);
+  closeUnlistedToolCalls(messages, snapshot.remainingToolCalls);
 
+  // LOU-U7: the turn's remaining calls still have no result here;
+  // AgentExecutor.execute() finds them in the transcript and runs them
+  // through its normal batch path before calling the model again.
   return continueResumedRun(snapshot, messages, {
     provider,
     toolRegistry,
     executeOptions,
     checkpointStore,
+    approvalStore,
     staleBusinessState,
     usage: ctx.usage,
   });
@@ -218,6 +224,32 @@ async function clearStaleCheckpoint(
   const staleCheckpoint: Checkpoint | null = await checkpointStore.load(sessionId);
   await checkpointStore.delete(sessionId);
   return staleCheckpoint?.businessState;
+}
+
+/**
+ * LOU-U7 backward compatibility: a snapshot saved before
+ * `remainingToolCalls` existed records no remaining calls, so - as before -
+ * no other call of the paused turn runs on resume. Each one still without a
+ * result gets an error result instead, so the transcript stays valid for
+ * the provider (every tool call answered exactly once).
+ */
+function closeUnlistedToolCalls(messages: Message[], remaining: ToolCall[] | undefined): void {
+  const keep = new Set((remaining ?? []).map((call) => call.id));
+  for (const call of splitPendingTurn(messages).pendingToolCalls) {
+    if (keep.has(call.id)) {
+      continue;
+    }
+    messages.push({
+      role: 'tool',
+      content: JSON.stringify({
+        error: 'Tool call was not run: the run paused for approval before reaching it and this approval was saved without its remaining calls',
+      }),
+      name: call.function.name,
+      toolCallId: call.id,
+      toolName: call.function.name,
+      isError: true,
+    });
+  }
 }
 
 /** The `tool` message carrying a resumed tool call's result (or rejection). */
@@ -334,7 +366,7 @@ async function executeApprovedTool(
         args,
         sandbox,
         executeOptions.signal,
-        undefined,
+        { toolCallId: pending.toolCallId },
         scope
       ),
     };
@@ -393,6 +425,7 @@ function continueResumedRun(
     toolRegistry: ToolRegistry;
     executeOptions: ResumeExecuteOptions;
     checkpointStore?: CheckpointStore;
+    approvalStore: ApprovalStore;
     staleBusinessState: unknown;
     usage: RunUsage;
   }
@@ -406,6 +439,9 @@ function continueResumedRun(
     toolRegistry: run.toolRegistry,
     sessionId: snapshot.sessionId,
     checkpointStore: run.checkpointStore,
+    // LOU-U7: a remaining call of the paused turn (or a later one) may need
+    // approval too - it pauses into the same store unless told otherwise.
+    approvalStore: executeOptions.approvalStore ?? run.approvalStore,
     // LOU-T1: carry the pre-pause checkpoint's businessState forward into
     // the resumed run's own checkpoint-writes by default, so a consumer's
     // domain state (order id, ticket id, workflow stage, ...) survives a
