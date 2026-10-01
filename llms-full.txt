@@ -4137,7 +4137,7 @@ write. Keys, with an optional `prefix` before each:
 | Key | Value |
 | --- | ----- |
 | `sessions/<id>` | The transcript as JSON (image and file bytes as `{ "$bytes": "<base64>" }`, like `FileSessionStore`). |
-| `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, no history). |
+| `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, with its history under `checkpoints/<id>#history`). |
 | `approvals/<id>` | A paused approval and the snapshot that resumes it (deleted when it is decided). |
 
 `ttl: { sessions?, checkpoints?, approvals? }` (seconds, KV accepts 60 or more)
@@ -4415,7 +4415,18 @@ every `save()` appends the record to a ring (the newest `historyLimit` saves,
 default 50; the oldest are dropped), which is what replaying or forking a run
 from an earlier step is built on.
 
-`memoryStore()`, `SqliteStore` and `LocalStorageCheckpointStore` keep one:
+Which stores keep one:
+
+| Store | History | Option |
+| --- | --- | --- |
+| `memoryStore()` | yes | `memoryStore({ historyLimit })` |
+| `SqliteStore` | yes (`checkpoint_history` table) | `new SqliteStore(path, { historyLimit })` |
+| `LocalStorageCheckpointStore` | yes | `new LocalStorageCheckpointStore(storage, { historyLimit })` |
+| `KVCheckpointStore` / `KVStore` (Cloudflare Workers KV) | yes (see below) | `new KVStore(kv, { historyLimit })` |
+| Agent Forge's `FileCheckpointStore` | yes | `new FileCheckpointStore(dir, { historyLimit })` |
+| a custom `CheckpointStore` | only if it implements `history()` | - |
+
+For example, with the in-memory store:
 
 ```ts
 import { getCheckpointHistory, memoryStore } from '@loushy/build-ai-agent';
@@ -4441,9 +4452,24 @@ await checkpoints.delete('chat-42', { keepHistory: true });
   for long transcripts. An unknown session gives `[]`.
 - `history` is optional on `CheckpointStore`: a custom store without it keeps
   working, and `getCheckpointHistory()` returns `undefined` for it instead of
-  throwing. `KVCheckpointStore` does not keep a history yet (TODO(LOU-D43.2):
-  one KV value per session would hit the 25 MiB value limit and races between
-  concurrent saves), and neither does Agent Forge's file store.
+  throwing.
+- `KVCheckpointStore` keeps one index key per session
+  (`<prefix><sessionId>#history`, the entry ids oldest first) and one key per
+  entry (`<prefix><sessionId>#history/<id>`), so no value grows with the
+  history; the latest checkpoint stays at `<prefix><sessionId>`, so a store
+  written before history existed still loads. A save writes the checkpoint,
+  then the entry, then the index, then deletes the entries it dropped: a crash
+  between writes leaves an unlisted entry at worst (it expires with the TTL),
+  never an unreadable store. KV has no transactions, so two concurrent saves of
+  one session can lose one index update (that entry is missing from
+  `history()`), and an entry can be missing for a while at another edge
+  location (eventual consistency; `history()` skips it). Route a session's
+  requests to one location when that matters. Each save costs one `get` and two
+  `put`s more; `historyLimit: 0` turns it off.
+- Agent Forge's file store writes the history as one file per session
+  (`.loushy/agents/<id>/checkpoint-history/<session>.json`, replaced
+  atomically); a file damaged by a crash reads as no history and is rebuilt by
+  the next save.
 - `SqliteStore` keeps the history in a new `checkpoint_history` table, added when
   an existing database file is opened; `prune()` also removes history entries
   older than its cutoff.

@@ -49,7 +49,7 @@ function checkpointStore(failSave?: number): KVCheckpointStore & { data: Map<str
     delete: async (key) => {
       data.delete(key);
     },
-  });
+  }, undefined, undefined, { historyLimit: 0 }); // these tests count puts as saves
   return Object.assign(store, { data });
 }
 

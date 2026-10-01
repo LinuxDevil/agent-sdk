@@ -39,8 +39,34 @@
  * location (e.g. via Durable Object routing) or use a strongly-consistent
  * store instead. See docs/deployment.md's `cloudflare-worker` section for
  * the consumer-facing version of this caveat.
+ *
+ * History (LOU-D43.2): next to the latest checkpoint (`<prefix><sessionId>`,
+ * unchanged, so a store written before history existed still loads) each
+ * session keeps an index key `<prefix><sessionId>#history` (an oldest-first
+ * JSON list of entry ids) and one key per entry,
+ * `<prefix><sessionId>#history/<id>`, holding the history entry. KV has no
+ * transactions, so `save()` writes the latest checkpoint, then the entry, then
+ * the index, then deletes the entries the index dropped. A crash between
+ * writes leaves at worst an orphan entry no index lists (it expires with the
+ * TTL), never an index row that breaks reading (a row whose entry is missing
+ * is skipped). Caveat: the index is a read-modify-write, so two concurrent
+ * saves of one session can lose one index update (that entry then never shows
+ * in `history()`); route a session's requests to one location when that
+ * matters. Each save costs one `get` and two `put`s more; `historyLimit: 0`
+ * turns the history off.
  */
-import { Checkpoint, CheckpointStore } from '../execution/checkpoint';
+import {
+  appendToRing,
+  newestFirst,
+  resolveHistoryLimit,
+  toHistoryEntry,
+  type Checkpoint,
+  type CheckpointDeleteOptions,
+  type CheckpointHistoryEntry,
+  type CheckpointHistoryOptions,
+  type CheckpointStore,
+} from '../execution/checkpoint';
+import { newId } from '../utils/id';
 
 /** The `put()` option the stores use: seconds until the key expires (KV accepts 60 or more). */
 export interface KVPutOptions {
@@ -71,19 +97,55 @@ export const DEFAULT_KV_KEY_PREFIX = 'checkpoints/';
  * every method here.
  */
 export class KVCheckpointStore implements CheckpointStore {
+  private readonly historyLimit: number;
+
   constructor(
     private readonly kv: KVBinding,
     private readonly keyPrefix: string = DEFAULT_KV_KEY_PREFIX,
     /** Seconds a saved checkpoint is kept (LOU-D51); omit to keep it until deleted. */
-    private readonly expirationTtl?: number
-  ) {}
+    private readonly expirationTtl?: number,
+    /** `historyLimit`: checkpoints kept per session in `history()` (default 50, `0` keeps none). */
+    options: { historyLimit?: number } = {}
+  ) {
+    this.historyLimit = resolveHistoryLimit(options.historyLimit);
+  }
 
   private key(sessionId: string): string {
     return `${this.keyPrefix}${sessionId}`;
   }
 
+  private indexKey(sessionId: string): string {
+    return `${this.key(sessionId)}#history`;
+  }
+
+  private entryKey(sessionId: string, id: string): string {
+    return `${this.indexKey(sessionId)}/${id}`;
+  }
+
+  private put(key: string, value: unknown): Promise<void> {
+    return this.kv.put(key, JSON.stringify(value), this.expirationTtl ? { expirationTtl: this.expirationTtl } : undefined);
+  }
+
+  /** The session's entry ids, oldest first; an unreadable index counts as empty. */
+  private async readIndex(sessionId: string): Promise<string[]> {
+    const raw = await this.kv.get(this.indexKey(sessionId));
+    if (raw === null) return [];
+    try {
+      return JSON.parse(raw) as string[];
+    } catch {
+      return [];
+    }
+  }
+
   async save(sessionId: string, checkpoint: Checkpoint): Promise<void> {
-    await this.kv.put(this.key(sessionId), JSON.stringify(checkpoint), this.expirationTtl ? { expirationTtl: this.expirationTtl } : undefined);
+    await this.put(this.key(sessionId), checkpoint);
+    if (this.historyLimit === 0) return;
+    const id = `${String(Date.now()).padStart(15, '0')}-${newId()}`;
+    const index = await this.readIndex(sessionId);
+    const kept = appendToRing(index, id, this.historyLimit);
+    await this.put(this.entryKey(sessionId, id), toHistoryEntry(checkpoint));
+    await this.put(this.indexKey(sessionId), kept);
+    await Promise.all(index.filter((old) => !kept.includes(old)).map((old) => this.kv.delete(this.entryKey(sessionId, old))));
   }
 
   async load(sessionId: string): Promise<Checkpoint | null> {
@@ -92,7 +154,23 @@ export class KVCheckpointStore implements CheckpointStore {
     return JSON.parse(raw) as Checkpoint;
   }
 
-  async delete(sessionId: string): Promise<void> {
+  async delete(sessionId: string, options: CheckpointDeleteOptions = {}): Promise<void> {
     await this.kv.delete(this.key(sessionId));
+    if (options.keepHistory) return;
+    const index = await this.readIndex(sessionId);
+    await Promise.all(index.map((id) => this.kv.delete(this.entryKey(sessionId, id))));
+    await this.kv.delete(this.indexKey(sessionId));
+  }
+
+  /** Newest first; an entry the index lists but KV does not return (not yet propagated, expired) is skipped. */
+  async history(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]> {
+    const ids = newestFirst(await this.readIndex(sessionId), options);
+    const entries = await Promise.all(
+      ids.map(async (id) => {
+        const raw = await this.kv.get(this.entryKey(sessionId, id));
+        return raw === null ? null : (JSON.parse(raw) as CheckpointHistoryEntry);
+      })
+    );
+    return entries.filter((entry): entry is CheckpointHistoryEntry => entry !== null);
   }
 }

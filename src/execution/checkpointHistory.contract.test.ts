@@ -1,7 +1,7 @@
 /**
  * LOU-D43: one contract suite for `CheckpointStore.history()`, run against
- * every store that implements it (the in-memory store, `SqliteStore` and
- * `LocalStorageCheckpointStore`), plus the `getCheckpointHistory()` helper on
+ * every store that implements it (the in-memory store, `SqliteStore`,
+ * `LocalStorageCheckpointStore` and `KVCheckpointStore`), plus the `getCheckpointHistory()` helper on
  * stores that do not.
  */
 import { describe, it, expect, afterEach } from 'vitest';
@@ -34,6 +34,14 @@ const implementations: Array<[string, CheckpointHistoryStoreFactory]> = [
     },
   ],
   [
+    'KVCheckpointStore',
+    (options) => {
+      const data = new Map<string, string>();
+      const kv = { get: async (key: string) => data.get(key) ?? null, put: async (key: string, value: string) => void data.set(key, value), delete: async (key: string) => void data.delete(key) };
+      return new KVCheckpointStore(kv, undefined, undefined, options);
+    },
+  ],
+  [
     'LocalStorageCheckpointStore',
     (options) => {
       const { fs, path } = createFakeFs();
@@ -63,16 +71,5 @@ describe('getCheckpointHistory()', () => {
       delete: async () => undefined,
     };
     expect(await getCheckpointHistory(plain, 's')).toBeUndefined();
-  });
-
-  it('returns undefined for KVCheckpointStore, which keeps no history yet (LOU-D43.2)', async () => {
-    const data = new Map<string, string>();
-    const kv = new KVCheckpointStore({
-      get: async (key) => data.get(key) ?? null,
-      put: async (key, value) => void data.set(key, value),
-      delete: async (key) => void data.delete(key),
-    });
-    await save(kv, 's', 1);
-    expect(await getCheckpointHistory(kv, 's')).toBeUndefined();
   });
 });

@@ -207,7 +207,7 @@ write. Keys, with an optional `prefix` before each:
 | Key | Value |
 | --- | ----- |
 | `sessions/<id>` | The transcript as JSON (image and file bytes as `{ "$bytes": "<base64>" }`, like `FileSessionStore`). |
-| `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, no history). |
+| `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, with its history under `checkpoints/<id>#history`). |
 | `approvals/<id>` | A paused approval and the snapshot that resumes it (deleted when it is decided). |
 
 `ttl: { sessions?, checkpoints?, approvals? }` (seconds, KV accepts 60 or more)

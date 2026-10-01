@@ -117,15 +117,15 @@ describe('KVCheckpointStore', () => {
     const get = vi.fn().mockResolvedValue(null);
     const put = vi.fn().mockResolvedValue(undefined);
     const del = vi.fn().mockResolvedValue(undefined);
-    const store = new KVCheckpointStore({ get, put, delete: del });
+    const store = new KVCheckpointStore({ get, put, delete: del }, undefined, undefined, { historyLimit: 0 });
 
     await store.load('s');
     await store.save('s', makeCheckpoint());
-    await store.delete('s');
+    await store.delete('s'); // delete also reads and removes the (empty) history index
 
-    expect(get).toHaveBeenCalledTimes(1);
+    expect(get).toHaveBeenCalledTimes(2);
     expect(put).toHaveBeenCalledTimes(1);
-    expect(del).toHaveBeenCalledTimes(1);
+    expect(del).toHaveBeenCalledTimes(2);
   });
 
   it("satisfies resumeAfterApproval()'s CheckpointStore contract: the resumed run keeps writing NEW checkpoints through this store for post-resume tool-call steps (LOU-K5, KV-backed)", async () => {
@@ -253,5 +253,55 @@ describe('KVCheckpointStore', () => {
     // store's put is asserted below from the mock KV's call history.
     expect(kv.putCalls.some(([key]) => key === `${DEFAULT_KV_KEY_PREFIX}${sessionId}`)).toBe(true);
     expect((await checkpointStore.load(sessionId))?.status).toBe('finished');
+  });
+});
+
+describe('KVCheckpointStore history layout (LOU-D43.2)', () => {
+  const sessionId = 'session-1';
+  const base = `${DEFAULT_KV_KEY_PREFIX}${sessionId}`;
+
+  it('keeps the latest checkpoint under the unchanged key and loads one written before history existed', async () => {
+    const kv = createMockKV();
+    const legacy = makeCheckpoint({ stepIndex: 4 });
+    kv.data.set(base, JSON.stringify(legacy));
+    const store = new KVCheckpointStore(kv);
+    expect(await store.load(sessionId)).toEqual(legacy);
+    expect(await store.history(sessionId)).toEqual([]);
+
+    await store.save(sessionId, makeCheckpoint({ stepIndex: 5 }));
+    expect(JSON.parse(kv.data.get(base)!).stepIndex).toBe(5);
+    expect((await store.history(sessionId)).map((entry) => entry.step)).toEqual([5]);
+  });
+
+  it('prunes dropped entries from KV and delete() removes every history key', async () => {
+    const kv = createMockKV();
+    const store = new KVCheckpointStore(kv, undefined, undefined, { historyLimit: 2 });
+    for (let step = 1; step <= 4; step++) await store.save(sessionId, makeCheckpoint({ stepIndex: step }));
+    const historyKeys = () => [...kv.data.keys()].filter((key) => key.includes('#history'));
+    expect(historyKeys()).toHaveLength(3); // the index and two entries
+    await store.delete(sessionId, { keepHistory: true });
+    expect(historyKeys()).toHaveLength(3);
+    await store.delete(sessionId);
+    expect([...kv.data.keys()]).toEqual([]);
+  });
+
+  it('survives a crash between writes: an orphan entry, a row without its entry or a corrupt index is harmless', async () => {
+    const kv = createMockKV();
+    const store = new KVCheckpointStore(kv);
+    await store.save(sessionId, makeCheckpoint({ stepIndex: 1 }));
+    await store.save(sessionId, makeCheckpoint({ stepIndex: 2 }));
+    const index = JSON.parse(kv.data.get(`${base}#history`)!) as string[];
+    kv.data.delete(`${base}#history/${index[1]}`); // not propagated yet
+    kv.data.set(`${base}#history/orphan`, '{}'); // entry saved, index write lost
+    expect((await store.history(sessionId)).map((entry) => entry.step)).toEqual([1]);
+    kv.data.set(`${base}#history`, 'not json');
+    expect(await store.history(sessionId)).toEqual([]);
+    expect((await store.load(sessionId))?.stepIndex).toBe(2);
+  });
+
+  it('writes the latest checkpoint first, then the entry, then the index', async () => {
+    const kv = createMockKV();
+    await new KVCheckpointStore(kv).save(sessionId, makeCheckpoint());
+    expect(kv.putCalls.map(([key]) => key.slice(base.length).replace(/\/.+/, '/<id>'))).toEqual(['', '#history/<id>', '#history']);
   });
 });
