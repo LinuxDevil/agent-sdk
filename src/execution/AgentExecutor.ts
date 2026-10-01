@@ -13,7 +13,7 @@ import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
 import { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGate';
 import { CheckpointStore } from './checkpoint';
 import type { CallUsage, RunUsage, StepUsage } from '../models/usage';
-import { collectDelegatedUsage } from './runUsage';
+import { mergeDelegatedUsage } from './runUsage';
 import { TraceExporter, withSpan } from './tracing';
 import {
   agentRunSpanInit,
@@ -25,6 +25,7 @@ import { HookRegistry } from './hooks';
 import { isAbortError } from './errors';
 import {
   PreparedToolCall,
+  ToolCallContext,
   ToolCallOutcome,
   parseToolArguments,
   runToolCall,
@@ -460,10 +461,7 @@ export class AgentExecutor {
 
     const state = await loadRunState(options);
 
-    // LOU-V5: a delegated child's usage is reported to this run's totals.
-    return collectDelegatedUsage(state.usage, () =>
-      this.runSteps(options, state, tools, agentSpanId)
-    );
+    return this.runSteps(options, state, tools, agentSpanId);
   }
 
   /** The generate -> tools loop of runAgentLoop(), run once `state` is loaded. */
@@ -773,7 +771,9 @@ export class AgentExecutor {
           sessionId,
           state.messages,
           signal,
-          onPrepared
+          onPrepared,
+          // LOU-V5: a delegated child's usage is added to this run's totals.
+          (child) => mergeDelegatedUsage(state.usage, child)
         );
         const parsedArgs =
           executed.args === undefined
@@ -938,7 +938,8 @@ export class AgentExecutor {
     sessionId?: string,
     messages: Message[] = [],
     signal?: AbortSignal,
-    onPrepared?: (prepared: PreparedToolCall) => void
+    onPrepared?: (prepared: PreparedToolCall) => void,
+    onDelegatedUsage?: ToolCallContext['onDelegatedUsage']
   ): Promise<ToolCallOutcome> {
     return runToolCall(
       toolCall,
@@ -952,6 +953,7 @@ export class AgentExecutor {
         sessionId,
         messages,
         signal,
+        onDelegatedUsage,
       },
       onPrepared
     );

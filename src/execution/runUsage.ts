@@ -4,7 +4,6 @@
  * rehydration from a checkpoint.
  */
 
-import { AsyncLocalStorage } from 'node:async_hooks';
 import type { GenerateResult, Message } from '../providers';
 import { estimateCost, estimateTokens } from '../models';
 import { normalizeUsage } from '../models/usage';
@@ -118,7 +117,7 @@ function delegatedTotals(before: DelegatedUsage | undefined, child: RunUsage): D
 }
 
 /** Rolls a finished child agent run's total into the parent's (mutates the parent). */
-function mergeDelegatedUsage(run: RunUsage, child: RunUsage): void {
+export function mergeDelegatedUsage(run: RunUsage, child: RunUsage): void {
   run.inputTokens += child.inputTokens;
   run.outputTokens += child.outputTokens;
   run.totalTokens += child.totalTokens;
@@ -152,20 +151,4 @@ export function restoreRunUsage(saved: CheckpointUsage): RunUsage {
   }
   refreshDerived(run);
   return run;
-}
-
-/**
- * Where a delegated child's finished usage is reported so the parent run can
- * add it to its totals. Set by AgentExecutor around each run.
- */
-const delegatedUsageSink = new AsyncLocalStorage<(usage: RunUsage) => void>();
-
-/** Runs `fn` with child usage reported to `run`'s totals. */
-export function collectDelegatedUsage<T>(run: RunUsage, fn: () => Promise<T>): Promise<T> {
-  return delegatedUsageSink.run((child) => mergeDelegatedUsage(run, child), fn);
-}
-
-/** Called by the delegate tool when a child run finishes. No-op outside an executor run. */
-export function reportDelegatedUsage(child: RunUsage): void {
-  delegatedUsageSink.getStore()?.(child);
 }
