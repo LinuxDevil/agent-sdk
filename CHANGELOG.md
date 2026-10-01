@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-09-28
 
+### Added
+- Publish readiness (LOU-D49): `npm run pack-smoke` (scripts/pack-smoke.ts, a CI job) packs the SDK and `create-loushy-agent`, checks the tarball (no `.env`, tests or secret-looking strings; entry count and size caps), runs `npm publish --dry-run` for both (nothing is published), installs the tarballs plus peers from the registry into a fresh project and verifies ESM and CJS loads of every `exports` entry, a mock-model agent turn, the `loushy` bin (`--help`, `doctor`) and `tsc` with `moduleResolution` bundler and node16.
+
+### Fixed
+- `loushy --help`, `-h` and `help` print the usage and exit 0 (they were "unknown command" with exit 1) (LOU-D49).
+- Install truth (LOU-U20): the README, installation, CLI, quick start and Agent Forge docs, `loushy init --help` and the message after a failed `loushy init` install now say the package is not on npm yet and point to one section, "Installing before the first release" (docs/installation.md); `npm install github:LinuxDevil/agent-sdk` is documented as not working. Stale "planned / not yet" statements about agent-directory channels, `toolCallId` in sandboxed tools and the Agent Forge Settings tab are corrected.
+
 ### Changed
 - Eval cassettes hook in at the model boundary (LOU-D46.2): `loushy eval --record / --replay / --drift` no longer reassigns `AgentExecutor.execute` at runtime. The run loop routes every model call through a small provider-interception seam (`setProviderInterceptor()` / `interceptProvider()` in `src/providers/interception.ts`; a no-op unless an interceptor is installed), and the eval runner installs one that answers with the per-case `recordReplay()` wrapper. Cassette files, keying, `--drift` output and JUnit reports are unchanged, so existing cassettes keep replaying. Streamed runs and sub-agents inside an eval case are covered by tests.
 

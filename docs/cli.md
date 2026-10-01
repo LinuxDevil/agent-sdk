@@ -3,7 +3,9 @@
 Installing the package also installs the `loushy` command. It scaffolds
 projects, checks your setup, runs an agent locally, serves it over MCP, runs
 evals, builds a deployable artifact and launches the Agent Forge dashboard.
-Run it with `npx loushy <command>` inside a project that has the SDK installed.
+Run it with `npx loushy <command>` inside a project that has the SDK installed
+(the package is not on npm yet: see
+[Installing before the first release](./installation.md#installing-before-the-first-release)).
 
 | Command | What it does | Details |
 | ------- | ------------ | ------- |
@@ -45,9 +47,10 @@ never takes the next flag as its value) or an extra argument fails with
 the `=` form: `--model=-x`.
 
 `npm create loushy-agent my-agent` runs `loushy init` with the same arguments.
-While the package is not on npm, scaffold from a checkout of this repository
-with `node bin/loushy.js init my-agent --sdk-path .` (see
-[Installing from a local build](./installation.md#installing-from-a-local-build)).
+**Not on npm yet:** `npm create loushy-agent` and `npx loushy ...` fail until
+the package is published; today, scaffold from a built checkout of this
+repository with `node bin/loushy.js init my-agent --sdk-path .` (see
+[Installing before the first release](./installation.md#installing-before-the-first-release)).
 
 ## `loushy dev`
 

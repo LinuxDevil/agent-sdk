@@ -91,6 +91,12 @@ describe('bin/loushy.js build (subprocess smoke test)', () => {
     }
   }
 
+  it.each(['--help', '-h', 'help'])('`loushy %s` prints the usage and exits 0', (flag) => {
+    const result = runBin([flag]);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('loushy init');
+  });
+
   it('dispatches `loushy build --target=stub` and runs scaffold, build, describe in order', () => {
     const result = runBin(['build', '--target=stub', '--agent=agent.yaml']);
     expect(result.code).toBe(0);
