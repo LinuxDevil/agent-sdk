@@ -49,7 +49,7 @@ describe('DebugSession', () => {
     await hookPromise;
 
     // Step is one-shot: the next hook call does NOT pause again.
-    const secondPromise = session.hooks().onLLMResponse?.({} as any, 1);
+    const secondPromise = session.hooks().onLLMResponse?.({} as any, 1, {} as any);
     await secondPromise;
     expect(session.snapshot().paused).toBe(false);
   });
