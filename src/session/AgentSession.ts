@@ -51,11 +51,14 @@ export interface SessionOptions {
    * start (LOU-V9). `'wait'` (default): it runs as the next turn once that one
    * ends. `'queue'`: its input joins that turn like `run.enqueue()` (before
    * that turn's next model call) and it resolves with that turn's result -
-   * its own `signal` does not apply. A joining `stream()` yields only the
-   * turn's `run.done`. If the turn ends before taking the input, it runs as
-   * the next turn after all; if the turn fails, it rejects with its error.
+   * its own `signal` does not apply. `'steer'` (LOU-V10): it joins like
+   * `'queue'`, but through `run.steer()`, so a model call that has not
+   * emitted anything yet is aborted and made again with the input. A joining
+   * `stream()` yields only the turn's `run.done`. If the turn ends before
+   * taking the input, it runs as the next turn after all; if the turn fails,
+   * it rejects with its error.
    */
-  turnPolicy?: 'queue' | 'wait';
+  turnPolicy?: 'queue' | 'steer' | 'wait';
 }
 
 /** A transcript store plus, optionally, a checkpoint store (e.g. a `SqliteStore`). */
@@ -337,8 +340,9 @@ export class AgentSession {
 
   /**
    * Runs `task` as the next turn, whose run takes queued input from `inputs`
-   * (LOU-V9). Under `turnPolicy: 'queue'`, while a turn is running or about to
-   * run, `input` joins that turn instead and this resolves with its result
+   * (LOU-V9). Under `turnPolicy: 'queue'` (or `'steer'`, LOU-V10), while a
+   * turn is running or about to run, `input` joins that turn instead (pushed
+   * or steered) and this resolves with its result
    * (handed to `joined` first); if that turn ends before taking the input,
    * `task` runs as the next turn after all, unless the turn failed.
    */
@@ -348,9 +352,10 @@ export class AgentSession {
     inputs = new InputQueue(),
     joined?: (result: Promise<ExecutionResult>) => void
   ): Promise<ExecutionResult> {
-    const running = this.turnPolicy === 'queue' ? this.running : undefined;
+    const running = this.turnPolicy === 'queue' || this.turnPolicy === 'steer' ? this.running : undefined;
     if (running) {
-      return Promise.resolve(running.inputs.push(input).applied).then(async (applied) => {
+      const taken = this.turnPolicy === 'steer' ? running.inputs.steer(input).joined : running.inputs.push(input).applied;
+      return Promise.resolve(taken).then(async (applied) => {
         if (applied) {
           joined?.(running.result);
           return running.result;

@@ -68,7 +68,7 @@ import {
   toExecutionResult,
 } from './agentRunState';
 import { AgentRun, RUN_EVENTS, StreamingExecuteOptions, runEventsOf, startAgentRun } from './agentRun';
-import type { InputQueue } from './inputQueue';
+import { withSteerSignal, type InputQueue } from './inputQueue';
 import { OutputError, outputInstruction, outputRepairMessage, validateOutput } from './structuredOutput';
 import type { PermissionOptions } from './permissions';
 import {
@@ -776,8 +776,7 @@ export class AgentExecutor {
       const outcome = await this.runStepOrAbort(options, state, () =>
         this.runStep(options, state, tools, agentSpanId)
       );
-      // LOU-V9: input queued during the final reply gets its own step.
-      if (outcome === 'stop' && options.inputQueue?.messages.length && state.steps < maxSteps) {
+      if (await this.stepsOnForInput(options, state, outcome, maxSteps)) {
         continue;
       }
       if (outcome === 'stop') {
@@ -788,7 +787,7 @@ export class AgentExecutor {
         }
         return this.finishRun(options, state, output);
       }
-      if (outcome !== 'continue') {
+      if (typeof outcome !== 'string') {
         return outcome;
       }
     }
@@ -801,6 +800,23 @@ export class AgentExecutor {
     // spent while the model still wanted to go on.
     state.finishReason = 'max-steps';
     return this.finishRun(options, state);
+  }
+
+  /**
+   * Whether the loop takes another step for waiting input: after a step a
+   * steer aborted (LOU-V10), or after a final reply with input queued during
+   * it (LOU-V9). It does once the checkpoint holding that input is written.
+   */
+  private static async stepsOnForInput(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    outcome: string | ExecutionResult,
+    maxSteps: number
+  ): Promise<boolean> {
+    const queued = outcome === 'stop' && Boolean(options.inputQueue?.messages.length) && state.steps < maxSteps;
+    if (outcome !== 'steered' && !queued) return false;
+    await state.saving;
+    return true;
   }
 
   /** LOU-V9: appends the queued input to the transcript, for the model call of step `state.steps`. */
@@ -856,7 +872,8 @@ export class AgentExecutor {
     runEvents?.stepStart(state.steps);
     try {
       const outcome = await step();
-      runEvents?.stepDone(state.steps, typeof outcome === 'string' ? undefined : outcome.finishReason);
+      const finishReason = typeof outcome === 'string' ? undefined : outcome.finishReason;
+      runEvents?.stepDone(state.steps, outcome === 'steered' ? 'steered' : finishReason);
       return outcome;
     } catch (error) {
       if (options.signal?.aborted) {
@@ -884,10 +901,10 @@ export class AgentExecutor {
     state: AgentRunState,
     tools: ToolDefinition[],
     agentSpanId: string
-  ): Promise<'continue' | 'stop' | ExecutionResult> {
+  ): Promise<'continue' | 'stop' | 'steered' | ExecutionResult> {
     const generatedStep = await this.generateOrSurfaceError(options, state, tools, agentSpanId);
-    if (!generatedStep) {
-      return 'continue';
+    if (!generatedStep || generatedStep === 'steered') {
+      return generatedStep ?? 'continue';
     }
     const { generated, measured } = generatedStep;
 
@@ -970,19 +987,27 @@ export class AgentExecutor {
   /**
    * Calls provider.generate() for the next turn. Resolves to `undefined`
    * when the failure was instead folded into the conversation for the
-   * model to react to (LOU-T4 `surfaceRetryableProviderErrors`).
+   * model to react to (LOU-T4 `surfaceRetryableProviderErrors`), or
+   * `'steered'` when `run.steer()` aborted the call before it emitted
+   * anything (LOU-V10): its partial output is dropped.
    */
   private static async generateOrSurfaceError(
     options: ExecuteOptions,
     state: AgentRunState,
     tools: ToolDefinition[],
     agentSpanId: string
-  ): Promise<GeneratedStep | undefined> {
-    const generateRequest = await prepareGenerateRequest(options, state.messages, tools);
-
+  ): Promise<GeneratedStep | 'steered' | undefined> {
+    const callSignal = options.inputQueue?.startCall();
     try {
-      return await generateInSpan(options, generateRequest, state.messages, agentSpanId);
+      const generateRequest = await prepareGenerateRequest(options, state.messages, tools, callSignal);
+      callSignal?.throwIfAborted();
+      const generated = await generateInSpan(options, generateRequest, state.messages, agentSpanId, callSignal);
+      callSignal?.throwIfAborted();
+      return generated;
     } catch (generateError) {
+      if (callSignal?.aborted && !options.signal?.aborted) {
+        return 'steered';
+      }
       // A cancellation is not a provider failure - never compact it or fold
       // it into the conversation for a retry. With `signal` (LOU-V1) the
       // loop turns it into an 'aborted' result; an AbortError thrown without
@@ -1017,6 +1042,8 @@ export class AgentExecutor {
 
       state.lastSurfacedProviderError = compactedError;
       return undefined;
+    } finally {
+      options.inputQueue?.endPhase();
     }
   }
 
@@ -1102,8 +1129,10 @@ export class AgentExecutor {
         },
         persist: () => saveStepCheckpoint(options, state),
       },
-      options.signal
+      // LOU-V10: a steer stops the batch from starting more calls; running ones finish.
+      withSteerSignal(options.signal, options.inputQueue?.startBatch())
     );
+    options.inputQueue?.endPhase();
 
     return this.settleToolBatch(options, state, batch, suspensions);
   }
@@ -1138,6 +1167,8 @@ export class AgentExecutor {
       const remaining = batch.unrecorded.slice(pausedAt + 1).map((call) => call.toolCall);
       return this.pauseForApproval(options, state, toolCall, outcome, remaining);
     }
+    // LOU-V10: what is left of a batch a steer stopped was not run.
+    pushAbortedBatchResults(state, batch.unrecorded, 'the user steered the run to new input');
     if (suspension) {
       return this.savePause(options, state, suspensionRecord(options, state, suspension));
     }

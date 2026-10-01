@@ -2644,6 +2644,7 @@ validated with zod by `loadSpec()` (`src/spec/schema.ts`). It is the format
 | `provider.type`  | `string`   | yes      | `openai`, `anthropic`, `ollama`, `openrouter` or `mock`. |
 | `provider.model` | `string`   | yes      | Model id every call uses (the provider's configured model; an agent's own `settings.model` would override it). |
 | `tools`          | `string[]` | no       | Built-in tool names (see below).                       |
+| `policy`         | `AgentSpecPolicy` | no | Approvals, guardrails, limits and more, enforced when the spec becomes an agent (see below). |
 | `mcpServers`     | `Record<string, McpServerSpec>` | no | MCP servers the agent uses, keyed by name (see below). |
 
 A missing or invalid field fails with an error naming the exact field, e.g.
@@ -2671,6 +2672,67 @@ tools:
 `github` and `jira` need credentials a spec has no field for; referencing
 them throws an error telling you to build the agent with `createAgent()` and
 pass a configured tool instead.
+
+### Policy (`policy`)
+
+`specToAgent()` compiles `policy` into `createAgent()` options, so a spec
+enforces what it declares. The known fields are validated by `loadSpec()`;
+other keys are kept for the other harness generators (Claude Code, Codex, Pi),
+which read the raw policy.
+
+| Field              | Compiles to                                   | Description |
+| ------------------ | --------------------------------------------- | ----------- |
+| `requiresApproval` | `permissions` ([`ask`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md))       | `true`: every tool call pauses for approval. A list: only those tools pause. |
+| `guardrails`       | `guardrails` (input and output)               | Built-in guardrail names, or `{ name, ...options }` (table below). |
+| `limits`           | `limits` ([budgets](#budgets))                | `maxTokens`, `maxInputTokens`, `maxOutputTokens`, `maxCostUsd`, `maxDurationMs`, `maxSteps`, `onExceeded`. |
+| `askQuestion`      | `askQuestion`                                 | `true` adds the built-in `ask_question` tool. |
+| `compaction`       | `compaction`                                  | `true`, or `{ thresholdPercent: 0.8 }` (a fraction of the context window, above 0 up to 1). |
+
+```yaml
+name: support-bot
+prompt: You are a friendly support agent.
+provider:
+  type: openai
+  model: gpt-4o-mini
+tools:
+  - http
+policy:
+  requiresApproval: [http]        # or `true` for every tool
+  guardrails:
+    - secret-scan
+    - name: max-length
+      maxChars: 4000
+      on: input
+    - name: deny-topics
+      topics: [medical advice, legal advice]
+  limits:
+    maxTokens: 50000
+    maxCostUsd: 0.25
+    maxSteps: 10
+  askQuestion: true
+  compaction:
+    thresholdPercent: 0.8
+```
+
+Guardrail names (see [Input and output guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md#input-and-output-guardrails)):
+
+| Name           | Options | Does |
+| -------------- | ------- | ---- |
+| `max-length`   | `maxChars` (default 10000) | Blocks texts longer than `maxChars`. |
+| `secret-scan`  | `action` (`block` or `rewrite`), `replacement` | Blocks (or redacts) private keys, OpenAI-style and AWS keys. |
+| `regex`        | `pattern` (required), `flags`, `action`, `replacement` | Blocks (or rewrites) texts matching `pattern`. |
+| `deny-topics`  | `topics` (required, a list) | Blocks texts that mention a topic (case-insensitive). |
+| `llm-judge`    | `model` (required, `"provider/model"`), `instruction` | Asks a model whether the text is acceptable; one call per check. |
+
+Every guardrail also takes `on`: `input`, `output` or `tools` (a tool call's
+arguments), or a list of them. The default is `[input, output]`. An unknown name
+or option fails validation, naming the guardrails available and a "did you
+mean" suggestion:
+`'policy.guardrails.0': unknown guardrail 'deny-topic' (did you mean 'deny-topics'?)`.
+
+`requiresApproval` pauses the run (`finishReason: 'awaiting-approval'`) until
+`agent.approvals.resolve()`; before this, a spec that set it ran its tools
+without asking. `loushy doctor agent.yaml` prints one line per policy block.
 
 ### MCP servers (`mcpServers`)
 
@@ -4517,7 +4579,7 @@ or `{ ok: false, reason, action?, replacement? }`:
 With `onTripped: 'throw'` a block rejects with `GuardrailError`
 (`LOUSHY_GUARDRAIL_TRIPPED`, with the same `guardrail`) instead. A `check`
 that throws fails the run. Sub-agents run their parent's guardrails, then their
-own. (Wiring `spec.policy.guardrails` in agent spec files is LOU-X5.)
+own. Agent spec files name built-in guardrails in `policy.guardrails` (see [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#policy-policy)).
 
 ```ts
 import {
@@ -5183,11 +5245,12 @@ on each major today:
 | `ai` | `generate()` | `stream()` | Notes |
 | ---- | ------------ | ---------- | ----- |
 | v4 (`^4.3.19`, the peer range) | Yes | Yes | Everything in these docs. |
-| v6, v7 | Yes, through a compatibility layer (LOU-D26) | Not yet (LOU-D27): it throws an error naming LOU-D27 | Peer ranges still name v4 (LOU-D28). |
+| v6, v7 | Yes, through a compatibility layer (LOU-D26) | Yes, through the same layer (LOU-D27) | Peer ranges still name v4 (LOU-D28). |
 
-`generate()` picks the call shape from the installed `ai` module: when it
-exports `stepCountIs` (v5 and later), the request is sent in the v6/v7 shape
-and the result is read back into the same `GenerateResult`:
+`generate()` and `stream()` pick the call shape from the installed `ai`
+module: when it exports `stepCountIs` (v5 and later), the request is sent in
+the v6/v7 shape and the result is read back into the same `GenerateResult`
+or `StreamResult`:
 
 - messages become `ModelMessage`s: a tool call's arguments are its `input`, a
   tool result is an `output` (`json` or `text`, `error-json` or `error-text`
@@ -5200,6 +5263,15 @@ and the result is read back into the same `GenerateResult`:
 - usage comes from `inputTokens` / `outputTokens` / `totalTokens`, with
   `cachedInputTokens` from `inputTokenDetails.cacheReadTokens` and
   `reasoningTokens` from `outputTokenDetails.reasoningTokens`.
+- `stream()` reads the SDK's `fullStream` on either major into the same
+  chunks: `text-delta` (v6/v7 `text`, v4 `textDelta`), `tool-call` (the
+  whole call v6/v7 sends after `tool-input-start`/`-delta`/`-end`, or one
+  assembled from that input when the model sends none), and `finish` with
+  the SDK's finish reason and the usage above (v6/v7 `totalUsage`). An
+  `error` part rejects the stream with its error, on v4 too (v4 used to end
+  such a stream with finish reason `error`), and an `abort` part with the
+  signal's reason. Reasoning deltas are not reported yet (no reasoning chunk
+  type until LOU-V13).
 
 On v6/v7 the model must come from a provider package for that major (for
 example `@ai-sdk/openai` v3 or `@ai-sdk/anthropic` v3); the `0.0.x`
@@ -5465,6 +5537,12 @@ while a turn is running or waiting to start:
   (it finished, paused or was aborted), the call runs as the next turn after
   all. If the turn fails, the call rejects with the same error; in a durable
   session the input stays in the turn's checkpoint and `resume()` applies it.
+- `'steer'`: like `'queue'`, but the input joins through
+  [`run.steer()`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#steering): if the turn's model call has not
+  emitted anything yet, it is aborted and made again with the new message, and
+  tool calls of the turn that have not started are not run. Otherwise it waits
+  for the next safe point, as with `'queue'`. The call resolves with the
+  turn's result, and the same fallbacks apply.
 
 ```ts
 import { createAgent } from '@loushy/build-ai-agent';
@@ -5846,6 +5924,7 @@ interface AgentRun extends AsyncIterable<AgentEvent> {
   readonly runId: string;                   // the runId on every event
   readonly result: Promise<ExecutionResult>; // what send() / execute() would return
   enqueue(input: AgentInput): EnqueueResult; // add user input to the running run
+  steer(input: AgentInput): SteerResult;     // redirect the running run to new input
 }
 ```
 
@@ -5865,6 +5944,8 @@ interface AgentRun extends AsyncIterable<AgentEvent> {
   its events.
 - **`enqueue(input)`** adds user input to the run while it runs: it joins the
   transcript before the next model call. See [Queued input](#queued-input).
+- **`steer(input)`** redirects the run: a model call that has not produced
+  anything yet is aborted and made again with the input. See [Steering](#steering).
 - **One consumer.** An `AgentRun` can be iterated once; a second `for await`
   throws. To fan out, collect the events yourself.
 - Invalid options (no `provider`, `agent` or `input`, a bad `toolConcurrency`)
@@ -5928,7 +6009,7 @@ The event types and their extra fields:
 | `tool.error`         | `toolCallId`, `toolName`, `error: { name: string, message: string }`, `durationMs: number` | A tool call failed: it threw, its arguments did not match its schema (`name: 'ToolArgumentsValidationError'`), or the tool does not exist. The model gets the error as the call's result and the run continues. |
 | `approval.requested` | `approvalId: string`, `toolCallId`, `toolName`, `args: Record<string, unknown>`, `kind?: 'question'`, `question?: { text, options?, allowFreeText? }` | A tool call needs a human decision. The run then stops; resume it with `agent.approvals.resolve()` or `resumeAfterApproval()` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)). An `ask_question` call carries `kind: 'question'` and its `question`; answer it with `agent.approvals.answer()` (see [Asking the user a question](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#asking-the-user-a-question)). |
 | `permission.decision` | `toolCallId`, `toolName`, `decision: 'allow' \| 'deny' \| 'ask' \| 'default'`, `rule?: { index: number, reason?: string }`, `args?: Record<string, unknown>`, `at: string` | How a tool call's [permission rules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies) decided it: after its `tool.start`, before the call's own `tool.done` / `tool.error` / `approval.requested`. Only when the run sets `permissions` or `onPermissionDecision`; `args` is left out under `redactContent`. |
-| `step.done`          | `step: number`, `finishReason: string`, `usage?: { promptTokens, completionTokens, totalTokens }` | A step ends. `finishReason` is the model's (`'stop'`, `'tool_calls'`, `'length'`, ...), or `'awaiting-approval'`, `'aborted'` or `'error'` when the step ended that way (a run that runs out of `maxSteps` still wanting to continue ends with `run.done` `'max-steps'`). `usage` is this step's model call, absent when the call produced no response. |
+| `step.done`          | `step: number`, `finishReason: string`, `usage?: { promptTokens, completionTokens, totalTokens }` | A step ends. `finishReason` is the model's (`'stop'`, `'tool_calls'`, `'length'`, ...), or `'awaiting-approval'`, `'aborted'`, `'steered'` (its model call was aborted by `run.steer()`, see [Steering](#steering)) or `'error'` when the step ended that way (a run that runs out of `maxSteps` still wanting to continue ends with `run.done` `'max-steps'`). `usage` is this step's model call, absent when the call produced no response. |
 | `error`              | `error: { name: string, message: string }` | An error. If it ends the run, `run.done` with `finishReason: 'error'` follows. A provider error retried under `surfaceRetryableProviderErrors` is followed by further steps instead. |
 | `provider.retry`     | `attempt: number`, `maxRetries: number`, `delayMs: number`, `error: { message: string, category?: string }`, `provider: string` | A model call failed and is retried after `delayMs` (`createAgent({ retry })` or any `withRetry()` provider). `attempt` is the attempt that failed (1 = first); `category` is `'rate-limit'`, `'timeout'`, ... and absent when unknown (a 5xx, for example). |
 | `provider.fallback`  | `from: string`, `to: string`, `error: { message: string }` | A model call still failed after its retries and the next provider takes over (`createAgent({ fallbackModels })` or any `withFallback()` provider). `from` and `to` are provider names. |
@@ -5936,7 +6017,8 @@ The event types and their extra fields:
 | `compaction.done`    | `strategy: string`, `tokensBefore: number`, `tokensAfter: number`, `prunedToolCallIds: string[]`, `summary?: boolean`, `error?: { message: string }` | A compaction ended. `tokensAfter` equals `tokensBefore` when nothing could be compacted; `summary` is set when old turns were replaced by a summary; `error` is set when the strategy failed or fell back (the run continues). |
 | `budget.exceeded`    | `limit: string`, `value: number`, `max: number`, `scope: 'run' \| 'session'` | A [`limits` budget](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#budgets) tripped: `limit` is `'maxTokens'`, `'maxInputTokens'`, `'maxOutputTokens'`, `'maxCostUsd'`, `'maxDurationMs'` or `'maxSteps'`, `value` what was spent, `max` the limit. `run.done` (`'budget-exceeded'`) follows; with `onExceeded: 'throw'`, `error` and `run.done` (`'error'`). |
 | `input.queued`       | `id: string`, `text: string` | `run.enqueue()` took an input (`id` is `EnqueueResult.id`, `text` its user text). Can come at any point of the run, also inside a step. See [Queued input](#queued-input). |
-| `input.applied`      | `id: string`, `step: number` | The queued input joined the transcript, right before the model call of `step`: the `step.start` of that step follows. |
+| `input.steered`      | `id: string`, `text: string`, `mode: 'immediate' \| 'queued'` | `run.steer()` took an input (`id` is `SteerResult.id`). `mode: 'immediate'`: the in-flight model call was aborted for it, and its step ends with `step.done` `'steered'`; `'queued'`: it waits for the next safe point like `enqueue()`. See [Steering](#steering). |
+| `input.applied`      | `id: string`, `step: number` | The queued (or steered) input joined the transcript, right before the model call of `step`: the `step.start` of that step follows. |
 | `guardrail.tripped`  | `name: string`, `kind: 'input' \| 'output' \| 'tool'`, `reason: string`, `toolName?: string` | An [input, output or tool guardrail](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md#input-and-output-guardrails) blocked: before the first model call (input), before the step's `text.done` (output) or after the call's `tool.start` (tool). `run.done` (`'guardrail'`) follows; with `onTripped: 'throw'`, `error` and `run.done` (`'error'`). |
 | `guardrail.rewrote`  | `name`, `kind`, `reason`, `toolName?` | A guardrail rewrote the input, the step's text (before its `text.done`, which carries the new text) or a tool call's arguments. The run continues. |
 | `run.done`           | `finishReason: string`, `text: string`, `usage?: { promptTokens, completionTokens, totalTokens }`, `object?: unknown` | Last event of every run, exactly once, including aborted, failed and awaiting-approval runs. `finishReason` and `text` match `run.result` (`'max-steps'` when the `maxSteps` budget ran out while the model still wanted to continue); a failed run has `finishReason: 'error'`, `text: ''` and no `usage`. `object` is `run.result`'s validated `object` for an agent with an `output` schema (see [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)), absent otherwise. |
@@ -5960,6 +6042,9 @@ Optional fields are left out when they have no value. They are never
   for input queued before the run got going), so it can fall inside a step.
   Its `input.applied` comes between the `step.done` of the step that was
   running and the next `step.start`, which carries the `step` it names.
+- `input.steered` comes when `run.steer()` is called. With `mode: 'immediate'`
+  the running step ends next with `step.done` (`'steered'`, no text events
+  from its aborted call), then `input.applied` and the next `step.start`.
 - When a call needs approval, the calls before it run and report, then
   `approval.requested`, `step.done` (`'awaiting-approval'`) and `run.done`
   (`'awaiting-approval'`) follow. Calls after it never start.
@@ -6146,9 +6231,8 @@ failed); the input is then left to you too.
   `stream()` made while a turn runs (or waits to start) join that turn this way. See
   [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#the-session-object).
 
-Queued input waits for the step that is running. Steering, which aborts the
-in-flight model call and redirects the run at once, is planned as a follow-up
-(LOU-V10).
+Queued input waits for the step that is running. To redirect the run at
+once, steer it (next section).
 
 ```ts
 import { AgentExecutor, InputQueue } from '@loushy/build-ai-agent';
@@ -6158,6 +6242,49 @@ const pending = AgentExecutor.execute({ agent, provider, input: 'Plan my trip.',
 inputQueue.push('Also book a hotel.');
 const result = await pending;
 ```
+
+## Steering
+
+`run.steer(input)` redirects a running run to new user input, for example when
+the user changes their mind while the agent is still thinking:
+
+- If a model call is in flight and has not emitted text or tool calls yet, it
+  is aborted (with a signal of its own, not the run's: the run goes on), its
+  partial output is discarded, `input` is appended as a user message and the
+  model is called again. `applied` is `'immediate'`, and the aborted call's
+  step ends with `step.done` `'steered'`. A provider that ignores the abort
+  signal is not waited for; its late reply is dropped.
+- If the model has already emitted text (or tool calls), `input` waits for the
+  next safe point like [`enqueue()`](#queued-input): `applied` is `'queued'`.
+- Tool calls already running finish and their results are kept; calls of that
+  turn that have not started yet are not run and get the usual "cancelled
+  before it ran" result. Then the input is applied.
+- `applied` is `false` once the run has finished: send the input as a new turn.
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini' });
+const run = agent.stream('Plan a weekend in Rome.');
+
+const steered = run.steer('Actually, make it Paris.');
+console.log(steered.applied); // 'immediate', 'queued' or false
+for await (const event of run) {
+  if (event.type === 'input.steered') console.log(`steered (${event.mode})`);
+}
+console.log(await steered.joined); // true once the input is in the transcript
+```
+
+`steer()` returns `{ id, applied, joined }`: `id` is on the `input.steered` and
+`input.applied` events, and `joined` is a promise of whether the input made it
+into the transcript (as `enqueue()`'s `applied`). The aborted call counts as a
+step of `maxSteps`. With checkpointing, the input is saved at the end of the
+checkpoint as soon as it is taken and before the model is called again, so a
+crash during the redirect does not lose it; the discarded partial turn is never
+checkpointed. Without a stream, call `steer()` on the run's
+`ExecuteOptions.inputQueue`. In a session, `agent.session({ turnPolicy: 'steer' })`
+makes a `send()` or `stream()` made while a turn runs steer that turn (see
+[Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#the-session-object)).
 
 ## Example: terminal
 

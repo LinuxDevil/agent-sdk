@@ -38,11 +38,13 @@ interface StreamedParts {
 }
 
 /** Folds one chunk into the parts collected so far; throws on an `error` chunk. */
-function applyChunk(parts: StreamedParts, chunk: StreamChunk, onTextDelta: (text: string) => void): void {
+function applyChunk(parts: StreamedParts, chunk: StreamChunk, onTextDelta: (text: string) => void, onOutput?: () => void): void {
   if (chunk.type === 'text-delta' && chunk.textDelta) {
     parts.text += chunk.textDelta;
+    onOutput?.();
     onTextDelta(chunk.textDelta);
   } else if (chunk.type === 'tool-call' && chunk.toolCall) {
+    onOutput?.();
     parts.toolCalls.push(chunk.toolCall);
   } else if (chunk.type === 'finish') {
     parts.finish = chunk;
@@ -66,19 +68,21 @@ function silenceFinalValues(streamed: StreamResult): void {
  * `text-delta` chunks; tool calls from `tool-call` chunks, else from the
  * stream's `toolCalls` promise (the 'ai' SDK adapters only report them
  * there); finish reason and usage from the `finish` chunk, else from the
- * stream's promises. The signal is checked between chunks.
+ * stream's promises. The signal is checked between chunks. `onOutput` is
+ * called before the first text delta or tool call is applied (LOU-V10).
  */
 export async function generateViaStream(
   provider: LLMProvider,
   request: GenerateOptions,
-  onTextDelta: (text: string) => void
+  onTextDelta: (text: string) => void,
+  onOutput?: () => void
 ): Promise<GenerateResult> {
   const streamed = await provider.stream(request);
   silenceFinalValues(streamed);
   const parts: StreamedParts = { text: '', toolCalls: [] };
   for await (const chunk of streamed.fullStream) {
     request.signal?.throwIfAborted();
-    applyChunk(parts, chunk, onTextDelta);
+    applyChunk(parts, chunk, onTextDelta, onOutput);
   }
   request.signal?.throwIfAborted();
 

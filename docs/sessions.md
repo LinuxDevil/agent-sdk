@@ -48,6 +48,12 @@ while a turn is running or waiting to start:
   (it finished, paused or was aborted), the call runs as the next turn after
   all. If the turn fails, the call rejects with the same error; in a durable
   session the input stays in the turn's checkpoint and `resume()` applies it.
+- `'steer'`: like `'queue'`, but the input joins through
+  [`run.steer()`](./streaming.md#steering): if the turn's model call has not
+  emitted anything yet, it is aborted and made again with the new message, and
+  tool calls of the turn that have not started are not run. Otherwise it waits
+  for the next safe point, as with `'queue'`. The call resolves with the
+  turn's result, and the same fallbacks apply.
 
 ```ts
 import { createAgent } from '@loushy/build-ai-agent';

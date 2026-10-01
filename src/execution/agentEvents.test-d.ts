@@ -95,6 +95,7 @@ describe('AgentEvent types', () => {
   it('narrows input events on event.type (LOU-V9)', () => {
     if (event.type === 'input.queued') expectTypeOf(event.text).toBeString();
     if (event.type === 'input.applied') expectTypeOf(event.step).toBeNumber();
+    if (event.type === 'input.steered') expectTypeOf(event.mode).toEqualTypeOf<'immediate' | 'queued'>();
   });
 
   it('narrows guardrail events on event.type (LOU-X4)', () => {
@@ -123,6 +124,7 @@ describe('AgentEvent types', () => {
       | 'compaction.done'
       | 'budget.exceeded'
       | 'input.queued'
+      | 'input.steered'
       | 'input.applied'
       | 'guardrail.tripped'
       | 'guardrail.rewrote'

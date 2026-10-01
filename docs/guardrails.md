@@ -37,7 +37,7 @@ or `{ ok: false, reason, action?, replacement? }`:
 With `onTripped: 'throw'` a block rejects with `GuardrailError`
 (`LOUSHY_GUARDRAIL_TRIPPED`, with the same `guardrail`) instead. A `check`
 that throws fails the run. Sub-agents run their parent's guardrails, then their
-own. (Wiring `spec.policy.guardrails` in agent spec files is LOU-X5.)
+own. Agent spec files name built-in guardrails in `policy.guardrails` (see [Configuration](./configuration.md#policy-policy)).
 
 ```ts
 import {
