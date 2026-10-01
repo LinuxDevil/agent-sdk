@@ -38,7 +38,8 @@
       "members": [
         "save",
         "load",
-        "delete"
+        "delete",
+        "history"
       ]
     },
     {

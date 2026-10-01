@@ -12,14 +12,14 @@ import { ConfigurationError, SDKError } from '../execution/errors';
 /** How bytes (image and file parts, LOU-V11) are saved in a JSON transcript: `{ "$bytes": "<base64>" }`. */
 const BYTES_KEY = '$bytes';
 
-/** `JSON.stringify` replacer: a `Uint8Array` (a `Buffer` too, read before its `toJSON()`) becomes `{ $bytes }`. */
-function encodeBytes(this: Record<string, unknown>, key: string, value: unknown): unknown {
+/** `JSON.stringify` replacer: a `Uint8Array` (a `Buffer` too, read before its `toJSON()`) becomes `{ $bytes }`. Shared with `SqliteStore`. */
+export function encodeBytes(this: Record<string, unknown>, key: string, value: unknown): unknown {
   const raw = this[key];
   return raw instanceof Uint8Array ? { [BYTES_KEY]: Buffer.from(raw).toString('base64') } : value;
 }
 
-/** `JSON.parse` reviver: `{ $bytes }` back to a `Uint8Array`. */
-function decodeBytes(_key: string, value: unknown): unknown {
+/** `JSON.parse` reviver: `{ $bytes }` back to a `Uint8Array`. Shared with `SqliteStore`. */
+export function decodeBytes(_key: string, value: unknown): unknown {
   if (typeof value !== 'object' || value === null || Object.keys(value).length !== 1) return value;
   const base64 = (value as Record<string, unknown>)[BYTES_KEY];
   return typeof base64 === 'string' ? new Uint8Array(Buffer.from(base64, 'base64')) : value;

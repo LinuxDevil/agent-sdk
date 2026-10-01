@@ -7,11 +7,11 @@
  */
 
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { tool as aiTool } from 'ai';
 import { ToolDescriptor } from '../../types';
 import { noopLogger, type Logger } from '../../execution/logger';
 import { handleCallToolResult } from './result';
 import { jsonSchemaToZod } from './schema';
+import { toolDescriptorFromSchema } from '../toolContract';
 
 /**
  * Minimal shape of a tool as returned by an MCP server's `tools/list`
@@ -121,17 +121,11 @@ export async function loadMcpTools(
 }
 
 function buildDescriptor(client: McpClientLike, rawTool: RawMcpTool): ToolDescriptor {
-  const parameters = jsonSchemaToZod(rawTool.inputSchema);
-  return {
+  return toolDescriptorFromSchema({
     displayName: rawTool.description || rawTool.name,
-    tool: aiTool({
-      description: rawTool.description || '',
-      parameters: parameters as any,
-      execute: async (args: Record<string, unknown>) =>
-        handleCallToolResult(
-          await client.callTool({ name: rawTool.name, arguments: args }),
-          rawTool.name
-        ),
-    }),
-  };
+    description: rawTool.description || '',
+    inputSchema: jsonSchemaToZod(rawTool.inputSchema),
+    execute: async (args) =>
+      handleCallToolResult(await client.callTool({ name: rawTool.name, arguments: args }), rawTool.name),
+  });
 }

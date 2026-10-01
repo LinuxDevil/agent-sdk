@@ -8,8 +8,9 @@ reading and writing the exact same `AgentSpec` YAML that `loushy dev` and
 ships as part of this SDK's npm package (LOU-S).
 
 This doc covers: installation, the `loushy studio` quickstart, a
-first-agent walkthrough, hook authoring, and how settings/secrets/deploy
-wiring works (and doesn't yet).
+first-agent walkthrough, hook authoring, time travel (replaying a run from
+a past step), and how settings/secrets/deploy wiring works (and doesn't
+yet).
 
 ## Installation
 
@@ -161,6 +162,65 @@ Saving the agent persists these as `spec.policy.hooks` in the agent's YAML;
 the server compiles enabled hooks into a real `HookRegistry` for the run
 (`server/compileHooks.ts`), routed through the same `SandboxAdapter` a
 sandboxed tool uses.
+
+## Time travel
+
+Agent Forge keeps every run's checkpoints, not just the latest: its file
+store (`server/checkpointStore.ts`) keeps the same bounded history as the
+SDK's `LocalStorageCheckpointStore` (the newest 50 saves per run, under
+`.loushy/agents/<id>/checkpoint-history/`; see
+[Checkpoint history](./durable-execution.md#checkpoint-history)). From
+that history you can fork a run at any step, change what happened there,
+and replay it next to the original, with
+[`AgentExecutor.fork()`](./durable-execution.md#fork-and-replay) and
+`compareTrajectories()` doing the work.
+
+### The History tab
+
+1. Run the agent (Topbar **Run**, or a Chat message).
+2. Open the bottom drawer's **History** tab. It lists the run's steps:
+   step number, status, the model's finish reason, the tool calls made,
+   and the tokens and cost of the step's model call when known.
+3. Click **Edit and replay from here** on a step. Choose **Append a user
+   message** and type one, or pick one of the step's tool calls to edit
+   its result (prefilled with the recorded result; text that parses as
+   JSON is sent as JSON).
+4. Click **Fork and replay**. The run is forked at that step with your
+   edit and started as a new run, `<id>.fork-<n>`.
+5. The fork opens next to the original as a side-by-side trajectory: each
+   model turn of both runs (text, tool calls and results), the first turn
+   where they differ highlighted as **diverged**, and the drift entries
+   (tool order, arguments, step count, finish reason) listed below. It
+   refreshes when the fork finishes.
+
+### Routes
+
+A run id is the run's checkpoint session id: the agent id for the agent's
+own runs, `<id>.fork-<n>` for a fork of run `<id>`. The runtime control
+server has three routes for it (the History tab uses them):
+
+| Route | What it does |
+| --- | --- |
+| `GET /runs/:id/history` | `{ runId, steps }`: one entry per step of the run's latest execution (the newest checkpoint saved at that step), oldest first, with `status`, `savedAt`, `finishReason`, `toolCalls` (`{ id, name, args, result? }`), and `tokens` / `costUsd` of the step's model call when known. 404 when the run has no checkpoints. |
+| `POST /runs/:id/fork` | Body `{ fromStep, patch? }`, where `patch` is `{ toolResult?: { toolCallId, result }, appendInput?, businessState? }`. Forks the run at `fromStep`, then starts the fork through the run registry with the original run's spec. Returns 202 `{ runId, fromStep, status }`; the fork streams on `WS /agents/<runId>/stream` and reports on `GET /agents/<runId>/status` like any run. 400 for a bad body or an unknown `toolCallId`, 404 for an unknown run or a step with no checkpoint. |
+| `GET /runs/compare?a=&b=` | `compareTrajectories(a, b)` of two runs' latest checkpoints: each run's model turns, `divergedAt` (the first turn that differs) and the `drift` entries. 404 when either run has no checkpoint. |
+
+The flow, for an agent `weather` that has run once:
+
+```bash
+curl localhost:4750/runs/weather/history
+# {"runId":"weather","steps":[{"step":1,"status":"finished","finishReason":"stop","toolCalls":[],"tokens":...}]}
+
+curl -X POST localhost:4750/runs/weather/fork -H 'content-type: application/json' \
+  -d '{"fromStep":1,"patch":{"appendInput":"And in Celsius?"}}'
+# {"runId":"weather.fork-1","fromStep":1,"status":{"status":"running",...}}
+
+curl 'localhost:4750/runs/compare?a=weather&b=weather.fork-1'
+# {"a":[...],"b":[...],"divergedAt":2,"drift":[{"field":"steps","committed":"1","current":"2"}]}
+```
+
+The fork is a run of its own: the original run's checkpoints, status and
+chat are unchanged.
 
 ## Settings, secrets and deploy wiring
 

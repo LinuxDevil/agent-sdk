@@ -6,7 +6,7 @@ const path = require('node:path');
 const USAGE = [
   'Usage:',
   '  loushy init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force]',
-  '  loushy dev <config.yaml|config.json> [--port N] [--host H]',
+  '  loushy dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H]',
   '  loushy build --target=<name> --agent=<path> [--out=<dir>]',
   '  loushy studio [--port N] [--host H] [--prod|--dev]',
   '  loushy mcp <agent.yaml|json> [--http --port N --host H]',
@@ -36,7 +36,7 @@ async function runDev(rest) {
   const host = readFlag(rest, 'host', '127.0.0.1');
 
   if (!configPath) {
-    console.error('loushy dev: a config file path is required. Usage: loushy dev <config.yaml|config.json> [--port N] [--host H]');
+    console.error('loushy dev: a path is required (a spec file, an agent directory or a .ts/.js agent module). Usage: loushy dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H]');
     process.exitCode = 1;
     return;
   }

@@ -58,6 +58,26 @@ function failedMessages(result: EvalResult): string[] {
   return result.assertions.filter((a) => !a.passed).map((a) => a.message ?? '');
 }
 
+describe('t.send() with an AgentInput (LOU-V12)', () => {
+  it('sends content parts to the agent as one user message', async () => {
+    const model = mockModel(['It is a cat.']);
+    const parts = [
+      { type: 'text' as const, text: 'What is this?' },
+      { type: 'image' as const, image: 'https://example.com/cat.png' },
+    ];
+    const result = await run(
+      async (t) => {
+        await t.send(parts);
+        t.check('names the animal', t.reply, includes('cat'));
+      },
+      { agent: createAgent({ provider: model }) }
+    );
+
+    expect(failedMessages(result)).toEqual([]);
+    expect(model.calls[0].messages.filter((m) => m.role === 'user')).toEqual([{ role: 'user', content: parts }]);
+  });
+});
+
 describe('trajectory assertions: passing', () => {
   it('passes every assertion for a matching run and reports steps, tool calls and usage', async () => {
     const result = await run(async (t) => {

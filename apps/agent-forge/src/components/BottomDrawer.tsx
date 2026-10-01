@@ -4,6 +4,7 @@ import type { DrawerTab } from '../state/AppState';
 import { LogsPanel } from './debug/LogsPanel';
 import { TracePanel } from './debug/TracePanel';
 import { OutputPanel } from './debug/OutputPanel';
+import { HistoryPanel } from './debug/HistoryPanel';
 import { DebugBar } from './debug/DebugBar';
 import { ChatPanel } from './ChatPanel';
 import { SettingsPanel } from './SettingsPanel';
@@ -13,6 +14,7 @@ const TABS: { id: DrawerTab; label: string }[] = [
   { id: 'logs', label: 'Logs' },
   { id: 'trace', label: 'Trace' },
   { id: 'output', label: 'Output' },
+  { id: 'history', label: 'History' },
   { id: 'settings', label: 'Settings' },
 ];
 
@@ -21,10 +23,11 @@ const TAB_PANELS: Record<DrawerTab, () => ReactElement> = {
   logs: () => <LogsPanel />,
   trace: () => <TracePanel />,
   output: () => <OutputPanel />,
+  history: () => <HistoryPanel />,
   settings: () => <SettingsPanel />,
 };
 
-// Every tab except Output manages its own padding/scrolling.
+// Every tab except Output and History manages its own padding/scrolling.
 const FLUSH_TABS: ReadonlySet<DrawerTab> = new Set<DrawerTab>(['logs', 'trace', 'chat', 'settings']);
 const FLUSH_BODY_STYLE: CSSProperties = { padding: 0, overflow: 'hidden' };
 

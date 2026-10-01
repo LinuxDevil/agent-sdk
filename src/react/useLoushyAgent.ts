@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import type { SimpleAgent } from '../createAgent';
+import type { AgentInput } from '../providers/content';
 import type { AgentEvent, AgentEventError } from '../execution/agentEvents';
 import type { AgentSession } from '../session/AgentSession';
 import { parseEventStream } from './parseEventStream';
@@ -43,11 +44,13 @@ export interface UseLoushyAgentOptions {
 
 export interface UseLoushyAgentResult extends AgentUIState {
   /** Starts a turn (aborting one still running). */
-  send(input: string): Promise<void>;
+  send(input: AgentInput): Promise<void>;
   /** Aborts the run in flight; it ends with `finishReason: 'aborted'`. */
   stop(): void;
   approve(note?: string): Promise<void>;
   reject(note?: string): Promise<void>;
+  /** LOU-X9: answers the question in `pendingApproval` (`kind: 'question'`); same as `approve(text)`. */
+  answer(text: string): Promise<void>;
 }
 
 type Emit = (action: AgentEvent | AgentUIAction) => void;
@@ -109,7 +112,7 @@ export function useLoushyAgent(source: LoushyAgentSource, options: UseLoushyAgen
   }, []);
 
   const send = useCallback(
-    (input: string) =>
+    (input: AgentInput) =>
       run(async (emit, signal) => {
         emit({ type: 'ui.send', input });
         const { source } = latest.current;
@@ -151,5 +154,7 @@ export function useLoushyAgent(source: LoushyAgentSource, options: UseLoushyAgen
   const approve = useCallback((note?: string) => decide(true, note), [decide]);
   const reject = useCallback((note?: string) => decide(false, note), [decide]);
 
-  return { ...state, send, stop, approve, reject };
+  const answer = useCallback((text: string) => decide(true, text), [decide]);
+
+  return { ...state, send, stop, approve, reject, answer };
 }

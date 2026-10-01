@@ -20,6 +20,7 @@
 
 import { SandboxAdapter } from '../../security/sandboxCore';
 import { ToolDescriptor } from '../../types';
+import { getToolExecute } from '../toolContract';
 
 /**
  * The request shape encoded (as base64 JSON, via the SANDBOX_FETCH_REQUEST
@@ -235,11 +236,11 @@ async function withSandboxedFetch<T>(sandbox: SandboxAdapter, fn: () => Promise<
  * left as-is.
  */
 export function routeFetchThroughSandbox(descriptor: ToolDescriptor): void {
-  if (!descriptor.tool?.execute) {
+  const originalExecute = getToolExecute(descriptor);
+  if (!originalExecute) {
     return;
   }
-  const originalExecute = descriptor.tool.execute;
   descriptor.requiresSandbox = true;
   descriptor.sandboxExecute = (args: unknown, sandbox: SandboxAdapter) =>
-    withSandboxedFetch(sandbox, async () => originalExecute(args as any, {} as any));
+    withSandboxedFetch(sandbox, async () => originalExecute(args, {} as any));
 }

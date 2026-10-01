@@ -7,6 +7,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { Message } from '../providers/llm';
+import { toMessages, type AgentInput } from '../providers/content';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import type { AgentRun } from '../execution/agentRun';
 import type { Checkpoint, CheckpointStore } from '../execution/checkpoint';
@@ -168,7 +169,8 @@ export class AgentSession {
   }
 
   /**
-   * Send a user message with the whole conversation so far. Concurrent calls
+   * Send a user message (a string, content parts or a `Message[]`, see
+   * `AgentInput`) with the whole conversation so far. Concurrent calls
    * run one after another, in call order.
    *
    * A call that throws or is aborted leaves the transcript as it was before
@@ -180,7 +182,7 @@ export class AgentSession {
    * const result = await session.send('And in Paris?', { signal: AbortSignal.timeout(10_000) });
    * ```
    */
-  send(input: string, options: { signal?: AbortSignal } = {}): Promise<ExecutionResult> {
+  send(input: AgentInput, options: { signal?: AbortSignal } = {}): Promise<ExecutionResult> {
     return this.enqueue(() => this.turn(input, options.signal));
   }
 
@@ -206,7 +208,7 @@ export class AgentSession {
    * }
    * ```
    */
-  stream(input: string, options: { signal?: AbortSignal } = {}): AgentRun {
+  stream(input: AgentInput, options: { signal?: AbortSignal } = {}): AgentRun {
     const streamRun = this.streamRun;
     if (!streamRun) {
       throw new SDKError(
@@ -218,7 +220,7 @@ export class AgentSession {
       (signal, started) =>
         this.enqueue(async () => {
           await this.beforeTurn(signal);
-          const run = streamRun([...this.history, { role: 'user', content: input }], signal, this.turnCheckpoint());
+          const run = streamRun([...this.history, ...toMessages(input)], signal, this.turnCheckpoint());
           started(run);
           return this.record(await run.result);
         }),
@@ -291,9 +293,9 @@ export class AgentSession {
     this.loaded = true;
   }
 
-  private async turn(input: string, signal?: AbortSignal): Promise<ExecutionResult> {
+  private async turn(input: AgentInput, signal?: AbortSignal): Promise<ExecutionResult> {
     await this.beforeTurn(signal);
-    return this.record(await this.run([...this.history, { role: 'user', content: input }], signal, this.turnCheckpoint()));
+    return this.record(await this.run([...this.history, ...toMessages(input)], signal, this.turnCheckpoint()));
   }
 
   /** Loads the history and, in a checkpointed session, finishes a pending turn first. */

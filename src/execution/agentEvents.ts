@@ -11,6 +11,7 @@ import type { ExecutionFinishReason } from './AgentExecutor';
 import type { SubagentInfo } from './hooks';
 import type { CompactedProviderErrorCategory } from './errors';
 import type { PermissionDecisionEntry } from './permissions';
+import type { ApprovalKind, ApprovalQuestion } from './ApprovalGate';
 
 /**
  * Version of the {@link AgentEvent} schema, carried on every event as `v`.
@@ -128,6 +129,10 @@ export interface ApprovalRequestedEvent extends AgentEventBase<'approval.request
   toolCallId: string;
   toolName: string;
   args: Record<string, unknown>;
+  /** LOU-X9: `'question'` when an `ask_question` call waits for the user's answer; absent for a tool approval. */
+  kind?: ApprovalKind;
+  /** LOU-X9: the question's text and options, when `kind` is `'question'`. */
+  question?: ApprovalQuestion;
 }
 
 /**

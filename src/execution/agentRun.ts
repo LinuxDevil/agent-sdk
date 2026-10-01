@@ -17,7 +17,7 @@
 import { newId } from '../utils/id';
 import type { GenerateOptions, GenerateResult, LLMProvider } from '../providers';
 import type { ExecuteOptions, ExecutionEvent, ExecutionResult } from './AgentExecutor';
-import type { PendingApproval } from './ApprovalGate';
+import { describeApproval, type PendingApproval } from './ApprovalGate';
 import type { HookEventPayload, SubagentInfo } from './hooks';
 import {
   AGENT_EVENT_SCHEMA_VERSION,
@@ -329,14 +329,18 @@ class AgentRunImpl implements AgentRun {
           subagent
         );
       },
-      approvalRequested: (pending) => {
+      approvalRequested: (paused) => {
         if (subagent) return;
+        const pending = describeApproval(paused);
         this.emit({
           type: 'approval.requested',
           approvalId: pending.id,
           toolCallId: pending.toolCallId,
           toolName: pending.toolName,
           args: toJsonValue(pending.args) as Record<string, unknown>,
+          // LOU-X9: an `ask_question` call carries its question.
+          ...(pending.kind && { kind: pending.kind }),
+          ...(pending.question && { question: pending.question }),
         });
       },
       permissionDecision: (entry) =>

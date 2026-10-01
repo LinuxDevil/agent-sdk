@@ -6,8 +6,8 @@
  */
 
 import type { AgentEvent, AgentEventError, AgentEventUsage } from '../execution/agentEvents';
-import type { ContentPart } from '../providers/llm';
-import { textOf } from '../providers/content';
+import { describeInput, type AgentInput } from '../providers/content';
+import type { ApprovalKind, ApprovalQuestion } from '../execution/ApprovalGate';
 
 /** Where a tool call stands: running, paused for approval, or finished. */
 export type UIToolCallStatus = 'running' | 'awaiting-approval' | 'done' | 'error' | 'rejected';
@@ -43,6 +43,10 @@ export interface UIPendingApproval {
   toolCallId: string;
   toolName: string;
   args: Record<string, unknown>;
+  /** LOU-X9: `'question'` when the agent asked the user something (`ask_question`); answer it with `answer(text)`. */
+  kind?: ApprovalKind;
+  /** LOU-X9: the question's text and options, when `kind` is `'question'`. */
+  question?: ApprovalQuestion;
 }
 
 /** How a run continued after an approval decision (built from `agent.approvals.resolve()`'s result). */
@@ -67,8 +71,8 @@ export interface AgentUIState {
 
 /** Local actions, besides the events themselves. */
 export type AgentUIAction =
-  /** `input` may be multimodal parts (LOU-V11); the bubble shows their text. */
-  | { type: 'ui.send'; input: string | ContentPart[] }
+  /** `input` may be multimodal (LOU-V12); the bubble shows its text and an `[image]` / `[file]` marker per other part. */
+  | { type: 'ui.send'; input: AgentInput }
   | { type: 'ui.decide'; approved: boolean }
   | { type: 'ui.resumed'; outcome: ApprovalOutcome }
   | { type: 'ui.stopped' }
@@ -108,6 +112,12 @@ function patchTool(messages: UIMessage[], id: string, patch: Partial<UIToolCall>
   });
 }
 
+/** The paused call of an `approval.requested` event, with its question when it has one (LOU-X9). */
+function pendingOf(event: Extract<AgentEvent, { type: 'approval.requested' }>): UIPendingApproval {
+  const { approvalId: id, toolCallId, toolName, args, kind, question } = event;
+  return { id, toolCallId, toolName, args, ...(kind && { kind }), ...(question && { question }) };
+}
+
 function pause(state: AgentUIState, approval: UIPendingApproval): AgentUIState {
   const { toolCallId: id, toolName: name, args } = approval;
   const messages = patchTool(state.messages, id, { status: 'awaiting-approval' }, { id, name, args, status: 'running' });
@@ -139,7 +149,7 @@ function resumed(state: AgentUIState, { text, finishReason, usage, approval }: A
 export function reduceAgentEvents(state: AgentUIState, event: AgentEvent | AgentUIAction): AgentUIState {
   switch (event.type) {
     case 'ui.send': {
-      const user: UIMessage = { id: `m${state.messages.length}`, role: 'user', text: textOf(event.input), toolCalls: [] };
+      const user: UIMessage = { id: `m${state.messages.length}`, role: 'user', text: describeInput(event.input), toolCalls: [] };
       const messages = onAssistant([...state.messages, user], (message) => message);
       return { ...state, messages, status: 'streaming', error: null, pendingApproval: null };
     }
@@ -169,7 +179,7 @@ export function reduceAgentEvents(state: AgentUIState, event: AgentEvent | Agent
     case 'tool.error':
       return { ...next, messages: patchTool(state.messages, event.toolCallId, { status: 'error', error: event.error }) };
     case 'approval.requested':
-      return pause(next, { id: event.approvalId, toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
+      return pause(next, pendingOf(event));
     case 'error':
       return { ...next, error: event.error };
     case 'run.done':
