@@ -2723,6 +2723,8 @@ Done, the report is on its way.
 | ------- | ------------ |
 | `/new` | Start a new session (the old one is kept in the store). |
 | `/model <provider/model>` | Rebuild the agent on another model; the session continues. A failure keeps the current model. |
+| `/compact` | Compact the session's transcript now (old tool results are pruned) and print the before/after size. |
+| `/clear` | Empty the session's transcript; the session id stays. |
 | `/history` | Print the session's transcript. |
 | `/quit` | Leave (Ctrl-D works too). |
 
@@ -2812,8 +2814,8 @@ triggered it (see [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/
 
 | `type` | Fields |
 | --- | --- |
-| `compaction.start` | `strategy`, `tokensBefore`, `contextWindow`, `thresholdTokens` |
-| `compaction.done` | `strategy`, `tokensBefore`, `tokensAfter`, `prunedToolCallIds`, `summary?: boolean`, `error?: { message }` |
+| `compaction.start` | `strategy`, `tokensBefore`, `contextWindow`, `thresholdTokens`, `trigger?: 'manual'` |
+| `compaction.done` | `strategy`, `tokensBefore`, `tokensAfter`, `prunedToolCallIds`, `summary?: boolean`, `error?: { message }`, `trigger?: 'manual'` |
 
 Every `compaction.start` is followed by exactly one `compaction.done`. When the
 strategy could not shrink anything, `tokensAfter` equals `tokensBefore`; when it
@@ -2977,6 +2979,36 @@ const summarized = await compactMessages(history, {
   strategy: summarizeStrategy({ model: 'openai/gpt-4o-mini' }),
 });
 console.log(summarized.summary ?? summarized.error?.message);
+```
+
+## Compacting a session
+
+`session.compact(options?)` compacts a [session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md)'s transcript
+now, whatever its size, saves it to the session's store (memory, file, SQLite
+or KV) and resolves to `{ messagesBefore, messagesAfter, tokensBefore, tokensAfter, strategy, error? }`.
+It runs `options.strategy`, else the strategy of `agent.session({ compaction })`
+(the same value as `createAgent({ compaction })`), else prunes old tool results.
+Pinned messages stay. A session with no messages resolves without doing
+anything. It rejects with `LOUSHY_SESSION_BUSY` while a turn is running, and
+with `LOUSHY_SESSION_TURN_PENDING` / `LOUSHY_SESSION_AWAITING_APPROVAL` while a
+durable turn is unfinished. Listeners added with `session.on()` get
+`compaction.start` and `compaction.done` with `trigger: 'manual'`.
+`session.clear()` empties the transcript instead and emits `context.cleared`.
+
+```ts
+import { createAgent, twoPhaseStrategy } from '@loushy/build-ai-agent';
+import { mockModel } from '@loushy/build-ai-agent/testing';
+
+const agent = createAgent({ provider: mockModel(['ok']) });
+const session = agent.session({ compaction: { strategy: twoPhaseStrategy({ model: 'openai/gpt-4o-mini' }) } });
+session.on((event) => {
+  if (event.type === 'compaction.done') console.log(event.trigger, event.tokensBefore, '->', event.tokensAfter);
+});
+await session.send('hello');
+const { tokensBefore, tokensAfter } = await session.compact({ protectedTokens: 2_000 });
+console.log(`${tokensBefore} -> ${tokensAfter} tokens`);
+await session.clear();
+console.log(session.messages.length); // 0
 ```
 
 ## Writing a strategy
@@ -4503,6 +4535,21 @@ paused on an approval (`error.approvalId`), so it cannot take new input yet.
 **Fix:** restore the file from a backup, or delete it to start the session over.
 
 **Example:** `sessions/user-42.json` containing `{}`.
+
+### LOUSHY_SESSION_BUSY
+
+**Means:** `session.compact()` or `session.clear()` was called while a turn of
+that session is running or queued.
+
+**Fix:** await the turn's `send()` (or abort it), then call again.
+
+### LOUSHY_SESSION_TURN_PENDING
+
+**Means:** `session.compact()` was called while a durable session has an
+interrupted turn, whose checkpoint is keyed by the transcript length.
+
+**Fix:** finish it with `session.resume()` or drop it with
+`session.discardPending()`, then call again.
 
 ### LOUSHY_SESSION_STREAM_UNSUPPORTED
 
@@ -6147,7 +6194,9 @@ console.log(session.id, session.messages.length);
 | `stream(input, { signal })` | Like `send()`, but returns an `AgentRun` that streams the turn as typed events - see [Streaming a session turn](#streaming-a-session-turn). |
 | `messages` | A read-only snapshot of the transcript (user, assistant and tool messages; no system prompt). Editing the snapshot does not change the session. |
 | `load()` | Reads the saved transcript from the store. `send()` does this for you; call it to show history before the first `send()` of a resumed session. |
-| `clear()` | Forgets the conversation, including in the store. |
+| `compact(options?)` | Compacts the transcript now - see [Compacting a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md#compacting-a-session). |
+| `clear()` | Empties the transcript and saves it empty (the store holds no messages for the id). Keeps the session id, store and options; deletes an interrupted turn's checkpoint; memory slots are cross-session and untouched. Emits `context.cleared` to `on()` listeners. Rejects with `LOUSHY_SESSION_BUSY` while a turn is running, and with `LOUSHY_SESSION_AWAITING_APPROVAL` while a durable turn waits on an approval. |
+| `on(listener)` | Listens for `compact()` / `clear()` events (`compaction.start`, `compaction.done`, `context.cleared`); returns a function that removes the listener. |
 | `pending()` | In a [durable session](#durable-sessions), the turn that has not finished (`{ status, approvalId? }`), or `null`. |
 | `resume({ signal })` | In a durable session, finishes an interrupted turn and resolves with its result, or `null` when none is pending. |
 | `discardPending()` | In a durable session, drops an unfinished turn without running it. |
@@ -6674,6 +6723,7 @@ The event types and their extra fields:
 | `provider.fallback`  | `from: string`, `to: string`, `error: { message: string }` | A model call still failed after its retries and the next provider takes over (`createAgent({ fallbackModels })` or any `withFallback()` provider). `from` and `to` are provider names. |
 | `compaction.start`   | `strategy: string`, `tokensBefore: number`, `contextWindow: number`, `thresholdTokens: number` | The compaction hook (`createAgent({ compaction })`) found the next model request above its threshold and starts compacting it. Exactly one `compaction.done` follows. See [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md). |
 | `compaction.done`    | `strategy: string`, `tokensBefore: number`, `tokensAfter: number`, `prunedToolCallIds: string[]`, `summary?: boolean`, `error?: { message: string }` | A compaction ended. `tokensAfter` equals `tokensBefore` when nothing could be compacted; `summary` is set when old turns were replaced by a summary; `error` is set when the strategy failed or fell back (the run continues). |
+| `context.cleared`    | `sessionId: string`, `messagesCleared: number` | `session.clear()` emptied a session's transcript. Delivered to `session.on()` listeners, not to a run's stream. `compaction.start` / `compaction.done` from `session.compact()` also reach `session.on()` and carry `trigger: 'manual'`. |
 | `budget.exceeded`    | `limit: string`, `value: number`, `max: number`, `scope: 'run' \| 'session'` | A [`limits` budget](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#budgets) tripped: `limit` is `'maxTokens'`, `'maxInputTokens'`, `'maxOutputTokens'`, `'maxCostUsd'`, `'maxDurationMs'` or `'maxSteps'`, `value` what was spent, `max` the limit. `run.done` (`'budget-exceeded'`) follows; with `onExceeded: 'throw'`, `error` and `run.done` (`'error'`). |
 | `input.queued`       | `id: string`, `text: string` | `run.enqueue()` took an input (`id` is `EnqueueResult.id`, `text` its user text). Can come at any point of the run, also inside a step. See [Queued input](#queued-input). |
 | `input.steered`      | `id: string`, `text: string`, `mode: 'immediate' \| 'queued'` | `run.steer()` took an input (`id` is `SteerResult.id`). `mode: 'immediate'`: the in-flight model call was aborted for it, and its step ends with `step.done` `'steered'`; `'queued'`: it waits for the next safe point like `enqueue()`. See [Steering](#steering). |

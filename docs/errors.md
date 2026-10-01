@@ -293,6 +293,21 @@ paused on an approval (`error.approvalId`), so it cannot take new input yet.
 
 **Example:** `sessions/user-42.json` containing `{}`.
 
+### LOUSHY_SESSION_BUSY
+
+**Means:** `session.compact()` or `session.clear()` was called while a turn of
+that session is running or queued.
+
+**Fix:** await the turn's `send()` (or abort it), then call again.
+
+### LOUSHY_SESSION_TURN_PENDING
+
+**Means:** `session.compact()` was called while a durable session has an
+interrupted turn, whose checkpoint is keyed by the transcript length.
+
+**Fix:** finish it with `session.resume()` or drop it with
+`session.discardPending()`, then call again.
+
 ### LOUSHY_SESSION_STREAM_UNSUPPORTED
 
 **Means:** `stream()` was called on an `AgentSession` built by hand without a
