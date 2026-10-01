@@ -7,6 +7,8 @@
 import { randomUUID } from 'node:crypto';
 import type { Message } from '../providers/llm';
 import type { ExecutionResult } from '../execution/AgentExecutor';
+import type { AgentRun } from '../execution/agentRun';
+import { streamSessionTurn } from './sessionStream';
 import { MemorySessionStore, assertSessionId, type SessionStore } from './sessionStore';
 
 /** Options for `agent.session()`. */
@@ -25,6 +27,12 @@ export interface SessionOptions {
  * user message. Supplied by `createAgent()`.
  */
 export type SessionRunner = (input: Message[], signal?: AbortSignal) => Promise<ExecutionResult>;
+
+/**
+ * Streams one turn (LOU-V8): like {@link SessionRunner}, but returns the
+ * run's `AgentRun`. Supplied by `createAgent()`.
+ */
+export type SessionStreamRunner = (input: Message[], signal?: AbortSignal) => AgentRun;
 
 /**
  * Longest prefix of `messages` that a provider accepts: every assistant
@@ -68,15 +76,17 @@ export class AgentSession {
   readonly id: string;
   private readonly store: SessionStore;
   private readonly run: SessionRunner;
+  private readonly streamRun: SessionStreamRunner | undefined;
   private history: Message[] = [];
   private loaded = false;
   private tail: Promise<unknown> = Promise.resolve();
 
-  constructor(run: SessionRunner, options: SessionOptions = {}) {
+  constructor(run: SessionRunner, options: SessionOptions = {}, streamRun?: SessionStreamRunner) {
     if (options.id !== undefined) assertSessionId(options.id);
     this.id = options.id ?? randomUUID();
     this.store = options.store ?? new MemorySessionStore();
     this.run = run;
+    this.streamRun = streamRun;
   }
 
   /**
@@ -108,6 +118,43 @@ export class AgentSession {
    */
   send(input: string, options: { signal?: AbortSignal } = {}): Promise<ExecutionResult> {
     return this.enqueue(() => this.turn(input, options.signal));
+  }
+
+  /**
+   * Like `send()`, but streams the turn as the `AgentRun` that `agent.stream()`
+   * returns (see docs/streaming.md). The turn waits for earlier calls, loads
+   * the history and runs like `send()` does; once the run ends, the new user
+   * message and the run's output are saved to the store exactly as `send()`
+   * saves them, and only then is `run.done` delivered, so the transcript is
+   * complete when the `for await` loop ends. `run.result` is `send()`'s result.
+   *
+   * Like `send()`, an aborted run (`signal`, or breaking out of the loop
+   * early, unless the run had already finished), or one that fails, leaves
+   * the transcript as it was. A run that
+   * pauses for approval is saved up to the pause and continues with
+   * `agent.approvals.resolve()`. If saving fails, `run.result` rejects and
+   * the stream ends with `error` and `run.done` (`finishReason: 'error'`).
+   *
+   * @example
+   * ```ts
+   * for await (const event of session.stream('And in Paris?')) {
+   *   if (event.type === 'text.delta') process.stdout.write(event.text);
+   * }
+   * ```
+   */
+  stream(input: string, options: { signal?: AbortSignal } = {}): AgentRun {
+    const streamRun = this.streamRun;
+    if (!streamRun) throw new Error('This AgentSession was created without a streaming runner, so it cannot stream().');
+    return streamSessionTurn(
+      (signal, started) =>
+        this.enqueue(async () => {
+          await this.ensureLoaded();
+          const run = streamRun([...this.history, { role: 'user', content: input }], signal);
+          started(run);
+          return this.record(await run.result);
+        }),
+      options.signal
+    );
   }
 
   /** Forget the conversation (also deletes it from the store). */
