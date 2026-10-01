@@ -1138,9 +1138,12 @@ returns an `AgentHook` that, before each model call above 90% (by default) of
 the model's context window, replaces tool results older than the newest
 40,000 tokens with a `[pruned: <tool> result, N chars]` marker. It edits the
 run's transcript in place, so pruning persists in checkpoints and
-`result.messages`. `compactMessages(messages, options)` does the same once,
-by hand, and `pruneToolResultsStrategy()` / `CompactionStrategy` are the
-built-in and pluggable strategies. See [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md).
+`result.messages`. `twoPhaseStrategy({ model })` (recommended) prunes first
+and, if the run is still too big, replaces old turns with a summary written
+by `model`; `summarizeStrategy()` only summarizes. `pinMessage(message)` marks
+a message that is never pruned or summarized. `compactMessages(messages, options)`
+does the same once, by hand (async), and `CompactionStrategy` is the
+pluggable interface (`compact()` may be async). See [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md).
 
 ## Flows, evals, observability and security
 
@@ -1986,24 +1989,31 @@ Source: docs/compaction.md
 
 A long agent run fills its context window mostly with tool results: file
 contents, search hits, API responses the model read once and no longer needs
-in full. Compaction keeps such a run under the model's limit by replacing old
-tool results with a short marker before the request is sent.
+in full. Compaction keeps such a run under the model's limit in two phases:
+first it replaces old tool results with a short marker, and if that is not
+enough it replaces the oldest turns with a summary written by a (cheaper)
+model.
 
-## Pruning old tool results in a run
+## Compacting a run
 
 `createCompactionHook()` returns an `AgentHook` named `compaction`. Register it
-and pass the registry to `AgentExecutor.execute()`:
+and pass the registry to `AgentExecutor.execute()`. The recommended setup is
+the two-phase strategy with a cheap summarizer model:
 
 ```ts
-import { AgentExecutor, HookRegistry, createCompactionHook } from '@loushy/build-ai-agent';
+import { AgentExecutor, HookRegistry, createCompactionHook, twoPhaseStrategy } from '@loushy/build-ai-agent';
 
 const hooks = new HookRegistry();
 hooks.register(
   createCompactionHook({
+    strategy: twoPhaseStrategy({ model: 'openai/gpt-4o-mini' }), // prune, then summarize if still too big
     thresholdPercent: 0.9, // compact above 90% of the context window (the default)
-    protectedTokens: 40_000, // never prune the newest 40K tokens (the default)
-    onCompaction: ({ tokensBefore, tokensAfter, prunedToolCallIds }) =>
-      console.log(`compacted ${tokensBefore} -> ${tokensAfter} tokens (${prunedToolCallIds.length} results)`),
+    protectedTokens: 40_000, // never change the newest 40K tokens (the default)
+    onCompaction: ({ tokensBefore, tokensAfter, prunedToolCallIds, summary, error }) => {
+      console.log(`compacted ${tokensBefore} -> ${tokensAfter} tokens (${prunedToolCallIds.length} results pruned)`);
+      if (summary) console.log('summary:', summary);
+      if (error) console.warn('summarizer failed, kept the pruned conversation:', error.message);
+    },
   })
 );
 
@@ -2013,18 +2023,39 @@ const result = await AgentExecutor.execute({ agent, input, provider, toolRegistr
 Before every model call the hook estimates the request's size with
 `estimateTokens` (see [Models, tokens and cost](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#models-tokens-and-cost)).
 When it is above `thresholdPercent` of the context window, the hook runs its
-strategy and calls `onCompaction` with the token counts, the pruned
-`toolCallId`s and the strategy name.
+strategy (and waits for it, if it is async) and calls `onCompaction` with the
+token counts, the pruned `toolCallId`s, the summary if there is one and the
+strategy name.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `thresholdPercent` | `0.9` | Compact when the estimated request is above this share of the context window. Must be in (0, 1]. |
 | `contextWindow` | registry, else `128_000` | Context window in tokens. By default it is looked up for `request.model` with `getModelInfo()`; register your own models with `registerModel()`. |
 | `protectedTokens` | `40_000` | The newest messages that fit in this many tokens are never changed. |
-| `strategy` | `pruneToolResultsStrategy()` | How to compact (see below). |
-| `onCompaction` | none | Called after each compaction that changed the conversation. |
+| `strategy` | `pruneToolResultsStrategy()` | How to compact (see below). `twoPhaseStrategy()` is recommended; it needs a summarizer model, so it is not the default. |
+| `onCompaction` | none | Called after each compaction that changed the conversation or reported an `error`. |
 
-## What pruning changes
+Compaction never fails a run. If the strategy throws, or the summarizer call
+fails, the run continues (with the pruned conversation, or unchanged) and
+`onCompaction` receives the `error`.
+
+The hook rewrites the run's transcript itself, not a copy: the request's
+`messages` array is the run's message list, and the hook changes it in place.
+A pruned result or a summary therefore stays in later steps, in checkpoints
+(a resumed session does not bring the full history back) and in
+`result.messages`, and it is not compacted again on the next step.
+Compaction is lossy: if the model needs a pruned result again, it has to call
+the tool again.
+
+## Strategies
+
+| Strategy | What it does |
+| --- | --- |
+| `pruneToolResultsStrategy()` | Replaces old tool results with a marker. No model call. |
+| `summarizeStrategy({ model, ... })` | Replaces old turns with one summary message written by `model`. |
+| `twoPhaseStrategy({ model, ... })` | Prunes first; summarizes only if the conversation is still above the threshold. Recommended. |
+
+### Pruning tool results
 
 `pruneToolResultsStrategy()` replaces the `content` of each tool result older
 than the protected tail with a marker such as
@@ -2035,53 +2066,112 @@ than the protected tail with a marker such as
   for every provider;
 - the results of the latest assistant turn, which the model has not read yet,
   even when they are bigger than `protectedTokens`;
-- results that are already a marker, or shorter than one.
+- pinned results, results that are already a marker, or results shorter than
+  a marker.
 
-The hook rewrites the run's transcript itself, not a copy: the request's
-`messages` array is the run's message list, and the hook changes it in place.
-A pruned result therefore stays pruned in later steps, in checkpoints (a
-resumed session does not bring the full result back) and in
-`result.messages`, and it is not pruned again on the next step. Pruning is
-lossy: if the model needs a pruned result again, it has to call the tool
-again.
+### Summarizing old turns
+
+`summarizeStrategy()` sends the messages before the protected tail to the
+summarizer with a focused instruction and replaces them with one `user`
+message:
+
+```text
+[Conversation summary]
+<the summary>
+```
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `model` | required | The summarizer: an `LLMProvider`, or a `"provider/model"` spec resolved with `resolveProvider()`. A small, cheap model is usually enough. |
+| `protectedTokens` | the hook's | Recent tokens kept as they are. |
+| `prompt` | `DEFAULT_SUMMARY_PROMPT` | The instruction sent as the summarizer's system message. The conversation to summarize is the user message. |
+| `maxSummaryTokens` | provider default | `maxTokens` of the summary call. |
+
+The summary keeps the transcript valid for every provider:
+
+- system messages and pinned messages stay where they are, and the summary
+  goes where the first summarized message was;
+- an assistant turn is summarized or kept together with all its tool results,
+  so no tool call loses its result (and no result loses its call);
+- the last message and the latest assistant turn's results are always kept.
+
+If the summary call fails (or returns nothing), the strategy falls back to
+pruning and returns the failure as `error`.
+
+### Two phases
+
+`twoPhaseStrategy()` takes the same options. It prunes tool results first,
+which is free, and calls the summarizer only when the pruned conversation is
+still above `thresholdPercent` of the context window. The summarizer then
+reads the pruned conversation. If it fails, the pruned conversation is kept and
+`error` is reported.
+
+## Pinning messages
+
+`pinMessage(message)` returns a copy of the message marked as pinned (it sets
+`metadata.pinned: true`; `Message.metadata` is application data that is never
+sent to the model). The built-in strategies never prune or summarize a pinned
+message; a pinned tool result keeps its whole assistant turn. Pin what the
+agent must always see in full, such as the task statement or a key document:
+
+```ts
+import { pinMessage, isPinned, type Message } from '@loushy/build-ai-agent';
+
+const messages: Message[] = [
+  { role: 'system', content: 'You are a research assistant.' },
+  pinMessage({ role: 'user', content: 'Goal: compare the three vendors on price and support.' }),
+];
+console.log(isPinned(messages[1])); // true
+```
+
+Custom strategies should honor `isPinned()` too.
 
 ## Compacting by hand
 
 `compactMessages(messages, options)` runs a strategy once, whatever the size
-of the conversation, and returns a new array (its input is not modified). Use
-it to shrink a stored transcript before you continue it:
+of the conversation, and resolves to a new array (its input is not modified).
+Use it to shrink a stored transcript before you continue it:
 
 ```ts
-import { compactMessages, type Message } from '@loushy/build-ai-agent';
+import { compactMessages, summarizeStrategy, type Message } from '@loushy/build-ai-agent';
 
 declare const history: Message[];
 
-const { messages, tokensBefore, tokensAfter, prunedToolCallIds } = compactMessages(history, {
+const { messages, tokensBefore, tokensAfter, prunedToolCallIds } = await compactMessages(history, {
   protectedTokens: 8_000,
   model: 'gpt-4o-mini', // for the context-window lookup and the token estimator
 });
 console.log(`${tokensBefore} -> ${tokensAfter} tokens, pruned ${prunedToolCallIds.length} results`);
+
+const summarized = await compactMessages(history, {
+  protectedTokens: 8_000,
+  strategy: summarizeStrategy({ model: 'openai/gpt-4o-mini' }),
+});
+console.log(summarized.summary ?? summarized.error?.message);
 ```
 
 ## Writing a strategy
 
-A strategy is a name and a `compact()` function. It receives the messages, a
-token counter for the request's model, the context window and
-`protectedTokens`, and returns the new messages with before/after token counts.
-Return the input array unchanged when there is nothing to do: the hook then
-leaves the run alone and does not call `onCompaction`.
+A strategy is a name and a `compact()` function, which may be async. It
+receives the messages, a token counter for the request's model, the context
+window, `protectedTokens`, `thresholdTokens` (the size to get under) and the
+run's abort `signal`, and returns the new messages with before/after token
+counts (and optionally a `summary` or an `error`). Return the input array
+unchanged when there is nothing to do: the hook then leaves the run alone and
+does not call `onCompaction`.
 
 ```ts
-import { createCompactionHook, type CompactionStrategy } from '@loushy/build-ai-agent';
+import { createCompactionHook, isPinned, type CompactionStrategy } from '@loushy/build-ai-agent';
 
-// Keep the system prompt, the first user message and the last 20 messages.
+// Keep the system prompt, pinned messages and the last 20 messages.
 const keepRecent: CompactionStrategy = {
   name: 'keep-recent',
   compact({ messages, estimateTokens }) {
     const tokensBefore = estimateTokens(messages);
     if (messages.length <= 22) return { messages, tokensBefore, tokensAfter: tokensBefore, prunedToolCallIds: [] };
     // A real strategy must not split a tool call from its result.
-    const kept = [...messages.slice(0, 2), ...messages.slice(-20)];
+    const older = messages.slice(0, -20).filter((m) => m.role === 'system' || isPinned(m));
+    const kept = [...older, ...messages.slice(-20)];
     return { messages: kept, tokensBefore, tokensAfter: estimateTokens(kept), prunedToolCallIds: [] };
   },
 };
@@ -2089,9 +2179,9 @@ const keepRecent: CompactionStrategy = {
 const hook = createCompactionHook({ strategy: keepRecent });
 ```
 
-A summarizing strategy (replace old turns with a model-written summary) and
-typed `compaction.*` stream events are planned; `onCompaction` is where they
-will plug in.
+Typed `compaction.*` stream events and a `createAgent({ compaction })` option
+are planned (LOU-W3.2); until then `onCompaction` is where to observe
+compactions.
 
 # Configuration
 

@@ -481,9 +481,12 @@ returns an `AgentHook` that, before each model call above 90% (by default) of
 the model's context window, replaces tool results older than the newest
 40,000 tokens with a `[pruned: <tool> result, N chars]` marker. It edits the
 run's transcript in place, so pruning persists in checkpoints and
-`result.messages`. `compactMessages(messages, options)` does the same once,
-by hand, and `pruneToolResultsStrategy()` / `CompactionStrategy` are the
-built-in and pluggable strategies. See [Context compaction](./compaction.md).
+`result.messages`. `twoPhaseStrategy({ model })` (recommended) prunes first
+and, if the run is still too big, replaces old turns with a summary written
+by `model`; `summarizeStrategy()` only summarizes. `pinMessage(message)` marks
+a message that is never pruned or summarized. `compactMessages(messages, options)`
+does the same once, by hand (async), and `CompactionStrategy` is the
+pluggable interface (`compact()` may be async). See [Context compaction](./compaction.md).
 
 ## Flows, evals, observability and security
 
