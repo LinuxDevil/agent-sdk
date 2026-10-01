@@ -80,4 +80,55 @@ describe('withEvalCassettes', () => {
     expect(fs.existsSync(committed)).toBe(false);
     expect(fs.existsSync(driftCassettePath(driftDir, committed))).toBe(true);
   });
+
+  it('covers a sub-agent: each provider gets its own cassette and both replay offline', async () => {
+    const file = evalFile();
+    const build = (leadModel: ReturnType<typeof mockModel>, researcherModel: ReturnType<typeof mockModel>) =>
+      createAgent({
+        provider: leadModel,
+        instructions: 'You coordinate.',
+        subagents: { researcher: createAgent({ provider: researcherModel, instructions: 'You research.', description: 'Researches' }) },
+      });
+    const task = { name: 'task', args: { agent: 'researcher', prompt: 'capital of France?', description: 'ask' } };
+    const run = async (agent: ReturnType<typeof build>) => {
+      let reply = '';
+      const result = await withEvalCassettes({ file, name: 'Delegation' }, async () => {
+        reply = (await agent.send('Tell me about France')).text;
+        return { name: 'Delegation', tags: [], passed: true, assertions: [], durationMs: 0, steps: 2, toolCalls: [] };
+      });
+      return { reply, result };
+    };
+
+    vi.stubEnv(CASSETTES_ENV, 'record');
+    const recorded = await run(build(mockModel([{ toolCalls: [task] }, 'Paris.']), mockModel(['Paris is the capital.'])));
+    expect(recorded.reply).toBe('Paris.');
+    expect(recorded.result.cassettes).toEqual([cassettePath(file, 'Delegation', undefined), cassettePath(file, 'Delegation', undefined, 1)]);
+
+    vi.stubEnv(CASSETTES_ENV, 'replay');
+    const leadModel = mockModel([]);
+    const researcherModel = mockModel([]);
+    expect((await run(build(leadModel, researcherModel))).reply).toBe('Paris.');
+    expect(leadModel.calls).toHaveLength(0);
+    expect(researcherModel.calls).toHaveLength(0);
+  });
+
+  it('covers a streamed run: agent.stream() records and replays the same events', async () => {
+    const file = evalFile();
+    const stream = async (provider: ReturnType<typeof mockModel>) => {
+      const events: string[] = [];
+      await withEvalCassettes({ file, name: 'Streaming' }, async () => {
+        for await (const event of createAgent({ provider, prompt: 'Be brief.' }).stream('hi')) {
+          if (event.type === 'text.delta') events.push(event.text);
+        }
+        return { name: 'Streaming', tags: [], passed: true, assertions: [], durationMs: 0, steps: 1, toolCalls: [] };
+      });
+      return events.join('');
+    };
+    vi.stubEnv(CASSETTES_ENV, 'record');
+    expect(await stream(mockModel(['streamed words']))).toBe('streamed words');
+    vi.stubEnv(CASSETTES_ENV, 'replay');
+    const offline = mockModel([]);
+    expect(await stream(offline)).toBe('streamed words');
+    expect(offline.calls).toHaveLength(0);
+  });
 });

@@ -5752,10 +5752,15 @@ Run `--drift` nightly or before a model upgrade, and `--replay` (or plain
 `loushy eval` in CI) on every pull request. Judges are not recorded: grade with
 a real judge only in `*.judge.eval.ts` files.
 
-How it works: while a case runs under one of these modes, every
-`AgentExecutor.execute()` call (which `createAgent()` agents, streaming,
-sub-agents and approval resumes go through) gets its provider wrapped with
-`recordReplay()` for that case's cassette.
+How it works: the run loop sends every model call (`generate` or `stream`, from
+a plain run, a streamed run, a sub-agent or an approval resume) through one
+provider-interception seam, `setProviderInterceptor()` in
+`src/providers/interception.ts`. Nothing is installed by default, so the seam is
+free. While a case runs under one of these modes, `loushy eval` answers it with
+the provider wrapped by `recordReplay()` for that case's cassette. You can use
+the seam yourself to put any wrapper at the model boundary: the interceptor gets
+the run's provider and returns the one to call (it must return the same wrapper
+for the same provider, and leave a provider it already wrapped alone).
 
 ## Run evals against a deployment
 
