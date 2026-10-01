@@ -100,6 +100,19 @@ durable, but the agent has no checkpoint store.
 
 **Example:** `createAgent({ provider }).send('hi', { sessionId: 'job-1' })`.
 
+### LOUSHY_CONFIG_RESOLVER_FAILED
+
+**Means:** a `createAgent()` option given as a function of the run (`model`,
+`instructions` / `prompt` or `tools`) threw while the run's config was being
+resolved. The run never started: `send()` rejects, `stream()` ends with an
+`error` event, and a session's transcript is left as it was. `error.field`
+names the option and `error.cause` is what the function threw.
+
+**Fix:** fix the function named in the message. See
+[Dynamic config](./api-overview.md#dynamic-config).
+
+**Example:** `createAgent({ provider, model: ({ metadata }) => plans[metadata.plan].model })` with an unknown plan.
+
 ## Providers and peers
 
 ### LOUSHY_PROVIDER_SPEC_INVALID

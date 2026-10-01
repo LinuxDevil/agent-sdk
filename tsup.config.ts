@@ -41,6 +41,7 @@ export default defineConfig({
     'triggers/index': 'src/triggers/index.ts',
     'react/index': 'src/react/index.ts',
     'vue/index': 'src/vue/index.ts',
+    'svelte/index': 'src/svelte/index.ts',
   },
   format: ['cjs', 'esm'],
   dts: true,

@@ -29,6 +29,7 @@
 - [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md): `agent.stream()` runs an agent exactly like `agent.send()` and reports the run as a stream of typed events: model text as it arrives, every tool call, step boundaries, approval requests, and a final `run.done`.
 - [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md): Give an agent a zod schema as `output` and its final reply becomes a typed, validated object: `result.object`.
 - [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md): A sub-agent is a separate agent - its own instructions, model, tools and skills - that a lead agent hands a self-contained task to.
+- [Svelte](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/svelte.md): `loushyAgent()` for Svelte is the React hook as a store: the same sources, the same state and the same actions, over the same typed event stream.
 - [Testing agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md): `@loushy/build-ai-agent/testing` ships `mockModel`: a scripted, deterministic `LLMProvider` for unit tests.
 - [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md): A tool is a typed function the model can call.
 - [Utilities](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/utilities.md): Supporting helpers exported from the package root: encryption and hashing, file storage for attachments, and template rendering.
