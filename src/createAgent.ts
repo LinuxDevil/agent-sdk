@@ -333,7 +333,8 @@ export function createAgent(config: CreateAgentConfig = {}): SimpleAgent {
     stream(message: string, options: SendOptions = {}): AgentRun {
       return AgentExecutor.stream(executeOptions(message, options.signal));
     },
-    session: (options?: SessionOptions) => approvals.session(run, options),
+    session: (options?: SessionOptions) =>
+      approvals.session(run, (input, signal) => AgentExecutor.stream(executeOptions(input, signal)), options),
     approvals: approvals.approvals,
   };
   registerSubagent(simpleAgent, { spec, description: config.description });
