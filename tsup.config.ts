@@ -47,7 +47,8 @@ export default defineConfig({
   clean: true,
   treeshake: true,
   minify: false,
-  external: ['ai', 'zod', '@opentelemetry/api'],
+  // Optional peers (LOU-D40) stay external too: tsup would externalize them from package.json anyway.
+  external: ['ai', 'zod', '@opentelemetry/api', 'dockerode', '@modelcontextprotocol/sdk', 'prompts'],
   onSuccess: async () => {
     copyDevUi();
   },

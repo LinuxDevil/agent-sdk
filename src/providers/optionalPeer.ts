@@ -4,9 +4,42 @@
  * Importing the SDK never loads a provider SDK: each is imported with a
  * dynamic `import()` on first use, and a missing package becomes a
  * {@link MissingPeerDependencyError} with the exact install command.
+ *
+ * LOU-D40 extends this to the feature peers (`dockerode`, the MCP SDK and
+ * `prompts`): each is described in {@link FEATURE_PEERS}, so its error also
+ * names the feature that needs it.
  */
 
 import { peerInstallCommand } from './providerSpec';
+
+/** An optional peer that enables one SDK feature rather than one LLM provider. */
+export interface FeaturePeer {
+  /** The `peerDependencies` range; a test keeps it equal to package.json. */
+  range: string;
+  /** What needs the package, as it reads in the error: "<feature> needs it". */
+  feature: string;
+}
+
+/**
+ * The optional peers behind SDK features (not providers; those live in
+ * providerSpec.ts). Also what `loushy doctor` lists as "what it enables".
+ */
+export const FEATURE_PEERS: Readonly<Record<string, FeaturePeer>> = {
+  dockerode: { range: '^5.0.1', feature: 'Docker sandboxing (SubprocessSandbox)' },
+  '@modelcontextprotocol/sdk': {
+    range: '^1.30.1',
+    feature: 'MCP (serveMcp, `loushy mcp` and MCP client connections)',
+  },
+  prompts: {
+    range: '^2.4.2',
+    feature: 'the interactive prompts of `loushy init` (pass --yes to skip them)',
+  },
+};
+
+function installCommandFor(packageName: string): string {
+  const peer = FEATURE_PEERS[packageName];
+  return peer ? `npm install ${packageName}@${peer.range}` : peerInstallCommand(packageName);
+}
 
 /**
  * Thrown on first use of a feature whose optional package is not installed.
@@ -28,13 +61,17 @@ export class MissingPeerDependencyError extends Error {
     readonly packageName: string,
     /** The command that installs it, e.g. `npm install @ai-sdk/openai@^0.0.42`. */
     readonly installCommand: string,
-    options?: { cause?: unknown }
+    options?: { cause?: unknown; feature?: string }
   ) {
     super(
-      `The optional package '${packageName}' is not installed, but this feature needs it. Run: ${installCommand}`,
-      options
+      `The optional package '${packageName}' is not installed, but ${options?.feature ?? 'this feature'} needs it. Run: ${installCommand}`,
+      options?.cause === undefined ? undefined : { cause: options.cause }
     );
+    this.feature = options?.feature;
   }
+
+  /** The feature that needs the package, when known (every feature peer; not provider peers). */
+  readonly feature?: string;
 }
 
 /**
@@ -60,7 +97,10 @@ export async function loadOptionalPeer<T>(packageName: string, importer: () => P
     return await importer();
   } catch (error) {
     if (!isMissingPackage(error, packageName)) throw error;
-    throw new MissingPeerDependencyError(packageName, peerInstallCommand(packageName), { cause: error });
+    throw new MissingPeerDependencyError(packageName, installCommandFor(packageName), {
+      cause: error,
+      feature: FEATURE_PEERS[packageName]?.feature,
+    });
   }
 }
 

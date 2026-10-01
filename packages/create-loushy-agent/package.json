@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@loushy/build-ai-agent": "^1.0.0-alpha.8"
+    "@loushy/build-ai-agent": "^1.0.0-alpha.8",
+    "prompts": "^2.4.2"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

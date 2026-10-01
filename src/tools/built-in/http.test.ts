@@ -277,6 +277,27 @@ describe('makeHttpRequest', () => {
       }
     });
 
+    it('uses the global fetch and never loads undici while TLS verification is on (LOU-D40)', async () => {
+      server = http.createServer((_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('plain');
+      });
+      const baseUrl = await listen(server);
+      vi.resetModules();
+      vi.doMock('undici', () => {
+        throw new Error('undici must not be loaded for a default request');
+      });
+      try {
+        const { makeHttpRequest: fresh } = await import('./http');
+        expect(await fresh({ url: baseUrl, method: 'GET' })).toBe('plain');
+        expect(await fresh({ url: baseUrl, method: 'GET', options: { validateSSL: true } })).toBe('plain');
+        await expect(fresh({ url: baseUrl, method: 'GET', options: { validateSSL: false } })).rejects.toThrow(/mocking a module|undici must not be loaded/);
+      } finally {
+        vi.doUnmock('undici');
+        vi.resetModules();
+      }
+    });
+
     it('rejects a self-signed certificate by default (validateSSL unset)', async () => {
       httpsServer = https.createServer({ cert, key }, (_req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
