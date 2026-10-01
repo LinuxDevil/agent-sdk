@@ -1,4 +1,4 @@
-import { CoreMessage } from 'ai';
+import type { Message } from '../providers/llm';
 import { ToolConfiguration } from './tool';
 import { AgentFlow } from './flow';
 
@@ -52,7 +52,7 @@ export interface AgentConfig {
 export interface AgentExecutionOptions {
   streaming?: boolean;
   sessionId: string;
-  messages: CoreMessage[];
+  messages: Message[];
   attachments?: any[];
   locale?: string;
   timezone?: string;

@@ -44,6 +44,8 @@ import type { PermissionOptions } from './execution/permissions';
 import type { z } from 'zod';
 import type { McpServerSpec } from './spec/schema';
 import { agentMcp, streamAfter } from './tools/mcp/agentMcp';
+import { HookRegistry, type AgentHook } from './execution/hooks';
+import { compactionHookFor, type AgentCompaction } from './context/agentCompaction';
 
 /**
  * Options for createAgent() that do not depend on how the instructions and
@@ -224,6 +226,32 @@ export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> ex
    * ```
    */
   output?: TOutput;
+  /**
+   * Hooks run around every model call and tool call (LOU-W3.2), in the order
+   * given, before the hook `compaction` installs. See `AgentHook` and
+   * docs/api-overview.md. They apply to this agent's runs and to its sub-agents'.
+   *
+   * @example
+   * ```ts
+   * createAgent({ prompt: '...', provider, hooks: [{ name: 'audit', preToolCall: (ctx) => console.log(ctx.toolName) }] });
+   * ```
+   */
+  hooks?: readonly AgentHook[];
+  /**
+   * Keeps long runs under the model's context window (LOU-W3.2): `true`
+   * installs `createCompactionHook()` with its defaults (prune old tool
+   * results above 90% of the window); an object sets `strategy`,
+   * `thresholdPercent`, `contextWindow` and `protectedTokens`, and
+   * `summarizer` (a `'provider/model'` string or an `LLMProvider`) selects
+   * `twoPhaseStrategy()` with that model. `stream()` reports each compaction
+   * as `compaction.start` / `compaction.done` events. See docs/compaction.md.
+   *
+   * @example
+   * ```ts
+   * createAgent({ model: 'openai/gpt-4o', compaction: { thresholdPercent: 0.8, summarizer: 'openai/gpt-4o-mini' } });
+   * ```
+   */
+  compaction?: AgentCompaction;
 }
 
 /**
@@ -441,6 +469,7 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     toolConcurrency: config.toolConcurrency,
   };
   const spec: SubagentSpec = { agent, provider, toolRegistry, ...runOptions };
+  const hooks = agentHooks(config);
   const checkpoints = config.store?.checkpoints;
   const approvals = createAgentApprovals({
     store: config.approvalStore ?? config.store?.approvals ?? new InMemoryApprovalStore(),
@@ -451,7 +480,7 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
         approvalStore,
         toolRegistry ?? new ToolRegistry(),
         provider,
-        { ...runOptions, output: config.output, approvalStore, signal },
+        { ...runOptions, output: config.output, hooks, approvalStore, signal },
         // A run paused under a `sessionId` keeps checkpointing after the decision.
         checkpointStore ?? checkpoints
       ),
@@ -476,6 +505,7 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
   ): ExecuteOptions => ({
     ...spec,
     output: config.output,
+    hooks,
     approvalStore: approvals.store,
     input,
     signal,
@@ -517,6 +547,15 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
   };
   registerSubagent(simpleAgent, { spec, description: config.description });
   return simpleAgent;
+}
+
+/** The agent's hooks: `hooks`, then the one `compaction` installs; `undefined` when there are none. */
+function agentHooks({ hooks = [], compaction }: CreateAgentBase): HookRegistry | undefined {
+  const compactionHook = compactionHookFor(compaction);
+  if (hooks.length === 0 && !compactionHook) return undefined;
+  const registry = new HookRegistry();
+  registry.registerMany([...hooks, ...(compactionHook ? [compactionHook] : [])]);
+  return registry;
 }
 
 /** Appends the nearest AGENTS.md / CLAUDE.md to `instructions` when `projectInstructions` is set. */

@@ -68,7 +68,9 @@ descriptors that set neither `inputSchema` nor `execute`.
 
 ## Execute context
 
-`execute(args, ctx)` always gets a real second argument, on every path that
+`execute(args, ctx)` always gets a real second argument, typed
+`ToolExecutionContext` (exported from the package root; it replaces the `ai`
+SDK's `ToolExecutionOptions`), on every path that
 runs a tool: the main loop, the call that runs after an approval, tools that
 run in a sandbox (`sandboxExecute(args, sandbox, ctx)`) and a flow's tool-call
 node.
@@ -78,6 +80,7 @@ node.
 | `ctx.toolCallId` | The model's id for this call. It stays the same when the call is re-run after a crash. A call with no model turn behind it (a flow node) gets a generated id. |
 | `ctx.messages` | A read-only copy of the transcript the model had seen before it made the call: no system prompt and not the assistant turn that made the call. Empty for a flow node. |
 | `ctx.abortSignal` | The run's `AbortSignal`, set when the run has one. |
+| `ctx.sessionId` | Reserved: the type has it and `buildToolRunContext()` passes it through, but the executor does not set it yet. |
 
 A `sandboxExecute(args, sandbox)` that ignores the third argument keeps working.
 
