@@ -3,7 +3,7 @@
 Mission: make `@loushy/build-ai-agent` the best TypeScript AI agent SDK (capabilities and DX) against
 Vercel eve and MaxGfeller/open-harness. This file is the loop's memory: read it first, update it last.
 
-- Loop started: 2026-10-01. Iterations completed: 4.
+- Loop started: 2026-10-01. Iterations completed: 5.
 - Audit: `.agent-loop/AUDIT.md`, refreshed 2026-10-01 at main `a03b1a3` (eve 0.69.0 @682c7a6, open-harness 0.7.0 @026e8d9).
   Reference agents (3 agents x 3 SDKs, measured): `.agent-loop/reference-agents/`. Older material: `docs/research/*.md`, `docs/plan/tickets.md`.
   Audit is stale when: a competitor ships a new major, or more than ~25 PRs land after `a03b1a3` (re-run the DX measurement then).
@@ -35,7 +35,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Workspace fs + shell tools | ✅ | ✅ | ✅ | - |
 | Compaction | ✅ flipped (W2 prune #80, W3 summarize/two-phase/pinned #84) | ✅ | ✅ | W3.2 (`compaction.*` events, `createAgent({ compaction })`) |
 | Subagents | ✅ | ✅ | ✅ | - |
-| Background / resumable subagents | ⚠️ flipped (Y4 #91: background task, status/await/cancel, maxConcurrent) | ✅ | ✅ | Y4.2 (end-of-run cancel/await, needs executor hook), Y6 |
+| Background / resumable subagents | ✅ flipped (Y4 #91 + Y4.2 #92: run-end cancel/await, `result.backgroundTasks`, `subagentOptions`) | ✅ | ✅ | Y6 (resumable children) |
 | Remote subagents | ❌ | ✅ | ❌ | Y7 |
 | Approvals / HITL | ✅ flipped (D21, #75) | ✅ | ⚠️ | X8 (policies) |
 | Agent asks the user a question | ❌ | ✅ | ❌ | X9 |
@@ -81,9 +81,9 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Published on npm | ❌ (owner action) | ✅ | ✅ | D49 |
 | Current `ai` major | ❌ | ✅ | ✅ | D22-D29 |
 
-Score (us): 22 ✅ / 15 ⚠️ / 14 ❌ of 51 after iteration 4 (iteration 3: 20/15/16 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
+Score (us): 23 ✅ / 14 ⚠️ / 14 ❌ of 51 after iteration 5 (iteration 4: 22/15/14; iteration 3: 20/15/16 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
 
-Differentiators shipped (target: 3): 0 of 8 (candidates in AUDIT section 7: host-agnostic durable sessions D30; record/replay evals D46; Forge time-travel D43-D45; MCP+ACP+HTTP reach Z6/D14; both authoring modes with hot reload D31-D33; OTel metrics D48; trajectory evals remote D47; edge-native agents D51/P9).
+Differentiators shipped (target: 3): 3 of 8 (#1 host-agnostic durable sessions: W9 #89 + D30 #94; #2 record/replay evals: D46 #96; #6 OTel GenAI metrics + cost: D48 #95). Remaining (candidates in AUDIT section 7: host-agnostic durable sessions D30; record/replay evals D46; Forge time-travel D43-D45; MCP+ACP+HTTP reach Z6/D14; both authoring modes with hot reload D31-D33; OTel metrics D48; trajectory evals remote D47; edge-native agents D51/P9).
 
 ## Ticket tree
 
@@ -95,7 +95,8 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | U1-U6, U10-U13, U16, U18 | (see docs/plan/tickets.md) | ✅ | |
 | U7, U8, U9 | Durable execution gaps | ✅ #68 | |
 | U12 | Thrown tool error reaches the model structured | ✅ #37 | |
-| U14 | One tool-error shape everywhere | ⬜ | |
+| U14 | One tool-error shape everywhere (`toolErrorResult`, `kind`) | ✅ #93 | |
+| U14.2 | `agentRunState.pushCancelledToolResult` and `subagentRuntime.settleSuspensions` use the shared shape | ⬜ | U14 |
 | U15 | Tool execute context real at runtime (sandbox path, `messages`) | ⬜ | |
 | U17 | Sandboxed HTTP honors cancellation | ✅ #72 | |
 | U19 | Explicit `maxSteps` exhaustion (`finishReason: 'max-steps'`) | ✅ #83 | |
@@ -153,7 +154,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 |---|---|---|---|
 | Y1, Y2, Y3, Y5 | | ✅ | |
 | Y4 | Background sub-agents (`background: true`, `agent_status/await/cancel`, `withSubagentOptions({ maxConcurrent })`) | ✅ #91 | |
-| Y4.2 | Executor `onRunEnd` hook: cancel (default) or await background children at run end; `subagentOptions` on createAgent | ⬜ | Y4 |
+| Y4.2 | Executor `onRunEnd` hook; background children cancelled/awaited at run end; `createAgent({ subagentOptions })` | ✅ #92 | |
 | Y6 | Resumable sub-agent sessions | ⬜ | Y4 |
 | Y7 | Remote sub-agent | ⬜ | D14 |
 
@@ -184,7 +185,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D27 | `ai` v6/v7 adapter: stream | ⬜ | D26 |
 | D28 | Provider peers and ranges | ⬜ | D27 |
 | D29 | zod 4 / Standard Schema | ⬜ | D22 |
-| D30 | One `store` option | ⬜ | W9 |
+| D30 | One `store` option (`AgentStore`, `memoryStore()`, `send({ sessionId })`, `agent.resume(id)`) | ✅ #94 | |
 | D31 | `loushy dev` for dirs and TS, hot reload | ⬜ | |
 | D32 | Stateful streaming dev chat | ⬜ | D31 |
 | D33 | `loushy chat` REPL | ⬜ | V14 |
@@ -200,9 +201,10 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D43 | Checkpoint history | ⬜ | |
 | D44 | Fork and replay from step N | ⬜ | D43 |
 | D45 | Forge time-travel panel | ⬜ | D44 |
-| D46 | `loushy eval --record/--replay/--drift` | ⬜ | |
+| D46 | `loushy eval --record/--replay/--drift` (cassettes per case, drift table + JUnit, `--strict`) | ✅ #96 | |
+| D46.2 | Proper provider-middleware hook for eval cassettes (replaces runtime reassignment of `AgentExecutor.execute`) | ⬜ | D46 |
 | D47 | Remote eval target | ⬜ | D14 |
-| D48 | OTel GenAI metrics + cost attribute | ⬜ | |
+| D48 | OTel GenAI metrics (`gen_ai.client.token.usage`, `operation.duration`) + `loushy.cost_usd` | ✅ #95 | |
 | D49 | Publish readiness | ⬜ | U20 |
 | D50 | `loushy add` | ⬜ | |
 | D51 | Deployed API auth + Worker parity | ⬜ | D14 |
@@ -248,6 +250,11 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | #91 | Y4 | merged (squash) | background sub-agents |
 | #90 | V4 | merged (squash) | structured output |
 | #89 | W9 | merged (squash; createAgent.ts conflict with V4 combined by hand) | durable sessions |
+| #92 | Y4.2 | merged (squash) | background run-end handling |
+| #93 | U14 | merged (squash) | one tool-error shape |
+| #94 | D30 | merged (squash) | one `store` option |
+| #95 | D48 | merged (squash) | OTel metrics + cost |
+| #96 | D46 | merged (squash) | eval record/replay/drift |
 
 ## Main health
 
@@ -277,14 +284,20 @@ CI runs only on `pull_request`, so "main is green" means the last PR's CI run pa
 - Matrix flips: Durability/resume ⚠️->✅, Structured output ❌->✅, Background sub-agents ❌->⚠️.
 - Differentiator 1 (host-agnostic durable sessions) is one ticket (D30) from shipped.
 
-## Next batch (iteration 5)
+### Iteration 5 (2026-10-01)
+- Merged: #92 (Y4.2), #93 (U14), #94 (D30), #95 (D48), #96 (D46).
+- Matrix flips: Background sub-agents ⚠️->✅. Three differentiators shipped (durable sessions in one option, record/replay evals with drift, OTel metrics + cost).
+- Reference agent durable-job.ts now 25 lines (was ~60). Health: D46's author saw fallow list the pre-existing Anthropic/OpenAI duplicate; others report exit 0. A main-health check (full coverage + fallow on main) runs in iteration 6.
 
-1. D30 (opus): one `store` option on createAgent wiring sessions, checkpoints and approvals (differentiator 1); createAgent.ts options/session region.
-2. Y4.2 (opus): executor `onRunEnd` hook; background children cancelled (default) or awaited at run end; AgentExecutor.ts + src/subagents.
-3. U14 (sonnet): one tool-error shape everywhere; resume.ts, toolCallExecution.ts.
-4. D46 (opus): `loushy eval --record/--replay/--drift` (differentiator 2); src/cli/eval.ts, src/evals, src/testing.
-5. D48 (sonnet): OTel GenAI metrics + `loushy.cost_usd` span attribute (differentiator 6); src/execution/otel.ts, genAiSpans.ts.
-Then: U15, X8, Z4, W3.2, D34.2, D2, X2, D43.
+## Next batch (iteration 6)
+
+0. Main health (sonnet): full `test:coverage` + `fallow` on main; fix if small (e.g. the provider duplicate block).
+1. U15 (sonnet): tool execute context real on the sandbox path (`toolCallId`, `messages`, `abortSignal`); sandboxGuard.ts, toolCallExecution.ts.
+2. Z4 (opus): `connectMcp()` + `createAgent({ mcpServers })` + `specToAgent` connects (closes D20.2); src/tools/mcp, createAgent.ts (tools region), spec.
+3. D43 (sonnet): checkpoint history per session in SQLite/memory/file stores (`history(sessionId)`); src/storage, checkpoint.ts.
+4. D2 (opus): error codes with fixes (`code`, hint, docs link; "did you mean" on spec/config); src/utils/errors.ts, execution/errors.ts, loadSpec, resolveProvider, createAgent validation.
+5. D34.2 (sonnet): drop `setType` from apps/agent-forge and examples; ContextBuilder cast.
+Then: X8, X2, W3.2, D44, D45, V11, D22-D29 chain (D23 next), Z5, D31.
 
 ## Subagent brief (canonical copy)
 
