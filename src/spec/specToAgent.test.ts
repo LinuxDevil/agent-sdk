@@ -98,3 +98,13 @@ describe('specToAgent model selection (LOU-U1)', () => {
     expect(received).toEqual(['spec-model-7']);
   });
 });
+
+describe('specToAgent mcpServers (LOU-D20)', () => {
+  it('exposes the parsed servers on the result (connecting is TODO(LOU-D20.2))', () => {
+    const mcpServers = { fs: { command: 'npx' }, docs: { url: 'https://example.com/mcp' } };
+    const provider = { type: 'mock', model: 'm' };
+    const agent = specToAgent({ name: 'mcp-agent', prompt: 'x', provider, mcpServers });
+    expect(agent.mcpServers).toEqual(mcpServers);
+    expect(specToAgent({ name: 'n', prompt: 'x', provider }).mcpServers).toEqual({});
+  });
+});

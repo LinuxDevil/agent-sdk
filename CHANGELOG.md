@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] - 2026-09-28
 
 ### Added
+- `AgentSpec.mcpServers` (LOU-D20): a validated map of MCP servers (stdio `command`/`args`/`env` or HTTP `url`/`headers`) in agent spec files. `loadSpec()` reports a bad entry with its name, `loushy doctor` reads the validated field instead of the raw file, and `specToAgent()` exposes the parsed servers as `agent.mcpServers` (connecting them is TODO(LOU-D20.2)). Existing specs are unaffected.
 - `createAgent()` agents can pause for approval (LOU-D21): a `needsApproval` tool no longer fails the run with "requires approval but no approvalStore". The run pauses (`finishReason: 'awaiting-approval'`) in a per-agent `InMemoryApprovalStore` (or the new `approvalStore` option), and `agent.approvals.list()` / `agent.approvals.resolve({ id, approved, note? })` continue it, in its session if it paused in one. The `approve` option decides calls in code without pausing.
 
 ### Changed

@@ -2,7 +2,7 @@
  * `loushy doctor <agent.yaml>`: validates the spec with the SDK's own loader
  * and checks what the spec references (provider, built-in tools, MCP servers).
  */
-import type { AgentSpec } from '../spec/schema';
+import type { AgentSpec, McpServerSpec } from '../spec/schema';
 import { listProviders } from '../providers/providerSpec';
 import { NO_SPEC_NEEDS, type SpecNeeds } from './doctorChecks';
 import type { DoctorCheck, DoctorEnvironment } from './doctorTypes';
@@ -12,36 +12,8 @@ export interface SpecInspection {
   needs: SpecNeeds;
 }
 
-interface McpReference {
-  name: string;
-  command?: string;
-}
-
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function toReference(name: string, value: unknown): McpReference {
-  const command = isRecord(value) && typeof value.command === 'string' ? value.command : undefined;
-  return { name, command };
-}
-
-/** Reads `mcpServers` from a raw spec, as either a list or a name -> config map. */
-function mcpReferences(raw: unknown): McpReference[] {
-  const servers = isRecord(raw) ? raw.mcpServers : undefined;
-  if (Array.isArray(servers)) {
-    return servers.map((server, index) =>
-      toReference(isRecord(server) && typeof server.name === 'string' ? server.name : `#${index + 1}`, server)
-    );
-  }
-  if (isRecord(servers)) {
-    return Object.entries(servers).map(([name, server]) => toReference(name, server));
-  }
-  return [];
 }
 
 function checkProvider(spec: AgentSpec): DoctorCheck {
@@ -79,9 +51,9 @@ function checkTool(env: DoctorEnvironment, name: string): { check: DoctorCheck; 
   }
 }
 
-function checkMcpServer(env: DoctorEnvironment, server: McpReference): DoctorCheck {
-  const base = { id: `spec.mcp.${server.name}`, title: `MCP server '${server.name}'` };
-  if (!server.command) {
+function checkMcpServer(env: DoctorEnvironment, name: string, server: McpServerSpec): DoctorCheck {
+  const base = { id: `spec.mcp.${name}`, title: `MCP server '${name}'` };
+  if (!('command' in server)) {
     return { ...base, status: 'ok', finding: 'no command to resolve (remote or unspecified)' };
   }
   if (env.commandExists(server.command)) {
@@ -91,7 +63,7 @@ function checkMcpServer(env: DoctorEnvironment, server: McpReference): DoctorChe
     ...base,
     status: 'fail',
     finding: `command '${server.command}' not found on PATH`,
-    fix: `Install '${server.command}' or fix mcpServers.${server.name}.command in the spec.`,
+    fix: `Install '${server.command}' or fix mcpServers.${name}.command in the spec.`,
   };
 }
 
@@ -104,14 +76,6 @@ function loadFailure(path: string, error: unknown): SpecInspection {
     fix: `Fix the field(s) named above in ${path}.`,
   };
   return { checks: [check], needs: NO_SPEC_NEEDS };
-}
-
-function safeRaw(env: DoctorEnvironment, path: string): unknown {
-  try {
-    return env.readRawSpec(path);
-  } catch {
-    return undefined;
-  }
 }
 
 /** Loads the spec (if a path was given) and checks everything it references. */
@@ -127,7 +91,9 @@ export function inspectSpec(env: DoctorEnvironment): SpecInspection {
   }
 
   const tools = (spec.tools ?? []).map((name) => checkTool(env, name));
-  const mcp = mcpReferences(safeRaw(env, path)).map((server) => checkMcpServer(env, server));
+  const mcp = Object.entries(spec.mcpServers ?? {}).map(([name, server]) =>
+    checkMcpServer(env, name, server)
+  );
   const checks: DoctorCheck[] = [
     { id: 'spec', status: 'ok', title: 'Agent spec', finding: `'${spec.name}' is valid` },
     checkProvider(spec),

@@ -32,7 +32,6 @@ function makeEnv(overrides: Partial<DoctorEnvironment> = {}): DoctorEnvironment 
     loadSpec: () => {
       throw new Error('no spec');
     },
-    readRawSpec: () => undefined,
     resolveTool: () => ({}),
     commandExists: () => true,
     fetch: async () => ({ ok: true, status: 200 }),
@@ -202,28 +201,33 @@ describe('spec checks', () => {
     expect(bad.status).toBe('fail');
     expect(bad.fix).toContain("Remove 'nope'");
   });
-  it('checks MCP server commands from a list or a map', async () => {
+  it('checks MCP server commands from the validated spec field (LOU-D20)', async () => {
     const commandExists = (command: string) => command === 'npx';
-    const list = withSpec(spec(), {
-      commandExists,
-      readRawSpec: () => ({ mcpServers: [{ name: 'fs', command: 'npx' }, { name: 'gone', command: 'nonexistent' }, { url: 'https://x' }] }),
-    });
-    expect((await check(list, 'spec.mcp.fs')).status).toBe('ok');
-    expect((await check(list, 'spec.mcp.gone')).status).toBe('fail');
-    expect((await check(list, 'spec.mcp.#3')).status).toBe('ok');
-    const map = withSpec(spec(), {
-      commandExists,
-      readRawSpec: () => ({ mcpServers: { git: { command: 'uvx' } } }),
-    });
-    expect((await check(map, 'spec.mcp.git')).status).toBe('fail');
+    const env = withSpec(
+      spec({
+        mcpServers: {
+          fs: { command: 'npx' },
+          gone: { command: 'nonexistent' },
+          docs: { url: 'https://example.com/mcp' },
+        },
+      }),
+      { commandExists }
+    );
+    expect((await check(env, 'spec.mcp.fs')).status).toBe('ok');
+    const gone = await check(env, 'spec.mcp.gone');
+    expect(gone.status).toBe('fail');
+    expect(gone.fix).toContain('mcpServers.gone.command');
+    expect((await check(env, 'spec.mcp.docs')).status).toBe('ok');
   });
-  it('survives an unreadable raw spec', async () => {
+  it('reports an invalid mcpServers entry as a spec failure', async () => {
     const env = withSpec(spec(), {
-      readRawSpec: () => {
-        throw new Error('boom');
+      loadSpec: () => {
+        throw new Error("'mcpServers.fs': AgentSpec validation failed: missing 'command'");
       },
     });
-    expect((await check(env, 'spec')).status).toBe('ok');
+    const result = await check(env, 'spec');
+    expect(result.status).toBe('fail');
+    expect(result.finding).toContain('mcpServers.fs');
   });
 });
 
