@@ -21,7 +21,8 @@
   "ignoreDependencies": [
     "@ai-sdk/anthropic",
     "@ai-sdk/openai",
-    "ollama-ai-provider"
+    "ollama-ai-provider",
+    "prompts"
   ],
   "usedClassMembers": [
     {

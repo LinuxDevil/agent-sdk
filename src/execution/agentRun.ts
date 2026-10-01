@@ -50,7 +50,7 @@ import type { Usage } from '../models/usage';
  * const result = await run.result; // the same ExecutionResult send() returns
  * ```
  */
-export interface AgentRun extends AsyncIterable<AgentEvent> {
+export interface AgentRun<TObject = unknown> extends AsyncIterable<AgentEvent> {
   /** The `runId` every event of this run carries. */
   readonly runId: string;
   /**
@@ -60,7 +60,7 @@ export interface AgentRun extends AsyncIterable<AgentEvent> {
    * outcomes as `send()`/`execute()`. Not awaiting it never causes an
    * unhandled rejection.
    */
-  readonly result: Promise<ExecutionResult>;
+  readonly result: Promise<ExecutionResult<TObject>>;
 }
 
 /**
@@ -217,6 +217,7 @@ class AgentRunImpl implements AgentRun {
       finishReason: result.finishReason,
       text: result.text,
       usage: toEventUsage(result.usage),
+      ...(result.object !== undefined && { object: toJsonValue(result.object) }),
     });
     return result;
   }

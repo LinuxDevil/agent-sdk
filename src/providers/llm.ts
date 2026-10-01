@@ -89,6 +89,13 @@ export interface GenerateOptions {
   toolChoice?: 'auto' | 'required' | 'none' | { type: 'function'; function: { name: string } };
   seed?: number;
   /**
+   * Asks for a JSON reply (LOU-V4). AgentExecutor sets it on every call of a
+   * run with an `output` schema. A hint: a provider with a JSON mode uses it
+   * (the `ai`-SDK providers pass it on as `experimental_output`), others
+   * ignore it. The executor parses and validates the reply either way.
+   */
+  responseFormat?: { type: 'json'; schema?: Record<string, unknown> };
+  /**
    * Cancels the request. Providers must reject promptly (with the signal's
    * `reason`, normally an `AbortError`) once it is aborted. AgentExecutor
    * sets this from `ExecuteOptions.signal`.

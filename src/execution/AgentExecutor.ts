@@ -7,6 +7,7 @@ import type { Skill } from '../skills/defineSkill';
 import { withSkills } from '../skills/withSkills';
 import type { Subagents } from '../subagents/types';
 import { assertMaxSubagentDepth, withSubagents } from '../subagents/withSubagents';
+import type { z } from 'zod';
 import { newId } from '../utils/id';
 import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult, ToolDefinition } from '../providers';
 import { AgentConfig } from '../types';
@@ -26,6 +27,7 @@ import {
 import { HookRegistry, type SubagentInfo } from './hooks';
 import {
   baseAgentOf,
+  extendAgent,
   settleSuspensions,
   suspensionRecord,
   type ToolCallScope,
@@ -64,6 +66,7 @@ import {
   toExecutionResult,
 } from './agentRunState';
 import { AgentRun, RUN_EVENTS, StreamingExecuteOptions, runEventsOf, startAgentRun } from './agentRun';
+import { OutputError, outputInstruction, outputRepairMessage, validateOutput } from './structuredOutput';
 
 export { PropagatingToolError } from './propagatingToolError';
 
@@ -93,12 +96,16 @@ export type ExecutionEventType =
  * - `'max-steps'`: the `maxSteps` budget ran out while the model still
  *   wanted to continue (LOU-U19). A run that finishes naturally within the
  *   budget keeps the model's own reason (usually `'stop'`).
+ * - `'output-invalid'`: the run has an `output` schema and the final reply
+ *   was still not valid JSON matching it after one repair step (LOU-V4);
+ *   see `ExecutionResult.outputError`.
  */
 export type ExecutionFinishReason =
   | GenerateResult['finishReason']
   | 'awaiting-approval'
   | 'aborted'
   | 'max-steps'
+  | 'output-invalid'
   | (string & {});
 
 /**
@@ -452,12 +459,26 @@ export interface ExecuteOptions {
    * ```
    */
   toolConcurrency?: ToolConcurrency;
+  /**
+   * LOU-V4: a zod schema the final reply must match, as JSON (tools can
+   * still be called first). It is validated into `result.object`; an invalid
+   * reply gets one repair step (counted against `maxSteps`), then the run
+   * ends with `finishReason: 'output-invalid'` and `outputError`. See
+   * docs/structured-output.md.
+   *
+   * @example
+   * ```ts
+   * const { object } = await AgentExecutor.execute({ agent, input: 'Weather in Paris?', provider, output: z.object({ tempC: z.number() }) });
+   * ```
+   */
+  output?: z.ZodTypeAny;
 }
 
 /**
- * Execution result
+ * Execution result. `TObject` is the type of `object` - `z.output` of the
+ * `output` schema for `createAgent({ output })` agents.
  */
-export interface ExecutionResult {
+export interface ExecutionResult<TObject = unknown> {
   text: string;
   messages: Message[];
   toolCalls: ToolCall[];
@@ -471,6 +492,10 @@ export interface ExecutionResult {
   finishReason: ExecutionFinishReason;
   steps: number;
   approvalId?: string;
+  /** LOU-V4: the final reply parsed and validated with `output`; absent unless it was valid. */
+  object?: TObject;
+  /** LOU-V4: why the final reply did not match `output` (`finishReason: 'output-invalid'`). */
+  outputError?: OutputError;
 }
 
 /**
@@ -522,7 +547,12 @@ export class AgentExecutor {
       options.subagents,
       options.maxSubagentDepth
     );
-    return { ...options, ...extended };
+    // LOU-V4: the output instruction goes last in the system prompt.
+    const { agent } = extended;
+    if (!options.output) return { ...options, ...extended };
+    const instruction = outputInstruction(options.output);
+    const prompt = agent.prompt ? `${agent.prompt}\n\n${instruction}` : instruction;
+    return { ...options, ...extended, agent: extendAgent(agent, { prompt }) };
   }
 
   /**
@@ -611,6 +641,7 @@ export class AgentExecutor {
     agentSpanId: string
   ): Promise<ExecutionResult> {
     const { maxSteps = 10, signal } = options;
+    let repaired = false;
 
     // Execution loop with tool calling. LOU-V1: the signal is checked
     // before every model call (here) and every tool call (runToolCalls()).
@@ -624,7 +655,12 @@ export class AgentExecutor {
         this.runStep(options, state, tools, agentSpanId)
       );
       if (outcome === 'stop') {
-        return this.finishRun(options, state);
+        const output = await this.checkOutput(options, state, !repaired && state.steps < maxSteps);
+        if (output === 'repair') {
+          repaired = true;
+          continue;
+        }
+        return this.finishRun(options, state, output);
       }
       if (outcome !== 'continue') {
         return outcome;
@@ -639,6 +675,27 @@ export class AgentExecutor {
     // spent while the model still wanted to go on.
     state.finishReason = 'max-steps';
     return this.finishRun(options, state);
+  }
+
+  /**
+   * LOU-V4: with `output`, parses and validates the final reply. When it is
+   * invalid and `canRepair`, queues the issues for one more step ('repair');
+   * otherwise ends the run as 'output-invalid'.
+   */
+  private static async checkOutput(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    canRepair: boolean
+  ): Promise<'repair' | { object: unknown } | { outputError: OutputError } | undefined> {
+    if (!options.output) return undefined;
+    const checked = await validateOutput(options.output, state.finalText);
+    if ('object' in checked) return checked;
+    if (canRepair) {
+      state.messages.push(outputRepairMessage(checked.outputError));
+      return 'repair';
+    }
+    state.finishReason = 'output-invalid';
+    return checked;
   }
 
   /**
@@ -1119,7 +1176,8 @@ export class AgentExecutor {
    */
   private static async finishRun(
     options: ExecuteOptions,
-    state: AgentRunState
+    state: AgentRunState,
+    output?: Pick<ExecutionResult, 'object' | 'outputError'>
   ): Promise<ExecutionResult> {
     const { onEvent } = options;
 
@@ -1154,7 +1212,7 @@ export class AgentExecutor {
     // resuming this run (or forgetting it).
     await saveStepCheckpoint(options, state, 'finished');
 
-    return toExecutionResult(state, state.finalText, state.finishReason);
+    return { ...toExecutionResult(state, state.finalText, state.finishReason), ...output };
   }
 
   /**

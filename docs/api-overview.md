@@ -83,6 +83,18 @@ in). Pauses are kept in a per-agent `InMemoryApprovalStore` unless you pass
 decides each call in code without pausing (`stream()` still ends at the
 pause). See [Approvals](./approvals.md).
 
+### Structured output
+
+Pass `output: zodSchema` to `createAgent()` (or `AgentExecutor.execute()` /
+`stream()`): the final reply must be a JSON object matching the schema, and
+`send()` / `run.result` resolve with it validated as `result.object`, typed
+`z.output<typeof schema>` (`result.text` keeps the raw JSON). Tools still run
+first. Each model call carries a `responseFormat: { type: 'json', schema }`
+hint, which the `ai`-SDK providers map to JSON mode. An invalid reply gets one
+repair step listing the issues (it counts against `maxSteps`); if that is
+invalid too, the run ends with `finishReason: 'output-invalid'` and
+`outputError: { message, issues }`. See [Structured output](./structured-output.md).
+
 ### Skills
 
 Pass `skills: [defineSkill({ name, description, content }), ...(await loadSkills(dir))]` to
@@ -153,7 +165,9 @@ How it behaves:
 `result.finishReason` says why a run ended: the model's own reason for its last
 turn (`'stop'`, `'length'`, `'tool_calls'`, `'content_filter'`, `'error'`),
 `'awaiting-approval'` (paused on a tool call that needs a human), `'aborted'`
-(cancelled with `signal`), or `'max-steps'`. `'max-steps'` means the `maxSteps`
+(cancelled with `signal`), `'max-steps'`, or `'output-invalid'` (the reply
+did not match the `output` schema even after the repair step, see
+[Structured output](./structured-output.md)). `'max-steps'` means the `maxSteps`
 budget (default 10) ran out while the model still wanted to continue, so the
 reply may be empty or partial; a run that finishes naturally within the budget
 keeps its `'stop'`. Steps carried over by `initialSteps` or an approval resume

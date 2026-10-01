@@ -20,6 +20,7 @@ export * from './guardrails';
 export * from './hooks';
 export { ToolArgumentsValidationError } from './toolArgsValidation';
 export type { ToolArgumentIssue } from './toolArgsValidation';
+export type { OutputError } from './structuredOutput';
 export type { ToolConcurrency } from './toolBatch';
 export {
   AGENT_EVENT_SCHEMA_VERSION,

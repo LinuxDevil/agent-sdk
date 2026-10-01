@@ -15,6 +15,12 @@ export interface ToolArgumentIssue {
   message: string;
 }
 
+/** `2 issues (to: Required; cc: Expected array, received string)` - the model-readable summary. */
+export function formatIssues(issues: ToolArgumentIssue[]): string {
+  const detail = issues.map(i => `${i.path}: ${i.message}`).join('; ');
+  return `${issues.length} ${issues.length === 1 ? 'issue' : 'issues'} (${detail})`;
+}
+
 /**
  * The model's tool-call arguments did not match the tool's parameter schema,
  * so `execute` was NOT called. Returned to the model as the tool result (the
@@ -33,13 +39,7 @@ export class ToolArgumentsValidationError extends ToolExecutionError {
     toolName: string,
     public readonly issues: ToolArgumentIssue[]
   ) {
-    const detail = issues.map(i => `${i.path}: ${i.message}`).join('; ');
-    super(
-      `Invalid arguments for tool '${toolName}': ${issues.length} ${
-        issues.length === 1 ? 'issue' : 'issues'
-      } (${detail})`,
-      toolName
-    );
+    super(`Invalid arguments for tool '${toolName}': ${formatIssues(issues)}`, toolName);
     this.name = 'ToolArgumentsValidationError';
   }
 
@@ -95,16 +95,25 @@ export async function validateToolArguments(
     return args;
   }
 
-  const result = schema.safeParseAsync
-    ? await schema.safeParseAsync(args)
-    : schema.safeParse(args);
+  const result = await parseWithIssues(schema, args);
   if (result.success) {
     return result.data;
   }
+  throw new ToolArgumentsValidationError(toolName, result.issues);
+}
 
+/** Parses `value` with a zod-style schema: the parsed value, or every issue with its path. */
+export async function parseWithIssues(
+  schema: ParseableSchema,
+  value: unknown
+): Promise<{ success: true; data: unknown } | { success: false; issues: ToolArgumentIssue[] }> {
+  const result = schema.safeParseAsync ? await schema.safeParseAsync(value) : schema.safeParse(value);
+  if (result.success) {
+    return { success: true, data: result.data };
+  }
   const issues: ToolArgumentIssue[] = (result.error?.issues ?? []).map(issue => ({
     path: issue.path.length > 0 ? issue.path.join('.') : '(root)',
     message: issue.message,
   }));
-  throw new ToolArgumentsValidationError(toolName, issues);
+  return { success: false, issues };
 }

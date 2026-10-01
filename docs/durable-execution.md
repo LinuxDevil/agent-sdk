@@ -19,6 +19,10 @@ await AgentExecutor.execute({ agent, input: 'Book a table for 2 tonight', provid
 await AgentExecutor.execute({ agent, input: 'Make it 3 people', provider, sessionId: 'chat-42', checkpointStore: checkpoints });
 ```
 
+With `createAgent()`, a session does this for you: `agent.session({ id, store, checkpointStore })`
+checkpoints every turn and `session.resume()` finishes an interrupted one - see
+[Durable sessions](./sessions.md#durable-sessions).
+
 ## What is checkpointed, and when
 
 A checkpoint is the run's whole transcript plus its step count, usage,

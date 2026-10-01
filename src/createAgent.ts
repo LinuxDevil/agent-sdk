@@ -37,6 +37,7 @@ import type { ApprovalStore } from './execution/ApprovalGate';
 import { InMemoryApprovalStore } from './execution/InMemoryApprovalStore';
 import { resumeAfterApproval } from './execution/resume';
 import { createAgentApprovals, type AgentApprovals, type ApproveToolCall } from './createAgentApprovals';
+import type { z } from 'zod';
 
 /**
  * Options for createAgent() that do not depend on how the instructions and
@@ -44,7 +45,7 @@ import { createAgentApprovals, type AgentApprovals, type ApproveToolCall } from 
  * AgentConfig.tools) will refer to them by - createAgent() registers each
  * one into a fresh ToolRegistry under that key.
  */
-export interface CreateAgentBase {
+export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> {
   /**
    * Optional tools: an array of `defineTool()` results (named by the tool),
    * or a record of descriptors keyed by the name the agent should call them by.
@@ -168,6 +169,22 @@ export interface CreateAgentBase {
    * ```
    */
   fallbackModels?: readonly string[];
+  /**
+   * A zod schema for the agent's final reply (LOU-V4): the model is asked
+   * to answer with a JSON object matching it, and `send()` / `stream()`
+   * resolve with it parsed and validated as `result.object`, typed
+   * `z.output<typeof output>` (`result.text` keeps the raw JSON). An invalid
+   * reply gets one repair step; still invalid, the run ends with
+   * `finishReason: 'output-invalid'` and `outputError`. See
+   * docs/structured-output.md and `ExecuteOptions.output`.
+   *
+   * @example
+   * ```ts
+   * const agent = createAgent({ model: 'openai/gpt-4o-mini', output: z.object({ city: z.string(), tempC: z.number() }) });
+   * const { object } = await agent.send('Weather in Paris?');
+   * ```
+   */
+  output?: TOutput;
 }
 
 /**
@@ -229,7 +246,9 @@ export type CreateAgentModelSource =
  * @example
  * createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are a helpful assistant.' });
  */
-export type CreateAgentConfig = CreateAgentBase & CreateAgentInstructions & CreateAgentModelSource;
+export type CreateAgentConfig<TOutput extends z.ZodTypeAny = z.ZodTypeAny> = CreateAgentBase<TOutput> &
+  CreateAgentInstructions &
+  CreateAgentModelSource;
 
 /** Per-call options for `SimpleAgent.send()`. */
 export interface SendOptions {
@@ -246,9 +265,10 @@ export interface SendOptions {
   signal?: AbortSignal;
 }
 
-export interface SimpleAgent {
+/** `TObject`: the type of `result.object` - `z.output` of the `output` schema. */
+export interface SimpleAgent<TObject = unknown> {
   /** Send a single user message and get back the full execution result text. */
-  send: (message: string, options?: SendOptions) => Promise<ExecutionResult>;
+  send: (message: string, options?: SendOptions) => Promise<ExecutionResult<TObject>>;
   /**
    * Send a single user message and stream the run as typed events (LOU-V2):
    * `text.delta` chunks as the model writes, `tool.start`/`tool.done`,
@@ -264,7 +284,7 @@ export interface SimpleAgent {
    * }
    * ```
    */
-  stream: (message: string, options?: SendOptions) => AgentRun;
+  stream: (message: string, options?: SendOptions) => AgentRun<TObject>;
   /**
    * Start a multi-turn conversation (LOU-W4): every `send()` sees the earlier
    * exchanges. In memory by default; pass `{ id, store }` (e.g. a
@@ -307,7 +327,9 @@ export interface SimpleAgent {
  * const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are a helpful assistant.' });
  * const { text } = await agent.send('Hello!');
  */
-export function createAgent(config: CreateAgentConfig = {}): SimpleAgent {
+export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
+  config: CreateAgentConfig<TOutput> = {}
+): SimpleAgent<z.output<TOutput>> {
   assertToolConcurrency(config.toolConcurrency, 'createAgent');
   assertMaxSubagentDepth(config.maxSubagentDepth, 'createAgent');
   assertSubagents(config.subagents, 'createAgent');
@@ -336,15 +358,19 @@ export function createAgent(config: CreateAgentConfig = {}): SimpleAgent {
   const approvals = createAgentApprovals({
     store: config.approvalStore ?? new InMemoryApprovalStore(),
     approve: config.approve,
-    resume: (approvalStore, decision, signal) =>
-      resumeAfterApproval(decision, approvalStore, toolRegistry ?? new ToolRegistry(), provider, {
-        ...runOptions,
+    resume: (approvalStore, decision, signal, checkpointStore) =>
+      resumeAfterApproval(
+        decision,
         approvalStore,
-        signal,
-      }),
+        toolRegistry ?? new ToolRegistry(),
+        provider,
+        { ...runOptions, output: config.output, approvalStore, signal },
+        checkpointStore
+      ),
   });
   const executeOptions = (input: string | Message[], signal?: AbortSignal): ExecuteOptions => ({
     ...spec,
+    output: config.output,
     approvalStore: approvals.store,
     input,
     signal,
@@ -352,15 +378,22 @@ export function createAgent(config: CreateAgentConfig = {}): SimpleAgent {
   const run = (input: string | Message[], signal?: AbortSignal): Promise<ExecutionResult> =>
     AgentExecutor.execute(executeOptions(input, signal));
 
-  const simpleAgent: SimpleAgent = {
-    async send(message: string, options: SendOptions = {}): Promise<ExecutionResult> {
-      return approvals.settle(await run(message, options.signal), options.signal);
+  // `object` was validated with `config.output`, so it has its output type.
+  type Typed = z.output<TOutput>;
+  const simpleAgent: SimpleAgent<Typed> = {
+    async send(message: string, options: SendOptions = {}): Promise<ExecutionResult<Typed>> {
+      return approvals.settle(await run(message, options.signal), options.signal) as Promise<ExecutionResult<Typed>>;
     },
-    stream(message: string, options: SendOptions = {}): AgentRun {
-      return AgentExecutor.stream(executeOptions(message, options.signal));
+    stream(message: string, options: SendOptions = {}): AgentRun<Typed> {
+      return AgentExecutor.stream(executeOptions(message, options.signal)) as AgentRun<Typed>;
     },
+    // LOU-W9: a checkpointed session's turn runs under its own sessionId + checkpointStore.
     session: (options?: SessionOptions) =>
-      approvals.session(run, (input, signal) => AgentExecutor.stream(executeOptions(input, signal)), options),
+      approvals.session(
+        (input, signal, turn) => AgentExecutor.execute({ ...executeOptions(input, signal), ...turn }),
+        (input, signal, turn) => AgentExecutor.stream({ ...executeOptions(input, signal), ...turn }),
+        options
+      ),
     approvals: approvals.approvals,
   };
   registerSubagent(simpleAgent, { spec, description: config.description });

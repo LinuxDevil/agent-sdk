@@ -40,6 +40,8 @@ describe('real environment', () => {
     const env = buildEnvironment({ json: false });
     expect(env.resolvePackageVersion('zod')).toMatch(/^\d+\.\d+\.\d+/);
     expect(env.resolvePackageVersion('definitely-not-installed-pkg')).toBeNull();
+    // The MCP SDK's "exports" map sends `<name>/package.json` to a nested, version-less manifest.
+    expect(env.resolvePackageVersion('@modelcontextprotocol/sdk')).toMatch(/^\d+\.\d+\.\d+/);
     expect(env.sdk.engines?.node).toBeTruthy();
   });
 

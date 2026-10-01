@@ -25,6 +25,7 @@ import {
   TextPart,
   ToolCallPart,
   ToolResultPart,
+  Output,
 } from 'ai';
 import {
   LLMProvider,
@@ -265,6 +266,26 @@ function toStreamResult(result: AiSdkStreamResult): StreamResult {
 }
 
 /**
+ * LOU-V4: `responseFormat` as an 'ai' SDK output spec - JSON mode, with the
+ * schema only for models that support structured outputs (as
+ * `Output.object()` does). Unlike `Output.object()` it leaves the prompt and
+ * the reply text alone: AgentExecutor instructs the model and validates.
+ */
+function toOutput(format: GenerateOptions['responseFormat']): Output.Output<string, string> | undefined {
+  if (format?.type !== 'json') return undefined;
+  return {
+    type: 'object',
+    responseFormat: ({ model }) => ({
+      type: 'json',
+      schema: typeof model === 'object' && model.supportsStructuredOutputs ? format.schema : undefined,
+    }),
+    injectIntoSystemPrompt: ({ system }) => system,
+    parsePartial: ({ text }) => ({ partial: text }),
+    parseOutput: ({ text }) => text,
+  };
+}
+
+/**
  * Base class for providers built on the 'ai' SDK. Subclasses supply the
  * model factory (createModel), the fallback model id, and the capability /
  * model-listing methods; they may override convertMessages().
@@ -310,6 +331,7 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
       // providers with 0 and retries in its withRetry() wrapper instead.
       maxRetries: this.config.maxRetries ?? 2,
       abortSignal: options.signal,
+      experimental_output: toOutput(options.responseFormat),
     };
   }
 
