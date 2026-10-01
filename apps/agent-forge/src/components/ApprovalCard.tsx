@@ -10,7 +10,6 @@
  */
 import { useState } from 'react';
 import { useAppState } from '../state/AppState';
-import { RuntimeApiError } from '../runtime/runtimeClient';
 
 export interface ApprovalCardProps {
   toolName: string;
@@ -18,34 +17,69 @@ export interface ApprovalCardProps {
   className?: string;
 }
 
-export function ApprovalCard({ toolName, args, className }: ApprovalCardProps) {
+type Decision = 'approve' | 'reject';
+
+function useApprovalDecision() {
   const { approveAgent } = useAppState();
   const [error, setError] = useState<string | undefined>(undefined);
-  const [pending, setPending] = useState<'approve' | 'reject' | undefined>(undefined);
+  const [pending, setPending] = useState<Decision | undefined>(undefined);
 
-  async function handleDecision(approved: boolean) {
+  async function decide(decision: Decision) {
     setError(undefined);
-    setPending(approved ? 'approve' : 'reject');
+    setPending(decision);
     try {
-      await approveAgent(approved);
+      await approveAgent(decision === 'approve');
     } catch (err) {
-      setError(err instanceof RuntimeApiError ? err.message : (err as Error).message);
+      setError((err as Error).message);
     } finally {
       setPending(undefined);
     }
   }
+
+  return { error, pending, decide };
+}
+
+interface DecisionButtonProps {
+  className: string;
+  idleLabel: string;
+  busyLabel: string;
+  busy: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}
+
+function DecisionButton({ className, idleLabel, busyLabel, busy, disabled, onClick }: DecisionButtonProps) {
+  return (
+    <button className={className} onClick={onClick} disabled={disabled}>
+      {busy ? busyLabel : idleLabel}
+    </button>
+  );
+}
+
+export function ApprovalCard({ toolName, args, className }: ApprovalCardProps) {
+  const { error, pending, decide } = useApprovalDecision();
 
   return (
     <div className={`approval-card${className ? ` ${className}` : ''}`} title={JSON.stringify(args)}>
       <span>
         Approve <b>{toolName}</b>?
       </span>
-      <button className="btn btn-success" onClick={() => void handleDecision(true)} disabled={!!pending}>
-        {pending === 'approve' ? 'Approving...' : 'Approve'}
-      </button>
-      <button className="btn btn-danger" onClick={() => void handleDecision(false)} disabled={!!pending}>
-        {pending === 'reject' ? 'Rejecting...' : 'Reject'}
-      </button>
+      <DecisionButton
+        className="btn btn-success"
+        idleLabel="Approve"
+        busyLabel="Approving..."
+        busy={pending === 'approve'}
+        disabled={!!pending}
+        onClick={() => void decide('approve')}
+      />
+      <DecisionButton
+        className="btn btn-danger"
+        idleLabel="Reject"
+        busyLabel="Rejecting..."
+        busy={pending === 'reject'}
+        disabled={!!pending}
+        onClick={() => void decide('reject')}
+      />
       {error && <span className="run-error">{error}</span>}
     </div>
   );

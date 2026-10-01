@@ -23,12 +23,12 @@ import type { HookTemplate } from '../hooks/hookTemplates';
 
 let idCounter = 0;
 /** Overridable so tests can assert on deterministic ids. */
-export function nextNodeId(type: AgentGraphNodeType): string {
+function nextNodeId(type: AgentGraphNodeType): string {
   idCounter += 1;
   return `${type}-${Date.now().toString(36)}-${idCounter}`;
 }
 
-export function defaultNodeData(type: AgentGraphNodeType): AgentGraphNode['data'] {
+function defaultNodeData(type: AgentGraphNodeType): AgentGraphNode['data'] {
   switch (type) {
     case 'trigger':
       return { trigger: { type: 'input' } };
@@ -45,7 +45,7 @@ export function defaultNodeData(type: AgentGraphNodeType): AgentGraphNode['data'
   }
 }
 
-export function defaultNodeLabel(type: AgentGraphNodeType): string {
+function defaultNodeLabel(type: AgentGraphNodeType): string {
   switch (type) {
     case 'trigger':
       return 'Trigger';
@@ -190,9 +190,21 @@ export function updateEdgeCondition(graph: AgentGraphSpec, edgeId: string, condi
   };
 }
 
+/** Applies `update` to `nodeId`'s hook list (an absent list counts as empty), leaving every other node untouched. */
+function mapNodeHooks(
+  graph: AgentGraphSpec,
+  nodeId: string,
+  update: (hooks: AgentNodeHookInstance[]) => AgentNodeHookInstance[]
+): AgentGraphSpec {
+  return {
+    ...graph,
+    nodes: graph.nodes.map((n) => (n.id === nodeId ? { ...n, hooks: update(n.hooks ?? []) } : n)),
+  };
+}
+
 let hookIdCounter = 0;
 /** Overridable so tests can assert on deterministic ids. */
-export function nextHookId(): string {
+function nextHookId(): string {
   hookIdCounter += 1;
   return `hook-${Date.now().toString(36)}-${hookIdCounter}`;
 }
@@ -214,40 +226,22 @@ export function addHookToNode(graph: AgentGraphSpec, nodeId: string, template: H
     enabled: true,
     code: template.code,
   };
-  return {
-    ...graph,
-    nodes: graph.nodes.map((n) => (n.id === nodeId ? { ...n, hooks: [...(n.hooks ?? []), instance] } : n)),
-  };
+  return mapNodeHooks(graph, nodeId, (hooks) => [...hooks, instance]);
 }
 
 /** Flips a hook instance's `enabled` flag (the Inspector's toggle chip). */
 export function toggleNodeHook(graph: AgentGraphSpec, nodeId: string, hookId: string): AgentGraphSpec {
-  return {
-    ...graph,
-    nodes: graph.nodes.map((n) =>
-      n.id === nodeId
-        ? { ...n, hooks: (n.hooks ?? []).map((h) => (h.id === hookId ? { ...h, enabled: !h.enabled } : h)) }
-        : n
-    ),
-  };
+  return mapNodeHooks(graph, nodeId, (hooks) =>
+    hooks.map((h) => (h.id === hookId ? { ...h, enabled: !h.enabled } : h))
+  );
 }
 
 /** Replaces a hook instance's editable code body (the Inspector's CodeMirror editor). */
 export function updateNodeHookCode(graph: AgentGraphSpec, nodeId: string, hookId: string, code: string): AgentGraphSpec {
-  return {
-    ...graph,
-    nodes: graph.nodes.map((n) =>
-      n.id === nodeId ? { ...n, hooks: (n.hooks ?? []).map((h) => (h.id === hookId ? { ...h, code } : h)) } : n
-    ),
-  };
+  return mapNodeHooks(graph, nodeId, (hooks) => hooks.map((h) => (h.id === hookId ? { ...h, code } : h)));
 }
 
 /** Removes a hook instance from a node entirely. */
 export function removeNodeHook(graph: AgentGraphSpec, nodeId: string, hookId: string): AgentGraphSpec {
-  return {
-    ...graph,
-    nodes: graph.nodes.map((n) =>
-      n.id === nodeId ? { ...n, hooks: (n.hooks ?? []).filter((h) => h.id !== hookId) } : n
-    ),
-  };
+  return mapNodeHooks(graph, nodeId, (hooks) => hooks.filter((h) => h.id !== hookId));
 }

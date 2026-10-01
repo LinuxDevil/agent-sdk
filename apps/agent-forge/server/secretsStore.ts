@@ -44,20 +44,14 @@
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import type { ProviderKeyStatus } from '../shared/wireTypes';
 
 /** Providers this app manages stored keys for - matches `src/providers/` real (non-mock) provider types that take a plain API key (not `ollama`, which uses a base URL instead - see `PROVIDER_ENV_TABLE` in `src/providers/resolveProvider.ts`). */
-export const SECRET_PROVIDERS = ['openai', 'anthropic'] as const;
+const SECRET_PROVIDERS = ['openai', 'anthropic'] as const;
 export type SecretProvider = (typeof SECRET_PROVIDERS)[number];
 
 export function isSecretProvider(value: string): value is SecretProvider {
   return (SECRET_PROVIDERS as readonly string[]).includes(value);
-}
-
-export interface ProviderKeyStatus {
-  provider: SecretProvider;
-  hasKey: boolean;
-  /** Last-4-visible masked form for display, e.g. '••••••••3f2a'. `null` when no key is stored. Never the real key. */
-  masked: string | null;
 }
 
 interface EncryptedRecord {

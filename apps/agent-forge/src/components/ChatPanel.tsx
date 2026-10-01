@@ -17,13 +17,9 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { useAppState } from '../state/AppState';
-import type { ChatMessage } from '../runtime/runtimeClient';
+import type { ChatMessage } from '../../shared/wireTypes';
 import { ApprovalCard } from './ApprovalCard';
-
-function formatTime(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toTimeString().slice(0, 8);
-}
+import { formatTime } from './formatTime';
 
 function initialsFor(role: ChatMessage['role']): string {
   return role === 'user' ? 'You' : 'AI';
@@ -71,33 +67,146 @@ function Bubble({ message, toolResults }: { message: ChatMessage; toolResults: M
   );
 }
 
-export function ChatPanel() {
-  const {
-    chat,
-    sendChatMessage,
-    chatActionError,
-    chatSessions,
-    startNewChat,
-    viewedChatSession,
-    viewChatSession,
-    returnToLiveChat,
-    runStatus,
-  } = useAppState();
-  const [input, setInput] = useState('');
-  const [sending, setSending] = useState(false);
-  const listRef = useRef<HTMLDivElement>(null);
+type ViewedChatSession = ReturnType<typeof useAppState>['viewedChatSession'];
+type RunStatusPayload = ReturnType<typeof useAppState>['runStatus'];
+type PendingApproval = NonNullable<NonNullable<RunStatusPayload>['pendingApproval']>;
 
-  const viewing = viewedChatSession !== undefined;
-  const displayedMessages = viewing ? viewedChatSession!.messages : chat.messages;
-  const renderable = displayedMessages.filter((m) => m.role !== 'system');
-  const toolResults = toolResultsByCallId(displayedMessages);
-  const isRunning = !viewing && runStatus?.status === 'running';
-  const isPausedForApproval = !viewing && runStatus?.status === 'paused' && !!runStatus.pendingApproval;
-  const inputDisabled = viewing || isRunning || isPausedForApproval;
+interface LiveRunState {
+  isRunning: boolean;
+  pendingApproval: PendingApproval | undefined;
+}
+
+const IDLE_RUN_STATE: LiveRunState = { isRunning: false, pendingApproval: undefined };
+
+function liveRunStateOf(runStatus: RunStatusPayload): LiveRunState {
+  return {
+    isRunning: runStatus?.status === 'running',
+    pendingApproval: runStatus?.status === 'paused' ? runStatus.pendingApproval : undefined,
+  };
+}
+
+function isInputDisabled(viewing: boolean, { isRunning, pendingApproval }: LiveRunState): boolean {
+  return viewing || isRunning || !!pendingApproval;
+}
+
+function ChatSessionBar({ viewedChatSession }: { viewedChatSession: ViewedChatSession }) {
+  const { chat, chatSessions, startNewChat, viewChatSession, returnToLiveChat } = useAppState();
+
+  if (viewedChatSession) {
+    return (
+      <div className="chat-session-bar">
+        <span>
+          Viewing past conversation from {new Date(viewedChatSession.startedAt).toLocaleString()}
+          <button className="btn btn-ghost" onClick={returnToLiveChat}>
+            Back to live chat
+          </button>
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="chat-session-bar">
+      <select
+        value=""
+        onChange={(e) => {
+          if (e.target.value) void viewChatSession(e.target.value);
+        }}
+      >
+        <option value="">Past conversations ({chatSessions.length})</option>
+        {chatSessions
+          .filter((s) => s.sessionId !== chat.sessionId)
+          .map((s) => (
+            <option key={s.sessionId} value={s.sessionId}>
+              {new Date(s.updatedAt).toLocaleString()} - {s.preview || '(empty)'}
+            </option>
+          ))}
+      </select>
+      <button className="btn btn-ghost" onClick={() => void startNewChat()}>
+        New chat
+      </button>
+    </div>
+  );
+}
+
+function TypingBubble() {
+  return (
+    <div className="chat-msg agent">
+      <div className="chat-avatar">AI</div>
+      <div className="chat-bubble">
+        <div className="chat-typing">
+          <span />
+          <span />
+          <span />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ApprovalBubble({ pendingApproval }: { pendingApproval: PendingApproval }) {
+  return (
+    <div className="chat-msg agent">
+      <div className="chat-avatar">AI</div>
+      <div>
+        <ApprovalCard
+          className="chat-approval-card"
+          toolName={pendingApproval.toolName}
+          args={pendingApproval.args}
+        />
+      </div>
+    </div>
+  );
+}
+
+interface MessageListProps {
+  messages: ChatMessage[];
+  isRunning: boolean;
+  pendingApproval: PendingApproval | undefined;
+}
+
+function EmptyChatNotice({ count, isRunning }: { count: number; isRunning: boolean }) {
+  return count === 0 && !isRunning ? (
+    <div className="chat-empty">Send a message to start chatting with this agent.</div>
+  ) : null;
+}
+
+function MessageList({ messages, isRunning, pendingApproval }: MessageListProps) {
+  const listRef = useRef<HTMLDivElement>(null);
+  const renderable = messages.filter((m) => m.role !== 'system');
+  const toolResults = toolResultsByCallId(messages);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [renderable.length, isRunning]);
+
+  return (
+    <div className="chat-messages" ref={listRef}>
+      <EmptyChatNotice count={renderable.length} isRunning={isRunning} />
+      {renderable.map((m) => (
+        <Bubble key={m.id} message={m} toolResults={toolResults} />
+      ))}
+      {isRunning && <TypingBubble />}
+      {pendingApproval && <ApprovalBubble pendingApproval={pendingApproval} />}
+    </div>
+  );
+}
+
+function placeholderFor(viewing: boolean, isPausedForApproval: boolean): string {
+  if (viewing) return 'Return to the live chat to send a message';
+  if (isPausedForApproval) return 'Resolve the approval above to continue';
+  return 'Message this agent...';
+}
+
+interface ChatInputRowProps {
+  viewing: boolean;
+  isPausedForApproval: boolean;
+  inputDisabled: boolean;
+}
+
+function ChatInputRow({ viewing, isPausedForApproval, inputDisabled }: ChatInputRowProps) {
+  const { sendChatMessage } = useAppState();
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
 
   async function handleSend() {
     const text = input.trim();
@@ -121,92 +230,47 @@ export function ChatPanel() {
   }
 
   return (
-    <div className="chat-panel">
-      <div className="chat-session-bar">
-        {viewing ? (
-          <span>
-            Viewing past conversation from {new Date(viewedChatSession!.startedAt).toLocaleString()}
-            <button className="btn btn-ghost" onClick={returnToLiveChat}>
-              Back to live chat
-            </button>
-          </span>
-        ) : (
-          <>
-            <select
-              value=""
-              onChange={(e) => {
-                if (e.target.value) void viewChatSession(e.target.value);
-              }}
-            >
-              <option value="">Past conversations ({chatSessions.length})</option>
-              {chatSessions
-                .filter((s) => s.sessionId !== chat.sessionId)
-                .map((s) => (
-                  <option key={s.sessionId} value={s.sessionId}>
-                    {new Date(s.updatedAt).toLocaleString()} - {s.preview || '(empty)'}
-                  </option>
-                ))}
-            </select>
-            <button className="btn btn-ghost" onClick={() => void startNewChat()}>
-              New chat
-            </button>
-          </>
-        )}
-      </div>
+    <div className="chat-input-row">
+      <textarea
+        className="chat-input"
+        rows={1}
+        placeholder={placeholderFor(viewing, isPausedForApproval)}
+        value={input}
+        disabled={inputDisabled}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={handleKeyDown}
+      />
+      <button
+        className="btn btn-primary btn-send"
+        onClick={() => void handleSend()}
+        disabled={inputDisabled || sending || !input.trim()}
+      >
+        Send
+      </button>
+    </div>
+  );
+}
 
-      <div className="chat-messages" ref={listRef}>
-        {renderable.length === 0 && !isRunning && <div className="chat-empty">Send a message to start chatting with this agent.</div>}
-        {renderable.map((m) => (
-          <Bubble key={m.id} message={m} toolResults={toolResults} />
-        ))}
-        {isRunning && (
-          <div className="chat-msg agent">
-            <div className="chat-avatar">AI</div>
-            <div className="chat-bubble">
-              <div className="chat-typing">
-                <span />
-                <span />
-                <span />
-              </div>
-            </div>
-          </div>
-        )}
-        {isPausedForApproval && runStatus?.pendingApproval && (
-          <div className="chat-msg agent">
-            <div className="chat-avatar">AI</div>
-            <div>
-              <ApprovalCard
-                className="chat-approval-card"
-                toolName={runStatus.pendingApproval.toolName}
-                args={runStatus.pendingApproval.args}
-              />
-            </div>
-          </div>
-        )}
-      </div>
+export function ChatPanel() {
+  const { chat, chatActionError, viewedChatSession, runStatus } = useAppState();
+
+  const viewing = viewedChatSession !== undefined;
+  const displayedMessages = viewedChatSession ? viewedChatSession.messages : chat.messages;
+  const liveRunState = viewing ? IDLE_RUN_STATE : liveRunStateOf(runStatus);
+  const { isRunning, pendingApproval } = liveRunState;
+
+  return (
+    <div className="chat-panel">
+      <ChatSessionBar viewedChatSession={viewedChatSession} />
+      <MessageList messages={displayedMessages} isRunning={isRunning} pendingApproval={pendingApproval} />
 
       {chatActionError && <div className="chat-action-error">{chatActionError}</div>}
 
-      <div className="chat-input-row">
-        <textarea
-          className="chat-input"
-          rows={1}
-          placeholder={
-            viewing
-              ? 'Return to the live chat to send a message'
-              : isPausedForApproval
-                ? 'Resolve the approval above to continue'
-                : 'Message this agent...'
-          }
-          value={input}
-          disabled={inputDisabled}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-        />
-        <button className="btn btn-primary btn-send" onClick={() => void handleSend()} disabled={inputDisabled || sending || !input.trim()}>
-          Send
-        </button>
-      </div>
+      <ChatInputRow
+        viewing={viewing}
+        isPausedForApproval={!!pendingApproval}
+        inputDisabled={isInputDisabled(viewing, liveRunState)}
+      />
     </div>
   );
 }

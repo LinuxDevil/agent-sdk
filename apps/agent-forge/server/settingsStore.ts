@@ -15,36 +15,7 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-
-/**
- * LOU-Q's hardcoded 5s hook-sandbox timeout, now configurable per profile
- * (see hookSandbox.ts's `HookSandboxOptions.timeoutMs`). The sandbox
- * BACKEND stays NoopSandbox-only: `src/security/sandboxCore.ts` (the only
- * SandboxAdapter this SDK ships today) exports just `NoopSandbox` - there is
- * no second real adapter (e.g. a Docker-backed one) yet to offer a picker
- * over, so `sandboxBackend` here is a single-valued field reserved for when
- * one exists rather than a dropdown with one option pretending to be a choice.
- */
-export interface SettingsProfile {
-  id: string;
-  name: string;
-  /** Matches an `AgentSpec.provider.type` value ('mock' | 'openai' | 'anthropic' | 'ollama' | 'openrouter'). */
-  providerType: string;
-  /** Which `secretsStore` provider's stored key to use when `providerType` is one of `SECRET_PROVIDERS` ('openai' | 'anthropic'). `undefined` for 'mock'/'ollama'/'openrouter' (env-var/no-key providers). */
-  providerKeyRef?: string;
-  /** Deploy target name - see `src/deploy/index.ts`'s `registerBuiltInAdapters()` for the real registered names this must match. */
-  deployAdapter: string;
-  /** Opt-in bundled OTel export toggle (LOU-R's brief: ADDITIONALLY export to a real collector via `src/execution/otel.ts`'s `createOtelTraceExporter()`, not a replacement for LOU-O's own trace panel). */
-  otelEnabled: boolean;
-  /** Passed through to `hookSandbox.ts`'s `sandboxRunHook()` as `timeoutMs`. */
-  hookTimeoutMs: number;
-  sandboxBackend: 'noop';
-}
-
-export interface SettingsFile {
-  activeProfileId: string;
-  profiles: SettingsProfile[];
-}
+import type { SettingsFile, SettingsProfile } from '../shared/wireTypes';
 
 const DEFAULT_PROFILES: SettingsProfile[] = [
   {

@@ -35,7 +35,3 @@ export function isEdgeTypeAllowed(sourceType: AgentGraphNodeType, targetType: Ag
   return ALLOWED_EDGE_TYPES[sourceType]?.includes(targetType) ?? false;
 }
 
-/** Human-readable reason a connection is rejected, for inline UI feedback. */
-export function edgeRejectionReason(sourceType: AgentGraphNodeType, targetType: AgentGraphNodeType): string {
-  return `Can't connect ${sourceType} → ${targetType}: not a valid pipeline connection`;
-}

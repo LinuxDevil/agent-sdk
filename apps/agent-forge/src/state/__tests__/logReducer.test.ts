@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { appendLog, filterLogs } from '../logReducer';
-import type { LogEntry } from '../../runtime/runtimeClient';
+import type { LogEntry } from '../../../shared/wireTypes';
 
 function entry(overrides: Partial<LogEntry> = {}): LogEntry {
   return {

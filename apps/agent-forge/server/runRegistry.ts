@@ -19,7 +19,6 @@ import {
   type Span,
   type TraceExporter,
   type ExecutionResult,
-  type FlowExecutionEvent,
   type Message,
   resumeAfterApproval,
   type AgentSpec,
@@ -30,6 +29,7 @@ import { FileApprovalStore } from './approvalStore';
 import { DebugSession, type BreakpointKey } from './debugController';
 import { FileChatStore, previewFor } from './chatStore';
 import { reconcileChatMessages } from './chatReconcile';
+import { toLogEntries, toFlowLogEntries } from './logEntries';
 import type { SecretsStore } from './secretsStore';
 import type { SettingsStore } from './settingsStore';
 import type {
@@ -42,7 +42,7 @@ import type {
   ChatStatePayload,
   ChatSessionMeta,
   ChatSessionRecord,
-} from './types';
+} from '../shared/wireTypes';
 
 interface RunEntry {
   status: RunStatus;
@@ -114,115 +114,26 @@ export class NoActiveRunError extends Error {}
 export class ApprovalPendingError extends Error {}
 
 /**
- * O1: translates one `ExecutionEvent` (the SDK's own execution-phase
- * taxonomy - start/text-delta/text-complete/tool-call/tool-result/finish/
- * error, see AgentExecutor.ts) into zero or more structured `LogEntry`
- * rows. This reuses that taxonomy rather than inventing a second, parallel
- * logging vocabulary - `LogPhase` is a coarser regrouping of the same
- * events (e.g. both 'start' and 'finish' map to phase 'trigger', since
- * those are this pipeline's entry/exit points) plus 'sandbox'/'checkpoint'/
- * 'approval'/'debug' phases used by emitters elsewhere in this file for
- * things ExecutionEvent has no dedicated type for.
+ * The settled run's full message list, with the assistant's final text
+ * appended if it isn't already the last message.
+ *
+ * SDK bug found while wiring this up and FIXED AT THE SOURCE as part of
+ * this epic (src/execution/AgentExecutor.ts's no-more-tool-calls exit
+ * path now pushes the assistant's final reply onto `currentMessages`
+ * before returning, so `result.messages` already includes it). The
+ * guard below is kept as a now-provably-redundant safety net rather
+ * than removed outright - it only appends when the last message is NOT
+ * already that exact assistant/text pair, which is always true against
+ * a fixed SDK, so this is a harmless no-op today. Left in case a caller
+ * ever runs this app against an older/vendored SDK build that predates
+ * the fix.
  */
-function toLogEntries(agentId: string, event: ExecutionEvent): LogEntry[] {
-  const timestamp = (event.timestamp instanceof Date ? event.timestamp : new Date()).toISOString();
-  const base = { id: randomUUID(), agentId, timestamp };
-
-  switch (event.type) {
-    case 'start':
-      return [{ ...base, level: 'info', phase: 'trigger', message: `Run started for agent '${event.agentName ?? agentId}'` }];
-    case 'text-complete':
-      return [{ ...base, level: 'info', phase: 'llm', message: event.text ? `LLM response: ${truncate(event.text)}` : 'LLM response received' }];
-    case 'tool-call':
-      return [
-        {
-          ...base,
-          level: 'tool',
-          phase: 'tool',
-          toolName: event.toolCall?.function?.name,
-          message: `Tool call: ${event.toolCall?.function?.name ?? 'unknown'}`,
-          detail: event.toolCall,
-        },
-      ];
-    case 'tool-result': {
-      const isError = !!event.toolResult?.error;
-      return [
-        {
-          ...base,
-          level: isError ? 'error' : 'tool',
-          phase: 'tool',
-          toolName: event.toolResult?.toolName,
-          message: isError
-            ? `Tool '${event.toolResult?.toolName}' failed: ${event.toolResult?.error}`
-            : `Tool '${event.toolResult?.toolName}' result: ${truncate(JSON.stringify(event.toolResult?.result))}`,
-          detail: event.toolResult,
-        },
-      ];
-    }
-    case 'finish':
-      return [
-        {
-          ...base,
-          level: 'info',
-          phase: event.finishReason === 'awaiting-approval' ? 'approval' : 'trigger',
-          message: `Run finished (${event.finishReason})`,
-        },
-      ];
-    case 'error':
-      return [{ ...base, level: 'error', phase: 'trigger', message: event.error?.message ?? 'Run failed' }];
-    default:
-      return [];
-  }
-}
-
-/**
- * LOU-T3: translates one `FlowExecutionEvent` (`src/flows/FlowExecutor.ts`'s
- * own, unrelated event taxonomy - flow-start/step-start/llm-call/
- * llm-response/tool-call/tool-result/condition-evaluated/loop-iteration/
- * step-complete/flow-complete/flow-error, NOT `AgentExecutor`'s
- * `ExecutionEvent`) into `LogEntry` rows, the same way `toLogEntries()`
- * does for a normal run. This is the extent of debug-console observability
- * for a `FlowExecutor` run today: these land in the Logs tab, but NOT the
- * structured Trace tab (`emitSpan`/`makeTraceExporter` needs a real
- * `TraceExporter`/`Span` stream, which `FlowExecutor.execute()` has no
- * parameter for) or the O3 step-debugger (`DebugSession`'s breakpoints hook
- * into `AgentExecutor`'s `preGenerate`/`postGenerate`/`preToolCall`/
- * `postToolCall` hook points via `hooks`/`sandbox` options that
- * `FlowExecutor.execute()` simply doesn't accept - see its signature). A
- * branching run is therefore only PARTIALLY observable in Agent Forge's
- * debug console: logs yes, trace graph and breakpoint stepping no. Noted
- * here rather than silently left blank; see the LOU-T3 report for the full
- * writeup.
- */
-function toFlowLogEntries(agentId: string, event: FlowExecutionEvent): LogEntry[] {
-  const timestamp = (event.timestamp instanceof Date ? event.timestamp : new Date()).toISOString();
-  const base = { id: randomUUID(), agentId, timestamp };
-
-  switch (event.type) {
-    case 'flow-start':
-      return [{ ...base, level: 'info', phase: 'trigger', message: `Flow run started (${event.data?.flowName ?? 'unnamed flow'})` }];
-    case 'llm-call':
-      return [{ ...base, level: 'info', phase: 'llm', message: `LLM call (model: ${event.data?.model ?? 'unknown'})` }];
-    case 'llm-response':
-      return [{ ...base, level: 'info', phase: 'llm', message: `LLM response: ${truncate(event.data?.text)}` }];
-    case 'tool-call':
-      return [{ ...base, level: 'tool', phase: 'tool', toolName: event.data?.tool, message: `Tool call: ${event.data?.tool ?? 'unknown'}`, detail: event.data }];
-    case 'tool-result':
-      return [{ ...base, level: 'tool', phase: 'tool', toolName: event.data?.tool, message: `Tool '${event.data?.tool}' result: ${truncate(JSON.stringify(event.data?.result))}`, detail: event.data }];
-    case 'condition-evaluated':
-      return [{ ...base, level: 'info', phase: 'debug', message: `Router branch condition '${event.data?.condition ?? '(default)'}' -> ${event.data?.result}` }];
-    case 'flow-complete':
-      return [{ ...base, level: 'info', phase: 'trigger', message: 'Flow run finished' }];
-    case 'flow-error':
-      return [{ ...base, level: 'error', phase: 'trigger', message: event.error?.message ?? 'Flow run failed' }];
-    default:
-      return [];
-  }
-}
-
-function truncate(text: string | undefined, max = 400): string {
-  if (!text) return '';
-  return text.length > max ? `${text.slice(0, max)}...` : text;
+function authoritativeMessages(result: ExecutionResult): Message[] {
+  const last = result.messages[result.messages.length - 1];
+  const alreadyEndsWithText = last?.role === 'assistant' && last.content === result.text;
+  return result.text && !alreadyEndsWithText
+    ? [...result.messages, { role: 'assistant', content: result.text }]
+    : result.messages;
 }
 
 /** P1: strips the id/timestamp this file adds for the UI, back to the SDK's real `Message` shape for feeding into AgentExecutor.execute(). */
@@ -524,6 +435,33 @@ export class RunManager extends EventEmitter {
     await this.launch(agentId, input, spec, { skipSystemPromptInjection: priorMessages.length > 0 });
   }
 
+  /** Picks the spec to run: the supplied one (persisted if a saveSpec hook exists), else the last-run one, else the saved one. */
+  private async resolveLaunchSpec(
+    agentId: string,
+    spec: AgentSpec | undefined,
+    existing: RunEntry | undefined
+  ): Promise<AgentSpec> {
+    const resolvedSpec = spec ?? existing?.lastSpec ?? (await this.opts.loadSpec(agentId));
+    if (!resolvedSpec) {
+      throw new AgentNotFoundError(`No agent spec for id '${agentId}' (none supplied and none saved)`);
+    }
+    if (spec && this.opts.saveSpec) {
+      await this.opts.saveSpec(agentId, spec);
+    }
+    return resolvedSpec;
+  }
+
+  private emitMockFallbackWarning(agentId: string, providerType: string): void {
+    this.emit('log', agentId, {
+      id: randomUUID(),
+      agentId,
+      timestamp: new Date().toISOString(),
+      level: 'warn' as LogLevel,
+      phase: 'trigger' as LogPhase,
+      message: `No stored/env API key found for provider '${providerType}' - running with the mock provider instead (configure a key in Settings to use it for real).`,
+    } satisfies LogEntry);
+  }
+
   /**
    * Shared run-kickoff for both run() and sendMessage() - builds the
    * agent/provider/toolRegistry, flips status to 'running', and fires off
@@ -539,13 +477,7 @@ export class RunManager extends EventEmitter {
     options: { skipSystemPromptInjection?: boolean } = {}
   ): Promise<void> {
     const existing = this.entries.get(agentId);
-    const resolvedSpec = spec ?? existing?.lastSpec ?? (await this.opts.loadSpec(agentId));
-    if (!resolvedSpec) {
-      throw new AgentNotFoundError(`No agent spec for id '${agentId}' (none supplied and none saved)`);
-    }
-    if (spec && this.opts.saveSpec) {
-      await this.opts.saveSpec(agentId, spec);
-    }
+    const resolvedSpec = await this.resolveLaunchSpec(agentId, spec, existing);
 
     // Build the agent/provider/toolRegistry BEFORE flipping status to
     // 'running' - resolveSpecProvider()/resolveSpecTool() (inside
@@ -561,14 +493,7 @@ export class RunManager extends EventEmitter {
       { secretsStore: this.opts.secretsStore, hookTimeoutMs: this.opts.settingsStore?.activeProfile().hookTimeoutMs }
     );
     if (usedMockProviderFallback) {
-      this.emit('log', agentId, {
-        id: randomUUID(),
-        agentId,
-        timestamp: new Date().toISOString(),
-        level: 'warn' as LogLevel,
-        phase: 'trigger' as LogPhase,
-        message: `No stored/env API key found for provider '${resolvedSpec.provider.type}' - running with the mock provider instead (configure a key in Settings to use it for real).`,
-      } satisfies LogEntry);
+      this.emitMockFallbackWarning(agentId, resolvedSpec.provider.type);
     }
 
     const sessionId = agentId;
@@ -654,7 +579,7 @@ export class RunManager extends EventEmitter {
    *    parameter at all, so LOU-Q pre/post hooks attached to a node never
    *    fire on a branching run.
    *  - Debug console: logs only, not trace spans or step-debugger
-   *    breakpoints - see `toFlowLogEntries()`'s doc comment above.
+   *    breakpoints - see `toFlowLogEntries()`'s doc comment in logEntries.ts.
    */
   private runFlow(
     agentId: string,
@@ -711,26 +636,11 @@ export class RunManager extends EventEmitter {
     // the assistant's tool-call message was added).
     const settledAt = new Date().toISOString();
     const entryBefore = this.entries.get(agentId);
-    // SDK bug found while wiring this up and FIXED AT THE SOURCE as part of
-    // this epic (src/execution/AgentExecutor.ts's no-more-tool-calls exit
-    // path now pushes the assistant's final reply onto `currentMessages`
-    // before returning, so `result.messages` already includes it). The
-    // guard below is kept as a now-provably-redundant safety net rather
-    // than removed outright - it only appends when the last message is NOT
-    // already that exact assistant/text pair, which is always true against
-    // a fixed SDK, so this is a harmless no-op today. Left in case a caller
-    // ever runs this app against an older/vendored SDK build that predates
-    // the fix.
-    const authoritative: Message[] =
-      result.text &&
-      !(
-        result.messages.length > 0 &&
-        result.messages[result.messages.length - 1].role === 'assistant' &&
-        result.messages[result.messages.length - 1].content === result.text
-      )
-        ? [...result.messages, { role: 'assistant', content: result.text }]
-        : result.messages;
-    const reconciledMessages = reconcileChatMessages(entryBefore?.messages ?? [], authoritative, settledAt);
+    const reconciledMessages = reconcileChatMessages(
+      entryBefore?.messages ?? [],
+      authoritativeMessages(result),
+      settledAt
+    );
 
     // O4: the full ExecutionResult (messages/toolCalls/usage/steps, not
     // just the final text) is kept on the entry either way, so the

@@ -15,7 +15,7 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { ChatMessage, ChatSessionMeta, ChatSessionRecord } from './types';
+import type { ChatMessage, ChatSessionMeta, ChatSessionRecord } from '../shared/wireTypes';
 
 export class FileChatStore {
   constructor(private readonly baseDir: string) {}

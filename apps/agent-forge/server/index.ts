@@ -5,6 +5,7 @@
  * - see src/cli/studio.ts) or programmatically via `startStudioServer()`
  * for tests/embedding.
  */
+import { once } from 'node:events';
 import * as http from 'node:http';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -42,6 +43,24 @@ export interface StartStudioServerOptions {
   staticDir?: string | false;
 }
 
+async function listen(server: http.Server, port: number, host: string): Promise<void> {
+  server.listen(port, host);
+  try {
+    await once(server, 'listening');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE') {
+      throw new Error(`[loushy studio] API server port ${port} is already in use.`);
+    }
+    throw err;
+  }
+}
+
+/** `false` disables static serving; `undefined` defaults to the pre-built client next to the server. */
+function resolveStaticDir(staticDir: string | false | undefined, moduleDir: string): string | undefined {
+  if (staticDir === false) return undefined;
+  return staticDir ?? path.join(moduleDir, '..', 'dist');
+}
+
 export async function startStudioServer(
   options: StartStudioServerOptions = {}
 ): Promise<StudioServerHandle> {
@@ -49,10 +68,7 @@ export async function startStudioServer(
   const port = options.port ?? 4750;
   const host = options.host ?? '127.0.0.1';
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-  const staticDir =
-    options.staticDir === false
-      ? undefined
-      : (options.staticDir ?? path.join(moduleDir, '..', 'dist'));
+  const staticDir = resolveStaticDir(options.staticDir, moduleDir);
 
   const agentStore = createFsAgentStore(baseDir);
   const checkpointStore = new FileCheckpointStore(baseDir);
@@ -74,23 +90,7 @@ export async function startStudioServer(
   const server = http.createServer(app);
   attachWebSocketServer(server, runManager);
 
-  await new Promise<void>((resolve, reject) => {
-    const onError = (err: NodeJS.ErrnoException) => {
-      server.removeListener('listening', onListening);
-      if (err.code === 'EADDRINUSE') {
-        reject(new Error(`[loushy studio] API server port ${port} is already in use.`));
-      } else {
-        reject(err);
-      }
-    };
-    const onListening = () => {
-      server.removeListener('error', onError);
-      resolve();
-    };
-    server.once('error', onError);
-    server.once('listening', onListening);
-    server.listen(port, host);
-  });
+  await listen(server, port, host);
 
   return {
     server,

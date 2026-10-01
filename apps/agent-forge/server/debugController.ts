@@ -74,7 +74,7 @@ export interface DebugStateSnapshot {
  * bounds the worst case to "paused a while, then resumed on its own" instead
  * of "stuck until the server process is restarted".
  */
-export const DEFAULT_PAUSE_TIMEOUT_MS = 15 * 60 * 1000;
+const DEFAULT_PAUSE_TIMEOUT_MS = 15 * 60 * 1000;
 
 export type DebugHooks = Pick<
   import('@loushy/build-ai-agent').ExecuteOptions,

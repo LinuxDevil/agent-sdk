@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { upsertSpan, orderSpansForWaterfall } from '../spanReducer';
-import type { SpanEvent } from '../../runtime/runtimeClient';
+import type { SpanEvent } from '../../../shared/wireTypes';
 
 function span(overrides: Partial<SpanEvent>): SpanEvent {
   return {

@@ -1,36 +1,25 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { AgentSpec } from '@loushy/build-ai-agent';
 import { LocalStorageAgentStore } from '../persistence/LocalStorageAgentStore';
 import type { AgentStore, AgentStoreEntry } from '../persistence/AgentStore';
-import { graphToSpec } from '../graph/graphToSpec';
-import { specToGraph } from '../graph/specToGraph';
 import type { AgentGraphSpec } from '../graph/types';
-import { graphFromTemplate, type TemplateId } from '../canvas/templates';
-import {
-  runtimeClient,
-  RuntimeApiError,
-  type AgentRunStatusPayload,
-  type LogEntry,
-  type SpanEvent,
-  type DebugStatePayload,
-  type ChatSessionMeta,
-  type ChatSessionRecord,
-  type SettingsProfile,
-} from '../runtime/runtimeClient';
-import { appendLog } from './logReducer';
-import { upsertSpan } from './spanReducer';
-import { applyChatState, emptyChatState, type ChatState } from './chatReducer';
+import type { TemplateId } from '../canvas/templates';
+import type {
+  AgentRunStatusPayload,
+  LogEntry,
+  SpanEvent,
+  DebugStatePayload,
+  ChatSessionMeta,
+  ChatSessionRecord,
+  SettingsProfile,
+} from '../../shared/wireTypes';
+import type { ChatState } from './chatReducer';
+import { useAgentDocument } from './useAgentDocument';
+import { useAgentStatuses, useAgentStream } from './useAgentStream';
+import { useActiveProfile, useChatControls, useRunControls } from './useAgentControls';
 
-const AUTOSAVE_DEBOUNCE_MS = 800;
-
-const DEFAULT_SPEC: AgentSpec = {
-  name: 'untitled-agent',
-  prompt: 'You are a helpful agent.',
-  provider: { type: 'mock', model: 'mock-1' },
-};
-
-export type RailTab = 'agents' | 'nodes';
+type RailTab = 'agents' | 'nodes';
 export type DrawerTab = 'chat' | 'logs' | 'trace' | 'output' | 'settings';
 
 interface AppState {
@@ -149,326 +138,29 @@ interface AppState {
 
 const AppStateContext = createContext<AppState | undefined>(undefined);
 
-function deriveSpec(graph: AgentGraphSpec, fallback: AgentSpec): AgentSpec {
-  try {
-    return graphToSpec(graph);
-  } catch {
-    // No llm node yet (e.g. mid-edit after deleting it) - keep the last
-    // spec that successfully derived rather than crashing the UI.
-    return fallback;
-  }
-}
-
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const store = useMemo(() => new LocalStorageAgentStore(), []);
-  const [agentId, setAgentId] = useState('untitled-agent');
-  const [graph, setGraphState] = useState<AgentGraphSpec>(() => specToGraph(DEFAULT_SPEC));
-  const [dirty, setDirty] = useState(false);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>(undefined);
   const [railTab, setRailTab] = useState<RailTab>('agents');
   const [drawerTab, setDrawerTab] = useState<DrawerTab>('chat');
-  const [agents, setAgents] = useState<AgentStoreEntry[]>([]);
-  const lastValidSpec = useRef<AgentSpec>(DEFAULT_SPEC);
-  const autosaveTimer = useRef<ReturnType<typeof setTimeout>>();
-
-  const spec = useMemo(() => {
-    const derived = deriveSpec(graph, lastValidSpec.current);
-    lastValidSpec.current = derived;
-    return derived;
-  }, [graph]);
-
-  const refreshAgents = useCallback(async () => {
-    setAgents(await store.list());
-  }, [store]);
-
-  // Load any previously-saved spec for this agent, and the agent list, on mount.
-  useEffect(() => {
-    let cancelled = false;
-    store.load(agentId).then((loaded) => {
-      if (!cancelled && loaded) {
-        const loadedGraph = specToGraph(loaded);
-        setGraphState(loadedGraph);
-        setSelectedNodeId(loadedGraph.nodes.find((n) => n.type === 'llm')?.id);
-      }
-    });
-    void refreshAgents();
-    return () => {
-      cancelled = true;
-    };
-    // Intentionally runs once on mount only - `switchAgent` handles later
-    // agent changes explicitly rather than re-running this on agentId writes.
-  }, []);
-
-  const save = useCallback(async () => {
-    await store.save(agentId, spec);
-    setDirty(false);
-    await refreshAgents();
-  }, [store, agentId, spec, refreshAgents]);
-
-  const setGraph = useCallback((updater: (graph: AgentGraphSpec) => AgentGraphSpec) => {
-    setGraphState((prev) => updater(prev));
-    setDirty(true);
-  }, []);
-
-  const setSpec = useCallback(
-    (updater: (spec: AgentSpec) => AgentSpec) => {
-      setGraphState((prev) => specToGraph(updater(deriveSpec(prev, lastValidSpec.current))));
-      setSelectedNodeId(undefined);
-      setDirty(true);
-    },
-    []
-  );
-
-  // Autosave: debounce writes so we're not hitting localStorage on every
-  // node drag frame, but still persist without an explicit Save click.
-  useEffect(() => {
-    if (!dirty) return;
-    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
-    autosaveTimer.current = setTimeout(() => {
-      store.save(agentId, spec).then(() => {
-        setDirty(false);
-        void refreshAgents();
-      });
-    }, AUTOSAVE_DEBOUNCE_MS);
-    return () => {
-      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
-    };
-  }, [spec, dirty, store, agentId, refreshAgents]);
-
-  const switchAgent = useCallback(
-    async (id: string) => {
-      const loaded = await store.load(id);
-      const nextGraph = specToGraph(loaded ?? DEFAULT_SPEC);
-      setAgentId(id);
-      setGraphState(nextGraph);
-      lastValidSpec.current = loaded ?? DEFAULT_SPEC;
-      setSelectedNodeId(nextGraph.nodes.find((n) => n.type === 'llm')?.id);
-      setDirty(false);
-    },
-    [store]
-  );
-
-  const createAgent = useCallback(
-    async (id: string, template: TemplateId) => {
-      const nextGraph = graphFromTemplate(template);
-      const nextSpec = graphToSpec(nextGraph);
-      await store.save(id, nextSpec);
-      setAgentId(id);
-      setGraphState(nextGraph);
-      lastValidSpec.current = nextSpec;
-      setSelectedNodeId(nextGraph.nodes.find((n) => n.type === 'llm')?.id);
-      setDirty(false);
-      await refreshAgents();
-    },
-    [store, refreshAgents]
-  );
-
-  const [runStatus, setRunStatus] = useState<AgentRunStatusPayload | undefined>(undefined);
-  const [agentStatuses, setAgentStatuses] = useState<Record<string, AgentRunStatusPayload>>({});
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [spans, setSpans] = useState<SpanEvent[]>([]);
-  const [debugState, setDebugState] = useState<DebugStatePayload | undefined>(undefined);
-  const [debugMode, setDebugMode] = useState(false);
-  const [highlightedNodeId, setHighlightedNodeId] = useState<string | undefined>(undefined);
-  const [chat, setChat] = useState<ChatState>(emptyChatState());
-  const [chatActionError, setChatActionError] = useState<string | undefined>(undefined);
-  const [chatSessions, setChatSessions] = useState<ChatSessionMeta[]>([]);
-  const [viewedChatSession, setViewedChatSession] = useState<ChatSessionRecord | undefined>(undefined);
-  const [activeProfile, setActiveProfile] = useState<SettingsProfile | undefined>(undefined);
-
-  const refreshActiveProfile = useCallback(async () => {
-    try {
-      const { activeProfileId, profiles } = await runtimeClient.listSettingsProfiles();
-      setActiveProfile(profiles.find((p) => p.id === activeProfileId) ?? profiles[0]);
-    } catch {
-      // Runtime server may not be running yet - Topbar just keeps showing
-      // no env indicator rather than erroring the whole app.
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshActiveProfile();
-  }, [refreshActiveProfile]);
-
-  // Keep one WS subscription per known agent id (for the LeftRail's status
-  // pills), added/removed as `agents` (the saved-agent list) changes -
-  // rather than per-agent polling, which would need to pick a poll
-  // interval that trades off staleness against request volume.
-  useEffect(() => {
-    const unsubscribes = agents.map((entry) =>
-      runtimeClient.subscribe(entry.id, (message) => {
-        if (message.type !== 'status') return;
-        setAgentStatuses((prev) => ({ ...prev, [entry.id]: message.payload }));
-      })
-    );
-    return () => {
-      for (const unsubscribe of unsubscribes) unsubscribe();
-    };
-    // Only the *set* of agent ids matters for (re)subscribing, not object
-    // identity of `agents` itself (which changes on every save/autosave) -
-    // so this intentionally depends on the joined id list below rather
-    // than `agents` itself.
-  }, [agents.map((a) => a.id).join(',')]);
-
-  // Subscribe to this agent's live run status over WS whenever the loaded
-  // agent changes - a full re-subscribe (not just filtering messages) since
-  // the server's stream is already scoped per agent id.
-  useEffect(() => {
-    setRunStatus(undefined);
-    setLogs([]);
-    setSpans([]);
-    setDebugState(undefined);
-    setHighlightedNodeId(undefined);
-    setChat(emptyChatState());
-    setChatActionError(undefined);
-    setChatSessions([]);
-    setViewedChatSession(undefined);
-    const unsubscribe = runtimeClient.subscribe(agentId, (message) => {
-      if (message.type === 'status') setRunStatus(message.payload);
-      else if (message.type === 'log') setLogs((prev) => appendLog(prev, message.payload));
-      else if (message.type === 'span') setSpans((prev) => upsertSpan(prev, message.payload));
-      else if (message.type === 'debug') setDebugState(message.payload);
-      else if (message.type === 'chat') setChat((prev) => applyChatState(prev, message.payload));
-    });
-    runtimeClient
-      .listChats(agentId)
-      .then(setChatSessions)
-      .catch(() => {});
-    // Also fetch the current status/debug-state immediately in case the WS
-    // connection is slow to open - avoids a flash of "unknown" status (or a
-    // stale breakpoint list) on agent switch.
-    runtimeClient
-      .status(agentId)
-      .then(setRunStatus)
-      .catch(() => {
-        // The runtime control server may not be running (e.g. the app was
-        // opened without `loushy studio`) - status just stays unknown, and
-        // Run/Stop surface that as a real error when clicked instead of
-        // failing silently here.
-      });
-    runtimeClient.debugState(agentId).then(setDebugState).catch(() => {});
-    return unsubscribe;
-  }, [agentId]);
-
-  const runAgent = useCallback(
-    async (input: string) => {
-      // Reset the log/span feed on every Run click so stale rows from a
-      // previous run of this same agent don't linger alongside the new
-      // ones (including a checkpoint-resumed run - a fresh feed for it is
-      // preferable to conflating it with the aborted run's).
-      setLogs([]);
-      setSpans([]);
-      await runtimeClient.run(agentId, input, spec);
-    },
-    [agentId, spec]
-  );
-
-  const setBreakpoints = useCallback(
-    async (breakpoints: string[]) => {
-      const next = await runtimeClient.setBreakpoints(agentId, breakpoints);
-      setDebugState(next);
-    },
-    [agentId]
-  );
-
-  const continueDebug = useCallback(async () => {
-    const next = await runtimeClient.continueRun(agentId);
-    setDebugState(next);
-  }, [agentId]);
-
-  const stepDebug = useCallback(async () => {
-    const next = await runtimeClient.stepRun(agentId);
-    setDebugState(next);
-  }, [agentId]);
-
-  const stopAgent = useCallback(async () => {
-    await runtimeClient.stop(agentId);
-  }, [agentId]);
-
-  const approveAgent = useCallback(
-    async (approved: boolean, note?: string) => {
-      const approvalId = runStatus?.pendingApproval?.approvalId;
-      if (!approvalId) {
-        throw new Error('approveAgent: no pending approval for this agent');
-      }
-      await runtimeClient.approve(agentId, approvalId, approved, note);
-    },
-    [agentId, runStatus]
-  );
-
-  const sendChatMessage = useCallback(
-    async (text: string) => {
-      setChatActionError(undefined);
-      try {
-        await runtimeClient.sendMessage(agentId, text);
-      } catch (error) {
-        setChatActionError(error instanceof RuntimeApiError ? error.message : (error as Error).message);
-        throw error;
-      }
-    },
-    [agentId]
-  );
-
-  const startNewChat = useCallback(async () => {
-    setChatActionError(undefined);
-    setViewedChatSession(undefined);
-    const next = await runtimeClient.newChat(agentId);
-    setChat({ sessionId: next.sessionId, messages: next.messages });
-    setChatSessions(await runtimeClient.listChats(agentId));
-  }, [agentId]);
-
-  const viewChatSession = useCallback(
-    async (sessionId: string) => {
-      setViewedChatSession(await runtimeClient.loadChatSession(agentId, sessionId));
-    },
-    [agentId]
-  );
-
-  const returnToLiveChat = useCallback(() => {
-    setViewedChatSession(undefined);
-  }, []);
+  const doc = useAgentDocument(store);
+  const { agentId, spec } = doc;
+  const agentStatuses = useAgentStatuses(doc.agents);
+  const stream = useAgentStream(agentId);
+  const run = useRunControls({ agentId, spec, ...stream });
+  const chatControls = useChatControls({ agentId, ...stream });
+  const { activeProfile, refreshActiveProfile } = useActiveProfile();
 
   const value: AppState = {
     store,
-    agentId,
-    graph,
-    setGraph,
-    spec,
-    setSpec,
-    dirty,
-    save,
-    selectedNodeId,
-    setSelectedNodeId,
+    ...doc,
     railTab,
     setRailTab,
     drawerTab,
     setDrawerTab,
-    agents,
-    switchAgent,
-    createAgent,
-    runStatus,
-    runAgent,
-    stopAgent,
-    approveAgent,
+    ...run,
     agentStatuses,
-    logs,
-    spans,
-    debugState,
-    debugMode,
-    setDebugMode,
-    setBreakpoints,
-    continueDebug,
-    stepDebug,
-    highlightedNodeId,
-    setHighlightedNodeId,
-    chat,
-    sendChatMessage,
-    chatActionError,
-    chatSessions,
-    startNewChat,
-    viewedChatSession,
-    viewChatSession,
-    returnToLiveChat,
+    ...stream,
+    ...chatControls,
     activeProfile,
     refreshActiveProfile,
   };

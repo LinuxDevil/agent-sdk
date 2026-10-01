@@ -135,28 +135,8 @@ function compileFrom(nodeId: string, ctx: CompileCtx, lastVar: string | undefine
       };
       return continueAfter(node, step, ctx, outputVariable);
     }
-    case 'router': {
-      const branches = ctx.outgoing.get(node.id) ?? [];
-      if (branches.length < 2) {
-        throw new Error(`graphToFlow: router node '${node.id}' must have at least 2 branches`);
-      }
-      // Conditioned branches first, then the (at most one) default branch
-      // last - see AgentGraphEdge.condition's doc comment for why order
-      // matters to FlowExecutor.executeOneOf()'s first-match semantics.
-      const conditioned = branches.filter((e) => e.condition?.trim());
-      const defaultBranches = branches.filter((e) => !e.condition?.trim());
-      if (defaultBranches.length > 1) {
-        throw new Error(`graphToFlow: router node '${node.id}' has more than one default (conditionless) branch`);
-      }
-      const ordered = [...conditioned, ...defaultBranches];
-      return {
-        type: 'oneOf',
-        options: ordered.map((edge) => ({
-          condition: edge.condition?.trim() || undefined,
-          step: compileFrom(edge.target, ctx, lastVar),
-        })),
-      };
-    }
+    case 'router':
+      return compileRouter(node, ctx, lastVar);
     case 'output':
       return { type: 'end', value: lastVar ? `$${lastVar}` : undefined };
     case 'approval':
@@ -166,6 +146,30 @@ function compileFrom(nodeId: string, ctx: CompileCtx, lastVar: string | undefine
     case 'trigger':
       throw new Error(`graphToFlow: unexpected trigger node '${node.id}' mid-graph - triggers must only feed the llm node`);
   }
+}
+
+/** Compiles a `router` node's outgoing edges into a `oneOf` step, one option per branch. */
+function compileRouter(node: AgentGraphNode, ctx: CompileCtx, lastVar: string | undefined): FlowStepNode {
+  const branches = ctx.outgoing.get(node.id) ?? [];
+  if (branches.length < 2) {
+    throw new Error(`graphToFlow: router node '${node.id}' must have at least 2 branches`);
+  }
+  // Conditioned branches first, then the (at most one) default branch
+  // last - see AgentGraphEdge.condition's doc comment for why order
+  // matters to FlowExecutor.executeOneOf()'s first-match semantics.
+  const conditioned = branches.filter((e) => e.condition?.trim());
+  const defaultBranches = branches.filter((e) => !e.condition?.trim());
+  if (defaultBranches.length > 1) {
+    throw new Error(`graphToFlow: router node '${node.id}' has more than one default (conditionless) branch`);
+  }
+  const ordered = [...conditioned, ...defaultBranches];
+  return {
+    type: 'oneOf',
+    options: ordered.map((edge) => ({
+      condition: edge.condition?.trim() || undefined,
+      step: compileFrom(edge.target, ctx, lastVar),
+    })),
+  };
 }
 
 /** Chains `step` (a compiled llm/tool node) to whatever comes after it - a single non-branching next node, or nothing (a dangling terminal step). Throws if the node has more than one outgoing edge (only a `router` may fan out). */

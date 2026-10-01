@@ -1,3 +1,4 @@
+import type { CSSProperties, ReactElement } from 'react';
 import { useAppState } from '../state/AppState';
 import type { DrawerTab } from '../state/AppState';
 import { LogsPanel } from './debug/LogsPanel';
@@ -14,6 +15,18 @@ const TABS: { id: DrawerTab; label: string }[] = [
   { id: 'output', label: 'Output' },
   { id: 'settings', label: 'Settings' },
 ];
+
+const TAB_PANELS: Record<DrawerTab, () => ReactElement> = {
+  chat: () => <ChatPanel />,
+  logs: () => <LogsPanel />,
+  trace: () => <TracePanel />,
+  output: () => <OutputPanel />,
+  settings: () => <SettingsPanel />,
+};
+
+// Every tab except Output manages its own padding/scrolling.
+const FLUSH_TABS: ReadonlySet<DrawerTab> = new Set<DrawerTab>(['logs', 'trace', 'chat', 'settings']);
+const FLUSH_BODY_STYLE: CSSProperties = { padding: 0, overflow: 'hidden' };
 
 /**
  * Tab-switching chrome (LOU-L), now with real content for LOU-O's
@@ -42,19 +55,8 @@ export function BottomDrawer() {
         <div className="drawer-spacer" />
       </div>
       {drawerTab === 'trace' && <DebugBar />}
-      <div
-        className="drawer-body"
-        style={
-          drawerTab === 'logs' || drawerTab === 'trace' || drawerTab === 'chat' || drawerTab === 'settings'
-            ? { padding: 0, overflow: 'hidden' }
-            : undefined
-        }
-      >
-        {drawerTab === 'chat' && <ChatPanel />}
-        {drawerTab === 'logs' && <LogsPanel />}
-        {drawerTab === 'trace' && <TracePanel />}
-        {drawerTab === 'output' && <OutputPanel />}
-        {drawerTab === 'settings' && <SettingsPanel />}
+      <div className="drawer-body" style={FLUSH_TABS.has(drawerTab) ? FLUSH_BODY_STYLE : undefined}>
+        {TAB_PANELS[drawerTab]()}
       </div>
     </div>
   );

@@ -1,11 +1,11 @@
-import type { LogEntry } from '../runtime/runtimeClient';
+import type { LogEntry } from '../../shared/wireTypes';
 
 /**
  * O1: client-side ring buffer cap. A real run can produce far more than the
  * mockup's static 8 log lines - this bounds memory/DOM growth instead of
  * letting `logs` grow unbounded for the lifetime of a long-running agent.
  */
-export const LOG_BUFFER_CAPACITY = 2000;
+const LOG_BUFFER_CAPACITY = 2000;
 
 /**
  * Appends `entry` to `buffer`, evicting the oldest entries once
@@ -29,16 +29,20 @@ export interface LogFilter {
   search?: string;
 }
 
+/** An empty/absent set means "no restriction" for that dimension. */
+function passesSet<T>(set: Set<T> | undefined, value: T): boolean {
+  return !set || set.size === 0 || set.has(value);
+}
+
+function matchesSearch(entry: LogEntry, search: string | undefined): boolean {
+  if (!search) return true;
+  return `${entry.message} ${entry.toolName ?? ''}`.toLowerCase().includes(search);
+}
+
 /** Pure filter used by both the reducer's derived view and its own tests - no component-only logic. */
 export function filterLogs(buffer: LogEntry[], filter: LogFilter): LogEntry[] {
   const search = filter.search?.trim().toLowerCase();
-  return buffer.filter((entry) => {
-    if (filter.levels && filter.levels.size > 0 && !filter.levels.has(entry.level)) return false;
-    if (filter.phases && filter.phases.size > 0 && !filter.phases.has(entry.phase)) return false;
-    if (search) {
-      const haystack = `${entry.message} ${entry.toolName ?? ''}`.toLowerCase();
-      if (!haystack.includes(search)) return false;
-    }
-    return true;
-  });
+  return buffer.filter(
+    (entry) => passesSet(filter.levels, entry.level) && passesSet(filter.phases, entry.phase) && matchesSearch(entry, search)
+  );
 }

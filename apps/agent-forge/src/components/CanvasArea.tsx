@@ -31,12 +31,21 @@ import { autoLayout } from '../canvas/layout';
 import { isEdgeTypeAllowed } from '../graph/connectionRules';
 import { PALETTE_DRAG_MIME, HOOK_DRAG_MIME } from '../canvas/dnd';
 import { HOOK_TEMPLATES } from '../hooks/hookTemplates';
-import type { AgentGraphNodeType, AgentGraphSpec, AgentNodeHookPhase } from '../graph/types';
+import type { HookTemplate } from '../hooks/hookTemplates';
+import type { AgentGraphNode, AgentGraphNodeType, AgentGraphSpec, AgentNodeHookPhase } from '../graph/types';
+
+type SetGraph = ReturnType<typeof useAppState>['setGraph'];
+type SetSelectedNodeId = ReturnType<typeof useAppState>['setSelectedNodeId'];
 
 function breakpointKeyForNode(n: AgentGraphSpec['nodes'][number]): string | undefined {
   if (n.type === 'llm') return 'llm:before';
   if (n.type === 'tool') return `tool:${n.data.toolName}:before`;
   return undefined;
+}
+
+function hasBreakpointOn(n: AgentGraphNode, breakpoints: string[]): boolean {
+  const key = breakpointKeyForNode(n);
+  return !!key && breakpoints.includes(key);
 }
 
 function toRfNodes(
@@ -55,10 +64,7 @@ function toRfNodes(
       graphNode: n,
       onRename,
       highlighted: n.id === highlightedNodeId,
-      hasBreakpoint: (() => {
-        const key = breakpointKeyForNode(n);
-        return !!key && breakpoints.includes(key);
-      })(),
+      hasBreakpoint: hasBreakpointOn(n, breakpoints),
     },
   }));
 }
@@ -67,58 +73,80 @@ function toRfEdges(graph: AgentGraphSpec): Edge[] {
   return graph.edges.map((e) => ({ id: e.id, source: e.source, target: e.target }));
 }
 
+/** Apply every ReactFlow position change that carries a position to the graph. */
+function applyPositionChanges(graph: AgentGraphSpec, changes: NodeChange[]): AgentGraphSpec {
+  let next = graph;
+  for (const change of changes) {
+    if (change.type === 'position' && change.position) {
+      next = moveNode(next, change.id, change.position);
+    }
+  }
+  return next;
+}
+
+/** The node id selected by the LAST select change in the batch, if any. */
+function lastSelectionChange(changes: NodeChange[]): { id: string; selected: boolean } | undefined {
+  const selectChange = [...changes].reverse().find((c) => c.type === 'select');
+  return selectChange && selectChange.type === 'select' ? selectChange : undefined;
+}
+
 /**
- * Real ReactFlow canvas (LOU-M1/M2). `AppState.graph` is the single source
- * of truth: every handler below reads it and, on a real mutation, calls
- * `setGraph()` - ReactFlow's `nodes`/`edges` props are recomputed from
- * `graph` on every render rather than kept in separate ReactFlow-owned
- * state, so there is nowhere for the two to drift apart.
+ * LOU-Q3: which `AgentGraphNode` (by id) the pointer is currently over,
+ * found by walking up the real DOM from `document.elementFromPoint()` to
+ * the nearest element carrying AgentNode.tsx's `data-node-id` attribute.
+ * Native HTML5 drag-and-drop only gives `onDrop` a client point, not
+ * "which React node is under it" - ReactFlow doesn't expose that as a
+ * hit-test API - so this reads it straight from the rendered DOM, the
+ * same way a browser's own elementFromPoint-based drop targeting works.
  */
-function CanvasInner() {
-  const { graph, setGraph, selectedNodeId, setSelectedNodeId, highlightedNodeId, debugState } = useAppState();
-  const { screenToFlowPosition, fitView } = useReactFlow();
+function nodeIdAtPoint(clientX: number, clientY: number): string | undefined {
+  const el = document.elementFromPoint(clientX, clientY);
+  const nodeEl = el?.closest<HTMLElement>('[data-node-id]');
+  return nodeEl?.dataset.nodeId;
+}
+
+/**
+ * Attach the first starter template matching both this palette item's phase
+ * (see LeftRail's HOOK_PALETTE) and the target node's hook point (llm ->
+ * generate, tool -> toolCall) as a sensible default; the Inspector lets the
+ * user pick a different template/edit the code afterward.
+ */
+function pickHookTemplate(targetType: 'llm' | 'tool', hookPhase: AgentNodeHookPhase): HookTemplate {
+  const point = targetType === 'llm' ? 'generate' : 'toolCall';
+  return (
+    HOOK_TEMPLATES.find((t) => t.phase === hookPhase && t.point === point) ??
+    HOOK_TEMPLATES.find((t) => t.point === point) ??
+    HOOK_TEMPLATES[0]
+  );
+}
+
+/** Auto-clearing "connection rejected" banner message. */
+function useConnectError() {
   const [connectError, setConnectError] = useState<string | undefined>(undefined);
   const errorTimer = useRef<ReturnType<typeof setTimeout>>();
 
-  function flashError(reason: string) {
+  const flashError = useCallback((reason: string) => {
     setConnectError(reason);
     if (errorTimer.current) clearTimeout(errorTimer.current);
     errorTimer.current = setTimeout(() => setConnectError(undefined), 3200);
-  }
+  }, []);
 
-  const onRename = useCallback(
-    (nodeId: string, label: string) => {
-      setGraph((g) => renameNode(g, nodeId, label));
-    },
-    [setGraph]
-  );
+  return { connectError, flashError };
+}
 
-  const breakpoints = debugState?.breakpoints ?? [];
-  const breakpointsKey = breakpoints.join(',');
-  const nodes = useMemo(
-    () => toRfNodes(graph, selectedNodeId, onRename, highlightedNodeId, breakpoints),
-    [graph, selectedNodeId, onRename, highlightedNodeId, breakpointsKey]
-  );
-  const edges = useMemo(() => toRfEdges(graph), [graph]);
-
+/** Node/edge change + delete handlers that write ReactFlow edits back to `graph`. */
+function useGraphEditHandlers(
+  setGraph: SetGraph,
+  selectedNodeId: string | undefined,
+  setSelectedNodeId: SetSelectedNodeId
+) {
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      const positionChanges = changes.filter((c) => c.type === 'position' && c.position);
-      if (positionChanges.length > 0) {
-        setGraph((g) => {
-          let next = g;
-          for (const change of positionChanges) {
-            if (change.type === 'position' && change.position) {
-              next = moveNode(next, change.id, change.position);
-            }
-          }
-          return next;
-        });
+      if (changes.some((c) => c.type === 'position' && c.position)) {
+        setGraph((g) => applyPositionChanges(g, changes));
       }
-      const selectChange = [...changes].reverse().find((c) => c.type === 'select');
-      if (selectChange && selectChange.type === 'select') {
-        setSelectedNodeId(selectChange.selected ? selectChange.id : undefined);
-      }
+      const selection = lastSelectionChange(changes);
+      if (selection) setSelectedNodeId(selection.selected ? selection.id : undefined);
     },
     [setGraph, setSelectedNodeId]
   );
@@ -140,6 +168,11 @@ function CanvasInner() {
     [setGraph, selectedNodeId, setSelectedNodeId]
   );
 
+  return { onNodesChange, onEdgesChange, onNodesDelete };
+}
+
+/** Edge creation: `onConnect` commits (or flashes the rejection), `isValidConnection` gates dragging. */
+function useConnectionHandlers(graph: AgentGraphSpec, setGraph: SetGraph, flashError: (reason: string) => void) {
   const onConnect = useCallback(
     (connection: Connection) => {
       if (!connection.source || !connection.target) return;
@@ -154,7 +187,7 @@ function CanvasInner() {
       });
       if (rejection) flashError(rejection);
     },
-    [setGraph]
+    [setGraph, flashError]
   );
 
   const isValidConnection = useCallback(
@@ -167,60 +200,59 @@ function CanvasInner() {
     [graph]
   );
 
+  return { onConnect, isValidConnection };
+}
+
+/** Palette/hook drag-and-drop onto the canvas. */
+function useDropHandlers(graph: AgentGraphSpec, setGraph: SetGraph, flashError: (reason: string) => void) {
+  const { screenToFlowPosition } = useReactFlow();
+
   const onDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
     if (!e.dataTransfer.types.includes(PALETTE_DRAG_MIME) && !e.dataTransfer.types.includes(HOOK_DRAG_MIME)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   }, []);
 
-  /**
-   * LOU-Q3: which `AgentGraphNode` (by id) the pointer is currently over,
-   * found by walking up the real DOM from `document.elementFromPoint()` to
-   * the nearest element carrying AgentNode.tsx's `data-node-id` attribute.
-   * Native HTML5 drag-and-drop only gives `onDrop` a client point, not
-   * "which React node is under it" - ReactFlow doesn't expose that as a
-   * hit-test API - so this reads it straight from the rendered DOM, the
-   * same way a browser's own elementFromPoint-based drop targeting works.
-   */
-  function nodeIdAtPoint(clientX: number, clientY: number): string | undefined {
-    const el = document.elementFromPoint(clientX, clientY);
-    const nodeEl = el?.closest<HTMLElement>('[data-node-id]');
-    return nodeEl?.dataset.nodeId;
-  }
-
-  const onDrop = useCallback(
-    (e: DragEvent<HTMLDivElement>) => {
-      const hookPhase = e.dataTransfer.getData(HOOK_DRAG_MIME) as AgentNodeHookPhase | '';
-      if (hookPhase) {
-        e.preventDefault();
-        const targetNodeId = nodeIdAtPoint(e.clientX, e.clientY);
-        const targetNode = graph.nodes.find((n) => n.id === targetNodeId);
-        if (!targetNode || (targetNode.type !== 'llm' && targetNode.type !== 'tool')) {
-          flashError('Drop a hook onto an LLM or tool node to attach it');
-          return;
-        }
-        // Attach the first starter template matching both this palette
-        // item's phase (see LeftRail's HOOK_PALETTE) and the target node's
-        // hook point (llm -> generate, tool -> toolCall) as a sensible
-        // default; the Inspector lets the user pick a different
-        // template/edit the code afterward.
-        const point = targetNode.type === 'llm' ? 'generate' : 'toolCall';
-        const template =
-          HOOK_TEMPLATES.find((t) => t.phase === hookPhase && t.point === point) ??
-          HOOK_TEMPLATES.find((t) => t.point === point) ??
-          HOOK_TEMPLATES[0];
-        setGraph((g) => addHookToNode(g, targetNode.id, template));
+  const dropHook = useCallback(
+    (e: DragEvent<HTMLDivElement>, hookPhase: AgentNodeHookPhase) => {
+      e.preventDefault();
+      const targetNodeId = nodeIdAtPoint(e.clientX, e.clientY);
+      const targetNode = graph.nodes.find((n) => n.id === targetNodeId);
+      if (!targetNode || (targetNode.type !== 'llm' && targetNode.type !== 'tool')) {
+        flashError('Drop a hook onto an LLM or tool node to attach it');
         return;
       }
+      const template = pickHookTemplate(targetNode.type, hookPhase);
+      setGraph((g) => addHookToNode(g, targetNode.id, template));
+    },
+    [graph, setGraph, flashError]
+  );
 
-      const nodeType = e.dataTransfer.getData(PALETTE_DRAG_MIME) as AgentGraphNodeType | '';
-      if (!nodeType) return;
+  const dropPaletteNode = useCallback(
+    (e: DragEvent<HTMLDivElement>, nodeType: AgentGraphNodeType) => {
       e.preventDefault();
       const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
       setGraph((g) => addNode(g, nodeType, position));
     },
-    [screenToFlowPosition, setGraph, graph]
+    [screenToFlowPosition, setGraph]
   );
+
+  const onDrop = useCallback(
+    (e: DragEvent<HTMLDivElement>) => {
+      const hookPhase = e.dataTransfer.getData(HOOK_DRAG_MIME) as AgentNodeHookPhase | '';
+      if (hookPhase) return dropHook(e, hookPhase);
+      const nodeType = e.dataTransfer.getData(PALETTE_DRAG_MIME) as AgentGraphNodeType | '';
+      if (nodeType) dropPaletteNode(e, nodeType);
+    },
+    [dropHook, dropPaletteNode]
+  );
+
+  return { onDragOver, onDrop };
+}
+
+/** Toolbar actions (auto layout, fit view, duplicate) plus the Ctrl/Cmd+D shortcut. */
+function useToolbarActions(setGraph: SetGraph, selectedNodeId: string | undefined) {
+  const { fitView } = useReactFlow();
 
   function handleAutoLayout() {
     setGraph((g) => autoLayout(g));
@@ -249,32 +281,87 @@ function CanvasInner() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [handleDuplicate]);
 
+  return { handleAutoLayout, handleFitView, handleDuplicate };
+}
+
+function CanvasToolbar({
+  canDuplicate,
+  onAutoLayout,
+  onFitView,
+  onDuplicate,
+}: {
+  canDuplicate: boolean;
+  onAutoLayout: () => void;
+  onFitView: () => void;
+  onDuplicate: () => void;
+}) {
+  return (
+    <div className="canvas-toolbar">
+      <button className="btn" onClick={onAutoLayout} title="Auto layout the current graph">
+        Auto layout
+      </button>
+      <button className="btn" onClick={onFitView} title="Fit view to graph">
+        Fit view
+      </button>
+      <button
+        className="btn"
+        onClick={onDuplicate}
+        disabled={!canDuplicate}
+        title="Duplicate selected node (Ctrl/Cmd+D)"
+      >
+        Duplicate
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Real ReactFlow canvas (LOU-M1/M2). `AppState.graph` is the single source
+ * of truth: every handler below reads it and, on a real mutation, calls
+ * `setGraph()` - ReactFlow's `nodes`/`edges` props are recomputed from
+ * `graph` on every render rather than kept in separate ReactFlow-owned
+ * state, so there is nowhere for the two to drift apart.
+ */
+function CanvasInner() {
+  const { graph, setGraph, selectedNodeId, setSelectedNodeId, highlightedNodeId, debugState } = useAppState();
+  const { connectError, flashError } = useConnectError();
+
+  const onRename = useCallback(
+    (nodeId: string, label: string) => {
+      setGraph((g) => renameNode(g, nodeId, label));
+    },
+    [setGraph]
+  );
+
+  const breakpoints = debugState?.breakpoints ?? [];
+  const breakpointsKey = breakpoints.join(',');
+  const nodes = useMemo(
+    () => toRfNodes(graph, selectedNodeId, onRename, highlightedNodeId, breakpoints),
+    [graph, selectedNodeId, onRename, highlightedNodeId, breakpointsKey]
+  );
+  const edges = useMemo(() => toRfEdges(graph), [graph]);
+
+  const editHandlers = useGraphEditHandlers(setGraph, selectedNodeId, setSelectedNodeId);
+  const { onConnect, isValidConnection } = useConnectionHandlers(graph, setGraph, flashError);
+  const { onDragOver, onDrop } = useDropHandlers(graph, setGraph, flashError);
+  const { handleAutoLayout, handleFitView, handleDuplicate } = useToolbarActions(setGraph, selectedNodeId);
+
   return (
     <div className="canvas-wrap" onDrop={onDrop} onDragOver={onDragOver}>
-      <div className="canvas-toolbar">
-        <button className="btn" onClick={handleAutoLayout} title="Auto layout the current graph">
-          Auto layout
-        </button>
-        <button className="btn" onClick={handleFitView} title="Fit view to graph">
-          Fit view
-        </button>
-        <button
-          className="btn"
-          onClick={handleDuplicate}
-          disabled={!selectedNodeId}
-          title="Duplicate selected node (Ctrl/Cmd+D)"
-        >
-          Duplicate
-        </button>
-      </div>
+      <CanvasToolbar
+        canDuplicate={!!selectedNodeId}
+        onAutoLayout={handleAutoLayout}
+        onFitView={handleFitView}
+        onDuplicate={handleDuplicate}
+      />
       {connectError && <div className="canvas-connect-error">{connectError}</div>}
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={NODE_TYPES}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onNodesDelete={onNodesDelete}
+        onNodesChange={editHandlers.onNodesChange}
+        onEdgesChange={editHandlers.onEdgesChange}
+        onNodesDelete={editHandlers.onNodesDelete}
         onConnect={onConnect}
         isValidConnection={isValidConnection}
         deleteKeyCode={['Backspace', 'Delete']}
