@@ -608,7 +608,17 @@ export class RunManager extends EventEmitter {
           text,
           messages: [{ role: 'assistant', content: text }],
           toolCalls: [],
-          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+          usage: {
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            costUsd: 0,
+            modelCalls: 0,
+            estimated: false,
+            byModel: {},
+            promptTokens: 0,
+            completionTokens: 0,
+          },
           finishReason: 'stop',
           steps: flowResult.steps,
         };
