@@ -11,18 +11,26 @@ import type { ExecutionResult } from '../execution/AgentExecutor';
 import { AGENT_EVENT_SCHEMA_VERSION, type AgentEvent, type AgentEventPayload } from '../execution/agentEvents';
 import type { AgentRun } from '../execution/agentRun';
 import { SDKError } from '../execution/errors';
+import { InputQueue, type EnqueueResult } from '../execution/inputQueue';
+import type { AgentInput } from '../providers/content';
 
 /**
  * Runs one session turn. Call `started` with the run as soon as it exists;
- * resolve with the turn's result once it is recorded (or reject).
+ * resolve with the turn's result once it is recorded (or reject). `inputs`
+ * is what `run.enqueue()` pushes to (LOU-V9): start the turn's run with it.
  */
-export type SessionTurn = (signal: AbortSignal, started: (run: AgentRun) => void) => Promise<ExecutionResult>;
+export type SessionTurn = (
+  signal: AbortSignal,
+  started: (run: AgentRun) => void,
+  inputs: InputQueue
+) => Promise<ExecutionResult>;
 
 class SessionRun implements AgentRun {
   readonly runId = newId();
   readonly result: Promise<ExecutionResult>;
   private readonly controller = new AbortController();
   private readonly started: Promise<AgentRun>;
+  private readonly inputs = new InputQueue();
   private iterated = false;
 
   constructor(turn: SessionTurn, signal: AbortSignal | undefined) {
@@ -34,11 +42,12 @@ class SessionRun implements AgentRun {
     });
     this.started.catch(() => undefined);
     const runSignal = signal ? AbortSignal.any([signal, this.controller.signal]) : this.controller.signal;
-    this.result = turn(runSignal, onStarted).catch((error: unknown) => {
+    this.result = turn(runSignal, onStarted, this.inputs).catch((error: unknown) => {
       onFailed(error);
       throw error;
     });
     this.result.catch(() => undefined);
+    this.inputs.closeAfter(this.result);
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<AgentEvent> {
@@ -82,6 +91,11 @@ class SessionRun implements AgentRun {
         );
       }
     }
+  }
+
+  /** Queued until the turn's run starts, then applied like `AgentRun.enqueue()`. */
+  enqueue(input: AgentInput): EnqueueResult {
+    return this.inputs.enqueue(input);
   }
 
   /** `error` then `run.done`, for a turn that failed outside the run's own events. */

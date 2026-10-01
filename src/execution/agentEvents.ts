@@ -237,6 +237,20 @@ export interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
  */
 export interface BudgetExceededEvent extends AgentEventBase<'budget.exceeded'>, BudgetExceeded {}
 
+/** LOU-V9: `run.enqueue()` took an input; `input.applied` follows when it joins the transcript. */
+export interface InputQueuedEvent extends AgentEventBase<'input.queued'> {
+  /** `EnqueueResult.id`. */
+  id: string;
+  /** The input's user text. */
+  text: string;
+}
+
+/** LOU-V9: a queued input joined the transcript, right before the model call of `step` (whose `step.start` follows). */
+export interface InputAppliedEvent extends AgentEventBase<'input.applied'> {
+  id: string;
+  step: number;
+}
+
 /**
  * Last event of every run, emitted exactly once - also for aborted, failed
  * and awaiting-approval runs.
@@ -280,6 +294,8 @@ export type AgentEvent =
   | CompactionStartEvent
   | CompactionDoneEvent
   | BudgetExceededEvent
+  | InputQueuedEvent
+  | InputAppliedEvent
   | RunDoneEvent;
 
 /** The `type` of an {@link AgentEvent}. */
@@ -317,6 +333,8 @@ const EVENT_TYPES: ReadonlySet<string> = new Set<AgentEventType>([
   'compaction.start',
   'compaction.done',
   'budget.exceeded',
+  'input.queued',
+  'input.applied',
   'run.done',
 ]);
 

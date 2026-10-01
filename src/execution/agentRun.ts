@@ -34,6 +34,8 @@ import { compactProviderError } from './errors';
 import { withProviderEvents, type ProviderEventListener } from '../providers/providerEvents';
 import type { Usage } from '../models/usage';
 import type { BudgetExceeded } from './budget';
+import type { AgentInput } from '../providers/content';
+import { InputQueue, type EnqueueResult, type QueuedInput } from './inputQueue';
 
 /**
  * The handle returned by `agent.stream()` and `AgentExecutor.stream()`.
@@ -63,6 +65,21 @@ export interface AgentRun<TObject = unknown> extends AsyncIterable<AgentEvent> {
    * unhandled rejection.
    */
   readonly result: Promise<ExecutionResult<TObject>>;
+  /**
+   * LOU-V9: adds user input to the running run. It joins the transcript at
+   * the next safe point (after the current step's tool results, before the
+   * next model call) and the run continues as if the user had typed it;
+   * `input.queued` and `input.applied` events mark both moments. Returns
+   * `{ applied: false }` when the run has already finished: send the input
+   * as a new turn then (`session.send()`). See {@link EnqueueResult}.
+   *
+   * @example
+   * ```ts
+   * const run = agent.stream('Plan a trip to Rome.');
+   * run.enqueue('Keep it under 500 EUR.');
+   * ```
+   */
+  enqueue(input: AgentInput): EnqueueResult;
 }
 
 /**
@@ -78,6 +95,9 @@ export interface RunEventSink {
   permissionDecision(entry: PermissionDecisionEntry): void;
   /** LOU-V6: a `limits` budget tripped. */
   budgetExceeded(budget: BudgetExceeded): void;
+  /** LOU-V9: an input was queued, then applied before the model call of `step`. */
+  inputQueued(input: QueuedInput): void;
+  inputApplied(id: string, step: number): void;
   /** LOU-W3.2: an event a hook emits (`GenerateHookContext.emit`). */
   hookEvent(event: HookEventPayload): void;
   /** Obtains one model step - streamed when the provider can. */
@@ -97,11 +117,12 @@ export function runEventsOf(options: ExecuteOptions): RunEventSink | undefined {
   return (options as StreamingExecuteOptions)[RUN_EVENTS];
 }
 
-/** Starts the run with the composed signal, `onEvent` and sink. */
+/** Starts the run with the composed signal, `onEvent`, sink and the queue behind `run.enqueue()`. */
 export type RunStarter = (wiring: {
   signal: AbortSignal;
   onEvent: (event: ExecutionEvent) => void;
   sink: RunEventSink;
+  inputQueue: InputQueue;
 }) => Promise<ExecutionResult>;
 
 function toEventError(error: unknown): AgentEventError {
@@ -159,17 +180,20 @@ class AgentRunImpl implements AgentRun {
   private wake: (() => void) | undefined;
   private lastError: unknown;
 
-  constructor(start: RunStarter, signal: AbortSignal | undefined) {
+  constructor(start: RunStarter, signal: AbortSignal | undefined, private readonly inputs: InputQueue) {
     const runSignal = signal ? AbortSignal.any([signal, this.controller.signal]) : this.controller.signal;
     this.result = start({
       signal: runSignal,
       onEvent: (event) => this.translate(event),
       sink: this.sink(),
+      inputQueue: inputs,
     }).then(
       (result) => this.finish(result),
       (error: unknown) => this.fail(error)
     );
     this.result.catch(() => undefined);
+    // A run that ended before its loop took the queue over (e.g. setup failed) takes no input either.
+    inputs.closeAfter(this.result);
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<AgentEvent> {
@@ -187,6 +211,10 @@ class AgentRunImpl implements AgentRun {
         this.controller.abort(new DOMException('The AgentRun was not iterated to the end (the for-await loop exited early)', 'AbortError'));
       }
     }
+  }
+
+  enqueue(input: AgentInput): EnqueueResult {
+    return this.inputs.enqueue(input);
   }
 
   private async *drain(): AsyncGenerator<AgentEvent> {
@@ -352,6 +380,8 @@ class AgentRunImpl implements AgentRun {
           subagent
         ),
       budgetExceeded: (budget) => this.emit({ type: 'budget.exceeded', ...budget }, subagent),
+      inputQueued: ({ id, text }) => this.emit({ type: 'input.queued', id, text }, subagent),
+      inputApplied: (id, step) => this.emit({ type: 'input.applied', id, step }, subagent),
       hookEvent: (event) => this.emit(event, subagent),
       generate: async (provider, request) => {
         const call = withProviderEvents(request, this.providerEvents(subagent));
@@ -405,8 +435,9 @@ function toolStartKey(toolCallId: string, subagent: SubagentInfo | undefined): s
 
 /**
  * Starts a run and returns its {@link AgentRun} handle. `signal` (the
- * caller's) and an early `break` both abort the run.
+ * caller's) and an early `break` both abort the run; `inputQueue` is the one
+ * `run.enqueue()` pushes to.
  */
-export function startAgentRun(start: RunStarter, signal?: AbortSignal): AgentRun {
-  return new AgentRunImpl(start, signal);
+export function startAgentRun(start: RunStarter, signal?: AbortSignal, inputQueue = new InputQueue()): AgentRun {
+  return new AgentRunImpl(start, signal, inputQueue);
 }

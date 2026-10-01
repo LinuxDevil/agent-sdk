@@ -68,6 +68,7 @@ import {
   toExecutionResult,
 } from './agentRunState';
 import { AgentRun, RUN_EVENTS, StreamingExecuteOptions, runEventsOf, startAgentRun } from './agentRun';
+import type { InputQueue } from './inputQueue';
 import { OutputError, outputInstruction, outputRepairMessage, validateOutput } from './structuredOutput';
 import type { PermissionOptions } from './permissions';
 import {
@@ -455,6 +456,16 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   signal?: AbortSignal;
   /**
+   * LOU-V9: input pushed while the run goes on (`inputQueue.enqueue()`), so
+   * a non-streaming caller can add to it like `run.enqueue()` does. Each
+   * input joins the transcript at the next safe point - after the current
+   * step's tool results, before the next model call - and a run whose model
+   * just gave its final reply takes another step for it. With checkpointing,
+   * an input still waiting rides at the end of every checkpoint, so a crash
+   * does not lose it. One queue serves one run. See docs/streaming.md.
+   */
+  inputQueue?: InputQueue;
+  /**
    * LOU-V3: how many tool calls from ONE model turn may run at the same
    * time. Defaults to `'unbounded'` (every call of the turn runs
    * concurrently); `1` restores strictly sequential execution. Must be a
@@ -596,6 +607,7 @@ export class AgentExecutor {
       throw error;
     } finally {
       budget?.dispose();
+      options.inputQueue?.close();
       await run.onRunEnd?.(end);
     }
   }
@@ -643,10 +655,11 @@ export class AgentExecutor {
    */
   static stream(options: ExecuteOptions): AgentRun {
     this.validateExecuteOptions(options, 'AgentExecutor.stream');
-    return startAgentRun(({ signal, onEvent, sink }) => {
+    return startAgentRun(({ signal, onEvent, sink, inputQueue }) => {
       const streaming: StreamingExecuteOptions = {
         ...options,
         signal,
+        inputQueue,
         onEvent: (event) => {
           options.onEvent?.(event);
           onEvent(event);
@@ -654,7 +667,7 @@ export class AgentExecutor {
         [RUN_EVENTS]: sink,
       };
       return this.execute(streaming);
-    }, options.signal);
+    }, options.signal, options.inputQueue);
   }
 
   /**
@@ -701,6 +714,11 @@ export class AgentExecutor {
 
     const state = await loadRunState(options);
     state.budget = budget;
+    options.inputQueue?.listen((queued) => {
+      runEventsOf(options)?.inputQueued(queued);
+      // LOU-V9: checkpointed at once, so a crash before it is applied does not lose it.
+      saveStepCheckpoint(options, state).catch(() => undefined);
+    });
 
     // LOU-U7/U9: a resumed transcript may end with a model turn whose tool
     // calls (some of them) have no result yet - finish those first, without
@@ -736,10 +754,15 @@ export class AgentExecutor {
         return stopped;
       }
       state.steps++;
+      this.applyQueuedInput(options, state);
 
       const outcome = await this.runStepOrAbort(options, state, () =>
         this.runStep(options, state, tools, agentSpanId)
       );
+      // LOU-V9: input queued during the final reply gets its own step.
+      if (outcome === 'stop' && options.inputQueue?.messages.length && state.steps < maxSteps) {
+        continue;
+      }
       if (outcome === 'stop') {
         const output = await this.checkOutput(options, state, !repaired && state.steps < maxSteps);
         if (output === 'repair') {
@@ -761,6 +784,14 @@ export class AgentExecutor {
     // spent while the model still wanted to go on.
     state.finishReason = 'max-steps';
     return this.finishRun(options, state);
+  }
+
+  /** LOU-V9: appends the queued input to the transcript, for the model call of step `state.steps`. */
+  private static applyQueuedInput(options: ExecuteOptions, state: AgentRunState): void {
+    for (const queued of options.inputQueue?.take() ?? []) {
+      state.messages.push(...queued.messages);
+      runEventsOf(options)?.inputApplied(queued.id, state.steps);
+    }
   }
 
   /** The run's end when it must stop before the next model call: aborted (LOU-V1) or over budget (LOU-V6). */
@@ -1257,6 +1288,7 @@ export class AgentExecutor {
     const timedOut = budgetOfAbort(signal);
     if (timedOut) return this.stopForBudget(options, state, timedOut);
     state.finishReason = 'aborted';
+    options.inputQueue?.close();
     await saveStepCheckpoint(options, state);
 
     this.emitEvent(onEvent, {

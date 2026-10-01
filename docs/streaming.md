@@ -28,6 +28,7 @@ tracing, `toolConcurrency`, ...).
 interface AgentRun extends AsyncIterable<AgentEvent> {
   readonly runId: string;                   // the runId on every event
   readonly result: Promise<ExecutionResult>; // what send() / execute() would return
+  enqueue(input: AgentInput): EnqueueResult; // add user input to the running run
 }
 ```
 
@@ -45,6 +46,8 @@ interface AgentRun extends AsyncIterable<AgentEvent> {
   consumer. Events are buffered until you read them, so a slow consumer sees
   every event, in order. Iterating after the run finished still yields all of
   its events.
+- **`enqueue(input)`** adds user input to the run while it runs: it joins the
+  transcript before the next model call. See [Queued input](#queued-input).
 - **One consumer.** An `AgentRun` can be iterated once; a second `for await`
   throws. To fan out, collect the events yourself.
 - Invalid options (no `provider`, `agent` or `input`, a bad `toolConcurrency`)
@@ -115,6 +118,8 @@ The event types and their extra fields:
 | `compaction.start`   | `strategy: string`, `tokensBefore: number`, `contextWindow: number`, `thresholdTokens: number` | The compaction hook (`createAgent({ compaction })`) found the next model request above its threshold and starts compacting it. Exactly one `compaction.done` follows. See [Context compaction](./compaction.md). |
 | `compaction.done`    | `strategy: string`, `tokensBefore: number`, `tokensAfter: number`, `prunedToolCallIds: string[]`, `summary?: boolean`, `error?: { message: string }` | A compaction ended. `tokensAfter` equals `tokensBefore` when nothing could be compacted; `summary` is set when old turns were replaced by a summary; `error` is set when the strategy failed or fell back (the run continues). |
 | `budget.exceeded`    | `limit: string`, `value: number`, `max: number`, `scope: 'run' \| 'session'` | A [`limits` budget](./configuration.md#budgets) tripped: `limit` is `'maxTokens'`, `'maxInputTokens'`, `'maxOutputTokens'`, `'maxCostUsd'`, `'maxDurationMs'` or `'maxSteps'`, `value` what was spent, `max` the limit. `run.done` (`'budget-exceeded'`) follows; with `onExceeded: 'throw'`, `error` and `run.done` (`'error'`). |
+| `input.queued`       | `id: string`, `text: string` | `run.enqueue()` took an input (`id` is `EnqueueResult.id`, `text` its user text). Can come at any point of the run, also inside a step. See [Queued input](#queued-input). |
+| `input.applied`      | `id: string`, `step: number` | The queued input joined the transcript, right before the model call of `step`: the `step.start` of that step follows. |
 | `run.done`           | `finishReason: string`, `text: string`, `usage?: { promptTokens, completionTokens, totalTokens }`, `object?: unknown` | Last event of every run, exactly once, including aborted, failed and awaiting-approval runs. `finishReason` and `text` match `run.result` (`'max-steps'` when the `maxSteps` budget ran out while the model still wanted to continue); a failed run has `finishReason: 'error'`, `text: ''` and no `usage`. `object` is `run.result`'s validated `object` for an agent with an `output` schema (see [Structured output](./structured-output.md)), absent otherwise. |
 
 Optional fields are left out when they have no value. They are never
@@ -132,6 +137,10 @@ Optional fields are left out when they have no value. They are never
 - Tool calls of one step run in parallel (see `toolConcurrency`):
   `tool.start` events come in the model's call order and `tool.done` /
   `tool.error` events in completion order. Match them by `toolCallId`.
+- `input.queued` comes when `run.enqueue()` is called (after `run.start`, even
+  for input queued before the run got going), so it can fall inside a step.
+  Its `input.applied` comes between the `step.done` of the step that was
+  running and the next `step.start`, which carries the `step` it names.
 - When a call needs approval, the calls before it run and report, then
   `approval.requested`, `step.done` (`'awaiting-approval'`) and `run.done`
   (`'awaiting-approval'`) follow. Calls after it never start.
@@ -262,6 +271,68 @@ for await (const event of run) {
   if (chars > 500) break; // aborts the run
 }
 console.log((await run.result).finishReason); // 'aborted'
+```
+
+## Queued input
+
+`run.enqueue(input)` adds user input (a string, content parts or a
+`Message[]`) to a run that is still going, for example a follow-up the user
+types while the agent works. The run does not stop: the input joins the
+transcript at the next safe point - after the current step's tool results,
+never between a tool-call turn and its results - and the next model call sees
+it, as if the user had typed it. Input queued while the model writes its final
+reply gets one more step, so the model answers it in the same run.
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini' });
+const run = agent.stream('Plan a weekend in Rome.');
+
+const queued = run.enqueue('Keep it under 500 EUR.');
+for await (const event of run) {
+  if (event.type === 'input.applied') console.log(`applied before step ${event.step}`);
+}
+if (queued.applied === false || !(await queued.applied)) {
+  // The run ended without it: send it as a new turn (e.g. session.send()).
+}
+```
+
+`enqueue()` returns `{ id, applied }`. `id` is on the `input.queued` and
+`input.applied` events. `applied` is `false` when the run had already
+finished: the input was not taken, so send it yourself, as a new turn
+(`session.send()`). Otherwise it is a promise that resolves to `true` once the
+input is in the transcript, or to `false` when the run stopped before its next
+model call (aborted, paused for approval, out of `maxSteps` or budget, or
+failed); the input is then left to you too.
+
+- Several inputs queued before the same model call are applied together, in
+  the order they were queued.
+- With checkpointing (`sessionId` or a durable session), an input that is
+  still waiting is saved at the end of the run's checkpoint right away, the
+  same slot as input queued behind unanswered tool calls (see
+  [Durable execution](./durable-execution.md)). A crash, or a run that fails,
+  does not lose it: `agent.resume()` applies it (`applied` of a run that
+  failed in-process still resolves `false`). A run that finishes, pauses or is
+  aborted does not keep it.
+- Without a stream, pass an `InputQueue` as `ExecuteOptions.inputQueue` and
+  call its `enqueue()`: the same queue that is behind `run.enqueue()`. One
+  queue serves one run.
+- In a session, `agent.session({ turnPolicy: 'queue' })` makes a `send()` or
+  `stream()` made while a turn runs (or waits to start) join that turn this way. See
+  [Sessions](./sessions.md#the-session-object).
+
+Queued input waits for the step that is running. Steering, which aborts the
+in-flight model call and redirects the run at once, is planned as a follow-up
+(LOU-V10).
+
+```ts
+import { AgentExecutor, InputQueue } from '@loushy/build-ai-agent';
+
+const inputQueue = new InputQueue();
+const pending = AgentExecutor.execute({ agent, provider, input: 'Plan my trip.', inputQueue });
+inputQueue.enqueue('Also book a hotel.');
+const result = await pending;
 ```
 
 ## Example: terminal

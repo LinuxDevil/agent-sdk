@@ -9,7 +9,8 @@ import { randomUUID } from 'node:crypto';
 import type { Message } from '../providers/llm';
 import { toMessages, type AgentInput } from '../providers/content';
 import type { ExecutionResult } from '../execution/AgentExecutor';
-import type { AgentRun } from '../execution/agentRun';
+import { startAgentRun, type AgentRun } from '../execution/agentRun';
+import { InputQueue } from '../execution/inputQueue';
 import type { Checkpoint, CheckpointStore } from '../execution/checkpoint';
 import { SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 import { streamSessionTurn } from './sessionStream';
@@ -45,6 +46,16 @@ export interface SessionOptions {
    * for a session continued from its store. See docs/configuration.md#budgets.
    */
   limits?: RunLimits;
+  /**
+   * What a `send()` / `stream()` does while a turn is running or waiting to
+   * start (LOU-V9). `'wait'` (default): it runs as the next turn once that one
+   * ends. `'queue'`: its input joins that turn like `run.enqueue()` (before
+   * that turn's next model call) and it resolves with that turn's result -
+   * its own `signal` does not apply. A joining `stream()` yields only the
+   * turn's `run.done`. If the turn ends before taking the input, it runs as
+   * the next turn after all; if the turn fails, it rejects with its error.
+   */
+  turnPolicy?: 'queue' | 'wait';
 }
 
 /** A transcript store plus, optionally, a checkpoint store (e.g. a `SqliteStore`). */
@@ -68,7 +79,7 @@ export interface SessionTurnCheckpoint {
 }
 
 /** How a session's turn runs: where it is checkpointed, and the session's budget (LOU-V6). */
-export type SessionTurnOptions = Partial<SessionTurnCheckpoint> & { sessionBudget?: SessionBudget };
+export type SessionTurnOptions = Partial<SessionTurnCheckpoint> & { sessionBudget?: SessionBudget; inputQueue?: InputQueue };
 
 /**
  * Runs one turn: `input` is the whole transcript so far, ending in the new
@@ -154,6 +165,9 @@ export class AgentSession {
   private readonly run: SessionRunner;
   private readonly streamRun: SessionStreamRunner | undefined;
   private readonly limits: RunLimits | undefined;
+  private readonly turnPolicy: SessionOptions['turnPolicy'];
+  /** The turn running (or about to run) and the queue its run takes input from (LOU-V9). */
+  private running: { inputs: InputQueue; result: Promise<ExecutionResult> } | undefined;
   private turnStartedAt = 0;
   private history: Message[] = [];
   private loaded = false;
@@ -166,6 +180,7 @@ export class AgentSession {
     this.store = stores.sessions ?? new MemorySessionStore();
     this.checkpointStore = options.checkpointStore ?? stores.checkpoints;
     this.limits = options.limits;
+    this.turnPolicy = options.turnPolicy;
     this.run = run;
     this.streamRun = streamRun;
   }
@@ -200,7 +215,7 @@ export class AgentSession {
    * ```
    */
   send(input: AgentInput, options: { signal?: AbortSignal } = {}): Promise<ExecutionResult> {
-    return this.enqueue(() => this.turn(input, options.signal));
+    return this.nextTurn(input, (inputs) => this.turn(input, inputs, options.signal));
   }
 
   /**
@@ -234,13 +249,18 @@ export class AgentSession {
       );
     }
     return streamSessionTurn(
-      (signal, started) =>
-        this.enqueue(async () => {
-          await this.beforeTurn(signal);
-          const run = streamRun([...this.history, ...toMessages(input)], signal, this.turnOptions());
-          started(run);
-          return this.record(await run.result);
-        }),
+      (signal, started, inputs) =>
+        this.nextTurn(
+          input,
+          async () => {
+            await this.beforeTurn(signal);
+            const run = streamRun([...this.history, ...toMessages(input)], signal, this.turnOptions(inputs));
+            started(run);
+            return this.record(await run.result);
+          },
+          inputs,
+          (joined) => started(startAgentRun(() => joined))
+        ),
       options.signal
     );
   }
@@ -310,9 +330,45 @@ export class AgentSession {
     this.loaded = true;
   }
 
-  private async turn(input: AgentInput, signal?: AbortSignal): Promise<ExecutionResult> {
+  private async turn(input: AgentInput, inputs: InputQueue, signal?: AbortSignal): Promise<ExecutionResult> {
     await this.beforeTurn(signal);
-    return this.record(await this.run([...this.history, ...toMessages(input)], signal, this.turnOptions()));
+    return this.record(await this.run([...this.history, ...toMessages(input)], signal, this.turnOptions(inputs)));
+  }
+
+  /**
+   * Runs `task` as the next turn, whose run takes queued input from `inputs`
+   * (LOU-V9). Under `turnPolicy: 'queue'`, while a turn is running or about to
+   * run, `input` joins that turn instead and this resolves with its result
+   * (handed to `joined` first); if that turn ends before taking the input,
+   * `task` runs as the next turn after all, unless the turn failed.
+   */
+  private nextTurn(
+    input: AgentInput,
+    task: (inputs: InputQueue) => Promise<ExecutionResult>,
+    inputs = new InputQueue(),
+    joined?: (result: Promise<ExecutionResult>) => void
+  ): Promise<ExecutionResult> {
+    const running = this.turnPolicy === 'queue' ? this.running : undefined;
+    if (running) {
+      return Promise.resolve(running.inputs.enqueue(input).applied).then(async (applied) => {
+        if (applied) {
+          joined?.(running.result);
+          return running.result;
+        }
+        // A turn that failed fails this call too (a checkpointed one keeps the input for `resume()`).
+        await running.result;
+        return this.nextTurn(input, task, inputs, joined);
+      });
+    }
+    const turn = { inputs, result: this.enqueue(() => task(inputs)) };
+    this.running = turn;
+    inputs.closeAfter(turn.result);
+    turn.result
+      .finally(() => {
+        if (this.running === turn) this.running = undefined;
+      })
+      .catch(() => undefined);
+    return turn.result;
   }
 
   /** Loads the history and, in a checkpointed session, finishes a pending turn first. */
@@ -330,9 +386,9 @@ export class AgentSession {
   }
 
   /** The next turn's checkpoint and, with `limits`, the session's budget (LOU-V6); starts the turn's clock. */
-  private turnOptions(): SessionTurnOptions | undefined {
+  private turnOptions(inputQueue?: InputQueue): SessionTurnOptions | undefined {
     this.turnStartedAt = Date.now();
-    const checkpoint = this.turnCheckpoint();
+    const checkpoint = inputQueue ? { ...this.turnCheckpoint(), inputQueue } : this.turnCheckpoint();
     if (!this.limits) return checkpoint;
     return { ...checkpoint, sessionBudget: { limits: this.limits, spent: sessionSpent(this.history) } };
   }
