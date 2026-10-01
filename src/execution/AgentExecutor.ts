@@ -494,11 +494,14 @@ export class AgentExecutor {
 
       // A failed tool carries its message as `{error}` (the same shape
       // resume.ts uses) - `result` is null then, so the model would
-      // otherwise see a bare "null" and never learn the call failed.
+      // otherwise see a bare "null" and never learn the call failed. A
+      // failure that already has a structured result (argument validation)
+      // keeps it, so the model gets the per-issue detail.
       const failed = toolResult.error !== undefined;
+      const failurePayload = toolResult.result ?? { error: toolResult.error };
       state.messages.push({
         role: 'tool',
-        content: JSON.stringify(failed ? { error: toolResult.error } : toolResult.result),
+        content: JSON.stringify(failed ? failurePayload : toolResult.result),
         name: toolCall.function.name,
         toolCallId: toolCall.id,
         toolName: toolCall.function.name,
