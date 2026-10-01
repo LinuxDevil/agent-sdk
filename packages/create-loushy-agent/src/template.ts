@@ -35,13 +35,6 @@ function findSdkRoot(): string {
   return candidate;
 }
 
-/** Reads the SDK's own pinned version straight from its package.json. */
-export function getPinnedSdkVersion(): string {
-  const sdkRoot = findSdkRoot();
-  const pkg = JSON.parse(fs.readFileSync(path.join(sdkRoot, 'package.json'), 'utf8'));
-  return pkg.version as string;
-}
-
 /** Env var each provider's generated agent reads its credential from (LOU-H5, matching LOU-F8's resolveProvider table). */
 export const PROVIDER_ENV_VARS: Record<string, string> = {
   openai: 'OPENAI_API_KEY',
@@ -66,21 +59,11 @@ function toolsObjectSource(tools: string[]): string {
 }
 
 /**
- * Generates a new @loushy/build-ai-agent project at `dir`: package.json
- * (with a real, installable, exact-version-pinned SDK dependency),
- * tsconfig.json (mirroring the root project's baseline), src/agent.ts
- * (calling createAgent() with the chosen provider/tools), and a
- * .env.example naming the right provider env var (LOU-H5).
+ * Packs the SDK's current source tree into `dir` so `npm install` works
+ * standalone in the generated project, from any cwd. Returns the tarball's
+ * file name.
  */
-export async function generateProject(dir: string, answers: AnswerConfig): Promise<void> {
-  fs.mkdirSync(dir, { recursive: true });
-  fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
-
-  const sdkRoot = findSdkRoot();
-  const version = getPinnedSdkVersion();
-
-  // Pack the SDK's current source tree and copy the tarball alongside the
-  // generated project so `npm install` works standalone, from any cwd.
+function packSdkTarball(sdkRoot: string, dir: string): string {
   // shell:true is required for execFileSync to run the `npm`/`npm.cmd`
   // batch script on Windows; every argument here is either a fixed literal
   // or a path generateProject() itself computed (never raw user input),
@@ -91,10 +74,12 @@ export async function generateProject(dir: string, answers: AnswerConfig): Promi
     encoding: 'utf8',
     shell: true,
   });
-  const tarballName = packOutput.trim().split(/\r?\n/).pop()!.trim();
+  return packOutput.trim().split(/\r?\n/).pop()!.trim();
+}
 
-  const pkgJson = {
-    name: answers.name,
+function buildPackageJson(name: string, tarballName: string) {
+  return {
+    name,
     version: '0.1.0',
     private: true,
     type: 'commonjs',
@@ -110,9 +95,10 @@ export async function generateProject(dir: string, answers: AnswerConfig): Promi
       '@types/node': '^20.0.0',
     },
   };
-  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(pkgJson, null, 2) + '\n');
+}
 
-  const tsconfig = {
+function buildTsconfig() {
+  return {
     compilerOptions: {
       outDir: './dist',
       rootDir: './src',
@@ -129,18 +115,13 @@ export async function generateProject(dir: string, answers: AnswerConfig): Promi
     },
     include: ['src/**/*'],
   };
-  fs.writeFileSync(path.join(dir, 'tsconfig.json'), JSON.stringify(tsconfig, null, 2) + '\n');
+}
 
-  const envVar = PROVIDER_ENV_VARS[answers.provider];
-  fs.writeFileSync(
-    path.join(dir, '.env.example'),
-    `# LLM provider credential for '${answers.provider}'\n${envVar}=\n`
-  );
-
+function buildAgentSource(answers: AnswerConfig): string {
   const toolImports = answers.tools.map(toolImportLine).join('\n');
   const toolsSource = toolsObjectSource(answers.tools);
 
-  const agentSource = `import { createAgent } from '@loushy/build-ai-agent';
+  return `import { createAgent } from '@loushy/build-ai-agent';
 import { resolveProvider } from '@loushy/build-ai-agent';
 ${toolImports}
 
@@ -161,7 +142,37 @@ main().catch((error) => {
   process.exitCode = 1;
 });
 `;
-  fs.writeFileSync(path.join(dir, 'src', 'agent.ts'), agentSource);
+}
+
+/**
+ * Generates a new @loushy/build-ai-agent project at `dir`: package.json
+ * (with a real, installable, exact-version-pinned SDK dependency),
+ * tsconfig.json (mirroring the root project's baseline), src/agent.ts
+ * (calling createAgent() with the chosen provider/tools), and a
+ * .env.example naming the right provider env var (LOU-H5).
+ */
+export async function generateProject(dir: string, answers: AnswerConfig): Promise<void> {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+
+  const sdkRoot = findSdkRoot();
+
+  // Pack the SDK's current source tree and copy the tarball alongside the
+  // generated project (see packSdkTarball()).
+  const tarballName = packSdkTarball(sdkRoot, dir);
+
+  const pkgJson = buildPackageJson(answers.name, tarballName);
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(pkgJson, null, 2) + '\n');
+
+  fs.writeFileSync(path.join(dir, 'tsconfig.json'), JSON.stringify(buildTsconfig(), null, 2) + '\n');
+
+  const envVar = PROVIDER_ENV_VARS[answers.provider];
+  fs.writeFileSync(
+    path.join(dir, '.env.example'),
+    `# LLM provider credential for '${answers.provider}'\n${envVar}=\n`
+  );
+
+  fs.writeFileSync(path.join(dir, 'src', 'agent.ts'), buildAgentSource(answers));
 }
 
 function defaultModelFor(provider: string): string {

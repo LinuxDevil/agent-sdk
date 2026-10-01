@@ -16,7 +16,7 @@ Options:
   --help, -h             Show this help message
 `;
 
-export interface ParsedCliArgs {
+interface ParsedCliArgs {
   help: boolean;
   yes: boolean;
   name?: string;
@@ -30,7 +30,7 @@ export interface ParsedCliArgs {
  * Throws a descriptive error for an unrecognized flag rather than letting
  * parseArgs's own generic error surface.
  */
-export function parseCliArgs(argv: string[]): ParsedCliArgs {
+function parseCliArgs(argv: string[]): ParsedCliArgs {
   let values: Record<string, unknown>;
   try {
     ({ values } = parseArgs({
@@ -68,7 +68,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   };
 }
 
-export class CliArgError extends Error {}
+class CliArgError extends Error {}
 
 /**
  * CLI entry point. Returns a process exit code.
@@ -93,6 +93,20 @@ export async function main(argv: string[]): Promise<number> {
   return runScaffold(args);
 }
 
+/** Splits a comma-separated --tools value into a trimmed, non-empty list. */
+function parseToolList(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+/** True when flags alone are enough to scaffold, so no interactive prompt is needed. */
+function canSkipPrompts(args: ParsedCliArgs): boolean {
+  return args.yes || (!!args.name && !!args.provider);
+}
+
 /**
  * Resolves the AnswerConfig either from --yes/flag shortcuts (non-interactive,
  * testable via a piped/scripted process) or by running the interactive
@@ -101,16 +115,14 @@ export async function main(argv: string[]): Promise<number> {
  * makes this reliably testable end-to-end without a real TTY.
  */
 async function resolveAnswers(args: ParsedCliArgs): Promise<AnswerConfig> {
-  const useShortcut = args.yes || (!!args.name && !!args.provider);
-
-  if (!useShortcut) {
+  if (!canSkipPrompts(args)) {
     return collectAnswers();
   }
 
   return validateAnswers({
     name: args.name || 'my-loushy-agent',
     provider: args.provider || 'openai',
-    tools: args.tools ? args.tools.split(',').map((t) => t.trim()).filter(Boolean) : [],
+    tools: parseToolList(args.tools),
   });
 }
 

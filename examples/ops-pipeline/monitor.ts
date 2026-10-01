@@ -14,6 +14,7 @@
  * request-body size cap so an oversized payload can't exhaust memory.
  */
 import * as http from 'node:http';
+import { closeServer, listenOn, sendJson, sendNotFound } from './httpHelpers';
 import { AgentExecutor, ExecuteOptions, ExecutionResult } from '../../src/execution/AgentExecutor';
 
 /**
@@ -84,28 +85,19 @@ const MAX_BODY_BYTES = 1024 * 1024; // 1MB
 
 class PayloadTooLargeError extends Error {}
 
-function readBody(req: http.IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let body = '';
-    let bytes = 0;
-    let tooLarge = false;
-    req.on('data', (chunk) => {
-      bytes += chunk.length;
-      if (bytes > MAX_BODY_BYTES) {
-        tooLarge = true;
-        return;
-      }
-      body += chunk;
-    });
-    req.on('end', () => {
-      if (tooLarge) {
-        reject(new PayloadTooLargeError(`Request body exceeds ${MAX_BODY_BYTES} byte limit`));
-        return;
-      }
-      resolve(body);
-    });
-    req.on('error', reject);
-  });
+// Keeps draining past the cap (rather than destroying the stream) so the
+// client can finish writing; the 413 is sent once the request has ended.
+async function readBody(req: http.IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  for await (const chunk of req) {
+    bytes += chunk.length;
+    if (bytes <= MAX_BODY_BYTES) chunks.push(Buffer.from(chunk));
+  }
+  if (bytes > MAX_BODY_BYTES) {
+    throw new PayloadTooLargeError(`Request body exceeds ${MAX_BODY_BYTES} byte limit`);
+  }
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 export interface MonitorServerHandle {
@@ -123,6 +115,44 @@ export interface StartMonitorServerOptions {
   onResult?: (signal: ErrorSignal, result: ExecutionResult) => void;
 }
 
+function isErrorSignal(signal: Partial<ErrorSignal>): signal is ErrorSignal {
+  return (
+    typeof signal.signature === 'string' &&
+    typeof signal.service === 'string' &&
+    typeof signal.message === 'string' &&
+    typeof signal.logs === 'string'
+  );
+}
+
+/** Handles one `POST /webhook` request: validates the payload, runs it through dedup + the executor. */
+async function handleWebhookRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  options: StartMonitorServerOptions,
+  seen: Set<string>
+): Promise<void> {
+  try {
+    const body = await readBody(req);
+    const signal = JSON.parse(body || '{}') as Partial<ErrorSignal>;
+    if (!isErrorSignal(signal)) {
+      sendJson(res, 400, {
+        error: 'Request body must be an ErrorSignal {signature, service, message, logs}',
+      });
+      return;
+    }
+
+    const result = await handleErrorSignal(signal, options.executeOptions, seen);
+    if (result && options.onResult) {
+      options.onResult(signal, result);
+    }
+
+    sendJson(res, 202, { deduped: result === undefined });
+  } catch (error) {
+    const status = error instanceof PayloadTooLargeError ? 413 : 500;
+    sendJson(res, status, { error: (error as Error).message });
+  }
+}
+
 /**
  * Starts an HTTP server exposing `POST /webhook` for ErrorSignal payloads.
  * Bound to '127.0.0.1' by default (localhost-only), matching src/cli/dev.ts's
@@ -137,64 +167,18 @@ export async function startMonitorServer(
   const seen = options.seen ?? defaultSeenSignatures;
 
   const server = http.createServer((req, res) => {
-    void (async () => {
-      if (req.method === 'POST' && req.url === '/webhook') {
-        try {
-          const body = await readBody(req);
-          const signal = JSON.parse(body || '{}') as Partial<ErrorSignal>;
-          if (
-            typeof signal.signature !== 'string' ||
-            typeof signal.service !== 'string' ||
-            typeof signal.message !== 'string' ||
-            typeof signal.logs !== 'string'
-          ) {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(
-              JSON.stringify({
-                error: 'Request body must be an ErrorSignal {signature, service, message, logs}',
-              })
-            );
-            return;
-          }
-
-          const result = await handleErrorSignal(signal as ErrorSignal, options.executeOptions, seen);
-          if (result && options.onResult) {
-            options.onResult(signal as ErrorSignal, result);
-          }
-
-          res.writeHead(202, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ deduped: result === undefined }));
-        } catch (error) {
-          if (error instanceof PayloadTooLargeError) {
-            res.writeHead(413, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: error.message }));
-            return;
-          }
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: (error as Error).message }));
-        }
-        return;
-      }
-
-      res.writeHead(404, { 'Content-Type': 'text/plain' });
-      res.end('not found');
-    })();
+    if (req.method === 'POST' && req.url === '/webhook') {
+      void handleWebhookRequest(req, res, options, seen);
+      return;
+    }
+    sendNotFound(res);
   });
 
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(port, host, () => resolve());
-  });
-
-  const address = server.address();
-  const actualPort = typeof address === 'object' && address ? address.port : port;
+  const actualPort = await listenOn(server, port, host);
 
   return {
     server,
     port: actualPort,
-    close: () =>
-      new Promise<void>((resolve, reject) => {
-        server.close((err) => (err ? reject(err) : resolve()));
-      }),
+    close: () => closeServer(server),
   };
 }

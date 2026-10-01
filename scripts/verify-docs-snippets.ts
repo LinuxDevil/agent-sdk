@@ -41,18 +41,24 @@ export interface Snippet {
   source: string;
 }
 
+/** Index of the closing fence at or after `from`, or lines.length when the block is unterminated. */
+function findFenceEnd(lines: string[], from: number): number {
+  let end = from;
+  while (end < lines.length && !/^```\s*$/.test(lines[end])) end++;
+  return end;
+}
+
 export function extractSnippets(markdown: string, file: string): Snippet[] {
   const snippets: Snippet[] = [];
   const lines = markdown.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     const open = lines[i].match(/^```(ts|typescript)\b(.*)$/);
     if (!open) continue;
-    const start = i;
-    const body: string[] = [];
-    for (i++; i < lines.length && !/^```\s*$/.test(lines[i]); i++) body.push(lines[i]);
+    const end = findFenceEnd(lines, i + 1);
     if (!open[2].includes('no-verify')) {
-      snippets.push({ file, line: start + 1, source: body.join('\n') + '\n' });
+      snippets.push({ file, line: i + 1, source: lines.slice(i + 1, end).join('\n') + '\n' });
     }
+    i = end;
   }
   return snippets;
 }
@@ -136,15 +142,112 @@ interface Failure {
   output: string;
 }
 
+/** Writes each snippet into the temp project as its own `snippet-<n>.mts`; returns the file names. */
+function writeSnippetFiles(projectDir: string, snippets: Snippet[]): string[] {
+  return snippets.map((snippet, index) => {
+    const name = `snippet-${index + 1}.mts`;
+    fs.writeFileSync(
+      path.join(projectDir, name),
+      `// ${snippet.file}:${snippet.line}\n${snippet.source}\nexport {};\n`
+    );
+    return name;
+  });
+}
+
+/** Runs tsc over all snippets and returns one 'typecheck' failure per snippet with errors. */
+function typeCheckSnippets(projectDir: string, files: string[], snippets: Snippet[]): Failure[] {
+  console.log('- type-checking all snippets (tsc --noEmit)...');
+  const tsc = spawnSync(process.execPath, [path.join(projectDir, 'node_modules', 'typescript', 'bin', 'tsc'), '-p', '.'], {
+    cwd: projectDir,
+    encoding: 'utf8',
+  });
+  const tscOutput = `${tsc.stdout}${tsc.stderr}`;
+  const failures: Failure[] = [];
+  files.forEach((name, index) => {
+    const errors = tscOutput.split(/\r?\n/).filter((l) => l.startsWith(name));
+    if (errors.length > 0) failures.push({ snippet: snippets[index], stage: 'typecheck', output: errors.join('\n') });
+  });
+  if (tsc.status !== 0 && failures.length === 0) {
+    throw new Error(`tsc failed without per-snippet errors:\n${tscOutput}`);
+  }
+  return failures;
+}
+
+/** Runs one snippet with tsx and reports whether it exited cleanly, plus its combined output. */
+function executeSnippet(
+  projectDir: string,
+  env: NodeJS.ProcessEnv,
+  name: string
+): { ok: boolean; output: string; error?: Error } {
+  const tsxCli = path.join(projectDir, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+  const result = spawnSync(process.execPath, [tsxCli, name], {
+    cwd: projectDir,
+    env,
+    encoding: 'utf8',
+    timeout: SNIPPET_TIMEOUT_MS,
+  });
+  return {
+    ok: result.status === 0 && !result.error,
+    output: `${result.stdout}${result.stderr}`.trim(),
+    error: result.error,
+  };
+}
+
+function snippetStatusLabel(ok: boolean, typeOk: boolean): string {
+  const failedStages = [!typeOk && 'typecheck', !ok && 'run'].filter(Boolean);
+  return failedStages.length === 0 ? 'PASS' : `FAIL (${failedStages.join(' + ')})`;
+}
+
+/** Runs one snippet, prints its PASS/FAIL line, and returns its 'run' failure (if any). */
+function runSnippet(
+  projectDir: string,
+  env: NodeJS.ProcessEnv,
+  name: string,
+  snippet: Snippet,
+  typeOk: boolean
+): Failure | undefined {
+  const { ok, output, error } = executeSnippet(projectDir, env, name);
+  console.log(`  ${snippetStatusLabel(ok, typeOk)} ${snippet.file}:${snippet.line} (${name})`);
+  if (output) console.log(output.replace(/^/gm, '      | '));
+  if (ok) return undefined;
+  return { snippet, stage: 'run', output: error ? String(error) : output };
+}
+
+/** Runs every snippet with provider credentials stripped from the environment. */
+function runSnippets(projectDir: string, files: string[], snippets: Snippet[], typeFailures: Failure[]): Failure[] {
+  const env = { ...process.env };
+  for (const key of CREDENTIAL_ENV_VARS) delete env[key];
+
+  const failures: Failure[] = [];
+  files.forEach((name, index) => {
+    const snippet = snippets[index];
+    const typeOk = !typeFailures.some((f) => f.snippet === snippet);
+    const failure = runSnippet(projectDir, env, name, snippet, typeOk);
+    if (failure) failures.push(failure);
+  });
+  return failures;
+}
+
+function loadSnippets(docs: string[]): Snippet[] {
+  return (docs.length > 0 ? docs : DEFAULT_DOCS).flatMap((file) =>
+    extractSnippets(fs.readFileSync(file, 'utf8'), path.relative(REPO_ROOT, file))
+  );
+}
+
+function reportFailures(failures: Failure[]): void {
+  console.error(`\nverify-docs-snippets: ${failures.length} failure(s)`);
+  for (const f of failures) {
+    console.error(`\n[${f.stage}] ${f.snippet.file}:${f.snippet.line}\n${f.output}`);
+  }
+}
+
 function main(): void {
   const args = process.argv.slice(2);
   const skipBuild = args.includes('--skip-build');
   const keep = args.includes('--keep');
   const docs = args.filter((a) => !a.startsWith('--')).map((a) => path.resolve(a));
 
-  const snippets = (docs.length > 0 ? docs : DEFAULT_DOCS).flatMap((file) =>
-    extractSnippets(fs.readFileSync(file, 'utf8'), path.relative(REPO_ROOT, file))
-  );
+  const snippets = loadSnippets(docs);
   if (snippets.length === 0) {
     console.error('verify-docs-snippets: no ```ts snippets found');
     process.exit(1);
@@ -155,62 +258,16 @@ function main(): void {
   const failures: Failure[] = [];
   try {
     setUpProject(projectDir, skipBuild);
-
-    const files = snippets.map((snippet, index) => {
-      const name = `snippet-${index + 1}.mts`;
-      fs.writeFileSync(
-        path.join(projectDir, name),
-        `// ${snippet.file}:${snippet.line}\n${snippet.source}\nexport {};\n`
-      );
-      return name;
-    });
-
-    console.log('- type-checking all snippets (tsc --noEmit)...');
-    const tsc = spawnSync(process.execPath, [path.join(projectDir, 'node_modules', 'typescript', 'bin', 'tsc'), '-p', '.'], {
-      cwd: projectDir,
-      encoding: 'utf8',
-    });
-    const tscOutput = `${tsc.stdout}${tsc.stderr}`;
-    files.forEach((name, index) => {
-      const errors = tscOutput.split(/\r?\n/).filter((l) => l.startsWith(name));
-      if (errors.length > 0) failures.push({ snippet: snippets[index], stage: 'typecheck', output: errors.join('\n') });
-    });
-    if (tsc.status !== 0 && failures.length === 0) {
-      throw new Error(`tsc failed without per-snippet errors:\n${tscOutput}`);
-    }
-
-    const env = { ...process.env };
-    for (const key of CREDENTIAL_ENV_VARS) delete env[key];
-    const tsxCli = path.join(projectDir, 'node_modules', 'tsx', 'dist', 'cli.mjs');
-
-    files.forEach((name, index) => {
-      const snippet = snippets[index];
-      const result = spawnSync(process.execPath, [tsxCli, name], {
-        cwd: projectDir,
-        env,
-        encoding: 'utf8',
-        timeout: SNIPPET_TIMEOUT_MS,
-      });
-      const output = `${result.stdout}${result.stderr}`.trim();
-      const ok = result.status === 0 && !result.error;
-      const typeOk = !failures.some((f) => f.snippet === snippet && f.stage === 'typecheck');
-      const status = ok && typeOk ? 'PASS' : `FAIL (${[typeOk ? '' : 'typecheck', ok ? '' : 'run'].filter(Boolean).join(' + ')})`;
-      console.log(`  ${status} ${snippet.file}:${snippet.line} (${name})`);
-      if (output) console.log(output.replace(/^/gm, '      | '));
-      if (!ok) {
-        failures.push({ snippet, stage: 'run', output: result.error ? String(result.error) : output });
-      }
-    });
+    const files = writeSnippetFiles(projectDir, snippets);
+    const typeFailures = typeCheckSnippets(projectDir, files, snippets);
+    failures.push(...typeFailures, ...runSnippets(projectDir, files, snippets, typeFailures));
   } finally {
     if (keep) console.log(`- temp project kept at ${projectDir}`);
     else fs.rmSync(projectDir, { recursive: true, force: true });
   }
 
   if (failures.length > 0) {
-    console.error(`\nverify-docs-snippets: ${failures.length} failure(s)`);
-    for (const f of failures) {
-      console.error(`\n[${f.stage}] ${f.snippet.file}:${f.snippet.line}\n${f.output}`);
-    }
+    reportFailures(failures);
     process.exit(1);
   }
   console.log(`\nverify-docs-snippets: all ${snippets.length} snippet(s) type-check and run cleanly`);

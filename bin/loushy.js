@@ -10,12 +10,26 @@ const USAGE = [
   '  loushy studio [--port N] [--host H] [--prod|--dev]',
 ].join('\n');
 
+/**
+ * Reads `--<name>=value` / `--<name> value` from `rest`. Returns `fallback`
+ * when the flag is absent, otherwise `convert` applied to the (possibly
+ * undefined) value.
+ */
+function readFlag(rest, name, fallback, convert = (value) => value) {
+  const flag = rest.find((arg) => arg.startsWith(`--${name}`));
+  if (!flag) return fallback;
+  return convert(flag.split('=')[1] || rest[rest.indexOf(flag) + 1]);
+}
+
+function reportError(error) {
+  console.error(error && error.message ? error.message : String(error));
+  process.exitCode = 1;
+}
+
 async function runDev(rest) {
   const configPath = rest.find((arg) => !arg.startsWith('--'));
-  const portFlag = rest.find((arg) => arg.startsWith('--port'));
-  const port = portFlag ? Number(portFlag.split('=')[1] || rest[rest.indexOf(portFlag) + 1]) : 3737;
-  const hostFlag = rest.find((arg) => arg.startsWith('--host'));
-  const host = hostFlag ? (hostFlag.split('=')[1] || rest[rest.indexOf(hostFlag) + 1]) : '127.0.0.1';
+  const port = readFlag(rest, 'port', 3737, Number);
+  const host = readFlag(rest, 'host', '127.0.0.1');
 
   if (!configPath) {
     console.error('loushy dev: a config file path is required. Usage: loushy dev <config.yaml|config.json> [--port N] [--host H]');
@@ -29,8 +43,7 @@ async function runDev(rest) {
     const handle = await startDevServer(path.resolve(configPath), port, host);
     console.log(`loushy dev: listening on http://${host}:${handle.port}`);
   } catch (error) {
-    console.error(error && error.message ? error.message : String(error));
-    process.exitCode = 1;
+    reportError(error);
   }
 }
 
@@ -42,40 +55,44 @@ async function runBuildCommand(rest) {
   process.exitCode = await runBuild(rest);
 }
 
+// Default 'auto': prod (single built server+UI) when apps/agent-forge has
+// been built (`npm run build:studio`), dev (Vite + tsx, two processes)
+// otherwise. --prod/--dev force one or the other - see src/cli/studio.ts.
+function studioMode(rest) {
+  if (rest.includes('--prod')) return 'prod';
+  return rest.includes('--dev') ? 'dev' : 'auto';
+}
+
 async function runStudio(rest) {
-  const portFlag = rest.find((arg) => arg.startsWith('--port'));
-  const apiPort = portFlag ? Number(portFlag.split('=')[1] || rest[rest.indexOf(portFlag) + 1]) : 4750;
-  const hostFlag = rest.find((arg) => arg.startsWith('--host'));
-  const apiHost = hostFlag ? (hostFlag.split('=')[1] || rest[rest.indexOf(hostFlag) + 1]) : '127.0.0.1';
-  // Default 'auto': prod (single built server+UI) when apps/agent-forge has
-  // been built (`npm run build:studio`), dev (Vite + tsx, two processes)
-  // otherwise. --prod/--dev force one or the other - see src/cli/studio.ts.
-  const mode = rest.includes('--prod') ? 'prod' : rest.includes('--dev') ? 'dev' : 'auto';
+  const apiPort = readFlag(rest, 'port', 4750, Number);
+  const apiHost = readFlag(rest, 'host', '127.0.0.1');
+  const mode = studioMode(rest);
 
   const { startStudio } = require(path.join(__dirname, '..', 'dist', 'cli', 'studio.js'));
 
   try {
     startStudio({ repoRoot: process.cwd(), apiPort, apiHost, mode });
   } catch (error) {
-    console.error(error && error.message ? error.message : String(error));
-    process.exitCode = 1;
+    reportError(error);
   }
 }
+
+const COMMANDS = new Map([
+  ['dev', runDev],
+  ['build', runBuildCommand],
+  ['studio', runStudio],
+]);
 
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
 
-  switch (command) {
-    case 'dev':
-      return runDev(rest);
-    case 'build':
-      return runBuildCommand(rest);
-    case 'studio':
-      return runStudio(rest);
-    default:
-      console.error(`loushy: unknown command '${command || ''}'.\n${USAGE}`);
-      process.exitCode = 1;
+  const run = COMMANDS.get(command);
+  if (!run) {
+    console.error(`loushy: unknown command '${command || ''}'.\n${USAGE}`);
+    process.exitCode = 1;
+    return;
   }
+  return run(rest);
 }
 
 main();

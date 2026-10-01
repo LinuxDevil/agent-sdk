@@ -1,9 +1,9 @@
 import prompts from 'prompts';
 
-export const PROVIDERS = ['openai', 'anthropic', 'ollama'] as const;
+const PROVIDERS = ['openai', 'anthropic', 'ollama'] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
-export const TOOL_CHOICES = ['http', 'github'] as const;
+const TOOL_CHOICES = ['http', 'github'] as const;
 
 export interface AnswerConfig {
   name: string;
