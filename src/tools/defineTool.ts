@@ -1,6 +1,5 @@
-import type { ToolExecutionOptions } from 'ai';
 import type { z } from 'zod';
-import type { ToolDescriptor } from '../types';
+import type { ToolDescriptor, ToolExecutionContext } from '../types';
 import type { SandboxAdapter } from '../security/sandboxCore';
 
 /** Tool names must satisfy the constraint LLM providers impose on function names. */
@@ -28,7 +27,7 @@ export interface DefineToolOptions<S extends z.ZodTypeAny, R> {
   /** See {@link ToolDescriptor.injectStreamingController}. */
   injectStreamingController?: ToolDescriptor['injectStreamingController'];
   /** Runs the tool. Arguments are typed from `input`; the return type is preserved on the result. */
-  execute: (args: z.output<S>, ctx: ToolExecutionOptions) => R | Promise<R>;
+  execute: (args: z.output<S>, ctx: ToolExecutionContext) => R | Promise<R>;
 }
 
 /**
@@ -45,7 +44,7 @@ export interface DefinedTool<S extends z.ZodTypeAny = z.ZodTypeAny, O = unknown>
   readonly input: S;
   /** Same schema as `input`. */
   readonly inputSchema: S;
-  execute(args: z.output<S>, ctx: ToolExecutionOptions): Promise<O>;
+  execute(args: z.output<S>, ctx: ToolExecutionContext): Promise<O>;
   /** Type-only marker; never set at runtime. */
   readonly _types?: { input: z.output<S>; output: O };
 }
@@ -131,13 +130,14 @@ export function defineTool<S extends z.ZodTypeAny, R>(
 ): DefinedTool<S, Awaited<R>> {
   assertValidOptions(opts);
 
-  const execute = async (args: z.output<S>, ctx: ToolExecutionOptions): Promise<Awaited<R>> =>
+  const execute = async (args: z.output<S>, ctx: ToolExecutionContext): Promise<Awaited<R>> =>
     await opts.execute(args, ctx);
   // Hand-built `ai` v4 Tool shape (its `tool()` is the identity function).
   const legacyTool: ToolDescriptor['tool'] = {
     description: opts.description,
     parameters: opts.input,
-    execute,
+    // legacy (.tool): `ai` v4 types `messages` as CoreMessage[]; the SDK always passes ours. Removed in D26.
+    execute: execute as ToolDescriptor['tool']['execute'],
   };
   const defined: DefinedTool<S, Awaited<R>> = {
     name: opts.name,
