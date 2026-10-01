@@ -3,3 +3,4 @@ export * from './defineTool';
 export * from './built-in';
 export * from './mcp';
 
+export * from './workspace';
