@@ -7,6 +7,7 @@ import { Message, ToolCall } from '../providers';
 import { AgentConfig } from '../types';
 import { StorageService } from '../storage';
 import type { RunUsage } from '../models/usage';
+import type { AgentFingerprint } from './agentFingerprint';
 
 /**
  * A tool call that is waiting on a human decision before it can execute.
@@ -118,6 +119,13 @@ export interface ExecutionSnapshot {
    * of this run.
    */
   subagent?: SubagentSuspension;
+  /**
+   * LOU-W9.2: the fingerprint of the agent that paused (for a sub-agent's
+   * nested snapshot, of that sub-agent). `resumeAfterApproval()` compares it
+   * with the resuming agent's (`onAgentDrift`). Absent on older snapshots,
+   * which resume without any check.
+   */
+  agentFingerprint?: AgentFingerprint;
 }
 
 /**

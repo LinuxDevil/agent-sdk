@@ -48,6 +48,8 @@ export const ERROR_CODES = {
   LOUSHY_REMOTE_REQUEST_FAILED: "Read the message: it names the remote agent's url and what failed. Check the url, that the deployment is up (GET /health), and its logs.",
   LOUSHY_CHECKPOINT_NOT_FOUND:
     "Fork at a step the session's checkpoint history still keeps (checkpointStore.history() lists them), or raise the store's historyLimit.",
+  LOUSHY_AGENT_DRIFT: "Resume with the agent that paused the run (same model, tools and instructions), or set onAgentDrift: 'warn' or 'ignore' to continue anyway.",
+  LOUSHY_RESUME_TOOL_MISSING: 'Bring the tool named in the message back (same name), or drop the paused run: delete its checkpoint and reject its approval.',
   LOUSHY_RUN_ALREADY_ITERATED: 'Iterate an AgentRun once; call stream() again for a new run.',
   LOUSHY_AGENT_EXECUTION_FAILED: 'Look at the `cause` for the underlying failure.',
   LOUSHY_FLOW_EXECUTION_FAILED: 'Look at the failing `step` and the `cause`.',

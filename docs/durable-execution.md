@@ -295,6 +295,60 @@ const result = await assistant.resume(fork.sessionId);
   ids aside) and `drift`, the tool-order, argument, step-count and
   finish-reason differences in the same shape as `loushy eval --drift`.
 
+## Resuming with a changed agent
+
+Every checkpoint and approval snapshot carries an **agent fingerprint**: the
+model id, each tool's name with a hash of its JSON input schema, and a hash of
+the system instructions (plus a short SHA-256 over all of them, computed with
+Web Crypto). Functions and other values that cannot be serialized (a tool's
+`execute`, hooks, callbacks) are not part of it, so changing only code never
+counts as a change. The parts are stored one by one so a mismatch can say what
+changed.
+
+When a run is resumed (`agent.resume(id)`, `session.resume()`, a later
+`execute()` on an unfinished `sessionId`, `agent.approvals.resolve()` and the
+streamed forms), the resuming agent's fingerprint is compared with the saved
+one, before any model call or tool runs. `onAgentDrift` on `createAgent()` (and
+on `AgentExecutor.execute()` / `resumeAfterApproval()`) decides what a
+difference does:
+
+| `onAgentDrift` | On a different model, tools or instructions |
+| -------------- | ------------------------------------------- |
+| `'warn'` (default) | A `console.warn` naming what changed and an `agent.drift` event (`model`, `toolsAdded`, `toolsRemoved`, `toolsChanged`, `instructions`); the run continues. |
+| `'error'` | Rejects with [`LOUSHY_AGENT_DRIFT`](./errors.md#loushy_agent_drift). The checkpoint is left as it was; an approval is put back, so the right agent can still resolve it. |
+| `'ignore'` | Nothing. |
+
+A pending tool call whose tool no longer exists (the model's last turn called
+it and it has no result yet, or the human approved it) always rejects with
+[`LOUSHY_RESUME_TOOL_MISSING`](./errors.md#loushy_resume_tool_missing),
+whatever the option.
+
+```ts
+import { createAgent, memoryStore } from '@loushy/build-ai-agent';
+import type { LLMProvider } from '@loushy/build-ai-agent';
+
+declare const provider: LLMProvider;
+
+// After a deploy that renamed a tool or changed the model, refuse to continue old runs.
+const agent = createAgent({ provider, store: memoryStore(), onAgentDrift: 'error' });
+const result = await agent.resume('job-1');
+```
+
+Notes:
+
+- Checkpoints and snapshots written before this existed have no fingerprint
+  and resume exactly as before, with no warning.
+- A run of a [dynamic agent](./api-overview.md#dynamic-config) saves the `ctx`
+  and the model it chose in the checkpoint (`runConfig`), and a crash resume
+  uses them: the saved model, and tools and instructions resolved again with
+  the saved `ctx` (before, it resolved with `input: []` and no `metadata`).
+- The fingerprint covers the agent's own tools, model and instructions, not
+  the tools that `subagents` and `skills` add. A sub-agent that pauses for an
+  approval has its own fingerprint in its nested snapshot, but a resume
+  compares only the top-level agent.
+- A run resumed after an approval continues with the instructions it started
+  with (they are in its transcript), so its later checkpoints record those.
+
 ## Compatibility with stored data
 
 - Checkpoints written before `status` existed are treated as

@@ -22,6 +22,7 @@ import type {
 } from './ApprovalGate';
 import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
 import type { RunUsage } from '../models/usage';
+import type { AgentFingerprint } from './agentFingerprint';
 import type { ResumeExecuteOptions } from './resume';
 import { PropagatingToolError } from './propagatingToolError';
 
@@ -157,7 +158,7 @@ function pendingForSuspension(suspension: SubagentSuspension): PendingApproval {
 /** The approval record that pauses a parent run on a suspended sub-agent. */
 export function suspensionRecord(
   run: { agent: AgentConfig; sessionId?: string },
-  state: { messages: Message[]; steps: number; usage: RunUsage; queuedInput?: Message[] },
+  state: { messages: Message[]; steps: number; usage: RunUsage; queuedInput?: Message[]; fingerprint?: AgentFingerprint },
   suspension: SubagentSuspension
 ): { pending: PendingApproval; snapshot: ExecutionSnapshot } {
   const pending = pendingForSuspension(suspension);
@@ -172,6 +173,7 @@ export function suspensionRecord(
       sessionId: run.sessionId,
       usage: structuredClone(state.usage),
       subagent: suspension,
+      agentFingerprint: state.fingerprint,
     },
   };
 }

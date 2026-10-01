@@ -1039,7 +1039,7 @@ describe('Execution - resumeAfterApproval', () => {
       expect(events).toEqual(['pre:chargeCard', 'post:chargeCard:{"charged":true}']);
     });
 
-    it('a preToolCall hook mutating args on the resume path changes what the deferred tool actually runs with', async () => {
+    it('a preToolCall hook that redacts args also on the paused run: the human approved the redacted input, which the deferred tool runs with', async () => {
       const { HookRegistry } = await import('./hooks');
       const hooks = new HookRegistry();
       hooks.register({
@@ -1090,6 +1090,7 @@ describe('Execution - resumeAfterApproval', () => {
         provider: scriptedProvider as any,
         toolRegistry,
         approvalStore,
+        hooks,
       });
 
       expect(paused.finishReason).toBe('awaiting-approval');
@@ -1104,7 +1105,71 @@ describe('Execution - resumeAfterApproval', () => {
         { hooks }
       );
 
+      // LOU-X3.2: the approval carries the redacted input, so the hook's rewrite on resume is a no-op.
       expect(execute).toHaveBeenCalledWith({ email: '[REDACTED]' }, expect.objectContaining({ toolCallId: 'call-1', messages: expect.any(Array) }));
+    });
+
+    it('LOU-X3.2: a preToolCall hook that only exists on resume and changes args in place is refused', async () => {
+      const { HookRegistry } = await import('./hooks');
+      const hooks = new HookRegistry();
+      hooks.register({ name: 'redact-pii', preToolCall: (ctx) => { ctx.args.email = '[REDACTED]'; } });
+      const execute = vi.fn().mockResolvedValue({ sent: true });
+      toolRegistry.register('sendEmail', {
+        displayName: 'Send Email',
+        tool: { description: 'send email', parameters: {}, execute } as any,
+        needsApproval: true,
+      });
+      const agent = AgentBuilder.create().setName('Test Agent').addTool('sendEmail', { tool: 'sendEmail', options: {} }).build();
+      const call = { id: 'call-1', type: 'function' as const, function: { name: 'sendEmail', arguments: JSON.stringify({ email: 'real@example.com' }) } };
+      const scripted = {
+        name: 'scripted',
+        supportsTools: () => true,
+        supportsStreaming: () => false,
+        getModels: async () => ['scripted'],
+        stream: async () => { throw new Error('not implemented'); },
+        generate: async () => ({ text: '', finishReason: 'tool_calls' as const, usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 }, toolCalls: [call] }),
+      };
+      const approvalStore = createInMemoryApprovalStore();
+      const paused = await AgentExecutor.execute({ agent, input: 'email', provider: scripted as any, toolRegistry, approvalStore });
+
+      const resumed = await resumeAfterApproval(
+        { id: paused.approvalId!, approved: true },
+        approvalStore,
+        toolRegistry,
+        createMockProvider({ name: 'mock', responses: ['Done'] }),
+        { hooks }
+      );
+
+      expect(execute).not.toHaveBeenCalled();
+      expect(resumed.messages.find((m) => m.role === 'tool')?.content).toContain('approved with different input');
+    });
+
+    it('LOU-X3.2: a hook that rebuilds the same arguments with the keys in another order is not refused', async () => {
+      const { HookRegistry } = await import('./hooks');
+      const hooks = new HookRegistry();
+      hooks.register({ name: 'reorder', preToolCall: (ctx) => { const { a, b } = ctx.args; ctx.args = { b, a }; } });
+      const execute = vi.fn().mockResolvedValue({ ok: true });
+      toolRegistry.register('reorder', {
+        displayName: 'Reorder',
+        tool: { description: 'x', parameters: {}, execute } as any,
+        needsApproval: true,
+      });
+      const agent = AgentBuilder.create().setName('Test Agent').addTool('reorder', { tool: 'reorder', options: {} }).build();
+      const call = { id: 'call-1', type: 'function' as const, function: { name: 'reorder', arguments: JSON.stringify({ a: 1, b: { c: 2, d: 3 } }) } };
+      const scripted = {
+        name: 'scripted',
+        supportsTools: () => true,
+        supportsStreaming: () => false,
+        getModels: async () => ['scripted'],
+        stream: async () => { throw new Error('not implemented'); },
+        generate: async () => ({ text: '', finishReason: 'tool_calls' as const, usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 }, toolCalls: [call] }),
+      };
+      const approvalStore = createInMemoryApprovalStore();
+      const paused = await AgentExecutor.execute({ agent, input: 'go', provider: scripted as any, toolRegistry, approvalStore });
+
+      await resumeAfterApproval({ id: paused.approvalId!, approved: true }, approvalStore, toolRegistry, createMockProvider({ name: 'mock', responses: ['Done'] }), { hooks });
+
+      expect(execute).toHaveBeenCalledWith({ b: { c: 2, d: 3 }, a: 1 }, expect.anything());
     });
 
     it('a postToolCall hook that throws on the resume path propagates as a rejected promise, not a swallowed {error} tool-result', async () => {

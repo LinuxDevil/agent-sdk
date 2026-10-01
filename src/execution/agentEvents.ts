@@ -14,6 +14,7 @@ import type { PermissionDecisionEntry } from './permissions';
 import type { ApprovalKind, ApprovalQuestion } from './ApprovalGate';
 import type { BudgetExceeded } from './budget';
 import type { GuardrailTrip } from './ioGuardrails';
+import type { AgentDrift } from './agentFingerprint';
 
 /**
  * Version of the {@link AgentEvent} schema, carried on every event as `v`.
@@ -293,6 +294,14 @@ export interface GuardrailTrippedEvent extends AgentEventBase<'guardrail.tripped
 export interface GuardrailRewroteEvent extends AgentEventBase<'guardrail.rewrote'>, GuardrailTrip {}
 
 /**
+ * LOU-W9.2: a checkpointed or approval-paused run is being continued by an
+ * agent that differs from the one that saved it, and `onAgentDrift` is
+ * `'warn'` (the default). The run continues; with `'error'` it is refused
+ * with `LOUSHY_AGENT_DRIFT` instead and this event is not emitted.
+ */
+export interface AgentDriftEvent extends AgentEventBase<'agent.drift'>, AgentDrift {}
+
+/**
  * Last event of every run, emitted exactly once - also for aborted, failed
  * and awaiting-approval runs.
  */
@@ -341,6 +350,7 @@ export type AgentEvent =
   | InputAppliedEvent
   | GuardrailTrippedEvent
   | GuardrailRewroteEvent
+  | AgentDriftEvent
   | RunDoneEvent;
 
 /** The `type` of an {@link AgentEvent}. */
