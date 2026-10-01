@@ -420,9 +420,11 @@ logged at `warn` level. The signed `url_verification` handshake is answered
 after verification.
 
 ```ts
+import { createAgent, createMockProvider } from '@loushy/build-ai-agent';
 import { SlackTriggerAdapter, verifySlackSignature } from '@loushy/build-ai-agent/triggers';
 import * as http from 'node:http';
 
+const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
 const slack = new SlackTriggerAdapter({ signingSecret: process.env.SLACK_SIGNING_SECRET });
 slack.listen(agent, (input) => agent.send(input));
 
