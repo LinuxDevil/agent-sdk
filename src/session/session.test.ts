@@ -1,0 +1,219 @@
+/**
+ * LOU-W4: sessions (multi-turn conversations) for createAgent().
+ */
+import { describe, it, expect } from 'vitest';
+import { z } from 'zod';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createAgent } from '../createAgent';
+import { defineTool } from '../tools/defineTool';
+import { PropagatingToolError } from '../execution/AgentExecutor';
+import { mockModel } from '../testing';
+import { FileSessionStore, MemorySessionStore } from './index';
+import { providerValidPrefix } from './AgentSession';
+import type { Message } from '../providers/llm';
+
+const convo = (call: { messages: readonly Message[] } | undefined): readonly Message[] =>
+  (call?.messages ?? []).filter((m) => m.role !== 'system');
+const roles = (messages: readonly { role: string }[]): string[] => messages.map((m) => m.role);
+
+describe('AgentSession', () => {
+  it('shows the second turn the first exchange', async () => {
+    const model = mockModel(['Nice to meet you, Ali.', 'Your name is Ali.']);
+    const session = createAgent({ prompt: 'Be brief.', provider: model }).session();
+
+    await session.send('My name is Ali.');
+    const second = await session.send('What is my name?');
+
+    expect(second.text).toBe('Your name is Ali.');
+    expect(model.calls[1].messages.map((m) => `${m.role}:${m.content}`)).toEqual([
+      'system:Be brief.',
+      'user:My name is Ali.',
+      'assistant:Nice to meet you, Ali.',
+      'user:What is my name?',
+    ]);
+    expect(session.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user', 'assistant']);
+    expect(session.id).toMatch(/^[A-Za-z0-9_-]+$/);
+  });
+
+  it('exposes a snapshot that cannot corrupt the session', async () => {
+    const session = createAgent({ provider: mockModel(['a', 'b']) }).session();
+    await session.send('1');
+    (session.messages as { content: string }[])[0].content = 'tampered';
+    expect(session.messages[0].content).toBe('1');
+  });
+
+  it('keeps tool-call turns in a provider-valid order', async () => {
+    const lookup = defineTool({
+      name: 'lookup',
+      description: 'look up',
+      input: z.object({ q: z.string() }),
+      execute: async ({ q }) => `result for ${q}`,
+    });
+    const model = mockModel([{ toolCalls: [{ name: 'lookup', args: { q: 'x' } }] }, 'It is x.', 'Still x.']);
+    const session = createAgent({ provider: model, tools: [lookup] }).session();
+
+    await session.send('find x');
+    expect(roles(session.messages)).toEqual(['user', 'assistant', 'tool', 'assistant']);
+    await session.send('again?');
+
+    const sent = convo(model.calls[2]);
+    expect(roles(sent)).toEqual(['user', 'assistant', 'tool', 'assistant', 'user']);
+    expect(sent[1].toolCalls?.[0].id).toBe(sent[2].toolCallId);
+  });
+
+  it('serializes concurrent sends so the transcript cannot interleave', async () => {
+    const model = mockModel([
+      { text: 'r1', delayMs: 30 },
+      { text: 'r2', delayMs: 1 },
+      { text: 'r3', delayMs: 1 },
+    ]);
+    const session = createAgent({ provider: model }).session();
+
+    const results = await Promise.all([session.send('a'), session.send('b'), session.send('c')]);
+
+    expect(results.map((r) => r.text)).toEqual(['r1', 'r2', 'r3']);
+    expect(session.messages.map((m) => m.content)).toEqual(['a', 'r1', 'b', 'r2', 'c', 'r3']);
+    expect(convo(model.calls[2]).map((m) => m.content)).toEqual(['a', 'r1', 'b', 'r2', 'c']);
+  });
+
+  it('keeps the queue alive after a failed send', async () => {
+    const model = mockModel([{ error: new Error('boom') }, 'fine']);
+    const session = createAgent({ provider: model }).session();
+    const failed = session.send('one');
+    const ok = session.send('two');
+    await expect(failed).rejects.toThrow('boom');
+    expect((await ok).text).toBe('fine');
+    expect(session.messages.map((m) => m.content)).toEqual(['two', 'fine']);
+  });
+
+  it('leaves the transcript unchanged when a tool throws a propagating error', async () => {
+    const fatal = defineTool({
+      name: 'fatal',
+      description: 'always fails hard',
+      input: z.object({}),
+      execute: async () => {
+        throw new PropagatingToolError('stop everything');
+      },
+    });
+    const model = mockModel(['hello', { toolCalls: [{ name: 'fatal' }] }, 'recovered']);
+    const session = createAgent({ provider: model, tools: [fatal] }).session();
+
+    await session.send('hi');
+    const before = session.messages;
+    await expect(session.send('do the fatal thing')).rejects.toThrow('stop everything');
+    expect(session.messages).toEqual(before);
+
+    await session.send('are you ok?');
+    expect(roles(convo(model.calls[2]))).toEqual(['user', 'assistant', 'user']);
+  });
+
+  it('leaves the transcript unchanged when a send is aborted', async () => {
+    const controller = new AbortController();
+    const slow = defineTool({
+      name: 'slow',
+      description: 'slow',
+      input: z.object({}),
+      execute: async () => {
+        controller.abort();
+        return 'done';
+      },
+    });
+    const model = mockModel(['hello', { toolCalls: [{ name: 'slow' }, { name: 'slow' }] }, 'next']);
+    const session = createAgent({ provider: model, tools: [slow] }).session();
+    await session.send('hi');
+    const before = session.messages;
+
+    const aborted = await session.send('go', { signal: controller.signal });
+
+    expect(aborted.finishReason).toBe('aborted');
+    expect(session.messages).toEqual(before);
+    await session.send('still there?');
+    expect(roles(convo(model.calls[2]))).toEqual(['user', 'assistant', 'user']);
+  });
+
+  it('clear() forgets the conversation, including in the store', async () => {
+    const store = new MemorySessionStore();
+    const model = mockModel(['a', 'b']);
+    const session = createAgent({ provider: model }).session({ id: 'c1', store });
+    await session.send('1');
+    await session.clear();
+
+    expect(session.messages).toEqual([]);
+    expect(await store.load('c1')).toBeUndefined();
+    await session.send('2');
+    expect(convo(model.calls[1]).map((m) => m.content)).toEqual(['2']);
+  });
+
+  it('rejects invalid ids', () => {
+    const agent = createAgent({ provider: mockModel([]) });
+    for (const id of ['../evil', 'a/b', 'a.b', '', 'x'.repeat(129)]) {
+      expect(() => agent.session({ id })).toThrow(/Invalid session id/);
+    }
+    expect(() => agent.session({ id: 'user_42-A' })).not.toThrow();
+  });
+
+  describe('FileSessionStore', () => {
+    it('round-trips a conversation across two createAgent instances', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'sessions-'));
+      try {
+        const first = createAgent({ provider: mockModel(['Hi Ali.']) });
+        const s1 = first.session({ id: 'ali', store: new FileSessionStore(dir) });
+        await s1.send('My name is Ali.');
+
+        const model = mockModel(['Ali.']);
+        const s2 = createAgent({ provider: model }).session({ id: 'ali', store: new FileSessionStore(dir) });
+        expect(await s2.load()).toHaveLength(2);
+        await s2.send('What is my name?');
+
+        expect(convo(model.calls[0]).map((m) => m.content)).toEqual([
+          'My name is Ali.',
+          'Hi Ali.',
+          'What is my name?',
+        ]);
+        expect(readdirSync(dir)).toEqual(['ali.json']);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('refuses path traversal ids and treats missing sessions as empty', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'sessions-'));
+      try {
+        const store = new FileSessionStore(join(dir, 'nested'));
+        await expect(store.load('../x')).rejects.toThrow(/Invalid session id/);
+        await expect(store.save('a/b', [])).rejects.toThrow(/Invalid session id/);
+        await expect(store.delete('..')).rejects.toThrow(/Invalid session id/);
+        expect(await store.load('missing')).toBeUndefined();
+        await store.delete('missing');
+        await store.save('ok', [{ role: 'user', content: 'x' }]);
+        await store.delete('ok');
+        expect(await store.load('ok')).toBeUndefined();
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  });
+});
+
+describe('providerValidPrefix', () => {
+  const call = { id: 'c1', name: 't', arguments: {} };
+  it('drops an assistant tool-call turn without its results', () => {
+    const messages = [
+      { role: 'user' as const, content: 'q' },
+      { role: 'assistant' as const, content: '', toolCalls: [call] },
+    ];
+    expect(providerValidPrefix(messages)).toEqual([messages[0]]);
+  });
+
+  it('drops a partially answered batch and orphaned tool messages', () => {
+    const two = [call, { ...call, id: 'c2' }];
+    const partial = [
+      { role: 'assistant' as const, content: '', toolCalls: two },
+      { role: 'tool' as const, content: '"x"', toolCallId: 'c1' },
+    ];
+    expect(providerValidPrefix(partial)).toEqual([]);
+    expect(providerValidPrefix([{ role: 'tool', content: '"x"', toolCallId: 'c1' }])).toEqual([]);
+  });
+});

@@ -39,9 +39,24 @@ export function listProviders(): ProviderInfo[] {
     name,
     envKey: entry.envKey,
     envRequired: entry.envRequired,
-    peerPackage: entry.peer.slice(0, entry.peer.lastIndexOf('@')),
+    peerPackage: peerPackageName(entry.peer),
     peerInstall: entry.peer,
   }));
+}
+
+/**
+ * The `npm install` command for an optional peer package, with the version
+ * range the SDK supports (single source of truth for every install hint).
+ * Packages that are not a provider peer get a plain `npm install <name>`.
+ */
+export function peerInstallCommand(packageName: string): string {
+  const entry = Object.values(PROVIDERS).find((e) => peerPackageName(e.peer) === packageName);
+  return `npm install ${entry ? entry.peer : packageName}`;
+}
+
+/** `@ai-sdk/openai@^0.0.42` -> `@ai-sdk/openai`. */
+function peerPackageName(peer: string): string {
+  return peer.slice(0, peer.lastIndexOf('@'));
 }
 
 /** Providers in env-detection order (see `modelFromEnv()`). */
@@ -143,7 +158,7 @@ function createProvider(caller: string, providerName: string, entry: ProviderEnt
     if (!isModuleNotFound(error)) throw error;
     throw new Error(
       `${caller}: the '${providerName}' provider needs an optional peer dependency that is not installed. ` +
-        `Run: npm install ${entry.peer}`,
+        `Run: ${peerInstallCommand(peerPackageName(entry.peer))}`,
       { cause: error }
     );
   }

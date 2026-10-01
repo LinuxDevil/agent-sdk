@@ -22,11 +22,14 @@ dashboard — any provider, any deploy target, no lock-in.
 - **Human-in-the-loop** — flag a tool `needsApproval` and pause execution until a human approves or rejects it, then `resumeAfterApproval()` from any process
 - **Durable execution** — pass a `sessionId` + `checkpointStore` and a crash mid-conversation resumes instead of restarting
 - **Cancellation** — pass an `AbortSignal` (`agent.send(input, { signal })`) to stop a run; it resolves with `finishReason: 'aborted'` and the transcript so far, and the signal reaches the provider, tools and delegated agents
+- **Sessions** — `agent.session()` keeps a multi-turn conversation (in memory, or persisted with `FileSessionStore`)
+- **Project instructions** — `createAgent({ projectInstructions: true })` appends the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (opt-in)
 - **Parallel tool calls** — when the model asks for several tools in one turn they run concurrently (cap it with `toolConcurrency`, or `1` for sequential), and results still reach the transcript in the model's call order
 - **Skills** — `defineSkill()` / `loadSkills('./skills')`: only each skill's name and description sit in the system prompt; the model loads the full markdown on demand through an auto-registered `load_skill` tool
 - **Multi-agent delegation** — wrap a child agent as a tool with `createDelegateTool()`, with a `maxDepth` guard against delegation loops
 - **Pre/post hooks** — a `HookRegistry` of `AgentHook`s that can inspect or mutate a tool call/LLM generate step, or throw to abort it, run sandboxed by Agent Forge's hook editor
 - **Guardrails** — fail-closed, concurrently-run checks (secret scan, diff size, test/lint commands) that gate a fixer agent's patch before it's used
+- **Workspace tools** — `createFsTools()` (`read_file`, `write_file`, `edit_file`, `list_dir`, `glob`, `grep`) and `createShellTool()` over pluggable `FsProvider`/`ShellProvider` backends (`NodeWorkspace`, `MemoryWorkspace`, Docker-backed `SandboxShell`), with paths confined to the workspace root (symlinks included) and shell commands approval-gated by default — see [Workspace tools](docs/workspace-tools.md)
 - **MCP client** — `loadMcpTools()` turns any Model Context Protocol server's tools into `ToolDescriptor`s
 - **MCP server** — `serveMcp({ agent, name })` (or `loushy mcp agent.yaml`) exposes an agent as an MCP tool for Claude Code, Cursor and other agents
 - **Sandboxed tools** — opt a tool into `requiresSandbox` to route it through a Docker-backed `SandboxAdapter` instead of in-process
@@ -205,6 +208,17 @@ console.log(result.text);
 console.log(result.usage.totalTokens, result.finishReason, result.steps);
 ```
 
+### Multi-turn sessions
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const session = createAgent({ provider }).session(); // or .session({ id, store: new FileSessionStore(dir) })
+await session.send('My name is Ali.');
+const { text } = await session.send('What is my name?'); // remembers
+console.log(session.id, session.messages.length);
+```
+
 ## Documentation
 
 - [Installation](docs/installation.md) - requirements, peer/provider packages, installing from a local build
@@ -213,8 +227,10 @@ console.log(result.usage.totalTokens, result.finishReason, result.steps);
 - [Deployment](docs/deployment.md) - `loushy build` targets: Node server, Docker, Cloudflare Workers
 - [API Overview](docs/api-overview.md) - the main exports; `npm run docs:build` generates the full TypeDoc reference
 - [Durable execution](docs/durable-execution.md) - checkpoints, crash resume, multi-turn sessions, approvals mid-batch, at-least-once tools
+- [Workspace tools](docs/workspace-tools.md) - file system and shell tools for coding agents, and their security model
 - [Tracing and observability](docs/observability.md) - OpenTelemetry GenAI spans, attribute table, content opt-in
 - [Testing](docs/testing.md) - unit-test agents deterministically with the scripted `mockModel`
+- [Sessions](docs/sessions.md) - multi-turn conversations: `agent.session()`, `MemorySessionStore`, `FileSessionStore`
 - [Skills](docs/skills.md) - on-demand instructions: `defineSkill()`, `loadSkills()`, how they save context
 - [Agent Forge](docs/agent-forge.md) - the visual dashboard (`loushy studio`): quickstart, first-agent walkthrough, hook authoring
 - Full guides site: [linuxdevil.github.io/agent-sdk-docs](https://linuxdevil.github.io/agent-sdk-docs/)

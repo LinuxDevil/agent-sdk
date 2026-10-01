@@ -25,6 +25,10 @@ import { modelFromEnv, resolveProviderSpec } from './providers/providerSpec';
 import type { DefinedTool } from './tools/defineTool';
 import { ToolConcurrency, assertToolConcurrency } from './execution/toolBatch';
 import type { Skill } from './skills/defineSkill';
+import type { Message } from './providers/llm';
+import { AgentSession, type SessionOptions } from './session/AgentSession';
+import { loadProjectInstructions } from './projectInstructions';
+import { basename } from 'node:path';
 
 /**
  * Options for createAgent() that do not depend on how the instructions and
@@ -66,6 +70,20 @@ export interface CreateAgentBase {
    * ```
    */
   toolConcurrency?: ToolConcurrency;
+  /**
+   * Opt in to appending the nearest `AGENTS.md` / `CLAUDE.md` (found by
+   * walking up from `cwd`, see `loadProjectInstructions()`) to the agent's
+   * instructions, under a `## Project instructions (from AGENTS.md)` heading
+   * (LOU-W7). Off by default: the SDK never reads files from disk unless asked.
+   * Nothing is added when no file is found. Read once, when the agent is created.
+   *
+   * @example
+   * ```ts
+   * createAgent({ prompt: '...', provider, projectInstructions: true });
+   * createAgent({ prompt: '...', provider, projectInstructions: { cwd: './packages/api', files: ['AGENTS.md'] } });
+   * ```
+   */
+  projectInstructions?: boolean | { cwd?: string; files?: readonly string[] };
 }
 
 /**
@@ -147,6 +165,19 @@ export interface SendOptions {
 export interface SimpleAgent {
   /** Send a single user message and get back the full execution result text. */
   send: (message: string, options?: SendOptions) => Promise<ExecutionResult>;
+  /**
+   * Start a multi-turn conversation (LOU-W4): every `send()` sees the earlier
+   * exchanges. In memory by default; pass `{ id, store }` (e.g. a
+   * `FileSessionStore`) to persist it and continue it later.
+   *
+   * @example
+   * ```ts
+   * const session = agent.session();
+   * await session.send('My name is Ali.');
+   * const { text } = await session.send('What is my name?');
+   * ```
+   */
+  session: (options?: SessionOptions) => AgentSession;
 }
 
 /**
@@ -165,7 +196,7 @@ export interface SimpleAgent {
  */
 export function createAgent(config: CreateAgentConfig = {}): SimpleAgent {
   assertToolConcurrency(config.toolConcurrency, 'createAgent');
-  const instructions = resolveInstructions(config);
+  const instructions = withProjectInstructions(resolveInstructions(config), config.projectInstructions);
   const provider = resolveModelSource(config);
 
   const { toolRegistry, toolsConfig } = registerTools(config.tools ?? {});
@@ -179,20 +210,39 @@ export function createAgent(config: CreateAgentConfig = {}): SimpleAgent {
   if (config.provider && config.model) builder.setSettings({ model: config.model });
   const agent = builder.build();
 
+  const run = (input: string | Message[], signal?: AbortSignal): Promise<ExecutionResult> =>
+    AgentExecutor.execute({
+      agent,
+      input,
+      provider,
+      toolRegistry,
+      skills: config.skills,
+      maxSteps: config.maxSteps,
+      toolConcurrency: config.toolConcurrency,
+      signal,
+    });
+
   return {
     async send(message: string, options: SendOptions = {}): Promise<ExecutionResult> {
-      return AgentExecutor.execute({
-        agent,
-        input: message,
-        provider,
-        toolRegistry,
-        skills: config.skills,
-        maxSteps: config.maxSteps,
-        toolConcurrency: config.toolConcurrency,
-        signal: options.signal,
-      });
+      return run(message, options.signal);
     },
+    session: (options?: SessionOptions) => new AgentSession(run, options),
   };
+}
+
+/** Appends the nearest AGENTS.md / CLAUDE.md to `instructions` when `projectInstructions` is set. */
+function withProjectInstructions(
+  instructions: string,
+  option: CreateAgentBase['projectInstructions']
+): string {
+  if (!option) return instructions;
+  const found = loadProjectInstructions(option === true ? {} : option);
+  if (!found) return instructions;
+  return `${instructions}
+
+## Project instructions (from ${basename(found.path)})
+
+${found.content}`;
 }
 
 /** Used when neither `instructions` nor `prompt` is given. */
