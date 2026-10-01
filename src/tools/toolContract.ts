@@ -4,7 +4,8 @@
  * back to the legacy `ai` v4 `tool.parameters` / `tool.execute`.
  */
 
-import type { ToolDescriptor } from '../types';
+import type { z } from 'zod';
+import type { ToolDescriptor, ToolExecutionContext } from '../types';
 
 /** A tool's `execute`, as the runtime calls it. */
 type ToolExecuteFn = NonNullable<ToolDescriptor['execute']>;
@@ -18,4 +19,36 @@ export function getToolInputSchema(desc: ToolDescriptor): unknown {
 export function getToolExecute(desc: ToolDescriptor): ToolExecuteFn | undefined {
   const legacy = desc.tool?.execute as ToolExecuteFn | undefined;
   return desc.execute?.bind(desc) ?? legacy?.bind(desc.tool);
+}
+
+/** Options for {@link toolDescriptorFromSchema}. */
+export interface ToolFromSchemaOptions {
+  displayName: string;
+  description: string;
+  /** Zod schema of the arguments, e.g. one built by `jsonSchemaToZod()`. */
+  inputSchema: z.ZodTypeAny;
+  execute: (args: Record<string, unknown>, ctx: ToolExecutionContext) => unknown;
+}
+
+/**
+ * Build a descriptor from a schema that is only known at runtime (an MCP
+ * server's tool list). Unlike `defineTool` it does not validate the name or
+ * require a description, since both come from a remote server. It sets the
+ * canonical `inputSchema` / `execute` and a hand-built legacy `.tool` (the
+ * `ai` v4 shape; `tool()` was the identity function). Removed in D26.
+ */
+export function toolDescriptorFromSchema(opts: ToolFromSchemaOptions): ToolDescriptor {
+  const execute = async (args: unknown, ctx: ToolExecutionContext) =>
+    opts.execute(args as Record<string, unknown>, ctx);
+  return {
+    displayName: opts.displayName,
+    inputSchema: opts.inputSchema,
+    execute,
+    // legacy (.tool): the same schema and execute in the `ai` v4 shape. Removed in D26.
+    tool: {
+      description: opts.description,
+      parameters: opts.inputSchema,
+      execute: execute as ToolDescriptor['tool']['execute'],
+    },
+  };
 }

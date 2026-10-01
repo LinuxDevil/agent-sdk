@@ -5,7 +5,6 @@
  */
 
 import { z } from 'zod';
-import { tool } from 'ai';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { PropagatingToolError } from './propagatingToolError';
 import { runSubagent } from './delegation';
@@ -13,7 +12,7 @@ import { AgentExecutor } from './AgentExecutor';
 import { LLMProvider, Message } from '../providers';
 import { AgentConfig, ToolDescriptor } from '../types';
 import { ToolRegistry } from '../tools';
-import type { ToolRunContext } from './sandboxGuard';
+import { defineTool } from '../tools/defineTool';
 
 /**
  * Thrown when a delegation chain exceeds the configured maxDepth without
@@ -103,63 +102,54 @@ export interface DelegateAgentResult {
 export function createDelegateTool(opts: DelegateAgentOptions): ToolDescriptor {
   const maxDepth = opts.maxDepth ?? 3;
 
-  return {
+  return defineTool({
+    // Agent names are free text; tool names are not (see defineTool).
+    name: `delegate_to_${opts.agent.name.replace(/[^a-zA-Z0-9_-]+/g, '_')}`.slice(0, 64),
     displayName: `Delegate to ${opts.agent.name}`,
-    tool: tool({
-      description: `Delegates a task to the "${opts.agent.name}" agent and returns its response.`,
-      parameters: z.object({
-        task: z.string().describe('The task/instructions to delegate to the child agent'),
-        context: z
-          .array(
-            z.object({
-              role: z.enum(['system', 'user', 'assistant', 'tool']),
-              content: z.string(),
-            })
-          )
-          .optional()
-          .describe(
-            'Optional prior conversation history to share with the child agent (only used when contextMode is "full-history")'
-          ),
-      }),
-      execute: async (
-        {
-          task,
-          context,
-        }: {
-          task: string;
-          context?: Message[];
-        },
-        options?: { abortSignal?: AbortSignal } & ToolRunContext
-      ): Promise<DelegateAgentResult> => {
-        const currentDepth = delegationDepthStorage.getStore() ?? 0;
-
-        if (currentDepth >= maxDepth) {
-          throw new DelegationDepthExceededError(maxDepth);
-        }
-
-        const childInput: Message[] =
-          opts.contextMode === 'full-history' && context
-            ? [...context, { role: 'user', content: task }]
-            : [{ role: 'user', content: task }];
-
-        return delegationDepthStorage.run(currentDepth + 1, async () => {
-          const result = await runSubagent(
-            { agent: opts.agent, provider: opts.provider, toolRegistry: opts.toolRegistry, maxSteps: opts.maxSteps },
-            // LOU-V1: aborting the parent run aborts the child with it.
-            { name: opts.agent.name, input: childInput, toolOptions: options },
-            (childOptions) => AgentExecutor.execute(childOptions)
-          );
-
-          // LOU-V5: runSubagent() rolled the child's full usage into the
-          // parent run's totals (`usage.delegated`); the model only sees the
-          // token counts.
-          const { promptTokens, completionTokens, totalTokens } = result.usage;
-          return {
-            text: result.text,
-            usage: { promptTokens, completionTokens, totalTokens },
-          };
-        });
-      },
+    description: `Delegates a task to the "${opts.agent.name}" agent and returns its response.`,
+    input: z.object({
+      task: z.string().describe('The task/instructions to delegate to the child agent'),
+      context: z
+        .array(
+          z.object({
+            role: z.enum(['system', 'user', 'assistant', 'tool']),
+            content: z.string(),
+          })
+        )
+        .optional()
+        .describe(
+          'Optional prior conversation history to share with the child agent (only used when contextMode is "full-history")'
+        ),
     }),
-  };
+    execute: async ({ task, context }, options): Promise<DelegateAgentResult> => {
+      const currentDepth = delegationDepthStorage.getStore() ?? 0;
+
+      if (currentDepth >= maxDepth) {
+        throw new DelegationDepthExceededError(maxDepth);
+      }
+
+      const childInput: Message[] =
+        opts.contextMode === 'full-history' && context
+          ? [...context, { role: 'user', content: task }]
+          : [{ role: 'user', content: task }];
+
+      return delegationDepthStorage.run(currentDepth + 1, async () => {
+        const result = await runSubagent(
+          { agent: opts.agent, provider: opts.provider, toolRegistry: opts.toolRegistry, maxSteps: opts.maxSteps },
+          // LOU-V1: aborting the parent run aborts the child with it.
+          { name: opts.agent.name, input: childInput, toolOptions: options },
+          (childOptions) => AgentExecutor.execute(childOptions)
+        );
+
+        // LOU-V5: runSubagent() rolled the child's full usage into the
+        // parent run's totals (`usage.delegated`); the model only sees the
+        // token counts.
+        const { promptTokens, completionTokens, totalTokens } = result.usage;
+        return {
+          text: result.text,
+          usage: { promptTokens, completionTokens, totalTokens },
+        };
+      });
+    },
+  });
 }
