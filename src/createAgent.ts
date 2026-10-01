@@ -21,6 +21,7 @@ import { AgentExecutor, ExecutionResult } from './execution/AgentExecutor';
 import { LLMProvider } from './providers/llm';
 import { ToolRegistry } from './tools/ToolRegistry';
 import { ToolDescriptor } from './types';
+import type { DefinedTool } from './tools/defineTool';
 
 /**
  * Configuration for createAgent(). Tools are keyed by the name the agent
@@ -32,8 +33,14 @@ export interface CreateAgentConfig {
   prompt: string;
   /** LLM provider instance (real or mock) used to generate responses. */
   provider: LLMProvider;
-  /** Optional tools, keyed by the name the agent should call them by. */
-  tools?: Record<string, ToolDescriptor>;
+  /**
+   * Optional tools: an array of `defineTool()` results (named by the tool),
+   * or a record of descriptors keyed by the name the agent should call them by.
+   *
+   * @example
+   * createAgent({ prompt: '...', provider, tools: [sendEmail] });
+   */
+  tools?: readonly DefinedTool[] | Record<string, ToolDescriptor>;
   /** Optional agent name; defaults to 'agent'. */
   name?: string;
   /** Optional maxSteps passed through to AgentExecutor.execute(). */
@@ -93,20 +100,26 @@ function assertCreateAgentConfig(config: CreateAgentConfig): void {
  * the matching AgentConfig.tools entries. No registry is built when there
  * are no tools.
  */
-function registerTools(tools: Record<string, ToolDescriptor>): {
+function registerTools(tools: readonly DefinedTool[] | Record<string, ToolDescriptor>): {
   toolRegistry: ToolRegistry | undefined;
   toolsConfig: Record<string, { tool: string }>;
 } {
-  const toolNames = Object.keys(tools);
+  const entries: Array<[string, ToolDescriptor | DefinedTool]> = Array.isArray(tools)
+    ? (tools as readonly DefinedTool[]).map((t): [string, DefinedTool] => [t.name, t])
+    : Object.entries(tools as Record<string, ToolDescriptor>);
   const toolsConfig: Record<string, { tool: string }> = {};
 
-  if (toolNames.length === 0) {
+  if (entries.length === 0) {
     return { toolRegistry: undefined, toolsConfig };
   }
 
   const toolRegistry = new ToolRegistry();
-  for (const name of toolNames) {
-    toolRegistry.register(name, tools[name]);
+  for (const [name, descriptor] of entries) {
+    if (Array.isArray(tools)) {
+      toolRegistry.register(descriptor as DefinedTool);
+    } else {
+      toolRegistry.register(name, descriptor);
+    }
     toolsConfig[name] = { tool: name };
   }
   return { toolRegistry, toolsConfig };

@@ -1,4 +1,5 @@
 import { ToolDescriptor } from '../types';
+import { DefinedTool, isDefinedTool } from './defineTool';
 
 /**
  * Tool Registry
@@ -8,20 +9,63 @@ export class ToolRegistry {
   private tools: Map<string, ToolDescriptor> = new Map();
 
   /**
-   * Register a tool
+   * Register a tool defined with `defineTool()` under its own name. Throws if
+   * a tool with that name is already registered.
+   *
+   * @example
+   * registry.register(sendEmail);
    */
-  public register(name: string, descriptor: ToolDescriptor): void {
-    if (this.tools.has(name)) {
-      console.warn(`Tool '${name}' is already registered. Overwriting.`);
+  public register(tool: DefinedTool): void;
+  /**
+   * Register a tool descriptor under an explicit name. Re-registering a name
+   * overwrites the previous entry (with a warning).
+   */
+  public register(name: string, descriptor: ToolDescriptor): void;
+  public register(nameOrTool: string | DefinedTool, descriptor?: ToolDescriptor): void {
+    if (typeof nameOrTool !== 'string') {
+      this.registerDefined(nameOrTool);
+      return;
     }
-    this.tools.set(name, descriptor);
+    if (!descriptor) {
+      throw new Error(
+        `ToolRegistry.register('${nameOrTool}'): a descriptor is required. ` +
+          `Pass one (register('${nameOrTool}', descriptor)) or register a defineTool() result directly.`
+      );
+    }
+    if (this.tools.has(nameOrTool)) {
+      console.warn(`Tool '${nameOrTool}' is already registered. Overwriting.`);
+    }
+    this.tools.set(nameOrTool, descriptor);
+  }
+
+  private registerDefined(tool: DefinedTool): void {
+    if (!isDefinedTool(tool)) {
+      throw new Error(
+        'ToolRegistry.register(tool): expected a tool created with defineTool(). ' +
+          'For a raw descriptor pass a name: register(name, descriptor).'
+      );
+    }
+    const existing = this.tools.get(tool.name);
+    if (existing) {
+      const describe = (t: ToolDescriptor) => `"${t.displayName}"`;
+      throw new Error(
+        `Tool name '${tool.name}' is already registered: existing tool ${describe(existing)} ` +
+          `conflicts with new tool ${describe(tool)}. Give one of them a different name.`
+      );
+    }
+    this.tools.set(tool.name, tool);
   }
 
   /**
-   * Register multiple tools at once
+   * Register multiple tools at once: a record of descriptors keyed by name,
+   * or an array of `defineTool()` results.
    */
-  public registerMany(tools: Record<string, ToolDescriptor>): void {
-    Object.entries(tools).forEach(([name, descriptor]) => {
+  public registerMany(tools: Record<string, ToolDescriptor> | readonly DefinedTool[]): void {
+    if (Array.isArray(tools)) {
+      (tools as readonly DefinedTool[]).forEach((tool) => this.register(tool));
+      return;
+    }
+    Object.entries(tools as Record<string, ToolDescriptor>).forEach(([name, descriptor]) => {
       this.register(name, descriptor);
     });
   }
