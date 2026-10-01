@@ -25,6 +25,11 @@ import { runEventsOf } from './agentRun';
 import { outputResponseFormat } from './structuredOutput';
 import { withSteerSignal } from './inputQueue';
 
+/** A legacy `.tool`'s description when it is a string (always, on `ai` v4). */
+function legacyDescription(description: unknown): string | undefined {
+  return typeof description === 'string' ? description : undefined;
+}
+
 /**
  * Build tools from agent and registry
  */
@@ -46,7 +51,8 @@ export function buildTools(
         type: 'function',
         function: {
           name: toolName,
-          description: toolDesc.tool.description || toolConfig.description || '',
+          // `ai` v6/v7 also allow a description function; only a string is sent.
+          description: legacyDescription(toolDesc.tool.description) || toolConfig.description || '',
           parameters: getToolInputSchema(toolDesc) || {},
         },
       });
