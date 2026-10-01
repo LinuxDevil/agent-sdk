@@ -35,6 +35,8 @@ export interface SandboxRunOptions {
   env?: Record<string, string>;
   /** Timeout in milliseconds after which the command is killed. */
   timeoutMs?: number;
+  /** Aborts the command (LOU-U17); `run()` then rejects with an `AbortError`. Adapters may ignore it. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -79,6 +81,7 @@ export const NoopSandbox: SandboxAdapter = {
         cwd: opts.cwd,
         env: opts.env ? { ...process.env, ...opts.env } : process.env,
         timeout: opts.timeoutMs,
+        signal: opts.signal,
       });
       return { stdout: stdout.toString(), stderr: stderr.toString(), exitCode: 0 };
     } catch (error: any) {

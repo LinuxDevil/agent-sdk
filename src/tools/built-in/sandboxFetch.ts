@@ -79,6 +79,32 @@ if (req.insecureTLS) {
 export interface SandboxFetchOptions {
   /** Milliseconds before the sandboxed request is killed. Defaults to 30s. */
   timeoutMs?: number;
+  /**
+   * Cancels the request (LOU-U17). An already-aborted signal rejects without
+   * running anything in the sandbox; an abort mid-flight rejects promptly
+   * with an `AbortError` and is also handed to `sandbox.run()` so an adapter
+   * that supports it can kill the sandboxed process.
+   */
+  signal?: AbortSignal;
+}
+
+/** The `AbortError`-shaped rejection reported when the caller cancels. */
+function sandboxAbortError(url: string): Error {
+  const error = new Error(`Sandboxed HTTP request to ${url} was aborted`);
+  error.name = 'AbortError';
+  return error;
+}
+
+/** Races `pending` against `signal`, rejecting with an AbortError as soon as it aborts. */
+function rejectOnAbort<T>(pending: Promise<T>, signal: AbortSignal | undefined, url: string): Promise<T> {
+  if (!signal) {
+    return pending;
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(sandboxAbortError(url));
+    signal.addEventListener('abort', onAbort, { once: true });
+    pending.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
 }
 
 /**
@@ -92,13 +118,22 @@ export async function sandboxHttpFetch(
   request: SandboxFetchRequest,
   options: SandboxFetchOptions = {}
 ): Promise<Response> {
+  const { signal } = options;
+  if (signal?.aborted) {
+    throw sandboxAbortError(request.url);
+  }
   const encoded = Buffer.from(JSON.stringify(request), 'utf-8').toString('base64');
   const timeoutMs = options.timeoutMs ?? 30000;
 
-  const result = await sandbox.run('node', ['-e', SANDBOX_FETCH_SCRIPT], {
-    env: { SANDBOX_FETCH_REQUEST: encoded },
-    timeoutMs,
-  });
+  const result = await rejectOnAbort(
+    sandbox.run('node', ['-e', SANDBOX_FETCH_SCRIPT], {
+      env: { SANDBOX_FETCH_REQUEST: encoded },
+      timeoutMs,
+      signal,
+    }),
+    signal,
+    request.url
+  );
 
   if (result.exitCode !== 0) {
     throw new Error(
