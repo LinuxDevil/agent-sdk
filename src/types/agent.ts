@@ -4,6 +4,9 @@ import { AgentFlow } from './flow';
 
 /**
  * Agent type identifiers
+ *
+ * @deprecated Has no runtime effect and will be removed in the next minor release.
+ * Agents no longer need a type; omit `setType()` / `agentType`.
  */
 export enum AgentType {
   SmartAssistant = 'smart-assistant',
@@ -14,6 +17,8 @@ export enum AgentType {
 
 /**
  * Agent type descriptor
+ *
+ * @deprecated Has no runtime effect and will be removed in the next minor release.
  */
 export interface AgentTypeDescriptor {
   type: AgentType;
@@ -29,7 +34,8 @@ export interface AgentTypeDescriptor {
 export interface AgentConfig {
   id?: string;
   name: string;
-  agentType: AgentType;
+  /** @deprecated Optional and ignored at runtime; will be removed in the next minor release. */
+  agentType?: AgentType;
   locale?: string;
   prompt?: string;
   expectedResult?: any;

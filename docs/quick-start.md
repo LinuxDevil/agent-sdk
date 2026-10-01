@@ -155,12 +155,10 @@ checkpoints, tracing, ...). `AgentExecutor` is a static API - there is no
 import {
   AgentBuilder,
   AgentExecutor,
-  AgentType,
   createMockProvider,
 } from '@loushy/build-ai-agent';
 
 const agent = AgentBuilder.create()
-  .setType(AgentType.SmartAssistant)
   .setName('Customer Support Agent')
   .setPrompt('You are a helpful customer support assistant.')
   .build();

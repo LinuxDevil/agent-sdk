@@ -213,10 +213,9 @@ you need `maxSteps`, approval gates, checkpoints, tracing hooks, or a
 API — there is no `new AgentExecutor()`.
 
 ```typescript
-import { AgentBuilder, AgentExecutor, AgentType, resolveProvider } from '@loushy/build-ai-agent';
+import { AgentBuilder, AgentExecutor, resolveProvider } from '@loushy/build-ai-agent';
 
 const agent = AgentBuilder.create()
-  .setType(AgentType.SmartAssistant)
   .setName('Customer Support Agent')
   .setPrompt('You are a helpful customer support assistant.')
   .build();
@@ -280,7 +279,7 @@ Both files are generated (`npm run docs:llms`) and checked in CI.
 
 ### Agents
 
-Agents combine a **type** (`AgentType.SmartAssistant`, etc.), a **prompt**,
+Agents combine a **prompt**,
 **tools**, optional **flows**, and conversation **memory**. Build one with
 `createAgent()` for the common case, or `AgentBuilder` when you need full
 control over the resulting `AgentConfig`.
@@ -476,11 +475,10 @@ To wire one child `AgentConfig` as a tool yourself, use `createDelegateTool()`
 run the same way):
 
 ```typescript
-import { AgentExecutor, createDelegateTool, ToolRegistry, AgentType } from '@loushy/build-ai-agent';
+import { AgentExecutor, createDelegateTool, ToolRegistry } from '@loushy/build-ai-agent';
 
 const billingAgent = {
   name: 'Billing Agent',
-  agentType: AgentType.SmartAssistant,
   prompt: 'You answer billing questions and look up invoices.',
 };
 
@@ -498,7 +496,6 @@ registry.register(
 
 const supportAgent = {
   name: 'Support Agent',
-  agentType: AgentType.SmartAssistant,
   prompt: 'You help customers. Delegate billing questions to the billing agent.',
   tools: { delegate_billing_agent: { tool: 'delegate_billing_agent' } },
 };

@@ -15,7 +15,7 @@ npm run docs:build   # writes docs/api/index.html
 | `createAgent(config)`         | Zero-config `{ send(message) }` agent from a `model` string or provider (+ instructions, tools). |
 | `AgentBuilder`                | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). |
 | `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. |
-| `AgentType`                   | Agent type enum (e.g. `AgentType.SmartAssistant`).                          |
+| `AgentType`                   | Deprecated, no runtime effect: agents need no type (removed next minor).    |
 | `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
 | `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](./durable-execution.md)). |
