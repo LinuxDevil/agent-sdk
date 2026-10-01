@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { handleErrorSignal, buildMonitorPrompt, ErrorSignal, startMonitorServer } from './monitor';
 import { AgentExecutor } from '../../src/execution/AgentExecutor';
-import { AgentType } from '../../src/types';
 import { createMockProvider } from '../../src/providers/mock';
 
 function makeSignal(overrides: Partial<ErrorSignal> = {}): ErrorSignal {
@@ -15,7 +14,7 @@ function makeSignal(overrides: Partial<ErrorSignal> = {}): ErrorSignal {
 }
 
 const executeOptions = {
-  agent: { name: 'monitor', agentType: AgentType.SmartAssistant, prompt: 'You are the monitor.' },
+  agent: { name: 'monitor', prompt: 'You are the monitor.' },
   provider: createMockProvider({ responses: ['ack'] }),
 };
 

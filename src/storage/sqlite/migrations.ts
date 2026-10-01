@@ -32,6 +32,20 @@ export const MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX approvals_resolved_at ON approvals (resolved_at);
   `,
+  // LOU-D43: bounded per-session checkpoint history. A new table, so a file
+  // written by an earlier release just gains it on open.
+  `
+  CREATE TABLE checkpoint_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    step INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    saved_at INTEGER NOT NULL,
+    payload TEXT NOT NULL
+  );
+  CREATE INDEX checkpoint_history_session ON checkpoint_history (session_id, id);
+  CREATE INDEX checkpoint_history_saved_at ON checkpoint_history (saved_at);
+  `,
 ];
 
 function readVersion(db: SqlDatabase): number {

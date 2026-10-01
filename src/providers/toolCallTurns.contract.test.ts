@@ -35,7 +35,6 @@ import type { Checkpoint } from '../execution/checkpoint';
 import { AgentExecutor } from '../execution/AgentExecutor';
 import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
-import { AgentType } from '../types';
 
 const usage = { promptTokens: 1, completionTokens: 2, totalTokens: 3 };
 
@@ -223,7 +222,6 @@ describe('AgentExecutor -> provider: second step sees the first step tool calls'
       }),
     });
     const agent = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('Weather')
       .addTool('get_weather', { tool: 'get_weather', options: {} })
       .build();

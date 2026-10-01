@@ -66,6 +66,21 @@ descriptors that set neither `inputSchema` nor `execute`.
   once across a crash; use `ctx.toolCallId` as an idempotency key. See
   [Durable execution](./durable-execution.md#at-least-once-tools-make-side-effects-idempotent).
 
+## Execute context
+
+`execute(args, ctx)` always gets a real second argument, on every path that
+runs a tool: the main loop, the call that runs after an approval, tools that
+run in a sandbox (`sandboxExecute(args, sandbox, ctx)`) and a flow's tool-call
+node.
+
+| Field | Value |
+| --- | --- |
+| `ctx.toolCallId` | The model's id for this call. It stays the same when the call is re-run after a crash. A call with no model turn behind it (a flow node) gets a generated id. |
+| `ctx.messages` | A read-only copy of the transcript the model had seen before it made the call: no system prompt and not the assistant turn that made the call. Empty for a flow node. |
+| `ctx.abortSignal` | The run's `AbortSignal`, set when the run has one. |
+
+A `sandboxExecute(args, sandbox)` that ignores the third argument keeps working.
+
 ## Errors
 
 Every way a tool call can fail reaches the model as the same result, so one
@@ -106,6 +121,7 @@ its kind by carrying a `toolErrorKind` property. An error extending
 | `createTodoTools()` | `todo_write` / `todo_read` so an agent can plan multi-step work; see [Todo tools](./api-overview.md#todo-tools). |
 | `createFsTools()`, `createShellTool()` | File system and shell tools for coding agents; see [Workspace tools](./workspace-tools.md). |
 | `createEmailTool()`, `createSlackTool()`, `createGitHubTools()`, `createJiraTools()` | Integrations that need credentials, so they are built with options. |
+| `createAgent({ mcpServers })`, `connectMcp(servers)` | Every tool of MCP servers given as config (stdio `command` or HTTP `url`), named `<server>__<tool>`; see [Connect MCP servers](./configuration.md#connect-mcp-servers-mcpservers-connectmcp). |
 | `loadMcpTools(client, name)` | Every tool of a connected MCP server; see [MCP tools](./configuration.md#mcp-model-context-protocol-tools). |
 
 Built-in descriptors are passed keyed by the name the agent uses:

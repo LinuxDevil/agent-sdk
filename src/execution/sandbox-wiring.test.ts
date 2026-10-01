@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { AgentExecutor } from './AgentExecutor';
 import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
-import { AgentType } from '../types';
 import { SandboxAdapter } from '../security/sandbox';
 import { mockModel } from '../testing';
 
@@ -34,7 +33,6 @@ describe('AgentExecutor sandbox wiring (LOU-F5 / LOU-F fix)', () => {
     });
 
     const agent = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .addTool('sandboxed', { tool: 'sandboxed', options: {} })
       .build();
@@ -59,7 +57,7 @@ describe('AgentExecutor sandbox wiring (LOU-F5 / LOU-F fix)', () => {
     // sandboxExecute() itself was invoked, with the real args and the
     // configured sandbox adapter.
     expect(sandboxExecute).toHaveBeenCalledTimes(1);
-    expect(sandboxExecute).toHaveBeenCalledWith({}, spySandbox);
+    expect(sandboxExecute).toHaveBeenCalledWith({}, spySandbox, expect.objectContaining({ toolCallId: expect.any(String) }));
 
     // The sandbox adapter's run()/writeFile() were called with parameters
     // that actually relate to the tool's real work (not a disconnected
@@ -92,7 +90,6 @@ describe('AgentExecutor sandbox wiring (LOU-F5 / LOU-F fix)', () => {
     });
 
     const agent = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .addTool('unsandboxable', { tool: 'unsandboxable', options: {} })
       .build();
@@ -147,7 +144,6 @@ describe('AgentExecutor sandbox wiring (LOU-F5 / LOU-F fix)', () => {
     });
 
     const agent = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .addTool('plain', { tool: 'plain', options: {} })
       .build();
@@ -191,7 +187,6 @@ describe('AgentExecutor sandbox wiring (LOU-F5 / LOU-F fix)', () => {
     });
 
     const agent = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .addTool('sandboxed-noop', { tool: 'sandboxed-noop', options: {} })
       .build();

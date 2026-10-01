@@ -6,7 +6,6 @@ import { z } from 'zod';
 import { createAgent } from '../createAgent';
 import { AgentExecutor } from '../execution/AgentExecutor';
 import { AgentBuilder } from '../core/AgentBuilder';
-import { AgentType } from '../types';
 import { defineTool } from '../tools/defineTool';
 import { ToolRegistry } from '../tools/ToolRegistry';
 import { mockModel } from '../testing';
@@ -127,7 +126,7 @@ describe('skills wiring (createAgent)', () => {
 describe('skills wiring (AgentExecutor.execute)', () => {
   it('supports the skills option without mutating the caller registry or agent', async () => {
     const model = mockModel(['hi']);
-    const agent = AgentBuilder.create().setType(AgentType.SmartAssistant).setName('a').setPrompt('base').build();
+    const agent = AgentBuilder.create().setName('a').setPrompt('base').build();
     const registry = new ToolRegistry();
 
     await AgentExecutor.execute({ agent, input: 'x', provider: model, toolRegistry: registry, skills: [review] });
@@ -139,7 +138,7 @@ describe('skills wiring (AgentExecutor.execute)', () => {
 
   it('uses the block alone when the agent has no prompt', async () => {
     const model = mockModel(['hi']);
-    const agent = AgentBuilder.create().setType(AgentType.SmartAssistant).setName('a').build();
+    const agent = AgentBuilder.create().setName('a').build();
     await AgentExecutor.execute({ agent, input: 'x', provider: model, skills: [review] });
     expect(systemOf(model.calls[0]).startsWith('## Available skills')).toBe(true);
   });

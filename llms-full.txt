@@ -81,7 +81,7 @@ agent can be an `agent.yaml` spec served with `npx loushy dev agent.yaml`
 - **Skills and AGENTS.md**: `loadSkills()` loads instructions on demand; `projectInstructions` appends your `AGENTS.md`. [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md), [Project instructions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#project-instructions)
 - **Agent directories**: `loadAgentDir('./my-agent')` builds an agent from `instructions.md`, `tools/` and `skills/`. [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md)
 - **Compaction**: `createCompactionHook()` prunes old tool results before the context window fills. [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md)
-- **MCP client and server**: `loadMcpTools()` uses any MCP server; `serveMcp()` / `loushy mcp` exposes your agent. [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#mcp-model-context-protocol-tools)
+- **MCP client and server**: `createAgent({ mcpServers })` (or `connectMcp()`) connects stdio and HTTP MCP servers from config; `serveMcp()` / `loushy mcp` exposes your agent. [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#connect-mcp-servers-mcpservers-connectmcp)
 - **Workspace tools**: file system and shell tools for coding agents, confined to a root, shell approval-gated. [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md)
 - **Hooks, guardrails, sandboxing**: veto tool calls, gate a patch on fail-closed checks, run tools in Docker. [Guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md)
 - **Flows and triggers**: fixed multi-step workflows; webhook, Slack and cron adapters. [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md), [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#triggers)
@@ -183,6 +183,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md) | OpenTelemetry GenAI spans, attribute table, content opt-in |
 | [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md) | `loushy build` targets: Node server, Docker, Cloudflare Workers (with KV checkpoints) |
 | [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md) | The visual dashboard: quickstart, first-agent walkthrough, hooks |
+| [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md) | Every error code (`LOUSHY_*`): what it means, how to fix it, an example |
 | [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md) | The main exports, triggers, tokens and cost; `npm run docs:build` generates the full TypeDoc reference |
 | [Utilities](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/utilities.md) | Encryption, file storage and templates |
 
@@ -728,6 +729,7 @@ How the pieces fit:
 | `SqliteStore` (from `/sqlite`) | Sessions, checkpoints and approvals in one SQLite file (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
 | `AgentStore`, `memoryStore()` | The `createAgent({ store })` option: `{ sessions?, checkpoints?, approvals? }`, and an in-memory one (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
 | `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). |
+| `SDKError`, `ERROR_CODES`    | Base class of the SDK's errors: a stable `code`, a `hint` and a `docs` link (see [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md)). |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
 
 ### UI bindings
@@ -959,6 +961,7 @@ Exported from `@loushy/build-ai-agent/testing` (see [Testing agents](https://git
 | `createFsTools(fs, options?)`, `createShellTool(shell, options?)` | Workspace tools (`read_file`, `write_file`, `edit_file`, `list_dir`, `glob`, `grep`, `shell`) over an `FsProvider` / `ShellProvider`. See [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md). |
 | `NodeWorkspace`, `MemoryWorkspace`, `SandboxShell` | Workspace providers: a real directory (paths confined to `root`, minimal shell env), an in-memory tree with a scripted `exec` for tests, and a `ShellProvider` over a `SandboxAdapter` (Docker). |
 | `createTodoTools({ store?, onChange? })`     | `todo_write` / `todo_read` tools (plus `getTodos()`) so agents can plan and track multi-step work; see [Todo tools](#todo-tools). |
+| `connectMcp(servers, options?)`             | Connect MCP servers from config (stdio or HTTP) and load their tools; see [Connect MCP servers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#connect-mcp-servers-mcpservers-connectmcp). |
 | `loadMcpTools(client, connectionName)`       | Load a connected MCP server's tools as `ToolDescriptor`s. Available from the package root, `@loushy/build-ai-agent/tools`, and `@loushy/build-ai-agent/mcp`. |
 
 See [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md) for a guide to defining and registering tools.
@@ -2313,18 +2316,74 @@ const spec = agentSpecSchema.parse({
   mcpServers: { filesystem, docs: { url: 'https://example.com/mcp' } },
 });
 
-// specToAgent() does not connect the servers yet (TODO(LOU-D20.2)); it
-// exposes the validated entries so a host can connect them.
+// The servers connect on agent.ready() or the first send() / stream().
 const agent = specToAgent(spec);
 console.log(Object.keys(agent.mcpServers)); // ['filesystem', 'docs']
 ```
 
-Connecting the servers and registering their tools automatically is tracked
-as LOU-D20.2; until then use `loadMcpTools()` as described next.
+`specToAgent()` passes the servers to `createAgent({ mcpServers })`, described
+next, so `loushy dev` and `loushy mcp` agents get their tools.
+
+### Connect MCP servers (`mcpServers`, `connectMcp()`)
+
+`createAgent({ mcpServers })` takes the same map. The servers connect on
+`await agent.ready()` or, automatically, on the first `send()` / `stream()`;
+each server's tools are added as `<server>__<tool>` (e.g. `docs__search`).
+A server that cannot connect fails that call, and the next call tries again.
+`agent.close()` disconnects them (stops stdio processes); a later tool call
+reconnects. Without `mcpServers`, `ready()` and `close()` do nothing.
+
+```ts no-run
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  mcpServers: {
+    files: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'] },
+    docs: { url: 'https://example.com/mcp', headers: { Authorization: 'Bearer <token>' } },
+  },
+});
+const { text } = await agent.send('List the files here.');
+await agent.close();
+```
+
+To share servers between agents, or to choose how failures are handled, call
+`connectMcp(servers, options?)` and pass its `tools` yourself. It connects every
+server and lists its tools before it resolves, so tools are known up front.
+Options:
+
+- `onError`: `'throw'` (default) rejects when a server cannot connect, after
+  closing the others; `'skip'` leaves that server out and warns through `logger`.
+- `lazy` (default `true`): after `close()` or a dropped connection, the next
+  tool call reconnects. With `false` that call fails instead. Listing tools
+  needs a connection, so `lazy` never delays the first connect.
+- `logger`: receives skipped-server and skipped-tool warnings (default: none).
+
+It returns `{ tools, close(), status() }`; `status()` maps each server to
+`'idle'`, `'connected'` or `'failed'`.
+
+```ts no-run
+import { createAgent } from '@loushy/build-ai-agent';
+import { connectMcp } from '@loushy/build-ai-agent/mcp';
+
+const mcp = await connectMcp(
+  { files: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'] } },
+  { onError: 'skip', logger: console }
+);
+console.log(mcp.status()); // { files: 'connected' }
+const agent = createAgent({ model: 'openai/gpt-4o-mini', tools: mcp.tools });
+await agent.send('List the files here.');
+await mcp.close();
+```
+
+stdio servers are spawned with `command` and `args`; `env` is added to the
+default environment (`PATH` and the like), not a replacement for it. HTTP
+servers use the streamable HTTP transport with `headers` on every request.
+`@modelcontextprotocol/sdk` is an optional peer: install it to use MCP.
 
 ### MCP (Model Context Protocol) tools
 
-Tools advertised by a remote MCP server can also be loaded by hand - connect a `Client` from `@modelcontextprotocol/sdk` yourself and load
+Tools of a `Client` you connected yourself can also be loaded by hand - connect a `Client` from `@modelcontextprotocol/sdk` yourself and load
 its tools with `loadMcpTools()`, then pass the result to `createAgent()` (or
 register it on a `ToolRegistry`):
 
@@ -2949,11 +3008,54 @@ const chargeCard = defineTool({
 `resumeAfterApproval()`, but not yet for tools that route through
 `sandboxExecute`.)
 
+## Checkpoint history
+
+A checkpoint record is overwritten on every save, so the run's earlier steps are
+gone once it moves on. A store can also keep a bounded history per session:
+every `save()` appends the record to a ring (the newest `historyLimit` saves,
+default 50; the oldest are dropped), which is what replaying or forking a run
+from an earlier step is built on.
+
+`memoryStore()`, `SqliteStore` and `LocalStorageCheckpointStore` keep one:
+
+```ts
+import { getCheckpointHistory, memoryStore } from '@loushy/build-ai-agent';
+
+const { checkpoints } = memoryStore({ historyLimit: 20 }); // default 50, 0 keeps none
+// new SqliteStore(path, { historyLimit }), new LocalStorageCheckpointStore(storage, { historyLimit })
+
+// ... after a run with sessionId 'chat-42' ...
+const history = await getCheckpointHistory(checkpoints, 'chat-42', { limit: 10 });
+for (const { step, savedAt, status, checkpoint } of history ?? []) {
+  console.log(step, status, savedAt, checkpoint.messages.length);
+}
+
+// Clear the checkpoint but keep its history (by default delete() clears both).
+await checkpoints.delete('chat-42', { keepHistory: true });
+```
+
+- `history(sessionId, { limit? })` returns `{ step, savedAt, status, checkpoint }`
+  entries, newest first (`step` is `checkpoint.stepIndex`, `savedAt` an ISO
+  timestamp, `status` is `'in-progress'` for a checkpoint without one). The
+  executor saves after every model turn and tool batch, so a session has one
+  entry per save; the entries hold full checkpoints, so lower `historyLimit`
+  for long transcripts. An unknown session gives `[]`.
+- `history` is optional on `CheckpointStore`: a custom store without it keeps
+  working, and `getCheckpointHistory()` returns `undefined` for it instead of
+  throwing. `KVCheckpointStore` does not keep a history yet (TODO(LOU-D43.2):
+  one KV value per session would hit the 25 MiB value limit and races between
+  concurrent saves), and neither does Agent Forge's file store.
+- `SqliteStore` keeps the history in a new `checkpoint_history` table, added when
+  an existing database file is opened; `prune()` also removes history entries
+  older than its cutoff.
+
 ## Compatibility with stored data
 
 - Checkpoints written before `status` existed are treated as
   `'in-progress'` (before this change, finished runs deleted their
   checkpoint, so only unfinished runs were ever stored).
+- Sessions saved before a store kept a history have an empty history until
+  their next save.
 - Approval snapshots written before `remainingToolCalls` existed resume as
   they used to: the calls after the paused one do not run. Each of them gets
   an error result saying it was not run, so the transcript stays valid.
@@ -2968,6 +3070,369 @@ const chargeCard = defineTool({
   the checkpoint).
 - Workers KV is eventually consistent across locations - see
   [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md) for the caveat.
+
+# Errors
+
+Source: docs/errors.md
+
+Every error the SDK throws on purpose is an `SDKError` (or a subclass such as
+`ConfigurationError`, `ValidationError` or `MissingPeerDependencyError`) with:
+
+- `code`: a stable string, `LOUSHY_<AREA>_<NAME>`. Branch on it, not on the
+  message text, which may get clearer over time.
+- `hint`: one sentence on how to fix it.
+- `docs`: a link to the code's section on this page.
+
+The message ends with the same information on its own line, so an uncaught
+error tells you what to do:
+
+```text
+ConfigurationError: createAgent: no model configured. Do one of the following: (1) pass a model: ...
+[LOUSHY_CONFIG_MISSING_PROVIDER] Pass a model string such as createAgent({ model: 'openai/gpt-4o-mini' }), a provider instance, or set LOUSHY_MODEL or a provider API key. (https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#loushy_config_missing_provider)
+```
+
+`error.detail` is the message without that line. Tool and provider errors
+(`ToolExecutionError`, `LLMProviderError`, `TimeoutError`, `RateLimitError`)
+keep their message as it was, because the model sees it as a tool result or a
+compacted provider error; their `toString()` still adds the line.
+
+```ts
+import { createAgent, SDKError } from '@loushy/build-ai-agent';
+
+try {
+  await createAgent({ provider, instructions: 'Be brief.' }).send('hi');
+} catch (error) {
+  if (error instanceof SDKError && error.code === 'LOUSHY_SESSION_AWAITING_APPROVAL') {
+    console.log(error.hint, error.docs);
+  } else {
+    throw error;
+  }
+}
+```
+
+`ERROR_CODES` (exported) maps every code to its hint. A test keeps it, the codes
+used in the source and the sections below in sync. Errors that are not on this
+page yet (some runtime errors still throw a plain `Error`) will get a code in a
+later release.
+
+## Configuration
+
+### LOUSHY_CONFIG_INVALID
+
+**Means:** an option or argument has a value the SDK cannot use. This is the
+default code of `ConfigurationError`; `error.field` names the option when known.
+
+**Fix:** change the option the message names.
+
+**Example:** `withFallback([])` throws "withFallback() needs at least one provider".
+
+### LOUSHY_CONFIG_MISSING_PROVIDER
+
+**Means:** there is no model to run: `createAgent()` got no `model` or
+`provider` and found nothing in the environment, or `AgentExecutor.execute()` /
+`stream()` got no `provider`.
+
+**Fix:** pass `model: 'openai/gpt-4o-mini'` (any `<provider>/<model>`), pass a
+`provider` instance, or set `LOUSHY_MODEL` or a provider key such as
+`OPENAI_API_KEY`. See [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md).
+
+**Example:** `createAgent({ instructions: 'x' })` with no provider env var set.
+
+### LOUSHY_CONFIG_MISSING_AGENT
+
+**Means:** `AgentExecutor.execute()` / `stream()` was called without `agent`.
+
+**Fix:** pass the agent, e.g. `AgentBuilder.create().setName('a').build()`, or
+use `createAgent()`, which needs no separate agent object.
+
+**Example:** `AgentExecutor.execute({ input: 'hi', provider })`.
+
+### LOUSHY_CONFIG_MISSING_INPUT
+
+**Means:** `AgentExecutor.execute()` / `stream()` was called without `input`.
+
+**Fix:** pass the user message as a string or a `Message[]`.
+
+**Example:** `AgentExecutor.execute({ agent, provider })`.
+
+### LOUSHY_CONFIG_CONFLICTING_OPTIONS
+
+**Means:** two options that mean the same thing were both given.
+
+**Fix:** keep one. For `createAgent()`, `prompt` is an alias of `instructions`:
+keep `instructions`.
+
+**Example:** `createAgent({ provider, instructions: 'a', prompt: 'b' })`.
+
+### LOUSHY_CONFIG_MISSING_CHECKPOINT_STORE
+
+**Means:** `send()` or `stream()` got a `sessionId`, which makes the run
+durable, but the agent has no checkpoint store.
+
+**Fix:** pass `createAgent({ store: memoryStore() })` (or a `SqliteStore`, or a
+`store` with `checkpoints`), or drop `sessionId`. See
+[Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md).
+
+**Example:** `createAgent({ provider }).send('hi', { sessionId: 'job-1' })`.
+
+## Providers and peers
+
+### LOUSHY_PROVIDER_SPEC_INVALID
+
+**Means:** a model string is not `<provider>/<model>`.
+
+**Fix:** write both parts, e.g. `'openai/gpt-4o-mini'` or
+`'anthropic/claude-3-5-sonnet-latest'`.
+
+**Example:** `resolveProvider('gpt-4o')`.
+
+### LOUSHY_PROVIDER_UNKNOWN
+
+**Means:** the provider prefix of a model string is not one the SDK knows. The
+message lists the supported prefixes and suggests the closest one.
+
+**Fix:** use a supported prefix (`openai`, `anthropic`, `openrouter`, `ollama`),
+or pass your own `provider` instance.
+
+**Example:** `createAgent({ model: 'opnai/gpt-4o' })` says "Did you mean 'openai/gpt-4o'?".
+
+### LOUSHY_PROVIDER_MISSING_API_KEY
+
+**Means:** the provider's credential env var (`OPENAI_API_KEY`,
+`ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`) is not set.
+
+**Fix:** set it, or pass a configured provider instance.
+
+**Example:** `createAgent({ model: 'openai/gpt-4o-mini' })` without `OPENAI_API_KEY`.
+
+### LOUSHY_PROVIDER_REQUEST_FAILED
+
+**Means:** a model call failed (`LLMProviderError`, and
+`CompactedLLMProviderError`, whose `compacted.category` says why:
+`rate-limit`, `timeout`, `context-length-exceeded`, `auth-failure`, `unknown`).
+
+**Fix:** for `auth-failure`, fix the API key; for `context-length-exceeded`,
+shorten the conversation (see [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md)); for
+transient failures, use `withRetry()` / `fallbackModels`
+(see [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md)).
+
+**Example:** a 401 from the provider with a revoked key.
+
+### LOUSHY_PROVIDER_RATE_LIMITED
+
+**Means:** a `RateLimitError`: the provider throttled the caller.
+
+**Fix:** retry after `error.retryAfter` seconds (`withRetry()` does this), or
+send fewer requests.
+
+**Example:** a 429 response.
+
+### LOUSHY_PEER_MISSING
+
+**Means:** a feature needs an optional package that is not installed
+(`MissingPeerDependencyError`, or a provider's SDK such as `@ai-sdk/openai`).
+
+**Fix:** run the `npm install` command in the message (also on
+`error.installCommand`). See [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md).
+
+**Example:** `SubprocessSandbox` without `dockerode`:
+`npm install dockerode@^5.0.1`.
+
+## Agent spec files
+
+### LOUSHY_SPEC_INVALID
+
+**Means:** `loadSpec()` found fields that fail validation. Each problem is
+listed as `'<path>': <problem>`, plus any top-level field that looks like a
+typo, with a suggestion.
+
+**Fix:** fix each listed field. See [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md).
+
+**Example:**
+
+```text
+loadSpec: 'agent.yaml' failed validation - 'prompt': AgentSpec validation failed: missing required field 'prompt'; unknown field 'promt' (did you mean 'prompt'?)
+```
+
+### LOUSHY_SPEC_UNKNOWN_FIELD
+
+**Means:** the spec is otherwise valid, but a top-level field is a likely typo
+of a spec field and would be ignored. Other unknown fields are still ignored.
+
+**Fix:** rename it to the suggested field, or remove it.
+
+**Example:** `tool: [http]` gives "unknown field 'tool' (did you mean 'tools'?)".
+
+### LOUSHY_SPEC_UNSUPPORTED_FORMAT
+
+**Means:** the spec file's extension is not `.yaml`, `.yml` or `.json`.
+
+**Fix:** rename the file, or convert it.
+
+**Example:** `loadSpec('agent.toml')`.
+
+## Tools
+
+### LOUSHY_TOOL_NOT_FOUND
+
+**Means:** a spec's `tools` entry names a tool that is not a built-in tool.
+
+**Fix:** use one of the tools the message lists, or build the agent with
+`createAgent({ tools: [...] })` and your own tool. See [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md).
+
+**Example:** `tools: [not-a-real-tool]` in a spec.
+
+### LOUSHY_TOOL_NEEDS_CREDENTIALS
+
+**Means:** a spec names a tool (`github`, `jira`) that needs credentials an
+agent spec has no field for.
+
+**Fix:** build the agent with `createAgent()` and pass the configured tool, e.g.
+from `createGitHubTools(config)`.
+
+**Example:** `tools: [github]` in a spec.
+
+### LOUSHY_TOOL_EXECUTION_FAILED
+
+**Means:** a `ToolExecutionError` (or subclass, such as
+`ToolArgumentsValidationError`). Inside a run the model gets it as a tool
+result and the run carries on.
+
+**Fix:** look at `error.toolName` and `error.cause`, and fix the tool or the
+input it was given.
+
+**Example:** a tool's `execute` threw.
+
+## Approvals and sessions
+
+### LOUSHY_APPROVAL_STORE_MISSING
+
+**Means:** a tool that `needsApproval` was called in an
+`AgentExecutor.execute()` run that has no `approvalStore` to pause in.
+
+**Fix:** pass `approvalStore: new InMemoryApprovalStore()` (or a persistent
+store), or use `createAgent()`, which has one by default. See
+[Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md).
+
+**Example:** `AgentExecutor.execute({ agent, input, provider, toolRegistry })`
+with a `needsApproval` tool.
+
+### LOUSHY_APPROVAL_NOT_FOUND
+
+**Means:** `resumeAfterApproval()` or `agent.approvals.resolve()` got an id that
+is not pending: unknown, or already resolved.
+
+**Fix:** resolve an id from `agent.approvals.list()` (or the `approvalId` of the
+paused result); each approval resolves once.
+
+**Example:** calling `agent.approvals.resolve({ id, approved: true })` twice.
+
+### LOUSHY_SESSION_AWAITING_APPROVAL
+
+**Means:** a `SessionAwaitingApprovalError`: the session or `sessionId` run is
+paused on an approval (`error.approvalId`), so it cannot take new input yet.
+
+**Fix:** resolve the approval with `agent.approvals.resolve()` (or
+`resumeAfterApproval()` with the same `checkpointStore`), then send again. See
+[Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md).
+
+**Example:** `session.send('next')` while the previous turn waits on an approval.
+
+### LOUSHY_SESSION_ID_INVALID
+
+**Means:** a session id is not 1-128 characters of letters, digits, `_` and
+`-` (ids become file names, so `../` and `/` are refused).
+
+**Fix:** use an id such as `'user-42'`, or omit it to get a generated one.
+
+**Example:** `agent.session({ id: '../etc' })`.
+
+### LOUSHY_SESSION_FILE_CORRUPT
+
+**Means:** a `FileSessionStore` file is not a JSON array of messages.
+
+**Fix:** restore the file from a backup, or delete it to start the session over.
+
+**Example:** `sessions/user-42.json` containing `{}`.
+
+### LOUSHY_SESSION_STREAM_UNSUPPORTED
+
+**Means:** `stream()` was called on an `AgentSession` built by hand without a
+streaming runner.
+
+**Fix:** get the session from `agent.session()`, which can stream, or call
+`send()`.
+
+**Example:** `new AgentSession(run).stream('hi')`.
+
+### LOUSHY_RUN_ALREADY_ITERATED
+
+**Means:** an `AgentRun` from `session.stream()` was iterated a second time.
+
+**Fix:** collect the events in the first `for await` loop, or call `stream()`
+again for a new run. See [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md).
+
+**Example:** two `for await (const event of run)` loops over the same `run`.
+
+## General
+
+### LOUSHY_GENERIC_ERROR
+
+**Means:** an `SDKError` created without a code.
+
+**Fix:** read the message; it says what failed.
+
+**Example:** `new SDKError('Something failed')`.
+
+### LOUSHY_AGENT_EXECUTION_FAILED
+
+**Means:** an `AgentExecutionError`: running an agent failed.
+
+**Fix:** look at `error.cause` for the underlying failure.
+
+**Example:** `new AgentExecutionError('Agent failed', agentId, cause)`.
+
+### LOUSHY_FLOW_EXECUTION_FAILED
+
+**Means:** a `FlowExecutionError`: a flow step failed.
+
+**Fix:** look at `error.step` and `error.cause`. See [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md).
+
+**Example:** a flow step whose agent threw.
+
+### LOUSHY_VALIDATION_FAILED
+
+**Means:** a `ValidationError`: input failed validation.
+
+**Fix:** fix the fields listed in `error.errors`.
+
+**Example:** `new ValidationError('Validation failed', { email: ['Invalid email'] })`.
+
+### LOUSHY_OPERATION_TIMEOUT
+
+**Means:** a `TimeoutError`: an operation (`error.operation`) did not finish
+within `error.timeoutMs`.
+
+**Fix:** raise the timeout, or make the operation faster.
+
+**Example:** `retryWithTimeout()` whose operation takes longer than its timeout.
+
+### LOUSHY_OUTPUT_INVALID
+
+**Means:** reserved. An invalid structured-output reply is not thrown today: the
+run ends with `finishReason: 'output-invalid'` and `outputError`.
+
+**Fix:** see [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md).
+
+**Example:** a reply that does not match `output: zodSchema` after the repair step.
+
+### LOUSHY_BUDGET_EXCEEDED
+
+**Means:** reserved for run budgets (token or cost limits); nothing throws it yet.
+
+**Fix:** none needed today.
+
+**Example:** none yet.
 
 # Evals
 
@@ -5441,6 +5906,21 @@ descriptors that set neither `inputSchema` nor `execute`.
   once across a crash; use `ctx.toolCallId` as an idempotency key. See
   [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#at-least-once-tools-make-side-effects-idempotent).
 
+## Execute context
+
+`execute(args, ctx)` always gets a real second argument, on every path that
+runs a tool: the main loop, the call that runs after an approval, tools that
+run in a sandbox (`sandboxExecute(args, sandbox, ctx)`) and a flow's tool-call
+node.
+
+| Field | Value |
+| --- | --- |
+| `ctx.toolCallId` | The model's id for this call. It stays the same when the call is re-run after a crash. A call with no model turn behind it (a flow node) gets a generated id. |
+| `ctx.messages` | A read-only copy of the transcript the model had seen before it made the call: no system prompt and not the assistant turn that made the call. Empty for a flow node. |
+| `ctx.abortSignal` | The run's `AbortSignal`, set when the run has one. |
+
+A `sandboxExecute(args, sandbox)` that ignores the third argument keeps working.
+
 ## Errors
 
 Every way a tool call can fail reaches the model as the same result, so one
@@ -5481,6 +5961,7 @@ its kind by carrying a `toolErrorKind` property. An error extending
 | `createTodoTools()` | `todo_write` / `todo_read` so an agent can plan multi-step work; see [Todo tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#todo-tools). |
 | `createFsTools()`, `createShellTool()` | File system and shell tools for coding agents; see [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md). |
 | `createEmailTool()`, `createSlackTool()`, `createGitHubTools()`, `createJiraTools()` | Integrations that need credentials, so they are built with options. |
+| `createAgent({ mcpServers })`, `connectMcp(servers)` | Every tool of MCP servers given as config (stdio `command` or HTTP `url`), named `<server>__<tool>`; see [Connect MCP servers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#connect-mcp-servers-mcpservers-connectmcp). |
 | `loadMcpTools(client, name)` | Every tool of a connected MCP server; see [MCP tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#mcp-model-context-protocol-tools). |
 
 Built-in descriptors are passed keyed by the name the agent uses:

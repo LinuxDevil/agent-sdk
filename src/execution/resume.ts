@@ -19,6 +19,7 @@ import { NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
 import { HookRegistry } from './hooks';
 import { toolErrorMessage } from './propagatingToolError';
+import { SDKError } from './errors';
 import { toolErrorResult, type ToolErrorResult } from './toolErrors';
 import { splitPendingTurn } from './transcript';
 import { replaceToolResult, type ToolCallScope } from './subagentRuntime';
@@ -113,7 +114,7 @@ export async function resumeAfterApproval(
 ): Promise<ExecutionResult> {
   const record = await approvalStore.resolve(decision.id);
   if (!record) {
-    throw new Error(`No pending approval found for id '${decision.id}' (unknown or already resolved)`);
+    throw new SDKError(`No pending approval found for id '${decision.id}' (unknown or already resolved)`, 'LOUSHY_APPROVAL_NOT_FOUND');
   }
 
   const { pending, snapshot } = record;
@@ -371,7 +372,7 @@ async function runApprovedToolCall(
     await hooks.runPreToolCall(hookCtx);
   }
 
-  const { result, toolError, errorResult } = await executeApprovedTool(pending, toolDesc, hookArgs, executeOptions, scope);
+  const { result, toolError, errorResult } = await executeApprovedTool(pending, toolDesc, hookArgs, executeOptions, messages, scope);
 
   // Fires (with the settled result/error) regardless of how the tool
   // settled - matching AgentHook.postToolCall's documented contract
@@ -407,6 +408,7 @@ async function executeApprovedTool(
   toolDesc: ToolDescriptor,
   args: Record<string, unknown>,
   executeOptions: ResumeExecuteOptions,
+  messages: Message[],
   scope?: ToolCallScope
 ): Promise<{ result: unknown; toolError?: string; errorResult?: ToolErrorResult }> {
   try {
@@ -423,7 +425,7 @@ async function executeApprovedTool(
         args,
         sandbox,
         executeOptions.signal,
-        { toolCallId: pending.toolCallId },
+        { toolCallId: pending.toolCallId, messages },
         scope
       ),
     };

@@ -82,7 +82,7 @@ agent can be an `agent.yaml` spec served with `npx loushy dev agent.yaml`
 - **Skills and AGENTS.md**: `loadSkills()` loads instructions on demand; `projectInstructions` appends your `AGENTS.md`. [Skills](docs/skills.md), [Project instructions](docs/configuration.md#project-instructions)
 - **Agent directories**: `loadAgentDir('./my-agent')` builds an agent from `instructions.md`, `tools/` and `skills/`. [Agent directories](docs/agent-directories.md)
 - **Compaction**: `createCompactionHook()` prunes old tool results before the context window fills. [Context compaction](docs/compaction.md)
-- **MCP client and server**: `loadMcpTools()` uses any MCP server; `serveMcp()` / `loushy mcp` exposes your agent. [Configuration](docs/configuration.md#mcp-model-context-protocol-tools)
+- **MCP client and server**: `createAgent({ mcpServers })` (or `connectMcp()`) connects stdio and HTTP MCP servers from config; `serveMcp()` / `loushy mcp` exposes your agent. [Configuration](docs/configuration.md#connect-mcp-servers-mcpservers-connectmcp)
 - **Workspace tools**: file system and shell tools for coding agents, confined to a root, shell approval-gated. [Workspace tools](docs/workspace-tools.md)
 - **Hooks, guardrails, sandboxing**: veto tool calls, gate a patch on fail-closed checks, run tools in Docker. [Guardrails](docs/guardrails.md)
 - **Flows and triggers**: fixed multi-step workflows; webhook, Slack and cron adapters. [Flows](docs/flows.md), [Triggers](docs/api-overview.md#triggers)
@@ -184,6 +184,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Tracing and observability](docs/observability.md) | OpenTelemetry GenAI spans, attribute table, content opt-in |
 | [Deployment](docs/deployment.md) | `loushy build` targets: Node server, Docker, Cloudflare Workers (with KV checkpoints) |
 | [Agent Forge](docs/agent-forge.md) | The visual dashboard: quickstart, first-agent walkthrough, hooks |
+| [Errors](docs/errors.md) | Every error code (`LOUSHY_*`): what it means, how to fix it, an example |
 | [API Overview](docs/api-overview.md) | The main exports, triggers, tokens and cost; `npm run docs:build` generates the full TypeDoc reference |
 | [Utilities](docs/utilities.md) | Encryption, file storage and templates |
 

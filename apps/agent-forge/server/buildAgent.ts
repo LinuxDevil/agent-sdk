@@ -16,7 +16,6 @@
  */
 import {
   AgentBuilder,
-  AgentType,
   ToolRegistry,
   NoopSandbox,
   LLMProviderRegistry,
@@ -180,7 +179,6 @@ export function buildAgentFromSpec(
 
   const agent = AgentBuilder.create()
     .setId(agentId)
-    .setType(AgentType.SmartAssistant)
     .setName(spec.name)
     .setPrompt(spec.prompt)
     .setTools(toolsConfig)

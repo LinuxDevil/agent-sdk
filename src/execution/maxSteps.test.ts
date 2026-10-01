@@ -13,7 +13,7 @@ import { createAgent } from '../createAgent';
 import { defineTool, DefinedTool } from '../tools/defineTool';
 import { ToolRegistry } from '../tools';
 import { mockModel, MockTurn } from '../testing';
-import { AgentConfig, AgentType } from '../types';
+import { AgentConfig } from '../types';
 
 const ping = defineTool({
   name: 'ping',
@@ -39,7 +39,7 @@ function registryOf(tools: DefinedTool[]): ToolRegistry {
 function options(tools: DefinedTool[], script: MockTurn[]) {
   const config: AgentConfig['tools'] = {};
   for (const t of tools) config[t.name] = { tool: t.name };
-  const agent: AgentConfig = { id: 'a', name: 'Agent', agentType: AgentType.SmartAssistant, prompt: 'p', tools: config };
+  const agent: AgentConfig = { id: 'a', name: 'Agent', prompt: 'p', tools: config };
   return { agent, provider: mockModel(script, { onExhausted: 'repeat-last' }), toolRegistry: registryOf(tools), input: 'go' };
 }
 

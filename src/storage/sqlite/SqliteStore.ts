@@ -10,6 +10,12 @@ export interface PruneOptions {
   olderThanMs: number;
 }
 
+/** Options for {@link SqliteStore}. */
+export interface SqliteStoreOptions {
+  /** Checkpoints kept per session in `checkpoints.history()` (default 50, `0` keeps none). */
+  historyLimit?: number;
+}
+
 /** How many rows {@link SqliteStore.prune} deleted, per kind. */
 export interface PruneResult {
   sessions: number;
@@ -50,13 +56,14 @@ export class SqliteStore {
 
   /**
    * @param path database file (its directory is created if missing) or `':memory:'`
+   * @param options `historyLimit`: checkpoints kept per session in `checkpoints.history()`
    * @throws if `node:sqlite` is unavailable, or `path` is not a SQLite database
    */
-  constructor(path: string) {
+  constructor(path: string, options: SqliteStoreOptions = {}) {
     this.connection = Connection.open(path);
     this.sql = new Statements(this.connection);
     this.sessions = new SqliteSessionStore(this.connection);
-    this.checkpoints = new SqliteCheckpointStore(this.connection);
+    this.checkpoints = new SqliteCheckpointStore(this.connection, options);
     this.approvals = new SqliteApprovalStore(this.connection);
   }
 
@@ -82,6 +89,8 @@ export class SqliteStore {
     const cutoff = Date.now() - olderThanMs;
     return this.connection.transaction(() => {
       const run = (sql: string): number => Number(this.sql.get(sql).run(cutoff).changes);
+      // Old history entries go too; the count stays the checkpoints deleted.
+      run('DELETE FROM checkpoint_history WHERE saved_at < ?');
       return {
         sessions: run('DELETE FROM sessions WHERE updated_at < ?'),
         checkpoints: run('DELETE FROM checkpoints WHERE updated_at < ?'),
