@@ -117,6 +117,42 @@ the package root.
 - `EncryptionUtils`, `sha256`, `StorageService`, `renderTemplate`,
   `MemoryManager` - supporting utilities.
 
+### Flow expressions
+
+`oneOf` branch conditions (and the Agent Forge router node's branch conditions)
+and `evaluator` node expressions are evaluated by a small built-in expression
+evaluator. It never compiles or runs host code: there is no `eval`,
+`new Function` or `vm` in `src/flows`. Before evaluation, `{{name}}` placeholders
+are replaced with the variable's text (so quote string placeholders:
+`'{{classify}}' === 'refund'`). The expression is then evaluated against the
+flow's variables.
+
+| Form | Examples |
+| --- | --- |
+| Literals | `'text'`, `"text"`, `42`, `1.5`, `true`, `false`, `null` |
+| Variables and paths | `score`, `user.address.city`, `user['first-name']`, `items[0].id` |
+| Length | `name.length`, `items.length` (strings and arrays) |
+| Comparison | `==`, `===`, `!=`, `!==`, `<`, `<=`, `>`, `>=` |
+| Logical | `&&`, `\|\|`, `!` (short-circuiting, return the deciding operand) |
+| Arithmetic | `+`, `-`, `*`, `/`, `%`, unary `-` and `+` |
+| Grouping | `( ... )` |
+| Allow-listed methods | `s.includes(x)`, `s.startsWith(x)`, `s.endsWith(x)` on strings; `list.includes(x)` on arrays (exactly one argument) |
+
+Precedence, loosest to tightest: `||`, `&&`, equality, relational, `+ -`,
+`* / %`, unary, member access.
+
+Not supported, and rejected with an `ExpressionError` that names the
+expression, the character position and this list of supported forms: any other
+function or method call, assignment (`=`, `+=`, `++`), ternaries, template
+strings, object/array literals, access to `constructor`, `__proto__` or
+`prototype`, and globals (`process`, `require`, `globalThis`, ...). Only a
+flow's own variables, and only their own properties, are reachable.
+
+Failure behaviour is unchanged: a `oneOf` condition that cannot be evaluated
+counts as not matched (`false`), and an `evaluator` expression that cannot be
+evaluated fails the flow with `Failed to evaluate expression: ...`, including
+the `ExpressionError` detail.
+
 ## Deployment
 
 - `DeploymentAdapter`, `registerAdapter()`, `getAdapter()`, `listAdapters()` -
