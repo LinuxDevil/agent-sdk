@@ -17,6 +17,8 @@ export * from './tracing';
 export * from './semconv';
 export * from './logger';
 export * from './guardrails';
+export { GuardrailError, maxLengthGuardrail, regexGuardrail, denyTopicsGuardrail, llmJudgeGuardrail } from './ioGuardrails';
+export type { AgentGuardrails, GuardrailTrip, IoGuardrail, IoGuardrailContext, IoGuardrailKind, IoGuardrailResult } from './ioGuardrails';
 export * from './hooks';
 export { ToolArgumentsValidationError } from './toolArgsValidation';
 export type { ToolArgumentIssue } from './toolArgsValidation';
@@ -62,6 +64,8 @@ export type {
   ProviderRetryEvent,
   ProviderFallbackEvent,
   BudgetExceededEvent,
+  GuardrailTrippedEvent,
+  GuardrailRewroteEvent,
   RunDoneEvent,
 } from './agentEvents';
 export { BudgetExceededError } from './budget';

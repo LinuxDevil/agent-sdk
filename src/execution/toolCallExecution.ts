@@ -16,6 +16,7 @@ import { toolErrorMessage } from './propagatingToolError';
 import { toolErrorResult, type ToolErrorKind } from './toolErrors';
 import { ToolArgumentsValidationError, parseToolArguments, validateToolArguments } from './toolArgsValidation';
 import { checkPermission } from './permissions';
+import { checkToolGuardrails } from './ioGuardrails';
 import type { ExecuteOptions } from './AgentExecutor';
 import type { SubagentSuspension } from './ApprovalGate';
 import { SubagentApprovalPause, suspendedToolResult, toSuspension, type ToolCallScope } from './subagentRuntime';
@@ -139,10 +140,16 @@ async function prepareToolCall(toolCall: ToolCall, ctx: ToolCallContext): Promis
   }
 
   // LOU-X2: a matching permission rule decides before `needsApproval` does.
-  const gate =
-    (await checkPermissionRules(toolCall, ctx, checked.args)) ??
-    (await checkNeedsApproval(toolCall, ctx.toolRegistry, checked.args));
-  return { toolCall, args: checked.args, ...gate };
+  const permission = await checkPermissionRules(toolCall, ctx, checked.args);
+  if (permission?.rejection) {
+    return { toolCall, args: checked.args, ...permission };
+  }
+  // LOU-X4: tool guardrails run on calls that were not denied; a block throws GuardrailError.
+  const args = ctx.scope
+    ? await checkToolGuardrails(ctx.scope.runtime, { toolName: toolCall.function.name, args: checked.args, messages: ctx.messages })
+    : checked.args;
+  const gate = permission ?? (await checkNeedsApproval(toolCall, ctx.toolRegistry, args));
+  return { toolCall, args, ...gate };
 }
 
 /**

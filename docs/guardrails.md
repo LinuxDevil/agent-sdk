@@ -1,13 +1,93 @@
 # Guardrails and sandboxing
 
-Two tools for running agent output and agent tools safely: **guardrails** are
-fail-closed checks over a proposed change before you act on it, and
-**sandboxed tools** run inside an isolated container instead of the host
-process. For per-call human decisions see [Approvals](./approvals.md); for
+Tools for running agents safely: **input and output guardrails** check what
+goes into and comes out of any run (and its tool arguments), **patch
+guardrails** are fail-closed checks over a proposed change before you act on
+it, and **sandboxed tools** run inside an isolated container instead of the
+host process. For per-call human decisions see [Approvals](./approvals.md); for
 hooks that inspect or veto each tool call see `HookRegistry` in the
 [API overview](./api-overview.md#flows-evals-observability-and-security).
 
-## Guardrails
+## Input and output guardrails
+
+`createAgent({ guardrails })` (or `ExecuteOptions.guardrails`) checks a run at
+three points, each list in order:
+
+| List | Runs on | When |
+| ---- | ------- | ---- |
+| `input` | Each new user message (the user messages that end the transcript) | Before the first model call. A block makes no model call. |
+| `output` | The final assistant text; in a streamed run, every step's text | Before it is emitted: before its `text.done`, and before `run.done`. |
+| `tools` | A tool call's arguments (`text` is them as JSON, `args` the object) | After the [permission rules](./approvals.md#permission-policies) (skipped when a rule denies the call) and before `needsApproval`. |
+
+A guardrail is `{ name, check(ctx) }`. `ctx` has `kind` (`'input'`, `'output'`
+or `'tool'`), `text`, the run's `messages`, `toolName` and `args` for a tool
+call, and the run's `signal`. `check` returns (or resolves to) `{ ok: true }`
+or `{ ok: false, reason, action?, replacement? }`:
+
+- `action: 'block'` (the default) ends the run with `finishReason: 'guardrail'`
+  and `result.guardrail` (`{ name, kind, reason, toolName? }`). `result.text`
+  is `''` and a blocked reply is not added to the transcript; a blocked tool
+  call does not run (nor do the calls after it in that turn) and gets a
+  "cancelled" result, so the transcript stays valid. `stream()` emits
+  `guardrail.tripped` before `run.done`.
+- `action: 'rewrite'` replaces the text with `replacement` (a tool call's
+  arguments: `replacement` is the new arguments as JSON), the next guardrail
+  sees the new text, and `stream()` emits `guardrail.rewrote`.
+
+With `onTripped: 'throw'` a block rejects with `GuardrailError`
+(`LOUSHY_GUARDRAIL_TRIPPED`, with the same `guardrail`) instead. A `check`
+that throws fails the run. Sub-agents run their parent's guardrails, then their
+own. (Wiring `spec.policy.guardrails` in agent spec files is LOU-X5.)
+
+```ts
+import {
+  createAgent,
+  denyTopicsGuardrail,
+  GuardrailError,
+  llmJudgeGuardrail,
+  maxLengthGuardrail,
+  regexGuardrail,
+  type IoGuardrail,
+} from '@loushy/build-ai-agent';
+
+const noProdWrites: IoGuardrail = {
+  name: 'no-prod-writes',
+  check: ({ toolName, args }) =>
+    toolName === 'run_sql' && String(args?.db) === 'prod' ? { ok: false, reason: 'prod is read-only' } : { ok: true },
+};
+
+const agent = createAgent({
+  provider,
+  guardrails: {
+    input: [maxLengthGuardrail({ maxChars: 4_000 }), denyTopicsGuardrail({ topics: ['medical advice'] })],
+    output: [
+      regexGuardrail({ name: 'secrets', action: 'rewrite' }),
+      llmJudgeGuardrail({ model: 'openai/gpt-4o-mini', instruction: 'Replies must stay on the topic of cooking.' }),
+    ],
+    tools: [noProdWrites],
+  },
+});
+
+const result = await agent.send('What should I cook tonight?');
+if (result.finishReason === 'guardrail') {
+  console.warn(`Blocked by ${result.guardrail?.name} (${result.guardrail?.kind}): ${result.guardrail?.reason}`);
+}
+
+try {
+  await createAgent({ provider, guardrails: { input: [maxLengthGuardrail({ maxChars: 10 })], onTripped: 'throw' } }).send('A long question');
+} catch (error) {
+  if (error instanceof GuardrailError) console.error(error.guardrail);
+}
+```
+
+| Built-in | Fails when |
+| -------- | ---------- |
+| `maxLengthGuardrail({ maxChars })` | The text is longer than `maxChars` characters. |
+| `regexGuardrail({ name, pattern?, action?, replacement? })` | The text matches `pattern` (a `RegExp` or a list; default: the `secretScanGuardrail` patterns). With `action: 'rewrite'` every match becomes `replacement` (default `'[redacted]'`). |
+| `denyTopicsGuardrail({ topics })` | The text contains one of `topics` (case-insensitive keywords). |
+| `llmJudgeGuardrail({ model, instruction, name? })` | `model` (an `LLMProvider` or `"provider/model"`), asked once per check whether the text follows `instruction`, does not reply `PASS`; its `FAIL: <reason>` is the reason. |
+
+## Patch guardrails
 
 `runGuardrails(action, guardrails)` runs every check concurrently over a
 proposed patch and rolls the results up into one verdict. The
