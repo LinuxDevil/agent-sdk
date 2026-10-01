@@ -456,7 +456,7 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   signal?: AbortSignal;
   /**
-   * LOU-V9: input pushed while the run goes on (`inputQueue.enqueue()`), so
+   * LOU-V9: input pushed while the run goes on (`inputQueue.push()`), so
    * a non-streaming caller can add to it like `run.enqueue()` does. Each
    * input joins the transcript at the next safe point - after the current
    * step's tool results, before the next model call - and a run whose model

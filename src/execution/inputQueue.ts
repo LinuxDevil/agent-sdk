@@ -9,7 +9,7 @@ import { newId } from '../utils/id';
 import { describeInput, toMessages, type AgentInput } from '../providers/content';
 import type { Message } from '../providers';
 
-/** What `run.enqueue()` / `InputQueue.enqueue()` return. */
+/** What `run.enqueue()` / `InputQueue.push()` return. */
 export interface EnqueueResult {
   /** The id the `input.queued` / `input.applied` events carry. */
   id: string;
@@ -36,15 +36,15 @@ type Entry = QueuedInput & { settle: (applied: boolean) => void };
 
 /**
  * Input for one run, pushed while it runs: pass it as
- * `ExecuteOptions.inputQueue` and call `enqueue()` from anywhere (an
+ * `ExecuteOptions.inputQueue` and call `push()` from anywhere (an
  * `AgentRun` has its own, behind `run.enqueue()`). One queue serves one run:
- * once that run ends, `enqueue()` returns `{ applied: false }`.
+ * once that run ends, `push()` returns `{ applied: false }`.
  *
  * @example
  * ```ts
  * const inputQueue = new InputQueue();
  * const pending = AgentExecutor.execute({ agent, provider, input: 'Plan my trip.', inputQueue });
- * inputQueue.enqueue('Also book a hotel.');
+ * inputQueue.push('Also book a hotel.');
  * const result = await pending;
  * ```
  */
@@ -54,7 +54,7 @@ export class InputQueue {
   private listener: ((input: QueuedInput) => void) | undefined;
 
   /** Queues `input` for the run's next model call (see {@link EnqueueResult}). */
-  enqueue(input: AgentInput): EnqueueResult {
+  push(input: AgentInput): EnqueueResult {
     const id = newId();
     if (this.closed) return { id, applied: false };
     let settle!: (applied: boolean) => void;

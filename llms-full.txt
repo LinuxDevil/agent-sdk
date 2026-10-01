@@ -5857,7 +5857,7 @@ failed); the input is then left to you too.
   failed in-process still resolves `false`). A run that finishes, pauses or is
   aborted does not keep it.
 - Without a stream, pass an `InputQueue` as `ExecuteOptions.inputQueue` and
-  call its `enqueue()`: the same queue that is behind `run.enqueue()`. One
+  call its `push()`: the same queue that is behind `run.enqueue()`. One
   queue serves one run.
 - In a session, `agent.session({ turnPolicy: 'queue' })` makes a `send()` or
   `stream()` made while a turn runs (or waits to start) join that turn this way. See
@@ -5872,7 +5872,7 @@ import { AgentExecutor, InputQueue } from '@loushy/build-ai-agent';
 
 const inputQueue = new InputQueue();
 const pending = AgentExecutor.execute({ agent, provider, input: 'Plan my trip.', inputQueue });
-inputQueue.enqueue('Also book a hotel.');
+inputQueue.push('Also book a hotel.');
 const result = await pending;
 ```
 

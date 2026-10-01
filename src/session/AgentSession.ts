@@ -350,7 +350,7 @@ export class AgentSession {
   ): Promise<ExecutionResult> {
     const running = this.turnPolicy === 'queue' ? this.running : undefined;
     if (running) {
-      return Promise.resolve(running.inputs.enqueue(input).applied).then(async (applied) => {
+      return Promise.resolve(running.inputs.push(input).applied).then(async (applied) => {
         if (applied) {
           joined?.(running.result);
           return running.result;

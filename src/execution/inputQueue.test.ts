@@ -144,13 +144,13 @@ describe('ExecuteOptions.inputQueue', () => {
       inputQueue,
     });
     await started;
-    const queued = inputQueue.enqueue('More.');
+    const queued = inputQueue.push('More.');
     release();
     await pending;
 
     expect(await queued.applied).toBe(true);
     expect(conversation(model.calls[1]?.messages).at(-1)).toBe('user:More.');
-    expect(inputQueue.enqueue('after').applied).toBe(false);
+    expect(inputQueue.push('after').applied).toBe(false);
   });
 });
 

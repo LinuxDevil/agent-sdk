@@ -214,7 +214,7 @@ class AgentRunImpl implements AgentRun {
   }
 
   enqueue(input: AgentInput): EnqueueResult {
-    return this.inputs.enqueue(input);
+    return this.inputs.push(input);
   }
 
   private async *drain(): AsyncGenerator<AgentEvent> {

@@ -95,7 +95,7 @@ class SessionRun implements AgentRun {
 
   /** Queued until the turn's run starts, then applied like `AgentRun.enqueue()`. */
   enqueue(input: AgentInput): EnqueueResult {
-    return this.inputs.enqueue(input);
+    return this.inputs.push(input);
   }
 
   /** `error` then `run.done`, for a turn that failed outside the run's own events. */
