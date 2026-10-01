@@ -3,9 +3,9 @@
  * Uses OpenAI-compatible API through the 'ai' SDK (shared logic in ./aiSdkProvider)
  */
 
-import { createOpenAI } from '@ai-sdk/openai';
 import { LanguageModel } from 'ai';
 import { AiSdkProvider, AiSdkProviderConfig } from './aiSdkProvider';
+import { lazyValue, loadOptionalPeer } from './optionalPeer';
 import { Logger, noopLogger } from '../execution/logger';
 
 export interface OpenRouterProviderConfig extends AiSdkProviderConfig {
@@ -48,23 +48,25 @@ function buildHeaders(config: OpenRouterProviderConfig): Record<string, string> 
 export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> {
   readonly name = 'openrouter';
   protected readonly fallbackModel = 'openai/gpt-3.5-turbo';
-  private provider: ReturnType<typeof createOpenAI>;
   private logger: Logger;
+
+  /** Loads `@ai-sdk/openai` on first use (it is an optional peer) and points it at OpenRouter. */
+  private readonly loadProvider = lazyValue(async () => {
+    const { createOpenAI } = await loadOptionalPeer('@ai-sdk/openai', () => import('@ai-sdk/openai'));
+    return createOpenAI({
+      apiKey: this.config.apiKey,
+      baseURL: OPENROUTER_API_URL,
+      headers: buildHeaders(this.config),
+    });
+  });
 
   constructor(config: OpenRouterProviderConfig, logger: Logger = noopLogger) {
     super(config);
     this.logger = logger;
-
-    // Create OpenAI provider with OpenRouter endpoint
-    this.provider = createOpenAI({
-      apiKey: config.apiKey,
-      baseURL: OPENROUTER_API_URL,
-      headers: buildHeaders(config),
-    });
   }
 
-  protected createModel(modelId: string): LanguageModel {
-    return this.provider(modelId);
+  protected async createModel(modelId: string): Promise<LanguageModel> {
+    return (await this.loadProvider())(modelId);
   }
 
   /**

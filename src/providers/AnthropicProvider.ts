@@ -8,9 +8,9 @@
  * only the underlying 'ai' SDK model factory and model-name lists differ.
  */
 
-import { createAnthropic } from '@ai-sdk/anthropic';
 import { LanguageModel } from 'ai';
 import { AiSdkProvider, AiSdkProviderConfig } from './aiSdkProvider';
+import { lazyValue, loadOptionalPeer } from './optionalPeer';
 
 export interface AnthropicProviderConfig extends AiSdkProviderConfig {
   apiKey: string;
@@ -27,19 +27,18 @@ const TOOL_CAPABLE_PREFIXES = ['claude-3', 'claude-4', 'claude-sonnet', 'claude-
 export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
   readonly name = 'anthropic';
   protected readonly fallbackModel = 'claude-3-5-sonnet-latest';
-  private provider: ReturnType<typeof createAnthropic>;
-
-  constructor(config: AnthropicProviderConfig) {
-    super(config);
-    this.provider = createAnthropic({
-      apiKey: config.apiKey,
-      baseURL: config.baseURL,
-      headers: config.headers,
+  /** Loads `@ai-sdk/anthropic` on first use (it is an optional peer). */
+  private readonly loadProvider = lazyValue(async () => {
+    const { createAnthropic } = await loadOptionalPeer('@ai-sdk/anthropic', () => import('@ai-sdk/anthropic'));
+    return createAnthropic({
+      apiKey: this.config.apiKey,
+      baseURL: this.config.baseURL,
+      headers: this.config.headers,
     });
-  }
+  });
 
-  protected createModel(modelId: string): LanguageModel {
-    return this.provider(modelId);
+  protected async createModel(modelId: string): Promise<LanguageModel> {
+    return (await this.loadProvider())(modelId);
   }
 
   /**

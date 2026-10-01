@@ -724,14 +724,32 @@ Each real LLM provider is backed by an optional peer dependency:
 | Anthropic  | `@ai-sdk/anthropic`  | `^0.0.42` |
 | Ollama     | `ollama-ai-provider` | `^1.2.0`  |
 
-> **Current limitation:** the package's root entry point
-> (`@loushy/build-ai-agent`) loads every provider module when it is
-> imported, so today all three provider packages must be installed even if
-> you only use one provider (or only the built-in mock provider):
->
-> ```bash
-> npm install @ai-sdk/openai@^0.0.42 @ai-sdk/anthropic@^0.0.42 ollama-ai-provider@^1.2.0
-> ```
+Peers are loaded on demand: importing `@loushy/build-ai-agent` (or any of
+its sub-entries) never loads a provider package, so you only need to install
+the ones you use. Each provider package is loaded the first time that
+provider makes a call; if it is missing, that call fails with a
+`MissingPeerDependencyError` that carries the exact command to run:
+
+```bash
+npm install @ai-sdk/openai@^0.0.42
+```
+
+```ts no-run
+import { MissingPeerDependencyError, resolveProvider } from '@loushy/build-ai-agent';
+
+const provider = resolveProvider('openai/gpt-4o-mini'); // needs OPENAI_API_KEY; does not load the peer
+try {
+  await provider.generate({ messages: [{ role: 'user', content: 'hello' }] });
+} catch (error) {
+  if (error instanceof MissingPeerDependencyError) {
+    console.error(error.packageName, error.installCommand);
+  }
+}
+```
+
+The same applies to the dependencies the SDK ships with but only loads when a
+feature needs them: `undici` (the built-in `http` tool), `dockerode`
+(`SubprocessSandbox`) and `@modelcontextprotocol/sdk` (`serveMcp`).
 
 ## Installing from a local build
 
