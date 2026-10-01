@@ -121,26 +121,24 @@ function placeholderText(name: string, scope: Scope): string {
   return value === undefined || value === null ? '' : String(value);
 }
 
+/** One piece of a string literal: an interpolated placeholder, an escape, or a plain character. */
+function readStringPiece(src: string, i: number, scope?: Scope): { text: string; end: number } {
+  const placeholder = scope && src[i] === '{' ? matchPlaceholder(src, i) : undefined;
+  if (placeholder && scope) return { text: placeholderText(placeholder.name, scope), end: placeholder.end };
+  if (src[i] !== '\\') return { text: src[i], end: i + 1 };
+  const escaped = ESCAPES[src[i + 1] ?? ''];
+  if (escaped === undefined) throw new ExpressionError(src, i + 1, 'unsupported escape sequence in string');
+  return { text: escaped, end: i + 2 };
+}
+
 function readString(src: string, start: number, scope?: Scope): { token: Token; end: number } {
   const quote = src[start];
   let out = '';
   let i = start + 1;
   while (i < src.length && src[i] !== quote) {
-    const placeholder = scope && src[i] === '{' ? matchPlaceholder(src, i) : undefined;
-    if (placeholder && scope) {
-      out += placeholderText(placeholder.name, scope);
-      i = placeholder.end;
-      continue;
-    }
-    if (src[i] === '\\') {
-      i++;
-      const escaped = ESCAPES[src[i] ?? ''];
-      if (escaped === undefined) throw new ExpressionError(src, i, 'unsupported escape sequence in string');
-      out += escaped;
-    } else {
-      out += src[i];
-    }
-    i++;
+    const piece = readStringPiece(src, i, scope);
+    out += piece.text;
+    i = piece.end;
   }
   if (i >= src.length) throw new ExpressionError(src, start, 'unterminated string literal');
   return { token: { kind: 'str', value: out, pos: start }, end: i + 1 };
@@ -165,35 +163,41 @@ function readBoundPlaceholder(name: string, pos: number, scope: Scope): Token[] 
   return value === undefined || value === null ? [] : [{ kind: 'val', value: '', pos, data: value }];
 }
 
+function readIdentifier(src: string, start: number): { token: Token; end: number } {
+  let end = start + 1;
+  while (isIdentPart(src[end])) end++;
+  return { token: { kind: 'id', value: src.slice(start, end), pos: start }, end };
+}
+
+interface Read {
+  tokens: Token[];
+  end: number;
+}
+
+/** Read whatever token starts at `i` (none, for whitespace and missing placeholders). */
+function readNext(src: string, i: number, scope?: Scope): Read {
+  const ch = src[i];
+  const placeholder = scope && ch === '{' ? matchPlaceholder(src, i) : undefined;
+  if (placeholder && scope) return { tokens: readBoundPlaceholder(placeholder.name, i, scope), end: placeholder.end };
+  if (/\s/.test(ch)) return { tokens: [], end: i + 1 };
+  let read: { token: Token; end: number };
+  if (isDigit(ch)) read = readNumber(src, i);
+  else if (ch === "'" || ch === '"') read = readString(src, i, scope);
+  else if (isIdentStart(ch)) read = readIdentifier(src, i);
+  else {
+    const token = readOperator(src, i);
+    read = { token, end: i + String(token.value).length };
+  }
+  return { tokens: [read.token], end: read.end };
+}
+
 function tokenize(src: string, scope?: Scope): Token[] {
   const tokens: Token[] = [];
   let i = 0;
   while (i < src.length) {
-    const ch = src[i];
-    const placeholder = scope && ch === '{' ? matchPlaceholder(src, i) : undefined;
-    if (placeholder && scope) {
-      tokens.push(...readBoundPlaceholder(placeholder.name, i, scope));
-      i = placeholder.end;
-    } else if (/\s/.test(ch)) {
-      i++;
-    } else if (isDigit(ch)) {
-      const { token, end } = readNumber(src, i);
-      tokens.push(token);
-      i = end;
-    } else if (ch === "'" || ch === '"') {
-      const { token, end } = readString(src, i, scope);
-      tokens.push(token);
-      i = end;
-    } else if (isIdentStart(ch)) {
-      let end = i + 1;
-      while (isIdentPart(src[end])) end++;
-      tokens.push({ kind: 'id', value: src.slice(i, end), pos: i });
-      i = end;
-    } else {
-      const token = readOperator(src, i);
-      tokens.push(token);
-      i += String(token.value).length;
-    }
+    const read = readNext(src, i, scope);
+    tokens.push(...read.tokens);
+    i = read.end;
   }
   tokens.push({ kind: 'eof', value: '', pos: src.length });
   return tokens;
