@@ -1,0 +1,139 @@
+/**
+ * `serveMcp()` - expose a Loushy agent (and optionally some of its tools) as
+ * a Model Context Protocol server, so Claude Code, Cursor and other MCP
+ * clients can call it (LOU-Z3).
+ */
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { SimpleAgent } from '../../../createAgent';
+import type { DefinedTool } from '../../defineTool';
+import { buildServer, needsApprovalGate, sanitizeToolName } from './buildServer';
+import { listenHttp, type McpHttpTransportOptions } from './httpTransport';
+
+export type { McpHttpTransportOptions } from './httpTransport';
+
+/** Options for {@link serveMcp}. */
+export interface ServeMcpOptions {
+  /** The agent from `createAgent()`. It is exposed as ONE tool taking `{ message: string }`. */
+  agent: SimpleAgent;
+  /** MCP server name, shown by clients. Also the base of the default tool name. */
+  name: string;
+  /** Description of the agent tool; tells the calling model when to use it. */
+  description?: string;
+  /** Server version reported to clients. Defaults to `'1.0.0'`. */
+  version?: string;
+  /** Name of the agent tool. Defaults to `name` with characters outside `[A-Za-z0-9_-]` replaced by `_`. */
+  toolName?: string;
+  /** Tools (from `defineTool()`) to also expose directly, next to the agent tool. */
+  tools?: readonly DefinedTool[];
+  /**
+   * Expose tools flagged `needsApproval` too. Off by default. MCP has no
+   * approval step here, so enabling this lets clients run those tools with
+   * NO human gate.
+   */
+  allowApprovalTools?: boolean;
+  /** `'stdio'` (default) or `{ type: 'http', port, host, path, auth }`. */
+  transport?: 'stdio' | McpHttpTransportOptions;
+  /** Receives one-time warnings. Defaults to stderr (stdout is reserved for the stdio protocol). */
+  warn?: (message: string) => void;
+}
+
+/** A running MCP server returned by {@link serveMcp}. */
+export interface ServeMcpHandle {
+  /** Name of the tool that runs the agent. */
+  readonly agentToolName: string;
+  /** Endpoint URL (HTTP transport only). */
+  readonly url?: string;
+  /** Bound port (HTTP transport only). */
+  readonly port?: number;
+  /** Stops serving and releases the transport. */
+  close(): Promise<void>;
+}
+
+function isObjectSchema(schema: unknown): boolean {
+  return (schema as { _def?: { typeName?: string } } | undefined)?._def?.typeName === 'ZodObject';
+}
+
+function assertTools(tools: readonly DefinedTool[], agentToolName: string): void {
+  const seen = new Set([agentToolName]);
+  for (const tool of tools) {
+    if (!isObjectSchema(tool.input)) {
+      throw new Error(`serveMcp: tool '${tool.name}' needs a z.object(...) input; MCP tool inputs must be objects.`);
+    }
+    if (seen.has(tool.name)) {
+      throw new Error(
+        `serveMcp: two tools are named '${tool.name}'. Rename the tool, or set \`toolName\` to rename the agent tool.`
+      );
+    }
+    seen.add(tool.name);
+  }
+}
+
+function assertOptions(options: ServeMcpOptions, agentToolName: string): void {
+  if (!options.agent || typeof options.agent.send !== 'function') {
+    throw new Error('serveMcp: `agent` must be the result of createAgent() (an object with a send() method).');
+  }
+  if (!options.name) {
+    throw new Error("serveMcp: `name` is required (e.g. serveMcp({ agent, name: 'support-bot' })).");
+  }
+  assertTools(options.tools ?? [], agentToolName);
+}
+
+function stderrWarn(message: string): void {
+  console.error(message);
+}
+
+interface Running {
+  url?: string;
+  port?: number;
+  close(): Promise<void>;
+}
+
+async function listen(
+  transport: ServeMcpOptions['transport'],
+  create: () => McpServer,
+  warn: (message: string) => void
+): Promise<Running> {
+  if (transport !== undefined && transport !== 'stdio') {
+    const http = await listenHttp(transport, create, warn);
+    const host = http.host.includes(':') ? `[${http.host}]` : http.host;
+    return { port: http.port, url: `http://${host}:${http.port}${http.path}`, close: http.close };
+  }
+  const server = create();
+  await server.connect(new StdioServerTransport());
+  return { close: () => server.close() };
+}
+
+/**
+ * Serves an agent over MCP. Each MCP call is a fresh, stateless conversation.
+ * Tools flagged `needsApproval` are not exposed unless `allowApprovalTools`
+ * is set, and an agent run that pauses for approval is returned as an error
+ * (approvals cannot be given over MCP).
+ *
+ * @example
+ * ```ts
+ * const server = await serveMcp({ agent, name: 'support-bot', description: 'Ask the support agent a question' });
+ * await server.close();
+ * ```
+ */
+export async function serveMcp(options: ServeMcpOptions): Promise<ServeMcpHandle> {
+  const agentToolName = sanitizeToolName(options.toolName ?? options.name);
+  assertOptions(options, agentToolName);
+
+  const tools = options.tools ?? [];
+  const spec = {
+    agent: options.agent,
+    name: options.name,
+    version: options.version ?? '1.0.0',
+    description: options.description,
+    agentToolName,
+    tools,
+    allowApprovalTools: options.allowApprovalTools === true,
+  };
+  const warn = options.warn ?? stderrWarn;
+  if (spec.allowApprovalTools && tools.some(needsApprovalGate)) {
+    warn('serveMcp: allowApprovalTools is on - tools flagged needsApproval will run WITHOUT a human gate.');
+  }
+  const running = await listen(options.transport, () => buildServer(spec), warn);
+  return { agentToolName, url: running.url, port: running.port, close: running.close };
+}
