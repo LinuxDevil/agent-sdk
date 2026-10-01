@@ -14,12 +14,13 @@ export function isRemoteSubagent(value: unknown): value is RemoteSubagent {
 }
 
 /** The text of a finished remote run (with a footer), or the error that says why there is none. */
-function outcome(label: string, name: string, summary: SessionTurnSummary): string {
+function outcome(label: string, name: string, summary: SessionTurnSummary, taskId?: string): string {
   const { finishReason, text, sessionId, approval } = summary;
   if (finishReason === 'awaiting-approval') {
+    const then = taskId ? ` and then continue task '${taskId}'` : '';
     throw new SDKError(
       `Remote agent '${name}' is awaiting approval${approval ? ` '${approval.approvalId}'` : ''} in its session '${sessionId}'. ` +
-        'Approvals of remote sub-agents are not proxied: decide it on the remote agent (POST /chat/<session>/approvals/<id>), or give the remote agent no tools that need approval.',
+        `Approvals of remote sub-agents are not proxied: decide it on the remote agent (POST /chat/<session>/approvals/<id>)${then}, or give the remote agent no tools that need approval.`,
       'LOUSHY_SESSION_AWAITING_APPROVAL'
     );
   }
@@ -29,7 +30,7 @@ function outcome(label: string, name: string, summary: SessionTurnSummary): stri
   if (finishReason !== 'stop' && finishReason !== 'length') {
     throw new SDKError(`${label} ended with finish reason '${finishReason}' without a final answer.`, 'LOUSHY_REMOTE_REQUEST_FAILED');
   }
-  const footer = `[remote sub-agent '${name}': session '${sessionId}', finish reason '${finishReason}']`;
+  const footer = `[remote sub-agent '${name}': session '${sessionId}', finish reason '${finishReason}'${taskId ? `, taskId '${taskId}'` : ''}]`;
   return text ? `${text}\n\n${footer}` : footer;
 }
 
@@ -37,7 +38,8 @@ function outcome(label: string, name: string, summary: SessionTurnSummary): stri
  * Uses an agent deployed with `loushy deploy` (node server, Docker or
  * Cloudflare Worker) as a sub-agent: put it in `createAgent({ subagents })`
  * next to local ones. Each delegated task opens a fresh session on the remote
- * agent over `POST <url>/chat`, sends the task prompt, reads the streamed run
+ * agent over `POST <url>/chat` (a `task` call that resumes a task reuses its
+ * session, LOU-Y6), sends the task prompt, reads the streamed run
  * to its end and returns the remote agent's final text. The lead run's abort
  * signal aborts the request. Failures reach the lead as the usual structured
  * tool error with a `LOUSHY_REMOTE_REQUEST_FAILED` (or, for a 401,
@@ -65,10 +67,9 @@ export function remoteAgent(options: RemoteAgentOptions): RemoteSubagent {
   const agent: RemoteSubagent = {
     name: options.name,
     description: options.description ?? `Remote agent at ${options.url}`,
-    async run(prompt, { name = options.name ?? 'remote-agent', signal } = {}) {
-      const sessionId = newId('task');
+    async run(prompt, { name = options.name ?? 'remote-agent', signal, sessionId = newId('task'), taskId } = {}) {
       const label = `Remote agent '${name}' (session '${sessionId}')`;
-      return outcome(label, name, await runRemoteTurn(options, { sessionId, input: prompt, signal, label }));
+      return outcome(label, name, await runRemoteTurn(options, { sessionId, input: prompt, signal, label }), taskId);
     },
   };
   remoteSubagents.add(agent);

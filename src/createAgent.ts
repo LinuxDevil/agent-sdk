@@ -577,7 +577,11 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     permissions: config.permissions,
     onPermissionDecision: config.onPermissionDecision,
     skills: config.skills,
-    subagents: subagentsWithOptions(config.subagents, config.subagentOptions),
+    // LOU-Y6: `task` conversations are kept in the agent's session store, to be resumed by taskId.
+    subagents: subagentsWithOptions(
+      config.subagents,
+      config.store?.sessions ? { sessions: config.store.sessions, ...config.subagentOptions } : config.subagentOptions
+    ),
     maxSubagentDepth: config.maxSubagentDepth,
     maxSteps: config.maxSteps,
     limits: config.limits,
