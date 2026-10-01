@@ -161,6 +161,9 @@ function subagentsPromptBlock(summaries: readonly SubagentSummary[]): string {
 /** Why a sub-agent run that did not finish normally failed. */
 function failureReason(name: string, result: ExecutionResult, maxSteps: number): string {
   const last = result.text ? ` Its last text: ${result.text}` : '';
+  if (result.finishReason === 'output-invalid') {
+    return `Sub-agent '${name}' did not return a valid object for its output schema: ${result.outputError?.message ?? 'unknown problem'}. Retry the task, or adapt.${last}`;
+  }
   if (result.finishReason === 'aborted') {
     return `Sub-agent '${name}' was aborted before it finished.${last}`;
   }
@@ -170,13 +173,17 @@ function failureReason(name: string, result: ExecutionResult, maxSteps: number):
   return `Sub-agent '${name}' ended with finish reason '${result.finishReason}' without a final answer.${last}`;
 }
 
-/** The `task` tool result: the sub-agent's final text plus a metadata footer. Throws when it did not finish. */
+/**
+ * The `task` tool result: the sub-agent's final text plus a metadata footer. A sub-agent with an `output` schema
+ * (LOU-V4.2) answers with its validated object as JSON in place of the text, then the same footer. Throws when it did not finish.
+ */
 function taskResult(name: string, result: ExecutionResult, maxSteps: number, taskId: string): string {
   if (result.finishReason !== 'stop' && result.finishReason !== 'length') {
     throw new Error(failureReason(name, result, maxSteps));
   }
   const footer = `[sub-agent '${name}': ${result.steps} step(s), finish reason '${result.finishReason}', taskId '${taskId}']`;
-  return result.text ? `${result.text}\n\n${footer}` : footer;
+  const body = result.object === undefined ? result.text : JSON.stringify(result.object);
+  return body ? `${body}\n\n${footer}` : footer;
 }
 
 type TaskArgs = { agent: string; prompt: string; description: string; background?: boolean; taskId?: string; mode?: TaskMode };

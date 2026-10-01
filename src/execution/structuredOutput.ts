@@ -5,10 +5,9 @@
  */
 
 import { zodSchema } from 'ai';
-import type { z } from 'zod';
 import type { GenerateOptions, Message } from '../providers';
 import { formatIssues, parseWithIssues, type ToolArgumentIssue } from './toolArgsValidation';
-import { schemaToJsonSchema } from '../utils/zodCompat';
+import { schemaToJsonSchema, type StandardSchemaV1 } from '../utils/zodCompat';
 
 /** Why a run's final reply is not a valid `output` object (`finishReason: 'output-invalid'`). */
 export interface OutputError {
@@ -18,23 +17,23 @@ export interface OutputError {
   issues: ToolArgumentIssue[];
 }
 
-const jsonSchemas = new WeakMap<z.ZodTypeAny, Record<string, unknown>>();
+const jsonSchemas = new WeakMap<StandardSchemaV1, Record<string, unknown>>();
 
 /**
  * The schema as JSON Schema, computed once per schema: `z.toJSONSchema` for
  * zod 4 (LOU-D29), the `ai` SDK's zod converter for zod 3.
  */
-function jsonSchemaOf(schema: z.ZodTypeAny): Record<string, unknown> {
+function jsonSchemaOf(schema: StandardSchemaV1): Record<string, unknown> {
   let json = jsonSchemas.get(schema);
   if (!json) {
-    json = schemaToJsonSchema(schema) ?? (zodSchema(schema).jsonSchema as Record<string, unknown>);
+    json = schemaToJsonSchema(schema) ?? (zodSchema(schema as never).jsonSchema as Record<string, unknown>);
     jsonSchemas.set(schema, json);
   }
   return json;
 }
 
 /** The system-prompt block that asks for the final answer as JSON matching `schema`. */
-export function outputInstruction(schema: z.ZodTypeAny): string {
+export function outputInstruction(schema: StandardSchemaV1): string {
   return [
     '## Output format',
     '',
@@ -45,7 +44,7 @@ export function outputInstruction(schema: z.ZodTypeAny): string {
 }
 
 /** The `responseFormat` hint sent with every model call of the run. */
-export function outputResponseFormat(schema: z.ZodTypeAny): GenerateOptions['responseFormat'] {
+export function outputResponseFormat(schema: StandardSchemaV1): GenerateOptions['responseFormat'] {
   return { type: 'json', schema: jsonSchemaOf(schema) };
 }
 
@@ -57,7 +56,7 @@ function unfence(text: string): string {
 
 /** Parses the final reply as JSON and validates it with `schema`. */
 export async function validateOutput(
-  schema: z.ZodTypeAny,
+  schema: StandardSchemaV1,
   text: string
 ): Promise<{ object: unknown } | { outputError: OutputError }> {
   let value: unknown;
