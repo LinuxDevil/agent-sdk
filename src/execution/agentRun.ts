@@ -37,6 +37,7 @@ import type { BudgetExceeded } from './budget';
 import type { AgentInput } from '../providers/content';
 import { InputQueue, type EnqueueResult, type QueuedInput, type SteerResult } from './inputQueue';
 import type { GuardrailTrip } from './ioGuardrails';
+import type { AgentDrift } from './agentFingerprint';
 
 /**
  * The handle returned by `agent.stream()` and `AgentExecutor.stream()`.
@@ -119,6 +120,8 @@ export interface RunEventSink {
   guardrail(event: GuardrailTrip & { type: 'guardrail.tripped' | 'guardrail.rewrote' }): void;
   /** LOU-W3.2: an event a hook emits (`GenerateHookContext.emit`). */
   hookEvent(event: HookEventPayload): void;
+  /** LOU-W9.2: the resuming agent differs from the one that saved the run. */
+  agentDrift(drift: AgentDrift): void;
   /** Obtains one model step - streamed when the provider can; `onOutput` before its first text or tool call is reported. */
   generate(provider: LLMProvider, request: GenerateOptions, onOutput?: () => void): Promise<GenerateResult>;
   /** LOU-Y1: the sink for a sub-agent's run, whose events carry `subagent`. */
@@ -408,6 +411,7 @@ class AgentRunImpl implements AgentRun {
         this.emit(steered ? { type: 'input.steered', id, text, mode: steered } : { type: 'input.queued', id, text }, subagent),
       inputApplied: (id, step) => this.emit({ type: 'input.applied', id, step }, subagent),
       hookEvent: (event) => this.emit(event, subagent),
+      agentDrift: (drift) => this.emit({ type: 'agent.drift', ...drift }, subagent),
       guardrail: (event) => this.emit(event, subagent),
       generate: async (provider, request, onOutput) => {
         const call = withProviderEvents(request, this.providerEvents(subagent));

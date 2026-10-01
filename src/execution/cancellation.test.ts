@@ -245,8 +245,9 @@ describe('AgentExecutor cancellation (LOU-V1)', () => {
     expect(result.finishReason).toBe('aborted');
     const toolMessages = result.messages.filter((m) => m.role === 'tool');
     expect(toolMessages.map((m) => m.toolCallId)).toEqual(['call_first', 'call_second']);
-    expect(JSON.parse(toolMessages[1].content)).toEqual({
-      error: expect.stringContaining('cancelled'),
+    expect(JSON.parse(toolMessages[1].content)).toMatchObject({
+      kind: 'not-run',
+      message: expect.stringContaining('cancelled'),
     });
   });
 

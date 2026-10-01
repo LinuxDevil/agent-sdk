@@ -99,6 +99,107 @@ describe('SubprocessSandbox', () => {
     });
   });
 
+  describe('cancellation (dockerode fake, LOU-U23)', () => {
+    afterEach(() => {
+      vi.doUnmock('dockerode');
+      vi.resetModules();
+    });
+
+    /** Loads sandbox.ts against a fake daemon whose container exits only on `finish()` or a kill. */
+    async function withHangingDocker(overrides: { kill?: () => Promise<void>; remove?: () => Promise<void> } = {}) {
+      const calls: string[] = [];
+      let finish: (value: { StatusCode: number }) => void = () => {};
+      const container = {
+        attach: async () => ({}),
+        start: async () => {
+          calls.push('start');
+        },
+        wait: () => new Promise<{ StatusCode: number }>((resolve) => (finish = resolve)),
+        kill: async () => {
+          calls.push('kill');
+          if (overrides.kill) return overrides.kill();
+          finish({ StatusCode: 137 });
+        },
+        remove: async (options?: { force?: boolean }) => {
+          calls.push(`remove:${options?.force}`);
+          if (overrides.remove) return overrides.remove();
+        },
+      };
+      let created = 0;
+      class FakeDocker {
+        modem = { demuxStream: () => {} };
+        async createContainer() {
+          created += 1;
+          return container;
+        }
+      }
+      vi.resetModules();
+      vi.doMock('dockerode', () => ({ default: FakeDocker }));
+      const { SubprocessSandbox: Sandbox } = await import('./sandbox');
+      const { SandboxShell: Shell } = await import('../tools/workspace/SandboxShell');
+      return { calls, created: () => created, finish: (code: number) => finish({ StatusCode: code }), Sandbox, Shell };
+    }
+
+    it('kills and force-removes the container when the signal aborts mid-run, and rejects with an AbortError', async () => {
+      const { calls, Sandbox } = await withHangingDocker();
+      const controller = new AbortController();
+      const running = new Sandbox().run('sleep', ['60'], { signal: controller.signal });
+      await vi.waitFor(() => expect(calls).toContain('start'));
+      controller.abort();
+      await expect(running).rejects.toMatchObject({ name: 'AbortError' });
+      await vi.waitFor(() => expect(calls).toEqual(['start', 'kill', 'remove:true']));
+    });
+
+    it('starts no container when the signal is already aborted', async () => {
+      const { created, Sandbox } = await withHangingDocker();
+      await expect(new Sandbox().run('ls', [], { signal: AbortSignal.abort() })).rejects.toMatchObject({ name: 'AbortError' });
+      expect(created()).toBe(0);
+    });
+
+    it('does nothing when the signal aborts after the command finished', async () => {
+      const { calls, finish, Sandbox } = await withHangingDocker();
+      const controller = new AbortController();
+      const running = new Sandbox().run('ls', [], { signal: controller.signal });
+      await vi.waitFor(() => expect(calls).toContain('start'));
+      finish(0);
+      await expect(running).resolves.toMatchObject({ exitCode: 0 });
+      controller.abort();
+      expect(calls).toEqual(['start']);
+    });
+
+    it('a timeout uses the same cleanup, once, and rejects with the timed-out error', async () => {
+      const { calls, Sandbox } = await withHangingDocker();
+      const controller = new AbortController();
+      await expect(new Sandbox().run('sleep', ['60'], { timeoutMs: 20, signal: controller.signal })).rejects.toThrow(/timed out after 20ms/);
+      controller.abort();
+      await vi.waitFor(() => expect(calls).toEqual(['start', 'kill', 'remove:true']));
+      expect(calls.filter((call) => call.startsWith('remove'))).toHaveLength(1);
+    });
+
+    it('swallows "already stopped" and "already removed" errors from kill and remove', async () => {
+      const { calls, Sandbox } = await withHangingDocker({
+        kill: () => Promise.reject(new Error('container is not running')),
+        remove: () => Promise.reject(new Error('no such container')),
+      });
+      const controller = new AbortController();
+      const running = new Sandbox().run('sleep', ['60'], { signal: controller.signal });
+      await vi.waitFor(() => expect(calls).toContain('start'));
+      controller.abort();
+      await expect(running).rejects.toMatchObject({ name: 'AbortError' });
+      await vi.waitFor(() => expect(calls).toEqual(['start', 'kill', 'remove:true']));
+    });
+
+    it('SandboxShell passes the signal down and reports the command as aborted', async () => {
+      const { calls, Sandbox, Shell } = await withHangingDocker();
+      const controller = new AbortController();
+      const running = new Shell(new Sandbox()).exec('sleep 60', { signal: controller.signal, timeoutMs: 60_000 });
+      await vi.waitFor(() => expect(calls).toContain('start'));
+      controller.abort();
+      await expect(running).resolves.toMatchObject({ aborted: true, exitCode: null });
+      await vi.waitFor(() => expect(calls).toEqual(['start', 'kill', 'remove:true']));
+    });
+  });
+
   describe.skipIf(!dockerAvailable)('integration (requires a running Docker daemon)', () => {
     it('run() executes a command in a container and returns matching stdout/exitCode', async () => {
       const sandbox = new SubprocessSandbox({ image: 'node:20-alpine' });

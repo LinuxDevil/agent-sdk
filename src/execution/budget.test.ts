@@ -57,7 +57,7 @@ describe('limits (LOU-V6)', () => {
     // The unrun call gets a cancelled result, so the transcript stays valid for a provider.
     const last = result.messages.at(-1)!;
     expect(last.role).toBe('tool');
-    expect(JSON.parse(last.content as string).error).toMatch(/budget limit/);
+    expect(JSON.parse(last.content as string).message).toMatch(/budget limit/);
   });
 
   it('maxCostUsd counts the estimated cost', async () => {

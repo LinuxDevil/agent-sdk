@@ -46,7 +46,8 @@ import type { SubagentSpec } from './execution/delegation';
 import type { ApprovalDecision, ApprovalStore, ResolvedApproval } from './execution/ApprovalGate';
 import { InMemoryApprovalStore } from './execution/InMemoryApprovalStore';
 import { resumeRequest, type ResumeRequest } from './execution/resume';
-import type { CheckpointStore, ForkOptions, ForkResult } from './execution/checkpoint';
+import { RUN_CONFIG_KEY, type CheckpointStore, type ForkOptions, type ForkResult } from './execution/checkpoint';
+import type { AgentDriftMode } from './execution/agentFingerprint';
 import { ConfigurationError, SDKError } from './execution/errors';
 import { newId } from './utils/id';
 import { createAgentApprovals, type AgentApprovals, type ApproveToolCall } from './createAgentApprovals';
@@ -200,6 +201,22 @@ export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> ex
    * ```
    */
   toolConcurrency?: ToolConcurrency;
+  /**
+   * LOU-W9.2: what a resume does when this agent differs from the one that
+   * paused or crashed the run (another model, tools with other names or
+   * input schemas, other instructions): `'warn'` (default) emits an
+   * `agent.drift` event and a `console.warn`, then continues; `'error'`
+   * rejects with `LOUSHY_AGENT_DRIFT` before any model call or tool runs and
+   * leaves the checkpoint and approval as they were; `'ignore'` does nothing.
+   * A pending tool call whose tool no longer exists always rejects with
+   * `LOUSHY_RESUME_TOOL_MISSING`. See `ExecuteOptions.onAgentDrift`.
+   *
+   * @example
+   * ```ts
+   * const agent = createAgent({ prompt: '...', provider, store, onAgentDrift: 'error' });
+   * ```
+   */
+  onAgentDrift?: AgentDriftMode;
   /**
    * Opt in to appending the nearest `AGENTS.md` / `CLAUDE.md` (found by
    * walking up from `cwd`, see `loadProjectInstructions()`) to the agent's
@@ -566,6 +583,7 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     limits: config.limits,
     guardrails: config.guardrails,
     toolConcurrency: config.toolConcurrency,
+    onAgentDrift: config.onAgentDrift,
   };
   const specs = agentSpecs(config, toolsFor, runOptions);
   const staticSpec = specs.static;
@@ -590,7 +608,7 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
       approvalStore: paused.store,
       toolRegistry: paused.spec.toolRegistry ?? new ToolRegistry(),
       provider: paused.spec.provider,
-      executeOptions: { ...runOptions, output: config.output, hooks, approvalStore: paused.store, signal },
+      executeOptions: { ...runOptions, output: config.output, hooks, approvalStore: paused.store, signal, currentAgent: paused.spec.agent },
       // A run paused under a `sessionId` keeps checkpointing after the decision.
       checkpointStore: checkpointStore ?? checkpoints,
     };
@@ -636,10 +654,15 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     // LOU-W6: memory tools and recall bound to this run's scope keys.
     ...memory?.forRun({ sessionId: ctx.sessionId, metadata: ctx.metadata }, spec.toolRegistry, hooks),
   });
-  /** The run's options once MCP servers are connected, with its spec resolved for `ctx` (LOU-V15). */
+  /**
+   * The run's options once MCP servers are connected, with its spec resolved for `ctx` (LOU-V15). A dynamic run
+   * restarted from its checkpoint resolves with the `ctx` and model it began with (LOU-V15.2).
+   */
   const prepare = async (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: SessionTurnOptions) => {
     await mcp.ready();
-    return executeOptions(staticSpec ?? (await specs.resolve(ctx)), input, ctx, signal, turn);
+    if (staticSpec) return executeOptions(staticSpec, input, ctx, signal, turn);
+    const pinned = await checkpointedRunConfig(turn);
+    return executeOptions(await specs.resolve(pinned?.ctx ?? ctx, pinned), input, pinned?.ctx ?? ctx, signal, turn);
   };
   const run = async (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: SessionTurnOptions) =>
     AgentExecutor.execute(await prepare(input, ctx, signal, turn));
@@ -707,16 +730,20 @@ function addMcpTools(target: RunTools, tools: Record<string, ToolDescriptor>): v
   }
 }
 
-/** Key of `AgentConfig.metadata` holding a dynamic run's `ctx` and model, so an approval snapshot keeps them (LOU-V15). */
-const RUN_CONFIG = 'loushyRunConfig';
-
-/** What a paused dynamic run is resumed with: its `ctx`, and the model it ran with (never re-resolved). */
+/** What a paused or interrupted dynamic run is resumed with: its `ctx`, and the model it ran with (never re-resolved). */
 interface PinnedRunConfig {
   ctx: RunConfigContext;
   model: string | undefined;
 }
 
-type RunOptions = Omit<SubagentSpec, 'agent' | 'provider' | 'toolRegistry'>;
+/** The `ctx` and model of the unfinished run checkpointed for `turn` (LOU-V15.2), if there is one. */
+async function checkpointedRunConfig(turn: SessionTurnOptions | undefined): Promise<PinnedRunConfig | undefined> {
+  if (!turn?.sessionId || !turn.checkpointStore) return undefined;
+  const checkpoint = await turn.checkpointStore.load(turn.sessionId);
+  return checkpoint && checkpoint.status !== 'finished' ? (checkpoint.runConfig as PinnedRunConfig | undefined) : undefined;
+}
+
+type RunOptions = Omit<SubagentSpec, 'agent' | 'provider' | 'toolRegistry'> & { onAgentDrift?: AgentDriftMode };
 
 /** The agent's run specs: `static` when no option is a function, else `resolve(ctx)` builds one per run (LOU-V15). */
 interface AgentSpecs {
@@ -747,7 +774,7 @@ function agentSpecs(config: CreateAgentConfig, toolsFor: (tools: AgentToolsOptio
     const prompt = await resolveOption(config.prompt === undefined ? 'instructions' : 'prompt', instructions, ctx);
     const tools = staticTools ?? toolsFor(await resolveOption('tools', config.tools, ctx));
     const spec = specOf(prompt, model, provider ?? resolveModelSource(config, model), tools);
-    spec.agent.metadata = { [RUN_CONFIG]: { ctx, model } satisfies PinnedRunConfig };
+    spec.agent.metadata = { [RUN_CONFIG_KEY]: { ctx, model } satisfies PinnedRunConfig };
     return spec;
   };
   if (provider && staticTools && !isPerRun(instructions)) {
@@ -786,7 +813,7 @@ async function pausedRun(specs: AgentSpecs, store: ApprovalStore, id: string): P
   if (!record) {
     throw new SDKError(`No pending approval found for id '${id}' (unknown or already resolved)`, 'LOUSHY_APPROVAL_NOT_FOUND');
   }
-  const pinned = record.snapshot.agent.metadata?.[RUN_CONFIG] as PinnedRunConfig | undefined;
+  const pinned = record.snapshot.agent.metadata?.[RUN_CONFIG_KEY] as PinnedRunConfig | undefined;
   const spec = await specs.resolve(pinned?.ctx ?? { input: [] }, pinned);
   let replay: ResolvedApproval | undefined = record;
   const replayStore: ApprovalStore = {

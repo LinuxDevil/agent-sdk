@@ -293,7 +293,7 @@ describe('parallel tool calls (LOU-V3)', () => {
     expect(toolMessages.map((m) => m.toolCallId)).toEqual(['call_finisher', 'call_listener', 'call_queued']);
     expect(toolMessages[0].content).toBe('"finished anyway"');
     expect(toolMessages[1].isError).toBe(true);
-    expect(JSON.parse(toolMessages[2].content)).toEqual({ error: expect.stringContaining('cancelled') });
+    expect(JSON.parse(toolMessages[2].content)).toMatchObject({ kind: 'not-run', message: expect.stringContaining('cancelled') });
   });
 
   it('checkpoints only the in-order prefix of finished calls', async () => {

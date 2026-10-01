@@ -5,9 +5,12 @@
  * ExecutionResult.
  */
 
-import { Message, ToolCall } from '../providers';
+import { Message, ToolCall, ToolDefinition } from '../providers';
 import { AgentConfig } from '../types';
-import { Checkpoint, CheckpointStatus } from './checkpoint';
+import { Checkpoint, CheckpointStatus, RUN_CONFIG_KEY } from './checkpoint';
+import { checkAgentDrift, fingerprintOf, type AgentFingerprint } from './agentFingerprint';
+import { runEventsOf } from './agentRun';
+import { baseAgentOf } from './subagentRuntime';
 import { CompactedLLMProviderError, SessionAwaitingApprovalError } from './errors';
 import { inputMessages, newSessionMessages, splitPendingTurn } from './transcript';
 import type { CallUsage, RunUsage, StepUsage } from '../models/usage';
@@ -16,6 +19,7 @@ import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
 import type { ToolCallOutcome } from './toolCallExecution';
 import type { UnrecordedToolCall } from './toolBatch';
 import type { RunBudget } from './budget';
+import { toolErrorResult } from './toolErrors';
 
 export interface AgentRunState {
   messages: Message[];
@@ -57,6 +61,10 @@ export interface AgentRunState {
   budget?: RunBudget;
   /** LOU-V9: the checkpoint writes so far - each starts after the one before, so the newest state lands last. */
   saving?: Promise<void>;
+  /** LOU-W9.2: this run's agent, as written into its checkpoints and approval snapshots. */
+  fingerprint?: AgentFingerprint;
+  /** LOU-W9.2: set when an unfinished checkpoint is resumed: the fingerprint it was saved with, if any. */
+  resumedFrom?: { fingerprint?: AgentFingerprint };
 }
 
 /**
@@ -150,7 +158,36 @@ export async function loadRunState(options: ExecuteOptions): Promise<AgentRunSta
     queuedInput: turn.queuedInput,
     finalText: '',
     finishReason: 'stop',
+    // LOU-W9.2: with checkpointing on, known before the first (synchronous) checkpoint write.
+    ...(sessionId && checkpointStore && { fingerprint: await fingerprintOf(baseAgentOf(options.agent), options.toolRegistry, options.provider) }),
+    ...(checkpoint && checkpoint.status !== 'finished' && { resumedFrom: { fingerprint: checkpoint.agentFingerprint } }),
   };
+}
+
+/**
+ * This run's agent fingerprint (LOU-W9.2). Computed on first use, so a run that
+ * is neither checkpointed, paused nor resumed takes no extra step to start.
+ */
+export async function ensureFingerprint(options: ExecuteOptions, state: AgentRunState): Promise<AgentFingerprint> {
+  state.fingerprint ??= await fingerprintOf(baseAgentOf(options.agent), options.toolRegistry, options.provider);
+  return state.fingerprint;
+}
+
+/**
+ * LOU-W9.2: when an unfinished checkpoint saved with an agent fingerprint is
+ * resumed, compares it with this run's agent (`onAgentDrift`) before any model
+ * call or tool runs: throws on a pending call whose tool is gone, or on drift
+ * with `'error'`; with `'warn'` also reports an `agent.drift` event.
+ */
+export async function checkResumedAgent(options: ExecuteOptions, state: AgentRunState, tools: ToolDefinition[]): Promise<void> {
+  const saved = state.resumedFrom?.fingerprint;
+  if (!saved) return;
+  const current = await ensureFingerprint(options, state);
+  const have = new Set(tools.map((tool) => tool.function.name));
+  const pending = state.pendingToolCalls.map((call) => call.function.name);
+  const missingTools = [...new Set(pending.filter((name) => !have.has(name)))];
+  const drift = checkAgentDrift({ saved, current, mode: options.onAgentDrift, missingTools });
+  if (drift) runEventsOf(options)?.agentDrift(drift);
 }
 
 /** Accumulates one generate() call's usage into the run total and the per-step list. */
@@ -191,6 +228,8 @@ export async function saveStepCheckpoint(
     businessState: state.businessState,
     status,
     ...(approvalId !== undefined && { approvalId }),
+    ...(state.fingerprint && { agentFingerprint: state.fingerprint }),
+    ...(agent.metadata?.[RUN_CONFIG_KEY] !== undefined && { runConfig: agent.metadata[RUN_CONFIG_KEY] }),
   };
   const save = () => checkpointStore.save(sessionId, checkpoint);
   const saved = state.saving ? state.saving.then(save) : save();
@@ -224,20 +263,25 @@ export function pushToolResult(
 }
 
 /**
- * LOU-V1: gives a tool call the run was aborted before reaching a `{error}`
- * tool result, so the transcript stays well-formed (every assistant tool
+ * LOU-V1: gives a tool call the run was aborted before reaching a `not-run`
+ * tool error result, so the transcript stays well-formed (every assistant tool
  * call has a matching result) and a checkpointed run can be resumed without
  * the provider rejecting an unanswered tool call.
  */
 function pushCancelledToolResult(state: AgentRunState, toolCall: ToolCall, reason: string): void {
   state.messages.push({
     role: 'tool',
-    content: JSON.stringify({
-      error: `Tool call was cancelled before it ran because ${reason}`,
-    }),
+    content: JSON.stringify(
+      toolErrorResult({
+        toolName: toolCall.function.name,
+        error: `Tool call was cancelled before it ran because ${reason}`,
+        kind: 'not-run',
+      })
+    ),
     name: toolCall.function.name,
     toolCallId: toolCall.id,
     toolName: toolCall.function.name,
+    isError: true,
   });
 }
 
