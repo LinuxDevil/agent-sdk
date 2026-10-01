@@ -3,7 +3,7 @@
 Mission: make `@loushy/build-ai-agent` the best TypeScript AI agent SDK (capabilities and DX) against
 Vercel eve and MaxGfeller/open-harness. This file is the loop's memory: read it first, update it last.
 
-- Loop started: 2026-10-01. Iterations completed: 1.
+- Loop started: 2026-10-01. Iterations completed: 2.
 - Audit: `.agent-loop/AUDIT.md`, refreshed 2026-10-01 at main `a03b1a3` (eve 0.69.0 @682c7a6, open-harness 0.7.0 @026e8d9).
   Reference agents (3 agents x 3 SDKs, measured): `.agent-loop/reference-agents/`. Older material: `docs/research/*.md`, `docs/plan/tickets.md`.
   Audit is stale when: a competitor ships a new major, or more than ~25 PRs land after `a03b1a3` (re-run the DX measurement then).
@@ -32,7 +32,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Durable stores (SQLite/file/KV) | ✅ | ✅ | ❌ | - |
 | Sandboxing | ⚠️ | ✅ | ⚠️ | X11 |
 | Workspace fs + shell tools | ✅ | ✅ | ✅ | - |
-| Compaction | ❌ | ✅ | ✅ | W2, W3 |
+| Compaction | ⚠️ flipped (W2 prune, #80) | ✅ | ✅ | W3 (summarize + events) |
 | Subagents | ✅ | ✅ | ✅ | - |
 | Background / resumable subagents | ❌ | ✅ | ✅ | Y4, Y6 |
 | Remote subagents | ❌ | ✅ | ❌ | Y7 |
@@ -41,7 +41,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Steering (mid-run input) | ❌ | ✅ | ❌ | V9, V10 |
 | Cancellation | ✅ | ✅ | ✅ | - |
 | Memory (cross-session) | ❌ | ✅ | ❌ | W6 |
-| Sessions (multi-turn) | ⚠️ | ✅ | ✅ | V8, W9 |
+| Sessions (multi-turn) | ✅ flipped (V8 session.stream, #78) | ✅ | ✅ | W9 (checkpointing sessions, durability row) |
 | Skills (SKILL.md) | ✅ | ✅ | ✅ | - |
 | AGENTS.md loading | ✅ | ⚠️ | ✅ | - |
 | Evals | ✅ | ✅ | ❌ | - |
@@ -80,7 +80,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Published on npm | ❌ (owner action) | ✅ | ✅ | D49 |
 | Current `ai` major | ❌ | ✅ | ✅ | D22-D29 |
 
-Score (us): 18 ✅ / 15 ⚠️ / 18 ❌ of 51 after iteration 1 (was 16 / 15 / 20 at `a03b1a3`).
+Score (us): 19 ✅ / 15 ⚠️ / 17 ❌ of 51 after iteration 2 (iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
 
 Differentiators shipped (target: 3): 0 of 8 (candidates in AUDIT section 7: host-agnostic durable sessions D30; record/replay evals D46; Forge time-travel D43-D45; MCP+ACP+HTTP reach Z6/D14; both authoring modes with hot reload D31-D33; OTel metrics D48; trajectory evals remote D47; edge-native agents D51/P9).
 
@@ -100,7 +100,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | U19 | Explicit `maxSteps` exhaustion (`finishReason: 'max-steps'`) | ⬜ | |
 | U20 | Install and roadmap truth (no `npx loushy` of an unpublished package) | ⬜ | |
 | U21 | Robust CLI flag parsing (`parseArgs`) | ⬜ | |
-| U22 | Resumed sub-agent that pauses again keeps the session awaiting approval (patch ready: scratchpad `subagent-repause-checkpoint.patch`) | ⬜ | |
+| U22 | Resumed sub-agent that pauses again keeps the session awaiting approval | ✅ #77 | |
 | U23 | `SubprocessSandbox` (Docker) honors `signal` (follow-up of U17) | ⬜ | |
 
 ### Epic V — Run loop
@@ -110,8 +110,8 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | V4 | Structured output (`output: zodSchema`) | ⬜ | |
 | V6 | Budgets (`limits`) | ⬜ | |
 | V7.1 | Provider retry + fallback wrappers | ✅ #74 | |
-| V7.2 | `createAgent({ retry, fallbackModels })` + `retry` event; built-ins pass `maxRetries: 0` to `ai` so retries don't stack | ⬜ | V7.1 |
-| V8 | `session.stream()` | ⬜ | |
+| V7.2 | `createAgent({ retry, fallbackModels })` + `retry` event; built-ins pass `maxRetries: 0` to `ai` so retries don't stack | ⬜ (next) | V7.1 |
+| V8 | `session.stream()` | ✅ #78 | |
 | V9 | Queued follow-up input | ⬜ | V8 |
 | V10 | Steering | ⬜ | V9 |
 | V11 | Multimodal message parts | ⬜ | |
@@ -124,8 +124,8 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | ID | Title | Status | Deps |
 |---|---|---|---|
 | W1 tokens, W4 sessions, W5 SQLite, W7 AGENTS.md | | ✅ | |
-| W2 | Compaction: prune old tool results | ⬜ | |
-| W3 | Compaction: summarize strategy, pluggable | ⬜ | W2 |
+| W2 | Compaction: prune old tool results (`createCompactionHook`, prunes the transcript in place) | ✅ #80 | |
+| W3 | Compaction: summarize strategy (async `compact`), `compaction.*` events | ⬜ (next) | W2 |
 | W6 | Scoped memory slots | ⬜ | |
 | W8 | Manual compact and clear | ⬜ | W2, W3 |
 | W9 | Sessions that checkpoint | ⬜ | V8 |
@@ -171,7 +171,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D16 | ESLint ratchet (433 warnings -> 0, `error` severity) | ⬜ | run in a quiet batch |
 | D20 | `mcpServers` in `AgentSpec` | ✅ #73 | |
 | D21 | Approvals for `createAgent()` | ✅ #75 | |
-| D22 | Own the tool contract (`inputSchema` + `execute`, no `ai.tool()`) | ⬜ | |
+| D22 | Own the tool contract (`inputSchema` + `execute`, no `ai.tool()`) | ✅ #79 | |
 | D23 | Own the execute-context type | ⬜ | D22 |
 | D24 | Small built-ins to `defineTool` | ⬜ | D22 |
 | D25 | github and jira to `defineTool` | ⬜ | D22 |
@@ -183,7 +183,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D31 | `loushy dev` for dirs and TS, hot reload | ⬜ | |
 | D32 | Stateful streaming dev chat | ⬜ | D31 |
 | D33 | `loushy chat` REPL | ⬜ | V14 |
-| D34 | `AgentType` off the user path | ⬜ | |
+| D34 | `AgentType` off the user path (deprecated; apps/examples still call `setType`, follow-up D34.2) | ✅ #76 | |
 | D35 | Delete flow converters, drop `nanoid` | ⬜ | |
 | D36 | Delete SaaS/donor utilities | ⬜ | |
 | D37 | Templates out of the root entry | ⬜ | |
@@ -201,6 +201,9 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D49 | Publish readiness | ⬜ | U20 |
 | D50 | `loushy add` | ⬜ | |
 | D51 | Deployed API auth + Worker parity | ⬜ | D14 |
+| D52 | README revamp (owner request): 805 -> 257 lines, 7 new docs pages | ✅ #81 | |
+| D34.2 | Drop `setType` from apps/agent-forge, examples; `ContextBuilder` agentType cast | ⬜ | D34 |
+| D25 hazard | github.ts disables tools by replacing `.tool.execute`; sandboxFetch reads `.tool.execute`: must move to canonical `execute` when converted | note | D22 |
 
 ### Epic P — UI bindings, channels, schedules
 | ID | Title | Status | Deps |
@@ -224,10 +227,16 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | #75 | D21 | merged (squash) | approvals for createAgent, `InMemoryApprovalStore` |
 | #74 | V7.1 | merged (squash, after merging main) | withRetry / withFallback / resilientProvider |
 | #73 | D20 | merged (squash, after merging main; CHANGELOG conflict kept both entries) | mcpServers spec field |
+| #77 | U22 | merged (squash) | sub-agent re-pause checkpoint |
+| #78 | V8 | merged (squash) | session.stream() |
+| #76 | D34 | merged (squash) | AgentType optional/deprecated |
+| #79 | D22 | merged (squash) | canonical inputSchema/execute on ToolDescriptor |
+| #80 | W2 | merged (squash) | compaction prune hook |
+| #81 | D52 | merged (squash) | README revamp |
 
 ## Main health
 
-CI runs only on `pull_request`, so "main is green" means the last PR's CI run passed on its head and local checks passed on the merge. Pending: CI runs 117 (#74 head 898f9a6) and 118 (#73 head 93b10e3) were in progress at the end of iteration 1; check them first in iteration 2. Local: all four iteration-1 PRs reported green suites (tsc, lint 0 errors / 433 warnings, 1960-1986 vitest tests, build, fallow). Known flaky under load: `guardrails.test.ts` "kills the underlying child process on timeout" (passes in isolation).
+CI runs only on `pull_request`, so "main is green" means the last PR's CI run passed on its head and local checks passed on the merge. Iteration 2 start: CI runs 117 and 118 green, main green. Iteration 2 merges: every PR verified locally; CI on the final heads of #78/#76/#79/#80/#81 to be checked at iteration 3 start. Local: all four iteration-1 PRs reported green suites (tsc, lint 0 errors / 433 warnings, 1960-1986 vitest tests, build, fallow). Known flaky under load: `guardrails.test.ts` "kills the underlying child process on timeout" (passes in isolation).
 
 ## Iteration log
 
@@ -237,15 +246,21 @@ CI runs only on `pull_request`, so "main is green" means the last PR's CI run pa
 - Main at end of iteration: `a37cc61`.
 - Matrix flips: Approvals/HITL ⚠️->✅, Fallbacks/retry ❌->✅.
 
-## Next batch (iteration 2)
+### Iteration 2 (2026-10-01)
+- Merged: #77 (U22), #78 (V8), #76 (D34), #79 (D22), #80 (W2), #81 (D52 README revamp, owner request). All synced with main before merge, no conflicts.
+- Matrix flips: Sessions ⚠️->✅, Compaction ❌->⚠️.
+- Owner instructions received: never delete branches; revamp the README (done).
+- Stray file `/resume.fixed.ts` (23 KB) left at the filesystem root by a subagent; removal blocked by the safety check, owner to delete.
+
+## Next batch (iteration 3)
 
 Chosen for no file overlap (one AgentExecutor/resume toucher):
-1. U22 (sonnet): apply the sub-agent re-pause checkpoint patch; touches `src/execution/resume.ts`, `subagentInheritance.test.ts`, `docs/durable-execution.md`.
-2. D34 (sonnet): `AgentType` off the user path; touches `src/core/AgentBuilder.ts`, `src/agent-types/`.
-3. W2 (opus): compaction prune strategy as a module + `preGenerate` hook wiring (`createCompactionHook`); no `createAgent.ts`/executor edits.
-4. V8 (sonnet): `session.stream()`; touches `src/session/AgentSession.ts` (+ `createAgent.ts` only if needed).
-5. D22 (opus): own the tool contract; touches `src/types/tool.ts`, `src/tools/defineTool.ts`, `src/execution/toolArgsValidation.ts`.
-Then: U14, U15, U19, V7.2, X8, D35, D36, D40.
+1. U19 (sonnet): explicit `maxSteps` exhaustion (`finishReason: 'max-steps'`); touches `src/execution/AgentExecutor.ts` (loop exit) and result types; not agentEvents.ts.
+2. V7.2 (opus): `createAgent({ retry, fallbackModels })` + typed `retry` event; `aiSdkProvider` passes `maxRetries: 0`; touches createAgent.ts, agentEvents.ts, providers.
+3. W3 (opus): summarize compaction strategy (async `compact`), pinned messages; src/context only (events wiring via `onCompaction` until W3.2).
+4. D35 (sonnet): delete `src/flows/converters.ts`, replace `nanoid` with `crypto.randomUUID`, drop the dependency.
+5. D15 (opus): React hook `useLoushyAgent()` over the typed event stream as a `./react` subpath.
+Then: U14, U15, D34.2, X8, D36, D40, W9.
 
 ## Subagent brief (canonical copy)
 
