@@ -419,6 +419,17 @@ registerModel({
 });
 ```
 
+### Context compaction
+
+`createCompactionHook({ thresholdPercent?, contextWindow?, protectedTokens?, strategy?, onCompaction? })`
+returns an `AgentHook` that, before each model call above 90% (by default) of
+the model's context window, replaces tool results older than the newest
+40,000 tokens with a `[pruned: <tool> result, N chars]` marker. It edits the
+run's transcript in place, so pruning persists in checkpoints and
+`result.messages`. `compactMessages(messages, options)` does the same once,
+by hand, and `pruneToolResultsStrategy()` / `CompactionStrategy` are the
+built-in and pluggable strategies. See [Context compaction](./compaction.md).
+
 ## Flows, evals, observability and security
 
 - `FlowBuilder` / `FlowExecutor` - multi-step workflow graphs.

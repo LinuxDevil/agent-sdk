@@ -258,6 +258,7 @@ console.log(session.id, session.messages.length);
 - [Sessions](docs/sessions.md) - multi-turn conversations: `agent.session()`, `MemorySessionStore`, `FileSessionStore`
 - [Skills](docs/skills.md) - on-demand instructions: `defineSkill()`, `loadSkills()`, how they save context
 - [Sub-agents](docs/sub-agents.md) - the `subagents` option and its `task` tool, what sub-agents inherit, approvals inside sub-agents
+- [Context compaction](docs/compaction.md) - keep long runs under the context window: prune old tool results with `createCompactionHook()`
 - [Agent directories](docs/agent-directories.md) - define an agent as a folder: layout, mapping to `createAgent()`, moving to code, security
 - [Agent Forge](docs/agent-forge.md) - the visual dashboard (`loushy studio`): quickstart, first-agent walkthrough, hook authoring
 - Full guides site: [linuxdevil.github.io/agent-sdk-docs](https://linuxdevil.github.io/agent-sdk-docs/)

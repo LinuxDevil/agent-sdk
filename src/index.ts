@@ -47,6 +47,9 @@ export * from './templates';
 // Token estimation and model registry (LOU-W1)
 export * from './models';
 
+// Context compaction (LOU-W2)
+export * from './context';
+
 // Utils
 export * from './utils';
 
