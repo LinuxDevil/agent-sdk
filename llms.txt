@@ -11,6 +11,7 @@
 - [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md): A declarative agent is a YAML (`.yaml`/`.yml`) or JSON (`.json`) file, validated with zod by `loadSpec()` (`src/spec/schema.ts`).
 - [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md): A skill is a named chunk of instructions (a markdown document) that the model loads only when it needs it.
 - [Testing agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md): `@loushy/build-ai-agent/testing` ships `mockModel`: a scripted, deterministic `LLMProvider` for unit tests.
+- [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md): Workspace tools give an agent a file system and a shell, so you can build coding agents in the style of Claude Code.
 
 ## Examples
 

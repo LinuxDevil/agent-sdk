@@ -166,7 +166,7 @@ function mutatingTools(fs: FsProvider, approvals: FsToolApprovals): DefinedTool[
  * import { mockModel } from '@loushy/build-ai-agent/testing';
  * const workspace = new MemoryWorkspace({ files: { 'notes.md': '# Notes\n' } });
  * const agent = createAgent({
- *   prompt: 'You edit files in the workspace.',
+ *   instructions: 'You edit files in the workspace.',
  *   provider: mockModel(['Done.']),
  *   tools: createFsTools(workspace, { needsApproval: { write_file: true } }),
  * });

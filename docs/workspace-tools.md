@@ -29,7 +29,7 @@ import { createAgent, NodeWorkspace, createFsTools, createShellTool } from '@lou
 
 const workspace = new NodeWorkspace({ root: './project' });
 const agent = createAgent({
-  prompt: 'You are a careful coding assistant. Run the tests after every change.',
+  instructions: 'You are a careful coding assistant. Run the tests after every change.',
   provider,
   tools: [
     ...createFsTools(workspace),
@@ -281,7 +281,7 @@ const provider = mockModel([
   'Fixed add() and the tests pass.',
 ]);
 const agent = createAgent({
-  prompt: 'Fix bugs.',
+  instructions: 'Fix bugs.',
   provider,
   tools: [...createFsTools(workspace), createShellTool(workspace, { needsApproval: false })],
 });
