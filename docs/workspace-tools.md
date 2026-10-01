@@ -257,10 +257,11 @@ readable by the model's commands, and `network: 'default'` lets a command
 send it anywhere. Keep long-lived secrets out of both; use the credential
 broker below instead.
 
-`SandboxAdapter` has no way to cancel a command. When the run is aborted,
-`SandboxShell` returns `aborted: true` immediately, but the container keeps
-running until its timeout kills it. The shell tool always sets a timeout, so
-the container does stop.
+When the run is aborted, `SandboxShell` passes the abort signal to the adapter.
+`SubprocessSandbox` then kills and removes the container and the shell tool
+reports `aborted: true`; a signal that is already aborted starts no container.
+An adapter that ignores `SandboxRunOptions.signal` is no longer waited on, but
+its command keeps running until its timeout; the shell tool always sets one.
 
 ### Credential broker
 

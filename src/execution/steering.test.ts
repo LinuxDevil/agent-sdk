@@ -167,7 +167,7 @@ describe('run.steer()', () => {
       'user:Start.',
       'assistant:',
       'tool:"waited"',
-      'tool:{"error":"Tool call was cancelled before it ran because the user steered the run to new input"}',
+      'tool:{"error":"ToolNotRunError","toolName":"other","message":"Tool call was cancelled before it ran because the user steered the run to new input","kind":"not-run"}',
       'user:Stop that, do this.',
     ]);
   });
