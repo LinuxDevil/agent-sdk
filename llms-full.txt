@@ -2,48 +2,54 @@
 
 Source: README.md
 
-**A composable, framework-agnostic SDK for building AI agents that run safely
-in production.** Zero-config to full control, human-in-the-loop approval
-gates, durable checkpoints, multi-agent delegation, guardrails, and a visual
-dashboard — any provider, any deploy target, no lock-in.
+A TypeScript SDK for building AI agents that run in your own code, on your own
+host: a typed tool-calling loop with approvals, sessions, streaming,
+sub-agents, skills, MCP and a CLI, with no web framework or hosted runtime
+required. It is for developers who need an agent to keep working when a run
+pauses for a human or the process restarts, and who want to test it like the
+rest of their code.
 
-[Get started](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md) &nbsp;·&nbsp;
-[View on GitHub](https://github.com/LinuxDevil/agent-sdk) &nbsp;·&nbsp;
-[Docs site](https://linuxdevil.github.io/agent-sdk-docs/) &nbsp;·&nbsp;
-[npm](https://www.npmjs.com/package/@loushy/build-ai-agent)
+Three things set it apart:
 
----
+- **Durable sessions and approvals on any host.** Sessions, checkpoints and
+  approval pauses live in pluggable stores (memory, files, one SQLite file, or
+  Cloudflare KV for checkpoints on Workers), so a paused or interrupted run
+  resumes from another request or another process.
+- **Record/replay and trajectory evals.** `mockModel` scripts the model,
+  `recordReplay` cassettes replay real runs offline, and `defineEval()` asserts
+  on which tools were called, in what order, with which arguments, gating CI
+  through `loushy eval` with JUnit reports.
+- **Node and Cloudflare Workers, traced with OpenTelemetry.** `loushy build`
+  ships the same agent spec to a Node server, Docker or a Worker; runs emit
+  OpenTelemetry GenAI spans to any exporter, and every result reports token
+  usage and USD cost.
 
-## Features
+[Quickstart](#quickstart) · [Features](#features) · [Documentation](#documentation) ·
+[Examples](#examples) · [Docs site](https://linuxdevil.github.io/agent-sdk-docs/)
 
-- **Zero-config to full control** — `createAgent({ model: 'openai/gpt-4o-mini' })` in one line, or the full `AgentBuilder` + `AgentExecutor` API when you need `maxSteps`, checkpoints, or tracing hooks
-- **Human-in-the-loop** — flag a tool `needsApproval` and pause execution until a human approves or rejects it, then `resumeAfterApproval()` from any process
-- **Durable execution** — pass a `sessionId` + `checkpointStore` and a crash mid-conversation resumes instead of restarting
-- **Cancellation** — pass an `AbortSignal` (`agent.send(input, { signal })`) to stop a run; it resolves with `finishReason: 'aborted'` and the transcript so far, and the signal reaches the provider, tools and delegated agents
-- **Streaming events** — `for await (const event of agent.stream(input))` yields a typed, versioned, JSON-serializable event stream (`text.delta` tokens as they arrive, `tool.start`/`tool.done`, steps, approvals, a final `run.done`) ready to forward over SSE or WebSockets; `await run.result` gives the same result as `send()` ([docs/streaming.md](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md))
-- **Sessions** — `agent.session()` keeps a multi-turn conversation (in memory, or persisted with `FileSessionStore`)
-- **SQLite store** — `new SqliteStore('./.loushy/agent.db')` from `@loushy/build-ai-agent/sqlite` keeps sessions, checkpoints and approvals in one durable, transactional file (built-in `node:sqlite`, no native dependency) — see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#stores)
-- **Project instructions** — `createAgent({ projectInstructions: true })` appends the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (opt-in)
-- **Parallel tool calls** — when the model asks for several tools in one turn they run concurrently (cap it with `toolConcurrency`, or `1` for sequential), and results still reach the transcript in the model's call order
-- **Usage & cost** — every result carries `usage` (tokens, USD cost, per-model breakdown, delegated children included, continuing across resumes) and `formatUsage(result.usage)` for logs
-- **Skills** — `defineSkill()` / `loadSkills('./skills')`: only each skill's name and description sit in the system prompt; the model loads the full markdown on demand through an auto-registered `load_skill` tool
-- **Sub-agents** — `createAgent({ subagents: { researcher, writer } })` gives the lead one `task` tool: each sub-agent runs on the task prompt alone (isolated context) with its own instructions, model and tools, several tasks in one turn run in parallel, and sub-agents inherit the lead run's abort signal, hooks, tracing, approvals and events (`maxSubagentDepth`, dynamic `{ list, resolve }` catalogs; `createDelegateTool()` for a single hand-wired child) — see [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md)
-- **Agents as directories** — `loadAgentDir('./my-agent')` turns `instructions.md`, `tools/*.ts`, `skills/` and `subagents/<name>/` into the same object `createAgent()` returns, so you can start with files and drop to code later — see [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md)
-- **Pre/post hooks** — a `HookRegistry` of `AgentHook`s that can inspect or mutate a tool call/LLM generate step, or throw to abort it, run sandboxed by Agent Forge's hook editor
-- **Guardrails** — fail-closed, concurrently-run checks (secret scan, diff size, test/lint commands) that gate a fixer agent's patch before it's used
-- **Workspace tools** — `createFsTools()` (`read_file`, `write_file`, `edit_file`, `list_dir`, `glob`, `grep`) and `createShellTool()` over pluggable `FsProvider`/`ShellProvider` backends (`NodeWorkspace`, `MemoryWorkspace`, Docker-backed `SandboxShell`), with paths confined to the workspace root (symlinks included) and shell commands approval-gated by default — see [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md)
-- **MCP client** — `loadMcpTools()` turns any Model Context Protocol server's tools into `ToolDescriptor`s
-- **MCP server** — `serveMcp({ agent, name })` (or `loushy mcp agent.yaml`) exposes an agent as an MCP tool for Claude Code, Cursor and other agents
-- **Sandboxed tools** — opt a tool into `requiresSandbox` to route it through a Docker-backed `SandboxAdapter` instead of in-process
-- **Tracing & evals** — `withSpan()`/`TraceExporter` (with an OpenTelemetry bridge at `/otel`) for observability, and `defineEval()` for agent-behavior regression tests under `vitest`
-- **Any provider, any deploy target** — OpenAI, Anthropic, Ollama, OpenRouter, or a deterministic mock provider for tests; `loushy build` ships to a Node server, Docker, or Cloudflare Workers
-- **Agent Forge** — `loushy studio` launches a visual dashboard: drag-and-drop graph canvas, live run/debug console with a step-through debugger, real chat with inline approval-gate cards, and a sandboxed hook editor
+## Installation
 
-## Quick example
+Requires Node.js 22.19 or newer. The package is not on npm yet (it is pre-1.0),
+so build it from a checkout and scaffold a project that depends on the build:
 
-Hello world in five lines (reads `OPENAI_API_KEY` from your environment):
+```bash
+git clone https://github.com/LinuxDevil/agent-sdk.git
+cd agent-sdk && npm install && npm run build
+node bin/loushy.js init ../my-agent --sdk-path .   # agent, example tool, offline test
+cd ../my-agent && cp .env.example .env              # then put your API key in .env
+npm run dev                                          # chat in the terminal; `npm test` runs offline
+```
 
-```typescript
+To add it to an existing project, install the packed tarball instead
+([Installing from a local build](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#installing-from-a-local-build)).
+Once published, it will be `npm install @loushy/build-ai-agent ai zod` plus
+the provider package you use (`@ai-sdk/openai`, `@ai-sdk/anthropic` or
+`ollama-ai-provider`). `npx loushy doctor` checks Node, peers and API keys and
+prints a fix for anything missing.
+
+## Quickstart
+
+```ts
 import { createAgent } from '@loushy/build-ai-agent';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are a helpful assistant.' });
@@ -52,751 +58,198 @@ console.log(text);
 ```
 
 `model` is a `provider/model` string (`openai`, `anthropic`, `openrouter`,
-`ollama`); the key comes from the provider's conventional env var. Leave
-`model` out and the agent uses `LOUSHY_MODEL` if set, otherwise the first of
-`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`,
-`OLLAMA_BASE_URL` that is present.
+`ollama`) and the key comes from the provider's usual variable
+(`OPENAI_API_KEY`, ...). Leave it out to pick the provider from the
+environment, or pass `provider:` with your own or a mock provider. See
+[Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md) for runnable, offline versions and
+[Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md) for the details. Prefer config files? The same
+agent can be an `agent.yaml` spec served with `npx loushy dev agent.yaml`
+([Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md)).
 
-Stream the reply token by token instead (see [docs/streaming.md](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md) for every event):
+## Features
 
-```typescript
-import { createAgent } from '@loushy/build-ai-agent';
+- **Tools**: `defineTool()` with a zod `input`; arguments are typed, validated, and run in parallel. [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md)
+- **Approvals**: `needsApproval` pauses a run; `agent.approvals.resolve()` continues it, or `approve` decides in code. [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)
+- **Sessions**: `agent.session()` keeps a multi-turn conversation in memory, files or SQLite. [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md)
+- **Streaming**: `agent.stream()` and `session.stream()` yield typed, versioned JSON events ready for SSE. [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)
+- **Durable execution**: `sessionId` + `checkpointStore` resume a crashed or paused run without redoing finished tools. [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)
+- **Cancellation, usage and cost**: pass an `AbortSignal`; every result carries token usage and USD cost for priced models. [API overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#cancellation)
+- **Providers**: OpenAI, Anthropic, OpenRouter, Ollama or a mock, with `withRetry()` and `withFallback()`. [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md)
+- **Sub-agents**: `subagents: { researcher, writer }` gives the lead one `task` tool; sub-agents run in parallel. [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md)
+- **Skills and AGENTS.md**: `loadSkills()` loads instructions on demand; `projectInstructions` appends your `AGENTS.md`. [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md), [Project instructions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#project-instructions)
+- **Agent directories**: `loadAgentDir('./my-agent')` builds an agent from `instructions.md`, `tools/` and `skills/`. [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md)
+- **Compaction**: `createCompactionHook()` prunes old tool results before the context window fills. [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md)
+- **MCP client and server**: `loadMcpTools()` uses any MCP server; `serveMcp()` / `loushy mcp` exposes your agent. [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#mcp-model-context-protocol-tools)
+- **Workspace tools**: file system and shell tools for coding agents, confined to a root, shell approval-gated. [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md)
+- **Hooks, guardrails, sandboxing**: veto tool calls, gate a patch on fail-closed checks, run tools in Docker. [Guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md)
+- **Flows and triggers**: fixed multi-step workflows; webhook, Slack and cron adapters. [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md), [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#triggers)
+- **Tracing**: OpenTelemetry GenAI spans (`invoke_agent`, `chat`, `execute_tool`); content capture is opt-in. [Observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md)
+- **Testing and evals**: `mockModel`, `recordReplay` cassettes, `defineEval()` trajectory assertions, `loushy eval`. [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md), [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md)
+- **CLI**: `init`, `doctor`, `dev`, `mcp`, `eval`, `build` and `studio`. [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md)
+- **Agent Forge**: `loushy studio` opens a visual canvas, run debugger and chat with approval cards. [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md)
 
-const agent = createAgent({ model: 'openai/gpt-4o-mini' });
-for await (const event of agent.stream('Hello!')) {
+## Usage
+
+### A tool-using agent, streamed
+
+```ts
+import { createAgent, defineTool } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+
+const getWeather = defineTool({
+  name: 'get_weather',
+  description: 'Current weather for a city',
+  input: z.object({ city: z.string() }),
+  execute: async ({ city }) => ({ city, tempC: 21, sky: 'sunny' }), // `city` is a string
+});
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  instructions: 'You are a travel assistant. Check the weather before giving advice.',
+  tools: [getWeather],
+});
+
+for await (const event of agent.stream('What should I wear in Lisbon today?')) {
+  if (event.type === 'tool.start') console.log(`\n[${event.toolName}]`, event.args);
   if (event.type === 'text.delta') process.stdout.write(event.text);
 }
 ```
 
-When you need a custom provider (your own `LLMProvider`, a mock, extra
-config), pass the instance instead:
-
-```typescript
-import { createAgent, createMockProvider } from '@loushy/build-ai-agent';
-
-const agent = createAgent({
-  instructions: 'You are a helpful customer support assistant.',
-  provider: createMockProvider({ responses: ['Hi! How can I help?'] }),
-});
-```
-
-The same agent with an approval gate on a sensitive tool — `defineTool()`
-infers the argument types from the zod `input`, and `AgentExecutor` pauses
-before calling the tool and persists a resumable snapshot instead:
-
-```typescript
-import { AgentExecutor, resumeAfterApproval, StorageServiceApprovalStore, ToolRegistry, defineTool } from '@loushy/build-ai-agent';
-import { z } from 'zod';
-
-const sendEmail = defineTool({
-  name: 'send_email',
-  description: 'Send an email',
-  input: z.object({ to: z.string().email(), subject: z.string(), body: z.string() }),
-  needsApproval: ({ to }) => !to.endsWith('@mycompany.com'), // `to` is typed; pauses for a human
-  async execute({ to, subject, body }) {
-    return { messageId: '...' };
-  },
-});
-
-const registry = new ToolRegistry();
-registry.register(sendEmail);
-
-const approvalStore = new StorageServiceApprovalStore(storage);
-const paused = await AgentExecutor.execute({
-  agent, input, provider, toolRegistry: registry, approvalStore,
-});
-// paused.finishReason === 'awaiting-approval', paused.approvalId is set
-
-// ...later, from any process, after a human approves...
-const result = await resumeAfterApproval(
-  { id: paused.approvalId!, approved: true },
-  approvalStore,
-  registry,
-  provider,
-);
-```
-
-## Quickstart
-
-**Start a new project** with one command: it scaffolds an agent, an example tool and an offline test, installs dependencies and runs `git init`:
-
-```bash
-npx loushy init my-agent        # or: npm create loushy-agent my-agent
-cd my-agent && npm run dev      # set your API key in .env first; `npm test` runs offline
-```
-
-See [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md#start-a-new-project) for the flags (`--provider`, `--template`, `--yes`, ...). Or add the SDK to an existing project by hand:
-
-**1. Install**
-
-```bash
-npm install @loushy/build-ai-agent ai zod
-npx loushy doctor        # checks Node, peers and API keys, and tells you how to fix anything
-```
-
-**2. Configure** — describe the agent as data:
-
-```yaml
-# agent.yaml
-name: support-bot
-prompt: You are a friendly support agent.
-provider:
-  type: openai
-  model: gpt-4o-mini
-tools:
-  - current-date
-  - http
-```
-
-**3. Run**
-
-```bash
-npx loushy dev agent.yaml                                 # chat UI + hot reload
-npx loushy build --target=node-server --agent=agent.yaml   # deployable server
-```
-
-## Overview
-
-Build AI Agent SDK is a framework-agnostic library for building AI agents that
-run safely in production: human-in-the-loop approval gates, durable
-checkpoint/resume, multi-agent delegation, guardrails, tracing, evals, and a
-CLI to scaffold, run locally, and deploy an agent to a Node server, Docker, or
-Cloudflare Workers. Works with React, Vue, Svelte, Angular, Express, or
-vanilla JS — nothing about the SDK is tied to a particular framework.
-
-**Perfect for:**
-- 🤖 Building chatbots and virtual assistants
-- 🔄 Creating automated workflows that pause for human approval before a sensitive action
-- 🛠️ Integrating LLMs into existing applications
-- 🎯 Ops pipelines that watch for errors and open guardrail-gated PRs to fix them
-
-## Installation
-
-```bash
-npm install @loushy/build-ai-agent ai zod
-# or
-pnpm add @loushy/build-ai-agent ai zod
-# or
-yarn add @loushy/build-ai-agent ai zod
-```
-
-### Peer dependencies
-
-`ai` (the Vercel AI SDK, `^4.3.19`) and `zod` (`^3.25.76`) are required. Each
-real LLM provider is backed by an optional peer dependency:
-
-| Provider   | Package              | Range     |
-| ---------- | --------------------- | --------- |
-| OpenAI     | `@ai-sdk/openai`      | `^0.0.42` |
-| OpenRouter | `@ai-sdk/openai`      | `^0.0.42` |
-| Anthropic  | `@ai-sdk/anthropic`   | `^0.0.42` |
-| Ollama     | `ollama-ai-provider`  | `^1.2.0`  |
-
-> **Current limitation:** the package root currently loads every provider
-> module on import, so today all three provider packages need to be
-> installed even if you only use one (or only the built-in mock provider) —
-> see [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md) for the exact command and the
-> tracked follow-up.
-
-## Full control: `AgentBuilder` + `AgentExecutor`
-
-> For the verified, copy-paste-runnable version of every snippet in this
-> README (each is executed against a real packed build by
-> `npx tsx scripts/verify-docs-snippets.ts`), see
-> [docs/quick-start.md](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md).
-
-`createAgent()` is a thin wrapper over these two — use them directly when
-you need `maxSteps`, approval gates, checkpoints, tracing hooks, or a
-`ToolRegistry` with several tools wired in. `AgentExecutor` is a **static**
-API — there is no `new AgentExecutor()`.
-
-```typescript
-import { AgentBuilder, AgentExecutor, resolveProvider } from '@loushy/build-ai-agent';
-
-const agent = AgentBuilder.create()
-  .setName('Customer Support Agent')
-  .setPrompt('You are a helpful customer support assistant.')
-  .build();
-
-const result = await AgentExecutor.execute({
-  agent,
-  input: 'My order arrived damaged.',
-  provider: resolveProvider('openai/gpt-4o-mini'),
-  maxSteps: 5,
-});
-
-console.log(result.text);
-console.log(result.usage.totalTokens, result.finishReason, result.steps);
-```
-
-### Multi-turn sessions
+### Pause for approval, then resume
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
-
-const session = createAgent({ provider }).session(); // or .session({ id, store: new FileSessionStore(dir) })
-await session.send('My name is Ali.');
-const { text } = await session.send('What is my name?'); // remembers
-console.log(session.id, session.messages.length);
-```
-
-## Documentation
-
-- [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md) - requirements, peer/provider packages, installing from a local build
-- [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md) - runnable, verified snippets: `createAgent()`, tools, `AgentBuilder` + `AgentExecutor`, spec files
-- [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md) - agent spec fields, provider env vars, `AgentExecutor.execute()` options, CLI flags
-- [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md) - `loushy build` targets: Node server, Docker, Cloudflare Workers
-- [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md) - the main exports; `npm run docs:build` generates the full TypeDoc reference
-- [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md) - checkpoints, crash resume, multi-turn sessions, approvals mid-batch, at-least-once tools
-- [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md) - `agent.stream()`: the typed event schema, terminal and SSE examples
-- [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md) - file system and shell tools for coding agents, and their security model
-- [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md) - OpenTelemetry GenAI spans, attribute table, content opt-in
-- [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md) - unit-test agents deterministically with the scripted `mockModel`
-- [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md) - trajectory evals with `defineEval()`, datasets, `mockModel`, judge evals, `loushy eval` with JUnit/JSON reports
-- [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md) - multi-turn conversations: `agent.session()`, `MemorySessionStore`, `FileSessionStore`
-- [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md) - on-demand instructions: `defineSkill()`, `loadSkills()`, how they save context
-- [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md) - the `subagents` option and its `task` tool, what sub-agents inherit, approvals inside sub-agents
-- [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md) - keep long runs under the context window: prune old tool results with `createCompactionHook()`
-- [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md) - define an agent as a folder: layout, mapping to `createAgent()`, moving to code, security
-- [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md) - the visual dashboard (`loushy studio`): quickstart, first-agent walkthrough, hook authoring
-- Full guides site: [linuxdevil.github.io/agent-sdk-docs](https://linuxdevil.github.io/agent-sdk-docs/)
-
-## For AI coding agents
-
-This package ships its documentation in machine-readable form, so a coding
-agent can read it straight from `node_modules` without browsing the web:
-
-- `node_modules/@loushy/build-ai-agent/llms-full.txt` - the README and every
-  user-facing docs page in one file, with absolute links.
-- `llms.txt` (repo root, also in the package) - a short [llmstxt.org](https://llmstxt.org)
-  index of the docs and examples.
-- `llms-full.txt` (repo root) - the same full text as above, for use from a clone.
-
-Both files are generated (`npm run docs:llms`) and checked in CI.
-
-## Core Concepts
-
-### Agents
-
-Agents combine a **prompt**,
-**tools**, optional **flows**, and conversation **memory**. Build one with
-`createAgent()` for the common case, or `AgentBuilder` when you need full
-control over the resulting `AgentConfig`.
-
-### Tools
-
-Define a tool with `defineTool()` — argument and result types are inferred from
-the zod `input`, and the result drops in anywhere tools are accepted
-(`createAgent({ tools: [...] })`, `ToolRegistry.register(tool)`,
-`AgentBuilder.addTool(tool)`):
-
-```typescript
-import { defineTool, createAgent, type ToolInput, type ToolOutput } from '@loushy/build-ai-agent';
-import { z } from 'zod';
-
-const weather = defineTool({
-  name: 'weather', // 1-64 chars: letters, digits, _ and -
-  description: 'Get weather information',
-  input: z.object({ location: z.string(), units: z.enum(['celsius', 'fahrenheit']) }),
-  execute: async ({ location, units }) => ({ temperature: 72, conditions: 'sunny' }),
-});
-
-type WeatherArgs = ToolInput<typeof weather>;   // { location: string; units: 'celsius' | 'fahrenheit' }
-type WeatherResult = ToolOutput<typeof weather>; // { temperature: number; conditions: string }
-
-const agent = createAgent({ prompt: '...', provider, tools: [weather] });
-```
-
-Optional fields mirror `ToolDescriptor`: `displayName`, `needsApproval` (boolean
-or a predicate typed from `input`), `requiresSandbox` and `sandboxExecute`
-(routes through the configured `SandboxAdapter`).
-
-**Advanced: `ToolRegistry`.** For raw `ToolDescriptor`s (built-in tools, MCP
-tools, an existing `tool()` from the `ai` SDK) register by name:
-`registry.register('weather', { displayName: 'Get weather', tool: aiSdkTool })`.
-
-### Flows
-
-Flows orchestrate multi-step workflows within a single agent:
-
-```typescript
-import { FlowBuilder, FlowExecutor, type EditorStep } from '@loushy/build-ai-agent';
-
-// FlowBuilder is a metadata builder: setCode/setName/setInputs/setFlow(...).build().
-// EditorStep covers every node type FlowExecutor runs ('sequence', 'llmCall',
-// 'oneOf', 'setVariable', ...).
-const steps: EditorStep = {
-  type: 'sequence',
-  steps: [
-    { type: 'llmCall', prompt: 'Classify this message as billing, technical or sales: {{message}}', outputVariable: 'category' },
-    { type: 'llmCall', prompt: 'Write a one-line reply for a {{category}} request: {{message}}' },
-  ],
-};
-
-const flow = new FlowBuilder()
-  .setCode('triage')
-  .setName('Triage')
-  .addInput({ name: 'message', type: 'shortText', required: true })
-  .setFlow(steps)
-  .build();
-
-// FlowExecutor is a static API too: execute(flow, context, onEvent?)
-const result = await FlowExecutor.execute(flow, { agent, provider, variables: { message: input } });
-```
-
-### LLM Providers
-
-```typescript
-import { resolveProvider, LLMProviderRegistry } from '@loushy/build-ai-agent';
-
-// The convenient way — reads the credential from the environment
-const openai = resolveProvider('openai/gpt-4o-mini');       // OPENAI_API_KEY
-const anthropic = resolveProvider('anthropic/claude-sonnet-5'); // ANTHROPIC_API_KEY
-const openrouter = resolveProvider('openrouter/openai/gpt-4o-mini'); // OPENROUTER_API_KEY
-const ollama = resolveProvider('ollama/llama3.1');           // OLLAMA_BASE_URL
-
-// Or construct a provider directly via the registry
-const custom = LLMProviderRegistry.create('openai', {
-  apiKey: process.env.OPENAI_API_KEY,
-  defaultModel: 'gpt-4o-mini',
-});
-```
-
-**Which model runs?** In order: the agent's own `settings.model` (set with
-`AgentBuilder.setSettings({ model })`), then the model the provider was built
-with (`resolveProvider('openai/gpt-4o-mini')`, a spec's `provider.model`, or
-`defaultModel`), then the provider's built-in default. There is no hard-coded
-fallback model.
-
-## Advanced Features
-
-### Human-in-the-loop approval gates
-
-Flag a tool `needsApproval` and the run pauses before calling it. A
-`createAgent()` agent saves the pause in its own `InMemoryApprovalStore`
-(or the `approvalStore` you pass): `send()` resolves with
-`finishReason: 'awaiting-approval'` and an `approvalId`,
-`agent.approvals.list()` shows what is waiting, and
-`agent.approvals.resolve({ id, approved, note? })` runs (or rejects) the call
-and continues the run — in the same session, if it paused inside
-`agent.session()`. Pass `approve` to decide each call in code instead of
-pausing (`stream()` still ends at the pause):
-
-```typescript
 import { createAgent, defineTool } from '@loushy/build-ai-agent';
 import { z } from 'zod';
 
 const sendEmail = defineTool({
   name: 'send_email',
   description: 'Send an email',
-  input: z.object({ to: z.string() }),
-  needsApproval: true,
-  execute: async ({ to }) => `sent to ${to}`,
+  input: z.object({ to: z.string().email(), body: z.string() }),
+  needsApproval: ({ to }) => !to.endsWith('@mycompany.com'), // only external mail pauses
+  execute: async ({ to }) => ({ sent: true, to }),
 });
-const agent = createAgent({ provider, instructions: 'You send emails.', tools: [sendEmail] });
 
-const paused = await agent.send('Email the report to sam@example.com');
-if (paused.finishReason === 'awaiting-approval') {
-  console.log(await agent.approvals.list()); // [{ id, toolName: 'send_email', args: { to: '...' }, ... }]
-  const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true }); // or approved: false, note: 'why'
-  console.log(result.text);
-}
+const agent = createAgent({ model: 'openai/gpt-4o-mini', tools: [sendEmail] });
 
-// Or decide in code, with no pause: true runs the tool, false sends the model a rejection.
-const trusted = createAgent({ provider, tools: [sendEmail], approve: ({ args }) => String(args.to).endsWith('@example.com') });
-```
-
-With `AgentExecutor` directly, pass an `approvalStore`: it persists an
-`ExecutionSnapshot` instead of invoking the tool. Resume later — after a real
-restart if you like — with `resumeAfterApproval()`:
-
-```typescript
-import { AgentExecutor, resumeAfterApproval, StorageServiceApprovalStore } from '@loushy/build-ai-agent';
-
-const approvalStore = new StorageServiceApprovalStore(storage);
-
-const paused = await AgentExecutor.execute({
-  agent, input, provider, toolRegistry, approvalStore,
-});
-// paused.finishReason === 'awaiting-approval', paused.approvalId is set
-
-// ...later, from any process, after a human approves...
-const result = await resumeAfterApproval(
-  { id: paused.approvalId!, approved: true },
-  approvalStore,
-  toolRegistry,
-  provider,
-);
-```
-
-### Durable execution / checkpoints
-
-Pass a `sessionId` and a `checkpointStore`; `AgentExecutor` checkpoints
-after every model response and every tool result, on any host. The next
-call with the same `sessionId` resumes an unfinished run (running only the
-tool calls that have no result yet, without asking the model again),
-continues a finished one as a multi-turn conversation, and refuses to
-bypass a pending approval:
-
-```typescript
-import { AgentExecutor, LocalStorageCheckpointStore } from '@loushy/build-ai-agent';
-
-const checkpointStore = new LocalStorageCheckpointStore(storage);
-
-await AgentExecutor.execute({ agent, input: 'Book a table for 2', provider, sessionId: 'session-123', checkpointStore });
-// ...process restarts, or the user simply replies...
-await AgentExecutor.execute({ agent, input: 'Make it 3 people', provider, sessionId: 'session-123', checkpointStore });
-```
-
-See [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md) for the exact guarantees
-(including the at-least-once caveat for tools that were mid-flight).
-
-### Sub-agents and delegation
-
-Give a lead agent named sub-agents; it delegates with one auto-registered
-`task` tool, and each sub-agent sees only the task prompt:
-
-```typescript
-import { createAgent } from '@loushy/build-ai-agent';
-
-const researcher = createAgent({ provider, instructions: 'You research.', description: 'Finds and summarizes sources' });
-const writer = createAgent({ provider, instructions: 'You write.', description: 'Turns notes into an article' });
-
-const lead = createAgent({ provider, instructions: 'You coordinate.', subagents: { researcher, writer } });
-const { text } = await lead.send('Write a short article about bicycles.');
-```
-
-See [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md) for catalogs, depth limits and how hooks,
-tracing and approvals carry into sub-agents.
-
-To wire one child `AgentConfig` as a tool yourself, use `createDelegateTool()`
-(it runs the child through `AgentExecutor.execute()` and inherits the parent
-run the same way):
-
-```typescript
-import { AgentExecutor, createDelegateTool, ToolRegistry } from '@loushy/build-ai-agent';
-
-const billingAgent = {
-  name: 'Billing Agent',
-  prompt: 'You answer billing questions and look up invoices.',
-};
-
-const registry = new ToolRegistry();
-registry.register(
-  'delegate_billing_agent',
-  createDelegateTool({
-    agent: billingAgent,
-    provider,
-    contextMode: 'none', // 'full-history' shares the parent's context array too
-    maxSteps: 10,
-    maxDepth: 3, // bounds a delegation chain (e.g. A -> B -> A) before it throws
-  })
-);
-
-const supportAgent = {
-  name: 'Support Agent',
-  prompt: 'You help customers. Delegate billing questions to the billing agent.',
-  tools: { delegate_billing_agent: { tool: 'delegate_billing_agent' } },
-};
-
-const result = await AgentExecutor.execute({
-  agent: supportAgent,
-  input: 'Why was I charged twice this month?',
-  provider,
-  toolRegistry: registry,
-});
-```
-
-### Guardrails
-
-Fail-closed, concurrently-run checks over a proposed patch/action — used to
-gate a fixer agent before it's trusted to open a PR:
-
-```typescript
-import { runGuardrails, secretScanGuardrail, createDiffSizeGuardrail, createCommandGuardrail } from '@loushy/build-ai-agent';
-
-const verdict = await runGuardrails(
-  { diff: patch },
-  [
-    secretScanGuardrail,
-    createDiffSizeGuardrail(500),
-    createCommandGuardrail('test-run', repoPath, 'npm', ['test']),
-  ],
-);
-
-if (!verdict.pass) {
-  console.log(verdict.failures); // [{ name, reason }, ...] — never call the write-side tool
+const run = await agent.send('Email the Q3 summary to sam@example.com');
+if (run.finishReason === 'awaiting-approval') {
+  const [call] = await agent.approvals.list(); // { id, toolName: 'send_email', args, ... }
+  console.log('Approve?', call.toolName, call.args);
+  const done = await agent.approvals.resolve({ id: run.approvalId!, approved: true }); // or approved: false, note
+  console.log(done.text);
 }
 ```
 
-### Tracing & observability
+### Durable sessions with SQLite
 
-```typescript
-import { AgentExecutor, withSpan, type TraceExporter } from '@loushy/build-ai-agent';
+```ts
+import { AgentBuilder, AgentExecutor, createAgent, resolveProvider } from '@loushy/build-ai-agent';
+import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
 
-const exporter: TraceExporter = {
-  onSpanStart: (span) => console.log('[start]', span.name, span.attributes),
-  onSpanEnd: (span) => console.log('[end]', span.name, span.endTime! - span.startTime, 'ms'),
-};
+const store = new SqliteStore('./.loushy/agent.db'); // sessions, checkpoints and approvals in one file
+const provider = resolveProvider('openai/gpt-4o-mini');
 
+// A conversation that survives restarts: same id + same file = same conversation.
+const agent = createAgent({ provider, approvalStore: store.approvals });
+await agent.session({ id: 'user-42', store: store.sessions }).send('My name is Ali.');
+const { text } = await agent.session({ id: 'user-42', store: store.sessions }).send('What is my name?'); // "Ali"
+
+// A crash-safe run: checkpointed after every model response and tool result.
+// Calling execute() again with the same sessionId resumes it instead of starting over.
+const booker = AgentBuilder.create().setName('booker').setPrompt('You book restaurant tables.').build();
 await AgentExecutor.execute({
-  agent, input, provider, exporter,
-  redactContent: true, // omit prompt/tool-arg/result bodies from span attributes
+  agent: booker, input: 'Book a table for 2 tonight', provider,
+  sessionId: 'booking-7', checkpointStore: store.checkpoints,
 });
 ```
 
-Spans follow the OpenTelemetry GenAI semantic conventions (`invoke_agent`,
-`chat {model}`, `execute_tool {tool}`; flows are traced too). Message and
-tool-argument content is only recorded with `captureContent: true`. See
-[Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md) for the attribute table,
-the opt-in and the deprecated pre-GenAI names.
+## Documentation
 
-Ready-made exporters live in [examples/tracing](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/tracing) (console
-and real OpenTelemetry bridges).
+| Page | What it covers |
+| ---- | -------------- |
+| [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md) | Requirements, peer and provider packages, installing from a local build, `loushy init`, `loushy doctor` |
+| [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md) | Runnable, verified snippets: `createAgent()`, tools, `AgentBuilder` + `AgentExecutor`, spec files |
+| [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md) | Spec fields, `mcpServers`, MCP client and server, provider env vars, retries and fallback, `createAgent()` and `execute()` options |
+| [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md) | Model strings, `resolveProvider()`, which model runs, custom providers |
+| [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md) | Every `loushy` command and its flags |
+| [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md) | `defineTool()`, validation and errors, built-in tools, `ToolRegistry` |
+| [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md) | `needsApproval`, `agent.approvals`, the `approve` callback, `resumeAfterApproval()`, stores |
+| [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md) | Multi-turn conversations, `session.stream()`, session stores, `SqliteStore` |
+| [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md) | `agent.stream()`: the typed event schema, terminal and SSE examples |
+| [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md) | Checkpoints, crash resume, approvals mid-batch, at-least-once tools |
+| [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md) | The `subagents` option and its `task` tool, inheritance, approvals in sub-agents |
+| [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md) | On-demand instructions: `defineSkill()`, `loadSkills()` |
+| [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md) | An agent as a folder: layout, mapping to `createAgent()`, security |
+| [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md) | Prune old tool results with `createCompactionHook()` |
+| [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md) | Fixed multi-step workflows with `FlowBuilder` and `FlowExecutor` |
+| [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md) | File system and shell tools for coding agents, and their security model |
+| [Guardrails and sandboxing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md) | `runGuardrails()`, built-in guardrails, `requiresSandbox`, `SubprocessSandbox` |
+| [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md) | Deterministic tests with `mockModel`; record and replay with `recordReplay` |
+| [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md) | Trajectory evals with `defineEval()`, datasets, judges, `loushy eval` reports |
+| [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md) | OpenTelemetry GenAI spans, attribute table, content opt-in |
+| [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md) | `loushy build` targets: Node server, Docker, Cloudflare Workers (with KV checkpoints) |
+| [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md) | The visual dashboard: quickstart, first-agent walkthrough, hooks |
+| [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md) | The main exports, triggers, tokens and cost; `npm run docs:build` generates the full TypeDoc reference |
+| [Utilities](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/utilities.md) | Encryption, file storage and templates |
 
-### Evals
+The full guides site is at [linuxdevil.github.io/agent-sdk-docs](https://linuxdevil.github.io/agent-sdk-docs/).
 
-Agent-behavior regression tests: assert on the tools an agent called, their
-order and arguments, its steps and its reply. Deterministic with `mockModel`,
-datasets via `cases`, soft vs gate assertions, and `loushy eval` for a summary
-table plus JUnit/JSON reports in CI:
-
-```typescript
-// support-agent.eval.ts
-import { z } from 'zod';
-import { createAgent, defineEval, defineTool, includes } from '@loushy/build-ai-agent';
-import { mockModel } from '@loushy/build-ai-agent/testing';
-
-const lookupOrder = defineTool({
-  name: 'lookup_order',
-  description: 'Look up an order',
-  input: z.object({ orderId: z.string() }),
-  execute: ({ orderId }) => ({ orderId, status: 'shipped' }),
-});
-
-defineEval({
-  name: 'looks up the order before replying',
-  agent: () =>
-    createAgent({
-      tools: [lookupOrder],
-      provider: mockModel([
-        { toolCalls: [{ name: 'lookup_order', args: { orderId: '123' } }] },
-        { text: 'Order 123 has shipped.' },
-      ]),
-    }),
-  async test(t) {
-    await t.send('Where is order #123?');
-    t.completed();
-    t.calledTool('lookup_order', { args: { orderId: '123' } });
-    t.check('says shipped', t.reply, includes('shipped'));
-  },
-});
-```
-
-```bash
-npx loushy eval --junit reports/evals.xml
-```
-
-See [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md) for the assertions table, datasets, judge evals and
-a CI example. The original `{ agent, input, provider, score, threshold }` form
-of `defineEval()` keeps working.
-
-### MCP tools & sandboxing
-
-```typescript
-import { loadMcpTools } from '@loushy/build-ai-agent/mcp';
-import { AgentExecutor, SubprocessSandbox } from '@loushy/build-ai-agent';
-
-// Turn any MCP server's tools into ToolDescriptors, namespaced <connection>__<tool>
-const linearTools = await loadMcpTools(mcpClient, 'linear');
-registry.registerMany(linearTools);
-
-// Route a flagged tool (requiresSandbox + sandboxExecute) through a real,
-// Docker-backed sandbox instead of the in-process NoopSandbox default
-await AgentExecutor.execute({ agent, input, provider, toolRegistry, sandbox: new SubprocessSandbox() });
-```
-
-### Security & encryption
-
-```typescript
-import { EncryptionUtils, sha256 } from '@loushy/build-ai-agent';
-
-const encryption = new EncryptionUtils('your-secret-key');
-const encrypted = await encryption.encrypt('sensitive data'); // fresh random salt every call
-const decrypted = await encryption.decrypt(encrypted);        // throws DecryptionError on tampering
-
-const hash = await sha256('password', 'salt');
-```
-
-### Storage
-
-```typescript
-import { StorageService } from '@loushy/build-ai-agent';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-
-// fs/path are injected as adapters (LOU-A7); the Node modules satisfy them as-is.
-const storage = new StorageService('user-123', 'attachments', fs, path);
-
-await storage.saveAttachment(file, 'document.pdf');
-const buffer = storage.readAttachment('document.pdf');
-storage.deleteAttachment('document.pdf');
-```
-
-### Templates
-
-```typescript
-import { renderTemplate } from '@loushy/build-ai-agent';
-
-const template = 'Hello {{ name }}! You have {{ count }} messages.';
-const result = renderTemplate(template, { name: 'Alice', count: 5 });
-// "Hello Alice! You have 5 messages."
-```
-
-## CLI
-
-```bash
-npx loushy init my-agent                                  # scaffold a project (or: npm create loushy-agent my-agent)
-npx loushy dev agent.yaml                                 # local chat UI + hot reload
-npx loushy build --target=node-server --agent=agent.yaml  # or docker / cloudflare-worker
-```
-
-See [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md) and [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)
-for the full flag reference.
-
-## Agent Forge
-
-Agent Forge is this SDK's companion visual dashboard: a ReactFlow canvas for
-building an agent's graph (trigger → LLM → tool → output), a run/debug
-console (live logs, a span trace waterfall, a step-through debugger), real
-chat with inline approval-gate cards, and a sandboxed pre/post hook editor -
-all reading and writing the same `AgentSpec` YAML `loushy dev`/`loushy build`
-use.
-
-```bash
-npx loushy studio                 # build an agent, run it (mock provider by
-                                   # default), watch it in the debug console
-```
-
-`loushy studio` serves the whole app - API and UI - from one local server and
-port; no separate dev server or extra setup needed. See
-[docs/agent-forge.md](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md) for the full quickstart, a
-first-agent walkthrough, and how to write and attach a hook.
+**For AI coding agents.** The package ships its docs in machine-readable form:
+`llms-full.txt` (this README and every docs page in one file, with absolute
+links) and `llms.txt` (an [llmstxt.org](https://llmstxt.org) index), both in
+the repo root and in `node_modules/@loushy/build-ai-agent/`. They are generated
+with `npm run docs:llms` and checked in CI.
 
 ## Examples
 
-Runnable example agents (support bot, research assistant, workflow router,
-doc Q&A, Slack notifier, tracing) live in [examples/](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/README.md).
-The flagship one is [examples/ops-pipeline](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/ops-pipeline) — an
-end-to-end Grafana/Datadog → Slack "Fix it" button → human approval → fixer
-agent → guardrail-gated GitHub PR pipeline, runnable against mocks with zero
-external network access:
+Most examples run offline with a mock provider; see the
+[examples index](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/README.md) for how to run each one.
 
-```bash
-npm run pipeline:demo
-npm run pipeline:demo:trigger   # POSTs a synthetic error to kick it off
-```
+| Example | What it shows |
+| ------- | ------------- |
+| [ops-pipeline](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/ops-pipeline) | Flagship: monitor alert, Slack "Fix it" button, human approval, fixer agent, guardrail-gated GitHub PR (`npm run pipeline:demo`) |
+| [agent-dir](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/agent-dir) | An agent defined as a directory and loaded with `loadAgentDir()` |
+| [support-bot](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/support-bot) | A minimal customer-support agent |
+| [research-assistant](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/research-assistant) | A research agent with the built-in `http` tool |
+| [doc-qa](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/doc-qa) | Question answering scoped to one document |
+| [workflow-router](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/workflow-router) | Classifying requests into fixed categories |
+| [slack-notifier](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/slack-notifier) | Turning an event into a Slack-ready message |
+| [tracing](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/tracing/run-otel.ts) | OpenTelemetry and console (`run-console.ts`) trace exporters |
+| [openrouter](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/openrouter) | `OpenRouterProvider` features (needs `OPENROUTER_API_KEY`) |
 
-## API Reference
+## CLI
 
-### Core
+| Command | What it does |
+| ------- | ------------ |
+| `loushy init [dir]` | Scaffold a project with an agent, a tool and an offline test |
+| `loushy doctor [spec]` | Check Node, peers, API keys and a spec file; print fixes |
+| `loushy dev <spec>` | Local chat UI and `POST /chat` with hot reload |
+| `loushy mcp <spec>` | Serve the agent as an MCP server (stdio or HTTP) |
+| `loushy eval [globs]` | Run `*.eval.ts` files; JUnit and JSON reports |
+| `loushy build --target=<t> --agent=<spec>` | Build a Node server, Docker image or Cloudflare Worker |
+| `loushy studio` | Launch Agent Forge |
 
-- **`createAgent()`** - zero-config `{ send, stream, session, approvals }` agent
-- **`AgentBuilder`** - fluent `AgentConfig` builder
-- **`AgentExecutor`** - static executor (`execute()`, approvals, checkpoints, tracing)
-- **`ToolRegistry`** - manage available tools
-- **`FlowBuilder`** / **`FlowExecutor`** - multi-step workflow graphs
-- **`MemoryManager`** - conversation context
+Flags for each command are in [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md).
 
-### Safety & ops
+**Deployment:** `npx loushy build --target=node-server|docker|cloudflare-worker --agent=agent.yaml`
+writes a self-contained artifact and prints the command to run or deploy it
+([Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)).
 
-- **`resumeAfterApproval()`**, **`StorageServiceApprovalStore`**, **`InMemoryApprovalStore`** - human-in-the-loop
-- **`LocalStorageCheckpointStore`** - durable execution
-- **`createDelegateTool()`** - delegate to one child agent through a tool (see `subagents` for named sub-agents)
-- **`runGuardrails()`**, **`secretScanGuardrail`**, **`createDiffSizeGuardrail()`**, **`createCommandGuardrail()`** - guardrails
-- **`withSpan()`**, **`TraceExporter`** - tracing
-- **`defineEval()`**, **`exactMatch`**, **`toolCallOrder`**, **`budget`**, **`llmJudge()`** - evals
-- **`NoopSandbox`**, **`SubprocessSandbox`** - sandboxing
+## Status
 
-### Providers
-
-- **`resolveProvider()`** - `"provider/model"` string → configured provider
-- **`OpenAIProvider`**, **`AnthropicProvider`**, **`OllamaProvider`**, **`OpenRouterProvider`**
-- **`createMockProvider()`** - deterministic provider for tests and demos
-
-### Deploy & specs
-
-- **`loadSpec()`**, **`agentSpecSchema`**, **`specToAgent()`** - declarative agent files
-- **`registerAdapter()`**, **`getAdapter()`**, **`listAdapters()`** - `loushy build` targets
-
-### Utilities
-
-- **`EncryptionUtils`**, **`sha256`** - encryption/hashing
-- **`StorageService`** - file storage
-- **`renderTemplate`** - template rendering
-
-For the complete, generated reference (every export, signature, and doc
-comment), see [docs/api-overview.md](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md) or run
-`npm run docs:build`.
-
-## Architecture
-
-```
-┌─────────────────────────────────────┐
-│         Your Application            │
-│    (React, Vue, Express, etc.)      │
-└──────────────┬──────────────────────┘
-               │
-┌──────────────▼──────────────────────┐
-│     @loushy/build-ai-agent          │
-│  ┌────────────────────────────┐    │
-│  │ createAgent / Builder /     │    │
-│  │ Executor (approvals,        │    │
-│  │ checkpoints, tracing)       │    │
-│  ├────────────────────────────┤    │
-│  │ Tools │ Delegation │ MCP    │    │
-│  │ Flows │ Guardrails │ Evals  │    │
-│  ├────────────────────────────┤    │
-│  │       Core Engine          │    │
-│  └────────────────────────────┘    │
-└──────────────┬──────────────────────┘
-               │
-┌──────────────▼──────────────────────┐
-│  Your LLM Provider & Deploy Target  │
-│ (OpenAI/Anthropic/Ollama/OpenRouter,│
-│  Node server / Docker / Workers)    │
-└─────────────────────────────────────┘
-```
-
-## Testing
-
-```bash
-npm test                # run tests
-npm run test:coverage   # with coverage thresholds enforced
-npm run typecheck       # tsc --noEmit
-npm run lint             # eslint
-```
+Alpha (`1.0.0-alpha`, pre-1.0): APIs can still change between releases, and
+breaking changes are listed in the [CHANGELOG](https://github.com/LinuxDevil/agent-sdk/blob/main/CHANGELOG.md) with migration
+notes. The package is not published to npm yet. Known gaps include killing
+the whole process group of a timed-out guardrail command on POSIX (only the
+direct child is signalled today) and interactive, in-browser Quick Start
+snippets; planned work is in the [ticket catalogue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/plan/tickets.md).
 
 ## Contributing
 
-Contributions are welcome! Please see [CONTRIBUTING.md](https://github.com/LinuxDevil/agent-sdk/blob/main/CONTRIBUTING.md) for guidelines.
-
-## Roadmap
-
-Known, intentionally-deferred follow-ups (see the audit's
-[implementation status](https://claude.ai/artifact/HK4vf7D7EifeHowNB3f6Ub#status)
-for full context on each):
-
-- [ ] Make the root entry point's provider imports genuinely optional (currently all three peer SDKs must be installed even if only one provider is used)
-- [ ] Real provider support (OpenAI/Anthropic/Ollama/OpenRouter) for the Cloudflare Workers deploy target (currently mock-provider only)
-- [ ] Process-group kill for timed-out guardrail commands on POSIX (verified working on Windows; POSIX path untested against multi-process command trees)
-- [ ] Interactive, in-browser runnable Quick Start snippets (current verification is real but non-interactive - see `scripts/verify-docs-snippets.ts`)
-- [ ] Additional database adapters (Prisma, MongoDB) alongside the existing Drizzle support
-
-## Support
-
-- 📖 [Documentation site](https://linuxdevil.github.io/agent-sdk-docs/)
-- 📘 [In-repo docs](https://github.com/LinuxDevil/agent-sdk/tree/main/docs) and [examples](https://github.com/LinuxDevil/agent-sdk/tree/main/examples)
+Contributions are welcome: see [CONTRIBUTING.md](https://github.com/LinuxDevil/agent-sdk/blob/main/CONTRIBUTING.md) for setup and
+the checks a pull request must pass (`npm run typecheck`, `npm run lint`,
+`npm test`, `npm run test:coverage && npm run fallow`). Maintainer notes:
+[ESLint baseline follow-up](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/eslint-baseline-followup.md).
 
 ## License
 
@@ -813,6 +266,9 @@ Source: docs/installation.md
   definitions.
 
 ## Install the package
+
+> **Not on npm yet.** The package is not published to the npm registry yet;
+> until it is, use [Installing from a local build](#installing-from-a-local-build).
 
 ```bash
 npm install @loushy/build-ai-agent ai zod
@@ -908,16 +364,10 @@ runs `loushy init` with the same arguments.
 
 ## The `loushy` CLI
 
-Installing the package also installs the `loushy` command:
-
-- `loushy init [dir]` - scaffold a new project (see above).
-- `loushy dev <spec.yaml|spec.json>` - local dev server with a chat UI and hot
-  reload (see [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md)).
-- `loushy build --target=<target> --agent=<spec>` - build a deployable
-  artifact (see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)). Building requires `tsup`
-  (`npm install --save-dev tsup`).
-
-- `loushy doctor [agent.yaml|json] [--json]` - diagnose your setup (see below).
+Installing the package also installs the `loushy` command: `init`, `doctor`,
+`dev`, `mcp`, `eval`, `build` and `studio`. See [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md) for what each
+one does and its flags. Building requires `tsup`
+(`npm install --save-dev tsup`).
 
 ## Troubleshooting: loushy doctor
 
@@ -979,6 +429,13 @@ provider - no API key needed - except the first, which talks to a real model
 and is therefore only type-checked.
 
 ## Start a new project
+
+> **Not on npm yet.** `@loushy/build-ai-agent` is not published to the npm
+> registry, so the `npx`/`npm install` commands on this page do not work until
+> it is. Meanwhile, in a checkout of this repository run `npm install && npm run build`,
+> then `node bin/loushy.js init my-agent --sdk-path .`, or install the packed
+> tarball as described in
+> [Installing from a local build](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#installing-from-a-local-build).
 
 The fastest way in is one command, which creates a runnable project (an
 agent, an example tool, an offline test, a `.env.example` for your provider),
@@ -1208,6 +665,35 @@ comment), build the TypeDoc site:
 npm run docs:build   # writes docs/api/index.html
 ```
 
+How the pieces fit:
+
+```text
+┌─────────────────────────────────────┐
+│         Your Application            │
+│    (React, Vue, Express, etc.)      │
+└──────────────┬──────────────────────┘
+               │
+┌──────────────▼──────────────────────┐
+│     @loushy/build-ai-agent          │
+│  ┌────────────────────────────┐    │
+│  │ createAgent / Builder /     │    │
+│  │ Executor (approvals,        │    │
+│  │ checkpoints, tracing)       │    │
+│  ├────────────────────────────┤    │
+│  │ Tools │ Delegation │ MCP    │    │
+│  │ Flows │ Guardrails │ Evals  │    │
+│  ├────────────────────────────┤    │
+│  │       Core Engine          │    │
+│  └────────────────────────────┘    │
+└──────────────┬──────────────────────┘
+               │
+┌──────────────▼──────────────────────┐
+│  Your LLM Provider & Deploy Target  │
+│ (OpenAI/Anthropic/Ollama/OpenRouter,│
+│  Node server / Docker / Workers)    │
+└─────────────────────────────────────┘
+```
+
 ## Building and running agents
 
 | Export                        | Description                                                                 |
@@ -1218,6 +704,8 @@ npm run docs:build   # writes docs/api/index.html
 | `AgentType`                   | Deprecated, no runtime effect: agents need no type (removed next minor).    |
 | `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
+| `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md), [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). |
+| `SqliteStore` (from `/sqlite`) | Sessions, checkpoints and approvals in one SQLite file (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
 | `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
 
@@ -1241,7 +729,7 @@ resolves with the continued run's result (continuing the session it paused
 in). Pauses are kept in a per-agent `InMemoryApprovalStore` unless you pass
 `approvalStore` (e.g. `SqliteStore.approvals`); `approve: (call) => boolean`
 decides each call in code without pausing (`stream()` still ends at the
-pause). See [Human-in-the-loop approval gates](https://github.com/LinuxDevil/agent-sdk/blob/main/README.md#human-in-the-loop-approval-gates).
+pause). See [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md).
 
 ### Skills
 
@@ -1385,6 +873,8 @@ Guarantees, whatever the limit:
 | `createMockProvider()`, `MockLLMProvider` | Deterministic mock provider for tests and demos.   |
 | `withRetry(provider, opts?)`, `withFallback(providers, opts?)` | Retry transient provider failures with backoff; fall back to the next provider. See [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#provider-retries-and-fallback). |
 
+See [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md) for how a model string is resolved and which model runs.
+
 ## Testing
 
 Exported from `@loushy/build-ai-agent/testing` (see [Testing agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md)).
@@ -1406,6 +896,8 @@ Exported from `@loushy/build-ai-agent/testing` (see [Testing agents](https://git
 | `NodeWorkspace`, `MemoryWorkspace`, `SandboxShell` | Workspace providers: a real directory (paths confined to `root`, minimal shell env), an in-memory tree with a scripted `exec` for tests, and a `ShellProvider` over a `SandboxAdapter` (Docker). |
 | `createTodoTools({ store?, onChange? })`     | `todo_write` / `todo_read` tools (plus `getTodos()`) so agents can plan and track multi-step work; see [Todo tools](#todo-tools). |
 | `loadMcpTools(client, connectionName)`       | Load a connected MCP server's tools as `ToolDescriptor`s. Available from the package root, `@loushy/build-ai-agent/tools`, and `@loushy/build-ai-agent/mcp`. |
+
+See [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md) for a guide to defining and registering tools.
 
 ```ts
 import { defineTool } from '@loushy/build-ai-agent';
@@ -1632,8 +1124,8 @@ built-in and pluggable strategies. See [Context compaction](https://github.com/L
 
 ## Flows, evals, observability and security
 
-- `FlowBuilder` / `FlowExecutor` - multi-step workflow graphs.
-- `defineEval()`, scorers such as `exactMatch` and `toolCallOrder`, checks such
+- `FlowBuilder` / `FlowExecutor` - multi-step workflow graphs; see [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md).
+- `defineEval()`, scorers such as `exactMatch`, `toolCallOrder` and `budget`, checks such
   as `includes` and `atLeast`, and `llmJudge()` - agent evals run under vitest
   or `loushy eval`; see [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md).
 - `withSpan()` and `TraceExporter` - tracing for `AgentExecutor.execute()`.
@@ -1646,8 +1138,9 @@ built-in and pluggable strategies. See [Context compaction](https://github.com/L
   semantic conventions (flows are traced too); see
   [observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md).
 - `NoopSandbox` / `SubprocessSandbox` - sandboxing for tools that opt in via
-  `requiresSandbox`; guardrails such as `createCommandGuardrail()` and
-  `secretScanGuardrail`.
+  `requiresSandbox`; `runGuardrails()` and guardrails such as
+  `createCommandGuardrail()`, `createDiffSizeGuardrail()` and
+  `secretScanGuardrail`. See [Guardrails and sandboxing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md).
 - `HookRegistry`, `AgentHook`, `HookContext`, `ToolCallHookContext`,
   `GenerateHookContext` - pre/post agent hooks (run before/after a tool call
   or an LLM `generate`, can mutate args/messages/results or throw to abort
@@ -1670,7 +1163,7 @@ built-in and pluggable strategies. See [Context compaction](https://github.com/L
   hooks.register(redactPii);
   ```
 - `EncryptionUtils`, `sha256`, `StorageService`, `renderTemplate`,
-  `MemoryManager` - supporting utilities.
+  `MemoryManager` - supporting utilities; see [Utilities](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/utilities.md).
 
 ### Flow expressions
 
@@ -2235,6 +1728,238 @@ npm run test:e2e:studio   # from the repo root, or apps/agent-forge/
 This builds Agent Forge first (`build:studio`), then runs Playwright
 against it.
 
+# Approvals
+
+Source: docs/approvals.md
+
+Flag a tool `needsApproval` and the run pauses before calling it, until a human
+(or your code) approves or rejects the call. The pause is saved in an
+`ApprovalStore`, so the decision can come minutes or days later, from another
+request or another process, and the run then continues where it stopped.
+
+```ts
+import { createAgent, defineTool } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+
+const sendEmail = defineTool({
+  name: 'send_email',
+  description: 'Send an email',
+  input: z.object({ to: z.string() }),
+  needsApproval: true,
+  execute: async ({ to }) => `sent to ${to}`,
+});
+const agent = createAgent({ provider, instructions: 'You send emails.', tools: [sendEmail] });
+
+const paused = await agent.send('Email the report to sam@example.com');
+if (paused.finishReason === 'awaiting-approval') {
+  console.log(await agent.approvals.list()); // [{ id, toolName: 'send_email', args: { to: '...' }, ... }]
+  const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true }); // or approved: false, note: 'why'
+  console.log(result.text);
+}
+```
+
+## Which calls pause
+
+`needsApproval` is `true`, or a predicate that receives the validated
+arguments, typed from the tool's zod `input`:
+
+```ts
+import { defineTool } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+
+const sendEmail = defineTool({
+  name: 'send_email',
+  description: 'Send an email',
+  input: z.object({ to: z.string().email(), subject: z.string(), body: z.string() }),
+  needsApproval: ({ to }) => !to.endsWith('@mycompany.com'), // only external recipients pause
+  async execute({ to, subject, body }) {
+    return { messageId: '...' };
+  },
+});
+```
+
+When the model asks for several tools in one turn, the first call that needs
+approval stops the batch: the calls before it run, the run pauses on it, and
+the calls after it run once it is decided (see
+[Approvals in the middle of a tool batch](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#approvals-in-the-middle-of-a-tool-batch)).
+
+## `createAgent()` agents
+
+- A paused `send()` resolves (it does not throw) with
+  `finishReason: 'awaiting-approval'` and an `approvalId`.
+- `agent.approvals.list()` returns the pending calls this agent paused on in
+  this process, oldest first: `{ id, toolCallId, toolName, args, createdAt }`,
+  plus `subagentPath` when the call belongs to a sub-agent.
+- `agent.approvals.resolve({ id, approved, note? })` runs the call (approved)
+  or gives the model a rejection with your `note` (rejected), continues the
+  run, and resolves with the continued run's result, which may pause again.
+  It throws when `id` is unknown or already resolved.
+- A run that paused inside `agent.session()` continues in that session: the
+  tool call, its result and the final answer join the session's transcript.
+- `agent.stream()` and `session.stream()` end at the pause with an
+  `approval.requested` event and `run.done` (`'awaiting-approval'`); resolve it
+  the same way.
+
+Pauses are kept in a per-agent `InMemoryApprovalStore` unless you pass
+`approvalStore`. To decide a pause after a restart, give the agent a durable
+store, such as the SQLite one (see [Choosing a store](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)):
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
+
+const store = new SqliteStore('./.loushy/agent.db');
+const agent = createAgent({ provider, tools: [emailTool], approvalStore: store.approvals });
+```
+
+`list()` only knows the pauses made by this agent object; keep the
+`approvalId` (or read the store) to resolve a pause from somewhere else. A
+continued run joins a session only when it is resolved through the agent that
+owns that session object.
+
+### Deciding in code
+
+Pass `approve` to decide each call as it comes up instead of pausing: `true`
+runs the tool, `false` sends the model a rejection. It applies to `send()`,
+sessions and `agent.approvals.resolve()`; `stream()` still ends at the pause.
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const trusted = createAgent({
+  provider,
+  tools: [emailTool],
+  approve: ({ toolName, args }) => toolName !== 'send_email' || String(args.to).endsWith('@example.com'),
+});
+```
+
+## `AgentExecutor` and `resumeAfterApproval()`
+
+With `AgentExecutor.execute()` directly, pass an `approvalStore`. On a gated
+call the executor persists an `ExecutionSnapshot` instead of invoking the
+tool. Resume later, after a real restart if you like, with
+`resumeAfterApproval()`:
+
+```ts
+import { AgentExecutor, resumeAfterApproval, StorageServiceApprovalStore } from '@loushy/build-ai-agent';
+
+const approvalStore = new StorageServiceApprovalStore(storage);
+
+const paused = await AgentExecutor.execute({
+  agent, input, provider, toolRegistry, approvalStore,
+});
+// paused.finishReason === 'awaiting-approval', paused.approvalId is set
+
+// ...later, from any process, after a human approves...
+const result = await resumeAfterApproval(
+  { id: paused.approvalId!, approved: true },
+  approvalStore,
+  toolRegistry,
+  provider,
+);
+```
+
+`resumeAfterApproval(decision, store, registry, provider, options?, checkpointStore?)`
+takes most of the execution options of `execute()` (for example `signal`,
+`onEvent`, `exporter`). With `sessionId` + `checkpointStore`, the pause is also
+checkpointed, and `execute()` with that `sessionId` throws
+`SessionAwaitingApprovalError` until the approval is decided, so a pending
+approval cannot be bypassed (see [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)).
+
+| Store | Where the pause lives |
+| ----- | --------------------- |
+| `InMemoryApprovalStore` | This process only; the default for `createAgent()`. |
+| `StorageServiceApprovalStore(storage)` | JSON files through a `StorageService`. |
+| `SqliteStore.approvals` | One SQLite file, shared safely by several processes; an approval can be resolved by only one of them. |
+
+## Elsewhere
+
+- **Sub-agents.** A gated tool inside a sub-agent pauses the lead run; the
+  lead's `agent.approvals` resolves it. See
+  [Approvals inside a sub-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md#approvals-inside-a-sub-agent).
+- **Workspace tools.** The shell tool is approval-gated by default. See
+  [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md).
+- **MCP.** Approval-gated tools cannot be approved over MCP; see
+  [Serve an agent over MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#serve-an-agent-over-mcp).
+- **Agent Forge** shows pending approvals as inline cards in its chat; see
+  [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md).
+
+# CLI
+
+Source: docs/cli.md
+
+Installing the package also installs the `loushy` command. It scaffolds
+projects, checks your setup, runs an agent locally, serves it over MCP, runs
+evals, builds a deployable artifact and launches the Agent Forge dashboard.
+Run it with `npx loushy <command>` inside a project that has the SDK installed.
+
+| Command | What it does | Details |
+| ------- | ------------ | ------- |
+| `loushy init [dir]` | Scaffold a project: an agent with an example tool, an offline test, `.env.example`; installs dependencies and runs `git init`. | [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#scaffolding-a-new-project) |
+| `loushy doctor [spec] [--json]` | Check Node, peer packages, provider keys, and optionally a spec file; prints a fix for every problem. | [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#troubleshooting-loushy-doctor) |
+| `loushy dev <spec>` | Local dev server for a spec file: chat UI, `POST /chat`, hot reload on save. | [Below](#loushy-dev) |
+| `loushy mcp <spec>` | Serve the agent as an MCP server (stdio, or HTTP with `--http`). | [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#serve-an-agent-over-mcp) |
+| `loushy eval [globs...]` | Run `*.eval.ts` files under vitest; print a summary and write JUnit/JSON reports. | [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md#loushy-eval) |
+| `loushy build --target=<t> --agent=<spec>` | Build a deployable Node server, Docker image or Cloudflare Worker. | [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md) |
+| `loushy studio` | Launch Agent Forge, the visual dashboard, on one local port. | [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md) |
+
+Every command that takes a `<spec>` reads an agent spec file (`.yaml`,
+`.yml` or `.json`, see [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#agent-spec-files-agentspec)).
+
+## Usage
+
+```text
+loushy init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force]
+loushy dev <config.yaml|config.json> [--port N] [--host H]
+loushy build --target=<name> --agent=<path> [--out=<dir>]
+loushy studio [--port N] [--host H] [--prod|--dev]
+loushy mcp <agent.yaml|json> [--http --port N --host H]
+loushy doctor [agent.yaml|json] [--json]
+loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge]
+```
+
+`npm create loushy-agent my-agent` runs `loushy init` with the same arguments.
+While the package is not on npm, scaffold from a checkout of this repository
+with `node bin/loushy.js init my-agent --sdk-path .` (see
+[Installing from a local build](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#installing-from-a-local-build)).
+
+## `loushy dev`
+
+```bash
+npx loushy dev agent.yaml
+npx loushy dev agent.yaml --port 4000 --host 0.0.0.0
+```
+
+Serves `GET /` (a chat UI), `GET /health` and `POST /chat`
+(`{ "message": "..." }`, 1MB body limit). The agent is reloaded whenever the
+spec file changes, and the last good config is kept if an edit is invalid.
+
+- `--port` - default `3737`.
+- `--host` - default `127.0.0.1` (localhost only). Pass e.g. `--host=0.0.0.0`
+  to opt in to LAN access.
+
+## `loushy build`
+
+```bash
+npx loushy build --target=node-server --agent=agent.yaml        # or docker / cloudflare-worker
+```
+
+Writes the artifact to `--out` (default `.loushy/build/<target>`) and prints
+the command to run or deploy it. Building needs `tsup`
+(`npm install --save-dev tsup`). Targets, the HTTP API they serve and the
+Workers limits are in [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md).
+
+## `loushy studio`
+
+```bash
+npx loushy studio            # http://127.0.0.1:4750
+npx loushy studio --port 5000
+```
+
+Starts one local server for the Agent Forge API and UI. Agents and run state
+are stored under `.loushy/` in the current directory. See
+[Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md) for the walkthrough.
+
 # Context compaction
 
 Source: docs/compaction.md
@@ -2580,9 +2305,15 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `provider`     | An `LLMProvider` instance (real or mock). Alternative to `model`. If you pass both, `provider` is used and `model` becomes the agent's per-run model setting (a bare model id such as `'gpt-4o'`). |
 | `instructions` | System prompt. Optional (defaults to `'You are a helpful assistant.'`). |
 | `prompt`       | Working alias of `instructions`; passing both is an error.      |
-| `tools`    | `Record<string, ToolDescriptor>`, keyed by the name the agent uses. |
+| `tools`    | An array of `defineTool()` results, or a `Record<string, ToolDescriptor>` keyed by the name the agent uses (see [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md)). |
 | `name`     | Agent name (default `'agent'`).                                    |
+| `description` | What the agent does, in a sentence. Required when it is used as a sub-agent. |
 | `maxSteps` | Passed through to `AgentExecutor.execute()`.                        |
+| `toolConcurrency` | How many tool calls of one model turn run at once: a positive integer or `'unbounded'` (default). See [Parallel tool calls](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#parallel-tool-calls). |
+| `skills`   | Skills from `defineSkill()` / `loadSkills()`; see [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md). |
+| `subagents`, `maxSubagentDepth` | Named sub-agents behind one `task` tool, and how deep they may nest (default 1); see [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md). |
+| `approvalStore` | Where a `needsApproval` pause is saved (default: a per-agent `InMemoryApprovalStore`); see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md). |
+| `approve`  | `(call) => boolean`: decide approvals in code instead of pausing. |
 | `projectInstructions` | `true` or `{ cwd?, files? }`: append the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (off by default; see [Project instructions](#project-instructions)). |
 
 With neither `model` nor `provider`, `createAgent()` resolves from the
@@ -2652,21 +2383,8 @@ finishReason, steps, approvalId? }`.
 
 ## CLI
 
-### `loushy dev <spec> [--port N] [--host H]`
-
-Local dev server for a spec file: `GET /` chat UI, `GET /health`,
-`POST /chat` (`{ "message": "..." }`, 1MB body limit). Reloads the agent
-whenever the spec file changes and keeps the last good config if an edit is
-invalid.
-
-- `--port` - default `3737`.
-- `--host` - default `127.0.0.1` (localhost only). Pass e.g. `--host=0.0.0.0`
-  to opt in to LAN access.
-
-### `loushy build --target=<target> --agent=<spec> [--out=<dir>]`
-
-Builds a deployable artifact; see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md).
-`--out` defaults to `.loushy/build/<target>`.
+`loushy dev`, `loushy build`, `loushy mcp` and the other commands, with their
+flags, are described in [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md).
 
 # Deployment
 
@@ -3264,6 +2982,146 @@ jobs:
 Run `--tag smoke` on every pull request and the full set nightly; run
 `--judge` only where you accept real LLM calls and their cost.
 
+# Flows
+
+Source: docs/flows.md
+
+A flow is a fixed, multi-step workflow run by one agent: the steps and their
+order are written down up front instead of being left to the model's judgment.
+Describe the graph with `FlowBuilder` and run it with the static
+`FlowExecutor.execute(flow, context, onEvent?)`.
+
+```ts
+import { FlowBuilder, FlowExecutor, type EditorStep } from '@loushy/build-ai-agent';
+
+// FlowBuilder is a metadata builder: setCode/setName/setInputs/setFlow(...).build().
+// EditorStep covers every node type FlowExecutor runs ('sequence', 'llmCall',
+// 'oneOf', 'setVariable', ...).
+const steps: EditorStep = {
+  type: 'sequence',
+  steps: [
+    { type: 'llmCall', prompt: 'Classify this message as billing, technical or sales: {{message}}', outputVariable: 'category' },
+    { type: 'llmCall', prompt: 'Write a one-line reply for a {{category}} request: {{message}}' },
+  ],
+};
+
+const flow = new FlowBuilder()
+  .setCode('triage')
+  .setName('Triage')
+  .addInput({ name: 'message', type: 'shortText', required: true })
+  .setFlow(steps)
+  .build();
+
+// FlowExecutor is a static API too: execute(flow, context, onEvent?)
+const result = await FlowExecutor.execute(flow, { agent, provider, variables: { message: input } });
+```
+
+## Node types
+
+`FlowExecutor` runs these node types:
+
+| `type` | What it does |
+| ------ | ------------ |
+| `sequence` | Runs its `steps` one after another. |
+| `parallel` | Runs its steps at the same time. |
+| `llmCall` | Calls the model with a `prompt` (with `{{variable}}` placeholders); `outputVariable` stores the reply. |
+| `toolCall` | Calls a tool with `arguments` (placeholders interpolated). |
+| `setVariable` | Sets `variable` to `value`. |
+| `oneOf` | Takes the first branch whose condition matches. |
+| `forEach` | Runs a step for each item of `items`, one after another. |
+| `evaluator` | Evaluates an expression over the flow's variables. |
+| `return`, `end` | Produce the node's `value` as the result. |
+
+`oneOf` conditions and `evaluator` expressions use a small, safe expression
+language (no `eval`, no host code; `{{name}}` placeholders are bound as
+values, never pasted into the expression). Its grammar and failure rules are
+in [Flow expressions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#flow-expressions).
+
+## Flows, sub-agents or skills?
+
+Use a flow when the pipeline is known in advance; use
+[sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md) when the model should decide what to delegate,
+and [skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md) when the same agent just needs extra instructions for
+some tasks. See [Sub-agents, skills or flows?](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md#sub-agents-skills-or-flows).
+
+Flows are traced like agent runs (see
+[Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md#flows)).
+
+# Guardrails and sandboxing
+
+Source: docs/guardrails.md
+
+Two tools for running agent output and agent tools safely: **guardrails** are
+fail-closed checks over a proposed change before you act on it, and
+**sandboxed tools** run inside an isolated container instead of the host
+process. For per-call human decisions see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md); for
+hooks that inspect or veto each tool call see `HookRegistry` in the
+[API overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#flows-evals-observability-and-security).
+
+## Guardrails
+
+`runGuardrails(action, guardrails)` runs every check concurrently over a
+proposed patch and rolls the results up into one verdict. The
+[ops-pipeline example](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/ops-pipeline) uses it to gate a fixer
+agent's patch before a pull request is opened:
+
+```ts
+import { runGuardrails, secretScanGuardrail, createDiffSizeGuardrail, createCommandGuardrail } from '@loushy/build-ai-agent';
+
+const verdict = await runGuardrails(
+  { diff: patch },
+  [
+    secretScanGuardrail,
+    createDiffSizeGuardrail(500),
+    createCommandGuardrail('test-run', repoPath, 'npm', ['test']),
+  ],
+);
+
+if (!verdict.pass) {
+  console.log(verdict.failures); // [{ name, reason }, ...] — never call the write-side tool
+}
+```
+
+| Guardrail | Fails when |
+| --------- | ---------- |
+| `secretScanGuardrail` | The diff contains a private key header, an OpenAI-style API key or an AWS access key. |
+| `createDiffSizeGuardrail(maxLines)` | The diff has more than `maxLines` lines. |
+| `createCommandGuardrail(name, cwd, command, args, { timeoutMs? })` | The command exits non-zero. A non-empty diff is first applied (`git apply`) to a scratch copy of `cwd`, and fails the check if it does not apply cleanly. |
+| `createTestRunGuardrail(repoPath)`, `createLintGuardrail(repoPath)` | `npm test` / `npm run lint` fails (shorthands for the command guardrail). |
+
+**Fail-closed.** A guardrail that throws, rejects, does not settle within its
+timeout (30 s by default), or resolves with anything but `pass: true` counts as
+failed: `runGuardrailSafely(guardrail, action)` wraps each one. A command
+guardrail kills its process when the timeout fires (on Windows, the whole
+process tree). Write your own as `{ name, check(action) }` returning
+`{ pass, reason? }`.
+
+## Sandboxed tools
+
+A tool opts in with `requiresSandbox: true` and a `sandboxExecute(args, sandbox)`
+function. The executor then calls `sandboxExecute` with the run's
+`SandboxAdapter` instead of calling `execute`:
+
+```ts
+import { AgentExecutor, SubprocessSandbox } from '@loushy/build-ai-agent';
+
+// Route a flagged tool (requiresSandbox + sandboxExecute) through a real,
+// Docker-backed sandbox instead of the in-process NoopSandbox default
+await AgentExecutor.execute({ agent, input, provider, toolRegistry, sandbox: new SubprocessSandbox() });
+```
+
+- `NoopSandbox` (the default) runs on the host. It is a stand-in, not
+  isolation.
+- `SubprocessSandbox` runs each command in a new, network-isolated,
+  auto-removed Docker container, with no host directory mounted except the
+  `cwd` you pass. It needs a running Docker daemon and the `dockerode` package
+  (loaded on first use).
+- Implement `SandboxAdapter` (`name`, `run(cmd, args, opts)`, `writeFile(path, content)`)
+  for another backend.
+
+For coding agents, `SandboxShell` puts the workspace shell tool behind the same
+adapter; see [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md#sandboxed-shell-sandboxshell).
+
 # Tracing and observability
 
 Source: docs/observability.md
@@ -3447,6 +3305,90 @@ them as LLM, agent and tool calls with token usage; others show them as
 ordinary spans with attributes. Which conventions a given backend supports,
 and which version of them, varies; check its documentation.
 
+# Providers
+
+Source: docs/providers.md
+
+An `LLMProvider` is what an agent generates with. The SDK ships OpenAI,
+Anthropic, OpenRouter and Ollama providers (each backed by an optional peer
+package, see [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#provider-packages)) and a
+deterministic mock for tests. Name one with a `provider/model` string, or pass
+a provider instance.
+
+```ts
+import { resolveProvider, LLMProviderRegistry } from '@loushy/build-ai-agent';
+
+// The convenient way — reads the credential from the environment
+const openai = resolveProvider('openai/gpt-4o-mini');       // OPENAI_API_KEY
+const anthropic = resolveProvider('anthropic/claude-sonnet-5'); // ANTHROPIC_API_KEY
+const openrouter = resolveProvider('openrouter/openai/gpt-4o-mini'); // OPENROUTER_API_KEY
+const ollama = resolveProvider('ollama/llama3.1');           // OLLAMA_BASE_URL
+
+// Or construct a provider directly via the registry
+const custom = LLMProviderRegistry.create('openai', {
+  apiKey: process.env.OPENAI_API_KEY,
+  defaultModel: 'gpt-4o-mini',
+});
+```
+
+## Choosing the provider in `createAgent()`
+
+`createAgent()` takes exactly one of:
+
+1. **`model: 'provider/model'`** - resolved with `resolveProvider()`; the key
+   comes from the provider's conventional environment variable (see
+   [Provider credentials](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#provider-credentials)).
+2. **`provider: <LLMProvider>`** - your own provider, a configured built-in
+   one, or a mock. You may also pass `model` (a bare id such as `'gpt-4o'`): it
+   becomes this agent's model, overriding the provider's default.
+3. **Neither** - resolved from the environment: `LOUSHY_MODEL` (a
+   `provider/model` string) if set, otherwise the first of `OPENAI_API_KEY`,
+   `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `OLLAMA_BASE_URL` that is
+   present. With none set it throws an error listing the fixes.
+
+```ts
+import { createAgent, createMockProvider, resolveProvider } from '@loushy/build-ai-agent';
+
+const fromString = createAgent({ model: 'anthropic/claude-sonnet-5' });
+const fromInstance = createAgent({ provider: resolveProvider('openai/gpt-4o-mini'), model: 'gpt-4o' });
+const offline = createAgent({ provider: createMockProvider({ responses: ['Hi! How can I help?'] }) });
+```
+
+Misconfiguration errors say how to fix themselves: a missing key names the
+variable, an unknown prefix lists the supported ones and suggests the closest,
+and a missing peer package prints the exact `npm install` command.
+
+## Which model runs?
+
+In order: the agent's own `settings.model` (set with
+`AgentBuilder.setSettings({ model })`, or `model` next to `provider` in
+`createAgent()`), then the model the provider was built with
+(`resolveProvider('openai/gpt-4o-mini')`, a spec's `provider.model`, or
+`defaultModel`), then the provider's built-in default. There is no hard-coded
+fallback model.
+
+## Provider classes
+
+| Export | Description |
+| ------ | ----------- |
+| `resolveProvider('p/model')` | Build a real provider from environment credentials. |
+| `LLMProviderRegistry` | Registry of provider factories: `create(type, config)`, `register(type, factory)`, `has(type)`. |
+| `OpenAIProvider`, `AnthropicProvider`, `OllamaProvider`, `OpenRouterProvider` | The provider classes. See [examples/openrouter](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/openrouter) for OpenRouter-specific features. |
+| `createMockProvider()`, `MockLLMProvider` | Canned responses for demos; simulates a tool call when the message names a tool. |
+| `mockModel(script)` | Scripted, asserting provider for tests (from `/testing`); see [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md). |
+| `withRetry()`, `withFallback()` | Retry transient failures with backoff and fall back to the next provider; see [Provider retries and fallback](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#provider-retries-and-fallback). |
+
+To use another backend, implement the `LLMProvider` interface (`name`,
+`generate()`, `stream()`, `supportsTools()`, `supportsStreaming()`,
+`getModels()`, optionally `defaultModel`) and pass the instance as `provider`,
+or register a factory with `LLMProviderRegistry.register(name, factory)`.
+
+## Where each provider runs
+
+All providers run on Node. The `cloudflare-worker` deploy target supports
+`mock`, `openai` and `anthropic`; `ollama` and `openrouter` need the
+`node-server` or `docker` target (see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#cloudflare-worker)).
+
 # Sessions
 
 Source: docs/sessions.md
@@ -3491,7 +3433,7 @@ A `send()` that pauses on a `needsApproval` tool resolves with
 `finishReason: 'awaiting-approval'`. `agent.approvals.resolve({ id, approved })`
 then continues the run as the session's next turn, so the tool call, its result
 and the final answer join the transcript (see
-[approval gates](https://github.com/LinuxDevil/agent-sdk/blob/main/README.md#human-in-the-loop-approval-gates)).
+[Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)).
 
 ## Streaming a session turn
 
@@ -3575,7 +3517,7 @@ Session ids must match `^[A-Za-z0-9_-]{1,128}$` (they become file names, so
 `../x` and `a/b` are refused with an error that says so). Implement
 `SessionStore` yourself to keep transcripts in a database or Redis.
 
-## Stores
+## Choosing a store
 
 Sessions, durable-execution checkpoints and approvals each have a store
 interface (`SessionStore`, `CheckpointStore`, `ApprovalStore`). Pick the
@@ -3844,7 +3786,7 @@ The event types and their extra fields:
 | `tool.start`         | `toolCallId: string`, `toolName: string`, `args: Record<string, unknown>` | A tool call starts. `args` are the model's arguments parsed from JSON (`{}` when they are not valid JSON). |
 | `tool.done`          | `toolCallId`, `toolName`, `result: unknown`, `durationMs: number` | A tool call returned. `result` is the value as it would be JSON-encoded (`undefined` becomes `null`, a `Date` becomes a string). `durationMs` counts from its `tool.start`. |
 | `tool.error`         | `toolCallId`, `toolName`, `error: { name: string, message: string }`, `durationMs: number` | A tool call failed: it threw, its arguments did not match its schema (`name: 'ToolArgumentsValidationError'`), or the tool does not exist. The model gets the error as the call's result and the run continues. |
-| `approval.requested` | `approvalId: string`, `toolCallId`, `toolName`, `args: Record<string, unknown>` | A tool call needs a human decision. The run then stops; resume it with `resumeAfterApproval()` (see the README). |
+| `approval.requested` | `approvalId: string`, `toolCallId`, `toolName`, `args: Record<string, unknown>` | A tool call needs a human decision. The run then stops; resume it with `agent.approvals.resolve()` or `resumeAfterApproval()` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)). |
 | `step.done`          | `step: number`, `finishReason: string`, `usage?: { promptTokens, completionTokens, totalTokens }` | A step ends. `finishReason` is the model's (`'stop'`, `'tool_calls'`, `'length'`, ...), or `'awaiting-approval'`, `'aborted'` or `'error'` when the step ended that way. `usage` is this step's model call, absent when the call produced no response. |
 | `error`              | `error: { name: string, message: string }` | An error. If it ends the run, `run.done` with `finishReason: 'error'` follows. A provider error retried under `surfaceRetryableProviderErrors` is followed by further steps instead. |
 | `run.done`           | `finishReason: string`, `text: string`, `usage?: { promptTokens, completionTokens, totalTokens }` | Last event of every run, exactly once, including aborted, failed and awaiting-approval runs. `finishReason` and `text` match `run.result`; a failed run has `finishReason: 'error'`, `text: ''` and no `usage`. |
@@ -4324,6 +4266,40 @@ same way, and its result shape (`{ text, usage }`) is unchanged. Prefer
 `subagents` for new code: one tool, a prompt listing, parallel tasks and depth
 limits come for free.
 
+```ts
+import { AgentExecutor, createDelegateTool, ToolRegistry } from '@loushy/build-ai-agent';
+
+const billingAgent = {
+  name: 'Billing Agent',
+  prompt: 'You answer billing questions and look up invoices.',
+};
+
+const registry = new ToolRegistry();
+registry.register(
+  'delegate_billing_agent',
+  createDelegateTool({
+    agent: billingAgent,
+    provider,
+    contextMode: 'none', // 'full-history' shares the parent's context array too
+    maxSteps: 10,
+    maxDepth: 3, // bounds a delegation chain (e.g. A -> B -> A) before it throws
+  })
+);
+
+const supportAgent = {
+  name: 'Support Agent',
+  prompt: 'You help customers. Delegate billing questions to the billing agent.',
+  tools: { delegate_billing_agent: { tool: 'delegate_billing_agent' } },
+};
+
+const result = await AgentExecutor.execute({
+  agent: supportAgent,
+  input: 'Why was I charged twice this month?',
+  provider,
+  toolRegistry: registry,
+});
+```
+
 # Testing agents
 
 Source: docs/testing.md
@@ -4600,6 +4576,173 @@ to the right tool call?) and hand-scripting turns would only encode your
 assumptions. Cassettes need re-recording when prompts change; `mockModel` tests
 only change when the behavior you assert on changes.
 
+# Tools
+
+Source: docs/tools.md
+
+A tool is a typed function the model can call. Define one with `defineTool()`:
+the argument and result types are inferred from its zod `input`, the arguments
+are validated before `execute` runs, and the result drops in anywhere tools are
+accepted (`createAgent({ tools: [...] })`, `ToolRegistry.register(tool)`,
+`AgentBuilder.addTool(tool)`).
+
+```ts
+import { defineTool, createAgent, type ToolInput, type ToolOutput } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+
+const weather = defineTool({
+  name: 'weather', // 1-64 chars: letters, digits, _ and -
+  description: 'Get weather information',
+  input: z.object({ location: z.string(), units: z.enum(['celsius', 'fahrenheit']) }),
+  execute: async ({ location, units }) => ({ temperature: 72, conditions: 'sunny' }),
+});
+
+type WeatherArgs = ToolInput<typeof weather>;   // { location: string; units: 'celsius' | 'fahrenheit' }
+type WeatherResult = ToolOutput<typeof weather>; // { temperature: number; conditions: string }
+
+const agent = createAgent({ prompt: '...', provider, tools: [weather] });
+```
+
+## `defineTool()` options
+
+| Option | Required | Description |
+| ------ | -------- | ----------- |
+| `name` | yes | What the model calls the tool by. Must match `^[a-zA-Z0-9_-]{1,64}$` (the limit LLM providers put on function names). |
+| `description` | yes | What the tool does. The model reads it to decide when to call the tool. |
+| `input` | yes | Zod schema of the arguments. `execute`, `needsApproval` and `sandboxExecute` receive its parsed (output) type. |
+| `execute(args, ctx)` | yes | Runs the tool. `ctx` carries the call's `toolCallId` and `abortSignal`. The return type is kept on the tool (`ToolOutput`). |
+| `displayName` | no | Label for UIs. Defaults to `name`. |
+| `needsApproval` | no | `true`, or a predicate typed from `input`, to pause for a human decision before the call runs. See [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md). |
+| `requiresSandbox` | no | Run the tool through the configured `SandboxAdapter` instead of in-process (needs `sandboxExecute`). See [Guardrails and sandboxing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md#sandboxed-tools). |
+| `sandboxExecute(args, sandbox)` | no | The sandboxed execution path used when `requiresSandbox` is true. |
+
+`defineTool()` checks the name, the description and the zod `input` when it is
+called, and throws an error that says how to fix a bad value. Registering two
+tools with the same name throws an error naming the conflict.
+
+A defined tool is a regular `ToolDescriptor`: it carries its schema as
+`inputSchema` (the same schema as `input`) and its `execute` function directly.
+The `.tool` field (an `ai` v4 `{ description, parameters, execute }` object) is
+legacy: it is still built for compatibility, and only used for hand-written
+descriptors that set neither `inputSchema` nor `execute`.
+
+## What happens when the model calls a tool
+
+- **Validation first.** The model's arguments are parsed with `inputSchema`
+  (defaults, coercions and transforms applied) before hooks, `needsApproval`
+  and `execute` see them. Arguments that do not match never reach `execute`:
+  the model gets a structured `ToolArgumentsValidationError` result and can
+  retry.
+- **Errors are results.** A tool that throws gives the model
+  `{ error, toolName, message }` (no stack trace) and the run continues. See
+  [Tool errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#tool-errors) for the exact shapes.
+- **Parallel calls.** Several calls in one model turn run concurrently; cap
+  them with `toolConcurrency` (`1` for strictly sequential). Results reach the
+  transcript in the model's call order. See
+  [Parallel tool calls](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#parallel-tool-calls).
+- **Cancellation.** A run's `AbortSignal` reaches each call as
+  `ctx.abortSignal`, so long-running work can stop early.
+- **Retries after a crash.** With durable execution a tool can run more than
+  once across a crash; use `ctx.toolCallId` as an idempotency key. See
+  [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#at-least-once-tools-make-side-effects-idempotent).
+
+## Built-in tools
+
+| Export | Tool |
+| ------ | ---- |
+| `httpTool`, `createHttpTool(options)` | HTTP requests, with SSRF protection (every resolved address is checked before connecting). |
+| `currentDateTool`, `dayNameTool` | Current date/time (ISO, UTC) and day of the week. |
+| `createTodoTools()` | `todo_write` / `todo_read` so an agent can plan multi-step work; see [Todo tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#todo-tools). |
+| `createFsTools()`, `createShellTool()` | File system and shell tools for coding agents; see [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md). |
+| `createEmailTool()`, `createSlackTool()`, `createGitHubTools()`, `createJiraTools()` | Integrations that need credentials, so they are built with options. |
+| `loadMcpTools(client, name)` | Every tool of a connected MCP server; see [MCP tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#mcp-model-context-protocol-tools). |
+
+Built-in descriptors are passed keyed by the name the agent uses:
+`createAgent({ tools: { current_date: currentDateTool } })`. Spec files refer to
+`http`, `current-date` and `day-name` by name (see
+[Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#tools-a-spec-can-reference)).
+
+## `ToolRegistry`
+
+`createAgent()` builds a registry for you. With `AgentBuilder` +
+`AgentExecutor.execute()`, or to share tools between agents, fill one yourself:
+`register(tool)` for a `defineTool()` result, `register(name, descriptor)` for a
+raw `ToolDescriptor` (a built-in tool, an MCP tool, or an existing `tool()` from
+the `ai` SDK), and `registerMany()` for a record of descriptors or an array of defined tools.
+
+```ts
+import { ToolRegistry, currentDateTool, defineTool } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+
+const lookupOrder = defineTool({
+  name: 'lookup_order',
+  description: 'Look up an order',
+  input: z.object({ orderId: z.string() }),
+  execute: async ({ orderId }) => ({ orderId, status: 'shipped' }),
+});
+
+const tools = new ToolRegistry();
+tools.register(lookupOrder);
+tools.register('current_date', currentDateTool);
+```
+
+Pass it as `toolRegistry` to `AgentExecutor.execute()`; the agent config's
+`tools` map names the tools it may use.
+
+# Utilities
+
+Source: docs/utilities.md
+
+Supporting helpers exported from the package root: encryption and hashing,
+file storage for attachments, and template rendering. None of them is needed
+to build an agent; they are here for the apps around one.
+
+## Encryption and hashing
+
+```ts
+import { EncryptionUtils, sha256 } from '@loushy/build-ai-agent';
+
+const encryption = new EncryptionUtils('your-secret-key');
+const encrypted = await encryption.encrypt('sensitive data'); // fresh random salt every call
+const decrypted = await encryption.decrypt(encrypted);        // throws DecryptionError on tampering
+
+const hash = await sha256('password', 'salt');
+```
+
+`encrypt()` generates a random salt per call, so ciphertext written by
+releases before that change cannot be decrypted and must be re-encrypted (see
+the [CHANGELOG](https://github.com/LinuxDevil/agent-sdk/blob/main/CHANGELOG.md)).
+
+## File storage
+
+`StorageService` keeps files for one user under a named folder. The `fs` and
+`path` modules are injected as adapters, and the Node modules satisfy them
+as-is. It is also what `StorageServiceApprovalStore` and
+`LocalStorageCheckpointStore` write through.
+
+```ts
+import { StorageService } from '@loushy/build-ai-agent';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
+// fs/path are injected as adapters (LOU-A7); the Node modules satisfy them as-is.
+const storage = new StorageService('user-123', 'attachments', fs, path);
+
+await storage.saveAttachment(file, 'document.pdf');
+const buffer = storage.readAttachment('document.pdf');
+storage.deleteAttachment('document.pdf');
+```
+
+## Templates
+
+```ts
+import { renderTemplate } from '@loushy/build-ai-agent';
+
+const template = 'Hello {{ name }}! You have {{ count }} messages.';
+const result = renderTemplate(template, { name: 'Alice', count: 5 });
+// "Hello Alice! You have 5 messages."
+```
+
 # Workspace tools
 
 Source: docs/workspace-tools.md
@@ -4623,10 +4766,12 @@ const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistr
 // paused.finishReason === 'awaiting-approval' -> resumeAfterApproval(...) once a human approves
 ```
 
-`createAgent()` has no approval store. If you use it, choose which commands
-may run without asking: pass `needsApproval: false` together with an `allow`
-list, or a `needsApproval` predicate that returns `false` for the commands
-you trust. A tool call that needs approval makes a `createAgent()` run throw.
+A `createAgent()` agent pauses the same way: `send()` resolves with
+`finishReason: 'awaiting-approval'` and `agent.approvals.resolve()` runs (or
+rejects) the command and continues (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)). To let
+some commands run without asking, pass `needsApproval: false` together with an
+`allow` list, or a `needsApproval` predicate that returns `false` for the
+commands you trust.
 
 ```ts
 import { createAgent, NodeWorkspace, createFsTools, createShellTool } from '@loushy/build-ai-agent';

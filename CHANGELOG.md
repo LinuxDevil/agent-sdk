@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `createAgent()` agents can pause for approval (LOU-D21): a `needsApproval` tool no longer fails the run with "requires approval but no approvalStore". The run pauses (`finishReason: 'awaiting-approval'`) in a per-agent `InMemoryApprovalStore` (or the new `approvalStore` option), and `agent.approvals.list()` / `agent.approvals.resolve({ id, approved, note? })` continue it, in its session if it paused in one. The `approve` option decides calls in code without pausing.
 - Tools own their contract (LOU-D22): `ToolDescriptor` gains optional `inputSchema` (zod) and `execute(args, ctx)`, which are now the canonical fields. `defineTool()` sets both and no longer calls `ai`'s `tool()`. Argument validation, the schema sent to the model, and tool execution read them first and fall back to `tool.parameters` / `tool.execute`. `ToolDescriptor.tool` (the `ai` v4 `Tool`) is now legacy: it is still built by `defineTool()` and still accepted on hand-written descriptors this release, but new code should set `inputSchema` and `execute`.
 
+### Docs
+- README revamped into a short front page (LOU-D52); the details it dropped moved to `docs/` (new pages: tools, approvals, providers, cli, flows, guardrails, utilities).
+
 ### Changed
 - `AgentType` is optional and deprecated (LOU-D34, not breaking): `AgentBuilder.build()` no longer requires `setType()` and `AgentConfig.agentType` is now optional (`createAgent()` and `specToAgent()` agents carry no type). `AgentType`, `setType()` and the `agent-types` registry/validators are marked `@deprecated`: they have no runtime effect and will be removed in the next minor; they stay exported for now. Drop your `setType(...)` calls.
 - BREAKING: `encrypt()` now generates a random salt per call instead of a hardcoded one. Ciphertext produced before this change cannot be decrypted with the new code and must be re-encrypted.
