@@ -1,7 +1,8 @@
 /**
  * `@loushy/build-ai-agent/testing` - test doubles for agents.
  *
- * Re-exports the in-memory repository mocks plus the scripted `mockModel`.
+ * Re-exports the in-memory repository mocks, the scripted `mockModel` and the
+ * `recordReplay` VCR provider.
  */
 
 export * from '../data/mocks';
@@ -16,3 +17,10 @@ export type {
   MockTurn,
   MockTurnObject,
 } from './mockModel';
+export { recordReplay, CassetteMismatchError } from './recordReplay';
+export type {
+  RecordReplayMode,
+  RecordReplayOptions,
+  RecordReplayProvider,
+  RecordReplaySource,
+} from './recordReplay';
