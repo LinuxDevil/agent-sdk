@@ -22,6 +22,8 @@ dashboard — any provider, any deploy target, no lock-in.
 - **Human-in-the-loop** — flag a tool `needsApproval` and pause execution until a human approves or rejects it, then `resumeAfterApproval()` from any process
 - **Durable execution** — pass a `sessionId` + `checkpointStore` and a crash mid-conversation resumes instead of restarting
 - **Cancellation** — pass an `AbortSignal` (`agent.send(input, { signal })`) to stop a run; it resolves with `finishReason: 'aborted'` and the transcript so far, and the signal reaches the provider, tools and delegated agents
+- **Sessions** — `agent.session()` keeps a multi-turn conversation (in memory, or persisted with `FileSessionStore`)
+- **Project instructions** — `createAgent({ projectInstructions: true })` appends the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (opt-in)
 - **Parallel tool calls** — when the model asks for several tools in one turn they run concurrently (cap it with `toolConcurrency`, or `1` for sequential), and results still reach the transcript in the model's call order
 - **Skills** — `defineSkill()` / `loadSkills('./skills')`: only each skill's name and description sit in the system prompt; the model loads the full markdown on demand through an auto-registered `load_skill` tool
 - **Multi-agent delegation** — wrap a child agent as a tool with `createDelegateTool()`, with a `maxDepth` guard against delegation loops
@@ -205,6 +207,17 @@ console.log(result.text);
 console.log(result.usage.totalTokens, result.finishReason, result.steps);
 ```
 
+### Multi-turn sessions
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const session = createAgent({ provider }).session(); // or .session({ id, store: new FileSessionStore(dir) })
+await session.send('My name is Ali.');
+const { text } = await session.send('What is my name?'); // remembers
+console.log(session.id, session.messages.length);
+```
+
 ## Documentation
 
 - [Installation](docs/installation.md) - requirements, peer/provider packages, installing from a local build
@@ -214,6 +227,7 @@ console.log(result.usage.totalTokens, result.finishReason, result.steps);
 - [API Overview](docs/api-overview.md) - the main exports; `npm run docs:build` generates the full TypeDoc reference
 - [Tracing and observability](docs/observability.md) - OpenTelemetry GenAI spans, attribute table, content opt-in
 - [Testing](docs/testing.md) - unit-test agents deterministically with the scripted `mockModel`
+- [Sessions](docs/sessions.md) - multi-turn conversations: `agent.session()`, `MemorySessionStore`, `FileSessionStore`
 - [Skills](docs/skills.md) - on-demand instructions: `defineSkill()`, `loadSkills()`, how they save context
 - [Agent Forge](docs/agent-forge.md) - the visual dashboard (`loushy studio`): quickstart, first-agent walkthrough, hook authoring
 - Full guides site: [linuxdevil.github.io/agent-sdk-docs](https://linuxdevil.github.io/agent-sdk-docs/)
