@@ -371,9 +371,43 @@ fallback model.
 
 ### Human-in-the-loop approval gates
 
-Flag a tool `needsApproval`; `AgentExecutor` pauses before calling it and
-persists an `ExecutionSnapshot` instead of invoking the tool. Resume later —
-after a real restart if you like — with `resumeAfterApproval()`:
+Flag a tool `needsApproval` and the run pauses before calling it. A
+`createAgent()` agent saves the pause in its own `InMemoryApprovalStore`
+(or the `approvalStore` you pass): `send()` resolves with
+`finishReason: 'awaiting-approval'` and an `approvalId`,
+`agent.approvals.list()` shows what is waiting, and
+`agent.approvals.resolve({ id, approved, note? })` runs (or rejects) the call
+and continues the run — in the same session, if it paused inside
+`agent.session()`. Pass `approve` to decide each call in code instead of
+pausing (`stream()` still ends at the pause):
+
+```typescript
+import { createAgent, defineTool } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+
+const sendEmail = defineTool({
+  name: 'send_email',
+  description: 'Send an email',
+  input: z.object({ to: z.string() }),
+  needsApproval: true,
+  execute: async ({ to }) => `sent to ${to}`,
+});
+const agent = createAgent({ provider, instructions: 'You send emails.', tools: [sendEmail] });
+
+const paused = await agent.send('Email the report to sam@example.com');
+if (paused.finishReason === 'awaiting-approval') {
+  console.log(await agent.approvals.list()); // [{ id, toolName: 'send_email', args: { to: '...' }, ... }]
+  const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true }); // or approved: false, note: 'why'
+  console.log(result.text);
+}
+
+// Or decide in code, with no pause: true runs the tool, false sends the model a rejection.
+const trusted = createAgent({ provider, tools: [sendEmail], approve: ({ args }) => String(args.to).endsWith('@example.com') });
+```
+
+With `AgentExecutor` directly, pass an `approvalStore`: it persists an
+`ExecutionSnapshot` instead of invoking the tool. Resume later — after a real
+restart if you like — with `resumeAfterApproval()`:
 
 ```typescript
 import { AgentExecutor, resumeAfterApproval, StorageServiceApprovalStore } from '@loushy/build-ai-agent';
@@ -663,7 +697,7 @@ npm run pipeline:demo:trigger   # POSTs a synthetic error to kick it off
 
 ### Core
 
-- **`createAgent()`** - zero-config `{ send, stream }` agent
+- **`createAgent()`** - zero-config `{ send, stream, session, approvals }` agent
 - **`AgentBuilder`** - fluent `AgentConfig` builder
 - **`AgentExecutor`** - static executor (`execute()`, approvals, checkpoints, tracing)
 - **`ToolRegistry`** - manage available tools
@@ -672,7 +706,7 @@ npm run pipeline:demo:trigger   # POSTs a synthetic error to kick it off
 
 ### Safety & ops
 
-- **`resumeAfterApproval()`**, **`StorageServiceApprovalStore`** - human-in-the-loop
+- **`resumeAfterApproval()`**, **`StorageServiceApprovalStore`**, **`InMemoryApprovalStore`** - human-in-the-loop
 - **`LocalStorageCheckpointStore`** - durable execution
 - **`createDelegateTool()`** - delegate to one child agent through a tool (see `subagents` for named sub-agents)
 - **`runGuardrails()`**, **`secretScanGuardrail`**, **`createDiffSizeGuardrail()`**, **`createCommandGuardrail()`** - guardrails
@@ -1181,6 +1215,7 @@ npm run docs:build   # writes docs/api/index.html
 | `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. |
 | `AgentType`                   | Agent type enum (e.g. `AgentType.SmartAssistant`).                          |
 | `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
+| `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
 
 ### Sub-agents
@@ -1192,6 +1227,18 @@ each sub-agent runs on the task prompt alone, and it inherits the lead run's
 signal, hooks (`ctx.subagent`), tracing, approval store and `onEvent`
 (`event.subagent`). `maxSubagentDepth` (default 1) bounds nesting. See
 [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md).
+
+### Approvals
+
+A `createAgent()` agent pauses on a `needsApproval` tool instead of failing:
+`send()` (and `session.send()`) resolves with `finishReason: 'awaiting-approval'`
+and an `approvalId`. `agent.approvals.list()` returns the pending calls and
+`agent.approvals.resolve({ id, approved, note? })` runs or rejects the call and
+resolves with the continued run's result (continuing the session it paused
+in). Pauses are kept in a per-agent `InMemoryApprovalStore` unless you pass
+`approvalStore` (e.g. `SqliteStore.approvals`); `approve: (call) => boolean`
+decides each call in code without pausing (`stream()` still ends at the
+pause). See [Human-in-the-loop approval gates](https://github.com/LinuxDevil/agent-sdk/blob/main/README.md#human-in-the-loop-approval-gates).
 
 ### Skills
 
@@ -3586,8 +3633,9 @@ const { text } = await lead.send('Write a short article about the history of the
 ```
 
 `AgentExecutor.execute()` takes the same `subagents` and `maxSubagentDepth`
-options. Use it when you need hooks, tracing or approvals on the lead run -
-sub-agents inherit those (see [Inheritance](#what-a-sub-agent-inherits)).
+options. Use it when you need hooks or tracing on the lead run - sub-agents
+inherit those (see [Inheritance](#what-a-sub-agent-inherits)). Approvals work
+from `createAgent()` too (see [Approvals](#approvals-inside-a-sub-agent)).
 
 ## How it works
 
@@ -3749,6 +3797,10 @@ continues the lead. If the sub-agent needs another approval, the run pauses
 again with a new `approvalId`. This works at any depth and for
 `createDelegateTool()` children (pass the registry that holds the delegate
 tool).
+
+With a `createAgent()` lead, `lead.send()` pauses the same way and
+`lead.approvals.resolve({ id, approved })` resumes it (the lead already knows
+its `subagents`); the lead's `approve` option decides its sub-agents' calls too.
 
 Guarantees and limits:
 
