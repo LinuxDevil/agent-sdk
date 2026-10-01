@@ -6,7 +6,7 @@
 import type { LLMProvider } from '../providers/llm';
 import type { AgentHook } from '../execution/hooks';
 import { ConfigurationError } from '../execution/errors';
-import { createCompactionHook, twoPhaseStrategy, type CompactionHookOptions } from './compaction';
+import { createCompactionHook, twoPhaseStrategy, type CompactMessagesOptions, type CompactionHookOptions } from './compaction';
 
 /** The object form of `createAgent({ compaction })`. */
 export interface AgentCompactionOptions extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens'> {
@@ -37,4 +37,11 @@ export function compactionHookFor(compaction: AgentCompaction | undefined): Agen
     ...options,
     ...(summarizer !== undefined && { strategy: twoPhaseStrategy({ model: summarizer }) }),
   });
+}
+
+/** The options `session.compact()` runs with for an agent's `compaction` (LOU-W8): its strategy (`summarizer` selects `twoPhaseStrategy()`) and sizes. */
+export function manualCompactionOptions(compaction: AgentCompaction | undefined): CompactMessagesOptions {
+  if (!compaction || compaction === true) return {};
+  const { summarizer, strategy, contextWindow, protectedTokens } = compaction;
+  return { strategy: strategy ?? (summarizer === undefined ? undefined : twoPhaseStrategy({ model: summarizer })), contextWindow, protectedTokens };
 }

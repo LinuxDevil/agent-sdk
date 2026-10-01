@@ -17,6 +17,9 @@ import { streamSessionTurn } from './sessionStream';
 import { MemorySessionStore, assertSessionId, type SessionStore } from './sessionStore';
 import { addSpent, runSpent, sessionSpent, type BudgetSpent, type RunLimits, type SessionBudget } from '../execution/budget';
 import { restoreRunUsage } from '../execution/runUsage';
+import { AGENT_EVENT_SCHEMA_VERSION, type AgentEvent, type AgentEventPayload } from '../execution/agentEvents';
+import { manualCompactionOptions, type AgentCompaction } from '../context/agentCompaction';
+import { compactTranscript, type SessionCompactOptions, type SessionCompactResult } from './sessionCompact';
 
 /** Options for `agent.session()`. */
 export interface SessionOptions {
@@ -59,6 +62,13 @@ export interface SessionOptions {
    * it rejects with its error.
    */
   turnPolicy?: 'queue' | 'steer' | 'wait';
+  /**
+   * What `session.compact()` runs when called without a `strategy` (LOU-W8):
+   * the same value as `createAgent({ compaction })` (its `strategy` or
+   * `summarizer`, `protectedTokens`, `contextWindow`). Default: prune old
+   * tool results.
+   */
+  compaction?: AgentCompaction;
 }
 
 /** A transcript store plus, optionally, a checkpoint store (e.g. a `SqliteStore`). */
@@ -188,6 +198,8 @@ export class AgentSession {
   private readonly streamRun: SessionStreamRunner | undefined;
   private readonly limits: RunLimits | undefined;
   private readonly turnPolicy: SessionOptions['turnPolicy'];
+  private readonly compaction: SessionOptions['compaction'];
+  private readonly listeners = new Set<(event: AgentEvent) => void>();
   /** The turn running (or about to run) and the queue its run takes input from (LOU-V9). */
   private running: { inputs: InputQueue; result: Promise<ExecutionResult> } | undefined;
   private turnStartedAt = 0;
@@ -203,6 +215,7 @@ export class AgentSession {
     this.checkpointStore = options.checkpointStore ?? stores.checkpoints;
     this.limits = options.limits;
     this.turnPolicy = options.turnPolicy;
+    this.compaction = options.compaction;
     this.run = run;
     this.streamRun = streamRun;
   }
@@ -326,19 +339,103 @@ export class AgentSession {
     });
   }
 
-  /** Forget the conversation (also deletes it, and a pending turn, from the store). */
-  clear(): Promise<void> {
-    return this.enqueue(async () => {
-      if (this.checkpointStore) {
-        await this.ensureLoaded();
-        await this.deleteCheckpoint();
+  /**
+   * Listens for the events of `compact()` and `clear()` (`compaction.start`,
+   * `compaction.done`, `context.cleared`; a turn's own events come from
+   * `stream()`). Returns a function that removes the listener.
+   */
+  on(listener: (event: AgentEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => void this.listeners.delete(listener);
+  }
+
+  /**
+   * Compacts the transcript now (LOU-W8), whatever its size: with
+   * `options.strategy`, else the session's `compaction` option, else by
+   * pruning old tool results. Saves the result to the store, emits
+   * `compaction.start` / `compaction.done` with `trigger: 'manual'` to `on()`
+   * listeners, and resolves with the before/after sizes. Pinned messages are
+   * kept. An empty session resolves with zeros and emits nothing. Rejects with
+   * `LOUSHY_SESSION_BUSY` while a turn is running and `LOUSHY_SESSION_TURN_PENDING`
+   * (or `LOUSHY_SESSION_AWAITING_APPROVAL`) while a checkpointed turn is unfinished.
+   *
+   * @example
+   * ```ts
+   * const { tokensBefore, tokensAfter } = await session.compact({ protectedTokens: 2_000 });
+   * ```
+   */
+  compact(options: SessionCompactOptions = {}): Promise<SessionCompactResult> {
+    return this.idle(async () => {
+      await this.ensureLoaded();
+      await this.assertNoPendingTurn();
+      const before = this.history;
+      if (before.length === 0) return { messagesBefore: 0, messagesAfter: 0, tokensBefore: 0, tokensAfter: 0, strategy: 'none' };
+      const { messages, result } = await compactTranscript(structuredClone(before), { ...manualCompactionOptions(this.compaction), ...options }, this.emitter());
+      if (JSON.stringify(messages) !== JSON.stringify(before)) {
+        await this.store.save(this.id, messages);
+        this.history = messages;
       }
+      return result;
+    });
+  }
+
+  /**
+   * Empties the transcript (LOU-W8) and saves the empty conversation. The
+   * session keeps its id, its store and its options (limits, turn policy);
+   * the transcript, an interrupted turn's checkpoint and the spend recorded in
+   * the transcript for `limits` are gone. Memory slots are cross-session and
+   * untouched. Emits `context.cleared` to `on()` listeners. Rejects with
+   * `LOUSHY_SESSION_BUSY` while a turn is running and
+   * `LOUSHY_SESSION_AWAITING_APPROVAL` while a checkpointed turn waits on an approval.
+   */
+  clear(): Promise<void> {
+    return this.idle(async () => {
+      await this.ensureLoaded();
+      const pending = this.checkpointStore ? await this.pendingCheckpoint() : null;
+      if (pending?.status === 'awaiting-approval') throw this.awaitingApproval(pending.approvalId);
+      await this.deleteCheckpoint();
       await this.store.delete(this.id);
+      const messagesCleared = this.history.length;
       this.history = [];
-      this.loaded = true;
       // A first turn that finished just before a crash, so was never adopted.
       await this.deleteCheckpoint();
+      this.emitter()({ type: 'context.cleared', sessionId: this.id, messagesCleared });
     });
+  }
+
+  /** Runs `task` after queued calls, unless a turn is running or queued now (`LOUSHY_SESSION_BUSY`). */
+  private idle<T>(task: () => Promise<T>): Promise<T> {
+    if (this.running) {
+      return Promise.reject(new SDKError(`Session '${this.id}' has a turn in flight; wait for it to finish first.`, 'LOUSHY_SESSION_BUSY'));
+    }
+    return this.enqueue(task);
+  }
+
+  private awaitingApproval(approvalId: string | undefined): SessionAwaitingApprovalError {
+    return new SessionAwaitingApprovalError(this.turnCheckpoint()?.sessionId ?? this.id, approvalId);
+  }
+
+  private async assertNoPendingTurn(): Promise<void> {
+    const pending = await this.pendingCheckpoint();
+    if (!pending) return;
+    if (pending.status === 'awaiting-approval') throw this.awaitingApproval(pending.approvalId);
+    throw new SDKError(`Session '${this.id}' has an interrupted turn; resume() or discardPending() it first.`, 'LOUSHY_SESSION_TURN_PENDING');
+  }
+
+  /** Sends events to the `on()` listeners (a throwing listener is ignored), numbered like one run's. */
+  private emitter(): (payload: AgentEventPayload) => void {
+    const runId = `session:${this.id}`;
+    let seq = 0;
+    return (payload) => {
+      const event = { ...payload, runId, seq: seq++, timestamp: new Date().toISOString(), v: AGENT_EVENT_SCHEMA_VERSION } as AgentEvent;
+      for (const listener of this.listeners) {
+        try {
+          listener(event);
+        } catch {
+          // a listener must not break the session
+        }
+      }
+    };
   }
 
   private enqueue<T>(task: () => Promise<T>): Promise<T> {
