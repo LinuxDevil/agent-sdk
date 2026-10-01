@@ -43,6 +43,7 @@ export type InheritedRuntime = Pick<
   | 'permissions'
   | 'onPermissionDecision'
   | 'guardrails'
+  | 'sessionId'
 >;
 
 /** What the executor knows about the tool call that is running. */

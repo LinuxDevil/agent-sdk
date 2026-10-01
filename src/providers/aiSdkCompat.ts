@@ -16,6 +16,7 @@ import type {
   GenerateOptions,
   GenerateResult,
   ProviderUsage,
+  ReasoningBlock,
   StreamChunk,
   StreamResult,
   ToolCall,
@@ -50,6 +51,8 @@ export interface AiSdkCallSettings {
   seed?: number;
   maxRetries: number;
   abortSignal?: AbortSignal;
+  /** LOU-V13: the reasoning options (`ai` 4.3 and 6/7 take the same field). */
+  providerOptions?: Record<string, unknown>;
 }
 
 /** Whether `ai` is v5 or later (the v6/v7 call shape). */
@@ -82,6 +85,9 @@ interface AiSdkGenerateResult {
   usage?: Record<string, unknown>;
   toolCalls?: AiSdkToolCall[];
   providerMetadata?: Record<string, unknown>;
+  /** v4: `reasoningDetails`; v6/v7: `reasoning` parts. */
+  reasoningDetails?: Array<{ type: string; text?: string; signature?: string; data?: string }>;
+  reasoning?: unknown;
 }
 
 /** Convert tool calls from 'ai' SDK format to our format. */
@@ -171,16 +177,26 @@ function toolOutput(result: unknown, isError: boolean | undefined) {
   return { type: isError ? 'error-json' : 'json', value: result ?? null };
 }
 
-/** A v4 content part in the v5+ shape: `args` -> `input`, `result` -> `output`, `mimeType` -> `mediaType`. */
+/** LOU-V13: a v4 reasoning part as v5+ carries it, Anthropic's signature or redacted data in `providerOptions`. */
+function modernReasoning({ text = '', signature, data }: Record<string, unknown>): Record<string, unknown> {
+  const anthropic = data !== undefined ? { redactedData: data } : signature !== undefined ? { signature } : undefined;
+  return { type: 'reasoning', text, ...(anthropic && { providerOptions: { anthropic } }) };
+}
+
+/** v4 part types whose v5+ shape differs by more than `mimeType` -> `mediaType`. */
+const MODERN_PARTS: Record<string, (part: Record<string, unknown>) => Record<string, unknown>> = {
+  'tool-call': ({ args, ...rest }) => ({ ...rest, input: args }),
+  'tool-result': ({ result, isError, ...rest }) => ({ ...rest, output: toolOutput(result, isError as boolean | undefined) }),
+  // `ai` 5+ deprecates `image` parts (a warning per image): a `file` part with an image media type.
+  image: ({ image, mimeType }) => ({ type: 'file', data: image, mediaType: mimeType ?? 'image/*' }),
+  reasoning: modernReasoning,
+  'redacted-reasoning': modernReasoning,
+};
+
+/** A v4 content part in the v5+ shape (see MODERN_PARTS); elsewhere `mimeType` -> `mediaType`. */
 function toModernPart(part: Record<string, unknown>): Record<string, unknown> {
-  if (part.type === 'tool-call') {
-    const { args, ...rest } = part;
-    return { ...rest, input: args };
-  }
-  if (part.type === 'tool-result') {
-    const { result, isError, ...rest } = part;
-    return { ...rest, output: toolOutput(result, isError as boolean | undefined) };
-  }
+  const modern = MODERN_PARTS[part.type as string];
+  if (modern) return modern(part);
   if ('mimeType' in part) {
     const { mimeType, ...rest } = part;
     return mimeType === undefined ? rest : { ...rest, mediaType: mimeType };
@@ -240,6 +256,7 @@ function toModernRequest(ai: AiSdkModule, settings: AiSdkCallSettings, options: 
     seed: settings.seed,
     tools: toModernTools(ai, options.tools),
     stopWhen: ai.stepCountIs?.(1), // Single step - tool execution happens in AgentExecutor
+    providerOptions: settings.providerOptions,
     maxRetries: settings.maxRetries,
     abortSignal: settings.abortSignal,
     output: toModernOutput(options.responseFormat),
@@ -255,6 +272,26 @@ function usageOf(
   return modern ? modernUsage(usage) : toGenerateUsage(usage ?? {}, metadata);
 }
 
+/** LOU-V13: Anthropic's signature or redacted data, from a v6/v7 part's `providerMetadata`. */
+function blockData(metadata: unknown): Omit<ReasoningBlock, 'text'> {
+  const anthropic = (metadata as { anthropic?: { signature?: unknown; redactedData?: unknown } } | undefined)?.anthropic;
+  return {
+    ...(typeof anthropic?.signature === 'string' && { signature: anthropic.signature }),
+    ...(typeof anthropic?.redactedData === 'string' && { redactedData: anthropic.redactedData }),
+  };
+}
+
+/** LOU-V13: either major's reasoning as blocks (v4 `reasoningDetails`; v6/v7 `reasoning` parts). */
+function reasoningOf(result: AiSdkGenerateResult, modern: boolean): ReasoningBlock[] {
+  if (!modern) {
+    return (result.reasoningDetails ?? []).map((d) =>
+      d.type === 'redacted' ? { text: '', redactedData: d.data ?? '' } : { text: d.text ?? '', ...(d.signature && { signature: d.signature }) }
+    );
+  }
+  const parts = Array.isArray(result.reasoning) ? (result.reasoning as Array<{ type: string; text?: string; providerMetadata?: unknown }>) : [];
+  return parts.filter((p) => p.type === 'reasoning').map((p) => ({ text: p.text ?? '', ...blockData(p.providerMetadata) }));
+}
+
 /** Call `generateText()` on `ai` (v4 or v6/v7) and normalize its result. */
 export async function compatGenerateText(
   ai: AiSdkModule,
@@ -264,11 +301,13 @@ export async function compatGenerateText(
   const modern = isModernAi(ai);
   const request = modern ? toModernRequest(ai, settings, options) : settings;
   const result = (await ai.generateText(request as never)) as AiSdkGenerateResult;
+  const reasoning = reasoningOf(result, modern);
   return {
     text: result.text,
     finishReason: mapFinishReason(result.finishReason),
     usage: usageOf(modern, result.usage, result.providerMetadata),
     toolCalls: result.toolCalls && convertToolCalls(result.toolCalls),
+    ...(reasoning.length > 0 && { reasoning }),
     rawResponse: result,
   };
 }
@@ -283,6 +322,9 @@ interface AiSdkStreamPart extends Partial<AiSdkToolCall> {
   id?: string;
   delta?: string;
   finishReason?: string;
+  /** v4 `reasoning-signature` / `redacted-reasoning` (LOU-V13). */
+  signature?: string;
+  data?: string;
   /** `finish`: v4 `usage` (and `providerMetadata`), v6/v7 `totalUsage`. */
   usage?: Record<string, unknown>;
   totalUsage?: Record<string, unknown>;
@@ -306,6 +348,20 @@ interface ChunkState {
   modern: boolean;
   signal?: AbortSignal;
   inputs: Map<string, { toolName: string; input: string }>;
+  /** LOU-V13: the open v6/v7 reasoning block's `providerMetadata` (Anthropic sends the signature on a delta). */
+  reasoningMetadata?: unknown;
+}
+
+/** LOU-V13: a reasoning text delta (v4 `reasoning`, v6/v7 `reasoning-delta`), noting a v6/v7 block's metadata. */
+function reasoningDelta(part: AiSdkStreamPart, state: ChunkState): StreamChunk[] {
+  state.reasoningMetadata = part.providerMetadata ?? state.reasoningMetadata;
+  const textDelta = part.text ?? part.textDelta;
+  return textDelta ? [{ type: 'reasoning-delta', textDelta }] : [];
+}
+
+/** LOU-V13: the end of a reasoning block, with its signature or redacted data. */
+function reasoningEnd(reasoning: Omit<ReasoningBlock, 'text'>): StreamChunk[] {
+  return [{ type: 'reasoning-end', reasoning }];
 }
 
 /**
@@ -326,16 +382,25 @@ function finishChunks(part: AiSdkStreamPart, { modern, inputs }: ChunkState): St
 /**
  * The chunks each `fullStream` part type becomes, on either major. An `error`
  * part rejects the stream with its error, an `abort` part with the signal's
- * reason. Unlisted parts are dropped: reasoning (v4 `reasoning`, v6/v7
- * `reasoning-delta`), as `StreamChunkType` has no reasoning chunk yet
- * (LOU-V13); steps, sources, files, `raw` and v4's results of the
- * placeholder `execute` carry nothing a chunk reports.
+ * reason. Reasoning (LOU-V13) becomes `reasoning-delta` / `reasoning-end`
+ * chunks. Unlisted parts are dropped: steps, sources, files, `raw` and v4's
+ * results of the placeholder `execute` carry nothing a chunk reports.
  */
 const PART_CHUNKS = new Map<string, (part: AiSdkStreamPart, state: ChunkState) => StreamChunk[]>([
   ['text-delta', (part) => {
     const textDelta = part.text ?? part.textDelta;
     return textDelta ? [{ type: 'text-delta', textDelta }] : [];
   }],
+  ['reasoning', reasoningDelta],
+  ['reasoning-start', reasoningDelta],
+  ['reasoning-delta', reasoningDelta],
+  ['reasoning-end', (part, state) => {
+    const metadata = part.providerMetadata ?? state.reasoningMetadata;
+    state.reasoningMetadata = undefined;
+    return reasoningEnd(blockData(metadata));
+  }],
+  ['reasoning-signature', (part) => reasoningEnd({ signature: part.signature })],
+  ['redacted-reasoning', (part) => reasoningEnd({ redactedData: part.data })],
   ['tool-input-start', (part, { inputs }) => {
     inputs.set(part.id ?? '', { toolName: part.toolName ?? '', input: '' });
     return [];

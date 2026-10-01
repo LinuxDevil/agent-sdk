@@ -8,6 +8,8 @@ import { AiSdkProvider, AiSdkProviderConfig } from './aiSdkProvider';
 import { aiMajorOf } from './aiSdkCompat';
 import { lazyValue, loadOptionalPeer } from './optionalPeer';
 import { Logger, noopLogger } from '../execution/logger';
+import type { GenerateOptions } from './llm';
+import { openRouterReasoning } from './reasoning';
 
 export interface OpenRouterProviderConfig extends AiSdkProviderConfig {
   apiKey: string;
@@ -43,6 +45,14 @@ function buildHeaders(config: OpenRouterProviderConfig): Record<string, string> 
   return headers;
 }
 
+/** `fetch`, with `extra` merged into each JSON request body. */
+function withJsonBody(extra: Record<string, unknown>): typeof fetch {
+  return (input, init) => {
+    const body = typeof init?.body === 'string' ? JSON.stringify({ ...JSON.parse(init.body), ...extra }) : init?.body;
+    return globalThis.fetch(input, { ...init, body });
+  };
+}
+
 /**
  * OpenRouter Provider using OpenAI-compatible API
  */
@@ -51,25 +61,39 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
   protected readonly fallbackModel = 'openai/gpt-3.5-turbo';
   private logger: Logger;
 
-  /** Loads `@ai-sdk/openai` on first use (it is an optional peer) and points it at OpenRouter. */
-  private readonly loadProvider = lazyValue(async () => {
-    const { createOpenAI } = await loadOptionalPeer('@ai-sdk/openai', () => import('@ai-sdk/openai'), aiMajorOf(this.ai));
-    return createOpenAI({
+  /** Loads `@ai-sdk/openai` on first use (it is an optional peer). */
+  private readonly loadFactory = lazyValue(async () =>
+    (await loadOptionalPeer('@ai-sdk/openai', () => import('@ai-sdk/openai'), aiMajorOf(this.ai))).createOpenAI
+  );
+
+  /** `@ai-sdk/openai` pointed at OpenRouter; `body` (LOU-V13: `reasoning`) is added to each request's JSON. */
+  private async openRouter(body?: Record<string, unknown>) {
+    return (await this.loadFactory())({
       apiKey: this.config.apiKey,
       baseURL: OPENROUTER_API_URL,
       headers: buildHeaders(this.config),
+      ...(body && { fetch: withJsonBody(body) }),
     });
-  });
+  }
+
+  private readonly loadProvider = lazyValue(() => this.openRouter());
 
   constructor(config: OpenRouterProviderConfig, logger: Logger = noopLogger) {
     super(config);
     this.logger = logger;
   }
 
-  protected async createModel(modelId: string): Promise<LanguageModel> {
+  protected async createModel(modelId: string, options?: GenerateOptions): Promise<LanguageModel> {
+    // LOU-V13: `@ai-sdk/openai` has no field for OpenRouter's unified `reasoning`, so it is added to the body.
+    const reasoning = openRouterReasoning(modelId, options?.reasoning);
     // `.chat()` is the Chat Completions API, the only one OpenRouter implements. `@ai-sdk/openai`
     // 2+ makes the bare call a Responses API model, so the factory is named on every major.
-    return (await this.loadProvider()).chat(modelId);
+    return (reasoning ? await this.openRouter(reasoning) : await this.loadProvider()).chat(modelId);
+  }
+
+  /** Sent in the request body instead (createModel). */
+  protected reasoningOptions(): undefined {
+    return undefined;
   }
 
   /**

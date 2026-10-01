@@ -28,6 +28,7 @@ import { withAskQuestion } from './tools/built-in/askQuestion';
 import { ToolConcurrency, assertToolConcurrency } from './execution/toolBatch';
 import type { Skill } from './skills/defineSkill';
 import type { Message } from './providers/llm';
+import type { ReasoningOption } from './providers/reasoning';
 import {
   AgentSession,
   withDefaultStores,
@@ -217,6 +218,19 @@ export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> ex
    * ```
    */
   onAgentDrift?: AgentDriftMode;
+  /**
+   * How much the model reasons before it answers (LOU-V13): an effort, or
+   * `{ effort, budgetTokens, summary, force }`. Sent only to model families
+   * known to accept it; `stream()` reports it as `reasoning.*` events and
+   * `result.reasoning` holds its text. A `send()` / `stream()` call's own
+   * `reasoning` overrides it. See docs/reasoning.md.
+   *
+   * @example
+   * ```ts
+   * createAgent({ model: 'anthropic/claude-sonnet-4-5', reasoning: 'high' });
+   * ```
+   */
+  reasoning?: ReasoningOption;
   /**
    * Opt in to appending the nearest `AGENTS.md` / `CLAUDE.md` (found by
    * walking up from `cwd`, see `loadProjectInstructions()`) to the agent's
@@ -455,7 +469,12 @@ export interface SendOptions {
    * `model` / `instructions` / `tools` functions (LOU-V15).
    */
   metadata?: Record<string, unknown>;
+  /** This run's reasoning (LOU-V13), instead of the agent's `reasoning`. */
+  reasoning?: ReasoningOption;
 }
+
+/** How a run is checkpointed, plus (LOU-V13) a `send()` / `stream()` call's own `reasoning`. */
+type RunTurn = SessionTurnOptions & Pick<ExecuteOptions, 'reasoning'>;
 
 /** `TObject`: the type of `result.object` - `z.output` of the `output` schema. */
 export interface SimpleAgent<TObject = unknown> {
@@ -588,6 +607,7 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     guardrails: config.guardrails,
     toolConcurrency: config.toolConcurrency,
     onAgentDrift: config.onAgentDrift,
+    reasoning: config.reasoning,
   };
   const specs = agentSpecs(config, toolsFor, runOptions);
   const staticSpec = specs.static;
@@ -641,12 +661,13 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     }
     return { sessionId, checkpointStore: checkpoints };
   };
+  const callTurn = ({ sessionId, reasoning }: SendOptions): RunTurn => ({ ...durable(sessionId), ...(reasoning !== undefined && { reasoning }) });
   const executeOptions = (
     spec: SubagentSpec,
     input: Message[],
     ctx: RunConfigContext,
     signal?: AbortSignal,
-    turn?: SessionTurnOptions
+    turn?: RunTurn
   ): ExecuteOptions => ({
     ...spec,
     output: config.output,
@@ -654,6 +675,8 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     approvalStore: approvals.store,
     input,
     signal,
+    // LOU-D23.2: a session's turn runs under its id (tools see it), unless the turn is checkpointed under its own.
+    ...(ctx.sessionId !== undefined && { sessionId: ctx.sessionId }),
     ...turn,
     // LOU-W6: memory tools and recall bound to this run's scope keys.
     ...memory?.forRun({ sessionId: ctx.sessionId, metadata: ctx.metadata }, spec.toolRegistry, hooks),
@@ -662,15 +685,15 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
    * The run's options once MCP servers are connected, with its spec resolved for `ctx` (LOU-V15). A dynamic run
    * restarted from its checkpoint resolves with the `ctx` and model it began with (LOU-V15.2).
    */
-  const prepare = async (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: SessionTurnOptions) => {
+  const prepare = async (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: RunTurn) => {
     await mcp.ready();
     if (staticSpec) return executeOptions(staticSpec, input, ctx, signal, turn);
     const pinned = await checkpointedRunConfig(turn);
     return executeOptions(await specs.resolve(pinned?.ctx ?? ctx, pinned), input, pinned?.ctx ?? ctx, signal, turn);
   };
-  const run = async (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: SessionTurnOptions) =>
+  const run = async (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: RunTurn) =>
     AgentExecutor.execute(await prepare(input, ctx, signal, turn));
-  const stream = (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: SessionTurnOptions): AgentRun => {
+  const stream = (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: RunTurn): AgentRun => {
     if (!staticSpec) return streamPrepared(() => prepare(input, ctx, signal, turn), signal, turn?.inputQueue);
     const options = executeOptions(staticSpec, input, ctx, signal, turn);
     return hasMcp ? streamAfter(mcp.ready, options) : AgentExecutor.stream(options);
@@ -697,12 +720,12 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
   const simpleAgent: SimpleAgent<Typed> = {
     async send(message: AgentInput, options: SendOptions = {}): Promise<ExecutionResult<Typed>> {
       const { sessionId, metadata } = options;
-      const result = await run(toMessages(message), { sessionId, input: message, metadata }, options.signal, durable(sessionId));
+      const result = await run(toMessages(message), { sessionId, input: message, metadata }, options.signal, callTurn(options));
       return approvals.settle(result, options.signal) as Promise<ExecutionResult<Typed>>;
     },
     stream(message: AgentInput, options: SendOptions = {}): AgentRun<Typed> {
       const { sessionId, metadata } = options;
-      return stream(toMessages(message), { sessionId, input: message, metadata }, options.signal, durable(sessionId)) as AgentRun<Typed>;
+      return stream(toMessages(message), { sessionId, input: message, metadata }, options.signal, callTurn(options)) as AgentRun<Typed>;
     },
     session,
     async resume(sessionId: string, { signal } = {}): Promise<ExecutionResult<Typed> | null> {

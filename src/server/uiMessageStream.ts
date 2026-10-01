@@ -44,6 +44,8 @@ export type LoushyUIMessageChunk =
   | { type: 'finish-step' }
   | { type: 'text-start' | 'text-end'; id: string }
   | { type: 'text-delta'; id: string; delta: string }
+  | { type: 'reasoning-start' | 'reasoning-end'; id: string }
+  | { type: 'reasoning-delta'; id: string; delta: string }
   | { type: 'tool-input-start'; toolCallId: string; toolName: string }
   | { type: 'tool-input-available'; toolCallId: string; toolName: string; input: unknown }
   | { type: 'tool-output-available'; toolCallId: string; output: unknown }
@@ -65,6 +67,8 @@ interface MapState {
   /** Id of the open text part, if any. */
   openText: string | null;
   textCount: number;
+  /** LOU-V13: id of the reasoning part opened last. */
+  reasoning: string;
 }
 
 function closeText(state: MapState): LoushyUIMessageChunk[] {
@@ -82,6 +86,12 @@ function textDelta(state: MapState, delta: string): LoushyUIMessageChunk[] {
   return [...opened, { type: 'text-delta', id: state.openText, delta }];
 }
 
+/** LOU-V13: a `reasoning-delta`, or the `reasoning-end` of the part the last `reasoning.start` opened. */
+function reasoningChunk(event: Extract<AgentEvent, { type: 'reasoning.delta' | 'reasoning.done' }>, state: MapState): LoushyUIMessageChunk {
+  if (event.type === 'reasoning.done') return { type: 'reasoning-end', id: state.reasoning };
+  return { type: 'reasoning-delta', id: state.reasoning, delta: event.text };
+}
+
 /** The chunks one event produces. Sub-agent events and events with no UI counterpart produce none. */
 function chunksFor(event: AgentEvent, state: MapState): LoushyUIMessageChunk[] {
   if (event.subagent) return [];
@@ -94,6 +104,13 @@ function chunksFor(event: AgentEvent, state: MapState): LoushyUIMessageChunk[] {
       return textDelta(state, event.text);
     case 'text.done':
       return closeText(state);
+    // LOU-V13: one reasoning part per `reasoning.start` ... `reasoning.done`.
+    case 'reasoning.start':
+      state.reasoning = `reasoning-${event.seq}`;
+      return [{ type: 'reasoning-start', id: state.reasoning }];
+    case 'reasoning.delta':
+    case 'reasoning.done':
+      return [reasoningChunk(event, state)];
     case 'tool.start':
       return [
         ...closeText(state),
@@ -150,7 +167,7 @@ function chunksFor(event: AgentEvent, state: MapState): LoushyUIMessageChunk[] {
  */
 export function toUIMessageStream(run: AsyncIterable<AgentEvent>): ReadableStream<LoushyUIMessageChunk> {
   const iterator = run[Symbol.asyncIterator]();
-  const state: MapState = { openText: null, textCount: 0 };
+  const state: MapState = { openText: null, textCount: 0, reasoning: '' };
   const pending: LoushyUIMessageChunk[] = [];
   return new ReadableStream<LoushyUIMessageChunk>({
     async pull(controller) {

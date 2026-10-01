@@ -26,8 +26,9 @@ const toolCallSchema = z.object({
 const errorSchema = z.object({ name: z.string(), message: z.string() });
 
 const chunkSchema = z.object({
-  type: z.enum(['text-delta', 'tool-call', 'tool-result', 'finish', 'error']),
+  type: z.enum(['text-delta', 'reasoning-delta', 'reasoning-end', 'tool-call', 'tool-result', 'finish', 'error']),
   textDelta: z.string().optional(),
+  reasoning: z.object({ signature: z.string().optional(), redactedData: z.string().optional() }).optional(),
   toolCall: toolCallSchema.optional(),
   toolResult: z.object({ toolCallId: z.string(), result: z.unknown() }).optional(),
   finishReason: z.string().optional(),

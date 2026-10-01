@@ -111,6 +111,8 @@ export async function prepareGenerateRequest(
     tools: tools.length > 0 ? tools : undefined,
     // LOU-V4: a JSON-mode hint for runs with an `output` schema.
     ...(options.output ? { responseFormat: outputResponseFormat(options.output) } : {}),
+    // LOU-V13: the providers send it only to models that accept it.
+    ...(options.reasoning !== undefined && { reasoning: options.reasoning }),
     // LOU-V1: lets the provider cancel the in-flight request.
     ...(signal ? { signal } : {}),
   };

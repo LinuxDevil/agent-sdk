@@ -99,6 +99,19 @@ describe('loushy chat REPL', () => {
     expect(out.text()).toContain('You are Ali.\n');
   });
 
+  it('prints reasoning dimmed on its own line before the reply (LOU-V13)', async () => {
+    const out = sink();
+    const model = mockModel(['Hi.']);
+    const thinker = { ...model, generate: async (options: Parameters<typeof model.generate>[0]) => ({ ...(await model.generate(options)), reasoning: [{ text: 'Greet back.' }] }) };
+    await runChatRepl({
+      input: scripted(['Hello']),
+      output: out.stream,
+      color: true,
+      createAgent: async () => createAgent({ instructions: 'x', provider: thinker }),
+    });
+    expect(out.text()).toContain('\x1b[2mGreet back.\x1b[22m\nHi.\n');
+  });
+
   it('asks Approve <tool>(args)? and runs the tool on y', async () => {
     const { out, model } = await converse(['ping it', 'y', '/quit'], [{ toolCalls: [{ name: 'ping' }] }, 'The tool said pong.']);
     expect(out).toContain('Approve ping({})? [y/N] ');

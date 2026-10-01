@@ -177,6 +177,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Sessions](docs/sessions.md) | Multi-turn conversations, `session.stream()`, session stores, `SqliteStore` |
 | [Memory](docs/memory.md) | Long-term memory across sessions: `defineMemory()`, scopes, `inMemoryMemory()`, `fileMemory()` |
 | [Structured output](docs/structured-output.md) | `output: zodSchema`: typed `result.object`, the repair step, `'output-invalid'` |
+| [Reasoning](docs/reasoning.md) | The `reasoning` option per provider, `reasoning.*` events, `result.reasoning` |
 | [Streaming](docs/streaming.md) | `agent.stream()`: the typed event schema, terminal and SSE examples |
 | [AI SDK UI](docs/ai-sdk-ui.md) | `useChat` on a Loushy run: `toUIMessageStreamResponse()`, `fromUIMessages()`, approvals |
 | [Next.js](docs/nextjs.md) | `createRouteHandler(agent)`: the session API as a Fetch route (App Router, SvelteKit, Hono), auth, `useChat` endpoint |

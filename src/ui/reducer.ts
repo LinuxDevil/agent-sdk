@@ -32,6 +32,8 @@ export interface UIMessage {
   text: string;
   /** Tool calls in start order (always empty for user messages). */
   toolCalls: UIToolCall[];
+  /** LOU-V13: the model's reasoning text for this turn (`reasoning.delta`s), when it streamed any. */
+  reasoning?: string;
 }
 
 /** `streaming` while a run (or an approval's continuation) is in flight. */
@@ -183,6 +185,8 @@ export function reduceAgentEvents(state: AgentUIState, event: AgentEvent | Agent
   switch (event.type) {
     case 'text.delta':
       return { ...next, messages: onAssistant(state.messages, (m) => ({ ...m, text: m.text + event.text })) };
+    case 'reasoning.delta':
+      return { ...next, messages: onAssistant(state.messages, (m) => ({ ...m, reasoning: (m.reasoning ?? '') + event.text })) };
     case 'tool.start': {
       const call: UIToolCall = { id: event.toolCallId, name: event.toolName, args: event.args, status: 'running' };
       return { ...next, messages: patchTool(state.messages, call.id, {}, call) };

@@ -27,7 +27,9 @@ import {
   ToolDefinition,
   ContentPart,
   TextContentPart,
+  ReasoningBlock,
 } from './llm';
+import { reasoningProviderOptions } from './reasoning';
 import { textOf } from './content';
 import { type AiSdkMessage, type AiSdkModule, compatGenerateText, streamCompat } from './aiSdkCompat';
 
@@ -36,6 +38,7 @@ import { type AiSdkMessage, type AiSdkModule, compatGenerateText, streamCompat }
 // Text, image and file parts are already v4-shaped as our `ContentPart`s.
 type ToolCallPart = { type: 'tool-call'; toolCallId: string; toolName: string; args: unknown };
 type ToolResultPart = { type: 'tool-result'; toolCallId: string; toolName: string; result: unknown; isError?: boolean };
+type ReasoningPart = { type: 'reasoning'; text: string; signature?: string } | { type: 'redacted-reasoning'; data: string };
 /** A v4 `tool()` (the identity function in v4): `parameters` and a placeholder `execute`. */
 type AiSdkTool = { description: string; parameters: unknown; execute: () => Promise<null> };
 
@@ -60,9 +63,10 @@ function parseJsonOr(text: unknown, fallback: unknown): unknown {
  * JSON string to the object the 'ai' SDK expects (`{}` if unparseable, so
  * the turn is still accepted by providers that require an object).
  */
-function toAssistantToolCallMessage(msg: Message, toolCalls: ToolCall[]): AiSdkMessage {
+function toAssistantToolCallMessage(msg: Message, toolCalls: ToolCall[], support: PartSupport): AiSdkMessage {
   const text = textOf(msg);
-  const parts: Array<TextContentPart | ToolCallPart> = text ? [{ type: 'text', text }] : [];
+  const reasoning = support.reasoning ? (msg.reasoning ?? []).map(toReasoningPart) : [];
+  const parts: Array<ReasoningPart | TextContentPart | ToolCallPart> = [...reasoning, ...(text ? [{ type: 'text' as const, text }] : [])];
   for (const tc of toolCalls) {
     parts.push({
       type: 'tool-call',
@@ -72,6 +76,12 @@ function toAssistantToolCallMessage(msg: Message, toolCalls: ToolCall[]): AiSdkM
     });
   }
   return { role: 'assistant', content: parts };
+}
+
+/** LOU-V13: a reasoning block as the v4 part Anthropic replays (aiSdkCompat maps it for v6/v7). */
+function toReasoningPart(block: ReasoningBlock): ReasoningPart {
+  if (block.redactedData !== undefined) return { type: 'redacted-reasoning', data: block.redactedData };
+  return { type: 'reasoning', text: block.text, ...(block.signature !== undefined && { signature: block.signature }) };
 }
 
 /**
@@ -97,6 +107,8 @@ interface PartSupport {
   provider: string;
   /** `false`: file parts become a text note, with a one-time warning. */
   files: boolean;
+  /** LOU-V13: send an assistant turn's `reasoning` blocks back (Anthropic). */
+  reasoning?: boolean;
 }
 
 /** Providers already warned that they turned file parts into text. */
@@ -132,7 +144,7 @@ function toCoreMessages(messages: Message[], support: PartSupport): AiSdkMessage
     }
     if (msg.role === 'assistant' && msg.toolCalls?.length) {
       for (const tc of msg.toolCalls) toolNames.set(tc.id, tc.function.name);
-      return toAssistantToolCallMessage(msg, msg.toolCalls);
+      return toAssistantToolCallMessage(msg, msg.toolCalls, support);
     }
     if (msg.role === 'user' && Array.isArray(msg.content)) {
       return { role: 'user', content: msg.content.map((part) => toUserPart(part, support)) };
@@ -217,7 +229,7 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
   }
 
   /** Build the 'ai' SDK language model for a model id. */
-  protected abstract createModel(modelId: string): LanguageModel | Promise<LanguageModel>;
+  protected abstract createModel(modelId: string, options?: GenerateOptions): LanguageModel | Promise<LanguageModel>;
 
   /**
    * Whether this provider's 'ai' SDK model takes `file` parts (LOU-V11). The
@@ -225,6 +237,9 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
    * do not, so their file parts become a text note; image parts are sent.
    */
   protected readonly acceptsFileParts: boolean = false;
+
+  /** LOU-V13: whether assistant turns send their signed `reasoning` blocks back (Anthropic requires it with tools). */
+  protected readonly replaysReasoning: boolean = false;
 
   /**
    * Convert our messages to `ai` v4 CoreMessages (aiSdkCompat maps them to
@@ -237,13 +252,19 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
    * own `Message[]`.
    */
   protected convertMessages(messages: Message[]): AiSdkMessage[] {
-    return toCoreMessages(messages, { provider: this.name, files: this.acceptsFileParts });
+    return toCoreMessages(messages, { provider: this.name, files: this.acceptsFileParts, reasoning: this.replaysReasoning });
+  }
+
+  /** LOU-V13: the `providerOptions` that carry the call's `reasoning` for this provider's model. */
+  protected reasoningOptions(modelId: string, options: GenerateOptions): Record<string, unknown> | undefined {
+    return reasoningProviderOptions(this.name, modelId, options.reasoning);
   }
 
   /** The call settings shared by generate() and stream(). */
   private async buildCallSettings(options: GenerateOptions) {
+    const modelId = options.model || this.defaultModel;
     return {
-      model: await this.createModel(options.model || this.defaultModel),
+      model: await this.createModel(modelId, options),
       messages: this.convertMessages(options.messages),
       temperature: options.temperature,
       maxTokens: options.maxTokens,
@@ -258,6 +279,7 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
       maxRetries: this.config.maxRetries ?? 2,
       abortSignal: options.signal,
       experimental_output: toOutput(options.responseFormat),
+      providerOptions: this.reasoningOptions(modelId, options),
     };
   }
 
