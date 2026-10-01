@@ -10,7 +10,7 @@ import type { ExecutionResult } from '../../../execution/AgentExecutor';
 import type { DefinedTool } from '../../defineTool';
 import { getToolExecute } from '../../toolContract';
 import { loadOptionalPeer } from '../../../providers/optionalPeer';
-import { needsApprovalGate } from './toolNames';
+import { needsApprovalGate, toolAnnotations } from './toolNames';
 
 /** What {@link buildServer} needs, already validated by `serveMcp`. */
 export interface ServerSpec {
@@ -83,7 +83,7 @@ type ToolExecute = (
 function registerDirectTool(server: McpServer, tool: DefinedTool): void {
   server.registerTool(
     tool.name,
-    { description: tool.description, inputSchema: tool.input },
+    { description: tool.description, inputSchema: tool.input, annotations: toolAnnotations(tool) },
     async (args: unknown, extra) => {
       try {
         const execute = getToolExecute(tool) as ToolExecute | undefined;
