@@ -19,13 +19,6 @@ npm run docs:build   # writes docs/api/index.html
 | `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
 
-### Skills
-
-Pass `skills: [defineSkill({ name, description, content }), ...(await loadSkills(dir))]` to
-`createAgent()` or `AgentExecutor.execute()`: only names and descriptions go in
-the system prompt and the model loads bodies through an auto-registered
-`load_skill` tool. See [Skills](./skills.md).
-
 ### Cancellation
 
 Pass an `AbortSignal` to stop a run: `agent.send(input, { signal })`,
@@ -131,6 +124,49 @@ import { loadMcpTools } from '@loushy/build-ai-agent/mcp';
 
 const tools = await loadMcpTools(mcpClient, 'my-server');
 ```
+
+**Schema support.** Each tool's JSON Schema `inputSchema` is converted to a
+zod schema, and the model's arguments are validated against it before the
+server is called. The converter handles `type` (including arrays such as
+`["string", "null"]`), `enum` with mixed types, `const`, `anyOf` / `oneOf`
+(a union; `anyOf: [X, { type: "null" }]` becomes `X.nullable()`), `allOf`
+(merge / intersection), local `$ref` into `$defs` / `definitions`,
+`properties` / `required`, `additionalProperties` (boolean or schema), `items`,
+`default`, and the constraints `minimum`, `maximum`, `exclusiveMinimum`,
+`exclusiveMaximum`, `minLength`, `maxLength`, `pattern`, `minItems` and
+`maxItems`. Where JSON Schema is ambiguous the conversion is permissive:
+unknown keywords, empty schemas, tuple `items` and unresolvable refs become
+`z.any()`, a recursive `$ref` is expanded once and `z.any()` is used for the
+inner occurrence, an invalid `pattern` regex is skipped, and objects keep
+extra properties unless `additionalProperties` is `false`. The converter never
+throws on schema content.
+
+**Skipped tools.** If one tool still cannot be converted, only that tool is
+skipped; the rest of the server's tools load. Pass a `logger` to receive a
+warning naming the server, the tool and the reason, and `onSkip` to collect
+what was left out:
+
+```ts
+import { loadMcpTools, type SkippedMcpTool } from '@loushy/build-ai-agent/mcp';
+
+const skipped: SkippedMcpTool[] = [];
+const tools = await loadMcpTools(mcpClient, 'my-server', {
+  logger: console,
+  onSkip: (tool) => skipped.push(tool), // { name, reason }
+});
+```
+
+**Results.** An MCP result with `isError: true` is a normal tool failure: the
+model receives `{ "error": "McpToolError", "toolName": "...", "message": "..." }`
+where `message` is the server's text content. Successful results are
+JSON-serializable: if the server returns `structuredContent` it is the result
+object; otherwise the result is `{ text, content }`, where `text` joins all
+text parts and `content` keeps every part in order (`text`, `image`, `audio`,
+`resource`, `resource_link`; an unrecognised part type is kept as
+`{ type: 'unknown', raw }`). When `structuredContent` arrives together with
+non-text parts the result is `{ structuredContent, text, content }` with
+`content` holding only the non-text parts, so images, audio and resources are
+never dropped.
 
 ### Tool errors
 
