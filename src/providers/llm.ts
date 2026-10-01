@@ -96,16 +96,31 @@ export interface GenerateOptions {
 }
 
 /**
+ * Token usage as a provider reports it (the 'ai' SDK's naming). AgentExecutor
+ * converts it to the normalized `Usage` (`inputTokens`/`outputTokens`).
+ */
+export interface ProviderUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  /** Prompt tokens served from the provider's cache, when the provider reports it. */
+  cachedInputTokens?: number;
+  /** Tokens spent on hidden reasoning, when the provider reports it. */
+  reasoningTokens?: number;
+}
+
+/**
  * Generation result
  */
 export interface GenerateResult {
   text: string;
   finishReason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'error';
-  usage: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-  };
+  /**
+   * Token usage of this call. Leave it `undefined` when the backend reports
+   * nothing - never fill in zeros: AgentExecutor then estimates the tokens
+   * and flags the run's usage as `estimated`.
+   */
+  usage?: ProviderUsage;
   toolCalls?: ToolCall[];
   rawResponse?: any;
 }

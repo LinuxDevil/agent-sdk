@@ -66,6 +66,12 @@ export const ErrorAttr = {
 /** `gen_ai.tool.type` value for tools executed by this SDK's host process. */
 export const TOOL_TYPE_FUNCTION = 'function';
 
+/** Attributes specific to this SDK (not part of the GenAI semantic conventions). */
+export const SdkAttr = {
+  /** `true` on a `chat` span whose token counts are estimates because the provider reported none (LOU-V5). */
+  USAGE_ESTIMATED: 'loushy.usage.estimated',
+} as const;
+
 /**
  * The attribute names this SDK emitted before LOU-D9. They are still emitted
  * alongside the GenAI ones (dual-emit) and are DEPRECATED.

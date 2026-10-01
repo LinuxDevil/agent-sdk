@@ -57,6 +57,25 @@ describe('AiSdkProvider', () => {
     expect(settings.messages).toEqual([{ role: 'user', content: 'hi' }]);
   });
 
+  it('LOU-V5: reports usage as-is, reads cache/reasoning tokens from provider metadata, and no usage when counts are NaN', async () => {
+    const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });
+
+    generateTextMock.mockResolvedValue({
+      ...textResult('stop'),
+      providerMetadata: { openai: { cachedPromptTokens: 1, reasoningTokens: 'n/a' } },
+    });
+    expect((await provider.generate({ model: '', messages: [] })).usage).toEqual({
+      ...usage,
+      cachedInputTokens: 1,
+    });
+
+    generateTextMock.mockResolvedValue({
+      ...textResult('stop'),
+      usage: { promptTokens: NaN, completionTokens: NaN, totalTokens: NaN },
+    });
+    expect((await provider.generate({ model: '', messages: [] })).usage).toBeUndefined();
+  });
+
   it('falls back to the provider default model when neither call nor config names one', async () => {
     generateTextMock.mockResolvedValue(textResult('stop'));
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });

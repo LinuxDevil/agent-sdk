@@ -61,7 +61,10 @@ export interface MockTurnObject {
   toolCalls?: readonly MockToolCall[];
   /** Make `generate()` / `stream()` reject with this error instead of replying. */
   error?: Error;
-  /** Token usage to report. Defaults to zero. */
+  /**
+   * Token usage to report. When omitted the model reports no usage at all, like a
+   * backend that omits token counts (the executor then estimates and flags it).
+   */
   usage?: { inputTokens: number; outputTokens: number };
   /** Finish reason to report. Defaults to `'tool_calls'` when there are tool calls, else `'stop'`. */
   finishReason?: GenerateResult['finishReason'];
@@ -123,6 +126,9 @@ export interface MockModel extends LLMProvider {
    */
   assertExhausted(): void;
 }
+
+/** The streaming types require usage on the finish chunk, so a usage-less scripted turn streams zeros. */
+const NO_USAGE = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
 interface ResolvedTurn {
   text: string;
@@ -219,7 +225,7 @@ class ScriptedMockModel implements MockModel {
     const fullStream = async function* (): AsyncGenerator<StreamChunk> {
       for (const textDelta of chunks) yield { type: 'text-delta', textDelta };
       for (const toolCall of turn.toolCalls) yield { type: 'tool-call', toolCall };
-      yield { type: 'finish', finishReason: turn.finishReason, usage: turn.usage };
+      yield { type: 'finish', finishReason: turn.finishReason, usage: turn.usage ?? NO_USAGE };
     };
     const textStream = async function* (): AsyncGenerator<string> {
       yield* chunks;
@@ -228,7 +234,7 @@ class ScriptedMockModel implements MockModel {
       fullStream: fullStream(),
       textStream: textStream(),
       text: Promise.resolve(turn.text),
-      usage: Promise.resolve(turn.usage),
+      usage: Promise.resolve(turn.usage ?? NO_USAGE),
       finishReason: Promise.resolve(turn.finishReason),
       toolCalls: Promise.resolve(turn.toolCalls),
     };
@@ -280,16 +286,14 @@ class ScriptedMockModel implements MockModel {
 
   private toResolved(turn: MockTurnObject): ResolvedTurn {
     const toolCalls = (turn.toolCalls ?? []).map((call) => this.toToolCall(call));
-    const inputTokens = turn.usage?.inputTokens ?? 0;
-    const outputTokens = turn.usage?.outputTokens ?? 0;
     return {
       text: turn.text ?? '',
       toolCalls,
       finishReason: turn.finishReason ?? (toolCalls.length > 0 ? 'tool_calls' : 'stop'),
-      usage: {
-        promptTokens: inputTokens,
-        completionTokens: outputTokens,
-        totalTokens: inputTokens + outputTokens,
+      usage: turn.usage && {
+        promptTokens: turn.usage.inputTokens,
+        completionTokens: turn.usage.outputTokens,
+        totalTokens: turn.usage.inputTokens + turn.usage.outputTokens,
       },
     };
   }
