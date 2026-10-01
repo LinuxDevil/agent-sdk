@@ -18,6 +18,7 @@
  * function rather than calling `toolDesc.tool.execute()` directly.
  */
 
+import type { ToolExecutionOptions } from 'ai';
 import { ToolDescriptor } from '../types';
 import { SandboxAdapter } from '../security/sandboxCore';
 
@@ -32,15 +33,20 @@ import { SandboxAdapter } from '../security/sandboxCore';
  *   to `tool.execute()` would run the tool's real code unsandboxed on the
  *   host while claiming it was isolated. So this fails closed and throws,
  *   matching this codebase's established fail-closed philosophy.
- * - Otherwise (no `requiresSandbox`), calls `tool.execute(args, {} as any)`
+ * - Otherwise (no `requiresSandbox`), calls `tool.execute(args, { abortSignal })`
  *   directly - the exact, unchanged pre-existing path - or resolves to
  *   `null` if the tool has no `execute` implementation at all.
+ *
+ * LOU-V1: `signal` (the run's cancellation signal) reaches the tool as
+ * `abortSignal` - the option name the 'ai' SDK's own `tool()` execute
+ * signature uses - in both branches.
  */
 export async function executeToolWithSandboxGuard(
   toolName: string,
   toolDesc: ToolDescriptor,
   args: Record<string, unknown>,
-  sandbox: SandboxAdapter
+  sandbox: SandboxAdapter,
+  signal?: AbortSignal
 ): Promise<unknown> {
   if (toolDesc.requiresSandbox) {
     if (!toolDesc.sandboxExecute) {
@@ -49,8 +55,13 @@ export async function executeToolWithSandboxGuard(
           `- cannot be safely sandboxed, refusing to fall back to unsandboxed execution`
       );
     }
-    return toolDesc.sandboxExecute(args, sandbox);
+    return signal
+      ? toolDesc.sandboxExecute(args, sandbox, { abortSignal: signal })
+      : toolDesc.sandboxExecute(args, sandbox);
   }
 
-  return toolDesc.tool.execute ? toolDesc.tool.execute(args, {} as any) : null;
+  // The 'ai' SDK types toolCallId/messages as required, but tools invoked
+  // here are not part of an 'ai' SDK generation, so only abortSignal is set.
+  const executeOptions = { abortSignal: signal } as ToolExecutionOptions;
+  return toolDesc.tool.execute ? toolDesc.tool.execute(args, executeOptions) : null;
 }

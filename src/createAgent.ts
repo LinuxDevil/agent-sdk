@@ -40,9 +40,24 @@ export interface CreateAgentConfig {
   maxSteps?: number;
 }
 
+/** Per-call options for `SimpleAgent.send()`. */
+export interface SendOptions {
+  /**
+   * Cancels this run (LOU-V1). The returned promise then resolves - it
+   * does not reject - with `finishReason: 'aborted'` and the transcript so
+   * far. See `ExecuteOptions.signal`.
+   *
+   * @example
+   * ```ts
+   * const result = await agent.send('hi', { signal: AbortSignal.timeout(10_000) });
+   * ```
+   */
+  signal?: AbortSignal;
+}
+
 export interface SimpleAgent {
   /** Send a single user message and get back the full execution result text. */
-  send: (message: string) => Promise<ExecutionResult>;
+  send: (message: string, options?: SendOptions) => Promise<ExecutionResult>;
 }
 
 /**
@@ -63,13 +78,14 @@ export function createAgent(config: CreateAgentConfig): SimpleAgent {
     .build();
 
   return {
-    async send(message: string): Promise<ExecutionResult> {
+    async send(message: string, options: SendOptions = {}): Promise<ExecutionResult> {
       return AgentExecutor.execute({
         agent,
         input: message,
         provider: config.provider,
         toolRegistry,
         maxSteps: config.maxSteps,
+        signal: options.signal,
       });
     },
   };

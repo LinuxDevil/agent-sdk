@@ -66,6 +66,25 @@ describe('AiSdkProvider', () => {
     expect(generateTextMock.mock.calls[0][0].model.modelId).toBe('gpt-4');
   });
 
+  it('LOU-V1: forwards GenerateOptions.signal to the ai SDK as abortSignal', async () => {
+    generateTextMock.mockResolvedValue(textResult('stop'));
+    streamTextMock.mockResolvedValue({
+      textStream: (async function* () {})(),
+      text: Promise.resolve(''),
+      usage: Promise.resolve(usage),
+      finishReason: Promise.resolve('stop'),
+      toolCalls: Promise.resolve([]),
+    });
+    const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });
+    const { signal } = new AbortController();
+
+    await provider.generate({ messages: [], signal });
+    await provider.stream({ messages: [], signal });
+
+    expect(generateTextMock.mock.calls[0][0].abortSignal).toBe(signal);
+    expect(streamTextMock.mock.calls[0][0].abortSignal).toBe(signal);
+  });
+
   it.each([
     ['stop', 'stop'],
     ['length', 'length'],

@@ -65,6 +65,17 @@ export interface GenerateOptions {
   tools?: ToolDefinition[];
   toolChoice?: 'auto' | 'required' | 'none' | { type: 'function'; function: { name: string } };
   seed?: number;
+  /**
+   * Cancels the request. Providers must reject promptly (with the signal's
+   * `reason`, normally an `AbortError`) once it is aborted. AgentExecutor
+   * sets this from `ExecuteOptions.signal`.
+   *
+   * @example
+   * ```ts
+   * await provider.generate({ messages, signal: AbortSignal.timeout(10_000) });
+   * ```
+   */
+  signal?: AbortSignal;
 }
 
 /**

@@ -19,6 +19,50 @@ npm run docs:build   # writes docs/api/index.html
 | `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
 
+### Cancellation
+
+Pass an `AbortSignal` to stop a run: `agent.send(input, { signal })`,
+`AgentExecutor.execute({ ..., signal })` or
+`resumeAfterApproval(..., { signal })`.
+
+```ts
+import { createAgent, createMockProvider } from '@loushy/build-ai-agent';
+const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
+const controller = new AbortController();
+setTimeout(() => controller.abort(), 5_000); // e.g. from a Stop button
+const result = await agent.send('Write a long report', { signal: controller.signal });
+console.log(result.finishReason); // 'aborted' if it was cancelled, else 'stop'
+```
+
+For a time limit, use `AbortSignal.timeout(ms)`:
+
+```ts
+import { createAgent, createMockProvider } from '@loushy/build-ai-agent';
+const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
+const result = await agent.send('Summarize this', { signal: AbortSignal.timeout(30_000) });
+```
+
+How it behaves:
+
+- The signal is checked before every model call and every tool call. It is
+  passed to the provider (`GenerateOptions.signal`, sent to the `ai` SDK as
+  `abortSignal`) and to each tool as `execute(args, { abortSignal })`, so
+  in-flight work can stop early. The built-in `httpTool` passes it to
+  `fetch`, and agents created with `createDelegateTool()` are aborted along
+  with their parent.
+- An aborted run **resolves** (it does not reject) with
+  `finishReason: 'aborted'` and the messages and steps so far. A rejection
+  caused by the abort, such as an `AbortError`, is not treated as a failure:
+  it is not retried (including by `retry()`) and is not compacted into a
+  provider error.
+- `onEvent` receives an `abort` event (its `abortReason` is the signal's
+  `reason`), then `finish` with `finishReason: 'aborted'`.
+- With `sessionId` + `checkpointStore`, the state is checkpointed. Calling
+  `execute()` again with the same `sessionId` resumes where the run stopped.
+  Tool calls the run never reached get an `{ error }` result saying they were
+  cancelled, so the conversation stays valid for the provider.
+- An already-aborted signal returns at once without calling the provider.
+
 ## Declarative specs
 
 | Export             | Description                                                    |

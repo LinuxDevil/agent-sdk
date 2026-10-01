@@ -193,6 +193,17 @@ function createSandboxTransport(sandbox: SandboxAdapter, validateSSL: boolean, t
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
 
+/** One outbound request, as makeHttpRequest()/makeHttpRequestViaSandbox() take it. */
+interface HttpRequestArgs {
+  url: string;
+  method: HttpMethod;
+  headers?: Record<string, string>;
+  body?: string;
+  options?: HttpToolOptions;
+  /** Cancels the request (LOU-V1); it then rejects with an `AbortError`. */
+  signal?: AbortSignal;
+}
+
 const DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_MAX_REDIRECTS = 5;
 
@@ -250,8 +261,35 @@ async function readResponseBody(response: Response): Promise<string> {
   return await response.text();
 }
 
+/**
+ * Aborts `controller` when the caller's `signal` aborts (LOU-V1), so the
+ * run's cancellation reaches the in-flight fetch. Returns the unlink
+ * function to call once the request settles.
+ */
+function linkCallerSignal(controller: AbortController, signal: AbortSignal | undefined): () => void {
+  if (!signal) {
+    return () => undefined;
+  }
+  const onAbort = () => controller.abort(signal.reason);
+  if (signal.aborted) {
+    onAbort();
+  }
+  signal.addEventListener('abort', onAbort, { once: true });
+  return () => signal.removeEventListener('abort', onAbort);
+}
+
+/** The error reported when the caller cancelled the request. */
+function abortedRequestError(): Error {
+  const error = new Error('HTTP request was aborted');
+  error.name = 'AbortError';
+  return error;
+}
+
 /** Map whatever a request threw to the error performHttpRequest() reports. */
-function toHttpRequestError(error: unknown, timeoutMs: number): Error {
+function toHttpRequestError(error: unknown, timeoutMs: number, callerSignal?: AbortSignal): Error {
+  if (callerSignal?.aborted) {
+    return abortedRequestError();
+  }
   if (error instanceof Error && error.name === 'AbortError') {
     return new Error(`Request timed out after ${timeoutMs}ms`);
   }
@@ -273,13 +311,8 @@ async function performHttpRequest(
     headers,
     body,
     options = {},
-  }: {
-    url: string;
-    method: HttpMethod;
-    headers?: Record<string, string>;
-    body?: string;
-    options?: HttpToolOptions;
-  },
+    signal,
+  }: HttpRequestArgs,
   transport: HttpTransport,
   getCleanup: () => (() => void | Promise<void>) | void
 ): Promise<string> {
@@ -288,6 +321,7 @@ async function performHttpRequest(
   const timeoutMs = options.timeout ?? DEFAULT_TIMEOUT_MS;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const unlinkSignal = linkCallerSignal(controller, signal);
   const cleanup = getCleanup();
 
   try {
@@ -313,9 +347,10 @@ async function performHttpRequest(
     return await readResponseBody(response);
   } catch (error) {
     clearTimeout(timeoutId);
-    throw toHttpRequestError(error, timeoutMs);
+    throw toHttpRequestError(error, timeoutMs, signal);
   } finally {
     clearTimeout(timeoutId);
+    unlinkSignal();
     await cleanup?.();
   }
 }
@@ -327,13 +362,7 @@ async function performHttpRequest(
  * the HTTP tool's plain `execute()` - see makeHttpRequestViaSandbox() below
  * for the sandboxed path used by `sandboxExecute()`.
  */
-export async function makeHttpRequest(args: {
-  url: string;
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-  headers?: Record<string, string>;
-  body?: string;
-  options?: HttpToolOptions;
-}): Promise<string> {
+export async function makeHttpRequest(args: HttpRequestArgs): Promise<string> {
   const { transport, close } = createDirectTransport(args.options?.validateSSL !== false);
   return performHttpRequest(args, transport, () => close);
 }
@@ -347,13 +376,7 @@ export async function makeHttpRequest(args: {
  * process.
  */
 export async function makeHttpRequestViaSandbox(
-  args: {
-    url: string;
-    method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-    headers?: Record<string, string>;
-    body?: string;
-    options?: HttpToolOptions;
-  },
+  args: HttpRequestArgs,
   sandbox: SandboxAdapter
 ): Promise<string> {
   const timeoutMs = args.options?.timeout ?? 30000;
@@ -376,8 +399,10 @@ export function createHttpTool(options: HttpToolOptions = {}): ToolDescriptor {
         headers: z.record(z.string()).optional().describe('Optional headers to include in the request as key-value pairs'),
         body: z.string().optional().describe('The body of the request. For POST/PUT/PATCH, this should be a JSON string. Not used for GET/DELETE.'),
       }),
-      execute: async ({ url, method, headers, body }) => {
-        return makeHttpRequest({ url, method, headers, body, options });
+      execute: async ({ url, method, headers, body }, executeOptions) => {
+        // `?.`: direct callers have historically passed no options object.
+        const signal = executeOptions?.abortSignal;
+        return makeHttpRequest({ url, method, headers, body, options, signal });
       },
     }),
     // LOU-K2: httpTool makes arbitrary, model-chosen outbound HTTP requests
@@ -388,14 +413,12 @@ export function createHttpTool(options: HttpToolOptions = {}): ToolDescriptor {
     // left unchanged (still real, directly callable) for callers that
     // invoke descriptor.tool.execute() directly.
     requiresSandbox: true,
-    sandboxExecute: async (args, sandbox) => {
-      const { url, method, headers, body } = args as {
-        url: string;
-        method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-        headers?: Record<string, string>;
-        body?: string;
-      };
-      return makeHttpRequestViaSandbox({ url, method, headers, body, options }, sandbox);
+    sandboxExecute: async (args, sandbox, callOptions) => {
+      const { url, method, headers, body } = args as Omit<HttpRequestArgs, 'options' | 'signal'>;
+      return makeHttpRequestViaSandbox(
+        { url, method, headers, body, options, signal: callOptions?.abortSignal },
+        sandbox
+      );
     },
   };
 }

@@ -77,7 +77,7 @@ export async function prepareGenerateRequest(
   messages: Message[],
   tools: ToolDefinition[]
 ): Promise<GenerateOptions> {
-  const { agent, provider, temperature, maxTokens, onLLMRequest, hooks } = options;
+  const { agent, provider, temperature, maxTokens, onLLMRequest, hooks, signal } = options;
 
   const generateRequest: GenerateOptions = {
     // agent.settings.model > the model the provider was configured with >
@@ -87,6 +87,8 @@ export async function prepareGenerateRequest(
     temperature,
     maxTokens,
     tools: tools.length > 0 ? tools : undefined,
+    // LOU-V1: lets the provider cancel the in-flight request.
+    ...(signal ? { signal } : {}),
   };
 
   if (onLLMRequest) {

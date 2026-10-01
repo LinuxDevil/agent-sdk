@@ -88,6 +88,12 @@ export type ResumeExecuteOptions = Omit<
  * all - it never rehydrates. If `checkpointStore` is omitted entirely,
  * both the delete and the pass-through are skipped and resume behaves
  * exactly as it did before durable execution existed.
+ *
+ * LOU-V1: `executeOptions.signal` cancels the resumed run exactly like
+ * `ExecuteOptions.signal` - the approved tool receives it as `abortSignal`,
+ * and the continued run resolves with `finishReason: 'aborted'` once it is
+ * aborted, e.g. `resumeAfterApproval(decision, approvals, tools, provider,
+ * { signal: controller.signal })`.
  */
 export async function resumeAfterApproval(
   decision: ApprovalDecision,
@@ -272,7 +278,15 @@ async function executeApprovedTool(
     // tool executed after human approval can't silently bypass the
     // sandbox seam the way it previously did.
     const sandbox = executeOptions.sandbox ?? NoopSandbox;
-    return { result: await executeToolWithSandboxGuard(pending.toolName, toolDesc, args, sandbox) };
+    return {
+      result: await executeToolWithSandboxGuard(
+        pending.toolName,
+        toolDesc,
+        args,
+        sandbox,
+        executeOptions.signal
+      ),
+    };
   } catch (error) {
     // Mirror AgentExecutor.executeToolCall's (post-fix) handling of a
     // thrown tool error: errors that mark themselves as

@@ -25,6 +25,7 @@ import {
   AgentRunState,
   addUsage,
   loadRunState,
+  pushCancelledToolResults,
   saveStepCheckpoint,
   toExecutionResult,
 } from './agentRunState';
@@ -41,7 +42,25 @@ export type ExecutionEventType =
   | 'tool-call'
   | 'tool-result'
   | 'finish'
-  | 'error';
+  | 'error'
+  | 'abort';
+
+/**
+ * Why a run ended, as reported on `ExecutionResult.finishReason` and the
+ * `finish` event. The known values are listed for autocomplete; a provider
+ * may report others, so this stays open to any string.
+ *
+ * - `'stop'`, `'length'`, `'tool_calls'`, `'content_filter'`, `'error'`:
+ *   the model's own finish reason for its last turn.
+ * - `'awaiting-approval'`: paused on a tool call that needs a human
+ *   decision (see `resumeAfterApproval()`).
+ * - `'aborted'`: cancelled through `ExecuteOptions.signal` (LOU-V1).
+ */
+export type ExecutionFinishReason =
+  | GenerateResult['finishReason']
+  | 'awaiting-approval'
+  | 'aborted'
+  | (string & {});
 
 /**
  * Execution event
@@ -60,13 +79,19 @@ export interface ExecutionEvent {
     result: any;
     error?: string;
   };
-  finishReason?: string;
+  finishReason?: ExecutionFinishReason;
   usage?: {
     promptTokens: number;
     completionTokens: number;
     totalTokens: number;
   };
   error?: Error;
+  /**
+   * On an `abort` event: the `reason` of the aborted signal (a
+   * `DOMException` named `AbortError` unless the caller passed their own
+   * reason to `controller.abort(reason)`).
+   */
+  abortReason?: unknown;
 }
 
 /**
@@ -230,6 +255,32 @@ export interface ExecuteOptions {
    *   silently returning a hollow "successful" result).
    */
   surfaceRetryableProviderErrors?: boolean;
+  /**
+   * LOU-V1: cancels the run. The signal is checked before every model call
+   * and every tool call, and is forwarded to the provider (as
+   * `GenerateOptions.signal`) and to each tool's
+   * `execute(args, { abortSignal })` so in-flight work can stop early.
+   * Delegated child agents inherit it.
+   *
+   * An aborted run does NOT reject: it resolves with
+   * `finishReason: 'aborted'` and the transcript/steps so far, after
+   * emitting an `abort` event and then a `finish` event. A rejection caused
+   * by the abort (e.g. an `AbortError` from the provider) counts as the
+   * abort, never as a failure. With `sessionId` + `checkpointStore` the
+   * state is checkpointed, so calling `execute()` again with the same
+   * `sessionId` resumes where the run stopped. An already-aborted signal
+   * returns at once without calling the provider.
+   *
+   * @example
+   * ```ts
+   * const result = await AgentExecutor.execute({
+   *   agent, input: 'Summarize the report', provider,
+   *   signal: AbortSignal.timeout(30_000), // or controller.signal
+   * });
+   * if (result.finishReason === 'aborted') console.log('cancelled');
+   * ```
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -244,7 +295,7 @@ export interface ExecutionResult {
     completionTokens: number;
     totalTokens: number;
   };
-  finishReason: string;
+  finishReason: ExecutionFinishReason;
   steps: number;
   approvalId?: string;
 }
@@ -293,7 +344,7 @@ export class AgentExecutor {
     options: ExecuteOptions,
     agentSpanId: string
   ): Promise<ExecutionResult> {
-    const { agent, toolRegistry, maxSteps = 10, onEvent } = options;
+    const { agent, toolRegistry, maxSteps = 10, onEvent, signal } = options;
 
     // Emit start event
     this.emitEvent(onEvent, {
@@ -308,29 +359,51 @@ export class AgentExecutor {
 
     const state = await loadRunState(options);
 
-    // Execution loop with tool calling
+    // Execution loop with tool calling. LOU-V1: the signal is checked
+    // before every model call (here) and every tool call (runToolCalls()).
     while (state.steps < maxSteps) {
+      if (signal?.aborted) {
+        return this.abortRun(options, state);
+      }
       state.steps++;
 
-      try {
-        const outcome = await this.runStep(options, state, tools, agentSpanId);
-        if (outcome === 'stop') {
-          break;
-        }
-        if (outcome !== 'continue') {
-          return outcome;
-        }
-      } catch (error) {
-        this.emitEvent(onEvent, {
-          type: 'error',
-          timestamp: new Date(),
-          error: error as Error,
-        });
-        throw error;
+      const outcome = await this.runStepOrAbort(options, state, tools, agentSpanId);
+      if (outcome === 'stop') {
+        return this.finishRun(options, state);
+      }
+      if (outcome !== 'continue') {
+        return outcome;
       }
     }
 
-    return this.finishRun(options, state);
+    return signal?.aborted ? this.abortRun(options, state) : this.finishRun(options, state);
+  }
+
+  /**
+   * runStep(), with a thrown error emitted as an `error` event and
+   * rethrown - unless the run's signal was aborted, in which case the
+   * rejection is the abort itself (e.g. the provider's AbortError) and the
+   * run ends as 'aborted' instead (LOU-V1).
+   */
+  private static async runStepOrAbort(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    tools: ToolDefinition[],
+    agentSpanId: string
+  ): Promise<'continue' | 'stop' | ExecutionResult> {
+    try {
+      return await this.runStep(options, state, tools, agentSpanId);
+    } catch (error) {
+      if (options.signal?.aborted) {
+        return this.abortRun(options, state);
+      }
+      this.emitEvent(options.onEvent, {
+        type: 'error',
+        timestamp: new Date(),
+        error: error as Error,
+      });
+      throw error;
+    }
   }
 
   /**
@@ -414,6 +487,11 @@ export class AgentExecutor {
     try {
       return await generateInSpan(options, generateRequest, state.messages, agentSpanId);
     } catch (generateError) {
+      // LOU-V1: a rejection caused by the abort is not a provider failure -
+      // never compact it or fold it into the conversation for a retry.
+      if (options.signal?.aborted) {
+        throw generateError;
+      }
       const { compacted, error: compactedError } = compactGenerateError(
         generateError,
         options.provider.name
@@ -466,7 +544,12 @@ export class AgentExecutor {
     });
 
     // Execute tools and add results
-    for (const toolCall of toolCalls) {
+    for (const [index, toolCall] of toolCalls.entries()) {
+      if (options.signal?.aborted) {
+        pushCancelledToolResults(state, toolCalls.slice(index));
+        return this.abortRun(options, state);
+      }
+
       this.emitEvent(onEvent, {
         type: 'tool-call',
         timestamp: new Date(),
@@ -519,6 +602,7 @@ export class AgentExecutor {
       sessionId,
       exporter,
       redactContent = false,
+      signal,
     } = options;
 
     return withSpan(
@@ -536,7 +620,8 @@ export class AgentExecutor {
           sandbox,
           hooks,
           sessionId,
-          state.messages
+          state.messages,
+          signal
         );
         const parsedArgs =
           executed.args === undefined
@@ -604,6 +689,35 @@ export class AgentExecutor {
   }
 
   /**
+   * Ends a run whose signal was aborted (LOU-V1): checkpoints the state so
+   * far (when checkpointing is on, so the session can be resumed later),
+   * emits `abort` then `finish`, and resolves with finishReason 'aborted'.
+   */
+  private static async abortRun(
+    options: ExecuteOptions,
+    state: AgentRunState
+  ): Promise<ExecutionResult> {
+    const { onEvent, signal } = options;
+    state.finishReason = 'aborted';
+    await saveStepCheckpoint(options, state);
+
+    this.emitEvent(onEvent, {
+      type: 'abort',
+      timestamp: new Date(),
+      abortReason: signal?.reason,
+      usage: state.usage,
+    });
+    this.emitEvent(onEvent, {
+      type: 'finish',
+      timestamp: new Date(),
+      finishReason: 'aborted',
+      usage: state.usage,
+    });
+
+    return toExecutionResult(state, state.finalText, 'aborted');
+  }
+
+  /**
    * Ends a run that left the loop - the model stopped requesting tools,
    * or maxSteps was exhausted.
    */
@@ -664,7 +778,8 @@ export class AgentExecutor {
     sandbox: SandboxAdapter = NoopSandbox,
     hooks?: HookRegistry,
     sessionId?: string,
-    messages: Message[] = []
+    messages: Message[] = [],
+    signal?: AbortSignal
   ): Promise<ToolCallOutcome> {
     return runToolCall(toolCall, {
       agent,
@@ -675,6 +790,7 @@ export class AgentExecutor {
       hooks,
       sessionId,
       messages,
+      signal,
     });
   }
 

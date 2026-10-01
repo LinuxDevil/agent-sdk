@@ -16,6 +16,23 @@ export interface RetryOptions {
   timeout?: number;
   onRetry?: (error: Error, attempt: number, delayMs: number) => void;
   shouldRetry?: (error: Error, attempt: number) => boolean;
+  /**
+   * Stops retrying once aborted (LOU-V1): the error of the attempt that
+   * was running is rethrown instead of scheduling another attempt.
+   * Independently of this option, an error named `AbortError` is never
+   * retried - a cancelled operation is not a transient failure.
+   *
+   * @example
+   * ```ts
+   * await retry(() => provider.generate({ messages, signal }), { signal });
+   * ```
+   */
+  signal?: AbortSignal;
+}
+
+/** Whether an attempt's failure is a cancellation, which is never retried. */
+function isAbort(error: Error, signal: AbortSignal | undefined): boolean {
+  return error?.name === 'AbortError' || signal?.aborted === true;
 }
 
 /**
@@ -58,6 +75,7 @@ export async function retry<T>(
     timeout,
     onRetry,
     shouldRetry = isRetryableError,
+    signal,
   } = options;
 
   let attempt = 0;
@@ -78,8 +96,13 @@ export async function retry<T>(
     } catch (error) {
       lastError = error as Error;
 
-      // Don't retry if it's the last attempt, or if the error isn't retryable
-      if (attempt >= maxAttempts || !shouldRetry(lastError, attempt)) {
+      // Don't retry if it's the last attempt, the operation was cancelled,
+      // or the error isn't retryable
+      if (
+        attempt >= maxAttempts ||
+        isAbort(lastError, signal) ||
+        !shouldRetry(lastError, attempt)
+      ) {
         break;
       }
 
