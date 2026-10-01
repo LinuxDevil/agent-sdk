@@ -145,24 +145,17 @@ if (run.finishReason === 'awaiting-approval') {
 ### Durable sessions with SQLite
 
 ```ts
-import { AgentBuilder, AgentExecutor, createAgent, resolveProvider } from '@loushy/build-ai-agent';
+import { createAgent, resolveProvider } from '@loushy/build-ai-agent';
 import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
 
 const store = new SqliteStore('./.loushy/agent.db'); // sessions, checkpoints and approvals in one file
-const provider = resolveProvider('openai/gpt-4o-mini');
+const agent = createAgent({ provider: resolveProvider('openai/gpt-4o-mini'), approvalStore: store.approvals });
 
-// A conversation that survives restarts: same id + same file = same conversation.
-const agent = createAgent({ provider, approvalStore: store.approvals });
-await agent.session({ id: 'user-42', store: store.sessions }).send('My name is Ali.');
-const { text } = await agent.session({ id: 'user-42', store: store.sessions }).send('What is my name?'); // "Ali"
-
-// A crash-safe run: checkpointed after every model response and tool result.
-// Calling execute() again with the same sessionId resumes it instead of starting over.
-const booker = AgentBuilder.create().setName('booker').setPrompt('You book restaurant tables.').build();
-await AgentExecutor.execute({
-  agent: booker, input: 'Book a table for 2 tonight', provider,
-  sessionId: 'booking-7', checkpointStore: store.checkpoints,
-});
+// Same id + same file = same conversation, checkpointed after every model response and tool result.
+await agent.session({ id: 'user-42', store }).send('My name is Ali.');
+const session = agent.session({ id: 'user-42', store });
+await session.resume(); // after a crash: finishes the interrupted turn without redoing finished steps
+const { text } = await session.send('What is my name?'); // "Ali"
 ```
 
 ## Documentation
