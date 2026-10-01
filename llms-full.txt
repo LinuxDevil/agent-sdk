@@ -723,7 +723,7 @@ npm install @ai-sdk/openai@^0.0.42
 ```ts no-run
 import { MissingPeerDependencyError, resolveProvider } from '@loushy/build-ai-agent';
 
-const provider = resolveProvider('openai/gpt-4o-mini'); // always succeeds
+const provider = resolveProvider('openai/gpt-4o-mini'); // needs OPENAI_API_KEY; does not load the peer
 try {
   await provider.generate({ messages: [{ role: 'user', content: 'hello' }] });
 } catch (error) {
