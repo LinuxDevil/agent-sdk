@@ -8,6 +8,7 @@ import { ToolDescriptor } from '../../types';
  */
 export const dayNameTool: ToolDescriptor = defineTool({
   name: 'day_name',
+  annotations: { readOnlyHint: true, destructiveHint: false },
   displayName: 'Get day name',
   description: 'Get the name of the day (e.g., Monday, Tuesday) for a given date',
   input: z.object({

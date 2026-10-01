@@ -8,6 +8,7 @@ import { ToolDescriptor } from '../../types';
  */
 export const currentDateTool: ToolDescriptor = defineTool({
   name: 'current_date',
+  annotations: { readOnlyHint: true, destructiveHint: false },
   displayName: 'Get current date',
   description: 'Get the current date and time in ISO format (UTC timezone)',
   input: z.object({}),
