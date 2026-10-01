@@ -27,7 +27,8 @@
 
 import { writeFile as fsWriteFile } from 'node:fs/promises';
 import { PassThrough } from 'node:stream';
-import Docker from 'dockerode';
+import type Docker from 'dockerode';
+import { lazyValue, loadOptionalPeer } from '../providers/optionalPeer';
 import { SandboxAdapter, SandboxResult, SandboxRunOptions } from './sandboxCore';
 
 export * from './sandboxCore';
@@ -146,11 +147,15 @@ export interface SubprocessSandboxOptions {
  */
 export class SubprocessSandbox implements SandboxAdapter {
   readonly name = 'docker';
-  private readonly docker: Docker;
+  /** dockerode is loaded on first `run()`, not at import or construction time (LOU-D19). */
+  private readonly getDocker: () => Promise<Docker>;
   private readonly image: string;
 
   constructor(options: SubprocessSandboxOptions = {}) {
-    this.docker = new Docker(options.dockerOptions);
+    this.getDocker = lazyValue(async () => {
+      const { default: DockerClient } = await loadOptionalPeer('dockerode', () => import('dockerode'));
+      return new DockerClient(options.dockerOptions);
+    });
     this.image = options.image ?? 'node:20-alpine';
   }
 
@@ -166,26 +171,27 @@ export class SubprocessSandbox implements SandboxAdapter {
    * top-of-file Docker-prerequisite note).
    */
   private async createContainer(
+    docker: Docker,
     options: Docker.ContainerCreateOptions
   ): Promise<Docker.Container> {
     try {
-      return await this.docker.createContainer(options);
+      return await docker.createContainer(options);
     } catch (err) {
       if (!isNoSuchImageError(err, this.image)) {
         throw err;
       }
       await new Promise<void>((resolve, reject) => {
-        this.docker.pull(this.image, (pullErr: Error | null, stream?: NodeJS.ReadableStream) => {
+        docker.pull(this.image, (pullErr: Error | null, stream?: NodeJS.ReadableStream) => {
           if (pullErr || !stream) {
             reject(pullErr ?? new Error(`SubprocessSandbox: failed to start pulling image '${this.image}'`));
             return;
           }
-          this.docker.modem.followProgress(stream, (followErr: Error | null) =>
+          docker.modem.followProgress(stream, (followErr: Error | null) =>
             followErr ? reject(followErr) : resolve()
           );
         });
       });
-      return this.docker.createContainer(options);
+      return docker.createContainer(options);
     }
   }
 
@@ -194,11 +200,12 @@ export class SubprocessSandbox implements SandboxAdapter {
    * resolves with its captured stdout/stderr/exitCode.
    */
   async run(cmd: string, args: string[], opts: SandboxRunOptions = {}): Promise<SandboxResult> {
-    const container = await this.createContainer(buildContainerOptions(this.image, cmd, args, opts));
+    const docker = await this.getDocker();
+    const container = await this.createContainer(docker, buildContainerOptions(this.image, cmd, args, opts));
 
     const output = captureOutput();
     const attachStream = await container.attach({ stream: true, stdout: true, stderr: true });
-    this.docker.modem.demuxStream(attachStream, output.stdout, output.stderr);
+    docker.modem.demuxStream(attachStream, output.stdout, output.stderr);
 
     await container.start();
     const result = await waitForExit(container, opts.timeoutMs);

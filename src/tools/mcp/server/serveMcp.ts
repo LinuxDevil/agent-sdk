@@ -3,11 +3,11 @@
  * a Model Context Protocol server, so Claude Code, Cursor and other MCP
  * clients can call it (LOU-Z3).
  */
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { SimpleAgent } from '../../../createAgent';
+import { loadOptionalPeer } from '../../../providers/optionalPeer';
 import type { DefinedTool } from '../../defineTool';
-import { buildServer, needsApprovalGate, sanitizeToolName } from './buildServer';
+import { needsApprovalGate, sanitizeToolName } from './toolNames';
+import { buildServer, type ServerSpec } from './buildServer';
 import { listenHttp, type McpHttpTransportOptions } from './httpTransport';
 
 export type { McpHttpTransportOptions } from './httpTransport';
@@ -91,15 +91,19 @@ interface Running {
 
 async function listen(
   transport: ServeMcpOptions['transport'],
-  create: () => McpServer,
+  spec: ServerSpec,
   warn: (message: string) => void
 ): Promise<Running> {
+  const create = () => buildServer(spec);
   if (transport !== undefined && transport !== 'stdio') {
     const http = await listenHttp(transport, create, warn);
     const host = http.host.includes(':') ? `[${http.host}]` : http.host;
     return { port: http.port, url: `http://${host}:${http.port}${http.path}`, close: http.close };
   }
-  const server = create();
+  const { StdioServerTransport } = await loadOptionalPeer('@modelcontextprotocol/sdk', () =>
+    import('@modelcontextprotocol/sdk/server/stdio.js')
+  );
+  const server = await create();
   await server.connect(new StdioServerTransport());
   return { close: () => server.close() };
 }
@@ -134,6 +138,6 @@ export async function serveMcp(options: ServeMcpOptions): Promise<ServeMcpHandle
   if (spec.allowApprovalTools && tools.some(needsApprovalGate)) {
     warn('serveMcp: allowApprovalTools is on - tools flagged needsApproval will run WITHOUT a human gate.');
   }
-  const running = await listen(options.transport, () => buildServer(spec), warn);
+  const running = await listen(options.transport, spec, warn);
   return { agentToolName, url: running.url, port: running.port, close: running.close };
 }
