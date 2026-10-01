@@ -49,7 +49,7 @@ function checkpointStore(failSave?: number): KVCheckpointStore & { data: Map<str
     delete: async (key) => {
       data.delete(key);
     },
-  });
+  }, undefined, undefined, { historyLimit: 0 }); // these tests count puts as saves
   return Object.assign(store, { data });
 }
 
@@ -179,6 +179,18 @@ describe('checkpointed sessions (LOU-W9)', () => {
     expect(roles(session.messages)).toEqual(['user', 'assistant', 'tool', 'assistant']);
     expect(roles((await store.sessions.load('chat'))!)).toEqual(['user', 'assistant', 'tool', 'assistant']);
     expect(await session.pending()).toBeNull();
+    store.close();
+  });
+
+  it('clear() and compact() reject while a durable turn waits on an approval (LOU-W8)', async () => {
+    const tools = [tool('send_email', {}, { needsApproval: true })];
+    const store = new SqliteStore(':memory:');
+    const session = createAgent({ provider: mockModel([calling('send_email')]), tools, approvalStore: new InMemoryApprovalStore() }).session({ id: 'chat', store });
+    await session.send('Email Sam');
+
+    await expect(session.clear()).rejects.toBeInstanceOf(SessionAwaitingApprovalError);
+    await expect(session.compact()).rejects.toMatchObject({ code: 'LOUSHY_SESSION_AWAITING_APPROVAL' });
+    expect(await session.pending()).toMatchObject({ status: 'awaiting-approval' });
     store.close();
   });
 

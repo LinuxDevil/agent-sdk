@@ -10,7 +10,7 @@
  * names the feature that needs it.
  */
 
-import { peerInstallCommand } from './providerSpec';
+import { type AiMajor, findPeerPairing, peerInstallCommand } from './providerSpec';
 import { SDKError } from '../execution/errors';
 
 /** An optional peer that enables one SDK feature rather than one LLM provider. */
@@ -37,9 +37,10 @@ export const FEATURE_PEERS: Readonly<Record<string, FeaturePeer>> = {
   },
 };
 
-function installCommandFor(packageName: string): string {
+function installCommandFor(packageName: string, aiMajor: AiMajor | undefined): string {
   const peer = FEATURE_PEERS[packageName];
-  return peer ? `npm install ${packageName}@${peer.range}` : peerInstallCommand(packageName);
+  if (peer) return `npm install ${packageName}@${peer.range}`;
+  return aiMajor ? peerInstallCommand(packageName, aiMajor) : `npm install ${packageName}`;
 }
 
 /**
@@ -62,10 +63,11 @@ export class MissingPeerDependencyError extends SDKError {
     readonly packageName: string,
     /** The command that installs it, e.g. `npm install @ai-sdk/openai@^0.0.42`. */
     readonly installCommand: string,
-    options?: { cause?: unknown; feature?: string }
+    options?: { cause?: unknown; feature?: string; note?: string }
   ) {
     super(
-      `The optional package '${packageName}' is not installed, but ${options?.feature ?? 'this feature'} needs it. Run: ${installCommand}`,
+      `The optional package '${packageName}' is not installed, but ${options?.feature ?? 'this feature'} needs it. Run: ${installCommand}` +
+        (options?.note ? ` (note: ${options.note})` : ''),
       'LOUSHY_PEER_MISSING',
       { cause: options?.cause }
     );
@@ -93,15 +95,18 @@ function isMissingPackage(error: unknown, packageName: string): boolean {
  * Run `importer` (which must contain a literal `import('<packageName>')` so
  * bundlers keep it external) and translate "package not found" into a
  * {@link MissingPeerDependencyError}. Other errors are rethrown unchanged.
+ * Provider packages pass the installed `aiMajor`, so the hint names the
+ * version that pairs with it (LOU-D28d).
  */
-export async function loadOptionalPeer<T>(packageName: string, importer: () => Promise<T>): Promise<T> {
+export async function loadOptionalPeer<T>(packageName: string, importer: () => Promise<T>, aiMajor?: AiMajor): Promise<T> {
   try {
     return await importer();
   } catch (error) {
     if (!isMissingPackage(error, packageName)) throw error;
-    throw new MissingPeerDependencyError(packageName, installCommandFor(packageName), {
+    throw new MissingPeerDependencyError(packageName, installCommandFor(packageName, aiMajor), {
       cause: error,
       feature: FEATURE_PEERS[packageName]?.feature,
+      note: aiMajor ? findPeerPairing(packageName, aiMajor)?.note : undefined,
     });
   }
 }

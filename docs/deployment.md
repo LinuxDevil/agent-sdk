@@ -21,6 +21,30 @@ deploy the result). `tsup` must be installed (`npm install --save-dev tsup`).
 Every target answers `GET /health` (`200 ok`) and serves the full
 [HTTP API](#http-api) below: sessions, SSE streaming, approvals and bearer auth.
 
+## Agent directories
+
+`node-server` and `docker` also take an [agent directory](./agent-directories.md)
+in place of a spec file (the path may be positional or `--agent`):
+
+```bash
+npx loushy build ./my-agent --target=node-server
+node .loushy/build/node-server/dist/server.js
+```
+
+The generated `server.ts` calls `resolveAgentDir()` on `dist/agent` and
+`createDeployedServer(agent, { schedules, channels })`, so the process starts the
+directory's [schedules](./schedules.md) when it listens, mounts its
+[channels](./channels.md) under `/channels` (they verify themselves; the chat
+routes keep the bearer token), and logs `schedules: ...; channels: ...`.
+The directory's code files are pre-bundled with the build's tsup step into
+`dist/agent/**.js` (one ESM build sharing one copy of the SDK, so a `from
+'@loushy/build-ai-agent'` import in a tool is the SDK the server runs), and the
+rest of the directory is copied; nothing needs a TypeScript loader at run time.
+`dist/` is then ESM (`dist/package.json` says so). The Docker image copies it as
+before. The optional `dockerode` sandbox is not bundled (it loads lazily), so a
+directory that uses `SubprocessSandbox` must install it where it runs. The
+Cloudflare Worker target still takes spec files only.
+
 ## HTTP API
 
 Every target serves the same `/chat` protocol as `loushy dev`
@@ -33,7 +57,7 @@ a page or script written against the dev server works against the deployed one.
 | `GET /health` | `200 ok`. Never needs auth: point load balancers and container health checks here. |
 | `POST /chat` `{ "sessionId", "input" }` | Runs a turn of session `sessionId` (1-128 characters of `A-Za-z0-9_-`; a new id starts a conversation, a known one continues it) and streams it as SSE: one `data: <AgentEvent JSON>` per event ([Streaming](./streaming.md)), then `event: done`. `input` is a string or an array of content parts. |
 | `GET /chat/:sessionId` | The session's transcript: `{ sessionId, messages, pending }`. |
-| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn as SSE. `404` when `id` is not pending. |
+| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn live as SSE, in the same framing and event types as `POST /chat` (the decided call's `tool.start` / `tool.done` or `tool.error`, text deltas, `approval.requested` if it pauses again, `run.done`), from `agent.approvals.streamResolve()` / `streamAnswer()`. `404` when `id` is not pending. |
 | `POST /chat` `{ "message" }` | Legacy, single turn without history or streaming: returns the agent's `ExecutionResult` as JSON, with a `Deprecation: true` header. |
 
 Bodies over 1MB get `413`, invalid JSON `400`.
@@ -183,7 +207,7 @@ write. Keys, with an optional `prefix` before each:
 | Key | Value |
 | --- | ----- |
 | `sessions/<id>` | The transcript as JSON (image and file bytes as `{ "$bytes": "<base64>" }`, like `FileSessionStore`). |
-| `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, no history). |
+| `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, with its history under `checkpoints/<id>#history`). |
 | `approvals/<id>` | A paused approval and the snapshot that resumes it (deleted when it is decided). |
 
 `ttl: { sessions?, checkpoints?, approvals? }` (seconds, KV accepts 60 or more)
@@ -199,6 +223,35 @@ The deprecated `POST /chat { "message", "sessionId"? }` keeps its earlier
 behaviour on Workers: with a `sessionId` the run is checkpointed to
 `checkpoints/<sessionId>` after each tool result and rehydrated by a later
 request that reuses the `sessionId` (after a crash or a recycled isolate).
+
+### Cron triggers and `handleScheduled`
+
+Cron triggers in the spec (`triggers: [{ type: 'cron', cron: '0 9 * * MON', input: '...' }]`)
+become `[triggers] crons = [...]` in `wrangler.toml`, and the generated Worker
+exports a `scheduled()` handler that runs them as agent turns (session
+`schedule:<name>`, see [Schedules](schedules.md#on-cloudflare-workers)). Cloudflare
+evaluates the expressions in **UTC** with a granularity of one minute; the
+build rejects a `timezone`, a seconds field, an `@daily` shortcut or a numeric
+day-of-week (`LOUSHY_SCHEDULE_INVALID`).
+
+In a Worker you write yourself, wire an agent defined in code with
+`handleScheduled(agent, schedules, controller, ctx)` (also exported from
+`@loushy/build-ai-agent/deploy-runtime-worker`). It runs the schedules whose
+`cron` equals `controller.cron` inside `ctx.waitUntil()` and never throws; list
+the same expressions under `[triggers] crons` yourself:
+
+```ts
+import { createAgent, createMockProvider, defineSchedule, handleScheduled } from '@loushy/build-ai-agent';
+import type { ScheduledContext, ScheduledController } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ instructions: 'You write reports.', provider: createMockProvider() });
+const schedules = [defineSchedule({ name: 'weekly', cron: '0 9 * * MON', prompt: 'Summarise last week.' })];
+
+export default {
+  scheduled: (controller: ScheduledController, _env: unknown, ctx: ScheduledContext) =>
+    handleScheduled(agent, schedules, controller, ctx),
+};
+```
 
 ### Durable execution (pause/resume) on Workers
 

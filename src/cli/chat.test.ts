@@ -167,10 +167,18 @@ describe('loushy chat REPL', () => {
     expect(out.split('you: my name is Ali').length).toBe(2);
   });
 
+  it('/clear empties the current session and /compact reports its size', async () => {
+    const { out, model } = await converse(['my name is Ali', '/compact', '/clear', '/history', 'who am I?', '/quit'], ['Nice to meet you.', 'No idea.']);
+    expect(out).toMatch(/Compacted: 2 -> 2 messages, ~\d+ -> ~\d+ tokens\./);
+    expect(out).toContain('Conversation cleared.');
+    expect(out).toContain('(no messages yet)');
+    expect(model.calls[1].messages.filter((m) => m.role === 'user').map((m) => m.content)).toEqual(['who am I?']);
+  });
+
   it('/history says so for an empty session, and an unknown command lists the commands', async () => {
     const { out } = await converse(['/history', '/nope', '/quit'], []);
     expect(out).toContain('(no messages yet)');
-    expect(out).toContain("Unknown command '/nope'. Commands: /new, /model <provider/model>, /history, /quit");
+    expect(out).toContain("Unknown command '/nope'. Commands: /new, /compact, /clear, /model <provider/model>, /history, /quit");
   });
 
   it('/model rebuilds the agent with the new model, and keeps the old one when that fails', async () => {
@@ -199,6 +207,13 @@ describe('loushy chat REPL', () => {
     expect(err).toContain('error: ');
     expect(err).toContain('boom');
     expect(out).toContain('Recovered.');
+  });
+
+  it('streams the continuation after y, and asks again when it pauses a second time (LOU-D32.2)', async () => {
+    const { out } = await converse(['ping twice', 'y', 'y', '/quit'], [{ toolCalls: [{ name: 'ping' }] }, { toolCalls: [{ name: 'ping' }] }, 'Both done.']);
+    expect(out.match(/Approve ping\(\{\}\)\? \[y\/N\] /g)).toHaveLength(2);
+    expect(out).toContain('-> pong');
+    expect(out).toContain('Both done.');
   });
 
   it('declines a pending approval when the input ends, and still closes the agent', async () => {

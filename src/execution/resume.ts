@@ -6,6 +6,7 @@
 import { LLMProvider, Message, ToolCall } from '../providers';
 import { ToolRegistry } from '../tools';
 import { getToolExecute } from '../tools/toolContract';
+import { approvalMarker } from '../tools/approvalPolicies';
 import type { ToolDescriptor, ToolExecutionContext } from '../types';
 import {
   ApprovalDecision,
@@ -20,6 +21,7 @@ import { Checkpoint, CheckpointStore } from './checkpoint';
 import { NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
 import { HookRegistry } from './hooks';
+import { runPreToolHooks, type ToolCallOutcome } from './toolCallExecution';
 import { toolErrorMessage } from './propagatingToolError';
 import { SDKError } from './errors';
 import { toolErrorResult, type ToolErrorResult } from './toolErrors';
@@ -230,7 +232,14 @@ async function streamedDecision(ctx: ResumeContext, pending: PendingApproval): R
 function toolResultOf(message: Message): NonNullable<ExecutionEvent['toolResult']> {
   const result: unknown = typeof message.content === 'string' ? JSON.parse(message.content) : message.content;
   const error = message.isError ? String((result as { message?: unknown } | null)?.message ?? '') : undefined;
-  return { toolCallId: message.toolCallId ?? '', toolName: message.toolName ?? '', result, ...(error !== undefined && { error }) };
+  const replacedByHook = message.metadata?.replacedByHook;
+  return {
+    toolCallId: message.toolCallId ?? '',
+    toolName: message.toolName ?? '',
+    result,
+    ...(error !== undefined && { error }),
+    ...(typeof replacedByHook === 'string' && { replacedByHook }),
+  };
 }
 
 /**
@@ -278,7 +287,9 @@ async function decidedToolMessage(
     execute: ctx.execute,
   };
   // LOU-X9: the tool sees the decision's note (an `ask_question` answer) as `ctx.approval`.
-  return { message: await runApproved(pending, ctx.toolRegistry, scope, { note: ctx.decision.note }) };
+  const message = await runApproved(pending, ctx.toolRegistry, scope, { note: ctx.decision.note });
+  // LOU-X8: the transcript remembers the approval, for `once()`.
+  return { message: { ...message, metadata: { ...message.metadata, ...approvalMarker(pending.args) } } };
 }
 
 /**
@@ -387,7 +398,7 @@ function closeUnlistedToolCalls(messages: Message[], remaining: ToolCall[] | und
 }
 
 /** The `tool` message carrying a resumed tool call's result (or rejection). */
-function toolResultMessage(pending: PendingApproval, payload: unknown, isError = false): Message {
+function toolResultMessage(pending: PendingApproval, payload: unknown, isError = false, replacedByHook?: string): Message {
   return {
     role: 'tool',
     content: JSON.stringify(payload),
@@ -395,6 +406,7 @@ function toolResultMessage(pending: PendingApproval, payload: unknown, isError =
     toolCallId: pending.toolCallId,
     toolName: pending.toolName,
     ...(isError && { isError }),
+    ...(replacedByHook !== undefined && { metadata: { replacedByHook } }),
   };
 }
 
@@ -453,11 +465,15 @@ async function runApprovedToolCall(
     },
   };
 
-  if (hooks) {
-    await hooks.runPreToolCall(hookCtx);
-  }
-
-  const { result, toolError, errorResult } = await executeApprovedTool(pending, toolDesc, hookArgs, executeOptions, { messages, approval }, scope);
+  // LOU-X3: a pre-hook may deny the call or supply its result; input it
+  // supplies must match what the human approved.
+  const verdict = hooks
+    ? await runPreToolHooks(hooks, hookCtx, { toolRegistry, runtime: executeOptions, approvedArgs: pending.args })
+    : { args: hookArgs };
+  const settled: SettledCall = verdict.outcome
+    ? settledByHook(verdict.outcome)
+    : await executeApprovedTool(pending, toolDesc, verdict.args, executeOptions, { messages, approval }, scope);
+  const { result, toolError, errorResult } = settled;
 
   // Fires (with the settled result/error) regardless of how the tool
   // settled - matching AgentHook.postToolCall's documented contract
@@ -466,11 +482,27 @@ async function runApprovedToolCall(
   // executeApprovedTool()'s try/catch: a throw here is a hook error, not a
   // tool error, and must propagate out of resumeAfterApproval() unconverted
   // (see executeApprovedTool()).
-  if (hooks) {
-    await hooks.runPostToolCall(hookCtx, { result, error: toolError });
-  }
+  const payload = { result, error: toolError };
+  const replacedBy = hooks ? await hooks.runPostToolCall(hookCtx, payload) : undefined;
+  const shown = replacedBy !== undefined ? payload.result : (errorResult ?? result);
+  return toolResultMessage(pending, shown, errorResult !== undefined, replacedBy ?? settled.replacedByHook);
+}
 
-  return toolResultMessage(pending, errorResult ?? result, errorResult !== undefined);
+/** A call a pre-tool hook settled (LOU-X3), in executeApprovedTool()'s shape. */
+function settledByHook(outcome: ToolCallOutcome): SettledCall {
+  if (outcome.error !== undefined) {
+    return { result: undefined, toolError: outcome.error, errorResult: outcome.result as ToolErrorResult };
+  }
+  return { result: outcome.result, replacedByHook: outcome.replacedByHook };
+}
+
+/** How an approved call settled: its result, or its error (plain message and structured result). */
+interface SettledCall {
+  result: unknown;
+  toolError?: string;
+  errorResult?: ToolErrorResult;
+  /** LOU-X3: the pre-tool hook that supplied `result`. */
+  replacedByHook?: string;
 }
 
 /**
@@ -495,7 +527,7 @@ async function executeApprovedTool(
   executeOptions: ResumeExecuteOptions,
   { messages, approval }: { messages: Message[]; approval?: ToolExecutionContext['approval'] },
   scope?: ToolCallScope
-): Promise<{ result: unknown; toolError?: string; errorResult?: ToolErrorResult }> {
+): Promise<SettledCall> {
   try {
     // Mirrors AgentExecutor.executeToolCall()'s fail-closed handling of
     // `requiresSandbox` tools (LOU-F5) via the shared

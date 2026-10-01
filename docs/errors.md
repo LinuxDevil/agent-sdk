@@ -293,6 +293,21 @@ paused on an approval (`error.approvalId`), so it cannot take new input yet.
 
 **Example:** `sessions/user-42.json` containing `{}`.
 
+### LOUSHY_SESSION_BUSY
+
+**Means:** `session.compact()` or `session.clear()` was called while a turn of
+that session is running or queued.
+
+**Fix:** await the turn's `send()` (or abort it), then call again.
+
+### LOUSHY_SESSION_TURN_PENDING
+
+**Means:** `session.compact()` was called while a durable session has an
+interrupted turn, whose checkpoint is keyed by the transcript length.
+
+**Fix:** finish it with `session.resume()` or drop it with
+`session.discardPending()`, then call again.
+
 ### LOUSHY_SESSION_STREAM_UNSUPPORTED
 
 **Means:** `stream()` was called on an `AgentSession` built by hand without a
@@ -386,6 +401,56 @@ a memory slot (an object with a `scope` and a `provider`). The message names the
 (the file name is used). See [Memory](./memory.md) and [Agent directories](./agent-directories.md#memory).
 
 **Example:** `export default { cron: 'x' }` in `memory/notes.ts`.
+
+## Registry
+
+### LOUSHY_REGISTRY_UNREACHABLE
+
+**Means:** `loushy add` could not read a registry document: the URL did not answer
+in time or returned an error, the local file is missing, the scheme is not `http(s)`
+or the document is larger than the cap.
+
+**Fix:** check the `--registry` value (or `LOUSHY_REGISTRY`) and your connection.
+See [Registry](./registry.md).
+
+**Example:** `loushy add x --registry https://example.invalid/index.json`.
+
+### LOUSHY_REGISTRY_ITEM_NOT_FOUND
+
+**Means:** the registry's index has no item with that name. The message suggests the
+closest name when there is one.
+
+**Fix:** run `loushy add --list` and use one of the names.
+
+**Example:** `loushy add web-serach` when the item is `web-search`.
+
+### LOUSHY_REGISTRY_INVALID
+
+**Means:** a registry index or item document is not valid JSON or does not match the
+format (a missing field, an unknown item type, an item whose document names another item).
+
+**Fix:** fix the document the message names. See [Registry](./registry.md#format).
+
+**Example:** an item document without `files`.
+
+### LOUSHY_REGISTRY_UNSAFE_PATH
+
+**Means:** an item asks to write a file that is absolute, has `..`, backslashes or a
+drive letter, is outside the folder its type may write to, resolves outside the agent
+directory through a symlink, or is larger than the size caps. Nothing was written.
+
+**Fix:** do not install the item; tell whoever hosts the registry.
+See [Registry](./registry.md#safety-rules).
+
+**Example:** a tool item with a file `../../.bashrc`.
+
+### LOUSHY_REGISTRY_FILE_EXISTS
+
+**Means:** a file the item would write already exists. Nothing was written.
+
+**Fix:** pass `--overwrite`, or move your file away first.
+
+**Example:** `loushy add web-search` twice.
 
 ## General
 

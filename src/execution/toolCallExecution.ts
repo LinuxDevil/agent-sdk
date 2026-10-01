@@ -5,17 +5,17 @@
  */
 
 import { Message, ToolCall } from '../providers';
-import { AgentConfig, ToolDescriptor } from '../types';
+import { AgentConfig, ToolDescriptor, type ApprovalCheckContext, type ApprovalOutcome } from '../types';
 import { ToolRegistry } from '../tools';
 import { getToolExecute } from '../tools/toolContract';
 import { SandboxAdapter } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
 import type { ToolRunContext } from './toolRunContext';
-import { HookRegistry, ToolCallHookContext } from './hooks';
+import { HookRegistry, ToolCallHookContext, type PreToolCallDecision } from './hooks';
 import { toolErrorMessage } from './propagatingToolError';
 import { toolErrorResult, type ToolErrorKind } from './toolErrors';
 import { ToolArgumentsValidationError, parseToolArguments, validateToolArguments } from './toolArgsValidation';
-import { checkPermission } from './permissions';
+import { checkPermission, reportHookDenial, reportPermission, type PermissionDecisionEntry, type PermissionRuntime } from './permissions';
 import { checkToolGuardrails } from './ioGuardrails';
 import type { ExecuteOptions } from './AgentExecutor';
 import type { SubagentSuspension } from './ApprovalGate';
@@ -39,6 +39,8 @@ export interface ToolCallOutcome {
    * `result` is then a placeholder; the run pauses once the turn is done.
    */
   subagent?: SubagentSuspension;
+  /** LOU-X3: the hook whose `{ result }` outcome became this call's result. */
+  replacedByHook?: string;
 }
 
 /** Everything a tool call needs from the surrounding execute() run. */
@@ -112,7 +114,12 @@ export async function runToolCall(
   return settleToolCall(prepared, ctx);
 }
 
-/** Runs a tool call's gate: onToolCall, validation, pre-tool hooks, approval check. */
+/**
+ * Runs a tool call's gate (LOU-X3 order): onToolCall, argument validation,
+ * pre-tool hooks (and their outcomes), permission rules, tool guardrails and
+ * the `needsApproval` check. Hooks run before the approval decision, so a
+ * human approves the arguments a hook produced.
+ */
 async function prepareToolCall(toolCall: ToolCall, ctx: ToolCallContext): Promise<PreparedToolCall> {
   if (ctx.onToolCall) {
     await ctx.onToolCall(toolCall);
@@ -133,53 +140,129 @@ async function prepareToolCall(toolCall: ToolCall, ctx: ToolCallContext): Promis
     return { toolCall, args: checked.args, rejection: checked.rejection, requiresApproval: false };
   }
 
-  // A `preToolCall` hook (e.g. redact-pii) may mutate `args` in place; that
-  // same object is what `needsApproval` and `execute` receive.
-  if (ctx.hooks) {
-    await ctx.hooks.runPreToolCall(toolHookContext(toolCall, ctx, checked.args));
+  // A `preToolCall` hook (e.g. redact-pii) may mutate `args` in place or
+  // return an outcome (LOU-X3); the final args are what `needsApproval` and `execute` receive.
+  const hooked = ctx.hooks
+    ? await runPreToolHooks(ctx.hooks, toolHookContext(toolCall, ctx, checked.args), { toolRegistry: ctx.toolRegistry, runtime: ctx.scope?.runtime })
+    : { args: checked.args };
+  if (hooked.outcome) {
+    return { toolCall, args: hooked.args, requiresApproval: false, rejection: hooked.outcome };
   }
+  return gateToolCall(toolCall, ctx, hooked.args);
+}
 
+/** Permission rules, tool guardrails and `needsApproval`, on the hook-processed args. */
+async function gateToolCall(toolCall: ToolCall, ctx: ToolCallContext, hookedArgs: Record<string, unknown>): Promise<PreparedToolCall> {
   // LOU-X2: a matching permission rule decides before `needsApproval` does.
-  const permission = await checkPermissionRules(toolCall, ctx, checked.args);
-  if (permission?.rejection) {
-    return { toolCall, args: checked.args, ...permission };
+  const { entry, gate: ruled } = await checkPermissionRules(toolCall, ctx, hookedArgs);
+  let audit = entry;
+  try {
+    if (ruled?.rejection) {
+      return { toolCall, args: hookedArgs, requiresApproval: false, rejection: ruled.rejection };
+    }
+    // LOU-X4: tool guardrails run on calls that were not denied; a block throws GuardrailError.
+    const args = ctx.scope
+      ? await checkToolGuardrails(ctx.scope.runtime, { toolName: toolCall.function.name, args: hookedArgs, messages: ctx.messages })
+      : hookedArgs;
+    // LOU-X8 follow-up: an `allow` / `ask` rule replaces the tool's own ask, not its deny.
+    const own = await checkNeedsApproval(toolCall, ctx, args);
+    const { denied, ...gate } = own.rejection ? own : (ruled ?? own);
+    // LOU-X8: the tool's own deny is audited like a rule's.
+    if (denied && audit) audit = { ...audit, decision: 'deny', ...(denied.reason !== undefined && { reason: denied.reason }) };
+    return { toolCall, args, ...gate };
+  } finally {
+    if (audit && ctx.scope) reportPermission(ctx.scope.runtime, audit);
   }
-  // LOU-X4: tool guardrails run on calls that were not denied; a block throws GuardrailError.
-  const args = ctx.scope
-    ? await checkToolGuardrails(ctx.scope.runtime, { toolName: toolCall.function.name, args: checked.args, messages: ctx.messages })
-    : checked.args;
-  const gate = permission ?? (await checkNeedsApproval(toolCall, ctx.toolRegistry, args));
-  return { toolCall, args, ...gate };
+}
+
+/** The pre-tool hooks' verdict (LOU-X3): the final args, or the outcome that settles the call without running it. */
+interface PreHookVerdict {
+  args: Record<string, unknown>;
+  outcome?: ToolCallOutcome;
 }
 
 /**
+ * Runs the pre-tool hooks and applies their outcome (LOU-X3): a deny or a
+ * result settles the call; hook-supplied input is validated against the
+ * tool's schema again. `approvedArgs` (a resumed, approved call) refuses
+ * hook input that differs from what the human approved.
+ */
+export async function runPreToolHooks(
+  hooks: HookRegistry,
+  hookCtx: ToolCallHookContext,
+  opts: { toolRegistry?: ToolRegistry; runtime?: PermissionRuntime; approvedArgs?: Record<string, unknown> }
+): Promise<PreHookVerdict> {
+  const { stop, inputBy } = await hooks.runPreToolCall(hookCtx);
+  const { toolCall, args } = hookCtx;
+  if (stop) {
+    return { args, outcome: hookStopOutcome(hookCtx, stop, opts.runtime) };
+  }
+  if (inputBy.length === 0) {
+    return { args };
+  }
+  const checked = await checkToolArguments(toolCall, opts.toolRegistry, args);
+  if (checked.rejection) {
+    return { args, outcome: hookInputFailure(checked.rejection, inputBy, checked.rejection.error ?? '') };
+  }
+  if (opts.approvedArgs && JSON.stringify(checked.args) !== JSON.stringify(opts.approvedArgs)) {
+    return { args, outcome: hookInputFailure(toolFailure(toolCall, 'validation', ''), inputBy, 'the call was approved with different input') };
+  }
+  return { args: checked.args };
+}
+
+/** The outcome of a call a pre-tool hook denied or answered (LOU-X3). */
+function hookStopOutcome(hookCtx: ToolCallHookContext, stop: NonNullable<PreToolCallDecision['stop']>, runtime?: PermissionRuntime): ToolCallOutcome {
+  const { toolCall, args, sessionId } = hookCtx;
+  if ('deny' in stop) {
+    if (runtime) reportHookDenial(runtime, { toolName: toolCall.function.name, toolCallId: toolCall.id, sessionId, args }, { hook: stop.hook, reason: stop.deny });
+    return deniedGate(toolCall, `hook '${stop.hook}'`, stop.deny).rejection as ToolCallOutcome;
+  }
+  return { toolCallId: toolCall.id, toolName: toolCall.function.name, result: stop.result, replacedByHook: stop.hook };
+}
+
+/** A hook-caused validation error (LOU-X3): `failure`, with a message naming the hooks that supplied the input. */
+function hookInputFailure(failure: ToolCallOutcome, hooks: string[], why: string): ToolCallOutcome {
+  const names = hooks.map((name) => `'${name}'`).join(', ');
+  const error = `Input from hook ${names} for tool '${failure.toolName}' was refused: ${why}`;
+  return { ...failure, error, result: { ...(failure.result as object), message: error, hook: hooks.at(-1) } };
+}
+
+/** The gate part of a {@link PreparedToolCall}; `denied` when the tool's `needsApproval` denied it (LOU-X8). */
+type ToolGate = Pick<PreparedToolCall, 'rejection' | 'requiresApproval'> & { denied?: { reason?: string } };
+
+/**
  * Applies the run's permission rules (LOU-X2, read from `ctx.scope.runtime`).
- * Undefined when no rule decided the call; a throwing `when` becomes the
- * call's error outcome, like a throwing `needsApproval`.
+ * `gate` is undefined when no rule decided the call; a throwing `when`
+ * becomes the call's error outcome, like a throwing `needsApproval`. `entry`
+ * is the audit entry to report once the call is decided.
  */
 async function checkPermissionRules(
   toolCall: ToolCall,
   ctx: ToolCallContext,
   args: Record<string, unknown>
-): Promise<Pick<PreparedToolCall, 'rejection' | 'requiresApproval'> | undefined> {
+): Promise<{ entry?: PermissionDecisionEntry; gate?: ToolGate }> {
   if (!ctx.scope) {
-    return undefined;
+    return {};
   }
   const toolName = toolCall.function.name;
   try {
     const entry = await checkPermission(ctx.scope.runtime, { toolName, toolCallId: toolCall.id, sessionId: ctx.sessionId, args });
     if (entry?.decision === 'deny') {
-      const reason = entry.rule?.reason;
-      const error = `Tool '${toolName}' was denied by a permission rule${reason ? `: ${reason}` : ''}`;
-      const result = toolErrorResult({ toolName, error, kind: 'denied', details: reason ? { reason } : undefined });
-      return { requiresApproval: false, rejection: { ...toolFailure(toolCall, 'denied', error), result } };
+      return { entry, gate: deniedGate(toolCall, 'a permission rule', entry.rule?.reason) };
     }
-    return entry?.decision === 'allow' || entry?.decision === 'ask'
-      ? { requiresApproval: entry.decision === 'ask' }
-      : undefined;
+    const gate = entry?.decision === 'allow' || entry?.decision === 'ask' ? { requiresApproval: entry.decision === 'ask' } : undefined;
+    return { entry, gate };
   } catch (error) {
-    return { requiresApproval: false, rejection: thrownToolFailure(toolCall, error) };
+    return { gate: { requiresApproval: false, rejection: thrownToolFailure(toolCall, error) } };
   }
+}
+
+/** A call refused by `by` (a permission rule or the tool's `needsApproval`): a `kind: 'denied'` tool error with `reason`. */
+function deniedGate(toolCall: ToolCall, by: string, reason: string | undefined): ToolGate {
+  const toolName = toolCall.function.name;
+  const error = `Tool '${toolName}' was denied by ${by}${reason ? `: ${reason}` : ''}`;
+  const result = toolErrorResult({ toolName, error, kind: 'denied', details: reason ? { reason } : undefined });
+  return { requiresApproval: false, rejection: { ...toolFailure(toolCall, 'denied', error), result }, denied: { reason } };
 }
 
 /**
@@ -188,18 +271,27 @@ async function checkPermissionRules(
  */
 async function checkNeedsApproval(
   toolCall: ToolCall,
-  toolRegistry: ToolRegistry | undefined,
+  ctx: ToolCallContext,
   args: Record<string, unknown>
-): Promise<Pick<PreparedToolCall, 'rejection' | 'requiresApproval'>> {
-  const toolDesc = toolRegistry && findExecutableTool(toolRegistry, toolCall.function.name);
+): Promise<ToolGate> {
+  const toolDesc = ctx.toolRegistry && findExecutableTool(ctx.toolRegistry, toolCall.function.name);
   if (!toolDesc) {
     return { requiresApproval: false };
   }
   try {
-    return { requiresApproval: await resolveNeedsApproval(toolDesc, args) };
+    const check = { toolName: toolCall.function.name, toolCallId: toolCall.id, sessionId: ctx.sessionId, messages: ctx.messages };
+    return approvalGate(toolCall, await resolveNeedsApproval(toolDesc, args, check));
   } catch (error) {
     return { requiresApproval: false, rejection: thrownToolFailure(toolCall, error) };
   }
+}
+
+/** LOU-X8: what a `needsApproval` outcome does with the call. */
+function approvalGate(toolCall: ToolCall, outcome: ApprovalOutcome): ToolGate {
+  if (outcome === 'deny' || (typeof outcome === 'object' && outcome !== null)) {
+    return deniedGate(toolCall, 'its needsApproval policy', outcome === 'deny' ? undefined : outcome.deny);
+  }
+  return { requiresApproval: outcome === true || outcome === 'ask' };
 }
 
 /**
@@ -218,11 +310,7 @@ async function settleToolCall(
   try {
     outcome = await executePrepared(prepared, ctx);
     if (ctx.hooks) {
-      await ctx.hooks.runPostToolCall(toolHookContext(toolCall, ctx, hookArgs), {
-        result: outcome.result,
-        error: outcome.error,
-        requiresApproval: outcome.requiresApproval,
-      });
+      outcome = await runPostToolHooks(ctx.hooks, toolHookContext(toolCall, ctx, hookArgs), outcome);
     }
     return outcome;
   } catch (error) {
@@ -234,6 +322,16 @@ async function settleToolCall(
       await ctx.onToolResult(toolCall, outcome, latencyMs, thrown);
     }
   }
+}
+
+/** Runs the post-tool hooks; a `{ result }` outcome replaces a settled call's result (LOU-X3). */
+async function runPostToolHooks(hooks: HookRegistry, hookCtx: ToolCallHookContext, outcome: ToolCallOutcome): Promise<ToolCallOutcome> {
+  const payload = { result: outcome.result, error: outcome.error, requiresApproval: outcome.requiresApproval };
+  const hook = await hooks.runPostToolCall(hookCtx, payload);
+  if (hook === undefined || outcome.requiresApproval || outcome.subagent) {
+    return outcome;
+  }
+  return { ...outcome, result: payload.result, replacedByHook: hook };
 }
 
 /** The outcome of a prepared call: its rejection, its approval pause, or its actual run. */
@@ -306,10 +404,11 @@ function findExecutableTool(
 /** Resolves a tool's static or per-call `needsApproval` setting. */
 async function resolveNeedsApproval(
   toolDesc: ToolDescriptor,
-  args: Record<string, unknown>
-): Promise<boolean> {
+  args: Record<string, unknown>,
+  check: ApprovalCheckContext
+): Promise<ApprovalOutcome> {
   return typeof toolDesc.needsApproval === 'function'
-    ? await toolDesc.needsApproval(args)
+    ? await toolDesc.needsApproval(args, check)
     : !!toolDesc.needsApproval;
 }
 

@@ -23,6 +23,7 @@
     "@ai-sdk/anthropic",
     "@ai-sdk/openai",
     "ollama-ai-provider",
+    "ollama-ai-provider-v2",
     "prompts"
   ],
   "usedClassMembers": [

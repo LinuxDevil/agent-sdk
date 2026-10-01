@@ -19,25 +19,38 @@ pnpm add @loushy/build-ai-agent ai zod
 yarn add @loushy/build-ai-agent ai zod
 ```
 
-`ai` (the Vercel AI SDK, `^4.3.19`) and `zod` (`^3.25.76`) are required peer
-dependencies.
+`ai` (the Vercel AI SDK: `^4.3.19`, `^6.0.0` or `^7.0.0`) and `zod`
+(`^3.25.76`) are required peer dependencies. `ai` 5 is not supported.
 
 ### Provider packages
 
-Each real LLM provider is backed by an optional peer dependency:
+Each real LLM provider is backed by an optional peer dependency, in the major
+that pairs with your `ai` major. Install the pair from one row:
 
-| Provider   | Package              | Range     |
-| ---------- | -------------------- | --------- |
-| OpenAI     | `@ai-sdk/openai`     | `^0.0.42` |
-| OpenRouter | `@ai-sdk/openai`     | `^0.0.42` |
-| Anthropic  | `@ai-sdk/anthropic`  | `^0.0.42` |
-| Ollama     | `ollama-ai-provider` | `^1.2.0`  |
+| `ai`      | OpenAI, OpenRouter: `@ai-sdk/openai` | Anthropic: `@ai-sdk/anthropic` | Ollama                                 |
+| --------- | ------------------------------------ | ------------------------------ | -------------------------------------- |
+| `^4.3.19` | `^0.0.42` (or `^1.0.0`)              | `^0.0.42` (or `^1.0.0`)        | `ollama-ai-provider@^1.2.0`            |
+| `^6.0.0`  | `^3.0.0`                             | `^3.0.0`                       | `ollama-ai-provider-v2@^3.0.0` (zod 4) |
+| `^7.0.0`  | `^4.0.0`                             | `^4.0.0`                       | `ollama-ai-provider-v2@^4.0.0` (zod 4) |
+
+For example, on the current `ai` major:
+
+```bash
+npm install @loushy/build-ai-agent ai@^7.0.0 zod @ai-sdk/openai@^4.0.0
+```
+
+**Ollama on `ai` 6/7 needs zod 4.** `ollama-ai-provider-v2` (the Ollama package
+for `ai` 6 and 7) declares `zod ^4` as a peer, and this SDK still declares
+`zod ^3.25.76`, so installing it next to the SDK is a peer conflict until zod 4
+support lands. For Ollama, use `ai@^4.3.19` with `ollama-ai-provider@^1.2.0`
+(what `loushy init --provider ollama` scaffolds).
 
 Peers are loaded on demand: importing `@loushy/build-ai-agent` (or any of
 its sub-entries) never loads a provider package, so you only need to install
 the ones you use. Each provider package is loaded the first time that
 provider makes a call; if it is missing, that call fails with a
-`MissingPeerDependencyError` that carries the exact command to run:
+`MissingPeerDependencyError` that carries the exact command to run, for the
+`ai` major you have installed. With `ai` 4:
 
 ```bash
 npm install @ai-sdk/openai@^0.0.42
@@ -166,8 +179,11 @@ What it checks:
 1. Your Node version against the package's `engines.node`.
 2. The required peers `ai` and `zod`: installed, and within the SDK's
    `peerDependencies` range (resolved from the current directory).
-3. The optional provider packages (`@ai-sdk/openai`, `@ai-sdk/anthropic`,
-   `ollama-ai-provider`), with the `npm install` command for each missing one.
+3. The optional provider packages (`@ai-sdk/openai`, `@ai-sdk/anthropic`, and
+   `ollama-ai-provider` on `ai` 4 or `ollama-ai-provider-v2` on `ai` 6/7), with
+   the `npm install` command for each missing one. A provider package that does
+   not pair with the installed `ai` (for example `ai` 7 with `@ai-sdk/openai`
+   1.x) is flagged with the version to install instead.
 4. Whether each provider's API key variable is set. Only the variable name and
    `set` / `not set` are printed, never the value. It also shows which
    provider `createAgent()` would pick by default with your environment.

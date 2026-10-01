@@ -341,7 +341,8 @@ class AgentRunImpl implements AgentRun {
     const { toolCallId, toolName } = outcome;
     const durationMs = Date.now() - (this.toolStarts.get(toolStartKey(toolCallId, subagent)) ?? Date.now());
     if (outcome.error === undefined) {
-      this.emit({ type: 'tool.done', toolCallId, toolName, result: toJsonValue(outcome.result), durationMs }, subagent);
+      const replaced = outcome.replacedByHook !== undefined && { replacedByHook: outcome.replacedByHook };
+      this.emit({ type: 'tool.done', toolCallId, toolName, result: toJsonValue(outcome.result), durationMs, ...replaced }, subagent);
       return;
     }
     const name = (outcome.result as { error?: unknown } | null)?.error;

@@ -37,6 +37,13 @@ import {
   type CheckpointStore,
 } from '@loushy/build-ai-agent';
 
+/** Write to a temp file and rename it over `file`, so a crash never leaves half a file there. */
+function writeFileAtomic(file: string, content: string): void {
+  const temp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(temp, content, 'utf8');
+  fs.renameSync(temp, file);
+}
+
 export class FileCheckpointStore implements CheckpointStore {
   private readonly historyLimit: number;
 
@@ -62,7 +69,12 @@ export class FileCheckpointStore implements CheckpointStore {
 
   private readRing(sessionId: string): CheckpointHistoryEntry[] {
     const file = this.historyPath(sessionId);
-    return fs.existsSync(file) ? (JSON.parse(fs.readFileSync(file, 'utf8')) as CheckpointHistoryEntry[]) : [];
+    if (!fs.existsSync(file)) return [];
+    try {
+      return JSON.parse(fs.readFileSync(file, 'utf8')) as CheckpointHistoryEntry[];
+    } catch {
+      return []; // a partially written file (a crash mid-write) counts as no history
+    }
   }
 
   /**
@@ -82,11 +94,11 @@ export class FileCheckpointStore implements CheckpointStore {
   async save(sessionId: string, checkpoint: Checkpoint): Promise<void> {
     const agentId = this.agentIdFromSessionId(sessionId);
     fs.mkdirSync(this.dir(agentId), { recursive: true });
-    fs.writeFileSync(this.filePath(agentId, sessionId), JSON.stringify(checkpoint), 'utf8');
+    writeFileAtomic(this.filePath(agentId, sessionId), JSON.stringify(checkpoint));
     if (this.historyLimit > 0) {
       const ring = appendToRing(this.readRing(sessionId), toHistoryEntry(checkpoint), this.historyLimit);
       fs.mkdirSync(this.dir(agentId, 'checkpoint-history'), { recursive: true });
-      fs.writeFileSync(this.historyPath(sessionId), JSON.stringify(ring), 'utf8');
+      writeFileAtomic(this.historyPath(sessionId), JSON.stringify(ring));
     }
   }
 

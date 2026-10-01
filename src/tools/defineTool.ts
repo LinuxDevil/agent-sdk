@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import type { McpToolAnnotations, ToolDescriptor, ToolExecutionContext } from '../types';
+import type { ApprovalCheckContext, ApprovalOutcome, McpToolAnnotations, ToolDescriptor, ToolExecutionContext } from '../types';
 import type { SandboxAdapter } from '../security/sandboxCore';
 import { legacyAiTool } from './toolContract';
 
@@ -17,10 +17,14 @@ export interface DefineToolOptions<S extends z.ZodTypeAny, R> {
   /** Human-readable label for UIs. Defaults to `name`. */
   displayName?: string;
   /**
-   * Pause for human approval before running. A boolean, or a predicate
-   * receiving the validated arguments (typed from `input`).
+   * Pause for human approval before running. A boolean, or a function
+   * receiving the validated arguments (typed from `input`) that returns a
+   * boolean or an {@link ApprovalOutcome} (`'ask'`, `'approve'`, `'deny'`,
+   * `{ deny: reason }`); see `always()`, `never()` and `once()`.
    */
-  needsApproval?: boolean | ((args: z.output<S>) => boolean | Promise<boolean>);
+  needsApproval?:
+    | boolean
+    | ((args: z.output<S>, ctx: ApprovalCheckContext) => ApprovalOutcome | Promise<ApprovalOutcome>);
   /**
    * MCP hints about the tool (`readOnlyHint`, `destructiveHint`, `idempotentHint`,
    * `openWorldHint`, `title`). `serveMcp()` sends them to MCP clients verbatim, and a

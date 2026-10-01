@@ -65,6 +65,11 @@ export function sdkRuntimePlugin(): Plugin {
           args.path === WORKER_RUNTIME_SPECIFIER ? 'runtime.worker.ts' : 'runtime.ts'
         ),
       }));
+      // An agent directory's own `import ... from '@loushy/build-ai-agent'` bundles this SDK copy
+      // (the one the runtime above comes from), so tools, schedules and channels share its classes.
+      build.onResolve({ filter: /^@loushy\/build-ai-agent$/ }, () => ({
+        path: path.join(findSdkRoot(), 'src', 'index.ts'),
+      }));
     },
   };
 }

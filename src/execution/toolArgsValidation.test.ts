@@ -138,7 +138,7 @@ describe('tool argument validation (LOU-U4)', () => {
     await AgentExecutor.execute({ agent, input: 'go', provider, toolRegistry, hooks });
 
     expect(needsApproval).toHaveBeenCalledTimes(1);
-    expect(needsApproval).toHaveBeenCalledWith({ to: 'a', count: 1, tag: 'general' });
+    expect(needsApproval).toHaveBeenCalledWith({ to: 'a', count: 1, tag: 'general' }, expect.objectContaining({ toolName: 'send' }));
     expect(pre).toHaveBeenCalledTimes(1);
     expect(pre.mock.calls[0][0].args).toEqual({ to: 'a', count: 1, tag: 'general' });
     expect(post).toHaveBeenCalledTimes(2);

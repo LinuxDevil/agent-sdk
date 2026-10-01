@@ -8,6 +8,8 @@ const USAGE = [
   '  loushy init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force]',
   '  loushy dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H]',
   '  loushy chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>]',
+  '  loushy acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]',
+  '  loushy add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--overwrite] [--dry-run] | --list',
   '  loushy build --target=<name> --agent=<path> [--out=<dir>]',
   '  loushy studio [--port N] [--host H] [--prod|--dev]',
   '  loushy mcp <agent.yaml|json> [--http --port N --host H]',
@@ -26,6 +28,18 @@ async function runDev(rest) {
 async function runChatCommand(rest) {
   const { runChat } = require(path.join(__dirname, '..', 'dist', 'cli', 'chat.js'));
   process.exitCode = await runChat(rest);
+}
+
+// Serves an agent over the Agent Client Protocol on stdio (LOU-Z6); see src/cli/acp.ts.
+async function runAcpCommand(rest) {
+  const { runAcp } = require(path.join(__dirname, '..', 'dist', 'cli', 'acp.js'));
+  process.exitCode = await runAcp(rest);
+}
+
+// Installs a tool, skill, channel, schedule or memory slot from a JSON registry (LOU-D50); see src/cli/add.ts.
+async function runAddCommand(rest) {
+  const { runAdd } = require(path.join(__dirname, '..', 'dist', 'cli', 'add.js'));
+  process.exitCode = await runAdd(rest);
 }
 
 async function runBuildCommand(rest) {
@@ -70,6 +84,8 @@ const COMMANDS = new Map([
   ['init', runInitCommand],
   ['dev', runDev],
   ['chat', runChatCommand],
+  ['acp', runAcpCommand],
+  ['add', runAddCommand],
   ['build', runBuildCommand],
   ['studio', runStudioCommand],
   ['mcp', runMcp],

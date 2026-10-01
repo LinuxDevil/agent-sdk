@@ -122,6 +122,7 @@ describe('AgentEvent types', () => {
       | 'provider.fallback'
       | 'compaction.start'
       | 'compaction.done'
+      | 'context.cleared'
       | 'budget.exceeded'
       | 'input.queued'
       | 'input.steered'
