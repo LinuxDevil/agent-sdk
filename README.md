@@ -105,6 +105,15 @@ const result = await resumeAfterApproval(
 
 ## Quickstart
 
+**Start a new project** with one command: it scaffolds an agent, an example tool and an offline test, installs dependencies and runs `git init`:
+
+```bash
+npx loushy init my-agent        # or: npm create loushy-agent my-agent
+cd my-agent && npm run dev      # set your API key in .env first; `npm test` runs offline
+```
+
+See [Quick Start](docs/quick-start.md#start-a-new-project) for the flags (`--provider`, `--template`, `--yes`, ...). Or add the SDK to an existing project by hand:
+
 **1. Install**
 
 ```bash
@@ -546,9 +555,9 @@ const result = renderTemplate(template, { name: 'Alice', count: 5 });
 ## CLI
 
 ```bash
-npx create-loushy-agent --name=my-agent --provider=openai --yes  # scaffold a project
-npx loushy dev agent.yaml                                        # local chat UI + hot reload
-npx loushy build --target=node-server --agent=agent.yaml         # or docker / cloudflare-worker
+npx loushy init my-agent                                  # scaffold a project (or: npm create loushy-agent my-agent)
+npx loushy dev agent.yaml                                 # local chat UI + hot reload
+npx loushy build --target=node-server --agent=agent.yaml  # or docker / cloudflare-worker
 ```
 
 See [Installation](docs/installation.md) and [Deployment](docs/deployment.md)
