@@ -80,6 +80,21 @@ describe('estimateTokens', () => {
     setTokenEstimator();
     expect(estimateTokens('abcd')).toBe(1);
   });
+
+  it('counts text parts as text and each image or file part as 1,000 tokens (LOU-V11)', () => {
+    const parts: Message = {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'abcd' },
+        { type: 'image', image: `data:image/png;base64,${'A'.repeat(40_000)}` },
+        { type: 'file', data: new Uint8Array(10), mimeType: 'application/pdf' },
+      ],
+    };
+    expect(estimateTokens(parts)).toBe(4 + 1 + 2_000);
+    expect(estimateTokens({ role: 'user', content: [{ type: 'text', text: 'abcd' }] })).toBe(
+      estimateTokens({ role: 'user', content: 'abcd' })
+    );
+  });
 });
 
 describe('model registry', () => {

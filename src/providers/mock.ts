@@ -14,6 +14,7 @@ import {
   ToolCall,
 } from './llm';
 import { abortableDelay } from './abortableDelay';
+import { textOf } from './content';
 
 /**
  * Mock response configuration
@@ -159,7 +160,7 @@ export class MockLLMProvider implements LLMProvider {
 
     // Check if message mentions any tool name
     for (const tool of options.tools) {
-      if (lastMessage.content.toLowerCase().includes(tool.function.name.toLowerCase())) {
+      if (textOf(lastMessage).toLowerCase().includes(tool.function.name.toLowerCase())) {
         return [
           {
             id: `call_${Date.now()}`,
@@ -179,7 +180,7 @@ export class MockLLMProvider implements LLMProvider {
   private countTokens(messages: any[]): number {
     // Simple approximation: 1 token per 4 characters
     return Math.ceil(
-      messages.reduce((sum, msg) => sum + (msg.content?.length || 0), 0) / 4
+      messages.reduce((sum, msg) => sum + textOf(msg).length, 0) / 4
     );
   }
 }

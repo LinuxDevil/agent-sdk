@@ -80,6 +80,51 @@ In order: the agent's own `settings.model` (set with
 `defaultModel`), then the provider's built-in default. There is no hard-coded
 fallback model.
 
+## Multimodal input
+
+`Message.content` is a string or a list of parts: `{ type: 'text', text }`,
+`{ type: 'image', image, mimeType? }` (an `http(s)` URL, a `data:` URL or the
+bytes as a `Uint8Array`) and `{ type: 'file', data, mimeType, filename? }`.
+Pass such messages as the `input` of `AgentExecutor.execute()` or
+`stream()` (`agent.send()` and `session.send()` take a string for now):
+
+```ts
+import { readFileSync } from 'node:fs';
+import { AgentBuilder, AgentExecutor, resolveProvider, textOf, type Message } from '@loushy/build-ai-agent';
+
+const agent = AgentBuilder.create().setName('vision').setPrompt('Describe images briefly.').build();
+const input: Message[] = [
+  {
+    role: 'user',
+    content: [
+      { type: 'text', text: 'What is in these pictures?' },
+      { type: 'image', image: 'https://example.com/cat.png' },
+      { type: 'image', image: new Uint8Array(readFileSync('dog.png')), mimeType: 'image/png' },
+    ],
+  },
+];
+
+const result = await AgentExecutor.execute({ agent, input, provider: resolveProvider('openai/gpt-4o-mini') });
+console.log(textOf(input[0]), '->', result.text); // textOf(): the text parts of a message
+```
+
+- **Images** go to the model on `user` messages with every built-in provider
+  (an image URL is downloaded by the `ai` SDK first for Anthropic and Ollama).
+  Pick a vision model: Ollama ignores images for a text-only model, and
+  OpenRouter rejects them for one.
+- **Files** cannot be sent by the built-in providers' `ai` SDK peers
+  (`@ai-sdk/openai` / `@ai-sdk/anthropic` 0.0.x, `ollama-ai-provider`): a file
+  part is sent as a text note (`[file report.pdf (application/pdf) not sent]`)
+  and the provider warns once. A provider subclass whose model takes files
+  sets `protected readonly acceptsFileParts = true` to send them as `ai` v4
+  file parts.
+- `system`, `assistant` and `tool` messages are sent as their text parts.
+- Everything that reads message text uses `textOf()`: `estimateTokens()`
+  (each image or file part counts as a flat 1,000 tokens), compaction,
+  `recordReplay()` cassettes (which store the text and a digest of each
+  image or file, or its URL) and `mockModel()`. `FileSessionStore` saves bytes
+  as base64 (`{ "$bytes": "..." }`) and loads them back as `Uint8Array`s.
+
 ## Provider classes
 
 | Export | Description |

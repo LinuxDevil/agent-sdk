@@ -6,7 +6,7 @@
  * tokenizer for every provider.
  */
 
-import type { Message } from '../providers/llm';
+import type { ContentPart, Message } from '../providers/llm';
 
 /** Anything `estimateTokens` accepts. */
 export type TokenEstimateInput = string | Message | Message[];
@@ -27,6 +27,12 @@ export interface EstimateTokensOptions {
 
 /** Tokens added per message for role markers and framing. */
 const MESSAGE_OVERHEAD_TOKENS = 4;
+
+/**
+ * Tokens counted for each image or file part (LOU-V11). Providers bill an
+ * image by its size (roughly 85 to 1,600 tokens), so this is a flat guess.
+ */
+const ATTACHMENT_TOKENS = 1_000;
 
 /** Tokens per code point for Latin/ASCII text (~4 chars per token). */
 const LATIN_WEIGHT = 0.25;
@@ -92,8 +98,16 @@ function toText(value: unknown): string {
   return JSON.stringify(value) ?? '';
 }
 
+function estimateContent(content: Message['content']): number {
+  if (!Array.isArray(content)) return estimateText(toText(content));
+  return content.reduce(
+    (sum: number, part: ContentPart) => sum + (part.type === 'text' ? estimateText(part.text) : ATTACHMENT_TOKENS),
+    0
+  );
+}
+
 function estimateMessage(message: Message): number {
-  let tokens = MESSAGE_OVERHEAD_TOKENS + estimateText(toText(message.content));
+  let tokens = MESSAGE_OVERHEAD_TOKENS + estimateContent(message.content);
   if (message.name) tokens += estimateText(message.name);
   if (message.toolName) tokens += estimateText(message.toolName);
   if (message.toolCalls?.length) tokens += estimateText(JSON.stringify(message.toolCalls));
@@ -127,7 +141,8 @@ export function setTokenEstimator(estimator?: TokenEstimator): void {
  * non-Latin scripts and 2 per emoji (code points are counted, not UTF-16
  * units), plus 4 tokens of overhead per message and the JSON length of tool
  * calls. Tool results are the message `content` (typically JSON) and are
- * counted as text.
+ * counted as text. In multimodal content (LOU-V11) text parts count as
+ * text and each image or file part as a flat 1,000 tokens.
  *
  * Accuracy: an estimate for budgeting and compaction decisions. It is
  * typically within ~15-20% for English prose and can be further off for

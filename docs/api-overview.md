@@ -260,6 +260,11 @@ Guarantees, whatever the limit:
 | `OpenAIProvider`, `AnthropicProvider`, `OllamaProvider`, `OpenRouterProvider` | Provider classes. |
 | `createMockProvider()`, `MockLLMProvider` | Deterministic mock provider for tests and demos.   |
 | `withRetry(provider, opts?)`, `withFallback(providers, opts?)` | Retry transient provider failures with backoff; fall back to the next provider. See [Configuration](configuration.md#provider-retries-and-fallback). |
+| `textOf(message)`               | The text of a message: its string `content`, or its text parts joined. |
+
+`Message.content` is a string or a list of `ContentPart`s (`text`, `image`,
+`file`); the built-in providers send image parts on user messages. See
+[Multimodal input](./providers.md#multimodal-input).
 
 See [Providers](./providers.md) for how a model string is resolved and which model runs.
 

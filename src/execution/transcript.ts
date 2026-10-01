@@ -7,6 +7,7 @@
  */
 
 import type { Message, ToolCall } from '../providers';
+import { textOf } from '../providers/content';
 
 /** A transcript split around its last model turn's unanswered tool calls. */
 export interface PendingTurn {
@@ -74,7 +75,7 @@ function sharedPrefixLength(known: readonly Message[], incoming: readonly Messag
 
 /** True for a real user turn (not a LOU-T4 `[provider-error]` note). */
 function isUserTurn(m: Message): boolean {
-  return m.role === 'user' && !m.content.startsWith('[provider-error]');
+  return m.role === 'user' && !textOf(m).startsWith('[provider-error]');
 }
 
 /** True when `incoming` re-sends the user turn the stored, unfinished run started from. */
