@@ -26,7 +26,7 @@ const ENV_KEYS: Record<string, string> = {
 const SCAFFOLD_PAIRINGS: Record<string, Record<string, string>> = {
   openai: { ai: '^7.0.0', '@ai-sdk/openai': '^4.0.0' },
   anthropic: { ai: '^7.0.0', '@ai-sdk/anthropic': '^4.0.0' },
-  openrouter: { ai: '^4.3.19', '@ai-sdk/openai': '^0.0.42' },
+  openrouter: { ai: '^7.0.0', '@ai-sdk/openai': '^4.0.0' },
   ollama: { ai: '^4.3.19', 'ollama-ai-provider': '^1.2.0' },
 };
 
