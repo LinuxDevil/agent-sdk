@@ -153,7 +153,7 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
     const capturedPuts: Checkpoint[] = [];
     const originalPut = capturingKv.put.bind(capturingKv);
     capturingKv.put = async (key: string, value: string) => {
-      if (key.startsWith('checkpoints/')) {
+      if (key.startsWith('checkpoints/') && !key.includes('#history')) {
         capturedPuts.push(JSON.parse(value) as Checkpoint);
       }
       return originalPut(key, value);

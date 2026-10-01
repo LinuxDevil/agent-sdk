@@ -8,6 +8,7 @@
 - [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md): `ai` (the Vercel AI SDK: `^4.3.19`, `^6.0.0` or `^7.0.0`) and `zod` (`^3.25.76`) are required peer dependencies.
 - [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md): Every TypeScript snippet on this page is a complete, standalone ES module (`.mts`).
 - [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md): The package root (`@loushy/build-ai-agent`) exports everything below.
+- [Agent Client Protocol (ACP)](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/acp.md): The Agent Client Protocol lets an editor drive a coding agent that runs as a subprocess: the editor writes JSON-RPC 2.0 requests to the agent's stdin, one JSON message per line, and reads the agent's replies and streamed updates from its stdout.
 - [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md): An agent can be defined as a directory.
 - [AI SDK UI (`useChat`)](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/ai-sdk-ui.md): If your front end already uses the Vercel AI SDK's UI hooks (`useChat` from `@ai-sdk/react`, and the Vue, Svelte and Angular equivalents), you can keep them and run a Loushy agent behind the route.
 - [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md): Flag a tool `needsApproval` and the run pauses before calling it, until a human (or your code) approves or rejects the call.
@@ -25,6 +26,7 @@
 - [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md): `AgentExecutor.execute()` and `FlowExecutor.execute()` emit spans through a `TraceExporter`.
 - [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md): An `LLMProvider` is what an agent generates with.
 - [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md): `useLoushyAgent()` puts an agent behind a chat UI.
+- [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md): `loushy add` installs a tool, skill, channel, schedule or memory slot into an agent directory from a registry.
 - [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md): A schedule runs the agent on a cron expression, with nobody asking: a morning summary, a nightly cleanup.
 - [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md): `agent.send(text)` is single-turn: every call starts from an empty history.
 - [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md): A skill is a named chunk of instructions (a markdown document) that the model loads only when it needs it.

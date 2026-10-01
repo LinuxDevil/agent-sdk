@@ -210,7 +210,7 @@ function forwardEvents(
 
 type HookMethod = 'preToolCall' | 'postToolCall' | 'preGenerate' | 'postGenerate';
 const HOOK_METHODS: readonly HookMethod[] = ['preToolCall', 'postToolCall', 'preGenerate', 'postGenerate'];
-type AnyHookMethod = (ctx: HookContext, ...rest: unknown[]) => void | Promise<void>;
+type AnyHookMethod = (ctx: HookContext, ...rest: unknown[]) => unknown;
 
 /**
  * The parent's hooks, as seen by the child: each context gets `subagent`
@@ -240,7 +240,8 @@ function decorateHook(hook: AgentHook, tag: (ctx: HookContext) => HookContext): 
     if (fn) {
       decorated[method] = async (ctx, ...rest) => {
         try {
-          await fn.call(hook, tag(ctx), ...rest);
+          // LOU-X3: the hook's outcome (deny / result / input) reaches the child's run.
+          return await fn.call(hook, tag(ctx), ...rest);
         } catch (error) {
           markPropagating(error);
           throw error;

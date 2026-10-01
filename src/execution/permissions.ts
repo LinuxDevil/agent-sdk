@@ -4,7 +4,8 @@
  * validation and the `preToolCall` hooks and before the tool's own
  * `needsApproval`: the first rule that matches decides whether the call runs
  * (`allow`), is refused (`deny`) or waits for a human (`ask`). No match keeps
- * the tool's own behaviour.
+ * the tool's own behaviour. A tool's own `needsApproval` deny still denies a
+ * call an `allow` or `ask` rule matched (LOU-X8 follow-up).
  */
 
 import type { ExecuteOptions } from './AgentExecutor';
@@ -63,8 +64,10 @@ export interface PermissionDecisionEntry {
    * `needsApproval` (LOU-X8; its reason is then `reason`).
    */
   rule?: { index: number; reason?: string };
-  /** LOU-X8: the reason the tool's `needsApproval` gave when it denied the call. */
+  /** LOU-X8: the reason the tool's `needsApproval` (or a `preToolCall` hook) gave when it denied the call. */
   reason?: string;
+  /** LOU-X3: the `preToolCall` hook that denied the call. */
+  hook?: string;
   /** The call's arguments; omitted when the run sets `redactContent`. */
   args?: Record<string, unknown>;
   /** When the decision was made, as an ISO-8601 string. */
@@ -114,7 +117,7 @@ function matchesTool(matcher: PermissionToolMatcher, toolName: string): boolean 
 }
 
 /** The run options a permission check reads. */
-type PermissionRuntime = Pick<ExecuteOptions, 'permissions' | 'onPermissionDecision' | 'redactContent'>;
+export type PermissionRuntime = Pick<ExecuteOptions, 'permissions' | 'onPermissionDecision' | 'redactContent'>;
 
 /** Index of the first rule that matches the call, or -1. */
 async function firstMatch(
@@ -139,19 +142,33 @@ export async function checkPermission(
   runtime: PermissionRuntime,
   call: PermissionContext & { args: Record<string, unknown> }
 ): Promise<PermissionDecisionEntry | undefined> {
-  const { permissions = [], onPermissionDecision, redactContent } = runtime;
+  const { permissions = [], onPermissionDecision } = runtime;
   if (!runtime.permissions && !onPermissionDecision) return undefined;
   const { args, ...ctx } = call;
   const index = await firstMatch(permissions, args, ctx);
   const rule = permissions[index] as PermissionRule | undefined;
   return {
-    toolName: ctx.toolName,
-    toolCallId: ctx.toolCallId,
-    decision: rule?.action ?? 'default',
+    ...decisionEntry(runtime, call, rule?.action ?? 'default'),
     ...(rule && { rule: { index, ...(rule.reason !== undefined && { reason: rule.reason }) } }),
-    ...(!redactContent && { args }),
-    at: new Date().toISOString(),
   };
+}
+
+function decisionEntry(
+  { redactContent }: PermissionRuntime,
+  { toolName, toolCallId, args }: PermissionContext & { args: Record<string, unknown> },
+  decision: PermissionDecision
+): PermissionDecisionEntry {
+  return { toolName, toolCallId, decision, ...(!redactContent && { args }), at: new Date().toISOString() };
+}
+
+/** LOU-X3: audits a call a `preToolCall` hook denied, when the run keeps an audit log. */
+export function reportHookDenial(
+  runtime: PermissionRuntime,
+  call: PermissionContext & { args: Record<string, unknown> },
+  denial: { hook: string; reason: string }
+): void {
+  if (!runtime.permissions && !runtime.onPermissionDecision) return;
+  reportPermission(runtime, { ...decisionEntry(runtime, call, 'deny'), ...denial });
 }
 
 /** Reports `entry` to `onPermissionDecision` and, for a streaming run, as a `permission.decision` event. */

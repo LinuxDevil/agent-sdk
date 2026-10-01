@@ -4,7 +4,7 @@
  * checkpoints and paused approvals between requests:
  *
  *   `<prefix>sessions/<id>`      a transcript as JSON
- *   `<prefix>checkpoints/<id>`   a Checkpoint (KVCheckpointStore, no history)
+ *   `<prefix>checkpoints/<id>`   a Checkpoint (KVCheckpointStore, with its history)
  *   `<prefix>approvals/<id>`     a pending approval and its snapshot
  *
  * No Node builtins: only the structural `KVBinding` and Web APIs, so it bundles
@@ -26,6 +26,8 @@ export interface KVStoreOptions {
   prefix?: string;
   /** Seconds each kind of record is kept after its last write; KV accepts 60 or more. Omit to keep records until deleted. */
   ttl?: { sessions?: number; checkpoints?: number; approvals?: number };
+  /** Checkpoints kept per session in `checkpoints.history()` (default 50, `0` keeps none; LOU-D43.2). */
+  historyLimit?: number;
 }
 
 /** Bytes inside a transcript (image and file parts) as `{ "$bytes": "<base64>" }`, the encoding of `FileSessionStore`; `Buffer` does not exist on Workers. */
@@ -105,9 +107,9 @@ export class KVStore implements Required<AgentStore> {
   readonly checkpoints: KVCheckpointStore;
   readonly approvals: ApprovalStore;
 
-  constructor(kv: KVBinding, { prefix = '', ttl = {} }: KVStoreOptions = {}) {
+  constructor(kv: KVBinding, { prefix = '', ttl = {}, historyLimit }: KVStoreOptions = {}) {
     this.sessions = new KVSessionStore(kv, `${prefix}sessions/`, ttl.sessions);
-    this.checkpoints = new KVCheckpointStore(kv, `${prefix}${DEFAULT_KV_KEY_PREFIX}`, ttl.checkpoints);
+    this.checkpoints = new KVCheckpointStore(kv, `${prefix}${DEFAULT_KV_KEY_PREFIX}`, ttl.checkpoints, { historyLimit });
     this.approvals = new KVApprovalStore(kv, `${prefix}approvals/`, ttl.approvals);
   }
 }

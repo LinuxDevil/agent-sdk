@@ -610,7 +610,8 @@ See [Context compaction](./compaction.md).
 - `HookRegistry`, `AgentHook`, `HookContext`, `ToolCallHookContext`,
   `GenerateHookContext` - pre/post agent hooks (run before/after a tool call
   or an LLM `generate`, can mutate args/messages/results or throw to abort
-  the step). Available from the package root and from
+  the step; tool-call hooks can also deny a call, replace its result or
+  modify its input, see [Hook outcomes](#hook-outcomes)). Available from the package root and from
   `@loushy/build-ai-agent/hooks`. Agent Forge's canvas hook editor
   ([docs/agent-forge.md](./agent-forge.md#hooks)) compiles the hooks a user
   attaches to a node into a `HookRegistry` this way, run sandboxed via
@@ -630,6 +631,58 @@ See [Context compaction](./compaction.md).
   ```
 - `EncryptionUtils`, `sha256`, `StorageService`, `renderTemplate`,
   `MemoryManager` - supporting utilities; see [Utilities](./utilities.md).
+
+### Hook outcomes
+
+A tool-call hook can change what happens, not just watch it. A `preToolCall`
+hook may return:
+
+- nothing: the call goes on unchanged (mutating `ctx.args` in place still works).
+- `{ deny: reason }`: the call does not run. The model gets the same
+  `kind: 'denied'` tool error a `needsApproval` deny produces (see
+  [Approvals](./approvals.md#approve-deny-or-ask)), streams see `tool.error`,
+  and `onPermissionDecision` records `decision: 'deny'` with `hook` and `reason`.
+- `{ result: value }`: the call does not run and `value` is its result. The
+  `tool.done` event and the transcript's `tool` message (`metadata`) carry
+  `replacedByHook: '<hook name>'`.
+- `{ input: args }`: the call runs with `args`. They are validated against
+  the tool's input schema again; a mismatch becomes a `kind: 'validation'`
+  tool error whose message names the hook, and the tool does not run.
+
+A `postToolCall` hook may return `{ result: value }` to replace the result the
+model sees (to redact or truncate it); nothing keeps it. Hooks run in
+registration order: the first `deny` or `result` of a pre-hook skips the
+pre-hooks after it, `input`s chain (each hook sees the previous one's as
+`ctx.args`), and each post-hook sees the result an earlier one replaced. A hook
+that throws still rejects the run, as before. Sub-agents inherit the lead
+agent's hooks and their outcomes.
+
+For one tool call, the order is: argument validation, `preToolCall` hooks,
+permission rules (`permissions`), tool guardrails, the tool's `needsApproval`,
+the approval pause, execution, `postToolCall` hooks. Hooks run before every
+approval decision, so rules, `needsApproval` and the human all see (and approve)
+the input a hook produced; the pending approval's `args` show it. When an
+approved call is resumed, the pre-hooks run again: they may still deny it or
+supply its result, but an `{ input }` that differs from the approved input is
+refused with a tool error instead of running.
+
+```ts
+import { createAgent, type AgentHook } from '@loushy/build-ai-agent';
+
+const guard: AgentHook = {
+  name: 'guard',
+  preToolCall(ctx) {
+    if (ctx.toolName === 'shell') return { deny: 'Use the workspace tools instead' };
+    if (ctx.toolName === 'search') return { input: { ...ctx.args, limit: 10 } };
+    return undefined; // continue unchanged
+  },
+  postToolCall(_ctx, result) {
+    return typeof result.result === 'string' ? { result: result.result.slice(0, 2000) } : undefined;
+  },
+};
+
+const agent = createAgent({ provider, instructions: 'You research things.', hooks: [guard] });
+```
 
 ### Flow expressions
 
