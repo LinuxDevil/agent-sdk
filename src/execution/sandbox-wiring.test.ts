@@ -59,7 +59,7 @@ describe('AgentExecutor sandbox wiring (LOU-F5 / LOU-F fix)', () => {
     // sandboxExecute() itself was invoked, with the real args and the
     // configured sandbox adapter.
     expect(sandboxExecute).toHaveBeenCalledTimes(1);
-    expect(sandboxExecute).toHaveBeenCalledWith({}, spySandbox);
+    expect(sandboxExecute).toHaveBeenCalledWith({}, spySandbox, expect.objectContaining({ toolCallId: expect.any(String) }));
 
     // The sandbox adapter's run()/writeFile() were called with parameters
     // that actually relate to the tool's real work (not a disconnected

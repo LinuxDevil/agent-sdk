@@ -593,7 +593,7 @@ describe('FlowExecutor', () => {
       // sandboxExecute() itself was invoked, with the real (interpolated)
       // args and the configured sandbox adapter.
       expect(sandboxExecute).toHaveBeenCalledTimes(1);
-      expect(sandboxExecute).toHaveBeenCalledWith({ value: 'test' }, spySandbox);
+      expect(sandboxExecute).toHaveBeenCalledWith({ value: 'test' }, spySandbox, expect.objectContaining({ toolCallId: expect.any(String), messages: [] }));
       expect(spySandbox.writeFile).toHaveBeenCalledWith(
         'args.json',
         JSON.stringify({ value: 'test' })

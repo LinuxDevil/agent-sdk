@@ -76,14 +76,15 @@ export interface ToolDescriptor {
    * `tool.execute()`; if it is missing, AgentExecutor throws rather than
    * silently falling back to unsandboxed in-process execution.
    *
-   * LOU-V1: when the run has a cancellation signal, it is passed as the
-   * third argument (`{ abortSignal }`), the same name `tool.execute()`
-   * receives it under.
+   * LOU-U15: the third argument is the same execute context
+   * `tool.execute()` receives (`toolCallId`, `messages`, `abortSignal`).
+   * It is optional to declare: an implementation that takes only
+   * `(args, sandbox)` keeps working.
    */
   sandboxExecute?: (
     args: unknown,
     sandbox: SandboxAdapter,
-    options?: { abortSignal?: AbortSignal }
+    ctx?: ToolExecutionOptions
   ) => Promise<unknown>;
 }
 

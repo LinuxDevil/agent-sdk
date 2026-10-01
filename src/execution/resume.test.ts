@@ -1118,7 +1118,7 @@ describe('Execution - resumeAfterApproval', () => {
         { hooks }
       );
 
-      expect(execute).toHaveBeenCalledWith({ email: '[REDACTED]' }, { toolCallId: 'call-1' });
+      expect(execute).toHaveBeenCalledWith({ email: '[REDACTED]' }, expect.objectContaining({ toolCallId: 'call-1', messages: expect.any(Array) }));
     });
 
     it('a postToolCall hook that throws on the resume path propagates as a rejected promise, not a swallowed {error} tool-result', async () => {
