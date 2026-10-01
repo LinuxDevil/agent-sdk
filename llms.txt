@@ -9,6 +9,7 @@
 - [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md): Every TypeScript snippet on this page is a complete, standalone ES module (`.mts`).
 - [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md): The package root (`@loushy/build-ai-agent`) exports everything below.
 - [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md): An agent can be defined as a directory.
+- [AI SDK UI (`useChat`)](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/ai-sdk-ui.md): If your front end already uses the Vercel AI SDK's UI hooks (`useChat` from `@ai-sdk/react`, and the Vue, Svelte and Angular equivalents), you can keep them and run a Loushy agent behind the route.
 - [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md): Flag a tool `needsApproval` and the run pauses before calling it, until a human (or your code) approves or rejects the call.
 - [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md): A channel connects an agent to one surface: a JSON API, a webhook, a chat app.
 - [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md): Installing the package also installs the `loushy` command.
