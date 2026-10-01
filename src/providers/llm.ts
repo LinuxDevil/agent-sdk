@@ -8,16 +8,53 @@
  */
 export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 
+/** A text part of a multimodal message (LOU-V11). */
+export interface TextContentPart {
+  type: 'text';
+  text: string;
+}
+
+/**
+ * An image part of a multimodal message (LOU-V11): an `http(s)` URL, a
+ * `data:` URL or the raw bytes. `mimeType` is optional (the `ai` SDK
+ * detects it from the bytes or the data URL).
+ */
+export interface ImageContentPart {
+  type: 'image';
+  image: string | Uint8Array;
+  mimeType?: string;
+}
+
+/** A file part of a multimodal message (LOU-V11): a URL, a `data:` URL or the raw bytes. */
+export interface FileContentPart {
+  type: 'file';
+  data: string | Uint8Array;
+  mimeType: string;
+  filename?: string;
+}
+
+/** One part of a multimodal `Message.content` (LOU-V11). */
+export type ContentPart = TextContentPart | ImageContentPart | FileContentPart;
+
 /**
  * Message structure
  */
 export interface Message {
   role: MessageRole;
   /**
-   * Message text. For a `tool` message this is the tool's result, usually
-   * JSON-encoded (providers decode it back to a value before sending it).
+   * Message text, or (LOU-V11) a list of text, image and file parts. The
+   * built-in providers send image and file parts on `user` messages only;
+   * on other messages they send the text parts (`textOf()`). For a `tool`
+   * message this is the tool's result, usually JSON-encoded (providers
+   * decode it back to a value before sending it).
+   *
+   * @example
+   * { role: 'user', content: [
+   *   { type: 'text', text: 'What is in this picture?' },
+   *   { type: 'image', image: 'https://example.com/cat.png' },
+   * ] }
    */
-  content: string;
+  content: string | ContentPart[];
   name?: string;
   /** For a `tool` message: the `ToolCall.id` this message answers. */
   toolCallId?: string;

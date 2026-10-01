@@ -9,10 +9,12 @@ import type {
   GenerateOptions,
   GenerateResult,
   LLMProvider,
+  Message,
   StreamChunk,
   StreamResult,
   ToolCall,
 } from '../providers/llm';
+import { textOf } from '../providers/content';
 
 /** Recursively read-only version of `T` (used for recorded requests). */
 export type DeepReadonly<T> = T extends (...args: never[]) => unknown
@@ -156,7 +158,8 @@ function snapshot(options: GenerateOptions): MockRequest {
 function describeLastMessage(request: MockRequest): string {
   const last = request.messages.at(-1);
   if (!last) return '(no messages)';
-  const content = last.content.length > 120 ? `${last.content.slice(0, 117)}...` : last.content;
+  const text = textOf(last as Pick<Message, 'content'>);
+  const content = text.length > 120 ? `${text.slice(0, 117)}...` : text;
   return `${last.role}: ${JSON.stringify(content)}`;
 }
 

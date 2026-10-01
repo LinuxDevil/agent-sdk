@@ -248,6 +248,32 @@ describe('recordReplay normalization', () => {
   });
 });
 
+describe('recordReplay with multimodal content (LOU-V11)', () => {
+  const look = (image: string | Uint8Array): GenerateOptions => ({
+    messages: [{ role: 'user', content: [{ type: 'text', text: 'What is this?' }, { type: 'image', image, mimeType: 'image/png' }] }],
+  });
+
+  it('stores the text and a digest of each image, and matches on both', async () => {
+    await record(['a cat'], [look(new Uint8Array([1, 2, 3]))]);
+    const stored = readJson().entries[0].request.messages[0];
+
+    expect(stored).toEqual({ role: 'user', content: 'What is this?', attachments: [expect.stringMatching(/^image image\/png fnv1a:[0-9a-f]{8}$/)] });
+
+    const replay = recordReplay(undefined, { cassette: file, mode: 'replay' });
+    expect((await replay.generate(look(new Uint8Array([1, 2, 3])))).text).toBe('a cat');
+    await expect(replay.generate(look(new Uint8Array([9, 9, 9])))).rejects.toThrow(CassetteMismatchError);
+  });
+
+  it('keeps an image URL as is and string content unchanged', async () => {
+    await record(['a cat', 'ok'], [look('https://example.com/cat.png'), ask('plain')]);
+
+    expect(readJson().entries.map((entry) => entry.request.messages[0])).toEqual([
+      { role: 'user', content: 'What is this?', attachments: ['image image/png https://example.com/cat.png'] },
+      { role: 'user', content: 'plain' },
+    ]);
+  });
+});
+
 describe('recordReplay redaction', () => {
   it('redacts API-key-like strings and bearer tokens from requests and responses', async () => {
     const anthropic = `sk-ant-${'a1B2c3D4'.repeat(4)}`;

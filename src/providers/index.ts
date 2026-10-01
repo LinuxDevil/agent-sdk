@@ -4,6 +4,7 @@
  */
 
 export * from './llm';
+export { textOf } from './content';
 export * from './mock';
 export * from './OpenAIProvider';
 export * from './OllamaProvider';

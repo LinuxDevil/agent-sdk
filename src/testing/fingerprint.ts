@@ -7,7 +7,8 @@
  * produces the same canonical JSON.
  */
 
-import type { GenerateOptions, Message, ToolDefinition } from '../providers/llm';
+import type { FileContentPart, GenerateOptions, ImageContentPart, Message, ToolDefinition } from '../providers/llm';
+import { textOf } from '../providers/content';
 import type { CassetteRequest } from './cassette';
 
 const MAX_DEPTH = 24;
@@ -134,10 +135,31 @@ function normalizeArguments(argumentsJson: string): string {
   }
 }
 
+/** 32-bit FNV-1a of a part's data, so a cassette tells images apart without storing them. */
+function digest(data: string | Uint8Array): string {
+  let hash = 0x811c9dc5;
+  for (const byte of typeof data === 'string' ? new TextEncoder().encode(data) : data) {
+    hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
+}
+
+/** An image or file part (LOU-V11) as a short line: kind, type, name, and its URL or a digest of its data. */
+function describePart(part: ImageContentPart | FileContentPart): string {
+  const data = part.type === 'image' ? part.image : part.data;
+  const source = typeof data === 'string' && /^https?:\/\//i.test(data) ? data : `fnv1a:${digest(data)}`;
+  const name = part.type === 'file' ? part.filename : undefined;
+  return [part.type, part.mimeType, name, source].filter(Boolean).join(' ');
+}
+
 function toCassetteMessage(message: Message): CassetteRequest['messages'][number] {
+  const attachments = Array.isArray(message.content)
+    ? message.content.flatMap((part) => (part.type === 'text' ? [] : [describePart(part)]))
+    : [];
   return {
     role: message.role,
-    content: message.content,
+    content: textOf(message),
+    ...(attachments.length > 0 ? { attachments } : {}),
     ...(message.name !== undefined ? { name: message.name } : {}),
     ...(message.toolName !== undefined ? { toolName: message.toolName } : {}),
     ...(message.isError !== undefined ? { isError: message.isError } : {}),

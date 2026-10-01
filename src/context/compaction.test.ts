@@ -128,6 +128,19 @@ function request(messages: Message[], model = 'compaction-test-model'): Generate
   return { model, messages };
 }
 
+describe('compaction with multimodal content (LOU-V11)', () => {
+  it('measures a tool result given as parts by its text and leaves user image parts alone', async () => {
+    const original = transcript(4);
+    original[1] = { role: 'user', content: [{ type: 'text', text: 'start' }, { type: 'image', image: 'https://example.com/a.png' }] };
+    original[3] = { ...original[3], content: [{ type: 'text', text: BIG }] };
+
+    const result = await compactMessages(original, { protectedTokens: 1_000, strategy: pruneToolResultsStrategy() });
+
+    expect(result.messages[1]).toBe(original[1]);
+    expect(result.messages[3].content).toBe('[pruned: search result, 4000 chars]');
+  });
+});
+
 describe('createCompactionHook', () => {
   registerModel({ id: 'compaction-test-model', provider: 'test', contextWindow: 10_000 });
 
