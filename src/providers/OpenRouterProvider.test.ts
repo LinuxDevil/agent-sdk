@@ -118,6 +118,40 @@ describe('OpenRouterProvider', () => {
     });
   });
 
+  describe('request path', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    /** Runs one generate() against a stubbed fetch that answers 400 (not retried) and returns the request it saw. */
+    async function requestOf(provider: OpenRouterProvider) {
+      const fetchMock = vi.fn().mockImplementation(
+        async () => new Response(JSON.stringify({ error: { message: 'stub' } }), { status: 400 })
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(
+        provider.generate({ messages: [{ role: 'user', content: 'hi' }], model: 'openai/gpt-4o-mini' })
+      ).rejects.toThrow();
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      return { url: String(url), headers: new Headers(init.headers) };
+    }
+
+    // On `@ai-sdk/openai` 2+ the bare call is the Responses API, which OpenRouter does not implement
+    // (LOU-D28f); this runs on every installed `ai` major and pins the Chat Completions endpoint.
+    it('calls the Chat Completions endpoint, not the Responses API', async () => {
+      const { url } = await requestOf(new OpenRouterProvider(config));
+      expect(url).toBe('https://openrouter.ai/api/v1/chat/completions');
+      expect(url).not.toContain('/responses');
+    });
+
+    it('sends the API key and the site attribution headers', async () => {
+      const { headers } = await requestOf(new OpenRouterProvider(config));
+      expect(headers.get('authorization')).toBe('Bearer test-api-key');
+      expect(headers.get('http-referer')).toBe('https://example.com');
+      expect(headers.get('x-title')).toBe('Test Site');
+    });
+  });
+
   it('should handle configuration without optional fields', () => {
     const minimalConfig: OpenRouterProviderConfig = {
       name: 'openrouter',

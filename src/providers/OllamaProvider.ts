@@ -14,6 +14,18 @@ export interface OllamaProviderConfig extends AiSdkProviderConfig {
   defaultModel?: string;
 }
 
+const OLLAMA_DEFAULT_URL = 'http://localhost:11434';
+
+/**
+ * The URL both Ollama packages expect: they append `/chat`, `/tags` to a base that ends in `/api`.
+ * A bare host (`http://host:11434`, with or without a trailing slash) gets `/api` added; a URL with
+ * any other path (`/api`, `/api/`, a reverse-proxy prefix) is kept as configured.
+ */
+function normalizeOllamaBaseUrl(baseURL: string | undefined): string {
+  const trimmed = (baseURL || OLLAMA_DEFAULT_URL).replace(/\/+$/, '');
+  return /^[a-z][a-z0-9+.-]*:\/\/[^/]+$/i.test(trimmed) ? `${trimmed}/api` : trimmed;
+}
+
 /**
  * Ollama Provider using the 'ai' SDK
  */
@@ -32,7 +44,7 @@ export class OllamaProvider extends AiSdkProvider<OllamaProviderConfig> {
       major === 4
         ? await loadOptionalPeer('ollama-ai-provider', () => import('ollama-ai-provider'), major)
         : await loadOptionalPeer('ollama-ai-provider-v2', () => import('ollama-ai-provider-v2'), major);
-    return { modern: major !== 4, ollama: createOllama({ baseURL: this.config.baseURL || 'http://localhost:11434' }) };
+    return { modern: major !== 4, ollama: createOllama({ baseURL: normalizeOllamaBaseUrl(this.config.baseURL) }) };
   });
 
   constructor(config: OllamaProviderConfig, logger: Logger = noopLogger) {
@@ -66,7 +78,7 @@ export class OllamaProvider extends AiSdkProvider<OllamaProviderConfig> {
    */
   async getModels(): Promise<string[]> {
     try {
-      const response = await fetch(`${this.config.baseURL || 'http://localhost:11434'}/api/tags`);
+      const response = await fetch(`${normalizeOllamaBaseUrl(this.config.baseURL)}/tags`);
       const data = await response.json();
       return data.models?.map((m: any) => m.name) || [];
     } catch (error) {

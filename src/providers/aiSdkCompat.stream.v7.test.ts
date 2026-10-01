@@ -3,7 +3,8 @@
  * `ai` v7 (the `ai-v7` dev alias) and scripted `MockLanguageModelV4`
  * streams: a text reply, a tool call, an error mid-stream, and a tool loop
  * through `agent.stream()`, whose events are asserted with one helper on
- * `ai` v7 and on the installed `ai` v4 (`MockLanguageModelV1`).
+ * `ai` v7 and on the installed `ai` (v4: `MockLanguageModelV1`; v7: the same
+ * scripted `MockLanguageModelV4` streams, with the provider on its own `ai`).
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -17,7 +18,7 @@ import { OllamaProvider } from './OllamaProvider';
 import { OpenRouterProvider } from './OpenRouterProvider';
 import type { LLMProvider, StreamChunk } from './llm';
 import type { AiSdkModule } from './aiSdkCompat';
-import { itOnAiV4 } from './aiMajor.testkit';
+import { installedAiMajor } from './aiMajor.testkit';
 import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import type { AgentEvent } from '../execution/agentEvents';
@@ -101,8 +102,11 @@ function useModel(provider: LLMProvider, model: unknown): void {
   vi.spyOn(target, 'createModel').mockResolvedValue(model);
 }
 
-/** Run `provider` on `ai` v7, one scripted model stream per call; returns the call options the model got. */
-function onV7(provider: LLMProvider, steps: Array<Step | V7Part[]>): V7CallOptions[] {
+/**
+ * Run `provider` on `ai` v7, one scripted model stream per call; returns the call options the model got.
+ * `ai` is the `ai-v7` alias by default; pass `undefined` to leave the provider on the installed `ai`.
+ */
+function onV7(provider: LLMProvider, steps: Array<Step | V7Part[]>, ai: AiSdkModule | undefined = aiV7): V7CallOptions[] {
   const calls: V7CallOptions[] = [];
   const model = new MockLanguageModelV4({
     doStream: async (options) => {
@@ -111,8 +115,7 @@ function onV7(provider: LLMProvider, steps: Array<Step | V7Part[]>): V7CallOptio
       return { stream: streamOf(Array.isArray(step) ? step : v7Parts(step)) };
     },
   });
-  const ai: AiSdkModule = aiV7;
-  Object.assign(provider, { ai });
+  if (ai) Object.assign(provider, { ai });
   useModel(provider, model);
   return calls;
 }
@@ -127,6 +130,12 @@ function onV4(provider: LLMProvider, steps: Step[]): void {
     }),
   });
   useModel(provider, model);
+}
+
+/** Run `provider` on the installed `ai`, one scripted model stream per call (v4 and v7; no v6 install exists in this repo). */
+function onInstalled(provider: LLMProvider, steps: Step[]): void {
+  if (installedAiMajor === 4) onV4(provider, steps);
+  else onV7(provider, steps, undefined);
 }
 
 async function collect<T>(stream: AsyncIterable<T>): Promise<T[]> {
@@ -329,10 +338,10 @@ describe('agent.stream() on both ai majors (LOU-D27)', () => {
     ]);
   });
 
-  // v4 only: scripts the model with the ai v4 MockLanguageModelV1 (LOU-D28b); the v7 half runs above.
-  itOnAiV4('yields the same events on ai v4', async () => {
+  // The installed `ai`: v4 with MockLanguageModelV1, v7 with MockLanguageModelV4 (LOU-D28f).
+  it.skipIf(installedAiMajor === 6)('yields the same events on the installed ai', async () => {
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k', maxRetries: 0 });
-    onV4(provider, toolLoop);
+    onInstalled(provider, toolLoop);
 
     await expectToolLoopRun(createAgent({ provider, tools: [lookup] }).stream('Weather in Paris?'));
   });
@@ -355,11 +364,14 @@ describe('agent.stream() on both ai majors (LOU-D27)', () => {
     await expectFailedRun(provider);
   });
 
-  // v4 only: scripts the model with the ai v4 MockLanguageModelV1 (LOU-D28b).
-  itOnAiV4('ends the run with an error when the model stream fails, on ai v4', async () => {
+  it.skipIf(installedAiMajor === 6)('ends the run with an error when the model stream fails, on the installed ai', async () => {
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k', maxRetries: 0 });
-    const stream = streamOf<V4Part>([{ type: 'text-delta', textDelta: 'Hal' }, { type: 'error', error: failure }]);
-    useModel(provider, new MockLanguageModelV1({ doStream: async () => ({ stream, rawCall: { rawPrompt: null, rawSettings: {} } }) }));
+    if (installedAiMajor === 4) {
+      const stream = streamOf<V4Part>([{ type: 'text-delta', textDelta: 'Hal' }, { type: 'error', error: failure }]);
+      useModel(provider, new MockLanguageModelV1({ doStream: async () => ({ stream, rawCall: { rawPrompt: null, rawSettings: {} } }) }));
+    } else {
+      onV7(provider, [[{ type: 'error', error: failure }]], undefined);
+    }
     await expectFailedRun(provider);
   });
 });

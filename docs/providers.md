@@ -176,9 +176,19 @@ pair (for example `ai` 7 with `@ai-sdk/openai` 1.x). `OllamaProvider` loads
 `ollama-ai-provider` on `ai` 4 and `ollama-ai-provider-v2` on `ai` 6/7; the v2
 package needs zod 4, which this SDK does not support yet, so use Ollama with
 `ai` 4 for now. `loushy init` scaffolds `ai@^7.0.0` with `@ai-sdk/*@^4.0.0` for
-OpenAI and Anthropic, and `ai@^4.3.19` for Ollama and OpenRouter (whose
-`@ai-sdk/openai` 2+ default, the Responses API, is not verified against
-OpenRouter yet).
+OpenAI, Anthropic and OpenRouter, and `ai@^4.3.19` for Ollama.
+
+OpenRouter uses `@ai-sdk/openai` against OpenRouter's base URL. From
+`@ai-sdk/openai` 2 on, the default `openai(modelId)` call targets the Responses
+API, which OpenRouter does not implement, so `OpenRouterProvider` asks for the
+Chat Completions model (`provider.chat(modelId)`) on every major; it works on
+`ai` 4, 6 and 7 with the pairing above.
+
+`OllamaProvider` takes the server's base URL (`baseURL`, or `OLLAMA_BASE_URL`
+for `resolveProvider()`) and appends `/api` to a bare host, as both Ollama
+packages expect it: `http://host:11434` and `http://host:11434/` become
+`http://host:11434/api`. A URL that already ends in `/api` (or `/api/`), or has
+any other path such as a reverse-proxy prefix, is used as it is.
 
 `generate()` and `stream()` pick the call shape from the installed `ai`
 module: when it exports `stepCountIs` (v5 and later), the request is sent in
