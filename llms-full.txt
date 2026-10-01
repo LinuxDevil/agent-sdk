@@ -148,14 +148,11 @@ if (run.finishReason === 'awaiting-approval') {
 import { createAgent, resolveProvider } from '@loushy/build-ai-agent';
 import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
 
-const store = new SqliteStore('./.loushy/agent.db'); // sessions, checkpoints and approvals in one file
-const agent = createAgent({ provider: resolveProvider('openai/gpt-4o-mini'), approvalStore: store.approvals });
+// Transcripts, per-step checkpoints and approvals in one SQLite file, wired by one option.
+const agent = createAgent({ provider: resolveProvider('openai/gpt-4o-mini'), store: new SqliteStore('./.loushy/agent.db') });
 
-// Same id + same file = same conversation, checkpointed after every model response and tool result.
-await agent.session({ id: 'user-42', store }).send('My name is Ali.');
-const session = agent.session({ id: 'user-42', store });
-await session.resume(); // after a crash: finishes the interrupted turn without redoing finished steps
-const { text } = await session.send('What is my name?'); // "Ali"
+await agent.resume('user-42'); // after a crash: finishes the interrupted turn without redoing finished steps
+const { text } = await agent.session({ id: 'user-42' }).send('What is my name?'); // same id, same conversation
 ```
 
 ## Documentation
@@ -729,6 +726,7 @@ How the pieces fit:
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
 | `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md), [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). |
 | `SqliteStore` (from `/sqlite`) | Sessions, checkpoints and approvals in one SQLite file (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
+| `AgentStore`, `memoryStore()` | The `createAgent({ store })` option: `{ sessions?, checkpoints?, approvals? }`, and an in-memory one (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
 | `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
 
@@ -759,7 +757,7 @@ and an `approvalId`. `agent.approvals.list()` returns the pending calls and
 `agent.approvals.resolve({ id, approved, note? })` runs or rejects the call and
 resolves with the continued run's result (continuing the session it paused
 in). Pauses are kept in a per-agent `InMemoryApprovalStore` unless you pass
-`approvalStore` (e.g. `SqliteStore.approvals`); `approve: (call) => boolean`
+`approvalStore` (e.g. `SqliteStore.approvals`) or a `store`; `approve: (call) => boolean`
 decides each call in code without pausing (`stream()` still ends at the
 pause). See [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md).
 
@@ -1088,6 +1086,7 @@ result; `preToolCall` hooks are skipped because there is no valid call):
   "error": "ToolArgumentsValidationError",
   "toolName": "sendEmail",
   "message": "Invalid arguments for tool 'sendEmail': 2 issues (to: Required; count: Expected number, received string)",
+  "kind": "validation",
   "issues": [
     { "path": "to", "message": "Required" },
     { "path": "count", "message": "Expected number, received string" }
@@ -1103,8 +1102,12 @@ the tool name and the message only (never a stack trace). Messages are capped
 at 2,000 characters and end with `... (truncated)` when cut:
 
 ```json
-{ "error": "TypeError", "toolName": "search", "message": "query must not be empty" }
+{ "error": "TypeError", "toolName": "search", "message": "query must not be empty", "kind": "execution" }
 ```
+
+Every other failure (unknown tool, rejected approval, a call that was not run,
+an MCP error, a refused sandboxed tool) uses the same `{ error, toolName,
+message, kind }` shape; see [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#errors) for the `kind` values.
 
 Errors extending `PropagatingToolError` (for example the delegation depth
 guard) are the exception: they are rethrown and abort the run instead of being
@@ -1870,15 +1873,16 @@ the calls after it run once it is decided (see
   the same way.
 
 Pauses are kept in a per-agent `InMemoryApprovalStore` unless you pass
-`approvalStore`. To decide a pause after a restart, give the agent a durable
-store, such as the SQLite one (see [Choosing a store](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)):
+`approvalStore` or a `store` with `approvals`. To decide a pause after a
+restart, give the agent a durable store, such as the SQLite one (see
+[Choosing a store](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)):
 
 ```ts
 import { createAgent } from '@loushy/build-ai-agent';
 import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
 
 const store = new SqliteStore('./.loushy/agent.db');
-const agent = createAgent({ provider, tools: [emailTool], approvalStore: store.approvals });
+const agent = createAgent({ provider, tools: [emailTool], store }); // or approvalStore: store.approvals
 ```
 
 `list()` only knows the pauses made by this agent object; keep the
@@ -2505,7 +2509,8 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `toolConcurrency` | How many tool calls of one model turn run at once: a positive integer or `'unbounded'` (default). See [Parallel tool calls](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#parallel-tool-calls). |
 | `skills`   | Skills from `defineSkill()` / `loadSkills()`; see [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md). |
 | `subagents`, `maxSubagentDepth` | Named sub-agents behind one `task` tool, and how deep they may nest (default 1); see [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md). |
-| `approvalStore` | Where a `needsApproval` pause is saved (default: a per-agent `InMemoryApprovalStore`); see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md). |
+| `store`    | An `AgentStore` (`SqliteStore`, `memoryStore()`, or `{ sessions?, checkpoints?, approvals? }`): the default stores of `agent.session()`, approvals, and `send(message, { sessionId })` runs; `agent.resume(id)` finishes an interrupted one. See [Durable sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#durable-sessions). |
+| `approvalStore` | Where a `needsApproval` pause is saved (default: `store.approvals`, else a per-agent `InMemoryApprovalStore`); see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md). |
 | `approve`  | `(call) => boolean`: decide approvals in code instead of pausing. |
 | `projectInstructions` | `true` or `{ cwd?, files? }`: append the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (off by default; see [Project instructions](#project-instructions)). |
 | `retry`    | `withRetry()` options for failed model calls, or `false`. Default `{ maxRetries: 2 }` for `model` strings; a `provider` instance is wrapped only when set. See [Provider retries and fallback](#provider-retries-and-fallback). |
@@ -2778,8 +2783,25 @@ await AgentExecutor.execute({ agent, input: 'Book a table for 2 tonight', provid
 await AgentExecutor.execute({ agent, input: 'Make it 3 people', provider, sessionId: 'chat-42', checkpointStore: checkpoints });
 ```
 
-With `createAgent()`, a session does this for you: `agent.session({ id, store, checkpointStore })`
-checkpoints every turn and `session.resume()` finishes an interrupted one - see
+With `createAgent()`, one `store` option does the wiring: pass a `sessionId` to
+`send()` (or `stream()`) and the run is checkpointed in `store.checkpoints`;
+after a crash, `agent.resume(sessionId)` finishes it (and returns `null` when
+nothing is pending). No `AgentExecutor` needed:
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
+
+const agent = createAgent({ provider, store: new SqliteStore('./.loushy/jobs.db') });
+
+const finished = await agent.resume('job-1'); // the interrupted run, if any
+const next = await agent.send('Now write a summary', { sessionId: 'job-1' }); // continues the same run's conversation
+```
+
+`store.approvals` holds approval pauses, and `agent.approvals.resolve()`
+keeps checkpointing the run under its `sessionId`. Sessions are checkpointed
+too: `agent.session({ id })` checkpoints every turn and `agent.resume(id)` (or
+`session.resume()`) finishes an interrupted one - see
 [Durable sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#durable-sessions).
 
 ## What is checkpointed, and when
@@ -3412,7 +3434,7 @@ For real OpenTelemetry spans, import `createOtelTraceExporter()` from
 `@loushy/build-ai-agent/otel` (needs the optional peer dependency
 `@opentelemetry/api` and a registered `TracerProvider`). It carries span kind
 and error status over to OpenTelemetry. See `examples/tracing`
-(`npm run example:tracing:console`, `npm run example:tracing:otel`).
+(`npm run example:tracing:console`, `npm run example:tracing:otel`, which also prints metrics).
 
 ## Span tree
 
@@ -3438,7 +3460,7 @@ child.
 ## Attributes
 
 Constants for every name live in `src/execution/semconv.ts` (exported as
-`GenAiAttr`, `GenAiOperation`, `ErrorAttr`, `FlowAttr`, `LegacyAttr`).
+`GenAiAttr`, `GenAiOperation`, `GenAiMetric`, `ErrorAttr`, `FlowAttr`, `SdkAttr`, `LegacyAttr`).
 
 ### Agent run: `invoke_agent {agent name}`
 
@@ -3449,6 +3471,8 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `gen_ai.agent.id` | The agent's `id`, when set |
 | `gen_ai.provider.name` | The provider's `name` |
 | `gen_ai.conversation.id` | `sessionId`, when set |
+| `loushy.cost_usd` | Cumulative estimated USD of the run (every model call and delegated child run); absent when any model used has no known price |
+| `loushy.usage.estimated` | `true` when any of the run's tokens were estimated |
 
 ### Model call: `chat {model}` (CLIENT)
 
@@ -3461,6 +3485,8 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `gen_ai.response.model` | When the provider reports it |
 | `gen_ai.response.finish_reasons` | e.g. `["stop"]`, `["tool_call"]` |
 | `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` | Token usage |
+| `loushy.cost_usd` | Estimated USD of this step, when the built-in price table (or `registerModel`) knows the model; absent otherwise |
+| `loushy.usage.estimated` | `true` when the provider reported no usage and the tokens were estimated |
 
 ### Tool call: `execute_tool {tool}`
 
@@ -3494,6 +3520,43 @@ A failed span gets `error.type` and an error span status (OpenTelemetry
 `ERROR`, message = the error message). `error.type` is the thrown error's
 `name` (`_OTHER` when a non-`Error` is thrown). A tool call that returns an
 error to the model (`isError`) is marked `error.type = tool_error`.
+
+## Metrics
+
+`createOtelTraceExporter()` also records the OpenTelemetry GenAI client
+metrics through `@opentelemetry/api`'s metrics API, using the global
+`MeterProvider` (`metrics.getMeter(...)`), or the `meter` option:
+
+| Metric | Type, unit | Recorded | Attributes |
+| --- | --- | --- | --- |
+| `gen_ai.client.token.usage` | Histogram, `{token}` | Once per token type for every model call that reports (or estimates) usage | `gen_ai.operation.name` (`chat`), `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.response.model` (when known), `gen_ai.token.type` (`input` or `output`) |
+| `gen_ai.client.operation.duration` | Histogram, `s` | Every model call (`chat`) and tool call (`execute_tool`) | `gen_ai.operation.name`, `gen_ai.provider.name` and `gen_ai.request.model` (model calls), `gen_ai.response.model` (when known), `error.type` (when it failed) |
+
+Both use the spec's recommended bucket boundaries. They follow the
+`gen-ai-metrics` page of semantic-conventions v1.40 (`Development` stability):
+the newest conventions split the token histogram into per-type counters,
+which this SDK does not emit yet. Agent and flow spans are not counted in the
+duration metric, only the model and tool calls inside them.
+
+```ts
+import { metrics } from '@opentelemetry/api';
+import { ConsoleMetricExporter, MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
+import { createOtelTraceExporter } from '@loushy/build-ai-agent/otel';
+
+// Swap ConsoleMetricExporter for an OTLP exporter to reach any backend.
+metrics.setGlobalMeterProvider(
+  new MeterProvider({ readers: [new PeriodicExportingMetricReader({ exporter: new ConsoleMetricExporter() })] })
+);
+
+const exporter = createOtelTraceExporter(); // metrics on by default
+// createOtelTraceExporter({ metrics: false })  // spans only
+// createOtelTraceExporter({ meter })           // an already-obtained Meter
+```
+
+Without a registered `MeterProvider`, OpenTelemetry's no-op meter discards
+the records. The metrics API lives in `@opentelemetry/api`, so nothing is
+recorded (and nothing is loaded) when that optional peer is not installed.
+The cost is an estimate from the price table (see `registerModel`), not a bill.
 
 ## Message and argument content is opt-in
 
@@ -3951,28 +4014,33 @@ ends, so a crash in the middle of a turn loses it; see the next section.
 
 ## Durable sessions
 
-Give the session a `CheckpointStore` and every turn is checkpointed after each
-model response and tool result, using the [durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)
-mechanism. A turn interrupted by a crash, a failed checkpoint write or a
-`PropagatingToolError` can then be finished later, in another process:
+Give the agent a `store` with checkpoints and every session turn is
+checkpointed after each model response and tool result, using the
+[durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md) mechanism. A turn interrupted by a
+crash, a failed checkpoint write or a `PropagatingToolError` can then be
+finished later, in another process:
 
 ```ts
-import { createAgent, FileSessionStore, type CheckpointStore } from '@loushy/build-ai-agent';
+import { createAgent } from '@loushy/build-ai-agent';
+import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
 
-declare const checkpointStore: CheckpointStore; // e.g. LocalStorageCheckpointStore, or SqliteStore's `checkpoints`
-
-const agent = createAgent({ provider });
-const store = new FileSessionStore('./.loushy/sessions');
+const agent = createAgent({ provider, store: new SqliteStore('./.loushy/agent.db') });
 
 // After a restart: finish the turn that was running, if any.
-const session = agent.session({ id: 'user-42', store, checkpointStore });
-const finished = await session.resume(); // ExecutionResult, or null when nothing was pending
-console.log(finished?.text, await session.pending()); // pending() is null now
+const finished = await agent.resume('user-42'); // ExecutionResult, or null when nothing was pending
+console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); // pending() is null now
 ```
 
-- Pass `checkpointStore`, or a `store` that carries both stores: any
-  `{ sessions, checkpoints }` object, such as a `SqliteStore`
-  (`agent.session({ id, store: sqliteStore })`).
+- `createAgent({ store })` takes any `AgentStore`
+  (`{ sessions?, checkpoints?, approvals? }`, see [Choosing a store](#choosing-a-store)):
+  `agent.session({ id })` keeps its transcript in `store.sessions` and
+  checkpoints in `store.checkpoints`, and `store.approvals` holds approval
+  pauses. A session's own `store` (a `SessionStore`, or a
+  `{ sessions, checkpoints }` object) and `checkpointStore` win over the
+  agent's, part by part.
+- `agent.resume(id)` is `agent.session({ id }).resume()`, except that it first
+  finishes a run started with `agent.send(message, { sessionId: id })` (see
+  [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)).
 - Each turn runs with `sessionId: '<session id>.turn-<n>'` (`n` is the length
   of the transcript when the turn started), so a new process finds the
   interrupted turn without any extra bookkeeping. A finished turn joins the
@@ -3992,7 +4060,7 @@ console.log(finished?.text, await session.pending()); // pending() is null now
   `agent.approvals.resolve({ id, approved })` continues the turn in this
   session. After a restart, open the session and call `resume()` (or `send()`)
   once before resolving, so the agent knows which session the approval belongs
-  to; give both agents the same durable `approvalStore`.
+  to; give both agents the same durable `store` (or `approvalStore`).
 - An aborted turn is dropped (its checkpoint is deleted), as without a
   checkpoint store. `clear()` deletes a pending turn too.
 
@@ -4041,10 +4109,37 @@ implementation by where the process runs:
 
 | Store | Sessions | Checkpoints | Approvals | Use it when |
 | --- | --- | --- | --- | --- |
-| In memory | `MemorySessionStore` | (supply your own) | `InMemoryApprovalStore` | Tests, scripts, one process that never restarts |
+| In memory (`memoryStore()`) | `MemorySessionStore` | in memory | `InMemoryApprovalStore` | Tests, scripts, one process that never restarts |
 | Files | `FileSessionStore(dir)` | `LocalStorageCheckpointStore` | `StorageServiceApprovalStore` | One machine, you want plain inspectable files |
 | SQLite | `store.sessions` | `store.checkpoints` | `store.approvals` | A Node server: one durable, transactional file, shared safely by several processes |
 | Cloudflare KV | - | `KVCheckpointStore` | - | Workers deployments (see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)) |
+
+Each one is an `AgentStore` part: pass them together as
+`createAgent({ store: { sessions, checkpoints, approvals } })`. `memoryStore()`
+and `SqliteStore` are ready-made `AgentStore`s; for plain files, combine the
+file stores:
+
+```ts
+import {
+  createAgent,
+  FileSessionStore,
+  LocalStorageCheckpointStore,
+  StorageServiceApprovalStore,
+  type AgentStore,
+} from '@loushy/build-ai-agent';
+
+// `storage` is a StorageService rooted where the files should go.
+const store: AgentStore = {
+  sessions: new FileSessionStore('./.loushy/sessions'),
+  checkpoints: new LocalStorageCheckpointStore(storage),
+  approvals: new StorageServiceApprovalStore(storage),
+};
+const agent = createAgent({ provider, store });
+```
+
+Any object with the three methods of a part works there too: a Redis
+`SessionStore`, or a KV-backed `CheckpointStore` on Cloudflare Workers (the
+generated Worker uses `KVCheckpointStore`, see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)).
 
 `SqliteStore` keeps all three in one database file, using Node's built-in
 `node:sqlite` (no native dependency; needs Node 22.13 or newer, and it is not
@@ -4055,10 +4150,10 @@ import { createAgent, AgentExecutor } from '@loushy/build-ai-agent';
 import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
 
 const store = new SqliteStore('./.loushy/agent.db'); // or ':memory:'
-const session = createAgent({ provider }).session({ id: 'user-42', store }); // transcript + per-step checkpoints
-await session.send('Hello');
+const agent = createAgent({ provider, store }); // transcripts, per-step checkpoints and approvals
+await agent.session({ id: 'user-42' }).send('Hello');
 
-// Same file, same store, for durable runs with approvals:
+// With AgentExecutor directly, pass the parts:
 // AgentExecutor.execute({ ..., sessionId, checkpointStore: store.checkpoints, approvalStore: store.approvals })
 
 store.prune({ olderThanMs: 7 * 24 * 60 * 60 * 1000 }); // { sessions, checkpoints, approvals } deleted
@@ -4733,41 +4828,77 @@ more tasks) while it runs. The lead then uses:
 
 At most `maxConcurrent` background sub-agents of one lead run run at once
 (default 3); further `background: true` calls get `status: 'queued'` and start
-as slots free. Set it with `withSubagentOptions()`, which returns the same
-`subagents` value:
+as slots free. Set it with `subagentOptions` on `createAgent()`:
 
 ```ts
-import { createAgent, withSubagentOptions } from '@loushy/build-ai-agent';
+import { createAgent } from '@loushy/build-ai-agent';
 
 const researcher = createAgent({ provider, instructions: 'You research.', description: 'Finds and summarizes sources' });
 
 const lead = createAgent({
   provider,
   instructions: 'You coordinate research.',
-  subagents: withSubagentOptions({ researcher }, { maxConcurrent: 2 }),
+  subagents: { researcher },
+  subagentOptions: { maxConcurrent: 2, awaitBackgroundOnFinish: true },
 });
 ```
+
+For `AgentExecutor.execute()`, attach the same options to the `subagents`
+value with `withSubagentOptions(subagents, options)`, which returns it. On
+`createAgent()`, `subagentOptions` override options attached that way.
 
 A background sub-agent inherits from the lead run like a synchronous one
 (hooks, tracing, `onEvent`, usage roll-up), and `maxSubagentDepth` applies the
 same way. Aborting the lead's signal cancels its background sub-agents, queued
 or running.
 
-Limits (follow-up LOU-Y4.2, which needs a run-end hook in the executor):
+### When the lead run ends
 
-- Background tasks belong to one `execute()` call. When the lead's run
-  finishes, sub-agents still running are **not** cancelled or awaited yet:
-  they run to completion on their own, and their events still reach
-  `onEvent`. Have the lead collect them with `agent_await` before its final
-  answer (the system prompt tells it to), or abort the signal you passed to
-  the run to stop them.
+Background tasks belong to one run (one `execute()` / `send()` / `stream()`).
+When that run ends, however it ends, the tasks still queued or running are
+**cancelled** by default (their runs are aborted). With
+`awaitBackgroundOnFinish: true` the run instead waits for them to finish
+before it resolves (an aborted or failed lead run still cancels them). Either
+way the run resolves only once their runs have stopped, so no sub-agent event
+reaches `onEvent` after it; with `awaitBackgroundOnFinish` their events arrive
+after the lead's own `finish` event.
+
+The result lists every background task of the run with its final status:
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const researcher = createAgent({ provider, instructions: 'You research.', description: 'Finds and summarizes sources' });
+const lead = createAgent({ provider, instructions: 'You coordinate research.', subagents: { researcher } });
+
+const result = await lead.send('Research three topics in the background.');
+for (const task of result.backgroundTasks ?? []) {
+  console.log(task.taskId, task.agent, task.status); // e.g. task_1 researcher cancelled
+}
+```
+
+`result.backgroundTasks` holds `{ taskId, agent, status, elapsedMs, error?,
+approvalId?, toolName? }` per task (the `agent_status` shape) and is absent
+when the run started none. Use `agent_await` in the lead (the system prompt
+tells it to) to get their answers into the conversation.
+
+The executor hook behind this is public: `ExecuteOptions.onRunEnd` is called
+exactly once per run, with `{ result }` (whatever the `finishReason`) or
+`{ error }`; the run settles after it returns. Background tasks are reported
+on `result` before your `onRunEnd` sees it.
+
+Limits:
+
+- A lead run that pauses for approval (`finishReason: 'awaiting-approval'`)
+  ends there: its background tasks are cancelled (or awaited) like at any
+  other end, and the resumed run starts with none. The resumed run is a
+  separate run with no link to the paused one's tasks (it may even run in
+  another process), so they cannot be kept alive across the pause.
 - A background sub-agent that needs approval stops with
   `status: 'awaiting-approval'` (with the child's `approvalId` and
   `toolName`); its call does not run, and it cannot be resumed through the
   approval store. Run that task synchronously (`background: false`) when it
   may need approval.
-- A lead that pauses for approval and is resumed starts with no background
-  tasks: those started before the pause cannot be observed afterwards.
 
 ## Dynamic catalogs
 
@@ -5298,8 +5429,8 @@ descriptors that set neither `inputSchema` nor `execute`.
   the model gets a structured `ToolArgumentsValidationError` result and can
   retry.
 - **Errors are results.** A tool that throws gives the model
-  `{ error, toolName, message }` (no stack trace) and the run continues. See
-  [Tool errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#tool-errors) for the exact shapes.
+  `{ error, toolName, message, kind }` (no stack trace) and the run continues.
+  See [Errors](#errors).
 - **Parallel calls.** Several calls in one model turn run concurrently; cap
   them with `toolConcurrency` (`1` for strictly sequential). Results reach the
   transcript in the model's call order. See
@@ -5309,6 +5440,37 @@ descriptors that set neither `inputSchema` nor `execute`.
 - **Retries after a crash.** With durable execution a tool can run more than
   once across a crash; use `ctx.toolCallId` as an idempotency key. See
   [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#at-least-once-tools-make-side-effects-idempotent).
+
+## Errors
+
+Every way a tool call can fail reaches the model as the same result, so one
+check works everywhere (including the call that runs after an approval):
+
+```json
+{ "error": "TypeError", "toolName": "search", "message": "query must not be empty", "kind": "execution" }
+```
+
+- `error`: the error's name (`TypeError`, `ToolArgumentsValidationError`, ...), or the kind's default name for a failure that is not a thrown error.
+- `toolName` and `message`: the message only, never a stack, capped at 2,000 characters (`... (truncated)` marks a cut).
+- `kind`: why the call failed.
+- Some kinds add fields: `issues` for `validation`, `note` for `rejected`.
+
+The transcript message carries `isError: true`; `tool-result` events, `onToolResult`, `postToolCall` hooks and `tool.error` events see the call as failed.
+
+| `kind` | `error` | When |
+| ------ | ------- | ---- |
+| `execution` | the thrown error's name | `execute` (or `needsApproval`) threw. |
+| `validation` | `ToolArgumentsValidationError` | The arguments did not match `inputSchema`; `execute` did not run. Adds `issues`. |
+| `not-found` | `ToolNotFoundError` | The model called a tool the registry does not have (or the run has no registry). |
+| `rejected` | `ToolRejectedError` | A reviewer rejected the call at an approval. Adds `note` when given. |
+| `not-run` | `ToolNotRunError` | The call was never started (a resumed run whose approval was saved without its remaining calls). |
+| `mcp` | `McpToolError` | An MCP server answered `isError: true`; `message` is the server's text. |
+| `sandbox` | `SandboxRequiredError` | The tool has `requiresSandbox` but no `sandboxExecute`, so it was refused rather than run unsandboxed. |
+
+`toolErrorResult({ toolName, error, kind?, toolCallId?, details? })` builds this
+result; use it in your own tool wrappers so they match. A thrown error can pick
+its kind by carrying a `toolErrorKind` property. An error extending
+`PropagatingToolError` is not a result: it aborts the run.
 
 ## Built-in tools
 

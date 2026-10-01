@@ -12,7 +12,8 @@ import { SandboxAdapter } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
 import type { ToolRunContext } from './sandboxGuard';
 import { HookRegistry, ToolCallHookContext } from './hooks';
-import { toolErrorMessage, toolErrorResult } from './propagatingToolError';
+import { toolErrorMessage } from './propagatingToolError';
+import { toolErrorResult, type ToolErrorKind } from './toolErrors';
 import { ToolArgumentsValidationError, validateToolArguments } from './toolArgsValidation';
 import type { ExecuteOptions } from './AgentExecutor';
 import type { SubagentSuspension } from './ApprovalGate';
@@ -243,17 +244,21 @@ async function checkToolArguments(
     }
     return {
       args: rawArgs as Record<string, unknown>,
-      rejection: { ...toolFailure(toolCall, error.message), result: error.toToolResult() },
+      rejection: { ...toolFailure(toolCall, 'validation', error.message), result: error.toToolResult() },
     };
   }
 }
 
-/** The `{error}` outcome for a tool call that could not produce a result. */
-function toolFailure(toolCall: ToolCall, error: string): ToolCallOutcome {
+/**
+ * The error outcome for a tool call that could not produce a result (LOU-U14):
+ * `error` keeps the plain message for events and hooks, `result` is the
+ * structured {@link toolErrorResult} the model sees.
+ */
+function toolFailure(toolCall: ToolCall, kind: ToolErrorKind, error: string): ToolCallOutcome {
   return {
     toolCallId: toolCall.id,
     toolName: toolCall.function.name,
-    result: null,
+    result: toolErrorResult({ toolName: toolCall.function.name, error, kind }),
     error,
   };
 }
@@ -298,8 +303,8 @@ function approvalOutcome(prepared: PreparedToolCall): ToolCallOutcome {
  */
 function thrownToolFailure(toolCall: ToolCall, error: unknown): ToolCallOutcome {
   return {
-    ...toolFailure(toolCall, toolErrorMessage(error)),
-    result: toolErrorResult(toolCall.function.name, error),
+    ...toolFailure(toolCall, 'execution', toolErrorMessage(error)),
+    result: toolErrorResult({ toolName: toolCall.function.name, error }),
   };
 }
 
@@ -315,13 +320,13 @@ async function doExecuteToolCall(
 ): Promise<ToolCallOutcome> {
   const { toolRegistry } = ctx;
   if (!toolRegistry) {
-    return toolFailure(toolCall, 'No tool registry available');
+    return toolFailure(toolCall, 'not-found', 'No tool registry available');
   }
 
   try {
     const toolDesc = findExecutableTool(toolRegistry, toolCall.function.name);
     if (!toolDesc) {
-      return toolFailure(toolCall, `Tool '${toolCall.function.name}' not found`);
+      return toolFailure(toolCall, 'not-found', `Tool '${toolCall.function.name}' not found`);
     }
 
     // `overrideArgs` is the (possibly hook-mutated) object built by

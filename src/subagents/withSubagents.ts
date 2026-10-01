@@ -14,9 +14,9 @@ import { withPromptTool } from '../skills/withSkills';
 import { runSubagent, type SubagentSpec } from '../execution/delegation';
 import { bindToolCallScope, extendAgent, subagentBudget, toolCallScopeOf } from '../execution/subagentRuntime';
 import { isPropagatingToolError } from '../execution/propagatingToolError';
-import type { ExecutionResult } from '../execution/AgentExecutor';
+import type { ExecuteOptions, ExecutionResult } from '../execution/AgentExecutor';
 import type { SubagentCatalog, SubagentSummary, Subagents } from './types';
-import { BackgroundTasks, subagentOptionsOf } from './backgroundTasks';
+import { BackgroundTasks, subagentOptionsOf, withSubagentOptions, type SubagentOptions } from './backgroundTasks';
 
 /** Name of the tool the lead model delegates with. */
 const TASK_TOOL = 'task';
@@ -98,6 +98,19 @@ function assertSummaries(summaries: readonly SubagentSummary[]): void {
     }
     seen.add(name);
   }
+}
+
+/**
+ * `createAgent({ subagentOptions })`: a copy of `subagents` with `options`
+ * over the ones attached with `withSubagentOptions()` (the caller's value is
+ * left as is, so it can be shared between agents).
+ */
+export function subagentsWithOptions(subagents: Subagents | undefined, options: SubagentOptions | undefined): Subagents | undefined {
+  if (!subagents || !options) return subagents;
+  const copy: Subagents = isCatalog(subagents)
+    ? { list: () => subagents.list(), resolve: (name) => subagents.resolve(name) }
+    : { ...subagents };
+  return withSubagentOptions(copy, { ...subagentOptionsOf(subagents), ...options });
 }
 
 async function listSubagents(subagents: Subagents): Promise<SubagentSummary[]> {
@@ -265,32 +278,54 @@ export function assertNoTaskTool(agent: AgentConfig, toolRegistry: ToolRegistry 
   }
 }
 
+type OnRunEnd = ExecuteOptions['onRunEnd'];
+
+/**
+ * The run's `onRunEnd` (LOU-Y4.2): first cancels (or, with
+ * `awaitBackgroundOnFinish`, awaits) the background tasks still active and
+ * reports them on `result.backgroundTasks`, then calls `next`.
+ */
+function endBackgroundTasks(background: BackgroundTasks, awaitAll: boolean, next: OnRunEnd): NonNullable<OnRunEnd> {
+  return async (end) => {
+    const tasks = await background.finish(awaitAll && end.result !== undefined);
+    if (end.result && tasks.length > 0) end.result.backgroundTasks = tasks;
+    await next?.(end);
+  };
+}
+
 /**
  * Applies `subagents` to an agent run: adds the `task` tool and the
  * "Available sub-agents" prompt block - unless this run is already at the
- * sub-agent depth limit (see `maxSubagentDepth`), or the catalog is empty.
+ * sub-agent depth limit (see `maxSubagentDepth`), or the catalog is empty -
+ * and wraps `onRunEnd` so the run's background tasks end with it.
  * Inputs are not mutated.
  */
 export async function withSubagents(
   agent: AgentConfig,
   toolRegistry: ToolRegistry | undefined,
   subagents: Subagents | undefined,
-  maxSubagentDepth: number | undefined
-): Promise<{ agent: AgentConfig; toolRegistry: ToolRegistry | undefined }> {
+  maxSubagentDepth: number | undefined,
+  onRunEnd?: OnRunEnd
+): Promise<{ agent: AgentConfig; toolRegistry: ToolRegistry | undefined; onRunEnd: OnRunEnd }> {
   if (!subagents || subagentBudget(maxSubagentDepth) <= 0) {
-    return { agent, toolRegistry };
+    return { agent, toolRegistry, onRunEnd };
   }
   assertNoTaskTool(agent, toolRegistry);
   const summaries = await listSubagents(subagents);
   if (summaries.length === 0) {
-    return { agent, toolRegistry };
+    return { agent, toolRegistry, onRunEnd };
   }
-  const background = new BackgroundTasks(subagentOptionsOf(subagents).maxConcurrent);
+  const options = subagentOptionsOf(subagents);
+  const background = new BackgroundTasks(options.maxConcurrent);
   const extended = withPromptTool(agent, toolRegistry, createTaskTool(subagents, summaries, background), subagentsPromptBlock(summaries));
   const tools = { ...extended.agent.tools };
   for (const tool of createBackgroundTools(background)) {
     extended.toolRegistry.register(tool);
     tools[tool.name] = { tool: tool.name };
   }
-  return { agent: extendAgent(extended.agent, { tools }), toolRegistry: extended.toolRegistry };
+  return {
+    agent: extendAgent(extended.agent, { tools }),
+    toolRegistry: extended.toolRegistry,
+    onRunEnd: endBackgroundTasks(background, options.awaitBackgroundOnFinish === true, onRunEnd),
+  };
 }

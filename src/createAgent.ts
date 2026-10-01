@@ -27,11 +27,13 @@ import type { DefinedTool } from './tools/defineTool';
 import { ToolConcurrency, assertToolConcurrency } from './execution/toolBatch';
 import type { Skill } from './skills/defineSkill';
 import type { Message } from './providers/llm';
-import { AgentSession, type SessionOptions } from './session/AgentSession';
+import { AgentSession, withDefaultStores, type SessionOptions, type SessionTurnCheckpoint } from './session/AgentSession';
+import type { AgentStore } from './storage/agentStore';
 import { loadProjectInstructions } from './projectInstructions';
 import { basename } from 'node:path';
 import type { Subagents } from './subagents/types';
-import { assertMaxSubagentDepth, assertNoTaskTool, assertSubagents, registerSubagent } from './subagents/withSubagents';
+import type { SubagentOptions } from './subagents/backgroundTasks';
+import { assertMaxSubagentDepth, assertNoTaskTool, assertSubagents, registerSubagent, subagentsWithOptions } from './subagents/withSubagents';
 import type { SubagentSpec } from './execution/delegation';
 import type { ApprovalStore } from './execution/ApprovalGate';
 import { InMemoryApprovalStore } from './execution/InMemoryApprovalStore';
@@ -91,6 +93,12 @@ export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> {
    */
   subagents?: Subagents;
   /**
+   * Background sub-agent options (LOU-Y4.2): `maxConcurrent` (default 3) and
+   * `awaitBackgroundOnFinish` (default `false`: tasks still running when a
+   * run ends are cancelled). Override those set with `withSubagentOptions()`.
+   */
+  subagentOptions?: SubagentOptions;
+  /**
    * How deep sub-agents may nest. Defaults to 1: this agent's sub-agents
    * cannot call sub-agents of their own (they are not offered the `task`
    * tool). The top-level agent's value applies to the whole tree.
@@ -125,10 +133,25 @@ export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> {
    */
   projectInstructions?: boolean | { cwd?: string; files?: readonly string[] };
   /**
+   * Where the agent keeps sessions, checkpoints and approvals, in one option
+   * (LOU-D30): a `SqliteStore`, `memoryStore()`, or any `AgentStore`.
+   * `agent.session({ id })` keeps its transcript in `store.sessions` and
+   * checkpoints every turn in `store.checkpoints`; `store.approvals` is the
+   * default `approvalStore`; `send()` / `stream()` with a `sessionId` are
+   * checkpointed in `store.checkpoints`, and `agent.resume(id)` finishes an
+   * interrupted run or session turn. Per-call options win over it.
+   *
+   * @example
+   * ```ts
+   * const agent = createAgent({ model: 'openai/gpt-4o-mini', store: new SqliteStore('./.loushy/agent.db') });
+   * ```
+   */
+  store?: AgentStore;
+  /**
    * Where a run that hits a `needsApproval` tool saves its pause (LOU-D21).
-   * Defaults to a new `InMemoryApprovalStore` per agent; pass a durable store
-   * (e.g. `SqliteStore.approvals`) to resolve after a restart. Decide pauses
-   * with `agent.approvals.resolve()`.
+   * Defaults to `store.approvals`, else a new `InMemoryApprovalStore` per
+   * agent; pass a durable store (e.g. `SqliteStore.approvals`) to resolve
+   * after a restart. Decide pauses with `agent.approvals.resolve()`.
    */
   approvalStore?: ApprovalStore;
   /**
@@ -263,6 +286,19 @@ export interface SendOptions {
    * ```
    */
   signal?: AbortSignal;
+  /**
+   * Makes this a durable run (LOU-D30): it is checkpointed under this id in
+   * the agent's `store.checkpoints` after every model response and tool
+   * result, and `agent.resume(sessionId)` finishes it after a crash. Calling
+   * again with the same id continues the conversation. Needs
+   * `createAgent({ store })` with `checkpoints`. See `ExecuteOptions.sessionId`.
+   *
+   * @example
+   * ```ts
+   * const result = await agent.send('Run the import.', { sessionId: 'job-1' });
+   * ```
+   */
+  sessionId?: string;
 }
 
 /** `TObject`: the type of `result.object` - `z.output` of the `output` schema. */
@@ -287,8 +323,8 @@ export interface SimpleAgent<TObject = unknown> {
   stream: (message: string, options?: SendOptions) => AgentRun<TObject>;
   /**
    * Start a multi-turn conversation (LOU-W4): every `send()` sees the earlier
-   * exchanges. In memory by default; pass `{ id, store }` (e.g. a
-   * `FileSessionStore`) to persist it and continue it later.
+   * exchanges. Kept in the agent's `store` (in memory without one); pass
+   * `{ id, store }` (e.g. a `FileSessionStore`) to persist it elsewhere.
    *
    * @example
    * ```ts
@@ -298,6 +334,20 @@ export interface SimpleAgent<TObject = unknown> {
    * ```
    */
   session: (options?: SessionOptions) => AgentSession;
+  /**
+   * Finishes what was interrupted under `sessionId` (LOU-D30), from the
+   * agent's `store.checkpoints`: a `send(message, { sessionId })` run, or
+   * else the pending turn of the session with that id (as
+   * `agent.session({ id }).resume()`). Resolves with its result, or `null`
+   * when nothing is pending. Throws `SessionAwaitingApprovalError` when the
+   * run waits on an approval: decide it with `agent.approvals.resolve()`.
+   *
+   * @example
+   * ```ts
+   * const finished = await agent.resume('job-1'); // null when nothing was interrupted
+   * ```
+   */
+  resume: (sessionId: string, options?: { signal?: AbortSignal }) => Promise<ExecutionResult<TObject> | null>;
   /**
    * Tool calls this agent is paused on, waiting for approval (LOU-D21). A
    * paused `send()` resolves with `finishReason: 'awaiting-approval'` and an
@@ -349,14 +399,15 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
 
   const runOptions = {
     skills: config.skills,
-    subagents: config.subagents,
+    subagents: subagentsWithOptions(config.subagents, config.subagentOptions),
     maxSubagentDepth: config.maxSubagentDepth,
     maxSteps: config.maxSteps,
     toolConcurrency: config.toolConcurrency,
   };
   const spec: SubagentSpec = { agent, provider, toolRegistry, ...runOptions };
+  const checkpoints = config.store?.checkpoints;
   const approvals = createAgentApprovals({
-    store: config.approvalStore ?? new InMemoryApprovalStore(),
+    store: config.approvalStore ?? config.store?.approvals ?? new InMemoryApprovalStore(),
     approve: config.approve,
     resume: (approvalStore, decision, signal, checkpointStore) =>
       resumeAfterApproval(
@@ -365,35 +416,61 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
         toolRegistry ?? new ToolRegistry(),
         provider,
         { ...runOptions, output: config.output, approvalStore, signal },
-        checkpointStore
+        // A run paused under a `sessionId` keeps checkpointing after the decision.
+        checkpointStore ?? checkpoints
       ),
   });
-  const executeOptions = (input: string | Message[], signal?: AbortSignal): ExecuteOptions => ({
+  /** A run under `sessionId`, checkpointed in the agent's store (LOU-D30). */
+  const durable = (sessionId: string | undefined): Partial<SessionTurnCheckpoint> => {
+    if (sessionId === undefined) return {};
+    if (!checkpoints) {
+      throw new Error(
+        `createAgent: a run with sessionId '${sessionId}' needs a checkpoint store - ` +
+          'pass createAgent({ store }) with `checkpoints` (e.g. a SqliteStore or memoryStore()).'
+      );
+    }
+    return { sessionId, checkpointStore: checkpoints };
+  };
+  const executeOptions = (
+    input: string | Message[],
+    signal?: AbortSignal,
+    turn?: Partial<SessionTurnCheckpoint>
+  ): ExecuteOptions => ({
     ...spec,
     output: config.output,
     approvalStore: approvals.store,
     input,
     signal,
+    ...turn,
   });
-  const run = (input: string | Message[], signal?: AbortSignal): Promise<ExecutionResult> =>
-    AgentExecutor.execute(executeOptions(input, signal));
+  const run = (input: string | Message[], signal?: AbortSignal, turn?: Partial<SessionTurnCheckpoint>) =>
+    AgentExecutor.execute(executeOptions(input, signal, turn));
+  // LOU-W9: a checkpointed session's turn runs under its own sessionId + checkpointStore.
+  const session = (options?: SessionOptions): AgentSession =>
+    approvals.session(
+      run,
+      (input, signal, turn) => AgentExecutor.stream(executeOptions(input, signal, turn)),
+      withDefaultStores(options, config.store)
+    );
 
   // `object` was validated with `config.output`, so it has its output type.
   type Typed = z.output<TOutput>;
   const simpleAgent: SimpleAgent<Typed> = {
     async send(message: string, options: SendOptions = {}): Promise<ExecutionResult<Typed>> {
-      return approvals.settle(await run(message, options.signal), options.signal) as Promise<ExecutionResult<Typed>>;
+      const result = await run(message, options.signal, durable(options.sessionId));
+      return approvals.settle(result, options.signal) as Promise<ExecutionResult<Typed>>;
     },
     stream(message: string, options: SendOptions = {}): AgentRun<Typed> {
-      return AgentExecutor.stream(executeOptions(message, options.signal)) as AgentRun<Typed>;
+      return AgentExecutor.stream(executeOptions(message, options.signal, durable(options.sessionId))) as AgentRun<Typed>;
     },
-    // LOU-W9: a checkpointed session's turn runs under its own sessionId + checkpointStore.
-    session: (options?: SessionOptions) =>
-      approvals.session(
-        (input, signal, turn) => AgentExecutor.execute({ ...executeOptions(input, signal), ...turn }),
-        (input, signal, turn) => AgentExecutor.stream({ ...executeOptions(input, signal), ...turn }),
-        options
-      ),
+    session,
+    async resume(sessionId: string, { signal } = {}): Promise<ExecutionResult<Typed> | null> {
+      const checkpoint = await checkpoints?.load(sessionId);
+      // No run under this id: it names a session, whose turns are checkpointed under `<id>.turn-<n>`.
+      if (!checkpoint) return session({ id: sessionId }).resume({ signal }) as Promise<ExecutionResult<Typed> | null>;
+      if (checkpoint.status === 'finished') return null;
+      return approvals.settle(await run([], signal, durable(sessionId)), signal) as Promise<ExecutionResult<Typed>>;
+    },
     approvals: approvals.approvals,
   };
   registerSubagent(simpleAgent, { spec, description: config.description });

@@ -17,6 +17,7 @@ import type { ToolRegistry } from '../tools';
 import type { AgentConfig } from '../types';
 import { ErrorAttr, GenAiAttr, GenAiOperation, LegacyAttr, SdkAttr, TOOL_TYPE_FUNCTION, CAPTURE_CONTENT_ENV } from './semconv';
 import type { Span, SpanKind } from './tracing';
+import { estimateCost } from '../models';
 import { normalizeUsage } from '../models/usage';
 import type { Usage } from '../models/usage';
 
@@ -164,14 +165,18 @@ function responseModel(generated: GenerateResult): string | undefined {
  * Records usage, finish reason, response model (and output content) on a `chat` span.
  * Usage is the same normalized `Usage` the run totals use: pass the executor's
  * `measured` figures (which may be estimates), else what the provider reported.
+ * `loushy.cost_usd` is the step's cost when the price table knows the model.
  */
 export function recordLlmResult(
   span: Span,
   generated: GenerateResult,
   captureContent: boolean,
-  measured?: { usage: Usage; estimated: boolean }
+  measured?: { usage: Usage; estimated: boolean; costUsd?: number }
 ): void {
   const usage = measured?.usage ?? normalizeUsage(generated.usage);
+  const model = span.attributes[GenAiAttr.REQUEST_MODEL];
+  const costUsd =
+    measured?.costUsd ?? (usage && typeof model === 'string' ? estimateCost(usage, model) : undefined);
   const parts: unknown[] = generated.text ? [textPart(generated.text)] : [];
   parts.push(...(generated.toolCalls ?? []).map(toolCallPart));
   // Token counts and finish reason are never redacted.
@@ -186,6 +191,7 @@ export function recordLlmResult(
       [LegacyAttr.COMPLETION_TOKENS]: usage?.outputTokens,
       [LegacyAttr.TOTAL_TOKENS]: usage?.totalTokens,
       [SdkAttr.USAGE_ESTIMATED]: measured?.estimated ? true : undefined,
+      [SdkAttr.COST_USD]: costUsd,
       [LegacyAttr.FINISH_REASON]: generated.finishReason,
       [GenAiAttr.OUTPUT_MESSAGES]: captureContent
         ? JSON.stringify([{ role: 'assistant', parts }])

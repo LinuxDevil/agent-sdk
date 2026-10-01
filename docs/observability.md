@@ -31,7 +31,7 @@ For real OpenTelemetry spans, import `createOtelTraceExporter()` from
 `@loushy/build-ai-agent/otel` (needs the optional peer dependency
 `@opentelemetry/api` and a registered `TracerProvider`). It carries span kind
 and error status over to OpenTelemetry. See `examples/tracing`
-(`npm run example:tracing:console`, `npm run example:tracing:otel`).
+(`npm run example:tracing:console`, `npm run example:tracing:otel`, which also prints metrics).
 
 ## Span tree
 
@@ -57,7 +57,7 @@ child.
 ## Attributes
 
 Constants for every name live in `src/execution/semconv.ts` (exported as
-`GenAiAttr`, `GenAiOperation`, `ErrorAttr`, `FlowAttr`, `LegacyAttr`).
+`GenAiAttr`, `GenAiOperation`, `GenAiMetric`, `ErrorAttr`, `FlowAttr`, `SdkAttr`, `LegacyAttr`).
 
 ### Agent run: `invoke_agent {agent name}`
 
@@ -68,6 +68,8 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `gen_ai.agent.id` | The agent's `id`, when set |
 | `gen_ai.provider.name` | The provider's `name` |
 | `gen_ai.conversation.id` | `sessionId`, when set |
+| `loushy.cost_usd` | Cumulative estimated USD of the run (every model call and delegated child run); absent when any model used has no known price |
+| `loushy.usage.estimated` | `true` when any of the run's tokens were estimated |
 
 ### Model call: `chat {model}` (CLIENT)
 
@@ -80,6 +82,8 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `gen_ai.response.model` | When the provider reports it |
 | `gen_ai.response.finish_reasons` | e.g. `["stop"]`, `["tool_call"]` |
 | `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` | Token usage |
+| `loushy.cost_usd` | Estimated USD of this step, when the built-in price table (or `registerModel`) knows the model; absent otherwise |
+| `loushy.usage.estimated` | `true` when the provider reported no usage and the tokens were estimated |
 
 ### Tool call: `execute_tool {tool}`
 
@@ -113,6 +117,43 @@ A failed span gets `error.type` and an error span status (OpenTelemetry
 `ERROR`, message = the error message). `error.type` is the thrown error's
 `name` (`_OTHER` when a non-`Error` is thrown). A tool call that returns an
 error to the model (`isError`) is marked `error.type = tool_error`.
+
+## Metrics
+
+`createOtelTraceExporter()` also records the OpenTelemetry GenAI client
+metrics through `@opentelemetry/api`'s metrics API, using the global
+`MeterProvider` (`metrics.getMeter(...)`), or the `meter` option:
+
+| Metric | Type, unit | Recorded | Attributes |
+| --- | --- | --- | --- |
+| `gen_ai.client.token.usage` | Histogram, `{token}` | Once per token type for every model call that reports (or estimates) usage | `gen_ai.operation.name` (`chat`), `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.response.model` (when known), `gen_ai.token.type` (`input` or `output`) |
+| `gen_ai.client.operation.duration` | Histogram, `s` | Every model call (`chat`) and tool call (`execute_tool`) | `gen_ai.operation.name`, `gen_ai.provider.name` and `gen_ai.request.model` (model calls), `gen_ai.response.model` (when known), `error.type` (when it failed) |
+
+Both use the spec's recommended bucket boundaries. They follow the
+`gen-ai-metrics` page of semantic-conventions v1.40 (`Development` stability):
+the newest conventions split the token histogram into per-type counters,
+which this SDK does not emit yet. Agent and flow spans are not counted in the
+duration metric, only the model and tool calls inside them.
+
+```ts
+import { metrics } from '@opentelemetry/api';
+import { ConsoleMetricExporter, MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
+import { createOtelTraceExporter } from '@loushy/build-ai-agent/otel';
+
+// Swap ConsoleMetricExporter for an OTLP exporter to reach any backend.
+metrics.setGlobalMeterProvider(
+  new MeterProvider({ readers: [new PeriodicExportingMetricReader({ exporter: new ConsoleMetricExporter() })] })
+);
+
+const exporter = createOtelTraceExporter(); // metrics on by default
+// createOtelTraceExporter({ metrics: false })  // spans only
+// createOtelTraceExporter({ meter })           // an already-obtained Meter
+```
+
+Without a registered `MeterProvider`, OpenTelemetry's no-op meter discards
+the records. The metrics API lives in `@opentelemetry/api`, so nothing is
+recorded (and nothing is loaded) when that optional peer is not installed.
+The cost is an estimate from the price table (see `registerModel`), not a bill.
 
 ## Message and argument content is opt-in
 

@@ -49,6 +49,7 @@ How the pieces fit:
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
 | `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](./approvals.md), [Durable execution](./durable-execution.md)). |
 | `SqliteStore` (from `/sqlite`) | Sessions, checkpoints and approvals in one SQLite file (see [Sessions](./sessions.md#choosing-a-store)). |
+| `AgentStore`, `memoryStore()` | The `createAgent({ store })` option: `{ sessions?, checkpoints?, approvals? }`, and an in-memory one (see [Sessions](./sessions.md#choosing-a-store)). |
 | `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](./durable-execution.md)). |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
 
@@ -79,7 +80,7 @@ and an `approvalId`. `agent.approvals.list()` returns the pending calls and
 `agent.approvals.resolve({ id, approved, note? })` runs or rejects the call and
 resolves with the continued run's result (continuing the session it paused
 in). Pauses are kept in a per-agent `InMemoryApprovalStore` unless you pass
-`approvalStore` (e.g. `SqliteStore.approvals`); `approve: (call) => boolean`
+`approvalStore` (e.g. `SqliteStore.approvals`) or a `store`; `approve: (call) => boolean`
 decides each call in code without pausing (`stream()` still ends at the
 pause). See [Approvals](./approvals.md).
 
@@ -408,6 +409,7 @@ result; `preToolCall` hooks are skipped because there is no valid call):
   "error": "ToolArgumentsValidationError",
   "toolName": "sendEmail",
   "message": "Invalid arguments for tool 'sendEmail': 2 issues (to: Required; count: Expected number, received string)",
+  "kind": "validation",
   "issues": [
     { "path": "to", "message": "Required" },
     { "path": "count", "message": "Expected number, received string" }
@@ -423,8 +425,12 @@ the tool name and the message only (never a stack trace). Messages are capped
 at 2,000 characters and end with `... (truncated)` when cut:
 
 ```json
-{ "error": "TypeError", "toolName": "search", "message": "query must not be empty" }
+{ "error": "TypeError", "toolName": "search", "message": "query must not be empty", "kind": "execution" }
 ```
+
+Every other failure (unknown tool, rejected approval, a call that was not run,
+an MCP error, a refused sandboxed tool) uses the same `{ error, toolName,
+message, kind }` shape; see [Errors](./tools.md#errors) for the `kind` values.
 
 Errors extending `PropagatingToolError` (for example the delegation depth
 guard) are the exception: they are rethrown and abort the run instead of being
