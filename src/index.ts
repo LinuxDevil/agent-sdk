@@ -93,3 +93,6 @@ export * from './spec';
 // exported here; the built-in adapters (node-server, cloudflare-worker,
 // docker) are wired up by the `loushy build` CLI (src/cli/build.ts).
 export * from './deploy/types';
+
+// AI SDK UI stream adapter (LOU-P1): Fetch/Worker-safe, no node:* imports.
+export * from './server/uiMessageStream';

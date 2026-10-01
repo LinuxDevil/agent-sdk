@@ -57,8 +57,14 @@ export interface PermissionDecisionEntry {
   toolName: string;
   toolCallId: string;
   decision: PermissionDecision;
-  /** The rule that decided (its position in `permissions`); absent for `'default'`. */
+  /**
+   * The rule that decided (its position in `permissions`). Absent for
+   * `'default'`, and for a `'deny'` that came from the tool's own
+   * `needsApproval` (LOU-X8; its reason is then `reason`).
+   */
   rule?: { index: number; reason?: string };
+  /** LOU-X8: the reason the tool's `needsApproval` gave when it denied the call. */
+  reason?: string;
   /** The call's arguments; omitted when the run sets `redactContent`. */
   args?: Record<string, unknown>;
   /** When the decision was made, as an ISO-8601 string. */
@@ -123,11 +129,11 @@ async function firstMatch(
 }
 
 /**
- * Checks `call` against the run's permission rules, reports the decision
- * (`onPermissionDecision` and, for a streaming run, a `permission.decision`
- * event) and returns it. Returns undefined - nothing checked, nothing
- * reported - when the run sets neither `permissions` nor
- * `onPermissionDecision`. A throwing `when` propagates.
+ * Checks `call` against the run's permission rules and returns the audit
+ * entry, which the caller reports with {@link reportPermission} once the
+ * call is decided (LOU-X8: a `'default'` may become the tool's own `'deny'`).
+ * Returns undefined - nothing checked - when the run sets neither
+ * `permissions` nor `onPermissionDecision`. A throwing `when` propagates.
  */
 export async function checkPermission(
   runtime: PermissionRuntime,
@@ -138,7 +144,7 @@ export async function checkPermission(
   const { args, ...ctx } = call;
   const index = await firstMatch(permissions, args, ctx);
   const rule = permissions[index] as PermissionRule | undefined;
-  const entry: PermissionDecisionEntry = {
+  return {
     toolName: ctx.toolName,
     toolCallId: ctx.toolCallId,
     decision: rule?.action ?? 'default',
@@ -146,7 +152,10 @@ export async function checkPermission(
     ...(!redactContent && { args }),
     at: new Date().toISOString(),
   };
-  onPermissionDecision?.(entry);
+}
+
+/** Reports `entry` to `onPermissionDecision` and, for a streaming run, as a `permission.decision` event. */
+export function reportPermission(runtime: PermissionRuntime, entry: PermissionDecisionEntry): void {
+  runtime.onPermissionDecision?.(entry);
   runEventsOf(runtime as ExecuteOptions)?.permissionDecision(entry);
-  return entry;
 }
