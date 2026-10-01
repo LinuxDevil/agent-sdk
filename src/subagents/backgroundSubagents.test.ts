@@ -73,7 +73,7 @@ describe('background sub-agents (LOU-Y4)', () => {
     expect(results(result.messages, 'agent_await')[0]).toMatchObject({
       taskId: 'task_1',
       status: 'done',
-      result: "Paris #1\n\n[sub-agent 'researcher': 2 step(s), finish reason 'stop']",
+      result: "Paris #1\n\n[sub-agent 'researcher': 2 step(s), finish reason 'stop', taskId 'task_1']",
     });
     expect(leadModel.calls[0].tools?.map((t) => t.function.name)).toEqual(['task', 'agent_status', 'agent_await', 'agent_cancel']);
     expect(result.text).toBe('done');

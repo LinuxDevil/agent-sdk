@@ -49,8 +49,12 @@ export interface RemoteAgentOptions {
 export interface RemoteSubagent {
   readonly name?: string;
   readonly description: string;
-  /** Runs one task in a fresh remote session and resolves with the remote agent's final text. */
-  run(prompt: string, options?: { name?: string; signal?: AbortSignal }): Promise<string>;
+  /**
+   * Runs one task and resolves with the remote agent's final text: in a fresh
+   * remote session, or (LOU-Y6) in `sessionId` to continue that one. `taskId`
+   * is the lead's id for the task, shown in the result footer.
+   */
+  run(prompt: string, options?: { name?: string; signal?: AbortSignal; sessionId?: string; taskId?: string }): Promise<string>;
 }
 
 /**
