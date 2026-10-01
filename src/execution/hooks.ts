@@ -45,6 +45,9 @@
 
 import { GenerateOptions, GenerateResult, Message, ToolCall } from '../providers';
 import type { AgentEventPayload } from './agentEvents';
+import { instanceOfBranded } from '../utils/brand';
+
+const HOOK_REGISTRY_BRAND = Symbol.for('loushy.HookRegistry');
 
 /**
  * Fields common to every hook invocation.
@@ -210,6 +213,15 @@ export interface AgentHook {
  * propagates to the caller (see the file-level doc comment above).
  */
 export class HookRegistry {
+  /** `instanceof HookRegistry` also holds for registries from another loaded copy of the SDK (LOU-D42). */
+  static [Symbol.hasInstance](value: unknown): boolean {
+    return instanceOfBranded(this, HookRegistry, HOOK_REGISTRY_BRAND, value);
+  }
+
+  get [HOOK_REGISTRY_BRAND](): true {
+    return true;
+  }
+
   private hooks: AgentHook[] = [];
 
   /** Register a hook. Registering a second hook with the same `name` replaces the first (a warning is logged). */
