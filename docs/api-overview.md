@@ -54,6 +54,49 @@ How the pieces fit:
 | `SDKError`, `ERROR_CODES`    | Base class of the SDK's errors: a stable `code`, a `hint` and a `docs` link (see [Errors](./errors.md)). |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
 
+### Dynamic config
+
+`createAgent()`'s `model`, `instructions` (or `prompt`) and `tools` each take
+the static value or a function of the run, `(ctx) => value | Promise<value>`
+(type `PerRun<T>`). `ctx` is `{ sessionId?, input, metadata? }` (type
+`RunConfigContext`): the `sessionId` of `send()` / `stream()` or the
+`agent.session()` id, the run's user input, and the `metadata` call option of
+`send()`, `stream()`, `session.send()` and `session.stream()`. The functions
+run once when a run starts, before the first model call, and again on every
+session turn. Everything else applies to what they return: `fallbackModels`
+and `retry`, `projectInstructions`, memory, skills, sub-agents, MCP tools,
+permissions, approvals and guardrails. A dynamic agent used as a sub-agent
+resolves with the task prompt as `input`.
+
+```ts
+import { createAgent, defineTool } from '@loushy/build-ai-agent';
+import { mockModel } from '@loushy/build-ai-agent/testing';
+import { z } from 'zod';
+
+const refund = defineTool({ name: 'refund', description: 'Refunds an order', input: z.object({ orderId: z.string() }), execute: async () => 'ok' });
+
+const agent = createAgent({
+  provider: mockModel(['Hello!']),
+  // A cheaper model for short inputs, tenant instructions, tools by role.
+  model: ({ input }) => (typeof input === 'string' && input.length < 200 ? 'small-model' : 'large-model'),
+  instructions: ({ metadata }) => `You are the support agent of ${String(metadata?.tenant ?? 'Acme')}.`,
+  tools: ({ metadata }) => (metadata?.role === 'admin' ? [refund] : []),
+});
+
+await agent.send('Hi', { metadata: { tenant: 'Globex', role: 'admin' } });
+```
+
+A function that throws fails the run with `LOUSHY_CONFIG_RESOLVER_FAILED`
+(`error.field` names the option, `error.cause` is the thrown error): `send()`
+rejects, `stream()` ends with an `error` event and a session keeps its
+transcript as it was. A run paused for an approval or a question keeps the
+`ctx` and the model it resolved in the paused snapshot: resuming it, even from
+another process, uses that model (it never switches mid-turn) and calls the
+`tools` function again with the same `ctx`. A run resumed from a crash
+checkpoint (`agent.resume(id)`) resolves again with `input: []` and no
+`metadata`. With only static values nothing changes: the agent is built once,
+when it is created.
+
 ### UI bindings
 
 `@loushy/build-ai-agent/react` exports `useLoushyAgent(source, options?)`, a

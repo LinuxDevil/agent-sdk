@@ -28,7 +28,14 @@ import { withAskQuestion } from './tools/built-in/askQuestion';
 import { ToolConcurrency, assertToolConcurrency } from './execution/toolBatch';
 import type { Skill } from './skills/defineSkill';
 import type { Message } from './providers/llm';
-import { AgentSession, withDefaultStores, type SessionOptions, type SessionTurnCheckpoint, type SessionTurnOptions } from './session/AgentSession';
+import {
+  AgentSession,
+  withDefaultStores,
+  type SessionOptions,
+  type SessionTurnCall,
+  type SessionTurnCheckpoint,
+  type SessionTurnOptions,
+} from './session/AgentSession';
 import type { AgentStore } from './storage/agentStore';
 import { loadProjectInstructions } from './projectInstructions';
 import { basename } from 'node:path';
@@ -36,23 +43,48 @@ import type { Subagents } from './subagents/types';
 import type { SubagentOptions } from './subagents/backgroundTasks';
 import { assertMaxSubagentDepth, assertNoTaskTool, assertSubagents, registerSubagent, subagentsWithOptions } from './subagents/withSubagents';
 import type { SubagentSpec } from './execution/delegation';
-import type { ApprovalStore } from './execution/ApprovalGate';
+import type { ApprovalStore, ResolvedApproval } from './execution/ApprovalGate';
 import { InMemoryApprovalStore } from './execution/InMemoryApprovalStore';
 import { resumeAfterApproval } from './execution/resume';
 import type { ForkOptions, ForkResult } from './execution/checkpoint';
-import { ConfigurationError } from './execution/errors';
+import { ConfigurationError, SDKError } from './execution/errors';
+import { newId } from './utils/id';
 import { createAgentApprovals, type AgentApprovals, type ApproveToolCall } from './createAgentApprovals';
 import type { PermissionOptions } from './execution/permissions';
 import type { z } from 'zod';
 import type { McpServerSpec } from './spec/schema';
-import { agentMcp, streamAfter } from './tools/mcp/agentMcp';
+import { agentMcp, streamAfter, streamPrepared } from './tools/mcp/agentMcp';
 import { HookRegistry, type AgentHook } from './execution/hooks';
 import { toMessages, type AgentInput } from './providers/content';
 import { compactionHookFor, type AgentCompaction } from './context/agentCompaction';
-import type { MemoryScopeContext, MemorySlot } from './memory/defineMemory';
+import type { MemorySlot } from './memory/defineMemory';
 import { agentMemory } from './memory/withMemory';
 import type { RunLimits } from './execution/budget';
 import type { AgentGuardrails } from './execution/ioGuardrails';
+
+/** What a `model` / `instructions` / `tools` function gets (LOU-V15): the run it is resolved for. */
+export interface RunConfigContext {
+  /** `send()` / `stream()`'s `sessionId`, or the `agent.session()` id. */
+  sessionId?: string;
+  /** The run's user input, as given to `send()` / `stream()`. */
+  input: AgentInput;
+  /** The call's `metadata` option. */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * A static value, or a function of the run (LOU-V15), resolved once when the
+ * run starts (each session turn resolves again). See docs/api-overview.md.
+ *
+ * @example
+ * ```ts
+ * const model: PerRun<string> = ({ metadata }) => (metadata?.plan === 'pro' ? 'openai/gpt-4o' : 'openai/gpt-4o-mini');
+ * ```
+ */
+export type PerRun<T> = T | ((ctx: RunConfigContext) => T | Promise<T>);
+
+/** The `tools` option's static form. */
+type AgentToolsOption = readonly DefinedTool[] | Record<string, ToolDescriptor>;
 
 /**
  * Options for createAgent() that do not depend on how the instructions and
@@ -64,11 +96,12 @@ export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> ex
   /**
    * Optional tools: an array of `defineTool()` results (named by the tool),
    * or a record of descriptors keyed by the name the agent should call them by.
+   * A function of the run picks them per run (LOU-V15, see `PerRun`).
    *
    * @example
    * createAgent({ prompt: '...', provider, tools: [sendEmail] });
    */
-  tools?: readonly DefinedTool[] | Record<string, ToolDescriptor>;
+  tools?: PerRun<AgentToolsOption>;
   /**
    * MCP servers to connect (LOU-Z4), keyed by name: stdio `{ command, args?, env? }`
    * or HTTP `{ url, headers? }`. Connected on `agent.ready()` or the first
@@ -309,12 +342,13 @@ export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> ex
 /**
  * The system prompt. `instructions` is the preferred name; `prompt` is a
  * working alias. Give at most one - both is an error. Omit both for a
- * minimal default ("You are a helpful assistant.").
+ * minimal default ("You are a helpful assistant."). Either may be a function
+ * of the run (LOU-V15, see `PerRun`).
  */
 export type CreateAgentInstructions =
   | {
       /** System prompt for the agent (preferred name). */
-      instructions?: string;
+      instructions?: PerRun<string>;
       /** Alias of `instructions`; do not pass both. */
       prompt?: undefined;
     }
@@ -322,7 +356,7 @@ export type CreateAgentInstructions =
       /** Preferred name of `prompt`; do not pass both. */
       instructions?: undefined;
       /** System prompt for the agent (alias of `instructions`). */
-      prompt?: string;
+      prompt?: PerRun<string>;
     };
 
 /**
@@ -340,18 +374,21 @@ export type CreateAgentInstructions =
  *    is set, checked in the order OPENAI_API_KEY, ANTHROPIC_API_KEY,
  *    OPENROUTER_API_KEY, OLLAMA_BASE_URL. Throws, listing the fixes, when
  *    none is set.
+ *
+ * `model` may be a function of the run (LOU-V15, see `PerRun`) returning
+ * what the static form takes; `fallbackModels` and `retry` apply to its value.
  */
 export type CreateAgentModelSource =
   | {
       /** A `provider/model` string, e.g. `'openai/gpt-4o-mini'`. */
-      model: string;
+      model: PerRun<string>;
       provider?: undefined;
     }
   | {
       /** An LLM provider instance (real or mock). */
       provider: LLMProvider;
       /** Per-agent model id sent to `provider`, overriding its default model. */
-      model?: string;
+      model?: PerRun<string>;
     }
   | {
       model?: undefined;
@@ -395,7 +432,11 @@ export interface SendOptions {
    * ```
    */
   sessionId?: string;
-  /** Passed to memory scope functions (LOU-W6), e.g. `{ userId }` for `scope: ({ metadata }) => \`user:${metadata?.userId}\``. */
+  /**
+   * Passed to memory scope functions (LOU-W6), e.g. `{ userId }` for
+   * `scope: ({ metadata }) => \`user:${metadata?.userId}\``, and to
+   * `model` / `instructions` / `tools` functions (LOU-V15).
+   */
   metadata?: Record<string, unknown>;
 }
 
@@ -504,31 +545,15 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
   assertToolConcurrency(config.toolConcurrency, 'createAgent');
   assertMaxSubagentDepth(config.maxSubagentDepth, 'createAgent');
   assertSubagents(config.subagents, 'createAgent');
-  const instructions = withProjectInstructions(resolveInstructions(config), config.projectInstructions);
-  const provider = resolveModelSource(config);
-
   const hasMcp = Object.keys(config.mcpServers ?? {}).length > 0;
   const memory = agentMemory(config.memory);
-  const { toolRegistry, toolsConfig } = registerTools(withAskQuestion(config.tools, config.askQuestion) ?? {}, hasMcp);
-  memory?.addTools(toolsConfig);
-  // LOU-Z4: MCP tools join the registry and the agent's tools once connected.
-  const mcp = agentMcp(config.mcpServers, (tools) => {
-    for (const [name, descriptor] of Object.entries(tools)) {
-      toolRegistry?.register(name, descriptor);
-      toolsConfig[name] = { tool: name };
-    }
-  });
-  const startStream = (options: ExecuteOptions) =>
-    hasMcp ? streamAfter(mcp.ready, options) : AgentExecutor.stream(options);
-
-  const builder = AgentBuilder.create()
-    .setName(config.name || 'agent')
-    .setPrompt(instructions)
-    .setTools(toolsConfig);
-  // With an explicit provider, `model` is a per-agent model setting.
-  if (config.provider && config.model) builder.setSettings({ model: config.model });
-  const agent = builder.build();
-  if (config.subagents) assertNoTaskTool(agent, toolRegistry);
+  const mcpTools: Record<string, ToolDescriptor> = {};
+  const toolsFor = (tools: AgentToolsOption | undefined): RunTools => {
+    const runTools = registerTools(withAskQuestion(tools, config.askQuestion) ?? {}, hasMcp);
+    memory?.addTools(runTools.toolsConfig);
+    addMcpTools(runTools, mcpTools);
+    return runTools;
+  };
 
   const runOptions = {
     // LOU-X2: also used by resumed runs and when this agent is a sub-agent.
@@ -542,22 +567,31 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     guardrails: config.guardrails,
     toolConcurrency: config.toolConcurrency,
   };
-  const spec: SubagentSpec = { agent, provider, toolRegistry, ...runOptions };
+  const specs = agentSpecs(config, toolsFor, runOptions);
+  const staticSpec = specs.static;
+  if (staticSpec && config.subagents) assertNoTaskTool(staticSpec.agent, staticSpec.toolRegistry);
+  // LOU-Z4: MCP tools join the registry and the agent's tools once connected.
+  const mcp = agentMcp(config.mcpServers, (tools) => {
+    Object.assign(mcpTools, tools);
+    if (specs.staticTools) addMcpTools(specs.staticTools, tools);
+  });
   const hooks = agentHooks(config);
   const checkpoints = config.store?.checkpoints;
   const approvals = createAgentApprovals({
     store: config.approvalStore ?? config.store?.approvals ?? new InMemoryApprovalStore(),
     approve: config.approve,
-    resume: (approvalStore, decision, signal, checkpointStore) =>
-      resumeAfterApproval(
+    resume: async (approvalStore, decision, signal, checkpointStore) => {
+      const paused = await pausedRun(specs, approvalStore, decision.id);
+      return resumeAfterApproval(
         decision,
-        approvalStore,
-        toolRegistry ?? new ToolRegistry(),
-        provider,
-        { ...runOptions, output: config.output, hooks, approvalStore, signal },
+        paused.store,
+        paused.spec.toolRegistry ?? new ToolRegistry(),
+        paused.spec.provider,
+        { ...runOptions, output: config.output, hooks, approvalStore: paused.store, signal },
         // A run paused under a `sessionId` keeps checkpointing after the decision.
         checkpointStore ?? checkpoints
-      ),
+      );
+    },
   });
   /** A run under `sessionId`, checkpointed in the agent's store (LOU-D30). */
   const durable = (sessionId: string | undefined): Partial<SessionTurnCheckpoint> => {
@@ -573,10 +607,11 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     return { sessionId, checkpointStore: checkpoints };
   };
   const executeOptions = (
-    input: string | Message[],
+    spec: SubagentSpec,
+    input: Message[],
+    ctx: RunConfigContext,
     signal?: AbortSignal,
-    turn?: SessionTurnOptions,
-    scope: MemoryScopeContext = { sessionId: turn?.sessionId }
+    turn?: SessionTurnOptions
   ): ExecuteOptions => ({
     ...spec,
     output: config.output,
@@ -586,25 +621,33 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     signal,
     ...turn,
     // LOU-W6: memory tools and recall bound to this run's scope keys.
-    ...memory?.forRun(scope, toolRegistry, hooks),
+    ...memory?.forRun({ sessionId: ctx.sessionId, metadata: ctx.metadata }, spec.toolRegistry, hooks),
   });
-  const run = async (
-    input: string | Message[],
-    signal?: AbortSignal,
-    turn?: SessionTurnOptions,
-    scope?: MemoryScopeContext
-  ) => {
+  /** The run's options once MCP servers are connected, with its spec resolved for `ctx` (LOU-V15). */
+  const prepare = async (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: SessionTurnOptions) => {
     await mcp.ready();
-    return AgentExecutor.execute(executeOptions(input, signal, turn, scope));
+    return executeOptions(staticSpec ?? (await specs.resolve(ctx)), input, ctx, signal, turn);
+  };
+  const run = async (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: SessionTurnOptions) =>
+    AgentExecutor.execute(await prepare(input, ctx, signal, turn));
+  const stream = (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: SessionTurnOptions): AgentRun => {
+    if (!staticSpec) return streamPrepared(() => prepare(input, ctx, signal, turn), signal, turn?.inputQueue);
+    const options = executeOptions(staticSpec, input, ctx, signal, turn);
+    return hasMcp ? streamAfter(mcp.ready, options) : AgentExecutor.stream(options);
   };
   // LOU-W9: a checkpointed session's turn runs under its own sessionId + checkpointStore.
   const session = (options: SessionOptions = {}): AgentSession => {
     // The id is chosen here so memory scoped to the session sees it on every turn.
-    const scope = { sessionId: options.id ?? globalThis.crypto.randomUUID() };
+    const sessionId = options.id ?? globalThis.crypto.randomUUID();
+    const ctxOf = (input: Message[], call?: SessionTurnCall): RunConfigContext => ({
+      sessionId,
+      input: call?.input ?? input,
+      metadata: call?.metadata,
+    });
     return approvals.session(
-      (input, signal, turn) => run(input, signal, turn, scope),
-      (input, signal, turn) => startStream(executeOptions(input, signal, turn, scope)),
-      withDefaultStores({ ...options, id: scope.sessionId }, config.store)
+      (input, signal, turn, call) => run(input, ctxOf(input, call), signal, turn),
+      (input, signal, turn, call) => stream(input, ctxOf(input, call), signal, turn),
+      withDefaultStores({ ...options, id: sessionId }, config.store)
     );
   };
 
@@ -613,13 +656,12 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
   const simpleAgent: SimpleAgent<Typed> = {
     async send(message: AgentInput, options: SendOptions = {}): Promise<ExecutionResult<Typed>> {
       const { sessionId, metadata } = options;
-      const result = await run(toMessages(message), options.signal, durable(sessionId), { sessionId, metadata });
+      const result = await run(toMessages(message), { sessionId, input: message, metadata }, options.signal, durable(sessionId));
       return approvals.settle(result, options.signal) as Promise<ExecutionResult<Typed>>;
     },
     stream(message: AgentInput, options: SendOptions = {}): AgentRun<Typed> {
       const { sessionId, metadata } = options;
-      const execute = executeOptions(toMessages(message), options.signal, durable(sessionId), { sessionId, metadata });
-      return startStream(execute) as AgentRun<Typed>;
+      return stream(toMessages(message), { sessionId, input: message, metadata }, options.signal, durable(sessionId)) as AgentRun<Typed>;
     },
     session,
     async resume(sessionId: string, { signal } = {}): Promise<ExecutionResult<Typed> | null> {
@@ -627,7 +669,7 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
       // No run under this id: it names a session, whose turns are checkpointed under `<id>.turn-<n>`.
       if (!checkpoint) return session({ id: sessionId }).resume({ signal }) as Promise<ExecutionResult<Typed> | null>;
       if (checkpoint.status === 'finished') return null;
-      return approvals.settle(await run([], signal, durable(sessionId)), signal) as Promise<ExecutionResult<Typed>>;
+      return approvals.settle(await run([], { sessionId, input: [] }, signal, durable(sessionId)), signal) as Promise<ExecutionResult<Typed>>;
     },
     // durable() throws LOUSHY_CONFIG_MISSING_CHECKPOINT_STORE without `store.checkpoints`.
     fork: async (sessionId, options) => AgentExecutor.fork({ ...options, ...(durable(sessionId) as SessionTurnCheckpoint) }),
@@ -635,8 +677,114 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     ready: mcp.ready,
     close: mcp.close,
   };
-  registerSubagent(simpleAgent, { spec, description: config.description });
+  // As a sub-agent, a dynamic agent resolves its config with the task prompt as `input`.
+  registerSubagent(simpleAgent, { spec: staticSpec ?? ((prompt) => specs.resolve({ input: prompt })), description: config.description });
   return simpleAgent;
+}
+
+/** A run's tool registry and the matching `AgentConfig.tools`. */
+type RunTools = ReturnType<typeof registerTools>;
+
+/** Adds connected MCP tools (LOU-Z4) to a run's tools. */
+function addMcpTools(target: RunTools, tools: Record<string, ToolDescriptor>): void {
+  for (const [name, descriptor] of Object.entries(tools)) {
+    target.toolRegistry?.register(name, descriptor);
+    target.toolsConfig[name] = { tool: name };
+  }
+}
+
+/** Key of `AgentConfig.metadata` holding a dynamic run's `ctx` and model, so an approval snapshot keeps them (LOU-V15). */
+const RUN_CONFIG = 'loushyRunConfig';
+
+/** What a paused dynamic run is resumed with: its `ctx`, and the model it ran with (never re-resolved). */
+interface PinnedRunConfig {
+  ctx: RunConfigContext;
+  model: string | undefined;
+}
+
+type RunOptions = Omit<SubagentSpec, 'agent' | 'provider' | 'toolRegistry'>;
+
+/** The agent's run specs: `static` when no option is a function, else `resolve(ctx)` builds one per run (LOU-V15). */
+interface AgentSpecs {
+  static?: SubagentSpec;
+  /** The tools when `tools` is static: shared by every run, MCP tools are added to them. */
+  staticTools?: RunTools;
+  resolve: (ctx: RunConfigContext, pinned?: PinnedRunConfig) => Promise<SubagentSpec>;
+}
+
+function agentSpecs(config: CreateAgentConfig, toolsFor: (tools: AgentToolsOption | undefined) => RunTools, runOptions: RunOptions): AgentSpecs {
+  const instructions = instructionsOption(config);
+  const projectBlock = projectInstructionsBlock(config.projectInstructions);
+  const provider = isPerRun(config.model) ? undefined : resolveModelSource(config, config.model);
+  const staticTools = isPerRun(config.tools) ? undefined : toolsFor(config.tools);
+  const agentId = newId();
+  const specOf = (prompt: string | undefined, model: string | undefined, runProvider: LLMProvider, tools: RunTools): SubagentSpec => {
+    const builder = AgentBuilder.create()
+      .setId(agentId)
+      .setName(config.name || 'agent')
+      .setPrompt((prompt ?? DEFAULT_INSTRUCTIONS) + projectBlock)
+      .setTools(tools.toolsConfig);
+    // With an explicit provider, `model` is a per-agent model setting.
+    if (config.provider && model) builder.setSettings({ model });
+    return { agent: builder.build(), provider: runProvider, toolRegistry: tools.toolRegistry, ...runOptions };
+  };
+  const resolve = async (ctx: RunConfigContext, pinned?: PinnedRunConfig): Promise<SubagentSpec> => {
+    const model = pinned ? pinned.model : await resolveOption('model', config.model, ctx);
+    const prompt = await resolveOption(config.prompt === undefined ? 'instructions' : 'prompt', instructions, ctx);
+    const tools = staticTools ?? toolsFor(await resolveOption('tools', config.tools, ctx));
+    const spec = specOf(prompt, model, provider ?? resolveModelSource(config, model), tools);
+    spec.agent.metadata = { [RUN_CONFIG]: { ctx, model } satisfies PinnedRunConfig };
+    return spec;
+  };
+  if (provider && staticTools && !isPerRun(instructions)) {
+    return { static: specOf(instructions, config.model as string | undefined, provider, staticTools), staticTools, resolve };
+  }
+  return { staticTools, resolve };
+}
+
+function isPerRun<T>(value: PerRun<T>): value is (ctx: RunConfigContext) => T | Promise<T> {
+  return typeof value === 'function';
+}
+
+/** `value`, or what its function returns for `ctx`; a throw becomes LOUSHY_CONFIG_RESOLVER_FAILED naming `option`. */
+async function resolveOption<T>(option: string, value: PerRun<T>, ctx: RunConfigContext): Promise<T> {
+  if (!isPerRun(value)) return value;
+  try {
+    return await value(ctx);
+  } catch (error) {
+    throw new ConfigurationError(
+      `createAgent: the '${option}' function threw while resolving this run's config: ${error instanceof Error ? error.message : String(error)}`,
+      option,
+      'LOUSHY_CONFIG_RESOLVER_FAILED',
+      { cause: error }
+    );
+  }
+}
+
+/**
+ * The spec a paused run resumes with. A dynamic run takes its approval
+ * (to read the `ctx` and model it was paused with) and hands it back to
+ * `resumeAfterApproval()` through a store that replays it once.
+ */
+async function pausedRun(specs: AgentSpecs, store: ApprovalStore, id: string): Promise<{ spec: SubagentSpec; store: ApprovalStore }> {
+  if (specs.static) return { spec: specs.static, store };
+  const record = await store.resolve(id);
+  if (!record) {
+    throw new SDKError(`No pending approval found for id '${id}' (unknown or already resolved)`, 'LOUSHY_APPROVAL_NOT_FOUND');
+  }
+  const pinned = record.snapshot.agent.metadata?.[RUN_CONFIG] as PinnedRunConfig | undefined;
+  const spec = await specs.resolve(pinned?.ctx ?? { input: [] }, pinned);
+  let replay: ResolvedApproval | undefined = record;
+  const replayStore: ApprovalStore = {
+    save: (pending, snapshot) => store.save(pending, snapshot),
+    async resolve(resolveId) {
+      if (replay?.pending.id !== resolveId) return store.resolve(resolveId);
+      const once = replay;
+      replay = undefined;
+      return once;
+    },
+  };
+  return { spec, store: replayStore };
 }
 
 /** The agent's hooks: `hooks`, then the one `compaction` installs; `undefined` when there are none. */
@@ -648,15 +796,12 @@ function agentHooks({ hooks = [], compaction }: CreateAgentBase): HookRegistry |
   return registry;
 }
 
-/** Appends the nearest AGENTS.md / CLAUDE.md to `instructions` when `projectInstructions` is set. */
-function withProjectInstructions(
-  instructions: string,
-  option: CreateAgentBase['projectInstructions']
-): string {
-  if (!option) return instructions;
+/** What `projectInstructions` appends to the instructions: the nearest AGENTS.md / CLAUDE.md, or ''. */
+function projectInstructionsBlock(option: CreateAgentBase['projectInstructions']): string {
+  if (!option) return '';
   const found = loadProjectInstructions(option === true ? {} : option);
-  if (!found) return instructions;
-  return `${instructions}
+  if (!found) return '';
+  return `
 
 ## Project instructions (from ${basename(found.path)})
 
@@ -666,7 +811,7 @@ ${found.content}`;
 /** Used when neither `instructions` nor `prompt` is given. */
 const DEFAULT_INSTRUCTIONS = 'You are a helpful assistant.';
 
-function resolveInstructions(config: CreateAgentConfig): string {
+function instructionsOption(config: CreateAgentConfig): PerRun<string> | undefined {
   if (config.instructions !== undefined && config.prompt !== undefined) {
     throw new ConfigurationError(
       "createAgent: both 'instructions' and 'prompt' were given. They are the same option - " +
@@ -675,7 +820,7 @@ function resolveInstructions(config: CreateAgentConfig): string {
       'LOUSHY_CONFIG_CONFLICTING_OPTIONS'
     );
   }
-  return config.instructions ?? config.prompt ?? DEFAULT_INSTRUCTIONS;
+  return config.instructions ?? config.prompt;
 }
 
 /** The default `retry` for models given as strings: as many retries as the `ai` SDK makes on its own. */
@@ -684,9 +829,9 @@ const DEFAULT_RETRY: WithRetryOptions = { maxRetries: 2 };
 /**
  * The provider to run with: the given instance, else `model` resolved (else
  * the env's choice), wrapped in `withRetry()` and, with `fallbackModels`,
- * `withFallback()` (LOU-V7.2).
+ * `withFallback()` (LOU-V7.2). `model` is the run's (LOU-V15).
  */
-function resolveModelSource(config: CreateAgentConfig): LLMProvider {
+function resolveModelSource(config: CreateAgentConfig, model: string | undefined): LLMProvider {
   const { retry, fallbackModels = [] } = config;
   const resolve = (spec: string) => {
     // maxRetries: 0 turns off the 'ai' SDK's own retries: withRetry() is the only layer.
@@ -697,7 +842,7 @@ function resolveModelSource(config: CreateAgentConfig): LLMProvider {
   if (config.provider) {
     primary = retry ? withRetry(config.provider, retry) : config.provider;
   } else {
-    primary = resolve(config.model ?? modelFromEnv('createAgent'));
+    primary = resolve(model ?? modelFromEnv('createAgent'));
   }
   return fallbackModels.length > 0 ? withFallback([primary, ...fallbackModels.map(resolve)]) : primary;
 }

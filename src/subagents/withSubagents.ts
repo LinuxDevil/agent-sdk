@@ -29,7 +29,8 @@ const DEFAULT_MAX_STEPS = 10;
 
 /** An agent usable as a sub-agent: its run configuration and description. */
 interface RegisteredSubagent {
-  spec: SubagentSpec;
+  /** A function for an agent whose config is resolved per run (LOU-V15): called with the task prompt. */
+  spec: SubagentSpec | ((prompt: string) => Promise<SubagentSpec>);
   description?: string;
 }
 
@@ -177,9 +178,11 @@ function taskResult(name: string, result: ExecutionResult, maxSteps: number): st
 type TaskArgs = { agent: string; prompt: string; description: string; background?: boolean };
 type ToolOptions = { abortSignal?: AbortSignal } | undefined;
 
-async function runTask(spec: SubagentSpec, args: TaskArgs, toolOptions: ToolOptions): Promise<string> {
+async function runTask(registered: RegisteredSubagent['spec'], args: TaskArgs, toolOptions: ToolOptions): Promise<string> {
+  let spec: SubagentSpec;
   let result: ExecutionResult;
   try {
+    spec = typeof registered === 'function' ? await registered(args.prompt) : registered;
     result = await runSubagent(spec, {
       name: args.agent,
       input: [{ role: 'user', content: args.prompt }],
