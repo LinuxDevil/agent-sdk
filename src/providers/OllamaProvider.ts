@@ -8,6 +8,7 @@ import { AiSdkProvider, AiSdkProviderConfig } from './aiSdkProvider';
 import { aiMajorOf } from './aiSdkCompat';
 import { lazyValue, loadOptionalPeer } from './optionalPeer';
 import { Logger, noopLogger } from '../execution/logger';
+import type { GenerateOptions } from './llm';
 
 export interface OllamaProviderConfig extends AiSdkProviderConfig {
   baseURL?: string;
@@ -51,6 +52,16 @@ export class OllamaProvider extends AiSdkProvider<OllamaProviderConfig> {
     super(config);
     this.logger = logger;
   }
+
+  /** LOU-V13: `think` needs `ollama-ai-provider-v2` (`ai` 6/7); on `ai` 4 the option is ignored, with one warning. */
+  protected reasoningOptions(modelId: string, options: GenerateOptions): Record<string, unknown> | undefined {
+    const sent = super.reasoningOptions(modelId, options);
+    if (!sent || aiMajorOf(this.ai) !== 4) return sent;
+    if (!this.warnedReasoning) console.warn('[loushy] ollama-ai-provider (ai 4) cannot send `reasoning`; it is ignored.');
+    this.warnedReasoning = true;
+    return undefined;
+  }
+  private warnedReasoning = false;
 
   protected async createModel(modelId: string): Promise<LanguageModel> {
     const { modern, ollama } = await this.loadProvider();

@@ -235,7 +235,7 @@ describe('stream() on ai v7: edge cases (LOU-D27)', () => {
         { type: 'tool-input-delta', id: 'call_B', delta: '"Rome"}' },
         { type: 'tool-input-end', id: 'call_B' },
         { type: 'reasoning-start', id: 'r1' },
-        { type: 'reasoning-delta', id: 'r1', delta: 'dropped until LOU-V13' },
+        { type: 'reasoning-delta', id: 'r1', delta: 'a thought' },
         { type: 'reasoning-end', id: 'r1' },
         {
           type: 'finish',
@@ -250,7 +250,10 @@ describe('stream() on ai v7: edge cases (LOU-D27)', () => {
 
     const result = await provider.stream({ messages: [{ role: 'user', content: 'Weather?' }], tools: [weatherTool] });
 
+    // LOU-V13: reasoning is reported as reasoning chunks, never as text.
     expect(await collect(result.fullStream)).toEqual([
+      { type: 'reasoning-delta', textDelta: 'a thought' },
+      { type: 'reasoning-end', reasoning: {} },
       { type: 'tool-call', toolCall: { id: 'call_B', type: 'function', function: { name: 'get_weather', arguments: '{"city":"Rome"}' } } },
       { type: 'finish', finishReason: 'tool-calls' },
     ]);

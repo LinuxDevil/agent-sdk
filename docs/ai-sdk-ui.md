@@ -58,6 +58,7 @@ export function Chat() {
 | `run.start` | `start` (`messageId` is the run id) |
 | `step.start` / `step.done` | `start-step` / `finish-step` |
 | `text.delta`, `text.done` | `text-start` (once per text part), `text-delta`, `text-end` |
+| `reasoning.start`, `reasoning.delta`, `reasoning.done` | `reasoning-start`, `reasoning-delta`, `reasoning-end` (see [Reasoning](./reasoning.md)) |
 | `tool.start` | `tool-input-start`, then `tool-input-available` with the arguments |
 | `tool.done` / `tool.error` | `tool-output-available` / `tool-output-error` |
 | `approval.requested` | `data-loushy-approval` (below) |

@@ -91,6 +91,26 @@ export interface TextDoneEvent extends AgentEventBase<'text.done'> {
   text: string;
 }
 
+/**
+ * LOU-V13: the model starts reasoning (thinking) in this step. Its
+ * `reasoning.delta`s and `reasoning.done` follow, before the step's first
+ * `text.delta` or `tool.start`. Only models given the `reasoning` option
+ * (and some that always reason) emit them.
+ */
+export type ReasoningStartEvent = AgentEventBase<'reasoning.start'>;
+
+/** LOU-V13: a chunk of reasoning text (or of its summary), as it arrives. Never part of `text`. */
+export interface ReasoningDeltaEvent extends AgentEventBase<'reasoning.delta'> {
+  text: string;
+}
+
+/** LOU-V13: the reasoning ended; `text` is the concatenation of its `reasoning.delta`s. */
+export interface ReasoningDoneEvent extends AgentEventBase<'reasoning.done'> {
+  text: string;
+  /** Reasoning tokens, when the provider reported them by the time the reasoning ended. */
+  tokens?: number;
+}
+
 /** A tool call starts. Emitted in the model's call order. */
 export interface ToolStartEvent extends AgentEventBase<'tool.start'> {
   toolCallId: string;
@@ -332,6 +352,9 @@ export type AgentEvent =
   | StepStartEvent
   | TextDeltaEvent
   | TextDoneEvent
+  | ReasoningStartEvent
+  | ReasoningDeltaEvent
+  | ReasoningDoneEvent
   | ToolStartEvent
   | ToolDoneEvent
   | ToolErrorEvent
@@ -376,6 +399,9 @@ const EVENT_TYPES: ReadonlySet<string> = new Set<AgentEventType>([
   'step.start',
   'text.delta',
   'text.done',
+  'reasoning.start',
+  'reasoning.delta',
+  'reasoning.done',
   'tool.start',
   'tool.done',
   'tool.error',

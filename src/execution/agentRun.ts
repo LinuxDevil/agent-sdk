@@ -28,7 +28,7 @@ import {
 } from './agentEvents';
 import { parseToolArguments } from './toolArgsValidation';
 import type { PermissionDecisionEntry } from './permissions';
-import { canStream, generateViaStream } from './streamStep';
+import { canStream, generateViaStream, reportReasoning, type StepSink } from './streamStep';
 import { measureUsage } from './runUsage';
 import { SDKError, compactProviderError } from './errors';
 import { withProviderEvents, type ProviderEventListener } from '../providers/providerEvents';
@@ -445,15 +445,20 @@ class AgentRunImpl implements AgentRun {
     subagent: SubagentInfo | undefined,
     onOutput?: () => void
   ): Promise<GenerateResult> {
-    const onTextDelta = (text: string) => this.emit({ type: 'text.delta', text }, subagent);
+    const sink: StepSink = {
+      onTextDelta: (text) => this.emit({ type: 'text.delta', text }, subagent),
+      onReasoning: (event) => this.emit(event, subagent),
+      onOutput,
+    };
     if (canStream(provider, request)) {
-      return generateViaStream(provider, request, onTextDelta, onOutput);
+      return generateViaStream(provider, request, sink);
     }
     const generated = await provider.generate(request);
     // LOU-V10: a call steered away from while it ran reports nothing.
     request.signal?.throwIfAborted();
     onOutput?.();
-    if (generated.text) onTextDelta(generated.text);
+    reportReasoning(generated, sink);
+    if (generated.text) sink.onTextDelta(generated.text);
     return generated;
   }
 }

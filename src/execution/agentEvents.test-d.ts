@@ -118,6 +118,9 @@ describe('AgentEvent types', () => {
       | 'step.start'
       | 'text.delta'
       | 'text.done'
+      | 'reasoning.start'
+      | 'reasoning.delta'
+      | 'reasoning.done'
       | 'tool.start'
       | 'tool.done'
       | 'tool.error'
@@ -162,5 +165,22 @@ describe('AgentEvent types', () => {
     expectTypeOf(run).toEqualTypeOf<AgentRun>();
     expectTypeOf(run).toMatchTypeOf<AsyncIterable<AgentEvent>>();
     expectTypeOf(run.result).toEqualTypeOf<Promise<ExecutionResult>>();
+  });
+
+  it('LOU-V13: narrows reasoning events; the reasoning option takes an effort or settings', () => {
+    if (event.type === 'reasoning.delta') expectTypeOf(event.text).toBeString();
+    if (event.type === 'reasoning.done') expectTypeOf(event.tokens).toEqualTypeOf<number | undefined>();
+    if (event.type === 'reasoning.start') {
+      // @ts-expect-error - reasoning.start carries no text
+      void event.text;
+    }
+    expectTypeOf<ExecutionResult['reasoning']>().toEqualTypeOf<string | undefined>();
+
+    const agent = createAgent({ provider: createMockProvider(), reasoning: 'high' });
+    void agent.send('hi', { reasoning: { effort: 'low', budgetTokens: 2048, summary: 'auto', force: true } });
+    // @ts-expect-error - not an effort
+    createAgent({ provider: createMockProvider(), reasoning: 'max' });
+    // @ts-expect-error - summary is 'auto' or 'none'
+    void agent.send('hi', { reasoning: { summary: 'detailed' } });
   });
 });

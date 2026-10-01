@@ -26,6 +26,7 @@
 - [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md): `AgentExecutor.execute()` and `FlowExecutor.execute()` emit spans through a `TraceExporter`.
 - [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md): An `LLMProvider` is what an agent generates with.
 - [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md): `useLoushyAgent()` puts an agent behind a chat UI.
+- [Reasoning](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/reasoning.md): Reasoning models think before they answer.
 - [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md): `loushy add` installs a tool, skill, channel, schedule or memory slot into an agent directory from a registry.
 - [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md): A schedule runs the agent on a cron expression, with nobody asking: a morning summary, a nightly cleanup.
 - [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md): `agent.send(text)` is single-turn: every call starts from an empty history.
