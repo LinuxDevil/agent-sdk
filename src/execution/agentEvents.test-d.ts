@@ -66,6 +66,15 @@ describe('AgentEvent types', () => {
     if (event.type === 'provider.fallback') expectTypeOf(event.error).toEqualTypeOf<{ message: string }>();
   });
 
+  it('narrows compaction events on event.type (LOU-W3.2)', () => {
+    if (event.type === 'compaction.start') expectTypeOf(event.thresholdTokens).toBeNumber();
+    if (event.type === 'compaction.done') {
+      expectTypeOf(event.prunedToolCallIds).toEqualTypeOf<string[]>();
+      expectTypeOf(event.summary).toEqualTypeOf<boolean | undefined>();
+      expectTypeOf(event.error).toEqualTypeOf<{ message: string } | undefined>();
+    }
+  });
+
   it('covers every event type', () => {
     expectTypeOf<AgentEventType>().toEqualTypeOf<
       | 'run.start'
@@ -80,6 +89,8 @@ describe('AgentEvent types', () => {
       | 'error'
       | 'provider.retry'
       | 'provider.fallback'
+      | 'compaction.start'
+      | 'compaction.done'
       | 'run.done'
     >();
   });
