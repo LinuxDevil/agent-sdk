@@ -240,7 +240,7 @@ async function* toFullStream(result: AiSdkStreamResult): AsyncGenerator<StreamCh
   const chunk: StreamChunk = {
     type: 'finish',
     finishReason: finalReason,
-    usage: toUsage(finalUsage),
+    usage: toGenerateUsage(finalUsage, undefined),
   };
   yield chunk;
 }
@@ -258,7 +258,7 @@ function toStreamResult(result: AiSdkStreamResult): StreamResult {
     textStream: toTextStream(result),
     fullStream: toFullStream(result),
     text: (async () => result.text)(),
-    usage: (async () => toUsage(await result.usage))(),
+    usage: (async () => toGenerateUsage(await result.usage, undefined))(),
     finishReason: (async () => result.finishReason)(),
     toolCalls: (async () => convertToolCalls(await result.toolCalls))(),
   };

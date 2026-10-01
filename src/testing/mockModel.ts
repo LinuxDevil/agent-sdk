@@ -127,9 +127,6 @@ export interface MockModel extends LLMProvider {
   assertExhausted(): void;
 }
 
-/** The streaming types require usage on the finish chunk, so a usage-less scripted turn streams zeros. */
-const NO_USAGE = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
-
 interface ResolvedTurn {
   text: string;
   toolCalls: ToolCall[];
@@ -225,7 +222,7 @@ class ScriptedMockModel implements MockModel {
     const fullStream = async function* (): AsyncGenerator<StreamChunk> {
       for (const textDelta of chunks) yield { type: 'text-delta', textDelta };
       for (const toolCall of turn.toolCalls) yield { type: 'tool-call', toolCall };
-      yield { type: 'finish', finishReason: turn.finishReason, usage: turn.usage ?? NO_USAGE };
+      yield { type: 'finish', finishReason: turn.finishReason, usage: turn.usage };
     };
     const textStream = async function* (): AsyncGenerator<string> {
       yield* chunks;
@@ -234,7 +231,7 @@ class ScriptedMockModel implements MockModel {
       fullStream: fullStream(),
       textStream: textStream(),
       text: Promise.resolve(turn.text),
-      usage: Promise.resolve(turn.usage ?? NO_USAGE),
+      usage: Promise.resolve(turn.usage),
       finishReason: Promise.resolve(turn.finishReason),
       toolCalls: Promise.resolve(turn.toolCalls),
     };

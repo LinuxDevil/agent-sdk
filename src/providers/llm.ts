@@ -147,11 +147,8 @@ export interface StreamChunk {
     result: any;
   };
   finishReason?: string;
-  usage?: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-  };
+  /** Usage of the call, on the `finish` chunk; omit when the backend reports none (see GenerateResult.usage). */
+  usage?: ProviderUsage;
   error?: Error;
 }
 
@@ -162,11 +159,8 @@ export interface StreamResult {
   textStream: AsyncIterable<string>;
   fullStream: AsyncIterable<StreamChunk>;
   text: Promise<string>;
-  usage: Promise<{
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-  }>;
+  /** Resolves to `undefined` when the backend reports no usage (see GenerateResult.usage). */
+  usage: Promise<ProviderUsage | undefined>;
   finishReason: Promise<string>;
   toolCalls: Promise<ToolCall[]>;
 }

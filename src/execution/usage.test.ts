@@ -4,6 +4,7 @@ import { AgentExecutor } from './AgentExecutor';
 import type { ExecutionEvent } from './AgentExecutor';
 import { createDelegateTool } from './DelegationTool';
 import { resumeAfterApproval } from './resume';
+import type { AgentEvent } from './agentEvents';
 import type { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGate';
 import type { Span, TraceExporter } from './tracing';
 import type { Checkpoint, CheckpointStore } from './checkpoint';
@@ -321,6 +322,57 @@ describe('run usage (LOU-V5)', () => {
     const chat = tracer.spans().find((s) => s.name.startsWith('chat'));
     expect(chat?.attributes['loushy.usage.estimated']).toBe(true);
     expect(chat?.attributes['gen_ai.usage.input_tokens']).toBeGreaterThan(0);
+  });
+});
+
+describe('usage on the event stream (LOU-V5)', () => {
+  it('puts per-step and run usage, cost and the estimated flag on step.done and run.done', async () => {
+    const provider = mockModel(
+      [
+        { ...callEcho, usage: { inputTokens: 1000, outputTokens: 200 } },
+        'no usage reported',
+      ],
+      { defaultModel: 'gpt-4o-mini' }
+    );
+
+    const events: AgentEvent[] = [];
+    for await (const event of AgentExecutor.stream({ agent: agent(), input: 'go', provider, toolRegistry: registry() })) {
+      events.push(event);
+    }
+
+    const [first, second] = events.filter((e) => e.type === 'step.done');
+    expect(first.usage).toMatchObject({ inputTokens: 1000, outputTokens: 200, promptTokens: 1000, estimated: false });
+    expect(first.usage?.costUsd).toBeCloseTo((1000 * 0.15 + 200 * 0.6) / 1e6, 10);
+    expect(second.usage?.estimated).toBe(true);
+    const done = events.find((e) => e.type === 'run.done');
+    expect(done?.usage).toMatchObject({ modelCalls: 2, estimated: true });
+    expect(done?.usage?.inputTokens).toBeGreaterThan(1000);
+  });
+
+  it('rolls delegated children up into a streamed run as well', async () => {
+    const child = agent({ id: 'child', name: 'Child', tools: undefined });
+    const parentProvider = mockModel(
+      [
+        { toolCalls: [{ name: 'ask', args: { task: 'sub' } }], usage: { inputTokens: 10, outputTokens: 5 } },
+        { text: 'done', usage: { inputTokens: 20, outputTokens: 5 } },
+      ],
+      { defaultModel: 'gpt-4o-mini' }
+    );
+    const childProvider = mockModel([{ text: 'sub', usage: { inputTokens: 100, outputTokens: 50 } }], { defaultModel: 'gpt-4o-mini' });
+    const tools = new ToolRegistry();
+    tools.register('ask', createDelegateTool({ agent: child, provider: childProvider }));
+
+    const events: AgentEvent[] = [];
+    for await (const event of AgentExecutor.stream({
+      agent: agent({ tools: { ask: { tool: 'ask' } } }),
+      input: 'go',
+      provider: parentProvider,
+      toolRegistry: tools,
+    })) {
+      events.push(event);
+    }
+
+    expect(events.find((e) => e.type === 'run.done')?.usage).toMatchObject({ inputTokens: 130, outputTokens: 60, modelCalls: 3 });
   });
 });
 

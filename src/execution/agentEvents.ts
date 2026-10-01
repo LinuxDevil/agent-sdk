@@ -18,9 +18,19 @@ export const AGENT_EVENT_SCHEMA_VERSION = 1 as const;
 
 /** Token usage, as reported on `step.done` and `run.done`. */
 export interface AgentEventUsage {
+  /** Alias of `inputTokens`. */
   promptTokens: number;
+  /** Alias of `outputTokens`. */
   completionTokens: number;
   totalTokens: number;
+  inputTokens: number;
+  outputTokens: number;
+  /** `true` when the provider reported no usage and the tokens are an `estimateTokens` estimate. */
+  estimated: boolean;
+  /** USD, or absent when a model used has unknown pricing (see `registerModel`). */
+  costUsd?: number;
+  /** On `run.done`: model calls of the whole run. */
+  modelCalls?: number;
 }
 
 /** A JSON-safe error: the `name` and `message` of the original error. */

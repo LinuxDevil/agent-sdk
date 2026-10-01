@@ -66,6 +66,6 @@ describe('AgentExecutor.stream() with an ai-SDK provider', () => {
     expect(events.find((e) => e.type === 'step.done')).toMatchObject({ finishReason: 'tool_calls', usage });
     const result = await run.result;
     expect(result.text).toBe('Found it.');
-    expect(result.usage).toEqual({ promptTokens: 8, completionTokens: 4, totalTokens: 12 });
+    expect(result.usage).toMatchObject({ promptTokens: 8, completionTokens: 4, totalTokens: 12 });
   });
 });
