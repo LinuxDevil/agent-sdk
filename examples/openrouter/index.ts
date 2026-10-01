@@ -8,7 +8,7 @@
  *   snippets: basic, streaming, compare, tools, agent-builder, models,
  *             cost, errors, conversation, capabilities
  */
-import { LLMProviderRegistry, AgentBuilder, AgentType, Message } from '../../src/index';
+import { LLMProviderRegistry, AgentBuilder, Message } from '../../src/index';
 
 const apiKey = process.env.OPENROUTER_API_KEY || '';
 
@@ -125,7 +125,6 @@ async function toolCalling() {
 /** Configuring an agent to use OpenRouter via AgentBuilder. */
 async function agentBuilder() {
   const agent = new AgentBuilder()
-    .setType(AgentType.SmartAssistant)
     .setName('Travel Assistant')
     .setPrompt(`You are a helpful travel assistant. You provide information about destinations,
       travel tips, and help plan trips. Be concise and informative.`)

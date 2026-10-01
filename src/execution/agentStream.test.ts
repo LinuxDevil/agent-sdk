@@ -14,7 +14,7 @@ import { createAgent } from '../createAgent';
 import { defineTool, DefinedTool } from '../tools/defineTool';
 import { ToolRegistry } from '../tools';
 import { mockModel, MockModel, MockTurn } from '../testing';
-import { AgentConfig, AgentType } from '../types';
+import { AgentConfig } from '../types';
 import type { LLMProvider, StreamChunk } from '../providers';
 
 /** Reads every event, then checks the invariants every run must satisfy. */
@@ -56,7 +56,7 @@ function agentWith(provider: LLMProvider, tools: DefinedTool[] = []) {
 function executorOptions(provider: LLMProvider, tools: DefinedTool[]) {
   const toolConfig: AgentConfig['tools'] = {};
   for (const t of tools) toolConfig[t.name] = { tool: t.name };
-  const agent: AgentConfig = { id: 'agent-1', name: 'Agent', agentType: AgentType.SmartAssistant, prompt: 'p', tools: toolConfig };
+  const agent: AgentConfig = { id: 'agent-1', name: 'Agent', prompt: 'p', tools: toolConfig };
   const toolRegistry = new ToolRegistry();
   toolRegistry.registerMany(tools);
   return { agent, provider, toolRegistry, input: 'go' };

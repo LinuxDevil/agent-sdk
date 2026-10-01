@@ -28,7 +28,6 @@
 import { describe, it, expect } from 'vitest';
 import { defineEval } from '../../src/evals/defineEval';
 import { toolCallOrder } from '../../src/evals/scorers';
-import { AgentType } from '../../src/types';
 import { ToolRegistry } from '../../src/tools';
 import { secretScanGuardrail, createDiffSizeGuardrail } from '../../src/execution/guardrails';
 import { startOpsPipeline } from './index';
@@ -60,7 +59,6 @@ evalToolRegistry.register(DELEGATE_TOOL_NAME, evalDelegateTool);
 
 const evalMonitorAgent = {
   name: 'ops-monitor',
-  agentType: AgentType.SmartAssistant,
   prompt: `You are an ops monitor. When an alert fires, delegate it to the fixer agent via the ${DELEGATE_TOOL_NAME} tool.`,
   tools: { [DELEGATE_TOOL_NAME]: { tool: DELEGATE_TOOL_NAME } },
 };

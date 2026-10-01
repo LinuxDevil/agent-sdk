@@ -13,13 +13,12 @@ import type { Span, TraceExporter } from './tracing';
 import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import { ToolRegistry } from '../tools/ToolRegistry';
-import { AgentType } from '../types';
 import { mockModel, type MockTurn } from '../testing';
 import type { Message } from '../providers';
 import { KVCheckpointStore } from '../deploy/kvCheckpointStore';
 import { SessionAwaitingApprovalError } from './errors';
 
-const lead = { name: 'lead', agentType: AgentType.SmartAssistant, prompt: 'You coordinate.' };
+const lead = { name: 'lead', prompt: 'You coordinate.' };
 
 const task = (agent: string, prompt = 'do it', id = `${agent}-call`) => ({
   name: 'task',
@@ -275,7 +274,7 @@ describe('sub-agents inherit the parent runtime (LOU-Y1)', () => {
     const seen: string[] = [];
     const hooks = new HookRegistry();
     hooks.register({ name: 'spy', preGenerate: (ctx) => void seen.push(ctx.subagent?.name ?? 'parent') });
-    const child = { name: 'Billing', agentType: AgentType.SmartAssistant };
+    const child = { name: 'Billing' };
     const registry = new ToolRegistry();
     registry.register(
       'delegate',
@@ -477,7 +476,7 @@ describe('approval inside a sub-agent (LOU-Y1)', () => {
         },
       })
     );
-    const child = { name: 'Mailer', agentType: AgentType.SmartAssistant, tools: { send: { tool: 'send' } } };
+    const child = { name: 'Mailer', tools: { send: { tool: 'send' } } };
     const registry = new ToolRegistry();
     registry.register(
       'delegate',

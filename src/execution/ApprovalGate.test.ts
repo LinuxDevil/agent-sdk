@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { ExecutionSnapshot, StorageServiceApprovalStore, PendingApproval } from './ApprovalGate';
-import { AgentType } from '../types';
 import { StorageService, FileSystemAdapter, PathAdapter } from '../storage/StorageService';
 
 /**
@@ -46,7 +45,6 @@ function buildSnapshot(pending: PendingApproval): ExecutionSnapshot {
     agent: {
       id: pending.agentId,
       name: 'Test Agent',
-      agentType: AgentType.SmartAssistant,
     },
     currentMessages: [{ role: 'user', content: 'do the thing' }],
     pendingToolCall: pending,
@@ -60,7 +58,6 @@ describe('Execution - ApprovalGate types', () => {
       agent: {
         id: 'agent-1',
         name: 'Test Agent',
-        agentType: AgentType.SmartAssistant,
         prompt: 'You are a helpful assistant',
       },
       currentMessages: [

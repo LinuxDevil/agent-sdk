@@ -4,7 +4,6 @@ import { AgentExecutor, ExecutionResult } from '../execution/AgentExecutor';
 import { ToolCall, LLMProvider, GenerateOptions, GenerateResult } from '../providers/llm';
 import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
-import { AgentType } from '../types';
 
 function fakeResult(
   text: string,
@@ -153,7 +152,6 @@ describe('toolCallOrder() against a genuine AgentExecutor.execute() result', () 
     });
 
     const agent = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .addTool('search', { tool: 'search', options: {} })
       .addTool('summarize', { tool: 'summarize', options: {} })

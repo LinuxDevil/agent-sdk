@@ -19,7 +19,7 @@ import { Checkpoint, CheckpointStore } from './checkpoint';
 import { createMockProvider } from '../providers/mock';
 import { createAgent } from '../createAgent';
 import { ToolRegistry } from '../tools';
-import { AgentConfig, AgentType, ToolDescriptor } from '../types';
+import { AgentConfig, ToolDescriptor } from '../types';
 import type { GenerateOptions, GenerateResult, LLMProvider, ToolCall } from '../providers';
 
 const usage = { promptTokens: 1, completionTokens: 1, totalTokens: 2 };
@@ -61,7 +61,7 @@ function agentWithTools(...toolNames: string[]): AgentConfig {
   for (const name of toolNames) {
     tools[name] = { tool: name };
   }
-  return { id: 'agent-1', name: 'Agent', agentType: AgentType.SmartAssistant, prompt: 'p', tools };
+  return { id: 'agent-1', name: 'Agent', prompt: 'p', tools };
 }
 
 function registryWith(tools: Record<string, ToolDescriptor>): ToolRegistry {
@@ -341,7 +341,7 @@ describe('AgentExecutor cancellation (LOU-V1)', () => {
 
   it('a delegated child agent is aborted together with its parent', async () => {
     const child = scriptedProvider(hangUntilAborted);
-    const childAgent: AgentConfig = { name: 'Child', agentType: AgentType.SmartAssistant };
+    const childAgent: AgentConfig = { name: 'Child' };
     const delegate = createDelegateTool({ agent: childAgent, provider: child.provider });
     const parent = scriptedProvider(async () => ({
       ...toolCallResult({

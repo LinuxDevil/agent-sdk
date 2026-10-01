@@ -15,6 +15,7 @@ export type SqlValue = string | number | null;
 export interface SqlStatement {
   run(...params: SqlValue[]): { changes: number | bigint };
   get(...params: SqlValue[]): SqlRow | undefined;
+  all(...params: SqlValue[]): SqlRow[];
 }
 
 /** The subset of `DatabaseSync` used here. */

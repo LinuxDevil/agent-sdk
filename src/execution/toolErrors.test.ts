@@ -16,7 +16,7 @@ import { defineTool, DefinedTool } from '../tools/defineTool';
 import { ToolRegistry } from '../tools';
 import { loadMcpTools } from '../tools/mcp/McpToolLoader';
 import { mockModel, MockTurn } from '../testing';
-import { AgentConfig, AgentType } from '../types';
+import { AgentConfig } from '../types';
 import type { Message } from '../providers';
 
 const input = z.object({ n: z.number() });
@@ -34,7 +34,7 @@ function simpleTool(name: string, extra: Partial<Parameters<typeof defineTool>[0
 function agentFor(names: string[]): AgentConfig {
   const tools: AgentConfig['tools'] = {};
   for (const name of names) tools[name] = { tool: name };
-  return { id: 'agent-1', name: 'Agent', agentType: AgentType.SmartAssistant, prompt: 'p', tools };
+  return { id: 'agent-1', name: 'Agent', prompt: 'p', tools };
 }
 
 function registryOf(tools: DefinedTool[]): ToolRegistry {

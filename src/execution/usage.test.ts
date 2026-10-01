@@ -10,7 +10,6 @@ import type { Span, TraceExporter } from './tracing';
 import type { Checkpoint, CheckpointStore } from './checkpoint';
 import { ToolRegistry } from '../tools';
 import { defineTool } from '../tools/defineTool';
-import { AgentType } from '../types';
 import type { AgentConfig } from '../types';
 import { mockModel } from '../testing';
 import { formatUsage, normalizeUsage } from '../models';
@@ -25,7 +24,6 @@ const echo = defineTool({
 const agent = (overrides: Partial<AgentConfig> = {}): AgentConfig => ({
   id: 'a',
   name: 'Agent',
-  agentType: AgentType.SmartAssistant,
   tools: { echo: { tool: 'echo' } },
   ...overrides,
 });

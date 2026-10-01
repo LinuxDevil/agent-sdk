@@ -26,7 +26,7 @@
  * GitHub token and LLM provider instead.
  */
 import * as http from 'node:http';
-import { AgentType, ToolDescriptor } from '../../src/types';
+import { ToolDescriptor } from '../../src/types';
 import { ToolRegistry } from '../../src/tools';
 import { verifySlackSignature } from '../../src/triggers';
 import { LLMProvider } from '../../src/providers/llm';
@@ -126,7 +126,6 @@ function buildGatedToolRegistry(provider: LLMProvider): ToolRegistry {
 
 const MONITOR_AGENT = {
   name: 'ops-monitor',
-  agentType: AgentType.SmartAssistant,
   prompt:
     'You are an ops monitor. When an alert fires, delegate it to the fixer agent via the ' +
     `${DELEGATE_TOOL_NAME} tool.`,

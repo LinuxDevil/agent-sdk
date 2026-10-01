@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { createAgent } from '../../createAgent';
 import { AgentExecutor } from '../../execution/AgentExecutor';
 import { AgentBuilder } from '../../core';
-import { AgentType } from '../../types';
 import { ToolRegistry } from '../ToolRegistry';
 import { mockModel } from '../../testing';
 import type { DefinedTool } from '../defineTool';
@@ -27,7 +26,7 @@ describe('createShellTool (LOU-X6)', () => {
 
     const toolRegistry = new ToolRegistry();
     toolRegistry.register(tool);
-    const agent = AgentBuilder.create().setType(AgentType.SmartAssistant).setName('a').addTool(tool).build();
+    const agent = AgentBuilder.create().setName('a').addTool(tool).build();
     const provider = mockModel([{ toolCalls: [{ name: 'shell', args: { command: 'rm -rf build' } }] }, 'done']);
     const save = vi.fn().mockResolvedValue(undefined);
     const result = await AgentExecutor.execute({
