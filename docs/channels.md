@@ -153,6 +153,7 @@ await channels.resolveApproval({ id: 'the-approval-id', approved: true });
 | `httpChannel({ name?, verify? })` | JSON `{ sessionKey, input }` (`input` a string or content parts); anything else is a 400 | `200 { sessionId, text, finishReason }`; when paused, `approval` too and `text` is the prompt |
 | `webhookChannel({ secret?, auth?, name? })` | The JSON body's `input` string, or the whole body; a one-shot session unless the body has a `sessionKey` | `200` with the turn's `ExecutionResult`, as `WebhookTriggerAdapter` answers |
 | `slackChannel({ signingSecret, botToken, name?, fetch? })` | Slack Events API and interactivity requests (see [Slack](#slack)) | `200` at once; replies are posted in the Slack thread |
+| `discordChannel({ publicKey, applicationId, botToken?, name?, fetch? })` | Discord slash-command and button interactions (see [Discord](#discord)) | Deferred ack at once; the reply edits the original response |
 
 `webhookChannel({ secret })` checks an HMAC-SHA256 signature of the raw body in
 `x-signature-256: sha256=<hex>`; `auth` takes any
@@ -236,7 +237,68 @@ the handler's memory: after a restart, a thread continues on its next mention
 (its transcript is in the `store` you pass `mountChannels()`). Only one
 process should serve a Slack app's events.
 
-Discord is planned (LOU-P6), as are channels loaded from an agent directory's
-`channels/*.ts` (LOU-P7.2). `SlackTriggerAdapter` and `verifySlackSignature()`
+## Discord
+
+`discordChannel({ publicKey, applicationId, botToken?, name?, fetch? })`
+connects a Discord application over the HTTP Interactions endpoint (no gateway
+connection, no Discord library; Web Crypto and `fetch` only, so it also runs on
+Workers). The expected command is `/ask prompt:<text>`: one string option, and
+the `prompt` option (or the first string option) is the message.
+
+- Every request's `X-Signature-Ed25519` / `X-Signature-Timestamp` is verified
+  over `timestamp + body`; a missing or bad signature answers 401, as Discord
+  requires. `PING` is answered with `PONG`.
+- A command is acknowledged at once with a deferred response (within Discord's
+  3-second limit); the reply then edits the original response
+  (`PATCH /webhooks/{applicationId}/{token}/messages/@original`). Text over
+  2000 characters continues in follow-up messages.
+- Commands in the same channel share one session, keyed by guild and channel
+  (and the thread, in a thread).
+- A tool approval is posted with **Approve** and **Deny** buttons; the click
+  resumes the session and the continuation is a follow-up message. An
+  `ask_question` is posted as text, and the next `/ask` in that channel is the
+  answer.
+- Interaction tokens last 15 minutes, so a reply (or a click) later than that
+  fails. `botToken` is reserved for bot REST calls; replies need only the
+  interaction token.
+
+Set up the application at
+[discord.com/developers/applications](https://discord.com/developers/applications):
+
+1. **General Information**: copy the application id and the public key.
+2. **Interactions Endpoint URL**: `https://<host>/channels/discord` (Discord
+   sends a signed `PING` when you save it).
+3. **Installation**: the `applications.commands` scope is enough (add `bot`
+   only if you also want the bot user in the server).
+4. Register the command once (a guild command appears immediately; use
+   `/applications/{id}/commands` for a global one):
+
+```sh
+curl -X POST "https://discord.com/api/v10/applications/$APP_ID/guilds/$GUILD_ID/commands"   -H "Authorization: Bot $BOT_TOKEN" -H "Content-Type: application/json"   -d '{"name":"ask","description":"Ask the agent","options":[{"type":3,"name":"prompt","description":"Your message","required":true}]}'
+```
+
+```ts
+import * as http from 'node:http';
+import { createAgent, discordChannel, mountChannels } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ instructions: 'You are a helpful Discord bot.', provider });
+
+const channels = mountChannels(agent, [
+  discordChannel({
+    publicKey: process.env.DISCORD_PUBLIC_KEY ?? '',
+    applicationId: process.env.DISCORD_APPLICATION_ID ?? '',
+  }),
+]);
+
+http.createServer((req, res) => {
+  void channels(req, res).then((handled) => handled || res.writeHead(404).end());
+}).listen(3000);
+```
+
+Pending approvals and questions live in the handler's memory, so run one
+process per application.
+
+Channels loaded from an agent directory's `channels/*.ts` are planned
+(LOU-P7.2). `SlackTriggerAdapter` and `verifySlackSignature()`
 (see [Triggers](api-overview.md#triggers)) still work for one-shot replies
 through an incoming webhook.
