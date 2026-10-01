@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
   "entry": [
-    "src/cli/{dev,build,studio,mcp,doctor,init}.ts",
+    "src/cli/{dev,build,studio,mcp,doctor,init,eval}.ts",
     "src/data/index.ts",
     "**/*.test-d.ts",
     "**/*.{test,spec}.{ts,tsx}",

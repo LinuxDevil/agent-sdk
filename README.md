@@ -254,6 +254,7 @@ console.log(session.id, session.messages.length);
 - [Workspace tools](docs/workspace-tools.md) - file system and shell tools for coding agents, and their security model
 - [Tracing and observability](docs/observability.md) - OpenTelemetry GenAI spans, attribute table, content opt-in
 - [Testing](docs/testing.md) - unit-test agents deterministically with the scripted `mockModel`
+- [Evals](docs/evals.md) - trajectory evals with `defineEval()`, datasets, `mockModel`, judge evals, `loushy eval` with JUnit/JSON reports
 - [Sessions](docs/sessions.md) - multi-turn conversations: `agent.session()`, `MemorySessionStore`, `FileSessionStore`
 - [Skills](docs/skills.md) - on-demand instructions: `defineSkill()`, `loadSkills()`, how they save context
 - [Agent Forge](docs/agent-forge.md) - the visual dashboard (`loushy studio`): quickstart, first-agent walkthrough, hook authoring
@@ -500,21 +501,50 @@ and real OpenTelemetry bridges).
 
 ### Evals
 
-Agent-behavior regression tests, run via `vitest run` alongside your normal
-test suite — no new test runner:
+Agent-behavior regression tests: assert on the tools an agent called, their
+order and arguments, its steps and its reply. Deterministic with `mockModel`,
+datasets via `cases`, soft vs gate assertions, and `loushy eval` for a summary
+table plus JUnit/JSON reports in CI:
 
 ```typescript
 // support-agent.eval.ts
-import { defineEval, exactMatch, toolCallOrder } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+import { createAgent, defineEval, defineTool, includes } from '@loushy/build-ai-agent';
+import { mockModel } from '@loushy/build-ai-agent/testing';
+
+const lookupOrder = defineTool({
+  name: 'lookup_order',
+  description: 'Look up an order',
+  input: z.object({ orderId: z.string() }),
+  execute: ({ orderId }) => ({ orderId, status: 'shipped' }),
+});
 
 defineEval({
   name: 'looks up the order before replying',
-  agent, provider, toolRegistry,
-  input: 'Where is order #123?',
-  score: toolCallOrder([{ tool: 'lookupOrder' }]),
-  threshold: 1,
+  agent: () =>
+    createAgent({
+      tools: [lookupOrder],
+      provider: mockModel([
+        { toolCalls: [{ name: 'lookup_order', args: { orderId: '123' } }] },
+        { text: 'Order 123 has shipped.' },
+      ]),
+    }),
+  async test(t) {
+    await t.send('Where is order #123?');
+    t.completed();
+    t.calledTool('lookup_order', { args: { orderId: '123' } });
+    t.check('says shipped', t.reply, includes('shipped'));
+  },
 });
 ```
+
+```bash
+npx loushy eval --junit reports/evals.xml
+```
+
+See [Evals](docs/evals.md) for the assertions table, datasets, judge evals and
+a CI example. The original `{ agent, input, provider, score, threshold }` form
+of `defineEval()` keeps working.
 
 ### MCP tools & sandboxing
 
