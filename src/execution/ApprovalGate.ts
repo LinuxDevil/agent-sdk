@@ -165,12 +165,7 @@ export interface ApprovalStore {
 /**
  * Default ApprovalStore backed by the SDK's StorageService.
  *
- * Note: MemoryManager.ts (referenced by the LOU-C3 ticket as the source of
- * the "lock then read/write JSON" pattern) actually stores memories through
- * a MemoryRepository/data-layer abstraction, not StorageService directly -
- * there is no existing lock+JSON-against-StorageService usage elsewhere in
- * this codebase to copy verbatim. This implementation instead follows the
- * pattern StorageService itself documents and tests: acquireLock ->
+ * Follows the pattern StorageService documents and tests: acquireLock ->
  * read/write*JSON*Attachment -> releaseLock.
  */
 export class StorageServiceApprovalStore implements ApprovalStore {
