@@ -57,6 +57,19 @@ describe('AiSdkProvider', () => {
     expect(settings.messages).toEqual([{ role: 'user', content: 'hi' }]);
   });
 
+  it('LOU-V7.2: passes config.maxRetries (default 2) to the ai SDK calls', async () => {
+    generateTextMock.mockResolvedValue(textResult('stop'));
+    streamTextMock.mockResolvedValue({ textStream: (async function* () {})(), text: '', usage, finishReason: 'stop', toolCalls: [] });
+    const call = { model: '', messages: [] };
+
+    await new OpenAIProvider({ apiKey: 'k' }).generate(call);
+    await new OpenAIProvider({ apiKey: 'k', maxRetries: 0 }).generate(call);
+    await new OpenAIProvider({ apiKey: 'k', maxRetries: 0 }).stream(call);
+
+    expect(generateTextMock.mock.calls.map(([settings]) => settings.maxRetries)).toEqual([2, 0]);
+    expect(streamTextMock.mock.calls[0][0].maxRetries).toBe(0);
+  });
+
   it('LOU-V5: reports usage as-is, reads cache/reasoning tokens from provider metadata, and no usage when counts are NaN', async () => {
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });
 

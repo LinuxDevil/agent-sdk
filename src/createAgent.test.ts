@@ -48,7 +48,8 @@ describe('createAgent', () => {
       const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'Be brief.' });
       const { text } = await agent.send('Hello!');
 
-      expect(createSpy).toHaveBeenCalledWith('openai', { defaultModel: 'gpt-4o-mini', apiKey: 'sk-test' });
+      // maxRetries: 0 - createAgent() retries in its own withRetry() wrapper (LOU-V7.2).
+      expect(createSpy).toHaveBeenCalledWith('openai', { maxRetries: 0, defaultModel: 'gpt-4o-mini', apiKey: 'sk-test' });
       expect(text).toBe('Hi from the model');
     });
 
@@ -83,6 +84,7 @@ describe('createAgent', () => {
       createAgent({ instructions: 'x' });
 
       expect(createSpy).toHaveBeenCalledWith('anthropic', {
+        maxRetries: 0,
         defaultModel: 'claude-3-5-haiku-latest',
         apiKey: 'sk-ant',
       });

@@ -2257,6 +2257,40 @@ what the examples and the Quick Start use by default.
 
 ## Provider retries and fallback
 
+`createAgent()` retries failed model calls on its own, and can fall back to
+other models:
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  retry: { maxRetries: 3, backoff: { initialMs: 1000 } }, // default { maxRetries: 2 }; false turns it off
+  fallbackModels: ['anthropic/claude-3-5-haiku-latest'], // tried in order once the retries are used up
+});
+
+for await (const event of agent.stream('Hello!')) {
+  if (event.type === 'provider.retry') console.warn(`retry ${event.attempt} in ${event.delayMs}ms: ${event.error.message}`);
+  if (event.type === 'provider.fallback') console.warn(`falling back from ${event.from} to ${event.to}`);
+}
+```
+
+- `retry` takes the `withRetry()` options below. It applies to the `model`
+  string (or the model picked from the environment) and to every
+  `fallbackModels` entry. createAgent builds those providers with the `ai`
+  SDK's own retries off (`maxRetries: 0`), so retries happen in one place and
+  the default `{ maxRetries: 2 }` makes as many calls as before.
+- A `provider` instance you pass keeps its own retry behaviour; it is wrapped
+  in `withRetry()` only when you set `retry`. `fallbackModels` work with it too.
+- `fallbackModels` are `provider/model` strings, resolved like `model` when the
+  agent is created. The agent runs `withFallback([withRetry(primary), withRetry(fallback1), ...])`:
+  every call starts with the primary model.
+- `stream()` and `session.stream()` report each retry as a `provider.retry`
+  event and each switch as `provider.fallback` (see
+  [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#event-schema-version-1)). `send()` returns the
+  final result as before.
+
+To build the same thing by hand, or for providers you construct yourself,
 `withRetry(provider, options)` and `withFallback(providers, options)` wrap any
 `LLMProvider` and return another one, so they compose and can be passed
 anywhere a provider is accepted:
@@ -2294,8 +2328,11 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
   `name` and `defaultModel` report the provider that served the latest call.
 - `resilientProvider(provider, { maxRetries, timeout })` applies the
   `LLMProviderConfig` fields of the same names.
-- The built-in providers also run the `ai` SDK's own internal retries (2 by
-  default) inside each attempt.
+- The built-in providers pass their config's `maxRetries` (default 2) to the
+  `ai` SDK's own internal retries, which run inside each `withRetry` attempt.
+  Build a provider you wrap with `maxRetries: 0`
+  (`new OpenAIProvider({ apiKey, maxRetries: 0 })`) to retry in one place.
+  `createAgent()` does this for the models it resolves.
 
 ## `createAgent()` options
 
@@ -2315,6 +2352,8 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `approvalStore` | Where a `needsApproval` pause is saved (default: a per-agent `InMemoryApprovalStore`); see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md). |
 | `approve`  | `(call) => boolean`: decide approvals in code instead of pausing. |
 | `projectInstructions` | `true` or `{ cwd?, files? }`: append the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (off by default; see [Project instructions](#project-instructions)). |
+| `retry`    | `withRetry()` options for failed model calls, or `false`. Default `{ maxRetries: 2 }` for `model` strings; a `provider` instance is wrapped only when set. See [Provider retries and fallback](#provider-retries-and-fallback). |
+| `fallbackModels` | `provider/model` strings tried in order when the model still fails after its retries. |
 
 With neither `model` nor `provider`, `createAgent()` resolves from the
 environment: `LOUSHY_MODEL` (a `'provider/model'` string) if set, otherwise
@@ -3358,6 +3397,28 @@ Misconfiguration errors say how to fix themselves: a missing key names the
 variable, an unknown prefix lists the supported ones and suggests the closest,
 and a missing peer package prints the exact `npm install` command.
 
+### Retries and fallback models
+
+`createAgent()` retries a failed model call (rate limit, timeout, network
+error, 5xx) twice by default, and with `fallbackModels` moves on to the next
+model when the call still fails:
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  retry: { maxRetries: 3 }, // or false
+  fallbackModels: ['anthropic/claude-3-5-haiku-latest', 'openrouter/meta-llama/llama-3.1-70b-instruct'],
+});
+```
+
+The `model` string and each fallback are resolved with the `ai` SDK's own
+retries off, so `retry` is the only retry layer. A `provider` instance is
+wrapped only when you set `retry`. `agent.stream()` reports `provider.retry`
+and `provider.fallback` events. Details in
+[Provider retries and fallback](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#provider-retries-and-fallback).
+
 ## Which model runs?
 
 In order: the agent's own `settings.model` (set with
@@ -3789,6 +3850,8 @@ The event types and their extra fields:
 | `approval.requested` | `approvalId: string`, `toolCallId`, `toolName`, `args: Record<string, unknown>` | A tool call needs a human decision. The run then stops; resume it with `agent.approvals.resolve()` or `resumeAfterApproval()` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)). |
 | `step.done`          | `step: number`, `finishReason: string`, `usage?: { promptTokens, completionTokens, totalTokens }` | A step ends. `finishReason` is the model's (`'stop'`, `'tool_calls'`, `'length'`, ...), or `'awaiting-approval'`, `'aborted'` or `'error'` when the step ended that way. `usage` is this step's model call, absent when the call produced no response. |
 | `error`              | `error: { name: string, message: string }` | An error. If it ends the run, `run.done` with `finishReason: 'error'` follows. A provider error retried under `surfaceRetryableProviderErrors` is followed by further steps instead. |
+| `provider.retry`     | `attempt: number`, `maxRetries: number`, `delayMs: number`, `error: { message: string, category?: string }`, `provider: string` | A model call failed and is retried after `delayMs` (`createAgent({ retry })` or any `withRetry()` provider). `attempt` is the attempt that failed (1 = first); `category` is `'rate-limit'`, `'timeout'`, ... and absent when unknown (a 5xx, for example). |
+| `provider.fallback`  | `from: string`, `to: string`, `error: { message: string }` | A model call still failed after its retries and the next provider takes over (`createAgent({ fallbackModels })` or any `withFallback()` provider). `from` and `to` are provider names. |
 | `run.done`           | `finishReason: string`, `text: string`, `usage?: { promptTokens, completionTokens, totalTokens }` | Last event of every run, exactly once, including aborted, failed and awaiting-approval runs. `finishReason` and `text` match `run.result`; a failed run has `finishReason: 'error'`, `text: ''` and no `usage`. |
 
 Optional fields are left out when they have no value. They are never
@@ -3800,7 +3863,8 @@ Optional fields are left out when they have no value. They are never
 - Each `step.start` is followed by exactly one `step.done` with the same
   `step`, before the next `step.start`. Everything a step does happens between
   the two.
-- Inside a step: `text.delta` events, then `text.done`, then the tool events.
+- Inside a step: `provider.retry` / `provider.fallback` events (if the model
+  call fails), then `text.delta` events, then `text.done`, then the tool events.
 - Tool calls of one step run in parallel (see `toolConcurrency`):
   `tool.start` events come in the model's call order and `tool.done` /
   `tool.error` events in completion order. Match them by `toolCallId`.
