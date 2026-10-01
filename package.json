@@ -44,9 +44,9 @@
       "require": "./dist/types/index.js"
     },
     "./testing": {
-      "types": "./dist/data/mocks.d.ts",
-      "import": "./dist/data/mocks.mjs",
-      "require": "./dist/data/mocks.js"
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.mjs",
+      "require": "./dist/testing/index.js"
     },
     "./otel": {
       "types": "./dist/execution/otel.d.ts",
@@ -93,6 +93,7 @@
     "test:evals:judge": "vitest run --config vitest.judge.config.ts",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
+    "test:types": "vitest run --typecheck.only",
     "example:tracing:console": "tsx examples/tracing/run-console.ts",
     "example:tracing:otel": "tsx examples/tracing/run-otel.ts",
     "example:support-bot": "tsx examples/support-bot/index.ts",
@@ -134,7 +135,7 @@
   },
   "homepage": "https://github.com/LinuxDevil/agent-sdk#readme",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.19.0"
   },
   "peerDependencies": {
     "@ai-sdk/anthropic": "^0.0.42",

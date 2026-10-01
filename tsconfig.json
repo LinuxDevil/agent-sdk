@@ -23,5 +23,5 @@
     "types": ["node"]
   },
   "include": ["src/**/*", "typings/**/*.d.ts"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts", "**/*.test-d.ts"]
 }

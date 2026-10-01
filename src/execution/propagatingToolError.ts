@@ -36,5 +36,46 @@ export function toolErrorMessage(error: unknown): string {
   if (error instanceof PropagatingToolError) {
     throw error;
   }
-  return (error as Error).message;
+  return (error as Error | undefined)?.message ?? String(error);
+}
+
+/** Max characters of an error message sent to the model (see {@link toolErrorResult}). */
+const MAX_TOOL_ERROR_MESSAGE_LENGTH = 2000;
+
+/**
+ * The structured tool result the model sees when a tool's `execute` throws
+ * (mirrors `ToolArgumentsValidationError.toToolResult()`, minus `issues`).
+ *
+ * @example
+ * ```ts
+ * // execute: async () => { throw new TypeError('bad input') }
+ * // tool result the model sees:
+ * // { error: 'TypeError', toolName: 'search', message: 'bad input' }
+ * ```
+ */
+interface ToolErrorResult {
+  /** The thrown error's `name` (`'Error'`, `'TypeError'`, ...). */
+  error: string;
+  toolName: string;
+  /** The error message only (never a stack), truncated to 2,000 characters. */
+  message: string;
+}
+
+/**
+ * Builds the {@link ToolErrorResult} for a thrown tool error. Only the name
+ * and (length-capped) message are exposed - never the stack - so a huge or
+ * sensitive error cannot blow the context window.
+ */
+export function toolErrorResult(toolName: string, error: unknown): ToolErrorResult {
+  const err = error as { name?: unknown; message?: unknown } | null | undefined;
+  const raw = typeof err?.message === 'string' ? err.message : String(error);
+  const message =
+    raw.length > MAX_TOOL_ERROR_MESSAGE_LENGTH
+      ? `${raw.slice(0, MAX_TOOL_ERROR_MESSAGE_LENGTH)}... (truncated)`
+      : raw;
+  return {
+    error: typeof err?.name === 'string' && err.name ? err.name : 'Error',
+    toolName,
+    message,
+  };
 }

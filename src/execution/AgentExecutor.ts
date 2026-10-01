@@ -12,6 +12,7 @@ import { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGat
 import { CheckpointStore } from './checkpoint';
 import { TraceExporter, withSpan } from './tracing';
 import { HookRegistry } from './hooks';
+import { isAbortError } from './errors';
 import { ToolCallOutcome, parseToolArguments, runToolCall } from './toolCallExecution';
 import {
   buildTools,
@@ -487,11 +488,14 @@ export class AgentExecutor {
     try {
       return await generateInSpan(options, generateRequest, state.messages, agentSpanId);
     } catch (generateError) {
-      // LOU-V1: a rejection caused by the abort is not a provider failure -
-      // never compact it or fold it into the conversation for a retry.
-      if (options.signal?.aborted) {
+      // A cancellation is not a provider failure - never compact it or fold
+      // it into the conversation for a retry. With `signal` (LOU-V1) the
+      // loop turns it into an 'aborted' result; an AbortError thrown without
+      // one (see isAbortError()) reaches the caller untouched.
+      if (options.signal?.aborted || isAbortError(generateError)) {
         throw generateError;
       }
+
       const { compacted, error: compactedError } = compactGenerateError(
         generateError,
         options.provider.name
@@ -568,12 +572,20 @@ export class AgentExecutor {
         toolResult,
       });
 
+      // A failed tool carries its message as `{error}` (the same shape
+      // resume.ts uses) - `result` is null then, so the model would
+      // otherwise see a bare "null" and never learn the call failed. A
+      // failure that already has a structured result (argument validation)
+      // keeps it, so the model gets the per-issue detail.
+      const failed = toolResult.error !== undefined;
+      const failurePayload = toolResult.result ?? { error: toolResult.error };
       state.messages.push({
         role: 'tool',
-        content: JSON.stringify(toolResult.result),
+        content: JSON.stringify(failed ? failurePayload : toolResult.result),
         name: toolCall.function.name,
         toolCallId: toolCall.id,
         toolName: toolCall.function.name,
+        ...(failed && { isError: true }),
       });
 
       await saveStepCheckpoint(options, state);

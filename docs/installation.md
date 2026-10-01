@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Node.js **18 or newer** (`engines.node` in `package.json`).
+- Node.js **22.19 or newer** (`engines.node` in `package.json`; the built-in `http` tool depends on `undici@8`, which needs it).
 - TypeScript is optional but recommended - the SDK ships full type
   definitions.
 

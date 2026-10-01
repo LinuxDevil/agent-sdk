@@ -118,7 +118,7 @@ export async function resumeAfterApproval(
     : toolResultMessage(pending, {
         error: 'Tool execution was rejected by the reviewer',
         note: decision.note,
-      });
+      }, true);
   messages.push(toolMessage);
 
   return continueResumedRun(snapshot, messages, {
@@ -175,13 +175,14 @@ async function clearStaleCheckpoint(
 }
 
 /** The `tool` message carrying a resumed tool call's result (or rejection). */
-function toolResultMessage(pending: PendingApproval, payload: unknown): Message {
+function toolResultMessage(pending: PendingApproval, payload: unknown, isError = false): Message {
   return {
     role: 'tool',
     content: JSON.stringify(payload),
     name: pending.toolName,
     toolCallId: pending.toolCallId,
     toolName: pending.toolName,
+    ...(isError && { isError }),
   };
 }
 
@@ -247,7 +248,7 @@ async function runApprovedToolCall(
     await hooks.runPostToolCall(hookCtx, { result, error: toolError });
   }
 
-  return toolResultMessage(pending, toolError ? { error: toolError } : result);
+  return toolResultMessage(pending, toolError ? { error: toolError } : result, Boolean(toolError));
 }
 
 /**

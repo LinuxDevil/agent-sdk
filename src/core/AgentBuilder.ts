@@ -1,6 +1,7 @@
 import { AgentConfig, AgentType, ToolConfiguration, AgentFlow } from '../types';
 import { validateAgentConfig, validateAgentTools } from '../agent-types';
 import { nanoid } from 'nanoid';
+import type { DefinedTool } from '../tools/defineTool';
 
 /**
  * Fluent API for building agents
@@ -41,13 +42,27 @@ export class AgentBuilder {
   }
 
   /**
-   * Add a tool
+   * Add a tool: either a `defineTool()` result (keyed by its name; register
+   * the same tool with a ToolRegistry for execution) or an explicit
+   * key + configuration.
    */
-  public addTool(key: string, config: ToolConfiguration): this {
+  public addTool(tool: DefinedTool): this;
+  public addTool(key: string, config: ToolConfiguration): this;
+  public addTool(keyOrTool: string | DefinedTool, config?: ToolConfiguration): this {
     if (!this.config.tools) {
       this.config.tools = {};
     }
-    this.config.tools[key] = config;
+    if (typeof keyOrTool === 'string') {
+      if (!config) {
+        throw new Error(
+          `AgentBuilder.addTool('${keyOrTool}'): a configuration is required. ` +
+            `Example: addTool('${keyOrTool}', { tool: '${keyOrTool}' }), or pass a defineTool() result.`
+        );
+      }
+      this.config.tools[keyOrTool] = config;
+    } else {
+      this.config.tools[keyOrTool.name] = { tool: keyOrTool.name, description: keyOrTool.description };
+    }
     return this;
   }
 

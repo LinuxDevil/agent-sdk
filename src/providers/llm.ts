@@ -13,11 +13,28 @@ export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
  */
 export interface Message {
   role: MessageRole;
+  /**
+   * Message text. For a `tool` message this is the tool's result, usually
+   * JSON-encoded (providers decode it back to a value before sending it).
+   */
   content: string;
   name?: string;
+  /** For a `tool` message: the `ToolCall.id` this message answers. */
   toolCallId?: string;
+  /** For a `tool` message: the name of the tool that produced the result. */
   toolName?: string;
+  /** For an `assistant` message: the tool calls the model made this turn. */
   toolCalls?: ToolCall[];
+  /**
+   * For a `tool` message: `true` when the tool failed and `content` carries
+   * the error (as `{"error": "..."}`) rather than a result. Providers that
+   * support it (e.g. Anthropic's `is_error`) forward this to the model.
+   *
+   * @example
+   * { role: 'tool', toolCallId: 'call_1', toolName: 'search',
+   *   content: '{"error":"timeout"}', isError: true }
+   */
+  isError?: boolean;
 }
 
 /**
