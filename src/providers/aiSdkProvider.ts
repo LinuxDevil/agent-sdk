@@ -3,9 +3,9 @@
  *
  * OpenAIProvider, AnthropicProvider, OllamaProvider and OpenRouterProvider are
  * all thin adapters over the same 'ai' SDK calls (generateText/streamText):
- * they only differ in which model factory they use, their default model, how
- * (if at all) they reshape messages, and their model capability/listing
- * methods. Everything else - tool conversion, call settings, tool-call and
+ * they only differ in which model factory they use, their default model, and
+ * their model capability/listing methods. Everything else - message
+ * conversion (including tool-call turns), tool conversion, call settings, tool-call and
  * finish-reason mapping, and the StreamResult/StreamChunk shape - lives here.
  *
  * This module deliberately imports only from 'ai' (never from the optional
@@ -13,7 +13,19 @@
  * importing one provider never pulls in another provider's optional peer.
  */
 
-import { generateText, streamText, tool as aiTool, LanguageModel, ToolSet } from 'ai';
+import {
+  generateText,
+  streamText,
+  tool as aiTool,
+  LanguageModel,
+  ToolSet,
+  CoreMessage,
+  CoreAssistantMessage,
+  CoreToolMessage,
+  TextPart,
+  ToolCallPart,
+  ToolResultPart,
+} from 'ai';
 import {
   LLMProvider,
   LLMProviderConfig,
@@ -49,30 +61,69 @@ interface AiSdkStreamResult {
   toolCalls: PromiseLike<AiSdkToolCall[]>;
 }
 
+/** `JSON.parse(text)`, or `fallback` when `text` is not a JSON string. */
+function parseJsonOr(text: unknown, fallback: unknown): unknown {
+  if (typeof text !== 'string') return fallback;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return fallback;
+  }
+}
+
 /**
- * Convert our Message type to 'ai' SDK CoreMessage
+ * An assistant turn that made tool calls becomes an optional text part
+ * followed by one `tool-call` part per call. Arguments are decoded from our
+ * JSON string to the object the 'ai' SDK expects (`{}` if unparseable, so
+ * the turn is still accepted by providers that require an object).
  */
-function toCoreMessages(messages: Message[]): any[] {
-  return messages.map((msg) => {
+function toAssistantToolCallMessage(msg: Message, toolCalls: ToolCall[]): CoreAssistantMessage {
+  const parts: Array<TextPart | ToolCallPart> = msg.content ? [{ type: 'text', text: msg.content }] : [];
+  for (const tc of toolCalls) {
+    parts.push({
+      type: 'tool-call',
+      toolCallId: tc.id,
+      toolName: tc.function.name,
+      args: parseJsonOr(tc.function.arguments, {}),
+    });
+  }
+  return { role: 'assistant', content: parts };
+}
+
+/**
+ * A tool message becomes a `tool-result` part linked to its call. The
+ * result is decoded from JSON (providers JSON-encode it again on the wire,
+ * so passing our encoded string would double-encode it); non-JSON text and
+ * non-string content are passed through unchanged.
+ */
+function toToolResultMessage(msg: Message, toolNames: Map<string, string>): CoreToolMessage {
+  const toolCallId = msg.toolCallId ?? '';
+  const part: ToolResultPart = {
+    type: 'tool-result',
+    toolCallId,
+    toolName: msg.toolName ?? msg.name ?? toolNames.get(toolCallId) ?? 'unknown',
+    result: parseJsonOr(msg.content, msg.content),
+  };
+  if (msg.isError) part.isError = true;
+  return { role: 'tool', content: [part] };
+}
+
+/**
+ * Convert our Message history to 'ai' SDK CoreMessages, preserving the
+ * assistant's tool-call turns and linking each tool result to its call by
+ * id, as every provider (OpenAI, Anthropic, Ollama, OpenRouter) requires.
+ */
+function toCoreMessages(messages: Message[]): CoreMessage[] {
+  const toolNames = new Map<string, string>();
+  return messages.map((msg): CoreMessage => {
     if (msg.role === 'tool') {
-      return {
-        role: 'tool',
-        content: [
-          {
-            type: 'tool-result',
-            toolCallId: msg.toolCallId || '',
-            toolName: msg.name || 'unknown',
-            result: msg.content,
-          },
-        ],
-      };
+      return toToolResultMessage(msg, toolNames);
     }
-    // For other roles, return as-is
-    return {
-      role: msg.role,
-      content: msg.content,
-      ...(msg.toolCalls && { toolCalls: msg.toolCalls }),
-    };
+    if (msg.role === 'assistant' && msg.toolCalls?.length) {
+      for (const tc of msg.toolCalls) toolNames.set(tc.id, tc.function.name);
+      return toAssistantToolCallMessage(msg, msg.toolCalls);
+    }
+    return { role: msg.role, content: msg.content ?? '' };
   });
 }
 
@@ -195,7 +246,7 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
   protected abstract createModel(modelId: string): LanguageModel;
 
   /** Convert our messages to 'ai' SDK CoreMessages. */
-  protected convertMessages(messages: Message[]): any[] {
+  protected convertMessages(messages: Message[]): CoreMessage[] {
     return toCoreMessages(messages);
   }
 
