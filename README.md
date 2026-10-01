@@ -76,7 +76,7 @@ agent can be an `agent.yaml` spec served with `npx loushy dev agent.yaml`
 - **Memory**: `defineMemory()` slots, scoped globally, per session or per user, are recalled into the prompt at the start of a run and read and written with `remember_` / `recall_` tools. [Memory](docs/memory.md)
 - **Structured output**: `output: zodSchema` makes the final reply a typed, validated `result.object`, with one repair step. [Structured output](docs/structured-output.md)
 - **Streaming**: `agent.stream()` and `session.stream()` yield typed, versioned JSON events ready for SSE. [Streaming](docs/streaming.md)
-- **UI bindings**: `useLoushyAgent()` from `@loushy/build-ai-agent/react` turns the event stream into chat state, with approvals. [React](docs/react.md)
+- **UI bindings**: `useLoushyAgent()` from `@loushy/build-ai-agent/react` (and `/vue`) turns the event stream into chat state, with approvals. [React](docs/react.md), [Vue](docs/vue.md)
 - **Durable execution**: `sessionId` + `checkpointStore` resume a crashed or paused run without redoing finished tools. [Durable execution](docs/durable-execution.md)
 - **Cancellation, usage and cost**: pass an `AbortSignal`; every result carries token usage and USD cost for priced models. [API overview](docs/api-overview.md#cancellation)
 - **Providers**: OpenAI, Anthropic, OpenRouter, Ollama or a mock, with `withRetry()` and `withFallback()`. [Providers](docs/providers.md)

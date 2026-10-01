@@ -5,10 +5,7 @@
  * and drives it through scaffold() -> build() -> describe(), printing the
  * describe() output (the command to run/deploy the artifact) to stdout.
  *
- * Flag parsing deliberately follows the same hand-rolled convention
- * bin/loushy.js already uses for `loushy dev`'s --port/--host: find the
- * first arg starting with `--<name>`, take its value from after `=` or,
- * failing that, from the next argv entry. So `--target=stub` and
+ * Flags are parsed by the shared helper in args.ts, so `--target=stub` and
  * `--target stub` both work.
  */
 import * as path from 'node:path';
@@ -19,31 +16,28 @@ import {
   registerAdapter,
   registerBuiltInAdapters,
 } from '../deploy';
+import { parseCommand, stringValue, type CommandSpec } from './args';
 
 export interface BuildArgs {
   target?: string;
   agent?: string;
   out?: string;
+  /** `-h` / `--help` was given: print the usage, run nothing. */
+  help?: boolean;
 }
 
-function readFlag(argv: string[], name: string): string | undefined {
-  const flag = argv.find((arg) => arg === `--${name}` || arg.startsWith(`--${name}=`));
-  if (!flag) return undefined;
-  return flag.split('=')[1] || nextValue(argv, argv.indexOf(flag) + 1);
-}
+const USAGE = 'Usage: loushy build --target=<name> --agent=<path> [--out=<dir>]';
 
-/** The value in `argv[index]` when it isn't itself another --flag. */
-function nextValue(argv: string[], index: number): string | undefined {
-  const next = argv[index];
-  return next && !next.startsWith('--') ? next : undefined;
-}
+const SPEC: CommandSpec = {
+  command: 'build',
+  usage: USAGE,
+  options: { target: { type: 'string' }, agent: { type: 'string' }, out: { type: 'string' } },
+};
 
+/** Parses `loushy build` arguments (`--flag=value` or `--flag value`); throws `LOUSHY_CONFIG_INVALID` for an unknown flag or a flag without its value. */
 export function parseBuildArgs(argv: string[]): BuildArgs {
-  return {
-    target: readFlag(argv, 'target'),
-    agent: readFlag(argv, 'agent'),
-    out: readFlag(argv, 'out'),
-  };
+  const { values, help } = parseCommand(SPEC, argv);
+  return { target: stringValue(values.target), agent: stringValue(values.agent), out: stringValue(values.out), help: help || undefined };
 }
 
 /**
@@ -81,15 +75,23 @@ const defaultIO: BuildIO = {
   stderr: (line) => console.error(line),
 };
 
-const USAGE = 'Usage: loushy build --target=<name> --agent=<path> [--out=<dir>]';
-
 /**
  * Runs `loushy build` for the given argv (everything after `build`) and
  * resolves with the process exit code (0 on success, 1 on any error).
  * Never throws - adapter errors are reported on stderr.
  */
 export async function runBuild(argv: string[], io: BuildIO = defaultIO): Promise<number> {
-  const args = parseBuildArgs(argv);
+  let args: BuildArgs;
+  try {
+    args = parseBuildArgs(argv);
+  } catch (error) {
+    io.stderr(`Error: ${(error as Error).message}`);
+    return 1;
+  }
+  if (args.help) {
+    io.stdout(USAGE);
+    return 0;
+  }
 
   if (!args.target) {
     io.stderr(`Error: --target is required. ${USAGE}`);

@@ -9,7 +9,7 @@
  * Only load directories you trust.
  */
 import path from 'node:path';
-import { createAgent, type CreateAgentConfig, type SimpleAgent } from '../createAgent';
+import { createAgent, type CreateAgentConfig, type PerRun, type SimpleAgent } from '../createAgent';
 import type { LLMProvider } from '../providers/llm';
 import { loadSkills } from '../skills/loadSkills';
 import type { Skill } from '../skills/defineSkill';
@@ -66,7 +66,8 @@ export interface ResolvedAgentDir {
 /** The model source a parent hands down to sub-agents that do not choose their own. */
 interface Inherited {
   provider?: LLMProvider;
-  model?: string;
+  /** A function of the run only from overrides (LOU-V15). */
+  model?: PerRun<string>;
 }
 
 async function readInstructions(dir: string): Promise<{ file: string; text: string } | undefined> {
@@ -85,7 +86,7 @@ function chooseInstructions(
   config: AgentDirConfig,
   fromFile: { file: string; text: string } | undefined,
   overrides: AgentDirOverrides
-): string {
+): PerRun<string> {
   const override = overrides.instructions ?? overrides.prompt;
   if (override !== undefined) return override;
   if (fromFile && config.instructions !== undefined) {
@@ -117,7 +118,7 @@ function chooseModelSource(
     model = inherited.model;
   }
   // A 'provider/model' string from a file names its own provider; it cannot ride along with a provider instance.
-  if (provider && model?.includes('/') && overrides.model === undefined) model = undefined;
+  if (provider && typeof model === 'string' && model.includes('/') && overrides.model === undefined) model = undefined;
   return { provider, model };
 }
 

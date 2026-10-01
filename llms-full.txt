@@ -75,7 +75,7 @@ agent can be an `agent.yaml` spec served with `npx loushy dev agent.yaml`
 - **Memory**: `defineMemory()` slots, scoped globally, per session or per user, are recalled into the prompt at the start of a run and read and written with `remember_` / `recall_` tools. [Memory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md)
 - **Structured output**: `output: zodSchema` makes the final reply a typed, validated `result.object`, with one repair step. [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)
 - **Streaming**: `agent.stream()` and `session.stream()` yield typed, versioned JSON events ready for SSE. [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)
-- **UI bindings**: `useLoushyAgent()` from `@loushy/build-ai-agent/react` turns the event stream into chat state, with approvals. [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md)
+- **UI bindings**: `useLoushyAgent()` from `@loushy/build-ai-agent/react` (and `/vue`) turns the event stream into chat state, with approvals. [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md), [Vue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/vue.md)
 - **Durable execution**: `sessionId` + `checkpointStore` resume a crashed or paused run without redoing finished tools. [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)
 - **Cancellation, usage and cost**: pass an `AbortSignal`; every result carries token usage and USD cost for priced models. [API overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#cancellation)
 - **Providers**: OpenAI, Anthropic, OpenRouter, Ollama or a mock, with `withRetry()` and `withFallback()`. [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md)
@@ -738,6 +738,49 @@ How the pieces fit:
 | `SDKError`, `ERROR_CODES`    | Base class of the SDK's errors: a stable `code`, a `hint` and a `docs` link (see [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md)). |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
 
+### Dynamic config
+
+`createAgent()`'s `model`, `instructions` (or `prompt`) and `tools` each take
+the static value or a function of the run, `(ctx) => value | Promise<value>`
+(type `PerRun<T>`). `ctx` is `{ sessionId?, input, metadata? }` (type
+`RunConfigContext`): the `sessionId` of `send()` / `stream()` or the
+`agent.session()` id, the run's user input, and the `metadata` call option of
+`send()`, `stream()`, `session.send()` and `session.stream()`. The functions
+run once when a run starts, before the first model call, and again on every
+session turn. Everything else applies to what they return: `fallbackModels`
+and `retry`, `projectInstructions`, memory, skills, sub-agents, MCP tools,
+permissions, approvals and guardrails. A dynamic agent used as a sub-agent
+resolves with the task prompt as `input`.
+
+```ts
+import { createAgent, defineTool } from '@loushy/build-ai-agent';
+import { mockModel } from '@loushy/build-ai-agent/testing';
+import { z } from 'zod';
+
+const refund = defineTool({ name: 'refund', description: 'Refunds an order', input: z.object({ orderId: z.string() }), execute: async () => 'ok' });
+
+const agent = createAgent({
+  provider: mockModel(['Hello!']),
+  // A cheaper model for short inputs, tenant instructions, tools by role.
+  model: ({ input }) => (typeof input === 'string' && input.length < 200 ? 'small-model' : 'large-model'),
+  instructions: ({ metadata }) => `You are the support agent of ${String(metadata?.tenant ?? 'Acme')}.`,
+  tools: ({ metadata }) => (metadata?.role === 'admin' ? [refund] : []),
+});
+
+await agent.send('Hi', { metadata: { tenant: 'Globex', role: 'admin' } });
+```
+
+A function that throws fails the run with `LOUSHY_CONFIG_RESOLVER_FAILED`
+(`error.field` names the option, `error.cause` is the thrown error): `send()`
+rejects, `stream()` ends with an `error` event and a session keeps its
+transcript as it was. A run paused for an approval or a question keeps the
+`ctx` and the model it resolved in the paused snapshot: resuming it, even from
+another process, uses that model (it never switches mid-turn) and calls the
+`tools` function again with the same `ctx`. A run resumed from a crash
+checkpoint (`agent.resume(id)`) resolves again with `input: []` and no
+`metadata`. With only static values nothing changes: the agent is built once,
+when it is created.
+
 ### UI bindings
 
 `@loushy/build-ai-agent/react` exports `useLoushyAgent(source, options?)`, a
@@ -745,7 +788,9 @@ React hook that runs an agent in process (`{ agent, sessionId? }`) or over HTTP
 (`{ url }`) and returns `messages`, `status`, `pendingApproval`,
 `send()`, `stop()`, `approve()` and `reject()`. Its framework-neutral parts,
 `reduceAgentEvents()` and `parseEventStream()`, are exported too. See
-[React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md).
+[React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md). `@loushy/build-ai-agent/vue` exports the same
+`useLoushyAgent()` as a Vue 3 composable, with the state as refs. See
+[Vue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/vue.md).
 
 ### Sub-agents
 
@@ -2462,6 +2507,14 @@ loushy doctor [agent.yaml|json] [--json]
 loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]]
 ```
 
+Every command parses its flags the same way (Node's `parseArgs`, strict):
+`--flag value` and `--flag=value` both work, the last of a repeated flag wins
+(`--tag` accumulates), `--` ends the flags, and `-h` / `--help` prints the
+command's usage and exits 0. An unknown flag, a flag without its value (it
+never takes the next flag as its value) or an extra argument fails with
+`LOUSHY_CONFIG_INVALID` and the usage line. A value that starts with `-` needs
+the `=` form: `--model=-x`.
+
 `npm create loushy-agent my-agent` runs `loushy init` with the same arguments.
 While the package is not on npm, scaffold from a checkout of this repository
 with `node bin/loushy.js init my-agent --sdk-path .` (see
@@ -4141,6 +4194,19 @@ durable, but the agent has no checkpoint store.
 
 **Example:** `createAgent({ provider }).send('hi', { sessionId: 'job-1' })`.
 
+### LOUSHY_CONFIG_RESOLVER_FAILED
+
+**Means:** a `createAgent()` option given as a function of the run (`model`,
+`instructions` / `prompt` or `tools`) threw while the run's config was being
+resolved. The run never started: `send()` rejects, `stream()` ends with an
+`error` event, and a session's transcript is left as it was. `error.field`
+names the option and `error.cause` is what the function threw.
+
+**Fix:** fix the function named in the message. See
+[Dynamic config](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#dynamic-config).
+
+**Example:** `createAgent({ provider, model: ({ metadata }) => plans[metadata.plan].model })` with an unknown plan.
+
 ## Providers and peers
 
 ### LOUSHY_PROVIDER_SPEC_INVALID
@@ -5146,11 +5212,26 @@ fill it from code with `provider.add(scopeKey, { text })`.
 |---|---|
 | `inMemoryMemory({ maxItems? })` | This process; lost on restart. For tests and demos. |
 | `fileMemory({ dir, maxItems? })` | One JSON file per scope key in `dir` (key URI-encoded), written atomically. |
+| `sqliteMemory(store, { maxItems? })` (from `/sqlite`) | A `memory_items` table in the agent's `SqliteStore` file, one JSON array per scope key. |
 
-Both keep at most `maxItems` items per scope key (default 1000; adding one
+All keep at most `maxItems` items per scope key (default 1000; adding one
 more drops the oldest) and match a `query` by keyword: an item matches when it
-contains one of the query's words of three or more letters, ignoring case. A
-SQLite provider over the agent's `SqliteStore` is planned (LOU-W6.2).
+contains one of the query's words of three or more letters, ignoring case.
+
+### SQLite
+
+Pass the same `SqliteStore` to the agent and to the provider, and sessions,
+checkpoints and memory share one database file. An existing file gains the
+table when it is opened. Keep the store open while the agent runs.
+
+```ts no-run
+import { createAgent, defineMemory } from '@loushy/build-ai-agent';
+import { SqliteStore, sqliteMemory } from '@loushy/build-ai-agent/sqlite';
+
+const store = new SqliteStore('./.loushy/agent.db');
+const notes = defineMemory({ name: 'notes', scope: 'global', provider: sqliteMemory(store) });
+const agent = createAgent({ model: 'openai/gpt-4o-mini', store, memory: [notes] });
+```
 
 For semantic search or a hosted store, implement `MemoryProvider`:
 
@@ -7793,6 +7874,71 @@ const template = 'Hello {{ name }}! You have {{ count }} messages.';
 const result = renderTemplate(template, { name: 'Alice', count: 5 });
 // "Hello Alice! You have 5 messages."
 ```
+
+# Vue
+
+Source: docs/vue.md
+
+`useLoushyAgent()` for Vue 3 is the [React hook](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md) as a composable:
+the same sources, the same state and the same actions, over the same
+[typed event stream](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md). Read [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md) for what each
+field means, the two kinds of source, how approvals work and the server side;
+this page covers what differs.
+
+It lives in the `@loushy/build-ai-agent/vue` subpath. `vue` (3.x) is an
+optional peer dependency: install it in the app that uses the composable.
+
+```ts
+import { useLoushyAgent } from '@loushy/build-ai-agent/vue';
+
+// In <script setup>:
+const { messages, status, pendingApproval, send, stop, approve, reject, reset } = useLoushyAgent(
+  { url: '/api/agent' },
+  { approvalsUrl: '/api/approvals' }
+);
+
+export async function submit(text: string): Promise<void> {
+  if (text.trim() && status.value !== 'streaming') await send(text);
+}
+
+export { messages, status, pendingApproval, stop, approve, reject, reset };
+```
+
+and in the template:
+
+```html
+<article v-for="message in messages" :key="message.id">
+  <header>{{ message.role }}</header>
+  <p>{{ message.text }}</p>
+  <code v-for="call in message.toolCalls" :key="call.id">{{ call.name }}: {{ call.status }}</code>
+</article>
+<p v-if="pendingApproval">
+  Run {{ pendingApproval.toolName }}?
+  <button @click="approve()">Approve</button>
+  <button @click="reject('Not now')">Reject</button>
+</p>
+<button v-if="status === 'streaming'" @click="stop">Stop</button>
+```
+
+## What differs from React
+
+- **State is refs.** `messages`, `status`, `pendingApproval`, `error`, `usage`
+  and `lastEvent` are read-only `ComputedRef`s: use `.value` in script,
+  nothing in a template. The commands (`send`, `stop`, `approve`, `reject`,
+  `answer`) are plain functions with the React hook's signatures.
+- **`reset()`** aborts the run in flight, forgets the in-process session
+  (`{ agent, sessionId }` starts a new conversation) and clears the state.
+- **The source and options can be refs.** Pass a plain object or a `ref`; it is
+  read when a turn starts, so a changed `url` or `agent` applies to the next
+  turn.
+- **Cleanup is scope disposal.** `stop()` aborts the request in flight, and so
+  does stopping the owning scope: a component unmounting, or
+  `effectScope().stop()` in tests and plain scripts. Called outside any scope,
+  the composable has nothing to dispose: call `stop()` yourself.
+
+The reducer and the stream parser are exported from this subpath too
+(`reduceAgentEvents`, `initialAgentUIState`, `parseEventStream`), the same
+ones as in `@loushy/build-ai-agent/react`.
 
 # Workspace tools
 

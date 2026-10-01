@@ -72,6 +72,11 @@
       "types": "./dist/react/index.d.ts",
       "import": "./dist/react/index.mjs",
       "require": "./dist/react/index.js"
+    },
+    "./vue": {
+      "types": "./dist/vue/index.d.ts",
+      "import": "./dist/vue/index.mjs",
+      "require": "./dist/vue/index.js"
     }
   },
   "files": [
@@ -165,6 +170,7 @@
     "prompts": "^2.4.2",
     "react": "^18 || ^19",
     "tsup": "^8.0.0",
+    "vue": "^3",
     "zod": "^3.25.76"
   },
   "peerDependenciesMeta": {
@@ -193,6 +199,9 @@
       "optional": true
     },
     "tsup": {
+      "optional": true
+    },
+    "vue": {
       "optional": true
     }
   },
@@ -227,6 +236,7 @@
     "typedoc": "^0.28.20",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.70.1",
+    "vue": "^3.5.0",
     "vitest": "^1.0.0",
     "wrangler": "^4.143.0"
   }

@@ -24,6 +24,7 @@ import * as http from 'node:http';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { handleChatRequest, sendJson, sendText, type ChatRoutesContext } from '../server/chatRoutes';
+import { parseCommand, portValue, stringValue, usageError, type CommandSpec } from './args';
 import { detectTarget, hasOwnStore, startReloader, type DevOptions, type DevState } from './devReload';
 
 export type { DevOptions } from './devReload';
@@ -156,4 +157,46 @@ export async function startDevServer(
       await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
     },
   };
+}
+
+const USAGE = 'Usage: loushy dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H]';
+
+const SPEC: CommandSpec = {
+  command: 'dev',
+  usage: USAGE,
+  positionals: 1,
+  options: { port: { type: 'string' }, host: { type: 'string' } },
+};
+
+export interface DevCliArgs {
+  path: string;
+  port: number;
+  host: string;
+  /** `-h` / `--help` was given: print the usage, run nothing. */
+  help?: boolean;
+}
+
+/** Parses the arguments after `dev`; throws `LOUSHY_CONFIG_INVALID` for a missing path, an unknown flag, a flag without its value or a bad port. */
+export function parseDevArgs(rest: string[]): DevCliArgs {
+  const { values, positionals, help } = parseCommand(SPEC, rest);
+  if (help) return { path: '', port: 3737, host: '127.0.0.1', help };
+  if (positionals.length === 0) throw usageError(SPEC, 'a path is required (a spec file, an agent directory or a .ts/.js agent module).');
+  return { path: positionals[0], port: portValue(SPEC, values.port, 3737), host: stringValue(values.host) ?? '127.0.0.1' };
+}
+
+/** Runs `loushy dev` with the arguments after `dev`; resolves with the exit code once the server listens. */
+export async function runDev(rest: string[]): Promise<number> {
+  try {
+    const args = parseDevArgs(rest);
+    if (args.help) {
+      console.log(USAGE);
+      return 0;
+    }
+    const handle = await startDevServer(path.resolve(args.path), args.port, args.host);
+    console.log(`loushy dev: listening on http://${args.host}:${handle.port}`);
+    return 0;
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
 }
