@@ -144,6 +144,7 @@ describe('Execution - resumeAfterApproval', () => {
     expect(rejectionMessage.role).toBe('tool');
     const parsed = JSON.parse(rejectionMessage.content);
     expect(parsed.note).toBe('Not authorized');
+    expect(rejectionMessage.isError).toBe(true);
   });
 
   it('should not duplicate the system message when resuming an agent that has agent.prompt set', async () => {
@@ -244,6 +245,7 @@ describe('Execution - resumeAfterApproval', () => {
     expect(toolMessage.role).toBe('tool');
     const parsed = JSON.parse(toolMessage.content);
     expect(parsed.error).toBe('payment gateway timeout');
+    expect(toolMessage.isError).toBe(true);
   });
 
   it('should reject (not resolve with an error-shaped tool message) when the deferred tool throws a PropagatingToolError on resume', async () => {

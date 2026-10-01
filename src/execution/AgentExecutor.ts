@@ -485,12 +485,17 @@ export class AgentExecutor {
         toolResult,
       });
 
+      // A failed tool carries its message as `{error}` (the same shape
+      // resume.ts uses) - `result` is null then, so the model would
+      // otherwise see a bare "null" and never learn the call failed.
+      const failed = toolResult.error !== undefined;
       state.messages.push({
         role: 'tool',
-        content: JSON.stringify(toolResult.result),
+        content: JSON.stringify(failed ? { error: toolResult.error } : toolResult.result),
         name: toolCall.function.name,
         toolCallId: toolCall.id,
         toolName: toolCall.function.name,
+        ...(failed && { isError: true }),
       });
 
       await saveStepCheckpoint(options, state);

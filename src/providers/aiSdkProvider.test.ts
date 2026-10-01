@@ -4,7 +4,7 @@
  * Mocks the 'ai' SDK's generateText/streamText (no live API key required)
  * and drives the shared generate()/stream() logic through concrete
  * providers: the call settings handed to the 'ai' SDK, finish-reason
- * mapping, tool conversion, and OpenRouter's convertMessages() override.
+ * mapping, tool conversion, and message conversion (shared by OpenRouter).
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -139,7 +139,7 @@ describe('AiSdkProvider', () => {
     ]);
   });
 
-  it("uses OpenRouter's own message conversion", async () => {
+  it('converts OpenRouter tool-call turns with the shared converter', async () => {
     generateTextMock.mockResolvedValue(textResult('stop'));
     const provider = new OpenRouterProvider({ name: 'openrouter', apiKey: 'k' });
 
