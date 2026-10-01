@@ -116,7 +116,7 @@ let loads = 0;
  * edited files afresh (`?t=` cache-bust); they also `ready()` the agent so MCP
  * connection errors surface here.
  */
-async function loadTarget(target: DevTarget, options: DevOptions = {}): Promise<SimpleAgent> {
+export async function loadTarget(target: DevTarget, options: DevOptions = {}): Promise<SimpleAgent> {
   const overrides = options.overrides ?? {};
   if (target.kind === 'spec') return specToAgent(loadSpec(target.path));
   const token = `${Date.now()}-${loads++}`;

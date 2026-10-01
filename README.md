@@ -223,6 +223,7 @@ Most examples run offline with a mock provider; see the
 | `loushy init [dir]` | Scaffold a project with an agent, a tool and an offline test |
 | `loushy doctor [spec]` | Check Node, peers, API keys and a spec file; print fixes |
 | `loushy dev <spec>` | Local chat UI and `POST /chat` with hot reload |
+| `loushy chat <path>` | Terminal REPL: streamed replies, tool calls, approvals and questions |
 | `loushy mcp <spec>` | Serve the agent as an MCP server (stdio or HTTP) |
 | `loushy eval [globs]` | Run `*.eval.ts` files; JUnit and JSON reports |
 | `loushy build --target=<t> --agent=<spec>` | Build a Node server, Docker image or Cloudflare Worker |
