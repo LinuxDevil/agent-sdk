@@ -267,7 +267,10 @@ on a non-loopback host with no `auth`, the adapter logs a one-time warning
 through `options.logger`.
 
 ```ts
+import { createAgent, createMockProvider } from '@loushy/build-ai-agent';
 import { WebhookTriggerAdapter } from '@loushy/build-ai-agent/triggers';
+
+const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
 
 // HMAC of the RAW request body (GitHub / Shopify style): header `x-signature-256: sha256=<hex>`.
 new WebhookTriggerAdapter({
@@ -311,7 +314,10 @@ tokens and payloads are not sent in clear text.
 expression:
 
 ```ts
+import { createAgent, createMockProvider } from '@loushy/build-ai-agent';
 import { CronTriggerAdapter } from '@loushy/build-ai-agent/triggers';
+
+const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
 
 new CronTriggerAdapter({
   cron: '*/15 9-17 * * MON-FRI', // minute hour day-of-month month day-of-week
