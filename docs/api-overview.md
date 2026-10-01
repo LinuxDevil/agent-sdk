@@ -213,6 +213,34 @@ Errors extending `PropagatingToolError` (for example the delegation depth
 guard) are the exception: they are rethrown and abort the run instead of being
 shown to the model.
 
+## Models, tokens and cost
+
+Dependency-free helpers for budgeting and context decisions.
+
+```ts
+import { estimateTokens, estimateCost, getModelInfo, registerModel } from '@loushy/build-ai-agent';
+
+// A custom or self-hosted model: add it (or override a built-in) before use.
+registerModel({
+  id: 'my-llama',
+  provider: 'ollama',
+  contextWindow: 32768,
+  inputCostPerMTok: 0.2, // optional; omit for unknown or free
+  outputCostPerMTok: 0.6,
+});
+
+const used = estimateTokens([{ role: 'user', content: 'Summarise this report' }], { model: 'my-llama' });
+const info = getModelInfo('openai/gpt-4o-mini'); // exact id, `provider/id`, or a dated snapshot
+const usd = estimateCost({ inputTokens: used, outputTokens: 500 }, 'my-llama'); // undefined if unpriced
+```
+
+- `estimateTokens(input, { model?, estimator? })` is a heuristic (about 4 characters per token for English, more for CJK and other scripts, plus per-message overhead and tool-call JSON). Expect roughly 15-20% error on English: fine for compaction and budgets, not for billing. Plug in a real tokenizer with `setTokenEstimator(fn)` or `options.estimator`.
+- `getModelInfo(id)` matches the exact id, then `provider/id`, then dated snapshots (`gpt-4o-mini-2024-07-18` resolves to `gpt-4o-mini`). Unknown models return `undefined`.
+- `registerModel(info)` adds or overrides an entry; the latest registration wins.
+- `estimateCost(usage, model)` returns USD, or `undefined` (not `0`) when the model or its prices are unknown.
+
+The built-in context windows and prices are a dated snapshot (see the retrieval date and sources at the top of `src/models/modelData.ts`). Providers change prices and models, so override entries with `registerModel` when you need billing-grade numbers.
+
 ## Flows, evals, observability and security
 
 - `FlowBuilder` / `FlowExecutor` - multi-step workflow graphs.
