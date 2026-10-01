@@ -3,9 +3,9 @@
  * Uses the 'ai' SDK with ollama-ai-provider (shared logic in ./aiSdkProvider)
  */
 
-import { createOllama } from 'ollama-ai-provider';
 import { LanguageModel } from 'ai';
 import { AiSdkProvider, AiSdkProviderConfig } from './aiSdkProvider';
+import { lazyValue, loadOptionalPeer } from './optionalPeer';
 import { Logger, noopLogger } from '../execution/logger';
 
 export interface OllamaProviderConfig extends AiSdkProviderConfig {
@@ -19,19 +19,23 @@ export interface OllamaProviderConfig extends AiSdkProviderConfig {
 export class OllamaProvider extends AiSdkProvider<OllamaProviderConfig> {
   readonly name = 'ollama';
   protected readonly fallbackModel = 'llama3.1';
-  private provider: ReturnType<typeof createOllama>;
   private logger: Logger;
+
+  /** Loads `ollama-ai-provider` on first use (it is an optional peer). */
+  private readonly loadProvider = lazyValue(async () => {
+    const { createOllama } = await loadOptionalPeer('ollama-ai-provider', () => import('ollama-ai-provider'));
+    return createOllama({
+      baseURL: this.config.baseURL || 'http://localhost:11434',
+    });
+  });
 
   constructor(config: OllamaProviderConfig, logger: Logger = noopLogger) {
     super(config);
     this.logger = logger;
-    this.provider = createOllama({
-      baseURL: config.baseURL || 'http://localhost:11434',
-    });
   }
 
-  protected createModel(modelId: string): LanguageModel {
-    return this.provider(modelId, {
+  protected async createModel(modelId: string): Promise<LanguageModel> {
+    return (await this.loadProvider())(modelId, {
       simulateStreaming: true,
       structuredOutputs: true,
     });

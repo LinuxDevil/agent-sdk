@@ -53,6 +53,12 @@ export * from './utils';
 // createAgent() convenience API (LOU-H1)
 export * from './createAgent';
 
+// Sessions: multi-turn conversations for createAgent() (LOU-W4)
+export * from './session';
+
+// AGENTS.md / CLAUDE.md auto-loading (LOU-W7)
+export * from './projectInstructions';
+
 // Skills: progressive disclosure of instructions (LOU-Y2)
 export * from './skills';
 

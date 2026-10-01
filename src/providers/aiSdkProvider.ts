@@ -9,8 +9,8 @@
  * finish-reason mapping, and the StreamResult/StreamChunk shape - lives here.
  *
  * This module deliberately imports only from 'ai' (never from the optional
- * peer deps `@ai-sdk/openai`, `@ai-sdk/anthropic` or `ollama-ai-provider`), so
- * importing one provider never pulls in another provider's optional peer.
+ * peer deps `@ai-sdk/openai`, `@ai-sdk/anthropic` or `ollama-ai-provider`).
+ * Subclasses load their peer lazily inside `createModel()`, on first use.
  */
 
 import {
@@ -286,7 +286,7 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
   }
 
   /** Build the 'ai' SDK language model for a model id. */
-  protected abstract createModel(modelId: string): LanguageModel;
+  protected abstract createModel(modelId: string): LanguageModel | Promise<LanguageModel>;
 
   /** Convert our messages to 'ai' SDK CoreMessages. */
   protected convertMessages(messages: Message[]): CoreMessage[] {
@@ -294,9 +294,9 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
   }
 
   /** The call settings shared by generate() and stream(). */
-  private buildCallSettings(options: GenerateOptions) {
+  private async buildCallSettings(options: GenerateOptions) {
     return {
-      model: this.createModel(options.model || this.defaultModel),
+      model: await this.createModel(options.model || this.defaultModel),
       messages: this.convertMessages(options.messages),
       temperature: options.temperature,
       maxTokens: options.maxTokens,
@@ -314,7 +314,7 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
    * Generate text without streaming
    */
   async generate(options: GenerateOptions): Promise<GenerateResult> {
-    const result = await generateText(this.buildCallSettings(options));
+    const result = await generateText(await this.buildCallSettings(options));
 
     return {
       text: result.text,
@@ -329,7 +329,7 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
    * Generate text with streaming
    */
   async stream(options: GenerateOptions): Promise<StreamResult> {
-    const result = await streamText(this.buildCallSettings(options));
+    const result = await streamText(await this.buildCallSettings(options));
     return toStreamResult(result);
   }
 

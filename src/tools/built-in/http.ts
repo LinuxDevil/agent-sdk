@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { tool } from 'ai';
 import { isIP } from 'net';
 import { promises as dnsPromises } from 'dns';
-import { Agent, fetch as undiciFetch } from 'undici';
+import { lazyValue, loadOptionalPeer } from '../../providers/optionalPeer';
 import { ToolDescriptor } from '../../types';
 import { SandboxAdapter } from '../../security/sandboxCore';
 import { sandboxHttpFetch } from './sandboxFetch';
@@ -168,10 +168,21 @@ type HttpTransport = (
  * requests.
  */
 function createDirectTransport(validateSSL: boolean): { transport: HttpTransport; close: () => Promise<void> } {
-  const dispatcher = new Agent({ connect: { rejectUnauthorized: validateSSL } });
+  // undici is loaded on first request, not at import time (LOU-D19).
+  let started = false;
+  const load = lazyValue(async () => {
+    const { Agent, fetch } = await loadOptionalPeer('undici', () => import('undici'));
+    started = true;
+    return { fetch, dispatcher: new Agent({ connect: { rejectUnauthorized: validateSSL } }) };
+  });
   return {
-    transport: (url, init) => undiciFetch(url, { ...init, dispatcher }) as unknown as Promise<Response>,
-    close: () => dispatcher.close(),
+    transport: async (url, init) => {
+      const { fetch, dispatcher } = await load();
+      return fetch(url, { ...init, dispatcher }) as unknown as Promise<Response>;
+    },
+    close: async () => {
+      if (started) await (await load()).dispatcher.close();
+    },
   };
 }
 
