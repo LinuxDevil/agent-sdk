@@ -6,6 +6,25 @@ function invalidTrigger(name: string, problem: string, cause?: unknown): never {
   throw new SDKError(`triggers: cron trigger '${name}': ${problem}`, 'LOUSHY_SCHEDULE_INVALID', cause === undefined ? {} : { cause });
 }
 
+const text = (value: unknown): string | undefined => (typeof value === 'string' && value !== '' ? value : undefined);
+
+function requiredFields(trigger: AgentSpecTrigger, name: string): { cron: string; prompt: string } {
+  const cron = text(trigger.cron);
+  const prompt = text(trigger.input) ?? text(trigger.prompt);
+  if (!cron) return invalidTrigger(name, "needs a 'cron' expression string.");
+  if (!prompt) return invalidTrigger(name, "needs an 'input' string, the prompt sent to the agent.");
+  return { cron, prompt };
+}
+
+function toSchedule(trigger: AgentSpecTrigger, name: string): DefinedSchedule {
+  const fields = requiredFields(trigger, name);
+  try {
+    return defineSchedule({ name, ...fields, timezone: text(trigger.timezone) });
+  } catch (error) {
+    return invalidTrigger(name, error instanceof SDKError ? error.detail : String(error), error);
+  }
+}
+
 /**
  * The schedules of an AgentSpec's `{ type: 'cron' }` triggers:
  * `{ type: 'cron', cron: '0 9 * * MON', input: 'Weekly report.', name?, timezone? }`
@@ -13,17 +32,10 @@ function invalidTrigger(name: string, problem: string, cause?: unknown): never {
  * `input` throws a `LOUSHY_SCHEDULE_INVALID` SDKError naming it.
  */
 export function specSchedules(triggers: readonly AgentSpecTrigger[] | undefined): DefinedSchedule[] {
-  const cronTriggers = (triggers ?? []).filter((trigger) => trigger.type === 'cron');
-  return cronTriggers.map((trigger, index) => {
-    const name = typeof trigger.name === 'string' && trigger.name ? trigger.name : `cron-${index + 1}`;
-    const prompt = trigger.input ?? trigger.prompt;
-    if (typeof trigger.cron !== 'string') return invalidTrigger(name, "needs a 'cron' expression string.");
-    if (typeof prompt !== 'string') return invalidTrigger(name, "needs an 'input' string, the prompt sent to the agent.");
-    try {
-      const timezone = typeof trigger.timezone === 'string' ? { timezone: trigger.timezone } : {};
-      return defineSchedule({ name, cron: trigger.cron, prompt, ...timezone });
-    } catch (error) {
-      return invalidTrigger(name, error instanceof SDKError ? error.detail : String(error), error);
-    }
-  });
+  return (triggers ?? [])
+    .filter((trigger) => trigger.type === 'cron')
+    .map((trigger, index) => {
+      const name = text(trigger.name) ?? `cron-${index + 1}`;
+      return toSchedule(trigger, name);
+    });
 }

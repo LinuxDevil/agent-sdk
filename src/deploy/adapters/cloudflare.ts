@@ -24,6 +24,7 @@ import * as zlib from 'node:zlib';
 import { DeploymentAdapter } from '../types';
 import { AgentSpec } from '../../spec/schema';
 import { SDKError } from '../../execution/errors';
+import type { DefinedSchedule } from '../../schedules/defineSchedule';
 import { specSchedules } from '../../schedules/specSchedules';
 import {
   WORKER_RUNTIME_SPECIFIER,
@@ -133,15 +134,22 @@ function invalidCron(name: string, problem: string): never {
  * five fields, a numeric day-of-week (Cloudflare counts 1 as Sunday).
  */
 export function workerCrons(spec: AgentSpec): string[] {
-  const crons = specSchedules(spec.triggers).map((schedule) => {
-    const name = schedule.name ?? '';
-    const fields = schedule.cron.trim().split(/\s+/);
-    if (schedule.timezone) invalidCron(name, `sets timezone '${schedule.timezone}', but Cloudflare cron triggers always run in UTC: remove it and write the expression in UTC.`);
-    if (fields.length !== 5) invalidCron(name, `uses '${schedule.cron}', which Cloudflare does not accept: write five fields (minute hour day-of-month month day-of-week), for example '0 9 * * MON'.`);
-    if (!CLOUDFLARE_DAY_OF_WEEK.test(fields[4])) invalidCron(name, `uses day-of-week '${fields[4]}': Cloudflare numbers days 1-7 from Sunday, so write day names (MON-FRI) or '*'.`);
-    return fields.join(' ');
-  });
-  return [...new Set(crons)];
+  return [...new Set(specSchedules(spec.triggers).map(workerCron))];
+}
+
+function workerCron(schedule: DefinedSchedule): string {
+  const fields = schedule.cron.trim().split(/\s+/);
+  const problem = cronProblem(schedule, fields);
+  if (problem) invalidCron(schedule.name as string, problem);
+  return fields.join(' ');
+}
+
+/** Why Cloudflare would not fire `schedule`, if it would not. */
+function cronProblem(schedule: DefinedSchedule, fields: string[]): string | undefined {
+  if (schedule.timezone) return `sets timezone '${schedule.timezone}', but Cloudflare cron triggers always run in UTC: remove it and write the expression in UTC.`;
+  if (fields.length !== 5) return `uses '${schedule.cron}', which Cloudflare does not accept: write five fields (minute hour day-of-month month day-of-week), for example '0 9 * * MON'.`;
+  if (!CLOUDFLARE_DAY_OF_WEEK.test(fields[4])) return `uses day-of-week '${fields[4]}': Cloudflare numbers days 1-7 from Sunday, so write day names (MON-FRI) or '*'.`;
+  return undefined;
 }
 
 export function wranglerTomlSource(spec: AgentSpec): string {
