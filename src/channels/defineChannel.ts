@@ -49,6 +49,19 @@ export interface ChannelInbound<TEvent = unknown> {
 /** Writes the still-open HTTP response of the request being handled (the first call wins). */
 export type ChannelRespond = (status: number, body: unknown) => void;
 
+/** A decision on a pause: `{ approved, note? }` for a tool call, `{ answer }` for a question. */
+export interface ChannelApprovalDecision {
+  id: string;
+  approved?: boolean;
+  note?: string;
+  answer?: string;
+}
+
+/** What `parse` returns for a request that decides a pause (a button click) instead of starting a turn. */
+export interface ChannelDecision {
+  decision: ChannelApprovalDecision;
+}
+
 /** What `reply` gets. */
 export interface ChannelReplyContext<TEvent = unknown> {
   inbound: ChannelInbound<TEvent>;
@@ -81,8 +94,13 @@ export interface Channel<TEvent = unknown> {
   stream?: boolean;
   /** Authenticates the request (signature, token, ...); `false` answers 401. Default: accept. */
   verify?(req: ChannelRequest): Promise<boolean | ChannelAuthResult>;
-  /** The message in `req`, or `null` to acknowledge it without a turn (a bot echo, a retry). */
-  parse(req: ChannelRequest): Promise<ChannelInbound<TEvent> | null>;
+  /**
+   * The message in `req`; `{ decision }` to resolve a pause this channel's turn
+   * stopped on (a button click); or `null` to acknowledge it without a turn (a
+   * bot echo, a retry). Call `respond` to answer the request before the turn
+   * runs (a surface that needs an answer within seconds, a handshake).
+   */
+  parse(req: ChannelRequest, respond: ChannelRespond): Promise<ChannelInbound<TEvent> | ChannelDecision | null>;
   /** Delivers the agent's reply to the surface. */
   reply(ctx: ChannelReplyContext<TEvent>): Promise<void>;
   /** Renders a pause (buttons, a form, ...). Default: `reply` with the text prompt. */

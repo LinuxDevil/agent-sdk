@@ -6,7 +6,7 @@
 import type { IncomingMessage } from 'node:http';
 import { newId } from '../utils/id';
 import { assertValidWebhookAuth, checkWebhookAuth, type WebhookAuth } from '../triggers/webhookAuth';
-import { defineChannel, type Channel, type ChannelAuthResult, type ChannelRequest } from './defineChannel';
+import { defineChannel, type Channel, type ChannelAuthResult, type ChannelInbound, type ChannelRequest } from './defineChannel';
 
 /** Options of {@link webhookChannel}. */
 export interface WebhookChannelOptions {
@@ -21,6 +21,7 @@ export interface WebhookChannelOptions {
 /** A webhook channel: `verify` always resolves a `ChannelAuthResult`. */
 export interface WebhookChannel extends Channel {
   verify(req: ChannelRequest): Promise<ChannelAuthResult>;
+  parse(req: ChannelRequest): Promise<ChannelInbound>;
 }
 
 /** The agent input for a raw request body: its JSON `input` string if it has one, else the body itself. */
