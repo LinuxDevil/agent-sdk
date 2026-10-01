@@ -159,11 +159,12 @@ on each major today:
 | `ai` | `generate()` | `stream()` | Notes |
 | ---- | ------------ | ---------- | ----- |
 | v4 (`^4.3.19`, the peer range) | Yes | Yes | Everything in these docs. |
-| v6, v7 | Yes, through a compatibility layer (LOU-D26) | Not yet (LOU-D27): it throws an error naming LOU-D27 | Peer ranges still name v4 (LOU-D28). |
+| v6, v7 | Yes, through a compatibility layer (LOU-D26) | Yes, through the same layer (LOU-D27) | Peer ranges still name v4 (LOU-D28). |
 
-`generate()` picks the call shape from the installed `ai` module: when it
-exports `stepCountIs` (v5 and later), the request is sent in the v6/v7 shape
-and the result is read back into the same `GenerateResult`:
+`generate()` and `stream()` pick the call shape from the installed `ai`
+module: when it exports `stepCountIs` (v5 and later), the request is sent in
+the v6/v7 shape and the result is read back into the same `GenerateResult`
+or `StreamResult`:
 
 - messages become `ModelMessage`s: a tool call's arguments are its `input`, a
   tool result is an `output` (`json` or `text`, `error-json` or `error-text`
@@ -176,6 +177,15 @@ and the result is read back into the same `GenerateResult`:
 - usage comes from `inputTokens` / `outputTokens` / `totalTokens`, with
   `cachedInputTokens` from `inputTokenDetails.cacheReadTokens` and
   `reasoningTokens` from `outputTokenDetails.reasoningTokens`.
+- `stream()` reads the SDK's `fullStream` on either major into the same
+  chunks: `text-delta` (v6/v7 `text`, v4 `textDelta`), `tool-call` (the
+  whole call v6/v7 sends after `tool-input-start`/`-delta`/`-end`, or one
+  assembled from that input when the model sends none), and `finish` with
+  the SDK's finish reason and the usage above (v6/v7 `totalUsage`). An
+  `error` part rejects the stream with its error, on v4 too (v4 used to end
+  such a stream with finish reason `error`), and an `abort` part with the
+  signal's reason. Reasoning deltas are not reported yet (no reasoning chunk
+  type until LOU-V13).
 
 On v6/v7 the model must come from a provider package for that major (for
 example `@ai-sdk/openai` v3 or `@ai-sdk/anthropic` v3); the `0.0.x`

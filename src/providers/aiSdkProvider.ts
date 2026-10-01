@@ -5,8 +5,9 @@
  * all thin adapters over the same 'ai' SDK calls (generateText/streamText):
  * they only differ in which model factory they use, their default model, and
  * their model capability/listing methods. Everything else - message
- * conversion (including tool-call turns), tool conversion, call settings, tool-call and
- * finish-reason mapping, and the StreamResult/StreamChunk shape - lives here.
+ * conversion (including tool-call turns), tool conversion and call settings -
+ * lives here; aiSdkCompat sends the call on `ai` v4 or v6/v7 and maps the
+ * result, tool calls, finish reason and stream chunks back.
  *
  * This module deliberately imports only from 'ai' (never from the optional
  * peer deps `@ai-sdk/openai`, `@ai-sdk/anthropic` or `ollama-ai-provider`).
@@ -15,7 +16,6 @@
 
 import * as aiModule from 'ai';
 import {
-  streamText,
   tool as aiTool,
   LanguageModel,
   ToolSet,
@@ -35,37 +35,17 @@ import {
   GenerateOptions,
   GenerateResult,
   StreamResult,
-  StreamChunk,
   Message,
   ToolCall,
   ToolDefinition,
-  ProviderUsage,
   ContentPart,
 } from './llm';
 import { textOf } from './content';
-import { type AiSdkModule, compatGenerateText, convertToolCalls, isModernAi, toGenerateUsage } from './aiSdkCompat';
+import { type AiSdkMessage, type AiSdkModule, compatGenerateText, streamCompat } from './aiSdkCompat';
 
 /** Config fields shared by every 'ai'-SDK-backed provider. */
 export interface AiSdkProviderConfig extends LLMProviderConfig {
   defaultModel?: string;
-}
-
-type TokenUsage = ProviderUsage;
-
-/** The subset of an 'ai' SDK tool call this module reads. */
-interface AiSdkToolCall {
-  toolCallId: string;
-  toolName: string;
-  args: unknown;
-}
-
-/** The subset of the 'ai' SDK streamText() result this module reads. */
-interface AiSdkStreamResult {
-  textStream: AsyncIterable<string>;
-  text: PromiseLike<string>;
-  usage: PromiseLike<TokenUsage>;
-  finishReason: PromiseLike<string>;
-  toolCalls: PromiseLike<AiSdkToolCall[]>;
 }
 
 /** `JSON.parse(text)`, or `fallback` when `text` is not a JSON string. */
@@ -185,51 +165,6 @@ function convertTools(toolDefs: ToolDefinition[] | undefined): ToolSet | undefin
   return Object.keys(tools).length > 0 ? tools : undefined;
 }
 
-/** Yield every text delta, then a single finish chunk carrying usage stats. */
-async function* toFullStream(result: AiSdkStreamResult): AsyncGenerator<StreamChunk> {
-  for await (const delta of result.textStream) {
-    const chunk: StreamChunk = {
-      type: 'text-delta',
-      textDelta: delta,
-    };
-    yield chunk;
-  }
-
-  // Wait for final result to get usage stats
-  const [, finalUsage, finalReason] = await Promise.all([
-    result.text,
-    result.usage,
-    result.finishReason,
-  ]);
-
-  // Emit finish event
-  const chunk: StreamChunk = {
-    type: 'finish',
-    finishReason: finalReason,
-    usage: toGenerateUsage(finalUsage, undefined),
-  };
-  yield chunk;
-}
-
-async function* toTextStream(result: AiSdkStreamResult): AsyncGenerator<string> {
-  for await (const delta of result.textStream) {
-    yield delta;
-  }
-}
-
-/** Adapt an 'ai' SDK streamText() result to our StreamResult shape. */
-function toStreamResult(result: AiSdkStreamResult): StreamResult {
-  // Return promises for final values
-  return {
-    textStream: toTextStream(result),
-    fullStream: toFullStream(result),
-    text: (async () => result.text)(),
-    usage: (async () => toGenerateUsage(await result.usage, undefined))(),
-    finishReason: (async () => result.finishReason)(),
-    toolCalls: (async () => convertToolCalls(await result.toolCalls))(),
-  };
-}
-
 /**
  * LOU-V4: `responseFormat` as an 'ai' SDK output spec - JSON mode, with the
  * schema only for models that support structured outputs (as
@@ -284,8 +219,17 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
    */
   protected readonly acceptsFileParts: boolean = false;
 
-  /** Convert our messages to 'ai' SDK CoreMessages. */
-  protected convertMessages(messages: Message[]): CoreMessage[] {
+  /**
+   * Convert our messages to `ai` v4 CoreMessages (aiSdkCompat maps them to
+   * v6/v7 ModelMessages). Typed with our structural `AiSdkMessage`, not the
+   * v4 `CoreMessage` (which `ai` v6/v7 do not export), since LOU-D27; an
+   * override returning `CoreMessage[]` still compiles.
+   *
+   * @deprecated An `ai` v4-shaped hook, kept for the built-in providers.
+   * Do not override it in new code: LOU-D28 replaces it with a hook on our
+   * own `Message[]`.
+   */
+  protected convertMessages(messages: Message[]): AiSdkMessage[] {
     return toCoreMessages(messages, { provider: this.name, files: this.acceptsFileParts });
   }
 
@@ -318,16 +262,10 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
   }
 
   /**
-   * Generate text with streaming. `ai` v4 only until LOU-D27.
+   * Generate text with streaming, on `ai` v4 or v6/v7 (LOU-D27).
    */
   async stream(options: GenerateOptions): Promise<StreamResult> {
-    if (isModernAi(this.ai)) {
-      throw new Error(
-        `The ${this.name} provider cannot stream on 'ai' v5 or later yet (LOU-D27); use generate(), or 'ai' v4.`
-      );
-    }
-    const result = await streamText(await this.buildCallSettings(options));
-    return toStreamResult(result);
+    return streamCompat(this.ai, await this.buildCallSettings(options), options);
   }
 
   abstract supportsTools(model: string): boolean;
