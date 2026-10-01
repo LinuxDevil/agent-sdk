@@ -13,7 +13,7 @@ import type {
   PendingApproval,
   ResolvedApproval,
 } from '../../execution/ApprovalGate';
-import { assertSessionId, type SessionStore } from '../../session/sessionStore';
+import { assertSessionId, decodeBytes, encodeBytes, type SessionStore } from '../../session/sessionStore';
 import type { Connection } from './connection';
 import type { SqlStatement } from './driver';
 
@@ -34,7 +34,7 @@ export class Statements {
 }
 
 const parse = <T>(row: { payload?: unknown } | undefined): T | undefined =>
-  row === undefined ? undefined : (JSON.parse(String(row.payload)) as T);
+  row === undefined ? undefined : (JSON.parse(String(row.payload), decodeBytes) as T);
 
 // `table` and `key` are fixed identifiers from this file, never user input.
 const upsert = (table: string, key: string): string =>
@@ -56,7 +56,7 @@ export class SqliteSessionStore implements SessionStore {
   async save(id: string, messages: readonly Message[]): Promise<void> {
     assertSessionId(id);
     const now = Date.now();
-    this.sql.get(upsert('sessions', 'id')).run(id, JSON.stringify(messages), now, now);
+    this.sql.get(upsert('sessions', 'id')).run(id, JSON.stringify(messages, encodeBytes), now, now);
   }
 
   async delete(id: string): Promise<void> {
@@ -83,7 +83,7 @@ export class SqliteCheckpointStore implements CheckpointStore {
 
   async save(sessionId: string, checkpoint: Checkpoint): Promise<void> {
     const now = Date.now();
-    const payload = JSON.stringify(checkpoint);
+    const payload = JSON.stringify(checkpoint, encodeBytes);
     this.connection.transaction(() => {
       this.sql.get(upsert('checkpoints', 'session_id')).run(sessionId, payload, now, now);
       if (this.historyLimit === 0) return;
@@ -120,7 +120,7 @@ export class SqliteCheckpointStore implements CheckpointStore {
       step: Number(row.step),
       savedAt: new Date(Number(row.saved_at)).toISOString(),
       status: String(row.status) as CheckpointHistoryEntry['status'],
-      checkpoint: JSON.parse(String(row.payload)) as Checkpoint,
+      checkpoint: JSON.parse(String(row.payload), decodeBytes) as Checkpoint,
     }));
   }
 }

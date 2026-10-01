@@ -71,7 +71,7 @@ on the server.
 | `error` | `{ name, message }` of the last `error` event or a failed request, else `null`. |
 | `usage` | Token usage of the last finished run (from `run.done`), else `null`. |
 | `lastEvent` | The last event received, for anything the projection does not cover. |
-| `send(input)` | Starts a turn. If a turn is still running, it is aborted first. |
+| `send(input)` | Starts a turn. If a turn is still running, it is aborted first. `input` is a string, content parts or a `Message[]` (an `AgentInput`); the user bubble shows the text with an `[image]` / `[file]` marker per other part (remote mode POSTs it as `{ "input": ... }`). |
 | `stop()` | Aborts the turn in flight through its `AbortSignal`; `status` goes back to `'idle'`. |
 | `approve(note?)`, `reject(note?)` | Decide `pendingApproval` (see below). |
 | `answer(text)` | Answers a question (`pendingApproval.kind === 'question'`); the same as `approve(text)`. `reject()` declines it. |

@@ -47,6 +47,7 @@ import type { z } from 'zod';
 import type { McpServerSpec } from './spec/schema';
 import { agentMcp, streamAfter } from './tools/mcp/agentMcp';
 import { HookRegistry, type AgentHook } from './execution/hooks';
+import { toMessages, type AgentInput } from './providers/content';
 import { compactionHookFor, type AgentCompaction } from './context/agentCompaction';
 
 /**
@@ -355,8 +356,12 @@ export interface SendOptions {
 
 /** `TObject`: the type of `result.object` - `z.output` of the `output` schema. */
 export interface SimpleAgent<TObject = unknown> {
-  /** Send a single user message and get back the full execution result text. */
-  send: (message: string, options?: SendOptions) => Promise<ExecutionResult<TObject>>;
+  /**
+   * Send a single user message and get back the full execution result text.
+   * `message` is a string, content parts (one user message with an image or
+   * file, LOU-V12) or a `Message[]` passed through as it is.
+   */
+  send: (message: AgentInput, options?: SendOptions) => Promise<ExecutionResult<TObject>>;
   /**
    * Send a single user message and stream the run as typed events (LOU-V2):
    * `text.delta` chunks as the model writes, `tool.start`/`tool.done`,
@@ -372,7 +377,7 @@ export interface SimpleAgent<TObject = unknown> {
    * }
    * ```
    */
-  stream: (message: string, options?: SendOptions) => AgentRun<TObject>;
+  stream: (message: AgentInput, options?: SendOptions) => AgentRun<TObject>;
   /**
    * Start a multi-turn conversation (LOU-W4): every `send()` sees the earlier
    * exchanges. Kept in the agent's `store` (in memory without one); pass
@@ -546,12 +551,12 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
   // `object` was validated with `config.output`, so it has its output type.
   type Typed = z.output<TOutput>;
   const simpleAgent: SimpleAgent<Typed> = {
-    async send(message: string, options: SendOptions = {}): Promise<ExecutionResult<Typed>> {
-      const result = await run(message, options.signal, durable(options.sessionId));
+    async send(message: AgentInput, options: SendOptions = {}): Promise<ExecutionResult<Typed>> {
+      const result = await run(toMessages(message), options.signal, durable(options.sessionId));
       return approvals.settle(result, options.signal) as Promise<ExecutionResult<Typed>>;
     },
-    stream(message: string, options: SendOptions = {}): AgentRun<Typed> {
-      return startStream(executeOptions(message, options.signal, durable(options.sessionId))) as AgentRun<Typed>;
+    stream(message: AgentInput, options: SendOptions = {}): AgentRun<Typed> {
+      return startStream(executeOptions(toMessages(message), options.signal, durable(options.sessionId))) as AgentRun<Typed>;
     },
     session,
     async resume(sessionId: string, { signal } = {}): Promise<ExecutionResult<Typed> | null> {

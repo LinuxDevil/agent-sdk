@@ -29,12 +29,24 @@ describe('reduceAgentEvents (LOU-D15)', () => {
     ]);
   });
 
-  it('ui.send with content parts shows their text (LOU-V11)', () => {
+  it('ui.send with content parts shows their text and a marker per non-text part (LOU-V12)', () => {
     const state = reduce({
       type: 'ui.send',
       input: [{ type: 'text', text: 'What is this?' }, { type: 'image', image: 'https://example.com/a.png' }],
     });
-    expect(state.messages[0]).toEqual({ id: 'm0', role: 'user', text: 'What is this?', toolCalls: [] });
+    expect(state.messages[0]).toEqual({ id: 'm0', role: 'user', text: 'What is this? [image]', toolCalls: [] });
+  });
+
+  it('ui.send with a Message[] shows its last user message', () => {
+    const state = reduce({
+      type: 'ui.send',
+      input: [
+        { role: 'user', content: 'Earlier' },
+        { role: 'assistant', content: 'Ok' },
+        { role: 'user', content: [{ type: 'file', data: 'https://example.com/a.pdf', mimeType: 'application/pdf' }] },
+      ],
+    });
+    expect(state.messages[0].text).toBe('[file]');
   });
 
   it('accumulates text deltas, then run.done sets idle and usage', () => {

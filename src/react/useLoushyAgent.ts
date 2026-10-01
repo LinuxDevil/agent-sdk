@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import type { SimpleAgent } from '../createAgent';
+import type { AgentInput } from '../providers/content';
 import type { AgentEvent, AgentEventError } from '../execution/agentEvents';
 import type { AgentSession } from '../session/AgentSession';
 import { parseEventStream } from './parseEventStream';
@@ -43,7 +44,7 @@ export interface UseLoushyAgentOptions {
 
 export interface UseLoushyAgentResult extends AgentUIState {
   /** Starts a turn (aborting one still running). */
-  send(input: string): Promise<void>;
+  send(input: AgentInput): Promise<void>;
   /** Aborts the run in flight; it ends with `finishReason: 'aborted'`. */
   stop(): void;
   approve(note?: string): Promise<void>;
@@ -111,7 +112,7 @@ export function useLoushyAgent(source: LoushyAgentSource, options: UseLoushyAgen
   }, []);
 
   const send = useCallback(
-    (input: string) =>
+    (input: AgentInput) =>
       run(async (emit, signal) => {
         emit({ type: 'ui.send', input });
         const { source } = latest.current;

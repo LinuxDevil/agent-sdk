@@ -6,9 +6,8 @@
  */
 
 import type { AgentEvent, AgentEventError, AgentEventUsage } from '../execution/agentEvents';
+import { describeInput, type AgentInput } from '../providers/content';
 import type { ApprovalKind, ApprovalQuestion } from '../execution/ApprovalGate';
-import type { ContentPart } from '../providers/llm';
-import { textOf } from '../providers/content';
 
 /** Where a tool call stands: running, paused for approval, or finished. */
 export type UIToolCallStatus = 'running' | 'awaiting-approval' | 'done' | 'error' | 'rejected';
@@ -72,8 +71,8 @@ export interface AgentUIState {
 
 /** Local actions, besides the events themselves. */
 export type AgentUIAction =
-  /** `input` may be multimodal parts (LOU-V11); the bubble shows their text. */
-  | { type: 'ui.send'; input: string | ContentPart[] }
+  /** `input` may be multimodal (LOU-V12); the bubble shows its text and an `[image]` / `[file]` marker per other part. */
+  | { type: 'ui.send'; input: AgentInput }
   | { type: 'ui.decide'; approved: boolean }
   | { type: 'ui.resumed'; outcome: ApprovalOutcome }
   | { type: 'ui.stopped' }
@@ -150,7 +149,7 @@ function resumed(state: AgentUIState, { text, finishReason, usage, approval }: A
 export function reduceAgentEvents(state: AgentUIState, event: AgentEvent | AgentUIAction): AgentUIState {
   switch (event.type) {
     case 'ui.send': {
-      const user: UIMessage = { id: `m${state.messages.length}`, role: 'user', text: textOf(event.input), toolCalls: [] };
+      const user: UIMessage = { id: `m${state.messages.length}`, role: 'user', text: describeInput(event.input), toolCalls: [] };
       const messages = onAssistant([...state.messages, user], (message) => message);
       return { ...state, messages, status: 'streaming', error: null, pendingApproval: null };
     }

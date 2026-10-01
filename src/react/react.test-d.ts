@@ -4,6 +4,7 @@
 import { describe, it, expectTypeOf } from 'vitest';
 import { createAgent } from '../createAgent';
 import { createMockProvider } from '../providers/mock';
+import type { AgentInput } from '../providers/content';
 import type { AgentEvent, AgentEventError, AgentEventUsage } from '../execution/agentEvents';
 import {
   initialAgentUIState,
@@ -39,7 +40,7 @@ describe('@loushy/build-ai-agent/react types', () => {
     expectTypeOf<UseLoushyAgentResult['error']>().toEqualTypeOf<AgentEventError | null>();
     expectTypeOf<UseLoushyAgentResult['usage']>().toEqualTypeOf<AgentEventUsage | null>();
     expectTypeOf<UseLoushyAgentResult['lastEvent']>().toEqualTypeOf<AgentEvent | null>();
-    expectTypeOf<UseLoushyAgentResult['send']>().toEqualTypeOf<(input: string) => Promise<void>>();
+    expectTypeOf<UseLoushyAgentResult['send']>().toEqualTypeOf<(input: AgentInput) => Promise<void>>();
     expectTypeOf<UseLoushyAgentResult['approve']>().toEqualTypeOf<(note?: string) => Promise<void>>();
     expectTypeOf<UseLoushyAgentResult['stop']>().toEqualTypeOf<() => void>();
     expectTypeOf<UIMessage['role']>().toEqualTypeOf<'user' | 'assistant'>();
