@@ -53,5 +53,7 @@ docs/api/
 # fallow cache/snapshots
 .fallow/
 
+# docs snippet verifier temp dirs
+.docs-snippets-*/
 # Local agent worktrees and session state
 .claude/

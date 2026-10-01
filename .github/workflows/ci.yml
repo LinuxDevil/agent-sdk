@@ -18,7 +18,7 @@ jobs:
           # whichever vitest worker hit it first and cascading into "0 test"
           # failures across the rest of that worker's queue. Node 20 was
           # already below what a fresh dependency needs; bump to match.
-          node-version: '22'
+          node-version: '22.19.0'
           cache: 'npm'
       - run: npm ci
       - run: npx tsc --noEmit
@@ -34,6 +34,9 @@ jobs:
       # which requires ITS dist/index.js to exist too - build it before the
       # test step (this is a separate package from the root SDK above).
       - run: npm run build --workspace=packages/create-loushy-agent
+      # Every ```ts block in README.md and docs/*.md must type-check against
+      # src/ (quick-start also runs against the packed tarball). Needs dist/.
+      - run: npm run docs:verify-snippets -- --skip-build
       - run: npm run test:coverage
       # Agent Forge (apps/agent-forge) imports the SDK as
       # `@loushy/build-ai-agent` via `file:../..`, i.e. the root dist/ built
