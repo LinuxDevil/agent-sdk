@@ -7,6 +7,7 @@ import type { Cassette } from '../testing/cassette';
 import { stableStringify } from '../testing/fingerprint';
 import type { Checkpoint } from '../execution/checkpoint';
 import type { Message } from '../providers';
+import { textOf } from '../providers/content';
 
 /** What a recorded case did. */
 export interface Trajectory {
@@ -94,11 +95,11 @@ export interface TrajectoryComparison {
 
 function stepsOf(run: Checkpoint | Message[]): TrajectoryStep[] {
   const messages = Array.isArray(run) ? run : run.messages;
-  const results = new Map(messages.filter((m) => m.role === 'tool').map((m) => [m.toolCallId, m.content]));
+  const results = new Map(messages.filter((m) => m.role === 'tool').map((m) => [m.toolCallId, textOf(m)]));
   return messages
     .filter((m) => m.role === 'assistant')
     .map((m) => ({
-      text: m.content,
+      text: textOf(m),
       tools: (m.toolCalls ?? []).map((call) => ({
         id: call.id,
         name: call.function.name,
