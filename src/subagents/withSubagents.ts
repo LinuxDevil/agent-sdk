@@ -19,6 +19,7 @@ import { isPropagatingToolError } from '../execution/propagatingToolError';
 import type { ExecuteOptions, ExecutionResult } from '../execution/AgentExecutor';
 import type { RemoteSubagent, SubagentCatalog, SubagentSummary, Subagents } from './types';
 import { isRemoteSubagent } from './remoteAgent';
+import { anyError } from '../utils/zodCompat';
 import { BackgroundTasks, subagentOptionsOf, withSubagentOptions, type SubagentOptions } from './backgroundTasks';
 import { busy, taskNotFound, TaskSessions, type TaskMode, type TaskRecord } from './taskSessions';
 
@@ -286,6 +287,12 @@ async function startTask(ctx: TaskContext, args: TaskArgs, toolOptions: ToolOpti
   return { taskId, status, agent };
 }
 
+/** The `agent` argument's error, the same on both zod majors: the name given and the valid ones. */
+function unknownSubagent(names: readonly string[]): (input: unknown) => string {
+  const valid = names.map((name) => `'${name}'`).join(', ');
+  return (input) => (input === undefined ? 'Required' : `Unknown sub-agent ${JSON.stringify(input)}. Expected one of: ${valid}`);
+}
+
 function createTaskTool(ctx: TaskContext): DefinedTool {
   return defineTool({
     name: TASK_TOOL,
@@ -294,7 +301,7 @@ function createTaskTool(ctx: TaskContext): DefinedTool {
       'The sub-agent sees only your prompt, not this conversation. The result ends with a taskId: pass it back as taskId ' +
       'to send that sub-agent a follow-up with its earlier work still in context, or with mode "fork" to branch a copy of it.',
     input: z.object({
-      agent: z.enum(ctx.names as [string, ...string[]]).describe('Name of the sub-agent, exactly as listed'),
+      agent: z.enum(ctx.names as [string, ...string[]], anyError(unknownSubagent(ctx.names))).describe('Name of the sub-agent, exactly as listed'),
       prompt: z.string().describe('Complete instructions for the sub-agent, including all context it needs'),
       description: z.string().describe('A short (3-5 word) label for this task'),
       background: z

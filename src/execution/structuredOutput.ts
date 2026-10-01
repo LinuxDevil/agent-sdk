@@ -8,6 +8,7 @@ import { zodSchema } from 'ai';
 import type { z } from 'zod';
 import type { GenerateOptions, Message } from '../providers';
 import { formatIssues, parseWithIssues, type ToolArgumentIssue } from './toolArgsValidation';
+import { schemaToJsonSchema } from '../utils/zodCompat';
 
 /** Why a run's final reply is not a valid `output` object (`finishReason: 'output-invalid'`). */
 export interface OutputError {
@@ -19,11 +20,14 @@ export interface OutputError {
 
 const jsonSchemas = new WeakMap<z.ZodTypeAny, Record<string, unknown>>();
 
-/** The schema as JSON Schema (via the `ai` SDK's zod converter), computed once per schema. */
+/**
+ * The schema as JSON Schema, computed once per schema: `z.toJSONSchema` for
+ * zod 4 (LOU-D29), the `ai` SDK's zod converter for zod 3.
+ */
 function jsonSchemaOf(schema: z.ZodTypeAny): Record<string, unknown> {
   let json = jsonSchemas.get(schema);
   if (!json) {
-    json = zodSchema(schema).jsonSchema as Record<string, unknown>;
+    json = schemaToJsonSchema(schema) ?? (zodSchema(schema).jsonSchema as Record<string, unknown>);
     jsonSchemas.set(schema, json);
   }
   return json;

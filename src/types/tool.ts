@@ -1,5 +1,5 @@
 import type { Tool as AITool } from 'ai'; // legacy (.tool), removed in D26
-import type { z } from 'zod';
+import type { StandardSchemaV1 } from '../utils/zodCompat';
 import type { RunUsage } from '../models/usage';
 import type { Message } from '../providers/llm';
 import { SandboxAdapter } from '../security/sandboxCore';
@@ -104,11 +104,12 @@ export interface ApprovalCheckContext {
 export interface ToolDescriptor {
   displayName: string;
   /**
-   * Zod schema of the tool's arguments. Canonical: when set, it is used
+   * Schema of the tool's arguments (zod 3, zod 4 or a Standard Schema that
+   * exposes its JSON Schema; LOU-D29). Canonical: when set, it is used
    * instead of `tool.parameters` for argument validation and the schema
    * sent to the model (LOU-D22). {@link defineTool} sets it.
    */
-  inputSchema?: z.ZodTypeAny;
+  inputSchema?: StandardSchemaV1;
   /**
    * Runs the tool. Canonical: when set, it is called instead of
    * `tool.execute` (LOU-D22). {@link defineTool} sets it.

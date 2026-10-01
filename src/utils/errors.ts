@@ -1,5 +1,6 @@
 import { ZodError, type ZodIssue } from 'zod';
 import { newId } from './id';
+import { issueMessage } from './zodCompat';
 
 type ErrorWithMessage = {
   message: string;
@@ -66,7 +67,7 @@ export function formatZodError(err: unknown): { type: string; message: string; [
  * Get Zod error message (simple format)
  */
 export function getZodErrorMessage(error: ZodError): string {
-  return error.errors.map((e: ZodIssue) => e.path[0] + ': ' + e.message).join(', ');
+  return error.issues.map((e: ZodIssue) => `${String(e.path[0])}: ${issueMessage(e)}`).join(', ');
 }
 
 /**

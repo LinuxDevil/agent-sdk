@@ -1,18 +1,22 @@
-import type { z } from 'zod';
 import type { ApprovalCheckContext, ApprovalOutcome, McpToolAnnotations, ToolDescriptor, ToolExecutionContext } from '../types';
 import type { SandboxAdapter } from '../security/sandboxCore';
 import { legacyAiTool } from './toolContract';
+import { isModelSchema, type InferSchemaOutput, type StandardSchemaV1 } from '../utils/zodCompat';
 
 /** Tool names must satisfy the constraint LLM providers impose on function names. */
 const TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
 
 /** Options accepted by {@link defineTool}. */
-export interface DefineToolOptions<S extends z.ZodTypeAny, R> {
+export interface DefineToolOptions<S extends StandardSchemaV1, R> {
   /** Name the model calls the tool by. Must match `^[a-zA-Z0-9_-]{1,64}$`. */
   name: string;
   /** What the tool does; shown to the model. */
   description: string;
-  /** Zod schema of the arguments. `execute` and `needsApproval` receive its parsed (output) type. */
+  /**
+   * Schema of the arguments: zod 3 or zod 4 (LOU-D29), or another Standard
+   * Schema that exposes its JSON Schema (`~standard.jsonSchema`). `execute`
+   * and `needsApproval` receive its parsed (output) type.
+   */
   input: S;
   /** Human-readable label for UIs. Defaults to `name`. */
   displayName?: string;
@@ -24,7 +28,7 @@ export interface DefineToolOptions<S extends z.ZodTypeAny, R> {
    */
   needsApproval?:
     | boolean
-    | ((args: z.output<S>, ctx: ApprovalCheckContext) => ApprovalOutcome | Promise<ApprovalOutcome>);
+    | ((args: InferSchemaOutput<S>, ctx: ApprovalCheckContext) => ApprovalOutcome | Promise<ApprovalOutcome>);
   /**
    * MCP hints about the tool (`readOnlyHint`, `destructiveHint`, `idempotentHint`,
    * `openWorldHint`, `title`). `serveMcp()` sends them to MCP clients verbatim, and a
@@ -36,11 +40,11 @@ export interface DefineToolOptions<S extends z.ZodTypeAny, R> {
   /** Route execution through the configured SandboxAdapter (requires `sandboxExecute`). */
   requiresSandbox?: boolean;
   /** Sandboxed execution path used instead of `execute` when `requiresSandbox` is true. */
-  sandboxExecute?: (args: z.output<S>, sandbox: SandboxAdapter) => Promise<unknown>;
+  sandboxExecute?: (args: InferSchemaOutput<S>, sandbox: SandboxAdapter) => Promise<unknown>;
   /** See {@link ToolDescriptor.injectStreamingController}. */
   injectStreamingController?: ToolDescriptor['injectStreamingController'];
   /** Runs the tool. Arguments are typed from `input`; the return type is preserved on the result. */
-  execute: (args: z.output<S>, ctx: ToolExecutionContext) => R | Promise<R>;
+  execute: (args: InferSchemaOutput<S>, ctx: ToolExecutionContext) => R | Promise<R>;
 }
 
 /**
@@ -50,20 +54,20 @@ export interface DefineToolOptions<S extends z.ZodTypeAny, R> {
  * `inputSchema` and `execute` are the canonical contract; `tool` is a
  * legacy `ai` v4-shaped copy of them.
  */
-export interface DefinedTool<S extends z.ZodTypeAny = z.ZodTypeAny, O = unknown>
+export interface DefinedTool<S extends StandardSchemaV1 = StandardSchemaV1, O = unknown>
   extends ToolDescriptor {
   readonly name: string;
   readonly description: string;
   readonly input: S;
   /** Same schema as `input`. */
   readonly inputSchema: S;
-  execute(args: z.output<S>, ctx: ToolExecutionContext): Promise<O>;
+  execute(args: InferSchemaOutput<S>, ctx: ToolExecutionContext): Promise<O>;
   /** Type-only marker; never set at runtime. */
-  readonly _types?: { input: z.output<S>; output: O };
+  readonly _types?: { input: InferSchemaOutput<S>; output: O };
 }
 
 /** The (parsed) argument type of a defined tool. */
-export type ToolInput<T extends DefinedTool> = z.output<T['input']>;
+export type ToolInput<T extends DefinedTool> = InferSchemaOutput<T['input']>;
 
 /** The awaited return type of a defined tool's `execute`. */
 export type ToolOutput<T extends DefinedTool> = NonNullable<T['_types']>['output'];
@@ -79,17 +83,7 @@ function fail(problem: string, fix: string): never {
   throw new Error(`defineTool: ${problem}. ${fix}`);
 }
 
-function isZodSchema(value: unknown): value is z.ZodTypeAny {
-  const candidate = value as { safeParse?: unknown; _def?: unknown } | null;
-  return (
-    typeof candidate === 'object' &&
-    candidate !== null &&
-    typeof candidate.safeParse === 'function' &&
-    typeof candidate._def === 'object'
-  );
-}
-
-function assertValidOptions(opts: Partial<DefineToolOptions<z.ZodTypeAny, unknown>>): void {
+function assertValidOptions(opts: { name?: unknown; description?: unknown; input?: unknown; execute?: unknown }): void {
   const { name, description, input, execute } = opts;
   if (typeof name !== 'string' || name === '') {
     fail("'name' is required", "Example: defineTool({ name: 'send_email', ... })");
@@ -106,10 +100,10 @@ function assertValidOptions(opts: Partial<DefineToolOptions<z.ZodTypeAny, unknow
       `Example: defineTool({ name: '${name}', description: 'Send an email', ... })`
     );
   }
-  if (!isZodSchema(input)) {
+  if (!isModelSchema(input)) {
     fail(
       `tool '${name}' needs a zod schema as 'input'`,
-      `Import { z } from 'zod' and pass e.g. input: z.object({ query: z.string() })`
+      `Import { z } from 'zod' (zod 3 or 4) and pass e.g. input: z.object({ query: z.string() })`
     );
   }
   if (typeof execute !== 'function') {
@@ -138,12 +132,12 @@ function assertValidOptions(opts: Partial<DefineToolOptions<z.ZodTypeAny, unknow
  * type Result = ToolOutput<typeof sendEmail>; // { messageId: string }
  * ```
  */
-export function defineTool<S extends z.ZodTypeAny, R>(
+export function defineTool<S extends StandardSchemaV1, R>(
   opts: DefineToolOptions<S, R>
 ): DefinedTool<S, Awaited<R>> {
   assertValidOptions(opts);
 
-  const execute = async (args: z.output<S>, ctx: ToolExecutionContext): Promise<Awaited<R>> =>
+  const execute = async (args: InferSchemaOutput<S>, ctx: ToolExecutionContext): Promise<Awaited<R>> =>
     await opts.execute(args, ctx);
   // legacy (.tool): the `ai` v4 Tool shape. Removed in D26.
   const legacyTool = legacyAiTool(opts.description, opts.input, execute as NonNullable<ToolDescriptor['execute']>);

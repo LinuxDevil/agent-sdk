@@ -411,7 +411,7 @@ export function createHttpTool(options: HttpToolOptions = {}): ToolDescriptor {
     input: z.object({
       url: z.string().describe('The URL to make the request to (must be a valid HTTP/HTTPS URL)'),
       method: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']).describe('The HTTP method to use'),
-      headers: z.record(z.string()).optional().describe('Optional headers to include in the request as key-value pairs'),
+      headers: z.record(z.string(), z.string()).optional().describe('Optional headers to include in the request as key-value pairs'),
       body: z.string().optional().describe('The body of the request. For POST/PUT/PATCH, this should be a JSON string. Not used for GET/DELETE.'),
     }),
     execute: async ({ url, method, headers, body }, ctx) => {

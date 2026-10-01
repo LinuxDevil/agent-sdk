@@ -73,3 +73,20 @@ jobs:
       - run: npm run build
       - run: npm run build --workspace=packages/create-loushy-agent
       - run: npx vitest run
+  # LOU-D29: the peer is zod ^3.25.76 || ^4.0.0, and the dev install is zod 3.
+  # This job runs the type check, build and suite with zod 4 installed as `zod`.
+  typecheck-zod4:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm install --no-save zod@4
+      - run: npx tsc --noEmit
+      - run: npm run test:types
+      - run: npm run build
+      - run: npm run build --workspace=packages/create-loushy-agent
+      - run: npx vitest run

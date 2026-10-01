@@ -177,7 +177,7 @@
     "react": "^18 || ^19",
     "tsup": "^8.0.0",
     "vue": "^3",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76 || ^4.0.0"
   },
   "peerDependenciesMeta": {
     "@ai-sdk/anthropic": {
@@ -248,6 +248,7 @@
     "typescript-eslint": "^8.70.1",
     "vue": "^3.5.0",
     "vitest": "^1.0.0",
-    "wrangler": "^4.143.0"
+    "wrangler": "^4.143.0",
+    "zod": "^3.25.76"
   }
 }
