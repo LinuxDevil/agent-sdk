@@ -23,6 +23,7 @@ import { ToolRegistry } from './tools/ToolRegistry';
 import { ToolDescriptor } from './types';
 import { modelFromEnv, resolveProviderSpec } from './providers/providerSpec';
 import type { DefinedTool } from './tools/defineTool';
+import { ToolConcurrency, assertToolConcurrency } from './execution/toolBatch';
 import type { Skill } from './skills/defineSkill';
 
 /**
@@ -53,6 +54,18 @@ export interface CreateAgentBase {
   name?: string;
   /** Optional maxSteps passed through to AgentExecutor.execute(). */
   maxSteps?: number;
+  /**
+   * How many tool calls from one model turn may run at once (LOU-V3).
+   * Defaults to `'unbounded'`; `1` runs them one at a time. Results always
+   * reach the transcript in the model's call order. See
+   * `ExecuteOptions.toolConcurrency` for the full contract.
+   *
+   * @example
+   * ```ts
+   * const agent = createAgent({ prompt: '...', provider, tools: [sendEmail], toolConcurrency: 1 });
+   * ```
+   */
+  toolConcurrency?: ToolConcurrency;
 }
 
 /**
@@ -151,6 +164,7 @@ export interface SimpleAgent {
  * const { text } = await agent.send('Hello!');
  */
 export function createAgent(config: CreateAgentConfig = {}): SimpleAgent {
+  assertToolConcurrency(config.toolConcurrency, 'createAgent');
   const instructions = resolveInstructions(config);
   const provider = resolveModelSource(config);
 
@@ -174,6 +188,7 @@ export function createAgent(config: CreateAgentConfig = {}): SimpleAgent {
         toolRegistry,
         skills: config.skills,
         maxSteps: config.maxSteps,
+        toolConcurrency: config.toolConcurrency,
         signal: options.signal,
       });
     },
