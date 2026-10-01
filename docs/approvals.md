@@ -51,6 +51,11 @@ approval stops the batch: the calls before it run, the run pauses on it, and
 the calls after it run once it is decided (see
 [Approvals in the middle of a tool batch](./durable-execution.md#approvals-in-the-middle-of-a-tool-batch)).
 
+MCP tools set `needsApproval` from the server's tool annotations: `readOnlyHint:
+true` runs, while `destructiveHint` true or absent (the MCP default) asks. Choose
+per server with `approval: 'annotations' | 'always' | 'never'` or a function; see
+[MCP tool approval](./configuration.md#mcp-tool-approval-approval).
+
 ## Permission policies
 
 `permissions` sets rules for the whole agent instead of tool by tool: a list of

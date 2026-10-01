@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { loadMcpTools } from './McpToolLoader';
+import { loadMcpTools, type McpApproval } from './McpToolLoader';
 import { createConnectedClient } from './McpToolLoader.test';
 
 describe('loadMcpTools', () => {
@@ -82,5 +82,69 @@ describe('loadMcpTools', () => {
     expect(githubDescriptors['github__search']).toBeDefined();
     expect(linearDescriptors['github__search']).toBeUndefined();
     expect(githubDescriptors['linear__search']).toBeUndefined();
+  });
+});
+
+describe('loadMcpTools approval (LOU-Z5)', () => {
+  const schema = { type: 'object', properties: {} };
+  const tools = [
+    { name: 'plain', inputSchema: schema },
+    { name: 'read_only', inputSchema: schema, annotations: { readOnlyHint: true } },
+    { name: 'read_only_destructive', inputSchema: schema, annotations: { readOnlyHint: true, destructiveHint: true } },
+    { name: 'destructive', inputSchema: schema, annotations: { destructiveHint: true } },
+    { name: 'not_destructive', inputSchema: schema, annotations: { destructiveHint: false } },
+    { name: 'writes', inputSchema: schema, annotations: { readOnlyHint: false } },
+    { name: 'hints_only', inputSchema: schema, annotations: { idempotentHint: true, openWorldHint: true } },
+    {
+      name: 'titled',
+      description: 'Long description',
+      inputSchema: schema,
+      annotations: { title: 'Nice Title', readOnlyHint: true },
+    },
+  ];
+  const client = { listTools: async () => ({ tools }) } as unknown as Client;
+  const asks = async (approval?: McpApproval) => {
+    const loaded = await loadMcpTools(client, 's', approval === undefined ? {} : { approval });
+    return Object.fromEntries(Object.entries(loaded).map(([name, d]) => [name.slice(3), d.needsApproval]));
+  };
+
+  it("'annotations' (the default): readOnlyHint runs; destructiveHint true or absent asks; destructiveHint false runs", async () => {
+    const expected = {
+      plain: true,
+      read_only: false,
+      read_only_destructive: false,
+      destructive: true,
+      not_destructive: false,
+      writes: true,
+      hints_only: true,
+      titled: false,
+    };
+    expect(await asks()).toEqual(expected);
+    expect(await asks('annotations')).toEqual(expected);
+  });
+
+  it("'always' asks for every tool and 'never' for none", async () => {
+    expect(Object.values(await asks('always')).every((v) => v === true)).toBe(true);
+    expect(Object.values(await asks('never')).every((v) => v === false)).toBe(true);
+  });
+
+  it('a function gets the bare name and the annotations ({} when absent)', async () => {
+    const seen: unknown[] = [];
+    const result = await asks((tool) => {
+      seen.push(tool);
+      return tool.name.startsWith('destr');
+    });
+    expect(result.destructive).toBe(true);
+    expect(result.plain).toBe(false);
+    expect(seen).toContainEqual({ name: 'plain', annotations: {} });
+    expect(seen).toContainEqual({ name: 'read_only', annotations: { readOnlyHint: true } });
+  });
+
+  it('keeps the raw annotations in metadata.mcp and uses the title as displayName', async () => {
+    const loaded = await loadMcpTools(client, 's');
+    expect(loaded.s__titled.metadata).toEqual({ mcp: { annotations: { title: 'Nice Title', readOnlyHint: true } } });
+    expect(loaded.s__titled.displayName).toBe('Nice Title');
+    expect(loaded.s__plain.metadata?.mcp?.annotations).toBeUndefined();
+    expect(loaded.s__read_only.displayName).toBe('read_only');
   });
 });
