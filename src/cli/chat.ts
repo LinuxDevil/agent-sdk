@@ -96,6 +96,8 @@ export async function runChat(
       output: io.stdout,
       terminal: io.stdin.isTTY === true,
     }));
+    let closed = false;
+    reader.once('close', () => (closed = true));
     return await runChatRepl({
       input: reader,
       output: io.stdout,
@@ -105,7 +107,9 @@ export async function runChat(
       model: parsed.model,
       sessionId: parsed.session,
       color: io.stdout.isTTY === true && !process.env.NO_COLOR,
-      writePrompt: (text) => (reader.setPrompt(text), reader.prompt()),
+      // Piped input can end (closing readline) while queued lines are still being
+      // answered; prompt() throws on a closed interface on newer Node versions.
+      writePrompt: (text) => (closed ? void io.stdout.write(text) : (reader.setPrompt(text), reader.prompt())),
     });
   } catch (error) {
     io.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
