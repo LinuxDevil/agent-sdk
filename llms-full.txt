@@ -3648,7 +3648,10 @@ docker run -p 3000:3000 -e OPENAI_API_KEY=... loushy-agent
 Generates a module Worker (`export default { fetch }`) and bundles it as a
 browser-platform ES module; the build fails if any `node:` import ends up in
 `dist/worker.js`. `wrangler.toml` points `main` at `dist/worker.js` with
-`no_bundle = true`, so exactly the verified bundle is uploaded:
+`no_bundle = true`, so exactly the verified bundle is uploaded. It builds and
+runs with `ai` v4 (the default install) or `ai` v7 (with
+`@ai-sdk/openai`/`@ai-sdk/anthropic` v4) installed, with no compatibility
+flag (no `nodejs_compat`):
 
 ```bash
 cd .loushy/build/cloudflare-worker
@@ -3783,8 +3786,14 @@ Node-only imports (project instructions, the file session store, guardrail
 patches, MCP over stdio) the build points at a shim that fails when used
 (`src/deploy/shims/node.worker.ts`). The built `dist/worker.js` bundle is then
 checked for `node:` and bare Node builtin specifiers as part of `loushy build`,
-and fails the build if any are found. The bundle is larger than a single-turn
-Worker (about 1.7 MB raw, 335 KB gzip for a `mock` agent): `loushy build` reports
+and fails the build if any are found. One exception: `ai` v7 and
+`@ai-sdk/provider-utils` v5 look up `node:module`, `node:dns`,
+`node:diagnostics_channel` and `node:async_hooks` at run time with
+`process.getBuiltinModule()`, only when they detect Node, and fall back to
+`fetch()` (or skip telemetry tracing) elsewhere. Those four ids are accepted as
+the argument of such a call and nowhere else. The bundle is larger than a single-turn
+Worker (about 1.7 MB raw, 340 KB gzip for a `mock` agent on `ai` v4; about 3.4 MB
+raw, 630 KB gzip on `ai` v7): `loushy build` reports
 its size, and `describe()` compares it to Cloudflare's script size limit.
 
 ## Custom targets
