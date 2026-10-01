@@ -15,20 +15,7 @@
  */
 
 import * as aiModule from 'ai';
-import {
-  tool as aiTool,
-  LanguageModel,
-  ToolSet,
-  CoreMessage,
-  CoreAssistantMessage,
-  CoreToolMessage,
-  TextPart,
-  ImagePart,
-  FilePart,
-  ToolCallPart,
-  ToolResultPart,
-  Output,
-} from 'ai';
+import type { LanguageModel } from 'ai';
 import {
   LLMProvider,
   LLMProviderConfig,
@@ -39,9 +26,18 @@ import {
   ToolCall,
   ToolDefinition,
   ContentPart,
+  TextContentPart,
 } from './llm';
 import { textOf } from './content';
 import { type AiSdkMessage, type AiSdkModule, compatGenerateText, streamCompat } from './aiSdkCompat';
+
+// The `ai` v4 request shapes built here, as our own structural types (LOU-D28a):
+// `ai` v6/v7 do not export the v4 ones, and aiSdkCompat maps these to v6/v7.
+// Text, image and file parts are already v4-shaped as our `ContentPart`s.
+type ToolCallPart = { type: 'tool-call'; toolCallId: string; toolName: string; args: unknown };
+type ToolResultPart = { type: 'tool-result'; toolCallId: string; toolName: string; result: unknown; isError?: boolean };
+/** A v4 `tool()` (the identity function in v4): `parameters` and a placeholder `execute`. */
+type AiSdkTool = { description: string; parameters: unknown; execute: () => Promise<null> };
 
 /** Config fields shared by every 'ai'-SDK-backed provider. */
 export interface AiSdkProviderConfig extends LLMProviderConfig {
@@ -64,9 +60,9 @@ function parseJsonOr(text: unknown, fallback: unknown): unknown {
  * JSON string to the object the 'ai' SDK expects (`{}` if unparseable, so
  * the turn is still accepted by providers that require an object).
  */
-function toAssistantToolCallMessage(msg: Message, toolCalls: ToolCall[]): CoreAssistantMessage {
+function toAssistantToolCallMessage(msg: Message, toolCalls: ToolCall[]): AiSdkMessage {
   const text = textOf(msg);
-  const parts: Array<TextPart | ToolCallPart> = text ? [{ type: 'text', text }] : [];
+  const parts: Array<TextContentPart | ToolCallPart> = text ? [{ type: 'text', text }] : [];
   for (const tc of toolCalls) {
     parts.push({
       type: 'tool-call',
@@ -84,7 +80,7 @@ function toAssistantToolCallMessage(msg: Message, toolCalls: ToolCall[]): CoreAs
  * so passing our encoded string would double-encode it); non-JSON text and
  * non-string content are passed through unchanged.
  */
-function toToolResultMessage(msg: Message, toolNames: Map<string, string>): CoreToolMessage {
+function toToolResultMessage(msg: Message, toolNames: Map<string, string>): AiSdkMessage {
   const toolCallId = msg.toolCallId ?? '';
   const part: ToolResultPart = {
     type: 'tool-result',
@@ -107,7 +103,7 @@ interface PartSupport {
 const warnedFileParts = new Set<string>();
 
 /** A user content part as the 'ai' v4 `TextPart` / `ImagePart` / `FilePart`. */
-function toUserPart(part: ContentPart, support: PartSupport): TextPart | ImagePart | FilePart {
+function toUserPart(part: ContentPart, support: PartSupport): ContentPart {
   if (part.type === 'text') return { type: 'text', text: part.text };
   if (part.type === 'image') {
     return { type: 'image', image: part.image, ...(part.mimeType ? { mimeType: part.mimeType } : {}) };
@@ -128,9 +124,9 @@ function toUserPart(part: ContentPart, support: PartSupport): TextPart | ImagePa
  * id, as every provider (OpenAI, Anthropic, Ollama, OpenRouter) requires.
  * Content parts (LOU-V11) are sent on user messages; other roles get their text.
  */
-function toCoreMessages(messages: Message[], support: PartSupport): CoreMessage[] {
+function toCoreMessages(messages: Message[], support: PartSupport): AiSdkMessage[] {
   const toolNames = new Map<string, string>();
-  return messages.map((msg): CoreMessage => {
+  return messages.map((msg): AiSdkMessage => {
     if (msg.role === 'tool') {
       return toToolResultMessage(msg, toolNames);
     }
@@ -149,20 +145,31 @@ function toCoreMessages(messages: Message[], support: PartSupport): CoreMessage[
  * Convert our tool definitions to 'ai' SDK tools, or `undefined` when there
  * are none (the 'ai' SDK treats an empty tool set differently from no tools).
  */
-function convertTools(toolDefs: ToolDefinition[] | undefined): ToolSet | undefined {
-  const tools: ToolSet = {};
+function convertTools(toolDefs: ToolDefinition[] | undefined): Record<string, AiSdkTool> | undefined {
+  const tools: Record<string, AiSdkTool> = {};
   for (const toolDef of toolDefs ?? []) {
-    const params = toolDef.function.parameters;
-    tools[toolDef.function.name] = aiTool({
+    tools[toolDef.function.name] = {
       description: toolDef.function.description,
-      parameters: params as any, // Type assertion since we know it's compatible
-      execute: async () => {
-        // This is just a placeholder, actual execution happens in AgentExecutor
-        return null;
-      },
-    });
+      parameters: toolDef.function.parameters,
+      // A placeholder: the actual execution happens in AgentExecutor.
+      execute: async () => null,
+    };
   }
   return Object.keys(tools).length > 0 ? tools : undefined;
+}
+
+/** An `ai` v4 `Output` spec, structurally (v6/v7 get aiSdkCompat's own). */
+interface AiSdkOutput {
+  type: 'object';
+  responseFormat(options: { model: unknown }): { type: 'json'; schema?: Record<string, unknown> };
+  injectIntoSystemPrompt(options: { system: string | undefined }): string | undefined;
+  parsePartial(options: { text: string }): { partial: string };
+  parseOutput(options: { text: string }): string;
+}
+
+/** Whether a v4 language model object reports `supportsStructuredOutputs`. */
+function supportsStructuredOutputs(model: unknown): boolean {
+  return typeof model === 'object' && model !== null && Boolean((model as { supportsStructuredOutputs?: unknown }).supportsStructuredOutputs);
 }
 
 /**
@@ -171,13 +178,13 @@ function convertTools(toolDefs: ToolDefinition[] | undefined): ToolSet | undefin
  * `Output.object()` does). Unlike `Output.object()` it leaves the prompt and
  * the reply text alone: AgentExecutor instructs the model and validates.
  */
-function toOutput(format: GenerateOptions['responseFormat']): Output.Output<string, string> | undefined {
+function toOutput(format: GenerateOptions['responseFormat']): AiSdkOutput | undefined {
   if (format?.type !== 'json') return undefined;
   return {
     type: 'object',
     responseFormat: ({ model }) => ({
       type: 'json',
-      schema: typeof model === 'object' && model.supportsStructuredOutputs ? format.schema : undefined,
+      schema: supportsStructuredOutputs(model) ? format.schema : undefined,
     }),
     injectIntoSystemPrompt: ({ system }) => system,
     parsePartial: ({ text }) => ({ partial: text }),

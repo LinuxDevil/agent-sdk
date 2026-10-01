@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 import type { ToolDescriptor, ToolExecutionContext } from '../types';
 import type { SandboxAdapter } from '../security/sandboxCore';
+import { legacyAiTool } from './toolContract';
 
 /** Tool names must satisfy the constraint LLM providers impose on function names. */
 const TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
@@ -132,13 +133,8 @@ export function defineTool<S extends z.ZodTypeAny, R>(
 
   const execute = async (args: z.output<S>, ctx: ToolExecutionContext): Promise<Awaited<R>> =>
     await opts.execute(args, ctx);
-  // Hand-built `ai` v4 Tool shape (its `tool()` is the identity function).
-  const legacyTool: ToolDescriptor['tool'] = {
-    description: opts.description,
-    parameters: opts.input,
-    // legacy (.tool): `ai` v4 types `messages` as CoreMessage[]; the SDK always passes ours. Removed in D26.
-    execute: execute as ToolDescriptor['tool']['execute'],
-  };
+  // legacy (.tool): the `ai` v4 Tool shape. Removed in D26.
+  const legacyTool = legacyAiTool(opts.description, opts.input, execute as NonNullable<ToolDescriptor['execute']>);
   const defined: DefinedTool<S, Awaited<R>> = {
     name: opts.name,
     description: opts.description,

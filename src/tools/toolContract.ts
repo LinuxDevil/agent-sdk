@@ -50,10 +50,18 @@ export function toolDescriptorFromSchema(opts: ToolFromSchemaOptions): ToolDescr
     needsApproval: opts.needsApproval,
     metadata: opts.metadata,
     // legacy (.tool): the same schema and execute in the `ai` v4 shape. Removed in D26.
-    tool: {
-      description: opts.description,
-      parameters: opts.inputSchema,
-      execute: execute as ToolDescriptor['tool']['execute'],
-    },
+    tool: legacyAiTool(opts.description, opts.inputSchema, execute),
   };
+}
+
+/**
+ * A hand-built legacy `.tool` in the `ai` v4 shape (`{ description,
+ * parameters, execute }`; v4's `tool()` is the identity function). It is
+ * typed as the installed `ai`'s `Tool`, which on `ai` v6/v7 has
+ * `inputSchema` instead of `parameters`, hence the documented
+ * `unknown` cast (LOU-D28a). The runtime reads `parameters` through
+ * {@link getToolInputSchema} and the `execute` through {@link getToolExecute}.
+ */
+export function legacyAiTool(description: string, parameters: unknown, execute: ToolExecuteFn): ToolDescriptor['tool'] {
+  return { description, parameters, execute } as unknown as ToolDescriptor['tool'];
 }
