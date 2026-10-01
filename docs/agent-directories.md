@@ -28,6 +28,7 @@ my-agent/
   subagents/<name>/                                # nested agent directories
   schedules/*.ts|js                                # defineSchedule() cron schedules (see schedules.md)
   channels/*.ts|js                                 # a channel each: defineChannel(), webhookChannel(), ... (see channels.md)
+  memory/*.ts|js                                   # a memory slot each: defineMemory() (see memory.md); part of the agent
 ```
 
 Only one config file may exist. Files inside `tools/` and the entries of
@@ -116,6 +117,28 @@ createServer((req, res) => void handler(req, res).then((handled) => handled || r
 ```
 
 `loushy dev` does not mount `channels/` yet.
+
+### Memory
+
+Each file in `memory/` default-exports a [memory slot](./memory.md): the result of
+`defineMemory({ ... })`, or the same options without a `name`, in which case the
+file name is the slot name. Unlike schedules and channels, slots are part of the
+agent: `loadAgentDir()` passes them to `createAgent({ memory })`, so the
+`remember_<name>` / `recall_<name>` tools and recall into the prompt work with no
+extra code, and `manifest.memory` lists their names. Each slot uses its own
+`provider`. A file that does not export a slot fails with `LOUSHY_MEMORY_INVALID`
+naming the file. A `memory` override passed to `loadAgentDir(dir, { overrides })`
+is merged with the directory's slots by name: the override wins a name clash.
+
+```ts
+import { defineMemory, fileMemory, resolveAgentDir } from '@loushy/build-ai-agent';
+
+// memory/notes.ts: export default { scope: 'global', provider: fileMemory({ dir: './.loushy/memory' }) }
+const { manifest } = await resolveAgentDir('./my-agent', {
+  memory: [defineMemory({ name: 'notes', scope: 'global', provider: fileMemory({ dir: './.loushy/memory' }) })],
+});
+console.log(manifest.memory); // names found in memory/
+```
 
 ## How it maps to `createAgent()`
 

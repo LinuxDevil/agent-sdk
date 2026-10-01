@@ -173,5 +173,5 @@ console.log((await store.list('global')).map((item) => item.text)); // ['Lives i
   sub-agents. When `agent.approvals.resolve()` continues a run after an
   approval pause, the recalled block stays in the prompt but the memory tools
   are not offered for the rest of that run.
-- `loadAgentDir()` does not read a `memory/` folder yet (planned, LOU-W6.3):
-  pass `memory` as an override.
+- An agent directory's `memory/` folder is part of the agent: see
+  [Agent directories](./agent-directories.md#memory).

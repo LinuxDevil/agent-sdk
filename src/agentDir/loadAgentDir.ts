@@ -17,6 +17,7 @@ import { isDirectory, isFile, readText } from './fsUtil';
 import type { DefinedSchedule } from '../schedules/defineSchedule';
 import type { Channel } from '../channels/defineChannel';
 import { loadChannels } from './loadChannels';
+import { loadMemory, mergeMemory } from './loadMemory';
 import { loadSchedules } from './loadSchedules';
 import { loadTools, type LoadedTool } from './loadTools';
 import { readConfig, type AgentDirConfig } from './readConfig';
@@ -27,7 +28,7 @@ export type { AgentDirConfig } from './readConfig';
 /**
  * Options that win over what the directory's files say. Same shape as
  * `createAgent()`'s options; `tools` and `skills` replace the discovered ones
- * (they are not merged).
+ * (they are not merged). `memory` is merged with the directory's `memory/` slots by name; the override wins a clash.
  *
  * @example
  * ```ts
@@ -56,6 +57,8 @@ export interface AgentDirManifest {
   schedules: string[];
   /** Channel names discovered in `channels/` (the file name unless the channel sets its own). */
   channels: string[];
+  /** Memory slot names discovered in `memory/` (the file name unless the slot sets its own). */
+  memory: string[];
 }
 
 /** The result of {@link resolveAgentDir}: ready-to-use `createAgent()` options plus what was discovered. */
@@ -171,6 +174,7 @@ async function resolveWith(
   const subagents = await loadSubagents(dir, overrides, source);
   const schedules = await loadSchedules(dir);
   const channels = await loadChannels(dir);
+  const memorySlots = await loadMemory(dir);
   const name = overrides.name ?? config.name ?? path.basename(dir);
 
   const fileTools = [...tools.map((t) => t.tool), ...subagents.map(delegateTool)];
@@ -180,6 +184,7 @@ async function resolveWith(
     ...optional('provider', source.provider),
     ...optional('model', source.model),
     ...optional('tools', overrides.tools ?? (fileTools.length > 0 ? fileTools : undefined)),
+    ...optional('memory', mergeMemory(memorySlots, overrides.memory)),
     ...optional('skills', overrides.skills ?? (skills.length > 0 ? skills : undefined)),
     ...optional('maxSteps', overrides.maxSteps ?? config.maxSteps),
     ...optional('toolConcurrency', overrides.toolConcurrency ?? config.toolConcurrency),
@@ -203,6 +208,7 @@ async function resolveWith(
       subagents: subagents.map((s) => s.name),
       schedules: schedules.map((s) => s.name as string),
       channels: channels.map((c) => c.name),
+      memory: memorySlots.map((m) => m.name),
     },
   };
 }
@@ -230,6 +236,7 @@ async function skillsFor(dir: string, overrides: AgentDirOverrides): Promise<Ski
  *   subagents/<name>/                                nested agent directories (need a description)
  *   schedules/*.ts|js                                each default-exports defineSchedule(); run with startSchedules()
  *   channels/*.ts|js                                 each default-exports a channel (defineChannel(), webhookChannel(), ...)
+ *   memory/*.ts|js                                   each default-exports a memory slot (defineMemory()); part of the agent
  * ```
  *
  * Loading executes the directory's code. Only load directories you trust.
