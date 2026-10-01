@@ -26,6 +26,7 @@ dashboard — any provider, any deploy target, no lock-in.
 - **Streaming events** — `for await (const event of agent.stream(input))` yields a typed, versioned, JSON-serializable event stream (`text.delta` tokens as they arrive, `tool.start`/`tool.done`, steps, approvals, a final `run.done`) ready to forward over SSE or WebSockets; `await run.result` gives the same result as `send()` ([docs/streaming.md](docs/streaming.md))
 =======
 - **Sessions** — `agent.session()` keeps a multi-turn conversation (in memory, or persisted with `FileSessionStore`)
+- **SQLite store** — `new SqliteStore('./.loushy/agent.db')` from `@loushy/build-ai-agent/sqlite` keeps sessions, checkpoints and approvals in one durable, transactional file (built-in `node:sqlite`, no native dependency) — see [Sessions](docs/sessions.md#stores)
 - **Project instructions** — `createAgent({ projectInstructions: true })` appends the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (opt-in)
 >>>>>>> origin/main
 - **Parallel tool calls** — when the model asks for several tools in one turn they run concurrently (cap it with `toolConcurrency`, or `1` for sequential), and results still reach the transcript in the model's call order
