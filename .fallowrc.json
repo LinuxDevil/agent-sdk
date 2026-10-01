@@ -13,7 +13,9 @@
   "dynamicallyLoaded": [
     "src/deploy/runtime.ts",
     "src/deploy/runtime.worker.ts",
-    "src/deploy/shims/sandboxCore.worker.ts"
+    "src/deploy/shims/sandboxCore.worker.ts",
+    "src/agentDir/__fixtures__/**/*.{ts,js}",
+    "examples/agent-dir/tools/*.ts"
   ],
   "ignoreDependencies": [
     "@ai-sdk/anthropic",

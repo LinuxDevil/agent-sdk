@@ -62,6 +62,9 @@ export * from './projectInstructions';
 // Skills: progressive disclosure of instructions (LOU-Y2)
 export * from './skills';
 
+// Filesystem agent loader: an agent as a directory (LOU-Y5)
+export * from './agentDir';
+
 // Declarative agent spec file format (LOU-H9)
 export * from './spec';
 

@@ -1,0 +1,4 @@
+{
+  "description": "Counts words and suggests tone fixes",
+  "maxSteps": 5
+}
