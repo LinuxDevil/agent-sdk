@@ -2,30 +2,25 @@
  * The one builder of the context a tool's `execute(args, ctx)` receives
  * (LOU-U15). Every path that runs a tool - the main loop, resume after an
  * approval, the sandbox route and FlowExecutor's tool-call node - goes
- * through {@link buildToolRunContext}, so the `ToolExecutionOptions` the
+ * through {@link buildToolRunContext}, so the `ToolExecutionContext` the
  * type promises (`toolCallId`, `messages`, `abortSignal`) are always real.
  */
 
 import { randomUUID } from 'node:crypto';
-import type { ToolExecutionOptions } from 'ai';
 import type { Message } from '../providers';
-import type { RunUsage } from '../models/usage';
+import type { ToolExecutionContext } from '../types/tool';
 import { bindToolCallScope, type ToolCallScope } from './subagentRuntime';
 
-/** Extra context the executor hands a tool next to the 'ai' SDK's own execute options (LOU-V5). */
-export interface ToolRunContext {
-  /** Called by the delegate tool with a finished child run's usage, so the parent run adds it to its totals. */
-  onDelegatedUsage?: (usage: RunUsage) => void;
-  /**
-   * LOU-U9: the model's id for this tool call - unchanged when a call that
-   * was running when the process died is re-run on resume, so tools can use
-   * it as an idempotency key.
-   */
-  toolCallId?: string;
-}
+/**
+ * @deprecated Use {@link ToolExecutionContext}, the one public execute-context
+ * type. Kept as an alias of its fields (all optional, `messages` left out, as
+ * before) so existing imports compile and 'ai' `tool()` execute options still
+ * fit it.
+ */
+export type ToolRunContext = Partial<Omit<ToolExecutionContext, 'messages'>>;
 
 /** What {@link buildToolRunContext} builds the context from. */
-export interface ToolRunInput extends ToolRunContext {
+export interface ToolRunInput extends Pick<ToolRunContext, 'toolCallId' | 'sessionId' | 'onDelegatedUsage'> {
   /** The run's transcript. The tool gets the part before the model turn that made this call. */
   messages?: readonly Message[];
   /** The run's cancellation signal; the tool gets it as `abortSignal`. */
@@ -38,7 +33,7 @@ export interface ToolRunInput extends ToolRunContext {
  * A read-only copy of what the model had seen when it made `toolCallId`'s
  * call: the transcript without the system prompt and without the assistant
  * turn that made the call (or anything after it) - the same meaning
- * `ToolExecutionOptions.messages` has in the 'ai' SDK.
+ * `ToolExecutionContext.messages` has (as in the 'ai' SDK).
  */
 function transcriptBefore(messages: readonly Message[], toolCallId: string): readonly Message[] {
   const turn = messages.findIndex((m) => m.toolCalls?.some((call) => call.id === toolCallId));
@@ -48,17 +43,18 @@ function transcriptBefore(messages: readonly Message[], toolCallId: string): rea
 
 /**
  * The context for one tool call: `{ toolCallId, messages, abortSignal }`
- * plus the SDK's own {@link ToolRunContext} fields. `toolCallId` falls back
+ * plus the optional `sessionId` and `onDelegatedUsage`. `toolCallId` falls back
  * to a generated id for callers with no model turn behind the call.
  */
-export function buildToolRunContext(input: ToolRunInput): ToolExecutionOptions & ToolRunContext {
+export function buildToolRunContext(input: ToolRunInput): ToolExecutionContext {
   const toolCallId = input.toolCallId ?? `call_${randomUUID()}`;
-  const ctx = {
+  const ctx: ToolExecutionContext = {
     toolCallId,
     messages: transcriptBefore(input.messages ?? [], toolCallId),
     abortSignal: input.signal,
     onDelegatedUsage: input.onDelegatedUsage,
-  } as unknown as ToolExecutionOptions & ToolRunContext;
+    ...(input.sessionId !== undefined && { sessionId: input.sessionId }),
+  };
   bindToolCallScope(ctx, input.scope);
   return ctx;
 }
