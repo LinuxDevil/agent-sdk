@@ -1,277 +1,36 @@
 # ESLint Baseline Follow-up
 
-This file tracks pre-existing lint violations surfaced by the ESLint flat config introduced in LOU-B1. These were present at baseline and were intentionally left unfixed as out of scope for LOU-B1. Fix incrementally in follow-up work.
+The ESLint flat config (introduced in LOU-B1) originally surfaced 271 pre-existing violations. They have since been fixed or downgraded; `npm run lint` (`eslint src`) now reports **0 errors and 428 warnings**. Warnings are tolerated for now: do not add new ones, and burn these down incrementally.
 
-Total violations: 271
+Last refreshed: LOU-U5. Regenerate with `npx eslint src -f json` and group by `ruleId` / directory.
 
-- src/agent-types/validators.ts:30 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/core/AgentBuilder.ts:94 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/core/AgentBuilder.ts:110 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/core/AgentBuilder.ts:118 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/core/AgentBuilder.ts:126 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/core/ConfigManager.test.ts:16 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/core/ConfigManager.ts:15 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/mocks.test.ts:9 [@typescript-eslint/no-unused-vars] 'Agent' is defined but never used.
-- src/data/mocks.test.ts:9 [@typescript-eslint/no-unused-vars] 'Session' is defined but never used.
-- src/data/mocks.test.ts:9 [@typescript-eslint/no-unused-vars] 'Result' is defined but never used.
-- src/data/mocks.test.ts:9 [@typescript-eslint/no-unused-vars] 'Memory' is defined but never used.
-- src/data/mocks.test.ts:9 [@typescript-eslint/no-unused-vars] 'Attachment' is defined but never used.
-- src/data/mocks.ts:22 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/mocks.ts:40 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/mocks.ts:154 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/mocks.ts:166 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/mocks.ts:223 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/models.ts:18 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/models.ts:19 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/models.ts:21 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/models.ts:22 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/models.ts:23 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/models.ts:50 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/models.ts:76 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/models.ts:77 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/models.ts:84 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/models.ts:85 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/models.ts:105 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/models.ts:116 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/models.ts:144 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/models.ts:153 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/models.ts:200 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/models.ts:214 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/repositories.ts:60 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/data/repositories.ts:61 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/execution/AgentExecutor.ts:36 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/execution/AgentExecutor.ts:263 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/execution/AgentExecutor.ts:268 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/execution/AgentExecutor.ts:298 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/execution/AgentExecutor.ts:323 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/execution/ContextBuilder.test.ts:20 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/execution/ContextBuilder.ts:18 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/execution/ContextBuilder.ts:29 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/execution/ContextBuilder.ts:213 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/execution/ContextBuilder.ts:235 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/execution/MemoryManager.test.ts:8 [@typescript-eslint/no-unused-vars] 'Memory' is defined but never used.
-- src/execution/MemoryManager.ts:24 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/execution/retry.ts:133 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowBuilder.ts:73 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowBuilder.ts:84 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.test.ts:6 [@typescript-eslint/no-unused-vars] 'FlowExecutionResult' is defined but never used.
-- src/flows/FlowExecutor.test.ts:28 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.test.ts:155 [@typescript-eslint/no-unused-vars] 'events' is assigned a value but never used.
-- src/flows/FlowExecutor.test.ts:480 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.test.ts:547 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:16 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:17 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:20 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:51 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:52 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:61 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:62 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:145 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:149 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:157 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:170 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:204 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:206 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:241 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:245 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:247 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:265 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:269 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:273 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:290 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:294 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:337 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:341 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:345 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:380 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:382 [@typescript-eslint/no-unused-vars] '_events' is defined but never used.
-- src/flows/FlowExecutor.ts:383 [@typescript-eslint/no-unused-vars] '_onEvent' is defined but never used.
-- src/flows/FlowExecutor.ts:384 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:393 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:464 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:468 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:493 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:524 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:528 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:549 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:551 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:559 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:561 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:568 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:577 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:577 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:577 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:585 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:597 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:597 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:597 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:608 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:622 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:622 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/FlowExecutor.ts:626 [@typescript-eslint/no-unused-vars] 'error' is defined but never used.
-- src/flows/converters.ts:9 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/converters.ts:154 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/converters.ts:162 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/converters.ts:170 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/converters.ts:179 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/converters.ts:205 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/inputs.ts:38 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/inputs.ts:40 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/inputs.ts:66 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/inputs.ts:85 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/inputs.ts:86 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/inputs.ts:86 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/inputs.ts:86 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/inputs.ts:105 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/inputs.ts:126 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/inputs.ts:176 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/flows/validators.test.ts:71 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OllamaProvider.ts:26 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OllamaProvider.ts:78 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OllamaProvider.ts:85 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OllamaProvider.ts:96 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OllamaProvider.ts:108 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OllamaProvider.ts:146 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OllamaProvider.ts:152 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OllamaProvider.ts:163 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OllamaProvider.ts:233 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OllamaProvider.ts:256 [@typescript-eslint/no-unused-vars] '_model' is defined but never used.
-- src/providers/OllamaProvider.ts:267 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OpenAIProvider.test.ts:7 [@typescript-eslint/no-unused-vars] 'GenerateOptions' is defined but never used.
-- src/providers/OpenAIProvider.ts:28 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OpenAIProvider.ts:77 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OpenAIProvider.ts:83 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OpenAIProvider.ts:94 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OpenAIProvider.ts:106 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OpenAIProvider.ts:138 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OpenAIProvider.ts:144 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OpenAIProvider.ts:155 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OpenAIProvider.ts:225 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OpenAIProvider.ts:248 [@typescript-eslint/no-unused-vars] '_model' is defined but never used.
-- src/providers/OpenRouterProvider.examples.ts:238 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OpenRouterProvider.test.ts:7 [@typescript-eslint/no-unused-vars] 'MessageRole' is defined but never used.
-- src/providers/OpenRouterProvider.ts:28 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OpenRouterProvider.ts:112 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OpenRouterProvider.ts:118 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OpenRouterProvider.ts:129 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OpenRouterProvider.ts:141 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OpenRouterProvider.ts:173 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OpenRouterProvider.ts:179 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OpenRouterProvider.ts:190 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OpenRouterProvider.ts:260 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OpenRouterProvider.ts:304 [@typescript-eslint/no-unused-vars] '_model' is defined but never used.
-- src/providers/OpenRouterProvider.ts:324 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OpenRouterProvider.ts:350 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/OpenRouterProvider.ts:363 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/llm.ts:43 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/llm.ts:76 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/llm.ts:98 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/llm.ts:171 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/providers/mock.ts:124 [@typescript-eslint/no-unused-vars] '_model' is defined but never used.
-- src/providers/mock.ts:128 [@typescript-eslint/no-unused-vars] '_model' is defined but never used.
-- src/providers/mock.ts:172 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/security/crypto.test.ts:93 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/security/crypto.ts:259 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/storage/StorageService.test.ts:5 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/storage/StorageService.test.ts:6 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/storage/StorageService.ts:11 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/storage/StorageService.ts:12 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/storage/StorageService.ts:204 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/storage/StorageService.ts:217 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/storage/types.ts:27 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/storage/types.ts:47 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/templates/TemplateManager.test.ts:46 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/templates/TemplateManager.test.ts:194 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/templates/TemplateManager.ts:17 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/templates/TemplateManager.ts:31 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/templates/TemplateManager.ts:31 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/templates/TemplateManager.ts:41 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/templates/TemplateManager.ts:55 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/templates/TemplateManager.ts:82 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/templates/TemplateManager.ts:109 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/templates/types.ts:8 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/templates/types.ts:13 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/github.ts:194 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/github.ts:370 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/github.ts:438 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/github.ts:558 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/github.ts:608 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/github.ts:730 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/github.ts:780 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/github.ts:875 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/github.ts:916 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/github.ts:1011 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/github.ts:1012 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/github.ts:1017 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/github.ts:1018 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/github.ts:1060 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/github.ts:1061 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/github.ts:1083 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/github.ts:1130 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/github.ts:1270 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/github.ts:1315 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/github.ts:1358 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/http.test.ts:41 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/http.test.ts:41 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/http.test.ts:44 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/http.test.ts:48 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/http.test.ts:152 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/http.test.ts:152 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/http.test.ts:155 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/index.test.ts:52 [@typescript-eslint/ban-ts-comment] Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free.
-- src/tools/built-in/jira.ts:49 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/jira.ts:157 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/jira.ts:182 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/jira.ts:212 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/jira.ts:248 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/jira.ts:313 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/jira.ts:394 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/jira.ts:463 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/jira.ts:575 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/jira.ts:682 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/jira.ts:744 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/jira.ts:869 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/jira.ts:908 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/jira.ts:950 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/jira.ts:982 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/jira.ts:1049 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/jira.ts:1070 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/jira.ts:1091 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/jira.ts:1097 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/jira.ts:1114 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/jira.ts:1114 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/tools/built-in/jira.ts:1115 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/types/agent.ts:35 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/types/agent.ts:38 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/types/agent.ts:39 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/types/agent.ts:40 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/types/agent.ts:50 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/types/agent.ts:61 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/types/agent.ts:84 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/types/flow.ts:28 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/types/flow.ts:31 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/types/flow.ts:33 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/types/flow.ts:42 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/types/flow.ts:73 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/types/flow.ts:172 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/types/flow.ts:178 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/types/repository.ts:28 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/types/repository.ts:49 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/types/tool.ts:28 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/utils/errors.ts:39 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/utils/errors.ts:40 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/utils/errors.ts:75 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/utils/file-extractor.ts:7 [@typescript-eslint/no-unused-vars] 'Buffer' is defined but never used.
-- src/utils/file-extractor.ts:7 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/utils/file-extractor.ts:63 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/utils/formatters.ts:35 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/utils/formatters.ts:61 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/utils/json-path.test.ts:44 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/utils/json-path.test.ts:65 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/utils/json-path.test.ts:66 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/utils/json-path.test.ts:80 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/utils/json-path.test.ts:81 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/utils/json-path.ts:7 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/utils/json-path.ts:66 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/utils/json-path.ts:66 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
-- src/utils/validators.ts:71 [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+## By rule
+
+| Rule | Warnings |
+| --- | ---: |
+| `@typescript-eslint/no-explicit-any` | 395 |
+| `@typescript-eslint/no-unused-vars` | 22 |
+| unused `eslint-disable` directives (no rule id) | 10 |
+| `@typescript-eslint/ban-ts-comment` | 1 |
+
+## By directory (under `src/`)
+
+| Directory | Warnings |
+| --- | ---: |
+| `execution` | 123 |
+| `flows` | 102 |
+| `tools/built-in` | 54 |
+| `data` | 28 |
+| `providers` | 20 |
+| `utils` | 19 |
+| `types` | 18 |
+| `templates` | 17 |
+| `cli` | 10 |
+| `tools/mcp` | 9 |
+| `storage` | 8 |
+| `core` | 6 |
+| `deploy` (+ `deploy/adapters`) | 6 |
+| `evals`, `security` | 3 each |
+| `agent-types`, root | 1 each |
+
+Most of the work is replacing `any` in `execution/` and `flows/` (mainly `FlowExecutor` node handling and the executor option plumbing) with real types.

@@ -3,8 +3,12 @@
   "entry": [
     "src/cli/{dev,build,studio}.ts",
     "src/data/index.ts",
+    "**/*.test-d.ts",
     "**/*.{test,spec}.{ts,tsx}",
     "**/*.eval.ts"
+  ],
+  "ignorePatterns": [
+    ".claude/**"
   ],
   "dynamicallyLoaded": [
     "src/deploy/runtime.ts",

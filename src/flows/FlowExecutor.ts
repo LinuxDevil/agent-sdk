@@ -9,6 +9,7 @@ import { AgentFlow, EditorStep } from '../types';
 import { AgentConfig } from '../types';
 import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from '../execution/sandboxGuard';
+import { evaluateSafeExpression, ExpressionError } from './safeExpression';
 
 /**
  * Flow execution context
@@ -692,10 +693,11 @@ export class FlowExecutor {
    */
   private static evaluateCondition(condition: string, variables: Record<string, any>): boolean {
     try {
-      // Simple evaluation - supports basic comparisons
-      // In production, use a safe expression evaluator
+      // Interpolate {{vars}}, then evaluate with the safe expression evaluator
+      // (./safeExpression). Invalid/unsupported syntax is a failed condition
+      // (false), exactly as a throwing eval() was before.
       const interpolated = this.interpolate(condition, variables);
-      return !!eval(interpolated);
+      return !!evaluateSafeExpression(interpolated, variables);
     } catch {
       return false;
     }
@@ -707,9 +709,10 @@ export class FlowExecutor {
   private static evaluateExpression(expression: string, variables: Record<string, any>): any {
     try {
       const interpolated = this.interpolate(expression, variables);
-      return eval(interpolated);
+      return evaluateSafeExpression(interpolated, variables);
     } catch (error) {
-      throw new Error(`Failed to evaluate expression: ${expression}`);
+      const detail = error instanceof ExpressionError ? ` (${error.message})` : '';
+      throw new Error(`Failed to evaluate expression: ${expression}${detail}`);
     }
   }
 }

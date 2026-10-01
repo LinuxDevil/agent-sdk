@@ -49,9 +49,31 @@ Exported from `@loushy/build-ai-agent/testing` (see [Testing agents](testing.md)
 
 | Export                                       | Description                                   |
 | -------------------------------------------- | --------------------------------------------- |
-| `ToolRegistry`                               | Holds the tools an agent config refers to.    |
+| `defineTool({ name, description, input, execute, ... })` | Define a tool; `execute`/`needsApproval` args are inferred from the zod `input`. Accepted by `createAgent({ tools: [...] })`, `ToolRegistry.register(tool)` and `AgentBuilder.addTool(tool)`. |
+| `ToolInput<typeof t>`, `ToolOutput<typeof t>` | Argument and result types of a defined tool. |
+| `ToolRegistry`                               | Holds the tools an agent config refers to (advanced: `register(tool)` or `register(name, descriptor)`). |
 | `httpTool`, `currentDateTool`, `dayNameTool` | Built-in tools.                               |
 | `loadMcpTools(client, connectionName)`       | Load a connected MCP server's tools as `ToolDescriptor`s. Available from the package root, `@loushy/build-ai-agent/tools`, and `@loushy/build-ai-agent/mcp`. |
+
+```ts
+import { defineTool } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+
+const sendEmail = defineTool({
+  name: 'send_email', // 1-64 chars: letters, digits, _ and -
+  description: 'Send an email',
+  input: z.object({ to: z.string().email(), subject: z.string() }),
+  needsApproval: ({ to }) => !to.endsWith('@mycompany.com'), // `to` is typed
+  async execute({ to, subject }) {
+    return { messageId: `${to}:${subject}` };
+  },
+});
+```
+
+Optional fields: `displayName`, `needsApproval` (boolean or predicate),
+`requiresSandbox` and `sandboxExecute`. Defining a tool validates its name,
+description and zod `input` immediately; registering two tools with the same
+name throws an error naming the conflict.
 
 ```ts
 import { loadMcpTools } from '@loushy/build-ai-agent/mcp';
@@ -59,9 +81,14 @@ import { loadMcpTools } from '@loushy/build-ai-agent/mcp';
 const tools = await loadMcpTools(mcpClient, 'my-server');
 ```
 
-### Argument validation
+### Tool errors
 
-Before a tool runs, the model's arguments are parsed with the tool's zod
+A tool call can fail in two ways. In both, the run continues and the model
+receives a structured JSON error as the tool result (never the string `null`),
+so it can recover. `tool-result` events, tracing, `onToolResult` and
+`postToolCall` hooks see the call as an error.
+
+**Argument validation.** Before a tool runs, the model's arguments are parsed with the tool's zod
 `parameters` schema. Validation happens first, so pre-tool hooks, the
 `needsApproval` predicate and `execute` all receive the **parsed** value
 (defaults, coercions and transforms applied). Tools without a zod schema are
@@ -86,6 +113,18 @@ result; `preToolCall` hooks are skipped because there is no valid call):
 
 `ToolArgumentsValidationError` (with a typed `issues` array) is exported from
 the package root.
+
+**Thrown errors.** If `execute` throws, the model receives the error name,
+the tool name and the message only (never a stack trace). Messages are capped
+at 2,000 characters and end with `... (truncated)` when cut:
+
+```json
+{ "error": "TypeError", "toolName": "search", "message": "query must not be empty" }
+```
+
+Errors extending `PropagatingToolError` (for example the delegation depth
+guard) are the exception: they are rethrown and abort the run instead of being
+shown to the model.
 
 ## Flows, evals, observability and security
 
@@ -125,6 +164,42 @@ the package root.
   ```
 - `EncryptionUtils`, `sha256`, `StorageService`, `renderTemplate`,
   `MemoryManager` - supporting utilities.
+
+### Flow expressions
+
+`oneOf` branch conditions (and the Agent Forge router node's branch conditions)
+and `evaluator` node expressions are evaluated by a small built-in expression
+evaluator. It never compiles or runs host code: there is no `eval`,
+`new Function` or `vm` in `src/flows`. Before evaluation, `{{name}}` placeholders
+are replaced with the variable's text (so quote string placeholders:
+`'{{classify}}' === 'refund'`). The expression is then evaluated against the
+flow's variables.
+
+| Form | Examples |
+| --- | --- |
+| Literals | `'text'`, `"text"`, `42`, `1.5`, `true`, `false`, `null` |
+| Variables and paths | `score`, `user.address.city`, `user['first-name']`, `items[0].id` |
+| Length | `name.length`, `items.length` (strings and arrays) |
+| Comparison | `==`, `===`, `!=`, `!==`, `<`, `<=`, `>`, `>=` |
+| Logical | `&&`, `\|\|`, `!` (short-circuiting, return the deciding operand) |
+| Arithmetic | `+`, `-`, `*`, `/`, `%`, unary `-` and `+` |
+| Grouping | `( ... )` |
+| Allow-listed methods | `s.includes(x)`, `s.startsWith(x)`, `s.endsWith(x)` on strings; `list.includes(x)` on arrays (exactly one argument) |
+
+Precedence, loosest to tightest: `||`, `&&`, equality, relational, `+ -`,
+`* / %`, unary, member access.
+
+Not supported, and rejected with an `ExpressionError` that names the
+expression, the character position and this list of supported forms: any other
+function or method call, assignment (`=`, `+=`, `++`), ternaries, template
+strings, object/array literals, access to `constructor`, `__proto__` or
+`prototype`, and globals (`process`, `require`, `globalThis`, ...). Only a
+flow's own variables, and only their own properties, are reachable.
+
+Failure behaviour is unchanged: a `oneOf` condition that cannot be evaluated
+counts as not matched (`false`), and an `evaluator` expression that cannot be
+evaluated fails the flow with `Failed to evaluate expression: ...`, including
+the `ExpressionError` detail.
 
 ## Deployment
 

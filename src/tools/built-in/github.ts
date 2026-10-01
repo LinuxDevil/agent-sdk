@@ -60,6 +60,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { ToolRegistry } from '../ToolRegistry';
+import type { DefinedTool } from '../defineTool';
 import { ToolDescriptor } from '../../types';
 import { routeFetchThroughSandbox } from './sandboxFetch';
 import { assertOk } from './assertOk';
@@ -361,7 +362,15 @@ export class GitHubTools extends ToolRegistry {
    * before; this override applies uniformly without touching their
    * individual implementations.
    */
-  public register(name: string, descriptor: ToolDescriptor): void {
+  public register(tool: DefinedTool): void;
+  public register(name: string, descriptor: ToolDescriptor): void;
+  public register(nameOrTool: string | DefinedTool, maybeDescriptor?: ToolDescriptor): void {
+    if (typeof nameOrTool !== 'string') {
+      super.register(nameOrTool);
+      return;
+    }
+    const name = nameOrTool;
+    const descriptor = maybeDescriptor as ToolDescriptor;
     if (GitHubTools.OUT_OF_SCOPE_TOOLS.has(name) && descriptor.tool) {
       descriptor.tool.execute = (async () => {
         throw new Error(

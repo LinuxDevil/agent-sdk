@@ -10,7 +10,7 @@ import { ToolRegistry } from '../tools';
 import { SandboxAdapter } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
 import { HookRegistry, ToolCallHookContext } from './hooks';
-import { toolErrorMessage } from './propagatingToolError';
+import { toolErrorMessage, toolErrorResult } from './propagatingToolError';
 import { ToolArgumentsValidationError, validateToolArguments } from './toolArgsValidation';
 import type { ExecuteOptions } from './AgentExecutor';
 
@@ -255,6 +255,11 @@ async function doExecuteToolCall(
     // DelegationDepthExceededError) are rethrown by toolErrorMessage() so
     // they propagate out of execute() as a rejected promise instead of
     // becoming a conversational {error} tool-result.
-    return toolFailure(toolCall, toolErrorMessage(error));
+    // LOU-U12: the model gets a structured error (not the string "null"),
+    // while `outcome.error` keeps the plain message for events/hooks.
+    return {
+      ...toolFailure(toolCall, toolErrorMessage(error)),
+      result: toolErrorResult(toolCall.function.name, error),
+    };
   }
 }

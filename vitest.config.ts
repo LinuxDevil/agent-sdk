@@ -35,6 +35,9 @@ export default defineConfig({
       // DOM globals (File, Blob, HTMLAnchorElement, ...) those tests need.
       // Each app is tested via its own `npm run test --workspace=apps/*`.
       'apps/**',
+      // Agent worktrees (.claude/worktrees/*) are full checkouts of this repo;
+      // without this the main checkout would run every copy's tests too.
+      '.claude/**',
     ],
     coverage: {
       provider: 'v8',
@@ -49,7 +52,7 @@ export default defineConfig({
       // LOU-P's growth (new server/chat + ChatPanel/ApprovalCard code, all
       // covered by apps/agent-forge's own 49/49 + 74/74 suites) tipped the
       // denominator enough to trip the global threshold below.
-      exclude: ['**/*.test.ts', '**/*.spec.ts', 'dist/**', 'node_modules/**', 'apps/**'],
+      exclude: ['**/*.test.ts', '**/*.spec.ts', 'dist/**', 'node_modules/**', 'apps/**', '.claude/**'],
       // Floor set 1-2 points below the measured baseline (LOU-B4). Measured with
       // `npm run test:coverage`, excluding the 3 provider test suites that fail
       // to even load in this repo because @ai-sdk/openai and ollama-ai-provider

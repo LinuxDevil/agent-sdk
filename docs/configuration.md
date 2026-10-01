@@ -48,6 +48,7 @@ its tools with `loadMcpTools()`, then pass the result to `createAgent()` (or
 register it on a `ToolRegistry`):
 
 ```ts
+import { createAgent } from '@loushy/build-ai-agent';
 import { loadMcpTools } from '@loushy/build-ai-agent/mcp';
 
 const tools = await loadMcpTools(mcpClient, 'my-server');

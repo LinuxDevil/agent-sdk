@@ -19,6 +19,28 @@
  *   --skip-build  reuse the current dist/ instead of running `npm run build`
  *   --keep        keep the temp project (its path is printed) for debugging
  *
+ * Two stages (LOU-U5):
+ *
+ *   A. SOURCE CHECK - every ```ts / ```typescript block in README.md and
+ *      docs/*.md (all of them, not just the quick start) is type-checked
+ *      against the real SDK SOURCE: `@loushy/build-ai-agent` and its subpaths
+ *      are resolved to `src/` through `paths` derived from package.json
+ *      `exports`, so a docs example can never drift from the code (wrong
+ *      argument order, methods that do not exist, ...). Types only; nothing
+ *      is executed.
+ *   B. PACKED RUN - the quick-start docs (the "paste it and it works" path)
+ *      are additionally type-checked AND run against the packed tarball, as
+ *      described above.
+ *
+ * Intentionally partial snippets (they use `agent`, `provider`, `storage`...
+ * without defining them) do NOT need an opt-out: stage A prepends an
+ * ambient preamble (PLACEHOLDERS below) that declares those
+ * common names as typed globals. A snippet's own `const agent = ...`
+ * shadows the placeholder, so only genuinely free names are covered. To add
+ * a placeholder, add an entry to PLACEHOLDERS. For a block that
+ * cannot be checked at all, put `no-verify` in its fence info
+ * (```ts no-verify) - it is skipped by both stages.
+ *
  * Snippets run with provider credential env vars (OPENAI_API_KEY, ...)
  * removed, so they exercise the mock-provider path deterministically and
  * never make network calls. A fence whose info string contains
@@ -30,7 +52,28 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 const REPO_ROOT = path.resolve(__dirname, '..');
-const DEFAULT_DOCS = [path.join(REPO_ROOT, 'docs', 'quick-start.md')];
+/** Docs that are type-checked AND executed against the packed tarball (stage B). */
+const RUNNABLE_DOCS = [path.join(REPO_ROOT, 'docs', 'quick-start.md')];
+/** Ambient names (typed against the SDK where possible) that intentionally-partial snippets may use without defining. */
+const SDK = "import('@loushy/build-ai-agent')";
+const PLACEHOLDERS: Record<string, string> = {
+  agent: `${SDK}.AgentConfig`,
+  provider: `${SDK}.LLMProvider`,
+  registry: `${SDK}.ToolRegistry`,
+  toolRegistry: `${SDK}.ToolRegistry`,
+  storage: `${SDK}.StorageService`,
+  approvalStore: `${SDK}.ApprovalStore`,
+  checkpointStore: `${SDK}.CheckpointStore`,
+  mcpClient: "import('@modelcontextprotocol/sdk/client/index.js').Client",
+  input: 'string',
+  patch: 'string',
+  repoPath: 'string',
+  file: 'File',
+  emailTool: 'any',
+};
+const PLACEHOLDER_DECLARATIONS = Object.entries(PLACEHOLDERS)
+  .map(([name, type]) => `declare var ${name}: ${type};`)
+  .join('\n');
 const CREDENTIAL_ENV_VARS = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'OLLAMA_BASE_URL'];
 const SNIPPET_TIMEOUT_MS = 60_000;
 
@@ -229,9 +272,99 @@ function runSnippets(projectDir: string, files: string[], snippets: Snippet[], t
 }
 
 function loadSnippets(docs: string[]): Snippet[] {
-  return (docs.length > 0 ? docs : DEFAULT_DOCS).flatMap((file) =>
-    extractSnippets(fs.readFileSync(file, 'utf8'), path.relative(REPO_ROOT, file))
+  return docs.flatMap((file) => extractSnippets(fs.readFileSync(file, 'utf8'), path.relative(REPO_ROOT, file)));
+}
+
+/** README.md plus every docs/*.md page (the default stage A input). */
+function allDocFiles(): string[] {
+  const docsDir = path.join(REPO_ROOT, 'docs');
+  const pages = fs.readdirSync(docsDir).filter((f) => f.endsWith('.md')).sort();
+  return [path.join(REPO_ROOT, 'README.md'), ...pages.map((f) => path.join(docsDir, f))];
+}
+
+/** tsconfig `paths` mapping each package.json export's types entry (dist/*.d.ts) to its src/*.ts source. */
+function sourcePaths(): Record<string, string[]> {
+  const pkg = readJson(path.join(REPO_ROOT, 'package.json'));
+  const paths: Record<string, string[]> = {};
+  for (const [subpath, target] of Object.entries<{ types: string }>(pkg.exports)) {
+    const specifier = subpath === '.' ? pkg.name : `${pkg.name}/${subpath.slice(2)}`;
+    paths[specifier] = [target.types.replace(/^\.\/dist\//, 'src/').replace(/\.d\.ts$/, '.ts')];
+  }
+  return paths;
+}
+
+/** Writes the stage A tsconfig + placeholder preamble and one `snippet-<n>.ts` per snippet; returns the file names. */
+function writeSourceProject(dir: string, snippets: Snippet[]): string[] {
+  fs.writeFileSync(path.join(dir, 'placeholders.d.ts'), `${PLACEHOLDER_DECLARATIONS}\n`);
+  fs.writeFileSync(
+    path.join(dir, 'tsconfig.json'),
+    JSON.stringify({
+      extends: '../tsconfig.json',
+      compilerOptions: {
+        rootDir: '..',
+        baseUrl: '..',
+        paths: sourcePaths(),
+        noEmit: true,
+        declaration: false,
+        declarationMap: false,
+        sourceMap: false,
+        noUnusedLocals: false,
+        noUnusedParameters: false,
+      },
+      include: ['./*.ts', '../typings/**/*.d.ts'],
+      exclude: [],
+    })
   );
+  return snippets.map((snippet, index) => {
+    const name = `snippet-${index + 1}.ts`;
+    fs.writeFileSync(path.join(dir, name), `// ${snippet.file}:${snippet.line}\n${snippet.source}\nexport {};\n`);
+    return name;
+  });
+}
+
+/** Maps tsc output lines (`<dir>/snippet-N.ts(...)`) back to the snippet that produced them. */
+function collectTypeFailures(output: string, dir: string, files: string[], snippets: Snippet[], ok: boolean): Failure[] {
+  const lines = output.split(/\r?\n/).map((l) => l.replace(/\\/g, '/'));
+  const prefix = path.relative(REPO_ROOT, dir).replace(/\\/g, '/');
+  const failures: Failure[] = [];
+  files.forEach((name, index) => {
+    const errors = lines.filter((l) => l.startsWith(`${prefix}/${name}(`));
+    if (errors.length > 0) failures.push({ snippet: snippets[index], stage: 'typecheck', output: errors.join('\n') });
+  });
+  if (!ok && failures.length === 0) throw new Error(`tsc failed without per-snippet errors:\n${output}`);
+  return failures;
+}
+
+/**
+ * Stage A: type-checks every snippet against src/ (not the built package).
+ * The temp project lives inside the repo so `ai`, `zod`, ... resolve from the
+ * repo's node_modules; it is always removed afterwards.
+ */
+function checkAgainstSource(snippets: Snippet[]): Failure[] {
+  console.log(`- type-checking ${snippets.length} snippet(s) against src/ (tsc --noEmit)...`);
+  const dir = fs.mkdtempSync(path.join(REPO_ROOT, '.docs-snippets-'));
+  try {
+    const files = writeSourceProject(dir, snippets);
+    const tsc = path.join(REPO_ROOT, 'node_modules', 'typescript', 'bin', 'tsc');
+    const result = spawnSync(process.execPath, [tsc, '-p', dir], { cwd: REPO_ROOT, encoding: 'utf8' });
+    return collectTypeFailures(`${result.stdout}${result.stderr}`, dir, files, snippets, result.status === 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Stage B: type-check and run the snippets against the packed tarball in a throwaway project. */
+function verifyPacked(snippets: Snippet[], skipBuild: boolean, keep: boolean): Failure[] {
+  const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-docs-snippets-'));
+  try {
+    setUpProject(projectDir, skipBuild);
+    const files = writeSnippetFiles(projectDir, snippets);
+    const typeFailures = typeCheckSnippets(projectDir, files, snippets);
+    return [...typeFailures, ...runSnippets(projectDir, files, snippets, typeFailures)];
+  } finally {
+    if (keep) console.log(`- temp project kept at ${projectDir}`);
+    else fs.rmSync(projectDir, { recursive: true, force: true });
+  }
 }
 
 function reportFailures(failures: Failure[]): void {
@@ -241,36 +374,37 @@ function reportFailures(failures: Failure[]): void {
   }
 }
 
-function main(): void {
-  const args = process.argv.slice(2);
-  const skipBuild = args.includes('--skip-build');
-  const keep = args.includes('--keep');
-  const docs = args.filter((a) => !a.startsWith('--')).map((a) => path.resolve(a));
+function orDefault(explicit: string[], fallback: () => string[]): string[] {
+  return explicit.length > 0 ? explicit : fallback();
+}
 
-  const snippets = loadSnippets(docs);
-  if (snippets.length === 0) {
+/** Loads the stage A (all docs) and stage B (runnable docs) snippet sets, honouring explicit file arguments. */
+function loadSnippetSets(docs: string[]): { sourceSnippets: Snippet[]; runnableSnippets: Snippet[] } {
+  const sourceSnippets = loadSnippets(orDefault(docs, allDocFiles));
+  const runnableSnippets = loadSnippets(orDefault(docs, () => RUNNABLE_DOCS));
+  if (Math.min(sourceSnippets.length, runnableSnippets.length) === 0) {
     console.error('verify-docs-snippets: no ```ts snippets found');
     process.exit(1);
   }
-  console.log(`verify-docs-snippets: ${snippets.length} snippet(s) found`);
+  return { sourceSnippets, runnableSnippets };
+}
 
-  const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-docs-snippets-'));
-  const failures: Failure[] = [];
-  try {
-    setUpProject(projectDir, skipBuild);
-    const files = writeSnippetFiles(projectDir, snippets);
-    const typeFailures = typeCheckSnippets(projectDir, files, snippets);
-    failures.push(...typeFailures, ...runSnippets(projectDir, files, snippets, typeFailures));
-  } finally {
-    if (keep) console.log(`- temp project kept at ${projectDir}`);
-    else fs.rmSync(projectDir, { recursive: true, force: true });
-  }
+function main(): void {
+  const args = process.argv.slice(2);
+  const docs = args.filter((a) => !a.startsWith('--')).map((a) => path.resolve(a));
+  const { sourceSnippets, runnableSnippets } = loadSnippetSets(docs);
+  console.log(`verify-docs-snippets: ${sourceSnippets.length} snippet(s) found (${runnableSnippets.length} runnable)`);
 
+  const packed = verifyPacked(runnableSnippets, args.includes('--skip-build'), args.includes('--keep'));
+  const failures = [...checkAgainstSource(sourceSnippets), ...packed];
   if (failures.length > 0) {
     reportFailures(failures);
     process.exit(1);
   }
-  console.log(`\nverify-docs-snippets: all ${snippets.length} snippet(s) type-check and run cleanly`);
+  console.log(
+    `
+verify-docs-snippets: all ${sourceSnippets.length} snippet(s) type-check against src/; ${runnableSnippets.length} also run cleanly`
+  );
 }
 
 if (require.main === module) {
