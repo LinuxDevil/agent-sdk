@@ -3,7 +3,7 @@
 Mission: make `@loushy/build-ai-agent` the best TypeScript AI agent SDK (capabilities and DX) against
 Vercel eve and MaxGfeller/open-harness. This file is the loop's memory: read it first, update it last.
 
-- Loop started: 2026-10-01. Iterations completed: 6.
+- Loop started: 2026-10-01. Iterations completed: 7.
 - Audit: `.agent-loop/AUDIT.md`, refreshed 2026-10-01 at main `a03b1a3` (eve 0.69.0 @682c7a6, open-harness 0.7.0 @026e8d9).
   Reference agents (3 agents x 3 SDKs, measured): `.agent-loop/reference-agents/`. Older material: `docs/research/*.md`, `docs/plan/tickets.md`.
   Audit is stale when: a competitor ships a new major, or more than ~25 PRs land after `a03b1a3` (re-run the DX measurement then).
@@ -53,7 +53,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Multi-provider | ⚠️ (`ai` v4) | ✅ | ✅ | D22-D29 |
 | Fallbacks / retry policy | ✅ (V7.1 #74, V7.2 agent-level + events #86) | ⚠️ | ⚠️ | - |
 | Structured output | ✅ flipped (V4 #90: `output` schema, repair step, `output-invalid`) | ✅ | ❌ | - |
-| Multimodal input | ❌ | ✅ | ✅ | V11, V12 |
+| Multimodal input | ⚠️ flipped (V11 #106: `ContentPart[]`, providers convert images; files degrade) | ✅ | ✅ | V12 (public `send(parts)`) |
 | Reasoning control / events | ❌ | ✅ | ⚠️ | V13 |
 | MCP client | ✅ flipped (Z4 #100: `connectMcp()`, `createAgent({ mcpServers })`, `agent.ready()/close()`, spec connects) | ✅ | ✅ | Z5 (annotations drive approval) |
 | MCP server | ✅ | ✅ | ❌ | - |
@@ -69,7 +69,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Edge runtime (Workers) | ✅ | ❌ | ❌ | - |
 | Budgets / limits | ⚠️ (`max-steps` finish reason #83) | ✅ | ⚠️ | V6 |
 | Guardrails (input/output) | ⚠️ | ⚠️ | ❌ | X4, X5 |
-| Permissions policy | ⚠️ | ✅ | ⚠️ | X2, X8 |
+| Permissions policy | ✅ flipped (X2 #105: `permissions` rules, audit log, `permission.decision` event, inherited by sub-agents) | ✅ | ⚠️ | X8 (policy helpers on needsApproval) |
 | Credential brokering | ❌ | ✅ | ❌ | X11, X12 |
 | Dynamic config | ❌ | ✅ | ⚠️ | V15 |
 | Hot reload | ⚠️ | ✅ | ❌ | D31 |
@@ -81,7 +81,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Published on npm | ❌ (owner action) | ✅ | ✅ | D49 |
 | Current `ai` major | ❌ | ✅ | ✅ | D22-D29 |
 
-Score (us): 24 ✅ / 13 ⚠️ / 14 ❌ of 51 after iteration 6 (iteration 5: 23/14/14; iteration 4: 22/15/14; iteration 3: 20/15/16 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
+Score (us): 25 ✅ / 13 ⚠️ / 13 ❌ of 51 after iteration 7 (iteration 6: 24/13/14; iteration 5: 23/14/14; iteration 4: 22/15/14; iteration 3: 20/15/16 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
 
 Differentiators shipped (target: 3): 3 of 8 (#1 host-agnostic durable sessions: W9 #89 + D30 #94; #2 record/replay evals: D46 #96; #6 OTel GenAI metrics + cost: D48 #95). Remaining (candidates in AUDIT section 7: host-agnostic durable sessions D30; record/replay evals D46; Forge time-travel D43-D45; MCP+ACP+HTTP reach Z6/D14; both authoring modes with hot reload D31-D33; OTel metrics D48; trajectory evals remote D47; edge-native agents D51/P9).
 
@@ -117,7 +117,8 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | V8 | `session.stream()` | ✅ #78 | |
 | V9 | Queued follow-up input | ⬜ | V8 |
 | V10 | Steering | ⬜ | V9 |
-| V11 | Multimodal message parts | ⬜ | |
+| V11 | Multimodal message parts (`textOf()`, provider conversion, store round-trip) | ✅ #106 | |
+| V11.2 | `SqliteStore` sessions/checkpoints encode `Uint8Array` parts | ⬜ | V11 |
 | V12 | Multimodal through the public API | ⬜ | V11 |
 | V13 | Reasoning effort + events | ⬜ | D26 |
 | V14 | Streaming resume after approval (`approve` callback on `stream()` too) | ⬜ | D21 |
@@ -129,7 +130,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | W1 tokens, W4 sessions, W5 SQLite, W7 AGENTS.md | | ✅ | |
 | W2 | Compaction: prune old tool results (`createCompactionHook`, prunes the transcript in place) | ✅ #80 | |
 | W3 | Compaction: summarize + two-phase strategies, pinned messages, async `compact` | ✅ #84 | |
-| W3.2 | Typed `compaction.*` stream events + `createAgent({ compaction })` option | ⬜ | W3 |
+| W3.2 | `compaction.start/done` events, `createAgent({ compaction, hooks })` | ✅ #102 | |
 | W6 | Scoped memory slots | ⬜ | |
 | W8 | Manual compact and clear | ⬜ | W2, W3 |
 | W9 | Sessions that checkpoint (`checkpointStore`, `session.resume()/pending()/discardPending()`) | ✅ #89 | |
@@ -139,7 +140,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | ID | Title | Status | Deps |
 |---|---|---|---|
 | X1 defineTool, X6 workspace tools, X7 todo tools | | ✅ | |
-| X2 | Permission policies | ⬜ | |
+| X2 | Permission policies (`permissions`, `allow/deny/ask`, audit log, event) | ✅ #105 | |
 | X3 | Hook outcomes (deny/replace/modify) | ⬜ | |
 | X4 | Input/output guardrails | ⬜ | |
 | X5 | Enforce `spec.policy` | ⬜ | X2, X4 |
@@ -179,7 +180,8 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D20 | `mcpServers` in `AgentSpec` | ✅ #73 | |
 | D21 | Approvals for `createAgent()` | ✅ #75 | |
 | D22 | Own the tool contract (`inputSchema` + `execute`, no `ai.tool()`) | ✅ #79 | |
-| D23 | Own the execute-context type | ⬜ | D22 |
+| D23 | Own the execute-context type (`ToolExecutionContext`) | ✅ #103 | |
+| D23.2 | Executor sets `sessionId` on the execute context | ⬜ | D23 |
 | D24 | Small built-ins to `defineTool` | ⬜ | D22 |
 | D25 | github and jira to `defineTool` | ⬜ | D22 |
 | D26 | `ai` v6/v7 adapter: generate | ⬜ | D23-D25 |
@@ -201,7 +203,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D42 | Shared chunks across entries | ⬜ | |
 | D43 | Checkpoint history (memory, SQLite migration 2, local storage; `historyLimit`) | ✅ #98 | |
 | D43.2 | `KVCheckpointStore` history (list key per session) and Forge `FileCheckpointStore` history | ⬜ | D43 |
-| D44 | Fork and replay from step N | ⬜ | D43 |
+| D44 | Fork and replay from step N (`AgentExecutor.fork`, `agent.fork`, `compareTrajectories`) | ✅ #104 | |
 | D45 | Forge time-travel panel | ⬜ | D44 |
 | D46 | `loushy eval --record/--replay/--drift` (cassettes per case, drift table + JUnit, `--strict`) | ✅ #96 | |
 | D46.2 | Proper provider-middleware hook for eval cassettes (replaces runtime reassignment of `AgentExecutor.execute`) | ⬜ | D46 |
@@ -262,6 +264,12 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | #99 | U15 | merged (squash) | tool execute context |
 | #101 | D2 | merged (squash) | error codes |
 | #100 | Z4 | merged (squash) | connectMcp + mcpServers |
+| #107 | HEALTH | merged (squash) | node:crypto import broke the Worker bundle (from #99) |
+| #103 | D23 | merged (squash; toolRunContext conflict with #107 resolved) | ToolExecutionContext |
+| #102 | W3.2 | merged (squash) | compaction events + option |
+| #105 | X2 | merged (squash; agentRun/test-d additive conflicts kept both) | permission policies |
+| #106 | V11 | merged (squash) | multimodal parts |
+| #104 | D44 | merged (squash; drift.ts adapted to textOf) | fork from step N |
 
 ## Main health
 
@@ -302,14 +310,20 @@ CI runs only on `pull_request`, so "main is green" means the last PR's CI run pa
 - Matrix flips: MCP client ⚠️->✅.
 - Noted: U15's author saw the cloudflare `wrangler dev` test fail in a worktree (needs workerd); it passes on main in the health run.
 
-## Next batch (iteration 7)
+### Iteration 7 (2026-10-01)
+- Subagent launches first failed with an org-level API access error (oauth_org_not_allowed); relaunched after the owner's "try again" and all five completed. The empty local branches from the failed launch were removed (never pushed, zero commits).
+- Main was red after #99 (U15): `node:crypto` import in toolRunContext.ts broke the Worker bundle (cloudflare `wrangler dev` test). Fixed first in #107, then merged #103, #102, #105, #106, #104.
+- Matrix flips: Permissions policy ⚠️->✅, Multimodal input ❌->⚠️.
+- Rule learned: `src/execution/*` must not import `node:*`; the Worker bundle test catches it. Added to the brief.
 
-1. X2 (opus): declarative permission policies (`permissions: [{ tool, when, action: 'allow'|'deny'|'ask' }]`) evaluated before `needsApproval`, audit-log sink; toolCallExecution.ts + new module.
-2. W3.2 (sonnet): typed `compaction.*` events + `createAgent({ compaction })`; src/context, agentEvents.ts, createAgent.ts (options region).
-3. D44 (opus): `AgentExecutor.fork({ sessionId, fromStep, newSessionId, patch })` from checkpoint history; AgentExecutor.ts + checkpoint.ts.
-4. V11 (opus): multimodal message parts (`Message.content: string | ContentPart[]`), aiSdkProvider conversion, contract test; src/providers.
-5. D23 (sonnet): own execute-context type (`ToolExecutionContext` replaces `ai`'s `ToolExecutionOptions` in public types); types/tool.ts, defineTool.ts, toolRunContext.ts.
-Then: X8, Z5, D45, V12, D24, D25, D31, D2.2, D43.2, U14.2, V4.2, W9.2.
+## Next batch (iteration 8)
+
+1. V12 (sonnet): multimodal through the public API (`agent.send(parts)`, `session.send(parts)`, eval `t.send`, React hook `send`); createAgent.ts send/stream region, src/session, src/evals, src/react.
+2. X9 (opus): built-in `ask_question` tool pausing durably through the approval store; the human's answer is the tool result; src/tools/built-in, createAgentApprovals.
+3. D45 (opus): Agent Forge time-travel panel (step list with tokens/cost, "edit and replay from here", side-by-side via `compareTrajectories`); apps/agent-forge + server endpoints over D43/D44.
+4. D24 (sonnet): small built-ins to `defineTool` (http, slack, email, currentDate, dayName, DelegationTool, McpToolLoader) with no `ai` `tool()` import.
+5. D31 (sonnet): `loushy dev <dir|file.ts|spec.yaml>` serves `loadAgentDir()`/TS agents with hot reload; src/cli/dev.ts.
+Then: X8, Z5, D25, D26, D32, D33, D2.2, D43.2, U14.2, V4.2, W9.2, V11.2, D23.2, V6, V9, W6.
 
 ## Subagent brief (canonical copy)
 
