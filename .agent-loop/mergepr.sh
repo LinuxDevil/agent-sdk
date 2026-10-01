@@ -14,3 +14,8 @@ if [ -n "$H" ]; then
 else echo "NOT MERGED"; fi
 git fetch origin main -q; echo "main: $(git log origin/main --oneline -1)"
 [ -n "$H" ] && git checkout -q loush/blissful-volta-i76xiy
+# free disk: drop installed deps and build output from the merged branch's agent worktree (branch and worktree stay)
+if [ -n "$H" ] && [ "$(gh pr view "$pr" --repo LinuxDevil/agent-sdk --json state -q .state)" = "MERGED" ]; then
+  wt=$(git worktree list --porcelain | awk -v b="refs/heads/$b" '/^worktree /{w=$2} /^branch /{if($2==b)print w}')
+  case "$wt" in *"/.claude/worktrees/agent-"*) rm -rf "$wt/node_modules" "$wt/dist" "$wt/coverage" "$wt/apps/agent-forge/node_modules" 2>/dev/null; echo "cleaned $(basename "$wt")";; esac
+fi
