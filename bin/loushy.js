@@ -10,6 +10,7 @@ const USAGE = [
   '  loushy studio [--port N] [--host H] [--prod|--dev]',
   '  loushy mcp <agent.yaml|json> [--http --port N --host H]',
   '  loushy doctor [agent.yaml|json] [--json]',
+  '  loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge]',
 ].join('\n');
 
 /**
@@ -91,12 +92,20 @@ async function runMcp(rest) {
   process.exitCode = await start(rest);
 }
 
+// Runs eval files under the project's vitest and reports the results; the
+// exit code is the verdict (see src/cli/eval.ts).
+async function runEvalCommand(rest) {
+  const { runEval } = require(path.join(__dirname, '..', 'dist', 'cli', 'eval.js'));
+  process.exitCode = await runEval(rest);
+}
+
 const COMMANDS = new Map([
   ['dev', runDev],
   ['build', runBuildCommand],
   ['studio', runStudio],
   ['mcp', runMcp],
   ['doctor', runDoctorCommand],
+  ['eval', runEvalCommand],
 ]);
 
 async function main() {
