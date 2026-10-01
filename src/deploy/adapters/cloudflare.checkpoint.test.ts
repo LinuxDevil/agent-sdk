@@ -33,7 +33,7 @@
  * same store, exercised through the SDK's own execution engine rather than
  * through this adapter's HTTP surface.)
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { it, expect, beforeAll } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

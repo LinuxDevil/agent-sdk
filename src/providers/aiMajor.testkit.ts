@@ -18,7 +18,7 @@ function readInstalledMajor(): number {
 export const installedAiMajor = readInstalledMajor();
 
 /** `describe` that runs only when `ai` v4 is installed; the other majors skip it. */
-export const describeOnAiV4 = describe.skipIf(installedAiMajor !== 4);
+export const describeOnAiV4: ReturnType<typeof describe.skipIf> = describe.skipIf(installedAiMajor !== 4);
 
 /** `it` that runs only when `ai` v4 is installed; the other majors skip it. */
-export const itOnAiV4 = it.skipIf(installedAiMajor !== 4);
+export const itOnAiV4: ReturnType<typeof it.skipIf> = it.skipIf(installedAiMajor !== 4);

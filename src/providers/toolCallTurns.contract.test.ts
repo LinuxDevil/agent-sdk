@@ -12,7 +12,7 @@
  * 'ai' forwards to the provider.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { it, expect, beforeEach, vi } from 'vitest';
 import { coreMessageSchema, type CoreMessage } from 'ai';
 import { z } from 'zod';
 import { describeOnAiV4 } from './aiMajor.testkit';
