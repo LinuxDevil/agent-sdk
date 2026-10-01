@@ -1,0 +1,115 @@
+/**
+ * Record/replay for `loushy eval` (LOU-D46). When the CLI sets
+ * `LOUSHY_EVAL_CASSETTES`, every model call an eval case makes goes through
+ * `recordReplay()`, one cassette per case and provider, committed next to the
+ * eval file at `__cassettes__/<eval>/<case>.json`.
+ *
+ * The hook: while a case runs, `AgentExecutor.execute()` - which
+ * `createAgent()` agents, `AgentExecutor.stream()`, sub-agents and approval
+ * resumes all go through - swaps `options.provider` for the case's wrapper.
+ * The running case is found with AsyncLocalStorage, so eval files need no
+ * change and concurrent cases never share a cassette.
+ */
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { createHash } from 'node:crypto';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { AgentExecutor, type ExecuteOptions } from '../execution/AgentExecutor';
+import type { LLMProvider } from '../providers/llm';
+import { recordReplay } from '../testing/recordReplay';
+import type { EvalResult } from './evalResult';
+
+/** `record`, `replay`, or `auto` (replay a case whose cassette exists, run the rest live). */
+export const CASSETTES_ENV = 'LOUSHY_EVAL_CASSETTES';
+/** With `record`: write cassettes here (`--drift`) instead of next to the eval file. */
+export const DRIFT_DIR_ENV = 'LOUSHY_EVAL_DRIFT_DIR';
+
+type Mode = 'record' | 'replay' | 'auto';
+
+interface CaseRun {
+  file: string;
+  name: string;
+  label?: string;
+  mode: Mode;
+  driftDir?: string;
+  /** Real provider -> the wrapper this case uses for it. */
+  wrappers: Map<LLMProvider, LLMProvider>;
+  /** Committed cassette paths the case recorded or replayed. */
+  used: string[];
+}
+
+const activeCase = new AsyncLocalStorage<CaseRun>();
+const wrappers = new WeakSet<LLMProvider>();
+let installed = false;
+
+function slug(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'case';
+}
+
+/** The committed cassette for a case's `index`-th (0-based) provider: `<case>.json`, then `<case>.2.json`, ... */
+export function cassettePath(evalFile: string, evalName: string, caseLabel: string | undefined, index = 0): string {
+  const base = slug(caseLabel ?? 'default') + (index > 0 ? `.${index + 1}` : '');
+  return path.join(path.dirname(evalFile), '__cassettes__', slug(evalName), `${base}.json`);
+}
+
+/** Where `--drift` re-records the case whose committed cassette is `committed`. */
+export function driftCassettePath(driftDir: string, committed: string): string {
+  return path.join(driftDir, `${createHash('sha256').update(path.resolve(committed)).digest('hex').slice(0, 16)}.json`);
+}
+
+function wrapperFor(run: CaseRun, provider: LLMProvider): LLMProvider {
+  if (wrappers.has(provider)) return provider;
+  const existing = run.wrappers.get(provider);
+  if (existing) return existing;
+  const committed = cassettePath(run.file, run.name, run.label, run.wrappers.size);
+  const cassette = run.driftDir ? driftCassettePath(run.driftDir, committed) : committed;
+  const exists = fs.existsSync(cassette);
+  if (run.mode === 'replay' && !exists) {
+    const label = run.label ? `${run.name} [${run.label}]` : run.name;
+    throw new Error(
+      `loushy eval --replay: no cassette for "${label}" at ${path.relative(process.cwd(), cassette)}. ` +
+        `Record it with: npx loushy eval --record ${path.relative(process.cwd(), run.file)}`
+    );
+  }
+  let wrapper = provider;
+  if (run.mode === 'record' || exists) {
+    wrapper = recordReplay(provider, { cassette, mode: run.mode === 'record' ? 'record' : 'replay' });
+    wrappers.add(wrapper);
+    run.used.push(committed);
+  }
+  run.wrappers.set(provider, wrapper);
+  return wrapper;
+}
+
+function installHook(): void {
+  if (installed) return;
+  installed = true;
+  const execute = AgentExecutor.execute.bind(AgentExecutor);
+  AgentExecutor.execute = async (options: ExecuteOptions) => {
+    const run = activeCase.getStore();
+    return execute(run && options.provider ? { ...options, provider: wrapperFor(run, options.provider) } : options);
+  };
+}
+
+function cassetteMode(): Mode | undefined {
+  const mode = process.env[CASSETTES_ENV];
+  return mode === 'record' || mode === 'replay' || mode === 'auto' ? mode : undefined;
+}
+
+/**
+ * Runs one eval case under the cassette mode `loushy eval` asked for and
+ * notes the cassettes it used on the result. Without a mode (a plain
+ * `vitest run`) it just runs `runCase`.
+ */
+export async function withEvalCassettes(
+  info: { file: string | undefined; name: string; label?: string },
+  runCase: () => Promise<EvalResult>
+): Promise<EvalResult> {
+  const mode = cassetteMode();
+  if (!mode || !info.file) return runCase();
+  installHook();
+  const driftDir = process.env[DRIFT_DIR_ENV] || undefined;
+  const run: CaseRun = { ...info, file: info.file, mode, driftDir, wrappers: new Map(), used: [] };
+  const result = await activeCase.run(run, runCase);
+  return run.used.length > 0 ? { ...result, cassettes: run.used } : result;
+}

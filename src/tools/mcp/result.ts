@@ -48,10 +48,13 @@ export interface McpStructuredToolResult {
 
 /**
  * Thrown from a loaded MCP tool when the server reports `isError: true`.
- * The model sees `{ error: 'McpToolError', toolName, message }`, where
- * `message` is the server's text content.
+ * The model sees `{ error: 'McpToolError', toolName, message, kind: 'mcp' }`,
+ * where `message` is the server's text content.
  */
 export class McpToolError extends Error {
+  /** Read by the executor's shared tool-error shape (LOU-U14). */
+  readonly toolErrorKind = 'mcp' as const;
+
   constructor(message: string) {
     super(message);
     this.name = 'McpToolError';

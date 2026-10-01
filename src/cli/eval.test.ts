@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeAll, afterAll } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -41,6 +41,13 @@ describe('parseEvalArgs', () => {
       judge: true,
       config: 'v.config.ts',
     });
+  });
+
+  it('reads the cassette flags; --drift-usage implies --drift and only one mode is allowed', () => {
+    expect(parseEvalArgs(['--record'])).toMatchObject({ record: true });
+    expect(parseEvalArgs(['--drift-usage'])).toMatchObject({ drift: true, driftUsage: true });
+    expect(() => parseEvalArgs(['--record', '--replay'])).toThrow(/only one of --record, --replay and --drift/);
+    expect(() => parseEvalArgs(['--replay', '--drift'])).toThrow(/only one of/);
   });
 
   it('explains how to fix an unknown option or a missing value', () => {
@@ -218,4 +225,64 @@ describe('loushy eval end to end (real vitest, mockModel fixtures)', () => {
       "<failure message=\"calledTool('lookup_order') failed: tools called were none\""
     );
   }, 60_000);
+});
+
+describe('loushy eval --record / --replay / --drift (real vitest, mockModel as the "real" provider)', () => {
+  const fixture = path.join(FIXTURES, 'replay.eval.ts');
+  const cassettes = path.join(FIXTURES, '__cassettes__');
+  const cassette = path.join(cassettes, 'recorded-refund', 'plain.json');
+  const quietVitest = createVitestSpawner('ignore');
+  const cli = (args: string[]) => {
+    const log = vi.fn();
+    return runEval(args, { log, spawnVitest: quietVitest }).then((code) => ({ code, output: log.mock.calls.map((c) => String(c[0])).join('\n') }));
+  };
+  const clean = () => fs.rmSync(cassettes, { recursive: true, force: true });
+
+  beforeAll(clean);
+  afterAll(clean);
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('--replay without a cassette fails the case and names the --record command', async () => {
+    const { code, output } = await cli([fixture, '--replay']);
+    expect(code).toBe(1);
+    expect(output).toContain('no cassette for "recorded refund [plain]"');
+    expect(output).toContain(`npx loushy eval --record ${path.relative(process.cwd(), fixture)}`);
+  }, 60_000);
+
+  it('--record writes one cassette per case; --replay (or a CI run) replays it with no provider call', async () => {
+    expect((await cli([fixture, '--record'])).code).toBe(0);
+    expect((JSON.parse(fs.readFileSync(cassette, 'utf8')) as { entries: unknown[] }).entries).toHaveLength(2);
+
+    vi.stubEnv('FIXTURE_PROVIDER', 'offline');
+    const json = tempFile('results.json');
+    expect((await cli([fixture, '--replay', '--json', json])).code).toBe(0);
+    const parsed = JSON.parse(fs.readFileSync(json, 'utf8')) as { results: EvalResult[] };
+    expect(parsed.results[0]).toMatchObject({ passed: true, cassettes: [cassette], toolCalls: [{ name: 'lookup_order', args: { orderId: '42' } }] });
+
+    vi.stubEnv('CI', 'true');
+    expect((await cli([fixture])).code).toBe(0);
+    // A plain local run keeps today's behaviour: live, so the offline provider fails it.
+    vi.stubEnv('CI', '');
+    expect((await cli([fixture])).code).toBe(1);
+  }, 120_000);
+
+  it('--drift reports a per-case diff table and JUnit entries, failing only with --strict', async () => {
+    const same = await cli([fixture, '--drift']);
+    expect(same.code).toBe(0);
+    expect(same.output).toContain('Drift: none');
+
+    vi.stubEnv('FIXTURE_ORDER_ID', '43');
+    const junit = tempFile('junit.xml');
+    const drifted = await cli([fixture, '--drift', '--junit', junit]);
+    expect(drifted.code).toBe(0);
+    expect(drifted.output).toMatch(/recorded refund\s+plain\s+args\s+lookup_order \{"orderId":"42"\}\s+lookup_order \{"orderId":"43"\}/);
+    expect(fs.readFileSync(junit, 'utf8')).toContain('<system-out>soft failure: drift from plain.json: args lookup_order');
+    expect(fs.readFileSync(cassette, 'utf8')).toContain('\\"orderId\\":\\"42\\"');
+
+    const strict = await cli([fixture, '--drift', '--strict', '--junit', junit]);
+    expect(strict.code).toBe(1);
+    expect(fs.readFileSync(junit, 'utf8')).toContain('<failure message="drift from plain.json: args lookup_order');
+  }, 120_000);
 });

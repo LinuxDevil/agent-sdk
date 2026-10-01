@@ -11,7 +11,7 @@
  */
 
 import { newId } from '../utils/id';
-import { ErrorAttr, LegacyAttr } from './semconv';
+import { ErrorAttr, GenAiAttr, LegacyAttr, SdkAttr } from './semconv';
 
 /** OpenTelemetry span kind, for the kinds this SDK emits. */
 export type SpanKind = 'internal' | 'client';
@@ -52,6 +52,48 @@ export function recordSpanError(span: Span, error: unknown): void {
   span.status = { code: 'error', message: error instanceof Error ? error.message : String(error) };
 }
 
+/** Cost and estimation of the finished child spans of one open span (LOU-D48). */
+interface UsageRollup {
+  costUsd: number;
+  /** At least one finished child carried a cost. */
+  priced: boolean;
+  /** A finished child had token usage but no known price. */
+  unpriced: boolean;
+  estimated: boolean;
+}
+
+/** Open spans by id; a span's finished children add their usage here. */
+const rollups = new Map<string, UsageRollup>();
+
+/**
+ * Adds a finished span's usage to its parent's rollup: its `loushy.cost_usd`
+ * (or, with tokens but no price, marks the parent as unpriced), and whether
+ * any of it was estimated.
+ */
+function rollUpUsage(span: Span, own: UsageRollup): void {
+  const parent = span.parentId ? rollups.get(span.parentId) : undefined;
+  if (!parent) return;
+  const cost = span.attributes[SdkAttr.COST_USD];
+  if (typeof cost === 'number') {
+    parent.costUsd += cost;
+    parent.priced = true;
+  } else if (span.attributes[GenAiAttr.USAGE_INPUT_TOKENS] !== undefined || own.unpriced) {
+    parent.unpriced = true;
+  }
+  if (span.attributes[SdkAttr.USAGE_ESTIMATED] === true) parent.estimated = true;
+}
+
+/** Stamps the cumulative cost (and estimated flag) of a span's children onto it. */
+function applyRollup(span: Span, own: UsageRollup): void {
+  const priced = own.priced && !own.unpriced;
+  if (!priced && !own.estimated) return;
+  span.attributes = {
+    ...span.attributes,
+    ...(priced ? { [SdkAttr.COST_USD]: own.costUsd } : {}),
+    ...(own.estimated ? { [SdkAttr.USAGE_ESTIMATED]: true } : {}),
+  };
+}
+
 /**
  * Receives span lifecycle notifications. No default implementation ships
  * in this SDK - consumers bridge onSpanStart/onSpanEnd into whatever
@@ -80,6 +122,10 @@ export interface TraceExporter {
  * - `fn` receives the span so callers can read its generated `id` (e.g.
  *   to pass as the `parentId` of a further-nested withSpan() call).
  * - `kind` is the OpenTelemetry span kind (default `internal`).
+ * - Before `onSpanEnd`, a span whose child spans carried `loushy.cost_usd`
+ *   gets the sum as its own (cumulative) `loushy.cost_usd`, absent when a
+ *   child with token usage had no known price, and `loushy.usage.estimated`
+ *   when any child's tokens were estimated (LOU-D48).
  */
 export async function withSpan<T>(
   exporter: TraceExporter | undefined,
@@ -98,6 +144,8 @@ export async function withSpan<T>(
     ...(kind ? { kind } : {}),
   };
 
+  const own: UsageRollup = { costUsd: 0, priced: false, unpriced: false, estimated: false };
+  rollups.set(span.id, own);
   exporter?.onSpanStart(span);
 
   try {
@@ -107,6 +155,9 @@ export async function withSpan<T>(
     throw error;
   } finally {
     span.endTime = Date.now();
+    rollups.delete(span.id);
+    applyRollup(span, own);
+    rollUpUsage(span, own);
     exporter?.onSpanEnd(span);
   }
 }

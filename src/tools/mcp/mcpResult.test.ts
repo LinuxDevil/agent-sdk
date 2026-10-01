@@ -125,6 +125,7 @@ describe('MCP result handling (LOU-Z2)', () => {
       error: 'McpToolError',
       toolName: 'srv__do_it',
       message: 'rate limited',
+      kind: 'mcp',
     });
     expect(onToolResult.mock.calls[0][1]?.error).toBeDefined();
   });

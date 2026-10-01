@@ -64,7 +64,10 @@ describe('createAgent approvals (LOU-D21)', () => {
     const rejection = toolResult(model.calls[1].messages as Message[]);
     expect(rejection?.isError).toBe(true);
     expect(JSON.parse(rejection?.content as string)).toEqual({
-      error: 'Tool execution was rejected by the reviewer',
+      error: 'ToolRejectedError',
+      toolName: 'send_email',
+      message: 'Tool execution was rejected by the reviewer',
+      kind: 'rejected',
       note: 'Not today',
     });
   });

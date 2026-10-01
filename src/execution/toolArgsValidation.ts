@@ -6,6 +6,7 @@
 import { ToolDescriptor } from '../types';
 import { ToolExecutionError } from './errors';
 import { getToolInputSchema } from '../tools/toolContract';
+import { toolErrorResult, type ToolErrorResult } from './toolErrors';
 
 /** One problem found while validating a tool call's arguments. */
 export interface ToolArgumentIssue {
@@ -31,10 +32,13 @@ export function formatIssues(issues: ToolArgumentIssue[]): string {
  * // tool result the model sees:
  * // { error: 'ToolArgumentsValidationError', toolName: 'sendEmail',
  * //   message: "Invalid arguments for tool 'sendEmail': 1 issue (to: Required)",
- * //   issues: [{ path: 'to', message: 'Required' }] }
+ * //   kind: 'validation', issues: [{ path: 'to', message: 'Required' }] }
  * ```
  */
 export class ToolArgumentsValidationError extends ToolExecutionError {
+  /** Read by toolErrorResult() when this is thrown from a tool. */
+  readonly toolErrorKind = 'validation' as const;
+
   constructor(
     toolName: string,
     public readonly issues: ToolArgumentIssue[]
@@ -44,16 +48,13 @@ export class ToolArgumentsValidationError extends ToolExecutionError {
   }
 
   /** The structured tool result handed to the model. */
-  toToolResult(): {
-    error: 'ToolArgumentsValidationError';
-    toolName: string;
-    message: string;
-    issues: ToolArgumentIssue[];
-  } {
+  toToolResult(): ToolErrorResult & { issues: ToolArgumentIssue[] } {
     return {
-      error: 'ToolArgumentsValidationError',
-      toolName: this.toolName as string,
-      message: this.message,
+      ...toolErrorResult({
+        toolName: this.toolName as string,
+        error: this,
+        kind: 'validation',
+      }),
       issues: this.issues,
     };
   }

@@ -69,15 +69,16 @@ the calls after it run once it is decided (see
   the same way.
 
 Pauses are kept in a per-agent `InMemoryApprovalStore` unless you pass
-`approvalStore`. To decide a pause after a restart, give the agent a durable
-store, such as the SQLite one (see [Choosing a store](./sessions.md#choosing-a-store)):
+`approvalStore` or a `store` with `approvals`. To decide a pause after a
+restart, give the agent a durable store, such as the SQLite one (see
+[Choosing a store](./sessions.md#choosing-a-store)):
 
 ```ts
 import { createAgent } from '@loushy/build-ai-agent';
 import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
 
 const store = new SqliteStore('./.loushy/agent.db');
-const agent = createAgent({ provider, tools: [emailTool], approvalStore: store.approvals });
+const agent = createAgent({ provider, tools: [emailTool], store }); // or approvalStore: store.approvals
 ```
 
 `list()` only knows the pauses made by this agent object; keep the

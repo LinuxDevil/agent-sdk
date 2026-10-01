@@ -73,6 +73,26 @@ export type SessionRunner = (
  */
 export type SessionStreamRunner = (input: Message[], signal?: AbortSignal, checkpoint?: SessionTurnCheckpoint) => AgentRun;
 
+/** `store` as its parts: a plain `SessionStore` is the transcript store. */
+function splitStores(store: SessionOptions['store']): Partial<SessionStores> {
+  if (!store) return {};
+  return typeof (store as SessionStore).load === 'function' ? { sessions: store as SessionStore } : (store as SessionStores);
+}
+
+/**
+ * `options` with the stores it does not give taken from `defaults` (an
+ * agent's `store`, LOU-D30): `store` / `store.sessions` and
+ * `checkpointStore` / `store.checkpoints` win over them.
+ */
+export function withDefaultStores(options: SessionOptions = {}, defaults: Partial<SessionStores> = {}): SessionOptions {
+  const stores = splitStores(options.store);
+  return {
+    ...options,
+    store: stores.sessions ?? defaults.sessions,
+    checkpointStore: options.checkpointStore ?? stores.checkpoints ?? defaults.checkpoints,
+  };
+}
+
 /**
  * Longest prefix of `messages` that a provider accepts: every assistant
  * tool-call turn is followed by a result for each of its calls, and no tool
@@ -125,10 +145,9 @@ export class AgentSession {
   constructor(run: SessionRunner, options: SessionOptions = {}, streamRun?: SessionStreamRunner) {
     if (options.id !== undefined) assertSessionId(options.id);
     this.id = options.id ?? randomUUID();
-    const { store, checkpointStore } = options;
-    const stores = store && typeof (store as SessionStore).load !== 'function' ? (store as SessionStores) : undefined;
-    this.store = stores ? stores.sessions : ((store as SessionStore | undefined) ?? new MemorySessionStore());
-    this.checkpointStore = checkpointStore ?? stores?.checkpoints;
+    const stores = splitStores(options.store);
+    this.store = stores.sessions ?? new MemorySessionStore();
+    this.checkpointStore = options.checkpointStore ?? stores.checkpoints;
     this.run = run;
     this.streamRun = streamRun;
   }
