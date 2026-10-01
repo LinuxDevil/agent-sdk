@@ -22,6 +22,7 @@ import { LLMProvider } from './providers/llm';
 import { ToolRegistry } from './tools/ToolRegistry';
 import { ToolDescriptor } from './types';
 import type { DefinedTool } from './tools/defineTool';
+import { ToolConcurrency, assertToolConcurrency } from './execution/toolBatch';
 
 /**
  * Configuration for createAgent(). Tools are keyed by the name the agent
@@ -45,6 +46,18 @@ export interface CreateAgentConfig {
   name?: string;
   /** Optional maxSteps passed through to AgentExecutor.execute(). */
   maxSteps?: number;
+  /**
+   * How many tool calls from one model turn may run at once (LOU-V3).
+   * Defaults to `'unbounded'`; `1` runs them one at a time. Results always
+   * reach the transcript in the model's call order. See
+   * `ExecuteOptions.toolConcurrency` for the full contract.
+   *
+   * @example
+   * ```ts
+   * const agent = createAgent({ prompt: '...', provider, tools: [sendEmail], toolConcurrency: 1 });
+   * ```
+   */
+  toolConcurrency?: ToolConcurrency;
 }
 
 /** Per-call options for `SimpleAgent.send()`. */
@@ -92,6 +105,7 @@ export function createAgent(config: CreateAgentConfig): SimpleAgent {
         provider: config.provider,
         toolRegistry,
         maxSteps: config.maxSteps,
+        toolConcurrency: config.toolConcurrency,
         signal: options.signal,
       });
     },
@@ -109,6 +123,7 @@ function assertCreateAgentConfig(config: CreateAgentConfig): void {
       "createAgent: 'prompt' is required. Example: createAgent({ prompt: 'You are a helpful assistant', provider: myProvider })"
     );
   }
+  assertToolConcurrency(config.toolConcurrency, 'createAgent');
 }
 
 /**
