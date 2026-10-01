@@ -144,7 +144,7 @@ class TrajectoryContext implements EvalTestContext {
     const detail =
       this.result === undefined
         ? 'no run yet - call t.send() first'
-        : `finishReason was '${reason}'${reason === 'tool_calls' ? ' (the run hit maxSteps while still calling tools)' : ''}`;
+        : `finishReason was '${reason}'${reason === 'max-steps' ? ' (the run hit maxSteps while still calling tools)' : ''}`;
     this.gate('completed()', passed, passed ? undefined : `completed() failed: ${detail}`);
   }
 

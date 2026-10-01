@@ -14,6 +14,7 @@
 
 import type { GenerateOptions, LLMProvider, LLMProviderConfig } from './llm';
 import { abortableDelay } from './abortableDelay';
+import { providerEventsOf } from './providerEvents';
 import {
   CompactedLLMProviderError,
   ConfigurationError,
@@ -86,6 +87,7 @@ function combineSignals(...signals: Array<AbortSignal | undefined>): AbortSignal
 }
 
 async function callWithRetry<T>(
+  provider: LLMProvider,
   call: GenerateOptions,
   attempt: (call: GenerateOptions) => Promise<T>,
   options: WithRetryOptions
@@ -103,6 +105,7 @@ async function callWithRetry<T>(
       }
       const delayMs = backoffDelay(error, n, options.backoff);
       onRetry?.({ attempt: n, error, delayMs });
+      providerEventsOf(call)?.retry({ attempt: n, maxRetries, delayMs, error, provider: provider.name });
       await abortableDelay(delayMs, signal);
     }
   }
@@ -127,8 +130,8 @@ export function withRetry(provider: LLMProvider, options: WithRetryOptions = {})
     get defaultModel() {
       return provider.defaultModel;
     },
-    generate: (call) => callWithRetry(call, (attempt) => provider.generate(attempt), options),
-    stream: (call) => callWithRetry(call, (attempt) => provider.stream(attempt), options),
+    generate: (call) => callWithRetry(provider, call, (attempt) => provider.generate(attempt), options),
+    stream: (call) => callWithRetry(provider, call, (attempt) => provider.stream(attempt), options),
     supportsTools: (model) => provider.supportsTools(model),
     supportsStreaming: (model) => provider.supportsStreaming(model),
     getModels: () => provider.getModels(),
@@ -137,8 +140,9 @@ export function withRetry(provider: LLMProvider, options: WithRetryOptions = {})
 
 /**
  * `withRetry()` configured from a provider config's `maxRetries` and
- * `timeout` (ms per attempt), the two `LLMProviderConfig` fields the
- * built-in providers do not read themselves.
+ * `timeout` (ms per attempt). The built-in providers also pass
+ * `maxRetries` to the `ai` SDK's own retries (LOU-V7.2), so build the
+ * wrapped provider with `maxRetries: 0` to retry in one place.
  */
 export function resilientProvider(
   provider: LLMProvider,
@@ -194,7 +198,9 @@ export function withFallback(providers: LLMProvider[], options: WithFallbackOpti
         if (call.signal?.aborted || !fallbackOn(lastError)) {
           throw lastError;
         }
-        onFallback?.({ from: active.name, to: provider.name, error: lastError });
+        const info: FallbackInfo = { from: active.name, to: provider.name, error: lastError };
+        onFallback?.(info);
+        providerEventsOf(call)?.fallback(info);
       }
       active = provider;
       try {

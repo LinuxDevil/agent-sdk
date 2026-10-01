@@ -19,6 +19,7 @@
 - [Guardrails and sandboxing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md): Two tools for running agent output and agent tools safely: guardrails are fail-closed checks over a proposed change before you act on it, and sandboxed tools run inside an isolated container instead of the host process.
 - [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md): `AgentExecutor.execute()` and `FlowExecutor.execute()` emit spans through a `TraceExporter`.
 - [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md): An `LLMProvider` is what an agent generates with.
+- [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md): `useLoushyAgent()` puts an agent behind a chat UI.
 - [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md): `agent.send(text)` is single-turn: every call starts from an empty history.
 - [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md): A skill is a named chunk of instructions (a markdown document) that the model loads only when it needs it.
 - [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md): `agent.stream()` runs an agent exactly like `agent.send()` and reports the run as a stream of typed events: model text as it arrives, every tool call, step boundaries, approval requests, and a final `run.done`.

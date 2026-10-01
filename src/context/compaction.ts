@@ -1,6 +1,7 @@
 /**
- * Context compaction (LOU-W2): keep a long run under its model's context
- * window by pruning old tool results.
+ * Context compaction (LOU-W2, LOU-W3): keep a long run under its model's
+ * context window by pruning old tool results and, when that is not enough,
+ * folding old turns into a model-written summary.
  *
  * Ships as an `AgentHook` (`createCompactionHook()`), so it needs no changes
  * to the execution loop: `preGenerate` runs before every model call, and
@@ -11,7 +12,8 @@
  * `ExecutionResult.messages`, and is not pruned again on the next step.
  */
 
-import type { Message } from '../providers/llm';
+import type { LLMProvider, Message } from '../providers/llm';
+import { resolveProvider } from '../providers/resolveProvider';
 import type { AgentHook, GenerateHookContext } from '../execution/hooks';
 import { estimateTokens } from '../models/estimateTokens';
 import { getModelInfo } from '../models/registry';
@@ -29,6 +31,10 @@ export interface CompactionInput {
   contextWindow: number;
   /** How many of the most recent tokens to leave untouched. */
   protectedTokens: number;
+  /** The size (`thresholdPercent` of the window) a compacted conversation should end up under. */
+  thresholdTokens: number;
+  /** The run's cancellation signal, for strategies that call a model. */
+  signal?: AbortSignal;
 }
 
 /** What a {@link CompactionStrategy} returns. */
@@ -39,12 +45,32 @@ export interface CompactionResult {
   tokensAfter: number;
   /** `toolCallId`s whose results were replaced by a marker. */
   prunedToolCallIds: string[];
+  /** The summary that replaced old turns, when the strategy summarized. */
+  summary?: string;
+  /** Why the strategy fell back (e.g. the summarizer failed); `messages` is then the fallback result. */
+  error?: Error;
 }
 
-/** A way of shrinking a conversation. */
+/** A way of shrinking a conversation. `compact()` may be async (e.g. to call a model). */
 export interface CompactionStrategy {
   name: string;
-  compact(input: CompactionInput): CompactionResult;
+  compact(input: CompactionInput): CompactionResult | Promise<CompactionResult>;
+}
+
+/**
+ * Returns a copy of `message` marked as pinned (`metadata.pinned: true`).
+ * The built-in strategies never prune or summarize a pinned message.
+ *
+ * @example
+ * messages.push(pinMessage({ role: 'user', content: 'Always answer in French.' }));
+ */
+export function pinMessage(message: Message): Message {
+  return { ...message, metadata: { ...message.metadata, pinned: true } };
+}
+
+/** Whether `message` was marked with {@link pinMessage}. */
+export function isPinned(message: Message): boolean {
+  return message.metadata?.pinned === true;
 }
 
 const DEFAULT_PROTECTED_TOKENS = 40_000;
@@ -54,9 +80,11 @@ const DEFAULT_THRESHOLD_PERCENT = 0.9;
 
 const PRUNED_MARKER = /^\[pruned: .* result, \d+ chars\]$/;
 
+const toError = (cause: unknown): Error => (cause instanceof Error ? cause : new Error(String(cause)));
+
 /** The message with its result replaced by a marker, or `undefined` when it is not a tool result worth pruning. */
 function prunedToolResult(message: Message): Message | undefined {
-  if (message.role !== 'tool' || PRUNED_MARKER.test(message.content)) return undefined;
+  if (message.role !== 'tool' || isPinned(message) || PRUNED_MARKER.test(message.content)) return undefined;
   const marker = `[pruned: ${message.toolName ?? 'tool'} result, ${message.content.length} chars]`;
   return marker.length < message.content.length ? { ...message, content: marker } : undefined;
 }
@@ -83,20 +111,150 @@ function protectedTailStart(messages: Message[], count: CompactionTokenCounter, 
  * short marker such as `[pruned: search result, 18234 chars]`. Only `tool`
  * messages change (system, user and assistant messages, tool calls included,
  * are kept as they are), so every tool call still has its result and the
- * transcript stays valid. A result that is already a marker, or shorter than
- * one, is left alone, so running it again changes nothing.
+ * transcript stays valid. A pinned result, a result that is already a
+ * marker, or one shorter than a marker is left alone, so running it again
+ * changes nothing.
  */
 export function pruneToolResultsStrategy(): CompactionStrategy {
   return {
     name: 'prune-tool-results',
-    compact({ messages, estimateTokens: count, protectedTokens }) {
+    compact: pruneToolResults,
+  };
+}
+
+function pruneToolResults({ messages, estimateTokens: count, protectedTokens }: CompactionInput): CompactionResult {
+  const tokensBefore = count(messages);
+  const tailStart = protectedTailStart(messages, count, protectedTokens);
+  const compacted = messages.map((message, index) => (index < tailStart && prunedToolResult(message)) || message);
+  const pruned = compacted.filter((message, index) => message !== messages[index]);
+  const prunedToolCallIds = pruned.flatMap((message) => (message.toolCallId ? [message.toolCallId] : []));
+  if (pruned.length === 0) return { messages, tokensBefore, tokensAfter: tokensBefore, prunedToolCallIds };
+  return { messages: compacted, tokensBefore, tokensAfter: count(compacted), prunedToolCallIds };
+}
+
+/** Options for {@link summarizeStrategy} and {@link twoPhaseStrategy}. */
+export interface SummarizeStrategyOptions {
+  /** The summarizer: a provider, or a `"provider/model"` spec for `resolveProvider()` (a cheap model is fine). */
+  model: LLMProvider | string;
+  /** Recent tokens kept as they are. Defaults to the hook's `protectedTokens`. */
+  protectedTokens?: number;
+  /** Instruction sent to the summarizer as its system message. Defaults to {@link DEFAULT_SUMMARY_PROMPT}. */
+  prompt?: string;
+  /** `maxTokens` for the summary call. Defaults to the provider's default. */
+  maxSummaryTokens?: number;
+}
+
+/** The summarizer's default instruction. */
+export const DEFAULT_SUMMARY_PROMPT = `You compact the history of an AI agent's conversation. Summarize it so the agent can continue without it:
+1. Goal: what the user wants.
+2. Instructions: directives and constraints the user gave.
+3. Progress: what has been done, which tools were called and what they returned.
+4. State: where things stand and what is still pending.
+5. Details: names, ids, paths, numbers and values needed to continue.
+Write only the summary.`;
+
+/** The first line of the message that replaces summarized turns. */
+export const SUMMARY_HEADER = '[Conversation summary]';
+
+function renderForSummary(messages: Message[]): string {
+  return messages
+    .map((m) => {
+      const calls = (m.toolCalls ?? []).map((c) => `\n[called ${c.function.name}(${c.function.arguments})]`).join('');
+      return `${m.role === 'tool' ? `tool ${m.toolName ?? ''}`.trim() : m.role}: ${m.content}${calls}`;
+    })
+    .join('\n\n');
+}
+
+/**
+ * Splits the messages before the protected tail into the ones to summarize
+ * and the ones to keep. An assistant turn and the tool results that follow it
+ * form one group, kept or folded whole, so no tool call loses its result; a
+ * group is kept if it holds a system or pinned message. The tail always holds
+ * the last message and starts on a group boundary. `summaryAt` is where the
+ * summary goes in `kept`: the position of the first folded group.
+ */
+function splitForSummary(messages: Message[], count: CompactionTokenCounter, protectedTokens: number) {
+  let tailStart = Math.min(protectedTailStart(messages, count, protectedTokens), messages.length - 1);
+  while (tailStart > 0 && messages[tailStart].role === 'tool') tailStart--;
+  const kept: Message[] = [];
+  const folded: Message[] = [];
+  let summaryAt = -1;
+  for (let i = 0; i < tailStart; ) {
+    let end = i + 1;
+    if (messages[i].role === 'assistant') while (end < tailStart && messages[end].role === 'tool') end++;
+    const group = messages.slice(i, end);
+    if (group.some((m) => m.role === 'system' || isPinned(m))) {
+      kept.push(...group);
+    } else {
+      if (summaryAt < 0) summaryAt = kept.length;
+      folded.push(...group);
+    }
+    i = end;
+  }
+  return { kept, folded, summaryAt, tail: messages.slice(tailStart) };
+}
+
+/**
+ * Replaces the turns before the protected tail with one `user` message,
+ * `"[Conversation summary]\n<summary>"`, written by `model`. System and
+ * pinned messages are kept, and an assistant turn is summarized together with
+ * its tool results, so the transcript stays valid for every provider. If the
+ * summary call fails, it falls back to {@link pruneToolResultsStrategy} and
+ * reports the failure as `error`; it never throws.
+ *
+ * @example
+ * createCompactionHook({ strategy: summarizeStrategy({ model: 'openai/gpt-4o-mini' }) });
+ */
+export function summarizeStrategy(options: SummarizeStrategyOptions): CompactionStrategy {
+  let provider: LLMProvider | undefined;
+  return {
+    name: 'summarize',
+    async compact(input) {
+      const { messages, estimateTokens: count, signal } = input;
+      const protectedTokens = options.protectedTokens ?? input.protectedTokens;
+      const { kept, folded, summaryAt, tail } = splitForSummary(messages, count, protectedTokens);
       const tokensBefore = count(messages);
-      const tailStart = protectedTailStart(messages, count, protectedTokens);
-      const compacted = messages.map((message, index) => (index < tailStart && prunedToolResult(message)) || message);
-      const pruned = compacted.filter((message, index) => message !== messages[index]);
-      const prunedToolCallIds = pruned.flatMap((message) => (message.toolCallId ? [message.toolCallId] : []));
-      if (pruned.length === 0) return { messages, tokensBefore, tokensAfter: tokensBefore, prunedToolCallIds };
-      return { messages: compacted, tokensBefore, tokensAfter: count(compacted), prunedToolCallIds };
+      if (folded.length === 0) return { messages, tokensBefore, tokensAfter: tokensBefore, prunedToolCallIds: [] };
+      try {
+        provider ??= typeof options.model === 'string' ? resolveProvider(options.model) : options.model;
+        const { text } = await provider.generate({
+          messages: [
+            { role: 'system', content: options.prompt ?? DEFAULT_SUMMARY_PROMPT },
+            { role: 'user', content: renderForSummary(folded) },
+          ],
+          maxTokens: options.maxSummaryTokens,
+          signal,
+        });
+        const summary = text.trim();
+        if (!summary) throw new Error('the summarizer returned an empty summary');
+        kept.splice(summaryAt, 0, { role: 'user', content: `${SUMMARY_HEADER}\n${summary}` });
+        const compacted = [...kept, ...tail];
+        return { messages: compacted, tokensBefore, tokensAfter: count(compacted), prunedToolCallIds: [], summary };
+      } catch (cause) {
+        return { ...pruneToolResults({ ...input, protectedTokens }), error: toError(cause) };
+      }
+    },
+  };
+}
+
+/**
+ * The recommended strategy: prunes old tool results first and, only if the
+ * conversation is still above the threshold, summarizes what is left with
+ * {@link summarizeStrategy} (which falls back to the pruned result on failure).
+ *
+ * @example
+ * createCompactionHook({ strategy: twoPhaseStrategy({ model: 'openai/gpt-4o-mini' }) });
+ */
+export function twoPhaseStrategy(options: SummarizeStrategyOptions): CompactionStrategy {
+  const summarize = summarizeStrategy(options);
+  return {
+    name: 'two-phase',
+    async compact(input) {
+      const pruned = pruneToolResults(input);
+      if (pruned.tokensAfter <= input.thresholdTokens) return pruned;
+      const result = await summarize.compact({ ...input, messages: pruned.messages });
+      const prunedToolCallIds = [...pruned.prunedToolCallIds, ...result.prunedToolCallIds];
+      return { ...result, tokensBefore: pruned.tokensBefore, prunedToolCallIds };
     },
   };
 }
@@ -109,17 +267,21 @@ export interface CompactMessagesOptions {
   contextWindow?: number;
   /** How many recent tokens to keep intact. Defaults to 40,000. */
   protectedTokens?: number;
+  /** Share of the context window to compact below (`CompactionInput.thresholdTokens`). Defaults to 0.9. */
+  thresholdPercent?: number;
   /** Model id, used for the context-window lookup and passed to the token estimator. */
   model?: string;
 }
 
-function prepare(messages: Message[], options: CompactMessagesOptions) {
-  const { model, protectedTokens = DEFAULT_PROTECTED_TOKENS } = options;
+function prepare(messages: Message[], options: CompactMessagesOptions, signal?: AbortSignal) {
+  const { model, protectedTokens = DEFAULT_PROTECTED_TOKENS, thresholdPercent = DEFAULT_THRESHOLD_PERCENT } = options;
   const strategy = options.strategy ?? pruneToolResultsStrategy();
   const contextWindow =
     options.contextWindow ?? (model ? getModelInfo(model)?.contextWindow : undefined) ?? FALLBACK_CONTEXT_WINDOW;
   const count: CompactionTokenCounter = (input) => estimateTokens(input, { model });
-  return { strategy, contextWindow, input: { messages, estimateTokens: count, contextWindow, protectedTokens } };
+  const thresholdTokens = thresholdPercent * contextWindow;
+  const input: CompactionInput = { messages, estimateTokens: count, contextWindow, protectedTokens, thresholdTokens, signal };
+  return { strategy, input };
 }
 
 /**
@@ -128,9 +290,9 @@ function prepare(messages: Message[], options: CompactMessagesOptions) {
  * {@link createCompactionHook}.
  *
  * @example
- * const { messages: smaller, tokensBefore, tokensAfter } = compactMessages(history, { protectedTokens: 8_000 });
+ * const { messages: smaller, tokensBefore, tokensAfter } = await compactMessages(history, { protectedTokens: 8_000 });
  */
-export function compactMessages(messages: Message[], options: CompactMessagesOptions = {}): CompactionResult {
+export async function compactMessages(messages: Message[], options: CompactMessagesOptions = {}): Promise<CompactionResult> {
   const { strategy, input } = prepare(messages, options);
   return strategy.compact(input);
 }
@@ -142,13 +304,15 @@ export interface CompactionInfo {
   prunedToolCallIds: string[];
   /** The strategy's `name`. */
   strategy: string;
+  /** The summary that replaced old turns, when the strategy summarized. */
+  summary?: string;
+  /** Set when the strategy failed or fell back; the run continues either way. */
+  error?: Error;
 }
 
 /** Options for {@link createCompactionHook}. */
 export interface CompactionHookOptions extends Omit<CompactMessagesOptions, 'model'> {
-  /** Compact once the request is estimated above this share of the context window. Defaults to 0.9. */
-  thresholdPercent?: number;
-  /** Called after each compaction that changed the conversation. */
+  /** Called after each compaction that changed the conversation or reported an `error`. */
   onCompaction?: (info: CompactionInfo) => void;
 }
 
@@ -157,7 +321,8 @@ export interface CompactionHookOptions extends Omit<CompactMessagesOptions, 'mod
  * model call whose estimated size is above `thresholdPercent` of the context
  * window (looked up by `request.model` unless `contextWindow` is given). The
  * compacted messages replace the run's transcript in place, so they are what
- * later steps, checkpoints and the result see.
+ * later steps, checkpoints and the result see. The strategy may be async; if
+ * it throws, the run continues uncompacted and `onCompaction` gets the `error`.
  *
  * @example
  * const hooks = new HookRegistry();
@@ -171,20 +336,22 @@ export function createCompactionHook(options: CompactionHookOptions = {}): Agent
   }
   return {
     name: 'compaction',
-    preGenerate(ctx: GenerateHookContext) {
+    async preGenerate(ctx: GenerateHookContext) {
       const messages = ctx.request.messages;
-      const { strategy, contextWindow, input } = prepare(messages, { ...options, model: ctx.request.model });
-      if (input.estimateTokens(messages) <= thresholdPercent * contextWindow) return;
-      const result = strategy.compact(input);
-      if (result.messages === messages) return;
+      const { strategy, input } = prepare(messages, { ...options, model: ctx.request.model }, ctx.request.signal);
+      const tokens = input.estimateTokens(messages);
+      if (tokens <= input.thresholdTokens) return;
+      let result: CompactionResult;
+      try {
+        result = await strategy.compact(input);
+      } catch (cause) {
+        result = { messages, tokensBefore: tokens, tokensAfter: tokens, prunedToolCallIds: [], error: toError(cause) };
+      }
+      if (result.messages === messages && !result.error) return;
       // In place: request.messages is the run's transcript (see the file comment).
-      messages.splice(0, messages.length, ...result.messages);
-      onCompaction?.({
-        tokensBefore: result.tokensBefore,
-        tokensAfter: result.tokensAfter,
-        prunedToolCallIds: result.prunedToolCallIds,
-        strategy: strategy.name,
-      });
+      if (result.messages !== messages) messages.splice(0, messages.length, ...result.messages);
+      const { tokensBefore, tokensAfter, prunedToolCallIds, summary, error } = result;
+      onCompaction?.({ tokensBefore, tokensAfter, prunedToolCallIds, strategy: strategy.name, summary, error });
     },
   };
 }

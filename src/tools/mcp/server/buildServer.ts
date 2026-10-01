@@ -45,6 +45,7 @@ function agentResultToMcp(result: ExecutionResult): CallToolResult {
     );
   }
   if (result.finishReason === 'aborted') return textResult('The agent run was cancelled.', true);
+  if (result.finishReason === 'max-steps') return textResult('The agent ran out of steps (maxSteps) before finishing.', true);
   if (result.finishReason === 'error') {
     return textResult(`The agent failed: ${result.text || 'the model reported an error'}`, true);
   }

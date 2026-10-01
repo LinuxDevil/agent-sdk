@@ -35,6 +35,12 @@ export interface Message {
    *   content: '{"error":"timeout"}', isError: true }
    */
   isError?: boolean;
+  /**
+   * Application data attached to the message. Providers never send it to
+   * the model. The compaction strategies read `metadata.pinned` (set it with
+   * `pinMessage()`): a pinned message is never pruned or summarized.
+   */
+  metadata?: Record<string, unknown>;
 }
 
 /**
