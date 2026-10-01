@@ -198,9 +198,6 @@ and replay it next to the original, with
 A run id is the run's checkpoint session id: the agent id for the agent's
 own runs, `<id>.fork-<n>` for a fork of run `<id>`. The runtime control
 server has three routes for it (the History tab uses them):
-A run id is the run's checkpoint session id: the agent id for the agent's
-own runs, `<id>.fork-<n>` for a fork of run `<id>`. The runtime control
-server has three routes for it:
 
 | Route | What it does |
 | --- | --- |
