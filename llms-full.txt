@@ -16,14 +16,17 @@ dashboard — any provider, any deploy target, no lock-in.
 
 ## Features
 
-- **Zero-config to full control** — `createAgent({ prompt, provider })` in one line, or the full `AgentBuilder` + `AgentExecutor` API when you need `maxSteps`, checkpoints, or tracing hooks
+- **Zero-config to full control** — `createAgent({ model: 'openai/gpt-4o-mini' })` in one line, or the full `AgentBuilder` + `AgentExecutor` API when you need `maxSteps`, checkpoints, or tracing hooks
 - **Human-in-the-loop** — flag a tool `needsApproval` and pause execution until a human approves or rejects it, then `resumeAfterApproval()` from any process
 - **Durable execution** — pass a `sessionId` + `checkpointStore` and a crash mid-conversation resumes instead of restarting
 - **Cancellation** — pass an `AbortSignal` (`agent.send(input, { signal })`) to stop a run; it resolves with `finishReason: 'aborted'` and the transcript so far, and the signal reaches the provider, tools and delegated agents
+- **Parallel tool calls** — when the model asks for several tools in one turn they run concurrently (cap it with `toolConcurrency`, or `1` for sequential), and results still reach the transcript in the model's call order
+- **Skills** — `defineSkill()` / `loadSkills('./skills')`: only each skill's name and description sit in the system prompt; the model loads the full markdown on demand through an auto-registered `load_skill` tool
 - **Multi-agent delegation** — wrap a child agent as a tool with `createDelegateTool()`, with a `maxDepth` guard against delegation loops
 - **Pre/post hooks** — a `HookRegistry` of `AgentHook`s that can inspect or mutate a tool call/LLM generate step, or throw to abort it, run sandboxed by Agent Forge's hook editor
 - **Guardrails** — fail-closed, concurrently-run checks (secret scan, diff size, test/lint commands) that gate a fixer agent's patch before it's used
 - **MCP client** — `loadMcpTools()` turns any Model Context Protocol server's tools into `ToolDescriptor`s
+- **MCP server** — `serveMcp({ agent, name })` (or `loushy mcp agent.yaml`) exposes an agent as an MCP tool for Claude Code, Cursor and other agents
 - **Sandboxed tools** — opt a tool into `requiresSandbox` to route it through a Docker-backed `SandboxAdapter` instead of in-process
 - **Tracing & evals** — `withSpan()`/`TraceExporter` (with an OpenTelemetry bridge at `/otel`) for observability, and `defineEval()` for agent-behavior regression tests under `vitest`
 - **Any provider, any deploy target** — OpenAI, Anthropic, Ollama, OpenRouter, or a deterministic mock provider for tests; `loushy build` ships to a Node server, Docker, or Cloudflare Workers
@@ -31,19 +34,32 @@ dashboard — any provider, any deploy target, no lock-in.
 
 ## Quick example
 
-The zero-config path — one function call, no manually-wired executor or
-registry:
+Hello world in five lines (reads `OPENAI_API_KEY` from your environment):
 
 ```typescript
-import { createAgent, resolveProvider } from '@loushy/build-ai-agent';
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are a helpful assistant.' });
+const { text } = await agent.send('Hello!');
+console.log(text);
+```
+
+`model` is a `provider/model` string (`openai`, `anthropic`, `openrouter`,
+`ollama`); the key comes from the provider's conventional env var. Leave
+`model` out and the agent uses `LOUSHY_MODEL` if set, otherwise the first of
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`,
+`OLLAMA_BASE_URL` that is present.
+
+When you need a custom provider (your own `LLMProvider`, a mock, extra
+config), pass the instance instead:
+
+```typescript
+import { createAgent, createMockProvider } from '@loushy/build-ai-agent';
 
 const agent = createAgent({
-  prompt: 'You are a helpful customer support assistant.',
-  provider: resolveProvider('openai/gpt-4o-mini'), // reads OPENAI_API_KEY
+  instructions: 'You are a helpful customer support assistant.',
+  provider: createMockProvider({ responses: ['Hi! How can I help?'] }),
 });
-
-const result = await agent.send('Hello!');
-console.log(result.text);
 ```
 
 The same agent with an approval gate on a sensitive tool — `defineTool()`
@@ -194,6 +210,7 @@ console.log(result.usage.totalTokens, result.finishReason, result.steps);
 - [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md) - `loushy build` targets: Node server, Docker, Cloudflare Workers
 - [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md) - the main exports; `npm run docs:build` generates the full TypeDoc reference
 - [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md) - unit-test agents deterministically with the scripted `mockModel`
+- [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md) - on-demand instructions: `defineSkill()`, `loadSkills()`, how they save context
 - [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md) - the visual dashboard (`loushy studio`): quickstart, first-agent walkthrough, hook authoring
 - Full guides site: [linuxdevil.github.io/agent-sdk-docs](https://linuxdevil.github.io/agent-sdk-docs/)
 
@@ -738,10 +755,11 @@ Next: [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick
 Source: docs/quick-start.md
 
 Every TypeScript snippet on this page is a complete, standalone ES module
-(`.mts`) that runs as-is with the SDK's built-in mock provider - no API key
-needed. They are executed against a locally packed build of the SDK by
-`npx tsx scripts/verify-docs-snippets.ts`, so they are kept in sync with the
-real API.
+(`.mts`). They are type-checked and executed against a locally packed build of
+the SDK by `npx tsx scripts/verify-docs-snippets.ts`, so they are kept in sync
+with the real API. All of them run as-is with the SDK's built-in mock
+provider - no API key needed - except the first, which talks to a real model
+and is therefore only type-checked.
 
 Install first (see [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md)):
 
@@ -750,16 +768,40 @@ npm install @loushy/build-ai-agent ai zod
 npm install @ai-sdk/openai@^0.0.42 @ai-sdk/anthropic@^0.0.42 ollama-ai-provider@^1.2.0
 ```
 
-## 1. One-liner agent with `createAgent()`
+## 1. Hello world in five lines
 
-`createAgent()` is the zero-config entry point: a prompt and a provider in, a
-`{ send }` agent out.
+`createAgent()` is the zero-config entry point: a `provider/model` string and
+instructions in, a `{ send }` agent out. The API key is read from the
+provider's conventional environment variable (`OPENAI_API_KEY` here;
+`ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY` or `OLLAMA_BASE_URL` for the other
+providers).
+
+```ts no-run
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are a helpful assistant.' });
+const { text } = await agent.send('Hello!');
+console.log(text);
+```
+
+Leave `model` out to let the environment decide: `LOUSHY_MODEL` (a
+`provider/model` string) if set, otherwise the first of `OPENAI_API_KEY`,
+`ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `OLLAMA_BASE_URL` that is present.
+If a key is missing or the prefix is misspelled, the error tells you exactly
+what to set or fix. `instructions` is optional; `prompt` is accepted as an
+alias for it.
+
+## 2. When you need a custom provider
+
+Pass a provider instance instead of `model` when you have your own
+`LLMProvider`, want the mock provider for tests, or need extra provider
+config. This one needs no API key:
 
 ```ts
 import { createAgent, createMockProvider } from '@loushy/build-ai-agent';
 
 const agent = createAgent({
-  prompt: 'You are a helpful assistant.',
+  instructions: 'You are a helpful assistant.',
   provider: createMockProvider({ responses: ['Hello! How can I help you today?'] }),
 });
 
@@ -767,14 +809,11 @@ const result = await agent.send('Hi there');
 console.log(result.text); // "Hello! How can I help you today?"
 ```
 
-## 2. Switching to a real provider
-
-`resolveProvider('<provider>/<model>')` builds a real provider, reading its
-credential from the environment (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
-`OPENROUTER_API_KEY`, or `OLLAMA_BASE_URL` for Ollama). This snippet uses
-OpenAI when `OPENAI_API_KEY` is set and falls back to the mock provider
-otherwise - the same pattern the runnable [examples](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/README.md)
-use.
+`resolveProvider('<provider>/<model>')` is the function `model` uses under
+the hood; call it yourself when you want the provider object, as in this
+snippet, which uses OpenAI when `OPENAI_API_KEY` is set and falls back to the
+mock provider otherwise - the same pattern the runnable
+[examples](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/README.md) use.
 
 ```ts
 import { createAgent, createMockProvider, resolveProvider } from '@loushy/build-ai-agent';
@@ -933,12 +972,19 @@ npm run docs:build   # writes docs/api/index.html
 
 | Export                        | Description                                                                 |
 | ----------------------------- | --------------------------------------------------------------------------- |
-| `createAgent(config)`         | Zero-config `{ send(message) }` agent from a prompt + provider (+ tools).   |
+| `createAgent(config)`         | Zero-config `{ send(message) }` agent from a `model` string or provider (+ instructions, tools). |
 | `AgentBuilder`                | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). |
 | `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. |
 | `AgentType`                   | Agent type enum (e.g. `AgentType.SmartAssistant`).                          |
 | `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
+
+### Skills
+
+Pass `skills: [defineSkill({ name, description, content }), ...(await loadSkills(dir))]` to
+`createAgent()` or `AgentExecutor.execute()`: only names and descriptions go in
+the system prompt and the model loads bodies through an auto-registered
+`load_skill` tool. See [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md).
 
 ### Cancellation
 
@@ -984,6 +1030,63 @@ How it behaves:
   cancelled, so the conversation stays valid for the provider.
 - An already-aborted signal returns at once without calling the provider.
 
+### Parallel tool calls
+
+When the model asks for several tools in one turn, they run concurrently.
+`toolConcurrency` (on `createAgent()` and `AgentExecutor.execute()`) caps how
+many run at once: a positive integer, or `'unbounded'` (the default). Use `1`
+for strictly sequential execution, e.g. when your tools share state that is
+not safe to touch concurrently.
+
+```ts
+import { createAgent, createMockProvider, defineTool } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+
+const getWeather = defineTool({
+  name: 'get_weather',
+  description: 'Current weather for a city',
+  input: z.object({ city: z.string() }),
+  execute: async ({ city }) => ({ city, tempC: 21 }),
+});
+
+const agent = createAgent({
+  prompt: 'You are a travel assistant.',
+  provider: createMockProvider(),
+  tools: [getWeather],
+  toolConcurrency: 4, // at most 4 tool calls of a turn in flight
+});
+```
+
+Guarantees, whatever the limit:
+
+- **Transcript order is call order.** Tool results are appended in the order
+  the model requested the calls, not the order they finish, so the next
+  provider request is deterministic.
+- **Events.** Calls start in call order. A call's `tool-call` event,
+  `onToolCall`, argument validation, `preToolCall` hooks and `needsApproval`
+  check run just before it starts, one call at a time. Its `tool-result`
+  event fires when it finishes, so results arrive in completion order. With
+  `toolConcurrency: 1` events alternate call/result exactly as before.
+- **Approvals.** The first call that needs approval stops the batch: the
+  calls before it run (concurrently) and their results are recorded, then the
+  run pauses on that call (`finishReason: 'awaiting-approval'`). Calls after
+  it never start in this run. **Known gap:** after `resumeAfterApproval()`
+  those later calls are still not run and get no result (tracked as LOU-U7).
+  Until that lands, use `toolConcurrency: 1` and keep approval tools out of
+  multi-call turns if this matters to you.
+- **Failures are isolated.** A tool that throws gets its own error result;
+  its siblings carry on. A propagating error (`PropagatingToolError`, such as
+  the delegation depth guard, or a throwing hook) stops new calls from
+  starting, waits for the running ones to settle, then rejects the run. No
+  tool is left running detached.
+- **Cancellation.** An abort while a batch runs resolves with
+  `finishReason: 'aborted'`. Calls that finished keep their results; the rest
+  get a "cancelled" result. Running tools see the abort through their
+  `abortSignal`.
+- **Checkpoints.** With `sessionId` + `checkpointStore`, a checkpoint is
+  written each time the in-order run of finished calls grows (with `1`, after
+  every call, as before). A resumed run never runs a recorded call again.
+
 ## Declarative specs
 
 | Export             | Description                                                    |
@@ -1018,6 +1121,7 @@ Exported from `@loushy/build-ai-agent/testing` (see [Testing agents](https://git
 | `ToolInput<typeof t>`, `ToolOutput<typeof t>` | Argument and result types of a defined tool. |
 | `ToolRegistry`                               | Holds the tools an agent config refers to (advanced: `register(tool)` or `register(name, descriptor)`). |
 | `httpTool`, `currentDateTool`, `dayNameTool` | Built-in tools.                               |
+| `createTodoTools({ store?, onChange? })`     | `todo_write` / `todo_read` tools (plus `getTodos()`) so agents can plan and track multi-step work; see [Todo tools](#todo-tools). |
 | `loadMcpTools(client, connectionName)`       | Load a connected MCP server's tools as `ToolDescriptor`s. Available from the package root, `@loushy/build-ai-agent/tools`, and `@loushy/build-ai-agent/mcp`. |
 
 ```ts
@@ -1088,6 +1192,31 @@ text parts and `content` keeps every part in order (`text`, `image`, `audio`,
 non-text parts the result is `{ structuredContent, text, content }` with
 `content` holding only the non-text parts, so images, audio and resources are
 never dropped.
+
+### Todo tools
+
+`createTodoTools(options?)` gives long-running agents a plan to track:
+`todo_write` replaces the whole list (`{ id?, content, status }` items, status
+`pending` | `in_progress` | `completed`, at most one `in_progress`) and returns
+the list plus counts; `todo_read` returns it. Ids are assigned automatically and
+stay stable when a later write repeats an item's content. Invalid lists (for
+example two `in_progress`) reach the model as a structured tool error so it can
+retry. The list lives in memory per call; pass `store` (`{ get, set }`) to
+persist it, and `onChange` to update a UI.
+
+```ts
+import { createAgent, createTodoTools, type TodoStore } from '@loushy/build-ai-agent';
+
+const todos = createTodoTools({ onChange: (list) => console.log(list.length, 'todos') });
+const planner = createAgent({ prompt: 'Plan multi-step work, then do it.', provider, tools: todos.tools });
+
+await planner.send('Migrate the repo to ESM');
+console.log(await todos.getTodos()); // [{ id: 'todo_1', content: '...', status: 'completed' }, ...]
+
+// Persist the list somewhere else:
+let saved: Awaited<ReturnType<TodoStore['get']>> = [];
+createTodoTools({ store: { get: () => saved, set: (next) => void (saved = next) } });
+```
 
 ### Tool errors
 
@@ -1298,6 +1427,54 @@ a generic `401 {"error":"Unauthorized"}` - the response never says which check
 failed - and the reason (never a secret or signature) is logged at `warn`
 level. Serve webhooks over HTTPS (terminate TLS in front of the adapter) so
 tokens and payloads are not sent in clear text.
+
+### Slack request signatures
+
+`SlackTriggerAdapter.handleRequest({ headers, rawBody })` handles a raw Slack
+Events API request and returns the `{ status, body }` to send back. **Set
+`signingSecret` for any endpoint reachable from outside your machine**: without
+it, anyone who can reach the endpoint can run your agent, and `listen()` logs a
+one-time warning through `options.logger`. With it, every request is verified
+as [Slack documents](https://docs.slack.dev/authentication/verifying-requests-from-slack)
+before the body is parsed: HMAC-SHA256 over `v0:{X-Slack-Request-Timestamp}:{raw body}`,
+compared in constant time with `X-Slack-Signature` (`v0=<hex>`), and requests
+more than five minutes old are rejected. Failures get a generic
+`401 {"error":"Unauthorized"}`; the reason (never a secret or signature) is
+logged at `warn` level. The signed `url_verification` handshake is answered
+after verification.
+
+```ts
+import { createAgent, createMockProvider } from '@loushy/build-ai-agent';
+import { SlackTriggerAdapter, verifySlackSignature } from '@loushy/build-ai-agent/triggers';
+import * as http from 'node:http';
+
+const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
+const slack = new SlackTriggerAdapter({ signingSecret: process.env.SLACK_SIGNING_SECRET });
+slack.listen(agent, (input) => agent.send(input));
+
+http
+  .createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    req.on('end', async () => {
+      const { status, body } = await slack.handleRequest({ headers: req.headers, rawBody: Buffer.concat(chunks) });
+      res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
+    });
+  })
+  .listen(3000);
+
+// Your own handler (slash commands, interactivity)? Verify the RAW body yourself:
+const authentic = verifySlackSignature({
+  signingSecret: process.env.SLACK_SIGNING_SECRET ?? '',
+  timestamp: '1700000000', // the X-Slack-Request-Timestamp header
+  signature: 'v0=...', // the X-Slack-Signature header
+  rawBody: '{"type":"url_verification"}',
+});
+```
+
+`handleRequest` answers Slack after the agent finishes; Slack expects a reply
+within three seconds, so for slow agents acknowledge first and run the agent in
+the background.
 
 ### Cron schedules
 
@@ -1623,6 +1800,67 @@ const agent = createAgent({ prompt: '...', provider, tools });
 `loadMcpTools` is also available from the package root and from
 `@loushy/build-ai-agent/tools`.
 
+### Serve an agent over MCP
+
+`serveMcp()` is the reverse of `loadMcpTools()`: it exposes an agent (and,
+optionally, some of its tools) as an MCP server, so Claude Code, Cursor and
+other MCP clients can call it.
+
+```ts
+import { createAgent, defineTool } from '@loushy/build-ai-agent';
+import { serveMcp } from '@loushy/build-ai-agent/mcp';
+import { z } from 'zod';
+
+const searchDocs = defineTool({
+  name: 'search_docs',
+  description: 'Search the docs',
+  input: z.object({ query: z.string() }),
+  execute: ({ query }) => `results for ${query}`,
+});
+
+const supportAgent = createAgent({ prompt: 'You answer support questions.', provider, tools: [searchDocs] });
+
+const server = await serveMcp({
+  agent: supportAgent,            // exposed as ONE tool taking { message: string }
+  name: 'support-bot',            // server name; the tool name defaults to a sanitized version
+  description: 'Ask the support agent a question',
+  tools: [searchDocs],            // optional: also expose these tools directly
+  transport: { type: 'http', port: 3920, host: '127.0.0.1', path: '/mcp' }, // default: 'stdio'
+});
+await server.close();
+```
+
+- **Stateless.** Every call to the agent tool is a fresh conversation.
+- **Cancellation.** Cancelling the MCP request aborts the agent run
+  (`agent.send(message, { signal })`).
+- **Errors.** An agent failure comes back as an MCP result with `isError: true`.
+- **Approvals.** Approval-gated tools cannot be approved over MCP. A run that
+  pauses for approval returns `isError: true` with a message saying so. Tools
+  flagged `needsApproval` are not exposed directly unless you pass
+  `allowApprovalTools: true`; if you do, clients run them with **no human gate**.
+- **stdio.** Nothing but the MCP protocol is written to stdout; warnings go to stderr.
+- **HTTP.** Binds `127.0.0.1` by default. Add `auth: { type: 'bearer', token }`
+  to require an `Authorization: Bearer` header; binding a non-loopback host
+  without `auth` logs a warning.
+
+From the command line, `loushy mcp` serves an agent spec file (stdio by default):
+
+```sh
+npx loushy mcp agent.yaml
+npx loushy mcp agent.yaml --http --port 3920 --host 127.0.0.1
+```
+
+To use it from an MCP client, add it to the client's MCP config (for example
+`.mcp.json` for Claude Code):
+
+```json
+{
+  "mcpServers": {
+    "support-bot": { "command": "npx", "args": ["loushy", "mcp", "agent.yaml"] }
+  }
+}
+```
+
 ## Provider credentials
 
 Real providers are resolved by `resolveProvider('<provider>/<model>')`
@@ -1640,13 +1878,28 @@ what the examples and the Quick Start use by default.
 
 ## `createAgent()` options
 
-| Option     | Description                                                        |
-| ---------- | ------------------------------------------------------------------ |
-| `prompt`   | System prompt (required).                                          |
-| `provider` | An `LLMProvider` instance (required).                              |
+| Option         | Description                                                    |
+| -------------- | -------------------------------------------------------------- |
+| `model`        | A `'provider/model'` string such as `'openai/gpt-4o-mini'`, resolved with `resolveProvider()` (key from the env var above). Alternative to `provider`. |
+| `provider`     | An `LLMProvider` instance (real or mock). Alternative to `model`. If you pass both, `provider` is used and `model` becomes the agent's per-run model setting (a bare model id such as `'gpt-4o'`). |
+| `instructions` | System prompt. Optional (defaults to `'You are a helpful assistant.'`). |
+| `prompt`       | Working alias of `instructions`; passing both is an error.      |
 | `tools`    | `Record<string, ToolDescriptor>`, keyed by the name the agent uses. |
 | `name`     | Agent name (default `'agent'`).                                    |
 | `maxSteps` | Passed through to `AgentExecutor.execute()`.                        |
+
+With neither `model` nor `provider`, `createAgent()` resolves from the
+environment: `LOUSHY_MODEL` (a `'provider/model'` string) if set, otherwise
+the first provider whose variable is set, checked in this order:
+`OPENAI_API_KEY` (`openai/gpt-4o-mini`), `ANTHROPIC_API_KEY`
+(`anthropic/claude-3-5-sonnet-latest`), `OPENROUTER_API_KEY`
+(`openrouter/openai/gpt-4o-mini`), `OLLAMA_BASE_URL` (`ollama/llama3`). If none
+is set it throws an error listing exactly which options or variables fix it.
+
+Misconfiguration errors say how to fix themselves: a missing key names the
+variable (`createAgent: OPENAI_API_KEY is not set. ...`), an unknown prefix
+lists the supported ones and suggests the closest, and a missing optional peer
+dependency prints the exact `npm install` command.
 
 ## `AgentExecutor.execute()` options
 
@@ -1861,6 +2114,115 @@ any are found.
 Targets are `DeploymentAdapter` objects (`scaffold`, `build`, `describe`)
 registered by name with `registerAdapter()`; both are exported from the
 package root.
+
+# Skills
+
+Source: docs/skills.md
+
+A skill is a named chunk of instructions (a markdown document) that the model
+loads **only when it needs it**. This is progressive disclosure: instead of
+pasting every playbook into the system prompt, you list skills by name and
+one-line description, and the model pulls in the full text on demand.
+
+How it works when an agent has skills:
+
+1. The system prompt gets a compact **Available skills** block: one line per
+   skill (`- name: description`) plus one sentence telling the model to call
+   `load_skill` before doing a task a skill covers.
+2. A `load_skill` tool (input `{ name }`) is registered automatically. It
+   returns the skill's full content as the tool result.
+3. Skill bodies are **not** in the prompt until loaded. An agent with twenty
+   long skills pays roughly one line per skill on every request, and the body
+   cost only on the runs that use it.
+
+An unknown name is a tool error that lists the valid skill names, so the model
+can correct itself.
+
+## Skills in code
+
+```ts
+import { createAgent, defineSkill } from '@loushy/build-ai-agent';
+
+const agent = createAgent({
+  prompt: 'You are a release engineer.',
+  provider,
+  skills: [
+    defineSkill({
+      name: 'changelog',
+      description: 'How to write a changelog entry',
+      content: '# Changelog entries\n\nUse the imperative mood and link the PR.',
+    }),
+  ],
+});
+```
+
+`defineSkill({ name, description, content })` validates its input. `name` must
+match `^[a-z0-9][a-z0-9-_]{0,63}$`; `description` and `content` must be
+non-empty. Errors say what is wrong and how to fix it.
+
+The full executor API takes the same option:
+
+```ts
+import { AgentExecutor, defineSkill } from '@loushy/build-ai-agent';
+
+const result = await AgentExecutor.execute({
+  agent,
+  input: 'Write the changelog for 1.2.0',
+  provider,
+  skills: [defineSkill({ name: 'changelog', description: 'Changelog style', content: '...' })],
+});
+```
+
+If you already registered a tool named `load_skill`, passing `skills` throws:
+rename your tool or drop the option.
+
+## Skills from disk
+
+`loadSkills(dir)` reads skill files, so non-developers can edit them without
+touching code. Two layouts are supported and can be mixed in one directory:
+
+```
+skills/
+  changelog/SKILL.md      # <name>/SKILL.md  (Anthropic / open-harness convention)
+  code-review.md          # <name>.md        (eve convention)
+```
+
+Each file starts with YAML frontmatter; the rest is the skill's content:
+
+```markdown
+---
+description: How to write a changelog entry
+---
+
+# Changelog entries
+
+Use the imperative mood and link the PR.
+```
+
+- `description` is required.
+- `name` is optional and defaults to the folder name (`SKILL.md` layout) or the
+  file name without `.md`.
+- Folders without a `SKILL.md` are ignored.
+- Skills come back sorted by name, so prompts are deterministic.
+- Errors name the file and the problem: missing description, invalid YAML,
+  invalid name, an unreadable directory, or two skills with the same name
+  (both paths are listed).
+
+```ts
+import { createAgent, loadSkills } from '@loushy/build-ai-agent';
+
+const agent = createAgent({
+  prompt: 'You are a release engineer.',
+  provider,
+  skills: [...(await loadSkills('./skills'))],
+});
+```
+
+## Testing skills
+
+Use [`mockModel`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md) to assert the model sees descriptions but not
+bodies until it loads one: the first request's system prompt lists the skills,
+and the request after a `load_skill` call contains the body in the tool result.
 
 # Testing agents
 
