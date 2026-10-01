@@ -106,6 +106,7 @@ const result = await resumeAfterApproval(
 
 ```bash
 npm install @loushy/build-ai-agent ai zod
+npx loushy doctor        # checks Node, peers and API keys, and tells you how to fix anything
 ```
 
 **2. Configure** — describe the agent as data:

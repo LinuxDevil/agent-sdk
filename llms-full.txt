@@ -104,6 +104,7 @@ const result = await resumeAfterApproval(
 
 ```bash
 npm install @loushy/build-ai-agent ai zod
+npx loushy doctor        # checks Node, peers and API keys, and tells you how to fix anything
 ```
 
 **2. Configure** — describe the agent as data:
@@ -747,6 +748,54 @@ Installing the package also installs the `loushy` command:
 - `loushy build --target=<target> --agent=<spec>` - build a deployable
   artifact (see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)). Building requires `tsup`
   (`npm install --save-dev tsup`).
+
+- `loushy doctor [agent.yaml|json] [--json]` - diagnose your setup (see below).
+
+## Troubleshooting: loushy doctor
+
+Run `npx loushy doctor` right after installing. It prints one line per check
+with a status (`ok`, `warn`, `FAIL`), what it found, and, for anything that is
+not ok, the command to run or the setting to change:
+
+```text
+loushy doctor
+
+[ ok ] Node.js: v22.19.0 satisfies >=22.19.0
+[ ok ] Required peer ai: 4.3.19 satisfies ^4.3.19
+[FAIL] Required peer zod: not installed
+       fix: npm install zod@^3.25.76
+[ ok ] Provider package @ai-sdk/openai: 0.0.42 installed
+[warn] Provider package @ai-sdk/anthropic: not installed (optional)
+       fix: npm install @ai-sdk/anthropic@^0.0.42
+[warn] openai (OPENAI_API_KEY): not set
+       fix: Set OPENAI_API_KEY in your environment, e.g. export OPENAI_API_KEY=<your key>
+[warn] Default provider for createAgent(): none configured (createAgent() needs a model, a provider instance, or an env var)
+       fix: Set LOUSHY_MODEL (e.g. openai/gpt-4o-mini) or one of the API key variables above.
+[ ok ] Docker: daemon not reachable (only needed for sandboxed tools; none configured)
+
+4 ok, 3 warnings, 1 failure
+```
+
+What it checks:
+
+1. Your Node version against the package's `engines.node`.
+2. The required peers `ai` and `zod`: installed, and within the SDK's
+   `peerDependencies` range (resolved from the current directory).
+3. The optional provider packages (`@ai-sdk/openai`, `@ai-sdk/anthropic`,
+   `ollama-ai-provider`), with the `npm install` command for each missing one.
+4. Whether each provider's API key variable is set. Only the variable name and
+   `set` / `not set` are printed, never the value. It also shows which
+   provider `createAgent()` would pick by default with your environment.
+5. With a spec path (`loushy doctor agent.yaml`): the spec is validated with
+   field paths for every error, its provider package and key are checked
+   (missing ones become failures), its `tools` must be built-in tools, and any
+   `mcpServers` command must be resolvable.
+6. Ollama reachability, only when the spec uses Ollama or `OLLAMA_HOST` is set.
+7. Docker availability, a warning only when the spec uses a sandboxed tool.
+
+The exit code is `1` if any check fails and `0` otherwise (warnings do not
+fail), so it can gate CI. Add `--json` for machine-readable output. Colour is
+used only when stdout is a terminal and `NO_COLOR` is unset.
 
 Next: [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md).
 
