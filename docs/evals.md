@@ -167,7 +167,7 @@ repository) runs them.
 ## `loushy eval`
 
 ```text
-loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge]
+loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]]
 ```
 
 | Option | Meaning |
@@ -179,6 +179,9 @@ loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judg
 | `--strict` | soft failures fail the run |
 | `--judge` | run `*.judge.eval.ts` files instead of the normal ones |
 | `--config path` | use your own vitest config instead of the generated one |
+| `--record` | run against the real provider and write one cassette per case ([below](#record-replay-and-drift)) |
+| `--replay` | run every case from its cassette, with no network; a missing cassette fails the case |
+| `--drift` | re-record into a temp directory and report how each case's trajectory changed (`--drift-usage` also compares tokens) |
 
 It spawns the vitest installed in your project (vitest is *your* dependency; if
 it is missing the command prints `npm install --save-dev vitest` and exits 2),
@@ -229,3 +232,56 @@ jobs:
 
 Run `--tag smoke` on every pull request and the full set nightly; run
 `--judge` only where you accept real LLM calls and their cost.
+
+## Record, replay and drift
+
+An eval against a real model is slow, costs money and needs a key; the same
+eval on `mockModel` only tests the script you wrote. `loushy eval` sits in
+between: it records each case once against the real provider through
+[`recordReplay`](testing.md#record-and-replay) and replays the recording in CI.
+Your eval files do not change.
+
+```bash
+npx loushy eval --record        # real provider: writes the cassettes, commit them
+npx loushy eval --replay        # every case from its cassette, no network, no key
+npx loushy eval --drift         # re-record and diff each case's trajectory
+```
+
+- **`--record`** runs every case with its agent's real provider and writes one
+  cassette per case next to the eval file:
+  `__cassettes__/<eval-name>/<case>.json` (names are slugged, for example
+  `refund-flow/polite.json`; an eval without `cases` writes `default.json`).
+  Give each case a unique `label` so the names stay stable. A case whose agent
+  uses more than one provider (a sub-agent on another model) gets
+  `<case>.2.json` and so on. The files use the normal cassette format, with
+  API keys redacted; review and commit them.
+- **`--replay`** never calls the model. A case with no cassette fails with
+  `no cassette for "<eval> [<case>]" at ...` and the `--record` command to run;
+  when the agent's requests changed, the replayed model call fails with a
+  `CassetteMismatchError` naming the first difference. Plain
+  `loushy eval` with `CI` set replays every case that has a cassette and runs the
+  rest live; without `CI` it runs live as before.
+- **`--drift`** re-records every case into a temp directory (the committed
+  cassettes are not touched) and compares each with its committed cassette:
+  the ordered tool names, each call's arguments (JSON-normalized, so key order
+  does not count), the step count and the finish reason. Token usage changes
+  on every real run, so it is compared only with `--drift-usage`. The summary
+  gets a `Drift:` table (eval, case, field, committed, current); each drifted
+  case gets a soft `drift` assertion, so it shows as `PASS (soft fail)` and as a
+  `<system-out>` note in the JUnit report. With `--strict`, drift is a gate
+  failure: the case fails, JUnit has a `<failure>`, and the run exits 1.
+
+```text
+Drift:
+EVAL         CASE    FIELD  COMMITTED                     CURRENT
+refund flow  polite  args   lookup_order {"orderId":"42"}  lookup_order {"orderId":"43"}
+```
+
+Run `--drift` nightly or before a model upgrade, and `--replay` (or plain
+`loushy eval` in CI) on every pull request. Judges are not recorded: grade with
+a real judge only in `*.judge.eval.ts` files.
+
+How it works: while a case runs under one of these modes, every
+`AgentExecutor.execute()` call (which `createAgent()` agents, streaming,
+sub-agents and approval resumes go through) gets its provider wrapped with
+`recordReplay()` for that case's cassette.

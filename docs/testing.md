@@ -188,6 +188,11 @@ only called when recording (so replay never constructs it). It may be
 
 `mode: 'auto'` replays if the cassette file exists and records otherwise.
 
+For `defineEval()` evals you do not need to wrap the provider yourself:
+`loushy eval --record` writes one cassette per eval case, `--replay` runs from
+them, and `--drift` reports how each case's trajectory changed. See
+[Record, replay and drift](evals.md#record-replay-and-drift).
+
 ### What replay checks
 
 By default call N is answered by entry N, but only if the request still matches

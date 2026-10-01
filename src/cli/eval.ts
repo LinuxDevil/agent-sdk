@@ -1,6 +1,7 @@
 /**
  * `loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge]`
  * - run eval files under vitest and report the results (LOU-D8).
+ * `--record` / `--replay` / `--drift` run every case through a cassette (LOU-D46, src/evals/cassettes.ts).
  *
  * vitest is the user's dependency, not ours: it is resolved from the
  * project's own node_modules and the command exits 2 with the install
@@ -12,11 +13,15 @@ import { createRequire } from 'node:module';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { CASSETTES_ENV, DRIFT_DIR_ENV, driftCassettePath } from '../evals/cassettes';
+import { diffTrajectories, trajectoryOf, type Trajectory } from '../evals/drift';
+import type { EvalResult } from '../evals/evalResult';
 import { RESULTS_ENV, TAGS_ENV } from '../evals/recorder';
-import { failsRun, parseResults, renderJson, renderJunit, renderTable } from './evalReport';
+import { readCassette } from '../testing/cassette';
+import { failsRun, parseResults, renderDriftTable, renderJson, renderJunit, renderTable, type DriftRow } from './evalReport';
 
 const USAGE =
-  'Usage: loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--config vitest.config.ts]';
+  'Usage: loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--config vitest.config.ts]';
 
 /** Parsed `loushy eval` arguments. */
 export interface EvalCliArgs {
@@ -32,10 +37,32 @@ export interface EvalCliArgs {
   judge: boolean;
   /** Use this vitest config instead of the generated one. */
   config?: string;
+  /** Record a cassette per case from the real provider (LOU-D46). */
+  record?: boolean;
+  /** Replay every case from its cassette; a missing cassette fails the case. */
+  replay?: boolean;
+  /** Re-record into a temp dir and report how each case's trajectory drifted from its cassette. */
+  drift?: boolean;
+  /** With `drift`: compare token usage too. */
+  driftUsage?: boolean;
 }
 
 const VALUE_FLAGS = new Set(['tag', 'junit', 'json', 'config']);
-const BOOLEAN_FLAGS = new Set(['strict', 'judge']);
+const BOOLEAN_FLAGS: Record<string, 'strict' | 'judge' | 'record' | 'replay' | 'drift' | 'driftUsage'> = {
+  strict: 'strict',
+  judge: 'judge',
+  record: 'record',
+  replay: 'replay',
+  drift: 'drift',
+  'drift-usage': 'driftUsage',
+};
+
+function assertOneCassetteMode(args: EvalCliArgs): void {
+  if (args.driftUsage) args.drift = true;
+  if ([args.record, args.replay, args.drift].filter(Boolean).length > 1) {
+    throw new Error(`loushy eval: use only one of --record, --replay and --drift. ${USAGE}`);
+  }
+}
 
 /** Parses `loushy eval` arguments; throws an Error that says how to fix a bad invocation. */
 export function parseEvalArgs(rest: string[]): EvalCliArgs {
@@ -47,8 +74,8 @@ export function parseEvalArgs(rest: string[]): EvalCliArgs {
       continue;
     }
     const [name, inline] = arg.slice(2).split(/=(.*)/s);
-    if (BOOLEAN_FLAGS.has(name)) {
-      args[name as 'strict' | 'judge'] = true;
+    if (Object.hasOwn(BOOLEAN_FLAGS, name)) {
+      args[BOOLEAN_FLAGS[name]] = true;
       continue;
     }
     if (!VALUE_FLAGS.has(name)) throw new Error(`loushy eval: unknown option '--${name}'. ${USAGE}`);
@@ -57,6 +84,7 @@ export function parseEvalArgs(rest: string[]): EvalCliArgs {
     if (name === 'tag') args.tags.push(...value.split(',').filter(Boolean));
     else args[name as 'junit' | 'json' | 'config'] = value;
   }
+  assertOneCassetteMode(args);
   return args;
 }
 
@@ -152,9 +180,50 @@ function prepareInvocation(args: EvalCliArgs, cwd: string, workDir: string): Vit
       [RESULTS_ENV]: resultsFile,
       [TAGS_ENV]: args.tags.join(','),
       ...(args.judge ? { LOUSHY_ALLOW_LLM_JUDGE: '1' } : {}),
+      [CASSETTES_ENV]: cassetteMode(args),
+      [DRIFT_DIR_ENV]: args.drift ? path.join(workDir, 'drift') : '',
     },
     resultsFile,
   };
+}
+
+/** `--record`/`--drift` record, `--replay` replays; under CI a case with a cassette replays. '' runs live. */
+function cassetteMode(args: EvalCliArgs): string {
+  if (args.record || args.drift) return 'record';
+  if (args.replay) return 'replay';
+  const ci = process.env.CI;
+  return ci && ci !== 'false' && ci !== '0' ? 'auto' : '';
+}
+
+function loadTrajectory(file: string): Trajectory | undefined {
+  return fs.existsSync(file) ? trajectoryOf(readCassette(file)) : undefined;
+}
+
+/** How the fresh recording of `committed` differs from it. */
+function cassetteDrift(committed: string, driftDir: string, usage: boolean | undefined): DriftRow['entry'][] {
+  const before = loadTrajectory(committed);
+  const after = loadTrajectory(driftCassettePath(driftDir, committed));
+  if (before && after) return diffTrajectories(before, after, { usage });
+  return [{ field: 'cassette', committed: before ? 'present' : 'missing', current: after ? 'recorded' : 'not recorded' }];
+}
+
+/**
+ * Compares every re-recorded cassette with the committed one and adds a
+ * `drift` assertion (soft, or gate with `--strict`) to each drifted case.
+ */
+function applyDrift(results: EvalResult[], args: EvalCliArgs, driftDir: string): DriftRow[] {
+  const rows: DriftRow[] = [];
+  for (const result of results) {
+    for (const committed of result.cassettes ?? []) {
+      const entries = cassetteDrift(committed, driftDir, args.driftUsage);
+      if (entries.length === 0) continue;
+      rows.push(...entries.map((entry) => ({ result, entry })));
+      const message = `drift from ${path.basename(committed)}: ${entries.map((e) => `${e.field} ${e.committed} -> ${e.current}`).join('; ')}`;
+      result.assertions.push({ name: 'drift', kind: args.strict ? 'gate' : 'soft', passed: false, score: 0, message });
+      if (args.strict) result.passed = false;
+    }
+  }
+  return rows;
 }
 
 async function runAndReport(args: EvalCliArgs, deps: Required<EvalDeps>, vitestBin: string): Promise<number> {
@@ -163,7 +232,9 @@ async function runAndReport(args: EvalCliArgs, deps: Required<EvalDeps>, vitestB
     const invocation = prepareInvocation(args, deps.cwd, workDir);
     const vitestCode = await deps.spawnVitest(vitestBin, invocation.args, invocation.env);
     const results = parseResults(fs.readFileSync(invocation.resultsFile, 'utf8'));
+    const drift = args.drift ? applyDrift(results, args, invocation.env[DRIFT_DIR_ENV] as string) : undefined;
     deps.log(results.length > 0 ? `\n${renderTable(results, args.strict)}` : '\nloushy eval: no eval results were recorded.');
+    if (drift) deps.log(`\n${renderDriftTable(drift)}`);
     if (args.junit) writeReport(args.junit, renderJunit(results, args.strict));
     if (args.json) writeReport(args.json, renderJson(results, args.strict));
     // A non-zero vitest code with no recorded failure (a file that failed to

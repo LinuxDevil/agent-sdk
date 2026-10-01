@@ -27,7 +27,7 @@ loushy build --target=<name> --agent=<path> [--out=<dir>]
 loushy studio [--port N] [--host H] [--prod|--dev]
 loushy mcp <agent.yaml|json> [--http --port N --host H]
 loushy doctor [agent.yaml|json] [--json]
-loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge]
+loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]]
 ```
 
 `npm create loushy-agent my-agent` runs `loushy init` with the same arguments.
