@@ -12,6 +12,9 @@
  * `https://<host>/<path>`. HTTPS through `CONNECT` is tunnelled untouched: the
  * allowlist is enforced on the tunnel target, but headers cannot be seen or
  * added (no TLS interception).
+ *
+ * `listen()` (LOU-X12.2) adds a listener on another address, e.g. the gateway
+ * of an internal Docker network, that serves only peers from one subnet.
  */
 
 import * as http from 'node:http';
@@ -44,6 +47,30 @@ export interface CredentialBrokerOptions {
   pathFormScheme?: 'https' | 'http';
 }
 
+/** An extra listener (LOU-X12.2), e.g. on an internal Docker network's gateway address. */
+export interface BrokerListenOptions {
+  /** Address to bind, e.g. `172.18.0.1`. */
+  host: string;
+  /** Port to listen on. Defaults to an ephemeral port. */
+  port?: number;
+  /** Subnet whose peers may connect, e.g. `172.18.0.0/16`. Any other peer is disconnected before a byte is read. */
+  clients: string;
+  /** Hosts this listener's peers may reach besides the rule hosts. Defaults to the broker's `allow`. */
+  allow?: readonly string[];
+  /** @internal Test hook: reads a connection's peer address. Defaults to `socket.remoteAddress`. */
+  peerAddress?: (socket: net.Socket) => string | undefined;
+}
+
+/** A listener started by {@link CredentialBroker.listen}. */
+export interface BrokerListener {
+  /** The proxy URL on the listener's address, e.g. `http://172.18.0.1:53211`. */
+  readonly url: string;
+  /** Proxy variables pointing at this listener, like {@link CredentialBroker.env}. Holds no secret. */
+  readonly env: Readonly<Record<string, string>>;
+  /** Stops this listener and destroys its sockets; the broker keeps running. */
+  close(): Promise<void>;
+}
+
 export interface CredentialBroker {
   /** The proxy URL, e.g. `http://127.0.0.1:53211`. */
   readonly url: string;
@@ -51,7 +78,9 @@ export interface CredentialBroker {
   readonly env: Readonly<Record<string, string>>;
   /** A base URL that reaches `https://<host>` with the injected headers: `<url>/__broker/<host>`. */
   baseUrl(host: string): string;
-  /** Stops listening and destroys every open client and upstream socket. */
+  /** Also listens on `host`, for peers in `clients` only (LOU-X12.2). `SubprocessSandbox` calls it for its Docker network. */
+  listen(options: BrokerListenOptions): Promise<BrokerListener>;
+  /** Stops every listener and destroys every open client and upstream socket. */
   close(): Promise<void>;
 }
 
@@ -77,10 +106,23 @@ for (const [prefix, bits] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10
 }
 for (const [prefix, bits] of [['::', 127], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8]] as const) PRIVATE.addSubnet(prefix, bits, 'ipv6');
 
-function isPrivate(address: string, family: number): boolean {
+/** True if `address` (IPv4, IPv6 or IPv4-mapped IPv6) is in `list`. */
+function inList(list: net.BlockList, address: string): boolean {
   const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address);
-  if (mapped) return PRIVATE.check(mapped[1], 'ipv4');
-  return PRIVATE.check(address, family === 6 ? 'ipv6' : 'ipv4');
+  if (mapped) return list.check(mapped[1], 'ipv4');
+  return list.check(address, net.isIPv6(address) ? 'ipv6' : 'ipv4');
+}
+
+/** Parses a `prefix/bits` subnet such as `172.18.0.0/16`. */
+function subnet(cidr: string): net.BlockList {
+  const [prefix, bits, extra] = cidr.split('/');
+  const family = net.isIP(prefix);
+  if (family === 0 || extra !== undefined || !/^\d+$/.test(bits ?? '') || Number(bits) > (family === 6 ? 128 : 32)) {
+    throw new Error(`createCredentialBroker: listen() clients must be a subnet such as '172.18.0.0/16'; got ${JSON.stringify(cidr)}.`);
+  }
+  const list = new net.BlockList();
+  list.addSubnet(prefix, Number(bits), family === 6 ? 'ipv6' : 'ipv4');
+  return list;
 }
 
 function buildPolicy(options: CredentialBrokerOptions): Policy {
@@ -105,7 +147,7 @@ async function admit(policy: Policy, hostname: string): Promise<string> {
   } catch {
     throw new Refused(502, `cannot resolve ${host}`);
   }
-  if (!matchesHost(policy.allowPrivate, host) && addresses.some((a) => isPrivate(a.address, a.family))) {
+  if (!matchesHost(policy.allowPrivate, host) && addresses.some((a) => inList(PRIVATE, a.address))) {
     throw new Refused(403, `${host} resolves to a loopback, link-local or private address`);
   }
   return addresses[0].address;
@@ -221,25 +263,53 @@ function proxyEnv(url: string, host: string): Readonly<Record<string, string>> {
  * example `new NodeWorkspace({ root, env: broker.env })`) so it uses the proxy.
  */
 export async function createCredentialBroker(options: CredentialBrokerOptions): Promise<CredentialBroker> {
-  const policy = buildPolicy(options);
+  const host = options.host ?? '127.0.0.1';
+  const main = await serve(buildPolicy(options), { host, port: options.port });
+  const extra = new Set<Listening>();
+  return {
+    url: main.url,
+    env: proxyEnv(main.url, host),
+    baseUrl: (target) => `${main.url}/__broker/${target}`,
+    async listen({ allow, clients, ...where }) {
+      const policy = buildPolicy({ ...options, allow: allow ?? options.allow });
+      const listening = await serve(policy, { ...where, clients: subnet(clients) });
+      extra.add(listening);
+      const close = () => {
+        extra.delete(listening);
+        return listening.close();
+      };
+      return { url: listening.url, env: proxyEnv(listening.url, where.host), close };
+    },
+    close: async () => {
+      await Promise.all([main, ...extra].map((listening) => listening.close()));
+      extra.clear();
+    },
+  };
+}
+
+type Listening = { url: string; close: () => Promise<void> };
+type ServeOptions = Pick<BrokerListenOptions, 'host' | 'port' | 'peerAddress'> & { clients?: net.BlockList };
+
+/** Starts one listener for `policy`. With `clients`, a peer outside that subnet is disconnected at once. */
+async function serve(policy: Policy, { host, port, clients, peerAddress = (s) => s.remoteAddress }: ServeOptions): Promise<Listening> {
   const sockets = new Set<Duplex>();
   const track: Track = (socket) => {
     sockets.add(socket);
     socket.once('close', () => sockets.delete(socket));
   };
   const server = http.createServer((req, res) => void handleRequest(policy, track, req, res));
-  server.on('connection', track);
+  server.on('connection', (socket: net.Socket) => {
+    const peer = peerAddress(socket);
+    if (clients && !(peer && net.isIP(peer) && inList(clients, peer))) socket.destroy();
+    else track(socket);
+  });
   server.on('connect', (req: http.IncomingMessage, socket: Duplex, head: Buffer) => void handleConnect(policy, track, req, socket, head));
-  const host = options.host ?? '127.0.0.1';
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
-    server.listen(options.port ?? 0, host, () => resolve());
+    server.listen(port ?? 0, host, () => resolve());
   });
-  const url = `http://${net.isIPv6(host) ? `[${host}]` : host}:${(server.address() as net.AddressInfo).port}`;
   return {
-    url,
-    env: proxyEnv(url, host),
-    baseUrl: (target) => `${url}/__broker/${target}`,
+    url: `http://${net.isIPv6(host) ? `[${host}]` : host}:${(server.address() as net.AddressInfo).port}`,
     close: () =>
       new Promise<void>((resolve) => {
         server.close(() => resolve());

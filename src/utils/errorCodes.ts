@@ -54,6 +54,8 @@ export const ERROR_CODES = {
   LOUSHY_CHECKPOINT_NOT_FOUND:
     "Fork at a step the session's checkpoint history still keeps (checkpointStore.history() lists them), or raise the store's historyLimit.",
   LOUSHY_RUN_ALREADY_ITERATED: 'Iterate an AgentRun once; call stream() again for a new run.',
+  LOUSHY_SANDBOX_EGRESS_UNSUPPORTED:
+    "Run on Docker Engine 25.0.5+ for Linux on this host (not Docker Desktop, rootless or a remote daemon), or use network: 'none'.",
   LOUSHY_AGENT_EXECUTION_FAILED: 'Look at the `cause` for the underlying failure.',
   LOUSHY_FLOW_EXECUTION_FAILED: 'Look at the failing `step` and the `cause`.',
   LOUSHY_VALIDATION_FAILED: 'Fix the fields listed in `errors`.',
