@@ -65,6 +65,7 @@ export type {
   ProviderFallbackEvent,
   BudgetExceededEvent,
   InputQueuedEvent,
+  InputSteeredEvent,
   InputAppliedEvent,
   GuardrailTrippedEvent,
   GuardrailRewroteEvent,
@@ -74,5 +75,5 @@ export { BudgetExceededError } from './budget';
 export type { BudgetExceeded, BudgetLimit, BudgetSpent, RunLimits, SessionBudget } from './budget';
 export type { AgentRun } from './agentRun';
 export { InputQueue } from './inputQueue';
-export type { EnqueueResult } from './inputQueue';
+export type { EnqueueResult, SteerResult } from './inputQueue';
 export { emptyRunUsage } from './runUsage';

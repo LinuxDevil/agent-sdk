@@ -1,0 +1,25 @@
+name: support-agent
+prompt: You answer support questions.
+provider:
+  type: mock
+  model: mock-model-1
+tools:
+  - http
+  - current-date
+policy:
+  requiresApproval:
+    - http
+  guardrails:
+    - secret-scan
+    - name: max-length
+      maxChars: 2000
+      on: input
+    - name: deny-topics
+      topics: [medical advice]
+  limits:
+    maxTokens: 20000
+    maxSteps: 8
+  askQuestion: true
+  compaction:
+    thresholdPercent: 0.8
+  harness: claude-code

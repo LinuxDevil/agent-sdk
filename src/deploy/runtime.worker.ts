@@ -35,11 +35,17 @@
  *    drop that DNS-rebinding protection rather than just losing convenience
  *    functionality. Left unsupported here rather than shipping a weaker
  *    tool under the same name - see LOU-K3 PR description.
- *  - LOU-T2: durable execution (CheckpointStore-backed pause/resume, see
- *    src/execution/checkpoint.ts) is opt-in here via a Workers KV namespace
- *    binding - see `CHECKPOINT_KV_BINDING` (./checkpointBinding)/`checkpointStoreFromEnv()` below,
- *    the same "declare a binding, read it off `env`" pattern
- *    `providerEnvKey()` already uses for provider API keys.
+ *  - LOU-T2, LOU-D51: sessions, durable execution (CheckpointStore-backed
+ *    pause/resume, see src/execution/checkpoint.ts) and paused approvals live
+ *    in a Workers KV namespace bound as `AGENT_CHECKPOINTS` (./checkpointBinding)
+ *    - the same "declare a binding, read it off `env`" pattern `providerEnvKey()`
+ *    uses for provider API keys. See `workerStore()` below.
+ *  - LOU-D51: the Worker serves the node server's `/chat` API (sessions, SSE,
+ *    approvals, bearer auth from the `LOUSHY_API_TOKEN` binding) through the
+ *    Fetch-native src/server/fetchRoutes.ts. It runs the spec as a
+ *    `createAgent()` agent, whose node-only imports (project instructions,
+ *    file session store, MCP stdio) the adapter's build swaps for shims, see
+ *    ./shims/node.worker.ts.
  */
 import '../providers/mock';
 import { OpenAIProvider, OpenAIProviderConfig } from '../providers/OpenAIProvider';
@@ -49,12 +55,14 @@ import { currentDateTool } from '../tools/built-in/currentDate';
 import { dayNameTool } from '../tools/built-in/dayName';
 import { ToolDescriptor } from '../types';
 import { AgentSpec } from '../spec/schema';
-import { CheckpointStore } from '../execution/checkpoint';
+import { createAgent, SimpleAgent } from '../createAgent';
+import { memoryStore, AgentStore } from '../storage/agentStore';
+import { serveFetch } from '../server/fetchRoutes';
 import { CHECKPOINT_KV_BINDING } from './checkpointBinding';
-import { KVBinding, KVCheckpointStore } from './kvCheckpointStore';
-import { prepareSpecExecution, PreparedExecution } from './specExecution';
+import { KVBinding } from './kvCheckpointStore';
+import { KVStore } from './kvStore';
+import { prepareSpecExecution, PreparedExecution, SpecResolvers } from './specExecution';
 
-export { AgentExecutor } from '../execution/AgentExecutor';
 export { agentSpecSchema } from '../spec/schema';
 
 // Registered directly here (rather than via the '../providers' barrel,
@@ -76,26 +84,8 @@ function providerEnvKey(type: string): string {
 
 export type WorkerEnv = Record<string, unknown>;
 
-/**
- * Builds a `KVCheckpointStore` from the `env[CHECKPOINT_KV_BINDING]`
- * binding, or returns `undefined` when it isn't declared/bound - durable
- * execution on Workers is opt-in, not required, so a spec with no KV
- * binding configured still runs (just without pause/resume durability,
- * exactly like the pre-LOU-T2 behavior).
- *
- * A bound value that doesn't look like a KV namespace (missing
- * get/put/delete) is also treated as "not configured" rather than thrown on
- * - `env` is arbitrary platform-supplied input, not something this SDK
- * controls the shape of, and failing open here (no durable store, run still
- * works) is safer than failing every request over a misconfigured binding.
- */
-export function checkpointStoreFromEnv(
-  env: WorkerEnv,
-  bindingName: string = CHECKPOINT_KV_BINDING
-): CheckpointStore | undefined {
-  const binding = env[bindingName];
-  return isKVBinding(binding) ? new KVCheckpointStore(binding) : undefined;
-}
+/** Env binding holding the bearer token of the API (`wrangler secret put LOUSHY_API_TOKEN`). */
+const API_TOKEN_BINDING = 'LOUSHY_API_TOKEN';
 
 const KV_METHODS = ['get', 'put', 'delete'] as const;
 
@@ -105,8 +95,24 @@ function isKVBinding(value: unknown): value is KVBinding {
   return !!binding && KV_METHODS.every((method) => typeof binding[method] === 'function');
 }
 
-export function prepareWorkerSpec(spec: AgentSpec, env: WorkerEnv = {}): PreparedExecution {
-  return prepareSpecExecution(spec, {
+let isolateStore: Required<AgentStore> | undefined;
+
+/**
+ * The store of the Worker's agent: sessions, checkpoints and approvals in the
+ * KV namespace bound as `env[bindingName]`, or, when it isn't declared/bound,
+ * in memory of this isolate (state is then lost whenever the isolate is - fine
+ * for trying a deploy out, not for production). A bound value that doesn't look
+ * like a KV namespace (missing get/put/delete) counts as not bound: `env` is
+ * arbitrary platform-supplied input, and failing open beats failing every
+ * request over a misconfigured binding.
+ */
+export function workerStore(env: WorkerEnv, bindingName: string = CHECKPOINT_KV_BINDING): AgentStore {
+  const binding = env[bindingName];
+  return isKVBinding(binding) ? new KVStore(binding) : (isolateStore ??= memoryStore());
+}
+
+function workerResolvers(env: WorkerEnv): SpecResolvers {
+  return {
     resolveProvider: (type: string, model: string): LLMProvider => {
       const apiKey = env[providerEnvKey(type)];
       return LLMProviderRegistry.create(type, {
@@ -123,5 +129,36 @@ export function prepareWorkerSpec(spec: AgentSpec, env: WorkerEnv = {}): Prepare
       }
       return tool;
     },
+  };
+}
+
+export function prepareWorkerSpec(spec: AgentSpec, env: WorkerEnv = {}): PreparedExecution {
+  return prepareSpecExecution(spec, workerResolvers(env));
+}
+
+/** The spec's agent over the Worker's store (see {@link workerStore}). */
+function workerAgent(spec: AgentSpec, env: WorkerEnv): SimpleAgent {
+  const { resolveProvider, resolveTool } = workerResolvers(env);
+  const tools = Object.fromEntries((spec.tools ?? []).map((name) => [name, resolveTool(name)]));
+  return createAgent({
+    name: spec.name,
+    prompt: spec.prompt,
+    provider: resolveProvider(spec.provider.type, spec.provider.model),
+    tools: Object.keys(tools).length > 0 ? tools : undefined,
+    store: workerStore(env),
   });
+}
+
+/**
+ * Serves one request of the Worker's API: `GET /health` (open), sessions, SSE
+ * streaming and approvals under `/chat`, and the deprecated `POST /chat
+ * { message, sessionId? }`. With a `LOUSHY_API_TOKEN` binding every route but
+ * `/health` needs `Authorization: Bearer <token>`.
+ */
+export function handleWorkerRequest(request: Request, env: WorkerEnv, spec: AgentSpec): Promise<Response> {
+  const token = env[API_TOKEN_BINDING];
+  // One agent per request: an approval route needs the agent that opened the session.
+  let agent: SimpleAgent | undefined;
+  const chat = { name: 'loushy worker', agent: () => (agent ??= workerAgent(spec, env)), durableMessage: true };
+  return serveFetch(request, chat, typeof token === 'string' && token ? token : undefined);
 }

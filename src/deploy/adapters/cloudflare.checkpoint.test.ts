@@ -16,7 +16,7 @@
  *     put() captures the REAL mid-run Checkpoint the bundle's
  *     AgentExecutor/KVCheckpointStore wrote after the tool result (not a
  *     hand-crafted fixture) - proving the wiring in prepareWorkerSpec()/
- *     checkpointStoreFromEnv() genuinely calls kv.put() with a real
+ *     workerStore() genuinely calls kv.put() with a real
  *     Checkpoint-shaped payload.
  *  2. That captured checkpoint is replayed into a FRESH mock KV, under a
  *     new sessionId, standing in for "this session's checkpoint survived
@@ -25,7 +25,7 @@
  *     unrelated request body, resumes from it - proven by the response
  *     containing the pre-seeded conversation history the request body
  *     itself never mentioned, which is only possible if the bundle's
- *     fetch() handler genuinely rehydrated from KV via checkpointStoreFromEnv().
+ *     fetch() handler genuinely rehydrated from KV via workerStore().
  *
  * (approval-gate pause/resume through KVCheckpointStore, i.e. proving it
  * satisfies resumeAfterApproval()'s contract, is covered directly against
@@ -196,7 +196,7 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
     // to the pre-pause conversation - if the response reflects the seeded
     // checkpoint's prior messages, that can only be because the built
     // bundle's fetch() handler genuinely rehydrated via
-    // checkpointStoreFromEnv()/KVCheckpointStore.load(), never because of
+    // workerStore()/KVCheckpointStore.load(), never because of
     // anything in this request's own input.
     const resumeRes = await handler.fetch(
       new Request('http://worker/chat', {
