@@ -1681,7 +1681,7 @@ const handler = mountChannels(createAgent(config), channels);
 createServer((req, res) => void handler(req, res).then((handled) => handled || res.writeHead(404).end())).listen(3000);
 ```
 
-`loushy dev` does not mount `channels/` yet.
+`loushy dev` mounts them too, and `loushy build` deploys them (see below).
 
 ### Memory
 
@@ -1771,6 +1771,27 @@ Serves the chat UI and `POST /chat` for the directory and reloads it when
 imported afresh on each reload, so an edit to `tools/*.ts` takes effect on the
 next message. A failed reload (a syntax error, an empty `instructions.md`) is
 logged and shown in the chat page, and the previous agent keeps answering.
+
+The directory's `channels/` are mounted under `/channels` and its `schedules/`
+are started, and a reload swaps both: the old schedules are stopped before the
+new ones start, so no timer or route outlives its file. Pass `--no-schedules` to
+mount the channels but not fire the crons (see [Schedules in
+dev](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md#in-loushy-dev)).
+
+## Deploy it with `loushy build`
+
+```bash
+npx loushy build ./my-agent --target=node-server    # or docker
+```
+
+The agent directory is the unit of deployment: the built server loads it with
+`resolveAgentDir()` at start-up, starts its `schedules/` and mounts its
+`channels/` under `/channels`, and prints which it found. The code files (the
+config, `tools/`, `schedules/`, `channels/`, `memory/`, and the same in each
+sub-agent) are bundled to `dist/agent/**.js`, and `instructions.md`, `skills/`
+and JSON/YAML config are copied next to them, so the server needs no TypeScript
+loader, sources or `node_modules`. See [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#agent-directories).
+The Cloudflare Worker target takes spec files only.
 
 ## What is not covered
 
@@ -2888,9 +2909,9 @@ Every command that takes a `<spec>` reads an agent spec file (`.yaml`,
 
 ```text
 loushy init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force]
-loushy dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H]
+loushy dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--no-schedules]
 loushy chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>]
-loushy build --target=<name> --agent=<path> [--out=<dir>]
+loushy build <agent-dir|spec> --target=<name> [--out=<dir>]    (or --agent=<path>)
 loushy studio [--port N] [--host H] [--prod|--dev]
 loushy mcp <agent.yaml|json> [--http --port N --host H]
 loushy doctor [agent.yaml|json] [--json]
@@ -2917,7 +2938,13 @@ npx loushy dev agent.yaml                  # a spec file
 npx loushy dev ./my-agent                  # an agent directory
 npx loushy dev src/agent.ts                # a TypeScript (or JavaScript) module
 npx loushy dev agent.yaml --port 4000 --host 0.0.0.0
+npx loushy dev ./my-agent --no-schedules   # do not fire the directory's cron schedules
 ```
+
+For an agent directory, `channels/` are mounted under `/channels` and
+`schedules/` are started (and both are swapped on reload, the old schedules
+stopped first); `--no-schedules` starts none. See
+[Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md#run-it-with-loushy-dev).
 
 Serves a chat UI on `GET /`, `GET /health`, `GET /dev/status` and the chat
 endpoints below (1MB body limit). What `<path>` is follows from the path:
@@ -3047,6 +3074,7 @@ scripted lines and a `mockModel` agent and no terminal.
 
 ```bash
 npx loushy build --target=node-server --agent=agent.yaml        # or docker / cloudflare-worker
+npx loushy build ./my-agent --target=node-server                # an agent directory (node-server, docker)
 ```
 
 Writes the artifact to `--out` (default `.loushy/build/<target>`) and prints
@@ -3980,6 +4008,30 @@ deploy the result). `tsup` must be installed (`npm install --save-dev tsup`).
 
 Every target answers `GET /health` (`200 ok`) and serves the full
 [HTTP API](#http-api) below: sessions, SSE streaming, approvals and bearer auth.
+
+## Agent directories
+
+`node-server` and `docker` also take an [agent directory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md)
+in place of a spec file (the path may be positional or `--agent`):
+
+```bash
+npx loushy build ./my-agent --target=node-server
+node .loushy/build/node-server/dist/server.js
+```
+
+The generated `server.ts` calls `resolveAgentDir()` on `dist/agent` and
+`createDeployedServer(agent, { schedules, channels })`, so the process starts the
+directory's [schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md) when it listens, mounts its
+[channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) under `/channels` (they verify themselves; the chat
+routes keep the bearer token), and logs `schedules: ...; channels: ...`.
+The directory's code files are pre-bundled with the build's tsup step into
+`dist/agent/**.js` (one ESM build sharing one copy of the SDK, so a `from
+'@loushy/build-ai-agent'` import in a tool is the SDK the server runs), and the
+rest of the directory is copied; nothing needs a TypeScript loader at run time.
+`dist/` is then ESM (`dist/package.json` says so). The Docker image copies it as
+before. The optional `dockerode` sandbox is not bundled (it loads lazily), so a
+directory that uses `SubprocessSandbox` must install it where it runs. The
+Cloudflare Worker target still takes spec files only.
 
 ## HTTP API
 
@@ -6572,7 +6624,18 @@ const running = startSchedules(agent, schedules);
 
 `createDeployedServer(agent, { schedules })` (the server of the `node-server`
 and `docker` targets) starts the schedules when it listens and stops them when it
-closes. The Cloudflare Worker target does not run schedules yet.
+closes. `loushy build ./my-agent --target=node-server` (or `docker`) builds an
+agent directory into such a server, so its `schedules/` run in the deployed
+process ([Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#agent-directories)). The Cloudflare Worker
+target does not run schedules yet.
+
+## In `loushy dev`
+
+`loushy dev ./my-agent` starts the directory's schedules, so a cron fires while
+you develop, and a hot reload stops the old schedules before starting the new
+ones. Starting is the default so that dev behaves like the deployed server;
+because firing crons (and spending model calls) while you edit is often
+unwanted, `--no-schedules` mounts the channels but starts no schedule.
 
 # Sessions
 
