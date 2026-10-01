@@ -12,12 +12,19 @@ npm run docs:build   # writes docs/api/index.html
 
 | Export                        | Description                                                                 |
 | ----------------------------- | --------------------------------------------------------------------------- |
-| `createAgent(config)`         | Zero-config `{ send(message) }` agent from a prompt + provider (+ tools).   |
+| `createAgent(config)`         | Zero-config `{ send(message) }` agent from a `model` string or provider (+ instructions, tools). |
 | `AgentBuilder`                | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). |
 | `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. |
 | `AgentType`                   | Agent type enum (e.g. `AgentType.SmartAssistant`).                          |
 | `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
+
+### Skills
+
+Pass `skills: [defineSkill({ name, description, content }), ...(await loadSkills(dir))]` to
+`createAgent()` or `AgentExecutor.execute()`: only names and descriptions go in
+the system prompt and the model loads bodies through an auto-registered
+`load_skill` tool. See [Skills](./skills.md).
 
 ### Cancellation
 
@@ -342,10 +349,16 @@ The built-in context windows and prices are a dated snapshot (see the retrieval 
 `oneOf` branch conditions (and the Agent Forge router node's branch conditions)
 and `evaluator` node expressions are evaluated by a small built-in expression
 evaluator. It never compiles or runs host code: there is no `eval`,
-`new Function` or `vm` in `src/flows`. Before evaluation, `{{name}}` placeholders
-are replaced with the variable's text (so quote string placeholders:
-`'{{classify}}' === 'refund'`). The expression is then evaluated against the
-flow's variables.
+`new Function` or `vm` in `src/flows`. `{{name}}` placeholders are bound as
+values, never pasted into the expression text: a bare `{{score}} >= 90` uses the
+variable's value, and inside a string literal, `'{{classify}}' === 'refund'`
+interpolates the value's text into that literal after the expression has been
+tokenized. A variable whose value contains quotes, backslashes or operators
+(for example `x' === 'x' || 'a`) is therefore just data and cannot change the
+condition's logic. A missing or `null` variable is an empty string inside a
+literal; used bare it contributes nothing, so `{{missing}} >= 90` is a syntax
+error and the condition counts as not matched. The expression is evaluated
+against the flow's variables.
 
 | Form | Examples |
 | --- | --- |

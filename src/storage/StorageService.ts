@@ -14,14 +14,17 @@ declare const process: any;
 /**
  * Minimal shape of the Node.js `fs` module (or a compatible implementation)
  * required by StorageService. Only the methods actually called on the
- * injected `fs` instance are declared here.
+ * injected `fs` instance are declared here. Encodings are typed as the one
+ * value StorageService passes (`'utf8'`) so the real `node:fs` module is
+ * assignable without a cast: `new StorageService(id, dir, fs, path)` with
+ * `import * as fs from 'node:fs'`.
  */
 export interface FileSystemAdapter {
   existsSync(path: string): boolean;
   mkdirSync(path: string, options?: { recursive?: boolean }): void;
-  writeFileSync(path: string, data: string | Uint8Array, encoding?: string): void;
+  writeFileSync(path: string, data: string | Uint8Array, encoding?: 'utf8'): void;
   unlinkSync(path: string): void;
-  readFileSync(path: string, encoding: string): string;
+  readFileSync(path: string, encoding: 'utf8'): string;
   readFileSync(path: string): Buffer;
   rmSync(path: string): void;
 }
