@@ -12,6 +12,7 @@ Run it with `npx loushy <command>` inside a project that has the SDK installed.
 | `loushy dev <path>` | Local dev server for a spec file, an agent directory or a TS agent: chat UI with a session per tab and streamed events, hot reload on save. | [Below](#loushy-dev) |
 | `loushy chat <path>` | Terminal REPL for a spec file, an agent directory or a TS agent: streams replies, shows tool calls, asks for approvals and questions. | [Below](#loushy-chat) |
 | `loushy acp <path>` | Serve a spec file, an agent directory or a TS agent to an editor (Zed and other ACP clients) over the Agent Client Protocol on stdio. | [ACP](./acp.md) |
+| `loushy add <name>` | Install a tool, skill, channel, schedule or memory slot from a JSON registry into an agent directory, after showing its permission manifest. | [Registry](./registry.md) |
 | `loushy mcp <spec>` | Serve the agent as an MCP server (stdio, or HTTP with `--http`). | [Configuration](./configuration.md#serve-an-agent-over-mcp) |
 | `loushy eval [globs...]` | Run `*.eval.ts` files under vitest; print a summary and write JUnit/JSON reports. | [Evals](./evals.md#loushy-eval) |
 | `loushy build --target=<t> --agent=<spec>` | Build a deployable Node server, Docker image or Cloudflare Worker. | [Deployment](./deployment.md) |
@@ -27,6 +28,7 @@ loushy init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git
 loushy dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--no-schedules]
 loushy chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>]
 loushy acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]
+loushy add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--overwrite] [--dry-run]    (or --list)
 loushy build <agent-dir|spec> --target=<name> [--out=<dir>]    (or --agent=<path>)
 loushy studio [--port N] [--host H] [--prod|--dev]
 loushy mcp <agent.yaml|json> [--http --port N --host H]

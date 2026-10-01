@@ -10,6 +10,7 @@
 
 import { LanguageModel } from 'ai';
 import { AiSdkProvider, AiSdkProviderConfig } from './aiSdkProvider';
+import { aiMajorOf } from './aiSdkCompat';
 import { lazyValue, loadOptionalPeer } from './optionalPeer';
 
 export interface AnthropicProviderConfig extends AiSdkProviderConfig {
@@ -29,7 +30,11 @@ export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
   protected readonly fallbackModel = 'claude-3-5-sonnet-latest';
   /** Loads `@ai-sdk/anthropic` on first use (it is an optional peer). */
   private readonly loadProvider = lazyValue(async () => {
-    const { createAnthropic } = await loadOptionalPeer('@ai-sdk/anthropic', () => import('@ai-sdk/anthropic'));
+    const { createAnthropic } = await loadOptionalPeer(
+      '@ai-sdk/anthropic',
+      () => import('@ai-sdk/anthropic'),
+      aiMajorOf(this.ai)
+    );
     return createAnthropic({
       apiKey: this.config.apiKey,
       baseURL: this.config.baseURL,

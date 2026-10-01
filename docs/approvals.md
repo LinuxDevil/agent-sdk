@@ -66,6 +66,7 @@ per server with `approval: 'annotations' | 'always' | 'never'` or a function; se
 before the tool's own `needsApproval`. The first rule that matches decides:
 
 - `allow` runs the call, without approval even if `needsApproval` would ask.
+  A `needsApproval` that denies the call still denies it.
 - `deny` does not run it. The model gets a tool error with `kind: 'denied'`
   and the rule's `reason` (see [Tool errors](./tools.md)), and streams see
   `tool.error`.
@@ -167,10 +168,13 @@ const agent = createAgent({ provider, instructions: 'You deploy services.', tool
 const chat = agent.session(); // the first staging deploy asks, later ones in this session run
 ```
 
-With `permissions`, a matching rule decides alone: a `deny` rule always wins,
-an `allow` rule runs the call without consulting `needsApproval` (so it also
-skips the tool's own `'ask'`, `once()` or `'deny'`), and an `ask` rule pauses.
-The tool's `needsApproval` outcome applies only when no rule matches. MCP
+With `permissions`, a `deny` rule always wins, and the tool's `needsApproval`
+is not called. Otherwise the tool's own `'deny'` (or `{ deny }`) always
+denies, whatever rule matched. An `allow` rule replaces the tool's ask (so it
+skips `'ask'`, `true` and `once()`), and an `ask` rule pauses even when the
+tool would approve. With no matching rule, the tool's `needsApproval` outcome
+applies. A `preToolCall` hook runs before all of these and can deny the call
+first (see [Hook outcomes](./api-overview.md#hook-outcomes)). MCP
 tools keep their annotation-derived `needsApproval` (a boolean). Sub-agents
 evaluate their tools' `needsApproval` the same way, and a `once()` approval
 given through the lead agent is remembered for the rest of that sub-agent's

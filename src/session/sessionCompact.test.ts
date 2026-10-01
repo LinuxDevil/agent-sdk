@@ -101,6 +101,14 @@ describe('compaction strategy of a session', () => {
     expect(await store.load('s2')).toEqual(toolTurn('a'));
   });
 
+  it("agent.session() uses the agent's compaction setting (W8 follow-up)", async () => {
+    const store = new MemorySessionStore();
+    await store.save('s4', toolTurn('a'));
+    const strategy = { name: 'agent-strategy', compact: async (messages: Message[]) => messages };
+    const session = createAgent({ provider: mockModel([]), compaction: { strategy } }).session({ id: 's4', store });
+    expect((await session.compact()).strategy).toBe('agent-strategy');
+  });
+
   it('the session compaction option supplies the sizes', async () => {
     const store = new MemorySessionStore();
     await store.save('s3', [...toolTurn('a'), ...toolTurn('b')]);

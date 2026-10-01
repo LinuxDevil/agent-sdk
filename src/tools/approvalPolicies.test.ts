@@ -174,7 +174,7 @@ describe('precedence with permissions (LOU-X8)', () => {
     expect(toolResults(model)[0]).toMatchObject({ kind: 'denied', reason: 'No' });
   });
 
-  it('a permissions allow skips the ask; a matching rule decides alone', async () => {
+  it("a permissions allow skips the tool's ask, an ask rule pauses a tool that never asks", async () => {
     const asks = deployTool(always());
     await createAgent({ provider: mockModel([call('a'), 'ok']), tools: [asks.defined], permissions: [allow('deploy')] }).send('go');
     expect(asks.ran).toEqual(['a']);
@@ -182,6 +182,16 @@ describe('precedence with permissions (LOU-X8)', () => {
     const neverAsks = deployTool(never());
     const result = await createAgent({ provider: mockModel([call('b')]), tools: [neverAsks.defined], permissions: [ask('deploy')] }).send('go');
     expect(result.finishReason).toBe('awaiting-approval');
+  });
+
+  it("a permissions allow or ask does not override the tool's own deny (LOU-X3 follow-up)", async () => {
+    for (const rule of [allow('deploy'), ask('deploy')]) {
+      const deploy = deployTool(() => ({ deny: 'Frozen' }));
+      const model = mockModel([call('a'), 'ok']);
+      await createAgent({ provider: model, tools: [deploy.defined], permissions: [rule] }).send('go');
+      expect(deploy.ran).toEqual([]);
+      expect(toolResults(model)[0]).toMatchObject({ kind: 'denied', reason: 'Frozen' });
+    }
   });
 
   it("with no matching rule, the tool's outcome applies", async () => {
