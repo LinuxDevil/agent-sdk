@@ -148,6 +148,7 @@ function buildWriteTool(store: TodoStore, onChange: TodoToolsOptions['onChange']
 function buildReadTool(store: TodoStore) {
   return defineTool({
     name: 'todo_read',
+    annotations: { readOnlyHint: true, destructiveHint: false },
     description: 'Return the current todo list with counts per status. Use it to re-check what is left before continuing or finishing.',
     input: z.object({}),
     async execute(): Promise<TodoListResult> {

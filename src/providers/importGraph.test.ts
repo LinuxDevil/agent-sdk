@@ -22,13 +22,17 @@ const NEVER_LOADED_AT_IMPORT = [
   'prompts', // LOU-D40: only `loushy init`'s interactive questions use it, on first ask
   'react', // LOU-P2: only the ./react and ./vue subpaths import their framework, no other entry
   'vue',
+  'svelte', // LOU-P3: no entry imports it (the ./svelte store implements the store contract by hand)
   'node:sqlite', // LOU-W5: only the lazily-loaded /sqlite subpath may use it, and only when a store is constructed
 ];
 
-const ENTRY_POINTS = ['index', 'core/index', 'tools/index', 'tools/mcp/index', 'flows/index', 'testing/index', 'storage/sqlite/index'];
+const ENTRY_POINTS = ['index', 'core/index', 'tools/index', 'tools/mcp/index', 'flows/index', 'testing/index', 'storage/sqlite/index', 'svelte/index'];
 
-/** LOU-P2: the UI binding entries import their own framework (react / vue) and not the other one. */
-const OTHER_FRAMEWORK: Record<string, string> = { 'react/index': 'vue', 'vue/index': 'react' };
+/** LOU-P2, LOU-P3: the react and vue entries import their own framework and not the others (`svelte/index` is in ENTRY_POINTS: it loads none). */
+const OTHER_FRAMEWORKS: Record<string, string[]> = {
+  'react/index': ['vue', 'svelte'],
+  'vue/index': ['react', 'svelte'],
+};
 
 /** Records every module specifier resolved while `body` runs, via synchronous module hooks. */
 const RECORDER = `
@@ -71,11 +75,13 @@ describe('built entry points load no optional peer at import time', () => {
 
 describe('UI binding entries load only their own framework (LOU-P2)', () => {
   for (const format of ['cjs', 'esm'] as const) {
-    for (const [entry, other] of Object.entries(OTHER_FRAMEWORK)) {
-      it(`dist/${entry}.${format === 'cjs' ? 'js' : 'mjs'} does not load ${other}`, () => {
-        const requested = requestedBySpecifier(format, entry);
-        expect(requested.some((specifier) => specifier === other || specifier.startsWith(`${other}/`))).toBe(false);
-      });
+    for (const [entry, others] of Object.entries(OTHER_FRAMEWORKS)) {
+      for (const other of others) {
+        it(`dist/${entry}.${format === 'cjs' ? 'js' : 'mjs'} does not load ${other}`, () => {
+          const requested = requestedBySpecifier(format, entry);
+          expect(requested.some((specifier) => specifier === other || specifier.startsWith(`${other}/`))).toBe(false);
+        });
+      }
     }
   }
 });
