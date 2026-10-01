@@ -1,17 +1,18 @@
 {
  "date": "2026-10-02",
- "iterations": 14,
- "prsMerged": 79,
- "differentiatorsShipped": 6,
+ "iterations": 15,
+ "prsMerged": 94,
+ "differentiatorsShipped": 8,
  "lintWarnings": 399,
- "tests": "2,757",
+ "tests": "2,947",
  "matrix": [
   [
    "Durability / resume",
    "ok",
    "ok",
    "warn",
-   "W9.2 fingerprint on resume"
+   "W9.2 fingerprint on resume",
+   "pend"
   ],
   [
    "Durable stores (SQLite / file / KV)",
@@ -25,7 +26,8 @@
    "warn",
    "ok",
    "warn",
-   "X12.2"
+   "X12.2",
+   "pend"
   ],
   [
    "Workspace fs + shell tools",
@@ -67,8 +69,7 @@
    "ok",
    "ok",
    "warn",
-   "X8 policy helpers",
-   "pend"
+   ""
   ],
   [
    "Agent asks the user a question",
@@ -159,7 +160,7 @@
    "warn",
    "ok",
    "ok",
-   "D28d, D29",
+   "D28f, D29",
    "pend"
   ],
   [
@@ -220,10 +221,10 @@
   ],
   [
    "AI SDK UI stream",
-   "bad",
+   "ok",
    "warn",
    "ok",
-   "P1"
+   ""
   ],
   [
    "CLI scaffolding",
@@ -248,18 +249,18 @@
   ],
   [
    "Channels (Slack, Discord, ...)",
-   "warn",
+   "ok",
    "ok",
    "bad",
-   "P6, P5.2",
-   "pend"
+   "P5.2 Slack hardening"
   ],
   [
    "Schedules",
-   "warn",
+   "ok",
    "ok",
    "bad",
-   "P8.2, P9"
+   "P8.3 spec cron on node",
+   "pend"
   ],
   [
    "Deploy story",
@@ -301,14 +302,16 @@
    "ok",
    "ok",
    "bad",
-   "X12.2 Docker route"
+   "X12.2 Docker route",
+   "pend"
   ],
   [
    "Dynamic config",
    "ok",
    "ok",
    "warn",
-   "V15.2 crash resume"
+   "W9.2 crash resume",
+   "pend"
   ],
   [
    "Hot reload",
@@ -319,17 +322,17 @@
   ],
   [
    "Registry / extensions",
-   "bad",
+   "ok",
    "ok",
    "bad",
-   "D50"
+   ""
   ],
   [
    "ACP",
-   "bad",
+   "ok",
    "ok",
    "bad",
-   "Z6"
+   ""
   ],
   [
    "Code-first authoring",
@@ -361,11 +364,10 @@
   ],
   [
    "Current ai major",
-   "bad",
    "ok",
    "ok",
-   "D28d, D29",
-   "pend"
+   "ok",
+   ""
   ]
  ],
  "differentiators": [
@@ -400,14 +402,14 @@
    "D46 #96 + D47 #131: the same eval file gates CI in-process and smoke-tests a deployment with <code>loushy eval --url</code>."
   ],
   [
-   "Open",
+   "Shipped",
    "Reachable from everything",
-   "MCP server export with annotations (Z5.2 #142), the deployed session API, remote sub-agents (Y7 #132), channels (Slack P5 #133, agent-directory channels P7.2 #144). ACP (Z6) completes it."
+   "One agent definition is served as an MCP server with annotations (Z5.2), over ACP to editors (Z6 #157), through the HTTP session API on node and Workers, as a remote sub-agent (Y7), through Slack and Discord channels (P5, P6), and from a Next.js route with useChat (P1 #154, P4 #155)."
   ],
   [
-   "Open",
+   "Shipped",
    "Both authoring modes with hot reload",
-   "Code and directory authoring, <code>loushy dev</code> hot reload and the <code>loushy chat</code> REPL are in; directories now carry tools, sub-agents, schedules, channels and memory. Deploying an agent directory (P8.2) is the missing piece."
+   "Code-first and directory authoring with <code>loushy dev</code> hot reload and the <code>loushy chat</code> REPL. Directories carry tools, sub-agents, schedules, channels and memory, and <code>loushy build</code> deploys them (P8.2 #156)."
   ]
  ],
  "done": {
@@ -461,6 +463,16 @@
     "U21",
     "Every loushy command parses flags with one strict parseArgs helper",
     137
+   ],
+   [
+    "U23",
+    "Docker sandbox stops the container when the run is cancelled",
+    163
+   ],
+   [
+    "HEALTH",
+    "Agent Forge typechecks include the optional-peer type stubs",
+    164
    ]
   ],
   "V · Run loop": [
@@ -555,6 +567,11 @@
     "W6.3",
     "Agent directories load memory/*.ts slots",
     147
+   ],
+   [
+    "W8",
+    "session.compact() and session.clear(); /compact and /clear in loushy chat",
+    151
    ]
   ],
   "X · Tools, permissions, hooks": [
@@ -592,6 +609,16 @@
     "X12",
     "Credential broker: a host-side proxy adds auth for allowed hosts",
     149
+   ],
+   [
+    "X8",
+    "needsApproval can approve, deny with a reason or ask; always(), never(), once()",
+    153
+   ],
+   [
+    "X3",
+    "Hooks can deny a tool call, replace its result or modify its input",
+    158
    ]
   ],
   "Y · Sub-agents": [
@@ -626,6 +653,11 @@
     "Z5.2",
     "serveMcp advertises readOnlyHint and destructiveHint; read-only built-ins annotated",
     142
+   ],
+   [
+    "Z6",
+    "loushy acp: serve an agent to editors over the Agent Client Protocol",
+    157
    ]
   ],
   "D · DX, CLI, packaging": [
@@ -793,6 +825,26 @@
     "D53",
     "One session-API client behind remoteAgent() and remoteTarget()",
     146
+   ],
+   [
+    "D32.2",
+    "Approval continuations stream over the session API, the dev chat and the UI bindings",
+    152
+   ],
+   [
+    "D43.2",
+    "Checkpoint history for the KV store and the Agent Forge file store",
+    159
+   ],
+   [
+    "D28d",
+    "Peer ranges accept ai v4, v6 and v7; hints, doctor and scaffold follow the installed major",
+    160
+   ],
+   [
+    "D50",
+    "loushy add: install items from a JSON registry, showing their permission manifest first",
+    161
    ]
   ],
   "P · UI bindings, channels, schedules": [
@@ -825,51 +877,64 @@
     "P7.2",
     "Agent directories load channels/*.ts and the node server mounts them",
     144
+   ],
+   [
+    "P6",
+    "Discord channel: slash-command interactions mapped to sessions, with approval buttons",
+    150
+   ],
+   [
+    "P1",
+    "AI SDK UI stream adapter: useChat renders a Loushy run",
+    154
+   ],
+   [
+    "P4",
+    "createRouteHandler(agent) for Next.js and other Fetch-style frameworks",
+    155
+   ],
+   [
+    "P8.2",
+    "loushy build and loushy dev serve agent directories with their schedules and channels",
+    156
+   ],
+   [
+    "P9",
+    "Cloudflare Worker target runs schedules through cron triggers",
+    162
    ]
   ]
  },
  "inFlight": [
   [
-   "X8",
-   "Approval policies: needsApproval can approve, deny with a reason, or ask; always(), never(), once()."
+   "W9.2",
+   "Checkpoints carry an agent fingerprint so resuming with a changed agent warns or refuses; crash resume keeps dynamic config."
   ],
   [
-   "D28d",
-   "Widen the ai and @ai-sdk peer ranges; install hints, doctor and the scaffold follow the installed major."
+   "D29",
+   "zod 3 or zod 4: tool schemas, structured output and spec validation work on both."
   ],
   [
-   "W8",
-   "session.compact() and session.clear(), plus /compact and /clear in loushy chat."
+   "P8.3",
+   "Agent-directory builds keep optional peers external; the node target runs spec cron triggers."
   ],
   [
-   "P6",
-   "Discord channel: slash-command interactions mapped to sessions, with approval buttons."
+   "D28f",
+   "OpenRouter on ai v6/v7, the Ollama base URL, and provider contract tests on both ai majors."
   ],
   [
-   "D32.2",
-   "Approval continuations stream over the session API, the dev chat and the UI bindings."
+   "X12.2",
+   "Docker-sandboxed commands routed through the credential broker so network allowlists are enforced."
   ]
  ],
- "inFlightNote": "Slots are refilled as tickets merge. Seven more groups are planned after this one; the order is in STATE.md.",
+ "inFlightNote": "After these: sixteen tickets in five groups, ending with the ESLint ratchet and publish readiness. The order is in STATE.md.",
  "remaining": {
   "U · Correctness": [
-   [
-    "U14.2",
-    "Cancelled-tool and settled-suspension results use the shared error shape",
-    "U14",
-    20
-   ],
    [
     "U20",
     "Install and roadmap truth once the package is on npm",
     "",
-    21
-   ],
-   [
-    "U23",
-    "Docker sandbox honors the abort signal",
-    "",
-    18
+    19
    ]
   ],
   "V · Run loop": [
@@ -877,53 +942,29 @@
     "V4.2",
     "Sub-agents inherit output schema; typed session.send() object",
     "V4",
-    19
+    17
    ],
    [
     "V13",
     "Reasoning effort option and reasoning events",
     "D26",
-    20
-   ],
-   [
-    "V15.2",
-    "Crash resume keeps the dynamic config (save ctx and model on the checkpoint)",
-    "V15",
-    21
+    19
    ]
   ],
   "W · Context and memory": [
    [
-    "W8",
-    "Manual session.compact() and clear()",
-    "",
-    15
-   ],
-   [
     "W9.2",
-    "Agent fingerprint on resume (warn or refuse on drift)",
+    "Agent fingerprint on resume; crash resume keeps dynamic config; approved calls cannot be changed by a hook",
     "",
-    17
+    16
    ]
   ],
   "X · Tools, permissions, hooks": [
    [
-    "X3",
-    "Hook outcomes: deny, replace, modify",
-    "",
-    16
-   ],
-   [
-    "X8",
-    "Approval policy helpers on needsApproval (always, never, once)",
-    "",
-    15
-   ],
-   [
     "X12.2",
     "Docker containers routed through the credential broker so network allowlists are enforced",
     "X12",
-    18
+    16
    ]
   ],
   "Y · Sub-agents": [
@@ -931,59 +972,40 @@
     "Y6",
     "Resumable sub-agent sessions (new, resume, fork)",
     "",
-    18
+    17
    ],
    [
     "Y7.2",
     "Proxy a remote approval pause to the lead run; reuse the remote session",
     "Y7",
-    20
+    18
    ]
   ],
-  "Z · MCP": [
-   [
-    "Z6",
-    "loushy acp (Agent Client Protocol over stdio)",
-    "V14",
-    16
-   ]
-  ],
+  "Z · MCP": [],
   "D · DX, CLI, packaging": [
    [
     "D2.2",
     "Remaining plain Errors get codes (agentRun, tools, cli, workspace, validation)",
     "",
-    20
+    18
    ],
    [
     "D16",
     "ESLint ratchet: 399 warnings to 0, error severity",
     "quiet batch",
-    22
+    21
    ],
    [
     "D23.2",
     "Executor sets sessionId on the execute context",
     "",
-    21
-   ],
-   [
-    "D28d",
-    "Widen the ai and @ai-sdk peer ranges; hints, doctor and scaffold follow the installed major",
-    "D28b, D28c",
-    15
+    20
    ],
    [
     "D29",
     "zod 4 / Standard Schema support",
     "",
     16
-   ],
-   [
-    "D32.2",
-    "Stream approval continuations live in the dev chat",
-    "V14",
-    15
    ],
    [
     "D37",
@@ -995,104 +1017,68 @@
     "D38",
     "Remove unwired MemoryManager, ContextBuilder, retry.ts",
     "",
-    19
+    17
    ],
    [
     "D39",
     "Clean /testing; deprecate data/",
     "",
-    19
+    18
    ],
    [
     "D41",
     "One event system (retire onEvent/ExecutionEvent)",
     "",
-    19
+    18
    ],
    [
     "D42",
     "Shared chunks across entries (tsup splitting)",
     "",
-    18
-   ],
-   [
-    "D43.2",
-    "KV and Forge file store checkpoint history",
-    "",
-    17
+    19
    ],
    [
     "D46.2",
     "Provider-middleware hook for eval cassettes",
     "",
-    20
+    18
    ],
    [
     "D49",
     "Publish readiness: dry-run publish and pack-install smoke test",
     "U20",
-    22
-   ],
-   [
-    "D50",
-    "loushy add from a registry with permission manifests",
-    "",
-    18
-   ],
-   [
-    "D28e",
-    "Port the v4-only contract tests to a v7 mock model",
-    "D28b",
     21
+   ],
+   [
+    "D28f",
+    "OpenRouter on ai v6/v7, Ollama base URL fix, provider contract tests on both ai majors",
+    "D28d",
+    16
    ]
   ],
   "P · UI bindings, channels, schedules": [
    [
-    "P1",
-    "AI SDK UI stream adapter (useChat compatible)",
-    "D27",
-    16
-   ],
-   [
-    "P4",
-    "Next.js route helper",
-    "P1",
-    17
-   ],
-   [
     "P5.2",
     "Slack hardening: approver allowlist, delivery-error reporting, DMs",
     "P5",
-    19
-   ],
-   [
-    "P6",
-    "Discord channel",
-    "P7",
-    15
-   ],
-   [
-    "P8.2",
-    "Node deploy target serves agent directories with their schedules and channels",
-    "P8",
-    16
-   ],
-   [
-    "P9",
-    "Schedules on deploy targets (Worker cron)",
-    "P8",
     17
+   ],
+   [
+    "P8.3",
+    "Directory builds keep optional peers external; the node target runs spec cron triggers",
+    "P8.2, P9",
+    16
    ]
   ]
  },
  "notes": [
-  "<strong>The loop runs on the owner's Windows machine</strong> (Node 26). Main passes the full local suite after every group of merges: typecheck, lint, 2,757 tests with coverage, fallow, docs snippets and the four Agent Forge checks.",
-  "<strong>ai v7 support is one ticket from done.</strong> Runtime, types, tests and the Worker bundle all work on ai v4 and v7 (D26, D27, D28a-c). D28d, in flight, widens the published peer ranges. Ollama on ai 7 needs zod 4 (D29).",
-  "<strong>Breaking changes shipped pre-1.0</strong> (all in CHANGELOG with migration notes): sandboxed commands no longer inherit the host environment (X11); CLI commands reject unknown flags (U21); MCP tools without <code>readOnlyHint</code> ask for approval by default; error codes renamed to <code>LOUSHY_*</code>; tool-error results moved the message into <code>message</code>.",
-  "<strong>Limits left in shipped features, each with a ticket:</strong> the credential broker does not route Docker containers yet, so container network allowlists still mean no network (X12.2); any Slack workspace member can click Approve or Deny (P5.2); a remote sub-agent that pauses for approval is reported as an error (Y7.2); the generated node deploy target and <code>loushy dev</code> do not serve an agent directory's schedules and channels yet (P8.2); a crash resume re-resolves dynamic config without the original metadata (V15.2); 66 provider tests run only on ai v4 (D28e).",
-  "<strong>Branches are never deleted</strong> (owner instruction). Merged <code>lou-*</code> branches remain on origin. To save disk, installed dependencies are removed from an agent's worktree after its PR merges.",
-  "<strong>CI is not awaited</strong> (owner instruction). CI pins Node 22; the local runs use Node 26.",
-  "<strong>Jira:</strong> the connected Atlassian site has no <code>LOU</code> project; tickets live in STATE.md.",
-  "<strong>npm publish</strong> is an owner action (D49 prepares it)."
+  "<strong>All eight differentiators are shipped</strong> and 45 of 51 matrix rows are at parity or better. The two missing rows are reasoning control (V13, planned) and npm publication (owner action).",
+  "<strong>The loop runs on the owner's Windows machine</strong> (Node 26). Main passes the full local suite after every group of merges: typecheck, lint, 2,947 tests with coverage, fallow, docs snippets and the four Agent Forge checks. The last run found both Forge typechecks broken by the peer-range change; fixed in #164, and every ticket now runs them.",
+  "<strong>ai v7:</strong> peers accept ai 4, 6 and 7 (D28d #160). OpenAI and Anthropic projects are scaffolded on ai 7. Ollama and OpenRouter stay on ai 4 until D28f and zod 4 support (D29) land; both are in flight.",
+  "<strong>Breaking or model-visible changes shipped pre-1.0</strong> (all in CHANGELOG with migration notes): sandboxed commands no longer inherit the host environment (X11); CLI commands reject unknown flags (U21); a tool's own deny now beats a permissions allow rule (X3); a cancelled tool call's result uses the shared error shape (U14.2); MCP tools without <code>readOnlyHint</code> ask for approval by default; error codes renamed to <code>LOUSHY_*</code>.",
+  "<strong>Limits left in shipped features, each with a ticket:</strong> Docker containers are not routed through the credential broker yet (X12.2, in flight); agent-directory builds fail when an unused optional peer is not installed (P8.3, in flight); any Slack workspace member can click Approve or Deny (P5.2); a remote sub-agent that pauses for approval is reported as an error (Y7.2). Without tickets: the registry's permission manifest is shown but not enforced; ACP has no file or terminal methods; Slack and Discord hold pending approvals in memory (one process each).",
+  "<strong>Open problem:</strong> on this machine the deploy test folder intermittently makes vitest exit at startup when run right after another deploy run. It passes on retry; the cause is not found.",
+  "<strong>Branches are never deleted</strong> (owner instruction). To save disk, installed dependencies are removed from an agent's worktree after its PR merges.",
+  "<strong>CI is not awaited</strong> (owner instruction). CI pins Node 22; the local runs use Node 26. <strong>npm publish</strong> is an owner action (D49 prepares it)."
  ]
 }

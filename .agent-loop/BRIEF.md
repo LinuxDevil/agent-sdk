@@ -35,6 +35,7 @@ npx vitest run            # full suite, after the builds
 npm run docs:verify-snippets -- --skip-build
 npm run docs:llms:check
 npm run test:coverage && npm run fallow        # fallow = dead-code/duplication/complexity gate; must exit 0
+npm run typecheck --workspace apps/agent-forge && npm run typecheck:server --workspace apps/agent-forge   # after npm run build; Forge compiles the SDK source and is NOT in CI, so this is the only check
 ```
 Fallow fails on unused exports and on complex functions, so keep functions small and export only what is used or public. Known flaky under load (pass alone): `src/execution/guardrails.test.ts` child-process timeout test, `NodeWorkspace.test.ts` pid-file test. If a test is flaky, re-run it in isolation once and mention it in your report. Never skip or disable a test.
 
