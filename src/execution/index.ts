@@ -18,3 +18,4 @@ export * from './guardrails';
 export * from './hooks';
 export { ToolArgumentsValidationError } from './toolArgsValidation';
 export type { ToolArgumentIssue } from './toolArgsValidation';
+export type { ToolConcurrency } from './toolBatch';

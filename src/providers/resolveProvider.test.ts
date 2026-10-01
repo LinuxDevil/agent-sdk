@@ -89,3 +89,63 @@ describe('resolveProvider', () => {
     expect(() => resolveProvider('openai/')).toThrow();
   });
 });
+
+describe('resolveProvider errors (LOU-D1)', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it('names the env var when the API key is missing, without reaching the registry', () => {
+    vi.stubEnv('OPENAI_API_KEY', '');
+    const createSpy = vi.spyOn(LLMProviderRegistry, 'create');
+
+    expect(() => resolveProvider('openai/gpt-4o')).toThrow(
+      'resolveProvider: OPENAI_API_KEY is not set. Set it in your environment, or pass a provider instance: createAgent({ provider: ... })'
+    );
+    expect(createSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not require an env var for ollama (it has a local default)', () => {
+    vi.stubEnv('OLLAMA_BASE_URL', '');
+    vi.spyOn(LLMProviderRegistry, 'create').mockReturnValue(fakeProvider('ollama'));
+
+    expect(() => resolveProvider('ollama/llama3')).not.toThrow();
+  });
+
+  it('lists supported prefixes and suggests the closest match for a typo', () => {
+    expect(() => resolveProvider('anthopic/claude-3')).toThrow(
+      "unrecognized provider 'anthopic' in spec 'anthopic/claude-3'. Supported prefixes: openai, anthropic, openrouter, ollama. Did you mean 'anthropic/claude-3'?"
+    );
+  });
+
+  it('lists supported prefixes without a suggestion when nothing is close', () => {
+    expect(() => resolveProvider('zzzzzzzzzz/m')).toThrow(/Supported prefixes: openai, anthropic, openrouter, ollama\.$/);
+  });
+
+  it('shows an example for a spec without a provider prefix', () => {
+    expect(() => resolveProvider('gpt-4o')).toThrow(/Example: 'openai\/gpt-4o-mini'/);
+  });
+
+  it.each([
+    ['openai/gpt-4o', 'OPENAI_API_KEY', '@ai-sdk/openai@^0.0.42'],
+    ['openrouter/some-model', 'OPENROUTER_API_KEY', '@ai-sdk/openai@^0.0.42'],
+    ['ollama/llama3', 'OLLAMA_BASE_URL', 'ollama-ai-provider@^1.2.0'],
+  ])('tells you the exact npm install command when the peer for %s is missing', (spec, envKey, pkg) => {
+    vi.stubEnv(envKey, 'value');
+    vi.spyOn(LLMProviderRegistry, 'create').mockImplementation(() => {
+      throw Object.assign(new Error('Cannot find module'), { code: 'MODULE_NOT_FOUND' });
+    });
+
+    expect(() => resolveProvider(spec)).toThrow(`Run: npm install ${pkg}`);
+  });
+
+  it('rethrows unrelated registry errors unchanged', () => {
+    vi.stubEnv('OPENAI_API_KEY', 'k');
+    vi.spyOn(LLMProviderRegistry, 'create').mockImplementation(() => {
+      throw new Error('boom');
+    });
+
+    expect(() => resolveProvider('openai/gpt-4o')).toThrow('boom');
+  });
+});
