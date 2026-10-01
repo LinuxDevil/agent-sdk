@@ -54,7 +54,7 @@ export function repoBaseUrl(repositoryUrl: string): string {
 }
 
 /** Applies `fn` to the prose between fenced code blocks, leaving the fences untouched. */
-export function mapProse(markdown: string, fn: (prose: string) => string): string {
+function mapProse(markdown: string, fn: (prose: string) => string): string {
   return markdown
     .split(/(^```[\s\S]*?^```[^\n]*$)/m)
     .map((part, i) => (i % 2 === 1 ? part : fn(part)))
@@ -96,7 +96,7 @@ export function removeTitle(markdown: string): string {
 }
 
 /** Markdown links and bold markers reduced to their plain text. */
-export function plainText(text: string): string {
+function plainText(text: string): string {
   return text
     .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
