@@ -16,6 +16,8 @@ import { ToolRegistry } from '../tools/ToolRegistry';
 import { AgentType } from '../types';
 import { mockModel, type MockTurn } from '../testing';
 import type { Message } from '../providers';
+import { KVCheckpointStore } from '../deploy/kvCheckpointStore';
+import { SessionAwaitingApprovalError } from './errors';
 
 const lead = { name: 'lead', agentType: AgentType.SmartAssistant, prompt: 'You coordinate.' };
 
@@ -509,5 +511,129 @@ describe('approval inside a sub-agent (LOU-Y1)', () => {
     const [taskResult] = toolResults(result.messages);
     expect(taskResult.isError).toBe(true);
     expect(taskResult.content).toContain('requires approval but no approvalStore');
+  });
+});
+
+describe('durable sessions with sub-agents (LOU-U7/U8 with LOU-Y1)', () => {
+  function checkpoints() {
+    const data = new Map<string, string>();
+    const store = new KVCheckpointStore({
+      get: async (key) => data.get(key) ?? null,
+      put: async (key, value) => {
+        data.set(key, value);
+      },
+      delete: async (key) => {
+        data.delete(key);
+      },
+    });
+    return store;
+  }
+
+  it('a run paused on a sub-agent marks its session awaiting approval until resumed', async () => {
+    const approvals = memoryApprovals();
+    const checkpointStore = checkpoints();
+    const { agent: researcher, sent } = approvingChild('researcher', [{ toolCalls: [{ name: 'send', args: { to: 'ana' } }] }, 'sent']);
+    const leadModel = mockModel([{ toolCalls: [task('researcher')] }, 'done', 'next answer']);
+    const options = { subagents: { researcher } };
+    const session = { sessionId: 's-1', checkpointStore };
+
+    const paused = await run({ provider: leadModel, ...options, ...session, approvalStore: approvals.store });
+
+    expect(await checkpointStore.load('s-1')).toMatchObject({ status: 'awaiting-approval', approvalId: paused.approvalId });
+    await expect(run({ provider: leadModel, ...options, ...session, input: 'hello?' })).rejects.toBeInstanceOf(
+      SessionAwaitingApprovalError
+    );
+
+    const done = await resumeAfterApproval(
+      { id: paused.approvalId!, approved: true },
+      approvals.store,
+      new ToolRegistry(),
+      leadModel,
+      options,
+      checkpointStore
+    );
+
+    expect(sent).toEqual(['ana']);
+    expect(done.text).toBe('done');
+    expect(await checkpointStore.load('s-1')).toMatchObject({ status: 'finished' });
+    const next = await run({ provider: leadModel, ...options, ...session, input: 'and now?' });
+    expect(next.text).toBe('next answer');
+  });
+
+  it('keeps the session awaiting approval when the resumed sub-agent pauses again', async () => {
+    const approvals = memoryApprovals();
+    const checkpointStore = checkpoints();
+    const { agent: researcher, sent } = approvingChild('researcher', [
+      { toolCalls: [{ name: 'send', args: { to: 'ana' } }] },
+      { toolCalls: [{ name: 'send', args: { to: 'bo' } }] },
+      'both sent',
+    ]);
+    const leadModel = mockModel([{ toolCalls: [task('researcher')] }, 'done']);
+    const options = { subagents: { researcher } };
+    const session = { sessionId: 's-2', checkpointStore };
+
+    const first = await run({ provider: leadModel, ...options, ...session, approvalStore: approvals.store });
+    const resume = (id: string) =>
+      resumeAfterApproval({ id, approved: true }, approvals.store, new ToolRegistry(), leadModel, options, checkpointStore);
+    const second = await resume(first.approvalId!);
+
+    expect(second.finishReason).toBe('awaiting-approval');
+    expect(await checkpointStore.load('s-2')).toMatchObject({ status: 'awaiting-approval', approvalId: second.approvalId });
+    await expect(run({ provider: leadModel, ...options, ...session })).rejects.toBeInstanceOf(SessionAwaitingApprovalError);
+
+    const done = await resume(second.approvalId!);
+
+    expect(sent).toEqual(['ana', 'bo']);
+    expect(done.text).toBe('done');
+    expect(await checkpointStore.load('s-2')).toMatchObject({ status: 'finished' });
+  });
+
+  it('runs a task call left after an approval mid-batch, which can pause on its sub-agent in turn', async () => {
+    const approvals = memoryApprovals();
+    const confirmed: string[] = [];
+    const confirm = defineTool({
+      name: 'confirm',
+      description: 'Confirms',
+      input: z.object({}),
+      needsApproval: true,
+      execute: (_args, ctx) => {
+        confirmed.push(ctx.toolCallId);
+        return 'confirmed';
+      },
+    });
+    const registry = new ToolRegistry();
+    registry.registerMany([confirm]);
+    const { agent: researcher, model: childModel, sent } = approvingChild('researcher', [
+      { toolCalls: [{ name: 'send', args: { to: 'ana' } }] },
+      'sent',
+    ]);
+    const leadModel = mockModel([{ toolCalls: [{ name: 'confirm', id: 'confirm-call' }, task('researcher')] }, 'done']);
+    const options = { subagents: { researcher } };
+    const agent = { ...lead, tools: { confirm: { tool: 'confirm' } } };
+
+    const first = await AgentExecutor.execute({
+      agent,
+      input: 'go',
+      provider: leadModel,
+      toolRegistry: registry,
+      ...options,
+      approvalStore: approvals.store,
+    });
+    expect(approvals.only().snapshot.remainingToolCalls?.map((call) => call.id)).toEqual(['researcher-call']);
+    expect(childModel.calls).toHaveLength(0);
+
+    const second = await resumeAfterApproval({ id: first.approvalId!, approved: true }, approvals.store, registry, leadModel, options);
+
+    expect(confirmed).toEqual(['confirm-call']);
+    expect(second.finishReason).toBe('awaiting-approval');
+    expect(approvals.only().pending).toMatchObject({ toolName: 'send', subagentPath: ['researcher'] });
+
+    const done = await resumeAfterApproval({ id: second.approvalId!, approved: true }, approvals.store, registry, leadModel, options);
+
+    expect(sent).toEqual(['ana']);
+    expect(done.text).toBe('done');
+    expect(leadModel.calls).toHaveLength(2);
+    expect(toolResults(done.messages).map((m) => m.toolCallId)).toEqual(['confirm-call', 'researcher-call']);
+    expect(toolResults(done.messages)[1].content).toContain('sent');
   });
 });
