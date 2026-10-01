@@ -317,13 +317,17 @@ describe('parallel tool calls (LOU-V3)', () => {
     const { result } = run([a.tool, b.tool], ['a', 'b'], { sessionId: 's1', checkpointStore });
     await Promise.all([a.started, b.started]);
 
+    // LOU-U9: the model's turn itself is checkpointed before any call starts.
+    expect(saved).toEqual([[]]);
+
     b.release.resolve('B');
     await tick();
-    expect(saved).toEqual([]); // `b` finished, but `a` (before it) has not
+    expect(saved).toEqual([[]]); // `b` finished, but `a` (before it) has not
 
     a.release.resolve('A');
     await result;
-    expect(saved).toEqual([['call_a', 'call_b']]);
+    // Then the in-order prefix once, then the 'finished' checkpoint (LOU-U8).
+    expect(saved).toEqual([[], ['call_a', 'call_b'], ['call_a', 'call_b']]);
   });
 
   describe('approval inside a batch', () => {
@@ -385,9 +389,10 @@ describe('parallel tool calls (LOU-V3)', () => {
       expect(resumed.finishReason).toBe('stop');
       // The approved call ran once; calls before it were not re-executed.
       for (const name of [...before, names[position]]) expect(runs[name]).toBe(1);
-      // Calls after the approval call are not run on resume - today's
-      // behavior, tracked separately by LOU-U7.
-      for (const name of names.slice(position + 1)) expect(runs[name]).toBe(0);
+      // LOU-U7: calls after the approval call run on resume, exactly once,
+      // and every call of the turn ends up with one result, in call order.
+      for (const name of names.slice(position + 1)) expect(runs[name]).toBe(1);
+      expect(toolMessageIds(resumed.messages)).toEqual(names.map((n) => `call_${n}`));
     });
   });
 

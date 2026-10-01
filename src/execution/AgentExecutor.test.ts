@@ -273,7 +273,7 @@ describe('AgentExecutor', () => {
         toolRegistry
       );
 
-      expect(execute).toHaveBeenCalledWith({ amount: 5 }, {});
+      expect(execute).toHaveBeenCalledWith({ amount: 5 }, { toolCallId: 'call-2' });
       expect(result.requiresApproval).toBeUndefined();
       expect(result.result).toEqual({ ok: true });
     });
@@ -421,10 +421,15 @@ describe('AgentExecutor', () => {
         checkpointStore,
       });
 
-      expect(save).toHaveBeenCalledTimes(3);
+      // LOU-U9/U8: one save after each model turn (before its tool runs),
+      // one after each tool result, and a final 'finished' one.
+      expect(save).toHaveBeenCalledTimes(7);
       const lengths = save.mock.calls.map(([, checkpoint]) => checkpoint.messages.length);
-      expect(lengths[1]).toBeGreaterThan(lengths[0]);
-      expect(lengths[2]).toBeGreaterThan(lengths[1]);
+      for (let i = 1; i < lengths.length; i++) expect(lengths[i]).toBeGreaterThan(lengths[i - 1]);
+      expect(save.mock.calls.map(([, checkpoint]) => checkpoint.status)).toEqual([
+        ...Array(6).fill('in-progress'),
+        'finished',
+      ]);
     });
 
     it('should write the businessState option into every checkpoint record (LOU-T1)', async () => {
@@ -486,7 +491,7 @@ describe('AgentExecutor', () => {
         businessState: { orderId: 'ord_42', stage: 'processing' },
       });
 
-      expect(save).toHaveBeenCalledTimes(2);
+      expect(save).toHaveBeenCalledTimes(5); // 2 model turns + 2 tool results + finished
       for (const [, checkpoint] of save.mock.calls) {
         expect(checkpoint.businessState).toEqual({ orderId: 'ord_42', stage: 'processing' });
       }
@@ -539,8 +544,8 @@ describe('AgentExecutor', () => {
         })
       ).resolves.toBeDefined();
 
-      expect(save).toHaveBeenCalledTimes(1);
-      expect(save.mock.calls[0][1].businessState).toBeUndefined();
+      expect(save).toHaveBeenCalledTimes(3); // model turn + tool result + finished
+      for (const [, checkpoint] of save.mock.calls) expect(checkpoint.businessState).toBeUndefined();
     });
 
     it('should resume from a checkpoint after a simulated crash + restart with zero message loss', async () => {
@@ -832,7 +837,7 @@ describe('AgentExecutor', () => {
       expect(userMessage?.content).toBe('Hello');
     });
 
-    it('should delete the checkpoint once a run reaches a terminal finish reason', async () => {
+    it('should keep the checkpoint, marked finished, once a run reaches a terminal finish reason (LOU-U8)', async () => {
       const execute = vi.fn().mockResolvedValue({ ok: true });
       toolRegistry.register('noop', {
         displayName: 'Noop',
@@ -902,11 +907,13 @@ describe('AgentExecutor', () => {
         checkpointStore,
       });
 
-      expect(checkpointStore.delete).toHaveBeenCalledWith('terminal-session');
-      await expect(checkpointStore.load('terminal-session')).resolves.toBeNull();
+      expect(checkpointStore.delete).not.toHaveBeenCalled();
+      const finished = await checkpointStore.load('terminal-session');
+      expect(finished.status).toBe('finished');
+      expect(finished.messages.at(-1)).toEqual({ role: 'assistant', content: 'done' });
     });
 
-    it('should use fresh input (not stale stored messages) when execute() is called again with the same sessionId after completion', async () => {
+    it('should continue the conversation when execute() is called again with the same sessionId after completion (LOU-U8)', async () => {
       function makeCheckpointStore() {
         const records = new Map<string, any>();
         return {
@@ -927,7 +934,7 @@ describe('AgentExecutor', () => {
         .build();
 
       // First run: completes normally (no tool calls), reaching a terminal
-      // finish reason and clearing the checkpoint.
+      // finish reason; its checkpoint is kept, marked 'finished'.
       const firstProvider = createMockProvider({
         name: 'mock',
         responses: ['first response'],
@@ -941,9 +948,8 @@ describe('AgentExecutor', () => {
         checkpointStore,
       });
 
-      // Second run: same sessionId, brand-new input. If the stale checkpoint
-      // were still around and rehydrated, this fresh input would be
-      // silently ignored.
+      // Second run: same sessionId, brand-new input - appended as the next
+      // user turn after the first exchange (never ignored).
       const secondProvider = createMockProvider({
         name: 'mock',
         responses: ['second response'],
@@ -957,9 +963,14 @@ describe('AgentExecutor', () => {
         checkpointStore,
       });
 
-      const userMessage = secondResult.messages.find((m) => m.role === 'user');
-      expect(userMessage?.content).toBe('second input, completely different');
+      expect(secondResult.messages.map((m) => [m.role, m.content])).toEqual([
+        ['user', 'first input'],
+        ['assistant', 'first response'],
+        ['user', 'second input, completely different'],
+        ['assistant', 'second response'],
+      ]);
       expect(secondResult.text).toBe('second response');
+      expect(secondResult.steps).toBe(1);
     });
 
     it('should pass temperature and maxTokens', async () => {
@@ -1580,7 +1591,7 @@ describe('AgentExecutor', () => {
 
       await (AgentExecutor as any).executeToolCall(toolCall, agent, toolRegistry, undefined, undefined, undefined, hooks, undefined, []);
 
-      expect(execute).toHaveBeenCalledWith({ email: '[REDACTED]' }, {});
+      expect(execute).toHaveBeenCalledWith({ email: '[REDACTED]' }, { toolCallId: 'call-1' });
     });
 
     it('a thrown hook error aborts the run and rejects execute(), without being swallowed', async () => {
