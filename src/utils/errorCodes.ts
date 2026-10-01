@@ -46,7 +46,8 @@ export const ERROR_CODES = {
   LOUSHY_VALIDATION_FAILED: 'Fix the fields listed in `errors`.',
   LOUSHY_OPERATION_TIMEOUT: 'Raise the timeout or make the operation faster.',
   LOUSHY_OUTPUT_INVALID: "Reserved: an invalid structured reply is reported as finishReason 'output-invalid', not thrown.",
-  LOUSHY_BUDGET_EXCEEDED: 'Reserved for run budgets (not thrown yet).',
+  LOUSHY_BUDGET_EXCEEDED:
+    "Raise the limit named in the message, or use onExceeded: 'stop' (the default) to get finishReason 'budget-exceeded' instead of an error.",
 } as const;
 
 /** A stable error code, e.g. `'LOUSHY_CONFIG_MISSING_PROVIDER'`. */

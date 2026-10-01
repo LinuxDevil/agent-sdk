@@ -18,6 +18,7 @@
 - [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md): Evals are regression tests for agent *behaviour*: which tools the agent called, in what order, with which arguments, how many steps it took, and what it said.
 - [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md): A flow is a fixed, multi-step workflow run by one agent: the steps and their order are written down up front instead of being left to the model's judgment.
 - [Guardrails and sandboxing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md): Two tools for running agent output and agent tools safely: guardrails are fail-closed checks over a proposed change before you act on it, and sandboxed tools run inside an isolated container instead of the host process.
+- [Memory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md): A session remembers one conversation.
 - [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md): `AgentExecutor.execute()` and `FlowExecutor.execute()` emit spans through a `TraceExporter`.
 - [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md): An `LLMProvider` is what an agent generates with.
 - [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md): `useLoushyAgent()` puts an agent behind a chat UI.

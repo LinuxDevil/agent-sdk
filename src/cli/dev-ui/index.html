@@ -5,19 +5,34 @@
 <title>loushy dev</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
-  #log { border: 1px solid #ccc; border-radius: 8px; padding: 0.75rem; min-height: 200px; margin-bottom: 1rem; white-space: pre-wrap; }
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+  header { display: flex; align-items: baseline; gap: 0.75rem; }
+  header h1 { margin: 0; flex: 1; }
+  #sid { color: #666; font-size: 0.8rem; font-family: ui-monospace, monospace; }
+  #log { border: 1px solid #ccc; border-radius: 8px; padding: 0.75rem; min-height: 200px; margin: 1rem 0; }
   .row { display: flex; gap: 0.5rem; }
   #msg { flex: 1; padding: 0.5rem; }
   button { padding: 0.5rem 1rem; }
-  .entry { margin-bottom: 0.5rem; }
+  .entry { margin-bottom: 0.75rem; white-space: pre-wrap; }
   .entry.user { font-weight: 600; }
+  .tool { border: 1px solid #ddd; border-radius: 6px; padding: 0.25rem 0.5rem; margin: 0.4rem 0; font-size: 0.85rem; }
+  .tool pre { margin: 0.25rem 0; white-space: pre-wrap; word-break: break-word; }
+  .tool.failed { border-color: #c33; }
+  .approval { border: 1px solid #c90; background: #fff8e1; border-radius: 6px; padding: 0.5rem; margin: 0.4rem 0; display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+  .approval p { flex-basis: 100%; margin: 0; }
+  .approval input { flex: 1; padding: 0.4rem; }
+  .error { color: #7a1b1b; }
+  .usage { color: #666; font-size: 0.75rem; }
   #status { border-radius: 8px; padding: 0.5rem 0.75rem; margin-bottom: 1rem; background: #fde8e8; color: #7a1b1b; white-space: pre-wrap; }
   #status[hidden] { display: none; }
 </style>
 </head>
 <body>
-  <h1>loushy dev</h1>
+  <header>
+    <h1>loushy dev</h1>
+    <span id="sid"></span>
+    <button id="new">New session</button>
+  </header>
   <div id="status" hidden></div>
   <div id="log"></div>
   <div class="row">
@@ -30,35 +45,189 @@
     const input = document.getElementById('msg');
     const button = document.getElementById('send');
 
-    function append(who, text) {
-      const div = document.createElement('div');
-      div.className = 'entry ' + who;
-      div.textContent = (who === 'user' ? 'You: ' : 'Agent: ') + text;
-      log.appendChild(div);
-      log.scrollTop = log.scrollHeight;
+    // One session per tab: the id lives in sessionStorage, the history on the server.
+    function newSessionId() {
+      const id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2));
+      try { sessionStorage.setItem('loushy.sessionId', id); } catch (err) { /* storage blocked: this page load keeps the id */ }
+      return id;
+    }
+    let sessionId;
+    try { sessionId = sessionStorage.getItem('loushy.sessionId'); } catch (err) { /* ignore */ }
+    sessionId = sessionId || newSessionId();
+    const sid = document.getElementById('sid');
+    function showSession() { sid.textContent = 'session ' + sessionId.slice(0, 8); sid.title = sessionId; }
+    showSession();
+
+    function el(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    }
+    function show(value) {
+      return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+    }
+    function add(node) {
+      log.appendChild(node);
+      node.scrollIntoView({ block: 'nearest' });
+      return node;
+    }
+    function toolCard(turn, id, name, args) {
+      let card = turn.tools.get(id);
+      if (!card) {
+        card = el('details', 'tool');
+        card.open = true;
+        card.appendChild(el('summary', '', 'Tool: ' + (name || 'unknown')));
+        turn.tools.set(id, card);
+        turn.node.appendChild(card);
+      }
+      if (args !== undefined) card.appendChild(el('pre', '', 'args: ' + show(args)));
+      return card;
     }
 
-    async function send() {
-      const message = input.value.trim();
-      if (!message) return;
-      append('user', message);
-      input.value = '';
+    // Renders one AgentEvent into the turn's block.
+    function render(turn, event) {
+      if (event.type === 'text.delta') {
+        if (!turn.text) { turn.text = el('div', 'text'); turn.node.appendChild(turn.text); }
+        turn.text.textContent += event.text;
+      } else if (event.type === 'text.done') {
+        turn.text = null; // the next step's text starts a new paragraph
+      } else if (event.type === 'tool.start') {
+        toolCard(turn, event.toolCallId, event.toolName, event.args);
+      } else if (event.type === 'tool.done') {
+        toolCard(turn, event.toolCallId, event.toolName).appendChild(el('pre', '', 'result: ' + show(event.result)));
+      } else if (event.type === 'tool.error') {
+        const card = toolCard(turn, event.toolCallId, event.toolName);
+        card.classList.add('failed');
+        card.appendChild(el('pre', '', 'error: ' + event.error.message));
+      } else if (event.type === 'approval.requested') {
+        approvalBox(turn, event);
+      } else if (event.type === 'error') {
+        turn.node.appendChild(el('div', 'error', 'Error: ' + event.error.message));
+      } else if (event.type === 'run.done' && event.usage) {
+        const u = event.usage;
+        const cost = u.costUsd === undefined ? '' : ' - $' + u.costUsd.toFixed(4);
+        turn.node.appendChild(el('div', 'usage', event.finishReason + ' - ' + u.totalTokens + ' tokens' + cost));
+      }
+    }
+
+    // Reads an SSE response (`data: <event JSON>` lines; `event: done` ends it).
+    async function readEvents(res, onEvent) {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+        const lines = buffer.split(/\r?\n/);
+        buffer = done ? '' : lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: {')) continue;
+          try { const event = JSON.parse(line.slice(6)); if (event.type) onEvent(event); } catch (err) { /* partial or non-event line */ }
+        }
+        if (done) return;
+      }
+    }
+
+    // POSTs `body` to `url` and renders the streamed events as a new agent block.
+    async function stream(url, body) {
+      const turn = { node: add(el('div', 'entry agent')), text: null, tools: new Map() };
       button.disabled = true;
       try {
-        const res = await fetch('/chat', {
+        const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message }),
+          body: JSON.stringify(body),
         });
-        const data = await res.json();
-        append('agent', data.text || data.error || '(no response)');
+        if (!res.ok) {
+          turn.node.appendChild(el('div', 'error', 'Error: ' + ((await res.json()).error || res.status)));
+        } else {
+          await readEvents(res, (event) => render(turn, event));
+        }
       } catch (err) {
-        append('agent', 'Error: ' + err.message);
+        turn.node.appendChild(el('div', 'error', 'Error: ' + err.message));
       } finally {
         button.disabled = false;
         input.focus();
       }
     }
+
+    // Approve/Reject for a tool call; option buttons plus a free-text answer for a question.
+    function approvalBox(turn, event) {
+      const box = el('div', 'approval');
+      const url = '/chat/' + encodeURIComponent(sessionId) + '/approvals/' + encodeURIComponent(event.approvalId);
+      const decide = (body) => { box.querySelectorAll('button,input').forEach((c) => { c.disabled = true; }); stream(url, body); };
+      const question = event.kind === 'question' ? event.question || { text: event.toolName } : null;
+      if (!question) {
+        box.appendChild(el('p', '', 'Approve ' + event.toolName + '(' + show(event.args) + ')?'));
+        const approve = el('button', '', 'Approve');
+        approve.onclick = () => decide({ approved: true });
+        const reject = el('button', '', 'Reject');
+        reject.onclick = () => decide({ approved: false, note: 'Rejected in the dev UI' });
+        box.append(approve, reject);
+      } else {
+        box.appendChild(el('p', '', question.text));
+        for (const option of question.options || []) {
+          const choice = el('button', '', option);
+          choice.onclick = () => decide({ answer: option });
+          box.appendChild(choice);
+        }
+        if (!question.options || question.allowFreeText !== false) {
+          const text = el('input');
+          text.placeholder = 'Your answer';
+          const send = el('button', '', 'Answer');
+          send.onclick = () => text.value.trim() && decide({ answer: text.value.trim() });
+          text.onkeydown = (e) => { if (e.key === 'Enter') send.click(); };
+          box.append(text, send);
+        }
+      }
+      turn.node.appendChild(box);
+    }
+
+    async function send() {
+      const text = input.value.trim();
+      if (!text) return;
+      add(el('div', 'entry user', 'You: ' + text));
+      input.value = '';
+      await stream('/chat', { sessionId, input: text });
+    }
+
+    // Shows the saved transcript when the page loads (a reload keeps the tab's session).
+    async function loadTranscript() {
+      log.textContent = '';
+      try {
+        const res = await fetch('/chat/' + encodeURIComponent(sessionId));
+        if (!res.ok) return;
+        const data = await res.json();
+        const turn = { node: null, text: null, tools: new Map() };
+        for (const message of data.messages) {
+          const text = typeof message.content === 'string' ? message.content : show(message.content);
+          if (message.role === 'user') {
+            add(el('div', 'entry user', 'You: ' + text));
+            turn.node = add(el('div', 'entry agent'));
+            turn.tools.clear();
+          } else if (turn.node && message.role === 'assistant') {
+            if (text) turn.node.appendChild(el('div', 'text', text));
+            for (const call of message.toolCalls || []) toolCard(turn, call.id, call.function.name, call.function.arguments);
+          } else if (turn.node && message.role === 'tool') {
+            toolCard(turn, message.toolCallId, message.toolName).appendChild(el('pre', '', 'result: ' + text));
+          }
+        }
+        if (data.pending && data.pending.approvalId) {
+          if (!turn.node) turn.node = add(el('div', 'entry agent'));
+          approvalBox(turn, { approvalId: data.pending.approvalId, toolName: 'the pending tool call', args: {} });
+        }
+      } catch (err) {
+        /* the log just starts empty */
+      }
+    }
+
+    document.getElementById('new').addEventListener('click', () => {
+      sessionId = newSessionId();
+      showSession();
+      log.textContent = '';
+      input.focus();
+    });
 
     // Hot reload (LOU-D31): show the last failed reload; the previous agent keeps answering.
     const status = document.getElementById('status');
@@ -73,6 +242,7 @@
     }
     refreshStatus();
     setInterval(refreshStatus, 2000);
+    loadTranscript();
 
     button.addEventListener('click', send);
     input.addEventListener('keydown', (e) => {

@@ -7,6 +7,12 @@ import { LLMProviderRegistry } from '../providers/llm';
 import { createMockProvider } from '../providers/mock';
 import { mockModel } from '../testing';
 import { collectLocalImports, detectTarget } from './devReload';
+import { z } from 'zod';
+import { memoryStore } from '../storage/agentStore';
+import { defineTool } from '../tools/defineTool';
+import { parseEventStream } from '../react/parseEventStream';
+import type { CreateAgentConfig } from '../createAgent';
+import type { AgentEvent } from '../execution/agentEvents';
 
 const MOCK_RESPONSE = 'This is the mock dev-server response.';
 
@@ -59,18 +65,17 @@ describe('startDevServer', () => {
     handle = await startDevServer(configPath, 0);
     const port = addressPort(handle);
 
-    // Confirm the page itself posts to /chat (what its inline script does),
-    // then drive that exact same call to confirm the round trip works.
+    // Confirm the page itself posts { sessionId, input } to /chat (what its
+    // inline script does), then drive that exact same call.
     const page = await (await fetch(`http://localhost:${port}/`)).text();
-    expect(page).toContain("fetch('/chat'");
+    expect(page).toContain("stream('/chat', { sessionId, input: text })");
 
     const res = await fetch(`http://localhost:${port}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: 'hello from the UI' }),
+      body: JSON.stringify({ sessionId: 'ui', input: 'hello from the UI' }),
     });
-    const json = await res.json();
-    expect(json.text).toBe(MOCK_RESPONSE);
+    expect(await res.text()).toContain(MOCK_RESPONSE);
   });
 
   it('responds 200 ok on GET /health', async () => {
@@ -331,6 +336,164 @@ describe('agent directories and TS modules (LOU-D31)', () => {
     // An edit to an imported file triggers a reload too.
     fs.appendFileSync(path.join(dir, 'greeting.ts'), '// touched\n');
     await waitFor(async () => (await status(handle!)).reloads >= 2);
+  });
+});
+
+describe('stateful streaming chat (LOU-D32)', () => {
+  const fixtures = path.join(__dirname, '__fixtures__');
+  const post = (h: DevServerHandle, route: string, body: unknown) =>
+    fetch(`http://localhost:${addressPort(h)}${route}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  const eventsOf = async (res: Response): Promise<AgentEvent[]> => {
+    const events: AgentEvent[] = [];
+    for await (const event of parseEventStream(res)) events.push(event);
+    return events;
+  };
+  const turn = async (h: DevServerHandle, sessionId: string, input: string) => eventsOf(await post(h, '/chat', { sessionId, input }));
+  const transcript = async (h: DevServerHandle, sessionId: string) =>
+    (await fetch(`http://localhost:${addressPort(h)}/chat/${sessionId}`)).json();
+  const ping = defineTool({ name: 'ping', description: 'Reply with pong', input: z.object({}), execute: () => 'pong', needsApproval: true });
+  const serve = (provider: ReturnType<typeof mockModel>, extra: CreateAgentConfig = {}) =>
+    startDevServer(path.join(fixtures, 'dev-module', 'config.ts'), 0, '127.0.0.1', { overrides: { provider, tools: [ping], ...extra } });
+  const pinged = { toolCalls: [{ name: 'ping' }] };
+
+  it('streams a turn as SSE: AgentEvents ending with run.done, then event: done', async () => {
+    handle = await serve(mockModel([{ text: 'Hello there.', usage: { inputTokens: 3, outputTokens: 2 } }]));
+
+    const res = await post(handle, '/chat', { sessionId: 's1', input: 'hi' });
+    expect(res.headers.get('content-type')).toContain('text/event-stream');
+    const raw = await res.text();
+    expect(raw.endsWith('event: done\ndata: {}\n\n')).toBe(true);
+
+    const events = await eventsOf(new Response(raw));
+    expect(events[0].type).toBe('run.start');
+    expect(events.filter((e) => e.type === 'text.delta').map((e) => (e as { text: string }).text).join('')).toBe('Hello there.');
+    expect(events.at(-1)).toMatchObject({ type: 'run.done', finishReason: 'stop', text: 'Hello there.', usage: { totalTokens: 5 } });
+  });
+
+  it('keeps history per session: a second message sees the first, another session does not', async () => {
+    const provider = mockModel(['Nice to meet you, Ali.', 'You are Ali.', 'Who?']);
+    handle = await serve(provider);
+
+    await turn(handle, 'tab-a', 'My name is Ali.');
+    await turn(handle, 'tab-a', 'Who am I?');
+    const history = provider.calls[1].messages.map((m) => `${m.role}:${String(m.content)}`);
+    expect(history).toContain('user:My name is Ali.');
+    expect(history).toContain('assistant:Nice to meet you, Ali.');
+
+    await turn(handle, 'tab-b', 'Who am I?');
+    expect(provider.calls[2].messages.filter((m) => m.role === 'user').map((m) => m.content)).toEqual(['Who am I?']);
+  });
+
+  it('GET /chat/:sessionId returns the transcript, and rejects an invalid id', async () => {
+    handle = await serve(mockModel(['Hi Ali.']));
+    expect(await transcript(handle, 'fresh')).toEqual({ sessionId: 'fresh', messages: [], pending: null });
+
+    await turn(handle, 'fresh', 'hello');
+    const saved = await transcript(handle, 'fresh');
+    expect(saved.messages.map((m: { role: string; content: string }) => [m.role, m.content])).toEqual([
+      ['user', 'hello'],
+      ['assistant', 'Hi Ali.'],
+    ]);
+
+    const bad = await fetch(`http://localhost:${addressPort(handle)}/chat/${encodeURIComponent('not valid!')}`);
+    expect(bad.status).toBe(400);
+    expect((await post(handle, '/chat', { sessionId: 'x'.repeat(200), input: 'hi' })).status).toBe(400);
+  });
+
+  it("uses the agent's own store when it has one", async () => {
+    const store = memoryStore();
+    handle = await serve(mockModel(['stored']), { store });
+    await turn(handle, 'own', 'hi');
+    expect((await store.sessions.load('own'))?.map((m) => m.role)).toEqual(['user', 'assistant']);
+  });
+
+  it('pauses a tool call for approval, then streams the continuation when it is resolved', async () => {
+    handle = await serve(mockModel([pinged, 'The tool said pong.']));
+
+    const paused = await turn(handle, 's2', 'ping it');
+    const requested = paused.find((e) => e.type === 'approval.requested');
+    expect(requested).toMatchObject({ toolName: 'ping' });
+    expect(paused.at(-1)).toMatchObject({ type: 'run.done', finishReason: 'awaiting-approval' });
+    expect((await transcript(handle, 's2')).pending).toMatchObject({ status: 'awaiting-approval' });
+
+    const { approvalId } = requested as { approvalId: string };
+    const continued = await eventsOf(await post(handle, `/chat/s2/approvals/${approvalId}`, { approved: true }));
+    expect(continued.map((e) => e.type)).toEqual(['run.start', 'tool.done', 'text.delta', 'text.done', 'run.done']);
+    expect(continued[1]).toMatchObject({ toolName: 'ping', result: 'pong' });
+    expect(continued.at(-1)).toMatchObject({ finishReason: 'stop', text: 'The tool said pong.' });
+
+    const saved = await transcript(handle, 's2');
+    expect(saved.pending).toBeNull();
+    expect(saved.messages.at(-1)).toMatchObject({ role: 'assistant', content: 'The tool said pong.' });
+
+    // Decided already: nothing pending under that id any more.
+    expect((await post(handle, `/chat/s2/approvals/${approvalId}`, { approved: true })).status).toBe(404);
+  });
+
+  it('rejects an approval with a note, and answers a question', async () => {
+    const provider = mockModel([
+      pinged,
+      'Understood, not pinging.',
+      { toolCalls: [{ name: 'ask_question', args: { question: 'Where to?', options: ['Porto', 'Lisbon'] } }] },
+      'Lisbon it is.',
+    ]);
+    handle = await serve(provider, { askQuestion: true });
+
+    const first = await turn(handle, 's3', 'ping it');
+    const rejected = await eventsOf(
+      await post(handle, `/chat/s3/approvals/${(first.find((e) => e.type === 'approval.requested') as { approvalId: string }).approvalId}`, {
+        approved: false,
+        note: 'Not now',
+      })
+    );
+    expect(rejected.at(-1)).toMatchObject({ finishReason: 'stop', text: 'Understood, not pinging.' });
+    expect(JSON.stringify(provider.calls[1].messages)).toContain('Not now');
+
+    const asked = await turn(handle, 's3', 'plan a trip');
+    const question = asked.find((e) => e.type === 'approval.requested');
+    expect(question).toMatchObject({ kind: 'question', question: { text: 'Where to?', options: ['Porto', 'Lisbon'] } });
+    const answered = await eventsOf(await post(handle, `/chat/s3/approvals/${(question as { approvalId: string }).approvalId}`, { answer: 'Lisbon' }));
+    expect(answered.find((e) => e.type === 'tool.done')).toMatchObject({ toolName: 'ask_question', result: { answer: 'Lisbon', option: 1 } });
+    expect(answered.at(-1)).toMatchObject({ finishReason: 'stop', text: 'Lisbon it is.' });
+
+    expect((await post(handle, '/chat/s3/approvals/nope', {})).status).toBe(400);
+  });
+
+  it('still answers the deprecated { message } body with the non-streamed result', async () => {
+    handle = await serve(mockModel(['legacy reply']));
+    const res = await post(handle, '/chat', { message: 'hi' });
+    expect(res.headers.get('content-type')).toContain('application/json');
+    expect(res.headers.get('deprecation')).toBe('true');
+    expect((await res.json()).text).toBe('legacy reply');
+    expect((await post(handle, '/chat', { sessionId: 'x' })).status).toBe(400);
+  });
+
+  it('keeps sessions across a hot reload and continues them on the new agent', async () => {
+    const dir = fs.mkdtempSync(path.join(fixtures, 'tmp-dev-agent-'));
+    fs.cpSync(path.join(fixtures, 'dev-agent'), dir, { recursive: true });
+    const provider = mockModel(['First reply.', 'Second reply.']);
+    try {
+      handle = await startDevServer(dir, 0, '127.0.0.1', { overrides: { provider }, debounceMs: 20 });
+      await turn(handle, 's4', 'remember me');
+
+      fs.writeFileSync(path.join(dir, 'instructions.md'), 'You are the EDITED agent.\n');
+      for (let i = 0; i < 100; i++) {
+        const info = await (await fetch(`http://localhost:${addressPort(handle)}/dev/status`)).json();
+        if (info.reloads >= 1) break;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      await turn(handle, 's4', 'still there?');
+
+      const messages = provider.calls[1].messages;
+      expect(String(messages.find((m) => m.role === 'system')?.content)).toContain('EDITED');
+      expect(messages.map((m) => String(m.content))).toEqual(expect.arrayContaining(['remember me', 'First reply.']));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

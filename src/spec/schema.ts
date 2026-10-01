@@ -8,6 +8,7 @@
  * schema-to-type codegen is set up in this repo).
  */
 import { z } from 'zod';
+import type { McpApproval } from '../tools/mcp/McpToolLoader';
 
 export interface AgentSpecProvider {
   type: string;
@@ -46,12 +47,16 @@ export interface McpStdioServerSpec {
   command: string;
   args?: string[];
   env?: Record<string, string>;
+  /** Which of this server's tools ask for approval (LOU-Z5). Default `'annotations'`. */
+  approval?: McpApproval;
 }
 
 /** An MCP server reached over HTTP. */
 export interface McpHttpServerSpec {
   url: string;
   headers?: Record<string, string>;
+  /** Which of this server's tools ask for approval (LOU-Z5). Default `'annotations'`. */
+  approval?: McpApproval;
 }
 
 /**
@@ -112,6 +117,12 @@ const mcpStringMap = (field: string) =>
     invalid_type_error: `${MCP_PREFIX} '${field}' must be a map of string to string`,
   });
 
+/** `approval`: a mode, or (in code, not YAML/JSON) a predicate over a tool's name and annotations. */
+const mcpApprovalSchema = z.union(
+  [z.enum(['annotations', 'always', 'never']), z.custom<McpApproval>((value) => typeof value === 'function')],
+  { errorMap: () => ({ message: `${MCP_PREFIX} 'approval' must be 'annotations', 'always' or 'never'` }) }
+);
+
 /** What is wrong with a loosely-parsed `mcpServers` entry, if anything. */
 function mcpServerProblem(server: Record<string, unknown>): string | undefined {
   const stdio = server.command !== undefined;
@@ -146,6 +157,7 @@ export const mcpServerSpecSchema = z
         .url(`${MCP_PREFIX} 'url' must be a valid URL`)
         .optional(),
       headers: mcpStringMap('headers').optional(),
+      approval: mcpApprovalSchema.optional(),
     },
     {
       invalid_type_error: `${MCP_PREFIX} each mcpServers entry must be an object with 'command' or 'url'`,

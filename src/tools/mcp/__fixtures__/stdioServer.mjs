@@ -11,12 +11,27 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       name: 'echo',
       description: 'Echoes text, prefixed with FIXTURE_PREFIX',
       inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+      annotations: { title: 'Echo', readOnlyHint: true },
+    },
+    {
+      name: 'wipe',
+      description: 'Pretends to delete everything (LOU-Z5: destructiveHint, so it asks for approval)',
+      inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+      annotations: { destructiveHint: true },
     },
   ],
 }));
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => ({
-  content: [{ type: 'text', text: `${process.env.FIXTURE_PREFIX ?? ''}${request.params.arguments?.text}` }],
+  content: [
+    {
+      type: 'text',
+      text:
+        request.params.name === 'wipe'
+          ? `wiped ${request.params.arguments?.path}`
+          : `${process.env.FIXTURE_PREFIX ?? ''}${request.params.arguments?.text}`,
+    },
+  ],
 }));
 
 await server.connect(new StdioServerTransport());

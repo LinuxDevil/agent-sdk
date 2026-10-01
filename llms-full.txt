@@ -72,6 +72,7 @@ agent can be an `agent.yaml` spec served with `npx loushy dev agent.yaml`
 - **Approvals and permission policies**: `needsApproval` pauses a run; `agent.approvals.resolve()` continues it, or `approve` decides in code. `permissions` rules allow, deny or ask per tool before that, with an audit log. [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)
 - **Ask the user a question**: `createAgent({ askQuestion: true })` adds the built-in `ask_question` tool; the run pauses durably until `agent.approvals.answer()`. [Asking the user a question](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#asking-the-user-a-question)
 - **Sessions**: `agent.session()` keeps a multi-turn conversation in memory, files or SQLite. [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md)
+- **Memory**: `defineMemory()` slots, scoped globally, per session or per user, are recalled into the prompt at the start of a run and read and written with `remember_` / `recall_` tools. [Memory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md)
 - **Structured output**: `output: zodSchema` makes the final reply a typed, validated `result.object`, with one repair step. [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)
 - **Streaming**: `agent.stream()` and `session.stream()` yield typed, versioned JSON events ready for SSE. [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)
 - **UI bindings**: `useLoushyAgent()` from `@loushy/build-ai-agent/react` turns the event stream into chat state, with approvals. [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md)
@@ -168,6 +169,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md) | `defineTool()`, validation and errors, built-in tools, `ToolRegistry` |
 | [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md) | `needsApproval`, `agent.approvals`, the `approve` callback, `resumeAfterApproval()`, stores |
 | [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md) | Multi-turn conversations, `session.stream()`, session stores, `SqliteStore` |
+| [Memory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md) | Long-term memory across sessions: `defineMemory()`, scopes, `inMemoryMemory()`, `fileMemory()` |
 | [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md) | `output: zodSchema`: typed `result.object`, the repair step, `'output-invalid'` |
 | [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md) | `agent.stream()`: the typed event schema, terminal and SSE examples |
 | [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md) | `useLoushyAgent()`: chat state from the event stream, in process or over HTTP; `reduceAgentEvents()`, `parseEventStream()` |
@@ -785,6 +787,15 @@ Pass `skills: [defineSkill({ name, description, content }), ...(await loadSkills
 the system prompt and the model loads bodies through an auto-registered
 `load_skill` tool. See [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md).
 
+### Memory
+
+Pass `memory: [defineMemory({ name, scope, provider })]` to `createAgent()` to
+keep items across conversations: each run recalls a slot's newest items into
+the system prompt on its first model call, and the model gets
+`remember_<name>` / `recall_<name>` tools. `scope` is `'global'`, `'session'`
+or a function of `{ sessionId, metadata }`; `inMemoryMemory()` and
+`fileMemory({ dir })` are the built-in providers. See [Memory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md).
+
 ### Durable execution
 
 `sessionId` + `checkpointStore` make a run crash-safe and a session
@@ -848,9 +859,11 @@ How it behaves:
 `result.finishReason` says why a run ended: the model's own reason for its last
 turn (`'stop'`, `'length'`, `'tool_calls'`, `'content_filter'`, `'error'`),
 `'awaiting-approval'` (paused on a tool call that needs a human), `'aborted'`
-(cancelled with `signal`), `'max-steps'`, or `'output-invalid'` (the reply
+(cancelled with `signal`), `'max-steps'`, `'output-invalid'` (the reply
 did not match the `output` schema even after the repair step, see
-[Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)). `'max-steps'` means the `maxSteps`
+[Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)), or `'budget-exceeded'` (a
+`limits` budget such as `maxTokens` or `maxCostUsd` tripped; `result.budget`
+says which, see [Budgets](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#budgets)). `'max-steps'` means the `maxSteps`
 budget (default 10) ran out while the model still wanted to continue, so the
 reply may be empty or partial; a run that finishes naturally within the budget
 keeps its `'stop'`. Steps carried over by `initialSteps` or an approval resume
@@ -1942,6 +1955,11 @@ approval stops the batch: the calls before it run, the run pauses on it, and
 the calls after it run once it is decided (see
 [Approvals in the middle of a tool batch](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#approvals-in-the-middle-of-a-tool-batch)).
 
+MCP tools set `needsApproval` from the server's tool annotations: `readOnlyHint:
+true` runs, while `destructiveHint` true or absent (the MCP default) asks. Choose
+per server with `approval: 'annotations' | 'always' | 'never'` or a function; see
+[MCP tool approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#mcp-tool-approval-approval).
+
 ## Permission policies
 
 `permissions` sets rules for the whole agent instead of tool by tool: a list of
@@ -2171,7 +2189,7 @@ Run it with `npx loushy <command>` inside a project that has the SDK installed.
 | ------- | ------------ | ------- |
 | `loushy init [dir]` | Scaffold a project: an agent with an example tool, an offline test, `.env.example`; installs dependencies and runs `git init`. | [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#scaffolding-a-new-project) |
 | `loushy doctor [spec] [--json]` | Check Node, peer packages, provider keys, and optionally a spec file; prints a fix for every problem. | [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#troubleshooting-loushy-doctor) |
-| `loushy dev <path>` | Local dev server for a spec file, an agent directory or a TS agent: chat UI, `POST /chat`, hot reload on save. | [Below](#loushy-dev) |
+| `loushy dev <path>` | Local dev server for a spec file, an agent directory or a TS agent: chat UI with a session per tab and streamed events, hot reload on save. | [Below](#loushy-dev) |
 | `loushy mcp <spec>` | Serve the agent as an MCP server (stdio, or HTTP with `--http`). | [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#serve-an-agent-over-mcp) |
 | `loushy eval [globs...]` | Run `*.eval.ts` files under vitest; print a summary and write JUnit/JSON reports. | [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md#loushy-eval) |
 | `loushy build --target=<t> --agent=<spec>` | Build a deployable Node server, Docker image or Cloudflare Worker. | [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md) |
@@ -2206,8 +2224,8 @@ npx loushy dev src/agent.ts                # a TypeScript (or JavaScript) module
 npx loushy dev agent.yaml --port 4000 --host 0.0.0.0
 ```
 
-Serves `GET /` (a chat UI), `GET /health`, `GET /dev/status` and `POST /chat`
-(`{ "message": "..." }`, 1MB body limit). What `<path>` is follows from the path:
+Serves a chat UI on `GET /`, `GET /health`, `GET /dev/status` and the chat
+endpoints below (1MB body limit). What `<path>` is follows from the path:
 
 | Path | Loaded with |
 | ---- | ----------- |
@@ -2220,6 +2238,26 @@ with a coded error (`LOUSHY_SPEC_UNSUPPORTED_FORMAT`, `LOUSHY_CONFIG_INVALID`)
 and its fix. A `.ts` module is imported by the running Node (22.19 or later
 strips types, so relative imports need their file extension); use `.js` for
 code that needs a transpiler.
+
+**Chat sessions.** The chat UI keeps one session per browser tab (its id is in
+`sessionStorage`; "New session" starts another) and shows the streamed turn:
+text as it arrives, tool calls with their arguments and results, errors, and
+tokens and cost from `run.done`. A tool call that needs approval shows
+Approve / Reject buttons; an `ask_question` call shows its options as buttons
+plus a free-text field. The same endpoints work from `curl` or your own page:
+
+| Endpoint | What it does |
+| -------- | ------------ |
+| `POST /chat` `{ "sessionId", "input" }` | Runs `agent.session({ id: sessionId }).stream(input)` and streams the turn as SSE: one `data: <AgentEvent JSON>` per event ([Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)), then `event: done`. History is kept per `sessionId` (1-128 characters of `A-Za-z0-9_-`). |
+| `GET /chat/:sessionId` | The session's transcript: `{ sessionId, messages, pending }`; `pending` is `{ status, approvalId? }` while a turn waits on an approval, else `null`. |
+| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides the pending approval (`agent.approvals.resolve()`), or answers a question (`agent.approvals.answer()`), and streams the continued turn as SSE. It can pause again with another `approval.requested`. `404` when `id` is not pending. |
+| `POST /chat` `{ "message" }` | Deprecated: no session, no streaming. Returns the agent's `ExecutionResult` as JSON, with a `Deprecation: true` header. |
+
+Sessions live in an in-process `memoryStore()` (gone when `loushy dev` stops),
+or in the agent's own `store` when a module's `createAgent()` options set one.
+The continuation of an approval is not streamed token by token: the endpoint
+runs it with `agent.approvals.resolve()` and sends the turn's tool results and
+text as events once it finishes.
 
 **Hot reload.** The agent is rebuilt a moment (100 ms) after a file changes,
 without restarting the server or dropping the port:
@@ -2237,11 +2275,13 @@ The console logs what reloaded. The new agent is built (and `ready()`, so MCP
 servers connect) before it replaces the old one, and the old one is then
 `close()`d. If the rebuild fails, the last good agent keeps answering, the error
 is logged and shown in a banner on the chat page (and as `error` in
-`GET /dev/status`); the next good edit clears it.
+`GET /dev/status`); the next good edit clears it. Sessions survive a reload: the
+store outlives the agent swap, so the next message continues the conversation
+on the new agent. An approval that was pending on the old agent is not known to
+the new one (`404`); start a new session.
 
 Directories and modules are your code and run with your permissions; only run
-`loushy dev` on ones you trust. `POST /chat` talks to one shared agent, not one
-conversation per browser tab.
+`loushy dev` on ones you trust.
 
 - `--port` - default `3737`.
 - `--host` - default `127.0.0.1` (localhost only). Pass e.g. `--host=0.0.0.0`
@@ -2577,6 +2617,7 @@ Each entry sets exactly one of `command` / `url`; `args`/`env` apply only to
 stdio and `headers` only to HTTP. The field is validated by `loadSpec()`, and
 an invalid entry fails with the entry name in the message, e.g.
 `'mcpServers.files': AgentSpec validation failed: missing 'command' (stdio server) or 'url' (HTTP server)`.
+An optional `approval` (`annotations`, `always` or `never`) says which of the server's tools ask for approval; see [MCP tool approval](#mcp-tool-approval-approval).
 `loushy doctor` checks each stdio `command` is resolvable.
 
 ```yaml
@@ -2667,6 +2708,44 @@ stdio servers are spawned with `command` and `args`; `env` is added to the
 default environment (`PATH` and the like), not a replacement for it. HTTP
 servers use the streamable HTTP transport with `headers` on every request.
 `@modelcontextprotocol/sdk` is an optional peer: install it to use MCP.
+
+### MCP tool approval (`approval`)
+
+MCP servers describe each tool with annotations (`readOnlyHint`,
+`destructiveHint`, `idempotentHint`, `openWorldHint` and a `title`). They are
+hints, but the SDK uses them as the default for [approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md):
+a tool with `readOnlyHint: true` runs; a tool with `destructiveHint: true`, or
+one that sends no `destructiveHint` (the MCP spec's default is destructive),
+pauses the run until a human approves; `destructiveHint: false` runs. A tool
+without annotations therefore asks. The raw annotations stay on
+`descriptor.metadata.mcp.annotations`, and `title` becomes the `displayName`.
+
+Set `approval` on a server entry (`mcpServers`, `createAgent`, `connectMcp()`) or
+in `loadMcpTools(client, name, { approval })`:
+
+- `'annotations'` (default): as above.
+- `'always'` / `'never'`: ask for every tool / none of them.
+- A function `({ name, annotations }) => boolean` decides per tool (`name` is
+  the bare tool name; `annotations` is `{}` when the server sent none). Only
+  in code; a spec file takes the three strings.
+
+[Permission rules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies) run first and can still
+`allow`, `deny` or `ask`.
+
+```ts no-run
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  mcpServers: {
+    files: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'] },
+    // Ask before anything except tools whose name starts with `search`.
+    docs: { url: 'https://example.com/mcp', approval: ({ name }) => !name.startsWith('search') },
+    // A server you trust: never ask.
+    scratch: { command: 'node', args: ['./scratch-server.js'], approval: 'never' },
+  },
+});
+```
 
 ### MCP (Model Context Protocol) tools
 
@@ -2852,10 +2931,12 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `name`     | Agent name (default `'agent'`).                                    |
 | `description` | What the agent does, in a sentence. Required when it is used as a sub-agent. |
 | `maxSteps` | Passed through to `AgentExecutor.execute()`.                        |
+| `limits`   | Budgets of each run: `{ maxTokens?, maxInputTokens?, maxOutputTokens?, maxCostUsd?, maxDurationMs?, maxSteps?, onExceeded? }`. A tripped limit ends the run with `finishReason: 'budget-exceeded'`. See [Budgets](#budgets). |
 | `toolConcurrency` | How many tool calls of one model turn run at once: a positive integer or `'unbounded'` (default). See [Parallel tool calls](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#parallel-tool-calls). |
 | `skills`   | Skills from `defineSkill()` / `loadSkills()`; see [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md). |
 | `subagents`, `maxSubagentDepth` | Named sub-agents behind one `task` tool, and how deep they may nest (default 1); see [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md). |
 | `store`    | An `AgentStore` (`SqliteStore`, `memoryStore()`, or `{ sessions?, checkpoints?, approvals? }`): the default stores of `agent.session()`, approvals, and `send(message, { sessionId })` runs; `agent.resume(id)` finishes an interrupted one. See [Durable sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#durable-sessions). |
+| `memory`   | Memory slots from `defineMemory()`: recalled into the system prompt at the start of each run, with `remember_<name>` / `recall_<name>` tools. See [Memory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md). |
 | `approvalStore` | Where a `needsApproval` pause is saved (default: `store.approvals`, else a per-agent `InMemoryApprovalStore`); see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md). |
 | `approve`  | `(call) => boolean`: decide approvals in code instead of pausing. |
 | `projectInstructions` | `true` or `{ cwd?, files? }`: append the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (off by default; see [Project instructions](#project-instructions)). |
@@ -2876,6 +2957,74 @@ Misconfiguration errors say how to fix themselves: a missing key names the
 variable (`createAgent: OPENAI_API_KEY is not set. ...`), an unknown prefix
 lists the supported ones and suggests the closest, and a missing optional peer
 dependency prints the exact `npm install` command.
+
+## Budgets
+
+`limits` caps what a run may spend. Set it on `createAgent()` (every run of the
+agent) or on `AgentExecutor.execute()` / `stream()`:
+
+| Limit             | Counts |
+| ----------------- | ------ |
+| `maxTokens`       | Prompt plus completion tokens of the run (`usage.totalTokens`). |
+| `maxInputTokens`  | Prompt tokens (`usage.inputTokens`). |
+| `maxOutputTokens` | Completion tokens (`usage.outputTokens`). |
+| `maxCostUsd`      | Estimated USD (`usage.costUsd`, from the [price table](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#models-tokens-and-cost)). Not checked while a model used has unknown pricing (`costUsd` is `undefined`). |
+| `maxDurationMs`   | Wall-clock time of the `execute()` / `stream()` call. |
+| `maxSteps`        | Model steps. An alias of the `maxSteps` option: when both are set the stricter wins (the option's tie reports `'max-steps'`); alone, it replaces the default of 10. |
+
+Limits are checked before every model call (so after every tool batch) and
+after a model call that asks for tools; `maxDurationMs` also aborts an
+in-flight model or tool call through the run's signal. A limit trips once the
+run reaches it. Usage of sub-agents counts toward their lead's budget: it is
+added when the sub-agent returns, so the lead stops before its next model call.
+A run that finishes on its own within the step that reached a limit keeps its
+own finish reason, like `maxSteps`.
+
+When a limit trips, the run stops with `finishReason: 'budget-exceeded'` and
+`result.budget` (`{ limit, value, max, scope }`). Tool calls the model asked
+for in that step get a "cancelled" result, so the transcript stays valid, and
+with a checkpoint store it is checkpointed as finished, like `'max-steps'`.
+`stream()` emits a `budget.exceeded` event before `run.done`. With
+`onExceeded: 'throw'` the run rejects with `BudgetExceededError`
+(`LOUSHY_BUDGET_EXCEEDED`, with the same `budget`) instead.
+
+```ts
+import { BudgetExceededError, createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({
+  provider,
+  limits: { maxTokens: 50_000, maxCostUsd: 0.25, maxDurationMs: 60_000 },
+});
+const result = await agent.send('Research this thoroughly');
+if (result.finishReason === 'budget-exceeded') {
+  console.warn(`Stopped by ${result.budget?.limit}: ${result.budget?.value} of ${result.budget?.max}`);
+}
+
+try {
+  await createAgent({ provider, limits: { maxCostUsd: 0.01, onExceeded: 'throw' } }).send('Go');
+} catch (error) {
+  if (error instanceof BudgetExceededError) console.error(error.budget);
+}
+```
+
+**Run and session limits.** `createAgent({ limits })` applies to each run on
+its own: every `send()`, and every turn of a session, starts from zero.
+`agent.session({ id, limits })` adds limits across all of the session's turns:
+a turn stops once what the session has spent, in all its turns, reaches a
+limit (`budget.scope` is then `'session'`), and later turns stop before calling
+the model. What the turns spent (tokens, cost, steps and run time) is saved with
+the transcript, as `metadata.sessionUsage` on its last message, so a session
+continued from its store keeps its budget. Both apply together; the first limit
+reached stops the turn. A turn that was aborted is not counted.
+
+```ts
+import { createAgent, memoryStore } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ provider, store: memoryStore(), limits: { maxTokens: 20_000 } });
+const session = agent.session({ id: 'user-42', limits: { maxCostUsd: 1 } });
+const reply = await session.send('Hello');
+if (reply.budget?.scope === 'session') console.log('This conversation used up its budget.');
+```
 
 ## Project instructions
 
@@ -2918,6 +3067,7 @@ use `loadProjectInstructions({ cwd, files, stopAt, maxChars })`, which returns
 | `provider`                              | The `LLMProvider` to generate with.                             |
 | `toolRegistry`                          | A `ToolRegistry` holding the tools the agent config refers to.  |
 | `maxSteps`                              | Upper bound on LLM/tool steps.                                  |
+| `limits`                                | Token, cost, time and step budgets of the run; see [Budgets](#budgets). |
 | `temperature`, `maxTokens`              | Generation parameters.                                          |
 | `onEvent`                               | Callback for execution events (`start`, `tool-call`, `finish`, ...). |
 | `approvalStore`, `sessionId`            | Human-in-the-loop approvals (see `resumeAfterApproval()`).       |
@@ -3798,11 +3948,16 @@ run ends with `finishReason: 'output-invalid'` and `outputError`.
 
 ### LOUSHY_BUDGET_EXCEEDED
 
-**Means:** reserved for run budgets (token or cost limits); nothing throws it yet.
+**Means:** a run's or a session's `limits` budget (`maxTokens`, `maxCostUsd`,
+`maxDurationMs`, ...) tripped under `onExceeded: 'throw'`. `BudgetExceededError`
+carries `budget: { limit, value, max, scope }`. With the default
+`onExceeded: 'stop'` nothing is thrown: the run ends with
+`finishReason: 'budget-exceeded'`.
 
-**Fix:** none needed today.
+**Fix:** raise the limit named in the message, or drop `onExceeded: 'throw'`.
+See [Budgets](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#budgets).
 
-**Example:** none yet.
+**Example:** `createAgent({ provider, limits: { maxCostUsd: 0.01, onExceeded: 'throw' } })` whose run costs more than a cent.
 
 # Evals
 
@@ -4233,6 +4388,171 @@ await AgentExecutor.execute({ agent, input, provider, toolRegistry, sandbox: new
 
 For coding agents, `SandboxShell` puts the workspace shell tool behind the same
 adapter; see [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md#sandboxed-shell-sandboxshell).
+
+# Memory
+
+Source: docs/memory.md
+
+A [session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md) remembers one conversation. Memory is what an agent
+keeps **across** conversations: a user's preferences, facts it was told,
+decisions made last week. You give an agent one or more named **memory
+slots**; each slot stores short text items through a provider and is keyed by
+a **scope** (one memory for everybody, one per session, or one per user).
+
+For each slot, `createAgent({ memory })`:
+
+1. **Recalls** at the start of every run (`send()`, `stream()`, each session
+   turn): on the run's first model call, the newest items go into the system
+   prompt in a `<memory name="...">` block. The block stays for the rest of
+   the run and is not saved in the session transcript.
+2. Gives the model a **`remember_<name>`** tool (input `{ text }`) to store a
+   new item, and a **`recall_<name>`** tool (input `{ query?, limit? }`) to
+   search the slot, newest items first.
+
+## Memory in code
+
+```ts no-run
+import { createAgent, defineMemory, fileMemory } from '@loushy/build-ai-agent';
+
+const preferences = defineMemory({
+  name: 'preferences',
+  description: "the user's preferences: language, tone, tools they like",
+  scope: 'session',
+  provider: fileMemory({ dir: './.loushy/memory' }),
+});
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  instructions: 'You are a helpful assistant. Save lasting preferences with remember_preferences.',
+  memory: [preferences],
+});
+
+await agent.session({ id: 'user-42' }).send('Please always answer in French.');
+// Later, in a new conversation with the same id, the preference is in the system prompt:
+const { text } = await agent.session({ id: 'user-42' }).send('What is the capital of Japan?');
+```
+
+The system prompt of the second conversation ends with:
+
+```text
+<memory name="preferences">
+- The user wants answers in French.
+</memory>
+```
+
+## Scopes
+
+A run reads and writes the items of its **scope key**:
+
+| `scope` | Scope key | One memory per |
+|---|---|---|
+| `'global'` | `'global'` | agent (shared by every run) |
+| `'session'` | `'session:<id>'`: the `agent.session({ id })` id, or `send()` / `stream()`'s `sessionId` | session |
+| `({ sessionId, metadata }) => string \| undefined` | what the function returns | whatever you key by, e.g. a user |
+
+A scope function sees the run's `sessionId` and the `metadata` passed to
+`send()` / `stream()`, so you can keep one memory per user across all their
+sessions:
+
+```ts
+import { createAgent, defineMemory, inMemoryMemory } from '@loushy/build-ai-agent';
+import { mockModel } from '@loushy/build-ai-agent/testing';
+
+const userFacts = defineMemory({
+  name: 'user_facts',
+  scope: ({ metadata }) => (typeof metadata?.userId === 'string' ? `user:${metadata.userId}` : undefined),
+  provider: inMemoryMemory(),
+});
+
+const agent = createAgent({ provider: mockModel(['Hello!']), memory: [userFacts] });
+await agent.send('Hi again!', { metadata: { userId: 'u-42' } });
+```
+
+When a run has no scope key (a `'session'` slot in a `send()` without a
+`sessionId`, or a scope function that returns `undefined`), the slot is off
+for that run: nothing is recalled and its tools are not offered.
+
+## Configuration options
+
+`defineMemory(options)` returns a `MemorySlot`:
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `name` | `string` | required | 1-55 characters of `A-Za-z0-9_-`; the tools are `remember_<name>` and `recall_<name>`. Unique per agent. |
+| `description` | `string` | none | What the slot holds; added to the tool descriptions. |
+| `scope` | `'global' \| 'session' \| (ctx) => string \| undefined` | required | See [Scopes](#scopes). |
+| `provider` | `MemoryProvider` | required | Where items are stored: `inMemoryMemory()`, `fileMemory({ dir })`, or your own. |
+| `recall.onSessionStart` | `boolean` | `true` | Recall into the system prompt on each run's first model call. |
+| `recall.maxItems` | `number` | `10` | Most items recalled into the prompt, and the default `limit` of `recall_<name>`. |
+| `recall.query` | `'last-input' \| 'none'` | `'none'` | `'last-input'` passes the run's last user message to the provider as `query`, to recall relevant items rather than the newest. |
+| `expose.remember` | `boolean` | `true` | Offer the `remember_<name>` tool. |
+| `expose.recall` | `boolean` | `true` | Offer the `recall_<name>` tool. |
+
+A slot with `expose: { remember: false }` is read-only for the model: you
+fill it from code with `provider.add(scopeKey, { text })`.
+
+## Providers
+
+| Provider | Storage |
+|---|---|
+| `inMemoryMemory({ maxItems? })` | This process; lost on restart. For tests and demos. |
+| `fileMemory({ dir, maxItems? })` | One JSON file per scope key in `dir` (key URI-encoded), written atomically. |
+
+Both keep at most `maxItems` items per scope key (default 1000; adding one
+more drops the oldest) and match a `query` by keyword: an item matches when it
+contains one of the query's words of three or more letters, ignoring case. A
+SQLite provider over the agent's `SqliteStore` is planned (LOU-W6.2).
+
+For semantic search or a hosted store, implement `MemoryProvider`:
+
+```ts
+import type { MemoryItem, MemoryProvider } from '@loushy/build-ai-agent';
+
+const items = new Map<string, MemoryItem[]>();
+const myProvider: MemoryProvider = {
+  async list(scopeKey, { limit, query } = {}) {
+    // Newest first; use `query` to rank (e.g. by embedding similarity).
+    return (items.get(scopeKey) ?? []).slice(0, limit);
+  },
+  async add(scopeKey, { text, metadata }) {
+    const item: MemoryItem = { id: crypto.randomUUID(), text, createdAt: new Date().toISOString(), metadata };
+    items.set(scopeKey, [item, ...(items.get(scopeKey) ?? [])]);
+    return item;
+  },
+  async remove(scopeKey, id) {
+    items.set(scopeKey, (items.get(scopeKey) ?? []).filter((item) => item.id !== id));
+  },
+};
+```
+
+## Testing memory
+
+With [`mockModel`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md), assert on the system prompt of the first
+request and drive the tools with scripted tool calls:
+
+```ts
+import { createAgent, defineMemory, inMemoryMemory } from '@loushy/build-ai-agent';
+import { mockModel } from '@loushy/build-ai-agent/testing';
+
+const store = inMemoryMemory();
+await store.add('global', { text: 'The user likes tea.' });
+const notes = defineMemory({ name: 'notes', scope: 'global', provider: store });
+
+const model = mockModel([{ toolCalls: [{ name: 'remember_notes', args: { text: 'Lives in Oslo.' } }] }, 'Noted.']);
+await createAgent({ provider: model, memory: [notes] }).send('I moved to Oslo.');
+
+console.log(model.calls[0].messages[0].content); // ends with <memory name="notes">\n- The user likes tea.\n</memory>
+console.log((await store.list('global')).map((item) => item.text)); // ['Lives in Oslo.', 'The user likes tea.']
+```
+
+## Limitations
+
+- Recall and the memory tools apply to the agent's own runs, not to its
+  sub-agents. When `agent.approvals.resolve()` continues a run after an
+  approval pause, the recalled block stays in the prompt but the memory tools
+  are not offered for the rest of that run.
+- `loadAgentDir()` does not read a `memory/` folder yet (planned, LOU-W6.3):
+  pass `memory` as an override.
 
 # Tracing and observability
 
@@ -4868,6 +5188,11 @@ then continues the run as the session's next turn, so the tool call, its result
 and the final answer join the transcript (see
 [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)).
 
+`agent.session({ id, limits })` sets budgets across all of the session's turns
+(for example `{ maxCostUsd: 1 }`), counted from the usage saved with the
+transcript; `createAgent({ limits })` limits each turn on its own. See
+[Budgets](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#budgets).
+
 ## Streaming a session turn
 
 `session.stream(input, { signal })` is `agent.stream()` for a conversation: it
@@ -5303,6 +5628,7 @@ The event types and their extra fields:
 | `provider.fallback`  | `from: string`, `to: string`, `error: { message: string }` | A model call still failed after its retries and the next provider takes over (`createAgent({ fallbackModels })` or any `withFallback()` provider). `from` and `to` are provider names. |
 | `compaction.start`   | `strategy: string`, `tokensBefore: number`, `contextWindow: number`, `thresholdTokens: number` | The compaction hook (`createAgent({ compaction })`) found the next model request above its threshold and starts compacting it. Exactly one `compaction.done` follows. See [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md). |
 | `compaction.done`    | `strategy: string`, `tokensBefore: number`, `tokensAfter: number`, `prunedToolCallIds: string[]`, `summary?: boolean`, `error?: { message: string }` | A compaction ended. `tokensAfter` equals `tokensBefore` when nothing could be compacted; `summary` is set when old turns were replaced by a summary; `error` is set when the strategy failed or fell back (the run continues). |
+| `budget.exceeded`    | `limit: string`, `value: number`, `max: number`, `scope: 'run' \| 'session'` | A [`limits` budget](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#budgets) tripped: `limit` is `'maxTokens'`, `'maxInputTokens'`, `'maxOutputTokens'`, `'maxCostUsd'`, `'maxDurationMs'` or `'maxSteps'`, `value` what was spent, `max` the limit. `run.done` (`'budget-exceeded'`) follows; with `onExceeded: 'throw'`, `error` and `run.done` (`'error'`). |
 | `run.done`           | `finishReason: string`, `text: string`, `usage?: { promptTokens, completionTokens, totalTokens }`, `object?: unknown` | Last event of every run, exactly once, including aborted, failed and awaiting-approval runs. `finishReason` and `text` match `run.result` (`'max-steps'` when the `maxSteps` budget ran out while the model still wanted to continue); a failed run has `finishReason: 'error'`, `text: ''` and no `usage`. `object` is `run.result`'s validated `object` for an agent with an `output` schema (see [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)), absent otherwise. |
 
 Optional fields are left out when they have no value. They are never
@@ -5522,6 +5848,11 @@ source.onmessage = (message) => {
 
 For a React chat UI over this kind of endpoint, see [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md):
 `useLoushyAgent()` POSTs the input and reads the same `data:` lines.
+
+`loushy dev` serves this format for a session per browser tab: `POST /chat`
+with `{ sessionId, input }` streams `agent.session({ id }).stream(input)` as
+`data:` lines ending with `event: done`, and approvals are decided through
+`POST /chat/:sessionId/approvals/:id` (see [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md#loushy-dev)).
 
 ## Example: the full API
 

@@ -15,6 +15,7 @@ import { emptyRunUsage, recordStepUsage, restoreRunUsage } from './runUsage';
 import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
 import type { ToolCallOutcome } from './toolCallExecution';
 import type { UnrecordedToolCall } from './toolBatch';
+import type { RunBudget } from './budget';
 
 export interface AgentRunState {
   messages: Message[];
@@ -52,6 +53,8 @@ export interface AgentRunState {
    * back behind the results on load.
    */
   queuedInput: Message[];
+  /** LOU-V6: the run's `limits`, when it has any. */
+  budget?: RunBudget;
 }
 
 /**
@@ -217,11 +220,11 @@ export function pushToolResult(
  * call has a matching result) and a checkpointed run can be resumed without
  * the provider rejecting an unanswered tool call.
  */
-function pushCancelledToolResult(state: AgentRunState, toolCall: ToolCall): void {
+function pushCancelledToolResult(state: AgentRunState, toolCall: ToolCall, reason: string): void {
   state.messages.push({
     role: 'tool',
     content: JSON.stringify({
-      error: 'Tool call was cancelled before it ran because the run was aborted',
+      error: `Tool call was cancelled before it ran because ${reason}`,
     }),
     name: toolCall.function.name,
     toolCallId: toolCall.id,
@@ -235,12 +238,16 @@ function pushCancelledToolResult(state: AgentRunState, toolCall: ToolCall): void
  * or a cancelled result if it never started, was waiting on an approval,
  * or ended in a fatal error.
  */
-export function pushAbortedBatchResults(state: AgentRunState, calls: UnrecordedToolCall[]): void {
+export function pushAbortedBatchResults(
+  state: AgentRunState,
+  calls: UnrecordedToolCall[],
+  reason = 'the run was aborted'
+): void {
   for (const { toolCall, outcome } of calls) {
     if (outcome && !outcome.requiresApproval) {
       pushToolResult(state, toolCall, outcome);
     } else {
-      pushCancelledToolResult(state, toolCall);
+      pushCancelledToolResult(state, toolCall, reason);
     }
   }
 }

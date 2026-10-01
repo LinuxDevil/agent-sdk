@@ -70,6 +70,16 @@ import {
 import { AgentRun, RUN_EVENTS, StreamingExecuteOptions, runEventsOf, startAgentRun } from './agentRun';
 import { OutputError, outputInstruction, outputRepairMessage, validateOutput } from './structuredOutput';
 import type { PermissionOptions } from './permissions';
+import {
+  BudgetExceeded,
+  BudgetExceededError,
+  RunBudget,
+  RunLimits,
+  SessionBudget,
+  budgetOfAbort,
+  maxStepsOf,
+  startBudget,
+} from './budget';
 
 export { PropagatingToolError } from './propagatingToolError';
 
@@ -102,6 +112,8 @@ export type ExecutionEventType =
  * - `'output-invalid'`: the run has an `output` schema and the final reply
  *   was still not valid JSON matching it after one repair step (LOU-V4);
  *   see `ExecutionResult.outputError`.
+ * - `'budget-exceeded'`: a `limits` budget tripped (LOU-V6); see
+ *   `ExecutionResult.budget`.
  */
 export type ExecutionFinishReason =
   | GenerateResult['finishReason']
@@ -109,6 +121,7 @@ export type ExecutionFinishReason =
   | 'aborted'
   | 'max-steps'
   | 'output-invalid'
+  | 'budget-exceeded'
   | (string & {});
 
 /**
@@ -197,6 +210,21 @@ export interface ExecuteOptions extends PermissionOptions {
   parentSpanId?: string;
   streaming?: boolean;
   maxSteps?: number;
+  /**
+   * LOU-V6: token, cost, time and step budgets of this run, checked before
+   * every model call and after one that asks for tools; `maxDurationMs` also
+   * aborts in-flight calls. A tripped limit ends the run with
+   * `finishReason: 'budget-exceeded'` and `result.budget` (or throws
+   * `BudgetExceededError` with `onExceeded: 'throw'`). See docs/configuration.md#budgets.
+   *
+   * @example
+   * ```ts
+   * await AgentExecutor.execute({ agent, input: 'Research this', provider, limits: { maxCostUsd: 0.5, maxDurationMs: 60_000 } });
+   * ```
+   */
+  limits?: RunLimits;
+  /** LOU-V6: a session's `limits` and what its earlier turns spent; set by `agent.session({ limits })`. */
+  sessionBudget?: SessionBudget;
   temperature?: number;
   maxTokens?: number;
   onEvent?: (event: ExecutionEvent) => void;
@@ -508,6 +536,8 @@ export interface ExecutionResult<TObject = unknown> {
   outputError?: OutputError;
   /** LOU-Y4.2: the run's background sub-agents and their final statuses; absent when it started none. */
   backgroundTasks?: BackgroundTaskView[];
+  /** LOU-V6: the limit that ended the run (`finishReason: 'budget-exceeded'`). */
+  budget?: BudgetExceeded;
 }
 
 /**
@@ -554,15 +584,18 @@ export class AgentExecutor {
   private static async runWithEnd(options: ExecuteOptions, agentSpanId: string): Promise<ExecutionResult> {
     let run = options;
     let end: { result?: ExecutionResult; error?: unknown } = {};
+    // LOU-V6: a `maxDurationMs` budget aborts the run's signal.
+    const budget = startBudget(options.limits, options.sessionBudget, options.signal);
     try {
-      run = await this.withExtensions(options);
-      const result = await this.runAgentLoop(run, agentSpanId);
+      run = await this.withExtensions(budget ? { ...options, signal: budget.signal } : options);
+      const result = await this.runAgentLoop(run, agentSpanId, budget);
       end = { result };
       return result;
     } catch (error) {
       end = { error };
       throw error;
     } finally {
+      budget?.dispose();
       await run.onRunEnd?.(end);
     }
   }
@@ -650,7 +683,8 @@ export class AgentExecutor {
    */
   private static async runAgentLoop(
     options: ExecuteOptions,
-    agentSpanId: string
+    agentSpanId: string,
+    budget?: RunBudget
   ): Promise<ExecutionResult> {
     const { agent, toolRegistry, onEvent } = options;
 
@@ -666,6 +700,7 @@ export class AgentExecutor {
     const tools = buildTools(agent, toolRegistry);
 
     const state = await loadRunState(options);
+    state.budget = budget;
 
     // LOU-U7/U9: a resumed transcript may end with a model turn whose tool
     // calls (some of them) have no result yet - finish those first, without
@@ -689,14 +724,16 @@ export class AgentExecutor {
     tools: ToolDefinition[],
     agentSpanId: string
   ): Promise<ExecutionResult> {
-    const { maxSteps = 10, signal } = options;
+    const { signal } = options;
+    const maxSteps = maxStepsOf(options);
     let repaired = false;
 
     // Execution loop with tool calling. LOU-V1: the signal is checked
     // before every model call (here) and every tool call (runToolCalls()).
     while (state.steps < maxSteps) {
-      if (signal?.aborted) {
-        return this.abortRun(options, state);
+      const stopped = this.stopBeforeStep(options, state);
+      if (stopped) {
+        return stopped;
       }
       state.steps++;
 
@@ -724,6 +761,13 @@ export class AgentExecutor {
     // spent while the model still wanted to go on.
     state.finishReason = 'max-steps';
     return this.finishRun(options, state);
+  }
+
+  /** The run's end when it must stop before the next model call: aborted (LOU-V1) or over budget (LOU-V6). */
+  private static stopBeforeStep(options: ExecuteOptions, state: AgentRunState): Promise<ExecutionResult> | undefined {
+    if (options.signal?.aborted) return this.abortRun(options, state);
+    const exceeded = state.budget?.check(state.usage, state.steps);
+    return exceeded && this.stopForBudget(options, state, exceeded);
   }
 
   /**
@@ -819,6 +863,14 @@ export class AgentExecutor {
 
     // Handle tool calls
     if (result.toolCalls && result.toolCalls.length > 0) {
+      // LOU-V6: a budget spent by this call stops the run before its tools run.
+      const exceeded = state.budget?.check(state.usage, state.steps, true);
+      if (exceeded) {
+        state.toolCalls.push(...result.toolCalls);
+        state.messages.push({ role: 'assistant', content: result.text || '', toolCalls: result.toolCalls });
+        pushAbortedBatchResults(state, result.toolCalls.map((toolCall) => ({ toolCall })), 'the run reached a budget limit');
+        return this.stopForBudget(options, state, exceeded);
+      }
       const paused = await this.runToolCalls(options, state, result.text, result.toolCalls, agentSpanId);
       if (paused) {
         return paused;
@@ -1202,6 +1254,8 @@ export class AgentExecutor {
     state: AgentRunState
   ): Promise<ExecutionResult> {
     const { onEvent, signal } = options;
+    const timedOut = budgetOfAbort(signal);
+    if (timedOut) return this.stopForBudget(options, state, timedOut);
     state.finishReason = 'aborted';
     await saveStepCheckpoint(options, state);
 
@@ -1219,6 +1273,25 @@ export class AgentExecutor {
     });
 
     return toExecutionResult(state, state.finalText, 'aborted');
+  }
+
+  /**
+   * LOU-V6: ends a run whose budget tripped like `max-steps` (checkpointed
+   * as finished), after a `budget.exceeded` event; throws
+   * `BudgetExceededError` under `onExceeded: 'throw'`.
+   */
+  private static async stopForBudget(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    budget: BudgetExceeded
+  ): Promise<ExecutionResult> {
+    state.finishReason = 'budget-exceeded';
+    runEventsOf(options)?.budgetExceeded(budget);
+    if (state.budget?.mode(budget) === 'throw') {
+      await saveStepCheckpoint(options, state, 'finished');
+      throw new BudgetExceededError(budget);
+    }
+    return { ...(await this.finishRun(options, state)), budget };
   }
 
   /**

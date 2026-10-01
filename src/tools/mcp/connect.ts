@@ -139,7 +139,9 @@ export async function connectMcp(
     await Promise.all(connections.map((connection) => connection.close()));
   };
   const loaded = await Promise.allSettled(
-    connections.map((connection) => loadMcpTools(connection.handle, connection.name, { logger }))
+    connections.map((connection) =>
+      loadMcpTools(connection.handle, connection.name, { logger, approval: servers[connection.name].approval })
+    )
   );
 
   const tools: Record<string, ToolDescriptor> = {};

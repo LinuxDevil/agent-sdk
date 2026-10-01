@@ -13,6 +13,7 @@ import { createAgent, type CreateAgentConfig, type SimpleAgent } from '../create
 import { SDKError } from '../execution/errors';
 import { loadAgentDir } from '../agentDir';
 import { explainImportError, withFreshImports } from '../agentDir/importModule';
+import { memoryStore } from '../storage/agentStore';
 import { loadSpec } from '../spec/loadSpec';
 import { specToAgent } from '../spec/specToAgent';
 
@@ -28,6 +29,8 @@ export interface DevTarget {
 export interface DevState {
   agent: SimpleAgent;
   target: DevTarget;
+  /** Where `/chat` sessions live (LOU-D32): kept across reloads, so they continue on the new agent. */
+  store: ReturnType<typeof memoryStore>;
   /** Successful reloads since start. */
   reloads: number;
   /** The last failed reload's message; cleared by the next good one. */
@@ -68,6 +71,14 @@ export function detectTarget(rawPath: string): DevTarget {
   );
 }
 
+/** Agents built with their own `store` (a config export's, or `overrides.store`): `/chat` sessions use it, not the dev store. */
+const storeOwners = new WeakSet<SimpleAgent>();
+
+/** Whether `agent` was configured with a `store` of its own (LOU-D32). */
+export function hasOwnStore(agent: SimpleAgent): boolean {
+  return storeOwners.has(agent);
+}
+
 function isSimpleAgent(value: unknown): value is SimpleAgent {
   const v = value as Partial<SimpleAgent> | null;
   return typeof v === 'object' && v !== null && typeof v.send === 'function' && typeof v.close === 'function';
@@ -86,7 +97,11 @@ async function loadModuleAgent(file: string, token: string, overrides: CreateAge
   }
   const exported = mod.default ?? mod.agent;
   if (isSimpleAgent(exported)) return exported;
-  if (isAgentConfig(exported)) return createAgent({ ...exported, ...overrides } as CreateAgentConfig);
+  if (isAgentConfig(exported)) {
+    const agent = createAgent({ ...exported, ...overrides } as CreateAgentConfig);
+    if (exported.store) storeOwners.add(agent);
+    return agent;
+  }
   throw new SDKError(
     `loushy dev: ${file} must export a SimpleAgent or a createAgent() config as its default export (or as 'agent').`,
     'LOUSHY_CONFIG_INVALID',
@@ -108,6 +123,7 @@ async function loadTarget(target: DevTarget, options: DevOptions = {}): Promise<
   const agent = await withFreshImports(token, () =>
     target.kind === 'dir' ? loadAgentDir(target.path, overrides) : loadModuleAgent(target.path, token, overrides)
   );
+  if (overrides.store) storeOwners.add(agent);
   try {
     await agent.ready();
   } catch (error) {
@@ -187,7 +203,7 @@ export interface DevReloader {
  * stays, `state.error` is set and the error is logged.
  */
 export async function startReloader(target: DevTarget, options: DevOptions = {}): Promise<DevReloader> {
-  const state: DevState = { agent: await loadTarget(target, options), target, reloads: 0 };
+  const state: DevState = { agent: await loadTarget(target, options), target, store: memoryStore(), reloads: 0 };
   const changed = new Set<string>();
   const name = path.basename(target.path);
   let timer: NodeJS.Timeout | undefined;

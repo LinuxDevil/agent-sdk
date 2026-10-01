@@ -106,6 +106,15 @@ Pass `skills: [defineSkill({ name, description, content }), ...(await loadSkills
 the system prompt and the model loads bodies through an auto-registered
 `load_skill` tool. See [Skills](./skills.md).
 
+### Memory
+
+Pass `memory: [defineMemory({ name, scope, provider })]` to `createAgent()` to
+keep items across conversations: each run recalls a slot's newest items into
+the system prompt on its first model call, and the model gets
+`remember_<name>` / `recall_<name>` tools. `scope` is `'global'`, `'session'`
+or a function of `{ sessionId, metadata }`; `inMemoryMemory()` and
+`fileMemory({ dir })` are the built-in providers. See [Memory](./memory.md).
+
 ### Durable execution
 
 `sessionId` + `checkpointStore` make a run crash-safe and a session
@@ -169,9 +178,11 @@ How it behaves:
 `result.finishReason` says why a run ended: the model's own reason for its last
 turn (`'stop'`, `'length'`, `'tool_calls'`, `'content_filter'`, `'error'`),
 `'awaiting-approval'` (paused on a tool call that needs a human), `'aborted'`
-(cancelled with `signal`), `'max-steps'`, or `'output-invalid'` (the reply
+(cancelled with `signal`), `'max-steps'`, `'output-invalid'` (the reply
 did not match the `output` schema even after the repair step, see
-[Structured output](./structured-output.md)). `'max-steps'` means the `maxSteps`
+[Structured output](./structured-output.md)), or `'budget-exceeded'` (a
+`limits` budget such as `maxTokens` or `maxCostUsd` tripped; `result.budget`
+says which, see [Budgets](./configuration.md#budgets)). `'max-steps'` means the `maxSteps`
 budget (default 10) ran out while the model still wanted to continue, so the
 reply may be empty or partial; a run that finishes naturally within the budget
 keeps its `'stop'`. Steps carried over by `initialSteps` or an approval resume
