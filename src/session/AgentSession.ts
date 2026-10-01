@@ -84,6 +84,19 @@ export interface SessionTurnCheckpoint {
 /** How a session's turn runs: where it is checkpointed, and the session's budget (LOU-V6). */
 export type SessionTurnOptions = Partial<SessionTurnCheckpoint> & { sessionBudget?: SessionBudget; inputQueue?: InputQueue };
 
+/** A turn's own user input and `metadata` (LOU-V15), for `createAgent()`'s per-run config; absent on a resumed turn. */
+export interface SessionTurnCall {
+  input: AgentInput;
+  metadata?: Record<string, unknown>;
+}
+
+/** Options of `session.send()` / `session.stream()`. */
+interface SessionSendOptions {
+  signal?: AbortSignal;
+  /** Passed to the agent's `model` / `instructions` / `tools` functions and memory scopes (LOU-V15). */
+  metadata?: Record<string, unknown>;
+}
+
 /**
  * Runs one turn: `input` is the whole transcript so far, ending in the new
  * user message (or `[]` to resume the checkpointed turn). With `checkpoint`,
@@ -93,14 +106,20 @@ export type SessionTurnOptions = Partial<SessionTurnCheckpoint> & { sessionBudge
 export type SessionRunner = (
   input: Message[],
   signal?: AbortSignal,
-  checkpoint?: SessionTurnOptions
+  checkpoint?: SessionTurnOptions,
+  call?: SessionTurnCall
 ) => Promise<ExecutionResult>;
 
 /**
  * Streams one turn (LOU-V8): like {@link SessionRunner}, but returns the
  * run's `AgentRun`. Supplied by `createAgent()`.
  */
-export type SessionStreamRunner = (input: Message[], signal?: AbortSignal, checkpoint?: SessionTurnOptions) => AgentRun;
+export type SessionStreamRunner = (
+  input: Message[],
+  signal?: AbortSignal,
+  checkpoint?: SessionTurnOptions,
+  call?: SessionTurnCall
+) => AgentRun;
 
 /** `store` as its parts: a plain `SessionStore` is the transcript store. */
 function splitStores(store: SessionOptions['store']): Partial<SessionStores> {
@@ -217,8 +236,8 @@ export class AgentSession {
    * const result = await session.send('And in Paris?', { signal: AbortSignal.timeout(10_000) });
    * ```
    */
-  send(input: AgentInput, options: { signal?: AbortSignal } = {}): Promise<ExecutionResult> {
-    return this.nextTurn(input, (inputs) => this.turn(input, inputs, options.signal));
+  send(input: AgentInput, options: SessionSendOptions = {}): Promise<ExecutionResult> {
+    return this.nextTurn(input, (inputs) => this.turn({ input, metadata: options.metadata }, inputs, options.signal));
   }
 
   /**
@@ -243,7 +262,7 @@ export class AgentSession {
    * }
    * ```
    */
-  stream(input: AgentInput, options: { signal?: AbortSignal } = {}): AgentRun {
+  stream(input: AgentInput, options: SessionSendOptions = {}): AgentRun {
     const streamRun = this.streamRun;
     if (!streamRun) {
       throw new SDKError(
@@ -257,7 +276,8 @@ export class AgentSession {
           input,
           async () => {
             await this.beforeTurn(signal);
-            const run = streamRun([...this.history, ...toMessages(input)], signal, this.turnOptions(inputs));
+            const call = { input, metadata: options.metadata };
+            const run = streamRun([...this.history, ...toMessages(input)], signal, this.turnOptions(inputs), call);
             started(run);
             return this.record(await run.result);
           },
@@ -333,9 +353,9 @@ export class AgentSession {
     this.loaded = true;
   }
 
-  private async turn(input: AgentInput, inputs: InputQueue, signal?: AbortSignal): Promise<ExecutionResult> {
+  private async turn(call: SessionTurnCall, inputs: InputQueue, signal?: AbortSignal): Promise<ExecutionResult> {
     await this.beforeTurn(signal);
-    return this.record(await this.run([...this.history, ...toMessages(input)], signal, this.turnOptions(inputs)));
+    return this.record(await this.run([...this.history, ...toMessages(call.input)], signal, this.turnOptions(inputs), call));
   }
 
   /**
