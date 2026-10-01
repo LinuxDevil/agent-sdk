@@ -25,18 +25,24 @@ describe('AgentBuilder', () => {
     }).toThrow('Agent name is required');
   });
 
-  it('should throw error when type is missing', () => {
+  it('builds without setType() (agentType is optional and deprecated)', () => {
+    const agent = new AgentBuilder().setName('Test Agent').build();
+
+    expect(agent.name).toBe('Test Agent');
+    expect(agent.agentType).toBeUndefined();
+    expect('agentType' in agent).toBe(false);
+  });
+
+  it('still rejects an invalid agent type when one is provided', () => {
     expect(() => {
-      new AgentBuilder()
-        .setName('Test Agent')
-        .build();
-    }).toThrow('Agent type is required');
+      AgentBuilder.from({ name: 'Test Agent', agentType: 'bogus' as AgentType }).build();
+    }).toThrow('Invalid agent type: bogus');
   });
 
   it('names the missing field and shows a corrective snippet (LOU-H12)', () => {
     expect(() => {
       new AgentBuilder().build();
-    }).toThrow(/Agent name is required\. Example:.*Agent type is required\. Example:/s);
+    }).toThrow(/Agent name is required\. Example: AgentBuilder\.create\(\)\.setName\('my-agent'\)/);
   });
 
   it('should add tools correctly', () => {

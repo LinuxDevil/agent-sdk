@@ -11,6 +11,9 @@ export class AgentBuilder {
 
   /**
    * Set agent type
+   *
+   * @deprecated Has no runtime effect and will be removed in the next minor
+   * release. `build()` no longer requires a type; just drop this call.
    */
   public setType(type: AgentType): this {
     this.config.agentType = type;
@@ -152,7 +155,7 @@ export class AgentBuilder {
     return {
       id: this.config.id || nanoid(),
       name: this.config.name!,
-      agentType: this.config.agentType!,
+      ...(this.config.agentType !== undefined && { agentType: this.config.agentType }),
       locale: this.config.locale || 'en',
       prompt: this.config.prompt,
       expectedResult: this.config.expectedResult,
