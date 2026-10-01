@@ -70,7 +70,7 @@ describe('remoteAgent (LOU-Y7)', () => {
     const result = await agent.send('go', { onEvent: (e) => events.push(JSON.stringify(e)) });
 
     expect(toolResult(result.messages)).toMatchObject({ toolName: 'task', kind: 'execution' });
-    expect(errorMessage(result.messages)).toContain('LOUSHY_REMOTE_AGENT_FAILED');
+    expect(errorMessage(result.messages)).toContain('LOUSHY_REMOTE_UNAUTHORIZED');
     expect(errorMessage(result.messages)).toContain('401');
     expect(JSON.stringify(result.messages) + events.join('')).not.toContain(TOKEN);
   });
@@ -90,7 +90,7 @@ describe('remoteAgent (LOU-Y7)', () => {
     const server = deployed(createAgent({ provider: mockModel([{ error: new Error('model exploded') }]), instructions: 'remote' }));
     const { agent } = lead(remoteAgent({ url: 'https://remote.test', auth: TOKEN, fetch: server.fetch }));
     const message = errorMessage((await agent.send('go')).messages);
-    expect(message).toContain('LOUSHY_REMOTE_AGENT_FAILED');
+    expect(message).toContain('LOUSHY_REMOTE_REQUEST_FAILED');
     expect(message).toContain('model exploded');
   });
 

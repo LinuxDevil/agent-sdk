@@ -6,11 +6,8 @@
  * scorers, the judge and the reporters work unchanged.
  */
 import type { ExecutionResult } from '../execution/AgentExecutor';
-import type { AgentEvent, AgentEventOf } from '../execution/agentEvents';
-import { SDKError } from '../execution/errors';
 import type { AgentInput } from '../providers/content';
-import type { ToolCall } from '../providers/llm';
-import { parseEventStream } from '../ui/parseEventStream';
+import { runRemoteTurn, type SessionTurnSummary } from '../server/sessionClient';
 import { newId } from '../utils/id';
 
 /** What an eval case needs from the thing under test: `send()`. A `createAgent()` agent has it, and so does a remote target. */
@@ -38,55 +35,15 @@ export interface RemoteExecutionResult extends ExecutionResult {
   missing: Array<'usage' | 'steps'>;
 }
 
-const fail = (message: string, code: string, cause?: unknown) => new SDKError(`loushy eval --url: ${message}`, code, { cause });
+const LABEL = 'loushy eval --url: the deployment';
 
-function toResult(events: readonly AgentEvent[]): RemoteExecutionResult {
-  const done = events.find((e): e is AgentEventOf<'run.done'> => e.type === 'run.done');
-  if (!done) throw fail('the stream ended without a run.done event (truncated or not an agent session stream)', 'LOUSHY_REMOTE_REQUEST_FAILED');
-  const own = events.filter((e) => !e.subagent);
-  const toolCalls: ToolCall[] = own
-    .filter((e): e is AgentEventOf<'tool.start'> => e.type === 'tool.start')
-    .map((e) => ({ id: e.toolCallId, type: 'function', function: { name: e.toolName, arguments: JSON.stringify(e.args) } }));
-  const steps = own.filter((e) => e.type === 'step.done').length;
-  const u = done.usage;
-  const usage = {
-    inputTokens: u?.inputTokens ?? 0,
-    outputTokens: u?.outputTokens ?? 0,
-    totalTokens: u?.totalTokens ?? 0,
-    promptTokens: u?.inputTokens ?? 0,
-    completionTokens: u?.outputTokens ?? 0,
-    costUsd: u?.costUsd,
-    modelCalls: u?.modelCalls ?? steps,
-    estimated: u?.estimated ?? false,
-    byModel: {},
-  };
+function toResult(summary: SessionTurnSummary): RemoteExecutionResult {
+  const { usage: u, steps, toolCalls } = summary;
+  const [inputTokens, outputTokens] = [u?.inputTokens ?? 0, u?.outputTokens ?? 0];
+  const tokens = { inputTokens, outputTokens, totalTokens: u?.totalTokens ?? 0, promptTokens: inputTokens, completionTokens: outputTokens };
+  const usage = { ...tokens, costUsd: u?.costUsd, modelCalls: u?.modelCalls ?? steps, estimated: u?.estimated ?? false, byModel: {} };
   const missing: RemoteExecutionResult['missing'] = [...(u ? [] : (['usage'] as const)), ...(steps === 0 ? (['steps'] as const) : [])];
-  return { text: done.text, messages: [], toolCalls, usage, finishReason: done.finishReason, steps, missing };
-}
-
-async function post(options: RemoteTargetOptions, sessionId: string, input: AgentInput): Promise<Response> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'text/event-stream' };
-  if (options.auth) headers.Authorization = `Bearer ${options.auth}`;
-  const target = `${options.url.replace(/\/+$/, '')}/chat`;
-  let response: Response;
-  try {
-    response = await (options.fetch ?? fetch)(target, { method: 'POST', headers, body: JSON.stringify({ sessionId, input }) });
-  } catch (error) {
-    throw fail(`could not reach ${target}: ${error instanceof Error ? error.message : String(error)}`, 'LOUSHY_REMOTE_REQUEST_FAILED', error);
-  }
-  if (response.status === 401) throw fail(`${target} answered 401 Unauthorized`, 'LOUSHY_REMOTE_UNAUTHORIZED');
-  if (!response.ok) throw fail(`${target} answered ${response.status} ${response.statusText}`.trim(), 'LOUSHY_REMOTE_REQUEST_FAILED');
-  return response;
-}
-
-async function collect(response: Response): Promise<AgentEvent[]> {
-  const events: AgentEvent[] = [];
-  try {
-    for await (const event of parseEventStream(response)) events.push(event);
-  } catch (error) {
-    throw fail(`the event stream broke: ${error instanceof Error ? error.message : String(error)}`, 'LOUSHY_REMOTE_REQUEST_FAILED', error);
-  }
-  return events;
+  return { text: summary.text, messages: [], toolCalls, usage, finishReason: summary.finishReason, steps, missing };
 }
 
 /**
@@ -114,7 +71,9 @@ async function collect(response: Response): Promise<AgentEvent[]> {
 export function remoteTarget(options: RemoteTargetOptions): () => EvalTarget {
   return () => {
     const sessionId = `eval-${newId()}`;
-    return { send: async (input) => toResult(await collect(await post(options, sessionId, input))) };
+    return {
+      send: async (input) => toResult(await runRemoteTurn(options, { sessionId, input, label: LABEL })),
+    };
   };
 }
 

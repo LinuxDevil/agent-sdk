@@ -1536,6 +1536,7 @@ my-agent/
   subagents/<name>/                                # nested agent directories
   schedules/*.ts|js                                # defineSchedule() cron schedules (see schedules.md)
   channels/*.ts|js                                 # a channel each: defineChannel(), webhookChannel(), ... (see channels.md)
+  memory/*.ts|js                                   # a memory slot each: defineMemory() (see memory.md); part of the agent
 ```
 
 Only one config file may exist. Files inside `tools/` and the entries of
@@ -1624,6 +1625,28 @@ createServer((req, res) => void handler(req, res).then((handled) => handled || r
 ```
 
 `loushy dev` does not mount `channels/` yet.
+
+### Memory
+
+Each file in `memory/` default-exports a [memory slot](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md): the result of
+`defineMemory({ ... })`, or the same options without a `name`, in which case the
+file name is the slot name. Unlike schedules and channels, slots are part of the
+agent: `loadAgentDir()` passes them to `createAgent({ memory })`, so the
+`remember_<name>` / `recall_<name>` tools and recall into the prompt work with no
+extra code, and `manifest.memory` lists their names. Each slot uses its own
+`provider`. A file that does not export a slot fails with `LOUSHY_MEMORY_INVALID`
+naming the file. A `memory` override passed to `loadAgentDir(dir, { overrides })`
+is merged with the directory's slots by name: the override wins a name clash.
+
+```ts
+import { defineMemory, fileMemory, resolveAgentDir } from '@loushy/build-ai-agent';
+
+// memory/notes.ts: export default { scope: 'global', provider: fileMemory({ dir: './.loushy/memory' }) }
+const { manifest } = await resolveAgentDir('./my-agent', {
+  memory: [defineMemory({ name: 'notes', scope: 'global', provider: fileMemory({ dir: './.loushy/memory' }) })],
+});
+console.log(manifest.memory); // names found in memory/
+```
 
 ## How it maps to `createAgent()`
 
@@ -3709,7 +3732,10 @@ docker run -p 3000:3000 -e OPENAI_API_KEY=... loushy-agent
 Generates a module Worker (`export default { fetch }`) and bundles it as a
 browser-platform ES module; the build fails if any `node:` import ends up in
 `dist/worker.js`. `wrangler.toml` points `main` at `dist/worker.js` with
-`no_bundle = true`, so exactly the verified bundle is uploaded:
+`no_bundle = true`, so exactly the verified bundle is uploaded. It builds and
+runs with `ai` v4 (the default install) or `ai` v7 (with
+`@ai-sdk/openai`/`@ai-sdk/anthropic` v4) installed, with no compatibility
+flag (no `nodejs_compat`):
 
 ```bash
 cd .loushy/build/cloudflare-worker
@@ -3844,8 +3870,14 @@ Node-only imports (project instructions, the file session store, guardrail
 patches, MCP over stdio) the build points at a shim that fails when used
 (`src/deploy/shims/node.worker.ts`). The built `dist/worker.js` bundle is then
 checked for `node:` and bare Node builtin specifiers as part of `loushy build`,
-and fails the build if any are found. The bundle is larger than a single-turn
-Worker (about 1.7 MB raw, 335 KB gzip for a `mock` agent): `loushy build` reports
+and fails the build if any are found. One exception: `ai` v7 and
+`@ai-sdk/provider-utils` v5 look up `node:module`, `node:dns`,
+`node:diagnostics_channel` and `node:async_hooks` at run time with
+`process.getBuiltinModule()`, only when they detect Node, and fall back to
+`fetch()` (or skip telemetry tracing) elsewhere. Those four ids are accepted as
+the argument of such a call and nowhere else. The bundle is larger than a single-turn
+Worker (about 1.7 MB raw, 340 KB gzip for a `mock` agent on `ai` v4; about 3.4 MB
+raw, 630 KB gzip on `ai` v7): `loushy build` reports
 its size, and `describe()` compares it to Cloudflare's script size limit.
 
 ## Custom targets
@@ -4420,20 +4452,6 @@ input it was given.
 
 **Example:** a tool's `execute` threw.
 
-### LOUSHY_REMOTE_AGENT_FAILED
-
-**Means:** a `remoteAgent()` sub-agent could not deliver an answer: the
-deployed agent was unreachable, answered 401 or another non-2xx status, sent a
-malformed or unfinished stream, or its run ended in an error. The lead model
-gets it as a structured tool error; the bearer token is never part of it.
-
-**Fix:** read the message (it names the url and the remote session id); for a
-401, fix the `auth` token; for a remote run error, look at the remote agent's
-logs for that session.
-
-**Example:** `remoteAgent({ url, auth: 'wrong-token' })` against a deployment
-that sets `LOUSHY_API_TOKEN`.
-
 ## Approvals and sessions
 
 ### LOUSHY_APPROVAL_STORE_MISSING
@@ -4498,8 +4516,10 @@ streaming runner.
 
 ### LOUSHY_REMOTE_UNAUTHORIZED
 
-**Means:** `loushy eval --url` (or `remoteTarget()`) got `401` from the deployed
-agent: the bearer token is missing or wrong. The case fails; the run goes on.
+**Means:** `loushy eval --url`, `remoteTarget()` or a `remoteAgent()` sub-agent
+got `401` from the deployed agent: the bearer token is missing or wrong. An eval
+case fails (the run goes on); the lead model gets a structured tool error. The
+token is never part of the message.
 
 **Fix:** pass the deployment's `LOUSHY_API_TOKEN` with `--token` or the
 `LOUSHY_EVAL_TOKEN` environment variable. See
@@ -4509,11 +4529,16 @@ agent: the bearer token is missing or wrong. The case fails; the run goes on.
 
 ### LOUSHY_REMOTE_REQUEST_FAILED
 
-**Means:** a remote eval case could not run: the deployment was unreachable,
-answered with a non-2xx status, or its event stream was truncated (no
-`run.done`).
+**Means:** a remote eval case (`loushy eval --url`, `remoteTarget()`) or a
+`remoteAgent()` task could not run: the deployment was unreachable, answered
+with a non-2xx status, was aborted, or its event stream broke or was truncated
+(no `run.done`). A `remoteAgent()` task whose remote run ends in an error also
+fails with it, and the message says "the remote run ended in an error". The
+lead model gets it as a structured tool error; the bearer token is never part
+of it.
 
-**Fix:** check the URL, `GET <url>/health` and the deployment's logs.
+**Fix:** read the message (it names the url and, for a sub-agent, the remote
+session id); check the URL, `GET <url>/health` and the deployment's logs.
 
 **Example:** `loushy eval --url http://localhost:1` with nothing listening.
 
@@ -4562,6 +4587,16 @@ a channel (an object with `parse` and `reply`). The message names the file.
 `webhookChannel()` or `slackChannel()`. See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md).
 
 **Example:** `export default { cron: 'x' }` in `channels/sms.ts`.
+
+### LOUSHY_MEMORY_INVALID
+
+**Means:** a file in an agent directory's `memory/` folder does not default-export
+a memory slot (an object with a `scope` and a `provider`). The message names the file.
+
+**Fix:** default-export `defineMemory({ ... })`, or the same options without a `name`
+(the file name is used). See [Memory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md) and [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md#memory).
+
+**Example:** `export default { cron: 'x' }` in `memory/notes.ts`.
 
 ## General
 
@@ -5378,8 +5413,8 @@ console.log((await store.list('global')).map((item) => item.text)); // ['Lives i
   sub-agents. When `agent.approvals.resolve()` continues a run after an
   approval pause, the recalled block stays in the prompt but the memory tools
   are not offered for the rest of that run.
-- `loadAgentDir()` does not read a `memory/` folder yet (planned, LOU-W6.3):
-  pass `memory` as an override.
+- An agent directory's `memory/` folder is part of the agent: see
+  [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md#memory).
 
 # Tracing and observability
 
@@ -7322,7 +7357,7 @@ lead run's abort signal aborts the request. Options: `url`, `auth`, `name`,
 
 Failures (the agent is unreachable, a 401 or other non-2xx answer, a malformed
 stream, or a remote run that ends in an error) reach the lead as the
-structured tool error with the code `LOUSHY_REMOTE_AGENT_FAILED`; the token is
+structured tool error with the code `LOUSHY_REMOTE_REQUEST_FAILED` (`LOUSHY_REMOTE_UNAUTHORIZED` for a 401); the token is
 never part of an error or an event. If the remote run pauses for an approval,
 the task fails with `LOUSHY_SESSION_AWAITING_APPROVAL`, naming the remote
 session and approval id: approvals are not proxied to the lead yet, so decide
@@ -8364,14 +8399,18 @@ there, but a container still never receives it.
 |---|---|
 | `'none'` (default) | No network at all (Docker `NetworkMode: 'none'`). |
 | `'default'` | Docker's default network: unrestricted egress. |
-| `{ allow: ['api.github.com', '*.npmjs.org'] }` | Today: no network. See below. |
+| `{ allow: ['api.github.com', '*.npmjs.org'] }` | No network. See below. |
 
 Docker cannot filter outgoing traffic by host name by itself. An `allow`
-list is only enforced when traffic goes through an egress proxy, which the
-credential-brokering work (LOU-X12) adds. Until then, `{ allow }` fails
-closed: the container runs with no network, and the validated list is kept
-on `sandbox.network` for the proxy to use. Host names are checked when the
-sandbox is constructed, so a URL or a malformed name throws.
+list is only enforced when the proxy is the container's only way out. The
+[credential broker](#credential-broker) is such a proxy, but
+`SubprocessSandbox` does not route a container through it yet (LOU-X12.2):
+with dockerode options alone, a container can only reach a host-side proxy
+over a Docker network that also lets it reach everything else, so that would
+not be enforcement. So `{ allow }` still fails closed:
+the container runs with no network, and the validated list is kept on
+`sandbox.network`. Host names are checked when the sandbox is constructed,
+so a URL or a malformed name throws.
 
 ```ts
 import { createShellTool, SandboxShell, SubprocessSandbox } from '@loushy/build-ai-agent';
@@ -8387,13 +8426,68 @@ const tool = createShellTool(shell, { needsApproval: false });
 
 What this does not cover: a value you pass in `env` or `inheritEnv` is
 readable by the model's commands, and `network: 'default'` lets a command
-send it anywhere. Keep long-lived secrets out of both until credential
-brokering lands.
+send it anywhere. Keep long-lived secrets out of both; use the credential
+broker below instead.
 
 `SandboxAdapter` has no way to cancel a command. When the run is aborted,
 `SandboxShell` returns `aborted: true` immediately, but the container keeps
 running until its timeout kills it. The shell tool always sets a timeout, so
 the container does stop.
+
+### Credential broker
+
+A command the model runs (`git`, `curl`, a script) sometimes has to call an
+authenticated API, but any token in its environment is readable by the
+model. `createCredentialBroker()` keeps the token on the host: it starts a
+local HTTP proxy that adds the auth headers to requests for the hosts you
+name, so the command only ever sees the proxy's address.
+
+```ts
+import { createCredentialBroker, NodeWorkspace } from '@loushy/build-ai-agent';
+
+const token = 'ghp_example'; // read from your secret store; never passed to the command
+const broker = await createCredentialBroker({
+  rules: { 'api.github.com': { authorization: () => `Bearer ${token}` } },
+  allow: ['registry.npmjs.org'], // reachable without injected headers
+});
+const workspace = new NodeWorkspace({ root: './project', env: { ...broker.env } });
+await workspace.exec(`curl -s ${broker.baseUrl('api.github.com')}/user`);
+await broker.close();
+```
+
+- **What it returns.** `url` (the proxy, on an ephemeral `127.0.0.1` port by
+  default), `env` (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` and lower-case
+  forms, for the `env` option of `NodeWorkspace` or `SandboxShell`),
+  `baseUrl(host)` and `close()`, which stops the listener and destroys open
+  sockets. A header value is a string or a function called per request.
+- **Allowlist.** Rule hosts (exact names or `*.suffix`) are allowed
+  implicitly; `allow` adds hosts reached without injected headers. Any other
+  host gets a 403 before a connection is opened. Hosts that resolve to
+  loopback, link-local (such as the cloud metadata address `169.254.169.254`)
+  or private addresses are refused unless listed in `allowPrivate`, so a
+  command cannot use the proxy to reach services on your machine or network.
+- **Secrets stay on the host.** Injected values never appear in `env`, in the
+  proxy's error responses or in any log. A request to a brokered host that
+  already carries an `Authorization` header has it removed and replaced.
+  Hop-by-hop headers (`Connection`, `Proxy-Authorization`, ...) are not
+  forwarded.
+- **HTTPS limitation.** Header injection works on plain-HTTP requests and on
+  the path form: the broker serves `http://127.0.0.1:<port>/__broker/<host>/<path>`
+  and forwards it to `https://<host>/<path>` with the headers added, which is
+  what `baseUrl(host)` returns. Point a tool at that base URL (for example an
+  SDK's `baseURL` option or a `curl` URL) to get auth without holding the
+  token. A client that uses `HTTPS_PROXY` for an `https://` URL opens a
+  `CONNECT` tunnel instead: the broker checks the allowlist on the tunnel
+  target and passes the encrypted bytes through untouched, so no header is
+  added. The broker does not intercept TLS.
+- **It is not a firewall on the host.** A command run by `NodeWorkspace` can
+  ignore the proxy variables and open its own connections; the allowlist
+  only covers traffic sent through the broker. What the broker guarantees is
+  that the token is never in the command's reach.
+- **Containers.** Passing `broker.env` to a `SubprocessSandbox` command does
+  not help yet: the container has no network for `{ allow }`, and the proxy
+  listens on the host's loopback. Routing containers through the broker is
+  LOU-X12.2.
 
 ## Writing your own provider
 
