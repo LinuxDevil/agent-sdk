@@ -3,7 +3,7 @@
 Mission: make `@loushy/build-ai-agent` the best TypeScript AI agent SDK (capabilities and DX) against
 Vercel eve and MaxGfeller/open-harness. This file is the loop's memory: read it first, update it last.
 
-- Loop started: 2026-10-01. Iterations completed: 8.
+- Loop started: 2026-10-01. Iterations completed: 9.
 - Audit: `.agent-loop/AUDIT.md`, refreshed 2026-10-01 at main `a03b1a3` (eve 0.69.0 @682c7a6, open-harness 0.7.0 @026e8d9).
   Reference agents (3 agents x 3 SDKs, measured): `.agent-loop/reference-agents/`. Older material: `docs/research/*.md`, `docs/plan/tickets.md`.
   Audit is stale when: a competitor ships a new major, or more than ~25 PRs land after `a03b1a3` (re-run the DX measurement then).
@@ -41,7 +41,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Agent asks the user a question | ✅ flipped (X9 #111: `ask_question`, durable pause, `approvals.answer`, hook `answer()`) | ✅ | ❌ | - |
 | Steering (mid-run input) | ❌ | ✅ | ❌ | V9, V10 |
 | Cancellation | ✅ | ✅ | ✅ | - |
-| Memory (cross-session) | ❌ | ✅ | ❌ | W6 |
+| Memory (cross-session) | ✅ flipped (W6 #117: `defineMemory` slots, scopes, in-memory/file providers, remember/recall tools) | ✅ | ❌ | W6.2 sqlite provider, W6.3 agent-dir `memory/` |
 | Sessions (multi-turn) | ✅ flipped (V8 session.stream, #78) | ✅ | ✅ | W9 (checkpointing sessions, durability row) |
 | Skills (SKILL.md) | ✅ | ✅ | ✅ | - |
 | AGENTS.md loading | ✅ | ⚠️ | ✅ | - |
@@ -61,13 +61,13 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | UI bindings React/Vue/Svelte | ⚠️ flipped (React `useLoushyAgent` #85) | ✅ | ⚠️ | P2, P3 |
 | AI SDK UI stream | ❌ | ⚠️ | ✅ | P1 |
 | CLI scaffolding | ⚠️ (unpublished) | ✅ | ❌ | D49, U20 |
-| Dev TUI / REPL | ⚠️ (D31 dev serves dirs/TS) | ✅ | ⚠️ | D32 (stateful streaming chat), D33 (`loushy chat`) |
+| Dev TUI / REPL | ⚠️ (D31 + D32 #116: stateful streaming web chat with approvals) | ✅ | ⚠️ | D33 (`loushy chat` terminal REPL) |
 | Visual studio / debugger | ✅ | ❌ | ❌ | - |
 | Channels | ⚠️ | ✅ | ❌ | P5-P7 |
 | Schedules | ⚠️ | ✅ | ❌ | P8, P9 |
 | Deploy story | ⚠️ | ✅ | ❌ | D14 |
 | Edge runtime (Workers) | ✅ | ❌ | ❌ | - |
-| Budgets / limits | ⚠️ (`max-steps` finish reason #83) | ✅ | ⚠️ | V6 |
+| Budgets / limits | ✅ flipped (V6 #118: run and session `limits`, `budget-exceeded`, `BudgetExceededError`) | ✅ | ⚠️ | - |
 | Guardrails (input/output) | ⚠️ | ⚠️ | ❌ | X4, X5 |
 | Permissions policy | ✅ flipped (X2 #105: `permissions` rules, audit log, `permission.decision` event, inherited by sub-agents) | ✅ | ⚠️ | X8 (policy helpers on needsApproval) |
 | Credential brokering | ❌ | ✅ | ❌ | X11, X12 |
@@ -81,7 +81,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Published on npm | ❌ (owner action) | ✅ | ✅ | D49 |
 | Current `ai` major | ❌ | ✅ | ✅ | D22-D29 |
 
-Score (us): 28 ✅ / 11 ⚠️ / 12 ❌ of 51 after iteration 8 (iteration 7: 25/13/13; iteration 6: 24/13/14; iteration 5: 23/14/14; iteration 4: 22/15/14; iteration 3: 20/15/16 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
+Score (us): 30 ✅ / 10 ⚠️ / 11 ❌ of 51 after iteration 9 (iteration 8: 28/11/12; iteration 7: 25/13/13; iteration 6: 24/13/14; iteration 5: 23/14/14; iteration 4: 22/15/14; iteration 3: 20/15/16 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
 
 Differentiators shipped (target: 3): 3 of 8 (#1 host-agnostic durable sessions: W9 #89 + D30 #94; #2 record/replay evals: D46 #96; #6 OTel GenAI metrics + cost: D48 #95). Remaining (candidates in AUDIT section 7: host-agnostic durable sessions D30; record/replay evals D46; Forge time-travel D43-D45; MCP+ACP+HTTP reach Z6/D14; both authoring modes with hot reload D31-D33; OTel metrics D48; trajectory evals remote D47; edge-native agents D51/P9).
 
@@ -111,7 +111,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | V1 cancellation, V2 typed stream, V3 parallel tools, V5 usage/cost | | ✅ | |
 | V4 | Structured output (`output: zodSchema`, `result.object`, one repair step, `'output-invalid'`) | ✅ #90 | |
 | V4.2 | Sub-agents inherit `output`; typed `session.send()` object | ⬜ | V4 |
-| V6 | Budgets (`limits`) | ⬜ | |
+| V6 | Budgets (`limits` on run and session, `budget.exceeded` event) | ✅ #118 | |
 | V7.1 | Provider retry + fallback wrappers | ✅ #74 | |
 | V7.2 | `createAgent({ retry, fallbackModels })` + `provider.retry`/`provider.fallback` events; retries no longer stack | ✅ #86 | |
 | V8 | `session.stream()` | ✅ #78 | |
@@ -131,7 +131,9 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | W2 | Compaction: prune old tool results (`createCompactionHook`, prunes the transcript in place) | ✅ #80 | |
 | W3 | Compaction: summarize + two-phase strategies, pinned messages, async `compact` | ✅ #84 | |
 | W3.2 | `compaction.start/done` events, `createAgent({ compaction, hooks })` | ✅ #102 | |
-| W6 | Scoped memory slots | ⬜ | |
+| W6 | Scoped memory slots (`defineMemory`, `createAgent({ memory })`) | ✅ #117 | |
+| W6.2 | `sqliteMemory(store)` provider | ⬜ | W6 |
+| W6.3 | `loadAgentDir()` picks up `memory/<slot>.ts` | ⬜ | W6 |
 | W8 | Manual compact and clear | ⬜ | W2, W3 |
 | W9 | Sessions that checkpoint (`checkpointStore`, `session.resume()/pending()/discardPending()`) | ✅ #89 | |
 | W9.2 | Agent fingerprint on resume (warn/refuse on drift) | ⬜ | W9 |
@@ -164,7 +166,8 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 |---|---|---|---|
 | Z1, Z2, Z3 | | ✅ | |
 | Z4 | `connectMcp()` + `createAgent({ mcpServers })` + specToAgent connects (D20.2 closed) | ✅ #100 | |
-| Z5 | MCP annotations drive approval | ⬜ | Z4 |
+| Z5 | MCP annotations drive approval (`approval` per server; default asks for non-read-only) | ✅ #115 | |
+| Z5.2 | `serveMcp` emits annotations from `needsApproval` | ⬜ | Z5 |
 | Z6 | `loushy acp` | ⬜ | V14 |
 
 ### Epic D — DX, CLI, packaging, testing
@@ -183,14 +186,15 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D23 | Own the execute-context type (`ToolExecutionContext`) | ✅ #103 | |
 | D23.2 | Executor sets `sessionId` on the execute context | ⬜ | D23 |
 | D24 | Small built-ins to `defineTool` (+ `toolDescriptorFromSchema` for MCP) | ✅ #108 | |
-| D25 | github and jira to `defineTool` | ⬜ | D22 |
+| D25 | github and jira to `defineTool` (48 tools; `src/tools` has no `ai` import) | ✅ #114 | |
 | D26 | `ai` v6/v7 adapter: generate | ⬜ | D23-D25 |
 | D27 | `ai` v6/v7 adapter: stream | ⬜ | D26 |
 | D28 | Provider peers and ranges | ⬜ | D27 |
 | D29 | zod 4 / Standard Schema | ⬜ | D22 |
 | D30 | One `store` option (`AgentStore`, `memoryStore()`, `send({ sessionId })`, `agent.resume(id)`) | ✅ #94 | |
 | D31 | `loushy dev` for dirs and TS, hot reload (`devReload.ts`, `/dev/status`) | ✅ #110 | |
-| D32 | Stateful streaming dev chat | ⬜ | D31 |
+| D32 | Stateful streaming dev chat (session per tab, SSE, approval/question buttons) | ✅ #116 | |
+| D32.2 | Stream approval continuations live (needs streaming resume, V14) | ⬜ | V14 |
 | D33 | `loushy chat` REPL | ⬜ | V14 |
 | D34 | `AgentType` off the user path (deprecated; apps/examples still call `setType`, follow-up D34.2) | ✅ #76 | |
 | D35 | Delete flow converters, drop `nanoid` (`newId()` on `crypto.randomUUID`) | ✅ #82 | |
@@ -276,6 +280,11 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | #109 | V12 | merged (squash; reducer import conflict) | multimodal public API |
 | #110 | D31 | merged (squash) | loushy dev dirs + hot reload |
 | #113 | D45.2 | merged (squash; docs duplicate paragraph removed) | Forge History tab |
+| #114 | D25 | merged (squash) | github/jira on defineTool |
+| #115 | Z5 | merged (squash) | MCP annotations -> approval |
+| #116 | D32 | merged (squash) | streaming dev chat |
+| #118 | V6 | merged (squash) | budgets |
+| #117 | W6 | merged (squash; createAgent conflicts with V6 combined) | memory slots |
 
 ## Main health
 
@@ -328,14 +337,19 @@ CI runs only on `pull_request`, so "main is green" means the last PR's CI run pa
 - Lint warnings: 404 -> 402.
 - Note: a local `dist/` must be rebuilt before Forge typechecks in the orchestrator checkout (Forge resolves the SDK via `file:../..`).
 
-## Next batch (iteration 9)
+### Iteration 9 (2026-10-01)
+- Merged: #114 (D25), #115 (Z5), #116 (D32), #118 (V6), #117 (W6).
+- Matrix flips: Memory ❌->✅, Budgets ⚠️->✅.
+- Lint warnings: 402 -> 400. Breaking (CHANGELOG'd): MCP tools without `readOnlyHint` now ask for approval by default (`approval: 'never'` restores).
 
-1. V6 (opus): budgets `limits: { maxTokens, maxCostUsd, maxDurationMs, maxSteps }` -> `finishReason: 'budget-exceeded'` + typed detail; AgentExecutor loop + runUsage; createAgent option.
-2. W6 (opus): scoped memory slots (`defineMemory({ scope, provider })`, recall on session start, `remember`/`recall` tools, file provider); new src/memory; createAgent option.
-3. D25 (sonnet): github and jira to `defineTool` (48 calls; override canonical `execute` for disabled tools).
-4. D32 (sonnet): stateful streaming dev chat (session per tab, SSE `AgentEvent`s, approval/question buttons); src/cli/dev*, dev-ui.
-5. Z5 (sonnet): MCP annotations drive approval (`destructiveHint` -> needsApproval, `readOnlyHint` -> false; per-server override); src/tools/mcp.
-Then: X8, D26, D27, D28, D29, D33, V9, V10, V13, V15, X4, X5, X11, X12, Y6, Y7, Z6, D14, D47, D49, D50, D51, P1-P9, D2.2, D43.2, U14.2, V4.2, W9.2, D23.2, U20, U21.
+## Next batch (iteration 10)
+
+1. D26 (opus): `ai` v6/v7 adapter for `generate()` (ModelMessage, maxOutputTokens, stopWhen, inputTokens; contract tests with the new `ai/test` mock); src/providers/aiSdkProvider.ts behind a version switch.
+2. V9 (opus): queued follow-up input (`run.enqueue(text)`, `session.send()` while busy with `turnPolicy: 'queue'`, `input.queued/applied` events); AgentExecutor/agentRun.
+3. D33 (sonnet): `loushy chat` terminal REPL (streams, y/n approvals, question prompts, `/new`, `/model`); src/cli/chat.ts.
+4. X4 (opus): input/output guardrails (`guardrails: { input, output }`, `finishReason: 'guardrail'`); new src/execution/guardrailsIO.ts wired via hooks; createAgent option.
+5. D14 (sonnet): deployed `/chat` upgrade on node-server target: sessions, SSE, bearer auth (reuse the D32 dev routes); src/deploy.
+Then: D27, D28, D29, V10, V13, V15, X5, X8, X11, X12, Y6, Y7, Z6, D47, D49, D50, D51, P1-P9, D2.2, D43.2, U14.2, V4.2, W9.2, D23.2, W6.2, W6.3, Z5.2, D32.2, U20, U21.
 
 ## Subagent brief (canonical copy)
 
