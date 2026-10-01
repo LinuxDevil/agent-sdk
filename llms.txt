@@ -8,6 +8,7 @@
 - [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md): `ai` (the Vercel AI SDK, `^4.3.19`) and `zod` (`^3.25.76`) are required peer dependencies.
 - [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md): Every TypeScript snippet on this page is a complete, standalone ES module (`.mts`).
 - [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md): The package root (`@loushy/build-ai-agent`) exports everything below.
+- [Agent Client Protocol (ACP)](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/acp.md): The Agent Client Protocol lets an editor drive a coding agent that runs as a subprocess: the editor writes JSON-RPC 2.0 requests to the agent's stdin, one JSON message per line, and reads the agent's replies and streamed updates from its stdout.
 - [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md): An agent can be defined as a directory.
 - [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md): Flag a tool `needsApproval` and the run pauses before calling it, until a human (or your code) approves or rejects the call.
 - [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md): A channel connects an agent to one surface: a JSON API, a webhook, a chat app.
