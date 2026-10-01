@@ -3,6 +3,8 @@
  * Executes agents with streaming support and tool calling
  */
 
+import type { Skill } from '../skills/defineSkill';
+import { withSkills } from '../skills/withSkills';
 import { nanoid } from 'nanoid';
 import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult, ToolDefinition } from '../providers';
 import { AgentConfig } from '../types';
@@ -103,6 +105,16 @@ export interface ExecuteOptions {
   input: string | Message[];
   provider: LLMProvider;
   toolRegistry?: ToolRegistry;
+  /**
+   * Skills (LOU-Y2): instructions the model loads on demand. Their names and
+   * descriptions are appended to the system prompt and a `load_skill` tool is
+   * registered; bodies only enter the conversation when the model loads them.
+   * Throws if a tool named `load_skill` is already registered.
+   *
+   * @example
+   * AgentExecutor.execute({ agent, input, provider, skills: [defineSkill({ name, description, content })] });
+   */
+  skills?: readonly Skill[];
   streaming?: boolean;
   maxSteps?: number;
   temperature?: number;
@@ -331,7 +343,11 @@ export class AgentExecutor {
       exporter,
       'agent.run',
       { input: typeof input === 'string' ? input : JSON.stringify(input) },
-      async (agentSpan) => this.runAgentLoop(options, agentSpan.id),
+      async (agentSpan) =>
+        this.runAgentLoop(
+          { ...options, ...withSkills(options.agent, options.toolRegistry, options.skills) },
+          agentSpan.id
+        ),
       undefined
     );
   }
