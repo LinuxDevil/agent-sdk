@@ -192,6 +192,8 @@ export interface RunDoneEvent extends AgentEventBase<'run.done'> {
   text: string;
   /** Total tokens of the run; absent when the run failed. */
   usage?: AgentEventUsage;
+  /** LOU-V4: `ExecutionResult.object` (the validated `output`), JSON-encoded; absent when there is none. */
+  object?: unknown;
 }
 
 /**
