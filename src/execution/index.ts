@@ -20,6 +20,8 @@ export * from './guardrails';
 export * from './hooks';
 export { ToolArgumentsValidationError } from './toolArgsValidation';
 export type { ToolArgumentIssue } from './toolArgsValidation';
+export { toolErrorResult } from './toolErrors';
+export type { ToolErrorKind, ToolErrorResult, ToolErrorInput } from './toolErrors';
 export type { OutputError } from './structuredOutput';
 export type { ToolConcurrency } from './toolBatch';
 export {

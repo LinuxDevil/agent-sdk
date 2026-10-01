@@ -19,6 +19,7 @@ import { NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
 import { HookRegistry } from './hooks';
 import { toolErrorMessage } from './propagatingToolError';
+import { toolErrorResult, type ToolErrorResult } from './toolErrors';
 import { splitPendingTurn } from './transcript';
 import { replaceToolResult, type ToolCallScope } from './subagentRuntime';
 import type { RunUsage } from '../models/usage';
@@ -173,7 +174,16 @@ async function decidedToolMessage(
   }
   if (!ctx.decision.approved) {
     return {
-      message: toolResultMessage(pending, { error: 'Tool execution was rejected by the reviewer', note: ctx.decision.note }, true),
+      message: toolResultMessage(
+        pending,
+        toolErrorResult({
+          toolName: pending.toolName,
+          error: 'Tool execution was rejected by the reviewer',
+          kind: 'rejected',
+          details: { note: ctx.decision.note },
+        }),
+        true
+      ),
     };
   }
   // A sub-agent the approved tool starts inherits this resumed run's runtime.
@@ -276,9 +286,13 @@ function closeUnlistedToolCalls(messages: Message[], remaining: ToolCall[] | und
     }
     messages.push({
       role: 'tool',
-      content: JSON.stringify({
-        error: 'Tool call was not run: the run paused for approval before reaching it and this approval was saved without its remaining calls',
-      }),
+      content: JSON.stringify(
+        toolErrorResult({
+          toolName: call.function.name,
+          error: 'Tool call was not run: the run paused for approval before reaching it and this approval was saved without its remaining calls',
+          kind: 'not-run',
+        })
+      ),
       name: call.function.name,
       toolCallId: call.id,
       toolName: call.function.name,
@@ -319,7 +333,15 @@ async function runApprovedToolCall(
   // means there is genuinely no way to run the tool (neither a direct
   // `execute` nor a `sandboxExecute`).
   if (!toolDesc || !toolDesc.tool || (!getToolExecute(toolDesc) && !toolDesc.sandboxExecute)) {
-    throw new Error(`Tool '${pending.toolName}' not found in registry`);
+    return toolResultMessage(
+      pending,
+      toolErrorResult({
+        toolName: pending.toolName,
+        error: `Tool '${pending.toolName}' not found in registry`,
+        kind: 'not-found',
+      }),
+      true
+    );
   }
 
   // LOU-Q1: hooks must fire for this deferred, post-approval execution
@@ -349,7 +371,7 @@ async function runApprovedToolCall(
     await hooks.runPreToolCall(hookCtx);
   }
 
-  const { result, toolError } = await executeApprovedTool(pending, toolDesc, hookArgs, executeOptions, scope);
+  const { result, toolError, errorResult } = await executeApprovedTool(pending, toolDesc, hookArgs, executeOptions, scope);
 
   // Fires (with the settled result/error) regardless of how the tool
   // settled - matching AgentHook.postToolCall's documented contract
@@ -362,7 +384,7 @@ async function runApprovedToolCall(
     await hooks.runPostToolCall(hookCtx, { result, error: toolError });
   }
 
-  return toolResultMessage(pending, toolError ? { error: toolError } : result, Boolean(toolError));
+  return toolResultMessage(pending, errorResult ?? result, errorResult !== undefined);
 }
 
 /**
@@ -386,7 +408,7 @@ async function executeApprovedTool(
   args: Record<string, unknown>,
   executeOptions: ResumeExecuteOptions,
   scope?: ToolCallScope
-): Promise<{ result: unknown; toolError?: string }> {
+): Promise<{ result: unknown; toolError?: string; errorResult?: ToolErrorResult }> {
   try {
     // Mirrors AgentExecutor.executeToolCall()'s fail-closed handling of
     // `requiresSandbox` tools (LOU-F5) via the shared
@@ -421,11 +443,13 @@ async function executeApprovedTool(
     // the pending-approval record has already been deleted
     // (ApprovalGate.resolve() is delete-on-read), so failing to catch
     // here would mean the whole resume just fails with no retry path.
-    // Uses the same `(error as Error).message` extraction AgentExecutor's
-    // catch block uses, wrapped in the `{error}`-shaped payload the
-    // rejection branch of resumeAfterApproval() already uses for
-    // non-approved decisions.
-    return { result: undefined, toolError: toolErrorMessage(error) };
+    // LOU-U14: the model gets the same structured error as in the main loop;
+    // `toolError` keeps the plain message for the postToolCall hook.
+    return {
+      result: undefined,
+      toolError: toolErrorMessage(error),
+      errorResult: toolErrorResult({ toolName: pending.toolName, error }),
+    };
   }
 }
 
