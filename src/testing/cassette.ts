@@ -44,6 +44,7 @@ const requestSchema = z.object({
       name: z.string().optional(),
       toolName: z.string().optional(),
       isError: z.boolean().optional(),
+      attachments: z.array(z.string()).optional(),
       toolCalls: z.array(z.object({ name: z.string(), arguments: z.string() })).optional(),
     })
   ),

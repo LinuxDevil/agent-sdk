@@ -260,6 +260,11 @@ Guarantees, whatever the limit:
 | `OpenAIProvider`, `AnthropicProvider`, `OllamaProvider`, `OpenRouterProvider` | Provider classes. |
 | `createMockProvider()`, `MockLLMProvider` | Deterministic mock provider for tests and demos.   |
 | `withRetry(provider, opts?)`, `withFallback(providers, opts?)` | Retry transient provider failures with backoff; fall back to the next provider. See [Configuration](configuration.md#provider-retries-and-fallback). |
+| `textOf(message)`               | The text of a message: its string `content`, or its text parts joined. |
+
+`Message.content` is a string or a list of `ContentPart`s (`text`, `image`,
+`file`); the built-in providers send image parts on user messages. See
+[Multimodal input](./providers.md#multimodal-input).
 
 See [Providers](./providers.md) for how a model string is resolved and which model runs.
 
@@ -517,7 +522,10 @@ and, if the run is still too big, replaces old turns with a summary written
 by `model`; `summarizeStrategy()` only summarizes. `pinMessage(message)` marks
 a message that is never pruned or summarized. `compactMessages(messages, options)`
 does the same once, by hand (async), and `CompactionStrategy` is the
-pluggable interface (`compact()` may be async). See [Context compaction](./compaction.md).
+pluggable interface (`compact()` may be async). `createAgent({ compaction: true })`
+installs the hook on an agent (`createAgent({ hooks })` takes any other
+`AgentHook`s), and `stream()` emits `compaction.start` / `compaction.done`.
+See [Context compaction](./compaction.md).
 
 ## Flows, evals, observability and security
 

@@ -112,6 +112,45 @@ export interface CheckpointDeleteOptions {
   keepHistory?: boolean;
 }
 
+/** Changes `AgentExecutor.fork()` applies to the forked checkpoint (LOU-D44), in this order. */
+export interface ForkPatch {
+  /** Rewrites the transcript (it gets a copy). */
+  messages?: (messages: Message[]) => Message[];
+  /** Replaces `businessState` (`null` clears it). */
+  businessState?: unknown;
+  /**
+   * Replaces the result of the tool call `toolCallId` (the message keeps its
+   * place, call id and tool name, so the transcript stays valid), or records
+   * it when the call has no result yet. `result` is JSON-serialized, as tool
+   * results are.
+   */
+  toolResult?: { toolCallId: string; result: unknown };
+  /** Queues a user message, sent after any tool calls still pending. */
+  appendInput?: string;
+}
+
+/** Options for `AgentExecutor.fork()` (LOU-D44). */
+export interface ForkOptions {
+  /** The session to fork; it is not changed. */
+  sessionId: string;
+  /** The step (`stepIndex`) to fork at; the newest history entry of that step is used. */
+  fromStep: number;
+  /** The fork's session id. Default: `<sessionId>.fork-<n>`, the first `n` with no checkpoint. */
+  newSessionId?: string;
+  /** A store that keeps a history (`history()`); the fork is saved in it too. */
+  checkpointStore: CheckpointStore;
+  patch?: ForkPatch;
+}
+
+/** A fork made by `AgentExecutor.fork()`: continue it with `execute({ sessionId, checkpointStore, input: [] })`. */
+export interface ForkResult {
+  sessionId: string;
+  /** The step it was forked at. */
+  step: number;
+  /** The fork's current checkpoint (`status: 'in-progress'`). */
+  checkpoint: Checkpoint;
+}
+
 /** How many checkpoints a store's history keeps per session unless told otherwise. */
 export const DEFAULT_CHECKPOINT_HISTORY_LIMIT = 50;
 

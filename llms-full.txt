@@ -69,7 +69,7 @@ agent can be an `agent.yaml` spec served with `npx loushy dev agent.yaml`
 ## Features
 
 - **Tools**: `defineTool()` with a zod `input`; arguments are typed, validated, and run in parallel. [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md)
-- **Approvals**: `needsApproval` pauses a run; `agent.approvals.resolve()` continues it, or `approve` decides in code. [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)
+- **Approvals and permission policies**: `needsApproval` pauses a run; `agent.approvals.resolve()` continues it, or `approve` decides in code. `permissions` rules allow, deny or ask per tool before that, with an audit log. [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)
 - **Sessions**: `agent.session()` keeps a multi-turn conversation in memory, files or SQLite. [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md)
 - **Structured output**: `output: zodSchema` makes the final reply a typed, validated `result.object`, with one repair step. [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)
 - **Streaming**: `agent.stream()` and `session.stream()` yield typed, versioned JSON events ready for SSE. [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)
@@ -938,6 +938,11 @@ Guarantees, whatever the limit:
 | `OpenAIProvider`, `AnthropicProvider`, `OllamaProvider`, `OpenRouterProvider` | Provider classes. |
 | `createMockProvider()`, `MockLLMProvider` | Deterministic mock provider for tests and demos.   |
 | `withRetry(provider, opts?)`, `withFallback(providers, opts?)` | Retry transient provider failures with backoff; fall back to the next provider. See [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#provider-retries-and-fallback). |
+| `textOf(message)`               | The text of a message: its string `content`, or its text parts joined. |
+
+`Message.content` is a string or a list of `ContentPart`s (`text`, `image`,
+`file`); the built-in providers send image parts on user messages. See
+[Multimodal input](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md#multimodal-input).
 
 See [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md) for how a model string is resolved and which model runs.
 
@@ -1195,7 +1200,10 @@ and, if the run is still too big, replaces old turns with a summary written
 by `model`; `summarizeStrategy()` only summarizes. `pinMessage(message)` marks
 a message that is never pruned or summarized. `compactMessages(messages, options)`
 does the same once, by hand (async), and `CompactionStrategy` is the
-pluggable interface (`compact()` may be async). See [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md).
+pluggable interface (`compact()` may be async). `createAgent({ compaction: true })`
+installs the hook on an agent (`createAgent({ hooks })` takes any other
+`AgentHook`s), and `stream()` emits `compaction.start` / `compaction.done`.
+See [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md).
 
 ## Flows, evals, observability and security
 
@@ -1858,6 +1866,73 @@ approval stops the batch: the calls before it run, the run pauses on it, and
 the calls after it run once it is decided (see
 [Approvals in the middle of a tool batch](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#approvals-in-the-middle-of-a-tool-batch)).
 
+## Permission policies
+
+`permissions` sets rules for the whole agent instead of tool by tool: a list of
+`{ tool, when?, action, reason? }` rules, checked in order for every tool call
+before the tool's own `needsApproval`. The first rule that matches decides:
+
+- `allow` runs the call, without approval even if `needsApproval` would ask.
+- `deny` does not run it. The model gets a tool error with `kind: 'denied'`
+  and the rule's `reason` (see [Tool errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md)), and streams see
+  `tool.error`.
+- `ask` pauses the run for approval, exactly like `needsApproval` (or asks the
+  `approve` callback).
+
+When no rule matches, the tool's own `needsApproval` decides, as before.
+`tool` is a name, a list of names, a `RegExp` tested against the name, or
+`'*'` for every tool. `when` narrows a rule to some calls: it gets the
+validated arguments (after `preToolCall` hooks) and `{ toolName, toolCallId,
+sessionId }`, and may be async; when it throws, the call fails with that
+error. `allow(tools)`, `deny(tools, reason?)` and `ask(tools)` build the
+common rules.
+
+```ts
+import { allow, ask, createAgent, defineTool, deny, type PermissionRule } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+
+const shell = defineTool({
+  name: 'shell',
+  description: 'Run a shell command',
+  input: z.object({ command: z.string() }),
+  execute: async ({ command }) => `ran ${command}`,
+});
+
+const noDeletes: PermissionRule = {
+  tool: 'shell',
+  when: (args) => /\brm\b/.test(String(args.command)),
+  action: 'deny',
+  reason: 'Deleting files is not allowed',
+};
+
+const agent = createAgent({
+  provider,
+  instructions: 'You are a coding assistant.',
+  tools: [shell],
+  permissions: [
+    noDeletes, // first match wins: this beats the `ask` below
+    allow(/^read_/), // read-only tools never pause
+    deny('delete_file', 'Use the trash tool instead'),
+    ask(['shell', 'write_file']),
+  ],
+  onPermissionDecision: (entry) => console.log(entry.at, entry.toolName, entry.decision, entry.rule?.reason),
+});
+```
+
+`onPermissionDecision` is the audit log: it is called once per tool call
+(except calls already refused for invalid arguments) with
+`{ toolName, toolCallId, decision, rule?, args?, at }`. `decision` is the
+matching rule's action or `'default'` when none matched, `rule` is that rule's
+`{ index, reason? }`, `at` is an ISO timestamp, and `args` is left out when the
+run sets `redactContent`. Streams get the same entry as a `permission.decision`
+event (see [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)). Both are only produced when the agent
+sets `permissions` or `onPermissionDecision`.
+
+Both options also exist on `AgentExecutor.execute()` / `stream()` and
+`resumeAfterApproval()`. Sub-agents inherit the lead agent's rules, checked
+before the sub-agent's own, and report their decisions to the lead's
+`onPermissionDecision`.
+
 ## `createAgent()` agents
 
 - A paused `send()` resolves (it does not throw) with
@@ -2047,6 +2122,60 @@ first it replaces old tool results with a short marker, and if that is not
 enough it replaces the oldest turns with a summary written by a (cheaper)
 model.
 
+## Compacting an agent
+
+With `createAgent()`, turn compaction on with the `compaction` option. `true`
+installs the hook with its defaults (prune old tool results above 90% of the
+model's window); an object configures it, and `summarizer` selects
+`twoPhaseStrategy()` with that model (a `"provider/model"` string or an
+`LLMProvider`):
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const simple = createAgent({ model: 'openai/gpt-4o', compaction: true });
+
+const agent = createAgent({
+  model: 'openai/gpt-4o',
+  compaction: {
+    thresholdPercent: 0.8, // compact above 80% of the context window (default 0.9)
+    protectedTokens: 20_000, // never change the newest 20K tokens (default 40_000)
+    summarizer: 'openai/gpt-4o-mini', // prune, then summarize if still too big
+  },
+});
+
+for await (const event of agent.stream('Audit the repository.')) {
+  if (event.type === 'compaction.done') console.log(`${event.tokensBefore} -> ${event.tokensAfter} tokens`);
+}
+```
+
+The object takes `strategy`, `thresholdPercent`, `contextWindow` and
+`protectedTokens` (as in the table below) and `summarizer`; combining
+`summarizer` with `strategy` is a configuration error (pass
+`twoPhaseStrategy({ model })` as the `strategy` instead). `createAgent({ hooks })`
+takes any other `AgentHook`s, which run before the compaction hook, so
+compaction sees what they added. Hooks and compaction apply to `send()`,
+`stream()` and sessions.
+
+### Stream events
+
+`agent.stream()`, `session.stream()` and `AgentExecutor.stream()` report each
+compaction as two events, inside the step and before the model call that
+triggered it (see [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#event-schema-version-1)):
+
+| `type` | Fields |
+| --- | --- |
+| `compaction.start` | `strategy`, `tokensBefore`, `contextWindow`, `thresholdTokens` |
+| `compaction.done` | `strategy`, `tokensBefore`, `tokensAfter`, `prunedToolCallIds`, `summary?: boolean`, `error?: { message }` |
+
+Every `compaction.start` is followed by exactly one `compaction.done`. When the
+strategy could not shrink anything, `tokensAfter` equals `tokensBefore`; when it
+failed (or the summarizer failed and the hook fell back to pruning), `error` is
+set and the run continues. `summary` is `true` when old turns were replaced by
+a summary (the text itself is not sent; use `onCompaction` for it). A
+non-streaming `send()` emits no events. Hooks add their own events with
+`ctx.emit?.(...)` on the `preGenerate` context, which exists only in streamed runs.
+
 ## Compacting a run
 
 `createCompactionHook()` returns an `AgentHook` named `compaction`. Register it
@@ -2232,9 +2361,9 @@ const keepRecent: CompactionStrategy = {
 const hook = createCompactionHook({ strategy: keepRecent });
 ```
 
-Typed `compaction.*` stream events and a `createAgent({ compaction })` option
-are planned (LOU-W3.2); until then `onCompaction` is where to observe
-compactions.
+A custom strategy gets the same `compaction.start` / `compaction.done` events as
+the built-in ones. `onCompaction` (on `createCompactionHook()`) still receives
+the summary text and the `Error`.
 
 # Configuration
 
@@ -2574,6 +2703,8 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `projectInstructions` | `true` or `{ cwd?, files? }`: append the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (off by default; see [Project instructions](#project-instructions)). |
 | `retry`    | `withRetry()` options for failed model calls, or `false`. Default `{ maxRetries: 2 }` for `model` strings; a `provider` instance is wrapped only when set. See [Provider retries and fallback](#provider-retries-and-fallback). |
 | `fallbackModels` | `provider/model` strings tried in order when the model still fails after its retries. |
+| `hooks`    | `AgentHook[]` run around every model call and tool call, in order, before the compaction hook (see `AgentHook` in the [API overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md)). |
+| `compaction` | `true` (prune old tool results above 90% of the context window) or `{ strategy?, thresholdPercent?, contextWindow?, protectedTokens?, summarizer? }`; `summarizer` (`'provider/model'` or an `LLMProvider`) selects the two-phase strategy. `stream()` reports `compaction.start` / `compaction.done`. See [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md#compacting-an-agent). |
 
 With neither `model` nor `provider`, `createAgent()` resolves from the
 environment: `LOUSHY_MODEL` (a `'provider/model'` string) if set, otherwise
@@ -3049,6 +3180,75 @@ await checkpoints.delete('chat-42', { keepHistory: true });
   an existing database file is opened; `prune()` also removes history entries
   older than its cutoff.
 
+## Fork and replay
+
+`AgentExecutor.fork()` starts a new session from a step of another session's
+history: "what if the tool had returned something else at step 1?" It takes the
+newest history entry of `fromStep`, applies `patch`, saves the result as the
+`'in-progress'` checkpoint of the new session and returns
+`{ sessionId, step, checkpoint }`. Resume the fork like any unfinished run:
+
+```ts
+import { AgentExecutor, compareTrajectories, memoryStore } from '@loushy/build-ai-agent';
+
+const { checkpoints } = memoryStore();
+await AgentExecutor.execute({ agent, provider, toolRegistry, input: 'Plan my trip', sessionId: 'trip', checkpointStore: checkpoints });
+
+const fork = await AgentExecutor.fork({
+  sessionId: 'trip',
+  fromStep: 1,
+  checkpointStore: checkpoints,
+  patch: { toolResult: { toolCallId: 'call_weather', result: { forecast: 'rain' } } },
+});
+// fork.sessionId is 'trip.fork-1'; the 'trip' checkpoint and history are unchanged.
+await AgentExecutor.execute({ agent, provider, toolRegistry, input: [], sessionId: fork.sessionId, checkpointStore: checkpoints });
+
+const original = await checkpoints.load('trip');
+const replayed = await checkpoints.load(fork.sessionId);
+if (original && replayed) {
+  const { divergedAt, a, b, drift } = compareTrajectories(original, replayed);
+  console.log(divergedAt, a.length, b.length, drift); // 1, then each run's steps and the tool-call diff
+}
+```
+
+With `createAgent({ store })`, `agent.fork(sessionId, { fromStep, patch? })`
+does the same over `store.checkpoints`, and `agent.resume(fork.sessionId)`
+continues the fork:
+
+```ts
+import { createAgent, memoryStore } from '@loushy/build-ai-agent';
+
+const assistant = createAgent({ provider, store: memoryStore() });
+await assistant.send('Plan my trip', { sessionId: 'trip' });
+const fork = await assistant.fork('trip', { fromStep: 1, patch: { appendInput: 'It will rain, plan for that.' } });
+const result = await assistant.resume(fork.sessionId);
+```
+
+- `patch` is applied in this order: `messages(messages)` rewrites the
+  transcript; `businessState` replaces it; `toolResult: { toolCallId, result }`
+  replaces that call's result in place (same position, call id and tool name,
+  so the transcript stays valid for every provider), or records it when the
+  call has no result yet; `appendInput` queues a user message, which is sent
+  after any tool calls still pending.
+- The fork keeps the source checkpoint's step count and usage, so the rest of
+  the `maxSteps` budget applies to it. Recorded tool results are not re-run;
+  tool calls without a result run first, as on any resume (so a fork of an
+  `'awaiting-approval'` entry goes through `needsApproval` again; the old
+  `approvalId` is not carried over).
+- `newSessionId` names the fork; the default is `<sessionId>.fork-<n>`, the
+  first `n` with no checkpoint. A `newSessionId` that already has a checkpoint
+  is refused.
+- A step the history does not have (the session is unknown, the step never
+  ran, or it was dropped past `historyLimit`) throws an `SDKError` with code
+  [`LOUSHY_CHECKPOINT_NOT_FOUND`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#loushy_checkpoint_not_found),
+  whose message lists the steps that are kept. A store without `history()`
+  cannot fork (`ConfigurationError`).
+- `compareTrajectories(a, b)` takes two checkpoints or two transcripts and
+  returns each run's steps (one per assistant turn: its text and tool calls
+  with their results), `divergedAt` (the first step that differs, tool call
+  ids aside) and `drift`, the tool-order, argument, step-count and
+  finish-reason differences in the same shape as `loushy eval --drift`.
+
 ## Compatibility with stored data
 
 - Checkpoints written before `status` existed are treated as
@@ -3364,6 +3564,18 @@ streaming runner.
 `send()`.
 
 **Example:** `new AgentSession(run).stream('hi')`.
+
+### LOUSHY_CHECKPOINT_NOT_FOUND
+
+**Means:** `AgentExecutor.fork()` or `agent.fork()` was asked for a step the
+session's checkpoint history does not have: the session is unknown, the step
+was never reached, or its entries were dropped past the store's `historyLimit`.
+The message lists the steps that are kept.
+
+**Fix:** fork at one of the listed steps, or raise `historyLimit` on the store.
+See [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#fork-and-replay).
+
+**Example:** `agent.fork('job-1', { fromStep: 9 })` after a 3-step run.
 
 ### LOUSHY_RUN_ALREADY_ITERATED
 
@@ -4172,6 +4384,51 @@ In order: the agent's own `settings.model` (set with
 `defaultModel`), then the provider's built-in default. There is no hard-coded
 fallback model.
 
+## Multimodal input
+
+`Message.content` is a string or a list of parts: `{ type: 'text', text }`,
+`{ type: 'image', image, mimeType? }` (an `http(s)` URL, a `data:` URL or the
+bytes as a `Uint8Array`) and `{ type: 'file', data, mimeType, filename? }`.
+Pass such messages as the `input` of `AgentExecutor.execute()` or
+`stream()` (`agent.send()` and `session.send()` take a string for now):
+
+```ts
+import { readFileSync } from 'node:fs';
+import { AgentBuilder, AgentExecutor, resolveProvider, textOf, type Message } from '@loushy/build-ai-agent';
+
+const agent = AgentBuilder.create().setName('vision').setPrompt('Describe images briefly.').build();
+const input: Message[] = [
+  {
+    role: 'user',
+    content: [
+      { type: 'text', text: 'What is in these pictures?' },
+      { type: 'image', image: 'https://example.com/cat.png' },
+      { type: 'image', image: new Uint8Array(readFileSync('dog.png')), mimeType: 'image/png' },
+    ],
+  },
+];
+
+const result = await AgentExecutor.execute({ agent, input, provider: resolveProvider('openai/gpt-4o-mini') });
+console.log(textOf(input[0]), '->', result.text); // textOf(): the text parts of a message
+```
+
+- **Images** go to the model on `user` messages with every built-in provider
+  (an image URL is downloaded by the `ai` SDK first for Anthropic and Ollama).
+  Pick a vision model: Ollama ignores images for a text-only model, and
+  OpenRouter rejects them for one.
+- **Files** cannot be sent by the built-in providers' `ai` SDK peers
+  (`@ai-sdk/openai` / `@ai-sdk/anthropic` 0.0.x, `ollama-ai-provider`): a file
+  part is sent as a text note (`[file report.pdf (application/pdf) not sent]`)
+  and the provider warns once. A provider subclass whose model takes files
+  sets `protected readonly acceptsFileParts = true` to send them as `ai` v4
+  file parts.
+- `system`, `assistant` and `tool` messages are sent as their text parts.
+- Everything that reads message text uses `textOf()`: `estimateTokens()`
+  (each image or file part counts as a flat 1,000 tokens), compaction,
+  `recordReplay()` cassettes (which store the text and a digest of each
+  image or file, or its URL) and `mockModel()`. `FileSessionStore` saves bytes
+  as base64 (`{ "$bytes": "..." }`) and loads them back as `Uint8Array`s.
+
 ## Provider classes
 
 | Export | Description |
@@ -4863,10 +5120,13 @@ The event types and their extra fields:
 | `tool.done`          | `toolCallId`, `toolName`, `result: unknown`, `durationMs: number` | A tool call returned. `result` is the value as it would be JSON-encoded (`undefined` becomes `null`, a `Date` becomes a string). `durationMs` counts from its `tool.start`. |
 | `tool.error`         | `toolCallId`, `toolName`, `error: { name: string, message: string }`, `durationMs: number` | A tool call failed: it threw, its arguments did not match its schema (`name: 'ToolArgumentsValidationError'`), or the tool does not exist. The model gets the error as the call's result and the run continues. |
 | `approval.requested` | `approvalId: string`, `toolCallId`, `toolName`, `args: Record<string, unknown>` | A tool call needs a human decision. The run then stops; resume it with `agent.approvals.resolve()` or `resumeAfterApproval()` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)). |
+| `permission.decision` | `toolCallId`, `toolName`, `decision: 'allow' \| 'deny' \| 'ask' \| 'default'`, `rule?: { index: number, reason?: string }`, `args?: Record<string, unknown>`, `at: string` | How a tool call's [permission rules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies) decided it: after its `tool.start`, before the call's own `tool.done` / `tool.error` / `approval.requested`. Only when the run sets `permissions` or `onPermissionDecision`; `args` is left out under `redactContent`. |
 | `step.done`          | `step: number`, `finishReason: string`, `usage?: { promptTokens, completionTokens, totalTokens }` | A step ends. `finishReason` is the model's (`'stop'`, `'tool_calls'`, `'length'`, ...), or `'awaiting-approval'`, `'aborted'` or `'error'` when the step ended that way (a run that runs out of `maxSteps` still wanting to continue ends with `run.done` `'max-steps'`). `usage` is this step's model call, absent when the call produced no response. |
 | `error`              | `error: { name: string, message: string }` | An error. If it ends the run, `run.done` with `finishReason: 'error'` follows. A provider error retried under `surfaceRetryableProviderErrors` is followed by further steps instead. |
 | `provider.retry`     | `attempt: number`, `maxRetries: number`, `delayMs: number`, `error: { message: string, category?: string }`, `provider: string` | A model call failed and is retried after `delayMs` (`createAgent({ retry })` or any `withRetry()` provider). `attempt` is the attempt that failed (1 = first); `category` is `'rate-limit'`, `'timeout'`, ... and absent when unknown (a 5xx, for example). |
 | `provider.fallback`  | `from: string`, `to: string`, `error: { message: string }` | A model call still failed after its retries and the next provider takes over (`createAgent({ fallbackModels })` or any `withFallback()` provider). `from` and `to` are provider names. |
+| `compaction.start`   | `strategy: string`, `tokensBefore: number`, `contextWindow: number`, `thresholdTokens: number` | The compaction hook (`createAgent({ compaction })`) found the next model request above its threshold and starts compacting it. Exactly one `compaction.done` follows. See [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md). |
+| `compaction.done`    | `strategy: string`, `tokensBefore: number`, `tokensAfter: number`, `prunedToolCallIds: string[]`, `summary?: boolean`, `error?: { message: string }` | A compaction ended. `tokensAfter` equals `tokensBefore` when nothing could be compacted; `summary` is set when old turns were replaced by a summary; `error` is set when the strategy failed or fell back (the run continues). |
 | `run.done`           | `finishReason: string`, `text: string`, `usage?: { promptTokens, completionTokens, totalTokens }`, `object?: unknown` | Last event of every run, exactly once, including aborted, failed and awaiting-approval runs. `finishReason` and `text` match `run.result` (`'max-steps'` when the `maxSteps` budget ran out while the model still wanted to continue); a failed run has `finishReason: 'error'`, `text: ''` and no `usage`. `object` is `run.result`'s validated `object` for an agent with an `output` schema (see [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)), absent otherwise. |
 
 Optional fields are left out when they have no value. They are never
@@ -4878,8 +5138,9 @@ Optional fields are left out when they have no value. They are never
 - Each `step.start` is followed by exactly one `step.done` with the same
   `step`, before the next `step.start`. Everything a step does happens between
   the two.
-- Inside a step: `provider.retry` / `provider.fallback` events (if the model
-  call fails), then `text.delta` events, then `text.done`, then the tool events.
+- Inside a step: `compaction.start` / `compaction.done` (if the request was
+  compacted, before the model call), `provider.retry` / `provider.fallback`
+  events (if the model call fails), then `text.delta` events, then `text.done`, then the tool events.
 - Tool calls of one step run in parallel (see `toolConcurrency`):
   `tool.start` events come in the model's call order and `tool.done` /
   `tool.error` events in completion order. Match them by `toolCallId`.
@@ -5784,7 +6045,9 @@ const provider = recordReplay(mockModel(['ok']), {
   cassette: './__cassettes__/users.json',
   normalize: (request) => ({
     ...request,
-    messages: request.messages.map((m) => ({ ...m, content: m.content.replace(/user-\d+/g, 'user-N') })),
+    messages: request.messages.map((m) =>
+      typeof m.content === 'string' ? { ...m, content: m.content.replace(/user-\d+/g, 'user-N') } : m
+    ),
   }),
 });
 ```
@@ -5908,7 +6171,9 @@ descriptors that set neither `inputSchema` nor `execute`.
 
 ## Execute context
 
-`execute(args, ctx)` always gets a real second argument, on every path that
+`execute(args, ctx)` always gets a real second argument, typed
+`ToolExecutionContext` (exported from the package root; it replaces the `ai`
+SDK's `ToolExecutionOptions`), on every path that
 runs a tool: the main loop, the call that runs after an approval, tools that
 run in a sandbox (`sandboxExecute(args, sandbox, ctx)`) and a flow's tool-call
 node.
@@ -5918,6 +6183,7 @@ node.
 | `ctx.toolCallId` | The model's id for this call. It stays the same when the call is re-run after a crash. A call with no model turn behind it (a flow node) gets a generated id. |
 | `ctx.messages` | A read-only copy of the transcript the model had seen before it made the call: no system prompt and not the assistant turn that made the call. Empty for a flow node. |
 | `ctx.abortSignal` | The run's `AbortSignal`, set when the run has one. |
+| `ctx.sessionId` | Reserved: the type has it and `buildToolRunContext()` passes it through, but the executor does not set it yet. |
 
 A `sandboxExecute(args, sandbox)` that ignores the third argument keeps working.
 
@@ -5933,7 +6199,7 @@ check works everywhere (including the call that runs after an approval):
 - `error`: the error's name (`TypeError`, `ToolArgumentsValidationError`, ...), or the kind's default name for a failure that is not a thrown error.
 - `toolName` and `message`: the message only, never a stack, capped at 2,000 characters (`... (truncated)` marks a cut).
 - `kind`: why the call failed.
-- Some kinds add fields: `issues` for `validation`, `note` for `rejected`.
+- Some kinds add fields: `issues` for `validation`, `note` for `rejected`, `reason` for `denied`.
 
 The transcript message carries `isError: true`; `tool-result` events, `onToolResult`, `postToolCall` hooks and `tool.error` events see the call as failed.
 
@@ -5946,6 +6212,7 @@ The transcript message carries `isError: true`; `tool-result` events, `onToolRes
 | `not-run` | `ToolNotRunError` | The call was never started (a resumed run whose approval was saved without its remaining calls). |
 | `mcp` | `McpToolError` | An MCP server answered `isError: true`; `message` is the server's text. |
 | `sandbox` | `SandboxRequiredError` | The tool has `requiresSandbox` but no `sandboxExecute`, so it was refused rather than run unsandboxed. |
+| `denied` | `ToolDeniedError` | A `deny` [permission rule](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies) refused the call; `execute` did not run. Adds `reason` when the rule has one. |
 
 `toolErrorResult({ toolName, error, kind?, toolCallId?, details? })` builds this
 result; use it in your own tool wrappers so they match. A thrown error can pick

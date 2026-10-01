@@ -10,6 +10,7 @@
 import type { ExecutionFinishReason } from './AgentExecutor';
 import type { SubagentInfo } from './hooks';
 import type { CompactedProviderErrorCategory } from './errors';
+import type { PermissionDecisionEntry } from './permissions';
 
 /**
  * Version of the {@link AgentEvent} schema, carried on every event as `v`.
@@ -129,6 +130,14 @@ export interface ApprovalRequestedEvent extends AgentEventBase<'approval.request
   args: Record<string, unknown>;
 }
 
+/**
+ * LOU-X2: how a tool call's permission was decided - by the first matching
+ * rule of `permissions` (`allow`, `deny`, `ask`) or `'default'` when none
+ * matched. Emitted after `tool.start` when the run sets `permissions` or
+ * `onPermissionDecision`; carries the same audit entry `onPermissionDecision` gets.
+ */
+export interface PermissionDecisionEvent extends AgentEventBase<'permission.decision'>, PermissionDecisionEntry {}
+
 /** A step ends. Every `step.start` is followed by exactly one `step.done`. */
 export interface StepDoneEvent extends AgentEventBase<'step.done'> {
   step: number;
@@ -182,6 +191,40 @@ export interface ProviderFallbackEvent extends AgentEventBase<'provider.fallback
 }
 
 /**
+ * The compaction hook (`createAgent({ compaction })`, `createCompactionHook()`)
+ * found the next model request above its threshold and starts compacting it
+ * (LOU-W3.2). Emitted inside the step, before the model call; exactly one
+ * `compaction.done` follows.
+ */
+export interface CompactionStartEvent extends AgentEventBase<'compaction.start'> {
+  /** The strategy's name, e.g. `'prune-tool-results'` or `'two-phase'`. */
+  strategy: string;
+  /** Estimated tokens of the request before compaction. */
+  tokensBefore: number;
+  /** The model's context window, in tokens. */
+  contextWindow: number;
+  /** The size (`thresholdPercent` of the window) the request is compared with. */
+  thresholdTokens: number;
+}
+
+/**
+ * A compaction ended (LOU-W3.2). `tokensAfter` equals `tokensBefore` when
+ * nothing could be compacted. `error` is set when the strategy failed or fell
+ * back (e.g. the summarizer failed and only tool results were pruned); the
+ * run continues either way.
+ */
+export interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
+  strategy: string;
+  tokensBefore: number;
+  tokensAfter: number;
+  /** `toolCallId`s whose results were replaced by a marker. */
+  prunedToolCallIds: string[];
+  /** `true` when old turns were replaced by a model-written summary (the text is not sent). */
+  summary?: boolean;
+  error?: { message: string };
+}
+
+/**
  * Last event of every run, emitted exactly once - also for aborted, failed
  * and awaiting-approval runs.
  */
@@ -216,10 +259,13 @@ export type AgentEvent =
   | ToolDoneEvent
   | ToolErrorEvent
   | ApprovalRequestedEvent
+  | PermissionDecisionEvent
   | StepDoneEvent
   | AgentErrorEvent
   | ProviderRetryEvent
   | ProviderFallbackEvent
+  | CompactionStartEvent
+  | CompactionDoneEvent
   | RunDoneEvent;
 
 /** The `type` of an {@link AgentEvent}. */
@@ -249,10 +295,13 @@ const EVENT_TYPES: ReadonlySet<string> = new Set<AgentEventType>([
   'tool.done',
   'tool.error',
   'approval.requested',
+  'permission.decision',
   'step.done',
   'error',
   'provider.retry',
   'provider.fallback',
+  'compaction.start',
+  'compaction.done',
   'run.done',
 ]);
 

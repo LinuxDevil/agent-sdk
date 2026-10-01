@@ -70,6 +70,7 @@ function generateHookContext(
     sessionId: options.sessionId,
     messages,
     request,
+    emit: runEventsOf(options)?.hookEvent,
   };
 }
 

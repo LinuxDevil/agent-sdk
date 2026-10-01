@@ -22,6 +22,16 @@ export { ToolArgumentsValidationError } from './toolArgsValidation';
 export type { ToolArgumentIssue } from './toolArgsValidation';
 export { toolErrorResult } from './toolErrors';
 export type { ToolErrorKind, ToolErrorResult, ToolErrorInput } from './toolErrors';
+export { allow, ask, deny } from './permissions';
+export type {
+  PermissionAction,
+  PermissionContext,
+  PermissionDecision,
+  PermissionDecisionEntry,
+  PermissionOptions,
+  PermissionRule,
+  PermissionToolMatcher,
+} from './permissions';
 export type { OutputError } from './structuredOutput';
 export type { ToolConcurrency } from './toolBatch';
 export {
@@ -46,6 +56,7 @@ export type {
   ToolDoneEvent,
   ToolErrorEvent,
   ApprovalRequestedEvent,
+  PermissionDecisionEvent,
   StepDoneEvent,
   AgentErrorEvent,
   ProviderRetryEvent,

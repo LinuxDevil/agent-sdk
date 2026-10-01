@@ -23,6 +23,8 @@ import {
   CoreAssistantMessage,
   CoreToolMessage,
   TextPart,
+  ImagePart,
+  FilePart,
   ToolCallPart,
   ToolResultPart,
   Output,
@@ -38,7 +40,9 @@ import {
   ToolCall,
   ToolDefinition,
   ProviderUsage,
+  ContentPart,
 } from './llm';
+import { textOf } from './content';
 
 /** Config fields shared by every 'ai'-SDK-backed provider. */
 export interface AiSdkProviderConfig extends LLMProviderConfig {
@@ -80,7 +84,8 @@ function parseJsonOr(text: unknown, fallback: unknown): unknown {
  * the turn is still accepted by providers that require an object).
  */
 function toAssistantToolCallMessage(msg: Message, toolCalls: ToolCall[]): CoreAssistantMessage {
-  const parts: Array<TextPart | ToolCallPart> = msg.content ? [{ type: 'text', text: msg.content }] : [];
+  const text = textOf(msg);
+  const parts: Array<TextPart | ToolCallPart> = text ? [{ type: 'text', text }] : [];
   for (const tc of toolCalls) {
     parts.push({
       type: 'tool-call',
@@ -104,18 +109,45 @@ function toToolResultMessage(msg: Message, toolNames: Map<string, string>): Core
     type: 'tool-result',
     toolCallId,
     toolName: msg.toolName ?? msg.name ?? toolNames.get(toolCallId) ?? 'unknown',
-    result: parseJsonOr(msg.content, msg.content),
+    result: Array.isArray(msg.content) ? textOf(msg) : parseJsonOr(msg.content, msg.content),
   };
   if (msg.isError) part.isError = true;
   return { role: 'tool', content: [part] };
+}
+
+/** How a provider sends multimodal parts (LOU-V11). */
+interface PartSupport {
+  provider: string;
+  /** `false`: file parts become a text note, with a one-time warning. */
+  files: boolean;
+}
+
+/** Providers already warned that they turned file parts into text. */
+const warnedFileParts = new Set<string>();
+
+/** A user content part as the 'ai' v4 `TextPart` / `ImagePart` / `FilePart`. */
+function toUserPart(part: ContentPart, support: PartSupport): TextPart | ImagePart | FilePart {
+  if (part.type === 'text') return { type: 'text', text: part.text };
+  if (part.type === 'image') {
+    return { type: 'image', image: part.image, ...(part.mimeType ? { mimeType: part.mimeType } : {}) };
+  }
+  if (support.files) {
+    return { type: 'file', data: part.data, mimeType: part.mimeType, ...(part.filename ? { filename: part.filename } : {}) };
+  }
+  if (!warnedFileParts.has(support.provider)) {
+    warnedFileParts.add(support.provider);
+    console.warn(`[loushy] The ${support.provider} provider cannot send file parts; they are sent as a text note.`);
+  }
+  return { type: 'text', text: `[file ${part.filename ?? 'attachment'} (${part.mimeType}) not sent]` };
 }
 
 /**
  * Convert our Message history to 'ai' SDK CoreMessages, preserving the
  * assistant's tool-call turns and linking each tool result to its call by
  * id, as every provider (OpenAI, Anthropic, Ollama, OpenRouter) requires.
+ * Content parts (LOU-V11) are sent on user messages; other roles get their text.
  */
-function toCoreMessages(messages: Message[]): CoreMessage[] {
+function toCoreMessages(messages: Message[], support: PartSupport): CoreMessage[] {
   const toolNames = new Map<string, string>();
   return messages.map((msg): CoreMessage => {
     if (msg.role === 'tool') {
@@ -125,7 +157,10 @@ function toCoreMessages(messages: Message[]): CoreMessage[] {
       for (const tc of msg.toolCalls) toolNames.set(tc.id, tc.function.name);
       return toAssistantToolCallMessage(msg, msg.toolCalls);
     }
-    return { role: msg.role, content: msg.content ?? '' };
+    if (msg.role === 'user' && Array.isArray(msg.content)) {
+      return { role: 'user', content: msg.content.map((part) => toUserPart(part, support)) };
+    }
+    return { role: msg.role, content: textOf(msg) };
   });
 }
 
@@ -309,9 +344,16 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
   /** Build the 'ai' SDK language model for a model id. */
   protected abstract createModel(modelId: string): LanguageModel | Promise<LanguageModel>;
 
+  /**
+   * Whether this provider's 'ai' SDK model takes `file` parts (LOU-V11). The
+   * built-in providers' pinned peers (`@ai-sdk/*` 0.0.x, `ollama-ai-provider`)
+   * do not, so their file parts become a text note; image parts are sent.
+   */
+  protected readonly acceptsFileParts: boolean = false;
+
   /** Convert our messages to 'ai' SDK CoreMessages. */
   protected convertMessages(messages: Message[]): CoreMessage[] {
-    return toCoreMessages(messages);
+    return toCoreMessages(messages, { provider: this.name, files: this.acceptsFileParts });
   }
 
   /** The call settings shared by generate() and stream(). */

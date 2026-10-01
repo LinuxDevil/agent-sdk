@@ -22,6 +22,7 @@ import type { ExecuteOptions, ExecutionEvent, ExecutionResult } from './AgentExe
 import type { ResumeExecuteOptions } from './resume';
 import type { ApprovalStore, ExecutionSnapshot } from './ApprovalGate';
 import type { ToolConcurrency } from './toolBatch';
+import type { PermissionRule } from './permissions';
 import { HookRegistry, type AgentHook, type HookContext, type SubagentInfo } from './hooks';
 import { markPropagating } from './propagatingToolError';
 import { SubagentApprovalPause, subagentBudget, toolCallScopeOf, type ToolCallScope } from './subagentRuntime';
@@ -38,6 +39,8 @@ export interface SubagentSpec {
   maxSubagentDepth?: number;
   maxSteps?: number;
   toolConcurrency?: ToolConcurrency;
+  /** LOU-X2: the sub-agent's own permission rules, checked after the ones it inherits. */
+  permissions?: readonly PermissionRule[];
 }
 
 /** One child run requested by a parent tool call. */
@@ -157,6 +160,12 @@ function childOptions(
     // The top-level run's limit bounds the whole tree: one level used up here.
     maxSubagentDepth: Math.max(0, subagentBudget(runtime.maxSubagentDepth) - 1),
     maxSteps: spec.maxSteps,
+    // LOU-X2: the parent's rules come first, so they win over the sub-agent's own.
+    permissions:
+      runtime.permissions && spec.permissions
+        ? [...runtime.permissions, ...spec.permissions]
+        : (runtime.permissions ?? spec.permissions),
+    onPermissionDecision: runtime.onPermissionDecision,
   };
 }
 

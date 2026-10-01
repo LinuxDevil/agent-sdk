@@ -13,6 +13,7 @@
  */
 
 import type { LLMProvider, Message } from '../providers/llm';
+import { textOf } from '../providers/content';
 import { resolveProvider } from '../providers/resolveProvider';
 import type { AgentHook, GenerateHookContext } from '../execution/hooks';
 import { estimateTokens } from '../models/estimateTokens';
@@ -84,9 +85,10 @@ const toError = (cause: unknown): Error => (cause instanceof Error ? cause : new
 
 /** The message with its result replaced by a marker, or `undefined` when it is not a tool result worth pruning. */
 function prunedToolResult(message: Message): Message | undefined {
-  if (message.role !== 'tool' || isPinned(message) || PRUNED_MARKER.test(message.content)) return undefined;
-  const marker = `[pruned: ${message.toolName ?? 'tool'} result, ${message.content.length} chars]`;
-  return marker.length < message.content.length ? { ...message, content: marker } : undefined;
+  const text = textOf(message);
+  if (message.role !== 'tool' || isPinned(message) || PRUNED_MARKER.test(text)) return undefined;
+  const marker = `[pruned: ${message.toolName ?? 'tool'} result, ${text.length} chars]`;
+  return marker.length < text.length ? { ...message, content: marker } : undefined;
 }
 
 /**
@@ -160,7 +162,7 @@ function renderForSummary(messages: Message[]): string {
   return messages
     .map((m) => {
       const calls = (m.toolCalls ?? []).map((c) => `\n[called ${c.function.name}(${c.function.arguments})]`).join('');
-      return `${m.role === 'tool' ? `tool ${m.toolName ?? ''}`.trim() : m.role}: ${m.content}${calls}`;
+      return `${m.role === 'tool' ? `tool ${m.toolName ?? ''}`.trim() : m.role}: ${textOf(m)}${calls}`;
     })
     .join('\n\n');
 }
@@ -341,16 +343,27 @@ export function createCompactionHook(options: CompactionHookOptions = {}): Agent
       const { strategy, input } = prepare(messages, { ...options, model: ctx.request.model }, ctx.request.signal);
       const tokens = input.estimateTokens(messages);
       if (tokens <= input.thresholdTokens) return;
+      const { contextWindow, thresholdTokens } = input;
+      ctx.emit?.({ type: 'compaction.start', strategy: strategy.name, tokensBefore: tokens, contextWindow, thresholdTokens });
       let result: CompactionResult;
       try {
         result = await strategy.compact(input);
       } catch (cause) {
         result = { messages, tokensBefore: tokens, tokensAfter: tokens, prunedToolCallIds: [], error: toError(cause) };
       }
-      if (result.messages === messages && !result.error) return;
+      const { tokensBefore, tokensAfter, prunedToolCallIds, summary, error } = result;
+      ctx.emit?.({
+        type: 'compaction.done',
+        strategy: strategy.name,
+        tokensBefore,
+        tokensAfter,
+        prunedToolCallIds,
+        ...(summary && { summary: true }),
+        ...(error && { error: { message: error.message } }),
+      });
+      if (result.messages === messages && !error) return;
       // In place: request.messages is the run's transcript (see the file comment).
       if (result.messages !== messages) messages.splice(0, messages.length, ...result.messages);
-      const { tokensBefore, tokensAfter, prunedToolCallIds, summary, error } = result;
       onCompaction?.({ tokensBefore, tokensAfter, prunedToolCallIds, strategy: strategy.name, summary, error });
     },
   };

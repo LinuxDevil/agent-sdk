@@ -3,7 +3,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createAgent } from '../createAgent';
@@ -191,6 +191,35 @@ describe('AgentSession', () => {
         await store.save('ok', [{ role: 'user', content: 'x' }]);
         await store.delete('ok');
         expect(await store.load('ok')).toBeUndefined();
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('round-trips image and file bytes through JSON as base64 (LOU-V11)', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'sessions-'));
+      try {
+        const store = new FileSessionStore(dir);
+        const messages: Message[] = [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Look' },
+              { type: 'image', image: new Uint8Array([137, 80, 78, 71]), mimeType: 'image/png' },
+              { type: 'image', image: 'https://example.com/a.png' },
+              { type: 'file', data: Buffer.from('%PDF'), mimeType: 'application/pdf', filename: 'a.pdf' },
+            ],
+          },
+          { role: 'assistant', content: 'A logo.' },
+        ];
+        await store.save('img', messages);
+
+        expect(readFileSync(join(dir, 'img.json'), 'utf8')).toContain('{"$bytes":"iVBORw=="}');
+        const loaded = await store.load('img');
+        expect(loaded).toEqual(structuredClone(messages)); // a Buffer comes back as a Uint8Array
+        const parts = loaded?.[0].content as Array<{ image?: unknown; data?: unknown }>;
+        expect(parts[1].image).toBeInstanceOf(Uint8Array);
+        expect(parts[3].data).toBeInstanceOf(Uint8Array);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }

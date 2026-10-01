@@ -13,6 +13,7 @@
  */
 
 import type { GenerateOptions, GenerateResult, LLMProvider, Message, ToolCall } from '../providers';
+import { textOf } from '../providers/content';
 import type { ToolRegistry } from '../tools';
 import type { AgentConfig } from '../types';
 import { ErrorAttr, GenAiAttr, GenAiOperation, LegacyAttr, SdkAttr, TOOL_TYPE_FUNCTION, CAPTURE_CONTENT_ENV } from './semconv';
@@ -85,10 +86,11 @@ function genAiMessage(message: Message) {
   if (message.role === 'tool') {
     return {
       role: 'tool',
-      parts: [{ type: 'tool_call_response', id: message.toolCallId, response: parseJson(message.content) }],
+      parts: [{ type: 'tool_call_response', id: message.toolCallId, response: parseJson(textOf(message)) }],
     };
   }
-  const parts: unknown[] = message.content ? [textPart(message.content)] : [];
+  const text = textOf(message);
+  const parts: unknown[] = text ? [textPart(text)] : [];
   parts.push(...(message.toolCalls ?? []).map(toolCallPart));
   return { role: message.role, parts };
 }
@@ -99,7 +101,7 @@ function requestContent(messages: Message[]): Record<string, unknown> {
   const rest = messages.filter((m) => m.role !== 'system');
   return defined({
     [GenAiAttr.SYSTEM_INSTRUCTIONS]:
-      system.length > 0 ? JSON.stringify(system.map((m) => textPart(m.content))) : undefined,
+      system.length > 0 ? JSON.stringify(system.map((m) => textPart(textOf(m)))) : undefined,
     [GenAiAttr.INPUT_MESSAGES]: JSON.stringify(rest.map(genAiMessage)),
   });
 }

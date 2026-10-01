@@ -1,10 +1,12 @@
 import { describe, it, expectTypeOf } from 'vitest';
 import { z } from 'zod';
-import type { ToolExecutionOptions } from 'ai';
+import { tool as aiTool } from 'ai';
+import type { Message } from '../providers/llm';
 import { defineTool, type DefinedTool, type ToolInput, type ToolOutput } from './defineTool';
 import { createAgent } from '../createAgent';
 import { createMockProvider } from '../providers/mock';
 import { ToolRegistry } from './ToolRegistry';
+import type { ToolDescriptor, ToolExecutionContext } from '../types';
 
 const sendEmail = defineTool({
   name: 'send_email',
@@ -19,7 +21,7 @@ const sendEmail = defineTool({
   async execute(args, ctx) {
     expectTypeOf(args.to).toBeString();
     expectTypeOf(args.count).toBeNumber();
-    expectTypeOf(ctx).toEqualTypeOf<ToolExecutionOptions>();
+    expectTypeOf(ctx).toEqualTypeOf<ToolExecutionContext>();
     // @ts-expect-error - `nope` is not an argument of this tool
     void args.nope;
     return { messageId: 'x', sent: args.count };
@@ -48,10 +50,39 @@ describe('defineTool types', () => {
     const t = defineTool({ name: 't', description: 'd', input, execute: async () => ({ ok: true }) });
     expectTypeOf(t.inputSchema).toEqualTypeOf<typeof input>();
     expectTypeOf(t.execute).parameter(0).toEqualTypeOf<{ to: string; count: number }>();
-    expectTypeOf(t.execute).parameter(1).toEqualTypeOf<ToolExecutionOptions>();
+    expectTypeOf(t.execute).parameter(1).toEqualTypeOf<ToolExecutionContext>();
     expectTypeOf(t.execute).returns.toEqualTypeOf<Promise<{ ok: boolean }>>();
     // @ts-expect-error - `count` must be a number
-    void t.execute({ to: 'a@b.c', count: 'x' }, {} as ToolExecutionOptions);
+    void t.execute({ to: 'a@b.c', count: 'x' }, {} as ToolExecutionContext);
+  });
+
+  it('types ctx as our ToolExecutionContext, not ai\'s options (LOU-D23)', () => {
+    defineTool({
+      name: 'ctx_probe',
+      description: 'd',
+      input: z.object({ q: z.string() }),
+      execute: async ({ q }, ctx) => {
+        expectTypeOf(q).toBeString();
+        expectTypeOf(ctx).toEqualTypeOf<ToolExecutionContext>();
+        expectTypeOf(ctx.toolCallId).toBeString();
+        expectTypeOf(ctx.messages).toEqualTypeOf<readonly Message[]>();
+        expectTypeOf(ctx.abortSignal).toEqualTypeOf<AbortSignal | undefined>();
+        expectTypeOf(ctx.sessionId).toEqualTypeOf<string | undefined>();
+        return q;
+      },
+    });
+    expectTypeOf<ToolDescriptor['execute']>().parameter(1).toEqualTypeOf<ToolExecutionContext>();
+    expectTypeOf<NonNullable<ToolDescriptor['sandboxExecute']>>()
+      .parameter(2)
+      .toEqualTypeOf<ToolExecutionContext | undefined>();
+  });
+
+  it('still registers a legacy ai tool() descriptor', () => {
+    const legacy: ToolDescriptor = {
+      displayName: 'legacy',
+      tool: aiTool({ description: 'd', parameters: z.object({ a: z.string() }), execute: async ({ a }) => a }),
+    };
+    new ToolRegistry().register('legacy', legacy);
   });
 
   it('rejects execute args that do not match the schema', () => {
