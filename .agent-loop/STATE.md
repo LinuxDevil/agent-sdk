@@ -3,7 +3,7 @@
 Mission: make `@loushy/build-ai-agent` the best TypeScript AI agent SDK (capabilities and DX) against
 Vercel eve and MaxGfeller/open-harness. This file is the loop's memory: read it first, update it last.
 
-- Loop started: 2026-10-01. Iterations completed: 2.
+- Loop started: 2026-10-01. Iterations completed: 3.
 - Audit: `.agent-loop/AUDIT.md`, refreshed 2026-10-01 at main `a03b1a3` (eve 0.69.0 @682c7a6, open-harness 0.7.0 @026e8d9).
   Reference agents (3 agents x 3 SDKs, measured): `.agent-loop/reference-agents/`. Older material: `docs/research/*.md`, `docs/plan/tickets.md`.
   Audit is stale when: a competitor ships a new major, or more than ~25 PRs land after `a03b1a3` (re-run the DX measurement then).
@@ -19,6 +19,7 @@ Vercel eve and MaxGfeller/open-harness. This file is the loop's memory: read it 
 | 5 | Max one ticket per batch may touch `src/execution/AgentExecutor.ts`, `resume.ts` or `toolCallExecution.ts`; those files are the conflict hub. |
 | 6 | New epics from the audit: Epic P (UI bindings, channels, schedules). Letters E and F are reserved (historic tickets cited in code comments). The `ai` v4 -> v7 upgrade is D22-D29 (supersedes the D11 umbrella). |
 | 7 | Audit ticket X10 (in-memory approval store) is covered by D21's `InMemoryApprovalStore`; closed as duplicate. |
+| 9 | Owner instruction (2026-10-01): do not wait for CI; iterate continuously. CI results are read only when a failure is reported. |
 | 8 | A second Claude session (`session_01F3s6hrJ2zhYHbSjvVCSEjZ`, now idle) merged PR #68 during iteration 1. If another session is active on this repo again, check `list_sessions` before merging. |
 
 ## Competitor matrix (summary)
@@ -32,7 +33,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Durable stores (SQLite/file/KV) | ✅ | ✅ | ❌ | - |
 | Sandboxing | ⚠️ | ✅ | ⚠️ | X11 |
 | Workspace fs + shell tools | ✅ | ✅ | ✅ | - |
-| Compaction | ⚠️ flipped (W2 prune, #80) | ✅ | ✅ | W3 (summarize + events) |
+| Compaction | ✅ flipped (W2 prune #80, W3 summarize/two-phase/pinned #84) | ✅ | ✅ | W3.2 (`compaction.*` events, `createAgent({ compaction })`) |
 | Subagents | ✅ | ✅ | ✅ | - |
 | Background / resumable subagents | ❌ | ✅ | ✅ | Y4, Y6 |
 | Remote subagents | ❌ | ✅ | ❌ | Y7 |
@@ -50,14 +51,14 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Tracing / OTel GenAI | ✅ | ✅ | ❌ | - |
 | Metrics / trace viewer | ❌ | ✅ | ❌ | D48 |
 | Multi-provider | ⚠️ (`ai` v4) | ✅ | ✅ | D22-D29 |
-| Fallbacks / retry policy | ✅ flipped (V7.1, #74) | ⚠️ | ⚠️ | V7.2 (agent-level) |
+| Fallbacks / retry policy | ✅ (V7.1 #74, V7.2 agent-level + events #86) | ⚠️ | ⚠️ | - |
 | Structured output | ❌ | ✅ | ❌ | V4 |
 | Multimodal input | ❌ | ✅ | ✅ | V11, V12 |
 | Reasoning control / events | ❌ | ✅ | ⚠️ | V13 |
 | MCP client | ⚠️ (spec field D20 #73; no connect helper) | ✅ | ✅ | Z4 |
 | MCP server | ✅ | ✅ | ❌ | - |
 | Typed event stream | ✅ | ✅ | ✅ | - |
-| UI bindings React/Vue/Svelte | ❌ | ✅ | ⚠️ | D15, P2, P3 |
+| UI bindings React/Vue/Svelte | ⚠️ flipped (React `useLoushyAgent` #85) | ✅ | ⚠️ | P2, P3 |
 | AI SDK UI stream | ❌ | ⚠️ | ✅ | P1 |
 | CLI scaffolding | ⚠️ (unpublished) | ✅ | ❌ | D49, U20 |
 | Dev TUI / REPL | ⚠️ | ✅ | ⚠️ | D32, D33 |
@@ -66,7 +67,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Schedules | ⚠️ | ✅ | ❌ | P8, P9 |
 | Deploy story | ⚠️ | ✅ | ❌ | D14 |
 | Edge runtime (Workers) | ✅ | ❌ | ❌ | - |
-| Budgets / limits | ⚠️ | ✅ | ⚠️ | V6, U19 |
+| Budgets / limits | ⚠️ (`max-steps` finish reason #83) | ✅ | ⚠️ | V6 |
 | Guardrails (input/output) | ⚠️ | ⚠️ | ❌ | X4, X5 |
 | Permissions policy | ⚠️ | ✅ | ⚠️ | X2, X8 |
 | Credential brokering | ❌ | ✅ | ❌ | X11, X12 |
@@ -80,7 +81,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Published on npm | ❌ (owner action) | ✅ | ✅ | D49 |
 | Current `ai` major | ❌ | ✅ | ✅ | D22-D29 |
 
-Score (us): 19 ✅ / 15 ⚠️ / 17 ❌ of 51 after iteration 2 (iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
+Score (us): 20 ✅ / 15 ⚠️ / 16 ❌ of 51 after iteration 3 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
 
 Differentiators shipped (target: 3): 0 of 8 (candidates in AUDIT section 7: host-agnostic durable sessions D30; record/replay evals D46; Forge time-travel D43-D45; MCP+ACP+HTTP reach Z6/D14; both authoring modes with hot reload D31-D33; OTel metrics D48; trajectory evals remote D47; edge-native agents D51/P9).
 
@@ -97,7 +98,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | U14 | One tool-error shape everywhere | ⬜ | |
 | U15 | Tool execute context real at runtime (sandbox path, `messages`) | ⬜ | |
 | U17 | Sandboxed HTTP honors cancellation | ✅ #72 | |
-| U19 | Explicit `maxSteps` exhaustion (`finishReason: 'max-steps'`) | ⬜ | |
+| U19 | Explicit `maxSteps` exhaustion (`finishReason: 'max-steps'`) | ✅ #83 | |
 | U20 | Install and roadmap truth (no `npx loushy` of an unpublished package) | ⬜ | |
 | U21 | Robust CLI flag parsing (`parseArgs`) | ⬜ | |
 | U22 | Resumed sub-agent that pauses again keeps the session awaiting approval | ✅ #77 | |
@@ -110,7 +111,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | V4 | Structured output (`output: zodSchema`) | ⬜ | |
 | V6 | Budgets (`limits`) | ⬜ | |
 | V7.1 | Provider retry + fallback wrappers | ✅ #74 | |
-| V7.2 | `createAgent({ retry, fallbackModels })` + `retry` event; built-ins pass `maxRetries: 0` to `ai` so retries don't stack | ⬜ (next) | V7.1 |
+| V7.2 | `createAgent({ retry, fallbackModels })` + `provider.retry`/`provider.fallback` events; retries no longer stack | ✅ #86 | |
 | V8 | `session.stream()` | ✅ #78 | |
 | V9 | Queued follow-up input | ⬜ | V8 |
 | V10 | Steering | ⬜ | V9 |
@@ -125,7 +126,8 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 |---|---|---|---|
 | W1 tokens, W4 sessions, W5 SQLite, W7 AGENTS.md | | ✅ | |
 | W2 | Compaction: prune old tool results (`createCompactionHook`, prunes the transcript in place) | ✅ #80 | |
-| W3 | Compaction: summarize strategy (async `compact`), `compaction.*` events | ⬜ (next) | W2 |
+| W3 | Compaction: summarize + two-phase strategies, pinned messages, async `compact` | ✅ #84 | |
+| W3.2 | Typed `compaction.*` stream events + `createAgent({ compaction })` option | ⬜ | W3 |
 | W6 | Scoped memory slots | ⬜ | |
 | W8 | Manual compact and clear | ⬜ | W2, W3 |
 | W9 | Sessions that checkpoint | ⬜ | V8 |
@@ -167,7 +169,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D2 | Error codes with fixes | ⬜ | |
 | D11 | Upgrade `ai` peer range | superseded by D22-D29 | |
 | D14 | Deployed `/chat` upgrade (sessions, SSE, auth) | ⬜ | |
-| D15 | React hook | ⬜ | |
+| D15 | React hook `useLoushyAgent` (`./react` subpath, reducer + SSE/NDJSON parser) | ✅ #85 | |
 | D16 | ESLint ratchet (433 warnings -> 0, `error` severity) | ⬜ | run in a quiet batch |
 | D20 | `mcpServers` in `AgentSpec` | ✅ #73 | |
 | D21 | Approvals for `createAgent()` | ✅ #75 | |
@@ -184,7 +186,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D32 | Stateful streaming dev chat | ⬜ | D31 |
 | D33 | `loushy chat` REPL | ⬜ | V14 |
 | D34 | `AgentType` off the user path (deprecated; apps/examples still call `setType`, follow-up D34.2) | ✅ #76 | |
-| D35 | Delete flow converters, drop `nanoid` | ⬜ | |
+| D35 | Delete flow converters, drop `nanoid` (`newId()` on `crypto.randomUUID`) | ✅ #82 | |
 | D36 | Delete SaaS/donor utilities | ⬜ | |
 | D37 | Templates out of the root entry | ⬜ | |
 | D38 | Remove unwired memory/context/retry modules | ⬜ | V7.1, W6 |
@@ -233,6 +235,11 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | #79 | D22 | merged (squash) | canonical inputSchema/execute on ToolDescriptor |
 | #80 | W2 | merged (squash) | compaction prune hook |
 | #81 | D52 | merged (squash) | README revamp |
+| #83 | U19 | merged (squash) | max-steps finish reason |
+| #86 | V7.2 | merged (squash) | agent-level retry/fallback + events |
+| #84 | W3 | merged (squash) | summarize compaction |
+| #85 | D15 | merged (squash) | React hook |
+| #82 | D35 | merged (squash) | converters + nanoid removed |
 
 ## Main health
 
@@ -252,15 +259,19 @@ CI runs only on `pull_request`, so "main is green" means the last PR's CI run pa
 - Owner instructions received: never delete branches; revamp the README (done).
 - Stray file `/resume.fixed.ts` (23 KB) left at the filesystem root by a subagent; removal blocked by the safety check, owner to delete.
 
-## Next batch (iteration 3)
+### Iteration 3 (2026-10-01)
+- Merged: #83 (U19), #86 (V7.2), #84 (W3), #85 (D15), #82 (D35). CHANGELOG/streaming-docs conflicts resolved by keeping both sides; llms regenerated.
+- Matrix flips: Compaction ⚠️->✅, UI bindings ❌->⚠️.
+- Lint warnings: 433 -> 420 (D35).
 
-Chosen for no file overlap (one AgentExecutor/resume toucher):
-1. U19 (sonnet): explicit `maxSteps` exhaustion (`finishReason: 'max-steps'`); touches `src/execution/AgentExecutor.ts` (loop exit) and result types; not agentEvents.ts.
-2. V7.2 (opus): `createAgent({ retry, fallbackModels })` + typed `retry` event; `aiSdkProvider` passes `maxRetries: 0`; touches createAgent.ts, agentEvents.ts, providers.
-3. W3 (opus): summarize compaction strategy (async `compact`), pinned messages; src/context only (events wiring via `onCompaction` until W3.2).
-4. D35 (sonnet): delete `src/flows/converters.ts`, replace `nanoid` with `crypto.randomUUID`, drop the dependency.
-5. D15 (opus): React hook `useLoushyAgent()` over the typed event stream as a `./react` subpath.
-Then: U14, U15, D34.2, X8, D36, D40, W9.
+## Next batch (iteration 4)
+
+1. V4 (opus): structured output `createAgent({ output: zodSchema })` -> typed `result.object` with one repair attempt; touches createAgent.ts (send/stream region), generateStep/AgentExecutor final-answer path.
+2. W9 (opus): sessions that checkpoint (`agent.session({ id, store })` with checkpoints; `session.resume()`); touches src/session/*, createAgent.ts session() wiring only.
+3. Y4 (opus): background sub-agents (`task` with `background: true`, `agent_status/await/cancel`, `maxConcurrent`); src/subagents/*.
+4. D36 (sonnet): delete SaaS/donor utilities (`security/quotas`, `core/ConfigManager`, `utils/{formatters,json-path,file-extractor}`).
+5. D40 (sonnet): heavy deps to optional peers (`dockerode`, `undici`, `@modelcontextprotocol/sdk`; lazy `prompts`); doctor reports them.
+Then: U14, U15, X8, Z4, W3.2, D34.2, D2, D30.
 
 ## Subagent brief (canonical copy)
 
