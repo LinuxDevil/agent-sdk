@@ -143,13 +143,15 @@ describe('RunManager', () => {
     await runManager.run('agent-spans', 'please use current-date', SPEC);
     await waitForStatus(runManager, 'agent-spans', (s) => s.status === 'stopped');
 
-    const runSpans = spans.filter((s) => s.name === 'agent.run');
+    const runSpans = spans.filter((s) => s.attributes['gen_ai.operation.name'] === 'invoke_agent');
     expect(runSpans).toHaveLength(2); // start + end
     const [startSpan, endSpan] = runSpans;
     expect(startSpan.endTime).toBeUndefined();
     expect(endSpan.endTime).toBeGreaterThanOrEqual(endSpan.startTime);
-    expect(spans.some((s) => s.name === 'llm.generate')).toBe(true);
-    expect(spans.some((s) => s.name === 'tool.call' && s.parentId === startSpan.id)).toBe(true);
+    expect(spans.some((s) => s.attributes['gen_ai.operation.name'] === 'chat')).toBe(true);
+    expect(
+      spans.some((s) => s.attributes['gen_ai.operation.name'] === 'execute_tool' && s.parentId === startSpan.id)
+    ).toBe(true);
   });
 
   it('pauses a run at a configured breakpoint and resumes on continueRun() (O3)', async () => {

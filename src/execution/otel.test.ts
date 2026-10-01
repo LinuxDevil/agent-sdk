@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Tracer, Span as OtelSpan, Context } from '@opentelemetry/api';
+import { SpanKind, SpanStatusCode } from '@opentelemetry/api';
 import { createOtelTraceExporter } from './otel';
 import { Span } from './tracing';
 
@@ -149,5 +150,48 @@ describe('createOtelTraceExporter', () => {
 
     expect(getTracerSpy).toHaveBeenCalledWith('my-agent', '1.2.3');
     getTracerSpy.mockRestore();
+  });
+});
+
+describe('createOtelTraceExporter kind, status and array attributes (LOU-D9)', () => {
+  it('maps span kind client/internal to the OTel SpanKind on start', () => {
+    const fake = makeFakeTracer();
+    const exporter = createOtelTraceExporter({ tracer: fake.tracer });
+    exporter.onSpanStart(makeSpan({ id: 'c', kind: 'client' }));
+    exporter.onSpanStart(makeSpan({ id: 'i' }));
+
+    const calls = (fake.tracer.startSpan as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls[0][1]).toMatchObject({ kind: SpanKind.CLIENT });
+    expect(calls[1][1]).toMatchObject({ kind: SpanKind.INTERNAL });
+  });
+
+  it('sets an ERROR status on end when the SDK span failed, and none otherwise', () => {
+    const fake = makeFakeTracer();
+    const exporter = createOtelTraceExporter({ tracer: fake.tracer });
+    const bad = vi.fn();
+    const good = vi.fn();
+    exporter.onSpanStart(makeSpan({ id: 'bad' }));
+    exporter.onSpanStart(makeSpan({ id: 'good' }));
+    (fake.startedSpans[0].span as { setStatus: unknown }).setStatus = bad;
+    (fake.startedSpans[1].span as { setStatus: unknown }).setStatus = good;
+
+    exporter.onSpanEnd(makeSpan({ id: 'bad', endTime: 5, status: { code: 'error', message: 'boom' } }));
+    exporter.onSpanEnd(makeSpan({ id: 'good', endTime: 5 }));
+
+    expect(bad).toHaveBeenCalledWith({ code: SpanStatusCode.ERROR, message: 'boom' });
+    expect(good).not.toHaveBeenCalled();
+  });
+
+  it('passes homogeneous primitive arrays through and stringifies other arrays', () => {
+    const fake = makeFakeTracer();
+    const exporter = createOtelTraceExporter({ tracer: fake.tracer });
+    exporter.onSpanStart(
+      makeSpan({ attributes: { 'gen_ai.response.finish_reasons': ['stop'], mixed: ['a', 1], objs: [{ a: 1 }] } })
+    );
+    expect(fake.startedSpans[0].span.attributes).toEqual({
+      'gen_ai.response.finish_reasons': ['stop'],
+      mixed: JSON.stringify(['a', 1]),
+      objs: JSON.stringify([{ a: 1 }]),
+    });
   });
 });

@@ -12,7 +12,7 @@
 import { Span, TraceExporter } from '../../src/execution/tracing';
 
 export function createConsoleExporter(): TraceExporter {
-  // Tracks depth so nested spans (llm.generate/tool.call under agent.run)
+  // Tracks depth so nested spans (chat/execute_tool under invoke_agent)
   // print indented, purely as a readability aid.
   const depthById = new Map<string, number>();
 

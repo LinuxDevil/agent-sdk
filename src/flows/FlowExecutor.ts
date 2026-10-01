@@ -10,6 +10,16 @@ import { AgentConfig } from '../types';
 import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from '../execution/sandboxGuard';
 import { evaluateSafeExpression, ExpressionError } from './safeExpression';
+import { Span, TraceExporter, recordSpanError, withSpan } from '../execution/tracing';
+import {
+  defined,
+  llmSpanInit,
+  recordLlmResult,
+  recordToolOutcome,
+  resolveCaptureContent,
+  toolSpanInit,
+} from '../execution/genAiSpans';
+import { FLOW_NODE_SPAN_NAME, FlowAttr, GenAiAttr, GenAiOperation } from '../execution/semconv';
 
 /**
  * Flow execution context
@@ -33,6 +43,26 @@ export interface FlowExecutionContext {
    * so existing callers see no behavior change.
    */
   sandbox?: SandboxAdapter;
+  /**
+   * Trace exporter (LOU-D9). When provided, the run is wrapped in an
+   * `invoke_workflow {flow name}` span, every node execution in a
+   * `flow.node {type}` span, and each `llmCall`/`toolCall` node's model/tool
+   * call in a `chat {model}` / `execute_tool {tool}` span (OpenTelemetry
+   * GenAI conventions, see `semconv.ts`).
+   */
+  exporter?: TraceExporter;
+  /**
+   * Id of the span this flow run should nest under, e.g. an agent's
+   * `invoke_agent` span (`withSpan` hands the span to its callback).
+   */
+  parentSpanId?: string;
+  /**
+   * Record prompt/tool-argument content on the `gen_ai.*` attributes. Off by
+   * default; see `ExecuteOptions.captureContent`.
+   */
+  captureContent?: boolean;
+  /** Omit the deprecated `prompt`/`args`/`result` attributes. */
+  redactContent?: boolean;
 }
 
 /**
@@ -107,6 +137,37 @@ export class FlowExecutor {
    * Execute a flow
    */
   static async execute(
+    flow: AgentFlow,
+    context: FlowExecutionContext,
+    onEvent?: (event: FlowExecutionEvent) => void
+  ): Promise<FlowExecutionResult> {
+    return withSpan(
+      context.exporter,
+      `${GenAiOperation.INVOKE_WORKFLOW} ${flow.name}`,
+      defined({
+        [GenAiAttr.OPERATION_NAME]: GenAiOperation.INVOKE_WORKFLOW,
+        [GenAiAttr.WORKFLOW_NAME]: flow.name,
+        [FlowAttr.CODE]: flow.code,
+      }),
+      async (flowSpan) => {
+        const result = await this.runFlow(flow, { ...context, parentSpanId: flowSpan.id }, onEvent);
+        this.recordOutcome(flowSpan, result.error);
+        return result;
+      },
+      context.parentSpanId,
+      'internal'
+    );
+  }
+
+  /** Records a flow/node outcome (and the error, when it failed) on its span. */
+  private static recordOutcome(span: Span, error?: unknown): void {
+    span.attributes = { ...span.attributes, [FlowAttr.OUTCOME]: error ? 'error' : 'success' };
+    if (error) {
+      recordSpanError(span, error);
+    }
+  }
+
+  private static async runFlow(
     flow: AgentFlow,
     context: FlowExecutionContext,
     onEvent?: (event: FlowExecutionEvent) => void
@@ -233,6 +294,34 @@ export class FlowExecutor {
     this.assertWithinDepthLimit(context);
 
     const stepId = (node as any).id || `step-${Date.now()}`;
+
+    return withSpan(
+      context.exporter,
+      `${FLOW_NODE_SPAN_NAME} ${node.type}`,
+      defined({ [FlowAttr.NODE_ID]: stepId, [FlowAttr.NODE_TYPE]: node.type }),
+      async (nodeSpan) => {
+        try {
+          const result = await this.runNode(node, stepId, { ...context, parentSpanId: nodeSpan.id }, events, onEvent);
+          this.recordOutcome(nodeSpan);
+          return result;
+        } catch (error) {
+          this.recordOutcome(nodeSpan, error);
+          throw error;
+        }
+      },
+      context.parentSpanId,
+      'internal'
+    );
+  }
+
+  /** The step-start/step-complete/step-error event bracket around a node's handler. */
+  private static async runNode(
+    node: { type: string },
+    stepId: string,
+    context: FlowExecutionContext,
+    events: FlowExecutionEvent[],
+    onEvent?: (event: FlowExecutionEvent) => void
+  ): Promise<unknown> {
 
     // Emit step start event
     emitEvent(events, onEvent, {
@@ -511,13 +600,25 @@ export class FlowExecutor {
       data: { model, prompt },
     });
 
-    // Call LLM
-    const result = await context.provider.generate({
-      model,
-      messages,
-      temperature: node.temperature,
-      maxTokens: node.maxTokens,
+    // Call LLM, in a `chat {model}` span under this node's span
+    const request = { model, messages, temperature: node.temperature, maxTokens: node.maxTokens };
+    const captureContent = resolveCaptureContent(context.captureContent);
+    const init = llmSpanInit(context.provider, request, {
+      redactContent: context.redactContent,
+      captureContent,
     });
+    const result = await withSpan(
+      context.exporter,
+      init.name,
+      init.attributes,
+      async (llmSpan) => {
+        const generated = await context.provider.generate(request);
+        recordLlmResult(llmSpan, generated, captureContent);
+        return generated;
+      },
+      context.parentSpanId,
+      init.kind
+    );
 
     // Emit LLM response event
     emitEvent(events, onEvent, {
@@ -559,6 +660,42 @@ export class FlowExecutor {
   }
 
   /**
+   * Run the tool in an `execute_tool {tool}` span under the node's span
+   */
+  private static executeToolInSpan(
+    toolName: string,
+    toolDesc: NonNullable<ReturnType<ToolRegistry['get']>>,
+    args: Record<string, unknown>,
+    sandbox: SandboxAdapter,
+    context: FlowExecutionContext
+  ): Promise<unknown> {
+    const init = toolSpanInit(
+      { name: toolName },
+      { agent: context.agent, toolRegistry: context.toolRegistry }
+    );
+    return withSpan(
+      context.exporter,
+      init.name,
+      init.attributes,
+      async (toolSpan) => {
+        const start = Date.now();
+        const result = await executeToolWithSandboxGuard(toolName, toolDesc, args, sandbox);
+        recordToolOutcome(
+          toolSpan,
+          { args, result, latencyMs: Date.now() - start },
+          {
+            redactContent: context.redactContent,
+            captureContent: resolveCaptureContent(context.captureContent),
+          }
+        );
+        return result;
+      },
+      context.parentSpanId,
+      init.kind
+    );
+  }
+
+  /**
    * Execute tool call node
    */
   private static async executeToolCall(
@@ -586,7 +723,7 @@ export class FlowExecutor {
     // (LOU-F fix), so this entry point can't silently bypass the sandbox
     // seam the way it previously did.
     const sandbox = context.sandbox ?? NoopSandbox;
-    const result = await executeToolWithSandboxGuard(toolName, toolDesc, args, sandbox);
+    const result = await this.executeToolInSpan(toolName, toolDesc, args, sandbox, context);
 
     // Emit tool result event
     emitEvent(events, onEvent, {

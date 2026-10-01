@@ -13,6 +13,7 @@ export * from './ApprovalGate';
 export * from './resume';
 export * from './checkpoint';
 export * from './tracing';
+export * from './semconv';
 export * from './logger';
 export * from './guardrails';
 export * from './hooks';

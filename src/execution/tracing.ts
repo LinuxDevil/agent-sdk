@@ -11,6 +11,16 @@
  */
 
 import { nanoid } from 'nanoid';
+import { ErrorAttr, LegacyAttr } from './semconv';
+
+/** OpenTelemetry span kind, for the kinds this SDK emits. */
+export type SpanKind = 'internal' | 'client';
+
+/** Span outcome; maps to OpenTelemetry's span status. */
+export interface SpanStatus {
+  code: 'ok' | 'error';
+  message?: string;
+}
 
 /**
  * A single span of work.
@@ -23,6 +33,23 @@ export interface Span {
   startTime: number;
   endTime?: number;
   parentId?: string;
+  /** Defaults to `internal` when omitted. */
+  kind?: SpanKind;
+  /** Set to `{ code: 'error' }` when the span's work failed. */
+  status?: SpanStatus;
+}
+
+/**
+ * Records a failure on `span`: `error.type` (a low-cardinality class, the
+ * error's name), the legacy `error` message attribute, and an error status.
+ */
+export function recordSpanError(span: Span, error: unknown): void {
+  span.attributes = {
+    ...span.attributes,
+    [LegacyAttr.ERROR]: error instanceof Error ? error.message : error,
+    [ErrorAttr.TYPE]: error instanceof Error ? error.name : ErrorAttr.OTHER,
+  };
+  span.status = { code: 'error', message: error instanceof Error ? error.message : String(error) };
 }
 
 /**
@@ -45,19 +72,22 @@ export interface TraceExporter {
  *   On error, an `error` attribute (the error's message, or the error
  *   itself when it's not an Error) is added to the span's attributes
  *   before `onSpanEnd` is invoked, and the original error is then
- *   rethrown unchanged.
+ *   rethrown unchanged. The span also gets `error.type` and an error
+ *   `status` (see {@link recordSpanError}).
  * - `parentId` lets callers thread parent/child span relationships
  *   (LOU-E5 uses this to nest `llm.generate`/`tool.call` spans under a
  *   top-level `agent.run` span).
  * - `fn` receives the span so callers can read its generated `id` (e.g.
  *   to pass as the `parentId` of a further-nested withSpan() call).
+ * - `kind` is the OpenTelemetry span kind (default `internal`).
  */
 export async function withSpan<T>(
   exporter: TraceExporter | undefined,
   name: string,
   attributes: Record<string, unknown>,
   fn: (span: Span) => Promise<T>,
-  parentId?: string
+  parentId?: string,
+  kind?: SpanKind
 ): Promise<T> {
   const span: Span = {
     id: nanoid(),
@@ -65,6 +95,7 @@ export async function withSpan<T>(
     attributes,
     startTime: Date.now(),
     parentId,
+    ...(kind ? { kind } : {}),
   };
 
   exporter?.onSpanStart(span);
@@ -72,10 +103,7 @@ export async function withSpan<T>(
   try {
     return await fn(span);
   } catch (error) {
-    span.attributes = {
-      ...span.attributes,
-      error: error instanceof Error ? error.message : error,
-    };
+    recordSpanError(span, error);
     throw error;
   } finally {
     span.endTime = Date.now();

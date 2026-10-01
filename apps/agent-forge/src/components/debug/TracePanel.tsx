@@ -6,8 +6,13 @@ import type { AgentGraphSpec } from '../../graph/types';
 import { findLlmNodeId, findToolNodeId } from './nodeLookup';
 
 function nodeIdForSpan(graph: AgentGraphSpec, span: SpanEvent): string | undefined {
-  if (span.name === 'llm.generate') return findLlmNodeId(graph);
-  if (span.name === 'tool.call') return findToolNodeId(graph, span.attributes.toolName as string | undefined);
+  // SDK spans follow the OpenTelemetry GenAI conventions (LOU-D9): the operation is
+  // `chat` (model call) or `execute_tool` (tool call).
+  const operation = span.attributes['gen_ai.operation.name'];
+  if (operation === 'chat') return findLlmNodeId(graph);
+  if (operation === 'execute_tool') {
+    return findToolNodeId(graph, span.attributes['gen_ai.tool.name'] as string | undefined);
+  }
   return undefined;
 }
 
