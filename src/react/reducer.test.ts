@@ -29,12 +29,24 @@ describe('reduceAgentEvents (LOU-D15)', () => {
     ]);
   });
 
-  it('ui.send with content parts shows their text (LOU-V11)', () => {
+  it('ui.send with content parts shows their text and a marker per non-text part (LOU-V12)', () => {
     const state = reduce({
       type: 'ui.send',
       input: [{ type: 'text', text: 'What is this?' }, { type: 'image', image: 'https://example.com/a.png' }],
     });
-    expect(state.messages[0]).toEqual({ id: 'm0', role: 'user', text: 'What is this?', toolCalls: [] });
+    expect(state.messages[0]).toEqual({ id: 'm0', role: 'user', text: 'What is this? [image]', toolCalls: [] });
+  });
+
+  it('ui.send with a Message[] shows its last user message', () => {
+    const state = reduce({
+      type: 'ui.send',
+      input: [
+        { role: 'user', content: 'Earlier' },
+        { role: 'assistant', content: 'Ok' },
+        { role: 'user', content: [{ type: 'file', data: 'https://example.com/a.pdf', mimeType: 'application/pdf' }] },
+      ],
+    });
+    expect(state.messages[0].text).toBe('[file]');
   });
 
   it('accumulates text deltas, then run.done sets idle and usage', () => {
@@ -95,6 +107,21 @@ describe('reduceAgentEvents (LOU-D15)', () => {
 
     const rejected = reduceAgentEvents(paused, { type: 'ui.decide', approved: false });
     expect(rejected.messages[1].toolCalls[0].status).toBe('rejected');
+  });
+
+  it("an ask_question pause exposes kind: 'question' and the question (LOU-X9)", () => {
+    const question = { text: 'Which city?', options: ['Porto', 'Lisbon'], allowFreeText: false };
+    const args = { question: 'Which city?', options: ['Porto', 'Lisbon'], allowFreeText: false };
+    const paused = reduce(
+      send,
+      ...events(
+        { type: 'approval.requested', approvalId: 'q1', toolCallId: 'c1', toolName: 'ask_question', args, kind: 'question', question },
+        { type: 'run.done', finishReason: 'awaiting-approval', text: '' }
+      )
+    );
+    expect(paused.status).toBe('awaiting-approval');
+    expect(paused.pendingApproval).toEqual({ id: 'q1', toolCallId: 'c1', toolName: 'ask_question', args, kind: 'question', question });
+    expect(paused.messages[1].toolCalls[0]).toMatchObject({ name: 'ask_question', status: 'awaiting-approval' });
   });
 
   it('a resumed run that pauses again exposes the next approval', () => {

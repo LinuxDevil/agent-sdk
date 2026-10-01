@@ -33,6 +33,8 @@ console.log(session.id, session.messages.length);
 Concurrent `send()` calls on one session are queued and run one after another in
 call order, so the transcript never interleaves.
 
+`send()` and `stream()` take a string, content parts (`[{ type: 'text', ... }, { type: 'image', ... }]`, one user message) or a `Message[]`; the stores keep the parts, see [Multimodal input](./providers.md#multimodal-input).
+
 A `send()` that throws (a provider error, or a tool that throws a
 `PropagatingToolError`) or is aborted with `signal` leaves the transcript
 exactly as it was before that call. An aborted `send()` resolves with

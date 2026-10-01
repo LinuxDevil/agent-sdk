@@ -54,6 +54,12 @@ export interface ToolExecutionContext {
   sessionId?: string;
   /** Called by the delegate tool with a finished child run's usage, so the parent run adds it to its totals (LOU-V5). */
   onDelegatedUsage?: (usage: RunUsage) => void;
+  /**
+   * Set when the call runs because a human approved it (`resumeAfterApproval()`,
+   * `agent.approvals.resolve()`): the decision's `note`. For the built-in
+   * `ask_question` tool it is the user's answer (LOU-X9).
+   */
+  approval?: { note?: string };
 }
 
 /**

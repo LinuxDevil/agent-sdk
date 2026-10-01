@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
 import * as ai from 'ai';
 import { defineTool } from './defineTool';
-import { getToolExecute, getToolInputSchema } from './toolContract';
+import { getToolExecute, getToolInputSchema, toolDescriptorFromSchema } from './toolContract';
 import { createAgent } from '../createAgent';
 import { mockModel } from '../testing';
 import type { Message } from '../providers';
@@ -82,5 +82,19 @@ describe('tool contract (LOU-D22)', () => {
     expect(getToolInputSchema(legacyOnly)).toBe(desc.tool.parameters);
     expect(await getToolExecute(legacyOnly)?.({}, {} as never)).toBe('legacy');
     expect(getToolExecute({ displayName: 'd', tool: { parameters: canonical } })).toBeUndefined();
+  });
+
+  it('toolDescriptorFromSchema sets canonical and legacy fields without validating the name or description', async () => {
+    const schema = z.object({ q: z.string() });
+    const desc = toolDescriptorFromSchema({
+      displayName: 'srv.search',
+      description: '',
+      inputSchema: schema,
+      execute: async (args) => ({ echoed: args }),
+    });
+    expect(desc.inputSchema).toBe(schema);
+    expect(desc.tool).toMatchObject({ description: '', parameters: schema });
+    expect(desc.tool.execute).toBe(desc.execute);
+    expect(await getToolExecute(desc)?.({ q: 'x' }, {} as never)).toEqual({ echoed: { q: 'x' } });
   });
 });

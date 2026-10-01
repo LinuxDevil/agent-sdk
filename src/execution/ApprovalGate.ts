@@ -24,10 +24,53 @@ export interface PendingApproval {
    * Absent for the top-level agent's own tool calls.
    */
   subagentPath?: string[];
+  /**
+   * LOU-X9: what the pause asks the human for. `'question'` for a call of the
+   * built-in `ask_question` tool (see `question`); absent for a tool call
+   * waiting on approval.
+   */
+  kind?: ApprovalKind;
+  /** LOU-X9: the question to show, when `kind` is `'question'`. */
+  question?: ApprovalQuestion;
+}
+
+/** LOU-X9: what a pending approval asks for. Absent on a record means `'tool'`. */
+export type ApprovalKind = 'tool' | 'question';
+
+/** LOU-X9: the question an `ask_question` call puts to the user. */
+export interface ApprovalQuestion {
+  text: string;
+  /** Choices to offer, in order; the tool result's `option` is an index into them. */
+  options?: string[];
+  /** With `options`: `false` means the answer must be one of them. */
+  allowFreeText?: boolean;
+}
+
+/** LOU-X9: the name of the built-in question tool (`askQuestionTool()`). */
+export const ASK_QUESTION_TOOL_NAME = 'ask_question';
+
+/**
+ * LOU-X9: `pending` with `kind: 'question'` and its `question` filled in when
+ * it is an `ask_question` call; any other record is returned as is.
+ */
+export function describeApproval(pending: PendingApproval): PendingApproval {
+  if (pending.kind !== undefined || pending.toolName !== ASK_QUESTION_TOOL_NAME) return pending;
+  const { question, options, allowFreeText } = pending.args;
+  return {
+    ...pending,
+    kind: 'question',
+    question: {
+      text: String(question ?? ''),
+      ...(Array.isArray(options) && { options: options.map(String) }),
+      ...(typeof allowFreeText === 'boolean' && { allowFreeText }),
+    },
+  };
 }
 
 /**
- * A human decision resolving a PendingApproval.
+ * A human decision resolving a PendingApproval. For a question (LOU-X9),
+ * `approved: true` with the answer as `note` answers it; `approved: false`
+ * declines to answer.
  */
 export interface ApprovalDecision {
   id: string;

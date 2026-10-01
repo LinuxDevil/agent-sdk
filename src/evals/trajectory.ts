@@ -8,6 +8,7 @@
 import type { SimpleAgent } from '../createAgent';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import type { LLMProvider } from '../providers/llm';
+import type { AgentInput } from '../providers/content';
 import { llmJudge } from './llmJudge';
 import type { Check } from './checks';
 import type { AssertionKind, AssertionResult, EvalResult, EvalToolCall } from './evalResult';
@@ -50,7 +51,7 @@ export interface CalledToolOptions {
  */
 export interface EvalTestContext {
   /** Runs the agent on `message`. May be called more than once; assertions look at all runs. */
-  send(message: string): Promise<ExecutionResult>;
+  send(message: AgentInput): Promise<ExecutionResult>;
   /** Text of the latest reply (empty before the first `send()`). */
   readonly reply: string;
   /** The latest run, or `undefined` before the first `send()`. */
@@ -130,7 +131,7 @@ class TrajectoryContext implements EvalTestContext {
     return this.recorded;
   }
 
-  async send(message: string): Promise<ExecutionResult> {
+  async send(message: AgentInput): Promise<ExecutionResult> {
     this.agent ??= typeof this.agentSource === 'function' ? await this.agentSource() : this.agentSource;
     const result = await this.agent.send(message);
     this.results.push(result);

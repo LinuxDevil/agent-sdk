@@ -24,6 +24,7 @@ import { ToolDescriptor } from './types';
 import { modelFromEnv, resolveProviderSpec } from './providers/providerSpec';
 import { withFallback, withRetry, type WithRetryOptions } from './providers/resilience';
 import type { DefinedTool } from './tools/defineTool';
+import { withAskQuestion } from './tools/built-in/askQuestion';
 import { ToolConcurrency, assertToolConcurrency } from './execution/toolBatch';
 import type { Skill } from './skills/defineSkill';
 import type { Message } from './providers/llm';
@@ -46,6 +47,7 @@ import type { z } from 'zod';
 import type { McpServerSpec } from './spec/schema';
 import { agentMcp, streamAfter } from './tools/mcp/agentMcp';
 import { HookRegistry, type AgentHook } from './execution/hooks';
+import { toMessages, type AgentInput } from './providers/content';
 import { compactionHookFor, type AgentCompaction } from './context/agentCompaction';
 
 /**
@@ -184,6 +186,12 @@ export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> ex
    * ```
    */
   approve?: ApproveToolCall;
+  /**
+   * Adds the built-in `ask_question` tool (LOU-X9): the agent can ask the
+   * user a question, and the run pauses (like an approval, `kind: 'question'`)
+   * until `agent.approvals.answer({ id, answer })`. Off by default.
+   */
+  askQuestion?: boolean;
   /**
    * Retries of a failed model call (LOU-V7.2), with `withRetry()`: rate
    * limits, timeouts, network errors and 5xx responses, with exponential
@@ -348,8 +356,12 @@ export interface SendOptions {
 
 /** `TObject`: the type of `result.object` - `z.output` of the `output` schema. */
 export interface SimpleAgent<TObject = unknown> {
-  /** Send a single user message and get back the full execution result text. */
-  send: (message: string, options?: SendOptions) => Promise<ExecutionResult<TObject>>;
+  /**
+   * Send a single user message and get back the full execution result text.
+   * `message` is a string, content parts (one user message with an image or
+   * file, LOU-V12) or a `Message[]` passed through as it is.
+   */
+  send: (message: AgentInput, options?: SendOptions) => Promise<ExecutionResult<TObject>>;
   /**
    * Send a single user message and stream the run as typed events (LOU-V2):
    * `text.delta` chunks as the model writes, `tool.start`/`tool.done`,
@@ -365,7 +377,7 @@ export interface SimpleAgent<TObject = unknown> {
    * }
    * ```
    */
-  stream: (message: string, options?: SendOptions) => AgentRun<TObject>;
+  stream: (message: AgentInput, options?: SendOptions) => AgentRun<TObject>;
   /**
    * Start a multi-turn conversation (LOU-W4): every `send()` sees the earlier
    * exchanges. Kept in the agent's `store` (in memory without one); pass
@@ -451,7 +463,7 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
   const provider = resolveModelSource(config);
 
   const hasMcp = Object.keys(config.mcpServers ?? {}).length > 0;
-  const { toolRegistry, toolsConfig } = registerTools(config.tools ?? {}, hasMcp);
+  const { toolRegistry, toolsConfig } = registerTools(withAskQuestion(config.tools, config.askQuestion) ?? {}, hasMcp);
   // LOU-Z4: MCP tools join the registry and the agent's tools once connected.
   const mcp = agentMcp(config.mcpServers, (tools) => {
     for (const [name, descriptor] of Object.entries(tools)) {
@@ -539,12 +551,12 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
   // `object` was validated with `config.output`, so it has its output type.
   type Typed = z.output<TOutput>;
   const simpleAgent: SimpleAgent<Typed> = {
-    async send(message: string, options: SendOptions = {}): Promise<ExecutionResult<Typed>> {
-      const result = await run(message, options.signal, durable(options.sessionId));
+    async send(message: AgentInput, options: SendOptions = {}): Promise<ExecutionResult<Typed>> {
+      const result = await run(toMessages(message), options.signal, durable(options.sessionId));
       return approvals.settle(result, options.signal) as Promise<ExecutionResult<Typed>>;
     },
-    stream(message: string, options: SendOptions = {}): AgentRun<Typed> {
-      return startStream(executeOptions(message, options.signal, durable(options.sessionId))) as AgentRun<Typed>;
+    stream(message: AgentInput, options: SendOptions = {}): AgentRun<Typed> {
+      return startStream(executeOptions(toMessages(message), options.signal, durable(options.sessionId))) as AgentRun<Typed>;
     },
     session,
     async resume(sessionId: string, { signal } = {}): Promise<ExecutionResult<Typed> | null> {

@@ -20,7 +20,7 @@ import { bindToolCallScope, type ToolCallScope } from './subagentRuntime';
 export type ToolRunContext = Partial<Omit<ToolExecutionContext, 'messages'>>;
 
 /** What {@link buildToolRunContext} builds the context from. */
-export interface ToolRunInput extends Pick<ToolRunContext, 'toolCallId' | 'sessionId' | 'onDelegatedUsage'> {
+export interface ToolRunInput extends Pick<ToolRunContext, 'toolCallId' | 'sessionId' | 'onDelegatedUsage' | 'approval'> {
   /** The run's transcript. The tool gets the part before the model turn that made this call. */
   messages?: readonly Message[];
   /** The run's cancellation signal; the tool gets it as `abortSignal`. */
@@ -54,6 +54,7 @@ export function buildToolRunContext(input: ToolRunInput): ToolExecutionContext {
     abortSignal: input.signal,
     onDelegatedUsage: input.onDelegatedUsage,
     ...(input.sessionId !== undefined && { sessionId: input.sessionId }),
+    ...(input.approval && { approval: input.approval }),
   };
   bindToolCallScope(ctx, input.scope);
   return ctx;

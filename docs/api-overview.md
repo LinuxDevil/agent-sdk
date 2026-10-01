@@ -81,9 +81,11 @@ and an `approvalId`. `agent.approvals.list()` returns the pending calls and
 `agent.approvals.resolve({ id, approved, note? })` runs or rejects the call and
 resolves with the continued run's result (continuing the session it paused
 in). Pauses are kept in a per-agent `InMemoryApprovalStore` unless you pass
-`approvalStore` (e.g. `SqliteStore.approvals`) or a `store`; `approve: (call) => boolean`
+`approvalStore` (e.g. `SqliteStore.approvals`) or a `store`; `approve: (call) => boolean | string`
 decides each call in code without pausing (`stream()` still ends at the
-pause). See [Approvals](./approvals.md).
+pause). With `askQuestion: true` the agent can ask the user a question
+(`kind: 'question'`), answered with `agent.approvals.answer({ id, answer })`.
+See [Approvals](./approvals.md).
 
 ### Structured output
 

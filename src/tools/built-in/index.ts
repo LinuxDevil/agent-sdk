@@ -11,3 +11,4 @@ export * from './jira';
 export * from './github';
 export * from './slack';
 export * from './todo';
+export { askQuestionTool, type AskQuestionInput, type AskQuestionResult } from './askQuestion';
