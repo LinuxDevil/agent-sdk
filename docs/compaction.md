@@ -50,8 +50,8 @@ triggered it (see [Streaming](./streaming.md#event-schema-version-1)):
 
 | `type` | Fields |
 | --- | --- |
-| `compaction.start` | `strategy`, `tokensBefore`, `contextWindow`, `thresholdTokens` |
-| `compaction.done` | `strategy`, `tokensBefore`, `tokensAfter`, `prunedToolCallIds`, `summary?: boolean`, `error?: { message }` |
+| `compaction.start` | `strategy`, `tokensBefore`, `contextWindow`, `thresholdTokens`, `trigger?: 'manual'` |
+| `compaction.done` | `strategy`, `tokensBefore`, `tokensAfter`, `prunedToolCallIds`, `summary?: boolean`, `error?: { message }`, `trigger?: 'manual'` |
 
 Every `compaction.start` is followed by exactly one `compaction.done`. When the
 strategy could not shrink anything, `tokensAfter` equals `tokensBefore`; when it
@@ -215,6 +215,36 @@ const summarized = await compactMessages(history, {
   strategy: summarizeStrategy({ model: 'openai/gpt-4o-mini' }),
 });
 console.log(summarized.summary ?? summarized.error?.message);
+```
+
+## Compacting a session
+
+`session.compact(options?)` compacts a [session](./sessions.md)'s transcript
+now, whatever its size, saves it to the session's store (memory, file, SQLite
+or KV) and resolves to `{ messagesBefore, messagesAfter, tokensBefore, tokensAfter, strategy, error? }`.
+It runs `options.strategy`, else the strategy of `agent.session({ compaction })`
+(the same value as `createAgent({ compaction })`), else prunes old tool results.
+Pinned messages stay. A session with no messages resolves without doing
+anything. It rejects with `LOUSHY_SESSION_BUSY` while a turn is running, and
+with `LOUSHY_SESSION_TURN_PENDING` / `LOUSHY_SESSION_AWAITING_APPROVAL` while a
+durable turn is unfinished. Listeners added with `session.on()` get
+`compaction.start` and `compaction.done` with `trigger: 'manual'`.
+`session.clear()` empties the transcript instead and emits `context.cleared`.
+
+```ts
+import { createAgent, twoPhaseStrategy } from '@loushy/build-ai-agent';
+import { mockModel } from '@loushy/build-ai-agent/testing';
+
+const agent = createAgent({ provider: mockModel(['ok']) });
+const session = agent.session({ compaction: { strategy: twoPhaseStrategy({ model: 'openai/gpt-4o-mini' }) } });
+session.on((event) => {
+  if (event.type === 'compaction.done') console.log(event.trigger, event.tokensBefore, '->', event.tokensAfter);
+});
+await session.send('hello');
+const { tokensBefore, tokensAfter } = await session.compact({ protectedTokens: 2_000 });
+console.log(`${tokensBefore} -> ${tokensAfter} tokens`);
+await session.clear();
+console.log(session.messages.length); // 0
 ```
 
 ## Writing a strategy
