@@ -1536,6 +1536,7 @@ my-agent/
   subagents/<name>/                                # nested agent directories
   schedules/*.ts|js                                # defineSchedule() cron schedules (see schedules.md)
   channels/*.ts|js                                 # a channel each: defineChannel(), webhookChannel(), ... (see channels.md)
+  memory/*.ts|js                                   # a memory slot each: defineMemory() (see memory.md); part of the agent
 ```
 
 Only one config file may exist. Files inside `tools/` and the entries of
@@ -1624,6 +1625,28 @@ createServer((req, res) => void handler(req, res).then((handled) => handled || r
 ```
 
 `loushy dev` does not mount `channels/` yet.
+
+### Memory
+
+Each file in `memory/` default-exports a [memory slot](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md): the result of
+`defineMemory({ ... })`, or the same options without a `name`, in which case the
+file name is the slot name. Unlike schedules and channels, slots are part of the
+agent: `loadAgentDir()` passes them to `createAgent({ memory })`, so the
+`remember_<name>` / `recall_<name>` tools and recall into the prompt work with no
+extra code, and `manifest.memory` lists their names. Each slot uses its own
+`provider`. A file that does not export a slot fails with `LOUSHY_MEMORY_INVALID`
+naming the file. A `memory` override passed to `loadAgentDir(dir, { overrides })`
+is merged with the directory's slots by name: the override wins a name clash.
+
+```ts
+import { defineMemory, fileMemory, resolveAgentDir } from '@loushy/build-ai-agent';
+
+// memory/notes.ts: export default { scope: 'global', provider: fileMemory({ dir: './.loushy/memory' }) }
+const { manifest } = await resolveAgentDir('./my-agent', {
+  memory: [defineMemory({ name: 'notes', scope: 'global', provider: fileMemory({ dir: './.loushy/memory' }) })],
+});
+console.log(manifest.memory); // names found in memory/
+```
 
 ## How it maps to `createAgent()`
 
@@ -4533,6 +4556,16 @@ a channel (an object with `parse` and `reply`). The message names the file.
 
 **Example:** `export default { cron: 'x' }` in `channels/sms.ts`.
 
+### LOUSHY_MEMORY_INVALID
+
+**Means:** a file in an agent directory's `memory/` folder does not default-export
+a memory slot (an object with a `scope` and a `provider`). The message names the file.
+
+**Fix:** default-export `defineMemory({ ... })`, or the same options without a `name`
+(the file name is used). See [Memory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md) and [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md#memory).
+
+**Example:** `export default { cron: 'x' }` in `memory/notes.ts`.
+
 ## General
 
 ### LOUSHY_GENERIC_ERROR
@@ -5348,8 +5381,8 @@ console.log((await store.list('global')).map((item) => item.text)); // ['Lives i
   sub-agents. When `agent.approvals.resolve()` continues a run after an
   approval pause, the recalled block stays in the prompt but the memory tools
   are not offered for the rest of that run.
-- `loadAgentDir()` does not read a `memory/` folder yet (planned, LOU-W6.3):
-  pass `memory` as an override.
+- An agent directory's `memory/` folder is part of the agent: see
+  [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md#memory).
 
 # Tracing and observability
 
