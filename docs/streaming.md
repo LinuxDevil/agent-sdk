@@ -88,6 +88,32 @@ const again = session.stream('What is my name?'); // streams with the first turn
 console.log((await again.result).text);
 ```
 
+## Streaming after an approval
+
+A run that paused for an [approval](./approvals.md) can continue as a stream
+too. `streamResumeAfterApproval()` takes the arguments of
+`resumeAfterApproval()` and returns an `AgentRun` whose `result` is what
+`resumeAfterApproval()` returns. Its events are `run.start`, the decided
+call's `tool.start` and `tool.done` (`tool.error` for a rejection), then the
+continuation's events exactly as in a fresh run, up to `run.done`; a further
+pause ends it with `approval.requested`. Cancellation, `enqueue()` and
+`steer()` work as on any run, and the approval can come from another
+process, since everything is read from the approval store. For
+`createAgent()` agents use `agent.approvals.streamResolve()` or
+`streamAnswer()`. A model chosen per run (`model` as a function) is the one
+the paused run used.
+
+```ts
+import { AgentExecutor, streamResumeAfterApproval } from '@loushy/build-ai-agent';
+
+const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistry, approvalStore });
+const run = streamResumeAfterApproval({ id: paused.approvalId!, approved: true }, approvalStore, toolRegistry, provider);
+for await (const event of run) {
+  if (event.type === 'tool.done') console.log(`${event.toolName} ran`);
+  if (event.type === 'text.delta') process.stdout.write(event.text);
+}
+```
+
 ## Event schema (version 1)
 
 Every event has these fields:
@@ -112,7 +138,7 @@ The event types and their extra fields:
 | `tool.start`         | `toolCallId: string`, `toolName: string`, `args: Record<string, unknown>` | A tool call starts. `args` are the model's arguments parsed from JSON (`{}` when they are not valid JSON). |
 | `tool.done`          | `toolCallId`, `toolName`, `result: unknown`, `durationMs: number` | A tool call returned. `result` is the value as it would be JSON-encoded (`undefined` becomes `null`, a `Date` becomes a string). `durationMs` counts from its `tool.start`. |
 | `tool.error`         | `toolCallId`, `toolName`, `error: { name: string, message: string }`, `durationMs: number` | A tool call failed: it threw, its arguments did not match its schema (`name: 'ToolArgumentsValidationError'`), or the tool does not exist. The model gets the error as the call's result and the run continues. |
-| `approval.requested` | `approvalId: string`, `toolCallId`, `toolName`, `args: Record<string, unknown>`, `kind?: 'question'`, `question?: { text, options?, allowFreeText? }` | A tool call needs a human decision. The run then stops; resume it with `agent.approvals.resolve()` or `resumeAfterApproval()` (see [Approvals](./approvals.md)). An `ask_question` call carries `kind: 'question'` and its `question`; answer it with `agent.approvals.answer()` (see [Asking the user a question](./approvals.md#asking-the-user-a-question)). |
+| `approval.requested` | `approvalId: string`, `toolCallId`, `toolName`, `args: Record<string, unknown>`, `kind?: 'question'`, `question?: { text, options?, allowFreeText? }` | A tool call needs a human decision. The run then stops; resume it with `agent.approvals.resolve()` or `resumeAfterApproval()` (see [Approvals](./approvals.md)), or stream the continuation (see [Streaming after an approval](#streaming-after-an-approval)). An `ask_question` call carries `kind: 'question'` and its `question`; answer it with `agent.approvals.answer()` (see [Asking the user a question](./approvals.md#asking-the-user-a-question)). |
 | `permission.decision` | `toolCallId`, `toolName`, `decision: 'allow' \| 'deny' \| 'ask' \| 'default'`, `rule?: { index: number, reason?: string }`, `args?: Record<string, unknown>`, `at: string` | How a tool call's [permission rules](./approvals.md#permission-policies) decided it: after its `tool.start`, before the call's own `tool.done` / `tool.error` / `approval.requested`. Only when the run sets `permissions` or `onPermissionDecision`; `args` is left out under `redactContent`. |
 | `step.done`          | `step: number`, `finishReason: string`, `usage?: { promptTokens, completionTokens, totalTokens }` | A step ends. `finishReason` is the model's (`'stop'`, `'tool_calls'`, `'length'`, ...), or `'awaiting-approval'`, `'aborted'`, `'steered'` (its model call was aborted by `run.steer()`, see [Steering](#steering)) or `'error'` when the step ended that way (a run that runs out of `maxSteps` still wanting to continue ends with `run.done` `'max-steps'`). `usage` is this step's model call, absent when the call produced no response. |
 | `error`              | `error: { name: string, message: string }` | An error. If it ends the run, `run.done` with `finishReason: 'error'` follows. A provider error retried under `surfaceRetryableProviderErrors` is followed by further steps instead. |

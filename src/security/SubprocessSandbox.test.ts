@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import Docker from 'dockerode';
 import { SubprocessSandbox, SandboxAdapter } from './sandbox';
 
@@ -40,17 +40,63 @@ describe('SubprocessSandbox', () => {
     expect(typeof sandbox.writeFile).toBe('function');
   });
 
-  it('run() builds a container config with NetworkMode: none and AutoRemove: true', async () => {
-    // Exercise the exact HostConfig object SubprocessSandbox.run() passes
-    // to dockerode's createContainer, without requiring a live daemon: we
-    // intercept by constructing the same options object run() builds.
-    // (This mirrors run()'s internal construction; see sandbox.ts.)
-    const opts = { cwd: '/work' };
-    const binds = opts.cwd ? [`${opts.cwd}:${opts.cwd}`] : undefined;
-    const hostConfig = { NetworkMode: 'none', AutoRemove: true, Binds: binds };
-    expect(hostConfig.NetworkMode).toBe('none');
-    expect(hostConfig.AutoRemove).toBe(true);
-    expect(hostConfig.Binds).toEqual(['/work:/work']);
+  describe('container options (dockerode fake, no daemon needed)', () => {
+    afterEach(() => {
+      vi.doUnmock('dockerode');
+      vi.resetModules();
+    });
+
+    /** Loads sandbox.ts against a fake dockerode that records every createContainer() options object. */
+    async function withFakeDocker() {
+      const created: Docker.ContainerCreateOptions[] = [];
+      class FakeDocker {
+        modem = { demuxStream: () => {} };
+        async createContainer(options: Docker.ContainerCreateOptions) {
+          created.push(options);
+          return { attach: async () => ({}), start: async () => {}, wait: async () => ({ StatusCode: 0 }), kill: async () => {} };
+        }
+      }
+      vi.resetModules();
+      vi.doMock('dockerode', () => ({ default: FakeDocker }));
+      const sandboxModule = await import('./sandbox');
+      const shellModule = await import('../tools/workspace/SandboxShell');
+      return { created, Sandbox: sandboxModule.SubprocessSandbox, Shell: shellModule.SandboxShell };
+    }
+
+    it('is auto-removed, mounts only cwd, and has no network by default', async () => {
+      const { created, Sandbox } = await withFakeDocker();
+      await new Sandbox().run('sh', ['-c', 'ls'], { cwd: '/work' });
+      expect(created[0]).toMatchObject({ Cmd: ['sh', '-c', 'ls'], WorkingDir: '/work' });
+      expect(created[0].HostConfig).toEqual({ NetworkMode: 'none', AutoRemove: true, Binds: ['/work:/work'] });
+    });
+
+    it('maps the network policy, failing closed for { allow } without an egress proxy (LOU-X11)', async () => {
+      const { created, Sandbox } = await withFakeDocker();
+      await new Sandbox({ network: 'default' }).run('ls', []);
+      await new Sandbox({ network: 'none' }).run('ls', []);
+      const allowed = new Sandbox({ network: { allow: ['API.github.com', '*.npmjs.org'] } });
+      await allowed.run('ls', []);
+      expect(created.map((options) => options.HostConfig?.NetworkMode)).toEqual(['default', 'none', 'none']);
+      expect(allowed.network).toEqual({ allow: ['api.github.com', '*.npmjs.org'] });
+      expect(() => new Sandbox({ network: { allow: ['https://evil.example/path'] } })).toThrow(/host names/);
+      expect(() => new Sandbox({ network: { allow: ['a..b'] } })).toThrow(/host names/);
+      expect(() => new Sandbox({ network: 'bridge' as 'none' })).toThrow(/'none', 'default' or \{ allow/);
+    });
+
+    it('passes the SandboxShell allowlisted env into the container, never the host env (LOU-X11)', async () => {
+      process.env.FAKE_SECRET_FOR_TEST = 'fake-secret-x11';
+      process.env.FAKE_ALLOWED_FOR_TEST = 'allowed-x11';
+      try {
+        const { created, Sandbox, Shell } = await withFakeDocker();
+        await new Shell(new Sandbox(), { env: { FOO: 'bar' }, inheritEnv: ['FAKE_ALLOWED_FOR_TEST'] }).exec('env');
+        await new Shell(new Sandbox(), { inheritEnv: true }).exec('env');
+        expect(created[0].Env).toEqual(['FAKE_ALLOWED_FOR_TEST=allowed-x11', 'FOO=bar']);
+        expect(created[1].Env).toEqual([]);
+      } finally {
+        delete process.env.FAKE_SECRET_FOR_TEST;
+        delete process.env.FAKE_ALLOWED_FOR_TEST;
+      }
+    });
   });
 
   describe.skipIf(!dockerAvailable)('integration (requires a running Docker daemon)', () => {

@@ -17,7 +17,7 @@
 
 import { AgentBuilder } from './core/AgentBuilder';
 import { AgentExecutor, ExecuteOptions, ExecutionResult } from './execution/AgentExecutor';
-import type { AgentRun } from './execution/agentRun';
+import { streamResumed, type AgentRun } from './execution/agentRun';
 import { LLMProvider } from './providers/llm';
 import { ToolRegistry } from './tools/ToolRegistry';
 import { ToolDescriptor } from './types';
@@ -43,10 +43,10 @@ import type { Subagents } from './subagents/types';
 import type { SubagentOptions } from './subagents/backgroundTasks';
 import { assertMaxSubagentDepth, assertNoTaskTool, assertSubagents, registerSubagent, subagentsWithOptions } from './subagents/withSubagents';
 import type { SubagentSpec } from './execution/delegation';
-import type { ApprovalStore, ResolvedApproval } from './execution/ApprovalGate';
+import type { ApprovalDecision, ApprovalStore, ResolvedApproval } from './execution/ApprovalGate';
 import { InMemoryApprovalStore } from './execution/InMemoryApprovalStore';
-import { resumeAfterApproval } from './execution/resume';
-import type { ForkOptions, ForkResult } from './execution/checkpoint';
+import { resumeRequest, type ResumeRequest } from './execution/resume';
+import type { CheckpointStore, ForkOptions, ForkResult } from './execution/checkpoint';
 import { ConfigurationError, SDKError } from './execution/errors';
 import { newId } from './utils/id';
 import { createAgentApprovals, type AgentApprovals, type ApproveToolCall } from './createAgentApprovals';
@@ -577,21 +577,34 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
   });
   const hooks = agentHooks(config);
   const checkpoints = config.store?.checkpoints;
+  /** How a paused run continues: with the spec (and, for a dynamic run, the model) it paused with. */
+  const resumeRequestFor = async (
+    approvalStore: ApprovalStore,
+    decision: ApprovalDecision,
+    signal?: AbortSignal,
+    checkpointStore?: CheckpointStore
+  ): Promise<ResumeRequest> => {
+    const paused = await pausedRun(specs, approvalStore, decision.id);
+    return {
+      decision,
+      approvalStore: paused.store,
+      toolRegistry: paused.spec.toolRegistry ?? new ToolRegistry(),
+      provider: paused.spec.provider,
+      executeOptions: { ...runOptions, output: config.output, hooks, approvalStore: paused.store, signal },
+      // A run paused under a `sessionId` keeps checkpointing after the decision.
+      checkpointStore: checkpointStore ?? checkpoints,
+    };
+  };
   const approvals = createAgentApprovals({
     store: config.approvalStore ?? config.store?.approvals ?? new InMemoryApprovalStore(),
     approve: config.approve,
-    resume: async (approvalStore, decision, signal, checkpointStore) => {
-      const paused = await pausedRun(specs, approvalStore, decision.id);
-      return resumeAfterApproval(
-        decision,
-        paused.store,
-        paused.spec.toolRegistry ?? new ToolRegistry(),
-        paused.spec.provider,
-        { ...runOptions, output: config.output, hooks, approvalStore: paused.store, signal },
-        // A run paused under a `sessionId` keeps checkpointing after the decision.
-        checkpointStore ?? checkpoints
-      );
-    },
+    resume: async (...args) => resumeRequest(await resumeRequestFor(...args)),
+    // LOU-V14: the streamed run's own signal and event sink are wired into the request.
+    streamResume: (approvalStore, decision, signal, checkpointStore, inputQueue) =>
+      streamResumed(async (wire) => {
+        const request = await resumeRequestFor(approvalStore, decision, undefined, checkpointStore);
+        return resumeRequest({ ...request, executeOptions: wire(request.executeOptions ?? {}) });
+      }, signal, inputQueue),
   });
   /** A run under `sessionId`, checkpointed in the agent's store (LOU-D30). */
   const durable = (sessionId: string | undefined): Partial<SessionTurnCheckpoint> => {

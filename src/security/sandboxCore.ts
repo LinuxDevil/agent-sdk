@@ -13,6 +13,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { writeFile as fsWriteFile } from 'node:fs/promises';
+import { commandEnv } from './commandEnv';
 
 const execFileAsync = promisify(execFile);
 
@@ -33,6 +34,13 @@ export interface SandboxRunOptions {
   cwd?: string;
   /** Environment variables for the command's process. */
   env?: Record<string, string>;
+  /**
+   * Host-process adapters only (`NoopSandbox`): `false` gives the command a
+   * small base (`PATH`, `HOME`, temp dirs, locale; see `NodeWorkspace`) plus
+   * `env` instead of the whole host environment (LOU-X11). Defaults to
+   * `true`. Container adapters never pass the host environment.
+   */
+  inheritEnv?: boolean;
   /** Timeout in milliseconds after which the command is killed. */
   timeoutMs?: number;
   /** Aborts the command (LOU-U17); `run()` then rejects with an `AbortError`. Adapters may ignore it. */
@@ -79,7 +87,7 @@ export const NoopSandbox: SandboxAdapter = {
     try {
       const { stdout, stderr } = await execFileAsync(cmd, args, {
         cwd: opts.cwd,
-        env: opts.env ? { ...process.env, ...opts.env } : process.env,
+        env: opts.inheritEnv === false ? commandEnv({ env: opts.env }) : { ...process.env, ...opts.env },
         timeout: opts.timeoutMs,
         signal: opts.signal,
       });

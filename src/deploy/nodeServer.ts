@@ -15,6 +15,8 @@ import { relayFetch } from '../server/chatRoutes';
 import { serveFetch } from '../server/fetchRoutes';
 import { startSchedules, type StartSchedulesOptions } from '../schedules/startSchedules';
 import type { DefinedSchedule } from '../schedules/defineSchedule';
+import type { Channel } from '../channels/defineChannel';
+import { mountChannels } from '../channels/mountChannels';
 import { specToAgent } from '../spec/specToAgent';
 import type { AgentSpec } from '../spec/schema';
 import { memoryStore, type AgentStore } from '../storage/agentStore';
@@ -34,6 +36,8 @@ export interface DeployedServerOptions {
   schedules?: readonly DefinedSchedule[];
   /** Overrides for the scheduler (clock, timers, error sink); mainly for tests. */
   scheduler?: StartSchedulesOptions;
+  /** Channels of the served agent directory (`resolveAgentDir()`'s `channels`): mounted under `/channels` next to the chat routes. */
+  channels?: readonly Channel[];
 }
 
 /** The store `LOUSHY_STORE` names: `memory` (the default, lost on restart) or `sqlite:<path>` (Node >= 22). */
@@ -65,9 +69,13 @@ function replyUnhandled(res: http.ServerResponse, error: unknown): void {
 export function createDeployedServer(agent: SimpleAgent, options: DeployedServerOptions = {}): { server: http.Server; authenticated: boolean } {
   const token = (options.env ?? process.env)[API_TOKEN_ENV] || options.auth?.token || undefined;
   const chat = { name: 'loushy server', agent: () => agent };
-  const server = http.createServer(
-    (req, res) => void relayFetch(req, res, (request) => serveFetch(request, chat, token)).catch((error) => replyUnhandled(res, error))
-  );
+  // Channels authenticate themselves (their own verify), so they sit beside the bearer-protected chat routes.
+  const channels = options.channels?.length ? mountChannels(agent, options.channels) : undefined;
+  const handle = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
+    if (await channels?.(req, res)) return;
+    await relayFetch(req, res, (request) => serveFetch(request, chat, token));
+  };
+  const server = http.createServer((req, res) => void handle(req, res).catch((error) => replyUnhandled(res, error)));
   if (options.schedules?.length) {
     let running: ReturnType<typeof startSchedules> | undefined;
     server.on('listening', () => (running = startSchedules(agent, options.schedules ?? [], options.scheduler)));

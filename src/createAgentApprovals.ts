@@ -11,6 +11,8 @@ import type { ExecutionResult } from './execution/AgentExecutor';
 import type { AgentRun } from './execution/agentRun';
 import type { CheckpointStore } from './execution/checkpoint';
 import { SessionAwaitingApprovalError } from './execution/errors';
+import type { InputQueue } from './execution/inputQueue';
+import { streamSessionTurn } from './session/sessionStream';
 import { AgentSession, type SessionOptions, type SessionRunner, type SessionStreamRunner } from './session/AgentSession';
 
 /**
@@ -55,6 +57,22 @@ export interface AgentApprovals {
    * ```
    */
   answer(reply: { id: string; answer: string }, options?: { signal?: AbortSignal }): Promise<ExecutionResult>;
+  /**
+   * LOU-V14: like `resolve()`, but streams the continued run as the
+   * `AgentRun` that `agent.stream()` returns (see docs/streaming.md). Its
+   * `result` is what `resolve()` resolves with, except that, like
+   * `stream()`, it ends at the next pause even with an `approve` callback.
+   *
+   * @example
+   * ```ts
+   * for await (const event of agent.approvals.streamResolve({ id: paused.approvalId!, approved: true })) {
+   *   if (event.type === 'text.delta') process.stdout.write(event.text);
+   * }
+   * ```
+   */
+  streamResolve(decision: ApprovalDecision, options?: { signal?: AbortSignal }): AgentRun;
+  /** LOU-V14: `answer()`, streamed like `streamResolve()`. */
+  streamAnswer(reply: { id: string; answer: string }, options?: { signal?: AbortSignal }): AgentRun;
 }
 
 /**
@@ -68,16 +86,46 @@ type ResumeRun = (
   checkpointStore?: CheckpointStore
 ) => Promise<ExecutionResult>;
 
+/** {@link ResumeRun}, streamed (LOU-V14); `inputQueue` is what `run.enqueue()` pushes to. */
+type StreamResumeRun = (
+  store: ApprovalStore,
+  decision: ApprovalDecision,
+  signal?: AbortSignal,
+  checkpointStore?: CheckpointStore,
+  inputQueue?: InputQueue
+) => AgentRun;
+
 /** A session whose paused turn can be continued by `agent.approvals.resolve()`. */
 class ApprovalSession extends AgentSession {
   resolveWith(next: (checkpointStore?: CheckpointStore) => Promise<ExecutionResult>): Promise<ExecutionResult> {
     return this.continueTurn(() => next(this.checkpointStore));
   }
+
+  /** LOU-V14: `resolveWith()`, streamed: `run.done` comes once the session has recorded the turn. */
+  streamResolveWith(
+    next: (checkpointStore: CheckpointStore | undefined, signal: AbortSignal, inputs: InputQueue) => AgentRun,
+    signal?: AbortSignal
+  ): AgentRun {
+    return streamSessionTurn(
+      (runSignal, started, inputs) =>
+        this.continueTurn(() => {
+          const run = next(this.checkpointStore, runSignal, inputs);
+          started(run);
+          return run.result;
+        }),
+      signal
+    );
+  }
 }
 
 /** Wires an agent's approval store, `approve` callback and resume function together. */
-export function createAgentApprovals(options: { store: ApprovalStore; approve?: ApproveToolCall; resume: ResumeRun }) {
-  const { approve, resume } = options;
+export function createAgentApprovals(options: {
+  store: ApprovalStore;
+  approve?: ApproveToolCall;
+  resume: ResumeRun;
+  streamResume: StreamResumeRun;
+}) {
+  const { approve, resume, streamResume } = options;
   const pending = new Map<string, PendingApproval>();
   const sessions = new Map<string, ApprovalSession>();
   const store: ApprovalStore = {
@@ -141,10 +189,22 @@ export function createAgentApprovals(options: { store: ApprovalStore; approve?: 
     return session ? session.resolveWith(next) : next();
   }
 
+  function streamResolve(decision: ApprovalDecision, { signal }: { signal?: AbortSignal } = {}): AgentRun {
+    const session = sessions.get(decision.id);
+    sessions.delete(decision.id);
+    if (!session) return streamResume(store, decision, signal);
+    return session.streamResolveWith(
+      (checkpointStore, runSignal, inputs) => inSessionRun(session, streamResume(store, decision, runSignal, checkpointStore, inputs)),
+      signal
+    );
+  }
+
   const approvals: AgentApprovals = {
     list: async () => [...pending.values()],
     resolve,
     answer: ({ id, answer }, resolveOptions) => resolve({ id, approved: true, note: answer }, resolveOptions),
+    streamResolve,
+    streamAnswer: ({ id, answer }, resolveOptions) => streamResolve({ id, approved: true, note: answer }, resolveOptions),
   };
 
   return {

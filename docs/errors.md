@@ -241,20 +241,6 @@ input it was given.
 
 **Example:** a tool's `execute` threw.
 
-### LOUSHY_REMOTE_AGENT_FAILED
-
-**Means:** a `remoteAgent()` sub-agent could not deliver an answer: the
-deployed agent was unreachable, answered 401 or another non-2xx status, sent a
-malformed or unfinished stream, or its run ended in an error. The lead model
-gets it as a structured tool error; the bearer token is never part of it.
-
-**Fix:** read the message (it names the url and the remote session id); for a
-401, fix the `auth` token; for a remote run error, look at the remote agent's
-logs for that session.
-
-**Example:** `remoteAgent({ url, auth: 'wrong-token' })` against a deployment
-that sets `LOUSHY_API_TOKEN`.
-
 ## Approvals and sessions
 
 ### LOUSHY_APPROVAL_STORE_MISSING
@@ -319,8 +305,10 @@ streaming runner.
 
 ### LOUSHY_REMOTE_UNAUTHORIZED
 
-**Means:** `loushy eval --url` (or `remoteTarget()`) got `401` from the deployed
-agent: the bearer token is missing or wrong. The case fails; the run goes on.
+**Means:** `loushy eval --url`, `remoteTarget()` or a `remoteAgent()` sub-agent
+got `401` from the deployed agent: the bearer token is missing or wrong. An eval
+case fails (the run goes on); the lead model gets a structured tool error. The
+token is never part of the message.
 
 **Fix:** pass the deployment's `LOUSHY_API_TOKEN` with `--token` or the
 `LOUSHY_EVAL_TOKEN` environment variable. See
@@ -330,11 +318,16 @@ agent: the bearer token is missing or wrong. The case fails; the run goes on.
 
 ### LOUSHY_REMOTE_REQUEST_FAILED
 
-**Means:** a remote eval case could not run: the deployment was unreachable,
-answered with a non-2xx status, or its event stream was truncated (no
-`run.done`).
+**Means:** a remote eval case (`loushy eval --url`, `remoteTarget()`) or a
+`remoteAgent()` task could not run: the deployment was unreachable, answered
+with a non-2xx status, was aborted, or its event stream broke or was truncated
+(no `run.done`). A `remoteAgent()` task whose remote run ends in an error also
+fails with it, and the message says "the remote run ended in an error". The
+lead model gets it as a structured tool error; the bearer token is never part
+of it.
 
-**Fix:** check the URL, `GET <url>/health` and the deployment's logs.
+**Fix:** read the message (it names the url and, for a sub-agent, the remote
+session id); check the URL, `GET <url>/health` and the deployment's logs.
 
 **Example:** `loushy eval --url http://localhost:1` with nothing listening.
 
@@ -371,6 +364,28 @@ that does not parse (the message names the field), or not exactly one of
 See [Schedules](./schedules.md).
 
 **Example:** `defineSchedule({ cron: '61 * * * *', prompt: 'hi' })`.
+
+## Channels
+
+### LOUSHY_CHANNEL_INVALID
+
+**Means:** a file in an agent directory's `channels/` folder does not default-export
+a channel (an object with `parse` and `reply`). The message names the file.
+
+**Fix:** default-export a channel made with `defineChannel()`, `httpChannel()`,
+`webhookChannel()` or `slackChannel()`. See [Channels](./channels.md).
+
+**Example:** `export default { cron: 'x' }` in `channels/sms.ts`.
+
+### LOUSHY_MEMORY_INVALID
+
+**Means:** a file in an agent directory's `memory/` folder does not default-export
+a memory slot (an object with a `scope` and a `provider`). The message names the file.
+
+**Fix:** default-export `defineMemory({ ... })`, or the same options without a `name`
+(the file name is used). See [Memory](./memory.md) and [Agent directories](./agent-directories.md#memory).
+
+**Example:** `export default { cron: 'x' }` in `memory/notes.ts`.
 
 ## General
 

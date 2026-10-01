@@ -38,7 +38,6 @@ import {
   wranglerTomlSource,
 } from './cloudflare';
 import { CHECKPOINT_KV_BINDING } from '../checkpointBinding';
-import { describeOnAiV4 } from '../../providers/aiMajor.testkit';
 import { getAdapter, registerBuiltInAdapters } from '../index';
 import { LLMProviderRegistry } from '../../providers/llm';
 import { prepareWorkerSpec } from '../runtime.worker';
@@ -66,6 +65,15 @@ const SPEC = {
   provider: { type: 'mock', model: 'mock-1' },
   tools: ['current-date', 'day-name'],
 };
+
+/**
+ * The bundle minus `ai` v7's runtime-guarded `getBuiltinModule("node:...")`
+ * probes (LOU-D28c; which ids are allowed is findNodeBuiltinReferences' job).
+ * On `ai` v4 there are none, so this is the whole bundle.
+ */
+function withoutBuiltinProbes(bundle: string): string {
+  return bundle.replace(/(?:get|load)BuiltinModule\d*(?:\?\.)?\(\s*"node:[a-z_]+"\s*\)/g, '');
+}
 
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -119,6 +127,17 @@ describe('CloudflareWorkerAdapter', () => {
     expect(findNodeBuiltinReferences('const x = "no builtins here"; import { x } from "./path";')).toEqual([]);
   });
 
+  it('findNodeBuiltinReferences accepts only the allowlisted getBuiltinModule probes of ai v7 (LOU-D28c)', () => {
+    const probes = 'loadBuiltinModule2("node:diagnostics_channel"); loadBuiltinModule4("node:dns"); process.getBuiltinModule?.("node:async_hooks"); loadBuiltinModule("node:module");';
+    expect(findNodeBuiltinReferences(probes)).toEqual([]);
+    // Any other builtin, or an allowlisted id outside a probe call, is still a leak.
+    expect(findNodeBuiltinReferences('loadBuiltinModule("node:fs"); const id = "node:dns"; import("node:async_hooks");')).toEqual([
+      '"node:fs"',
+      '"node:dns"',
+      '"node:async_hooks"',
+    ]);
+  });
+
   it('rejects tools and providers that cannot run on Workers', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-cf-bad-'));
     const out = path.join(dir, 'out');
@@ -161,9 +180,7 @@ describe('CloudflareWorkerAdapter', () => {
     expect(anthropicPrepared.provider.name).toBe('anthropic');
   });
 
-  // TODO(LOU-D28c): with ai v7 installed the Worker bundle leaks node: built-ins, a product issue owned by D28c;
-  // this gate (ai v4 only) goes away when D28c lands.
-  describeOnAiV4('scaffold + build', () => {
+  describe('scaffold + build', () => {
     let outDir: string;
 
     beforeAll(async () => {
@@ -185,7 +202,8 @@ describe('CloudflareWorkerAdapter', () => {
     it('builds an ESM dist/worker.js with zero node: references', () => {
       const bundle = fs.readFileSync(path.join(outDir, 'dist', 'worker.js'), 'utf8');
       expect(bundle.length).toBeGreaterThan(0);
-      expect(bundle).not.toMatch(/node:/);
+      expect(findNodeBuiltinReferences(bundle)).toEqual([]);
+      expect(withoutBuiltinProbes(bundle)).not.toMatch(/node:/);
       expect(bundle).toMatch(/^export \{/m);
       // Browser-platform bundle: no CommonJS module wrapper at the top level.
       expect(bundle).not.toMatch(/^module\.exports/m);
@@ -395,9 +413,7 @@ describe('CloudflareWorkerAdapter', () => {
     });
   });
 
-  // TODO(LOU-D28c): with ai v7 installed the Worker bundle leaks node: built-ins, a product issue owned by D28c;
-  // this gate (ai v4 only) goes away when D28c lands.
-  describeOnAiV4('scaffold + build with a real provider (LOU-K3)', () => {
+  describe('scaffold + build with a real provider (LOU-K3)', () => {
     it.each(['openai', 'anthropic'] as const)(
       "scaffolds and builds a Worker bundle for provider '%s' with zero node: references",
       async (providerType) => {
@@ -415,7 +431,7 @@ describe('CloudflareWorkerAdapter', () => {
         const bundle = fs.readFileSync(bundlePath, 'utf8');
         expect(bundle.length).toBeGreaterThan(0);
         expect(findNodeBuiltinReferences(bundle)).toEqual([]);
-        expect(bundle).not.toMatch(/node:/);
+        expect(withoutBuiltinProbes(bundle)).not.toMatch(/node:/);
 
         // Drive the real built bundle's fetch() handler end to end. The
         // provider genuinely tries to call the real API (no network access

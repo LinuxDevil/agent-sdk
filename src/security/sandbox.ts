@@ -30,6 +30,7 @@ import { PassThrough } from 'node:stream';
 import type Docker from 'dockerode';
 import { lazyValue, loadOptionalPeer } from '../providers/optionalPeer';
 import { SandboxAdapter, SandboxResult, SandboxRunOptions } from './sandboxCore';
+import { isHostPattern } from './hostPattern';
 
 export * from './sandboxCore';
 
@@ -49,11 +50,39 @@ function isNoSuchImageError(err: unknown, image: string): boolean {
 }
 
 /**
- * Container config for one `run()` call: network-isolated, auto-removed,
- * bind-mounting only `opts.cwd` (when given).
+ * Network access for a {@link SubprocessSandbox} container (LOU-X11):
+ * - `'none'` (default): no network at all (Docker `NetworkMode: 'none'`).
+ * - `'default'`: Docker's default network, unrestricted egress.
+ * - `{ allow: ['api.github.com', '*.npmjs.org'] }`: only these hosts. Docker
+ *   cannot filter egress by host name on its own, so this needs an egress
+ *   proxy that is the container's only route out. `createCredentialBroker()`
+ *   (LOU-X12) is such a proxy, but containers are not routed through it yet
+ *   (LOU-X12.2), so the container gets no network (fail closed); the
+ *   validated list is kept on {@link SubprocessSandbox.network}.
+ */
+export type SandboxNetwork = 'none' | 'default' | { allow: readonly string[] };
+
+/** Validates a network policy, lower-casing allowlisted host names. Throws a readable error on a bad one. */
+function validateNetwork(network: SandboxNetwork = 'none'): SandboxNetwork {
+  if (network === 'none' || network === 'default') return network;
+  if (!Array.isArray(network?.allow)) {
+    throw new Error(`SubprocessSandbox: network must be 'none', 'default' or { allow: string[] }; got ${JSON.stringify(network)}.`);
+  }
+  const invalid = network.allow.filter((host) => !isHostPattern(host));
+  if (invalid.length > 0) {
+    throw new Error(`SubprocessSandbox: network.allow takes host names such as 'api.github.com' or '*.npmjs.org'; got ${JSON.stringify(invalid)}.`);
+  }
+  return { allow: Object.freeze(network.allow.map((host) => host.toLowerCase())) };
+}
+
+/**
+ * Container config for one `run()` call: auto-removed, bind-mounting only
+ * `opts.cwd` (when given), with only `opts.env` (never the host env) and no
+ * network unless the policy is `'default'`.
  */
 function buildContainerOptions(
   image: string,
+  network: SandboxNetwork,
   cmd: string,
   args: string[],
   opts: SandboxRunOptions
@@ -69,7 +98,7 @@ function buildContainerOptions(
     AttachStderr: true,
     Tty: false,
     HostConfig: {
-      NetworkMode: 'none',
+      NetworkMode: network === 'default' ? 'default' : 'none',
       AutoRemove: true,
       Binds: binds,
     },
@@ -134,11 +163,14 @@ export interface SubprocessSandboxOptions {
    * (npipe on Windows, unix socket on Linux/macOS).
    */
   dockerOptions?: Docker.DockerOptions;
+  /** Network access for each container. Defaults to `'none'`. See {@link SandboxNetwork} for what `{ allow }` enforces today. */
+  network?: SandboxNetwork;
 }
 
 /**
  * Docker-backed SandboxAdapter (LOU-F6). Runs each `run()` call in a
- * brand-new, network-isolated (`NetworkMode: 'none'`), auto-removed
+ * brand-new, network-isolated (`NetworkMode: 'none'` unless `network` says
+ * otherwise), auto-removed
  * (`AutoRemove: true`) container - no bind mounts beyond the explicit
  * `opts.cwd` directory a caller passes in, so the container has no access
  * to the rest of the host filesystem by default.
@@ -150,8 +182,11 @@ export class SubprocessSandbox implements SandboxAdapter {
   /** dockerode is loaded on first `run()`, not at import or construction time (LOU-D19). */
   private readonly getDocker: () => Promise<Docker>;
   private readonly image: string;
+  /** The validated network policy. An `{ allow }` list is kept here; until containers are routed through the credential broker (LOU-X12.2) it means no network. */
+  readonly network: SandboxNetwork;
 
   constructor(options: SubprocessSandboxOptions = {}) {
+    this.network = validateNetwork(options.network);
     this.getDocker = lazyValue(async () => {
       const { default: DockerClient } = await loadOptionalPeer('dockerode', () => import('dockerode'));
       return new DockerClient(options.dockerOptions);
@@ -201,7 +236,7 @@ export class SubprocessSandbox implements SandboxAdapter {
    */
   async run(cmd: string, args: string[], opts: SandboxRunOptions = {}): Promise<SandboxResult> {
     const docker = await this.getDocker();
-    const container = await this.createContainer(docker, buildContainerOptions(this.image, cmd, args, opts));
+    const container = await this.createContainer(docker, buildContainerOptions(this.image, this.network, cmd, args, opts));
 
     const output = captureOutput();
     const attachStream = await container.attach({ stream: true, stdout: true, stderr: true });

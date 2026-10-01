@@ -462,6 +462,40 @@ function toolStartKey(toolCallId: string, subagent: SubagentInfo | undefined): s
   return subagent ? `${subagentKey(subagent)}:${toolCallId}` : toolCallId;
 }
 
+/** Options a streamed run is wired through: its signal, input queue and `onEvent`. */
+type WiredOptions = Pick<ExecuteOptions, 'signal' | 'inputQueue' | 'onEvent'>;
+
+/**
+ * LOU-V14: streams a resume after an approval. `resume` runs it with the
+ * options `wire()` returns, which carry the run's signal, input queue and
+ * event sink. The resume reports its own `start` before the decided call, so
+ * the continuation's top-level `start` is dropped.
+ */
+export function streamResumed(
+  resume: (wire: <T extends WiredOptions>(options: T) => T) => Promise<ExecutionResult>,
+  signal?: AbortSignal,
+  inputQueue?: InputQueue
+): AgentRun {
+  return startAgentRun(({ signal: runSignal, onEvent, sink, inputQueue: queue }) => {
+    let started = false;
+    const wire = <T extends WiredOptions>(options: T): T => ({
+      ...options,
+      signal: runSignal,
+      inputQueue: queue,
+      onEvent: (event: ExecutionEvent) => {
+        if (event.type === 'start' && !event.subagent) {
+          if (started) return;
+          started = true;
+        }
+        options.onEvent?.(event);
+        onEvent(event);
+      },
+      [RUN_EVENTS]: sink,
+    });
+    return resume(wire);
+  }, signal, inputQueue);
+}
+
 /**
  * Starts a run and returns its {@link AgentRun} handle. `signal` (the
  * caller's) and an early `break` both abort the run; `inputQueue` is the one

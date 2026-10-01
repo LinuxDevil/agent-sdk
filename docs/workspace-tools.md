@@ -137,13 +137,19 @@ path.
 
 **Commands get a minimal environment.** `NodeWorkspace` runs commands with
 `cwd` set to the root. It does not pass on the parent process's environment.
-Only `PATH`, `HOME`, `USERPROFILE`, `TEMP`, `TMP`, `TMPDIR` and `LANG` are
-copied, plus `SystemRoot`, `SystemDrive`, `ComSpec`, `PATHEXT` and `WINDIR`
-on Windows, because cmd.exe and most programs need them to start. So
-`OPENAI_API_KEY` and other secrets in your server's environment are not
-visible to commands the model writes. To give commands more, either pass
-values (`env: { GITHUB_TOKEN: scopedToken }`) or name host variables to copy
-(`inheritEnv: ['CI']`). Anything you pass this way is visible to the model.
+Only `PATH`, `HOME`, `USERPROFILE`, `TEMP`, `TMP`, `TMPDIR`, `LANG`, `LC_*`
+and `TERM` are copied, plus `SystemRoot`, `SystemDrive`, `ComSpec`,
+`PATHEXT` and `WINDIR` on Windows, because a shell needs them to start. So
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, cloud credentials and other secrets
+in your server's environment are not visible to commands the model writes,
+and `env` or `printenv` cannot reveal them. To give commands more, either
+pass values (`env: { GITHUB_TOKEN: scopedToken }`) or name host variables to
+copy (`inheritEnv: ['CI']`). Anything you pass this way is visible to the
+model. `inheritEnv: true` passes the whole host environment, as before
+this default existed; use it only for commands you trust. On Windows,
+Node's process launcher also adds the session variables every process needs
+(`HOMEDRIVE`, `HOMEPATH`, `USERNAME`, `USERDOMAIN`, `LOGONSERVER`); none of
+them is a secret.
 
 ```ts
 import { NodeWorkspace } from '@loushy/build-ai-agent';
@@ -207,10 +213,109 @@ const shell = new SandboxShell(new SubprocessSandbox({ image: 'node:20-alpine' }
 const tools = [...createFsTools(workspace), createShellTool(shell, { needsApproval: false })];
 ```
 
+**Environment and network.** `SandboxShell` takes the same `env` and
+`inheritEnv` options as `NodeWorkspace`. A container gets only those
+variables: never the host environment, and not the host's `PATH` or `HOME`
+either, because the image brings its own. With `NoopSandbox` (which runs on
+the host) a command gets the same small base `NodeWorkspace` uses, plus
+your variables; `inheritEnv: true` restores the whole host environment
+there, but a container still never receives it.
+
+`SubprocessSandbox` takes a `network` policy:
+
+| `network` | What the container gets |
+|---|---|
+| `'none'` (default) | No network at all (Docker `NetworkMode: 'none'`). |
+| `'default'` | Docker's default network: unrestricted egress. |
+| `{ allow: ['api.github.com', '*.npmjs.org'] }` | No network. See below. |
+
+Docker cannot filter outgoing traffic by host name by itself. An `allow`
+list is only enforced when the proxy is the container's only way out. The
+[credential broker](#credential-broker) is such a proxy, but
+`SubprocessSandbox` does not route a container through it yet (LOU-X12.2):
+with dockerode options alone, a container can only reach a host-side proxy
+over a Docker network that also lets it reach everything else, so that would
+not be enforcement. So `{ allow }` still fails closed:
+the container runs with no network, and the validated list is kept on
+`sandbox.network`. Host names are checked when the sandbox is constructed,
+so a URL or a malformed name throws.
+
+```ts
+import { createShellTool, SandboxShell, SubprocessSandbox } from '@loushy/build-ai-agent';
+
+const sandbox = new SubprocessSandbox({ image: 'node:20-alpine', network: 'none' });
+const shell = new SandboxShell(sandbox, {
+  cwd: '/abs/path/to/project',
+  env: { NODE_ENV: 'test' }, // set for every command
+  inheritEnv: ['CI'],        // copied from the host environment
+});
+const tool = createShellTool(shell, { needsApproval: false });
+```
+
+What this does not cover: a value you pass in `env` or `inheritEnv` is
+readable by the model's commands, and `network: 'default'` lets a command
+send it anywhere. Keep long-lived secrets out of both; use the credential
+broker below instead.
+
 `SandboxAdapter` has no way to cancel a command. When the run is aborted,
 `SandboxShell` returns `aborted: true` immediately, but the container keeps
 running until its timeout kills it. The shell tool always sets a timeout, so
 the container does stop.
+
+### Credential broker
+
+A command the model runs (`git`, `curl`, a script) sometimes has to call an
+authenticated API, but any token in its environment is readable by the
+model. `createCredentialBroker()` keeps the token on the host: it starts a
+local HTTP proxy that adds the auth headers to requests for the hosts you
+name, so the command only ever sees the proxy's address.
+
+```ts
+import { createCredentialBroker, NodeWorkspace } from '@loushy/build-ai-agent';
+
+const token = 'ghp_example'; // read from your secret store; never passed to the command
+const broker = await createCredentialBroker({
+  rules: { 'api.github.com': { authorization: () => `Bearer ${token}` } },
+  allow: ['registry.npmjs.org'], // reachable without injected headers
+});
+const workspace = new NodeWorkspace({ root: './project', env: { ...broker.env } });
+await workspace.exec(`curl -s ${broker.baseUrl('api.github.com')}/user`);
+await broker.close();
+```
+
+- **What it returns.** `url` (the proxy, on an ephemeral `127.0.0.1` port by
+  default), `env` (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` and lower-case
+  forms, for the `env` option of `NodeWorkspace` or `SandboxShell`),
+  `baseUrl(host)` and `close()`, which stops the listener and destroys open
+  sockets. A header value is a string or a function called per request.
+- **Allowlist.** Rule hosts (exact names or `*.suffix`) are allowed
+  implicitly; `allow` adds hosts reached without injected headers. Any other
+  host gets a 403 before a connection is opened. Hosts that resolve to
+  loopback, link-local (such as the cloud metadata address `169.254.169.254`)
+  or private addresses are refused unless listed in `allowPrivate`, so a
+  command cannot use the proxy to reach services on your machine or network.
+- **Secrets stay on the host.** Injected values never appear in `env`, in the
+  proxy's error responses or in any log. A request to a brokered host that
+  already carries an `Authorization` header has it removed and replaced.
+  Hop-by-hop headers (`Connection`, `Proxy-Authorization`, ...) are not
+  forwarded.
+- **HTTPS limitation.** Header injection works on plain-HTTP requests and on
+  the path form: the broker serves `http://127.0.0.1:<port>/__broker/<host>/<path>`
+  and forwards it to `https://<host>/<path>` with the headers added, which is
+  what `baseUrl(host)` returns. Point a tool at that base URL (for example an
+  SDK's `baseURL` option or a `curl` URL) to get auth without holding the
+  token. A client that uses `HTTPS_PROXY` for an `https://` URL opens a
+  `CONNECT` tunnel instead: the broker checks the allowlist on the tunnel
+  target and passes the encrypted bytes through untouched, so no header is
+  added. The broker does not intercept TLS.
+- **It is not a firewall on the host.** A command run by `NodeWorkspace` can
+  ignore the proxy variables and open its own connections; the allowlist
+  only covers traffic sent through the broker. What the broker guarantees is
+  that the token is never in the command's reach.
+- **Containers.** Passing `broker.env` to a `SubprocessSandbox` command does
+  not help yet: the container has no network for `{ allow }`, and the proxy
+  listens on the host's loopback. Routing containers through the broker is
+  LOU-X12.2.
 
 ## Writing your own provider
 
