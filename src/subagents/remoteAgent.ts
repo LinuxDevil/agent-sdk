@@ -1,9 +1,4 @@
-/**
- * LOU-Y7: `remoteAgent()` - a deployed agent (the `/chat` session API of the
- * node server or the Cloudflare Worker, bearer auth) used as a sub-agent of a
- * lead agent. Built on the shared session client (LOU-D53); fetch only, so it
- * runs in Workers too.
- */
+/** LOU-Y7: `remoteAgent()`, a deployed agent used as a sub-agent. Built on the shared session client (LOU-D53); Worker-safe. */
 
 import { SDKError } from '../execution/errors';
 import { runRemoteTurn, type SessionTurnSummary } from '../server/sessionClient';

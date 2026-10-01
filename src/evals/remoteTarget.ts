@@ -39,17 +39,9 @@ const LABEL = 'loushy eval --url: the deployment';
 
 function toResult(summary: SessionTurnSummary): RemoteExecutionResult {
   const { usage: u, steps, toolCalls } = summary;
-  const usage = {
-    inputTokens: u?.inputTokens ?? 0,
-    outputTokens: u?.outputTokens ?? 0,
-    totalTokens: u?.totalTokens ?? 0,
-    promptTokens: u?.inputTokens ?? 0,
-    completionTokens: u?.outputTokens ?? 0,
-    costUsd: u?.costUsd,
-    modelCalls: u?.modelCalls ?? steps,
-    estimated: u?.estimated ?? false,
-    byModel: {},
-  };
+  const [inputTokens, outputTokens] = [u?.inputTokens ?? 0, u?.outputTokens ?? 0];
+  const tokens = { inputTokens, outputTokens, totalTokens: u?.totalTokens ?? 0, promptTokens: inputTokens, completionTokens: outputTokens };
+  const usage = { ...tokens, costUsd: u?.costUsd, modelCalls: u?.modelCalls ?? steps, estimated: u?.estimated ?? false, byModel: {} };
   const missing: RemoteExecutionResult['missing'] = [...(u ? [] : (['usage'] as const)), ...(steps === 0 ? (['steps'] as const) : [])];
   return { text: summary.text, messages: [], toolCalls, usage, finishReason: summary.finishReason, steps, missing };
 }
@@ -79,7 +71,9 @@ function toResult(summary: SessionTurnSummary): RemoteExecutionResult {
 export function remoteTarget(options: RemoteTargetOptions): () => EvalTarget {
   return () => {
     const sessionId = `eval-${newId()}`;
-    return { send: async (input) => toResult(await runRemoteTurn(options, { sessionId, input, label: LABEL })) };
+    return {
+      send: async (input) => toResult(await runRemoteTurn(options, { sessionId, input, label: LABEL })),
+    };
   };
 }
 
