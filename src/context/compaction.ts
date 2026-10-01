@@ -275,7 +275,8 @@ export interface CompactMessagesOptions {
   model?: string;
 }
 
-function prepare(messages: Message[], options: CompactMessagesOptions, signal?: AbortSignal) {
+/** The strategy and input {@link compactMessages} runs with (also used by `session.compact()`, LOU-W8). */
+export function prepareCompaction(messages: Message[], options: CompactMessagesOptions, signal?: AbortSignal) {
   const { model, protectedTokens = DEFAULT_PROTECTED_TOKENS, thresholdPercent = DEFAULT_THRESHOLD_PERCENT } = options;
   const strategy = options.strategy ?? pruneToolResultsStrategy();
   const contextWindow =
@@ -295,7 +296,7 @@ function prepare(messages: Message[], options: CompactMessagesOptions, signal?: 
  * const { messages: smaller, tokensBefore, tokensAfter } = await compactMessages(history, { protectedTokens: 8_000 });
  */
 export async function compactMessages(messages: Message[], options: CompactMessagesOptions = {}): Promise<CompactionResult> {
-  const { strategy, input } = prepare(messages, options);
+  const { strategy, input } = prepareCompaction(messages, options);
   return strategy.compact(input);
 }
 
@@ -340,7 +341,7 @@ export function createCompactionHook(options: CompactionHookOptions = {}): Agent
     name: 'compaction',
     async preGenerate(ctx: GenerateHookContext) {
       const messages = ctx.request.messages;
-      const { strategy, input } = prepare(messages, { ...options, model: ctx.request.model }, ctx.request.signal);
+      const { strategy, input } = prepareCompaction(messages, { ...options, model: ctx.request.model }, ctx.request.signal);
       const tokens = input.estimateTokens(messages);
       if (tokens <= input.thresholdTokens) return;
       const { contextWindow, thresholdTokens } = input;

@@ -182,6 +182,18 @@ describe('checkpointed sessions (LOU-W9)', () => {
     store.close();
   });
 
+  it('clear() and compact() reject while a durable turn waits on an approval (LOU-W8)', async () => {
+    const tools = [tool('send_email', {}, { needsApproval: true })];
+    const store = new SqliteStore(':memory:');
+    const session = createAgent({ provider: mockModel([calling('send_email')]), tools, approvalStore: new InMemoryApprovalStore() }).session({ id: 'chat', store });
+    await session.send('Email Sam');
+
+    await expect(session.clear()).rejects.toBeInstanceOf(SessionAwaitingApprovalError);
+    await expect(session.compact()).rejects.toMatchObject({ code: 'LOUSHY_SESSION_AWAITING_APPROVAL' });
+    expect(await session.pending()).toMatchObject({ status: 'awaiting-approval' });
+    store.close();
+  });
+
   it('a turn that finished just before its transcript was saved is added to the transcript, not run again', async () => {
     const sessions = new MemorySessionStore();
     const checkpoints = checkpointStore();
