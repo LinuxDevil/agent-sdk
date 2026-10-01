@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { createAgent } from '../createAgent';
 import { mockModel } from '../testing';
 import { defineTool } from '../tools/defineTool';
-import { parseEventStream } from '../react/parseEventStream';
+import { parseEventStream } from '../ui/parseEventStream';
 import type { AgentEvent } from '../execution/agentEvents';
 import { serveFetch } from '../server/fetchRoutes';
 import type { KVBinding } from './kvCheckpointStore';

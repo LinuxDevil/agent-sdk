@@ -148,6 +148,10 @@ describe('reduceAgentEvents (LOU-D15)', () => {
     expect(state.lastEvent?.subagent?.name).toBe('researcher');
   });
 
+  it('ui.reset (LOU-P2) goes back to the empty chat', () => {
+    expect(reduce(send, { type: 'text.delta', text: 'Hi' }, { type: 'ui.reset' })).toBe(initialAgentUIState);
+  });
+
   it('events without ui.send still build an assistant message', () => {
     const state = reduce(...events({ type: 'text.delta', text: 'Hi' }));
     expect(state.messages).toEqual([{ id: 'm0', role: 'assistant', text: 'Hi', toolCalls: [] }]);

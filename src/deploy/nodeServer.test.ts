@@ -14,7 +14,7 @@ import { mockModel } from '../testing';
 import { defineTool } from '../tools/defineTool';
 import { memoryStore } from '../storage/agentStore';
 import { SqliteStore } from '../storage/sqlite';
-import { parseEventStream } from '../react/parseEventStream';
+import { parseEventStream } from '../ui/parseEventStream';
 import type { AgentEvent } from '../execution/agentEvents';
 import { createDeployedServer, storeFromEnv, type DeployedServerOptions } from './nodeServer';
 
