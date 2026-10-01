@@ -1,11 +1,11 @@
-# Roadmap: beat eve and open-harness
+| LOU-D5 ✅ [#40](https://github.com/LinuxDevil/agent-sdk/pull/40) || LOU-X1 ✅ [#39](https://github.com/LinuxDevil/agent-sdk/pull/39) || LOU-V1 ✅ [#42](https://github.com/LinuxDevil/agent-sdk/pull/42) || LOU-U11 ✅ [#35](https://github.com/LinuxDevil/agent-sdk/pull/35) || LOU-U10 ✅ [#35](https://github.com/LinuxDevil/agent-sdk/pull/35) || LOU-U6 ✅ [#36](https://github.com/LinuxDevil/agent-sdk/pull/36) || LOU-U5 ✅ [#36](https://github.com/LinuxDevil/agent-sdk/pull/36) || LOU-U4 ✅ [#32](https://github.com/LinuxDevil/agent-sdk/pull/32) || LOU-U3 ✅ [#34](https://github.com/LinuxDevil/agent-sdk/pull/34) || LOU-U2 ✅ [#33](https://github.com/LinuxDevil/agent-sdk/pull/33) || LOU-U1 ✅ [#31](https://github.com/LinuxDevil/agent-sdk/pull/31) |# Roadmap: beat eve and open-harness
 
 Sources: [feature audit](../research/feature-audit.md) and
 [competitor research](../research/competitors-eve-open-harness.md).
 
 Every ticket is **1 story point**: one PR, independently mergeable, with tests.
 Tickets are ordered by priority inside each epic; epics are ordered by priority.
-Status: `[ ]` open, `[x]` merged (PR linked).
+Status: a ✅ with a PR link next to the ID means merged.
 
 ## Epic U — Correctness (bugs found by the audit)
 
@@ -22,6 +22,13 @@ Status: `[ ]` open, `[x]` merged (PR linked).
 | LOU-U9 | Checkpoint after every LLM turn | A crash after a model response (before tools run) resumes without re-calling the model; test with a failing store/provider. |
 | LOU-U10 | Fix Agent Forge `stop()` then `run()` resume test | `server/__tests__/runRegistry.test.ts > stop() then run() resumes from the last checkpoint` fails on `main` (times out waiting for status); find the root cause and fix it. |
 | LOU-U11 | CI runs the Agent Forge unit and server suites | `ci.yml` runs `apps/agent-forge` typechecks, `vitest run` and `test:server`, so regressions like LOU-U10 cannot land silently. |
+| LOU-U12 ✅ [#37](https://github.com/LinuxDevil/agent-sdk/pull/37) | A thrown tool error reaches the model as a structured error | The model sees `{ error, toolName, message }` instead of `"null"`; message capped; propagating errors still abort. |
+| LOU-U13 | Bind flow `{{var}}` placeholders as values | Placeholders in flow conditions are bound as values, not spliced in as text, so a variable containing quotes cannot change a condition's logic. |
+| LOU-U14 | One tool-error shape everywhere | `resume.ts` (tool run after approval), "tool not found" and "no registry" failures use the same `{ error, toolName, message }` shape and `isError` flag as the main loop. |
+| LOU-U15 | Tool `execute` context is real at runtime | The second argument typed as tool execution options is always populated (`toolCallId`, `messages`, `abortSignal`), including on the sandbox path, which passes `{}` today. |
+| LOU-U16 | Flow and adapter types match the runtime | `EditorStep`/flow node types cover what `FlowExecutor` runs (`llmCall`, `oneOf` with `options`, ...); real `node:fs` is assignable to `FileSystemAdapter`; README casts removed. |
+| LOU-U17 | Sandboxed HTTP honors cancellation | `sandboxHttpFetch` accepts and forwards the abort signal. |
+| LOU-U18 | Type tests in CI | `npm run test:types` runs in `ci.yml`. |
 
 ## Epic V — Run loop
 
