@@ -20,7 +20,7 @@ import { KVCheckpointStore } from '../deploy/kvCheckpointStore';
 import { defineTool, DefinedTool } from '../tools/defineTool';
 import { ToolRegistry } from '../tools';
 import { mockModel, MockTurn } from '../testing';
-import { AgentConfig, AgentType } from '../types';
+import { AgentConfig } from '../types';
 import type { Message } from '../providers';
 
 type Runs = Record<string, number>;
@@ -54,7 +54,7 @@ function tool(name: string, runs: Runs, options: ToolOptions = {}): DefinedTool 
 function agentFor(tools: DefinedTool[]): AgentConfig {
   const config: AgentConfig['tools'] = {};
   for (const t of tools) config[t.name] = { tool: t.name };
-  return { id: 'agent-1', name: 'Agent', agentType: AgentType.SmartAssistant, prompt: 'p', tools: config };
+  return { id: 'agent-1', name: 'Agent', prompt: 'p', tools: config };
 }
 
 function registryOf(tools: DefinedTool[]): ToolRegistry {

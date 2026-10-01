@@ -5,7 +5,6 @@ import { CompactedLLMProviderError } from './errors';
 import { createMockProvider } from '../providers/mock';
 import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
-import { AgentType } from '../types';
 import { Span, TraceExporter } from './tracing';
 import { LLMProvider, GenerateResult } from '../providers';
 
@@ -25,7 +24,6 @@ describe('AgentExecutor', () => {
   describe('execute', () => {
     it('should execute simple agent', async () => {
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .setPrompt('You are a helpful assistant')
         .build();
@@ -45,7 +43,6 @@ describe('AgentExecutor', () => {
 
     it('should handle string input', async () => {
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .setPrompt('You are helpful')
         .build();
@@ -61,7 +58,6 @@ describe('AgentExecutor', () => {
 
     it('should handle message array input', async () => {
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .build();
 
@@ -80,7 +76,6 @@ describe('AgentExecutor', () => {
 
     it('should emit events', async () => {
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .build();
 
@@ -113,7 +108,6 @@ describe('AgentExecutor', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .addTool('getCurrentDate', { tool: 'getCurrentDate', options: {} })
         .build();
@@ -136,7 +130,6 @@ describe('AgentExecutor', () => {
 
     it('should respect maxSteps', async () => {
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .build();
 
@@ -158,7 +151,6 @@ describe('AgentExecutor', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .build();
 
@@ -173,7 +165,6 @@ describe('AgentExecutor', () => {
 
     it('should accumulate token usage', async () => {
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .build();
 
@@ -192,7 +183,6 @@ describe('AgentExecutor', () => {
 
     it('should include system prompt', async () => {
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .setPrompt('You are a pirate')
         .build();
@@ -220,7 +210,6 @@ describe('AgentExecutor', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .build();
 
@@ -254,7 +243,6 @@ describe('AgentExecutor', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .build();
 
@@ -292,7 +280,6 @@ describe('AgentExecutor', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .addTool('chargeCard', { tool: 'chargeCard', options: {} })
         .build();
@@ -341,7 +328,6 @@ describe('AgentExecutor', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .addTool('chargeCard', { tool: 'chargeCard', options: {} })
         .build();
@@ -369,7 +355,6 @@ describe('AgentExecutor', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .addTool('noop', { tool: 'noop', options: {} })
         .build();
@@ -440,7 +425,6 @@ describe('AgentExecutor', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .addTool('noop', { tool: 'noop', options: {} })
         .build();
@@ -505,7 +489,6 @@ describe('AgentExecutor', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .addTool('noop', { tool: 'noop', options: {} })
         .build();
@@ -556,7 +539,6 @@ describe('AgentExecutor', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .addTool('noop', { tool: 'noop', options: {} })
         .build();
@@ -692,7 +674,6 @@ describe('AgentExecutor', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .addTool('noop', { tool: 'noop', options: {} })
         .build();
@@ -817,7 +798,6 @@ describe('AgentExecutor', () => {
       };
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .setPrompt('You are a pirate')
         .build();
@@ -845,7 +825,6 @@ describe('AgentExecutor', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .addTool('noop', { tool: 'noop', options: {} })
         .build();
@@ -929,7 +908,6 @@ describe('AgentExecutor', () => {
 
       const checkpointStore = makeCheckpointStore();
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .build();
 
@@ -975,7 +953,6 @@ describe('AgentExecutor', () => {
 
     it('should pass temperature and maxTokens', async () => {
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .build();
 
@@ -1009,7 +986,6 @@ describe('AgentExecutor', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .addTool('slowTool', { tool: 'slowTool', options: {} })
         .build();
@@ -1104,7 +1080,6 @@ describe('AgentExecutor', () => {
 
     it('propagates errors thrown by a hook callback', async () => {
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .build();
 
@@ -1136,7 +1111,6 @@ describe('AgentExecutor', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .addTool('failingTool', { tool: 'failingTool', options: {} })
         .build();
@@ -1262,7 +1236,6 @@ describe('AgentExecutor', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .addTool('echoTool', { tool: 'echoTool', options: {} })
         .build();
@@ -1312,7 +1285,6 @@ describe('AgentExecutor', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .addTool('echoTool', { tool: 'echoTool', options: {} })
         .build();
@@ -1356,7 +1328,6 @@ describe('AgentExecutor', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .addTool('echoTool', { tool: 'echoTool', options: {} })
         .build();
@@ -1388,7 +1359,6 @@ describe('AgentExecutor', () => {
 
     it('works without an exporter (execute() behaves as before)', async () => {
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .build();
 
@@ -1405,7 +1375,6 @@ describe('AgentExecutor', () => {
   describe('guiding runtime error messages (LOU-H12)', () => {
     it('throws naming "provider" with a corrective snippet when provider is omitted', async () => {
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .build();
 
@@ -1428,7 +1397,6 @@ describe('AgentExecutor', () => {
 
     it('throws naming "input" with a corrective snippet when input is omitted', async () => {
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .build();
 
@@ -1453,7 +1421,6 @@ describe('AgentExecutor', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .build();
 
@@ -1481,7 +1448,6 @@ describe('AgentExecutor', () => {
       const spiedProvider = { ...provider, generate: generateSpy };
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .build();
 
@@ -1518,7 +1484,6 @@ describe('AgentExecutor', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .addTool('noop', { tool: 'noop', options: {} })
         .build();
@@ -1578,7 +1543,6 @@ describe('AgentExecutor', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .addTool('sendEmail', { tool: 'sendEmail', options: {} })
         .build();
@@ -1605,7 +1569,6 @@ describe('AgentExecutor', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .build();
 
@@ -1621,7 +1584,6 @@ describe('AgentExecutor', () => {
 
     it('does not run any hooks when none are provided (backward compatible default)', async () => {
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .build();
 
@@ -1682,7 +1644,6 @@ describe('AgentExecutor', () => {
 
       const scripted = makeScriptedProvider([rawError]);
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .build();
 
@@ -1715,7 +1676,6 @@ describe('AgentExecutor', () => {
       });
       const scripted = makeScriptedProvider([rawError]);
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .build();
 
@@ -1751,7 +1711,6 @@ describe('AgentExecutor', () => {
         responses: ['calling boom', 'done'],
       });
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .addTool('boom', { tool: 'boom', options: {} })
         .build();
@@ -1789,7 +1748,6 @@ describe('AgentExecutor', () => {
         const raw = abortError();
         const scripted = makeScriptedProvider([raw]);
         const agent = AgentBuilder.create()
-          .setType(AgentType.SmartAssistant)
           .setName('Test Agent')
           .build();
 
@@ -1804,7 +1762,6 @@ describe('AgentExecutor', () => {
         const generate = vi.fn(base.generate);
         const scripted: LLMProvider = { ...base, generate };
         const agent = AgentBuilder.create()
-          .setType(AgentType.SmartAssistant)
           .setName('Test Agent')
           .build();
 
@@ -1832,7 +1789,6 @@ describe('AgentExecutor', () => {
         });
         const scripted = makeScriptedProvider([rawError, 'success']);
         const agent = AgentBuilder.create()
-          .setType(AgentType.SmartAssistant)
           .setName('Test Agent')
           .build();
 
@@ -1863,7 +1819,6 @@ describe('AgentExecutor', () => {
         });
         const scripted = makeScriptedProvider([rawError]); // always throws
         const agent = AgentBuilder.create()
-          .setType(AgentType.SmartAssistant)
           .setName('Test Agent')
           .build();
 
@@ -1895,7 +1850,6 @@ describe('AgentExecutor', () => {
         });
         const scripted = makeScriptedProvider([rawError, 'success']);
         const agent = AgentBuilder.create()
-          .setType(AgentType.SmartAssistant)
           .setName('Test Agent')
           .build();
 

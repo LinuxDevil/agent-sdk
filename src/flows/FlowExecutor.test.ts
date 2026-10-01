@@ -698,7 +698,6 @@ describe('FlowExecutor', () => {
       // the event `data` payloads legitimately differ, since the tools do
       // different things).
       const { createDelegateTool } = await import('../execution/DelegationTool');
-      const { AgentType } = await import('../types');
 
       const childProvider = new MockLLMProvider({
         name: 'mock-child',
@@ -707,7 +706,6 @@ describe('FlowExecutor', () => {
 
       const childAgent = {
         name: 'Delegate Test Agent',
-        agentType: AgentType.SmartAssistant,
         prompt: 'You are a test child agent',
       };
 

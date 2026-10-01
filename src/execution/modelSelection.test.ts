@@ -9,11 +9,9 @@ import { describe, it, expect, vi } from 'vitest';
 import { AgentExecutor } from './AgentExecutor';
 import { createMockProvider } from '../providers/mock';
 import { AgentBuilder } from '../core';
-import { AgentType } from '../types';
 
 function agentWith(settings?: { model: string }) {
   const builder = AgentBuilder.create()
-    .setType(AgentType.SmartAssistant)
     .setName('Model Agent')
     .setPrompt('You are helpful');
   return (settings ? builder.setSettings(settings) : builder).build();

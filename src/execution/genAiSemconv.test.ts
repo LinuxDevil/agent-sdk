@@ -6,7 +6,7 @@ import { CAPTURE_CONTENT_ENV } from './semconv';
 import { FlowExecutor } from '../flows/FlowExecutor';
 import { ToolRegistry, defineTool } from '../tools';
 import { AgentBuilder } from '../core';
-import { AgentType, AgentFlow } from '../types';
+import { AgentFlow } from '../types';
 import { mockModel } from '../testing';
 
 /** In-memory exporter: remembers every span, in start order, in its final state. */
@@ -30,7 +30,6 @@ function setup(tools: ToolRegistry = new ToolRegistry()) {
   tools.register(weather);
   const agent = {
     ...AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('Weather Bot')
       .addTool('get_weather', { tool: 'get_weather', options: {} })
       .build(),

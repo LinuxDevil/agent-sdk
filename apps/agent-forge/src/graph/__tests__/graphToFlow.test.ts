@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AgentType, FlowExecutor, MockLLMProvider, type AgentConfig } from '@loushy/build-ai-agent';
+import { FlowExecutor, MockLLMProvider, type AgentConfig } from '@loushy/build-ai-agent';
 import { graphToFlow, hasRouterNode } from '../graphToFlow';
 import { graphToSpec } from '../graphToSpec';
 import type { AgentGraphSpec } from '../types';
@@ -167,7 +167,6 @@ describe('a branching graph actually executes different paths via FlowExecutor a
   const agent: AgentConfig = {
     id: 'branch-agent',
     name: 'Branch Agent',
-    agentType: AgentType.SmartAssistant,
     prompt: 'You are a routing test agent.',
     settings: { model: 'mock-1' },
   };

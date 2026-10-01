@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AgentExecutor, NoopSandbox, ToolRegistry, AgentBuilder, AgentType, createMockProvider } from '@loushy/build-ai-agent';
+import { AgentExecutor, NoopSandbox, ToolRegistry, AgentBuilder, createMockProvider } from '@loushy/build-ai-agent';
 import { compileHooksFromSpecPolicy, isSerializedHookList, type SerializedHook } from './compileHooks';
 
 describe('isSerializedHookList', () => {
@@ -46,7 +46,6 @@ describe('compileHooksFromSpecPolicy', () => {
     });
 
     const agent = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .addTool('sendEmail', { tool: 'sendEmail', options: {} })
       .build();
@@ -102,7 +101,7 @@ describe('compileHooksFromSpecPolicy', () => {
     const generateSpy = vi.fn(provider.generate.bind(provider));
     const spiedProvider = { ...provider, generate: generateSpy };
 
-    const agent = AgentBuilder.create().setType(AgentType.SmartAssistant).setName('Test Agent').build();
+    const agent = AgentBuilder.create().setName('Test Agent').build();
 
     await AgentExecutor.execute({
       agent,
