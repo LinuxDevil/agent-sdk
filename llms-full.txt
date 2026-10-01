@@ -4460,8 +4460,10 @@ With `subagents`, the lead agent gets:
    sub-agent (`- name: description`), plus a sentence saying that a sub-agent
    sees only the prompt it is given.
 2. ONE tool, `task`, with the input
-   `{ agent: <one of the names>, prompt: string, description: string }`
+   `{ agent: <one of the names>, prompt: string, description: string, background?: boolean }`
    (`description` is a 3-5 word label used in events and hooks).
+3. Three tools for background tasks: `agent_status`, `agent_await` and
+   `agent_cancel` (see [Background sub-agents](#background-sub-agents)).
 
 When the lead calls `task`, the named sub-agent runs on `prompt` alone. The
 tool result is the sub-agent's final text plus a small footer the lead can
@@ -4481,7 +4483,7 @@ the valid names. Sub-agent token usage is added to the lead's `result.usage`.
 
 Errors at setup time are thrown with a fix: a sub-agent without a
 `description`, a value that is not a `createAgent()` agent, or a tool of your
-own already named `task`.
+own already named `task` (or `agent_status`, `agent_await`, `agent_cancel`).
 
 ## Parallel tasks
 
@@ -4489,6 +4491,56 @@ Tool calls of one model turn run concurrently (see `toolConcurrency`), so when
 the lead calls `task` several times in one turn, those sub-agents run in
 parallel. Results reach the lead's transcript in the order the model made the
 calls. Cap it with `toolConcurrency` on the lead (`1` runs them one at a time).
+
+## Background sub-agents
+
+With `background: true`, `task` starts the sub-agent and returns at once with
+`{ taskId, status: 'running', agent }`, so the lead can keep working (or start
+more tasks) while it runs. The lead then uses:
+
+| Tool | Input | Result |
+| --- | --- | --- |
+| `agent_status` | `{ taskId? }` | `{ tasks: [{ taskId, agent, status, elapsedMs, approvalId?, toolName?, error? }] }` for one task or all of them. `status` is `queued`, `running`, `done`, `failed`, `cancelled` or `awaiting-approval`. |
+| `agent_await` | `{ taskId }` or `{ taskIds }`, optional `timeoutMs` | Waits until the task(s) end. A `done` task carries `result`: the same text (with footer) a synchronous `task` returns. A `failed` one carries `error`. A task still running after `timeoutMs` reports `status: 'timeout'`. With `taskIds` the result is `{ tasks: [...] }`. |
+| `agent_cancel` | `{ taskId }` | Cancels a queued or running task (its run is aborted) and returns its status. |
+
+At most `maxConcurrent` background sub-agents of one lead run run at once
+(default 3); further `background: true` calls get `status: 'queued'` and start
+as slots free. Set it with `withSubagentOptions()`, which returns the same
+`subagents` value:
+
+```ts
+import { createAgent, withSubagentOptions } from '@loushy/build-ai-agent';
+
+const researcher = createAgent({ provider, instructions: 'You research.', description: 'Finds and summarizes sources' });
+
+const lead = createAgent({
+  provider,
+  instructions: 'You coordinate research.',
+  subagents: withSubagentOptions({ researcher }, { maxConcurrent: 2 }),
+});
+```
+
+A background sub-agent inherits from the lead run like a synchronous one
+(hooks, tracing, `onEvent`, usage roll-up), and `maxSubagentDepth` applies the
+same way. Aborting the lead's signal cancels its background sub-agents, queued
+or running.
+
+Limits (follow-up LOU-Y4.2, which needs a run-end hook in the executor):
+
+- Background tasks belong to one `execute()` call. When the lead's run
+  finishes, sub-agents still running are **not** cancelled or awaited yet:
+  they run to completion on their own, and their events still reach
+  `onEvent`. Have the lead collect them with `agent_await` before its final
+  answer (the system prompt tells it to), or abort the signal you passed to
+  the run to stop them.
+- A background sub-agent that needs approval stops with
+  `status: 'awaiting-approval'` (with the child's `approvalId` and
+  `toolName`); its call does not run, and it cannot be resumed through the
+  approval store. Run that task synchronously (`background: false`) when it
+  may need approval.
+- A lead that pauses for approval and is resumed starts with no background
+  tasks: those started before the pause cannot be observed afterwards.
 
 ## Dynamic catalogs
 
