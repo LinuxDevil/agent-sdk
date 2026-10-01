@@ -14,8 +14,7 @@ import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult, ToolDe
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
 import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
-import { ApprovalDecision, ApprovalStore, ExecutionSnapshot, PendingApproval, SubagentSuspension } from './ApprovalGate';
-import { streamResumeRequest, type ResumeExecuteOptions } from './resume';
+import { ApprovalStore, ExecutionSnapshot, PendingApproval, SubagentSuspension } from './ApprovalGate';
 import { CheckpointStore, ForkOptions, ForkResult } from './checkpoint';
 import { forkSession } from './fork';
 import type { CallUsage, RunUsage, StepUsage } from '../models/usage';
@@ -682,32 +681,6 @@ export class AgentExecutor {
       };
       return this.execute(streaming);
     }, options.signal, options.inputQueue);
-  }
-
-  /**
-   * LOU-V14: `resumeAfterApproval()` (same arguments, same result) streamed
-   * as an {@link AgentRun}, like {@link AgentExecutor.stream}: `run.start`,
-   * the decided call's `tool.start` / `tool.done` (or `tool.error` for a
-   * rejection), then the continuation's events - a further pause ends it
-   * with `approval.requested` and `run.done`. Aborting (`signal` or an early
-   * `break`), `enqueue()` and `steer()` work as on a fresh run.
-   *
-   * @example
-   * ```ts
-   * const run = AgentExecutor.streamResume({ id: approvalId, approved: true }, approvalStore, toolRegistry, provider);
-   * for await (const event of run) if (event.type === 'text.delta') process.stdout.write(event.text);
-   * ```
-   */
-  static streamResume(
-    decision: ApprovalDecision,
-    approvalStore: ApprovalStore,
-    toolRegistry: ToolRegistry,
-    provider: LLMProvider,
-    executeOptions: ResumeExecuteOptions = {},
-    checkpointStore?: CheckpointStore
-  ): AgentRun {
-    const request = { decision, approvalStore, toolRegistry, provider, executeOptions, checkpointStore };
-    return streamResumeRequest(async () => request, executeOptions.signal, executeOptions.inputQueue);
   }
 
   /**

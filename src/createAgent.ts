@@ -17,7 +17,7 @@
 
 import { AgentBuilder } from './core/AgentBuilder';
 import { AgentExecutor, ExecuteOptions, ExecutionResult } from './execution/AgentExecutor';
-import type { AgentRun } from './execution/agentRun';
+import { streamResumed, type AgentRun } from './execution/agentRun';
 import { LLMProvider } from './providers/llm';
 import { ToolRegistry } from './tools/ToolRegistry';
 import { ToolDescriptor } from './types';
@@ -45,7 +45,7 @@ import { assertMaxSubagentDepth, assertNoTaskTool, assertSubagents, registerSuba
 import type { SubagentSpec } from './execution/delegation';
 import type { ApprovalDecision, ApprovalStore, ResolvedApproval } from './execution/ApprovalGate';
 import { InMemoryApprovalStore } from './execution/InMemoryApprovalStore';
-import { resumeRequest, streamResumeRequest, type ResumeRequest } from './execution/resume';
+import { resumeRequest, type ResumeRequest } from './execution/resume';
 import type { CheckpointStore, ForkOptions, ForkResult } from './execution/checkpoint';
 import { ConfigurationError, SDKError } from './execution/errors';
 import { newId } from './utils/id';
@@ -599,9 +599,12 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     store: config.approvalStore ?? config.store?.approvals ?? new InMemoryApprovalStore(),
     approve: config.approve,
     resume: async (...args) => resumeRequest(await resumeRequestFor(...args)),
-    // LOU-V14: the run's own signal replaces the one in the request.
+    // LOU-V14: the streamed run's own signal and event sink are wired into the request.
     streamResume: (approvalStore, decision, signal, checkpointStore, inputQueue) =>
-      streamResumeRequest(() => resumeRequestFor(approvalStore, decision, undefined, checkpointStore), signal, inputQueue),
+      streamResumed(async (wire) => {
+        const request = await resumeRequestFor(approvalStore, decision, undefined, checkpointStore);
+        return resumeRequest({ ...request, executeOptions: wire(request.executeOptions ?? {}) });
+      }, signal, inputQueue),
   });
   /** A run under `sessionId`, checkpointed in the agent's store (LOU-D30). */
   const durable = (sessionId: string | undefined): Partial<SessionTurnCheckpoint> => {

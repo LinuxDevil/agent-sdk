@@ -280,7 +280,7 @@ takes most of the execution options of `execute()` (for example `signal`,
 checkpointed, and `execute()` with that `sessionId` throws
 `SessionAwaitingApprovalError` until the approval is decided, so a pending
 approval cannot be bypassed (see [Durable execution](./durable-execution.md)).
-`AgentExecutor.streamResume()` takes the same arguments and streams the
+`streamResumeAfterApproval()` takes the same arguments and streams the
 continued run as an `AgentRun` (see
 [Streaming after an approval](./streaming.md#streaming-after-an-approval)).
 

@@ -15,8 +15,7 @@ import {
   PendingApproval,
 } from './ApprovalGate';
 import { AgentExecutor, ExecuteOptions, ExecutionEvent, ExecutionResult } from './AgentExecutor';
-import { AgentRun, RUN_EVENTS, RunEventSink, runEventsOf, startAgentRun } from './agentRun';
-import type { InputQueue } from './inputQueue';
+import { runEventsOf, streamResumed, type AgentRun } from './agentRun';
 import { Checkpoint, CheckpointStore } from './checkpoint';
 import { NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
@@ -161,6 +160,35 @@ export async function resumeAfterApproval(
   });
 }
 
+/**
+ * LOU-V14: {@link resumeAfterApproval} (same arguments, same result) streamed
+ * as the `AgentRun` that `AgentExecutor.stream()` returns: `run.start`, the
+ * decided call's `tool.start` / `tool.done` (`tool.error` for a rejection),
+ * then the continuation's events as in a fresh run. A further pause ends it
+ * with `approval.requested` and `run.done`. Aborting (`signal` or an early
+ * `break`), `enqueue()` and `steer()` work as on a fresh run.
+ *
+ * @example
+ * ```ts
+ * const run = streamResumeAfterApproval({ id: approvalId, approved: true }, approvalStore, toolRegistry, provider);
+ * for await (const event of run) if (event.type === 'text.delta') process.stdout.write(event.text);
+ * ```
+ */
+export function streamResumeAfterApproval(
+  decision: ApprovalDecision,
+  approvalStore: ApprovalStore,
+  toolRegistry: ToolRegistry,
+  provider: LLMProvider,
+  executeOptions: ResumeExecuteOptions = {},
+  checkpointStore?: CheckpointStore
+): AgentRun {
+  return streamResumed(
+    (wire) => resumeAfterApproval(decision, approvalStore, toolRegistry, provider, wire(executeOptions), checkpointStore),
+    executeOptions.signal,
+    executeOptions.inputQueue
+  );
+}
+
 /** What resumeAfterApproval() takes, as one object (LOU-V14). */
 export interface ResumeRequest {
   decision: ApprovalDecision;
@@ -175,42 +203,6 @@ export interface ResumeRequest {
 export function resumeRequest(request: ResumeRequest): Promise<ExecutionResult> {
   const { decision, approvalStore, toolRegistry, provider, executeOptions, checkpointStore } = request;
   return resumeAfterApproval(decision, approvalStore, toolRegistry, provider, executeOptions, checkpointStore);
-}
-
-/**
- * LOU-V14: streams the resume of the request `prepare()` resolves to, as the
- * `AgentRun` a fresh `AgentExecutor.stream()` returns: `run.start`, the
- * decided call's `tool.start`/`tool.done`, then the continuation's events. A
- * rejection of `prepare()` fails the run. See `AgentExecutor.streamResume()`.
- */
-export function streamResumeRequest(prepare: () => Promise<ResumeRequest>, signal?: AbortSignal, inputQueue?: InputQueue): AgentRun {
-  return startAgentRun(async ({ signal: runSignal, onEvent, sink, inputQueue: queue }) => {
-    const request = await prepare();
-    const options = request.executeOptions ?? {};
-    const streaming: ResumeExecuteOptions & { [RUN_EVENTS]: RunEventSink } = {
-      ...options,
-      signal: runSignal,
-      inputQueue: queue,
-      onEvent: firstStartOnly((event) => {
-        options.onEvent?.(event);
-        onEvent(event);
-      }),
-      [RUN_EVENTS]: sink,
-    };
-    return resumeRequest({ ...request, executeOptions: streaming });
-  }, signal, inputQueue);
-}
-
-/** Drops the continuation's own top-level `start`: the streamed resume already reported one. */
-function firstStartOnly(onEvent: (event: ExecutionEvent) => void): (event: ExecutionEvent) => void {
-  let started = false;
-  return (event) => {
-    if (event.type === 'start' && !event.subagent) {
-      if (started) return;
-      started = true;
-    }
-    onEvent(event);
-  };
 }
 
 /**

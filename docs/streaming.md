@@ -91,7 +91,7 @@ console.log((await again.result).text);
 ## Streaming after an approval
 
 A run that paused for an [approval](./approvals.md) can continue as a stream
-too. `AgentExecutor.streamResume()` takes the arguments of
+too. `streamResumeAfterApproval()` takes the arguments of
 `resumeAfterApproval()` and returns an `AgentRun` whose `result` is what
 `resumeAfterApproval()` returns. Its events are `run.start`, the decided
 call's `tool.start` and `tool.done` (`tool.error` for a rejection), then the
@@ -104,10 +104,10 @@ process, since everything is read from the approval store. For
 the paused run used.
 
 ```ts
-import { AgentExecutor } from '@loushy/build-ai-agent';
+import { AgentExecutor, streamResumeAfterApproval } from '@loushy/build-ai-agent';
 
 const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistry, approvalStore });
-const run = AgentExecutor.streamResume({ id: paused.approvalId!, approved: true }, approvalStore, toolRegistry, provider);
+const run = streamResumeAfterApproval({ id: paused.approvalId!, approved: true }, approvalStore, toolRegistry, provider);
 for await (const event of run) {
   if (event.type === 'tool.done') console.log(`${event.toolName} ran`);
   if (event.type === 'text.delta') process.stdout.write(event.text);

@@ -1,11 +1,11 @@
 /**
- * LOU-V14: resuming after an approval streams - `AgentExecutor.streamResume()`
+ * LOU-V14: resuming after an approval streams - `streamResumeAfterApproval()`
  * and `agent.approvals.streamResolve()` / `streamAnswer()` return an AgentRun.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
 import { AgentExecutor } from './AgentExecutor';
-import { resumeAfterApproval } from './resume';
+import { resumeAfterApproval, streamResumeAfterApproval } from './resume';
 import { InMemoryApprovalStore } from './InMemoryApprovalStore';
 import type { AgentEvent } from './agentEvents';
 import type { AgentRun } from './agentRun';
@@ -44,12 +44,12 @@ async function collect(run: AgentRun): Promise<AgentEvent[]> {
 const kinds = (events: AgentEvent[]) => events.filter((e) => e.type !== 'text.delta').map((e) => e.type);
 const text = (events: AgentEvent[]) => events.flatMap((e) => (e.type === 'text.delta' ? [e.text] : [])).join('');
 
-describe('AgentExecutor.streamResume (LOU-V14)', () => {
+describe('streamResumeAfterApproval (LOU-V14)', () => {
   it('streams the approved call and the continuation in order; the result equals resumeAfterApproval()', async () => {
     const streamed = await pausedRun([callEmail, 'Email sent.']);
     const plain = await pausedRun([callEmail, 'Email sent.']);
 
-    const run = AgentExecutor.streamResume({ id: streamed.id, approved: true }, streamed.approvalStore, streamed.toolRegistry, streamed.provider);
+    const run = streamResumeAfterApproval({ id: streamed.id, approved: true }, streamed.approvalStore, streamed.toolRegistry, streamed.provider);
     const events = await collect(run);
     const result = await run.result;
 
@@ -64,7 +64,7 @@ describe('AgentExecutor.streamResume (LOU-V14)', () => {
   it('streams a rejection as tool.error, then the model reply', async () => {
     const { provider, toolRegistry, approvalStore, id } = await pausedRun([callEmail, 'OK, not sending.']);
 
-    const run = AgentExecutor.streamResume({ id, approved: false, note: 'No' }, approvalStore, toolRegistry, provider);
+    const run = streamResumeAfterApproval({ id, approved: false, note: 'No' }, approvalStore, toolRegistry, provider);
     const events = await collect(run);
 
     expect(kinds(events)).toEqual(['run.start', 'tool.start', 'tool.error', 'step.start', 'text.done', 'step.done', 'run.done']);
@@ -76,7 +76,7 @@ describe('AgentExecutor.streamResume (LOU-V14)', () => {
     const again: MockTurn = { toolCalls: [{ name: 'send_email', args: { to: 'kim@example.com' }, id: 'call_2' }] };
     const { provider, toolRegistry, approvalStore, id } = await pausedRun([callEmail, again, 'Both sent.']);
 
-    const run = AgentExecutor.streamResume({ id, approved: true }, approvalStore, toolRegistry, provider);
+    const run = streamResumeAfterApproval({ id, approved: true }, approvalStore, toolRegistry, provider);
     const events = await collect(run);
     const second = await run.result;
 
