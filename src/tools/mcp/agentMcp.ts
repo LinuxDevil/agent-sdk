@@ -45,8 +45,24 @@ export function agentMcp(
 
 /** `AgentExecutor.stream(options)`, started once `ready()` resolves (a rejection fails the run). */
 export function streamAfter(ready: () => Promise<void>, options: ExecuteOptions): AgentRun {
+  return streamPrepared(
+    async () => {
+      await ready();
+      return options;
+    },
+    options.signal,
+    options.inputQueue
+  );
+}
+
+/** `AgentExecutor.stream()` of the options `prepare()` resolves to (LOU-V15); a rejection fails the run. */
+export function streamPrepared(
+  prepare: () => Promise<ExecuteOptions>,
+  runSignal?: AbortSignal,
+  runInputQueue?: ExecuteOptions['inputQueue']
+): AgentRun {
   return startAgentRun(async ({ signal, onEvent, sink, inputQueue }) => {
-    await ready();
+    const options = await prepare();
     const streaming: StreamingExecuteOptions = {
       ...options,
       signal,
@@ -58,5 +74,5 @@ export function streamAfter(ready: () => Promise<void>, options: ExecuteOptions)
       [RUN_EVENTS]: sink,
     };
     return AgentExecutor.execute(streaming);
-  }, options.signal, options.inputQueue);
+  }, runSignal, runInputQueue);
 }

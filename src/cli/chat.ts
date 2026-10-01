@@ -7,10 +7,10 @@
 import * as readline from 'node:readline';
 import type { Readable, Writable } from 'node:stream';
 import type { CreateAgentConfig, SimpleAgent } from '../createAgent';
-import { SDKError } from '../execution/errors';
 import { loadSpec } from '../spec/loadSpec';
 import { specToAgent } from '../spec/specToAgent';
 import type { AgentStore } from '../storage/agentStore';
+import { parseCommand, stringValue, usageError, type CommandSpec } from './args';
 import { runChatRepl } from './chatRepl';
 import { detectTarget, loadTarget } from './devReload';
 
@@ -22,33 +22,26 @@ export interface ChatArgs {
   session?: string;
   /** The SQLite file of `--store sqlite:<file>`. */
   sqlite?: string;
+  /** `-h` / `--help` was given: print the usage, run nothing. */
+  help?: boolean;
 }
 
-function usageError(message: string): SDKError {
-  return new SDKError(`loushy chat: ${message}`, 'LOUSHY_CONFIG_INVALID', {
-    hint: USAGE,
-  });
-}
+const SPEC: CommandSpec = {
+  command: 'chat',
+  usage: USAGE,
+  positionals: 1,
+  options: { model: { type: 'string' }, session: { type: 'string' }, store: { type: 'string' } },
+};
 
-/** Parses the arguments after `chat`; throws `LOUSHY_CONFIG_INVALID` for a missing path, an unknown flag or a bad `--store`. */
+/** Parses the arguments after `chat`; throws `LOUSHY_CONFIG_INVALID` for a missing path, an unknown flag, a flag without its value or a bad `--store`. */
 export function parseChatArgs(args: string[]): ChatArgs {
-  const flags: Record<string, string | undefined> = {};
-  const positional: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const match = /^--(model|session|store)(?:=(.*))?$/.exec(args[i]);
-    if (match) flags[match[1]] = match[2] ?? args[++i];
-    else if (args[i].startsWith('--')) throw usageError(`unknown option '${args[i]}'.`);
-    else positional.push(args[i]);
-  }
-  if (positional.length !== 1) throw usageError('a path is required (a spec file, an agent directory or a .ts/.js agent module).');
-  const sqlite = flags.store?.startsWith('sqlite:') ? flags.store.slice('sqlite:'.length) : undefined;
-  if (flags.store !== undefined && !sqlite) throw usageError("--store must be 'sqlite:<file>'.");
-  return {
-    path: positional[0],
-    model: flags.model,
-    session: flags.session,
-    sqlite,
-  };
+  const { values, positionals, help } = parseCommand(SPEC, args);
+  if (help) return { path: '', help };
+  if (positionals.length !== 1) throw usageError(SPEC, 'a path is required (a spec file, an agent directory or a .ts/.js agent module).');
+  const store = stringValue(values.store);
+  const sqlite = store?.startsWith('sqlite:') ? store.slice('sqlite:'.length) : undefined;
+  if (store !== undefined && !sqlite) throw usageError(SPEC, "--store must be 'sqlite:<file>'.");
+  return { path: positionals[0], model: stringValue(values.model), session: stringValue(values.session), sqlite };
 }
 
 export interface ChatIo {
@@ -87,6 +80,11 @@ export async function runChat(
   let rl: readline.Interface | undefined;
   try {
     const parsed = parseChatArgs(args);
+    if (parsed.help) {
+      io.stdout.write(`${USAGE}
+`);
+      return 0;
+    }
     if (parsed.sqlite) {
       const { SqliteStore } = await import('../storage/sqlite');
       store = new SqliteStore(parsed.sqlite);

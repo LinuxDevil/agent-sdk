@@ -10,7 +10,7 @@ import type { AgentEvent, AgentEventOf } from '../execution/agentEvents';
 import { SDKError } from '../execution/errors';
 import type { AgentInput } from '../providers/content';
 import type { ToolCall } from '../providers/llm';
-import { parseEventStream } from '../react/parseEventStream';
+import { parseEventStream } from '../ui/parseEventStream';
 import { newId } from '../utils/id';
 
 /** What an eval case needs from the thing under test: `send()`. A `createAgent()` agent has it, and so does a remote target. */

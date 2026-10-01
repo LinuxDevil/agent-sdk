@@ -6,7 +6,7 @@
 
 import { SDKError } from '../execution/errors';
 import type { AgentEvent } from '../execution/agentEvents';
-import { parseEventStream } from '../react/parseEventStream';
+import { parseEventStream } from '../ui/parseEventStream';
 import { newId } from '../utils/id';
 import type { RemoteAgentOptions, RemoteSubagent } from './types';
 

@@ -51,7 +51,8 @@ export class SqliteStore {
   readonly checkpoints: CheckpointStore;
   /** Pending tool approvals, for `approvalStore`. */
   readonly approvals: ApprovalStore;
-  private readonly connection: Connection;
+  /** @internal The open database, shared with `sqliteMemory()`. */
+  readonly connection: Connection;
   private readonly sql: Statements;
 
   /**

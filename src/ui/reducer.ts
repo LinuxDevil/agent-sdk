@@ -1,8 +1,8 @@
 /**
  * LOU-D15: the framework-neutral state behind `useLoushyAgent()`: a pure
  * reducer from the typed {@link AgentEvent} stream (docs/streaming.md), plus
- * a few local actions, to chat UI state. A UI binding (React here, Vue or
- * Svelte later) only holds this state and dispatches into it.
+ * a few local actions, to chat UI state. A UI binding (React, Vue, Svelte
+ * later) only holds this state and dispatches into it.
  */
 
 import type { AgentEvent, AgentEventError, AgentEventUsage } from '../execution/agentEvents';
@@ -76,6 +76,8 @@ export type AgentUIAction =
   | { type: 'ui.decide'; approved: boolean }
   | { type: 'ui.resumed'; outcome: ApprovalOutcome }
   | { type: 'ui.stopped' }
+  /** LOU-P2: back to the empty chat. */
+  | { type: 'ui.reset' }
   | { type: 'ui.error'; error: AgentEventError };
 
 export const initialAgentUIState: AgentUIState = {
@@ -134,19 +136,12 @@ function resumed(state: AgentUIState, { text, finishReason, usage, approval }: A
   return approval ? pause(next, approval) : next;
 }
 
-/**
- * The next UI state after an {@link AgentEvent} or a local {@link AgentUIAction}.
- * Pure, so it works with React's `useReducer`, a Vue `ref` or a Svelte store.
- * Events of a sub-agent's run (with `subagent`) only update `lastEvent`,
- * except `approval.requested`.
- *
- * @example
- * ```ts
- * let state = reduceAgentEvents(initialAgentUIState, { type: 'ui.send', input: 'Hi' });
- * for await (const event of agent.stream('Hi')) state = reduceAgentEvents(state, event);
- * ```
- */
-export function reduceAgentEvents(state: AgentUIState, event: AgentEvent | AgentUIAction): AgentUIState {
+function isUIAction(event: AgentEvent | AgentUIAction): event is AgentUIAction {
+  return event.type.startsWith('ui.');
+}
+
+/** The next state after a local action. */
+function reduceAction(state: AgentUIState, event: AgentUIAction): AgentUIState {
   switch (event.type) {
     case 'ui.send': {
       const user: UIMessage = { id: `m${state.messages.length}`, role: 'user', text: describeInput(event.input), toolCalls: [] };
@@ -160,11 +155,29 @@ export function reduceAgentEvents(state: AgentUIState, event: AgentEvent | Agent
     }
     case 'ui.resumed':
       return resumed(state, event.outcome);
+    case 'ui.reset':
+      return initialAgentUIState;
     case 'ui.stopped':
       return state.status === 'streaming' ? { ...state, status: 'idle' } : state;
     case 'ui.error':
       return { ...state, status: 'error', error: event.error, pendingApproval: null };
   }
+}
+
+/**
+ * The next UI state after an {@link AgentEvent} or a local {@link AgentUIAction}.
+ * Pure, so it works with React's `useReducer`, a Vue `ref` or a Svelte store.
+ * Events of a sub-agent's run (with `subagent`) only update `lastEvent`,
+ * except `approval.requested`.
+ *
+ * @example
+ * ```ts
+ * let state = reduceAgentEvents(initialAgentUIState, { type: 'ui.send', input: 'Hi' });
+ * for await (const event of agent.stream('Hi')) state = reduceAgentEvents(state, event);
+ * ```
+ */
+export function reduceAgentEvents(state: AgentUIState, event: AgentEvent | AgentUIAction): AgentUIState {
+  if (isUIAction(event)) return reduceAction(state, event);
   const next = { ...state, lastEvent: event };
   if (event.subagent && event.type !== 'approval.requested') return next;
   switch (event.type) {
