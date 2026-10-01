@@ -89,6 +89,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Docs
 - README revamped into a short front page (LOU-D52); the details it dropped moved to `docs/` (new pages: tools, approvals, providers, cli, flows, guardrails, utilities).
 
+### Fixed
+- OpenRouter on `@ai-sdk/openai` 2+, and the Ollama base URL (LOU-D28f, behaviour fix): `OpenRouterProvider` now builds its model with `provider.chat(modelId)` (Chat Completions, the only API OpenRouter implements) instead of the bare call, which targets the Responses API from `@ai-sdk/openai` 2 on; no change on `ai` 4. `OllamaProvider` appends `/api` to a base URL that has no path (`http://host:11434` or `http://host:11434/`), the form `ollama-ai-provider` and `ollama-ai-provider-v2` expect, so a configured bare host no longer hits `/chat` outside `/api` (before, `getModels()` hit `<baseURL>/api/tags` but chat requests went to `<baseURL>/chat`); a URL ending in `/api` or with any other path is used as it is, and `getModels()` no longer doubles `/api` for a base URL that has it. `loushy init` (and `create-loushy-agent`) now scaffolds OpenRouter projects on `ai@^7.0.0` with `@ai-sdk/openai@^4.0.0`.
+
 ### Changed
 - A `permissions` `allow` (or `ask`) rule no longer overrides a tool's own `needsApproval` deny (LOU-X8 follow-up, behaviour change): the tool's `needsApproval` is now called for those calls too, and its `'deny'` / `{ deny }` denies the call; an `allow` still skips the tool's ask. A `deny` rule still wins without calling `needsApproval`. Migration: a tool that should run under an `allow` rule must not deny it from `needsApproval`. See docs/approvals.md.
 - `agent.session()` passes the agent's `createAgent({ compaction })` to the session (LOU-W8 follow-up), so `session.compact()` uses the agent's strategy and sizes unless `agent.session({ compaction })` sets its own.

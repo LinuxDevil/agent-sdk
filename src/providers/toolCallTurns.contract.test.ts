@@ -10,12 +10,17 @@
  * installed 'ai' version's own `coreMessageSchema`, which strips unknown
  * keys - so a payload that survives that parse unchanged is exactly what
  * 'ai' forwards to the provider.
+ *
+ * Runs on every `ai` major (LOU-D28f): the parts `ai` takes differ between
+ * v4 (`args`, `result`) and v5+ (`input`, a typed `output`), so the expected
+ * payloads are built with aiShapes.testkit.ts, and the schema check uses the
+ * installed major's own message schema.
  */
 
-import { it, expect, beforeEach, vi } from 'vitest';
-import { coreMessageSchema, type CoreMessage } from 'ai';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { z } from 'zod';
-import { describeOnAiV4 } from './aiMajor.testkit';
+import { installedAiMajor } from './aiMajor.testkit';
+import { aiTool, mockToolCall, mockUsage, parseModelMessage, toolCallPart, toolResultPart } from './aiShapes.testkit';
 
 const generateTextMock = vi.fn();
 
@@ -32,21 +37,43 @@ import { AnthropicProvider } from './AnthropicProvider';
 import { OllamaProvider } from './OllamaProvider';
 import { OpenRouterProvider } from './OpenRouterProvider';
 import type { LLMProvider, Message } from './llm';
+import type { LanguageModel } from 'ai';
 import type { Checkpoint } from '../execution/checkpoint';
 import { AgentExecutor } from '../execution/AgentExecutor';
 import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
 
-const usage = { promptTokens: 1, completionTokens: 2, totalTokens: 3 };
+const usage = mockUsage();
+
+/** A message as the payload `ai` receives it. */
+type Payload = Array<{ role: string; content: unknown }>;
+
+/** What each provider must hand `ai`: every message accepted by the installed `ai`'s own schema, nothing dropped. */
+function expectAccepted(payload: unknown): void {
+  expect((payload as Payload).map(parseModelMessage)).toEqual(payload);
+}
 
 function textResult(text = 'ok') {
   return { text, finishReason: 'stop', usage, toolCalls: [] };
 }
 
+/**
+ * `generateText` is mocked, so the model is never called. On `ai` 6/7 the Ollama package
+ * (`ollama-ai-provider-v2`, zod 4 peer) cannot be installed here yet, so its model is a stand-in.
+ */
+function ollama(): LLMProvider {
+  const provider = new OllamaProvider({ name: 'ollama' });
+  if (installedAiMajor !== 4) {
+    const target = provider as unknown as { createModel: () => Promise<LanguageModel> };
+    vi.spyOn(target, 'createModel').mockResolvedValue({} as LanguageModel);
+  }
+  return provider;
+}
+
 const providers: Array<[string, () => LLMProvider]> = [
   ['openai', () => new OpenAIProvider({ name: 'openai', apiKey: 'k' })],
   ['anthropic', () => new AnthropicProvider({ name: 'anthropic', apiKey: 'k' })],
-  ['ollama', () => new OllamaProvider({ name: 'ollama' })],
+  ['ollama', ollama],
   ['openrouter', () => new OpenRouterProvider({ name: 'openrouter', apiKey: 'k' })],
 ];
 
@@ -84,32 +111,31 @@ const history: Message[] = [
   { role: 'user', content: 'Thanks!' },
 ];
 
-const expectedPayload: CoreMessage[] = [
+const expectedPayload: Payload = [
   { role: 'user', content: 'Weather in Paris and Rome?' },
   {
     role: 'assistant',
     content: [
       { type: 'text', text: 'Checking both cities.' },
-      { type: 'tool-call', toolCallId: 'call_A', toolName: 'get_weather', args: { city: 'Paris' } },
-      { type: 'tool-call', toolCallId: 'call_B', toolName: 'get_weather', args: { city: 'Rome' } },
+      toolCallPart('call_A', 'get_weather', { city: 'Paris' }),
+      toolCallPart('call_B', 'get_weather', { city: 'Rome' }),
     ],
   },
   {
     role: 'tool',
     content: [
-      { type: 'tool-result', toolCallId: 'call_A', toolName: 'get_weather', result: { tempC: 21, sky: 'clear' } },
+      toolResultPart('call_A', 'get_weather', { tempC: 21, sky: 'clear' }),
     ],
   },
   {
     role: 'tool',
     content: [
-      {
-        type: 'tool-result',
-        toolCallId: 'call_B',
-        toolName: 'get_weather',
-        result: { error: 'Error', toolName: 'get_weather', message: 'Rome station offline', kind: 'execution' },
-        isError: true,
-      },
+      toolResultPart(
+        'call_B',
+        'get_weather',
+        { error: 'Error', toolName: 'get_weather', message: 'Rome station offline', kind: 'execution' },
+        true
+      ),
     ],
   },
   { role: 'assistant', content: 'Paris is 21C and clear; Rome is unavailable.' },
@@ -123,8 +149,7 @@ async function wirePayload(provider: LLMProvider, messages: Message[]): Promise<
   return generateTextMock.mock.calls[0][0].messages;
 }
 
-// v4 only: asserts the ai v4 message shapes (LOU-D28b); the v7 shapes of these scenarios are asserted in aiSdkCompat.v7.test.ts.
-describeOnAiV4.each(providers)('%s provider: tool-call turns at the ai-SDK boundary', (_name, create) => {
+describe.each(providers)('%s provider: tool-call turns at the ai-SDK boundary', (_name, create) => {
   beforeEach(() => {
     generateTextMock.mockReset();
   });
@@ -134,7 +159,7 @@ describeOnAiV4.each(providers)('%s provider: tool-call turns at the ai-SDK bound
 
     expect(payload).toEqual(expectedPayload);
     // The installed 'ai' version accepts it, dropping nothing.
-    expect(z.array(coreMessageSchema).parse(payload)).toEqual(payload);
+    expectAccepted(payload);
   });
 
   it('converts a history restored from a checkpoint identically', async () => {
@@ -166,10 +191,10 @@ describeOnAiV4.each(providers)('%s provider: tool-call turns at the ai-SDK bound
 
     expect(payload).toEqual([
       { role: 'user', content: 'hi' },
-      { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'c1', toolName: 'now', args: {} }] },
-      { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'c1', toolName: 'now', result: '2026-10-01' }] },
+      { role: 'assistant', content: [toolCallPart('c1', 'now', {})] },
+      { role: 'tool', content: [toolResultPart('c1', 'now', '2026-10-01')] },
     ]);
-    expect(z.array(coreMessageSchema).parse(payload)).toEqual(payload);
+    expectAccepted(payload);
   });
 
   it('passes non-JSON and non-string tool results through as-is', async () => {
@@ -177,11 +202,11 @@ describeOnAiV4.each(providers)('%s provider: tool-call turns at the ai-SDK bound
     const payload = (await wirePayload(create(), [
       { role: 'tool', content: 'plain text', toolCallId: 'c1', toolName: 't' },
       { role: 'tool', content: objectContent, toolCallId: 'c2', toolName: 't' },
-    ])) as CoreMessage[];
+    ])) as Payload;
 
     expect(payload.map((m) => m.content)).toEqual([
-      [{ type: 'tool-result', toolCallId: 'c1', toolName: 't', result: 'plain text' }],
-      [{ type: 'tool-result', toolCallId: 'c2', toolName: 't', result: { rows: [1, 2] } }],
+      [toolResultPart('c1', 't', 'plain text')],
+      [toolResultPart('c2', 't', { rows: [1, 2] })],
     ]);
   });
 
@@ -194,30 +219,28 @@ describeOnAiV4.each(providers)('%s provider: tool-call turns at the ai-SDK bound
       },
       { role: 'tool', content: '1', toolCallId: 'c1' },
       { role: 'tool', content: '2', toolCallId: 'orphan' },
-    ])) as CoreMessage[];
+    ])) as Payload;
 
     expect(payload).toEqual([
-      { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'c1', toolName: 'search', args: {} }] },
-      { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'c1', toolName: 'search', result: 1 }] },
-      { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'orphan', toolName: 'unknown', result: 2 }] },
+      { role: 'assistant', content: [toolCallPart('c1', 'search', {})] },
+      { role: 'tool', content: [toolResultPart('c1', 'search', 1)] },
+      { role: 'tool', content: [toolResultPart('orphan', 'unknown', 2)] },
     ]);
   });
 });
 
-// v4 only: asserts the ai v4 message shapes (LOU-D28b); the v7 shapes of these scenarios are asserted in aiSdkCompat.v7.test.ts.
-describeOnAiV4('AgentExecutor -> provider: second step sees the first step tool calls', () => {
+describe('AgentExecutor -> provider: second step sees the first step tool calls', () => {
   beforeEach(() => {
     generateTextMock.mockReset();
   });
 
   it.each(providers)('%s', async (_name, create) => {
-    const { tool } = await import('ai');
     const toolRegistry = new ToolRegistry();
     toolRegistry.register('get_weather', {
       displayName: 'Get weather',
-      tool: tool({
+      tool: aiTool({
         description: 'Weather for a city',
-        parameters: z.object({ city: z.string() }),
+        schema: z.object({ city: z.string() }),
         execute: async ({ city }: { city: string }) => {
           if (city === 'Rome') throw new Error('Rome station offline');
           return { tempC: 21, sky: 'clear' };
@@ -235,8 +258,8 @@ describeOnAiV4('AgentExecutor -> provider: second step sees the first step tool 
         finishReason: 'tool-calls',
         usage,
         toolCalls: [
-          { toolCallId: 'call_A', toolName: 'get_weather', args: { city: 'Paris' } },
-          { toolCallId: 'call_B', toolName: 'get_weather', args: { city: 'Rome' } },
+          mockToolCall('call_A', 'get_weather', { city: 'Paris' }),
+          mockToolCall('call_B', 'get_weather', { city: 'Rome' }),
         ],
       })
       .mockResolvedValueOnce(textResult('Paris is 21C and clear; Rome is unavailable.'));
@@ -249,7 +272,7 @@ describeOnAiV4('AgentExecutor -> provider: second step sees the first step tool 
     });
 
     expect(result.text).toBe('Paris is 21C and clear; Rome is unavailable.');
-    const secondCall = generateTextMock.mock.calls[1][0].messages as CoreMessage[];
+    const secondCall = generateTextMock.mock.calls[1][0].messages as Payload;
     const fromUser = secondCall.slice(secondCall.findIndex((m) => m.role === 'user'));
     expect(fromUser).toEqual(expectedPayload.slice(0, 4));
   });
