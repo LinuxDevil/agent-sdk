@@ -218,6 +218,8 @@ export function pushToolResult(
     toolCallId: toolCall.id,
     toolName: toolCall.function.name,
     ...(failed && { isError: true }),
+    // LOU-X3: the transcript records a result a hook replaced.
+    ...(outcome.replacedByHook !== undefined && { metadata: { replacedByHook: outcome.replacedByHook } }),
   });
 }
 
