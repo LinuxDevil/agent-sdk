@@ -49,9 +49,9 @@ function expectValidTranscript(messages: Message[]): void {
 }
 
 describe('pruneToolResultsStrategy / compactMessages', () => {
-  it('replaces old tool results with a marker and keeps the protected tail intact and in order', () => {
+  it('replaces old tool results with a marker and keeps the protected tail intact and in order', async () => {
     const original = transcript(10);
-    const result = compactMessages(original, { protectedTokens: 3_000, strategy: pruneToolResultsStrategy() });
+    const result = await compactMessages(original, { protectedTokens: 3_000, strategy: pruneToolResultsStrategy() });
 
     expect(result.messages).toHaveLength(original.length);
     expect(result.messages.map((m) => m.role)).toEqual(original.map((m) => m.role));
@@ -74,10 +74,10 @@ describe('pruneToolResultsStrategy / compactMessages', () => {
     expectValidTranscript(result.messages);
   });
 
-  it('never touches system messages, user messages or assistant turns', () => {
+  it('never touches system messages, user messages or assistant turns', async () => {
     const original = transcript(4, BIG);
     original.splice(4, 0, { role: 'user', content: BIG });
-    const result = compactMessages(original, { protectedTokens: 0 });
+    const result = await compactMessages(original, { protectedTokens: 0 });
 
     result.messages.forEach((m, i) => {
       if (m.role !== 'tool') expect(m).toBe(original[i]);
@@ -85,31 +85,31 @@ describe('pruneToolResultsStrategy / compactMessages', () => {
     expect(result.prunedToolCallIds).toEqual(['call_1', 'call_2', 'call_3']);
   });
 
-  it('never prunes results of the latest assistant turn, even with no protected tokens', () => {
+  it('never prunes results of the latest assistant turn, even with no protected tokens', async () => {
     const original = transcript(3);
-    const result = compactMessages(original, { protectedTokens: 0 });
+    const result = await compactMessages(original, { protectedTokens: 0 });
     expect(result.messages.at(-1)).toBe(original.at(-1));
     expect(result.prunedToolCallIds).toEqual(['call_1', 'call_2']);
   });
 
-  it('is pure and idempotent: markers and short results are left alone', () => {
+  it('is pure and idempotent: markers and short results are left alone', async () => {
     const original = transcript(5);
     original.push({ role: 'assistant', content: '', toolCalls: [{ id: 'tiny', type: 'function', function: { name: 'n', arguments: '{}' } }] });
     original.push({ role: 'tool', toolCallId: 'tiny', toolName: 'n', content: '"ok"' });
     original.push({ role: 'assistant', content: 'done' });
     const snapshot = structuredClone(original);
 
-    const first = compactMessages(original, { protectedTokens: 0 });
+    const first = await compactMessages(original, { protectedTokens: 0 });
     expect(original).toEqual(snapshot);
     expect(first.prunedToolCallIds).toEqual(['call_1', 'call_2', 'call_3', 'call_4', 'call_5']);
 
-    const second = compactMessages(first.messages, { protectedTokens: 0 });
+    const second = await compactMessages(first.messages, { protectedTokens: 0 });
     expect(second.messages).toBe(first.messages);
     expect(second.prunedToolCallIds).toEqual([]);
     expect(second.tokensAfter).toBe(second.tokensBefore);
   });
 
-  it('uses the given strategy', () => {
+  it('uses the given strategy', async () => {
     const strategy: CompactionStrategy = {
       name: 'drop-all',
       compact: ({ messages, estimateTokens: count, contextWindow }) => ({
@@ -119,7 +119,7 @@ describe('pruneToolResultsStrategy / compactMessages', () => {
         prunedToolCallIds: [],
       }),
     };
-    const result = compactMessages(transcript(2), { strategy, model: 'gpt-4o-mini' });
+    const result = await compactMessages(transcript(2), { strategy, model: 'gpt-4o-mini' });
     expect(result.messages).toHaveLength(2);
     expect(result.tokensAfter).toBe(128_000); // gpt-4o-mini's window from the registry
   });
