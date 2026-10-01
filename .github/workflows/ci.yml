@@ -38,6 +38,8 @@ jobs:
       # src/ (quick-start also runs against the packed tarball). Needs dist/.
       - run: npm run docs:verify-snippets -- --skip-build
       # llms.txt / llms-full.txt are generated from README + docs; fail if stale.
+      # Compile-time API tests (*.test-d.ts): inference of defineTool, flow types, fs adapter.
+      - run: npm run test:types
       - run: npm run docs:llms:check
       - run: npm run test:coverage
       # Agent Forge (apps/agent-forge) imports the SDK as
