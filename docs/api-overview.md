@@ -50,9 +50,14 @@ import { loadMcpTools } from '@loushy/build-ai-agent/mcp';
 const tools = await loadMcpTools(mcpClient, 'my-server');
 ```
 
-### Argument validation
+### Tool errors
 
-Before a tool runs, the model's arguments are parsed with the tool's zod
+A tool call can fail in two ways. In both, the run continues and the model
+receives a structured JSON error as the tool result (never the string `null`),
+so it can recover. `tool-result` events, tracing, `onToolResult` and
+`postToolCall` hooks see the call as an error.
+
+**Argument validation.** Before a tool runs, the model's arguments are parsed with the tool's zod
 `parameters` schema. Validation happens first, so pre-tool hooks, the
 `needsApproval` predicate and `execute` all receive the **parsed** value
 (defaults, coercions and transforms applied). Tools without a zod schema are
@@ -77,6 +82,18 @@ result; `preToolCall` hooks are skipped because there is no valid call):
 
 `ToolArgumentsValidationError` (with a typed `issues` array) is exported from
 the package root.
+
+**Thrown errors.** If `execute` throws, the model receives the error name,
+the tool name and the message only (never a stack trace). Messages are capped
+at 2,000 characters and end with `... (truncated)` when cut:
+
+```json
+{ "error": "TypeError", "toolName": "search", "message": "query must not be empty" }
+```
+
+Errors extending `PropagatingToolError` (for example the delegation depth
+guard) are the exception: they are rethrown and abort the run instead of being
+shown to the model.
 
 ## Flows, evals, observability and security
 
