@@ -52,6 +52,7 @@ export * from './utils';
 
 // createAgent() convenience API (LOU-H1)
 export * from './createAgent';
+export type { AgentApprovals, ApproveToolCall } from './createAgentApprovals';
 
 // Sessions: multi-turn conversations for createAgent() (LOU-W4)
 export * from './session';

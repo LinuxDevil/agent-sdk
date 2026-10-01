@@ -281,7 +281,7 @@ describe('AgentExecutor cancellation (LOU-V1)', () => {
     });
     const resumed = await AgentExecutor.execute({
       agent: agentWithTools('fast'),
-      input: 'ignored - the checkpoint wins',
+      input: 'do the thing', // a retry of the same request: resumes, nothing appended (LOU-U8)
       provider: second.provider,
       toolRegistry: registryWith({ fast }),
       sessionId: 's1',
@@ -292,7 +292,7 @@ describe('AgentExecutor cancellation (LOU-V1)', () => {
     expect(resumed.text).toBe('all done');
     expect(resumed.steps).toBe(2);
     expect(sentRoles).toEqual(['system', 'user', 'assistant', 'tool']);
-    expect(checkpointStore.checkpoints.has('s1')).toBe(false);
+    expect(checkpointStore.checkpoints.get('s1')?.status).toBe('finished');
   });
 
   it('treats an abort-caused provider rejection as the abort: no compaction, no surfaced retry, no error event', async () => {

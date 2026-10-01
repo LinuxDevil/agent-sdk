@@ -154,7 +154,7 @@ function pendingForSuspension(suspension: SubagentSuspension): PendingApproval {
 /** The approval record that pauses a parent run on a suspended sub-agent. */
 export function suspensionRecord(
   run: { agent: AgentConfig; sessionId?: string },
-  state: { messages: Message[]; steps: number; usage: RunUsage },
+  state: { messages: Message[]; steps: number; usage: RunUsage; queuedInput?: Message[] },
   suspension: SubagentSuspension
 ): { pending: PendingApproval; snapshot: ExecutionSnapshot } {
   const pending = pendingForSuspension(suspension);
@@ -162,7 +162,8 @@ export function suspensionRecord(
     pending,
     snapshot: {
       agent: baseAgentOf(run.agent),
-      currentMessages: state.messages,
+      // LOU-U8: queued input rides at the end; resume moves it behind the results.
+      currentMessages: [...state.messages, ...(state.queuedInput ?? [])],
       pendingToolCall: pending,
       steps: state.steps,
       sessionId: run.sessionId,

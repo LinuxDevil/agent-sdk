@@ -198,7 +198,7 @@ function createSandboxTransport(sandbox: SandboxAdapter, validateSSL: boolean, t
     sandboxHttpFetch(
       sandbox,
       { url, method: init.method, headers: init.headers, body: init.body, insecureTLS: !validateSSL },
-      { timeoutMs }
+      { timeoutMs, signal: init.signal }
     );
 }
 

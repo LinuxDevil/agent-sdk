@@ -74,6 +74,17 @@ describe('KVCheckpointStore', () => {
     expect(await store.load('session-1')).toEqual(checkpoint);
   });
 
+  it('round-trips the LOU-U8 status and approvalId fields', async () => {
+    const store = new KVCheckpointStore(createMockKV());
+    const paused = makeCheckpoint({ status: 'awaiting-approval', approvalId: 'approval-1' });
+
+    await store.save('session-1', paused);
+    expect(await store.load('session-1')).toEqual(paused);
+
+    await store.save('session-1', makeCheckpoint({ status: 'finished' }));
+    expect((await store.load('session-1'))?.status).toBe('finished');
+  });
+
   it('delete() removes the entry so a later load() misses', async () => {
     const kv = createMockKV();
     const store = new KVCheckpointStore(kv);
@@ -239,13 +250,10 @@ describe('KVCheckpointStore', () => {
     expect(chargeExecute).toHaveBeenCalledTimes(1);
     expect(lookupExecute).toHaveBeenCalledTimes(1);
 
-    // The run reached a terminal state, so AgentExecutor's own
-    // terminal-state cleanup deletes the checkpoint before returning - the
-    // real proof that a checkpoint genuinely existed in KV mid-run (not
-    // just left over) is the raw KV entry having been written and read at
-    // least once via the store's get/put, asserted below by inspecting the
-    // underlying mock KV's call history.
+    // The run reached a terminal state, so its checkpoint is kept, marked
+    // 'finished' (LOU-U8). The raw KV entry having been written via the
+    // store's put is asserted below from the mock KV's call history.
     expect(kv.putCalls.some(([key]) => key === `${DEFAULT_KV_KEY_PREFIX}${sessionId}`)).toBe(true);
-    expect(await checkpointStore.load(sessionId)).toBeNull();
+    expect((await checkpointStore.load(sessionId))?.status).toBe('finished');
   });
 });
