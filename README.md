@@ -212,6 +212,7 @@ console.log(result.usage.totalTokens, result.finishReason, result.steps);
 - [Configuration](docs/configuration.md) - agent spec fields, provider env vars, `AgentExecutor.execute()` options, CLI flags
 - [Deployment](docs/deployment.md) - `loushy build` targets: Node server, Docker, Cloudflare Workers
 - [API Overview](docs/api-overview.md) - the main exports; `npm run docs:build` generates the full TypeDoc reference
+- [Durable execution](docs/durable-execution.md) - checkpoints, crash resume, multi-turn sessions, approvals mid-batch, at-least-once tools
 - [Tracing and observability](docs/observability.md) - OpenTelemetry GenAI spans, attribute table, content opt-in
 - [Testing](docs/testing.md) - unit-test agents deterministically with the scripted `mockModel`
 - [Skills](docs/skills.md) - on-demand instructions: `defineSkill()`, `loadSkills()`, how they save context
@@ -354,20 +355,25 @@ const result = await resumeAfterApproval(
 
 ### Durable execution / checkpoints
 
-Pass a `sessionId` and a `checkpointStore`; `AgentExecutor` saves a
-checkpoint after every tool result and rehydrates from it on the next call
-with the same `sessionId` — so a crash mid-conversation resumes rather than
-restarts:
+Pass a `sessionId` and a `checkpointStore`; `AgentExecutor` checkpoints
+after every model response and every tool result, on any host. The next
+call with the same `sessionId` resumes an unfinished run (running only the
+tool calls that have no result yet, without asking the model again),
+continues a finished one as a multi-turn conversation, and refuses to
+bypass a pending approval:
 
 ```typescript
 import { AgentExecutor, LocalStorageCheckpointStore } from '@loushy/build-ai-agent';
 
 const checkpointStore = new LocalStorageCheckpointStore(storage);
 
-await AgentExecutor.execute({ agent, input, provider, sessionId: 'session-123', checkpointStore });
-// ...process restarts...
-await AgentExecutor.execute({ agent, input: 'continue', provider, sessionId: 'session-123', checkpointStore });
+await AgentExecutor.execute({ agent, input: 'Book a table for 2', provider, sessionId: 'session-123', checkpointStore });
+// ...process restarts, or the user simply replies...
+await AgentExecutor.execute({ agent, input: 'Make it 3 people', provider, sessionId: 'session-123', checkpointStore });
 ```
+
+See [Durable execution](docs/durable-execution.md) for the exact guarantees
+(including the at-least-once caveat for tools that were mid-flight).
 
 ### Multi-agent delegation
 

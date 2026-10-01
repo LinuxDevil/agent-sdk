@@ -331,7 +331,8 @@ async function doExecuteToolCall(
       toolDesc,
       args,
       sandbox,
-      signal
+      signal,
+      toolCall.id
     );
 
     return {

@@ -354,19 +354,16 @@ export class RunManager extends EventEmitter {
    * what makes Stop-then-Run resume from the last checkpoint (N3) instead
    * of starting over: AgentExecutor.execute() (see its doc comments)
    * rehydrates from `checkpointStore.load(sessionId)` when a checkpoint
-   * exists under that id, and only clears it on a *successful* terminal
-   * completion - never when the run was aborted (see abortableProvider.ts).
-   * So after a stop(), the checkpoint from the last completed tool result
-   * is still there, and the very next run() call for this agentId picks it
+   * exists under that id, and only marks it 'finished' on a *successful*
+   * terminal completion - never when the run was aborted (see
+   * abortableProvider.ts). So after a stop(), the unfinished checkpoint is
+   * still there, and the very next run() call for this agentId picks it
    * back up automatically.
    *
-   * One consequence worth calling out: when a checkpoint exists,
-   * AgentExecutor.execute() ignores `input` entirely and continues the
-   * rehydrated conversation - this mirrors resumeAfterApproval()'s
-   * documented behavior for the approval-gate case and is intentional: a
-   * resumed run is a continuation of the same paused conversation, not a
-   * new question. `input` is only actually used to seed a genuinely fresh
-   * run (no prior checkpoint).
+   * LOU-U8: `input` is appended to the rehydrated conversation as a new
+   * user turn (after the interrupted turn's pending tool results), unless
+   * it re-sends the message the interrupted run started from; after a
+   * finished run it continues the conversation.
    */
   async run(agentId: string, input: string, spec?: AgentSpec): Promise<void> {
     const existing = this.entries.get(agentId);
@@ -402,15 +399,10 @@ export class RunManager extends EventEmitter {
    *   string instead, so AgentExecutor's normal buildMessages() path builds
    *   the system+user turn from scratch exactly like a Topbar "Run" click.
    *
-   * Known limitation (left for LOU-Q): if the agent was Stopped mid-flight
-   * (a checkpoint exists from an in-progress run, not a completed one),
-   * AgentExecutor.execute() ignores `input` entirely and resumes straight
-   * from that checkpoint (see run()'s original doc comment above) - so a
-   * chat message sent in that state is shown optimistically in the thread
-   * but is NOT actually incorporated into the resumed run's conversation.
-   * This mirrors existing Stop→Run checkpoint-resume behavior rather than
-   * inventing new semantics for it; a future epic may want a dedicated
-   * "discard checkpoint and continue with this new message instead" action.
+   * The checkpoint under this agent's sessionId already holds that same
+   * history; AgentExecutor.execute() (LOU-U8) recognises the re-sent prefix
+   * and appends only the new user turn - after a Stop mid-flight, once the
+   * interrupted turn's pending tool results are recorded.
    */
   async sendMessage(agentId: string, text: string, spec?: AgentSpec): Promise<void> {
     const existing = this.entries.get(agentId) ?? this.freshEntry(agentId);

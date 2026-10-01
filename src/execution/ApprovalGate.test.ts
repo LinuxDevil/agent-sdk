@@ -141,6 +141,25 @@ describe('Execution - StorageServiceApprovalStore', () => {
     expect(second).toBeNull();
   });
 
+  it('should round-trip the LOU-U7 remainingToolCalls of a snapshot', async () => {
+    const store = createApprovalStore();
+    const pending: PendingApproval = {
+      id: 'approval-mid-batch',
+      toolCallId: 'call-b',
+      toolName: 'chargeCard',
+      args: {},
+      createdAt: new Date().toISOString(),
+    };
+    const snapshot: ExecutionSnapshot = {
+      ...buildSnapshot(pending),
+      remainingToolCalls: [{ id: 'call-c', type: 'function', function: { name: 'sendEmail', arguments: '{"to":"a@b.c"}' } }],
+    };
+
+    await store.save(pending, snapshot);
+
+    expect((await store.resolve('approval-mid-batch'))?.snapshot).toEqual(snapshot);
+  });
+
   it('should return null for an id that was never saved', async () => {
     const store = createApprovalStore();
     const result = await store.resolve('never-saved');

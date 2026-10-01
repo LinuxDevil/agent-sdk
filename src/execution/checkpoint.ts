@@ -7,8 +7,23 @@ import { Message } from '../providers';
 import { StorageService } from '../storage';
 
 /**
- * A snapshot of an in-progress agent run, saved after each tool result so
- * execution can resume from here (e.g. after a process restart).
+ * Where the run recorded in a {@link Checkpoint} stands (LOU-U8):
+ *
+ * - `'in-progress'`: the run has not finished (it crashed, was aborted, or
+ *   is still running). `execute()` with the same `sessionId` resumes it.
+ * - `'awaiting-approval'`: paused on a tool call that needs a human
+ *   decision. `execute()` with the same `sessionId` throws
+ *   `SessionAwaitingApprovalError`; call `resumeAfterApproval()` instead.
+ * - `'finished'`: the run ended normally. `execute()` with the same
+ *   `sessionId` continues the conversation: the new input becomes the next
+ *   user turn after the stored messages.
+ */
+export type CheckpointStatus = 'in-progress' | 'awaiting-approval' | 'finished';
+
+/**
+ * A snapshot of an agent run, saved after each model response, after each
+ * tool result and when the run pauses or finishes, so execution can resume
+ * from here (e.g. after a process restart).
  */
 export interface Checkpoint {
   agentId: string;
@@ -57,6 +72,14 @@ export interface Checkpoint {
    * "inherit".
    */
   businessState?: unknown;
+  /**
+   * LOU-U8: where the run stands - see {@link CheckpointStatus}. Absent on
+   * checkpoints written before this field existed, which are treated as
+   * `'in-progress'` (the only kind that was ever kept).
+   */
+  status?: CheckpointStatus;
+  /** LOU-U8: with `status: 'awaiting-approval'`, the id of the pending approval. */
+  approvalId?: string;
 }
 
 /**

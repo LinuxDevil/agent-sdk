@@ -99,24 +99,25 @@ describe('RunManager', () => {
     await runManager.run(agentId, 'please use current-date', SPEC);
     await waitForStatus(runManager, agentId, (s) => s.status === 'stopped');
 
-    // The checkpoint from the aborted run must survive - AgentExecutor only
-    // deletes it on a successful terminal completion, never on an aborted
-    // run (see abortableProvider.ts's doc comment).
+    // The checkpoint from the aborted run must survive, still unfinished
+    // (see abortableProvider.ts's doc comment).
     const checkpoint = await checkpointStore.load(agentId);
     expect(checkpoint).not.toBeNull();
     expect(checkpoint!.stepIndex).toBeGreaterThanOrEqual(1);
 
     // Running again picks the same checkpoint back up (AgentExecutor
-    // rehydrates from it and ignores the new `input`) rather than starting
-    // a brand new conversation from scratch.
-    await runManager.run(agentId, 'this input is ignored on resume', SPEC);
+    // rehydrates from it; LOU-U8 appends the new `input` after the resumed
+    // turn) rather than starting a brand new conversation from scratch.
+    await runManager.run(agentId, 'a follow-up appended on resume', SPEC);
     const resumed = await waitForStatus(runManager, agentId, (s) => s.status === 'stopped');
     expect(resumed.resultText).toBe('This is a mock response.');
 
-    // And the checkpoint is cleared once that resumed run completes
-    // successfully.
+    // And the checkpoint is kept, marked finished, once that resumed run
+    // completes successfully (LOU-U8: the next run continues the session).
     const afterResume = await checkpointStore.load(agentId);
-    expect(afterResume).toBeNull();
+    expect(afterResume?.status).toBe('finished');
+    expect(afterResume?.messages.map((m) => m.content)).toContain('please use current-date');
+    expect(afterResume?.messages.map((m) => m.content)).toContain('a follow-up appended on resume');
   });
 
   it('emits structured log entries derived from the ExecutionEvent stream (O1)', async () => {

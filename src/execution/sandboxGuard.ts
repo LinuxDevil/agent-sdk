@@ -46,7 +46,8 @@ export async function executeToolWithSandboxGuard(
   toolDesc: ToolDescriptor,
   args: Record<string, unknown>,
   sandbox: SandboxAdapter,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  toolCallId?: string
 ): Promise<unknown> {
   if (toolDesc.requiresSandbox) {
     if (!toolDesc.sandboxExecute) {
@@ -61,7 +62,9 @@ export async function executeToolWithSandboxGuard(
   }
 
   // The 'ai' SDK types toolCallId/messages as required, but tools invoked
-  // here are not part of an 'ai' SDK generation, so only abortSignal is set.
-  const executeOptions = { abortSignal: signal } as ToolExecutionOptions;
+  // here are not part of an 'ai' SDK generation, so `messages` is not set
+  // (LOU-U15). `toolCallId` (LOU-U9) is the model's id for this call - the
+  // same on a resumed re-run - so tools can use it as an idempotency key.
+  const executeOptions = { abortSignal: signal, toolCallId } as ToolExecutionOptions;
   return toolDesc.tool.execute ? toolDesc.tool.execute(args, executeOptions) : null;
 }

@@ -7,8 +7,9 @@
 
 import { Message, ToolCall } from '../providers';
 import { AgentConfig } from '../types';
-import { Checkpoint } from './checkpoint';
-import { CompactedLLMProviderError } from './errors';
+import { Checkpoint, CheckpointStatus } from './checkpoint';
+import { CompactedLLMProviderError, SessionAwaitingApprovalError } from './errors';
+import { inputMessages, newSessionMessages, splitPendingTurn } from './transcript';
 import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
 import type { ToolCallOutcome } from './toolCallExecution';
 import type { UnrecordedToolCall } from './toolBatch';
@@ -35,6 +36,20 @@ export interface AgentRunState {
    * read as if the model actually gave up on its own.
    */
   lastSurfacedProviderError?: CompactedLLMProviderError;
+  /**
+   * LOU-U7/U9: tool calls of the last model turn that have no result yet
+   * (a run resumed after a crash, or after an approval mid-batch). They run
+   * through the normal batch path before the model is called again.
+   */
+  pendingToolCalls: ToolCall[];
+  /**
+   * LOU-U8: new input held back until `pendingToolCalls` all have results
+   * (a user message must never sit between a tool-call turn and its
+   * results). Persisted at the end of checkpoints and snapshots so it
+   * survives a crash or another approval pause; splitPendingTurn() moves it
+   * back behind the results on load.
+   */
+  queuedInput: Message[];
 }
 
 /**
@@ -45,37 +60,27 @@ function buildMessages(
   input: string | Message[],
   skipSystemPromptInjection = false
 ): Message[] {
-  const messages: Message[] = [];
-
   // Add system prompt, unless the caller has indicated `input` already
   // includes one (e.g. resume.ts rebuilding from an ExecutionSnapshot).
-  if (agent.prompt && !skipSystemPromptInjection) {
-    messages.push({
-      role: 'system',
-      content: agent.prompt,
-    });
-  }
-
-  // Add input messages
-  if (typeof input === 'string') {
-    messages.push({
-      role: 'user',
-      content: input,
-    });
-  } else {
-    messages.push(...input);
-  }
-
-  return messages;
+  const system: Message[] =
+    agent.prompt && !skipSystemPromptInjection ? [{ role: 'system', content: agent.prompt }] : [];
+  return [...system, ...inputMessages(input)];
 }
+
+const ZERO_USAGE: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
 type InitialRunState = Pick<
   AgentRunState,
   'messages' | 'toolCalls' | 'usage' | 'steps' | 'businessState'
 >;
 
-/** Rehydrates run state from a checkpoint left by an earlier process. */
-function stateFromCheckpoint(checkpoint: Checkpoint, businessState: unknown): InitialRunState {
+/**
+ * Rehydrates run state from a checkpoint left by an earlier call (LOU-U8):
+ * an unfinished run resumes where it stopped (new input, if any, is
+ * appended after it - see newSessionMessages()); a finished run continues
+ * as a conversation, with a fresh step budget, usage and tool-call list.
+ */
+function stateFromCheckpoint(checkpoint: Checkpoint, options: ExecuteOptions): InitialRunState {
   // LOU-T1: on a rehydrated run (e.g. a fresh process resuming after a
   // crash), the caller of this execute() call may have no way to know
   // what businessState a *previous* process attached - that's exactly
@@ -85,11 +90,14 @@ function stateFromCheckpoint(checkpoint: Checkpoint, businessState: unknown): In
   // checkpoint rather than silently dropping it. An explicit
   // `businessState` passed to *this* call always wins (e.g. a caller
   // deliberately updating it as part of the resumed run).
+  const { businessState } = options;
+  const finished = checkpoint.status === 'finished';
+  const added = newSessionMessages(checkpoint.messages, options.input, finished);
   return {
-    messages: [...checkpoint.messages],
-    toolCalls: [...(checkpoint.toolCalls as ToolCall[])],
-    usage: { ...checkpoint.usage },
-    steps: checkpoint.stepIndex,
+    messages: [...checkpoint.messages, ...added],
+    toolCalls: finished ? [] : [...(checkpoint.toolCalls as ToolCall[])],
+    usage: finished ? { ...ZERO_USAGE } : { ...checkpoint.usage },
+    steps: finished ? 0 : checkpoint.stepIndex,
     businessState: businessState === undefined ? checkpoint.businessState : businessState,
   };
 }
@@ -100,11 +108,7 @@ function freshState(options: ExecuteOptions): InitialRunState {
   return {
     messages: buildMessages(agent, input, skipSystemPromptInjection),
     toolCalls: [],
-    usage: {
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
-    },
+    usage: { ...ZERO_USAGE },
     steps: initialSteps ?? 0,
     businessState,
   };
@@ -112,7 +116,10 @@ function freshState(options: ExecuteOptions): InitialRunState {
 
 /**
  * If a checkpoint exists for this sessionId, rehydrate state from it
- * instead of building messages from scratch.
+ * instead of building messages from scratch. Either way, unanswered tool
+ * calls of the last model turn become `pendingToolCalls` (LOU-U7/U9).
+ * Throws SessionAwaitingApprovalError when the session is paused on an
+ * approval (LOU-U8).
  */
 export async function loadRunState(options: ExecuteOptions): Promise<AgentRunState> {
   const { sessionId, checkpointStore } = options;
@@ -120,12 +127,21 @@ export async function loadRunState(options: ExecuteOptions): Promise<AgentRunSta
   if (sessionId && checkpointStore) {
     checkpoint = await checkpointStore.load(sessionId);
   }
+  if (sessionId && checkpoint?.status === 'awaiting-approval') {
+    throw new SessionAwaitingApprovalError(sessionId, checkpoint.approvalId);
+  }
 
-  const initial = checkpoint
-    ? stateFromCheckpoint(checkpoint, options.businessState)
-    : freshState(options);
+  const initial = checkpoint ? stateFromCheckpoint(checkpoint, options) : freshState(options);
+  const turn = splitPendingTurn(initial.messages);
 
-  return { ...initial, finalText: '', finishReason: 'stop' };
+  return {
+    ...initial,
+    messages: turn.messages,
+    pendingToolCalls: turn.pendingToolCalls,
+    queuedInput: turn.queuedInput,
+    finalText: '',
+    finishReason: 'stop',
+  };
 }
 
 /** Accumulates one generate() call's token usage into the run total. */
@@ -135,10 +151,16 @@ export function addUsage(total: TokenUsage, usage: TokenUsage): void {
   total.totalTokens += usage.totalTokens;
 }
 
-/** Persists the run's progress after a tool result, when checkpointing is on. */
+/**
+ * Persists the run's progress, when checkpointing is on: after each model
+ * response (LOU-U9), as tool results are recorded, and when the run
+ * aborts, pauses (`'awaiting-approval'`) or finishes (`'finished'`).
+ */
 export async function saveStepCheckpoint(
   options: ExecuteOptions,
-  state: AgentRunState
+  state: AgentRunState,
+  status: CheckpointStatus = 'in-progress',
+  approvalId?: string
 ): Promise<void> {
   const { agent, sessionId, checkpointStore } = options;
   if (!sessionId || !checkpointStore) {
@@ -149,11 +171,13 @@ export async function saveStepCheckpoint(
     agentId: agent.id || '',
     sessionId,
     stepIndex: state.steps,
-    messages: [...state.messages],
+    messages: [...state.messages, ...state.queuedInput],
     toolCalls: [...state.toolCalls],
     usage: state.usage,
     finishReason: state.finishReason,
     businessState: state.businessState,
+    status,
+    ...(approvalId !== undefined && { approvalId }),
   };
   await checkpointStore.save(sessionId, checkpoint);
 }
