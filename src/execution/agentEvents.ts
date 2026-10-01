@@ -305,13 +305,10 @@ export type AgentEvent =
   | CompactionStartEvent
   | CompactionDoneEvent
   | BudgetExceededEvent
-<<<<<<< HEAD
   | InputQueuedEvent
   | InputAppliedEvent
-=======
   | GuardrailTrippedEvent
   | GuardrailRewroteEvent
->>>>>>> origin/main
   | RunDoneEvent;
 
 /** The `type` of an {@link AgentEvent}. */
@@ -349,13 +346,10 @@ const EVENT_TYPES: ReadonlySet<string> = new Set<AgentEventType>([
   'compaction.start',
   'compaction.done',
   'budget.exceeded',
-<<<<<<< HEAD
   'input.queued',
   'input.applied',
-=======
   'guardrail.tripped',
   'guardrail.rewrote',
->>>>>>> origin/main
   'run.done',
 ]);
 

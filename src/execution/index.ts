@@ -64,13 +64,10 @@ export type {
   ProviderRetryEvent,
   ProviderFallbackEvent,
   BudgetExceededEvent,
-<<<<<<< HEAD
   InputQueuedEvent,
   InputAppliedEvent,
-=======
   GuardrailTrippedEvent,
   GuardrailRewroteEvent,
->>>>>>> origin/main
   RunDoneEvent,
 } from './agentEvents';
 export { BudgetExceededError } from './budget';

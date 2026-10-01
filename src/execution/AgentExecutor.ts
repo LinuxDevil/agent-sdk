@@ -727,17 +727,15 @@ export class AgentExecutor {
 
     const state = await loadRunState(options);
     state.budget = budget;
-<<<<<<< HEAD
+    // LOU-X4: the new input is checked before anything else runs.
+    const blocked = await checkInputGuardrails(options, [state.messages, state.queuedInput]);
+    if (blocked) return this.stopForGuardrail(options, state, blocked);
+
     options.inputQueue?.listen((queued) => {
       runEventsOf(options)?.inputQueued(queued);
       // LOU-V9: checkpointed at once, so a crash before it is applied does not lose it.
       saveStepCheckpoint(options, state).catch(() => undefined);
     });
-=======
-    // LOU-X4: the new input is checked before anything else runs.
-    const blocked = await checkInputGuardrails(options, [state.messages, state.queuedInput]);
-    if (blocked) return this.stopForGuardrail(options, state, blocked);
->>>>>>> origin/main
 
     // LOU-U7/U9: a resumed transcript may end with a model turn whose tool
     // calls (some of them) have no result yet - finish those first, without
