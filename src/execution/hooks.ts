@@ -27,6 +27,10 @@
  *   - `audit-log`: reads `ctx` fields (agentId, sessionId, toolName, args)
  *     without mutating anything.
  *
+ * Outcomes (LOU-X3): a `preToolCall` hook may also RETURN `{ deny: reason }`,
+ * `{ result: value }` or `{ input: newArgs }`, and a `postToolCall` hook
+ * `{ result: value }`; see {@link PreToolCallOutcome}.
+ *
  * Error handling: hooks run in REGISTRATION ORDER, and a hook that throws
  * (or rejects) aborts the current step - the error propagates out of
  * `HookRegistry.runXxx()`, out of AgentExecutor.execute() (or
@@ -116,6 +120,39 @@ export interface ToolCallHookResult {
   requiresApproval?: boolean;
 }
 
+/**
+ * What a `preToolCall` hook may return (LOU-X3). Returning nothing continues
+ * with the call unchanged.
+ * - `{ deny: reason }`: the call does not run; the model gets a `kind: 'denied'`
+ *   tool error with `reason`. Later pre-hooks do not run.
+ * - `{ result: value }`: the call does not run; `value` is its result. Later
+ *   pre-hooks do not run.
+ * - `{ input: args }`: the call runs with `args` instead (later hooks see them
+ *   as `ctx.args`); they are validated against the tool's input schema again.
+ */
+export type PreToolCallOutcome = { deny: string } | { result: unknown } | { input: Record<string, unknown> };
+
+/** What a `postToolCall` hook may return (LOU-X3): `{ result }` replaces the result the model sees. */
+export interface PostToolCallOutcome {
+  result: unknown;
+}
+
+/** What {@link HookRegistry.runPreToolCall} decided for one call. */
+export interface PreToolCallDecision {
+  /** The hook that denied the call or supplied its result. */
+  stop?: { hook: string } & ({ deny: string } | { result: unknown });
+  /** The hooks that returned `{ input }`, in order; `ctx.args` holds the last input. */
+  inputBy: string[];
+}
+
+type MaybePromise<T> = T | Promise<T>;
+
+/** The outcome key `value` carries, if it is an object with one of `keys`. */
+function outcomeKey<K extends string>(value: unknown, keys: readonly K[]): K | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  return keys.find((key) => key in value);
+}
+
 /** The stream events a hook may emit with `GenerateHookContext.emit` (LOU-W3.2). */
 export type HookEventPayload = Extract<AgentEventPayload, { type: 'compaction.start' | 'compaction.done' }>;
 
@@ -144,10 +181,16 @@ export interface GenerateHookContext extends HookContext {
 export interface AgentHook {
   /** Unique name, used for registration/lookup/unregister and for error messages. */
   name: string;
-  /** Invoked immediately before a tool is executed (and before any approval-gate check). */
-  preToolCall?(ctx: ToolCallHookContext): void | Promise<void>;
-  /** Invoked immediately after a tool call settles (success, tool-level error, or approval-required). */
-  postToolCall?(ctx: ToolCallHookContext, result: ToolCallHookResult): void | Promise<void>;
+  /**
+   * Invoked immediately before a tool is executed (and before the permission
+   * rules, tool guardrails and approval check). May return a {@link PreToolCallOutcome}.
+   */
+  preToolCall?(ctx: ToolCallHookContext): MaybePromise<PreToolCallOutcome | void>;
+  /**
+   * Invoked immediately after a tool call settles (success, tool-level error,
+   * or approval-required). May return `{ result }` to replace the result the model sees.
+   */
+  postToolCall?(ctx: ToolCallHookContext, result: ToolCallHookResult): MaybePromise<PostToolCallOutcome | void>;
   /** Invoked immediately before each `provider.generate()` call. */
   preGenerate?(ctx: GenerateHookContext): void | Promise<void>;
   /** Invoked immediately after each `provider.generate()` call resolves. */
@@ -220,22 +263,41 @@ export class HookRegistry {
     return this.hooks.length;
   }
 
-  /** Run every registered `preToolCall`, in order. Throws (aborting the step) if any hook throws. */
-  public async runPreToolCall(ctx: ToolCallHookContext): Promise<void> {
+  /**
+   * Run every registered `preToolCall`, in order. Throws (aborting the step)
+   * if any hook throws. The first `{ deny }` or `{ result }` stops the
+   * sequence; an `{ input }` replaces `ctx.args` for the hooks after it.
+   */
+  public async runPreToolCall(ctx: ToolCallHookContext): Promise<PreToolCallDecision> {
+    const inputBy: string[] = [];
     for (const hook of this.hooks) {
-      if (hook.preToolCall) {
-        await hook.preToolCall(ctx);
+      const outcome = await hook.preToolCall?.(ctx);
+      const key = outcomeKey(outcome, ['deny', 'result', 'input'] as const);
+      if (key === 'input') {
+        ctx.args = (outcome as { input: Record<string, unknown> }).input;
+        inputBy.push(hook.name);
+      } else if (key) {
+        return { stop: { hook: hook.name, ...(outcome as { deny: string } | { result: unknown }) }, inputBy };
       }
     }
+    return { inputBy };
   }
 
-  /** Run every registered `postToolCall`, in order. Throws (aborting the step) if any hook throws. */
-  public async runPostToolCall(ctx: ToolCallHookContext, result: ToolCallHookResult): Promise<void> {
+  /**
+   * Run every registered `postToolCall`, in order. Throws (aborting the step)
+   * if any hook throws. A returned `{ result }` is written to `result.result`,
+   * which later hooks see. Returns the name of the last hook that replaced it.
+   */
+  public async runPostToolCall(ctx: ToolCallHookContext, result: ToolCallHookResult): Promise<string | undefined> {
+    let replacedBy: string | undefined;
     for (const hook of this.hooks) {
-      if (hook.postToolCall) {
-        await hook.postToolCall(ctx, result);
+      const outcome = await hook.postToolCall?.(ctx, result);
+      if (outcomeKey(outcome, ['result'] as const)) {
+        result.result = (outcome as PostToolCallOutcome).result;
+        replacedBy = hook.name;
       }
     }
+    return replacedBy;
   }
 
   /** Run every registered `preGenerate`, in order. Throws (aborting the step) if any hook throws. */

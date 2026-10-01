@@ -660,7 +660,8 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     return approvals.session(
       (input, signal, turn, call) => run(input, ctxOf(input, call), signal, turn),
       (input, signal, turn, call) => stream(input, ctxOf(input, call), signal, turn),
-      withDefaultStores({ ...options, id: sessionId }, config.store)
+      // LOU-W8 follow-up: `session.compact()` uses the agent's `compaction` unless the session sets its own.
+      withDefaultStores({ ...options, compaction: options.compaction ?? config.compaction, id: sessionId }, config.store)
     );
   };
 

@@ -106,6 +106,8 @@ export interface ToolDoneEvent extends AgentEventBase<'tool.done'> {
   result: unknown;
   /** Milliseconds since this call's `tool.start`. */
   durationMs: number;
+  /** LOU-X3: the hook whose `{ result }` outcome replaced (or stood in for) the tool's result. */
+  replacedByHook?: string;
 }
 
 /**
