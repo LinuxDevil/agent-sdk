@@ -71,3 +71,30 @@ provider:
     ).toThrow(/needs credentials/);
   });
 });
+
+describe('specToAgent model selection (LOU-U1)', () => {
+  it("sends the spec's provider.model to provider.generate()", async () => {
+    const received: Array<string | undefined> = [];
+    LLMProviderRegistry.register('mock', (config) => {
+      const provider = createMockProvider({ ...config, responses: RESPONSES });
+      const generate = provider.generate.bind(provider);
+      provider.generate = (options) => {
+        received.push(options.model);
+        return generate(options);
+      };
+      return provider;
+    });
+    try {
+      const agent = specToAgent({
+        name: 'model-agent',
+        prompt: 'You are a test agent.',
+        provider: { type: 'mock', model: 'spec-model-7' },
+      });
+      await agent.send('hello');
+    } finally {
+      LLMProviderRegistry.register('mock', () => createMockProvider({ responses: RESPONSES }));
+    }
+
+    expect(received).toEqual(['spec-model-7']);
+  });
+});

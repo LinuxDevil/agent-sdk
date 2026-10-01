@@ -483,8 +483,11 @@ export class FlowExecutor {
     return messages;
   }
 
-  private static resolveLLMModel(node: any, context: FlowExecutionContext): string {
-    return node.model || context.agent.settings?.model || 'gpt-4';
+  private static resolveLLMModel(
+    node: any,
+    context: FlowExecutionContext
+  ): string | undefined {
+    return node.model || context.agent.settings?.model || context.provider.defaultModel;
   }
 
   /**

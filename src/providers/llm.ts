@@ -48,7 +48,13 @@ export interface ToolDefinition {
  * Generation options
  */
 export interface GenerateOptions {
-  model: string;
+  /**
+   * Model id for this call. Optional: when omitted (or empty) the provider
+   * uses the model it was constructed with (`defaultModel`) and then its own
+   * built-in default. For agents the precedence is `agent.settings.model` >
+   * the provider's configured model > the provider's built-in default.
+   */
+  model?: string;
   messages: Message[];
   temperature?: number;
   maxTokens?: number;
@@ -130,6 +136,14 @@ export interface LLMProvider {
    * Provider name (e.g., 'openai', 'anthropic', 'ollama')
    */
   readonly name: string;
+
+  /**
+   * The model this provider uses when a call names none: the `defaultModel`
+   * it was constructed with (e.g. via `resolveProvider('openai/gpt-4o-mini')`),
+   * else its built-in default. Providers that cannot report one may omit it;
+   * the executor then sends no model and the provider decides.
+   */
+  readonly defaultModel?: string;
 
   /**
    * Generate text without streaming

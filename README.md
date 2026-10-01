@@ -270,6 +270,12 @@ const custom = LLMProviderRegistry.create('openai', {
 });
 ```
 
+**Which model runs?** In order: the agent's own `settings.model` (set with
+`AgentBuilder.setSettings({ model })`), then the model the provider was built
+with (`resolveProvider('openai/gpt-4o-mini')`, a spec's `provider.model`, or
+`defaultModel`), then the provider's built-in default. There is no hard-coded
+fallback model.
+
 ## Advanced Features
 
 ### Human-in-the-loop approval gates

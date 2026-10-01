@@ -191,6 +191,11 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
     this.config = config;
   }
 
+  /** The configured `defaultModel`, else this provider's built-in default. */
+  get defaultModel(): string {
+    return this.config.defaultModel || this.fallbackModel;
+  }
+
   /** Build the 'ai' SDK language model for a model id. */
   protected abstract createModel(modelId: string): LanguageModel;
 
@@ -202,7 +207,7 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
   /** The call settings shared by generate() and stream(). */
   private buildCallSettings(options: GenerateOptions) {
     return {
-      model: this.createModel(options.model || this.config.defaultModel || this.fallbackModel),
+      model: this.createModel(options.model || this.defaultModel),
       messages: this.convertMessages(options.messages),
       temperature: options.temperature,
       maxTokens: options.maxTokens,

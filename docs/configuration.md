@@ -11,7 +11,7 @@ validated with zod by `loadSpec()` (`src/spec/schema.ts`). It is the format
 | `name`           | `string`   | yes      | Agent name.                                             |
 | `prompt`         | `string`   | yes      | System prompt.                                          |
 | `provider.type`  | `string`   | yes      | `openai`, `anthropic`, `ollama`, `openrouter` or `mock`. |
-| `provider.model` | `string`   | yes      | Model id passed to the provider as its default model.  |
+| `provider.model` | `string`   | yes      | Model id every call uses (the provider's configured model; an agent's own `settings.model` would override it). |
 | `tools`          | `string[]` | no       | Built-in tool names (see below).                       |
 
 A missing or invalid field fails with an error naming the exact field, e.g.
