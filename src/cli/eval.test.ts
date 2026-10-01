@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import {
   buildVitestConfig,
+  createVitestSpawner,
   parseEvalArgs,
   resolveVitestBin,
   runEval,
@@ -173,10 +174,12 @@ describe('runEval with a fake vitest', () => {
 });
 
 describe('loushy eval end to end (real vitest, mockModel fixtures)', () => {
+  // The real vitest, with its own console output discarded to keep this suite's log readable.
+  const quietVitest = createVitestSpawner('ignore');
+
   const cli = (args: string[]) => {
     const log = vi.fn();
-    vi.spyOn(console, 'log').mockImplementation(() => {});
-    return runEval(args, { log }).then((code) => ({ code, output: log.mock.calls.map((c) => String(c[0])).join('\n') }));
+    return runEval(args, { log, spawnVitest: quietVitest }).then((code) => ({ code, output: log.mock.calls.map((c) => String(c[0])).join('\n') }));
   };
 
   it('runs a passing eval: exit 0, JUnit and JSON written, soft failure reported but not failing', async () => {

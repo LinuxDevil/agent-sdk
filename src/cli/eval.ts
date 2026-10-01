@@ -84,12 +84,15 @@ export function resolveVitestBin(cwd: string): string | undefined {
   }
 }
 
-const defaultSpawn: VitestSpawner = (bin, args, env) =>
-  new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [bin, ...args], { stdio: 'inherit', env });
-    child.on('error', reject);
-    child.on('close', (code) => resolve(code ?? 1));
-  });
+/** Spawns vitest as a child process; `stdio: 'ignore'` discards its console output. */
+export function createVitestSpawner(stdio: 'inherit' | 'ignore' = 'inherit'): VitestSpawner {
+  return (bin, args, env) =>
+    new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [bin, ...args], { stdio, env });
+      child.on('error', reject);
+      child.on('close', (code) => resolve(code ?? 1));
+    });
+}
 
 /**
  * The generated vitest config: a plain object (no imports, so it loads from
@@ -179,7 +182,7 @@ async function runAndReport(args: EvalCliArgs, deps: Required<EvalDeps>, vitestB
 export async function runEval(rest: string[], deps: EvalDeps = {}): Promise<number> {
   const resolved: Required<EvalDeps> = {
     resolveVitest: deps.resolveVitest ?? resolveVitestBin,
-    spawnVitest: deps.spawnVitest ?? defaultSpawn,
+    spawnVitest: deps.spawnVitest ?? createVitestSpawner(),
     cwd: deps.cwd ?? process.cwd(),
     log: deps.log ?? ((message) => console.log(message)),
   };

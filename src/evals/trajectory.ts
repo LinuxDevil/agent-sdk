@@ -99,7 +99,7 @@ function sumUsage(results: readonly ExecutionResult[]): EvalResult['usage'] {
 }
 
 /** Implementation of {@link EvalTestContext}; also builds the case's {@link EvalResult}. */
-export class TrajectoryContext implements EvalTestContext {
+class TrajectoryContext implements EvalTestContext {
   private readonly results: ExecutionResult[] = [];
   private readonly calls: EvalToolCall[] = [];
   private readonly recorded: AssertionResult[] = [];
