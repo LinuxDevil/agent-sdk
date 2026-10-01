@@ -25,8 +25,9 @@ import * as path from 'node:path';
 import { DeploymentAdapter, DeployOptions } from '../types';
 import { loadSpec } from '../../spec/loadSpec';
 import { AgentSpec } from '../../spec/schema';
+import { specSchedules } from '../../schedules/specSchedules';
 import { resolveSpecTool } from '../../spec/specToAgent';
-import { RUNTIME_SPECIFIER, loadTsup, sdkRuntimePlugin, writeFile } from '../bundle';
+import { RUNTIME_SPECIFIER, bundleExternals, loadTsup, sdkRuntimePlugin, writeFile } from '../bundle';
 import { agentDirEntries, copyAgentDirAssets, isAgentDir, scaffoldedAgentDir, writeAgentDirPointer } from './node-server-dir';
 
 const SPEC_EXTENSIONS = new Set(['.yaml', '.yml', '.json']);
@@ -74,11 +75,13 @@ interface ServerVariant {
 
 function specVariant(options: DeployOptions): ServerVariant {
   return {
-    imports: `import { agentSpecSchema, createDeployedAgent, createDeployedServer } from '${RUNTIME_SPECIFIER}';
+    imports: `import { agentSpecSchema, createDeployedAgent, createDeployedServer, specSchedules } from '${RUNTIME_SPECIFIER}';
 import agentConfig from './agent.config.js';`,
-    boot: 'const agent = await createDeployedAgent(agentSpecSchema.parse(agentConfig));',
-    options: JSON.stringify(options),
-    report: '',
+    boot: `const spec = agentSpecSchema.parse(agentConfig);
+  const agent = await createDeployedAgent(spec);
+  const schedules = specSchedules(spec.triggers);`,
+    options: `{ ...${JSON.stringify(options)}, schedules }`,
+    report: `console.log('loushy server: schedules: ' + (schedules.map((s) => s.name).join(', ') || 'none'));`,
   };
 }
 
@@ -192,6 +195,8 @@ export const NodeServerAdapter: DeploymentAdapter = {
     const spec = loadAgentSpecForDeploy(agentPath);
     // Fail at build time, not at first request, on an unresolvable tool name.
     for (const tool of spec.tools || []) resolveSpecTool(tool);
+    // Same for a cron trigger without a cron expression or input (LOUSHY_SCHEDULE_INVALID).
+    specSchedules(spec.triggers);
 
     writeAgentDirPointer(outDir, undefined);
     writeFile(path.join(outDir, 'agent.config.js'), agentConfigModuleSource(spec));
@@ -216,12 +221,10 @@ export const NodeServerAdapter: DeploymentAdapter = {
       platform: 'node',
       target: 'node18',
       outExtension: () => ({ js: '.js' }),
-      // Bundle everything (SDK runtime + its deps) so dist/server.js runs
-      // with no node_modules next to it.
-      // An agent directory imports the full SDK, which loads dockerode lazily (its native ssh2 cannot be bundled): left to the runtime.
-      // So is ollama-ai-provider-v2 (Ollama on ai 6/7, LOU-D28d), which needs zod 4 and is usually not installed.
-      noExternal: [source ? /^(?!(dockerode|ollama-ai-provider-v2)$)/ : /.*/],
-      external: source ? ['dockerode', 'ollama-ai-provider-v2'] : [],
+      // Bundle the SDK runtime and its deps so dist/server.js runs with no node_modules next to it,
+      // except the SDK's optional peers (dockerode, provider packages, MCP, ...): they are imported
+      // lazily and a missing one raises the SDK's coded missing-peer error where it is needed.
+      ...bundleExternals(),
       esbuildPlugins: [sdkRuntimePlugin()],
       clean: true,
       sourcemap: false,

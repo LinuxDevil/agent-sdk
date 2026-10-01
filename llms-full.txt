@@ -4383,6 +4383,15 @@ behaviour on Workers: with a `sessionId` the run is checkpointed to
 `checkpoints/<sessionId>` after each tool result and rehydrated by a later
 request that reuses the `sessionId` (after a crash or a recycled isolate).
 
+### Optional peers in node and docker builds
+
+`dist/server.js` bundles the SDK but leaves its optional peers (the `peerDependenciesMeta`
+entries of its package.json: provider packages, `dockerode`, the MCP SDK, `prompts`, ...) external, so a build
+never needs one you do not use. Install, where the server runs, only the peers its agent needs (for example
+`@ai-sdk/openai` for an OpenAI agent); a code path that needs one that is missing raises the SDK's coded
+missing-peer error. A spec's cron triggers run on the node-server and docker targets as well as on Workers
+([Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md#on-the-node-server)).
+
 ### Cron triggers and `handleScheduled`
 
 Cron triggers in the spec (`triggers: [{ type: 'cron', cron: '0 9 * * MON', input: '...' }]`)
@@ -7131,8 +7140,14 @@ const running = startSchedules(agent, schedules);
 and `docker` targets) starts the schedules when it listens and stops them when it
 closes. `loushy build ./my-agent --target=node-server` (or `docker`) builds an
 agent directory into such a server, so its `schedules/` run in the deployed
-process ([Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#agent-directories)). On Cloudflare Workers
-see below.
+process ([Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#agent-directories)). A spec's cron
+`triggers` (`{ type: 'cron', cron, input, name?, timezone? }`) run on these
+targets too: `loushy build spec.yaml --target=node-server` converts them with the
+same rules as the Worker and the built server starts them when it listens
+(`timezone` is supported; an invalid trigger fails the build with
+`LOUSHY_SCHEDULE_INVALID`). The model calls run in the server process, so the
+provider's package must be installed where it runs. On Cloudflare Workers see
+below.
 
 ## In `loushy dev`
 

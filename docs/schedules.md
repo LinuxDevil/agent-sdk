@@ -71,8 +71,14 @@ const running = startSchedules(agent, schedules);
 and `docker` targets) starts the schedules when it listens and stops them when it
 closes. `loushy build ./my-agent --target=node-server` (or `docker`) builds an
 agent directory into such a server, so its `schedules/` run in the deployed
-process ([Deployment](deployment.md#agent-directories)). On Cloudflare Workers
-see below.
+process ([Deployment](deployment.md#agent-directories)). A spec's cron
+`triggers` (`{ type: 'cron', cron, input, name?, timezone? }`) run on these
+targets too: `loushy build spec.yaml --target=node-server` converts them with the
+same rules as the Worker and the built server starts them when it listens
+(`timezone` is supported; an invalid trigger fails the build with
+`LOUSHY_SCHEDULE_INVALID`). The model calls run in the server process, so the
+provider's package must be installed where it runs. On Cloudflare Workers see
+below.
 
 ## In `loushy dev`
 
