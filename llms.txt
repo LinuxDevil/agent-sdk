@@ -8,6 +8,7 @@
 - [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md): `ai` (the Vercel AI SDK, `^4.3.19`) and `zod` (`^3.25.76`) are required peer dependencies.
 - [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md): Every TypeScript snippet on this page is a complete, standalone ES module (`.mts`).
 - [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md): The package root (`@loushy/build-ai-agent`) exports everything below.
+- [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md): An agent can be defined as a directory.
 - [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md): A declarative agent is a YAML (`.yaml`/`.yml`) or JSON (`.json`) file, validated with zod by `loadSpec()` (`src/spec/schema.ts`).
 - [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md): Pass a `sessionId` and a `checkpointStore` to `AgentExecutor.execute()` and the run survives a crash, a restart, an abort or a human approval that takes days.
 - [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md): Evals are regression tests for agent *behaviour*: which tools the agent called, in what order, with which arguments, how many steps it took, and what it said.
@@ -20,6 +21,7 @@
 
 ## Examples
 
+- [agent-dir](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/agent-dir/README.md): An agent defined as a directory: `instructions.md` is the system prompt, `tools/word_count.ts` is a `defineTool()` tool, `skills/tone.md` is a skill and `agent.json` holds config.
 - [doc-qa](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/doc-qa/README.md): A question-answering agent scoped to a single fixed document (a short refund policy, inlined in the prompt), built with `createAgent()`.
 - [openrouter](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/openrouter/README.md): Runnable snippets showing `OpenRouterProvider` usage (LOU-B6): basic and streaming generation, multi-model comparison, tool calling, `AgentBuilder` configuration, model listing, cost-aware model choice, error handling, multi-turn conversation, and capability checks.
 - [ops-pipeline (LOU-J8)](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/ops-pipeline/README.md): An end-to-end "flagship pipeline" demo composing every LOU-J primitive

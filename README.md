@@ -24,9 +24,11 @@ dashboard — any provider, any deploy target, no lock-in.
 - **Cancellation** — pass an `AbortSignal` (`agent.send(input, { signal })`) to stop a run; it resolves with `finishReason: 'aborted'` and the transcript so far, and the signal reaches the provider, tools and delegated agents
 - **Streaming events** — `for await (const event of agent.stream(input))` yields a typed, versioned, JSON-serializable event stream (`text.delta` tokens as they arrive, `tool.start`/`tool.done`, steps, approvals, a final `run.done`) ready to forward over SSE or WebSockets; `await run.result` gives the same result as `send()` ([docs/streaming.md](docs/streaming.md))
 - **Sessions** — `agent.session()` keeps a multi-turn conversation (in memory, or persisted with `FileSessionStore`)
+- **SQLite store** — `new SqliteStore('./.loushy/agent.db')` from `@loushy/build-ai-agent/sqlite` keeps sessions, checkpoints and approvals in one durable, transactional file (built-in `node:sqlite`, no native dependency) — see [Sessions](docs/sessions.md#stores)
 - **Project instructions** — `createAgent({ projectInstructions: true })` appends the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (opt-in)
 - **Parallel tool calls** — when the model asks for several tools in one turn they run concurrently (cap it with `toolConcurrency`, or `1` for sequential), and results still reach the transcript in the model's call order
 - **Skills** — `defineSkill()` / `loadSkills('./skills')`: only each skill's name and description sit in the system prompt; the model loads the full markdown on demand through an auto-registered `load_skill` tool
+- **Agents as directories** — `loadAgentDir('./my-agent')` turns `instructions.md`, `tools/*.ts`, `skills/` and `subagents/<name>/` into the same object `createAgent()` returns, so you can start with files and drop to code later — see [Agent directories](docs/agent-directories.md)
 - **Multi-agent delegation** — wrap a child agent as a tool with `createDelegateTool()`, with a `maxDepth` guard against delegation loops
 - **Pre/post hooks** — a `HookRegistry` of `AgentHook`s that can inspect or mutate a tool call/LLM generate step, or throw to abort it, run sandboxed by Agent Forge's hook editor
 - **Guardrails** — fail-closed, concurrently-run checks (secret scan, diff size, test/lint commands) that gate a fixer agent's patch before it's used
@@ -255,6 +257,7 @@ console.log(session.id, session.messages.length);
 - [Evals](docs/evals.md) - trajectory evals with `defineEval()`, datasets, `mockModel`, judge evals, `loushy eval` with JUnit/JSON reports
 - [Sessions](docs/sessions.md) - multi-turn conversations: `agent.session()`, `MemorySessionStore`, `FileSessionStore`
 - [Skills](docs/skills.md) - on-demand instructions: `defineSkill()`, `loadSkills()`, how they save context
+- [Agent directories](docs/agent-directories.md) - define an agent as a folder: layout, mapping to `createAgent()`, moving to code, security
 - [Agent Forge](docs/agent-forge.md) - the visual dashboard (`loushy studio`): quickstart, first-agent walkthrough, hook authoring
 - Full guides site: [linuxdevil.github.io/agent-sdk-docs](https://linuxdevil.github.io/agent-sdk-docs/)
 
