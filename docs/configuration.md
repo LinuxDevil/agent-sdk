@@ -145,6 +145,7 @@ what the examples and the Quick Start use by default.
 | `tools`    | `Record<string, ToolDescriptor>`, keyed by the name the agent uses. |
 | `name`     | Agent name (default `'agent'`).                                    |
 | `maxSteps` | Passed through to `AgentExecutor.execute()`.                        |
+| `projectInstructions` | `true` or `{ cwd?, files? }`: append the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (off by default; see [Project instructions](#project-instructions)). |
 
 With neither `model` nor `provider`, `createAgent()` resolves from the
 environment: `LOUSHY_MODEL` (a `'provider/model'` string) if set, otherwise
@@ -158,6 +159,35 @@ Misconfiguration errors say how to fix themselves: a missing key names the
 variable (`createAgent: OPENAI_API_KEY is not set. ...`), an unknown prefix
 lists the supported ones and suggests the closest, and a missing optional peer
 dependency prints the exact `npm install` command.
+
+## Project instructions
+
+Many repositories keep guidance for coding agents in an `AGENTS.md` (or
+`CLAUDE.md`) file. `createAgent` can append it to the agent's instructions:
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({
+  instructions: 'You review pull requests.',
+  provider,
+  projectInstructions: true, // or { cwd: './packages/api', files: ['AGENTS.md'] }
+});
+```
+
+The file is added after your own instructions under the heading
+`## Project instructions (from AGENTS.md)`. It is read once, when the agent is
+created. The lookup walks up from `cwd` (default `process.cwd()`) and uses the
+nearest directory that has one of `files` (default `['AGENTS.md', 'CLAUDE.md']`,
+first match wins), stopping at the nearest directory that contains `.git` or at
+the filesystem root. Content over 32,000 characters is cut with a truncation
+marker. If no file is found nothing is added.
+
+This is **opt-in** on purpose: reading files from disk by default would surprise
+people who embed the SDK in a server, where the working directory is not the
+project the agent is about. To find the file yourself (for example to show it),
+use `loadProjectInstructions({ cwd, files, stopAt, maxChars })`, which returns
+`{ path, content }` or `undefined`.
 
 ## `AgentExecutor.execute()` options
 
