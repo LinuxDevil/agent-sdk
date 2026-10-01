@@ -3,7 +3,7 @@
 Mission: make `@loushy/build-ai-agent` the best TypeScript AI agent SDK (capabilities and DX) against
 Vercel eve and MaxGfeller/open-harness. This file is the loop's memory: read it first, update it last.
 
-- Loop started: 2026-10-01. Iterations completed: 5.
+- Loop started: 2026-10-01. Iterations completed: 6.
 - Audit: `.agent-loop/AUDIT.md`, refreshed 2026-10-01 at main `a03b1a3` (eve 0.69.0 @682c7a6, open-harness 0.7.0 @026e8d9).
   Reference agents (3 agents x 3 SDKs, measured): `.agent-loop/reference-agents/`. Older material: `docs/research/*.md`, `docs/plan/tickets.md`.
   Audit is stale when: a competitor ships a new major, or more than ~25 PRs land after `a03b1a3` (re-run the DX measurement then).
@@ -55,7 +55,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Structured output | ✅ flipped (V4 #90: `output` schema, repair step, `output-invalid`) | ✅ | ❌ | - |
 | Multimodal input | ❌ | ✅ | ✅ | V11, V12 |
 | Reasoning control / events | ❌ | ✅ | ⚠️ | V13 |
-| MCP client | ⚠️ (spec field D20 #73; no connect helper) | ✅ | ✅ | Z4 |
+| MCP client | ✅ flipped (Z4 #100: `connectMcp()`, `createAgent({ mcpServers })`, `agent.ready()/close()`, spec connects) | ✅ | ✅ | Z5 (annotations drive approval) |
 | MCP server | ✅ | ✅ | ❌ | - |
 | Typed event stream | ✅ | ✅ | ✅ | - |
 | UI bindings React/Vue/Svelte | ⚠️ flipped (React `useLoushyAgent` #85) | ✅ | ⚠️ | P2, P3 |
@@ -81,7 +81,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Published on npm | ❌ (owner action) | ✅ | ✅ | D49 |
 | Current `ai` major | ❌ | ✅ | ✅ | D22-D29 |
 
-Score (us): 23 ✅ / 14 ⚠️ / 14 ❌ of 51 after iteration 5 (iteration 4: 22/15/14; iteration 3: 20/15/16 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
+Score (us): 24 ✅ / 13 ⚠️ / 14 ❌ of 51 after iteration 6 (iteration 5: 23/14/14; iteration 4: 22/15/14; iteration 3: 20/15/16 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
 
 Differentiators shipped (target: 3): 3 of 8 (#1 host-agnostic durable sessions: W9 #89 + D30 #94; #2 record/replay evals: D46 #96; #6 OTel GenAI metrics + cost: D48 #95). Remaining (candidates in AUDIT section 7: host-agnostic durable sessions D30; record/replay evals D46; Forge time-travel D43-D45; MCP+ACP+HTTP reach Z6/D14; both authoring modes with hot reload D31-D33; OTel metrics D48; trajectory evals remote D47; edge-native agents D51/P9).
 
@@ -97,7 +97,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | U12 | Thrown tool error reaches the model structured | ✅ #37 | |
 | U14 | One tool-error shape everywhere (`toolErrorResult`, `kind`) | ✅ #93 | |
 | U14.2 | `agentRunState.pushCancelledToolResult` and `subagentRuntime.settleSuspensions` use the shared shape | ⬜ | U14 |
-| U15 | Tool execute context real at runtime (sandbox path, `messages`) | ⬜ | |
+| U15 | Tool execute context real at runtime (`buildToolRunContext`, sandbox path, `messages`) | ✅ #99 | |
 | U17 | Sandboxed HTTP honors cancellation | ✅ #72 | |
 | U19 | Explicit `maxSteps` exhaustion (`finishReason: 'max-steps'`) | ✅ #83 | |
 | U20 | Install and roadmap truth (no `npx loushy` of an unpublished package) | ⬜ | |
@@ -162,7 +162,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | ID | Title | Status | Deps |
 |---|---|---|---|
 | Z1, Z2, Z3 | | ✅ | |
-| Z4 | `connectMcp()` + `createAgent({ mcpServers })` (also closes D20.2: specToAgent connects servers) | ⬜ | D20 |
+| Z4 | `connectMcp()` + `createAgent({ mcpServers })` + specToAgent connects (D20.2 closed) | ✅ #100 | |
 | Z5 | MCP annotations drive approval | ⬜ | Z4 |
 | Z6 | `loushy acp` | ⬜ | V14 |
 
@@ -170,7 +170,8 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | ID | Title | Status | Deps |
 |---|---|---|---|
 | D1, D3-D10, D12, D13, D17, D19 | | ✅ | |
-| D2 | Error codes with fixes | ⬜ | |
+| D2 | Error codes with fixes (`LOUSHY_*` registry, hint, docs/errors.md, spec did-you-mean) | ✅ #101 | |
+| D2.2 | Remaining plain `Error`s get codes: agentRun, src/tools, src/cli, NodeWorkspace, toolCallExecution/toolArgsValidation (own code for `ToolArgumentsValidationError`) | ⬜ | D2 |
 | D11 | Upgrade `ai` peer range | superseded by D22-D29 | |
 | D14 | Deployed `/chat` upgrade (sessions, SSE, auth) | ⬜ | |
 | D15 | React hook `useLoushyAgent` (`./react` subpath, reducer + SSE/NDJSON parser) | ✅ #85 | |
@@ -198,7 +199,8 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D40 | Heavy deps to optional peers (dockerode, MCP SDK, prompts; undici/yaml stay) | ✅ #88 | |
 | D41 | One event system | ⬜ | |
 | D42 | Shared chunks across entries | ⬜ | |
-| D43 | Checkpoint history | ⬜ | |
+| D43 | Checkpoint history (memory, SQLite migration 2, local storage; `historyLimit`) | ✅ #98 | |
+| D43.2 | `KVCheckpointStore` history (list key per session) and Forge `FileCheckpointStore` history | ⬜ | D43 |
 | D44 | Fork and replay from step N | ⬜ | D43 |
 | D45 | Forge time-travel panel | ⬜ | D44 |
 | D46 | `loushy eval --record/--replay/--drift` (cassettes per case, drift table + JUnit, `--strict`) | ✅ #96 | |
@@ -209,7 +211,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D50 | `loushy add` | ⬜ | |
 | D51 | Deployed API auth + Worker parity | ⬜ | D14 |
 | D52 | README revamp (owner request): 805 -> 257 lines, 7 new docs pages | ✅ #81 | |
-| D34.2 | Drop `setType` from apps/agent-forge, examples; `ContextBuilder` agentType cast | ⬜ | D34 |
+| D34.2 | Drop `setType` from apps/examples/tests; `ContextBuilder` cast removed | ✅ #97 | |
 | D25 hazard | github.ts disables tools by replacing `.tool.execute`; sandboxFetch reads `.tool.execute`: must move to canonical `execute` when converted | note | D22 |
 
 ### Epic P — UI bindings, channels, schedules
@@ -255,6 +257,11 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | #94 | D30 | merged (squash) | one `store` option |
 | #95 | D48 | merged (squash) | OTel metrics + cost |
 | #96 | D46 | merged (squash) | eval record/replay/drift |
+| #97 | D34.2 | merged (squash) | setType cleanup |
+| #98 | D43 | merged (squash) | checkpoint history |
+| #99 | U15 | merged (squash) | tool execute context |
+| #101 | D2 | merged (squash) | error codes |
+| #100 | Z4 | merged (squash) | connectMcp + mcpServers |
 
 ## Main health
 
@@ -289,15 +296,20 @@ CI runs only on `pull_request`, so "main is green" means the last PR's CI run pa
 - Matrix flips: Background sub-agents ⚠️->✅. Three differentiators shipped (durable sessions in one option, record/replay evals with drift, OTel metrics + cost).
 - Reference agent durable-job.ts now 25 lines (was ~60). Health: D46's author saw fallow list the pre-existing Anthropic/OpenAI duplicate; others report exit 0. A main-health check (full coverage + fallow on main) runs in iteration 6.
 
-## Next batch (iteration 6)
+### Iteration 6 (2026-10-01)
+- Main health check at 1d282b7: all 14 CI steps green (2159 tests, 405 lint warnings, fallow 0 above threshold; the Anthropic/OpenAI duplicate is a listing, not a gate failure).
+- Merged: #97 (D34.2), #98 (D43), #99 (U15), #101 (D2), #100 (Z4). No code conflicts.
+- Matrix flips: MCP client ⚠️->✅.
+- Noted: U15's author saw the cloudflare `wrangler dev` test fail in a worktree (needs workerd); it passes on main in the health run.
 
-0. Main health (sonnet): full `test:coverage` + `fallow` on main; fix if small (e.g. the provider duplicate block).
-1. U15 (sonnet): tool execute context real on the sandbox path (`toolCallId`, `messages`, `abortSignal`); sandboxGuard.ts, toolCallExecution.ts.
-2. Z4 (opus): `connectMcp()` + `createAgent({ mcpServers })` + `specToAgent` connects (closes D20.2); src/tools/mcp, createAgent.ts (tools region), spec.
-3. D43 (sonnet): checkpoint history per session in SQLite/memory/file stores (`history(sessionId)`); src/storage, checkpoint.ts.
-4. D2 (opus): error codes with fixes (`code`, hint, docs link; "did you mean" on spec/config); src/utils/errors.ts, execution/errors.ts, loadSpec, resolveProvider, createAgent validation.
-5. D34.2 (sonnet): drop `setType` from apps/agent-forge and examples; ContextBuilder cast.
-Then: X8, X2, W3.2, D44, D45, V11, D22-D29 chain (D23 next), Z5, D31.
+## Next batch (iteration 7)
+
+1. X2 (opus): declarative permission policies (`permissions: [{ tool, when, action: 'allow'|'deny'|'ask' }]`) evaluated before `needsApproval`, audit-log sink; toolCallExecution.ts + new module.
+2. W3.2 (sonnet): typed `compaction.*` events + `createAgent({ compaction })`; src/context, agentEvents.ts, createAgent.ts (options region).
+3. D44 (opus): `AgentExecutor.fork({ sessionId, fromStep, newSessionId, patch })` from checkpoint history; AgentExecutor.ts + checkpoint.ts.
+4. V11 (opus): multimodal message parts (`Message.content: string | ContentPart[]`), aiSdkProvider conversion, contract test; src/providers.
+5. D23 (sonnet): own execute-context type (`ToolExecutionContext` replaces `ai`'s `ToolExecutionOptions` in public types); types/tool.ts, defineTool.ts, toolRunContext.ts.
+Then: X8, Z5, D45, V12, D24, D25, D31, D2.2, D43.2, U14.2, V4.2, W9.2.
 
 ## Subagent brief (canonical copy)
 
