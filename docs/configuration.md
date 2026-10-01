@@ -228,9 +228,15 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `provider`     | An `LLMProvider` instance (real or mock). Alternative to `model`. If you pass both, `provider` is used and `model` becomes the agent's per-run model setting (a bare model id such as `'gpt-4o'`). |
 | `instructions` | System prompt. Optional (defaults to `'You are a helpful assistant.'`). |
 | `prompt`       | Working alias of `instructions`; passing both is an error.      |
-| `tools`    | `Record<string, ToolDescriptor>`, keyed by the name the agent uses. |
+| `tools`    | An array of `defineTool()` results, or a `Record<string, ToolDescriptor>` keyed by the name the agent uses (see [Tools](./tools.md)). |
 | `name`     | Agent name (default `'agent'`).                                    |
+| `description` | What the agent does, in a sentence. Required when it is used as a sub-agent. |
 | `maxSteps` | Passed through to `AgentExecutor.execute()`.                        |
+| `toolConcurrency` | How many tool calls of one model turn run at once: a positive integer or `'unbounded'` (default). See [Parallel tool calls](./api-overview.md#parallel-tool-calls). |
+| `skills`   | Skills from `defineSkill()` / `loadSkills()`; see [Skills](./skills.md). |
+| `subagents`, `maxSubagentDepth` | Named sub-agents behind one `task` tool, and how deep they may nest (default 1); see [Sub-agents](./sub-agents.md). |
+| `approvalStore` | Where a `needsApproval` pause is saved (default: a per-agent `InMemoryApprovalStore`); see [Approvals](./approvals.md). |
+| `approve`  | `(call) => boolean`: decide approvals in code instead of pausing. |
 | `projectInstructions` | `true` or `{ cwd?, files? }`: append the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (off by default; see [Project instructions](#project-instructions)). |
 
 With neither `model` nor `provider`, `createAgent()` resolves from the
@@ -300,18 +306,5 @@ finishReason, steps, approvalId? }`.
 
 ## CLI
 
-### `loushy dev <spec> [--port N] [--host H]`
-
-Local dev server for a spec file: `GET /` chat UI, `GET /health`,
-`POST /chat` (`{ "message": "..." }`, 1MB body limit). Reloads the agent
-whenever the spec file changes and keeps the last good config if an edit is
-invalid.
-
-- `--port` - default `3737`.
-- `--host` - default `127.0.0.1` (localhost only). Pass e.g. `--host=0.0.0.0`
-  to opt in to LAN access.
-
-### `loushy build --target=<target> --agent=<spec> [--out=<dir>]`
-
-Builds a deployable artifact; see [Deployment](./deployment.md).
-`--out` defaults to `.loushy/build/<target>`.
+`loushy dev`, `loushy build`, `loushy mcp` and the other commands, with their
+flags, are described in [CLI](./cli.md).

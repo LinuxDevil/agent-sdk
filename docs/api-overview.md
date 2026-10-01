@@ -8,6 +8,35 @@ comment), build the TypeDoc site:
 npm run docs:build   # writes docs/api/index.html
 ```
 
+How the pieces fit:
+
+```text
+┌─────────────────────────────────────┐
+│         Your Application            │
+│    (React, Vue, Express, etc.)      │
+└──────────────┬──────────────────────┘
+               │
+┌──────────────▼──────────────────────┐
+│     @loushy/build-ai-agent          │
+│  ┌────────────────────────────┐    │
+│  │ createAgent / Builder /     │    │
+│  │ Executor (approvals,        │    │
+│  │ checkpoints, tracing)       │    │
+│  ├────────────────────────────┤    │
+│  │ Tools │ Delegation │ MCP    │    │
+│  │ Flows │ Guardrails │ Evals  │    │
+│  ├────────────────────────────┤    │
+│  │       Core Engine          │    │
+│  └────────────────────────────┘    │
+└──────────────┬──────────────────────┘
+               │
+┌──────────────▼──────────────────────┐
+│  Your LLM Provider & Deploy Target  │
+│ (OpenAI/Anthropic/Ollama/OpenRouter,│
+│  Node server / Docker / Workers)    │
+└─────────────────────────────────────┘
+```
+
 ## Building and running agents
 
 | Export                        | Description                                                                 |
@@ -18,6 +47,8 @@ npm run docs:build   # writes docs/api/index.html
 | `AgentType`                   | Deprecated, no runtime effect: agents need no type (removed next minor).    |
 | `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
+| `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](./approvals.md), [Durable execution](./durable-execution.md)). |
+| `SqliteStore` (from `/sqlite`) | Sessions, checkpoints and approvals in one SQLite file (see [Sessions](./sessions.md#choosing-a-store)). |
 | `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](./durable-execution.md)). |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
 
@@ -41,7 +72,7 @@ resolves with the continued run's result (continuing the session it paused
 in). Pauses are kept in a per-agent `InMemoryApprovalStore` unless you pass
 `approvalStore` (e.g. `SqliteStore.approvals`); `approve: (call) => boolean`
 decides each call in code without pausing (`stream()` still ends at the
-pause). See [Human-in-the-loop approval gates](../README.md#human-in-the-loop-approval-gates).
+pause). See [Approvals](./approvals.md).
 
 ### Skills
 
@@ -185,6 +216,8 @@ Guarantees, whatever the limit:
 | `createMockProvider()`, `MockLLMProvider` | Deterministic mock provider for tests and demos.   |
 | `withRetry(provider, opts?)`, `withFallback(providers, opts?)` | Retry transient provider failures with backoff; fall back to the next provider. See [Configuration](configuration.md#provider-retries-and-fallback). |
 
+See [Providers](./providers.md) for how a model string is resolved and which model runs.
+
 ## Testing
 
 Exported from `@loushy/build-ai-agent/testing` (see [Testing agents](testing.md)).
@@ -206,6 +239,8 @@ Exported from `@loushy/build-ai-agent/testing` (see [Testing agents](testing.md)
 | `NodeWorkspace`, `MemoryWorkspace`, `SandboxShell` | Workspace providers: a real directory (paths confined to `root`, minimal shell env), an in-memory tree with a scripted `exec` for tests, and a `ShellProvider` over a `SandboxAdapter` (Docker). |
 | `createTodoTools({ store?, onChange? })`     | `todo_write` / `todo_read` tools (plus `getTodos()`) so agents can plan and track multi-step work; see [Todo tools](#todo-tools). |
 | `loadMcpTools(client, connectionName)`       | Load a connected MCP server's tools as `ToolDescriptor`s. Available from the package root, `@loushy/build-ai-agent/tools`, and `@loushy/build-ai-agent/mcp`. |
+
+See [Tools](./tools.md) for a guide to defining and registering tools.
 
 ```ts
 import { defineTool } from '@loushy/build-ai-agent';
@@ -432,8 +467,8 @@ built-in and pluggable strategies. See [Context compaction](./compaction.md).
 
 ## Flows, evals, observability and security
 
-- `FlowBuilder` / `FlowExecutor` - multi-step workflow graphs.
-- `defineEval()`, scorers such as `exactMatch` and `toolCallOrder`, checks such
+- `FlowBuilder` / `FlowExecutor` - multi-step workflow graphs; see [Flows](./flows.md).
+- `defineEval()`, scorers such as `exactMatch`, `toolCallOrder` and `budget`, checks such
   as `includes` and `atLeast`, and `llmJudge()` - agent evals run under vitest
   or `loushy eval`; see [Evals](evals.md).
 - `withSpan()` and `TraceExporter` - tracing for `AgentExecutor.execute()`.
@@ -446,8 +481,9 @@ built-in and pluggable strategies. See [Context compaction](./compaction.md).
   semantic conventions (flows are traced too); see
   [observability](observability.md).
 - `NoopSandbox` / `SubprocessSandbox` - sandboxing for tools that opt in via
-  `requiresSandbox`; guardrails such as `createCommandGuardrail()` and
-  `secretScanGuardrail`.
+  `requiresSandbox`; `runGuardrails()` and guardrails such as
+  `createCommandGuardrail()`, `createDiffSizeGuardrail()` and
+  `secretScanGuardrail`. See [Guardrails and sandboxing](./guardrails.md).
 - `HookRegistry`, `AgentHook`, `HookContext`, `ToolCallHookContext`,
   `GenerateHookContext` - pre/post agent hooks (run before/after a tool call
   or an LLM `generate`, can mutate args/messages/results or throw to abort
@@ -470,7 +506,7 @@ built-in and pluggable strategies. See [Context compaction](./compaction.md).
   hooks.register(redactPii);
   ```
 - `EncryptionUtils`, `sha256`, `StorageService`, `renderTemplate`,
-  `MemoryManager` - supporting utilities.
+  `MemoryManager` - supporting utilities; see [Utilities](./utilities.md).
 
 ### Flow expressions
 

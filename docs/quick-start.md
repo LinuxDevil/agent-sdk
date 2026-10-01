@@ -9,6 +9,13 @@ and is therefore only type-checked.
 
 ## Start a new project
 
+> **Not on npm yet.** `@loushy/build-ai-agent` is not published to the npm
+> registry, so the `npx`/`npm install` commands on this page do not work until
+> it is. Meanwhile, in a checkout of this repository run `npm install && npm run build`,
+> then `node bin/loushy.js init my-agent --sdk-path .`, or install the packed
+> tarball as described in
+> [Installing from a local build](./installation.md#installing-from-a-local-build).
+
 The fastest way in is one command, which creates a runnable project (an
 agent, an example tool, an offline test, a `.env.example` for your provider),
 installs its dependencies and runs `git init`:

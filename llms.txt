@@ -1,24 +1,31 @@
 # @loushy/build-ai-agent
 
-> A composable, framework-agnostic SDK for building AI agents that run safely in production. Zero-config to full control, human-in-the-loop approval gates, durable checkpoints, multi-agent delegation, guardrails, and a visual dashboard — any provider, any deploy target, no lock-in.
+> A TypeScript SDK for building AI agents that run in your own code, on your own host: a typed tool-calling loop with approvals, sessions, streaming, sub-agents, skills, MCP and a CLI, with no web framework or hosted runtime required. It is for developers who need an agent to keep working when a run pauses for a human or the process restarts, and who want to test it like the rest of their code.
 
 ## Docs
 
-- [@loushy/build-ai-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/README.md): A composable, framework-agnostic SDK for building AI agents that run safely in production.
+- [@loushy/build-ai-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/README.md): A TypeScript SDK for building AI agents that run in your own code, on your own host: a typed tool-calling loop with approvals, sessions, streaming, sub-agents, skills, MCP and a CLI, with no web framework or hosted runtime required.
 - [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md): `ai` (the Vercel AI SDK, `^4.3.19`) and `zod` (`^3.25.76`) are required peer dependencies.
 - [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md): Every TypeScript snippet on this page is a complete, standalone ES module (`.mts`).
 - [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md): The package root (`@loushy/build-ai-agent`) exports everything below.
 - [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md): An agent can be defined as a directory.
+- [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md): Flag a tool `needsApproval` and the run pauses before calling it, until a human (or your code) approves or rejects the call.
+- [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md): Installing the package also installs the `loushy` command.
 - [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md): A long agent run fills its context window mostly with tool results: file contents, search hits, API responses the model read once and no longer needs in full.
 - [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md): A declarative agent is a YAML (`.yaml`/`.yml`) or JSON (`.json`) file, validated with zod by `loadSpec()` (`src/spec/schema.ts`).
 - [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md): Pass a `sessionId` and a `checkpointStore` to `AgentExecutor.execute()` and the run survives a crash, a restart, an abort or a human approval that takes days.
 - [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md): Evals are regression tests for agent *behaviour*: which tools the agent called, in what order, with which arguments, how many steps it took, and what it said.
+- [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md): A flow is a fixed, multi-step workflow run by one agent: the steps and their order are written down up front instead of being left to the model's judgment.
+- [Guardrails and sandboxing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md): Two tools for running agent output and agent tools safely: guardrails are fail-closed checks over a proposed change before you act on it, and sandboxed tools run inside an isolated container instead of the host process.
 - [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md): `AgentExecutor.execute()` and `FlowExecutor.execute()` emit spans through a `TraceExporter`.
+- [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md): An `LLMProvider` is what an agent generates with.
 - [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md): `agent.send(text)` is single-turn: every call starts from an empty history.
 - [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md): A skill is a named chunk of instructions (a markdown document) that the model loads only when it needs it.
 - [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md): `agent.stream()` runs an agent exactly like `agent.send()` and reports the run as a stream of typed events: model text as it arrives, every tool call, step boundaries, approval requests, and a final `run.done`.
 - [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md): A sub-agent is a separate agent - its own instructions, model, tools and skills - that a lead agent hands a self-contained task to.
 - [Testing agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md): `@loushy/build-ai-agent/testing` ships `mockModel`: a scripted, deterministic `LLMProvider` for unit tests.
+- [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md): A tool is a typed function the model can call.
+- [Utilities](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/utilities.md): Supporting helpers exported from the package root: encryption and hashing, file storage for attachments, and template rendering.
 - [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md): Workspace tools give an agent a file system and a shell, so you can build coding agents in the style of Claude Code.
 
 ## Examples

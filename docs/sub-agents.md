@@ -240,3 +240,37 @@ on the same delegation core as `task`, so it inherits the parent runtime the
 same way, and its result shape (`{ text, usage }`) is unchanged. Prefer
 `subagents` for new code: one tool, a prompt listing, parallel tasks and depth
 limits come for free.
+
+```ts
+import { AgentExecutor, createDelegateTool, ToolRegistry } from '@loushy/build-ai-agent';
+
+const billingAgent = {
+  name: 'Billing Agent',
+  prompt: 'You answer billing questions and look up invoices.',
+};
+
+const registry = new ToolRegistry();
+registry.register(
+  'delegate_billing_agent',
+  createDelegateTool({
+    agent: billingAgent,
+    provider,
+    contextMode: 'none', // 'full-history' shares the parent's context array too
+    maxSteps: 10,
+    maxDepth: 3, // bounds a delegation chain (e.g. A -> B -> A) before it throws
+  })
+);
+
+const supportAgent = {
+  name: 'Support Agent',
+  prompt: 'You help customers. Delegate billing questions to the billing agent.',
+  tools: { delegate_billing_agent: { tool: 'delegate_billing_agent' } },
+};
+
+const result = await AgentExecutor.execute({
+  agent: supportAgent,
+  input: 'Why was I charged twice this month?',
+  provider,
+  toolRegistry: registry,
+});
+```
