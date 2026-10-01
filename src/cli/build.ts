@@ -26,18 +26,20 @@ export interface BuildArgs {
   help?: boolean;
 }
 
-const USAGE = 'Usage: loushy build --target=<name> --agent=<path> [--out=<dir>]';
+const USAGE = 'Usage: loushy build <agent-dir|spec> --target=<name> [--out=<dir>]   (or --agent=<path>)';
 
 const SPEC: CommandSpec = {
   command: 'build',
   usage: USAGE,
+  positionals: 1,
   options: { target: { type: 'string' }, agent: { type: 'string' }, out: { type: 'string' } },
 };
 
 /** Parses `loushy build` arguments (`--flag=value` or `--flag value`); throws `LOUSHY_CONFIG_INVALID` for an unknown flag or a flag without its value. */
 export function parseBuildArgs(argv: string[]): BuildArgs {
-  const { values, help } = parseCommand(SPEC, argv);
-  return { target: stringValue(values.target), agent: stringValue(values.agent), out: stringValue(values.out), help: help || undefined };
+  const { values, positionals, help } = parseCommand(SPEC, argv);
+  // `loushy build <agent-dir|spec>` is `--agent=<path>`.
+  return { target: stringValue(values.target), agent: stringValue(values.agent) ?? positionals[0], out: stringValue(values.out), help: help || undefined };
 }
 
 /**

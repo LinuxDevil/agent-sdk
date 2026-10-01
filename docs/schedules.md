@@ -69,4 +69,15 @@ const running = startSchedules(agent, schedules);
 
 `createDeployedServer(agent, { schedules })` (the server of the `node-server`
 and `docker` targets) starts the schedules when it listens and stops them when it
-closes. The Cloudflare Worker target does not run schedules yet.
+closes. `loushy build ./my-agent --target=node-server` (or `docker`) builds an
+agent directory into such a server, so its `schedules/` run in the deployed
+process ([Deployment](deployment.md#agent-directories)). The Cloudflare Worker
+target does not run schedules yet.
+
+## In `loushy dev`
+
+`loushy dev ./my-agent` starts the directory's schedules, so a cron fires while
+you develop, and a hot reload stops the old schedules before starting the new
+ones. Starting is the default so that dev behaves like the deployed server;
+because firing crons (and spending model calls) while you edit is often
+unwanted, `--no-schedules` mounts the channels but starts no schedule.

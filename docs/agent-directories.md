@@ -116,7 +116,7 @@ const handler = mountChannels(createAgent(config), channels);
 createServer((req, res) => void handler(req, res).then((handled) => handled || res.writeHead(404).end())).listen(3000);
 ```
 
-`loushy dev` does not mount `channels/` yet.
+`loushy dev` mounts them too, and `loushy build` deploys them (see below).
 
 ### Memory
 
@@ -206,6 +206,27 @@ Serves the chat UI and `POST /chat` for the directory and reloads it when
 imported afresh on each reload, so an edit to `tools/*.ts` takes effect on the
 next message. A failed reload (a syntax error, an empty `instructions.md`) is
 logged and shown in the chat page, and the previous agent keeps answering.
+
+The directory's `channels/` are mounted under `/channels` and its `schedules/`
+are started, and a reload swaps both: the old schedules are stopped before the
+new ones start, so no timer or route outlives its file. Pass `--no-schedules` to
+mount the channels but not fire the crons (see [Schedules in
+dev](schedules.md#in-loushy-dev)).
+
+## Deploy it with `loushy build`
+
+```bash
+npx loushy build ./my-agent --target=node-server    # or docker
+```
+
+The agent directory is the unit of deployment: the built server loads it with
+`resolveAgentDir()` at start-up, starts its `schedules/` and mounts its
+`channels/` under `/channels`, and prints which it found. The code files (the
+config, `tools/`, `schedules/`, `channels/`, `memory/`, and the same in each
+sub-agent) are bundled to `dist/agent/**.js`, and `instructions.md`, `skills/`
+and JSON/YAML config are copied next to them, so the server needs no TypeScript
+loader, sources or `node_modules`. See [Deployment](deployment.md#agent-directories).
+The Cloudflare Worker target takes spec files only.
 
 ## What is not covered
 
