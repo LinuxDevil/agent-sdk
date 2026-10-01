@@ -65,8 +65,8 @@ export interface SessionOptions {
   /**
    * What `session.compact()` runs when called without a `strategy` (LOU-W8):
    * the same value as `createAgent({ compaction })` (its `strategy` or
-   * `summarizer`, `protectedTokens`, `contextWindow`). Default: prune old
-   * tool results.
+   * `summarizer`, `protectedTokens`, `contextWindow`). `agent.session()`
+   * defaults it to the agent's `compaction`. Default: prune old tool results.
    */
   compaction?: AgentCompaction;
 }

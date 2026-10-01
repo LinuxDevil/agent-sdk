@@ -223,7 +223,8 @@ console.log(summarized.summary ?? summarized.error?.message);
 now, whatever its size, saves it to the session's store (memory, file, SQLite
 or KV) and resolves to `{ messagesBefore, messagesAfter, tokensBefore, tokensAfter, strategy, error? }`.
 It runs `options.strategy`, else the strategy of `agent.session({ compaction })`
-(the same value as `createAgent({ compaction })`), else prunes old tool results.
+(the same value as `createAgent({ compaction })`, and the agent's own
+`compaction` when the session does not set one), else prunes old tool results.
 Pinned messages stay. A session with no messages resolves without doing
 anything. It rejects with `LOUSHY_SESSION_BUSY` while a turn is running, and
 with `LOUSHY_SESSION_TURN_PENDING` / `LOUSHY_SESSION_AWAITING_APPROVAL` while a
