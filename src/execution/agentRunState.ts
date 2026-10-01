@@ -16,6 +16,7 @@ import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
 import type { ToolCallOutcome } from './toolCallExecution';
 import type { UnrecordedToolCall } from './toolBatch';
 import type { RunBudget } from './budget';
+import { toolErrorResult } from './toolErrors';
 
 export interface AgentRunState {
   messages: Message[];
@@ -224,20 +225,25 @@ export function pushToolResult(
 }
 
 /**
- * LOU-V1: gives a tool call the run was aborted before reaching a `{error}`
- * tool result, so the transcript stays well-formed (every assistant tool
+ * LOU-V1: gives a tool call the run was aborted before reaching a `not-run`
+ * tool error result, so the transcript stays well-formed (every assistant tool
  * call has a matching result) and a checkpointed run can be resumed without
  * the provider rejecting an unanswered tool call.
  */
 function pushCancelledToolResult(state: AgentRunState, toolCall: ToolCall, reason: string): void {
   state.messages.push({
     role: 'tool',
-    content: JSON.stringify({
-      error: `Tool call was cancelled before it ran because ${reason}`,
-    }),
+    content: JSON.stringify(
+      toolErrorResult({
+        toolName: toolCall.function.name,
+        error: `Tool call was cancelled before it ran because ${reason}`,
+        kind: 'not-run',
+      })
+    ),
     name: toolCall.function.name,
     toolCallId: toolCall.id,
     toolName: toolCall.function.name,
+    isError: true,
   });
 }
 

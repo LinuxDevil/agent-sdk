@@ -453,6 +453,7 @@ describe('approval inside a sub-agent (LOU-Y1)', () => {
     const secondResult = toolResults(paused.messages)[1];
     expect(secondResult.isError).toBe(true);
     expect(secondResult.content).toContain("Sub-agent 'second' needed approval to run 'send'");
+    expect(JSON.parse(secondResult.content as string)).toMatchObject({ error: 'ToolNotRunError', kind: 'not-run', toolName: 'task' });
 
     await resumeAfterApproval({ id: paused.approvalId!, approved: true }, approvals.store, new ToolRegistry(), leadModel, options);
 

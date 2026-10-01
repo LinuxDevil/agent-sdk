@@ -24,6 +24,7 @@ import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
 import type { RunUsage } from '../models/usage';
 import type { ResumeExecuteOptions } from './resume';
 import { PropagatingToolError } from './propagatingToolError';
+import { toolErrorResult } from './toolErrors';
 
 /** The parent run options a child run inherits. */
 export type InheritedRuntime = Pick<
@@ -192,9 +193,9 @@ export function settleSuspensions(
   for (const dropped of pausingForTool ? suspensions : rest) {
     replaceToolResult(messages, {
       role: 'tool',
-      content: JSON.stringify({
-        error: `Sub-agent '${dropped.agentName}' needed approval to run '${leafPending(dropped.snapshot).toolName}' while this run was already pausing for another approval, so that call was not run and the sub-agent stopped. Call it again once the pending approval is resolved.`,
-      }),
+      content: JSON.stringify(
+        toolErrorResult({ toolName: dropped.toolName, error: `Sub-agent '${dropped.agentName}' needed approval to run '${leafPending(dropped.snapshot).toolName}' while this run was already pausing for another approval, so that call was not run and the sub-agent stopped. Call it again once the pending approval is resolved.`, kind: 'not-run' })
+      ),
       name: dropped.toolName,
       toolCallId: dropped.toolCallId,
       toolName: dropped.toolName,
