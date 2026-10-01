@@ -45,11 +45,12 @@ export function agentMcp(
 
 /** `AgentExecutor.stream(options)`, started once `ready()` resolves (a rejection fails the run). */
 export function streamAfter(ready: () => Promise<void>, options: ExecuteOptions): AgentRun {
-  return startAgentRun(async ({ signal, onEvent, sink }) => {
+  return startAgentRun(async ({ signal, onEvent, sink, inputQueue }) => {
     await ready();
     const streaming: StreamingExecuteOptions = {
       ...options,
       signal,
+      inputQueue,
       onEvent: (event) => {
         options.onEvent?.(event);
         onEvent(event);
@@ -57,5 +58,5 @@ export function streamAfter(ready: () => Promise<void>, options: ExecuteOptions)
       [RUN_EVENTS]: sink,
     };
     return AgentExecutor.execute(streaming);
-  }, options.signal);
+  }, options.signal, options.inputQueue);
 }
