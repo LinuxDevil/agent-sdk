@@ -215,6 +215,21 @@ const agent = createAgent({ provider, tools: [emailTool], store }); // or approv
 continued run joins a session only when it is resolved through the agent that
 owns that session object.
 
+### Resuming with a changed agent
+
+An approval snapshot carries the paused agent's fingerprint, and resolving it
+with an agent whose model, tools or instructions differ warns (`'warn'`, the
+default), rejects with `LOUSHY_AGENT_DRIFT` (`onAgentDrift: 'error'`, the
+approval stays pending) or carries on (`'ignore'`). An approved call whose tool
+no longer exists always rejects with `LOUSHY_RESUME_TOOL_MISSING`. See
+[Resuming with a changed agent](./durable-execution.md#resuming-with-a-changed-agent).
+
+On a resumed approved call the pre-tool hooks run again, and the arguments they
+leave (whether through `{ input }` or by changing `ctx.args` in place) must equal
+what was approved, key order aside; otherwise the call is refused with a
+`kind: 'validation'` tool error. A hook that redacts or normalizes its input
+should run on the paused run too, so the human approves the redacted input.
+
 ### Deciding in code
 
 Pass `approve` to decide each call as it comes up instead of pausing: `true`
