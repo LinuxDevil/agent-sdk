@@ -219,8 +219,9 @@ export const NodeServerAdapter: DeploymentAdapter = {
       // Bundle everything (SDK runtime + its deps) so dist/server.js runs
       // with no node_modules next to it.
       // An agent directory imports the full SDK, which loads dockerode lazily (its native ssh2 cannot be bundled): left to the runtime.
-      noExternal: [source ? /^(?!dockerode$)/ : /.*/],
-      external: source ? ['dockerode'] : [],
+      // So is ollama-ai-provider-v2 (Ollama on ai 6/7, LOU-D28d), which needs zod 4 and is usually not installed.
+      noExternal: [source ? /^(?!(dockerode|ollama-ai-provider-v2)$)/ : /.*/],
+      external: source ? ['dockerode', 'ollama-ai-provider-v2'] : [],
       esbuildPlugins: [sdkRuntimePlugin()],
       clean: true,
       sourcemap: false,

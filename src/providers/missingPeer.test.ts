@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { FEATURE_PEERS, MissingPeerDependencyError, loadOptionalPeer, lazyValue } from './optionalPeer';
+import { installedAiMajor } from './aiMajor.testkit';
 
 function moduleNotFound(packageName: string): Error {
   return Object.assign(new Error(`Cannot find module '${packageName}'`), { code: 'MODULE_NOT_FOUND' });
@@ -15,6 +16,7 @@ afterEach(() => {
   vi.doUnmock('@ai-sdk/openai');
   vi.doUnmock('@ai-sdk/anthropic');
   vi.doUnmock('ollama-ai-provider');
+  vi.doUnmock('ollama-ai-provider-v2');
   vi.doUnmock('dockerode');
   vi.resetModules();
 });
@@ -28,29 +30,33 @@ interface Case {
   load: () => Promise<{ generate(o: { messages: typeof messages }): Promise<unknown>; stream(o: { messages: typeof messages }): Promise<unknown> }>;
 }
 
+// The hint names the provider package version that pairs with the installed `ai` (LOU-D28d).
+const AI_SDK_RANGE = ({ 4: '^0.0.42', 6: '^3.0.0', 7: '^4.0.0' } as Record<number, string>)[installedAiMajor];
+const OLLAMA_PEER = installedAiMajor === 4 ? 'ollama-ai-provider@^1.2.0' : `ollama-ai-provider-v2@^${installedAiMajor === 6 ? 3 : 4}.0.0`;
+
 const CASES: Case[] = [
   {
     label: 'OpenAIProvider',
     packageName: '@ai-sdk/openai',
-    installCommand: 'npm install @ai-sdk/openai@^0.0.42',
+    installCommand: `npm install @ai-sdk/openai@${AI_SDK_RANGE}`,
     load: async () => new (await import('./OpenAIProvider')).OpenAIProvider({ name: 'openai', apiKey: 'k' }),
   },
   {
     label: 'OpenRouterProvider',
     packageName: '@ai-sdk/openai',
-    installCommand: 'npm install @ai-sdk/openai@^0.0.42',
+    installCommand: `npm install @ai-sdk/openai@${AI_SDK_RANGE}`,
     load: async () => new (await import('./OpenRouterProvider')).OpenRouterProvider({ name: 'openrouter', apiKey: 'k' }),
   },
   {
     label: 'AnthropicProvider',
     packageName: '@ai-sdk/anthropic',
-    installCommand: 'npm install @ai-sdk/anthropic@^0.0.42',
+    installCommand: `npm install @ai-sdk/anthropic@${AI_SDK_RANGE}`,
     load: async () => new (await import('./AnthropicProvider')).AnthropicProvider({ name: 'anthropic', apiKey: 'k' }),
   },
   {
     label: 'OllamaProvider',
-    packageName: 'ollama-ai-provider',
-    installCommand: 'npm install ollama-ai-provider@^1.2.0',
+    packageName: OLLAMA_PEER.slice(0, OLLAMA_PEER.lastIndexOf('@')),
+    installCommand: `npm install ${OLLAMA_PEER}`,
     load: async () => new (await import('./OllamaProvider')).OllamaProvider({ name: 'ollama' }),
   },
 ];

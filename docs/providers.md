@@ -158,8 +158,27 @@ on each major today:
 
 | `ai` | `generate()` | `stream()` | Notes |
 | ---- | ------------ | ---------- | ----- |
-| v4 (`^4.3.19`, the peer range) | Yes | Yes | Everything in these docs. |
-| v6, v7 | Yes, through a compatibility layer (LOU-D26) | Yes, through the same layer (LOU-D27) | Peer ranges still name v4 (LOU-D28). |
+| v4 (`^4.3.19`) | Yes | Yes | Everything in these docs. |
+| v6 (`^6.0.0`), v7 (`^7.0.0`) | Yes, through a compatibility layer (LOU-D26) | Yes, through the same layer (LOU-D27) | Ollama needs zod 4 (below). |
+
+The peer ranges accept all three majors (LOU-D28d). Pair each with its
+provider packages:
+
+| `ai` | `@ai-sdk/openai`, `@ai-sdk/anthropic` | Ollama package |
+| ---- | ------------------------------------- | -------------- |
+| `^4.3.19` | `^0.0.42` or `^1.0.0` | `ollama-ai-provider@^1.2.0` |
+| `^6.0.0` | `^3.0.0` | `ollama-ai-provider-v2@^3.0.0` |
+| `^7.0.0` | `^4.0.0` | `ollama-ai-provider-v2@^4.0.0` |
+
+The install hint of a missing provider package and `loushy doctor` name the
+version for the `ai` you have installed, and `loushy doctor` flags a mismatched
+pair (for example `ai` 7 with `@ai-sdk/openai` 1.x). `OllamaProvider` loads
+`ollama-ai-provider` on `ai` 4 and `ollama-ai-provider-v2` on `ai` 6/7; the v2
+package needs zod 4, which this SDK does not support yet, so use Ollama with
+`ai` 4 for now. `loushy init` scaffolds `ai@^7.0.0` with `@ai-sdk/*@^4.0.0` for
+OpenAI and Anthropic, and `ai@^4.3.19` for Ollama and OpenRouter (whose
+`@ai-sdk/openai` 2+ default, the Responses API, is not verified against
+OpenRouter yet).
 
 `generate()` and `stream()` pick the call shape from the installed `ai`
 module: when it exports `stepCountIs` (v5 and later), the request is sent in
@@ -187,13 +206,11 @@ or `StreamResult`:
   signal's reason. Reasoning deltas are not reported yet (no reasoning chunk
   type until LOU-V13).
 
-On v6/v7 the model must come from a provider package for that major (for
-example `@ai-sdk/openai` v3 or `@ai-sdk/anthropic` v3); the `0.0.x`
-packages the peer ranges name produce models `ai` v7 rejects. Image parts are
-sent as `image` parts, which `ai` v7 accepts with a deprecation warning per
-part (`globalThis.AI_SDK_LOG_WARNINGS = false` turns `ai`'s warnings off).
-`ai` v5 is not supported. Until LOU-D28 widens the peer
-ranges, npm reports a peer conflict when `ai` v6 or v7 is installed.
+On v6/v7 the model must come from a provider package for that major (the
+table above); the `0.0.x`/`1.x` packages produce models `ai` v7 rejects. Image
+parts are sent as `image` parts, which `ai` v7 accepts with a deprecation
+warning per part (`globalThis.AI_SDK_LOG_WARNINGS = false` turns `ai`'s
+warnings off). `ai` v5 is not supported.
 
 ## Where each provider runs
 

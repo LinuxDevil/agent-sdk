@@ -20,6 +20,10 @@ vi.mock('ai', async () => {
   };
 });
 
+// On ai 6/7 OllamaProvider loads ollama-ai-provider-v2 (LOU-D28d), which needs zod 4 and is
+// not installed (also not in the ai-7 CI job); generateText is mocked, so a stand-in model does.
+vi.mock('ollama-ai-provider-v2', () => ({ createOllama: () => (modelId: string) => ({ modelId }) }));
+
 import { OpenAIProvider } from './OpenAIProvider';
 import { AnthropicProvider } from './AnthropicProvider';
 import { OllamaProvider } from './OllamaProvider';

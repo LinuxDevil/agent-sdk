@@ -10,6 +10,45 @@ import { LLMProvider, LLMProviderConfig, LLMProviderRegistry } from './llm';
 import { ConfigurationError } from '../execution/errors';
 import { closestMatch } from '../utils/closestMatch';
 
+/** The `ai` majors the SDK runs on (LOU-D28); `ai` 5 is not supported. */
+export type AiMajor = 4 | 6 | 7;
+
+/** The `ai` range of each supported major. */
+export const AI_RANGES: Readonly<Record<AiMajor, string>> = { 4: '^4.3.19', 6: '^6.0.0', 7: '^7.0.0' };
+
+const AI_MAJORS: readonly AiMajor[] = [4, 6, 7];
+
+/** The provider package that pairs with one `ai` major. */
+export interface PeerPairing {
+  /** The npm package, e.g. `@ai-sdk/openai`. */
+  name: string;
+  /** The range install hints and `loushy init` use. */
+  range: string;
+  /** Every range that works with this `ai` major (what `loushy doctor` accepts). */
+  accepts: string;
+  /** Why installing it can still conflict, shown next to the install hint. */
+  note?: string;
+}
+
+/** `@ai-sdk/*` provider packages: 0.0.x/1.x for `ai` 4, 3.x for `ai` 6, 4.x for `ai` 7. */
+function aiSdkPeer(name: string): Record<AiMajor, PeerPairing> {
+  return {
+    4: { name, range: '^0.0.42', accepts: '^0.0.42 || ^1.0.0' },
+    6: { name, range: '^3.0.0', accepts: '^3.0.0' },
+    7: { name, range: '^4.0.0', accepts: '^4.0.0' },
+  };
+}
+
+const ZOD4_NOTE =
+  'ollama-ai-provider-v2 needs zod 4, which this SDK does not support yet; for Ollama, use ai@^4.3.19 with ollama-ai-provider@^1.2.0';
+
+/** Ollama: `ollama-ai-provider` on `ai` 4, `ollama-ai-provider-v2` on `ai` 6/7. */
+const OLLAMA_PEERS: Record<AiMajor, PeerPairing> = {
+  4: { name: 'ollama-ai-provider', range: '^1.2.0', accepts: '^1.2.0' },
+  6: { name: 'ollama-ai-provider-v2', range: '^3.0.0', accepts: '^2.0.0 || ^3.0.0', note: ZOD4_NOTE },
+  7: { name: 'ollama-ai-provider-v2', range: '^4.0.0', accepts: '^4.0.0', note: ZOD4_NOTE },
+};
+
 interface ProviderEntry {
   /** Env var holding the credential (or, for Ollama, the base URL). */
   envKey: string;
@@ -17,8 +56,8 @@ interface ProviderEntry {
   configField: 'apiKey' | 'baseURL';
   /** Whether the provider cannot work without the env var (Ollama has a local default). */
   envRequired: boolean;
-  /** Optional npm peer dependency to install, with the version range the SDK supports. */
-  peer: string;
+  /** The optional peer package to install, per installed `ai` major. */
+  peers: Record<AiMajor, PeerPairing>;
   /** Model used when the provider is picked from the environment alone. */
   envDefaultModel: string;
 }
@@ -29,10 +68,8 @@ export interface ProviderInfo {
   envKey: string;
   /** False when the provider has a built-in default (Ollama's local endpoint). */
   envRequired: boolean;
-  /** The optional peer package, without a version range. */
-  peerPackage: string;
-  /** The `npm install` argument for the peer, e.g. `@ai-sdk/openai@^0.0.42`. */
-  peerInstall: string;
+  /** The optional peer package, per installed `ai` major. */
+  peers: Readonly<Record<AiMajor, PeerPairing>>;
   /** Model used when the provider is picked from the environment alone. */
   defaultModel: string;
 }
@@ -43,8 +80,7 @@ export function listProviders(): ProviderInfo[] {
     name,
     envKey: entry.envKey,
     envRequired: entry.envRequired,
-    peerPackage: peerPackageName(entry.peer),
-    peerInstall: entry.peer,
+    peers: entry.peers,
     defaultModel: entry.envDefaultModel,
   }));
 }
@@ -58,19 +94,27 @@ export function detectProviderFromEnv(env: Record<string, string | undefined> = 
   return Object.entries(PROVIDERS).find(([, entry]) => env[entry.envKey])?.[0];
 }
 
-/**
- * The `npm install` command for an optional peer package, with the version
- * range the SDK supports (single source of truth for every install hint).
- * Packages that are not a provider peer get a plain `npm install <name>`.
- */
-export function peerInstallCommand(packageName: string): string {
-  const entry = Object.values(PROVIDERS).find((e) => peerPackageName(e.peer) === packageName);
-  return `npm install ${entry ? entry.peer : packageName}`;
+/** The pairing of provider package `packageName` with `ai` major `aiMajor`, if it is one. */
+export function findPeerPairing(packageName: string, aiMajor: AiMajor): PeerPairing | undefined {
+  return Object.values(PROVIDERS)
+    .map((entry) => entry.peers[aiMajor])
+    .find((pairing) => pairing.name === packageName);
 }
 
-/** `@ai-sdk/openai@^0.0.42` -> `@ai-sdk/openai`. */
-function peerPackageName(peer: string): string {
-  return peer.slice(0, peer.lastIndexOf('@'));
+/**
+ * The `npm install` command for an optional provider package, with the range
+ * that pairs with the installed `ai` major (single source of truth for every
+ * install hint). Packages that are not a provider peer get a plain
+ * `npm install <name>`.
+ */
+export function peerInstallCommand(packageName: string, aiMajor: AiMajor): string {
+  const pairing = findPeerPairing(packageName, aiMajor);
+  return `npm install ${pairing ? `${packageName}@${pairing.range}` : packageName}`;
+}
+
+/** One install command per `ai` major, for when the installed major is not known. */
+function installHintPerMajor(peers: Record<AiMajor, PeerPairing>): string {
+  return AI_MAJORS.map((major) => `${peerInstallCommand(peers[major].name, major)} (ai ${major})`).join('; ');
 }
 
 /** Providers in env-detection order (see `modelFromEnv()`). */
@@ -79,28 +123,28 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     envKey: 'OPENAI_API_KEY',
     configField: 'apiKey',
     envRequired: true,
-    peer: '@ai-sdk/openai@^0.0.42',
+    peers: aiSdkPeer('@ai-sdk/openai'),
     envDefaultModel: 'gpt-4o-mini',
   },
   anthropic: {
     envKey: 'ANTHROPIC_API_KEY',
     configField: 'apiKey',
     envRequired: true,
-    peer: '@ai-sdk/anthropic@^0.0.42',
+    peers: aiSdkPeer('@ai-sdk/anthropic'),
     envDefaultModel: 'claude-3-5-sonnet-latest',
   },
   openrouter: {
     envKey: 'OPENROUTER_API_KEY',
     configField: 'apiKey',
     envRequired: true,
-    peer: '@ai-sdk/openai@^0.0.42',
+    peers: aiSdkPeer('@ai-sdk/openai'),
     envDefaultModel: 'openai/gpt-4o-mini',
   },
   ollama: {
     envKey: 'OLLAMA_BASE_URL',
     configField: 'baseURL',
     envRequired: false,
-    peer: 'ollama-ai-provider@^1.2.0',
+    peers: OLLAMA_PEERS,
     envDefaultModel: 'llama3',
   },
 };
@@ -147,7 +191,7 @@ function createProvider(caller: string, providerName: string, entry: ProviderEnt
     if (!isModuleNotFound(error)) throw error;
     throw new ConfigurationError(
       `${caller}: the '${providerName}' provider needs an optional peer dependency that is not installed. ` +
-        `Run: ${peerInstallCommand(peerPackageName(entry.peer))}`,
+        `Run: ${installHintPerMajor(entry.peers)}`,
       'model',
       'LOUSHY_PEER_MISSING',
       { cause: error }

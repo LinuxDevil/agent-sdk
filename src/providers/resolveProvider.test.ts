@@ -133,16 +133,28 @@ describe('resolveProvider errors (LOU-D1)', () => {
   });
 
   it.each([
-    ['openai/gpt-4o', 'OPENAI_API_KEY', '@ai-sdk/openai@^0.0.42'],
-    ['openrouter/some-model', 'OPENROUTER_API_KEY', '@ai-sdk/openai@^0.0.42'],
-    ['ollama/llama3', 'OLLAMA_BASE_URL', 'ollama-ai-provider@^1.2.0'],
-  ])('tells you the exact npm install command when the peer for %s is missing', (spec, envKey, pkg) => {
+    [
+      'openai/gpt-4o',
+      'OPENAI_API_KEY',
+      'npm install @ai-sdk/openai@^0.0.42 (ai 4); npm install @ai-sdk/openai@^3.0.0 (ai 6); npm install @ai-sdk/openai@^4.0.0 (ai 7)',
+    ],
+    [
+      'openrouter/some-model',
+      'OPENROUTER_API_KEY',
+      'npm install @ai-sdk/openai@^0.0.42 (ai 4); npm install @ai-sdk/openai@^3.0.0 (ai 6); npm install @ai-sdk/openai@^4.0.0 (ai 7)',
+    ],
+    [
+      'ollama/llama3',
+      'OLLAMA_BASE_URL',
+      'npm install ollama-ai-provider@^1.2.0 (ai 4); npm install ollama-ai-provider-v2@^3.0.0 (ai 6); npm install ollama-ai-provider-v2@^4.0.0 (ai 7)',
+    ],
+  ])('tells you the npm install command for each ai major when the peer for %s is missing', (spec, envKey, hint) => {
     vi.stubEnv(envKey, 'value');
     vi.spyOn(LLMProviderRegistry, 'create').mockImplementation(() => {
       throw Object.assign(new Error('Cannot find module'), { code: 'MODULE_NOT_FOUND' });
     });
 
-    expect(() => resolveProvider(spec)).toThrow(`Run: npm install ${pkg}`);
+    expect(() => resolveProvider(spec)).toThrow(`Run: ${hint}`);
     expect(() => resolveProvider(spec)).toThrow(withCode('LOUSHY_PEER_MISSING'));
   });
 
