@@ -1,0 +1,3 @@
+description: Instructions live in the config, no other files
+instructions: You are the YAML fixture agent.
+maxSteps: 2

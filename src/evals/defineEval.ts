@@ -11,6 +11,16 @@
 
 import type * as Vitest from 'vitest';
 import { AgentExecutor, ExecuteOptions, ExecutionResult } from '../execution/AgentExecutor';
+import { scoreAssertion } from './evalResult';
+import { matchesTagFilter, recordEvalResult } from './recorder';
+import { parseToolCalls } from './toolMatch';
+import {
+  describeFailure,
+  runTrajectoryCase,
+  type AgentSource,
+  type EvalJudgeConfig,
+  type EvalTestContext,
+} from './trajectory';
 
 /**
  * Configuration for a single eval case.
@@ -45,6 +55,91 @@ export interface EvalConfig {
   score: (result: ExecutionResult) => number | Promise<number>;
   /** Minimum score (inclusive) for the eval to pass. */
   threshold: number;
+  /** Tags for `loushy eval --tag`. */
+  tags?: string[];
+}
+
+/**
+ * A trajectory eval (LOU-D7): `test(t, c)` sends messages to a real agent
+ * and asserts on how it behaved. Runs once per entry of `cases`.
+ *
+ * @example
+ * ```ts
+ * defineEval({
+ *   name: 'refund flow',
+ *   agent,
+ *   cases: [{ input: 'Refund order 42', tool: 'lookup_order' }],
+ *   async test(t, c) {
+ *     await t.send(c.input);
+ *     t.completed();
+ *     t.calledTool(c.tool);
+ *   },
+ * });
+ * ```
+ */
+export interface TrajectoryEvalConfig<C = Record<string, never>> {
+  /** Eval name, shown in vitest and `loushy eval` output. */
+  name: string;
+  /**
+   * The agent under test (from `createAgent()`), or a factory that builds a
+   * fresh one per case so cases cannot share state. Use `mockModel` as its
+   * provider for a deterministic CI eval.
+   */
+  agent: AgentSource;
+  /** Tags for `loushy eval --tag`. */
+  tags?: string[];
+  /** Dataset: `test` runs once per case. A case's `label` (or `name`, or its `input`) names it in reports. */
+  cases?: readonly C[];
+  /** Judge provider for `t.judge()`. Without it `t.judge()` throws; no LLM is ever called implicitly. */
+  judge?: EvalJudgeConfig;
+  /** The test body. Gate assertions fail the case; `t.soft()` ones are only reported. */
+  test(t: EvalTestContext, c: C): void | Promise<void>;
+}
+
+const NO_CASE = {} as never;
+
+function caseLabel(c: unknown, index: number): string {
+  const record = (typeof c === 'object' && c !== null ? c : {}) as Record<string, unknown>;
+  for (const key of ['label', 'name']) {
+    if (typeof record[key] === 'string') return record[key] as string;
+  }
+  if (typeof record.input === 'string') {
+    return record.input.length > 48 ? `${record.input.slice(0, 45)}...` : record.input;
+  }
+  return `case ${index + 1}`;
+}
+
+function currentTestPath(expect: Pick<typeof Vitest, 'expect'>['expect']): string | undefined {
+  try {
+    return expect.getState().testPath;
+  } catch {
+    return undefined;
+  }
+}
+
+async function runAndReport(
+  config: TrajectoryEvalConfig<unknown>,
+  c: unknown,
+  label: string | undefined,
+  file: string | undefined
+): Promise<void> {
+  const result = await runTrajectoryCase(config, c, label, file);
+  recordEvalResult(result);
+  if (!result.passed) throw new Error(describeFailure(result));
+}
+
+function defineTrajectoryEval(config: TrajectoryEvalConfig<unknown>): void {
+  const { test, expect } = currentVitest();
+  const file = currentTestPath(expect);
+  const register = matchesTagFilter(config.tags ?? []) ? test : test.skip;
+  if (config.cases === undefined) {
+    register(config.name, () => runAndReport(config, NO_CASE, undefined, file));
+    return;
+  }
+  config.cases.forEach((c, index) => {
+    const label = caseLabel(c, index);
+    register(`${config.name} [${label}]`, () => runAndReport(config, c, label, file));
+  });
 }
 
 /**
@@ -70,16 +165,15 @@ function currentVitest(): Pick<typeof Vitest, 'test' | 'expect'> {
   throw new Error('defineEval() must be called from a test file running under vitest');
 }
 
-/**
- * Define a single eval as a vitest test. Calls AgentExecutor.execute()
- * exactly once with the config's execution fields, scores the result, and
- * asserts `score >= threshold`.
- */
-export function defineEval(config: EvalConfig): void {
-  const { name, score, threshold, ...executeFields } = config;
-  const { test, expect } = currentVitest();
 
-  test(name, async () => {
+function defineClassicEval(config: EvalConfig): void {
+  const { name, score, threshold, tags, ...executeFields } = config;
+  const { test, expect } = currentVitest();
+  const file = currentTestPath(expect);
+  const register = matchesTagFilter(tags ?? []) ? test : test.skip;
+
+  register(name, async () => {
+    const started = Date.now();
     const result = await AgentExecutor.execute({
       agent: executeFields.agent,
       input: executeFields.input,
@@ -91,7 +185,50 @@ export function defineEval(config: EvalConfig): void {
     });
 
     const resultScore = await score(result);
+    const assertion = scoreAssertion(resultScore, threshold);
+    recordEvalResult({
+      name,
+      tags: tags ?? [],
+      passed: assertion.passed,
+      assertions: [assertion],
+      durationMs: Date.now() - started,
+      steps: result.steps,
+      toolCalls: parseToolCalls(result.toolCalls ?? []),
+      usage: result.usage,
+      file,
+    });
 
     expect(resultScore).toBeGreaterThanOrEqual(threshold);
   });
+}
+
+/**
+ * Define an eval as vitest test(s). Two forms:
+ *
+ * - Classic: `{ name, agent, input, provider, score, threshold }` calls
+ *   AgentExecutor.execute() once, scores the result and asserts
+ *   `score >= threshold`.
+ * - Trajectory: `{ name, agent, cases?, test(t, c) }` drives a
+ *   `createAgent()` agent and asserts on its tool calls, steps and reply.
+ *
+ * Run evals with `loushy eval` for a summary table and JUnit/JSON reports.
+ *
+ * @example
+ * ```ts
+ * defineEval({
+ *   name: 'greets',
+ *   agent: createAgent({ provider: mockModel(['Hello!']) }),
+ *   async test(t) {
+ *     await t.send('hi');
+ *     t.completed();
+ *     t.check('greets', t.reply, includes('Hello'));
+ *   },
+ * });
+ * ```
+ */
+export function defineEval(config: EvalConfig): void;
+export function defineEval<C = Record<string, never>>(config: TrajectoryEvalConfig<C>): void;
+export function defineEval(config: EvalConfig | TrajectoryEvalConfig<unknown>): void {
+  if ('test' in config) defineTrajectoryEval(config);
+  else defineClassicEval(config);
 }
