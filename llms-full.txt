@@ -1944,6 +1944,11 @@ approval stops the batch: the calls before it run, the run pauses on it, and
 the calls after it run once it is decided (see
 [Approvals in the middle of a tool batch](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#approvals-in-the-middle-of-a-tool-batch)).
 
+MCP tools set `needsApproval` from the server's tool annotations: `readOnlyHint:
+true` runs, while `destructiveHint` true or absent (the MCP default) asks. Choose
+per server with `approval: 'annotations' | 'always' | 'never'` or a function; see
+[MCP tool approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#mcp-tool-approval-approval).
+
 ## Permission policies
 
 `permissions` sets rules for the whole agent instead of tool by tool: a list of
@@ -2173,7 +2178,7 @@ Run it with `npx loushy <command>` inside a project that has the SDK installed.
 | ------- | ------------ | ------- |
 | `loushy init [dir]` | Scaffold a project: an agent with an example tool, an offline test, `.env.example`; installs dependencies and runs `git init`. | [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#scaffolding-a-new-project) |
 | `loushy doctor [spec] [--json]` | Check Node, peer packages, provider keys, and optionally a spec file; prints a fix for every problem. | [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#troubleshooting-loushy-doctor) |
-| `loushy dev <path>` | Local dev server for a spec file, an agent directory or a TS agent: chat UI, `POST /chat`, hot reload on save. | [Below](#loushy-dev) |
+| `loushy dev <path>` | Local dev server for a spec file, an agent directory or a TS agent: chat UI with a session per tab and streamed events, hot reload on save. | [Below](#loushy-dev) |
 | `loushy mcp <spec>` | Serve the agent as an MCP server (stdio, or HTTP with `--http`). | [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#serve-an-agent-over-mcp) |
 | `loushy eval [globs...]` | Run `*.eval.ts` files under vitest; print a summary and write JUnit/JSON reports. | [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md#loushy-eval) |
 | `loushy build --target=<t> --agent=<spec>` | Build a deployable Node server, Docker image or Cloudflare Worker. | [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md) |
@@ -2208,8 +2213,8 @@ npx loushy dev src/agent.ts                # a TypeScript (or JavaScript) module
 npx loushy dev agent.yaml --port 4000 --host 0.0.0.0
 ```
 
-Serves `GET /` (a chat UI), `GET /health`, `GET /dev/status` and `POST /chat`
-(`{ "message": "..." }`, 1MB body limit). What `<path>` is follows from the path:
+Serves a chat UI on `GET /`, `GET /health`, `GET /dev/status` and the chat
+endpoints below (1MB body limit). What `<path>` is follows from the path:
 
 | Path | Loaded with |
 | ---- | ----------- |
@@ -2222,6 +2227,26 @@ with a coded error (`LOUSHY_SPEC_UNSUPPORTED_FORMAT`, `LOUSHY_CONFIG_INVALID`)
 and its fix. A `.ts` module is imported by the running Node (22.19 or later
 strips types, so relative imports need their file extension); use `.js` for
 code that needs a transpiler.
+
+**Chat sessions.** The chat UI keeps one session per browser tab (its id is in
+`sessionStorage`; "New session" starts another) and shows the streamed turn:
+text as it arrives, tool calls with their arguments and results, errors, and
+tokens and cost from `run.done`. A tool call that needs approval shows
+Approve / Reject buttons; an `ask_question` call shows its options as buttons
+plus a free-text field. The same endpoints work from `curl` or your own page:
+
+| Endpoint | What it does |
+| -------- | ------------ |
+| `POST /chat` `{ "sessionId", "input" }` | Runs `agent.session({ id: sessionId }).stream(input)` and streams the turn as SSE: one `data: <AgentEvent JSON>` per event ([Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)), then `event: done`. History is kept per `sessionId` (1-128 characters of `A-Za-z0-9_-`). |
+| `GET /chat/:sessionId` | The session's transcript: `{ sessionId, messages, pending }`; `pending` is `{ status, approvalId? }` while a turn waits on an approval, else `null`. |
+| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides the pending approval (`agent.approvals.resolve()`), or answers a question (`agent.approvals.answer()`), and streams the continued turn as SSE. It can pause again with another `approval.requested`. `404` when `id` is not pending. |
+| `POST /chat` `{ "message" }` | Deprecated: no session, no streaming. Returns the agent's `ExecutionResult` as JSON, with a `Deprecation: true` header. |
+
+Sessions live in an in-process `memoryStore()` (gone when `loushy dev` stops),
+or in the agent's own `store` when a module's `createAgent()` options set one.
+The continuation of an approval is not streamed token by token: the endpoint
+runs it with `agent.approvals.resolve()` and sends the turn's tool results and
+text as events once it finishes.
 
 **Hot reload.** The agent is rebuilt a moment (100 ms) after a file changes,
 without restarting the server or dropping the port:
@@ -2239,11 +2264,13 @@ The console logs what reloaded. The new agent is built (and `ready()`, so MCP
 servers connect) before it replaces the old one, and the old one is then
 `close()`d. If the rebuild fails, the last good agent keeps answering, the error
 is logged and shown in a banner on the chat page (and as `error` in
-`GET /dev/status`); the next good edit clears it.
+`GET /dev/status`); the next good edit clears it. Sessions survive a reload: the
+store outlives the agent swap, so the next message continues the conversation
+on the new agent. An approval that was pending on the old agent is not known to
+the new one (`404`); start a new session.
 
 Directories and modules are your code and run with your permissions; only run
-`loushy dev` on ones you trust. `POST /chat` talks to one shared agent, not one
-conversation per browser tab.
+`loushy dev` on ones you trust.
 
 - `--port` - default `3737`.
 - `--host` - default `127.0.0.1` (localhost only). Pass e.g. `--host=0.0.0.0`
@@ -2579,6 +2606,7 @@ Each entry sets exactly one of `command` / `url`; `args`/`env` apply only to
 stdio and `headers` only to HTTP. The field is validated by `loadSpec()`, and
 an invalid entry fails with the entry name in the message, e.g.
 `'mcpServers.files': AgentSpec validation failed: missing 'command' (stdio server) or 'url' (HTTP server)`.
+An optional `approval` (`annotations`, `always` or `never`) says which of the server's tools ask for approval; see [MCP tool approval](#mcp-tool-approval-approval).
 `loushy doctor` checks each stdio `command` is resolvable.
 
 ```yaml
@@ -2669,6 +2697,44 @@ stdio servers are spawned with `command` and `args`; `env` is added to the
 default environment (`PATH` and the like), not a replacement for it. HTTP
 servers use the streamable HTTP transport with `headers` on every request.
 `@modelcontextprotocol/sdk` is an optional peer: install it to use MCP.
+
+### MCP tool approval (`approval`)
+
+MCP servers describe each tool with annotations (`readOnlyHint`,
+`destructiveHint`, `idempotentHint`, `openWorldHint` and a `title`). They are
+hints, but the SDK uses them as the default for [approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md):
+a tool with `readOnlyHint: true` runs; a tool with `destructiveHint: true`, or
+one that sends no `destructiveHint` (the MCP spec's default is destructive),
+pauses the run until a human approves; `destructiveHint: false` runs. A tool
+without annotations therefore asks. The raw annotations stay on
+`descriptor.metadata.mcp.annotations`, and `title` becomes the `displayName`.
+
+Set `approval` on a server entry (`mcpServers`, `createAgent`, `connectMcp()`) or
+in `loadMcpTools(client, name, { approval })`:
+
+- `'annotations'` (default): as above.
+- `'always'` / `'never'`: ask for every tool / none of them.
+- A function `({ name, annotations }) => boolean` decides per tool (`name` is
+  the bare tool name; `annotations` is `{}` when the server sent none). Only
+  in code; a spec file takes the three strings.
+
+[Permission rules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies) run first and can still
+`allow`, `deny` or `ask`.
+
+```ts no-run
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  mcpServers: {
+    files: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'] },
+    // Ask before anything except tools whose name starts with `search`.
+    docs: { url: 'https://example.com/mcp', approval: ({ name }) => !name.startsWith('search') },
+    // A server you trust: never ask.
+    scratch: { command: 'node', args: ['./scratch-server.js'], approval: 'never' },
+  },
+});
+```
 
 ### MCP (Model Context Protocol) tools
 
@@ -5605,6 +5671,11 @@ source.onmessage = (message) => {
 
 For a React chat UI over this kind of endpoint, see [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md):
 `useLoushyAgent()` POSTs the input and reads the same `data:` lines.
+
+`loushy dev` serves this format for a session per browser tab: `POST /chat`
+with `{ sessionId, input }` streams `agent.session({ id }).stream(input)` as
+`data:` lines ending with `event: done`, and approvals are decided through
+`POST /chat/:sessionId/approvals/:id` (see [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md#loushy-dev)).
 
 ## Example: the full API
 

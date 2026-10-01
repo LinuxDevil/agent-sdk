@@ -3,6 +3,8 @@ import { GitHubTools, createGitHubTools } from './github';
 import { NoopSandbox } from '../../security/sandboxCore';
 import type { SandboxAdapter } from '../../security/sandboxCore';
 import { executeToolWithSandboxGuard } from '../../execution/sandboxGuard';
+import type { ToolExecutionContext } from '../../types';
+import { getToolExecute, getToolInputSchema } from '../toolContract';
 
 describe('GitHubTools scope enforcement (LOU-E14)', () => {
   let githubTools: GitHubTools;
@@ -46,6 +48,26 @@ describe('GitHubTools scope enforcement (LOU-E14)', () => {
 
     await expect(descriptor!.tool.execute!({}, {} as any)).rejects.toThrow(/out of scope/i);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it.each(outOfScopeTools)('%s is disabled through the canonical execute (getToolExecute)', async (toolName) => {
+    const descriptor = githubTools.get(toolName)!;
+    const execute = getToolExecute(descriptor);
+    const ctx = {} as ToolExecutionContext;
+    expect(execute).toBeDefined();
+    expect(descriptor.execute).toBeDefined();
+
+    await expect(execute!({}, ctx)).rejects.toThrow(/out of scope/i);
+    await expect(descriptor.execute!({}, ctx)).rejects.toThrow(/out of scope/i);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('every tool, in scope or not, exposes a canonical inputSchema and execute', () => {
+    for (const name of githubTools.list()) {
+      const descriptor = githubTools.get(name)!;
+      expect(getToolInputSchema(descriptor), `${name} inputSchema`).toBeDefined();
+      expect(getToolExecute(descriptor), `${name} execute`).toBeTypeOf('function');
+    }
   });
 
   it('there is no repo-delete (or any repo-deletion) tool present on the registry at all', () => {

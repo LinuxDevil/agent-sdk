@@ -1,5 +1,5 @@
 /**
- * Static check (LOU-D24): the built-in tools below are built with
+ * Static check (LOU-D24, LOU-D25): the built-in tools below are built with
  * `defineTool` (or `toolDescriptorFromSchema`) and must not import from `ai`.
  */
 import { describe, it, expect } from 'vitest';
@@ -12,7 +12,9 @@ const CONVERTED_FILES = [
   'tools/built-in/currentDate.ts',
   'tools/built-in/dayName.ts',
   'tools/built-in/email.ts',
+  'tools/built-in/github.ts',
   'tools/built-in/http.ts',
+  'tools/built-in/jira.ts',
   'tools/built-in/slack.ts',
   'tools/built-in/sandboxFetch.ts',
   'tools/mcp/McpToolLoader.ts',

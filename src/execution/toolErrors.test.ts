@@ -201,7 +201,7 @@ const rows: Row[] = [
     message: 'rate limited',
     run: viaMain(async () => {
       const registry = new ToolRegistry();
-      registry.registerMany(await loadMcpTools(fakeMcpClient(), 'srv'));
+      registry.registerMany(await loadMcpTools(fakeMcpClient(), 'srv', { approval: 'never' }));
       return runMainLoop(registry, 'srv__do_it', {});
     }),
   },

@@ -50,6 +50,7 @@ Each entry sets exactly one of `command` / `url`; `args`/`env` apply only to
 stdio and `headers` only to HTTP. The field is validated by `loadSpec()`, and
 an invalid entry fails with the entry name in the message, e.g.
 `'mcpServers.files': AgentSpec validation failed: missing 'command' (stdio server) or 'url' (HTTP server)`.
+An optional `approval` (`annotations`, `always` or `never`) says which of the server's tools ask for approval; see [MCP tool approval](#mcp-tool-approval-approval).
 `loushy doctor` checks each stdio `command` is resolvable.
 
 ```yaml
@@ -140,6 +141,44 @@ stdio servers are spawned with `command` and `args`; `env` is added to the
 default environment (`PATH` and the like), not a replacement for it. HTTP
 servers use the streamable HTTP transport with `headers` on every request.
 `@modelcontextprotocol/sdk` is an optional peer: install it to use MCP.
+
+### MCP tool approval (`approval`)
+
+MCP servers describe each tool with annotations (`readOnlyHint`,
+`destructiveHint`, `idempotentHint`, `openWorldHint` and a `title`). They are
+hints, but the SDK uses them as the default for [approvals](./approvals.md):
+a tool with `readOnlyHint: true` runs; a tool with `destructiveHint: true`, or
+one that sends no `destructiveHint` (the MCP spec's default is destructive),
+pauses the run until a human approves; `destructiveHint: false` runs. A tool
+without annotations therefore asks. The raw annotations stay on
+`descriptor.metadata.mcp.annotations`, and `title` becomes the `displayName`.
+
+Set `approval` on a server entry (`mcpServers`, `createAgent`, `connectMcp()`) or
+in `loadMcpTools(client, name, { approval })`:
+
+- `'annotations'` (default): as above.
+- `'always'` / `'never'`: ask for every tool / none of them.
+- A function `({ name, annotations }) => boolean` decides per tool (`name` is
+  the bare tool name; `annotations` is `{}` when the server sent none). Only
+  in code; a spec file takes the three strings.
+
+[Permission rules](./approvals.md#permission-policies) run first and can still
+`allow`, `deny` or `ask`.
+
+```ts no-run
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  mcpServers: {
+    files: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'] },
+    // Ask before anything except tools whose name starts with `search`.
+    docs: { url: 'https://example.com/mcp', approval: ({ name }) => !name.startsWith('search') },
+    // A server you trust: never ask.
+    scratch: { command: 'node', args: ['./scratch-server.js'], approval: 'never' },
+  },
+});
+```
 
 ### MCP (Model Context Protocol) tools
 

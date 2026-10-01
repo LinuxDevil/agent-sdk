@@ -335,6 +335,11 @@ source.onmessage = (message) => {
 For a React chat UI over this kind of endpoint, see [React](./react.md):
 `useLoushyAgent()` POSTs the input and reads the same `data:` lines.
 
+`loushy dev` serves this format for a session per browser tab: `POST /chat`
+with `{ sessionId, input }` streams `agent.session({ id }).stream(input)` as
+`data:` lines ending with `event: done`, and approvals are decided through
+`POST /chat/:sessionId/approvals/:id` (see [CLI](./cli.md#loushy-dev)).
+
 ## Example: the full API
 
 `AgentExecutor.stream()` accepts every `execute()` option. Here a tool that

@@ -34,7 +34,7 @@ function warnLogger(): Logger & { warn: ReturnType<typeof vi.fn> } {
 describe('connectMcp (LOU-Z4)', () => {
   it('connects a stdio server, namespaces its tools and calls them with the given env', async () => {
     const mcp = await connect({ files: stdio('hi:') });
-    expect(Object.keys(mcp.tools)).toEqual(['files__echo']);
+    expect(Object.keys(mcp.tools)).toEqual(['files__echo', 'files__wipe']);
     expect(mcp.status()).toEqual({ files: 'connected' });
     await expect(callEcho(mcp, 'files__echo', 'ping')).resolves.toMatchObject({ text: 'hi:ping' });
   });
@@ -59,7 +59,7 @@ describe('connectMcp (LOU-Z4)', () => {
       { files: stdio(), broken: { command: 'loushy-no-such-command-z4' } },
       { onError: 'skip', logger }
     );
-    expect(Object.keys(mcp.tools)).toEqual(['files__echo']);
+    expect(Object.keys(mcp.tools)).toEqual(['files__echo', 'files__wipe']);
     expect(mcp.status()).toEqual({ files: 'connected', broken: 'failed' });
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining("skipping MCP server 'broken'"),
@@ -71,6 +71,14 @@ describe('connectMcp (LOU-Z4)', () => {
     await expect(connectMcp({ files: stdio(), broken: { command: 'loushy-no-such-command-z4' } })).rejects.toThrow(
       /connectMcp: MCP server 'broken' failed to connect/
     );
+  });
+
+  it('passes each server its own approval and keeps the annotations on the descriptor (LOU-Z5)', async () => {
+    const mcp = await connect({ strict: { ...stdio(), approval: 'always' }, loose: { ...stdio(), approval: 'never' }, auto: stdio() });
+    const asks = (name: string) => mcp.tools[name].needsApproval;
+    expect([asks('strict__echo'), asks('loose__wipe'), asks('auto__echo'), asks('auto__wipe')]).toEqual([true, false, false, true]);
+    expect(mcp.tools.auto__echo.displayName).toBe('Echo');
+    expect(mcp.tools.auto__echo.metadata).toEqual({ mcp: { annotations: { title: 'Echo', readOnlyHint: true } } });
   });
 
   it('connects a streamable HTTP server with headers', async () => {
@@ -106,7 +114,7 @@ describe('createAgent({ mcpServers }) (LOU-Z4)', () => {
 
     const result = await agent.send('echo ping');
     expect(result.text).toBe('done');
-    expect(model.calls[0].tools?.map((t) => t.function.name)).toEqual(['files__echo']);
+    expect(model.calls[0].tools?.map((t) => t.function.name)).toEqual(['files__echo', 'files__wipe']);
     expect(JSON.stringify(result.messages)).toContain('mcp:ping');
   });
 
@@ -129,6 +137,37 @@ describe('createAgent({ mcpServers }) (LOU-Z4)', () => {
     await expect(agent.send('hi')).rejects.toThrow(/'broken' failed to connect/);
     await expect(agent.ready()).rejects.toThrow(/'broken' failed to connect/);
     await expect(agent.close()).resolves.toBeUndefined();
+  });
+
+  it('a destructive MCP tool pauses the run for approval; a readOnly one runs (LOU-Z5)', async () => {
+    const wipe = { toolCalls: [{ name: 'files__wipe', args: { path: '/data' }, id: 'call_wipe' }] };
+    const agent = createAgent({
+      provider: mockModel([{ toolCalls: [{ name: 'files__echo', args: { text: 'hi' } }] }, wipe, 'wiped.']),
+      mcpServers: { files: stdio() },
+    });
+    closers.push(() => agent.close());
+
+    const paused = await agent.send('clean up');
+    expect(paused.finishReason).toBe('awaiting-approval');
+    const [pending] = await agent.approvals.list();
+    expect(pending).toMatchObject({ toolName: 'files__wipe', args: { path: '/data' } });
+    expect(JSON.stringify(paused.messages)).toContain('hi'); // the readOnly echo ran without asking
+
+    const done = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+    expect(done.finishReason).toBe('stop');
+    expect(JSON.stringify(done.messages)).toContain('wiped /data');
+  });
+
+  it("approval: 'never' on the server entry lets the destructive tool run (LOU-Z5)", async () => {
+    const wipe = { toolCalls: [{ name: 'files__wipe', args: { path: '/tmp/x' } }] };
+    const agent = createAgent({
+      provider: mockModel([wipe, 'done']),
+      mcpServers: { files: { ...stdio(), approval: 'never' } },
+    });
+    closers.push(() => agent.close());
+    const result = await agent.send('clean up');
+    expect(result.finishReason).toBe('stop');
+    expect(JSON.stringify(result.messages)).toContain('wiped /tmp/x');
   });
 
   it('specToAgent() connects spec.mcpServers', async () => {
