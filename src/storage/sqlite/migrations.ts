@@ -46,6 +46,15 @@ export const MIGRATIONS: readonly string[] = [
   CREATE INDEX checkpoint_history_session ON checkpoint_history (session_id, id);
   CREATE INDEX checkpoint_history_saved_at ON checkpoint_history (saved_at);
   `,
+  // LOU-W6.2: cross-session memory items, one JSON array per scope key (the
+  // same shape `fileMemory` writes). A new table, so older files just gain it.
+  `
+  CREATE TABLE memory_items (
+    scope_key TEXT PRIMARY KEY,
+    payload TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 function readVersion(db: SqlDatabase): number {

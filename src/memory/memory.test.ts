@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterAll, describe, it, expect } from 'vitest';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -7,6 +7,7 @@ import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import { mockModel, type MockRequest } from '../testing';
 import { memoryStore } from '../storage/agentStore';
+import { describeMemoryProviderContract } from './providerContract';
 import { defineMemory, fileMemory, inMemoryMemory, type MemoryProvider } from './index';
 
 const systemOf = (call: MockRequest | undefined): string =>
@@ -159,19 +160,18 @@ describe('createAgent({ memory })', () => {
   });
 });
 
-describe('memory providers', () => {
-  it('inMemoryMemory keeps every concurrent add, filters by query and removes', async () => {
-    const provider = inMemoryMemory({ maxItems: 3 });
-    await Promise.all(['one', 'two', 'three', 'four'].map((text) => provider.add('k', { text })));
-    const items = await provider.list('k');
-    expect(items.map((i) => i.text)).toEqual(['four', 'three', 'two']);
-    expect((await provider.list('k', { query: 'THREE?' })).map((i) => i.text)).toEqual(['three']);
-    expect(await provider.list('k', { limit: 1 })).toHaveLength(1);
-    await provider.remove('k', items[0].id);
-    expect((await provider.list('k')).map((i) => i.text)).toEqual(['three', 'two']);
-  });
+describeMemoryProviderContract('inMemoryMemory', (options) => inMemoryMemory(options));
 
-  it('fileMemory round-trips through JSON files, one per scope key', async () => {
+const contractDirs: string[] = [];
+afterAll(() => Promise.all(contractDirs.map((dir) => rm(dir, { recursive: true, force: true }))));
+describeMemoryProviderContract('fileMemory', async (options) => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'loushy-memory-contract-'));
+  contractDirs.push(dir);
+  return fileMemory({ dir, ...options });
+});
+
+describe('memory providers', () => {
+  it('fileMemory persists through JSON files, one per scope key', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'loushy-memory-'));
     try {
       const first = fileMemory({ dir: path.join(dir, 'mem'), maxItems: 2 });

@@ -5154,11 +5154,26 @@ fill it from code with `provider.add(scopeKey, { text })`.
 |---|---|
 | `inMemoryMemory({ maxItems? })` | This process; lost on restart. For tests and demos. |
 | `fileMemory({ dir, maxItems? })` | One JSON file per scope key in `dir` (key URI-encoded), written atomically. |
+| `sqliteMemory(store, { maxItems? })` (from `/sqlite`) | A `memory_items` table in the agent's `SqliteStore` file, one JSON array per scope key. |
 
-Both keep at most `maxItems` items per scope key (default 1000; adding one
+All keep at most `maxItems` items per scope key (default 1000; adding one
 more drops the oldest) and match a `query` by keyword: an item matches when it
-contains one of the query's words of three or more letters, ignoring case. A
-SQLite provider over the agent's `SqliteStore` is planned (LOU-W6.2).
+contains one of the query's words of three or more letters, ignoring case.
+
+### SQLite
+
+Pass the same `SqliteStore` to the agent and to the provider, and sessions,
+checkpoints and memory share one database file. An existing file gains the
+table when it is opened. Keep the store open while the agent runs.
+
+```ts no-run
+import { createAgent, defineMemory } from '@loushy/build-ai-agent';
+import { SqliteStore, sqliteMemory } from '@loushy/build-ai-agent/sqlite';
+
+const store = new SqliteStore('./.loushy/agent.db');
+const notes = defineMemory({ name: 'notes', scope: 'global', provider: sqliteMemory(store) });
+const agent = createAgent({ model: 'openai/gpt-4o-mini', store, memory: [notes] });
+```
 
 For semantic search or a hosted store, implement `MemoryProvider`:
 
