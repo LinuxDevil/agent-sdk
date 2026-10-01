@@ -229,7 +229,7 @@ describe('AgentExecutor', () => {
       );
 
       expect(execute).not.toHaveBeenCalled();
-      expect(needsApproval).toHaveBeenCalledWith({ amount: 500 });
+      expect(needsApproval).toHaveBeenCalledWith({ amount: 500 }, expect.objectContaining({ toolName: 'chargeCard' }));
       expect(result.requiresApproval).toBe(true);
       expect(result.args).toEqual({ amount: 500 });
     });

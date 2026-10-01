@@ -6,7 +6,8 @@ import { defineTool, type DefinedTool, type ToolInput, type ToolOutput } from '.
 import { createAgent } from '../createAgent';
 import { createMockProvider } from '../providers/mock';
 import { ToolRegistry } from './ToolRegistry';
-import type { ToolDescriptor, ToolExecutionContext } from '../types';
+import type { ApprovalCheckContext, ApprovalOutcome, ToolDescriptor, ToolExecutionContext } from '../types';
+import { always, never, once } from './approvalPolicies';
 
 const sendEmail = defineTool({
   name: 'send_email',
@@ -107,5 +108,38 @@ describe('defineTool annotations (LOU-Z5.2)', () => {
       annotations: { readOnlyHint: 'yes' },
       execute: () => 1,
     });
+  });
+});
+
+describe('needsApproval outcomes (LOU-X8)', () => {
+  const input = z.object({ to: z.string() });
+  it('accepts booleans, outcomes, async outcomes and the helpers', () => {
+    defineTool({ name: 'b', description: 'd', input, needsApproval: (args) => args.to === 'x', execute: () => 1 });
+    defineTool({ name: 'o', description: 'd', input, needsApproval: ({ to }) => (to ? 'ask' : { deny: 'no recipient' }), execute: () => 1 });
+    defineTool({ name: 'a', description: 'd', input, needsApproval: async (_args, ctx) => (ctx.messages.length > 0 ? 'approve' : 'deny'), execute: () => 1 });
+    defineTool({ name: 'h1', description: 'd', input, needsApproval: once({ per: 'args' }), execute: () => 1 });
+    defineTool({ name: 'h2', description: 'd', input, needsApproval: always(), execute: () => 1 });
+    defineTool({ name: 'h3', description: 'd', input, needsApproval: never(), execute: () => 1 });
+    const legacy: ToolDescriptor['needsApproval'] = (args: { to: string }) => Promise.resolve(args.to === 'x');
+    expectTypeOf(legacy).not.toBeUndefined();
+  });
+
+  it('types the context and rejects other return values', () => {
+    defineTool({
+      name: 'c',
+      description: 'd',
+      input,
+      needsApproval: (_args, ctx) => {
+        expectTypeOf(ctx).toEqualTypeOf<ApprovalCheckContext>();
+        expectTypeOf(ctx.messages).toEqualTypeOf<readonly Message[]>();
+        return 'ask';
+      },
+      execute: () => 1,
+    });
+    // @ts-expect-error - 'maybe' is not an ApprovalOutcome
+    defineTool({ name: 'bad', description: 'd', input, needsApproval: () => 'maybe', execute: () => 1 });
+    // @ts-expect-error - the deny reason is a string
+    defineTool({ name: 'bad2', description: 'd', input, needsApproval: () => ({ deny: 1 }), execute: () => 1 });
+    expectTypeOf<ApprovalOutcome>().toEqualTypeOf<boolean | 'approve' | 'deny' | 'ask' | { deny: string }>();
   });
 });
