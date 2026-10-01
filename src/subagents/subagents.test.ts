@@ -6,6 +6,8 @@ import { mockModel } from '../testing';
 import type { Message } from '../providers';
 import type { SubagentCatalog } from './types';
 
+const SUBAGENT_TOOLS = ['task', 'agent_status', 'agent_await', 'agent_cancel'];
+
 const task = (agent: string, prompt: string, id?: string) => ({
   name: 'task',
   args: { agent, prompt, description: `${agent} task` },
@@ -36,11 +38,11 @@ describe('subagents option and the task tool (LOU-Y3)', () => {
     ]);
     expect(JSON.stringify(researcherModel.calls[0].messages)).not.toContain('secret');
 
-    // The lead sees the sub-agent list and the single `task` tool.
+    // The lead sees the sub-agent list, the `task` tool and the background-task tools (LOU-Y4).
     const leadRequest = leadModel.calls[0];
     expect(leadRequest.messages[0].content).toContain('## Available sub-agents');
     expect(leadRequest.messages[0].content).toContain('- researcher: Finds and summarizes sources');
-    expect(leadRequest.tools?.map((t) => t.function.name)).toEqual(['task']);
+    expect(leadRequest.tools?.map((t) => t.function.name)).toEqual(SUBAGENT_TOOLS);
 
     const [toolResult] = toolMessages(result.messages);
     const text = JSON.parse(toolResult.content as string) as string;
@@ -156,7 +158,7 @@ describe('subagents option and the task tool (LOU-Y3)', () => {
     it('with 2, sub-agents can delegate once more, and the limit holds deeper down', async () => {
       const { lead, researcherModel, helperModel } = nestedTree(2);
       const result = await lead.send('go');
-      expect(researcherModel.calls[0].tools?.map((t) => t.function.name)).toEqual(['task']);
+      expect(researcherModel.calls[0].tools?.map((t) => t.function.name)).toEqual(SUBAGENT_TOOLS);
       // The helper sits at depth 2 = the root's limit: it has sub-agents but no task tool.
       expect(helperModel.calls[0].tools).toBeUndefined();
       expect(toolMessages(researcherModel.calls[1].messages as Message[])[0].content).toContain('helped');
@@ -269,6 +271,10 @@ describe('subagents option and the task tool (LOU-Y3)', () => {
       const own = defineTool({ name: 'task', description: 'mine', input: z.object({}), execute: () => 'x' });
       expect(() => createAgent({ provider: mockModel([]), tools: [own], subagents: { researcher } })).toThrow(
         /a tool named 'task' is already registered/
+      );
+      const status = defineTool({ name: 'agent_status', description: 'mine', input: z.object({}), execute: () => 'x' });
+      expect(() => createAgent({ provider: mockModel([]), tools: [status], subagents: { researcher } })).toThrow(
+        /a tool named 'agent_status' is already registered/
       );
     });
 
