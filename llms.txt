@@ -1,0 +1,27 @@
+# @loushy/build-ai-agent
+
+> A composable, framework-agnostic SDK for building AI agents that run safely in production. Zero-config to full control, human-in-the-loop approval gates, durable checkpoints, multi-agent delegation, guardrails, and a visual dashboard — any provider, any deploy target, no lock-in.
+
+## Docs
+
+- [@loushy/build-ai-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/README.md): A composable, framework-agnostic SDK for building AI agents that run safely in production.
+- [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md): `ai` (the Vercel AI SDK, `^4.3.19`) and `zod` (`^3.25.76`) are required peer dependencies.
+- [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md): Every TypeScript snippet on this page is a complete, standalone ES module (`.mts`) that runs as-is with the SDK's built-in mock provider - no API key needed.
+- [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md): The package root (`@loushy/build-ai-agent`) exports everything below.
+- [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md): A declarative agent is a YAML (`.yaml`/`.yml`) or JSON (`.json`) file, validated with zod by `loadSpec()` (`src/spec/schema.ts`).
+- [Testing agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md): `@loushy/build-ai-agent/testing` ships `mockModel`: a scripted, deterministic `LLMProvider` for unit tests.
+
+## Examples
+
+- [doc-qa](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/doc-qa/README.md): A question-answering agent scoped to a single fixed document (a short refund policy, inlined in the prompt), built with `createAgent()`.
+- [openrouter](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/openrouter/README.md): Runnable snippets showing `OpenRouterProvider` usage (LOU-B6): basic and streaming generation, multi-model comparison, tool calling, `AgentBuilder` configuration, model listing, cost-aware model choice, error handling, multi-turn conversation, and capability checks.
+- [ops-pipeline (LOU-J8)](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/ops-pipeline/README.md): An end-to-end "flagship pipeline" demo composing every LOU-J primitive
+- [research-assistant](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/research-assistant/README.md): An agent with the built-in `http` tool wired up so it can fetch sources while researching a question, built with `createAgent()`.
+- [slack-notifier](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/slack-notifier/README.md): Turns a raw event description into a short, Slack-ready notification message, built with `createAgent()`.
+- [support-bot](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/support-bot/README.md): A minimal customer-support agent built with `createAgent()`.
+- [workflow-router](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/workflow-router/README.md): An agent that classifies an incoming request into one of a fixed set of categories (`billing`/`technical`/`sales`), built with `createAgent()`.
+
+## Optional
+
+- [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md): Agent Forge (`apps/agent-forge`) is this SDK's companion visual dashboard: build an agent's graph on a canvas, run it, watch it execute in a live debug console, chat with it, and author sandboxed pre/post hooks - all reading and writing the exact same `AgentSpec` YAML that `loushy dev` and `loushy build` use.
+- [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md): `loushy build` turns an agent spec file (see Configuration) into a deployable artifact for one target platform

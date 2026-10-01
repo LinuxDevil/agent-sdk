@@ -199,6 +199,19 @@ console.log(result.usage.totalTokens, result.finishReason, result.steps);
 - [Agent Forge](docs/agent-forge.md) - the visual dashboard (`loushy studio`): quickstart, first-agent walkthrough, hook authoring
 - Full guides site: [linuxdevil.github.io/agent-sdk-docs](https://linuxdevil.github.io/agent-sdk-docs/)
 
+## For AI coding agents
+
+This package ships its documentation in machine-readable form, so a coding
+agent can read it straight from `node_modules` without browsing the web:
+
+- `node_modules/@loushy/build-ai-agent/llms-full.txt` - the README and every
+  user-facing docs page in one file, with absolute links.
+- `llms.txt` (repo root, also in the package) - a short [llmstxt.org](https://llmstxt.org)
+  index of the docs and examples.
+- `llms-full.txt` (repo root) - the same full text as above, for use from a clone.
+
+Both files are generated (`npm run docs:llms`) and checked in CI.
+
 ## Core Concepts
 
 ### Agents

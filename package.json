@@ -75,6 +75,10 @@
     "apps/agent-forge/dist",
     "apps/agent-forge/dist-server",
     "README.md",
+    "llms.txt",
+    "llms-full.txt",
+    "docs/*.md",
+    "!docs/eslint-baseline-followup.md",
     "LICENSE",
     "CHANGELOG.md",
     "CONTRIBUTING.md"
@@ -108,6 +112,8 @@
     "prepublishOnly": "npm run build && npm run build:studio",
     "docs:build": "typedoc",
     "docs:verify-snippets": "tsx scripts/verify-docs-snippets.ts",
+    "docs:llms": "tsx scripts/generate-llms-txt.ts",
+    "docs:llms:check": "tsx scripts/generate-llms-txt.ts --check",
     "fallow": "fallow",
     "fallow:score": "fallow health --score",
     "example:openrouter": "tsx examples/openrouter/index.ts"
