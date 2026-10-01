@@ -9,5 +9,7 @@
 export * from './types';
 export * from './TriggerRegistry';
 export * from './adapters/WebhookTriggerAdapter';
+export * from './webhookAuth';
+export * from './cronExpression';
 export * from './adapters/CronTriggerAdapter';
 export * from './adapters/SlackTriggerAdapter';

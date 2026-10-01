@@ -245,6 +245,88 @@ counts as not matched (`false`), and an `evaluator` expression that cannot be
 evaluated fails the flow with `Failed to evaluate expression: ...`, including
 the `ExpressionError` detail.
 
+## Triggers
+
+Trigger adapters (`@loushy/build-ai-agent/triggers`) wake an agent up from an
+inbound webhook, a schedule or a Slack message. Wire any of them with
+`listen(agent, onEvent)`, where `onEvent` runs the agent.
+
+### Webhook authentication
+
+`WebhookTriggerAdapter` starts an HTTP server. **Always set `auth` for a
+webhook that is reachable from outside your machine**: without it, anyone who
+can reach the port can run your agent (and spend your tokens). If you listen
+on a non-loopback host with no `auth`, the adapter logs a one-time warning
+through `options.logger`.
+
+```ts
+import { WebhookTriggerAdapter } from '@loushy/build-ai-agent/triggers';
+
+// HMAC of the RAW request body (GitHub / Shopify style): header `x-signature-256: sha256=<hex>`.
+new WebhookTriggerAdapter({
+  port: 8787,
+  auth: { type: 'hmac', secret: process.env.WEBHOOK_SECRET ?? '' },
+}).listen(agent, (input) => agent.send(input));
+
+// Replay protection: the signed payload becomes `${timestamp}.${body}` and
+// requests more than `toleranceSeconds` (default 300) old are rejected.
+new WebhookTriggerAdapter({
+  auth: {
+    type: 'hmac',
+    secret: process.env.WEBHOOK_SECRET ?? '',
+    header: 'x-signature',
+    timestampHeader: 'x-timestamp',
+    toleranceSeconds: 120,
+  },
+});
+
+// A shared bearer token (`Authorization: Bearer <token>`).
+new WebhookTriggerAdapter({ auth: { type: 'bearer', token: process.env.WEBHOOK_TOKEN ?? '' } });
+
+// Anything else: return true to accept. `rawBody` is a Buffer of the exact bytes received.
+new WebhookTriggerAdapter({
+  auth: { type: 'custom', verify: (req) => req.headers['x-api-key'] === process.env.API_KEY },
+});
+```
+
+HMAC options: `header` (default `x-signature-256`), `algorithm` (`sha256` or
+`sha1`, default `sha256`), `prefix` (default `sha256=`; `''` for a bare
+digest), `timestampHeader` and `toleranceSeconds`. Signatures and bearer
+tokens are compared in constant time. A request that fails authentication gets
+a generic `401 {"error":"Unauthorized"}` - the response never says which check
+failed - and the reason (never a secret or signature) is logged at `warn`
+level. Serve webhooks over HTTPS (terminate TLS in front of the adapter) so
+tokens and payloads are not sent in clear text.
+
+### Cron schedules
+
+`CronTriggerAdapter` takes either a fixed `intervalMs` or a real cron
+expression:
+
+```ts
+import { CronTriggerAdapter } from '@loushy/build-ai-agent/triggers';
+
+new CronTriggerAdapter({
+  cron: '*/15 9-17 * * MON-FRI', // minute hour day-of-month month day-of-week
+  timezone: 'Europe/Paris', // IANA name; defaults to the machine's local zone
+  input: 'Check the support queue',
+  onResult: (result, error) => console.log(error ?? result?.text),
+}).listen(agent, (input) => agent.send(input));
+```
+
+Supported syntax: `*`, lists (`1,15`), ranges (`1-5`), steps (`*/15`,
+`10-40/10`), month names (`JAN`) and weekday names (`MON`), with `0` and `7`
+both meaning Sunday, plus `@hourly`, `@daily`, `@weekly` and `@monthly`. As in
+classic cron, when both day-of-month and day-of-week are restricted a day
+matches if either does. An invalid expression throws a `CronExpressionError`
+naming the field and showing a valid example. `parseCronExpression(expr,
+timezone).nextRun(after)` is exported if you need the next fire time.
+
+Around daylight-saving changes, a time that does not exist (spring forward) is
+skipped for that day, and a time that happens twice (fall back) fires once;
+an every-hour schedule keeps firing hourly. The timer is re-armed after each
+run from the scheduled time (no drift, no double fire), and `stop()` clears it.
+
 ## Deployment
 
 - `DeploymentAdapter`, `registerAdapter()`, `getAdapter()`, `listAdapters()` -
