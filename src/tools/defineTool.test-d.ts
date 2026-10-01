@@ -1,5 +1,7 @@
 import { describe, it, expectTypeOf } from 'vitest';
 import { z } from 'zod';
+import { z as z3 } from 'zod/v3';
+import { z as z4 } from 'zod/v4';
 import { tool as aiTool } from 'ai';
 import type { Message } from '../providers/llm';
 import { defineTool, type DefinedTool, type ToolInput, type ToolOutput } from './defineTool';
@@ -141,5 +143,39 @@ describe('needsApproval outcomes (LOU-X8)', () => {
     // @ts-expect-error - the deny reason is a string
     defineTool({ name: 'bad2', description: 'd', input, needsApproval: () => ({ deny: 1 }), execute: () => 1 });
     expectTypeOf<ApprovalOutcome>().toEqualTypeOf<boolean | 'approve' | 'deny' | 'ask' | { deny: string }>();
+  });
+});
+
+describe('either zod major (LOU-D29)', () => {
+  // `zod/v3` and `zod/v4` exist in both zod@^3.25 and zod@4, whichever is installed.
+  it('infers execute args from a zod 3 schema', () => {
+    const t = defineTool({
+      name: 'v3',
+      description: 'd',
+      input: z3.object({ q: z3.string(), n: z3.number().default(1) }),
+      execute: (args) => {
+        expectTypeOf(args).toEqualTypeOf<{ q: string; n: number }>();
+        return args.n;
+      },
+    });
+    expectTypeOf(t.execute).parameter(0).toEqualTypeOf<{ q: string; n: number }>();
+  });
+
+  it('infers execute args from a zod 4 schema', () => {
+    const t = defineTool({
+      name: 'v4',
+      description: 'd',
+      input: z4.object({ q: z4.string(), n: z4.number().default(1) }),
+      needsApproval: ({ q }) => q === 'x',
+      execute: (args) => {
+        expectTypeOf(args).toEqualTypeOf<{ q: string; n: number }>();
+        // @ts-expect-error - `nope` is not an argument of this tool
+        void args.nope;
+        return args.q;
+      },
+    });
+    expectTypeOf<ToolInput<typeof t>>().toEqualTypeOf<{ q: string; n: number }>();
+    expectTypeOf<ToolOutput<typeof t>>().toEqualTypeOf<string>();
+    new ToolRegistry().register(t);
   });
 });

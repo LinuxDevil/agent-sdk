@@ -12,7 +12,7 @@ import type { SimpleAgent } from '../createAgent';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import type { AgentEvent } from '../execution/agentEvents';
 import { MemorySessionStore, type SessionStore } from '../session/sessionStore';
-import type { SessionStores } from '../session/AgentSession';
+import { withDefaultStores, type SessionStores } from '../session/AgentSession';
 import { readRawBody, sendFailure, sendJson } from '../server/chatRoutes';
 import {
   approvalPrompt,
@@ -20,10 +20,14 @@ import {
   toChannelRequest,
   type Channel,
   type ChannelApprovalDecision,
+  type ChannelContext,
+  type ChannelDecision,
+  type ChannelErrorHandler,
   type ChannelInbound,
   type ChannelRequest,
   type ChannelRespond,
 } from './defineChannel';
+import { reportChannelError } from './channelSupport';
 
 /** Options of {@link mountChannels}. */
 export interface MountChannelsOptions {
@@ -34,7 +38,13 @@ export interface MountChannelsOptions {
   store?: SessionStore | SessionStores;
   /** Path prefix of the routes. Default `/channels`. */
   basePath?: string;
+  /** Fallback for a channel without its own `onError`: failures after the request was acknowledged. Default: `console.error`. */
+  onError?: ChannelErrorHandler;
+  /** Called when a button decision names who decided (the Slack and Discord channels do): the audit trail of approvals. */
+  onDecision?(event: { decision: ChannelApprovalDecision; approver: NonNullable<ChannelDecision['approver']>; sessionId: string; channel: string }): void | Promise<void>;
 }
+
+const FAILED_TEXT = 'Sorry, that request failed.';
 
 /** The handler `mountChannels()` returns. */
 export interface ChannelsHandler {
@@ -99,6 +109,33 @@ export function mountChannels(
   if (byName.size !== channels.length) throw new Error('mountChannels: channel names must be unique');
   const paused = new Map<string, PausedTurn>();
   const tails = new Map<string, Promise<void>>();
+  const answered = new WeakSet<ChannelRespond>();
+  const sessions = withDefaultStores({ store }).store as SessionStore | undefined;
+
+  /** What `channel.parse` may ask: the agent's pending approvals and saved sessions. */
+  function contextFor(channel: Channel): ChannelContext {
+    const sessionId = (sessionKey: string) => channelSessionId(channel, { sessionKey, input: '', replyTo: undefined });
+    return {
+      approval: async (id) => (await agent.approvals.list()).find((request) => request.id === id),
+      sessionId,
+      hasSession: async (sessionKey) => (await sessions?.load(sessionId(sessionKey))) !== undefined,
+    };
+  }
+
+  /**
+   * Runs `fn`. A failure after the surface was answered (`respond` was called) goes to
+   * `onError` and, unless it was the reply itself, the user is told the request failed;
+   * before that (or with no `respond`) it is thrown to the caller as ever.
+   */
+  async function guard(turn: PausedTurn, stage: 'turn' | 'reply' | 'approval', respond: ChannelRespond | undefined, fn: () => Promise<void>): Promise<void> {
+    try {
+      await fn();
+    } catch (error) {
+      if (!respond || !answered.has(respond)) throw error;
+      await reportChannelError(turn.channel.onError ?? options.onError, error, { channel: turn.channel.name, stage, sessionId: turn.sessionId });
+      if (stage !== 'reply') await guard(turn, 'reply', respond, () => turn.channel.reply({ inbound: turn.inbound, sessionId: turn.sessionId, text: FAILED_TEXT, respond }));
+    }
+  }
 
   /** Runs `turn` after the session's previous turn has settled. */
   function serialized(sessionId: string, turn: () => Promise<void>): Promise<void> {
@@ -114,53 +151,68 @@ export function mountChannels(
     const { channel, inbound, sessionId } = turn;
     const pending = result.finishReason === 'awaiting-approval' ? await agent.approvals.list() : [];
     const approval = pending.find((request) => request.id === result.approvalId);
-    if (!approval) return channel.reply({ inbound, sessionId, text: result.text, result, events, respond });
+    if (!approval) return guard(turn, 'reply', respond, () => channel.reply({ inbound, sessionId, text: result.text, result, events, respond }));
     paused.set(approval.id, turn);
     const ctx = { inbound, sessionId, text: approvalPrompt(approval), result, events, approval, respond };
-    await (channel.onApproval ? channel.onApproval(ctx) : channel.reply(ctx));
+    await guard(turn, 'reply', respond, () => (channel.onApproval ? channel.onApproval(ctx) : channel.reply(ctx)));
   }
 
-  async function runTurn(turn: PausedTurn, respond: ChannelRespond): Promise<void> {
+  function runTurn(turn: PausedTurn, respond: ChannelRespond): Promise<void> {
     const { channel, inbound, sessionId } = turn;
-    const run = agent.session({ id: sessionId, store }).stream(inbound.input);
-    const events: AgentEvent[] = [];
-    let text = '';
-    for await (const event of run) {
-      events.push(event);
-      if (!channel.stream || event.type !== 'text.delta') continue;
-      text += event.text;
-      await channel.reply({ inbound, sessionId, text, partial: true, respond });
-    }
-    await finish(turn, await run.result, events, respond);
+    return guard(turn, 'turn', respond, async () => {
+      const run = agent.session({ id: sessionId, store }).stream(inbound.input);
+      const events: AgentEvent[] = [];
+      let text = '';
+      for await (const event of run) {
+        events.push(event);
+        if (!channel.stream || event.type !== 'text.delta') continue;
+        text += event.text;
+        await guard(turn, 'reply', respond, () => channel.reply({ inbound, sessionId, text, partial: true, respond }));
+      }
+      await finish(turn, await run.result, events, respond);
+    });
+  }
+
+  /** Decides the pause `turn` stopped on and delivers the continuation. */
+  function continueTurn(turn: PausedTurn, decision: ChannelApprovalDecision, respond?: ChannelRespond): Promise<void> {
+    paused.delete(decision.id);
+    const { id, approved, note, answer } = decision;
+    return guard(turn, 'approval', respond, async () => {
+      const result =
+        typeof answer === 'string' ? await agent.approvals.answer({ id, answer }) : await agent.approvals.resolve({ id, approved: approved === true, note });
+      await finish(turn, result, undefined, respond);
+    });
   }
 
   async function resolveApproval(decision: ChannelApprovalDecision, respond?: ChannelRespond): Promise<void> {
     const turn = paused.get(decision.id);
     if (!turn) throw new Error(`No pending channel approval '${decision.id}'`);
-    paused.delete(decision.id);
-    const { id, approved, note, answer } = decision;
-    const result =
-      typeof answer === 'string' ? await agent.approvals.answer({ id, answer }) : await agent.approvals.resolve({ id, approved: approved === true, note });
-    await finish(turn, result, undefined, respond);
+    await continueTurn(turn, decision, respond);
   }
 
   async function handle(channel: Channel, approvalId: string | undefined, req: ChannelRequest, respond: ChannelRespond): Promise<void> {
     if (!(await isAuthorized(channel, req))) return respond(401, { error: 'Unauthorized' });
     if (approvalId === undefined) {
-      const inbound = await channel.parse(req, respond);
-      if (!inbound || 'decision' in inbound) return inbound ? decide(channel, inbound.decision, respond) : undefined;
+      const inbound = await channel.parse(req, respond, contextFor(channel));
+      if (!inbound || 'decision' in inbound) return inbound ? decide(channel, inbound, respond) : undefined;
       const turn = { channel, inbound, sessionId: channelSessionId(channel, inbound) };
       return serialized(turn.sessionId, () => runTurn(turn, respond));
     }
     const decision = readDecision(approvalId, req.text);
     if (!decision) return respond(400, { error: "Request body must be JSON with 'approved' (and optional 'note') or 'answer'" });
-    await decide(channel, decision, respond);
+    await decide(channel, { decision }, respond);
   }
 
-  /** Resolves `decision` when `channel` paused on it, else answers 404. */
-  async function decide(channel: Channel, decision: ChannelApprovalDecision, respond: ChannelRespond): Promise<void> {
-    if (paused.get(decision.id)?.channel !== channel) return respond(404, { error: `No pending approval '${decision.id}' on channel '${channel.name}'` });
-    await resolveApproval(decision, respond);
+  /**
+   * Resolves the decision when `channel` paused on it in this process, or when the click
+   * names the conversation itself (`inbound`: it survives a restart); else answers 404.
+   */
+  async function decide(channel: Channel, { decision, inbound, approver }: ChannelDecision, respond: ChannelRespond): Promise<void> {
+    const known = paused.get(decision.id);
+    const turn = inbound ? { channel, inbound, sessionId: channelSessionId(channel, inbound) } : known?.channel === channel ? known : undefined;
+    if (!turn) return respond(404, { error: `No pending approval '${decision.id}' on channel '${channel.name}'` });
+    if (approver) await options.onDecision?.({ decision, approver, sessionId: turn.sessionId, channel: channel.name });
+    await continueTurn(turn, decision, respond);
   }
 
   const handler = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> => {
@@ -173,13 +225,15 @@ export function mountChannels(
     const respond: ChannelRespond = (status, body) => {
       if (!responded) sendJson(res, status, body);
       responded = true;
+      answered.add(respond);
     };
     try {
       const request = toChannelRequest(req, await readRawBody(req));
       await handle(channel, isApproval ? decodeURIComponent(route[2]) : undefined, request, respond);
       respond(200, { ok: true });
     } catch (error) {
-      if (!responded) sendFailure(res, error);
+      if (responded) await reportChannelError(channel.onError ?? options.onError, error, { channel: channel.name, stage: 'parse' });
+      else sendFailure(res, error);
       responded = true;
     }
     return true;

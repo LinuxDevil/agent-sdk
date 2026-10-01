@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { defineTool, type DefinedTool } from '../defineTool';
 import { ASK_QUESTION_TOOL_NAME } from '../../execution/ApprovalGate';
 import type { ToolDescriptor } from '../../types';
+import { toolFailure } from './toolFailure';
 
 const askQuestionInput = z.object({
   question: z.string().trim().min(1).describe('The question to ask, in one or two sentences.'),
@@ -58,12 +59,12 @@ export function askQuestionTool(): DefinedTool<typeof askQuestionInput, AskQuest
     execute({ options, allowFreeText }, ctx): AskQuestionResult {
       const answer = ctx.approval?.note?.trim();
       if (!answer) {
-        throw new Error('No answer: ask_question returns only after a person answers it (agent.approvals.answer()).');
+        throw toolFailure('No answer: ask_question returns only after a person answers it (agent.approvals.answer()).');
       }
       const option = options?.findIndex((choice) => choice.toLowerCase() === answer.toLowerCase()) ?? -1;
       if (option >= 0) return { answer, option };
       if (options && allowFreeText === false) {
-        throw new Error(`The answer must be one of: ${options.join(', ')}`);
+        throw toolFailure(`The answer must be one of: ${options.join(', ')}`);
       }
       return { answer };
     },

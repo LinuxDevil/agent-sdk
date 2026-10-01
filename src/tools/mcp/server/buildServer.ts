@@ -83,7 +83,8 @@ type ToolExecute = (
 function registerDirectTool(server: McpServer, tool: DefinedTool): void {
   server.registerTool(
     tool.name,
-    { description: tool.description, inputSchema: tool.input, annotations: toolAnnotations(tool) },
+    // serveMcp() checked it is a z.object() of either major; the MCP SDK takes both.
+    { description: tool.description, inputSchema: tool.input as z.ZodTypeAny, annotations: toolAnnotations(tool) },
     async (args: unknown, extra) => {
       try {
         const execute = getToolExecute(tool) as ToolExecute | undefined;

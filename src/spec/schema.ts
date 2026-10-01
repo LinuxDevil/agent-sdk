@@ -8,6 +8,7 @@
  * schema-to-type codegen is set up in this repo).
  */
 import { z } from 'zod';
+import { anyError, typeErrors } from '../utils/zodCompat';
 import type { McpApproval } from '../tools/mcp/McpToolLoader';
 import type { RunLimits } from '../execution/budget';
 import { guardrailEntrySchema, type AgentSpecGuardrail } from './guardrailOptions';
@@ -102,12 +103,8 @@ export interface AgentSpec {
 }
 
 export const agentSpecProviderSchema = z.object({
-  type: z.string({
-    required_error: "AgentSpec validation failed: missing required field 'provider.type'",
-  }),
-  model: z.string({
-    required_error: "AgentSpec validation failed: missing required field 'provider.model'",
-  }),
+  type: z.string(typeErrors({ required: "AgentSpec validation failed: missing required field 'provider.type'" })),
+  model: z.string(typeErrors({ required: "AgentSpec validation failed: missing required field 'provider.model'" })),
 });
 
 const POLICY = 'AgentSpec validation failed:';
@@ -129,40 +126,35 @@ const runLimitsSchema = z
 export const agentSpecPolicySchema = z
   .object({
     requiresApproval: z
-      .union([z.boolean(), z.array(z.string().min(1))], {
-        errorMap: () => ({ message: `${POLICY} 'requiresApproval' must be true, false or a list of tool names` }),
-      })
+      .union([z.boolean(), z.array(z.string().min(1))], anyError(`${POLICY} 'requiresApproval' must be true, false or a list of tool names`))
       .optional(),
     guardrails: z.array(guardrailEntrySchema).optional(),
     limits: runLimitsSchema.optional(),
     askQuestion: z.boolean().optional(),
     compaction: z
-      .union([z.boolean(), z.object({ thresholdPercent: z.number().gt(0).lte(1).optional() }).strict()], {
-        errorMap: () => ({ message: `${POLICY} 'compaction' must be a boolean or { thresholdPercent: 0-1 }` }),
-      })
+      .union(
+        [z.boolean(), z.object({ thresholdPercent: z.number().gt(0).lte(1).optional() }).strict()],
+        anyError(`${POLICY} 'compaction' must be a boolean or { thresholdPercent: 0-1 }`)
+      )
       .optional(),
   })
   .passthrough();
 
 export const agentSpecTriggerSchema = z
   .object({
-    type: z.string({
-      required_error: "AgentSpec validation failed: missing required field 'triggers[].type'",
-    }),
+    type: z.string(typeErrors({ required: "AgentSpec validation failed: missing required field 'triggers[].type'" })),
   })
   .passthrough();
 
 const MCP_PREFIX = 'AgentSpec validation failed:';
 
 const mcpStringMap = (field: string) =>
-  z.record(z.string(), {
-    invalid_type_error: `${MCP_PREFIX} '${field}' must be a map of string to string`,
-  });
+  z.record(z.string(), z.string(), typeErrors({ invalid: `${MCP_PREFIX} '${field}' must be a map of string to string` }));
 
 /** `approval`: a mode, or (in code, not YAML/JSON) a predicate over a tool's name and annotations. */
 const mcpApprovalSchema = z.union(
   [z.enum(['annotations', 'always', 'never']), z.custom<McpApproval>((value) => typeof value === 'function')],
-  { errorMap: () => ({ message: `${MCP_PREFIX} 'approval' must be 'annotations', 'always' or 'never'` }) }
+  anyError(`${MCP_PREFIX} 'approval' must be 'annotations', 'always' or 'never'`)
 );
 
 /** What is wrong with a loosely-parsed `mcpServers` entry, if anything. */
@@ -187,23 +179,21 @@ export const mcpServerSpecSchema = z
   .object(
     {
       command: z
-        .string({ invalid_type_error: `${MCP_PREFIX} 'command' must be a string` })
+        .string(typeErrors({ invalid: `${MCP_PREFIX} 'command' must be a string` }))
         .min(1)
         .optional(),
       args: z
-        .array(z.string(), { invalid_type_error: `${MCP_PREFIX} 'args' must be a list of strings` })
+        .array(z.string(), typeErrors({ invalid: `${MCP_PREFIX} 'args' must be a list of strings` }))
         .optional(),
       env: mcpStringMap('env').optional(),
       url: z
-        .string({ invalid_type_error: `${MCP_PREFIX} 'url' must be a string` })
+        .string(typeErrors({ invalid: `${MCP_PREFIX} 'url' must be a string` }))
         .url(`${MCP_PREFIX} 'url' must be a valid URL`)
         .optional(),
       headers: mcpStringMap('headers').optional(),
       approval: mcpApprovalSchema.optional(),
     },
-    {
-      invalid_type_error: `${MCP_PREFIX} each mcpServers entry must be an object with 'command' or 'url'`,
-    }
+    typeErrors({ invalid: `${MCP_PREFIX} each mcpServers entry must be an object with 'command' or 'url'` })
   )
   .superRefine((server, ctx) => {
     const problem = mcpServerProblem(server);
@@ -225,18 +215,12 @@ const mcpServersSchema = z.preprocess(
           })
         )
       : value,
-  z.record(mcpServerSpecSchema, {
-    invalid_type_error: `${MCP_PREFIX} 'mcpServers' must be a map of server name to config`,
-  })
+  z.record(z.string(), mcpServerSpecSchema, typeErrors({ invalid: `${MCP_PREFIX} 'mcpServers' must be a map of server name to config` }))
 );
 
 export const agentSpecSchema = z.object({
-  name: z.string({
-    required_error: "AgentSpec validation failed: missing required field 'name'",
-  }),
-  prompt: z.string({
-    required_error: "AgentSpec validation failed: missing required field 'prompt'",
-  }),
+  name: z.string(typeErrors({ required: "AgentSpec validation failed: missing required field 'name'" })),
+  prompt: z.string(typeErrors({ required: "AgentSpec validation failed: missing required field 'prompt'" })),
   provider: agentSpecProviderSchema,
   tools: z.array(z.string()).optional(),
   policy: agentSpecPolicySchema.optional(),

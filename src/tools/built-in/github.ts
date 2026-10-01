@@ -63,6 +63,7 @@ import { defineTool, type DefinedTool } from '../defineTool';
 import { ToolDescriptor } from '../../types';
 import { routeFetchThroughSandbox } from './sandboxFetch';
 import { assertOk } from './assertOk';
+import { toolFailure } from './toolFailure';
 
 // ============================================================================
 // Type Definitions
@@ -372,7 +373,7 @@ export class GitHubTools extends ToolRegistry {
     const descriptor = typeof nameOrTool === 'string' ? (maybeDescriptor as ToolDescriptor) : nameOrTool;
     if (GitHubTools.OUT_OF_SCOPE_TOOLS.has(name) && descriptor.tool) {
       const disabled = async () => {
-        throw new Error(
+        throw toolFailure(
           `GitHub tool '${name}' is out of scope for a PR-creation/reading-scoped token ` +
             `(requires broader permissions than "Pull requests: write" + "Issues: write" + ` +
             `"Contents: read" - see the scope documentation at the top of github.ts) and has ` +
@@ -1030,7 +1031,7 @@ export class GitHubTools extends ToolRegistry {
           if (state) updates.state = state;
 
           if (Object.keys(updates).length === 0) {
-            throw new Error('At least one field must be provided to update');
+            throw toolFailure('At least one field must be provided to update');
           }
 
           const response = await fetch(
@@ -1413,7 +1414,7 @@ export class GitHubTools extends ToolRegistry {
           if (labels) updates.labels = labels;
 
           if (Object.keys(updates).length === 0) {
-            throw new Error('At least one field must be provided to update');
+            throw toolFailure('At least one field must be provided to update');
           }
 
           const response = await fetch(
@@ -1646,7 +1647,7 @@ export class GitHubTools extends ToolRegistry {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to get repository information');
+      throw toolFailure('Failed to get repository information');
     }
 
     const data = (await response.json()) as GitHubApiRepository;

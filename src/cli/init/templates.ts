@@ -5,6 +5,7 @@
 import { AI_RANGES, listProviders, type AiMajor } from '../../providers/providerSpec';
 import type { PackageManager, Template } from './options';
 import type { SdkManifest } from './sdkDependency';
+import { ConfigurationError } from '../../execution/errors';
 
 export interface ProjectConfig {
   /** npm package name (also the directory's base name). */
@@ -19,7 +20,7 @@ export interface ProjectConfig {
 
 function providerInfo(provider: string) {
   const info = listProviders().find((candidate) => candidate.name === provider);
-  if (!info) throw new Error(`loushy init: unknown provider '${provider}'.`);
+  if (!info) throw new ConfigurationError(`loushy init: unknown provider '${provider}'.`, 'provider', 'LOUSHY_PROVIDER_UNKNOWN');
   return info;
 }
 
@@ -31,7 +32,7 @@ function sortKeys(record: Record<string, string>): Record<string, string> {
  * The `ai` major a new project gets (LOU-D28d): the current one, 7, for the
  * providers CI runs on it (`@ai-sdk/openai` and `@ai-sdk/anthropic` 4); OpenRouter
  * is one of them since it asks `@ai-sdk/openai` for its Chat Completions model
- * (LOU-D28f). Ollama stays on 4 because its `ai` 6/7 package needs zod 4 (LOU-D29).
+ * (LOU-D28f). Ollama stays on 4 with zod 3: its `ai` 6/7 package needs zod 4 (accepted since LOU-D29).
  */
 const SCAFFOLD_AI_MAJOR: Readonly<Record<string, AiMajor>> = { openai: 7, anthropic: 7, openrouter: 7, ollama: 4 };
 
@@ -40,6 +41,12 @@ function aiPackages(provider: string): Record<string, string> {
   const major = SCAFFOLD_AI_MAJOR[provider] ?? 4;
   const { name, range } = providerInfo(provider).peers[major];
   return { ai: AI_RANGES[major], [name]: range };
+}
+
+/** The SDK's zod range, narrowed to zod 3 for `ai` 4, whose packages peer on zod 3 only (LOU-D29). */
+function zodRange(peerRange: string | undefined, provider: string): string {
+  const range = peerRange ?? '^3.25.76';
+  return (SCAFFOLD_AI_MAJOR[provider] ?? 4) === 4 ? range.split('||')[0].trim() : range;
 }
 
 function packageJson(config: ProjectConfig): string {
@@ -58,7 +65,7 @@ function packageJson(config: ProjectConfig): string {
     },
     dependencies: sortKeys({
       '@loushy/build-ai-agent': config.sdkDependency,
-      zod: peers.zod ?? '^3.25.76',
+      zod: zodRange(peers.zod, config.provider),
       ...aiPackages(config.provider),
     }),
     devDependencies: {
@@ -198,6 +205,7 @@ function yamlTestSource(config: ProjectConfig): string {
   return `import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { loadSpec } from '@loushy/build-ai-agent';
+import { ConfigurationError } from '../../execution/errors';
 
 describe('agent.yaml', () => {
   it('is a valid agent spec', () => {

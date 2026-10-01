@@ -50,6 +50,9 @@ default code of `ConfigurationError`; `error.field` names the option when known.
 **Fix:** change the option the message names.
 
 **Example:** `withFallback([])` throws "withFallback() needs at least one provider".
+`new NodeWorkspace({ root })` with a missing or non-directory root, a duplicate tool
+name in a `ToolRegistry`, a bad `toolConcurrency`, `serveMcp()` without a `name`
+and `loushy studio` without Agent Forge's files are the same code.
 
 ### LOUSHY_CONFIG_MISSING_PROVIDER
 
@@ -239,7 +242,10 @@ result and the run carries on.
 **Fix:** look at `error.toolName` and `error.cause`, and fix the tool or the
 input it was given.
 
-**Example:** a tool's `execute` threw.
+**Example:** a tool's `execute` threw. The built-in tools (`http`, `email`,
+`github`, `jira`, `slack`, `ask_question`) throw an `SDKError` with this code for
+a failed call; their message is the tool's result, so it carries no appended
+`[code] hint (docs)` line.
 
 ## Approvals and sessions
 

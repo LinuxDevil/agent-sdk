@@ -16,6 +16,7 @@ import { assertSessionId } from '../session/sessionStore';
 import { memoryStore, type AgentStore } from '../storage/agentStore';
 import { newId } from '../utils/id';
 import { hasOwnStore } from './devReload';
+import { SDKError } from '../execution/errors';
 
 export interface ChatReplOptions {
   /** Lines to read (a readline interface, any async iterable of lines, or a raw stream, which is split into lines). */
@@ -157,7 +158,7 @@ export async function runChatRepl(options: ChatReplOptions): Promise<number> {
       let events: AsyncIterable<AgentEvent> = openSession().stream(input);
       for (let paused = await render(events); paused; paused = await render(events)) {
         const request = (await agent.approvals.list()).find((pending) => pending.id === paused?.approvalId);
-        if (!request) throw new Error(`No pending approval '${paused.approvalId}'.`);
+        if (!request) throw new SDKError(`No pending approval '${paused.approvalId}'.`, 'LOUSHY_APPROVAL_NOT_FOUND');
         events = await decide(request);
       }
     } catch (error) {

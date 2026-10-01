@@ -9,6 +9,7 @@ import type { DefinedTool } from '../../defineTool';
 import { needsApprovalGate, sanitizeToolName } from './toolNames';
 import { buildServer, type ServerSpec } from './buildServer';
 import { listenHttp, type McpHttpTransportOptions } from './httpTransport';
+import { ConfigurationError } from '../../../execution/errors';
 
 export type { McpHttpTransportOptions } from './httpTransport';
 
@@ -50,19 +51,22 @@ export interface ServeMcpHandle {
   close(): Promise<void>;
 }
 
+/** A `z.object()` of zod 3 (`_def.typeName`) or zod 4 (`_zod.def.type`). */
 function isObjectSchema(schema: unknown): boolean {
-  return (schema as { _def?: { typeName?: string } } | undefined)?._def?.typeName === 'ZodObject';
+  const internals = schema as { _def?: { typeName?: string }; _zod?: { def?: { type?: string } } } | undefined;
+  return internals?._def?.typeName === 'ZodObject' || internals?._zod?.def?.type === 'object';
 }
 
 function assertTools(tools: readonly DefinedTool[], agentToolName: string): void {
   const seen = new Set([agentToolName]);
   for (const tool of tools) {
     if (!isObjectSchema(tool.input)) {
-      throw new Error(`serveMcp: tool '${tool.name}' needs a z.object(...) input; MCP tool inputs must be objects.`);
+      throw new ConfigurationError(`serveMcp: tool '${tool.name}' needs a z.object(...) input; MCP tool inputs must be objects.`, 'tools');
     }
     if (seen.has(tool.name)) {
-      throw new Error(
-        `serveMcp: two tools are named '${tool.name}'. Rename the tool, or set \`toolName\` to rename the agent tool.`
+      throw new ConfigurationError(
+        `serveMcp: two tools are named '${tool.name}'. Rename the tool, or set \`toolName\` to rename the agent tool.`,
+        'tools'
       );
     }
     seen.add(tool.name);
@@ -71,10 +75,10 @@ function assertTools(tools: readonly DefinedTool[], agentToolName: string): void
 
 function assertOptions(options: ServeMcpOptions, agentToolName: string): void {
   if (!options.agent || typeof options.agent.send !== 'function') {
-    throw new Error('serveMcp: `agent` must be the result of createAgent() (an object with a send() method).');
+    throw new ConfigurationError('serveMcp: `agent` must be the result of createAgent() (an object with a send() method).', 'agent');
   }
   if (!options.name) {
-    throw new Error("serveMcp: `name` is required (e.g. serveMcp({ agent, name: 'support-bot' })).");
+    throw new ConfigurationError("serveMcp: `name` is required (e.g. serveMcp({ agent, name: 'support-bot' })).", 'name');
   }
   assertTools(options.tools ?? [], agentToolName);
 }

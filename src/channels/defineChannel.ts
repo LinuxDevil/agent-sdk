@@ -57,9 +57,42 @@ export interface ChannelApprovalDecision {
   answer?: string;
 }
 
-/** What `parse` returns for a request that decides a pause (a button click) instead of starting a turn. */
+/** Who clicked a button on a surface: the surface's own user id, plus a name and roles where it has them. */
+export interface ChannelUser {
+  id: string;
+  name?: string;
+  roles?: string[];
+}
+
+/**
+ * What `parse` returns for a request that decides a pause (a button click) instead of starting a turn.
+ * With `inbound` (the conversation as the click itself names it), a pause that a restarted process
+ * no longer remembers is still delivered to the right place; `approver` is who decided.
+ */
 export interface ChannelDecision {
   decision: ChannelApprovalDecision;
+  inbound?: ChannelInbound;
+  approver?: ChannelUser;
+}
+
+/** Where a failure after the surface was answered happened. */
+export interface ChannelErrorContext {
+  channel: string;
+  stage: 'parse' | 'turn' | 'reply' | 'approval';
+  sessionId?: string;
+}
+
+/** Called for a failure after the request was acknowledged (see `Channel.onError`); never throws out of the handler. */
+export type ChannelErrorHandler = (error: unknown, context: ChannelErrorContext) => void | Promise<void>;
+
+/** What `parse` may ask the host about: the agent's own state, so a channel keeps none of its own. */
+export interface ChannelContext {
+  /** The pending approval `id` this process knows, if any. */
+  approval(id: string): Promise<PendingApproval | undefined>;
+  /** The session id `sessionKey` maps to. */
+  sessionId(sessionKey: string): string;
+  /** Whether a session was already saved for `sessionKey` (e.g. "the bot is active in this thread"). */
+  hasSession(sessionKey: string): Promise<boolean>;
 }
 
 /** What `reply` gets. */
@@ -100,11 +133,13 @@ export interface Channel<TEvent = unknown> {
    * bot echo, a retry). Call `respond` to answer the request before the turn
    * runs (a surface that needs an answer within seconds, a handshake).
    */
-  parse(req: ChannelRequest, respond: ChannelRespond): Promise<ChannelInbound<TEvent> | ChannelDecision | null>;
+  parse(req: ChannelRequest, respond: ChannelRespond, ctx: ChannelContext): Promise<ChannelInbound<TEvent> | ChannelDecision | null>;
   /** Delivers the agent's reply to the surface. */
   reply(ctx: ChannelReplyContext<TEvent>): Promise<void>;
   /** Renders a pause (buttons, a form, ...). Default: `reply` with the text prompt. */
   onApproval?(ctx: ChannelApprovalContext<TEvent>): Promise<void>;
+  /** Receives failures after the request was acknowledged (reply delivery, the turn, a continuation). Default: `mountChannels({ onError })`, else `console.error`. */
+  onError?: ChannelErrorHandler;
   /** The session for an inbound message. Default: `` `${name}:${sessionKey}` ``. */
   sessionId?(inbound: ChannelInbound<TEvent>): string;
 }

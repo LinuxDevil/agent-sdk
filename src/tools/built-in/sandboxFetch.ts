@@ -21,6 +21,7 @@
 import { SandboxAdapter } from '../../security/sandboxCore';
 import { ToolDescriptor } from '../../types';
 import { getToolExecute } from '../toolContract';
+import { toolFailure } from './toolFailure';
 
 /**
  * The request shape encoded (as base64 JSON, via the SANDBOX_FETCH_REQUEST
@@ -137,7 +138,7 @@ export async function sandboxHttpFetch(
   );
 
   if (result.exitCode !== 0) {
-    throw new Error(
+    throw toolFailure(
       `Sandboxed HTTP request to ${request.url} failed: ${result.stderr || `exit code ${result.exitCode}`}`
     );
   }
@@ -146,7 +147,7 @@ export async function sandboxHttpFetch(
   try {
     parsed = JSON.parse(result.stdout);
   } catch {
-    throw new Error(`Sandboxed HTTP request to ${request.url} returned unparsable output: ${result.stdout}`);
+    throw toolFailure(`Sandboxed HTTP request to ${request.url} returned unparsable output: ${result.stdout}`);
   }
 
   return new Response(parsed.body, {
