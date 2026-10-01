@@ -180,11 +180,28 @@ export async function fetch(request: Request, env: Record<string, unknown> = {})
 export default { fetch };
 `;
 
+/**
+ * Runtime probes the leak check accepts (LOU-D28c). `ai` v7 and its
+ * `@ai-sdk/provider-utils` v5 ship one `dist/index.js` for every runtime (no
+ * browser/worker/edge export condition to pick instead) and load these
+ * builtins through `globalThis.process?.getBuiltinModule?.(id)`, never through
+ * an import, so there is nothing for esbuild to resolve or shim:
+ *  - node:module, node:dns: provider-utils' SSRF-safe download fetch, used only
+ *    when `isNodeRuntime()` (false on workerd, which falls back to fetch());
+ *  - node:diagnostics_channel, node:async_hooks: `ai`'s telemetry tracing
+ *    channel, used only when `process.release.name === 'node'`, and a missing
+ *    module is treated as "no subscribers".
+ * Only these ids, and only as the argument of a `getBuiltinModule` /
+ * `loadBuiltinModule` call, are exempt; any other `node:` string still fails.
+ */
+const WORKER_SAFE_BUILTIN_PROBE = /\b(?:get|load)BuiltinModule\d*(?:\?\.)?\(\s*(["'`])node:(?:module|dns|diagnostics_channel|async_hooks)\1\s*\)/g;
+
 /** Returns every `node:`-prefixed module specifier referenced in `source`. */
 export function findNodeBuiltinReferences(source: string): string[] {
+  const code = source.replace(WORKER_SAFE_BUILTIN_PROBE, '');
   // A bare `from "fs"` is as much a leak as `node:fs` (esbuild drops the prefix when it leaves a builtin external).
   const bare = new RegExp(`(?:from|import\\(|require\\()\\s*(["'\`](?:${builtinModules.join('|')})["'\`])`, 'g');
-  const found = [...(source.match(/["'`]node:[a-z_/]+["'`]/g) || []), ...Array.from(source.matchAll(bare), (match) => match[1])];
+  const found = [...(code.match(/["'`]node:[a-z_/]+["'`]/g) || []), ...Array.from(code.matchAll(bare), (match) => match[1])];
   return Array.from(new Set(found));
 }
 
