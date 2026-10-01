@@ -14,6 +14,8 @@ import { ToolRegistry } from '../tools';
 import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
 import { ApprovalStore, ExecutionSnapshot, PendingApproval, SubagentSuspension } from './ApprovalGate';
 import { CheckpointStore } from './checkpoint';
+import type { CallUsage, RunUsage, StepUsage } from '../models/usage';
+import { mergeDelegatedUsage } from './runUsage';
 import { TraceExporter, withSpan } from './tracing';
 import {
   agentRunSpanInit,
@@ -31,6 +33,7 @@ import {
 import { isAbortError } from './errors';
 import {
   PreparedToolCall,
+  ToolCallContext,
   ToolCallOutcome,
   parseToolArguments,
   runToolCall,
@@ -45,6 +48,7 @@ import {
 import {
   buildTools,
   compactGenerateError,
+  GeneratedStep,
   generateInSpan,
   prepareGenerateRequest,
   providerErrorMessage,
@@ -52,10 +56,10 @@ import {
 } from './generateStep';
 import {
   AgentRunState,
-  addUsage,
   loadRunState,
   pushAbortedBatchResults,
   pushToolResult,
+  recordStep,
   saveStepCheckpoint,
   toExecutionResult,
 } from './agentRunState';
@@ -111,11 +115,10 @@ export interface ExecutionEvent {
     error?: string;
   };
   finishReason?: ExecutionFinishReason;
-  usage?: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-  };
+  /** Running usage of the whole run so far (LOU-V5); on `finish`, the final total. */
+  usage?: RunUsage;
+  /** On `text-complete`: what the model call that produced the text spent (LOU-V5). */
+  stepUsage?: StepUsage;
   error?: Error;
   /**
    * On an `abort` event: the `reason` of the aborted signal (a
@@ -208,6 +211,12 @@ export interface ExecuteOptions {
    */
   initialSteps?: number;
   /**
+   * Usage already spent by earlier work this run continues (LOU-V5), used
+   * when there is no checkpoint to rehydrate it from - e.g. resume.ts
+   * resuming a run paused for approval. Ignored when a checkpoint is loaded.
+   */
+  initialUsage?: RunUsage;
+  /**
    * Tracing/observability hooks (LOU-E1/E2). These are invoked immediately
    * before/after the underlying provider.generate() call and each tool
    * execution inside executeToolCall(). They are plain synchronous or
@@ -219,9 +228,14 @@ export interface ExecuteOptions {
   onLLMRequest?: (request: GenerateOptions) => void | Promise<void>;
   /**
    * Invoked immediately after each provider.generate() call resolves,
-   * with the elapsed wall-clock time in milliseconds.
+   * with the elapsed wall-clock time in milliseconds and what the call
+   * spent (LOU-V5: reported usage, or an estimate flagged `estimated`).
    */
-  onLLMResponse?: (response: GenerateResult, latencyMs: number) => void | Promise<void>;
+  onLLMResponse?: (
+    response: GenerateResult,
+    latencyMs: number,
+    usage: CallUsage
+  ) => void | Promise<void>;
   /** Invoked immediately before each tool execution. */
   onToolCall?: (toolCall: ToolCall) => void | Promise<void>;
   /**
@@ -411,11 +425,13 @@ export interface ExecutionResult {
   text: string;
   messages: Message[];
   toolCalls: ToolCall[];
-  usage: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-  };
+  /**
+   * Tokens, cost and per-model breakdown of the whole run, including
+   * delegated children and steps before a resume (LOU-V5). See `formatUsage()`.
+   */
+  usage: RunUsage;
+  /** One entry per model call of this process's run, in order (LOU-V5). */
+  stepUsage?: StepUsage[];
   finishReason: ExecutionFinishReason;
   steps: number;
   approvalId?: string;
@@ -521,7 +537,7 @@ export class AgentExecutor {
     options: ExecuteOptions,
     agentSpanId: string
   ): Promise<ExecutionResult> {
-    const { agent, toolRegistry, maxSteps = 10, onEvent, signal } = options;
+    const { agent, toolRegistry, onEvent } = options;
 
     // Emit start event
     this.emitEvent(onEvent, {
@@ -535,6 +551,18 @@ export class AgentExecutor {
     const tools = buildTools(agent, toolRegistry);
 
     const state = await loadRunState(options);
+
+    return this.runSteps(options, state, tools, agentSpanId);
+  }
+
+  /** The generate -> tools loop of runAgentLoop(), run once `state` is loaded. */
+  private static async runSteps(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    tools: ToolDefinition[],
+    agentSpanId: string
+  ): Promise<ExecutionResult> {
+    const { maxSteps = 10, signal } = options;
 
     // Execution loop with tool calling. LOU-V1: the signal is checked
     // before every model call (here) and every tool call (runToolCalls()).
@@ -601,17 +629,18 @@ export class AgentExecutor {
     tools: ToolDefinition[],
     agentSpanId: string
   ): Promise<'continue' | 'stop' | ExecutionResult> {
-    const result = await this.generateOrSurfaceError(options, state, tools, agentSpanId);
-    if (!result) {
+    const generatedStep = await this.generateOrSurfaceError(options, state, tools, agentSpanId);
+    if (!generatedStep) {
       return 'continue';
     }
+    const { generated: result, measured } = generatedStep;
 
     // A turn produced a real result - any pending "the last thing that
     // happened was a provider failure" tracking no longer applies.
     state.lastSurfacedProviderError = undefined;
 
-    // Update usage
-    addUsage(state.usage, result.usage);
+    // Update usage (LOU-V5)
+    const stepUsage = recordStep(state, measured);
 
     // Handle text response
     if (result.text) {
@@ -620,6 +649,7 @@ export class AgentExecutor {
         type: 'text-complete',
         timestamp: new Date(),
         text: result.text,
+        stepUsage,
       });
     }
 
@@ -664,7 +694,7 @@ export class AgentExecutor {
     state: AgentRunState,
     tools: ToolDefinition[],
     agentSpanId: string
-  ): Promise<GenerateResult | undefined> {
+  ): Promise<GeneratedStep | undefined> {
     const generateRequest = await prepareGenerateRequest(options, state.messages, tools);
 
     try {
@@ -842,7 +872,6 @@ export class AgentExecutor {
           runtime: options,
           toolCallId: toolCall.id,
           spanId: toolSpan.id,
-          addUsage: (usage) => addUsage(state.usage, usage),
           execute: (childOptions) => AgentExecutor.execute(childOptions),
         };
         const executed = await this.executeToolCall(
@@ -857,6 +886,8 @@ export class AgentExecutor {
           state.messages,
           signal,
           onPrepared,
+          // LOU-V5: a delegated child's usage is added to this run's totals.
+          (child) => mergeDelegatedUsage(state.usage, child),
           scope
         );
         const parsedArgs =
@@ -913,6 +944,7 @@ export class AgentExecutor {
       pendingToolCall: pending,
       steps: state.steps,
       sessionId,
+      usage: structuredClone(state.usage),
     };
     return this.savePause(options, state, { pending, snapshot });
   }
@@ -1036,6 +1068,7 @@ export class AgentExecutor {
     messages: Message[] = [],
     signal?: AbortSignal,
     onPrepared?: (prepared: PreparedToolCall) => void,
+    onDelegatedUsage?: ToolCallContext['onDelegatedUsage'],
     scope?: ToolCallScope
   ): Promise<ToolCallOutcome> {
     return runToolCall(
@@ -1050,6 +1083,7 @@ export class AgentExecutor {
         sessionId,
         messages,
         signal,
+        onDelegatedUsage,
         scope,
       },
       onPrepared

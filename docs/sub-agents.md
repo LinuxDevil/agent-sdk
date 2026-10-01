@@ -131,7 +131,7 @@ inherits:
 | `onEvent` and `stream()` | Yes | The sub-agent's events are forwarded with a `subagent` field. |
 | `toolConcurrency` | Yes, unless the sub-agent sets its own | |
 | `sandbox` | Yes | |
-| Token usage | Rolls up | Added to the lead's `result.usage`. |
+| Token usage | Rolls up | Added to the lead's `result.usage` (totals, `byModel`, and `usage.delegated`). |
 | `maxSubagentDepth` | The remaining budget | See [Depth](#depth). |
 | `onLLMRequest`, `onToolCall` and the other single-run callbacks | No | They describe one run; use hooks or `onEvent` to observe sub-agents. |
 | `sessionId` / `checkpointStore` | No | A sub-agent is not checkpointed on its own. If the process dies while a sub-agent runs, the resumed lead runs that `task` call again. |
@@ -163,8 +163,8 @@ hooks.register({
 ### Events
 
 `agent.stream()` / `AgentExecutor.stream()` on the lead stream each
-sub-agent's run inside the same stream - steps, text deltas, tool events -
-with a `subagent` field on every one of its events, so a UI can nest
+sub-agent's run inside the same stream - steps, text deltas, tool events and
+errors - with a `subagent` field on every one of its events, so a UI can nest
 sub-agent activity under the lead's `task` call (`subagent.toolCallId`). See
 [Streaming: sub-agents](./streaming.md#sub-agents).
 
@@ -223,7 +223,8 @@ Guarantees and limits:
 - Approvals need an `approvalStore` on the lead run, which `createAgent()`
   does not take yet; use `AgentExecutor.execute()` for the lead. Without one,
   the sub-agent's call becomes an error result and nothing runs.
-- Token usage of the part of a sub-agent that runs after the resume is not
+- Token usage keeps adding up across the pause: the sub-agent's usage before
+  the pause is in the paused result, and what it spends after the resume is
   added to the resumed lead's `result.usage`.
 
 ## `createDelegateTool()`

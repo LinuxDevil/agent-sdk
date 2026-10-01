@@ -21,6 +21,7 @@ import type {
   SubagentSuspension,
 } from './ApprovalGate';
 import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
+import type { RunUsage } from '../models/usage';
 import type { ResumeExecuteOptions } from './resume';
 import { PropagatingToolError } from './propagatingToolError';
 
@@ -45,8 +46,12 @@ export interface ToolCallScope {
   toolCallId: string;
   /** The tool call's `execute_tool` span, when traced. */
   spanId?: string;
-  /** Adds a child run's token usage to the parent run's total. */
-  addUsage?: (usage: ExecutionResult['usage']) => void;
+  /**
+   * Adds a child run's usage to the parent's totals - set by
+   * resumeAfterApproval(); the executor hands tools `onDelegatedUsage`
+   * in their execute options instead (LOU-V5).
+   */
+  onDelegatedUsage?: (usage: RunUsage) => void;
   /** Runs a child agent (`AgentExecutor.execute`). */
   execute: (options: ExecuteOptions) => Promise<ExecutionResult>;
   /** Set by resumeAfterApproval() when this call re-enters a paused sub-agent. */
@@ -149,7 +154,7 @@ function pendingForSuspension(suspension: SubagentSuspension): PendingApproval {
 /** The approval record that pauses a parent run on a suspended sub-agent. */
 export function suspensionRecord(
   run: { agent: AgentConfig; sessionId?: string },
-  state: { messages: Message[]; steps: number },
+  state: { messages: Message[]; steps: number; usage: RunUsage },
   suspension: SubagentSuspension
 ): { pending: PendingApproval; snapshot: ExecutionSnapshot } {
   const pending = pendingForSuspension(suspension);
@@ -161,6 +166,7 @@ export function suspensionRecord(
       pendingToolCall: pending,
       steps: state.steps,
       sessionId: run.sessionId,
+      usage: structuredClone(state.usage),
       subagent: suspension,
     },
   };

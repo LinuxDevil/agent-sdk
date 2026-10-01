@@ -13,6 +13,7 @@ import { AgentExecutor } from './AgentExecutor';
 import { LLMProvider, Message } from '../providers';
 import { AgentConfig, ToolDescriptor } from '../types';
 import { ToolRegistry } from '../tools';
+import type { ToolRunContext } from './sandboxGuard';
 
 /**
  * Thrown when a delegation chain exceeds the configured maxDepth without
@@ -128,7 +129,7 @@ export function createDelegateTool(opts: DelegateAgentOptions): ToolDescriptor {
           task: string;
           context?: Message[];
         },
-        options?: { abortSignal?: AbortSignal }
+        options?: { abortSignal?: AbortSignal } & ToolRunContext
       ): Promise<DelegateAgentResult> => {
         const currentDepth = delegationDepthStorage.getStore() ?? 0;
 
@@ -149,9 +150,13 @@ export function createDelegateTool(opts: DelegateAgentOptions): ToolDescriptor {
             (childOptions) => AgentExecutor.execute(childOptions)
           );
 
+          // LOU-V5: runSubagent() rolled the child's full usage into the
+          // parent run's totals (`usage.delegated`); the model only sees the
+          // token counts.
+          const { promptTokens, completionTokens, totalTokens } = result.usage;
           return {
             text: result.text,
-            usage: result.usage,
+            usage: { promptTokens, completionTokens, totalTokens },
           };
         });
       },

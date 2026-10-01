@@ -19,6 +19,8 @@ import { executeToolWithSandboxGuard } from './sandboxGuard';
 import { HookRegistry } from './hooks';
 import { toolErrorMessage } from './propagatingToolError';
 import { replaceToolResult, type ToolCallScope } from './subagentRuntime';
+import type { RunUsage } from '../models/usage';
+import { emptyRunUsage, mergeDelegatedUsage, restoreRunUsage } from './runUsage';
 import { resumeSubagentCall, type ResumeContext } from './resumeSubagent';
 
 /**
@@ -59,6 +61,7 @@ export type ResumeExecuteOptions = Omit<
   | 'toolRegistry'
   | 'skipSystemPromptInjection'
   | 'initialSteps'
+  | 'initialUsage'
   | 'sessionId'
   | 'checkpointStore'
 >;
@@ -122,6 +125,7 @@ export async function resumeAfterApproval(
     messages,
     toolRegistry,
     executeOptions,
+    usage: snapshot.usage ? restoreRunUsage(snapshot.usage) : emptyRunUsage(),
     execute: (options) => AgentExecutor.execute(options),
     resumeRun: resumeAfterApproval,
   };
@@ -138,6 +142,7 @@ export async function resumeAfterApproval(
     executeOptions,
     checkpointStore,
     staleBusinessState,
+    usage: ctx.usage,
   });
 }
 
@@ -165,6 +170,7 @@ async function decidedToolMessage(
   const scope: ToolCallScope = {
     runtime: { ...executeOptions, approvalStore: ctx.approvalStore },
     toolCallId: pending.toolCallId,
+    onDelegatedUsage: (child) => mergeDelegatedUsage(ctx.usage, child),
     execute: ctx.execute,
   };
   return { message: await runApproved(pending, ctx.toolRegistry, scope) };
@@ -328,6 +334,7 @@ async function executeApprovedTool(
         args,
         sandbox,
         executeOptions.signal,
+        undefined,
         scope
       ),
     };
@@ -387,6 +394,7 @@ function continueResumedRun(
     executeOptions: ResumeExecuteOptions;
     checkpointStore?: CheckpointStore;
     staleBusinessState: unknown;
+    usage: RunUsage;
   }
 ): Promise<ExecutionResult> {
   const { executeOptions } = run;
@@ -426,5 +434,8 @@ function continueResumedRun(
     // snapshot.steps is the step count AgentExecutor.execute() had already
     // reached (see ExecutionSnapshot) at the moment it paused for approval.
     initialSteps: snapshot.steps,
+    // LOU-V5: and usage totals, rather than restarting them at zero
+    // (including a resumed sub-agent's usage, LOU-Y1).
+    initialUsage: run.usage,
   });
 }

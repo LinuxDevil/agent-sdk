@@ -6,6 +6,7 @@
 import { Message } from '../providers';
 import { AgentConfig } from '../types';
 import { StorageService } from '../storage';
+import type { RunUsage } from '../models/usage';
 
 /**
  * A tool call that is waiting on a human decision before it can execute.
@@ -54,6 +55,8 @@ export interface ExecutionSnapshot {
    * execution at all.
    */
   sessionId?: string;
+  /** Usage the paused run had spent (LOU-V5), so the resumed run continues its totals. */
+  usage?: RunUsage;
   /**
    * LOU-Y1: set when the run paused because a sub-agent it called paused for
    * approval. `pendingToolCall` is then the sub-agent's call, and

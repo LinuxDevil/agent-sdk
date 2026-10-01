@@ -26,6 +26,7 @@ import { HookRegistry, type AgentHook, type HookContext, type SubagentInfo } fro
 import { markPropagating } from './propagatingToolError';
 import { SubagentApprovalPause, subagentBudget, toolCallScopeOf, type ToolCallScope } from './subagentRuntime';
 import { RUN_EVENTS, runEventsOf, type StreamingExecuteOptions } from './agentRun';
+import type { ToolRunContext } from './sandboxGuard';
 
 /** Everything needed to run an agent as a child: its own configuration. */
 export interface SubagentSpec {
@@ -48,7 +49,7 @@ export interface SubagentRequest {
    * The options object the parent tool's `execute(args, options)` received:
    * its `abortSignal`, and the parent run it belongs to.
    */
-  toolOptions?: { abortSignal?: AbortSignal };
+  toolOptions?: { abortSignal?: AbortSignal } & ToolRunContext;
   /** Short label of the task, for events and hooks. */
   description?: string;
 }
@@ -86,7 +87,9 @@ export async function runSubagent(
           toolRegistry: spec.toolRegistry,
         });
 
-  scope?.addUsage?.(result.usage);
+  // LOU-V5: the child's usage rolls up into the parent run's totals.
+  const reportUsage = scope?.onDelegatedUsage ?? request.toolOptions?.onDelegatedUsage;
+  reportUsage?.(result.usage);
   const paused = capture.saved();
   if (result.finishReason === 'awaiting-approval' && paused) {
     throw new SubagentApprovalPause(request.name, paused);
@@ -123,8 +126,12 @@ function captureApproval(scope: ToolCallScope | undefined): {
       saved = snapshot;
     },
     resolve: async (id) => {
-      const snapshot = resume?.suspension.snapshot;
-      return snapshot && id === resume.decision.id ? { pending: snapshot.pendingToolCall, snapshot } : null;
+      const paused = resume?.suspension.snapshot;
+      if (!paused || id !== resume.decision.id) return null;
+      // The child's usage up to the pause already rolled into the parent's
+      // totals; the resumed child reports only what it spends from here.
+      const snapshot = { ...paused, usage: undefined };
+      return { pending: snapshot.pendingToolCall, snapshot };
     },
   };
   return { store, saved: () => saved };

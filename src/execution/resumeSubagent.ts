@@ -13,6 +13,8 @@ import type { ToolRegistry } from '../tools';
 import { withSubagents } from '../subagents/withSubagents';
 import type { ApprovalDecision, ApprovalStore, ExecutionSnapshot, PendingApproval, SubagentSuspension } from './ApprovalGate';
 import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
+import type { RunUsage } from '../models/usage';
+import { mergeDelegatedUsage } from './runUsage';
 import type { ResumeExecuteOptions } from './resume';
 import {
   SubagentApprovalPause,
@@ -30,6 +32,8 @@ export interface ResumeContext {
   messages: Message[];
   toolRegistry: ToolRegistry;
   executeOptions: ResumeExecuteOptions;
+  /** The resumed run's usage so far: a resumed sub-agent's usage is added to it (LOU-V5). */
+  usage: RunUsage;
   /** `AgentExecutor.execute` and `resumeAfterApproval`, for the sub-agent. */
   execute: (options: ExecuteOptions) => Promise<ExecutionResult>;
   resumeRun: ResumeRun;
@@ -64,6 +68,7 @@ export async function resumeSubagentCall(
   const scope: ToolCallScope = {
     runtime: { ...executeOptions, approvalStore: ctx.approvalStore },
     toolCallId: suspension.toolCallId,
+    onDelegatedUsage: (child) => mergeDelegatedUsage(ctx.usage, child),
     execute: ctx.execute,
     resume: { decision: ctx.decision, suspension, run: ctx.resumeRun },
   };
@@ -78,9 +83,9 @@ export async function resumeSubagentCall(
 /** Saves a new approval record for the sub-agent's next pending call. */
 async function pauseAgain(ctx: ResumeContext, suspension: SubagentSuspension): Promise<ExecutionResult> {
   const { snapshot, messages } = ctx;
-  const record = suspensionRecord(snapshot, { messages, steps: snapshot.steps }, suspension);
+  const { usage } = ctx;
+  const record = suspensionRecord(snapshot, { messages, steps: snapshot.steps, usage }, suspension);
   await ctx.approvalStore.save(record.pending, record.snapshot);
-  const usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
   ctx.executeOptions.onEvent?.({ type: 'finish', timestamp: new Date(), finishReason: 'awaiting-approval', usage });
   return {
     text: '',

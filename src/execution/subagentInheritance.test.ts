@@ -292,7 +292,8 @@ describe('sub-agents inherit the parent runtime (LOU-Y1)', () => {
     });
 
     expect(seen).toEqual(['parent', 'Billing', 'parent']);
-    expect(result.usage).toEqual({ promptTokens: 52, completionTokens: 7, totalTokens: 59 });
+    expect(result.usage).toMatchObject({ inputTokens: 52, outputTokens: 7, totalTokens: 59, modelCalls: 3 });
+    expect(result.usage.delegated).toMatchObject({ inputTokens: 50, outputTokens: 5, runs: 1 });
   });
 });
 
@@ -320,6 +321,9 @@ describe('approval inside a sub-agent (LOU-Y1)', () => {
     expect(sent).toEqual(['ana']);
     expect(result.finishReason).toBe('stop');
     expect(result.text).toBe('done');
+    // Child usage before the pause (kept in the snapshot) and after the resume both roll up.
+    expect(result.usage.delegated?.runs).toBe(2);
+    expect(result.usage.modelCalls).toBe(4);
     expect(approvals.records.size).toBe(0);
     // The child resumed with its own transcript; the parent got the child's final answer as the task result.
     expect(toolResults(childModel.calls[1].messages as Message[])[0].content).toContain('sent to ana');

@@ -9,6 +9,7 @@ import { AgentConfig, ToolDescriptor } from '../types';
 import { ToolRegistry } from '../tools';
 import { SandboxAdapter } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
+import type { ToolRunContext } from './sandboxGuard';
 import { HookRegistry, ToolCallHookContext } from './hooks';
 import { toolErrorMessage, toolErrorResult } from './propagatingToolError';
 import { ToolArgumentsValidationError, validateToolArguments } from './toolArgsValidation';
@@ -48,6 +49,8 @@ export interface ToolCallContext {
   signal?: AbortSignal;
   /** LOU-Y1: this call, as seen by a sub-agent the tool starts. */
   scope?: ToolCallScope;
+  /** LOU-V5: where a delegated child's usage is reported (see ToolRunContext). */
+  onDelegatedUsage?: ToolRunContext['onDelegatedUsage'];
 }
 
 /**
@@ -340,6 +343,7 @@ async function doExecuteToolCall(
       args,
       ctx.sandbox,
       ctx.signal,
+      { onDelegatedUsage: ctx.onDelegatedUsage },
       ctx.scope
     );
 

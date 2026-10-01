@@ -107,7 +107,6 @@ describe('subagents option and the task tool (LOU-Y3)', () => {
     // (The child's text is streamed: one or more text.delta, collapsed here.)
     const types = child.map(([type]) => type).filter((type, i, all) => type !== 'text.delta' || all[i - 1] !== type);
     expect(types).toEqual([
-      'run.start',
       'step.start',
       'tool.start',
       'tool.done',
@@ -116,12 +115,10 @@ describe('subagents option and the task tool (LOU-Y3)', () => {
       'text.delta',
       'text.done',
       'step.done',
-      'run.done',
     ]);
     expect(child.every(([, subagent]) => JSON.stringify(subagent) === JSON.stringify(tag))).toBe(true);
-    const childDone = events.find((e) => e.type === 'run.done' && e.subagent);
-    expect(childDone).toMatchObject({ finishReason: 'stop', text: 'found it' });
-
+    // run.start / run.done mark the top-level run only, exactly once.
+    expect(events.filter((e) => e.type === 'run.start' || e.type === 'run.done').every((e) => !e.subagent)).toBe(true);
     const top = events.filter((e) => !e.subagent);
     expect(top[0].type).toBe('run.start');
     expect(top.at(-1)).toMatchObject({ type: 'run.done', text: 'done' });
@@ -250,7 +247,7 @@ describe('subagents option and the task tool (LOU-Y3)', () => {
 
     const { usage } = await lead.send('go');
 
-    expect(usage).toEqual({ promptTokens: 103, completionTokens: 13, totalTokens: 116 });
+    expect(usage).toMatchObject({ inputTokens: 103, outputTokens: 13, totalTokens: 116, modelCalls: 3 });
   });
 
   describe('configuration errors', () => {

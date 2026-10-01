@@ -28,6 +28,8 @@ import {
 } from './agentEvents';
 import { parseToolArguments } from './toolCallExecution';
 import { canStream, generateViaStream } from './streamStep';
+import { measureUsage } from './runUsage';
+import type { Usage } from '../models/usage';
 
 /**
  * The handle returned by `agent.stream()` and `AgentExecutor.stream()`.
@@ -100,11 +102,25 @@ function toEventError(error: unknown): AgentEventError {
   };
 }
 
-function toEventUsage(usage: AgentEventUsage): AgentEventUsage {
+/** Usage of one step, or (with `modelCalls`) of the whole run, as event usage. */
+function toEventUsage(usage: {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  estimated: boolean;
+  costUsd?: number;
+  modelCalls?: number;
+}): AgentEventUsage {
+  const { inputTokens, outputTokens, totalTokens, estimated, costUsd, modelCalls } = usage;
   return {
-    promptTokens: usage.promptTokens,
-    completionTokens: usage.completionTokens,
-    totalTokens: usage.totalTokens,
+    promptTokens: inputTokens,
+    completionTokens: outputTokens,
+    totalTokens,
+    inputTokens,
+    outputTokens,
+    estimated,
+    ...(costUsd !== undefined && { costUsd }),
+    ...(modelCalls !== undefined && { modelCalls }),
   };
 }
 
@@ -118,14 +134,15 @@ function toJsonValue(value: unknown): unknown {
   }
 }
 
+/** A finished model step's finish reason and measured usage (LOU-V5). */
+type MeasuredStep = { finishReason: GenerateResult['finishReason']; usage: Usage; estimated: boolean; costUsd?: number };
+
 class AgentRunImpl implements AgentRun {
   readonly runId = nanoid();
   readonly result: Promise<ExecutionResult>;
   private readonly controller = new AbortController();
   private readonly queue: AgentEvent[] = [];
   private readonly toolStarts = new Map<string, number>();
-  /** LOU-Y1: each running sub-agent's last text, for its `run.done`. */
-  private readonly subagentTexts = new Map<string, string>();
   private seq = 0;
   private closed = false;
   private iterated = false;
@@ -187,7 +204,7 @@ class AgentRunImpl implements AgentRun {
       v: AGENT_EVENT_SCHEMA_VERSION,
     } as AgentEvent;
     this.queue.push(event);
-    if (payload.type === 'run.done' && !subagent) this.closed = true;
+    if (payload.type === 'run.done') this.closed = true;
     this.wake?.();
     this.wake = undefined;
   }
@@ -213,23 +230,22 @@ class AgentRunImpl implements AgentRun {
   /**
    * Maps the loop's `onEvent` callbacks to AgentEvents (`abort`/`finish` are
    * covered by `run.done`). Events forwarded from a sub-agent (LOU-Y1) keep
-   * their `subagent` tag; a sub-agent's `finish` becomes its tagged `run.done`.
+   * their `subagent` tag; its `start`/`finish` are left out, since
+   * `run.start`/`run.done` mark the top-level run only (the sub-agent's run
+   * spans the parent's `tool.start`/`tool.done` of the calling tool).
    */
   private translate(event: ExecutionEvent): void {
     const { subagent } = event;
     switch (event.type) {
       case 'start':
-        this.emit(
-          {
-            type: 'run.start',
-            agentName: event.agentName ?? '',
-            ...(event.agentId !== undefined && { agentId: event.agentId }),
-          },
-          subagent
-        );
+        if (subagent) break;
+        this.emit({
+          type: 'run.start',
+          agentName: event.agentName ?? '',
+          ...(event.agentId !== undefined && { agentId: event.agentId }),
+        });
         break;
       case 'text-complete':
-        if (subagent) this.subagentTexts.set(subagentKey(subagent), event.text ?? '');
         this.emit({ type: 'text.done', text: event.text ?? '' }, subagent);
         break;
       case 'tool-call':
@@ -242,22 +258,7 @@ class AgentRunImpl implements AgentRun {
         if (!subagent) this.lastError = event.error;
         this.emit({ type: 'error', error: toEventError(event.error) }, subagent);
         break;
-      case 'finish':
-        if (subagent) this.subagentDone(event, subagent);
-        break;
     }
-  }
-
-  /** A sub-agent's run ended: its tagged `run.done` (the top-level stream stays open). */
-  private subagentDone(event: ExecutionEvent, subagent: SubagentInfo): void {
-    const key = subagentKey(subagent);
-    const finishReason = event.finishReason ?? 'stop';
-    const text = finishReason === 'awaiting-approval' ? '' : (this.subagentTexts.get(key) ?? '');
-    this.subagentTexts.delete(key);
-    this.emit(
-      { type: 'run.done', finishReason, text, ...(event.usage && { usage: toEventUsage(event.usage) }) },
-      subagent
-    );
   }
 
   private toolStarted(toolCall: NonNullable<ExecutionEvent['toolCall']>, subagent?: SubagentInfo): void {
@@ -300,20 +301,22 @@ class AgentRunImpl implements AgentRun {
    * the top-level run it pauses, so its own sink does not emit one.
    */
   private sink(subagent?: SubagentInfo): RunEventSink {
-    let stepResult: GenerateResult | undefined;
+    let stepResult: MeasuredStep | undefined;
     return {
       stepStart: (step) => {
         stepResult = undefined;
         this.emit({ type: 'step.start', step }, subagent);
       },
       stepDone: (step, finishReason) => {
-        const usage = stepResult?.usage;
+        const measured = stepResult;
         this.emit(
           {
             type: 'step.done',
             step,
-            finishReason: finishReason ?? stepResult?.finishReason ?? 'error',
-            ...(usage && { usage: toEventUsage(usage) }),
+            finishReason: finishReason ?? measured?.finishReason ?? 'error',
+            ...(measured && {
+              usage: toEventUsage({ ...measured.usage, estimated: measured.estimated, costUsd: measured.costUsd }),
+            }),
           },
           subagent
         );
@@ -329,8 +332,10 @@ class AgentRunImpl implements AgentRun {
         });
       },
       generate: async (provider, request) => {
-        stepResult = await this.generateStep(provider, request, subagent);
-        return stepResult;
+        const generated = await this.generateStep(provider, request, subagent);
+        const measured = measureUsage(request.model ?? provider.name, request.messages, generated);
+        stepResult = { finishReason: generated.finishReason, ...measured, usage: measured.usage };
+        return generated;
       },
       forSubagent: (child) => this.sink(subagent ? { ...child, depth: subagent.depth + 1, parent: subagent } : child),
     };
