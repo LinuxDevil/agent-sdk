@@ -32,6 +32,7 @@ dashboard — any provider, any deploy target, no lock-in.
 - **Parallel tool calls** — when the model asks for several tools in one turn they run concurrently (cap it with `toolConcurrency`, or `1` for sequential), and results still reach the transcript in the model's call order
 - **Usage & cost** — every result carries `usage` (tokens, USD cost, per-model breakdown, delegated children included, continuing across resumes) and `formatUsage(result.usage)` for logs
 - **Skills** — `defineSkill()` / `loadSkills('./skills')`: only each skill's name and description sit in the system prompt; the model loads the full markdown on demand through an auto-registered `load_skill` tool
+- **Agents as directories** — `loadAgentDir('./my-agent')` turns `instructions.md`, `tools/*.ts`, `skills/` and `subagents/<name>/` into the same object `createAgent()` returns, so you can start with files and drop to code later — see [Agent directories](docs/agent-directories.md)
 - **Multi-agent delegation** — wrap a child agent as a tool with `createDelegateTool()`, with a `maxDepth` guard against delegation loops
 - **Pre/post hooks** — a `HookRegistry` of `AgentHook`s that can inspect or mutate a tool call/LLM generate step, or throw to abort it, run sandboxed by Agent Forge's hook editor
 - **Guardrails** — fail-closed, concurrently-run checks (secret scan, diff size, test/lint commands) that gate a fixer agent's patch before it's used
@@ -259,6 +260,7 @@ console.log(session.id, session.messages.length);
 - [Evals](docs/evals.md) - trajectory evals with `defineEval()`, datasets, `mockModel`, judge evals, `loushy eval` with JUnit/JSON reports
 - [Sessions](docs/sessions.md) - multi-turn conversations: `agent.session()`, `MemorySessionStore`, `FileSessionStore`
 - [Skills](docs/skills.md) - on-demand instructions: `defineSkill()`, `loadSkills()`, how they save context
+- [Agent directories](docs/agent-directories.md) - define an agent as a folder: layout, mapping to `createAgent()`, moving to code, security
 - [Agent Forge](docs/agent-forge.md) - the visual dashboard (`loushy studio`): quickstart, first-agent walkthrough, hook authoring
 - Full guides site: [linuxdevil.github.io/agent-sdk-docs](https://linuxdevil.github.io/agent-sdk-docs/)
 

@@ -30,6 +30,7 @@ dashboard — any provider, any deploy target, no lock-in.
 - **Parallel tool calls** — when the model asks for several tools in one turn they run concurrently (cap it with `toolConcurrency`, or `1` for sequential), and results still reach the transcript in the model's call order
 - **Usage & cost** — every result carries `usage` (tokens, USD cost, per-model breakdown, delegated children included, continuing across resumes) and `formatUsage(result.usage)` for logs
 - **Skills** — `defineSkill()` / `loadSkills('./skills')`: only each skill's name and description sit in the system prompt; the model loads the full markdown on demand through an auto-registered `load_skill` tool
+- **Agents as directories** — `loadAgentDir('./my-agent')` turns `instructions.md`, `tools/*.ts`, `skills/` and `subagents/<name>/` into the same object `createAgent()` returns, so you can start with files and drop to code later — see [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md)
 - **Multi-agent delegation** — wrap a child agent as a tool with `createDelegateTool()`, with a `maxDepth` guard against delegation loops
 - **Pre/post hooks** — a `HookRegistry` of `AgentHook`s that can inspect or mutate a tool call/LLM generate step, or throw to abort it, run sandboxed by Agent Forge's hook editor
 - **Guardrails** — fail-closed, concurrently-run checks (secret scan, diff size, test/lint commands) that gate a fixer agent's patch before it's used
@@ -257,6 +258,7 @@ console.log(session.id, session.messages.length);
 - [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md) - trajectory evals with `defineEval()`, datasets, `mockModel`, judge evals, `loushy eval` with JUnit/JSON reports
 - [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md) - multi-turn conversations: `agent.session()`, `MemorySessionStore`, `FileSessionStore`
 - [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md) - on-demand instructions: `defineSkill()`, `loadSkills()`, how they save context
+- [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md) - define an agent as a folder: layout, mapping to `createAgent()`, moving to code, security
 - [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md) - the visual dashboard (`loushy studio`): quickstart, first-agent walkthrough, hook authoring
 - Full guides site: [linuxdevil.github.io/agent-sdk-docs](https://linuxdevil.github.io/agent-sdk-docs/)
 
@@ -1743,6 +1745,161 @@ run from the scheduled time (no drift, no double fire), and `stop()` clears it.
 
 - `DeploymentAdapter`, `registerAdapter()`, `getAdapter()`, `listAdapters()` -
   the adapter registry behind `loushy build` (see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)).
+
+# Agent directories
+
+Source: docs/agent-directories.md
+
+An agent can be defined as a directory. `loadAgentDir()` reads it and calls
+`createAgent()` with the options the files describe, so it returns exactly what
+`createAgent()` returns. The typed code API stays the source of truth: a
+directory is a different way to write the same options, and you can switch to
+code at any time without a rewrite.
+
+> **Security:** loading an agent directory **executes its code** (`agent.ts`,
+> everything in `tools/`). Only load directories you trust. No sandboxing is
+> implied; the files run with your process's full permissions.
+
+```ts
+import { loadAgentDir } from '@loushy/build-ai-agent';
+
+const agent = await loadAgentDir('./my-agent');
+const { text } = await agent.send('Hello!');
+```
+
+## Layout
+
+```text
+my-agent/
+  agent.ts | agent.js | agent.json | agent.yaml   # optional config
+  instructions.md                                  # system prompt
+  tools/*.ts | *.js                                # defineTool() tools
+  skills/                                          # same layouts as loadSkills()
+  subagents/<name>/                                # nested agent directories
+```
+
+Only one config file may exist. Files inside `tools/` and the entries of
+`skills/` and `subagents/` are read in sorted order, so loading is
+deterministic.
+
+### Config file
+
+```ts
+// agent.ts
+export default {
+  model: 'openai/gpt-4o-mini',
+  description: 'Triages bug reports',
+  maxSteps: 8,
+  toolConcurrency: 2,
+};
+```
+
+| Key | Maps to |
+| --- | ------- |
+| `name` | `createAgent({ name })` (default: the directory name) |
+| `description` | not a `createAgent` option; what a parent agent reads for a sub-agent (required there) |
+| `model` | `createAgent({ model })` |
+| `provider` | `createAgent({ provider })` (code config files only) |
+| `instructions` | `createAgent({ instructions })` (use this or `instructions.md`, not both) |
+| `maxSteps` | `createAgent({ maxSteps })` |
+| `toolConcurrency` | `createAgent({ toolConcurrency })` |
+| `projectInstructions` | `createAgent({ projectInstructions })` |
+
+Unknown keys are an error with a suggestion (`'modle' (did you mean 'model'?)`).
+
+### Tools
+
+Each file in `tools/` default-exports a `defineTool()` tool, and may also export
+more tools by name (or an array of tools). Other exports are ignored, but a file
+that exports no tool at all is an error, as are two tools with the same name
+(both files are named in the message).
+
+```ts no-verify
+// tools/send_email.ts
+import { z } from 'zod';
+import { defineTool } from '@loushy/build-ai-agent';
+
+export default defineTool({
+  name: 'send_email',
+  description: 'Send an email',
+  input: z.object({ to: z.string(), body: z.string() }),
+  execute: async ({ to, body }) => ({ sent: true, to, length: body.length }),
+});
+```
+
+### Skills
+
+`skills/` accepts what `loadSkills()` accepts: `skills/<name>/SKILL.md` and
+`skills/<name>.md`, each with a `description` in its frontmatter. See
+[Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md).
+
+### Sub-agents
+
+Every directory in `subagents/` is itself an agent directory (and can have its
+own `subagents/`). It must have a `description` in its config. The parent gets a
+`delegate_to_<name>` tool that runs the sub-agent with the task text and returns
+its final answer. A sub-agent uses its own `model` if it sets one, otherwise it
+inherits the parent's; a `provider` override passed to `loadAgentDir()` reaches
+all of them.
+
+## How it maps to `createAgent()`
+
+| Directory | `createAgent()` option |
+| --------- | ---------------------- |
+| `instructions.md` | `instructions` |
+| `agent.*` keys | the options in the table above |
+| `tools/` | `tools: [...]` |
+| `skills/` | `skills: await loadSkills('./skills')` |
+| `subagents/<name>/` | one `delegate_to_<name>` entry in `tools` |
+
+`resolveAgentDir()` returns the assembled options and a manifest, which is
+handy for tests and tooling:
+
+```ts
+import { resolveAgentDir, createAgent } from '@loushy/build-ai-agent';
+
+const { config, manifest } = await resolveAgentDir('./my-agent');
+console.log(manifest.tools, manifest.skills, manifest.subagents);
+const agent = createAgent({ ...config, maxSteps: 3 });
+```
+
+## Overrides
+
+The second argument takes the same options as `createAgent()` and wins over the
+files. Use it to swap the model in tests:
+
+```ts
+import { loadAgentDir } from '@loushy/build-ai-agent';
+import { mockModel } from '@loushy/build-ai-agent/testing';
+
+const agent = await loadAgentDir('./my-agent', { provider: mockModel(['Hi there.']) });
+```
+
+`tools` and `skills` overrides replace the discovered ones (they are not
+merged). A `provider/model` string in a file is dropped when you override
+`provider`, so the instance is used as-is.
+
+## Moving from files to code
+
+Call `resolveAgentDir()`, print `config`, and paste what you need into a
+`createAgent()` call; or load the directory and override just the parts you want
+to own in code. Tools are plain `defineTool()` values, so a tool file can be
+imported from code unchanged.
+
+## Loading TypeScript
+
+`.ts` files are loaded with a dynamic `import()`, so the process must already
+run under a TypeScript loader: `npx tsx your-script.ts` (or ts-node, bun, deno,
+or Node's built-in type stripping). Without one, loading fails with an error that
+says so. Compile the directory first, or use `.js`/`.mjs` tools with an
+`agent.json` / `agent.yaml` config, which work everywhere. A `.js` tool using
+`import` syntax needs `"type": "module"` in the nearest `package.json` (or the
+`.mjs` extension).
+
+## What is not covered
+
+`loushy dev` and `loushy mcp` still take an agent spec file
+([Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md)), not a directory.
 
 # Agent Forge
 
@@ -3480,6 +3637,124 @@ Other helpers: `model.reset()` rewinds the script and clears recorded calls, and
 `mockModel` also implements `stream()`: the scripted text is emitted as
 `text-delta` chunks (split on word boundaries), followed by any `tool-call`
 chunks and a final `finish` chunk, so streaming consumers can be tested too.
+
+## Record and replay
+
+`mockModel` scripts turns by hand. `recordReplay` is the complementary tool: a
+VCR for real model behavior. Run your test once against the real provider and
+every `generate()` / `stream()` exchange is written to a cassette file. In CI
+the same test replays the cassette with no network, no API key and no installed
+provider peer package.
+
+```ts
+import { createAgent, resolveProvider } from '@loushy/build-ai-agent';
+import { recordReplay } from '@loushy/build-ai-agent/testing';
+
+const provider = recordReplay(() => resolveProvider('openai/gpt-4o-mini'), {
+  cassette: './__cassettes__/refund-flow.json',
+  mode: process.env.LOUSHY_RECORD ? 'record' : 'replay', // or 'auto'
+});
+const agent = createAgent({ provider, prompt: 'You handle refund requests.' });
+```
+
+The first argument is the real provider, or a `() => provider` factory that is
+only called when recording (so replay never constructs it). It may be
+`undefined` if you only ever replay.
+
+### Workflow
+
+1. Record locally with a key: `LOUSHY_RECORD=1 OPENAI_API_KEY=... npx vitest run`.
+2. Review and commit the cassette (it is stable, 2-space indented JSON, so
+   diffs are readable).
+3. CI runs `npx vitest run` and replays it. Nothing else is needed.
+4. When you change the prompt, tools or flow, replay fails with a
+   `CassetteMismatchError`; re-record with `LOUSHY_RECORD=1`.
+
+`mode: 'auto'` replays if the cassette file exists and records otherwise.
+
+### What replay checks
+
+By default call N is answered by entry N, but only if the request still matches
+what was recorded: model, each message's role, content and tool calls, tool
+names and parameter schemas, `temperature` and `maxTokens`. On a mismatch the
+error shows the first difference and the re-record hint:
+
+```text
+Call #2 does not match the recorded request in ./__cassettes__/refund-flow.json.
+First difference at request.messages[1].content:
+  recorded: "Refund order 1234"
+  actual:   "Refund order 9999"
+If the change is intentional, re-record the cassette (run with LOUSHY_RECORD=1, or set mode: 'record').
+```
+
+For parallel or unordered calls pass `match: 'request'`: each call finds the
+first unused entry with an identical request, in any order. Running out of
+entries is also a `CassetteMismatchError`.
+
+Volatile values do not break matching. Timestamps, dates (`2026-10-01`,
+`October 1, 2026`), UUIDs and prefixed ids (`call_...`, `toolu_...`,
+`chatcmpl_...`) are replaced by placeholders on both sides, and tool-call ids
+are ignored (tool calls match by name and arguments). For anything else, pass
+`normalize`:
+
+```ts
+import { mockModel, recordReplay } from '@loushy/build-ai-agent/testing';
+
+const provider = recordReplay(mockModel(['ok']), {
+  cassette: './__cassettes__/users.json',
+  normalize: (request) => ({
+    ...request,
+    messages: request.messages.map((m) => ({ ...m, content: m.content.replace(/user-\d+/g, 'user-N') })),
+  }),
+});
+```
+
+### Errors, streaming and usage
+
+- A provider rejection is recorded and replayed as a rejection with the same
+  `name` and `message`.
+- `stream()` records the chunks and replays them as an async iterable without
+  delays; pass `replayTiming: true` to reproduce the inter-chunk timing. While
+  recording, the real stream is read to the end before it is returned.
+- Token usage is recorded and replayed, so cost and usage features behave the
+  same in replay.
+
+### When the cassette is written
+
+Recording writes the cassette atomically (temp file plus rename) after every
+call, so a test that fails midway leaves a valid cassette with every call made
+so far, never a half-written one. `await provider.save()` forces a write. There
+is no process-exit hook. Each record session starts a fresh cassette and
+replaces the old file.
+
+### Redaction (read this before committing)
+
+Cassettes are meant to be committed, so the wrapper only writes a fixed set of
+request fields (never headers or provider option bags), never writes
+`rawResponse`, and redacts strings that look like API keys (`sk-...`,
+`sk-ant-...`, `Bearer ...` tokens and a few other common formats) with
+`[REDACTED]`. That is a safety net, not a guarantee: prompts and model replies
+are stored verbatim, so personal data, internal URLs and customer text end up in
+the file. Pass `redact` to scrub them (it runs on every recorded string, in both
+requests and responses, and replay applies it when matching):
+
+```ts
+import { mockModel, recordReplay } from '@loushy/build-ai-agent/testing';
+
+const provider = recordReplay(mockModel(['ok']), {
+  cassette: './__cassettes__/support.json',
+  redact: (text) => text.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, '<email>'),
+});
+```
+
+### mockModel or cassettes?
+
+Use `mockModel` for unit tests of your own logic: you control every turn, can
+inject errors and delays, and nothing depends on a model. Use cassettes when
+the point is real model behavior (does this prompt and tool set actually lead
+to the right tool call?) and hand-scripting turns would only encode your
+assumptions. Cassettes need re-recording when prompts change; `mockModel` tests
+only change when the behavior you assert on changes.
 
 # Workspace tools
 
