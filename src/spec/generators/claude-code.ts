@@ -54,6 +54,36 @@ function yamlScalar(value: string): string {
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
+function buildFrontmatter(spec: AgentSpec): string {
+  return [
+    '---',
+    `name: ${yamlScalar(spec.name)}`,
+    `description: ${yamlScalar(buildDescription(spec.prompt))}`,
+    '---',
+  ].join('\n');
+}
+
+function buildToolsSection(tools: string[]): string {
+  const items = tools.length > 0 ? tools.map((t) => `- \`${t}\``) : ['(none)'];
+  return ['## Tools', '', ...items].join('\n');
+}
+
+function buildApprovalLine(policy: NonNullable<AgentSpec['policy']>): string {
+  return policy.requiresApproval
+    ? '- Tool calls from this agent require human approval before running.'
+    : '- Tool calls from this agent do not require approval.';
+}
+
+function buildGuardrailLines(policy: NonNullable<AgentSpec['policy']>): string[] {
+  const guardrails = policy.guardrails ?? [];
+  return guardrails.length > 0 ? [`- Guardrails: ${guardrails.join(', ')}`] : [];
+}
+
+function buildPolicySection(policy: AgentSpec['policy']): string {
+  if (!policy) return '';
+  return ['## Policy', '', buildApprovalLine(policy), ...buildGuardrailLines(policy)].join('\n');
+}
+
 /**
  * Generates a Claude Code SKILL.md for `spec`.
  *
@@ -66,36 +96,10 @@ function yamlScalar(value: string): string {
  */
 export function generateClaudeCodeSkill(spec: AgentSpec): GeneratedFile {
   const slug = slugify(spec.name);
-  const description = buildDescription(spec.prompt);
-  const tools = spec.tools ?? [];
-
-  const frontmatter = [
-    '---',
-    `name: ${yamlScalar(spec.name)}`,
-    `description: ${yamlScalar(description)}`,
-    '---',
-  ].join('\n');
-
-  const toolsSection =
-    tools.length > 0
-      ? ['## Tools', '', ...tools.map((t) => `- \`${t}\``)].join('\n')
-      : ['## Tools', '', '(none)'].join('\n');
-
-  const policySection = spec.policy
-    ? [
-        '## Policy',
-        '',
-        spec.policy.requiresApproval
-          ? '- Tool calls from this agent require human approval before running.'
-          : '- Tool calls from this agent do not require approval.',
-        ...(spec.policy.guardrails && spec.policy.guardrails.length > 0
-          ? [`- Guardrails: ${spec.policy.guardrails.join(', ')}`]
-          : []),
-      ].join('\n')
-    : '';
+  const policySection = buildPolicySection(spec.policy);
 
   const body = [
-    frontmatter,
+    buildFrontmatter(spec),
     '',
     `# ${spec.name}`,
     '',
@@ -103,7 +107,7 @@ export function generateClaudeCodeSkill(spec: AgentSpec): GeneratedFile {
     '',
     spec.prompt,
     '',
-    toolsSection,
+    buildToolsSection(spec.tools ?? []),
     ...(policySection ? ['', policySection] : []),
     '',
   ].join('\n');

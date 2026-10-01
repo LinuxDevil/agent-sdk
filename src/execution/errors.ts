@@ -456,8 +456,8 @@ export function compactProviderError(
 /**
  * Categories AgentExecutor is willing to surface into `messages` for the
  * model to see and react to, rather than rejecting `execute()` outright -
- * see the design note above `AgentExecutor.runAgentLoop()`'s
- * `provider.generate()` call site for the full reasoning. Exported so a
+ * see the design note on `providerErrorMessage()` (generateStep.ts) for
+ * the full reasoning. Exported so a
  * consumer building its own execution loop (or inspecting a caught
  * `CompactedLLMProviderError`) can reuse the same classification instead of
  * re-deriving it from `category` by hand.

@@ -21,18 +21,10 @@ export const WORKER_RUNTIME_SPECIFIER = '@loushy/build-ai-agent/deploy-runtime-w
  * package root. Works both from source (src/deploy/) and from the bundled
  * CLI (dist/cli/build.js), in a checkout or an installed node_modules copy.
  */
-export function findSdkRoot(startDir: string = __dirname): string {
+function findSdkRoot(startDir: string = __dirname): string {
   let dir = startDir;
   for (;;) {
-    const pkgPath = path.join(dir, 'package.json');
-    if (fs.existsSync(pkgPath)) {
-      try {
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-        if (pkg.name === '@loushy/build-ai-agent') return dir;
-      } catch {
-        // not a readable package.json - keep walking up
-      }
-    }
+    if (isSdkPackageRoot(dir)) return dir;
     const parent = path.dirname(dir);
     if (parent === dir) {
       throw new Error(
@@ -40,6 +32,18 @@ export function findSdkRoot(startDir: string = __dirname): string {
       );
     }
     dir = parent;
+  }
+}
+
+/** True when `dir` holds the readable package.json of @loushy/build-ai-agent. */
+function isSdkPackageRoot(dir: string): boolean {
+  const pkgPath = path.join(dir, 'package.json');
+  if (!fs.existsSync(pkgPath)) return false;
+  try {
+    return JSON.parse(fs.readFileSync(pkgPath, 'utf8')).name === '@loushy/build-ai-agent';
+  } catch {
+    // not a readable package.json - keep walking up
+    return false;
   }
 }
 

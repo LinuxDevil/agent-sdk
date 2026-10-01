@@ -45,6 +45,29 @@ export interface MemorySearchResult {
   relevance: number;
 }
 
+const DAY_MS = 1000 * 60 * 60 * 24;
+
+/** A memory's stored importance (defaults to 1). */
+function importanceOf(memory: Memory): number {
+  return memory.metadata?.importance || 1;
+}
+
+/** How many times a memory has been recalled (defaults to 0). */
+function accessCountOf(memory: Memory): number {
+  return memory.metadata?.accessCount || 0;
+}
+
+/**
+ * Retention score used when pruning: higher means more worth keeping
+ * (importance, access count, and recency over a 30-day window).
+ */
+function retentionScore(memory: Memory): number {
+  const age = Date.now() - new Date(memory.createdAt).getTime();
+  return importanceOf(memory) * 0.5 +
+    (accessCountOf(memory) / 10) * 0.3 +
+    (1 - age / (DAY_MS * 30)) * 0.2;
+}
+
 /**
  * Memory Manager
  * 
@@ -236,8 +259,8 @@ export class MemoryManager {
     }
 
     // Extract metadata
-    const importances = memories.map((m) => m.metadata?.importance || 1);
-    const accessCounts = memories.map((m) => m.metadata?.accessCount || 0);
+    const importances = memories.map(importanceOf);
+    const accessCounts = memories.map(accessCountOf);
     
     const avgImportance =
       importances.reduce((sum: number, val: number) => sum + val, 0) / memories.length;
@@ -265,15 +288,15 @@ export class MemoryManager {
   ): number {
     let score = 0;
 
-    const importance = memory.metadata?.importance || 1;
-    const accessCount = memory.metadata?.accessCount || 0;
+    const importance = importanceOf(memory);
+    const accessCount = accessCountOf(memory);
 
     // Base score from importance
     score += importance * 0.3;
 
     // Recency bonus (newer memories are more relevant)
     const createdAt = new Date(memory.createdAt).getTime();
-    const ageInDays = (Date.now() - createdAt) / (1000 * 60 * 60 * 24);
+    const ageInDays = (Date.now() - createdAt) / DAY_MS;
     const recencyScore = Math.max(0, 1 - ageInDays / 30); // Decay over 30 days
     score += recencyScore * 0.2;
 
@@ -309,11 +332,8 @@ export class MemoryManager {
     embedding1: number[],
     embedding2: number[]
   ): number {
-    if (embedding1.length === 0 || embedding2.length === 0) {
-      return 0;
-    }
-
-    if (embedding1.length !== embedding2.length) {
+    // Empty or mismatched-dimension embeddings have no meaningful similarity
+    if (embedding1.length === 0 || embedding1.length !== embedding2.length) {
       return 0;
     }
 
@@ -361,7 +381,7 @@ export class MemoryManager {
     const memory = await this.config.repository.findById(memoryId);
     
     if (memory) {
-      const currentAccessCount = memory.metadata?.accessCount || 0;
+      const currentAccessCount = accessCountOf(memory);
       const updatedMetadata = {
         ...memory.metadata,
         accessedAt: new Date().toISOString(),
@@ -385,22 +405,9 @@ export class MemoryManager {
       const memories = await this.config.repository.findByAgentId(agentId, 1000);
 
       // Sort by relevance (importance, recency, access count)
-      const sorted = [...memories].sort((a, b) => {
-        const importanceA = a.metadata?.importance || 1;
-        const importanceB = b.metadata?.importance || 1;
-        const accessCountA = a.metadata?.accessCount || 0;
-        const accessCountB = b.metadata?.accessCount || 0;
-        const ageA = Date.now() - new Date(a.createdAt).getTime();
-        const ageB = Date.now() - new Date(b.createdAt).getTime();
-        
-        const scoreA = importanceA * 0.5 + 
-                      (accessCountA / 10) * 0.3 + 
-                      (1 - ageA / (1000 * 60 * 60 * 24 * 30)) * 0.2;
-        const scoreB = importanceB * 0.5 + 
-                      (accessCountB / 10) * 0.3 + 
-                      (1 - ageB / (1000 * 60 * 60 * 24 * 30)) * 0.2;
-        return scoreA - scoreB; // Sort ascending (least relevant first)
-      });
+      const sorted = [...memories].sort(
+        (a, b) => retentionScore(a) - retentionScore(b) // Sort ascending (least relevant first)
+      );
 
       // Delete least relevant memories
       const toDelete = Math.ceil(this.config.maxMemories * 0.1); // Delete 10% of limit

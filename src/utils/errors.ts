@@ -74,23 +74,24 @@ export function getZodErrorMessage(error: ZodError): string {
  */
 export function formatAxiosError(error: any): string {
   if (error.isAxiosError) {
-    const status = error.response?.status || 'Unknown Status';
-    const data = error.response?.data;
-
-    let errorMessage = `HTTP Error ${status}`;
-
-    if (data) {
-      if (typeof data === 'string') {
-        errorMessage += `: ${data}`;
-      } else if (typeof data === 'object') {
-        errorMessage += `: ${JSON.stringify(data, null, 2)}`;
-      }
-    } else {
-      errorMessage += `: ${error.message}`;
-    }
-
-    return errorMessage;
+    return `HTTP Error ${axiosStatusLabel(error)}${describeAxiosErrorDetail(error)}`;
   }
 
   return `Unexpected error: ${error instanceof Error ? error.message : String(error)}`;
+}
+
+function axiosStatusLabel(error: any): string {
+  return error.response?.status || 'Unknown Status';
+}
+
+function describeAxiosErrorDetail(error: any): string {
+  const data = error.response?.data;
+  if (!data) return `: ${error.message}`;
+  return describeAxiosErrorBody(data);
+}
+
+function describeAxiosErrorBody(data: unknown): string {
+  if (typeof data === 'string') return `: ${data}`;
+  if (typeof data === 'object') return `: ${JSON.stringify(data, null, 2)}`;
+  return '';
 }

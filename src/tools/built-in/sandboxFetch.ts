@@ -19,6 +19,7 @@
  */
 
 import { SandboxAdapter } from '../../security/sandboxCore';
+import { ToolDescriptor } from '../../types';
 
 /**
  * The request shape encoded (as base64 JSON, via the SANDBOX_FETCH_REQUEST
@@ -138,6 +139,26 @@ function normalizeHeaders(headers?: HeadersInit): Record<string, string> | undef
   return { ...headers };
 }
 
+/** True for the `fetch(url)` call forms; false for `fetch(request)`. */
+function isUrlInput(input: RequestInfo | URL): input is string | URL {
+  return typeof input === 'string' || input instanceof URL;
+}
+
+/** The method a `fetch(input, init)` call would use: init, then Request, then GET. */
+function requestMethod(input: RequestInfo | URL, init: RequestInit | undefined): string {
+  return init?.method ?? (isUrlInput(input) ? undefined : input.method) ?? 'GET';
+}
+
+/** Translate a global-`fetch`-style call into a SandboxFetchRequest. */
+function toSandboxFetchRequest(input: RequestInfo | URL, init: RequestInit | undefined): SandboxFetchRequest {
+  return {
+    url: isUrlInput(input) ? String(input) : input.url,
+    method: requestMethod(input, init),
+    headers: normalizeHeaders(init?.headers),
+    body: init?.body != null ? String(init.body) : undefined,
+  };
+}
+
 /**
  * Swaps `globalThis.fetch` for a sandbox-routed implementation for the
  * duration of `fn()`, restoring the original afterward (even if `fn`
@@ -158,15 +179,10 @@ function normalizeHeaders(headers?: HeadersInit): Record<string, string> | undef
  * injection (like http.ts's dedicated sandboxExecute) is needed instead of
  * a global monkey-patch.
  */
-export async function withSandboxedFetch<T>(sandbox: SandboxAdapter, fn: () => Promise<T>): Promise<T> {
+async function withSandboxedFetch<T>(sandbox: SandboxAdapter, fn: () => Promise<T>): Promise<T> {
   const original = globalThis.fetch;
-  const sandboxedFetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-    const url = typeof input === 'string' || input instanceof URL ? String(input) : input.url;
-    const method = init?.method ?? (typeof input !== 'string' && !(input instanceof URL) ? input.method : undefined) ?? 'GET';
-    const headers = normalizeHeaders(init?.headers);
-    const body = init?.body != null ? String(init.body) : undefined;
-    return sandboxHttpFetch(sandbox, { url, method, headers, body });
-  }) as typeof fetch;
+  const sandboxedFetch = ((input: RequestInfo | URL, init?: RequestInit) =>
+    sandboxHttpFetch(sandbox, toSandboxFetchRequest(input, init))) as typeof fetch;
 
   globalThis.fetch = sandboxedFetch;
   try {
@@ -174,4 +190,21 @@ export async function withSandboxedFetch<T>(sandbox: SandboxAdapter, fn: () => P
   } finally {
     globalThis.fetch = original;
   }
+}
+
+/**
+ * Flags a tool that calls the ambient global `fetch` as requiresSandbox and
+ * gives it a sandboxExecute() that runs its original execute() under
+ * withSandboxedFetch() (see GitHubTools.register() / JiraTools.register()).
+ * execute() itself is left untouched. Descriptors without an execute() are
+ * left as-is.
+ */
+export function routeFetchThroughSandbox(descriptor: ToolDescriptor): void {
+  if (!descriptor.tool?.execute) {
+    return;
+  }
+  const originalExecute = descriptor.tool.execute;
+  descriptor.requiresSandbox = true;
+  descriptor.sandboxExecute = (args: unknown, sandbox: SandboxAdapter) =>
+    withSandboxedFetch(sandbox, async () => originalExecute(args as any, {} as any));
 }

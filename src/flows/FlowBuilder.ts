@@ -1,6 +1,20 @@
 import { nanoid } from 'nanoid';
 import { EditorStep, AgentFlow, FlowInputVariable } from '../types';
 
+/** Throw on the first input variable with a missing or duplicate name. */
+function assertUniqueInputNames(inputs: FlowInputVariable[]): void {
+  const names = new Set<string>();
+  for (const input of inputs) {
+    if (!input.name) {
+      throw new Error('Input variable name is required');
+    }
+    if (names.has(input.name)) {
+      throw new Error(`Duplicate input variable name: ${input.name}`);
+    }
+    names.add(input.name);
+  }
+}
+
 /**
  * FlowBuilder
  * Fluent API for building flow definitions
@@ -116,16 +130,7 @@ export class FlowBuilder {
 
     // Validate input variables
     if (this.flow.inputs) {
-      const names = new Set<string>();
-      for (const input of this.flow.inputs) {
-        if (!input.name) {
-          throw new Error('Input variable name is required');
-        }
-        if (names.has(input.name)) {
-          throw new Error(`Duplicate input variable name: ${input.name}`);
-        }
-        names.add(input.name);
-      }
+      assertUniqueInputNames(this.flow.inputs);
     }
   }
 

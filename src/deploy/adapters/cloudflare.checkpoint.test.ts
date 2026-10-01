@@ -38,7 +38,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { CloudflareWorkerAdapter, CHECKPOINT_KV_BINDING, findNodeBuiltinReferences } from './cloudflare';
+import { CloudflareWorkerAdapter, findNodeBuiltinReferences } from './cloudflare';
+import { CHECKPOINT_KV_BINDING } from '../checkpointBinding';
 import type { Checkpoint } from '../../execution/checkpoint';
 
 function writeSpec(dir: string, spec: Record<string, unknown>): string {

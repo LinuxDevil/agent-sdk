@@ -15,6 +15,25 @@ export class DecryptionError extends Error {
   }
 }
 
+/** Lower-case hex encoding of `bytes`, two digits per byte. */
+function toHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/** Inverse of toHex(): parse two hex digits per byte. */
+function fromHex(hex: string): Uint8Array<ArrayBuffer> {
+  return new Uint8Array((hex.match(/.{1,2}/g) || []).map((byte) => parseInt(byte, 16)));
+}
+
+/** Encryption output: the random salt and IV used, plus the ciphertext. */
+interface EncryptedParts {
+  salt: Uint8Array<ArrayBuffer>;
+  iv: Uint8Array<ArrayBuffer>;
+  cipherText: ArrayBuffer;
+}
+
 /**
  * Encryption utility class using AES-GCM encryption
  */
@@ -72,13 +91,13 @@ export class EncryptionUtils {
   }
 
   /**
-   * Encrypt ArrayBuffer data
+   * AES-GCM-encrypt `data` under a key derived with a fresh random salt
    */
-  async encryptArrayBuffer(data: ArrayBuffer): Promise<ArrayBuffer> {
+  private async encryptWithFreshSalt(data: BufferSource): Promise<EncryptedParts> {
     const salt = crypto.getRandomValues(new Uint8Array(16)); // Random salt per encryption
     const iv = crypto.getRandomValues(new Uint8Array(16)); // Initialization vector
     const key = await this.importKeyForSalt(salt);
-    const encryptedData = await crypto.subtle.encrypt(
+    const cipherText = await crypto.subtle.encrypt(
       {
         name: 'AES-GCM',
         iv: iv,
@@ -86,7 +105,15 @@ export class EncryptionUtils {
       key,
       data
     );
-    return new Blob([salt, iv, new Uint8Array(encryptedData)]).arrayBuffer(); // Prepend salt + IV to the ciphertext
+    return { salt, iv, cipherText };
+  }
+
+  /**
+   * Encrypt ArrayBuffer data
+   */
+  async encryptArrayBuffer(data: ArrayBuffer): Promise<ArrayBuffer> {
+    const { salt, iv, cipherText } = await this.encryptWithFreshSalt(data);
+    return new Blob([salt, iv, new Uint8Array(cipherText)]).arrayBuffer(); // Prepend salt + IV to the ciphertext
   }
 
   /**
@@ -137,51 +164,31 @@ export class EncryptionUtils {
   async encrypt(text: string): Promise<string> {
     const encoder = new TextEncoder();
     const data = encoder.encode(text);
-    const salt = crypto.getRandomValues(new Uint8Array(16));
-    const iv = crypto.getRandomValues(new Uint8Array(16));
-    const key = await this.importKeyForSalt(salt);
-    const encryptedData = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data);
-    const encryptedArray = Array.from(new Uint8Array(encryptedData));
-    const encryptedHex = encryptedArray.map((byte) => byte.toString(16).padStart(2, '0')).join('');
-    const saltHex = Array.from(salt)
-      .map((byte) => byte.toString(16).padStart(2, '0'))
-      .join('');
-    const ivHex = Array.from(iv)
-      .map((byte) => byte.toString(16).padStart(2, '0'))
-      .join('');
-    return saltHex + ivHex + encryptedHex;
+    const { salt, iv, cipherText } = await this.encryptWithFreshSalt(data);
+    return toHex(salt) + toHex(iv) + toHex(new Uint8Array(cipherText));
   }
 
   /**
    * Decrypt string text
    */
   async decrypt(cipherText: string): Promise<string> {
+    // Empty input passes through unchanged
+    if (!cipherText) {
+      return cipherText;
+    }
     try {
-      if (cipherText) {
-        const saltHex = cipherText.slice(0, 32);
-        const ivHex = cipherText.slice(32, 64);
-        const encryptedHex = cipherText.slice(64);
-        const salt = new Uint8Array(
-          (saltHex.match(/.{1,2}/g) || []).map((byte) => parseInt(byte, 16))
-        );
-        const iv = new Uint8Array(
-          (ivHex.match(/.{1,2}/g) || []).map((byte) => parseInt(byte, 16))
-        );
-        const encryptedArray = new Uint8Array(
-          (encryptedHex.match(/.{1,2}/g) || []).map((byte) => parseInt(byte, 16))
-        );
+      const salt = fromHex(cipherText.slice(0, 32));
+      const iv = fromHex(cipherText.slice(32, 64));
+      const encryptedArray = fromHex(cipherText.slice(64));
 
-        const key = await this.importKeyForSalt(salt);
-        const decryptedData = await crypto.subtle.decrypt(
-          { name: 'AES-GCM', iv },
-          key,
-          encryptedArray
-        );
-        const decoder = new TextDecoder();
-        return decoder.decode(decryptedData);
-      } else {
-        return cipherText;
-      }
+      const key = await this.importKeyForSalt(salt);
+      const decryptedData = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv },
+        key,
+        encryptedArray
+      );
+      const decoder = new TextDecoder();
+      return decoder.decode(decryptedData);
     } catch (e) {
       throw new DecryptionError('Failed to decrypt value', { cause: e });
     }
@@ -194,6 +201,21 @@ export class EncryptionUtils {
 export function generatePassword(): string {
   const key = crypto.getRandomValues(new Uint8Array(32));
   return btoa(String.fromCharCode(...key));
+}
+
+/**
+ * Whether a DTO field gets encrypted/decrypted: the listed fields when
+ * settings are given, otherwise every string or object field.
+ */
+function isProcessedField(
+  key: string,
+  value: unknown,
+  encryptionSettings: DTOEncryptionSettings | undefined
+): boolean {
+  if (encryptionSettings) {
+    return encryptionSettings.encryptedFields.indexOf(key) >= 0;
+  }
+  return typeof value === 'string' || typeof value === 'object';
 }
 
 /**
@@ -252,10 +274,7 @@ export class DTOEncryptionFilter<T> {
   ): Promise<T> {
     const result = {} as T;
     for (const key in dto) {
-      if (
-        (encryptionSettings && encryptionSettings.encryptedFields.indexOf(key) >= 0) ||
-        (!encryptionSettings && (typeof dto[key] === 'string' || typeof dto[key] === 'object'))
-      ) {
+      if (isProcessedField(key, dto[key], encryptionSettings)) {
         result[key] = (await processFn(dto[key] as string)) as any;
       } else {
         result[key] = dto[key];
@@ -271,7 +290,5 @@ export class DTOEncryptionFilter<T> {
 export async function sha256(message: string, salt: string): Promise<string> {
   const msgUint8 = new TextEncoder().encode(message + salt); // encode as (utf-8) Uint8Array
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8); // hash the message
-  const hashArray = Array.from(new Uint8Array(hashBuffer)); // convert buffer to byte array
-  const hashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join(''); // convert bytes to hex string
-  return hashHex;
+  return toHex(new Uint8Array(hashBuffer)); // convert bytes to hex string
 }

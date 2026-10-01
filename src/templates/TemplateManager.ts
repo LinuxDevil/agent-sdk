@@ -58,18 +58,43 @@ function renderExpression(
   const parts = expr.split('|').map((p) => p.trim());
   const varPath = parts.shift() ?? '';
 
-  let value = getValueFromContext(varPath, context) ?? '';
+  const value = getValueFromContext(varPath, context) ?? '';
 
-  for (const filterName of parts) {
-    // If user typed "|e", treat as "|escape"
-    const fn = filters[filterName] || (filterName === 'e' ? filters['escape'] : undefined);
+  return String(applyFilters(value, parts, filters));
+}
+
+/** Apply a chain of named filters to a value, skipping names that don't resolve to a function. */
+function applyFilters(value: any, filterNames: string[], filters: Record<string, TemplateFilter>): any {
+  let result = value;
+  for (const filterName of filterNames) {
+    const fn = resolveFilter(filterName, filters);
     if (typeof fn === 'function') {
-      value = fn(value);
+      result = fn(result);
     }
   }
-
-  return String(value);
+  return result;
 }
+
+function resolveFilter(
+  filterName: string,
+  filters: Record<string, TemplateFilter>
+): TemplateFilter | undefined {
+  // If user typed "|e", treat as "|escape"
+  return filters[filterName] || (filterName === 'e' ? filters['escape'] : undefined);
+}
+
+type NodeRenderer<N extends BlockNode> = (
+  node: N,
+  context: any,
+  filters: Record<string, TemplateFilter>
+) => string;
+
+const NODE_RENDERERS: { [K in BlockNode['type']]: NodeRenderer<Extract<BlockNode, { type: K }>> } = {
+  text: (node) => node.value,
+  expression: (node, context, filters) => renderExpression(node.expr, context, filters),
+  if: renderIfBlock,
+  for: renderForBlock,
+};
 
 /**
  * Walk a BlockNode tree (produced by parseTokens) and render it to a string.
@@ -85,50 +110,52 @@ function renderBlockTree(
   let output = '';
 
   for (const node of nodes) {
-    switch (node.type) {
-      case 'text':
-        output += node.value;
-        break;
-
-      case 'expression':
-        output += renderExpression(node.expr, context, filters);
-        break;
-
-      case 'if': {
-        const conditionResult = evaluateCondition(node.expr, context);
-        output += renderBlockTree(
-          conditionResult ? node.children : node.elseChildren,
-          context,
-          filters
-        );
-        break;
-      }
-
-      case 'for': {
-        const arr = getValueFromContext(node.iterable, context) || [];
-        let items: any[] = [];
-        if (Array.isArray(arr)) {
-          items = arr;
-        } else if (typeof arr === 'object' && arr !== null) {
-          items = Object.values(arr);
-        }
-
-        if (items.length > 0) {
-          for (const item of items) {
-            // Extend context with current item; each iteration gets its own
-            // object, so adjacent for-blocks never leak state into one
-            // another.
-            const newContext = { ...context, [node.varName]: item };
-            output += renderBlockTree(node.children, newContext, filters);
-          }
-        } else {
-          output += renderBlockTree(node.elseChildren, context, filters);
-        }
-        break;
-      }
-    }
+    const render = NODE_RENDERERS[node.type] as NodeRenderer<BlockNode>;
+    output += render(node, context, filters);
   }
 
+  return output;
+}
+
+function renderIfBlock(
+  node: Extract<BlockNode, { type: 'if' }>,
+  context: any,
+  filters: Record<string, TemplateFilter>
+): string {
+  const conditionResult = evaluateCondition(node.expr, context);
+  return renderBlockTree(conditionResult ? node.children : node.elseChildren, context, filters);
+}
+
+/** Values a {% for %} loop iterates over: array elements, or the values of a plain object. */
+function toLoopItems(iterable: any): any[] {
+  if (Array.isArray(iterable)) {
+    return iterable;
+  }
+  if (typeof iterable === 'object' && iterable !== null) {
+    return Object.values(iterable);
+  }
+  return [];
+}
+
+function renderForBlock(
+  node: Extract<BlockNode, { type: 'for' }>,
+  context: any,
+  filters: Record<string, TemplateFilter>
+): string {
+  const items = toLoopItems(getValueFromContext(node.iterable, context) || []);
+
+  if (items.length === 0) {
+    return renderBlockTree(node.elseChildren, context, filters);
+  }
+
+  let output = '';
+  for (const item of items) {
+    // Extend context with current item; each iteration gets its own
+    // object, so adjacent for-blocks never leak state into one
+    // another.
+    const newContext = { ...context, [node.varName]: item };
+    output += renderBlockTree(node.children, newContext, filters);
+  }
   return output;
 }
 

@@ -37,7 +37,7 @@
  *    tool under the same name - see LOU-K3 PR description.
  *  - LOU-T2: durable execution (CheckpointStore-backed pause/resume, see
  *    src/execution/checkpoint.ts) is opt-in here via a Workers KV namespace
- *    binding - see `CHECKPOINT_KV_BINDING`/`checkpointStoreFromEnv()` below,
+ *    binding - see `CHECKPOINT_KV_BINDING` (./checkpointBinding)/`checkpointStoreFromEnv()` below,
  *    the same "declare a binding, read it off `env`" pattern
  *    `providerEnvKey()` already uses for provider API keys.
  */
@@ -50,6 +50,7 @@ import { dayNameTool } from '../tools/built-in/dayName';
 import { ToolDescriptor } from '../types';
 import { AgentSpec } from '../spec/schema';
 import { CheckpointStore } from '../execution/checkpoint';
+import { CHECKPOINT_KV_BINDING } from './checkpointBinding';
 import { KVBinding, KVCheckpointStore } from './kvCheckpointStore';
 import { prepareSpecExecution, PreparedExecution } from './specExecution';
 
@@ -69,25 +70,11 @@ const WORKER_TOOLS: Record<string, ToolDescriptor> = {
 };
 
 /** Env binding each provider type reads its API key from, e.g. OPENAI_API_KEY. */
-export function providerEnvKey(type: string): string {
+function providerEnvKey(type: string): string {
   return `${type.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_API_KEY`;
 }
 
 export type WorkerEnv = Record<string, unknown>;
-
-/**
- * LOU-T2: the `env` binding name a Worker deployment must declare (in
- * `wrangler.toml`, see `cloudflare.ts`'s scaffolded config) to opt in to
- * durable execution - a KV namespace bound under this name lets a paused
- * run's Checkpoint survive across requests/isolates, the same way a
- * filesystem- or StorageService-backed CheckpointStore does off-Worker (see
- * LocalStorageCheckpointStore in src/execution/checkpoint.ts and
- * apps/agent-forge/server/checkpointStore.ts's FileCheckpointStore).
- * Mirrors `providerEnvKey()` immediately below: a documented, fixed binding
- * name a consumer wires up themselves rather than something this SDK
- * provisions for them.
- */
-export const CHECKPOINT_KV_BINDING = 'AGENT_CHECKPOINTS';
 
 /**
  * Builds a `KVCheckpointStore` from the `env[CHECKPOINT_KV_BINDING]`
@@ -106,16 +93,16 @@ export function checkpointStoreFromEnv(
   env: WorkerEnv,
   bindingName: string = CHECKPOINT_KV_BINDING
 ): CheckpointStore | undefined {
-  const binding = env[bindingName] as Partial<KVBinding> | undefined;
-  if (
-    !binding ||
-    typeof binding.get !== 'function' ||
-    typeof binding.put !== 'function' ||
-    typeof binding.delete !== 'function'
-  ) {
-    return undefined;
-  }
-  return new KVCheckpointStore(binding as KVBinding);
+  const binding = env[bindingName];
+  return isKVBinding(binding) ? new KVCheckpointStore(binding) : undefined;
+}
+
+const KV_METHODS = ['get', 'put', 'delete'] as const;
+
+/** True when `value` has the get/put/delete functions of a KV namespace. */
+function isKVBinding(value: unknown): value is KVBinding {
+  const binding = value as Partial<KVBinding> | undefined;
+  return !!binding && KV_METHODS.every((method) => typeof binding[method] === 'function');
 }
 
 export function prepareWorkerSpec(spec: AgentSpec, env: WorkerEnv = {}): PreparedExecution {

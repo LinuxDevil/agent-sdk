@@ -51,29 +51,9 @@ export interface SimpleAgent {
  * thin composition of the existing public APIs.
  */
 export function createAgent(config: CreateAgentConfig): SimpleAgent {
-  if (!config || !config.provider) {
-    throw new Error(
-      "createAgent: 'provider' is required. Example: createAgent({ prompt: '...', provider: myProvider })"
-    );
-  }
-  if (!config.prompt) {
-    throw new Error(
-      "createAgent: 'prompt' is required. Example: createAgent({ prompt: 'You are a helpful assistant', provider: myProvider })"
-    );
-  }
+  assertCreateAgentConfig(config);
 
-  const toolNames = config.tools ? Object.keys(config.tools) : [];
-
-  let toolRegistry: ToolRegistry | undefined;
-  const toolsConfig: Record<string, { tool: string }> = {};
-
-  if (toolNames.length > 0) {
-    toolRegistry = new ToolRegistry();
-    for (const name of toolNames) {
-      toolRegistry.register(name, config.tools![name]);
-      toolsConfig[name] = { tool: name };
-    }
-  }
+  const { toolRegistry, toolsConfig } = registerTools(config.tools ?? {});
 
   const agent = AgentBuilder.create()
     .setType(AgentType.SmartAssistant)
@@ -93,4 +73,41 @@ export function createAgent(config: CreateAgentConfig): SimpleAgent {
       });
     },
   };
+}
+
+function assertCreateAgentConfig(config: CreateAgentConfig): void {
+  if (!config || !config.provider) {
+    throw new Error(
+      "createAgent: 'provider' is required. Example: createAgent({ prompt: '...', provider: myProvider })"
+    );
+  }
+  if (!config.prompt) {
+    throw new Error(
+      "createAgent: 'prompt' is required. Example: createAgent({ prompt: 'You are a helpful assistant', provider: myProvider })"
+    );
+  }
+}
+
+/**
+ * Registers each tool into a fresh ToolRegistry under its key, and builds
+ * the matching AgentConfig.tools entries. No registry is built when there
+ * are no tools.
+ */
+function registerTools(tools: Record<string, ToolDescriptor>): {
+  toolRegistry: ToolRegistry | undefined;
+  toolsConfig: Record<string, { tool: string }>;
+} {
+  const toolNames = Object.keys(tools);
+  const toolsConfig: Record<string, { tool: string }> = {};
+
+  if (toolNames.length === 0) {
+    return { toolRegistry: undefined, toolsConfig };
+  }
+
+  const toolRegistry = new ToolRegistry();
+  for (const name of toolNames) {
+    toolRegistry.register(name, tools[name]);
+    toolsConfig[name] = { tool: name };
+  }
+  return { toolRegistry, toolsConfig };
 }

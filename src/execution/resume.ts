@@ -5,12 +5,19 @@
 
 import { LLMProvider, Message } from '../providers';
 import { ToolRegistry } from '../tools';
-import { ApprovalDecision, ApprovalStore } from './ApprovalGate';
-import { AgentExecutor, ExecuteOptions, ExecutionResult, PropagatingToolError } from './AgentExecutor';
+import { ToolDescriptor } from '../types';
+import {
+  ApprovalDecision,
+  ApprovalStore,
+  ExecutionSnapshot,
+  PendingApproval,
+} from './ApprovalGate';
+import { AgentExecutor, ExecuteOptions, ExecutionResult } from './AgentExecutor';
 import { Checkpoint, CheckpointStore } from './checkpoint';
 import { NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
 import { HookRegistry } from './hooks';
+import { toolErrorMessage } from './propagatingToolError';
 
 /**
  * Options passed through to the underlying AgentExecutor.execute() call
@@ -98,204 +105,259 @@ export async function resumeAfterApproval(
   const { pending, snapshot } = record;
   const messages: Message[] = [...snapshot.currentMessages];
 
-  // Defense in depth: a checkpoint under this sessionId (if any) was
-  // written before this pause and is therefore stale by construction -
-  // clear it now so it can't be loaded by this resume or by some later,
-  // unrelated execute() call against the same sessionId+checkpointStore.
-  //
-  // Doing this BEFORE the AgentExecutor.execute() call below (rather than
-  // just relying on `skipSystemPromptInjection`/`initialSteps` to make a
-  // rehydration "harmless") is what makes it safe to pass sessionId and
-  // checkpointStore through to that call: its rehydration branch only
-  // triggers when `checkpointStore.load(sessionId)` finds something, and
-  // by the time it runs (synchronously after this delete resolves, with no
-  // intervening await back to caller code) there is nothing left to find.
-  //
-  // Accepted race: if some OTHER process/caller writes a new checkpoint
-  // under this exact sessionId in the narrow window between this delete
-  // and the execute() call's load(), that checkpoint would be picked up
-  // instead of the freshly-reconstructed messages. This mirrors how
-  // ApprovalStore.resolve() above is documented as delete-on-read without
-  // an additional distributed lock (see the catch block below) - this
-  // codebase accepts same-sessionId-concurrent-caller races as an existing
-  // caller-responsibility invariant (a sessionId identifies a single
-  // logical run) rather than adding cross-process locking to CheckpointStore.
-  // LOU-T1: read the pre-pause checkpoint's businessState off before
-  // deleting it, so it can be carried forward into the resumed run's own
-  // checkpoint-writes below (see `businessState:` on the AgentExecutor.execute()
-  // call at the bottom of this function). This load is purely a data read -
-  // it does not touch, and has no bearing on, the rehydration-safety delete
-  // immediately below.
-  let staleBusinessState: unknown;
-  if (snapshot.sessionId && checkpointStore) {
-    const staleCheckpoint: Checkpoint | null = await checkpointStore.load(snapshot.sessionId);
-    staleBusinessState = staleCheckpoint?.businessState;
-    await checkpointStore.delete(snapshot.sessionId);
-  }
+  const staleBusinessState = await clearStaleCheckpoint(snapshot.sessionId, checkpointStore);
 
-  if (decision.approved) {
-    const toolDesc = toolRegistry.get(pending.toolName);
-    // A `requiresSandbox` tool may have no `tool.execute` implementation at
-    // all - its real work happens in `sandboxExecute()` instead - so the
-    // "not found" guard below must not reject that case outright; it only
-    // means there is genuinely no way to run the tool (neither a direct
-    // `execute` nor a `sandboxExecute`).
-    if (!toolDesc || !toolDesc.tool || (!toolDesc.tool.execute && !toolDesc.sandboxExecute)) {
-      throw new Error(`Tool '${pending.toolName}' not found in registry`);
-    }
-
-    // LOU-Q1: hooks must fire for this deferred, post-approval execution
-    // path too - not just AgentExecutor's own main-loop tool call site -
-    // since this is a genuine, independent point where a tool actually
-    // runs. `args` is a mutable object a `preToolCall` hook (e.g.
-    // redact-pii) can rewrite in place before the real execution below, the
-    // same contract AgentExecutor.executeToolCall() offers.
-    const hooks: HookRegistry | undefined = executeOptions.hooks;
-    const hookArgs: Record<string, unknown> = { ...pending.args };
-    const hookCtx = {
-      agentId: snapshot.agent.id,
-      agentName: snapshot.agent.name,
-      sessionId: snapshot.sessionId,
-      messages,
-      toolCallId: pending.toolCallId,
-      toolName: pending.toolName,
-      args: hookArgs,
-      toolCall: {
-        id: pending.toolCallId,
-        type: 'function' as const,
-        function: { name: pending.toolName, arguments: JSON.stringify(pending.args) },
-      },
-    };
-
-    if (hooks) {
-      await hooks.runPreToolCall(hookCtx);
-    }
-
-    // `result`/`toolError` are populated by the try/catch below, which
-    // handles ONLY the tool's own execution failure - NOT the postToolCall
-    // hook call that follows it. This split (rather than the previous
-    // single try wrapping both the tool call and the hook call) matters:
-    // hooks.ts's HookRegistry doc comment - and this file's own preToolCall
-    // comment above - both document that a hook's thrown error must
-    // propagate out of resumeAfterApproval() as a rejected promise, never
-    // be silently swallowed. With the hook call inside the same try as the
-    // tool execution, a postToolCall hook's error (e.g. a rate-limit hook
-    // meaning to HALT the run) was being caught by the generic
-    // "every other thrown tool error is turned into a graceful tool-result"
-    // branch below and converted into a benign {error} message instead of
-    // aborting - exactly the silent-swallow behavior that invariant forbids.
-    let result: unknown;
-    let toolError: string | undefined;
-    try {
-      // Mirrors AgentExecutor.executeToolCall()'s fail-closed handling of
-      // `requiresSandbox` tools (LOU-F5) via the shared
-      // executeToolWithSandboxGuard() helper (LOU-F fix), so a deferred
-      // tool executed after human approval can't silently bypass the
-      // sandbox seam the way it previously did.
-      const sandbox = executeOptions.sandbox ?? NoopSandbox;
-      result = await executeToolWithSandboxGuard(pending.toolName, toolDesc, hookArgs, sandbox);
-    } catch (error) {
-      // Mirror AgentExecutor.executeToolCall's (post-fix) handling of a
-      // thrown tool error: errors that mark themselves as
-      // `PropagatingToolError` (e.g. DelegationDepthExceededError) must NOT
-      // be converted into a conversational {error} tool-result - that would
-      // hand the LLM exactly the kind of "your tool call failed, try again"
-      // signal that triggers another delegation attempt, defeating the
-      // whole point of the depth guard. Rethrow so it propagates out of
-      // this function as a rejected promise instead, exactly like
-      // AgentExecutor.executeToolCall does.
-      if (error instanceof PropagatingToolError) {
-        throw error;
-      }
-
-      // Every other thrown tool error is turned into a graceful tool-result
-      // message instead of letting it reject this promise. By this point
-      // the pending-approval record has already been deleted
-      // (ApprovalGate.resolve() is delete-on-read), so failing to catch
-      // here would mean the whole resume just fails with no retry path.
-      // Uses the same `(error as Error).message` extraction AgentExecutor's
-      // catch block uses, wrapped in the `{error}`-shaped payload this
-      // file's own rejection branch (below) already uses for non-approved
-      // decisions.
-      toolError = (error as Error).message;
-    }
-
-    // Fires (with the settled result/error) regardless of which branch
-    // above ran - matching AgentHook.postToolCall's documented contract
-    // ("Invoked immediately after a tool call settles (success, tool-level
-    // error, or approval-required)"). Deliberately OUTSIDE the try/catch
-    // above: a throw here is a hook error, not a tool error, and must
-    // propagate out of this function unconverted (see comment above).
-    if (hooks) {
-      await hooks.runPostToolCall(hookCtx, { result, error: toolError });
-    }
-
-    messages.push({
-      role: 'tool',
-      content: JSON.stringify(toolError ? { error: toolError } : result),
-      name: pending.toolName,
-      toolCallId: pending.toolCallId,
-      toolName: pending.toolName,
-    });
-  } else {
-    messages.push({
-      role: 'tool',
-      content: JSON.stringify({
+  const toolMessage = decision.approved
+    ? await runApprovedToolCall(pending, snapshot, messages, toolRegistry, executeOptions)
+    : toolResultMessage(pending, {
         error: 'Tool execution was rejected by the reviewer',
         note: decision.note,
-      }),
-      name: pending.toolName,
-      toolCallId: pending.toolCallId,
-      toolName: pending.toolName,
-    });
+      });
+  messages.push(toolMessage);
+
+  return continueResumedRun(snapshot, messages, {
+    provider,
+    toolRegistry,
+    executeOptions,
+    checkpointStore,
+    staleBusinessState,
+  });
+}
+
+/**
+ * Defense in depth: a checkpoint under this sessionId (if any) was
+ * written before this pause and is therefore stale by construction -
+ * clear it now so it can't be loaded by this resume or by some later,
+ * unrelated execute() call against the same sessionId+checkpointStore.
+ *
+ * Doing this BEFORE the AgentExecutor.execute() call in
+ * continueResumedRun() (rather than just relying on
+ * `skipSystemPromptInjection`/`initialSteps` to make a rehydration
+ * "harmless") is what makes it safe to pass sessionId and checkpointStore
+ * through to that call: its rehydration branch only triggers when
+ * `checkpointStore.load(sessionId)` finds something, and by the time it
+ * runs (synchronously after this delete resolves, with no intervening
+ * await back to caller code) there is nothing left to find.
+ *
+ * Accepted race: if some OTHER process/caller writes a new checkpoint
+ * under this exact sessionId in the narrow window between this delete
+ * and the execute() call's load(), that checkpoint would be picked up
+ * instead of the freshly-reconstructed messages. This mirrors how
+ * ApprovalStore.resolve() is documented as delete-on-read without
+ * an additional distributed lock (see executeApprovedTool()'s catch block) -
+ * this codebase accepts same-sessionId-concurrent-caller races as an
+ * existing caller-responsibility invariant (a sessionId identifies a single
+ * logical run) rather than adding cross-process locking to CheckpointStore.
+ *
+ * LOU-T1: reads the pre-pause checkpoint's businessState off before
+ * deleting it (and returns it), so it can be carried forward into the
+ * resumed run's own checkpoint-writes (see `businessState:` in
+ * continueResumedRun()). This load is purely a data read - it does not
+ * touch, and has no bearing on, the rehydration-safety delete immediately
+ * after it.
+ */
+async function clearStaleCheckpoint(
+  sessionId: string | undefined,
+  checkpointStore: CheckpointStore | undefined
+): Promise<unknown> {
+  if (!sessionId || !checkpointStore) {
+    return undefined;
+  }
+  const staleCheckpoint: Checkpoint | null = await checkpointStore.load(sessionId);
+  await checkpointStore.delete(sessionId);
+  return staleCheckpoint?.businessState;
+}
+
+/** The `tool` message carrying a resumed tool call's result (or rejection). */
+function toolResultMessage(pending: PendingApproval, payload: unknown): Message {
+  return {
+    role: 'tool',
+    content: JSON.stringify(payload),
+    name: pending.toolName,
+    toolCallId: pending.toolCallId,
+    toolName: pending.toolName,
+  };
+}
+
+/**
+ * Runs the tool call a human just approved - with the same pre/post
+ * tool-call hooks and sandbox routing as AgentExecutor's own tool calls -
+ * and returns the `tool` message carrying its result.
+ */
+async function runApprovedToolCall(
+  pending: PendingApproval,
+  snapshot: ExecutionSnapshot,
+  messages: Message[],
+  toolRegistry: ToolRegistry,
+  executeOptions: ResumeExecuteOptions
+): Promise<Message> {
+  const toolDesc = toolRegistry.get(pending.toolName);
+  // A `requiresSandbox` tool may have no `tool.execute` implementation at
+  // all - its real work happens in `sandboxExecute()` instead - so the
+  // "not found" guard below must not reject that case outright; it only
+  // means there is genuinely no way to run the tool (neither a direct
+  // `execute` nor a `sandboxExecute`).
+  if (!toolDesc || !toolDesc.tool || (!toolDesc.tool.execute && !toolDesc.sandboxExecute)) {
+    throw new Error(`Tool '${pending.toolName}' not found in registry`);
   }
 
+  // LOU-Q1: hooks must fire for this deferred, post-approval execution
+  // path too - not just AgentExecutor's own main-loop tool call site -
+  // since this is a genuine, independent point where a tool actually
+  // runs. `args` is a mutable object a `preToolCall` hook (e.g.
+  // redact-pii) can rewrite in place before the real execution below, the
+  // same contract AgentExecutor.executeToolCall() offers.
+  const hooks: HookRegistry | undefined = executeOptions.hooks;
+  const hookArgs: Record<string, unknown> = { ...pending.args };
+  const hookCtx = {
+    agentId: snapshot.agent.id,
+    agentName: snapshot.agent.name,
+    sessionId: snapshot.sessionId,
+    messages,
+    toolCallId: pending.toolCallId,
+    toolName: pending.toolName,
+    args: hookArgs,
+    toolCall: {
+      id: pending.toolCallId,
+      type: 'function' as const,
+      function: { name: pending.toolName, arguments: JSON.stringify(pending.args) },
+    },
+  };
+
+  if (hooks) {
+    await hooks.runPreToolCall(hookCtx);
+  }
+
+  const { result, toolError } = await executeApprovedTool(pending, toolDesc, hookArgs, executeOptions);
+
+  // Fires (with the settled result/error) regardless of how the tool
+  // settled - matching AgentHook.postToolCall's documented contract
+  // ("Invoked immediately after a tool call settles (success, tool-level
+  // error, or approval-required)"). Deliberately OUTSIDE
+  // executeApprovedTool()'s try/catch: a throw here is a hook error, not a
+  // tool error, and must propagate out of resumeAfterApproval() unconverted
+  // (see executeApprovedTool()).
+  if (hooks) {
+    await hooks.runPostToolCall(hookCtx, { result, error: toolError });
+  }
+
+  return toolResultMessage(pending, toolError ? { error: toolError } : result);
+}
+
+/**
+ * Executes the approved tool itself. The try/catch here handles ONLY the
+ * tool's own execution failure - NOT the postToolCall hook call that
+ * follows it in runApprovedToolCall(). This split (rather than the previous
+ * single try wrapping both the tool call and the hook call) matters:
+ * hooks.ts's HookRegistry doc comment - and runApprovedToolCall()'s own
+ * preToolCall comment - both document that a hook's thrown error must
+ * propagate out of resumeAfterApproval() as a rejected promise, never
+ * be silently swallowed. With the hook call inside the same try as the
+ * tool execution, a postToolCall hook's error (e.g. a rate-limit hook
+ * meaning to HALT the run) was being caught by the generic
+ * "every other thrown tool error is turned into a graceful tool-result"
+ * branch below and converted into a benign {error} message instead of
+ * aborting - exactly the silent-swallow behavior that invariant forbids.
+ */
+async function executeApprovedTool(
+  pending: PendingApproval,
+  toolDesc: ToolDescriptor,
+  args: Record<string, unknown>,
+  executeOptions: ResumeExecuteOptions
+): Promise<{ result: unknown; toolError?: string }> {
+  try {
+    // Mirrors AgentExecutor.executeToolCall()'s fail-closed handling of
+    // `requiresSandbox` tools (LOU-F5) via the shared
+    // executeToolWithSandboxGuard() helper (LOU-F fix), so a deferred
+    // tool executed after human approval can't silently bypass the
+    // sandbox seam the way it previously did.
+    const sandbox = executeOptions.sandbox ?? NoopSandbox;
+    return { result: await executeToolWithSandboxGuard(pending.toolName, toolDesc, args, sandbox) };
+  } catch (error) {
+    // Mirror AgentExecutor.executeToolCall's (post-fix) handling of a
+    // thrown tool error: errors that mark themselves as
+    // `PropagatingToolError` (e.g. DelegationDepthExceededError) must NOT
+    // be converted into a conversational {error} tool-result - that would
+    // hand the LLM exactly the kind of "your tool call failed, try again"
+    // signal that triggers another delegation attempt, defeating the
+    // whole point of the depth guard. toolErrorMessage() rethrows those so
+    // they propagate out of this function as a rejected promise instead,
+    // exactly like AgentExecutor.executeToolCall does.
+    //
+    // Every other thrown tool error is turned into a graceful tool-result
+    // message instead of letting it reject this promise. By this point
+    // the pending-approval record has already been deleted
+    // (ApprovalGate.resolve() is delete-on-read), so failing to catch
+    // here would mean the whole resume just fails with no retry path.
+    // Uses the same `(error as Error).message` extraction AgentExecutor's
+    // catch block uses, wrapped in the `{error}`-shaped payload the
+    // rejection branch of resumeAfterApproval() already uses for
+    // non-approved decisions.
+    return { result: undefined, toolError: toolErrorMessage(error) };
+  }
+}
+
+/**
+ * Continues the paused run via AgentExecutor.execute(), with the deferred
+ * tool result (or rejection) now appended to `messages`.
+ *
+ * LOU-K5: sessionId/checkpointStore are threaded through so AgentExecutor
+ * resumes writing per-tool-result checkpoints for the rest of this run
+ * (previously both were forced to `undefined` here, which also killed
+ * forward checkpointing for the whole remainder of the resumed run -
+ * not just the resume step itself). `snapshot.sessionId` and
+ * resumeAfterApproval()'s own `checkpointStore` parameter are used
+ * explicitly here rather than whatever (if anything) `executeOptions`
+ * carries, since `ResumeExecuteOptions` omits both fields - see that type's
+ * doc comment. This still can't rehydrate stale state: the stale
+ * pre-pause checkpoint under `snapshot.sessionId` was already deleted by
+ * clearStaleCheckpoint(), so AgentExecutor.execute()'s
+ * `checkpointStore.load(sessionId)` rehydration check finds nothing and
+ * falls into its normal "build from scratch" path, using exactly the
+ * `input`/`skipSystemPromptInjection`/`initialSteps` reconstructed below -
+ * it never re-triggers the rehydration branch this guard used to worry
+ * about. When no `checkpointStore` was passed to resumeAfterApproval() at
+ * all, this is `undefined` and AgentExecutor.execute() behaves exactly as
+ * it always has for callers that don't use durable execution.
+ */
+function continueResumedRun(
+  snapshot: ExecutionSnapshot,
+  messages: Message[],
+  run: {
+    provider: LLMProvider;
+    toolRegistry: ToolRegistry;
+    executeOptions: ResumeExecuteOptions;
+    checkpointStore?: CheckpointStore;
+    staleBusinessState: unknown;
+  }
+): Promise<ExecutionResult> {
+  const { executeOptions } = run;
   return AgentExecutor.execute({
     ...executeOptions,
     agent: snapshot.agent,
     input: messages,
-    provider,
-    toolRegistry,
-    // LOU-K5: thread sessionId/checkpointStore through so AgentExecutor
-    // resumes writing per-tool-result checkpoints for the rest of this run
-    // (previously both were forced to `undefined` here, which also killed
-    // forward checkpointing for the whole remainder of the resumed run -
-    // not just the resume step itself). `snapshot.sessionId` and this
-    // function's own `checkpointStore` parameter are used explicitly here
-    // rather than whatever (if anything) `executeOptions` carries, since
-    // `ResumeExecuteOptions` omits both fields - see that type's doc
-    // comment. This still can't rehydrate stale state: the stale
-    // pre-pause checkpoint under `snapshot.sessionId` was just deleted
-    // above, so AgentExecutor.execute()'s `checkpointStore.load(sessionId)`
-    // rehydration check finds nothing and falls into its normal
-    // "build from scratch" path, using exactly the `input`/
-    // `skipSystemPromptInjection`/`initialSteps` reconstructed below - it
-    // never re-triggers the rehydration branch this guard used to worry
-    // about. When no `checkpointStore` was passed to resumeAfterApproval()
-    // at all, this is `undefined` and AgentExecutor.execute() behaves
-    // exactly as it always has for callers that don't use durable
-    // execution.
+    provider: run.provider,
+    toolRegistry: run.toolRegistry,
     sessionId: snapshot.sessionId,
-    checkpointStore,
+    checkpointStore: run.checkpointStore,
     // LOU-T1: carry the pre-pause checkpoint's businessState forward into
     // the resumed run's own checkpoint-writes by default, so a consumer's
     // domain state (order id, ticket id, workflow stage, ...) survives a
     // pause-for-approval -> approve/reject -> resume cycle - the whole
     // point of co-locating it with execution state in the first place. An
     // explicit `executeOptions.businessState` always wins, so a caller can
-    // still deliberately override or drop it. See `staleBusinessState`
-    // above (read off the checkpoint BEFORE it was deleted) for why this
-    // has no bearing on the rehydration safety property this comment block
-    // otherwise documents - businessState is inert data, not execution
-    // state.
+    // still deliberately override or drop it. See clearStaleCheckpoint()
+    // (which read it off the checkpoint BEFORE deleting it) for why this
+    // has no bearing on the rehydration safety property documented above -
+    // businessState is inert data, not execution state.
     businessState:
       executeOptions.businessState !== undefined
         ? executeOptions.businessState
-        : staleBusinessState,
+        : run.staleBusinessState,
     // `messages` was reconstructed from the ExecutionSnapshot's
     // currentMessages, which already include the original system message
-    // (if any) that AgentExecutor.buildMessages() built the first time
-    // this agent ran. Because the stale checkpoint was just deleted above,
+    // (if any) that AgentExecutor's fresh-run path built the first time
+    // this agent ran. Because the stale checkpoint was already deleted,
     // execute() always falls into its "build from scratch" path here
     // (never the rehydration path) - without skipSystemPromptInjection,
     // that path would prepend a second, duplicate system message built

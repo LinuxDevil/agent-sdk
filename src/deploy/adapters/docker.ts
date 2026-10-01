@@ -31,7 +31,7 @@ EXPOSE 3000
 CMD ["node", "dist/server.js"]
 `;
 
-export const DOCKERIGNORE = `node_modules
+const DOCKERIGNORE = `node_modules
 server.ts
 agent.config.js
 `;

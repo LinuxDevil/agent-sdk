@@ -1,12 +1,16 @@
 import { AgentConfig, AgentType } from '../types';
 
+function isBlank(value: string | undefined): boolean {
+  return !value || value.trim() === '';
+}
+
 /**
  * Validate agent configuration
  */
 export function validateAgentConfig(config: Partial<AgentConfig>): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
-  if (!config.name || config.name.trim() === '') {
+  if (isBlank(config.name)) {
     errors.push(
       "Agent name is required. Example: AgentBuilder.create().setName('my-agent')...build()"
     );
@@ -16,9 +20,7 @@ export function validateAgentConfig(config: Partial<AgentConfig>): { valid: bool
     errors.push(
       'Agent type is required. Example: AgentBuilder.create().setType(AgentType.SmartAssistant)...build()'
     );
-  }
-
-  if (config.agentType && !Object.values(AgentType).includes(config.agentType)) {
+  } else if (!Object.values(AgentType).includes(config.agentType)) {
     errors.push(`Invalid agent type: ${config.agentType}`);
   }
 

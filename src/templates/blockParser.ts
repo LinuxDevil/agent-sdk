@@ -28,68 +28,76 @@ export function parseTokens(tokens: Token[]): BlockNode[] {
 
     while (pos < tokens.length) {
       const token = tokens[pos];
-      const tokenType = token.type;
-      if (stopTypes.has(tokenType)) {
+      if (stopTypes.has(token.type)) {
         return nodes;
       }
-
-      switch (token.type) {
-        case 'text':
-          nodes.push({ type: 'text', value: token.value });
-          pos++;
-          break;
-
-        case 'expression':
-          nodes.push({ type: 'expression', expr: token.expr });
-          pos++;
-          break;
-
-        case 'open-if': {
-          const { expr } = token;
-          pos++; // consume open-if
-          const children = parseNodes(new Set(['else', 'close-if']));
-          let elseChildren: BlockNode[] = [];
-          if (tokens[pos]?.type === 'else') {
-            pos++; // consume else
-            elseChildren = parseNodes(new Set(['close-if']));
-          }
-          if (tokens[pos]?.type !== 'close-if') {
-            throw new Error('Unclosed block: expected {% endif %}');
-          }
-          pos++; // consume close-if
-          nodes.push({ type: 'if', expr, children, elseChildren });
-          break;
-        }
-
-        case 'open-for': {
-          const { varName, iterable } = token;
-          pos++; // consume open-for
-          const children = parseNodes(new Set(['else', 'close-for']));
-          let elseChildren: BlockNode[] = [];
-          if (tokens[pos]?.type === 'else') {
-            pos++; // consume else
-            elseChildren = parseNodes(new Set(['close-for']));
-          }
-          if (tokens[pos]?.type !== 'close-for') {
-            throw new Error('Unclosed block: expected {% endfor %}');
-          }
-          pos++; // consume close-for
-          nodes.push({ type: 'for', varName, iterable, children, elseChildren });
-          break;
-        }
-
-        // A stray 'else' / 'close-if' / 'close-for' at this point has no
-        // matching opener. Fail loudly instead of silently dropping the
-        // tag and rendering incorrect output.
-        default:
-          throw new Error(
-            `Unexpected closing tag with no matching open block: {% ${tokenType === 'else' ? 'else' : tokenType === 'close-if' ? 'endif' : tokenType === 'close-for' ? 'endfor' : tokenType} %}`
-          );
-      }
+      nodes.push(parseNode(token));
     }
 
     return nodes;
   }
 
+  function parseNode(token: Token): BlockNode {
+    if (token.type === 'open-if') {
+      return { type: 'if', expr: token.expr, ...parseBlockBody('close-if', 'endif') };
+    }
+    if (token.type === 'open-for') {
+      return { type: 'for', varName: token.varName, iterable: token.iterable, ...parseBlockBody('close-for', 'endfor') };
+    }
+    return parseLeafNode(token);
+  }
+
+  function parseLeafNode(token: Token): BlockNode {
+    switch (token.type) {
+      case 'text':
+        pos++;
+        return { type: 'text', value: token.value };
+
+      case 'expression':
+        pos++;
+        return { type: 'expression', expr: token.expr };
+
+      // A stray 'else' / 'close-if' / 'close-for' at this point has no
+      // matching opener. Fail loudly instead of silently dropping the
+      // tag and rendering incorrect output.
+      default:
+        throw new Error(
+          `Unexpected closing tag with no matching open block: {% ${CLOSING_TAG_NAMES[token.type] ?? token.type} %}`
+        );
+    }
+  }
+
+  function parseElseBranch(closeType: 'close-if' | 'close-for'): BlockNode[] {
+    if (tokens[pos]?.type !== 'else') {
+      return [];
+    }
+    pos++; // consume else
+    return parseNodes(new Set([closeType]));
+  }
+
+  /**
+   * Consume the opening tag at the current position, then its children, an
+   * optional {% else %} branch and the closing tag.
+   */
+  function parseBlockBody(
+    closeType: 'close-if' | 'close-for',
+    endTag: 'endif' | 'endfor'
+  ): { children: BlockNode[]; elseChildren: BlockNode[] } {
+    pos++; // consume opener
+    const children = parseNodes(new Set(['else', closeType]));
+    const elseChildren = parseElseBranch(closeType);
+    if (tokens[pos]?.type !== closeType) {
+      throw new Error(`Unclosed block: expected {% ${endTag} %}`);
+    }
+    pos++; // consume closer
+    return { children, elseChildren };
+  }
+
   return parseNodes(new Set());
 }
+
+const CLOSING_TAG_NAMES: Partial<Record<Token['type'], string>> = {
+  else: 'else',
+  'close-if': 'endif',
+  'close-for': 'endfor',
+};
