@@ -137,4 +137,27 @@ mcpServers:
     expect(() => loadSpec(filePath)).toThrow(/unsupported extension/);
     expect(() => loadSpec(filePath)).toThrow(expect.objectContaining({ code: 'LOUSHY_SPEC_UNSUPPORTED_FORMAT' }));
   });
+
+  it('loads a spec with a policy block (LOU-X5)', () => {
+    const spec = loadSpec(path.join(__dirname, '__fixtures__', 'policy.yaml'));
+    expect(spec.policy).toEqual({
+      requiresApproval: ['http'],
+      guardrails: ['secret-scan', { name: 'max-length', maxChars: 2000, on: 'input' }, { name: 'deny-topics', topics: ['medical advice'] }],
+      limits: { maxTokens: 20000, maxSteps: 8 },
+      askQuestion: true,
+      compaction: { thresholdPercent: 0.8 },
+      harness: 'claude-code',
+    });
+  });
+
+  it('names an unknown policy guardrail with did-you-mean and the available names (LOU-X5)', () => {
+    const filePath = tmpFile(
+      'agent.yaml',
+      'name: a\nprompt: p\nprovider: { type: mock, model: m }\npolicy:\n  guardrails: [secretscan]\n'
+    );
+    expect(() => loadSpec(filePath)).toThrow(
+      /'policy\.guardrails\.0': AgentSpec validation failed: unknown guardrail 'secretscan' \(did you mean 'secret-scan'\?\)\. Available: max-length/
+    );
+    expect(() => loadSpec(filePath)).toThrow(expect.objectContaining({ code: 'LOUSHY_SPEC_INVALID' }));
+  });
 });

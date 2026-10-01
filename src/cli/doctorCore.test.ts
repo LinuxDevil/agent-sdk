@@ -276,6 +276,44 @@ describe('spec checks', () => {
   });
 });
 
+describe('spec policy checks (LOU-X5)', () => {
+  const withPolicy = (policy: AgentSpec['policy']) =>
+    makeEnv({ specPath: 'a.yaml', loadSpec: () => spec({ policy }) });
+
+  it('reports one line per policy block', async () => {
+    const report = await runDoctor(
+      withPolicy({
+        requiresApproval: ['send_email'],
+        guardrails: ['max-length', { name: 'deny-topics', topics: ['x'] }],
+        limits: { maxSteps: 4 },
+        askQuestion: true,
+        compaction: true,
+      })
+    );
+    const lines = report.checks.filter((c) => c.id.startsWith('spec.policy.')).map((c) => [c.id, c.status, c.finding]);
+    expect(lines).toEqual([
+      ['spec.policy.approval', 'ok', 'asks for approval before: send_email'],
+      ['spec.policy.guardrails', 'ok', 'max-length, deny-topics'],
+      ['spec.policy.limits', 'ok', 'maxSteps=4'],
+      ['spec.policy.askQuestion', 'ok', 'the agent can ask the user questions'],
+      ['spec.policy.compaction', 'ok', 'on'],
+    ]);
+  });
+
+  it('reports nothing for a spec without a policy', async () => {
+    const report = await runDoctor(withPolicy(undefined));
+    expect(report.checks.some((c) => c.id.startsWith('spec.policy.'))).toBe(false);
+  });
+
+  it('flags unknown guardrail names with did-you-mean and the available names', async () => {
+    const result = await check(withPolicy({ guardrails: ['deny-topic', 'secret-scan'] }), 'spec.policy.guardrails');
+    expect(result.status).toBe('fail');
+    expect(result.finding).toContain("unknown guardrail 'deny-topic' (did you mean 'deny-topics'?)");
+    expect(result.finding).toContain('Available: max-length, secret-scan, regex, deny-topics, llm-judge');
+    expect(result.fix).toContain('policy.guardrails');
+  });
+});
+
 describe('ollama check', () => {
   const ollamaSpec = spec({ provider: { type: 'ollama', model: 'llama3' } });
 

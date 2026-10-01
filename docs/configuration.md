@@ -13,6 +13,7 @@ validated with zod by `loadSpec()` (`src/spec/schema.ts`). It is the format
 | `provider.type`  | `string`   | yes      | `openai`, `anthropic`, `ollama`, `openrouter` or `mock`. |
 | `provider.model` | `string`   | yes      | Model id every call uses (the provider's configured model; an agent's own `settings.model` would override it). |
 | `tools`          | `string[]` | no       | Built-in tool names (see below).                       |
+| `policy`         | `AgentSpecPolicy` | no | Approvals, guardrails, limits and more, enforced when the spec becomes an agent (see below). |
 | `mcpServers`     | `Record<string, McpServerSpec>` | no | MCP servers the agent uses, keyed by name (see below). |
 
 A missing or invalid field fails with an error naming the exact field, e.g.
@@ -40,6 +41,67 @@ tools:
 `github` and `jira` need credentials a spec has no field for; referencing
 them throws an error telling you to build the agent with `createAgent()` and
 pass a configured tool instead.
+
+### Policy (`policy`)
+
+`specToAgent()` compiles `policy` into `createAgent()` options, so a spec
+enforces what it declares. The known fields are validated by `loadSpec()`;
+other keys are kept for the other harness generators (Claude Code, Codex, Pi),
+which read the raw policy.
+
+| Field              | Compiles to                                   | Description |
+| ------------------ | --------------------------------------------- | ----------- |
+| `requiresApproval` | `permissions` ([`ask`](./guardrails.md))       | `true`: every tool call pauses for approval. A list: only those tools pause. |
+| `guardrails`       | `guardrails` (input and output)               | Built-in guardrail names, or `{ name, ...options }` (table below). |
+| `limits`           | `limits` ([budgets](#budgets))                | `maxTokens`, `maxInputTokens`, `maxOutputTokens`, `maxCostUsd`, `maxDurationMs`, `maxSteps`, `onExceeded`. |
+| `askQuestion`      | `askQuestion`                                 | `true` adds the built-in `ask_question` tool. |
+| `compaction`       | `compaction`                                  | `true`, or `{ thresholdPercent: 0.8 }` (a fraction of the context window, above 0 up to 1). |
+
+```yaml
+name: support-bot
+prompt: You are a friendly support agent.
+provider:
+  type: openai
+  model: gpt-4o-mini
+tools:
+  - http
+policy:
+  requiresApproval: [http]        # or `true` for every tool
+  guardrails:
+    - secret-scan
+    - name: max-length
+      maxChars: 4000
+      on: input
+    - name: deny-topics
+      topics: [medical advice, legal advice]
+  limits:
+    maxTokens: 50000
+    maxCostUsd: 0.25
+    maxSteps: 10
+  askQuestion: true
+  compaction:
+    thresholdPercent: 0.8
+```
+
+Guardrail names (see [Input and output guardrails](./guardrails.md#input-and-output-guardrails)):
+
+| Name           | Options | Does |
+| -------------- | ------- | ---- |
+| `max-length`   | `maxChars` (default 10000) | Blocks texts longer than `maxChars`. |
+| `secret-scan`  | `action` (`block` or `rewrite`), `replacement` | Blocks (or redacts) private keys, OpenAI-style and AWS keys. |
+| `regex`        | `pattern` (required), `flags`, `action`, `replacement` | Blocks (or rewrites) texts matching `pattern`. |
+| `deny-topics`  | `topics` (required, a list) | Blocks texts that mention a topic (case-insensitive). |
+| `llm-judge`    | `model` (required, `"provider/model"`), `instruction` | Asks a model whether the text is acceptable; one call per check. |
+
+Every guardrail also takes `on`: `input`, `output` or `tools` (a tool call's
+arguments), or a list of them. The default is `[input, output]`. An unknown name
+or option fails validation, naming the guardrails available and a "did you
+mean" suggestion:
+`'policy.guardrails.0': unknown guardrail 'deny-topic' (did you mean 'deny-topics'?)`.
+
+`requiresApproval` pauses the run (`finishReason: 'awaiting-approval'`) until
+`agent.approvals.resolve()`; before this, a spec that set it ran its tools
+without asking. `loushy doctor agent.yaml` prints one line per policy block.
 
 ### MCP servers (`mcpServers`)
 
