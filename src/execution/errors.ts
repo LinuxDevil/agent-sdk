@@ -5,6 +5,9 @@
 
 import { APICallError, LoadAPIKeyError, RetryError } from 'ai';
 import { errorHelp, type ErrorCode } from '../utils/errorCodes';
+import { instanceOfBranded } from '../utils/brand';
+
+const SDK_ERROR_BRAND = Symbol.for('loushy.SDKError');
 
 /** Options of {@link SDKError}. */
 export interface SDKErrorOptions {
@@ -42,6 +45,15 @@ function withHelp(message: string, code: string, hint?: string, docs?: string): 
  * ```
  */
 export class SDKError extends Error {
+  /** `instanceof SDKError` also holds for errors from another loaded copy of the SDK (LOU-D42). */
+  static [Symbol.hasInstance](value: unknown): boolean {
+    return instanceOfBranded(this, SDKError, SDK_ERROR_BRAND, value);
+  }
+
+  get [SDK_ERROR_BRAND](): true {
+    return true;
+  }
+
   readonly code: string;
   readonly hint?: string;
   readonly docs?: string;
