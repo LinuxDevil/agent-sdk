@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { describe, it, expect, afterEach } from 'vitest';
 import { startOpsPipeline, OpsPipelineHandle } from './index';
 import { createDemoProvider } from './demoProvider';
@@ -66,5 +67,33 @@ describe('ops-pipeline end-to-end (LOU-J8, against mocks - zero external network
     // guardrails and resulted in exactly one GitHub PR.
     expect(github.createdPullRequests).toHaveLength(1);
     expect(github.createdPullRequests[0].body).toContain('OrderService.java');
+  });
+});
+
+describe('ops-pipeline Slack signature verification (LOU-D18)', () => {
+  let handle: OpsPipelineHandle | undefined;
+
+  afterEach(async () => {
+    await handle?.close();
+    handle = undefined;
+  });
+
+  it('rejects unsigned interaction callbacks and accepts correctly signed ones when a signing secret is set', async () => {
+    const secret = 'ops-signing-secret';
+    handle = await startOpsPipeline({ slackSigningSecret: secret, monitorPort: 0, slackPort: 0 });
+    const url = `http://127.0.0.1:${handle.slack.port}/slack/interactions`;
+    const body = JSON.stringify({ type: 'block_actions', actions: [{ action_id: 'other', value: 'x' }] });
+
+    const unsigned = await fetch(url, { method: 'POST', body });
+    expect(unsigned.status).toBe(401);
+
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = `v0=${createHmac('sha256', secret).update(`v0:${timestamp}:${body}`).digest('hex')}`;
+    const signed = await fetch(url, {
+      method: 'POST',
+      headers: { 'x-slack-request-timestamp': timestamp, 'x-slack-signature': signature },
+      body,
+    });
+    expect(signed.status).toBe(200);
   });
 });

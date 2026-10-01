@@ -161,6 +161,7 @@ Exported from `@loushy/build-ai-agent/testing` (see [Testing agents](testing.md)
 | `ToolInput<typeof t>`, `ToolOutput<typeof t>` | Argument and result types of a defined tool. |
 | `ToolRegistry`                               | Holds the tools an agent config refers to (advanced: `register(tool)` or `register(name, descriptor)`). |
 | `httpTool`, `currentDateTool`, `dayNameTool` | Built-in tools.                               |
+| `createTodoTools({ store?, onChange? })`     | `todo_write` / `todo_read` tools (plus `getTodos()`) so agents can plan and track multi-step work; see [Todo tools](#todo-tools). |
 | `loadMcpTools(client, connectionName)`       | Load a connected MCP server's tools as `ToolDescriptor`s. Available from the package root, `@loushy/build-ai-agent/tools`, and `@loushy/build-ai-agent/mcp`. |
 
 ```ts
@@ -231,6 +232,31 @@ text parts and `content` keeps every part in order (`text`, `image`, `audio`,
 non-text parts the result is `{ structuredContent, text, content }` with
 `content` holding only the non-text parts, so images, audio and resources are
 never dropped.
+
+### Todo tools
+
+`createTodoTools(options?)` gives long-running agents a plan to track:
+`todo_write` replaces the whole list (`{ id?, content, status }` items, status
+`pending` | `in_progress` | `completed`, at most one `in_progress`) and returns
+the list plus counts; `todo_read` returns it. Ids are assigned automatically and
+stay stable when a later write repeats an item's content. Invalid lists (for
+example two `in_progress`) reach the model as a structured tool error so it can
+retry. The list lives in memory per call; pass `store` (`{ get, set }`) to
+persist it, and `onChange` to update a UI.
+
+```ts
+import { createAgent, createTodoTools, type TodoStore } from '@loushy/build-ai-agent';
+
+const todos = createTodoTools({ onChange: (list) => console.log(list.length, 'todos') });
+const planner = createAgent({ prompt: 'Plan multi-step work, then do it.', provider, tools: todos.tools });
+
+await planner.send('Migrate the repo to ESM');
+console.log(await todos.getTodos()); // [{ id: 'todo_1', content: '...', status: 'completed' }, ...]
+
+// Persist the list somewhere else:
+let saved: Awaited<ReturnType<TodoStore['get']>> = [];
+createTodoTools({ store: { get: () => saved, set: (next) => void (saved = next) } });
+```
 
 ### Tool errors
 
@@ -441,6 +467,54 @@ a generic `401 {"error":"Unauthorized"}` - the response never says which check
 failed - and the reason (never a secret or signature) is logged at `warn`
 level. Serve webhooks over HTTPS (terminate TLS in front of the adapter) so
 tokens and payloads are not sent in clear text.
+
+### Slack request signatures
+
+`SlackTriggerAdapter.handleRequest({ headers, rawBody })` handles a raw Slack
+Events API request and returns the `{ status, body }` to send back. **Set
+`signingSecret` for any endpoint reachable from outside your machine**: without
+it, anyone who can reach the endpoint can run your agent, and `listen()` logs a
+one-time warning through `options.logger`. With it, every request is verified
+as [Slack documents](https://docs.slack.dev/authentication/verifying-requests-from-slack)
+before the body is parsed: HMAC-SHA256 over `v0:{X-Slack-Request-Timestamp}:{raw body}`,
+compared in constant time with `X-Slack-Signature` (`v0=<hex>`), and requests
+more than five minutes old are rejected. Failures get a generic
+`401 {"error":"Unauthorized"}`; the reason (never a secret or signature) is
+logged at `warn` level. The signed `url_verification` handshake is answered
+after verification.
+
+```ts
+import { createAgent, createMockProvider } from '@loushy/build-ai-agent';
+import { SlackTriggerAdapter, verifySlackSignature } from '@loushy/build-ai-agent/triggers';
+import * as http from 'node:http';
+
+const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
+const slack = new SlackTriggerAdapter({ signingSecret: process.env.SLACK_SIGNING_SECRET });
+slack.listen(agent, (input) => agent.send(input));
+
+http
+  .createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    req.on('end', async () => {
+      const { status, body } = await slack.handleRequest({ headers: req.headers, rawBody: Buffer.concat(chunks) });
+      res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
+    });
+  })
+  .listen(3000);
+
+// Your own handler (slash commands, interactivity)? Verify the RAW body yourself:
+const authentic = verifySlackSignature({
+  signingSecret: process.env.SLACK_SIGNING_SECRET ?? '',
+  timestamp: '1700000000', // the X-Slack-Request-Timestamp header
+  signature: 'v0=...', // the X-Slack-Signature header
+  rawBody: '{"type":"url_verification"}',
+});
+```
+
+`handleRequest` answers Slack after the agent finishes; Slack expects a reply
+within three seconds, so for slow agents acknowledge first and run the agent in
+the background.
 
 ### Cron schedules
 
