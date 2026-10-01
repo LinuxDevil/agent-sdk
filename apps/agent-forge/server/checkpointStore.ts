@@ -16,20 +16,53 @@
  * verbatim via `JSON.stringify`/`JSON.parse`, so any JSON-serializable
  * `businessState` a consumer attaches round-trips through this store for
  * free, exactly like every other field.
+ *
+ * LOU-D45: also keeps the bounded per-session `history()` ring the SDK's
+ * `LocalStorageCheckpointStore` keeps (same helpers, same semantics), under
+ * `.loushy/agents/<agentId>/checkpoint-history/<sessionId>.json`, so the
+ * time-travel panel can list a run's steps and `AgentExecutor.fork()` can
+ * fork from any of them.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { Checkpoint, CheckpointStore } from '@loushy/build-ai-agent';
+import {
+  appendToRing,
+  newestFirst,
+  resolveHistoryLimit,
+  toHistoryEntry,
+  type Checkpoint,
+  type CheckpointDeleteOptions,
+  type CheckpointHistoryEntry,
+  type CheckpointHistoryOptions,
+  type CheckpointStore,
+} from '@loushy/build-ai-agent';
 
 export class FileCheckpointStore implements CheckpointStore {
-  constructor(private readonly baseDir: string) {}
+  private readonly historyLimit: number;
 
-  private dir(agentId: string): string {
-    return path.join(this.baseDir, '.loushy', 'agents', agentId, 'checkpoints');
+  /** @param options.historyLimit checkpoints kept per session in `history()` (default 50, `0` keeps none) */
+  constructor(
+    private readonly baseDir: string,
+    options: { historyLimit?: number } = {}
+  ) {
+    this.historyLimit = resolveHistoryLimit(options.historyLimit);
   }
 
-  private filePath(agentId: string, sessionId: string): string {
-    return path.join(this.dir(agentId), `${sessionId}.json`);
+  private dir(agentId: string, kind = 'checkpoints'): string {
+    return path.join(this.baseDir, '.loushy', 'agents', agentId, kind);
+  }
+
+  private filePath(agentId: string, sessionId: string, kind?: string): string {
+    return path.join(this.dir(agentId, kind), `${sessionId}.json`);
+  }
+
+  private historyPath(sessionId: string): string {
+    return this.filePath(this.agentIdFromSessionId(sessionId), sessionId, 'checkpoint-history');
+  }
+
+  private readRing(sessionId: string): CheckpointHistoryEntry[] {
+    const file = this.historyPath(sessionId);
+    return fs.existsSync(file) ? (JSON.parse(fs.readFileSync(file, 'utf8')) as CheckpointHistoryEntry[]) : [];
   }
 
   /**
@@ -50,6 +83,11 @@ export class FileCheckpointStore implements CheckpointStore {
     const agentId = this.agentIdFromSessionId(sessionId);
     fs.mkdirSync(this.dir(agentId), { recursive: true });
     fs.writeFileSync(this.filePath(agentId, sessionId), JSON.stringify(checkpoint), 'utf8');
+    if (this.historyLimit > 0) {
+      const ring = appendToRing(this.readRing(sessionId), toHistoryEntry(checkpoint), this.historyLimit);
+      fs.mkdirSync(this.dir(agentId, 'checkpoint-history'), { recursive: true });
+      fs.writeFileSync(this.historyPath(sessionId), JSON.stringify(ring), 'utf8');
+    }
   }
 
   async load(sessionId: string): Promise<Checkpoint | null> {
@@ -59,9 +97,13 @@ export class FileCheckpointStore implements CheckpointStore {
     return JSON.parse(fs.readFileSync(file, 'utf8')) as Checkpoint;
   }
 
-  async delete(sessionId: string): Promise<void> {
+  async delete(sessionId: string, options: CheckpointDeleteOptions = {}): Promise<void> {
     const agentId = this.agentIdFromSessionId(sessionId);
-    const file = this.filePath(agentId, sessionId);
-    if (fs.existsSync(file)) fs.unlinkSync(file);
+    fs.rmSync(this.filePath(agentId, sessionId), { force: true });
+    if (!options.keepHistory) fs.rmSync(this.historyPath(sessionId), { force: true });
+  }
+
+  async history(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]> {
+    return newestFirst(this.readRing(sessionId), options);
   }
 }
