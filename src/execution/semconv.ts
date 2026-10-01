@@ -54,7 +54,33 @@ export const GenAiAttr = {
   OUTPUT_MESSAGES: 'gen_ai.output.messages',
   TOOL_CALL_ARGUMENTS: 'gen_ai.tool.call.arguments',
   TOOL_CALL_RESULT: 'gen_ai.tool.call.result',
+  /** Metric attribute: `input` or `output` (see {@link TokenType}). */
+  TOKEN_TYPE: 'gen_ai.token.type',
 } as const;
+
+/** `gen_ai.token.type` values of the `gen_ai.client.token.usage` metric. */
+export const TokenType = { INPUT: 'input', OUTPUT: 'output' } as const;
+
+/**
+ * OpenTelemetry GenAI client metrics (LOU-D48). Spec: gen-ai-metrics.md of
+ * semantic-conventions v1.40 (the newer semantic-conventions-genai repo
+ * replaces the token histogram with per-type counters, which are not
+ * emitted here). Both are `Development` stability; the bucket boundaries are
+ * the spec's recommendations.
+ */
+export const GenAiMetric = {
+  /** Histogram, unit `{token}`, one record per token type per model call. */
+  TOKEN_USAGE: 'gen_ai.client.token.usage',
+  /** Histogram, unit `s`, one record per model call and per tool call. */
+  OPERATION_DURATION: 'gen_ai.client.operation.duration',
+} as const;
+
+export const TOKEN_USAGE_BUCKETS = [
+  1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 262144, 1048576, 4194304, 16777216, 67108864,
+];
+export const OPERATION_DURATION_BUCKETS = [
+  0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64, 1.28, 2.56, 5.12, 10.24, 20.48, 40.96, 81.92,
+];
 
 /** `error.type` (stable in semconv) and its `_OTHER` fallback. */
 export const ErrorAttr = {
@@ -68,8 +94,14 @@ export const TOOL_TYPE_FUNCTION = 'function';
 
 /** Attributes specific to this SDK (not part of the GenAI semantic conventions). */
 export const SdkAttr = {
-  /** `true` on a `chat` span whose token counts are estimates because the provider reported none (LOU-V5). */
+  /** `true` on a span whose token counts are (partly) estimates because the provider reported none (LOU-V5). */
   USAGE_ESTIMATED: 'loushy.usage.estimated',
+  /**
+   * Estimated USD (LOU-D48): per step on a `chat` span; cumulative on the
+   * parent spans (`invoke_agent`, and a delegating `execute_tool`). Absent
+   * when the price table does not know a contributing model.
+   */
+  COST_USD: 'loushy.cost_usd',
 } as const;
 
 /**

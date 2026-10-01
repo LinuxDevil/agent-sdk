@@ -388,3 +388,51 @@ describe('traced flows (LOU-D9)', () => {
     expect(on.spans[3].attributes['gen_ai.tool.call.arguments']).toBe(JSON.stringify({ city: 'Paris' }));
   });
 });
+
+describe('loushy.cost_usd and loushy.usage.estimated spans (LOU-D48)', () => {
+  async function runPriced(model: string, scripted: boolean) {
+    const { agent, toolRegistry } = setup();
+    const { exporter, spans } = memoryExporter();
+    const provider = scripted
+      ? modelWithOneToolCall()
+      : mockModel([{ toolCalls: [{ id: 'c1', name: 'get_weather', args: { city: 'Paris' } }] }, 'It is 21C.']);
+    const result = await AgentExecutor.execute({
+      agent: { ...agent, settings: { model } },
+      input: 'Weather in Paris?',
+      provider,
+      toolRegistry,
+      exporter,
+    });
+    return { spans, result };
+  }
+
+  const gpt4oMini = (input: number, output: number) => (input * 0.15 + output * 0.6) / 1e6;
+
+  it('records the step cost on each chat span and the cumulative cost on the invoke_agent span', async () => {
+    const { spans, result } = await runPriced('gpt-4o-mini', true);
+    const [run, chat1, tool, chat2] = spans;
+
+    expect(chat1.attributes['loushy.cost_usd']).toBeCloseTo(gpt4oMini(10, 5), 12);
+    expect(chat2.attributes['loushy.cost_usd']).toBeCloseTo(gpt4oMini(20, 7), 12);
+    expect(run.attributes['loushy.cost_usd']).toBeCloseTo(gpt4oMini(30, 12), 12);
+    expect(run.attributes['loushy.cost_usd']).toBeCloseTo(result.usage.costUsd as number, 12);
+    expect(tool.attributes).not.toHaveProperty('loushy.cost_usd');
+    for (const span of [run, chat1, chat2]) expect(span.attributes).not.toHaveProperty('loushy.usage.estimated');
+  });
+
+  it('omits loushy.cost_usd when the model has no known price', async () => {
+    const { spans } = await runPriced('test-model', true);
+    expect(spans.some((s) => 'loushy.cost_usd' in s.attributes)).toBe(false);
+  });
+
+  it('flags loushy.usage.estimated on the chat spans and the run span when tokens were estimated', async () => {
+    const { spans, result } = await runPriced('gpt-4o-mini', false);
+    const [run, chat1, , chat2] = spans;
+
+    expect(result.usage.estimated).toBe(true);
+    expect(run.attributes['loushy.usage.estimated']).toBe(true);
+    expect(chat1.attributes['loushy.usage.estimated']).toBe(true);
+    expect(chat2.attributes['loushy.usage.estimated']).toBe(true);
+    expect(run.attributes['loushy.cost_usd']).toBeCloseTo(result.usage.costUsd as number, 12);
+  });
+});
