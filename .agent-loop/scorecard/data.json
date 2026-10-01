@@ -1,4 +1,4 @@
-window.SCORECARD = {
+{
  "date": "2026-10-02",
  "iterations": 14,
  "prsMerged": 79,
@@ -1095,4 +1095,4 @@ window.SCORECARD = {
   "<strong>Jira:</strong> the connected Atlassian site has no <code>LOU</code> project; tickets live in STATE.md.",
   "<strong>npm publish</strong> is an owner action (D49 prepares it)."
  ]
-};
+}

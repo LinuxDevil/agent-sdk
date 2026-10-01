@@ -3,7 +3,7 @@
 Mission: make `@loushy/build-ai-agent` the best TypeScript AI agent SDK (capabilities and DX) against
 Vercel eve and MaxGfeller/open-harness. This file is the loop's memory: read it first, update it last.
 
-- Loop started: 2026-10-01. Iterations completed: 13. Since iteration 12 the loop runs on the owner's Windows checkout (Node 26); see BRIEF.md and BASELINE.md.
+- Loop started: 2026-10-01. Iterations completed: 14. Since iteration 12 the loop runs on the owner's Windows checkout (Node 26); see BRIEF.md and BASELINE.md.
 - Audit: `.agent-loop/AUDIT.md`, refreshed 2026-10-01 at main `a03b1a3` (eve 0.69.0 @682c7a6, open-harness 0.7.0 @026e8d9).
   Reference agents (3 agents x 3 SDKs, measured): `.agent-loop/reference-agents/`. Older material: `docs/research/*.md`, `docs/plan/tickets.md`.
   Audit is stale when: a competitor ships a new major, or more than ~25 PRs land after `a03b1a3` (re-run the DX measurement then).
@@ -33,17 +33,17 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 |---|---|---|---|---|
 | Durability / resume | ✅ flipped (W9: sessions checkpoint per step, `session.resume()` #89) | ✅ | ⚠️ | D30 (one `store` option), W9.2 (fingerprint) |
 | Durable stores (SQLite/file/KV) | ✅ | ✅ | ❌ | - |
-| Sandboxing | ⚠️ | ✅ | ⚠️ | X11 |
+| Sandboxing | ⚠️ (X11 #143: secret-free environment for sandboxed commands; Docker network none/default; per-host egress not enforced in containers) | ✅ | ⚠️ | X12.2 |
 | Workspace fs + shell tools | ✅ | ✅ | ✅ | - |
 | Compaction | ✅ flipped (W2 prune #80, W3 summarize/two-phase/pinned #84) | ✅ | ✅ | W3.2 (`compaction.*` events, `createAgent({ compaction })`) |
 | Subagents | ✅ | ✅ | ✅ | - |
 | Background / resumable subagents | ✅ flipped (Y4 #91 + Y4.2 #92: run-end cancel/await, `result.backgroundTasks`, `subagentOptions`) | ✅ | ✅ | Y6 (resumable children) |
-| Remote subagents | ✅ flipped (Y7 #132: `remoteAgent({ url, auth })` over the session API, background tasks included) | ✅ | ❌ | Y7.2 (proxy remote approvals, session reuse) |
+| Remote subagents | ✅ flipped (Y7 #132; D53 #146 one session client) | ✅ | ❌ | Y7.2 (proxy remote approvals, session reuse) |
 | Approvals / HITL | ✅ flipped (D21, #75) | ✅ | ⚠️ | X8 (policies) |
 | Agent asks the user a question | ✅ flipped (X9 #111: `ask_question`, durable pause, `approvals.answer`, hook `answer()`) | ✅ | ❌ | - |
 | Steering (mid-run input) | ✅ flipped (V9 #122 enqueue + V10 #128 `run.steer()`, `turnPolicy: 'steer'`, `input.steered`) | ✅ | ❌ | - |
 | Cancellation | ✅ | ✅ | ✅ | - |
-| Memory (cross-session) | ✅ flipped (W6 #117 slots and providers; W6.2 #136 `sqliteMemory`) | ✅ | ❌ | W6.3 agent-dir `memory/` |
+| Memory (cross-session) | ✅ flipped (W6 #117, W6.2 #136 `sqliteMemory`, W6.3 #147 agent-dir `memory/`) | ✅ | ❌ | - |
 | Sessions (multi-turn) | ✅ flipped (V8 session.stream, #78) | ✅ | ✅ | W9 (checkpointing sessions, durability row) |
 | Skills (SKILL.md) | ✅ | ✅ | ✅ | - |
 | AGENTS.md loading | ✅ | ⚠️ | ✅ | - |
@@ -52,7 +52,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Test utils (mock model, record/replay) | ✅ | ⚠️ | ❌ | - |
 | Tracing / OTel GenAI | ✅ | ✅ | ❌ | - |
 | Metrics / trace viewer | ⚠️ (D48 #95 metrics + cost; no trace viewer) | ✅ | ❌ | - (viewer not ticketed) |
-| Multi-provider | ⚠️ (generate/stream on `ai` v4 and v6/v7; D28a #134 types, D28b #140 tests on both; peer ranges pending) | ✅ | ✅ | D28c, D28d, D29 |
+| Multi-provider | ⚠️ (runtime, types, tests and Worker bundle on `ai` v4 and v7: D26-D27, D28a-c; peer ranges pending) | ✅ | ✅ | D28d, D29 |
 | Fallbacks / retry policy | ✅ (V7.1 #74, V7.2 agent-level + events #86) | ⚠️ | ⚠️ | - |
 | Structured output | ✅ flipped (V4 #90: `output` schema, repair step, `output-invalid`) | ✅ | ❌ | - |
 | Multimodal input | ✅ flipped (V11 #106 + V12 #109: `AgentInput` on send/stream/session/evals/hook, SQLite bytes) | ✅ | ✅ | - (files degrade to text on the pinned `ai` v4 peers; D26+) |
@@ -65,14 +65,14 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | CLI scaffolding | ⚠️ (unpublished) | ✅ | ❌ | D49, U20 |
 | Dev TUI / REPL | ✅ flipped (D31 dev + D32 streaming web chat + D33 #120 `loushy chat` terminal REPL) | ✅ | ⚠️ | - |
 | Visual studio / debugger | ✅ | ❌ | ❌ | - |
-| Channels | ⚠️ (P7 #126: `defineChannel`, `mountChannels`, http/webhook channels; P5 #133: Slack with a session per thread and approval buttons) | ✅ | ❌ | P6 Discord, P7.2, P5.2 |
+| Channels | ⚠️ (P7 contract, http/webhook, Slack P5 #133, agent-dir `channels/` P7.2 #144) | ✅ | ❌ | P6 Discord, P5.2 |
 | Schedules | ⚠️ (P8 #130: `defineSchedule`, `schedules/*.ts`, `startSchedules`, node server option) | ✅ | ❌ | P8.2 (deployed agent dirs), P9 (Worker cron) |
 | Deploy story | ✅ (D14 #119 node/docker + D51 #125 Worker: sessions over KV, SSE, auth; Fetch-native shared routes) | ✅ | ❌ | - |
 | Edge runtime (Workers) | ✅ | ❌ | ❌ | - |
 | Budgets / limits | ✅ flipped (V6 #118: run and session `limits`, `budget-exceeded`, `BudgetExceededError`) | ✅ | ⚠️ | - |
 | Guardrails (input/output) | ✅ (X4 #121 + X5 #124 spec policy compiled) | ⚠️ | ❌ | - |
 | Permissions policy | ✅ flipped (X2 #105: `permissions` rules, audit log, `permission.decision` event, inherited by sub-agents) | ✅ | ⚠️ | X8 (policy helpers on needsApproval) |
-| Credential brokering | ❌ | ✅ | ❌ | X11, X12 |
+| Credential brokering | ✅ flipped (X12 #149: host-side credential broker; secrets never enter the sandbox) | ✅ | ❌ | X12.2 (Docker route) |
 | Dynamic config | ✅ flipped (V15 #139: per-run `model`, `instructions`, `tools` functions; model pinned across approval resume) | ✅ | ⚠️ | V15.2 (crash resume) |
 | Hot reload | ✅ flipped (D31 #110: dirs, TS modules and specs, cache-busted reload) | ✅ | ❌ | - |
 | Registry / extensions | ❌ | ✅ | ❌ | D50 |
@@ -81,9 +81,9 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Directory authoring | ✅ | ✅ | ❌ | - |
 | Agent-readable docs | ✅ | ✅ | ✅ | - |
 | Published on npm | ❌ (owner action) | ✅ | ✅ | D49 |
-| Current `ai` major | ❌ (runtime, types and tests ready; peers still pin v4) | ✅ | ✅ | D28c, D28d, D29 |
+| Current `ai` major | ❌ (everything but the published peer ranges is ready) | ✅ | ✅ | D28d, D29 |
 
-Score (us): 38 ✅ / 6 ⚠️ / 7 ❌ of 51 after iteration 13 (iteration 12: 36/7/8; iteration 11: 34/7/10 with the Metrics row counted as ❌, now ⚠️ since D48 shipped; iteration 10: 33/8/10; iteration 9: 30/10/11; iteration 8: 28/11/12; iteration 7: 25/13/13; iteration 6: 24/13/14; iteration 5: 23/14/14; iteration 4: 22/15/14; iteration 3: 20/15/16 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
+Score (us): 39 ✅ / 6 ⚠️ / 6 ❌ of 51 after iteration 14 (iteration 13: 38/6/7; iteration 12: 36/7/8; iteration 11: 34/7/10 with the Metrics row counted as ❌, now ⚠️ since D48 shipped; iteration 10: 33/8/10; iteration 9: 30/10/11; iteration 8: 28/11/12; iteration 7: 25/13/13; iteration 6: 24/13/14; iteration 5: 23/14/14; iteration 4: 22/15/14; iteration 3: 20/15/16 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
 
 Differentiators shipped (target: 3): 6 of 8 (#1 host-agnostic durable sessions: W9 #89 + D30 #94; #2 record/replay evals: D46 #96; #3 Forge time-travel: D43-D45; #6 OTel GenAI metrics + cost: D48 #95; #7 trajectory evals that run anywhere: D46 + D47 #131; #8 edge-native agents: D51 #125). Open: #4 reach (ACP, Z6); #5 both authoring modes with hot reload is done in practice (D31-D33). Original candidate list (candidates in AUDIT section 7: host-agnostic durable sessions D30; record/replay evals D46; Forge time-travel D43-D45; MCP+ACP+HTTP reach Z6/D14; both authoring modes with hot reload D31-D33; OTel metrics D48; trajectory evals remote D47; edge-native agents D51/P9).
 
@@ -123,7 +123,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | V11.2 | `SqliteStore` sessions/checkpoints encode `Uint8Array` parts | ✅ (in #109) | |
 | V12 | Multimodal through the public API (`AgentInput`) | ✅ #109 | |
 | V13 | Reasoning effort + events | ⬜ | D26 |
-| V14 | Streaming resume after approval (`approve` callback on `stream()` too) | ⬜ | D21 |
+| V14 | Streaming resume after approval (`approve` callback on `stream()` too) (standalone `streamResumeAfterApproval()`; `agent.approvals.streamResolve()` / `streamAnswer()`; consumers wired by D32.2) | ✅ #148 | D21 |
 | V15 | Per-run dynamic config (`model` / `instructions` / `tools` as functions of `{ sessionId, input, metadata }`; `LOUSHY_CONFIG_RESOLVER_FAILED`) | ✅ #139 | |
 | V15.2 | Crash resume keeps the dynamic config: save `{ ctx, model }` on the checkpoint (today a crash resume re-resolves with empty input and no metadata) | ⬜ | V15 |
 
@@ -136,7 +136,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | W3.2 | `compaction.start/done` events, `createAgent({ compaction, hooks })` | ✅ #102 | |
 | W6 | Scoped memory slots (`defineMemory`, `createAgent({ memory })`) | ✅ #117 | |
 | W6.2 | `sqliteMemory(store)` provider (exported from `/sqlite`; migration 3 `memory_items`; shared provider contract suite) | ✅ #136 | W6 |
-| W6.3 | `loadAgentDir()` picks up `memory/<slot>.ts` | ⬜ | W6 |
+| W6.3 | `loadAgentDir()` picks up `memory/<slot>.ts` (`manifest.memory`; slots passed to `createAgent({ memory })`) | ✅ #147 | W6 |
 | W8 | Manual compact and clear | ⬜ | W2, W3 |
 | W9 | Sessions that checkpoint (`checkpointStore`, `session.resume()/pending()/discardPending()`) | ✅ #89 | |
 | W9.2 | Agent fingerprint on resume (warn/refuse on drift) | ⬜ | W9 |
@@ -152,8 +152,9 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | X8 | Approval policies (`'approve'|'deny'|'ask'`, `once()`) | ⬜ | |
 | X9 | `ask_question` tool (`createAgent({ askQuestion: true })`, `approvals.answer`) | ✅ #111 | |
 | X10 | In-memory approval store | ✅ (D21, #75) | |
-| X11 | Secret-free sandbox exec + egress allowlist | ⬜ | |
-| X12 | Credential brokering proxy | ⬜ | X11 |
+| X11 | Secret-free sandbox exec + egress allowlist (`commandEnv()` allowlist for NodeWorkspace, SandboxShell and Docker; `network` policy stored, `{ allow }` fail-closed) | ✅ #143 | |
+| X12 | Credential brokering proxy (`createCredentialBroker`: loopback proxy, header injection for plain HTTP and `/__broker/<host>/`, CONNECT allowlist, private-address refusal) | ✅ #149 | X11 |
+| X12.2 | Docker wiring for the broker: route the container through the proxy so `network: { allow }` is enforced | ⬜ | X12 |
 
 ### Epic Y — Sub-agents and skills
 | ID | Title | Status | Deps |
@@ -196,7 +197,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D28 | Provider peers and ranges | split into D28a-d | D27 |
 | D28a | SDK source type-checks on `ai` v4 and v7 (`legacyAiTool`, SDK-owned types in aiSdkProvider, CI job `typecheck-ai7`) | ✅ #134 | |
 | D28b | Test suite runs on either major (gate or port the ~55 v4-only tests; vitest in the ai-7 CI job) (66 tests gated to v4 via `aiMajor.testkit.ts`; ai-7 CI job builds and runs vitest) | ✅ #140 | D28a |
-| D28c | Worker bundle on `ai` 7 (Node built-ins leak into worker.js) | ⬜ | D28a |
+| D28c | Worker bundle on `ai` 7 (Node built-ins leak into worker.js) (the four v7 "leaks" are `process.getBuiltinModule()` string arguments; leak check skips exactly those; all 16 gates removed) | ✅ #145 | D28a |
 | D28d | Widen peers (`ai` 4, 6 and 7; `@ai-sdk/*`; `ollama-ai-provider-v2`); install hints, doctor and scaffold follow the installed major | ⬜ | D28b, D28c |
 | D28e | Port the v4-only contract tests (`toolCallTurns.contract`, `multimodal.contract`, part of `aiSdkProvider.test`) to a v7 mock model so the contracts are tested on both majors | ⬜ | D28b |
 | D29 | zod 4 / Standard Schema | ⬜ | D22 |
@@ -221,7 +222,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D46 | `loushy eval --record/--replay/--drift` (cassettes per case, drift table + JUnit, `--strict`) | ✅ #96 | |
 | D46.2 | Proper provider-middleware hook for eval cassettes (replaces runtime reassignment of `AgentExecutor.execute`) | ⬜ | D46 |
 | D47 | Remote eval target (`loushy eval --url`, `remoteTarget()`, `LOUSHY_REMOTE_*` codes) | ✅ #131 | |
-| D53 | One session-API client shared by `remoteAgent` (Y7) and `remoteTarget` (D47); one set of remote error codes | ⬜ | Y7, D47 |
+| D53 | One session-API client shared by `remoteAgent` (Y7) and `remoteTarget` (D47); one set of remote error codes (`src/server/sessionClient.ts` `runRemoteTurn`; `LOUSHY_REMOTE_AGENT_FAILED` removed) | ✅ #146 | Y7, D47 |
 | D48 | OTel GenAI metrics (`gen_ai.client.token.usage`, `operation.duration`) + `loushy.cost_usd` | ✅ #95 | |
 | D49 | Publish readiness | ⬜ | U20 |
 | D50 | `loushy add` | ⬜ | |
@@ -241,9 +242,9 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | P5.2 | Slack hardening: approver allowlist, delivery-error reporting, DMs, button message update | ⬜ | P5 |
 | P6 | Discord channel | ⬜ | P7 |
 | P7 | `defineChannel` contract + `mountChannels`, `httpChannel`, `webhookChannel` | ✅ #126 | |
-| P7.2 | `loadAgentDir()` picks up `channels/*.ts`; Slack 3-second ack | ⬜ | P7 |
+| P7.2 | `loadAgentDir()` picks up `channels/*.ts`; Slack 3-second ack (`resolveAgentDir().channels`; `createDeployedServer({ channels })`; `loushy dev` does not mount them yet) | ✅ #144 | P7 |
 | P8 | Schedules in agent dirs (`defineSchedule`, `resolveAgentDir().schedules`, `startSchedules`, `createDeployedServer({ schedules })`) | ✅ #130 | |
-| P8.2 | Node deploy target serves agent directories (and so passes their schedules and channels) | ⬜ | P8 |
+| P8.2 | Node deploy target serves agent directories (and so passes their schedules and channels); `loushy dev` mounts a directory's channels and starts its schedules | ⬜ | P8, P7.2 |
 | P9 | Schedules on deploy targets | ⬜ | P8 |
 
 ## PR log
@@ -322,6 +323,13 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | #140 | D28b | merged (squash) | tests on either ai major (merged with 2 importGraph failures that were a stale dist in the orchestrator worktree; main verified green after) |
 | #141 | P3 | merged (squash) | Svelte store (iteration 14) |
 | #142 | Z5.2 | merged (squash) | serveMcp annotations (iteration 14) |
+| #143 | X11 | merged (squash) | sandbox env allowlist (breaking default, CHANGELOG'd) |
+| #144 | P7.2 | merged (squash) | agent-dir channels |
+| #145 | D28c | merged (squash) | Worker bundle on ai 7 |
+| #146 | D53 | merged (squash) | shared session client |
+| #147 | W6.3 | merged (squash) | agent-dir memory (iteration 16 ticket, pulled forward) |
+| #149 | X12 | merged (squash) | credential broker (iteration 16 ticket, pulled forward) |
+| #148 | V14 | merged (squash) | streaming resume after approval |
 
 ## Main health
 
@@ -407,19 +415,27 @@ CI runs only on `pull_request`, so "main is green" means the last PR's CI run pa
 - Helper bug: the sync helper did not see colored FAIL lines and merged #140 with 2 failing importGraph tests; they were a stale `dist/` in the orchestrator worktree, not a break. The helper now strips ANSI and blocks on any failure except importGraph.
 - Idle slots are filled early: P3, X11, Z5.2 (iteration 14) were launched while V15 and D28b were still running.
 
+### Iteration 14 (2026-10-02)
+- Merged: #141 (P3), #142 (Z5.2), #143 (X11), #144 (P7.2), #145 (D28c), #146 (D53), #147 (W6.3), #149 (X12), #148 (V14). Slots are refilled as tickets merge, so iteration numbers now mean "between two health runs" rather than a fixed batch of five.
+- Health run on main at 7a06586: tsc, lint 0 errors / 399 warnings, test:types, builds, 153 snippets, llms, coverage 2757 passed / 4 skipped, fallow 0 above threshold, all four Forge checks green.
+- Matrix flips: Credential brokering ❌->✅.
+- Breaking (CHANGELOG'd): sandboxed commands no longer inherit the host environment (X11).
+- New follow-up: X12.2 (Docker route through the broker). P8.2 now also covers `loushy dev` mounting channels and schedules.
+- Disk: E: dropped to 18 GB free; `node_modules`, `dist` and `coverage` are removed from an agent's worktree once its PR is merged (branches and worktrees stay).
+- Helper: merge retries when GitHub answers "not mergeable" right after a push.
+
 ## Plan to the end (owner: run every batch, no check-ins)
 
 One hub ticket per batch (AgentExecutor / resume / toolCallExecution), one package.json ticket per batch.
 
-13. V15 (opus, createAgent), D28b (sonnet), U21 (sonnet), W6.2 (sonnet), P2 Vue (sonnet, package.json).
-14. V14 (opus, hub), D28c (opus), P3 Svelte (sonnet, package.json), X11 (opus), Z5.2 (sonnet).
-15. X8 (opus, hub), D28d (opus, package.json), P7.2 (sonnet), W8 (sonnet), D53 (sonnet).
-16. X3 (opus, hub), D29 (opus, package.json), P6 Discord (sonnet), X12 (opus), W6.3 (sonnet).
-17. Z6 ACP (opus), D32.2 (sonnet), W9.2 (sonnet, hub), P1 (sonnet), D37 (sonnet, package.json).
-18. Y6 (opus, hub), P4 (sonnet), P9 (sonnet), D43.2 (sonnet), D42 (sonnet, build config).
-19. D41 (opus, hub), D50 (sonnet), U23 (sonnet), P8.2 (sonnet), D39 (sonnet, package.json).
-20. V13 (opus, hub), D38 (sonnet), U14.2 (sonnet), V4.2 (sonnet), P5.2 (sonnet).
-21. D23.2 (sonnet, hub), D46.2 (sonnet), D2.2 (sonnet), Y7.2 (opus), U20 (sonnet).
+Done through 14. Order from here (slots refilled as tickets merge):
+15. In flight: X8 (opus, hub), D28d (opus, package.json), W8 (sonnet), P6 Discord (sonnet), D32.2 (sonnet).
+16. X3 (opus, hub), D29 (opus, package.json), Z6 ACP (opus), P1 (sonnet), P8.2 (sonnet).
+17. W9.2 (sonnet, hub), D37 (sonnet, package.json), P4 (sonnet), P9 (sonnet), D43.2 (sonnet).
+18. Y6 (opus, hub), D42 (sonnet, build config), D50 (sonnet), U23 (sonnet), X12.2 (opus).
+19. D41 (opus, hub), D39 (sonnet, package.json), D38 (sonnet), V4.2 (sonnet), P5.2 (sonnet).
+20. V13 (opus, hub), U14.2 (sonnet), D46.2 (sonnet), D2.2 (sonnet), Y7.2 (opus).
+21. D23.2 (sonnet, hub), V15.2 (sonnet), D28e (sonnet), U20 (sonnet).
 22. D16 ESLint ratchet alone (quiet batch), then D49 publish readiness (no publish, no release-config change).
 Then: final health run, AUDIT refresh note, scorecard artifact brought up to date.
 
