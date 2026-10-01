@@ -32,7 +32,8 @@ import type { AgentStore } from './storage/agentStore';
 import { loadProjectInstructions } from './projectInstructions';
 import { basename } from 'node:path';
 import type { Subagents } from './subagents/types';
-import { assertMaxSubagentDepth, assertNoTaskTool, assertSubagents, registerSubagent } from './subagents/withSubagents';
+import type { SubagentOptions } from './subagents/backgroundTasks';
+import { assertMaxSubagentDepth, assertNoTaskTool, assertSubagents, registerSubagent, subagentsWithOptions } from './subagents/withSubagents';
 import type { SubagentSpec } from './execution/delegation';
 import type { ApprovalStore } from './execution/ApprovalGate';
 import { InMemoryApprovalStore } from './execution/InMemoryApprovalStore';
@@ -91,6 +92,12 @@ export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> {
    * ```
    */
   subagents?: Subagents;
+  /**
+   * Background sub-agent options (LOU-Y4.2): `maxConcurrent` (default 3) and
+   * `awaitBackgroundOnFinish` (default `false`: tasks still running when a
+   * run ends are cancelled). Override those set with `withSubagentOptions()`.
+   */
+  subagentOptions?: SubagentOptions;
   /**
    * How deep sub-agents may nest. Defaults to 1: this agent's sub-agents
    * cannot call sub-agents of their own (they are not offered the `task`
@@ -392,7 +399,7 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
 
   const runOptions = {
     skills: config.skills,
-    subagents: config.subagents,
+    subagents: subagentsWithOptions(config.subagents, config.subagentOptions),
     maxSubagentDepth: config.maxSubagentDepth,
     maxSteps: config.maxSteps,
     toolConcurrency: config.toolConcurrency,

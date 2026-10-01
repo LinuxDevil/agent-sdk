@@ -25,6 +25,19 @@ import { SandboxAdapter } from '../security/sandboxCore';
 import { bindToolCallScope, type ToolCallScope } from './subagentRuntime';
 import type { RunUsage } from '../models/usage';
 
+/**
+ * Thrown when a `requiresSandbox` tool cannot be sandboxed (LOU-U14: reaches
+ * the model as an error result of `kind: 'sandbox'`).
+ */
+class SandboxRequiredError extends Error {
+  readonly toolErrorKind = 'sandbox' as const;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'SandboxRequiredError';
+  }
+}
+
 /** Extra context the executor hands a tool next to the 'ai' SDK's own execute options (LOU-V5). */
 export interface ToolRunContext {
   /** Called by the delegate tool with a finished child run's usage, so the parent run adds it to its totals. */
@@ -67,7 +80,7 @@ export async function executeToolWithSandboxGuard(
 ): Promise<unknown> {
   if (toolDesc.requiresSandbox) {
     if (!toolDesc.sandboxExecute) {
-      throw new Error(
+      throw new SandboxRequiredError(
         `Tool "${toolName}" is flagged requiresSandbox but does not implement sandboxExecute() ` +
           `- cannot be safely sandboxed, refusing to fall back to unsandboxed execution`
       );
