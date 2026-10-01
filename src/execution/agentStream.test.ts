@@ -357,6 +357,25 @@ describe('agent.stream()', () => {
     expect(typesOf(events).slice(0, 5)).toEqual(['run.start', 'step.start', 'text.delta', 'text.done', 'tool.start']);
   });
 
+  it('fails the step on an error chunk from the provider stream', async () => {
+    const model = mockModel(['never shown']);
+    model.stream = async () => ({
+      fullStream: (async function* (): AsyncGenerator<StreamChunk> {
+        yield { type: 'error', error: new Error('stream broke') };
+      })(),
+      textStream: (async function* () {})(),
+      text: Promise.resolve(''),
+      usage: Promise.reject(new Error('stream broke')),
+      finishReason: Promise.reject(new Error('stream broke')),
+      toolCalls: Promise.reject(new Error('stream broke')),
+    });
+    const run = agentWith(model).stream('hi');
+    const events = await collect(run);
+
+    expect(only(events, 'error')[0].error.message).toContain('stream broke');
+    await expect(run.result).rejects.toThrow(/stream broke/);
+  });
+
   it('can be iterated only once', async () => {
     const run = agentWith(mockModel(['x'])).stream('hi');
     await collect(run);
