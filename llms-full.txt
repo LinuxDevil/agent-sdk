@@ -2459,7 +2459,7 @@ loushy build --target=<name> --agent=<path> [--out=<dir>]
 loushy studio [--port N] [--host H] [--prod|--dev]
 loushy mcp <agent.yaml|json> [--http --port N --host H]
 loushy doctor [agent.yaml|json] [--json]
-loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]]
+loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]]
 ```
 
 `npm create loushy-agent my-agent` runs `loushy init` with the same arguments.
@@ -4269,6 +4269,20 @@ input it was given.
 
 **Example:** a tool's `execute` threw.
 
+### LOUSHY_REMOTE_AGENT_FAILED
+
+**Means:** a `remoteAgent()` sub-agent could not deliver an answer: the
+deployed agent was unreachable, answered 401 or another non-2xx status, sent a
+malformed or unfinished stream, or its run ended in an error. The lead model
+gets it as a structured tool error; the bearer token is never part of it.
+
+**Fix:** read the message (it names the url and the remote session id); for a
+401, fix the `auth` token; for a remote run error, look at the remote agent's
+logs for that session.
+
+**Example:** `remoteAgent({ url, auth: 'wrong-token' })` against a deployment
+that sets `LOUSHY_API_TOKEN`.
+
 ## Approvals and sessions
 
 ### LOUSHY_APPROVAL_STORE_MISSING
@@ -4330,6 +4344,27 @@ streaming runner.
 `send()`.
 
 **Example:** `new AgentSession(run).stream('hi')`.
+
+### LOUSHY_REMOTE_UNAUTHORIZED
+
+**Means:** `loushy eval --url` (or `remoteTarget()`) got `401` from the deployed
+agent: the bearer token is missing or wrong. The case fails; the run goes on.
+
+**Fix:** pass the deployment's `LOUSHY_API_TOKEN` with `--token` or the
+`LOUSHY_EVAL_TOKEN` environment variable. See
+[Run evals against a deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md#run-evals-against-a-deployment).
+
+**Example:** `loushy eval --url https://agent.example.com` against a deployment with a token set.
+
+### LOUSHY_REMOTE_REQUEST_FAILED
+
+**Means:** a remote eval case could not run: the deployment was unreachable,
+answered with a non-2xx status, or its event stream was truncated (no
+`run.done`).
+
+**Fix:** check the URL, `GET <url>/health` and the deployment's logs.
+
+**Example:** `loushy eval --url http://localhost:1` with nothing listening.
 
 ### LOUSHY_CHECKPOINT_NOT_FOUND
 
@@ -4614,7 +4649,7 @@ repository) runs them.
 ## `loushy eval`
 
 ```text
-loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]]
+loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]]
 ```
 
 | Option | Meaning |
@@ -4625,6 +4660,7 @@ loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judg
 | `--json path` | write the summary and every structured result as JSON |
 | `--strict` | soft failures fail the run |
 | `--judge` | run `*.judge.eval.ts` files instead of the normal ones |
+| `--url base` | run every case against the deployed agent at `base` instead of in-process; `--token` (or `LOUSHY_EVAL_TOKEN`) is the bearer token. See [Run evals against a deployment](#run-evals-against-a-deployment) |
 | `--config path` | use your own vitest config instead of the generated one |
 | `--record` | run against the real provider and write one cassette per case ([below](#record-replay-and-drift)) |
 | `--replay` | run every case from its cassette, with no network; a missing cassette fails the case |
@@ -4732,6 +4768,55 @@ How it works: while a case runs under one of these modes, every
 `AgentExecutor.execute()` call (which `createAgent()` agents, streaming,
 sub-agents and approval resumes go through) gets its provider wrapped with
 `recordReplay()` for that case's cassette.
+
+## Run evals against a deployment
+
+The same eval file that gates CI in-process can smoke-test a deployed agent (the
+[node server or Cloudflare Worker](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#http-api)). Point `loushy eval` at its base
+URL and every case runs against the deployment instead of the in-process agent:
+
+```bash
+npx loushy eval --url https://agent.example.com --token "$DEPLOY_TOKEN"   # or LOUSHY_EVAL_TOKEN
+```
+
+Each case gets its own remote session (`POST /chat { sessionId, input }`, one
+session per case, shared by its `t.send()` calls) and the SSE stream is read to
+`run.done`. The events become the same result an in-process run produces: tool
+calls, final reply, finish reason, steps and usage. So `t.calledTool()`,
+`t.completed()`, scorers, `t.judge()`, the summary and `--junit` work
+unchanged. The `agent` in the file is not used; give the deployment's own model
+and tools the behaviour you want to check.
+
+- A check that needs data the stream does not carry fails and says so (for
+  example `maxTokens` when `run.done` has no usage); `maxCostUsd` is reported as
+  skipped when there is no cost.
+- `--url` cannot be combined with `--record`, `--replay` or `--drift`
+  (`LOUSHY_CONFIG_CONFLICTING_OPTIONS`): cassettes record a provider in-process.
+  Score/threshold evals (`score:` form) also need an in-process provider and fail
+  with the same code; use trajectory evals.
+- An unreachable deployment, a non-2xx answer or a truncated stream fails that
+  case with `LOUSHY_REMOTE_REQUEST_FAILED`, and `401` with
+  `LOUSHY_REMOTE_UNAUTHORIZED`; the run goes on. The token is never printed or
+  written to a report.
+
+In code, pass a `target` (this overrides `agent`; `--url` overrides both):
+
+```ts
+import { defineEval, remoteTarget } from '@loushy/build-ai-agent';
+
+defineEval({
+  name: 'deployed refund flow',
+  target: remoteTarget({ url: 'https://agent.example.com', auth: process.env.LOUSHY_EVAL_TOKEN }),
+  async test(t) {
+    await t.send('Refund order 42');
+    t.completed();
+    t.calledTool('lookup_order');
+  },
+});
+```
+
+`remoteTarget({ url, auth?, fetch? })` takes an injectable `fetch`, which is how
+the SDK's own tests run the real routes in-process without a socket.
 
 # Flows
 
@@ -6997,6 +7082,47 @@ const catalog: SubagentCatalog = {
 
 const lead = createAgent({ provider, instructions: 'You coordinate.', subagents: catalog });
 ```
+
+## Remote sub-agents
+
+`remoteAgent()` uses an agent you already deployed (`loushy deploy`: the node
+server, Docker or a Cloudflare Worker) as a sub-agent. It goes in `subagents`
+next to local ones, and the lead delegates to it with the same `task` tool,
+including `background: true`.
+
+```ts
+import { createAgent, remoteAgent } from '@loushy/build-ai-agent';
+
+const lead = createAgent({
+  provider,
+  instructions: 'You coordinate.',
+  subagents: {
+    researcher: remoteAgent({
+      url: 'https://researcher.example.workers.dev',
+      auth: process.env.RESEARCHER_TOKEN, // the deployment's LOUSHY_API_TOKEN; or () => string | Promise<string>
+      description: 'Finds and summarizes sources',
+    }),
+  },
+});
+```
+
+Each task opens a new session on the remote agent (`POST <url>/chat` with
+`{ sessionId, input }`, read as the SSE event stream, see
+[Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#http-api)), sends the task prompt and returns the
+remote agent's final text, followed by a footer naming the session. The remote
+agent sees only that prompt, and runs with its own model, tools and limits, so
+the lead's runtime (hooks, sandbox, approval store) does not reach it. The
+lead run's abort signal aborts the request. Options: `url`, `auth`, `name`,
+`description`, `headers`, and `fetch` (inject one in tests; the
+`serveFetch()` routes of an in-process agent work as a fake deployment).
+
+Failures (the agent is unreachable, a 401 or other non-2xx answer, a malformed
+stream, or a remote run that ends in an error) reach the lead as the
+structured tool error with the code `LOUSHY_REMOTE_AGENT_FAILED`; the token is
+never part of an error or an event. If the remote run pauses for an approval,
+the task fails with `LOUSHY_SESSION_AWAITING_APPROVAL`, naming the remote
+session and approval id: approvals are not proxied to the lead yet, so decide
+it on the remote agent or leave tools that need approval off it.
 
 ## Depth
 
