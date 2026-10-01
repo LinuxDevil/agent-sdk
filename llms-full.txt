@@ -4208,6 +4208,20 @@ input it was given.
 
 **Example:** a tool's `execute` threw.
 
+### LOUSHY_REMOTE_AGENT_FAILED
+
+**Means:** a `remoteAgent()` sub-agent could not deliver an answer: the
+deployed agent was unreachable, answered 401 or another non-2xx status, sent a
+malformed or unfinished stream, or its run ended in an error. The lead model
+gets it as a structured tool error; the bearer token is never part of it.
+
+**Fix:** read the message (it names the url and the remote session id); for a
+401, fix the `auth` token; for a remote run error, look at the remote agent's
+logs for that session.
+
+**Example:** `remoteAgent({ url, auth: 'wrong-token' })` against a deployment
+that sets `LOUSHY_API_TOKEN`.
+
 ## Approvals and sessions
 
 ### LOUSHY_APPROVAL_STORE_MISSING
@@ -6848,6 +6862,47 @@ const catalog: SubagentCatalog = {
 
 const lead = createAgent({ provider, instructions: 'You coordinate.', subagents: catalog });
 ```
+
+## Remote sub-agents
+
+`remoteAgent()` uses an agent you already deployed (`loushy deploy`: the node
+server, Docker or a Cloudflare Worker) as a sub-agent. It goes in `subagents`
+next to local ones, and the lead delegates to it with the same `task` tool,
+including `background: true`.
+
+```ts
+import { createAgent, remoteAgent } from '@loushy/build-ai-agent';
+
+const lead = createAgent({
+  provider,
+  instructions: 'You coordinate.',
+  subagents: {
+    researcher: remoteAgent({
+      url: 'https://researcher.example.workers.dev',
+      auth: process.env.RESEARCHER_TOKEN, // the deployment's LOUSHY_API_TOKEN; or () => string | Promise<string>
+      description: 'Finds and summarizes sources',
+    }),
+  },
+});
+```
+
+Each task opens a new session on the remote agent (`POST <url>/chat` with
+`{ sessionId, input }`, read as the SSE event stream, see
+[Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#http-api)), sends the task prompt and returns the
+remote agent's final text, followed by a footer naming the session. The remote
+agent sees only that prompt, and runs with its own model, tools and limits, so
+the lead's runtime (hooks, sandbox, approval store) does not reach it. The
+lead run's abort signal aborts the request. Options: `url`, `auth`, `name`,
+`description`, `headers`, and `fetch` (inject one in tests; the
+`serveFetch()` routes of an in-process agent work as a fake deployment).
+
+Failures (the agent is unreachable, a 401 or other non-2xx answer, a malformed
+stream, or a remote run that ends in an error) reach the lead as the
+structured tool error with the code `LOUSHY_REMOTE_AGENT_FAILED`; the token is
+never part of an error or an event. If the remote run pauses for an approval,
+the task fails with `LOUSHY_SESSION_AWAITING_APPROVAL`, naming the remote
+session and approval id: approvals are not proxied to the lead yet, so decide
+it on the remote agent or leave tools that need approval off it.
 
 ## Depth
 

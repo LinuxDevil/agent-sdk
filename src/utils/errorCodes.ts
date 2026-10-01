@@ -32,6 +32,7 @@ export const ERROR_CODES = {
   LOUSHY_TOOL_NOT_FOUND: 'Use one of the tool names listed in the message, or register the tool yourself.',
   LOUSHY_TOOL_NEEDS_CREDENTIALS: 'Build the agent with createAgent() and pass the configured tool.',
   LOUSHY_TOOL_EXECUTION_FAILED: "Look at the tool's own error (the `cause`) and fix the tool or its input.",
+  LOUSHY_REMOTE_AGENT_FAILED: "Read the message: it names the remote agent's url and what failed (network, 401, HTTP status, or the remote run's error).",
   LOUSHY_APPROVAL_STORE_MISSING: 'Pass an approvalStore (e.g. new InMemoryApprovalStore()), or use createAgent(), which has one.',
   LOUSHY_APPROVAL_NOT_FOUND: 'Resolve an id that is still pending (agent.approvals.list() lists them); each approval resolves once.',
   LOUSHY_SESSION_AWAITING_APPROVAL: 'Resolve the pending approval first (agent.approvals.resolve() or resumeAfterApproval()), then send again.',
