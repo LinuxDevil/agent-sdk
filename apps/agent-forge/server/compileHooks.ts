@@ -85,7 +85,7 @@ function toolCallHook(hook: SerializedHook, sandbox: SandboxAdapter, timeoutMs?:
 }
 
 function generateHook(hook: SerializedHook, sandbox: SandboxAdapter, timeoutMs?: number): AgentHook {
-  const run = async (messages: Message[], model: string) => {
+  const run = async (messages: Message[], model: string | undefined) => {
     const outcome = await sandboxRunHook(sandbox, hook.code, { messages, model }, { timeoutMs });
     if (outcome && Array.isArray((outcome as { messages?: unknown }).messages)) {
       messages.length = 0;
