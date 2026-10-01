@@ -15,6 +15,7 @@ export const currentTime = defineTool({
 });
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
+const tools = [currentTime];
 
 /**
  * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
@@ -22,8 +23,8 @@ const instructions = 'You are a helpful assistant. Use your tools when they help
  */
 export function buildAgent(provider?: LLMProvider) {
   return provider
-    ? createAgent({ provider, instructions, tools: [currentTime] })
-    : createAgent({ model: 'anthropic/claude-3-5-sonnet-latest', instructions, tools: [currentTime] });
+    ? createAgent({ provider, instructions, tools })
+    : createAgent({ model: 'anthropic/claude-3-5-sonnet-latest', instructions, tools });
 }
 "
 `;
@@ -59,6 +60,7 @@ export const wordCount = defineTool({
 });
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
+const tools = [currentTime, rollDie, wordCount];
 
 /**
  * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
@@ -66,8 +68,8 @@ const instructions = 'You are a helpful assistant. Use your tools when they help
  */
 export function buildAgent(provider?: LLMProvider) {
   return provider
-    ? createAgent({ provider, instructions, tools: [currentTime, rollDie, wordCount] })
-    : createAgent({ model: 'anthropic/claude-3-5-sonnet-latest', instructions, tools: [currentTime, rollDie, wordCount] });
+    ? createAgent({ provider, instructions, tools })
+    : createAgent({ model: 'anthropic/claude-3-5-sonnet-latest', instructions, tools });
 }
 "
 `;
@@ -120,6 +122,7 @@ export const currentTime = defineTool({
 });
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
+const tools = [currentTime];
 
 /**
  * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
@@ -127,8 +130,8 @@ const instructions = 'You are a helpful assistant. Use your tools when they help
  */
 export function buildAgent(provider?: LLMProvider) {
   return provider
-    ? createAgent({ provider, instructions, tools: [currentTime] })
-    : createAgent({ model: 'ollama/llama3', instructions, tools: [currentTime] });
+    ? createAgent({ provider, instructions, tools })
+    : createAgent({ model: 'ollama/llama3', instructions, tools });
 }
 "
 `;
@@ -164,6 +167,7 @@ export const wordCount = defineTool({
 });
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
+const tools = [currentTime, rollDie, wordCount];
 
 /**
  * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
@@ -171,8 +175,8 @@ const instructions = 'You are a helpful assistant. Use your tools when they help
  */
 export function buildAgent(provider?: LLMProvider) {
   return provider
-    ? createAgent({ provider, instructions, tools: [currentTime, rollDie, wordCount] })
-    : createAgent({ model: 'ollama/llama3', instructions, tools: [currentTime, rollDie, wordCount] });
+    ? createAgent({ provider, instructions, tools })
+    : createAgent({ model: 'ollama/llama3', instructions, tools });
 }
 "
 `;
@@ -192,6 +196,7 @@ export const currentTime = defineTool({
 });
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
+const tools = [currentTime];
 
 /**
  * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
@@ -199,8 +204,8 @@ const instructions = 'You are a helpful assistant. Use your tools when they help
  */
 export function buildAgent(provider?: LLMProvider) {
   return provider
-    ? createAgent({ provider, instructions, tools: [currentTime] })
-    : createAgent({ model: 'openai/gpt-4o-mini', instructions, tools: [currentTime] });
+    ? createAgent({ provider, instructions, tools })
+    : createAgent({ model: 'openai/gpt-4o-mini', instructions, tools });
 }
 "
 `;
@@ -236,6 +241,7 @@ export const wordCount = defineTool({
 });
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
+const tools = [currentTime, rollDie, wordCount];
 
 /**
  * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
@@ -243,8 +249,8 @@ const instructions = 'You are a helpful assistant. Use your tools when they help
  */
 export function buildAgent(provider?: LLMProvider) {
   return provider
-    ? createAgent({ provider, instructions, tools: [currentTime, rollDie, wordCount] })
-    : createAgent({ model: 'openai/gpt-4o-mini', instructions, tools: [currentTime, rollDie, wordCount] });
+    ? createAgent({ provider, instructions, tools })
+    : createAgent({ model: 'openai/gpt-4o-mini', instructions, tools });
 }
 "
 `;
@@ -264,6 +270,7 @@ export const currentTime = defineTool({
 });
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
+const tools = [currentTime];
 
 /**
  * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
@@ -271,8 +278,8 @@ const instructions = 'You are a helpful assistant. Use your tools when they help
  */
 export function buildAgent(provider?: LLMProvider) {
   return provider
-    ? createAgent({ provider, instructions, tools: [currentTime] })
-    : createAgent({ model: 'openrouter/openai/gpt-4o-mini', instructions, tools: [currentTime] });
+    ? createAgent({ provider, instructions, tools })
+    : createAgent({ model: 'openrouter/openai/gpt-4o-mini', instructions, tools });
 }
 "
 `;
@@ -308,6 +315,7 @@ export const wordCount = defineTool({
 });
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
+const tools = [currentTime, rollDie, wordCount];
 
 /**
  * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
@@ -315,8 +323,8 @@ const instructions = 'You are a helpful assistant. Use your tools when they help
  */
 export function buildAgent(provider?: LLMProvider) {
   return provider
-    ? createAgent({ provider, instructions, tools: [currentTime, rollDie, wordCount] })
-    : createAgent({ model: 'openrouter/openai/gpt-4o-mini', instructions, tools: [currentTime, rollDie, wordCount] });
+    ? createAgent({ provider, instructions, tools })
+    : createAgent({ model: 'openrouter/openai/gpt-4o-mini', instructions, tools });
 }
 "
 `;
