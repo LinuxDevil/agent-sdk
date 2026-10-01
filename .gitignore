@@ -52,3 +52,6 @@ docs/api/
 
 # fallow cache/snapshots
 .fallow/
+
+# Local agent worktrees and session state
+.claude/

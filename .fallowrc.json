@@ -6,6 +6,9 @@
     "**/*.{test,spec}.{ts,tsx}",
     "**/*.eval.ts"
   ],
+  "ignorePatterns": [
+    ".claude/**"
+  ],
   "dynamicallyLoaded": [
     "src/deploy/runtime.ts",
     "src/deploy/runtime.worker.ts",
