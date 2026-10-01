@@ -43,7 +43,7 @@ Each real LLM provider is backed by an optional peer dependency:
 
 To try an unreleased version, build and pack the SDK from a checkout of this
 repository, then install the tarball into your project - the same approach
-`create-loushy-agent` uses for the projects it generates:
+`loushy init --sdk-path` uses for the projects it generates:
 
 ```bash
 # in the SDK checkout
@@ -57,21 +57,36 @@ npm install ./loushy-build-ai-agent-<version>.tgz ai zod
 
 ## Scaffolding a new project
 
-`packages/create-loushy-agent` in this repository scaffolds a ready-to-build
-project (`package.json`, `tsconfig.json`, `src/agent.ts` calling
-`createAgent()`, and a `.env.example` naming your provider's credential
-variable):
+`loushy init` creates a ready-to-run project: `package.json` (ESM, depending
+on this SDK by version range), a strict `tsconfig.json`, `src/agent.ts` calling
+`createAgent({ model, instructions })` with an example `defineTool()` tool, an
+offline `src/agent.test.ts` using `mockModel`, a `.env.example` naming your
+provider's key variable, `.gitignore` and a README. It then installs the
+dependencies and runs `git init`.
 
 ```bash
-# from a checkout of this repository
-cd packages/create-loushy-agent && npm install && npm run build && cd ../..
-node packages/create-loushy-agent/bin/cli.js --name=my-agent --provider=openai --yes
+npx loushy init my-agent                 # or: npm create loushy-agent my-agent
+npx loushy init my-agent --yes --provider anthropic --template tools --no-install
 ```
+
+| Flag | Meaning |
+| ---- | ------- |
+| `--provider openai\|anthropic\|openrouter\|ollama` | Default: the provider whose API key variable is set, else `openai`. |
+| `--template minimal\|tools\|yaml` | `minimal` (one tool), `tools` (three tools) or `yaml` (an `agent.yaml` spec run by `loushy dev`). Default `minimal`. |
+| `--package-manager npm\|pnpm\|yarn\|bun` | Default: the one that launched the command (`npm_config_user_agent`), else `npm`. |
+| `--yes`, `-y` | Never prompt; use defaults for anything not given. Prompts only appear on a terminal. |
+| `--no-install`, `--no-git` | Skip installing dependencies / `git init`. |
+| `--force` | Write into a directory that is not empty (otherwise `init` refuses). |
+| `--sdk-path <dir\|tarball>` | For SDK development: depend on a checkout (it is `npm pack`ed) or a packed `.tgz` instead of the published version. Also read from `LOUSHY_SDK_PATH`. |
+
+`create-loushy-agent` (`packages/create-loushy-agent`) is a thin wrapper that
+runs `loushy init` with the same arguments.
 
 ## The `loushy` CLI
 
 Installing the package also installs the `loushy` command:
 
+- `loushy init [dir]` - scaffold a new project (see above).
 - `loushy dev <spec.yaml|spec.json>` - local dev server with a chat UI and hot
   reload (see [Configuration](./configuration.md)).
 - `loushy build --target=<target> --agent=<spec>` - build a deployable
