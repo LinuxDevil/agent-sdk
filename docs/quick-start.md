@@ -7,7 +7,32 @@ with the real API. All of them run as-is with the SDK's built-in mock
 provider - no API key needed - except the first, which talks to a real model
 and is therefore only type-checked.
 
-Install first (see [Installation](./installation.md)):
+## Start a new project
+
+The fastest way in is one command, which creates a runnable project (an
+agent, an example tool, an offline test, a `.env.example` for your provider),
+installs its dependencies and runs `git init`:
+
+```bash
+npx loushy init my-agent
+cd my-agent
+cp .env.example .env     # put your API key in .env
+npm run dev              # chat with your agent in the terminal
+npm test                 # offline tests: no API key needed
+```
+
+`npm create loushy-agent my-agent` is equivalent, and so is
+`npx @loushy/build-ai-agent init my-agent` when the SDK is not installed yet
+(a bare `npx loushy` only finds the `loushy` command once the SDK is in your
+`node_modules`). Without arguments, `init` asks for the directory, provider and
+template; for scripts pass `--yes` (defaults: the `minimal` template and the
+provider whose API key variable is set, else OpenAI). Useful flags:
+`--provider openai|anthropic|openrouter|ollama`, `--template minimal|tools|yaml`,
+`--package-manager npm|pnpm|yarn|bun`, `--no-install`, `--no-git`, `--force`
+(write into a non-empty directory). `loushy init --help` lists them all.
+
+Prefer to add the SDK to an existing project? Install it by hand (see
+[Installation](./installation.md)):
 
 ```bash
 npm install @loushy/build-ai-agent ai zod

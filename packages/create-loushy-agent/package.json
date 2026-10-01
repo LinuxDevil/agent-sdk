@@ -1,15 +1,14 @@
 {
   "name": "create-loushy-agent",
   "version": "0.1.0",
-  "description": "Scaffold a new @loushy/build-ai-agent project",
+  "description": "npm create loushy-agent: scaffold a new @loushy/build-ai-agent project (runs `loushy init`)",
   "type": "commonjs",
   "bin": {
     "create-loushy-agent": "bin/cli.js"
   },
   "files": [
     "dist",
-    "bin",
-    "templates"
+    "bin"
   ],
   "scripts": {
     "build": "tsup",
@@ -17,11 +16,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "prompts": "^2.4.2"
+    "@loushy/build-ai-agent": "^1.0.0-alpha.8"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "@types/prompts": "^2.4.9",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",
     "vitest": "^1.6.1"

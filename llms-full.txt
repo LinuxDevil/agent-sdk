@@ -103,6 +103,15 @@ const result = await resumeAfterApproval(
 
 ## Quickstart
 
+**Start a new project** with one command: it scaffolds an agent, an example tool and an offline test, installs dependencies and runs `git init`:
+
+```bash
+npx loushy init my-agent        # or: npm create loushy-agent my-agent
+cd my-agent && npm run dev      # set your API key in .env first; `npm test` runs offline
+```
+
+See [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md#start-a-new-project) for the flags (`--provider`, `--template`, `--yes`, ...). Or add the SDK to an existing project by hand:
+
 **1. Install**
 
 ```bash
@@ -544,9 +553,9 @@ const result = renderTemplate(template, { name: 'Alice', count: 5 });
 ## CLI
 
 ```bash
-npx create-loushy-agent --name=my-agent --provider=openai --yes  # scaffold a project
-npx loushy dev agent.yaml                                        # local chat UI + hot reload
-npx loushy build --target=node-server --agent=agent.yaml         # or docker / cloudflare-worker
+npx loushy init my-agent                                  # scaffold a project (or: npm create loushy-agent my-agent)
+npx loushy dev agent.yaml                                 # local chat UI + hot reload
+npx loushy build --target=node-server --agent=agent.yaml  # or docker / cloudflare-worker
 ```
 
 See [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md) and [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)
@@ -755,7 +764,7 @@ feature needs them: `undici` (the built-in `http` tool), `dockerode`
 
 To try an unreleased version, build and pack the SDK from a checkout of this
 repository, then install the tarball into your project - the same approach
-`create-loushy-agent` uses for the projects it generates:
+`loushy init --sdk-path` uses for the projects it generates:
 
 ```bash
 # in the SDK checkout
@@ -769,21 +778,36 @@ npm install ./loushy-build-ai-agent-<version>.tgz ai zod
 
 ## Scaffolding a new project
 
-`packages/create-loushy-agent` in this repository scaffolds a ready-to-build
-project (`package.json`, `tsconfig.json`, `src/agent.ts` calling
-`createAgent()`, and a `.env.example` naming your provider's credential
-variable):
+`loushy init` creates a ready-to-run project: `package.json` (ESM, depending
+on this SDK by version range), a strict `tsconfig.json`, `src/agent.ts` calling
+`createAgent({ model, instructions })` with an example `defineTool()` tool, an
+offline `src/agent.test.ts` using `mockModel`, a `.env.example` naming your
+provider's key variable, `.gitignore` and a README. It then installs the
+dependencies and runs `git init`.
 
 ```bash
-# from a checkout of this repository
-cd packages/create-loushy-agent && npm install && npm run build && cd ../..
-node packages/create-loushy-agent/bin/cli.js --name=my-agent --provider=openai --yes
+npx loushy init my-agent                 # or: npm create loushy-agent my-agent
+npx loushy init my-agent --yes --provider anthropic --template tools --no-install
 ```
+
+| Flag | Meaning |
+| ---- | ------- |
+| `--provider openai\|anthropic\|openrouter\|ollama` | Default: the provider whose API key variable is set, else `openai`. |
+| `--template minimal\|tools\|yaml` | `minimal` (one tool), `tools` (three tools) or `yaml` (an `agent.yaml` spec run by `loushy dev`). Default `minimal`. |
+| `--package-manager npm\|pnpm\|yarn\|bun` | Default: the one that launched the command (`npm_config_user_agent`), else `npm`. |
+| `--yes`, `-y` | Never prompt; use defaults for anything not given. Prompts only appear on a terminal. |
+| `--no-install`, `--no-git` | Skip installing dependencies / `git init`. |
+| `--force` | Write into a directory that is not empty (otherwise `init` refuses). |
+| `--sdk-path <dir\|tarball>` | For SDK development: depend on a checkout (it is `npm pack`ed) or a packed `.tgz` instead of the published version. Also read from `LOUSHY_SDK_PATH`. |
+
+`create-loushy-agent` (`packages/create-loushy-agent`) is a thin wrapper that
+runs `loushy init` with the same arguments.
 
 ## The `loushy` CLI
 
 Installing the package also installs the `loushy` command:
 
+- `loushy init [dir]` - scaffold a new project (see above).
 - `loushy dev <spec.yaml|spec.json>` - local dev server with a chat UI and hot
   reload (see [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md)).
 - `loushy build --target=<target> --agent=<spec>` - build a deployable
@@ -851,7 +875,32 @@ with the real API. All of them run as-is with the SDK's built-in mock
 provider - no API key needed - except the first, which talks to a real model
 and is therefore only type-checked.
 
-Install first (see [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md)):
+## Start a new project
+
+The fastest way in is one command, which creates a runnable project (an
+agent, an example tool, an offline test, a `.env.example` for your provider),
+installs its dependencies and runs `git init`:
+
+```bash
+npx loushy init my-agent
+cd my-agent
+cp .env.example .env     # put your API key in .env
+npm run dev              # chat with your agent in the terminal
+npm test                 # offline tests: no API key needed
+```
+
+`npm create loushy-agent my-agent` is equivalent, and so is
+`npx @loushy/build-ai-agent init my-agent` when the SDK is not installed yet
+(a bare `npx loushy` only finds the `loushy` command once the SDK is in your
+`node_modules`). Without arguments, `init` asks for the directory, provider and
+template; for scripts pass `--yes` (defaults: the `minimal` template and the
+provider whose API key variable is set, else OpenAI). Useful flags:
+`--provider openai|anthropic|openrouter|ollama`, `--template minimal|tools|yaml`,
+`--package-manager npm|pnpm|yarn|bun`, `--no-install`, `--no-git`, `--force`
+(write into a non-empty directory). `loushy init --help` lists them all.
+
+Prefer to add the SDK to an existing project? Install it by hand (see
+[Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md)):
 
 ```bash
 npm install @loushy/build-ai-agent ai zod
