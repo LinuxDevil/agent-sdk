@@ -14,13 +14,13 @@
  * this module's output with the LOU-E guardrails and LOU-J5 Slack tool
  * rather than being fixer-core itself.
  */
-import { tool } from 'ai';
 import {
   AgentExecutor,
   ExecuteOptions,
   ExecutionResult,
 } from '../../src/execution/AgentExecutor';
-import { AgentConfig, ToolDescriptor } from '../../src/types';
+import { AgentConfig, ToolDescriptor, ToolExecutionContext } from '../../src/types';
+import { getToolExecute } from '../../src/tools/toolContract';
 import { LLMProvider } from '../../src/providers';
 import {
   createDelegateTool,
@@ -162,21 +162,21 @@ export async function runFixer(
  */
 export function createFixerDelegateTool(opts: DelegateAgentOptions): ToolDescriptor {
   const base = createDelegateTool(opts);
-  const baseTool = base.tool;
+  const baseExecute = getToolExecute(base)!;
+  // `base` carries a canonical `execute` (LOU-D24), which wins over the
+  // legacy `tool.execute`: wrap that one, and keep `tool` in step.
+  const execute = async (args: unknown, context: ToolExecutionContext) => {
+    const result = await baseExecute(args, context);
+    const patch = extractDiffBlock((result as { text: string }).text);
+    if (!patch.trim()) {
+      throw new EmptyPatchError();
+    }
+    return { ...(result as object), patch };
+  };
 
   return {
     ...base,
-    tool: tool({
-      description: baseTool.description,
-      parameters: baseTool.parameters,
-      execute: async (args: any, context: any) => {
-        const result = await baseTool.execute!(args, context);
-        const patch = extractDiffBlock((result as { text: string }).text);
-        if (!patch.trim()) {
-          throw new EmptyPatchError();
-        }
-        return { ...(result as object), patch };
-      },
-    }) as typeof baseTool,
+    execute,
+    tool: { ...base.tool, execute: execute as typeof base.tool.execute },
   };
 }
