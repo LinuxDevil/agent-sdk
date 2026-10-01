@@ -95,3 +95,17 @@ describe('defineTool types', () => {
     });
   });
 });
+
+describe('defineTool annotations (LOU-Z5.2)', () => {
+  it('accepts MCP annotations and rejects unknown hints', () => {
+    defineTool({ name: 'ro', description: 'd', input: z.object({}), annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false, title: 'T' }, execute: () => 1 });
+    defineTool({
+      name: 'bad',
+      description: 'd',
+      input: z.object({}),
+      // @ts-expect-error - readOnlyHint is a boolean
+      annotations: { readOnlyHint: 'yes' },
+      execute: () => 1,
+    });
+  });
+});

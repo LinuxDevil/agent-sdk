@@ -93,10 +93,13 @@ function capChars(text: string, limits: FsLimits): string {
   return `${text.slice(0, limits.maxOutputChars)}\n[Output truncated at ${limits.maxOutputChars} characters.]`;
 }
 
+const READ_ONLY = { readOnlyHint: true, destructiveHint: false } as const;
+
 function readOnlyTools(fs: FsProvider, limits: FsLimits, approvals: FsToolApprovals): DefinedTool[] {
   return [
     defineTool({
       name: 'read_file',
+      annotations: READ_ONLY,
       description:
         'Read a text file from the workspace. Returns numbered lines ("   12\\tcode"); use offset/limit to page through long files.',
       input: readFileInput,
@@ -105,6 +108,7 @@ function readOnlyTools(fs: FsProvider, limits: FsLimits, approvals: FsToolApprov
     }),
     defineTool({
       name: 'list_dir',
+      annotations: READ_ONLY,
       description: 'List a directory in the workspace. Subdirectories end with "/".',
       input: listDirInput,
       needsApproval: approvals.list_dir,
@@ -112,6 +116,7 @@ function readOnlyTools(fs: FsProvider, limits: FsLimits, approvals: FsToolApprov
     }),
     defineTool({
       name: 'glob',
+      annotations: READ_ONLY,
       description: 'Find files by glob pattern. Returns matching workspace-relative paths, sorted.',
       input: globInput,
       needsApproval: approvals.glob,
@@ -119,6 +124,7 @@ function readOnlyTools(fs: FsProvider, limits: FsLimits, approvals: FsToolApprov
     }),
     defineTool({
       name: 'grep',
+      annotations: READ_ONLY,
       description: 'Search file contents with a regular expression. Returns "path:line: text" for each matching line.',
       input: grepInput,
       needsApproval: approvals.grep,

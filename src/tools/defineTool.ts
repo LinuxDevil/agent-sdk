@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import type { ToolDescriptor, ToolExecutionContext } from '../types';
+import type { McpToolAnnotations, ToolDescriptor, ToolExecutionContext } from '../types';
 import type { SandboxAdapter } from '../security/sandboxCore';
 import { legacyAiTool } from './toolContract';
 
@@ -21,6 +21,14 @@ export interface DefineToolOptions<S extends z.ZodTypeAny, R> {
    * receiving the validated arguments (typed from `input`).
    */
   needsApproval?: boolean | ((args: z.output<S>) => boolean | Promise<boolean>);
+  /**
+   * MCP hints about the tool (`readOnlyHint`, `destructiveHint`, `idempotentHint`,
+   * `openWorldHint`, `title`). `serveMcp()` sends them to MCP clients verbatim, and a
+   * Loushy agent consuming that server skips approval for `readOnlyHint: true`.
+   * Stored as `metadata.mcp.annotations`. A tool that needs approval is never
+   * advertised as read-only, whatever is set here.
+   */
+  annotations?: McpToolAnnotations;
   /** Route execution through the configured SandboxAdapter (requires `sandboxExecute`). */
   requiresSandbox?: boolean;
   /** Sandboxed execution path used instead of `execute` when `requiresSandbox` is true. */
@@ -147,6 +155,7 @@ export function defineTool<S extends z.ZodTypeAny, R>(
     requiresSandbox: opts.requiresSandbox,
     sandboxExecute: opts.sandboxExecute as ToolDescriptor['sandboxExecute'],
     injectStreamingController: opts.injectStreamingController,
+    ...(opts.annotations ? { metadata: { mcp: { annotations: opts.annotations } } } : {}),
   };
   definedTools.add(defined);
   return defined;
