@@ -6,7 +6,7 @@
  * type promises (`toolCallId`, `messages`, `abortSignal`) are always real.
  */
 
-import { randomUUID } from 'node:crypto';
+import { newId } from '../utils/id';
 import type { ToolExecutionOptions } from 'ai';
 import type { Message } from '../providers';
 import type { RunUsage } from '../models/usage';
@@ -52,7 +52,7 @@ function transcriptBefore(messages: readonly Message[], toolCallId: string): rea
  * to a generated id for callers with no model turn behind the call.
  */
 export function buildToolRunContext(input: ToolRunInput): ToolExecutionOptions & ToolRunContext {
-  const toolCallId = input.toolCallId ?? `call_${randomUUID()}`;
+  const toolCallId = input.toolCallId ?? newId('call');
   const ctx = {
     toolCallId,
     messages: transcriptBefore(input.messages ?? [], toolCallId),
