@@ -20,7 +20,7 @@ import { useAgentStatuses, useAgentStream } from './useAgentStream';
 import { useActiveProfile, useChatControls, useRunControls } from './useAgentControls';
 
 type RailTab = 'agents' | 'nodes';
-export type DrawerTab = 'chat' | 'logs' | 'trace' | 'output' | 'settings';
+export type DrawerTab = 'chat' | 'logs' | 'trace' | 'output' | 'history' | 'settings';
 
 interface AppState {
   store: AgentStore;

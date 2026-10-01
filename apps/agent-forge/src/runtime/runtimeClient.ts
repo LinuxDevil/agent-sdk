@@ -14,7 +14,11 @@ import type {
   ChatStatePayload,
   DebugStatePayload,
   DeployResult,
+  ForkRunRequest,
+  ForkRunResponse,
   ProviderKeyStatus,
+  RunComparisonPayload,
+  RunHistoryPayload,
   SettingsFile,
   SettingsProfile,
   StreamMessage,
@@ -56,7 +60,7 @@ class RuntimeClient {
     return `${proto}//${window.location.host}`;
   }
 
-  private async request(path: string, init?: RequestInit): Promise<AgentRunStatusPayload> {
+  private async request<T = AgentRunStatusPayload>(path: string, init?: RequestInit): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       ...init,
       headers: { 'Content-Type': 'application/json', ...init?.headers },
@@ -65,7 +69,7 @@ class RuntimeClient {
     if (!res.ok) {
       throw apiError(body, `Request to ${path} failed with ${res.status}`, res.status);
     }
-    return body as AgentRunStatusPayload;
+    return body as T;
   }
 
   async run(agentId: string, input: string, spec: AgentSpec): Promise<AgentRunStatusPayload> {
@@ -154,6 +158,22 @@ class RuntimeClient {
       throw apiError(body, `Failed to load chat session '${sessionId}'`, res.status);
     }
     return (await res.json()) as ChatSessionRecord;
+  }
+
+  /** LOU-D45: the steps of run `runId`'s checkpoint history (a run id is the agent id, or a fork's id). */
+  async runHistory(runId: string): Promise<RunHistoryPayload> {
+    return this.request(`/runs/${encodeURIComponent(runId)}/history`, { method: 'GET' });
+  }
+
+  /** LOU-D45: forks run `runId` at a step, patched, and starts the fork - its status streams on `subscribe(response.runId)`. */
+  async forkRun(runId: string, body: ForkRunRequest): Promise<ForkRunResponse> {
+    return this.request(`/runs/${encodeURIComponent(runId)}/fork`, { method: 'POST', body: JSON.stringify(body) });
+  }
+
+  /** LOU-D45: `compareTrajectories()` of two runs, for the side-by-side view. */
+  async compareRuns(a: string, b: string): Promise<RunComparisonPayload> {
+    const query = new URLSearchParams({ a, b });
+    return this.request(`/runs/compare?${query}`, { method: 'GET' });
   }
 
   /** R1: masked status of every managed provider's stored key. */

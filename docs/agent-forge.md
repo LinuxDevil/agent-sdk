@@ -175,9 +175,29 @@ and replay it next to the original, with
 [`AgentExecutor.fork()`](./durable-execution.md#fork-and-replay) and
 `compareTrajectories()` doing the work.
 
+### The History tab
+
+1. Run the agent (Topbar **Run**, or a Chat message).
+2. Open the bottom drawer's **History** tab. It lists the run's steps:
+   step number, status, the model's finish reason, the tool calls made,
+   and the tokens and cost of the step's model call when known.
+3. Click **Edit and replay from here** on a step. Choose **Append a user
+   message** and type one, or pick one of the step's tool calls to edit
+   its result (prefilled with the recorded result; text that parses as
+   JSON is sent as JSON).
+4. Click **Fork and replay**. The run is forked at that step with your
+   edit and started as a new run, `<id>.fork-<n>`.
+5. The fork opens next to the original as a side-by-side trajectory: each
+   model turn of both runs (text, tool calls and results), the first turn
+   where they differ highlighted as **diverged**, and the drift entries
+   (tool order, arguments, step count, finish reason) listed below. It
+   refreshes when the fork finishes.
+
+### Routes
+
 A run id is the run's checkpoint session id: the agent id for the agent's
 own runs, `<id>.fork-<n>` for a fork of run `<id>`. The runtime control
-server has three routes for it:
+server has three routes for it (the History tab uses them):
 
 | Route | What it does |
 | --- | --- |

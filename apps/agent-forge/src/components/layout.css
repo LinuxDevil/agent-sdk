@@ -811,6 +811,22 @@
 .trace-name { width: 150px; flex: none; color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .trace-dur { width: 56px; flex: none; text-align: right; color: var(--text-muted); }
 
+/* ---------- LOU-D45: History tab (time travel) ---------- */
+.history-panel { display: flex; flex-direction: column; gap: 10px; }
+.history-table { width: 100%; border-collapse: collapse; }
+.history-table th { text-align: left; color: var(--text-faint); font-weight: 600; padding: 3px 8px; border-bottom: 1px solid var(--border); }
+.history-table td { color: var(--text); padding: 3px 8px; border-bottom: 1px solid var(--border); }
+.replay-editor { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); }
+.replay-actions { display: flex; gap: 6px; }
+.traj-row { display: grid; grid-template-columns: 90px 1fr 1fr; gap: 10px; padding: 3px 8px; border-radius: 5px; }
+.traj-row.traj-head { color: var(--text-faint); }
+.traj-row.diverged { background: var(--warning-soft); }
+.traj-row.diverged > span { color: var(--warning); font-weight: 700; }
+.traj-cell { color: var(--text); white-space: pre-wrap; word-break: break-word; }
+.traj-missing { color: var(--text-faint); }
+.traj-tool { color: var(--accent); }
+.traj-drift { margin: 6px 0 0; padding-left: 18px; color: var(--warning); }
+
 /* ---------- O4: Output tab ---------- */
 .output-json { padding: 10px 14px; white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono); font-size: 11.5px; }
 .json-key { color: var(--info); }
