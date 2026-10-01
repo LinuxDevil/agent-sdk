@@ -11,6 +11,7 @@ import { SandboxAdapter } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
 import { HookRegistry, ToolCallHookContext } from './hooks';
 import { toolErrorMessage } from './propagatingToolError';
+import { ToolArgumentsValidationError, validateToolArguments } from './toolArgsValidation';
 import type { ExecuteOptions } from './AgentExecutor';
 
 /**
@@ -89,9 +90,20 @@ export async function runToolCall(
   // its own use (needsApproval/execute). A hook mutating this object has
   // no effect on the actual call in this fallback case; see the
   // `hooks.runPreToolCall` call below for the real, load-bearing parse.
-  const hookArgs = parseToolArguments(toolCall, {}) as Record<string, unknown>;
+  //
+  // LOU-U4: the args are then validated against the tool's schema FIRST,
+  // so pre-tool hooks, `needsApproval` and `execute` all see the parsed
+  // (defaults/transforms applied) value. Invalid args skip the pre-hooks
+  // and `execute`; the structured error flows through the normal
+  // error-outcome path (post hook, onToolResult, events, tracing).
+  const checked = await checkToolArguments(
+    toolCall,
+    ctx.toolRegistry,
+    parseToolArguments(toolCall, {})
+  );
+  const hookArgs = checked.args;
 
-  if (ctx.hooks) {
+  if (ctx.hooks && !checked.rejection) {
     await ctx.hooks.runPreToolCall(toolHookContext(toolCall, ctx, hookArgs));
   }
 
@@ -100,7 +112,9 @@ export async function runToolCall(
   let thrown: unknown;
 
   try {
-    outcome = await doExecuteToolCall(toolCall, ctx.toolRegistry, ctx.sandbox, hookArgs);
+    outcome =
+      checked.rejection ??
+      (await doExecuteToolCall(toolCall, ctx.toolRegistry, ctx.sandbox, hookArgs));
     if (ctx.hooks) {
       await ctx.hooks.runPostToolCall(toolHookContext(toolCall, ctx, hookArgs), {
         result: outcome.result,
@@ -117,6 +131,36 @@ export async function runToolCall(
     if (ctx.onToolResult) {
       await ctx.onToolResult(toolCall, outcome, latencyMs, thrown);
     }
+  }
+}
+
+/**
+ * Validates `rawArgs` against the called tool's schema. Returns the parsed
+ * args, or a `rejection` outcome (structured error as `result`, message as
+ * `error`) when they do not match. Unknown/non-executable tools and tools
+ * without a zod schema pass through for the normal path to handle.
+ */
+async function checkToolArguments(
+  toolCall: ToolCall,
+  toolRegistry: ToolRegistry | undefined,
+  rawArgs: unknown
+): Promise<{ args: Record<string, unknown>; rejection?: ToolCallOutcome }> {
+  const toolName = toolCall.function.name;
+  const toolDesc = toolRegistry && findExecutableTool(toolRegistry, toolName);
+  if (!toolDesc) {
+    return { args: rawArgs as Record<string, unknown> };
+  }
+  try {
+    const parsed = await validateToolArguments(toolName, toolDesc, rawArgs);
+    return { args: parsed as Record<string, unknown> };
+  } catch (error) {
+    if (!(error instanceof ToolArgumentsValidationError)) {
+      throw error;
+    }
+    return {
+      args: rawArgs as Record<string, unknown>,
+      rejection: { ...toolFailure(toolCall, error.message), result: error.toToolResult() },
+    };
   }
 }
 

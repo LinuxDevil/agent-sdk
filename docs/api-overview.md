@@ -50,6 +50,34 @@ import { loadMcpTools } from '@loushy/build-ai-agent/mcp';
 const tools = await loadMcpTools(mcpClient, 'my-server');
 ```
 
+### Argument validation
+
+Before a tool runs, the model's arguments are parsed with the tool's zod
+`parameters` schema. Validation happens first, so pre-tool hooks, the
+`needsApproval` predicate and `execute` all receive the **parsed** value
+(defaults, coercions and transforms applied). Tools without a zod schema are
+passed through unchanged.
+
+If the arguments do not match, `execute` is not called, the run continues, and
+the model receives a structured error as the tool result so it can retry
+(`tool-result` events, tracing and `postToolCall` hooks see it as an error
+result; `preToolCall` hooks are skipped because there is no valid call):
+
+```json
+{
+  "error": "ToolArgumentsValidationError",
+  "toolName": "sendEmail",
+  "message": "Invalid arguments for tool 'sendEmail': 2 issues (to: Required; count: Expected number, received string)",
+  "issues": [
+    { "path": "to", "message": "Required" },
+    { "path": "count", "message": "Expected number, received string" }
+  ]
+}
+```
+
+`ToolArgumentsValidationError` (with a typed `issues` array) is exported from
+the package root.
+
 ## Flows, evals, observability and security
 
 - `FlowBuilder` / `FlowExecutor` - multi-step workflow graphs.
