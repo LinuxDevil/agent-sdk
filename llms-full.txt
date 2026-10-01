@@ -69,7 +69,7 @@ agent can be an `agent.yaml` spec served with `npx loushy dev agent.yaml`
 ## Features
 
 - **Tools**: `defineTool()` with a zod `input`; arguments are typed, validated, and run in parallel. [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md)
-- **Approvals**: `needsApproval` pauses a run; `agent.approvals.resolve()` continues it, or `approve` decides in code. [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)
+- **Approvals and permission policies**: `needsApproval` pauses a run; `agent.approvals.resolve()` continues it, or `approve` decides in code. `permissions` rules allow, deny or ask per tool before that, with an audit log. [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)
 - **Sessions**: `agent.session()` keeps a multi-turn conversation in memory, files or SQLite. [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md)
 - **Structured output**: `output: zodSchema` makes the final reply a typed, validated `result.object`, with one repair step. [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)
 - **Streaming**: `agent.stream()` and `session.stream()` yield typed, versioned JSON events ready for SSE. [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)
@@ -1860,6 +1860,73 @@ When the model asks for several tools in one turn, the first call that needs
 approval stops the batch: the calls before it run, the run pauses on it, and
 the calls after it run once it is decided (see
 [Approvals in the middle of a tool batch](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#approvals-in-the-middle-of-a-tool-batch)).
+
+## Permission policies
+
+`permissions` sets rules for the whole agent instead of tool by tool: a list of
+`{ tool, when?, action, reason? }` rules, checked in order for every tool call
+before the tool's own `needsApproval`. The first rule that matches decides:
+
+- `allow` runs the call, without approval even if `needsApproval` would ask.
+- `deny` does not run it. The model gets a tool error with `kind: 'denied'`
+  and the rule's `reason` (see [Tool errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md)), and streams see
+  `tool.error`.
+- `ask` pauses the run for approval, exactly like `needsApproval` (or asks the
+  `approve` callback).
+
+When no rule matches, the tool's own `needsApproval` decides, as before.
+`tool` is a name, a list of names, a `RegExp` tested against the name, or
+`'*'` for every tool. `when` narrows a rule to some calls: it gets the
+validated arguments (after `preToolCall` hooks) and `{ toolName, toolCallId,
+sessionId }`, and may be async; when it throws, the call fails with that
+error. `allow(tools)`, `deny(tools, reason?)` and `ask(tools)` build the
+common rules.
+
+```ts
+import { allow, ask, createAgent, defineTool, deny, type PermissionRule } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+
+const shell = defineTool({
+  name: 'shell',
+  description: 'Run a shell command',
+  input: z.object({ command: z.string() }),
+  execute: async ({ command }) => `ran ${command}`,
+});
+
+const noDeletes: PermissionRule = {
+  tool: 'shell',
+  when: (args) => /\brm\b/.test(String(args.command)),
+  action: 'deny',
+  reason: 'Deleting files is not allowed',
+};
+
+const agent = createAgent({
+  provider,
+  instructions: 'You are a coding assistant.',
+  tools: [shell],
+  permissions: [
+    noDeletes, // first match wins: this beats the `ask` below
+    allow(/^read_/), // read-only tools never pause
+    deny('delete_file', 'Use the trash tool instead'),
+    ask(['shell', 'write_file']),
+  ],
+  onPermissionDecision: (entry) => console.log(entry.at, entry.toolName, entry.decision, entry.rule?.reason),
+});
+```
+
+`onPermissionDecision` is the audit log: it is called once per tool call
+(except calls already refused for invalid arguments) with
+`{ toolName, toolCallId, decision, rule?, args?, at }`. `decision` is the
+matching rule's action or `'default'` when none matched, `rule` is that rule's
+`{ index, reason? }`, `at` is an ISO timestamp, and `args` is left out when the
+run sets `redactContent`. Streams get the same entry as a `permission.decision`
+event (see [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)). Both are only produced when the agent
+sets `permissions` or `onPermissionDecision`.
+
+Both options also exist on `AgentExecutor.execute()` / `stream()` and
+`resumeAfterApproval()`. Sub-agents inherit the lead agent's rules, checked
+before the sub-agent's own, and report their decisions to the lead's
+`onPermissionDecision`.
 
 ## `createAgent()` agents
 
@@ -4922,6 +4989,7 @@ The event types and their extra fields:
 | `tool.done`          | `toolCallId`, `toolName`, `result: unknown`, `durationMs: number` | A tool call returned. `result` is the value as it would be JSON-encoded (`undefined` becomes `null`, a `Date` becomes a string). `durationMs` counts from its `tool.start`. |
 | `tool.error`         | `toolCallId`, `toolName`, `error: { name: string, message: string }`, `durationMs: number` | A tool call failed: it threw, its arguments did not match its schema (`name: 'ToolArgumentsValidationError'`), or the tool does not exist. The model gets the error as the call's result and the run continues. |
 | `approval.requested` | `approvalId: string`, `toolCallId`, `toolName`, `args: Record<string, unknown>` | A tool call needs a human decision. The run then stops; resume it with `agent.approvals.resolve()` or `resumeAfterApproval()` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)). |
+| `permission.decision` | `toolCallId`, `toolName`, `decision: 'allow' \| 'deny' \| 'ask' \| 'default'`, `rule?: { index: number, reason?: string }`, `args?: Record<string, unknown>`, `at: string` | How a tool call's [permission rules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies) decided it: after its `tool.start`, before the call's own `tool.done` / `tool.error` / `approval.requested`. Only when the run sets `permissions` or `onPermissionDecision`; `args` is left out under `redactContent`. |
 | `step.done`          | `step: number`, `finishReason: string`, `usage?: { promptTokens, completionTokens, totalTokens }` | A step ends. `finishReason` is the model's (`'stop'`, `'tool_calls'`, `'length'`, ...), or `'awaiting-approval'`, `'aborted'` or `'error'` when the step ended that way (a run that runs out of `maxSteps` still wanting to continue ends with `run.done` `'max-steps'`). `usage` is this step's model call, absent when the call produced no response. |
 | `error`              | `error: { name: string, message: string }` | An error. If it ends the run, `run.done` with `finishReason: 'error'` follows. A provider error retried under `surfaceRetryableProviderErrors` is followed by further steps instead. |
 | `provider.retry`     | `attempt: number`, `maxRetries: number`, `delayMs: number`, `error: { message: string, category?: string }`, `provider: string` | A model call failed and is retried after `delayMs` (`createAgent({ retry })` or any `withRetry()` provider). `attempt` is the attempt that failed (1 = first); `category` is `'rate-limit'`, `'timeout'`, ... and absent when unknown (a 5xx, for example). |
@@ -5998,7 +6066,7 @@ check works everywhere (including the call that runs after an approval):
 - `error`: the error's name (`TypeError`, `ToolArgumentsValidationError`, ...), or the kind's default name for a failure that is not a thrown error.
 - `toolName` and `message`: the message only, never a stack, capped at 2,000 characters (`... (truncated)` marks a cut).
 - `kind`: why the call failed.
-- Some kinds add fields: `issues` for `validation`, `note` for `rejected`.
+- Some kinds add fields: `issues` for `validation`, `note` for `rejected`, `reason` for `denied`.
 
 The transcript message carries `isError: true`; `tool-result` events, `onToolResult`, `postToolCall` hooks and `tool.error` events see the call as failed.
 
@@ -6011,6 +6079,7 @@ The transcript message carries `isError: true`; `tool-result` events, `onToolRes
 | `not-run` | `ToolNotRunError` | The call was never started (a resumed run whose approval was saved without its remaining calls). |
 | `mcp` | `McpToolError` | An MCP server answered `isError: true`; `message` is the server's text. |
 | `sandbox` | `SandboxRequiredError` | The tool has `requiresSandbox` but no `sandboxExecute`, so it was refused rather than run unsandboxed. |
+| `denied` | `ToolDeniedError` | A `deny` [permission rule](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies) refused the call; `execute` did not run. Adds `reason` when the rule has one. |
 
 `toolErrorResult({ toolName, error, kind?, toolCallId?, details? })` builds this
 result; use it in your own tool wrappers so they match. A thrown error can pick

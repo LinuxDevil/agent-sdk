@@ -40,6 +40,7 @@ import { InMemoryApprovalStore } from './execution/InMemoryApprovalStore';
 import { resumeAfterApproval } from './execution/resume';
 import { ConfigurationError } from './execution/errors';
 import { createAgentApprovals, type AgentApprovals, type ApproveToolCall } from './createAgentApprovals';
+import type { PermissionOptions } from './execution/permissions';
 import type { z } from 'zod';
 import type { McpServerSpec } from './spec/schema';
 import { agentMcp, streamAfter } from './tools/mcp/agentMcp';
@@ -52,7 +53,7 @@ import { compactionHookFor, type AgentCompaction } from './context/agentCompacti
  * AgentConfig.tools) will refer to them by - createAgent() registers each
  * one into a fresh ToolRegistry under that key.
  */
-export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> {
+export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> extends PermissionOptions {
   /**
    * Optional tools: an array of `defineTool()` results (named by the tool),
    * or a record of descriptors keyed by the name the agent should call them by.
@@ -458,6 +459,9 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
   if (config.subagents) assertNoTaskTool(agent, toolRegistry);
 
   const runOptions = {
+    // LOU-X2: also used by resumed runs and when this agent is a sub-agent.
+    permissions: config.permissions,
+    onPermissionDecision: config.onPermissionDecision,
     skills: config.skills,
     subagents: subagentsWithOptions(config.subagents, config.subagentOptions),
     maxSubagentDepth: config.maxSubagentDepth,

@@ -66,6 +66,14 @@ describe('AgentEvent types', () => {
     if (event.type === 'provider.fallback') expectTypeOf(event.error).toEqualTypeOf<{ message: string }>();
   });
 
+  it('narrows permission.decision on event.type (LOU-X2)', () => {
+    if (event.type === 'permission.decision') {
+      expectTypeOf(event.decision).toEqualTypeOf<'allow' | 'deny' | 'ask' | 'default'>();
+      expectTypeOf(event.rule).toEqualTypeOf<{ index: number; reason?: string } | undefined>();
+      expectTypeOf(event.at).toBeString();
+    }
+  });
+
   it('narrows compaction events on event.type (LOU-W3.2)', () => {
     if (event.type === 'compaction.start') expectTypeOf(event.thresholdTokens).toBeNumber();
     if (event.type === 'compaction.done') {
@@ -85,6 +93,7 @@ describe('AgentEvent types', () => {
       | 'tool.done'
       | 'tool.error'
       | 'approval.requested'
+      | 'permission.decision'
       | 'step.done'
       | 'error'
       | 'provider.retry'

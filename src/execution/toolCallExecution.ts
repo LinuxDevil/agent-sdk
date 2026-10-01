@@ -14,10 +14,13 @@ import type { ToolRunContext } from './toolRunContext';
 import { HookRegistry, ToolCallHookContext } from './hooks';
 import { toolErrorMessage } from './propagatingToolError';
 import { toolErrorResult, type ToolErrorKind } from './toolErrors';
-import { ToolArgumentsValidationError, validateToolArguments } from './toolArgsValidation';
+import { ToolArgumentsValidationError, parseToolArguments, validateToolArguments } from './toolArgsValidation';
+import { checkPermission } from './permissions';
 import type { ExecuteOptions } from './AgentExecutor';
 import type { SubagentSuspension } from './ApprovalGate';
 import { SubagentApprovalPause, suspendedToolResult, toSuspension, type ToolCallScope } from './subagentRuntime';
+
+export { parseToolArguments };
 
 /**
  * Settled outcome of one tool call, as emitted in the 'tool-result' event
@@ -53,18 +56,6 @@ export interface ToolCallContext {
   scope?: ToolCallScope;
   /** LOU-V5: where a delegated child's usage is reported (see ToolRunContext). */
   onDelegatedUsage?: ToolRunContext['onDelegatedUsage'];
-}
-
-/**
- * Best-effort parse of a tool call's JSON `arguments`, returning
- * `fallback` when they are not valid JSON.
- */
-export function parseToolArguments(toolCall: ToolCall, fallback: unknown): unknown {
-  try {
-    return JSON.parse(toolCall.function.arguments);
-  } catch {
-    return fallback;
-  }
 }
 
 /**
@@ -147,8 +138,41 @@ async function prepareToolCall(toolCall: ToolCall, ctx: ToolCallContext): Promis
     await ctx.hooks.runPreToolCall(toolHookContext(toolCall, ctx, checked.args));
   }
 
-  const approval = await checkNeedsApproval(toolCall, ctx.toolRegistry, checked.args);
-  return { toolCall, args: checked.args, ...approval };
+  // LOU-X2: a matching permission rule decides before `needsApproval` does.
+  const gate =
+    (await checkPermissionRules(toolCall, ctx, checked.args)) ??
+    (await checkNeedsApproval(toolCall, ctx.toolRegistry, checked.args));
+  return { toolCall, args: checked.args, ...gate };
+}
+
+/**
+ * Applies the run's permission rules (LOU-X2, read from `ctx.scope.runtime`).
+ * Undefined when no rule decided the call; a throwing `when` becomes the
+ * call's error outcome, like a throwing `needsApproval`.
+ */
+async function checkPermissionRules(
+  toolCall: ToolCall,
+  ctx: ToolCallContext,
+  args: Record<string, unknown>
+): Promise<Pick<PreparedToolCall, 'rejection' | 'requiresApproval'> | undefined> {
+  if (!ctx.scope) {
+    return undefined;
+  }
+  const toolName = toolCall.function.name;
+  try {
+    const entry = await checkPermission(ctx.scope.runtime, { toolName, toolCallId: toolCall.id, sessionId: ctx.sessionId, args });
+    if (entry?.decision === 'deny') {
+      const reason = entry.rule?.reason;
+      const error = `Tool '${toolName}' was denied by a permission rule${reason ? `: ${reason}` : ''}`;
+      const result = toolErrorResult({ toolName, error, kind: 'denied', details: reason ? { reason } : undefined });
+      return { requiresApproval: false, rejection: { ...toolFailure(toolCall, 'denied', error), result } };
+    }
+    return entry?.decision === 'allow' || entry?.decision === 'ask'
+      ? { requiresApproval: entry.decision === 'ask' }
+      : undefined;
+  } catch (error) {
+    return { requiresApproval: false, rejection: thrownToolFailure(toolCall, error) };
+  }
 }
 
 /**
