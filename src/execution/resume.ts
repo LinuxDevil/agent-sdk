@@ -14,7 +14,9 @@ import {
   ExecutionSnapshot,
   PendingApproval,
 } from './ApprovalGate';
-import { AgentExecutor, ExecuteOptions, ExecutionResult } from './AgentExecutor';
+import { AgentExecutor, ExecuteOptions, ExecutionEvent, ExecutionResult } from './AgentExecutor';
+import { AgentRun, RUN_EVENTS, RunEventSink, runEventsOf, startAgentRun } from './agentRun';
+import type { InputQueue } from './inputQueue';
 import { Checkpoint, CheckpointStore } from './checkpoint';
 import { NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
@@ -134,7 +136,7 @@ export async function resumeAfterApproval(
     execute: (options) => AgentExecutor.execute(options),
     resumeRun: resumeAfterApproval,
   };
-  const step = await decidedToolMessage(ctx, pending);
+  const step = await streamedDecision(ctx, pending);
   if ('paused' in step) {
     // LOU-U8: the sub-agent paused again, so the session still awaits an approval.
     const businessState = executeOptions.businessState !== undefined ? executeOptions.businessState : staleBusinessState;
@@ -157,6 +159,86 @@ export async function resumeAfterApproval(
     staleBusinessState,
     usage: ctx.usage,
   });
+}
+
+/** What resumeAfterApproval() takes, as one object (LOU-V14). */
+export interface ResumeRequest {
+  decision: ApprovalDecision;
+  approvalStore: ApprovalStore;
+  toolRegistry: ToolRegistry;
+  provider: LLMProvider;
+  executeOptions?: ResumeExecuteOptions;
+  checkpointStore?: CheckpointStore;
+}
+
+/** resumeAfterApproval() with its arguments as one {@link ResumeRequest}. */
+export function resumeRequest(request: ResumeRequest): Promise<ExecutionResult> {
+  const { decision, approvalStore, toolRegistry, provider, executeOptions, checkpointStore } = request;
+  return resumeAfterApproval(decision, approvalStore, toolRegistry, provider, executeOptions, checkpointStore);
+}
+
+/**
+ * LOU-V14: streams the resume of the request `prepare()` resolves to, as the
+ * `AgentRun` a fresh `AgentExecutor.stream()` returns: `run.start`, the
+ * decided call's `tool.start`/`tool.done`, then the continuation's events. A
+ * rejection of `prepare()` fails the run. See `AgentExecutor.streamResume()`.
+ */
+export function streamResumeRequest(prepare: () => Promise<ResumeRequest>, signal?: AbortSignal, inputQueue?: InputQueue): AgentRun {
+  return startAgentRun(async ({ signal: runSignal, onEvent, sink, inputQueue: queue }) => {
+    const request = await prepare();
+    const options = request.executeOptions ?? {};
+    const streaming: ResumeExecuteOptions & { [RUN_EVENTS]: RunEventSink } = {
+      ...options,
+      signal: runSignal,
+      inputQueue: queue,
+      onEvent: firstStartOnly((event) => {
+        options.onEvent?.(event);
+        onEvent(event);
+      }),
+      [RUN_EVENTS]: sink,
+    };
+    return resumeRequest({ ...request, executeOptions: streaming });
+  }, signal, inputQueue);
+}
+
+/** Drops the continuation's own top-level `start`: the streamed resume already reported one. */
+function firstStartOnly(onEvent: (event: ExecutionEvent) => void): (event: ExecutionEvent) => void {
+  let started = false;
+  return (event) => {
+    if (event.type === 'start' && !event.subagent) {
+      if (started) return;
+      started = true;
+    }
+    onEvent(event);
+  };
+}
+
+/**
+ * decidedToolMessage(), reported on a streamed resume (LOU-V14) as the run's
+ * `start` and the decided call's `tool-call` / `tool-result` events.
+ */
+async function streamedDecision(ctx: ResumeContext, pending: PendingApproval): ReturnType<typeof decidedToolMessage> {
+  const emit = runEventsOf(ctx.executeOptions as ExecuteOptions) ? ctx.executeOptions.onEvent : undefined;
+  if (!emit) return decidedToolMessage(ctx, pending);
+  const { agent, subagent } = ctx.snapshot;
+  const call = subagent ?? pending;
+  emit({ type: 'start', timestamp: new Date(), agentId: agent.id, agentName: agent.name });
+  const toolCall: ToolCall = {
+    id: call.toolCallId,
+    type: 'function',
+    function: { name: call.toolName, arguments: JSON.stringify(call.args) },
+  };
+  emit({ type: 'tool-call', timestamp: new Date(), toolCall });
+  const step = await decidedToolMessage(ctx, pending);
+  if ('message' in step) emit({ type: 'tool-result', timestamp: new Date(), toolResult: toolResultOf(step.message) });
+  return step;
+}
+
+/** The `tool-result` event payload of a decided call's `tool` message. */
+function toolResultOf(message: Message): NonNullable<ExecutionEvent['toolResult']> {
+  const result: unknown = typeof message.content === 'string' ? JSON.parse(message.content) : message.content;
+  const error = message.isError ? String((result as { message?: unknown } | null)?.message ?? '') : undefined;
+  return { toolCallId: message.toolCallId ?? '', toolName: message.toolName ?? '', result, ...(error !== undefined && { error }) };
 }
 
 /**

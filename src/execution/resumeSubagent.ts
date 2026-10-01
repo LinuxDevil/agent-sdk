@@ -15,6 +15,7 @@ import type { ApprovalDecision, ApprovalStore, ExecutionSnapshot, PendingApprova
 import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
 import type { RunUsage } from '../models/usage';
 import { mergeDelegatedUsage } from './runUsage';
+import { runEventsOf } from './agentRun';
 import type { ResumeExecuteOptions } from './resume';
 import {
   SubagentApprovalPause,
@@ -86,6 +87,8 @@ async function pauseAgain(ctx: ResumeContext, suspension: SubagentSuspension): P
   const { usage } = ctx;
   const record = suspensionRecord(snapshot, { messages, steps: snapshot.steps, usage }, suspension);
   await ctx.approvalStore.save(record.pending, record.snapshot);
+  // LOU-V14: a streamed resume reports the new pause like a fresh run does.
+  runEventsOf(ctx.executeOptions as ExecuteOptions)?.approvalRequested(record.pending);
   ctx.executeOptions.onEvent?.({ type: 'finish', timestamp: new Date(), finishReason: 'awaiting-approval', usage });
   return {
     text: '',
