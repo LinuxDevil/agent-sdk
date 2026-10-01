@@ -9,25 +9,40 @@
  */
 import { z } from 'zod';
 import type { McpApproval } from '../tools/mcp/McpToolLoader';
+import type { RunLimits } from '../execution/budget';
+import { guardrailEntrySchema, type AgentSpecGuardrail } from './guardrailOptions';
 
 export interface AgentSpecProvider {
   type: string;
   model: string;
 }
 
+/** `policy.compaction` as an object: when to compact, as a fraction of the context window. */
+export interface AgentSpecCompaction {
+  thresholdPercent?: number;
+}
+
+export { SPEC_GUARDRAIL_NAMES, type AgentSpecGuardrail, type SpecGuardrailName } from './guardrailOptions';
+
 /**
- * Optional cross-harness execution policy (LOU-J1+). Deliberately loose -
- * different target harnesses (Claude Code, Codex, Pi, ...) each honor a
- * different subset of this, and new fields are expected to be added by
- * later generators without needing a schema migration every time, so this
- * is intentionally an open record (`.passthrough()` on the zod side) rather
- * than a closed, harness-specific shape.
+ * Optional cross-harness execution policy (LOU-J1+). The known fields below
+ * are validated and compiled by specToAgent() (LOU-X5) into `createAgent()`
+ * permissions, guardrails, limits, `askQuestion` and compaction. Other
+ * fields stay an open record (`.passthrough()` on the zod side): different
+ * target harnesses (Claude Code, Codex, Pi, ...) each honor a different
+ * subset, and the generators read the raw policy.
  */
 export interface AgentSpecPolicy {
-  /** Whether tool calls from this agent require human approval before running (LOU-C). */
-  requiresApproval?: boolean;
-  /** Named guardrails (see src/execution/guardrails.ts) this agent's actions must pass. */
-  guardrails?: string[];
+  /** `true`: every tool call asks for approval. A list: only those tools do. */
+  requiresApproval?: boolean | string[];
+  /** Built-in guardrails (see {@link AgentSpecGuardrail}'s names, `SPEC_GUARDRAIL_NAMES`) on the agent's input and output. */
+  guardrails?: AgentSpecGuardrail[];
+  /** Budgets of each run (`createAgent({ limits })`). */
+  limits?: RunLimits;
+  /** Adds the built-in `ask_question` tool. */
+  askQuestion?: boolean;
+  /** `true` for the defaults, or `{ thresholdPercent }`. */
+  compaction?: boolean | AgentSpecCompaction;
   /** Additional, harness-specific policy fields. */
   [key: string]: unknown;
 }
@@ -95,10 +110,37 @@ export const agentSpecProviderSchema = z.object({
   }),
 });
 
+const POLICY = 'AgentSpec validation failed:';
+
+const posInt = z.number().int().positive();
+
+const runLimitsSchema = z
+  .object({
+    maxTokens: posInt.optional(),
+    maxInputTokens: posInt.optional(),
+    maxOutputTokens: posInt.optional(),
+    maxCostUsd: z.number().positive().optional(),
+    maxDurationMs: posInt.optional(),
+    maxSteps: posInt.optional(),
+    onExceeded: z.enum(['stop', 'throw']).optional(),
+  })
+  .strict();
+
 export const agentSpecPolicySchema = z
   .object({
-    requiresApproval: z.boolean().optional(),
-    guardrails: z.array(z.string()).optional(),
+    requiresApproval: z
+      .union([z.boolean(), z.array(z.string().min(1))], {
+        errorMap: () => ({ message: `${POLICY} 'requiresApproval' must be true, false or a list of tool names` }),
+      })
+      .optional(),
+    guardrails: z.array(guardrailEntrySchema).optional(),
+    limits: runLimitsSchema.optional(),
+    askQuestion: z.boolean().optional(),
+    compaction: z
+      .union([z.boolean(), z.object({ thresholdPercent: z.number().gt(0).lte(1).optional() }).strict()], {
+        errorMap: () => ({ message: `${POLICY} 'compaction' must be a boolean or { thresholdPercent: 0-1 }` }),
+      })
+      .optional(),
   })
   .passthrough();
 

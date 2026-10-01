@@ -3,6 +3,8 @@
  * and checks what the spec references (provider, built-in tools, MCP servers).
  */
 import type { AgentSpec, McpServerSpec } from '../spec/schema';
+import { summarizePolicy } from '../spec/policy';
+import { unknownGuardrailMessage } from '../spec/guardrailOptions';
 import { listProviders } from '../providers/providerSpec';
 import { NO_SPEC_NEEDS, type SpecNeeds } from './doctorChecks';
 import type { DoctorCheck, DoctorEnvironment } from './doctorTypes';
@@ -67,6 +69,19 @@ function checkMcpServer(env: DoctorEnvironment, name: string, server: McpServerS
   };
 }
 
+function checkPolicy(spec: AgentSpec): DoctorCheck[] {
+  return summarizePolicy(spec.policy).map(({ block, text, unknownGuardrails }) => {
+    const base = { id: `spec.policy.${block}`, title: `Spec policy ${block}` };
+    if (unknownGuardrails.length === 0) return { ...base, status: 'ok' as const, finding: text };
+    return {
+      ...base,
+      status: 'fail' as const,
+      finding: unknownGuardrails.map(unknownGuardrailMessage).join('; '),
+      fix: 'Use a built-in guardrail name in policy.guardrails.',
+    };
+  });
+}
+
 function loadFailure(path: string, error: unknown): SpecInspection {
   const check: DoctorCheck = {
     id: 'spec',
@@ -99,6 +114,7 @@ export function inspectSpec(env: DoctorEnvironment): SpecInspection {
     checkProvider(spec),
     ...tools.map((tool) => tool.check),
     ...mcp,
+    ...checkPolicy(spec),
   ];
   const needs: SpecNeeds = {
     providers: new Set([spec.provider.type.toLowerCase()]),
