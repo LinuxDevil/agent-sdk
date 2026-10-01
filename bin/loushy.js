@@ -7,6 +7,7 @@ const USAGE = [
   'Usage:',
   '  loushy init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force]',
   '  loushy dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H]',
+  '  loushy chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>]',
   '  loushy build --target=<name> --agent=<path> [--out=<dir>]',
   '  loushy studio [--port N] [--host H] [--prod|--dev]',
   '  loushy mcp <agent.yaml|json> [--http --port N --host H]',
@@ -49,6 +50,12 @@ async function runDev(rest) {
   } catch (error) {
     reportError(error);
   }
+}
+
+// A terminal REPL for an agent (LOU-D33); see src/cli/chat.ts. Returns the exit code.
+async function runChatCommand(rest) {
+  const { runChat } = require(path.join(__dirname, '..', 'dist', 'cli', 'chat.js'));
+  process.exitCode = await runChat(rest);
 }
 
 async function runBuildCommand(rest) {
@@ -109,6 +116,7 @@ async function runEvalCommand(rest) {
 const COMMANDS = new Map([
   ['init', runInitCommand],
   ['dev', runDev],
+  ['chat', runChatCommand],
   ['build', runBuildCommand],
   ['studio', runStudio],
   ['mcp', runMcp],

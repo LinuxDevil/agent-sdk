@@ -100,9 +100,10 @@ export type SpecAgent = SimpleAgent & {
  *
  * `spec.mcpServers` go to `createAgent({ mcpServers })` (LOU-Z4): they connect
  * on `agent.ready()` or the first `send()` / `stream()`, and `agent.close()`
- * disconnects them. They stay readable as `agent.mcpServers`.
+ * disconnects them. They stay readable as `agent.mcpServers`. `options.store`
+ * is `createAgent({ store })` (sessions, checkpoints and approvals; LOU-D14).
  */
-export function specToAgent(spec: AgentSpec): SpecAgent {
+export function specToAgent(spec: AgentSpec, options: Pick<CreateAgentConfig, 'store'> = {}): SpecAgent {
   const provider = resolveSpecProvider(spec.provider.type, spec.provider.model);
 
   const tools: CreateAgentConfig['tools'] = {};
@@ -117,6 +118,7 @@ export function specToAgent(spec: AgentSpec): SpecAgent {
     provider,
     tools: Object.keys(tools).length > 0 ? tools : undefined,
     mcpServers,
+    store: options.store,
   });
   return Object.assign(agent, { mcpServers });
 }

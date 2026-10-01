@@ -8,12 +8,23 @@
  * lifecycle: scaffold() -> build() -> describe().
  */
 
+/** Options a caller of `scaffold()` can pass to a target (LOU-D14). */
+export interface DeployOptions {
+  /**
+   * Bearer auth of the node-server and docker targets: `token` is baked into
+   * the built server and used when `LOUSHY_API_TOKEN` is not set at run time.
+   * Prefer the environment variable: a baked token is readable in `dist/server.js`.
+   */
+  auth?: { token?: string };
+}
+
 export interface DeploymentAdapter {
   /**
    * Writes the target's source files (entrypoint, config, platform manifest)
-   * for the agent config at `agentPath` into `outDir`.
+   * for the agent config at `agentPath` into `outDir`. `options` apply to the
+   * targets that support them (see {@link DeployOptions}).
    */
-  scaffold(agentPath: string, outDir: string): Promise<void>;
+  scaffold(agentPath: string, outDir: string, options?: DeployOptions): Promise<void>;
   /** Compiles/bundles the scaffolded sources in `outDir` into a deployable artifact. */
   build(outDir: string): Promise<void>;
   /** Returns the command a user runs (from `outDir`) to start/deploy the built artifact. */

@@ -1,5 +1,5 @@
 /**
- * Node runtime for generated deployment servers (LOU-I2/I4).
+ * Node runtime for generated deployment servers (LOU-I2/I4, LOU-D14).
  *
  * The server.ts that the node-server/docker adapters scaffold imports
  * `@loushy/build-ai-agent/deploy-runtime`; at build time that import is
@@ -10,18 +10,7 @@
  * dev`'s): real providers via resolveProvider() + env vars, 'mock' via
  * LLMProviderRegistry (importing specToAgent also registers 'mock').
  */
-import { resolveSpecProvider, resolveSpecTool } from '../spec/specToAgent';
-import { AgentSpec } from '../spec/schema';
-import { prepareSpecExecution, PreparedExecution } from './specExecution';
-
-export { AgentExecutor } from '../execution/AgentExecutor';
-export type { ExecutionResult } from '../execution/AgentExecutor';
 export { agentSpecSchema } from '../spec/schema';
 export type { AgentSpec } from '../spec/schema';
-
-export function prepareSpec(spec: AgentSpec): PreparedExecution {
-  return prepareSpecExecution(spec, {
-    resolveProvider: resolveSpecProvider,
-    resolveTool: resolveSpecTool,
-  });
-}
+export { createDeployedAgent, createDeployedServer } from './nodeServer';
+export type { DeployedServerOptions } from './nodeServer';
