@@ -384,6 +384,16 @@ a channel (an object with `parse` and `reply`). The message names the file.
 
 **Example:** `export default { cron: 'x' }` in `channels/sms.ts`.
 
+### LOUSHY_MEMORY_INVALID
+
+**Means:** a file in an agent directory's `memory/` folder does not default-export
+a memory slot (an object with a `scope` and a `provider`). The message names the file.
+
+**Fix:** default-export `defineMemory({ ... })`, or the same options without a `name`
+(the file name is used). See [Memory](./memory.md) and [Agent directories](./agent-directories.md#memory).
+
+**Example:** `export default { cron: 'x' }` in `memory/notes.ts`.
+
 ## General
 
 ### LOUSHY_GENERIC_ERROR
