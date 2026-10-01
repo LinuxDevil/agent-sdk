@@ -40,6 +40,8 @@ export const ERROR_CODES = {
   LOUSHY_APPROVAL_NOT_FOUND: 'Resolve an id that is still pending (agent.approvals.list() lists them); each approval resolves once.',
   LOUSHY_SESSION_AWAITING_APPROVAL: 'Resolve the pending approval first (agent.approvals.resolve() or resumeAfterApproval()), then send again.',
   LOUSHY_SESSION_ID_INVALID: "Use 1-128 characters from A-Z, a-z, 0-9, '_' and '-', or omit the id.",
+  LOUSHY_SESSION_BUSY: 'Wait for the running turn to finish (await its send(), or abort it), then call again.',
+  LOUSHY_SESSION_TURN_PENDING: 'Finish the interrupted turn with session.resume(), or drop it with session.discardPending(), then call again.',
   LOUSHY_SESSION_FILE_CORRUPT: 'Restore or delete the session file named in the message.',
   LOUSHY_SESSION_STREAM_UNSUPPORTED: 'Create the session with agent.session(), which can stream, or call send() instead.',
   LOUSHY_REMOTE_UNAUTHORIZED: "Pass the deployment's bearer token (its LOUSHY_API_TOKEN): `auth` of remoteAgent()/remoteTarget(), or --token / LOUSHY_EVAL_TOKEN for `loushy eval`.",
