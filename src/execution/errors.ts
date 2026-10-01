@@ -59,6 +59,38 @@ export class LLMProviderError extends SDKError {
 }
 
 /**
+ * LOU-U8: thrown by `AgentExecutor.execute()` when its `sessionId` names a
+ * run that is paused awaiting a human approval. New input must not bypass
+ * the pending decision: resolve it with `resumeAfterApproval()` first.
+ *
+ * @example
+ * ```ts
+ * try {
+ *   await AgentExecutor.execute({ agent, input: 'hi', provider, sessionId, checkpointStore });
+ * } catch (error) {
+ *   if (error instanceof SessionAwaitingApprovalError) {
+ *     console.log(`decide approval ${error.approvalId} first`);
+ *   }
+ * }
+ * ```
+ */
+export class SessionAwaitingApprovalError extends SDKError {
+  constructor(
+    public readonly sessionId: string,
+    public readonly approvalId: string | undefined
+  ) {
+    super(
+      `Session '${sessionId}' is paused awaiting approval${approvalId ? ` '${approvalId}'` : ''}, so execute() ` +
+        'cannot add new input to it. Resolve the approval with resumeAfterApproval({ id: approvalId, approved: true }, ' +
+        'approvalStore, toolRegistry, provider, options, checkpointStore) - passing the same checkpointStore so the ' +
+        'session is marked as resumed - then call execute() again with your new input.',
+      'SESSION_AWAITING_APPROVAL'
+    );
+    this.name = 'SessionAwaitingApprovalError';
+  }
+}
+
+/**
  * Flow execution error
  */
 export class FlowExecutionError extends SDKError {

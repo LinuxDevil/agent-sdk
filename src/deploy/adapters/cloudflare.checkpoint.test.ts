@@ -123,7 +123,7 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
     expect(res.status).toBe(400);
   });
 
-  it('a real run through the built bundle writes a checkpoint to KV mid-run and deletes it on completion', async () => {
+  it('a real run through the built bundle writes a checkpoint to KV and keeps it, marked finished, on completion (LOU-U8)', async () => {
     const kv = createMockKV();
     const sessionId = 'writes-and-completes';
 
@@ -140,11 +140,11 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
     expect(body.finishReason).toBe('stop');
 
     // The run completed inside this single request/response cycle, so
-    // AgentExecutor's terminal-state cleanup (see AgentExecutor.ts) deletes
-    // the checkpoint before returning - proven here via the real built
-    // bundle + a real (mocked) KV binding, not a re-implementation of that
-    // logic.
-    expect(await kv.get(`checkpoints/${sessionId}`)).toBeNull();
+    // AgentExecutor keeps its transcript marked 'finished' (LOU-U8) - the
+    // next request with this sessionId continues the conversation. Proven
+    // here via the real built bundle + a real (mocked) KV binding.
+    const stored = JSON.parse((await kv.get(`checkpoints/${sessionId}`))!) as Checkpoint;
+    expect(stored.status).toBe('finished');
   });
 
   it('pause -> resume: a checkpoint genuinely produced by the built bundle mid-run is rehydrated by a LATER, independent request', async () => {
@@ -173,7 +173,9 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
     // this is the real payload the built bundle's AgentExecutor produced,
     // not a hand-crafted fixture.
     expect(capturedPuts.length).toBeGreaterThan(0);
-    const midRunCheckpoint = capturedPuts[0];
+    // LOU-U9: the first put is the model's tool-call turn (before the tool
+    // ran); take the one written after the tool result.
+    const midRunCheckpoint = capturedPuts.find((c) => c.messages.some((m) => m.role === 'tool'))!;
     expect(midRunCheckpoint.sessionId).toBe(captureSessionId);
     expect(midRunCheckpoint.messages.length).toBeGreaterThan(0);
     // A distinctive marker proving these ARE this run's real messages, not
@@ -209,19 +211,20 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
     expect(resumeBody.finishReason).toBe('stop');
 
     // The resumed run's message history starts with EXACTLY the seeded
-    // checkpoint's pre-pause messages (rehydration ignores this request's
-    // own `message` entirely - see AgentExecutor.ts's rehydration branch),
-    // plus new messages appended to finish the run.
+    // checkpoint's pre-pause messages, then this request's own `message` as
+    // a new user turn (LOU-U8: new input on an unfinished run is appended
+    // after it), plus the messages that finish the run.
     expect(resumeBody.messages.length).toBeGreaterThan(midRunCheckpoint.messages.length);
     expect(resumeBody.messages.slice(0, midRunCheckpoint.messages.length)).toEqual(midRunCheckpoint.messages);
     expect(
       resumeBody.messages.some(
         (m: any) => typeof m.content === 'string' && m.content.includes('totally unrelated follow-up text')
       )
-    ).toBe(false);
+    ).toBe(true);
 
     // Completed to a terminal state again, so the resumed session's
-    // checkpoint was cleaned up too.
-    expect(await resumeKv.get(`checkpoints/${resumeSessionId}`)).toBeNull();
+    // checkpoint is marked finished too.
+    const resumed = JSON.parse((await resumeKv.get(`checkpoints/${resumeSessionId}`))!) as Checkpoint;
+    expect(resumed.status).toBe('finished');
   });
 });

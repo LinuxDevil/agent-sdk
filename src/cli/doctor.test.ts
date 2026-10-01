@@ -50,18 +50,16 @@ describe('real environment', () => {
     expect(env.commandExists('definitely-not-a-command-xyz')).toBe(false);
   });
 
-  it('loads a spec file and its raw mcpServers', () => {
+  it('loads a spec file with its validated mcpServers', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-doctor-'));
     fs.writeFileSync(
       path.join(dir, 'a.yaml'),
       'name: bot\nprompt: hi\nprovider:\n  type: mock\n  model: m\nmcpServers:\n  fs:\n    command: npx\n'
     );
-    fs.writeFileSync(path.join(dir, 'a.json'), '{"mcpServers":{}}');
     const env = buildEnvironment({ json: false, specPath: 'a.yaml' }, dir);
     expect(env.specPath).toBe(path.join(dir, 'a.yaml'));
     expect(env.loadSpec(env.specPath as string).name).toBe('bot');
-    expect(env.readRawSpec(env.specPath as string)).toMatchObject({ mcpServers: { fs: { command: 'npx' } } });
-    expect(env.readRawSpec(path.join(dir, 'a.json'))).toEqual({ mcpServers: {} });
+    expect(env.loadSpec(env.specPath as string).mcpServers).toEqual({ fs: { command: 'npx' } });
     expect(env.resolveTool('http')).toBeTruthy();
     expect(() => env.resolveTool('nope')).toThrow();
   });

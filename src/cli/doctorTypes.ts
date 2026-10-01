@@ -42,8 +42,6 @@ export interface DoctorEnvironment {
   specPath?: string;
   /** Loads and validates a spec (the SDK's own loader); throws with field paths on invalid input. */
   loadSpec(path: string): AgentSpec;
-  /** The unvalidated spec document, for fields the schema does not model (e.g. `mcpServers`). */
-  readRawSpec(path: string): unknown;
   /** Resolves a built-in tool name; throws if unknown. */
   resolveTool(name: string): { requiresSandbox?: boolean };
   /** True when `command` is an existing file or is found on PATH. */

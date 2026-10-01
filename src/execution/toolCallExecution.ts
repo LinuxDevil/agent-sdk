@@ -343,7 +343,8 @@ async function doExecuteToolCall(
       args,
       ctx.sandbox,
       ctx.signal,
-      { onDelegatedUsage: ctx.onDelegatedUsage },
+      // LOU-U9: `toolCallId` is the tool's idempotency key on a re-run.
+      { onDelegatedUsage: ctx.onDelegatedUsage, toolCallId: toolCall.id },
       ctx.scope
     );
 

@@ -63,6 +63,50 @@ tools:
     expect(() => loadSpec(filePath)).toThrow(/'prompt'/);
   });
 
+  it('loads mcpServers from YAML (LOU-D20)', () => {
+    const filePath = tmpFile(
+      'mcp.yaml',
+      `
+name: mcp-agent
+prompt: hi
+provider:
+  type: mock
+  model: m
+mcpServers:
+  fs:
+    command: npx
+    args: [-y, "@modelcontextprotocol/server-filesystem"]
+    env:
+      ROOT: /tmp
+  docs:
+    url: https://example.com/mcp
+`
+    );
+    expect(loadSpec(filePath).mcpServers).toEqual({
+      fs: {
+        command: 'npx',
+        args: ['-y', '@modelcontextprotocol/server-filesystem'],
+        env: { ROOT: '/tmp' },
+      },
+      docs: { url: 'https://example.com/mcp' },
+    });
+  });
+
+  it('names the mcpServers entry in the error for a bad entry (LOU-D20)', () => {
+    const filePath = tmpFile(
+      'bad-mcp.json',
+      JSON.stringify({
+        name: 'a',
+        prompt: 'b',
+        provider: { type: 'mock', model: 'm' },
+        mcpServers: { files: { args: ['x'] }, ok: { command: 'npx' } },
+      })
+    );
+    expect(() => loadSpec(filePath)).toThrow(
+      /'mcpServers\.files': AgentSpec validation failed: missing 'command'/
+    );
+  });
+
   it('throws for an unsupported extension', () => {
     const filePath = tmpFile('agent.txt', 'not a spec');
     expect(() => loadSpec(filePath)).toThrow(/unsupported extension/);

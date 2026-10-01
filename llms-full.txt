@@ -248,6 +248,7 @@ console.log(session.id, session.messages.length);
 - [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md) - agent spec fields, provider env vars, `AgentExecutor.execute()` options, CLI flags
 - [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md) - `loushy build` targets: Node server, Docker, Cloudflare Workers
 - [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md) - the main exports; `npm run docs:build` generates the full TypeDoc reference
+- [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md) - checkpoints, crash resume, multi-turn sessions, approvals mid-batch, at-least-once tools
 - [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md) - `agent.stream()`: the typed event schema, terminal and SSE examples
 - [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md) - file system and shell tools for coding agents, and their security model
 - [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md) - OpenTelemetry GenAI spans, attribute table, content opt-in
@@ -371,9 +372,43 @@ fallback model.
 
 ### Human-in-the-loop approval gates
 
-Flag a tool `needsApproval`; `AgentExecutor` pauses before calling it and
-persists an `ExecutionSnapshot` instead of invoking the tool. Resume later —
-after a real restart if you like — with `resumeAfterApproval()`:
+Flag a tool `needsApproval` and the run pauses before calling it. A
+`createAgent()` agent saves the pause in its own `InMemoryApprovalStore`
+(or the `approvalStore` you pass): `send()` resolves with
+`finishReason: 'awaiting-approval'` and an `approvalId`,
+`agent.approvals.list()` shows what is waiting, and
+`agent.approvals.resolve({ id, approved, note? })` runs (or rejects) the call
+and continues the run — in the same session, if it paused inside
+`agent.session()`. Pass `approve` to decide each call in code instead of
+pausing (`stream()` still ends at the pause):
+
+```typescript
+import { createAgent, defineTool } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+
+const sendEmail = defineTool({
+  name: 'send_email',
+  description: 'Send an email',
+  input: z.object({ to: z.string() }),
+  needsApproval: true,
+  execute: async ({ to }) => `sent to ${to}`,
+});
+const agent = createAgent({ provider, instructions: 'You send emails.', tools: [sendEmail] });
+
+const paused = await agent.send('Email the report to sam@example.com');
+if (paused.finishReason === 'awaiting-approval') {
+  console.log(await agent.approvals.list()); // [{ id, toolName: 'send_email', args: { to: '...' }, ... }]
+  const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true }); // or approved: false, note: 'why'
+  console.log(result.text);
+}
+
+// Or decide in code, with no pause: true runs the tool, false sends the model a rejection.
+const trusted = createAgent({ provider, tools: [sendEmail], approve: ({ args }) => String(args.to).endsWith('@example.com') });
+```
+
+With `AgentExecutor` directly, pass an `approvalStore`: it persists an
+`ExecutionSnapshot` instead of invoking the tool. Resume later — after a real
+restart if you like — with `resumeAfterApproval()`:
 
 ```typescript
 import { AgentExecutor, resumeAfterApproval, StorageServiceApprovalStore } from '@loushy/build-ai-agent';
@@ -396,20 +431,25 @@ const result = await resumeAfterApproval(
 
 ### Durable execution / checkpoints
 
-Pass a `sessionId` and a `checkpointStore`; `AgentExecutor` saves a
-checkpoint after every tool result and rehydrates from it on the next call
-with the same `sessionId` — so a crash mid-conversation resumes rather than
-restarts:
+Pass a `sessionId` and a `checkpointStore`; `AgentExecutor` checkpoints
+after every model response and every tool result, on any host. The next
+call with the same `sessionId` resumes an unfinished run (running only the
+tool calls that have no result yet, without asking the model again),
+continues a finished one as a multi-turn conversation, and refuses to
+bypass a pending approval:
 
 ```typescript
 import { AgentExecutor, LocalStorageCheckpointStore } from '@loushy/build-ai-agent';
 
 const checkpointStore = new LocalStorageCheckpointStore(storage);
 
-await AgentExecutor.execute({ agent, input, provider, sessionId: 'session-123', checkpointStore });
-// ...process restarts...
-await AgentExecutor.execute({ agent, input: 'continue', provider, sessionId: 'session-123', checkpointStore });
+await AgentExecutor.execute({ agent, input: 'Book a table for 2', provider, sessionId: 'session-123', checkpointStore });
+// ...process restarts, or the user simply replies...
+await AgentExecutor.execute({ agent, input: 'Make it 3 people', provider, sessionId: 'session-123', checkpointStore });
 ```
+
+See [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md) for the exact guarantees
+(including the at-least-once caveat for tools that were mid-flight).
 
 ### Sub-agents and delegation
 
@@ -663,7 +703,7 @@ npm run pipeline:demo:trigger   # POSTs a synthetic error to kick it off
 
 ### Core
 
-- **`createAgent()`** - zero-config `{ send, stream }` agent
+- **`createAgent()`** - zero-config `{ send, stream, session, approvals }` agent
 - **`AgentBuilder`** - fluent `AgentConfig` builder
 - **`AgentExecutor`** - static executor (`execute()`, approvals, checkpoints, tracing)
 - **`ToolRegistry`** - manage available tools
@@ -672,7 +712,7 @@ npm run pipeline:demo:trigger   # POSTs a synthetic error to kick it off
 
 ### Safety & ops
 
-- **`resumeAfterApproval()`**, **`StorageServiceApprovalStore`** - human-in-the-loop
+- **`resumeAfterApproval()`**, **`StorageServiceApprovalStore`**, **`InMemoryApprovalStore`** - human-in-the-loop
 - **`LocalStorageCheckpointStore`** - durable execution
 - **`createDelegateTool()`** - delegate to one child agent through a tool (see `subagents` for named sub-agents)
 - **`runGuardrails()`**, **`secretScanGuardrail`**, **`createDiffSizeGuardrail()`**, **`createCommandGuardrail()`** - guardrails
@@ -1181,6 +1221,8 @@ npm run docs:build   # writes docs/api/index.html
 | `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. |
 | `AgentType`                   | Agent type enum (e.g. `AgentType.SmartAssistant`).                          |
 | `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
+| `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
+| `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
 
 ### Sub-agents
@@ -1193,12 +1235,36 @@ signal, hooks (`ctx.subagent`), tracing, approval store and `onEvent`
 (`event.subagent`). `maxSubagentDepth` (default 1) bounds nesting. See
 [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md).
 
+### Approvals
+
+A `createAgent()` agent pauses on a `needsApproval` tool instead of failing:
+`send()` (and `session.send()`) resolves with `finishReason: 'awaiting-approval'`
+and an `approvalId`. `agent.approvals.list()` returns the pending calls and
+`agent.approvals.resolve({ id, approved, note? })` runs or rejects the call and
+resolves with the continued run's result (continuing the session it paused
+in). Pauses are kept in a per-agent `InMemoryApprovalStore` unless you pass
+`approvalStore` (e.g. `SqliteStore.approvals`); `approve: (call) => boolean`
+decides each call in code without pausing (`stream()` still ends at the
+pause). See [Human-in-the-loop approval gates](https://github.com/LinuxDevil/agent-sdk/blob/main/README.md#human-in-the-loop-approval-gates).
+
 ### Skills
 
 Pass `skills: [defineSkill({ name, description, content }), ...(await loadSkills(dir))]` to
 `createAgent()` or `AgentExecutor.execute()`: only names and descriptions go in
 the system prompt and the model loads bodies through an auto-registered
 `load_skill` tool. See [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md).
+
+### Durable execution
+
+`sessionId` + `checkpointStore` make a run crash-safe and a session
+multi-turn: the run is checkpointed after every model response, every tool
+result and every pause, and calling `execute()` again with the same
+`sessionId` resumes an unfinished run (without re-calling the model for a
+turn it already has), continues a finished conversation with the new
+input, or throws `SessionAwaitingApprovalError` while an approval is
+pending. Tools run at-least-once across a crash; `execute` receives the
+call's `toolCallId` to use as an idempotency key. See
+[Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md) for the exact guarantees.
 
 ### Cancellation
 
@@ -1239,9 +1305,11 @@ How it behaves:
 - `onEvent` receives an `abort` event (its `abortReason` is the signal's
   `reason`), then `finish` with `finishReason: 'aborted'`.
 - With `sessionId` + `checkpointStore`, the state is checkpointed. Calling
-  `execute()` again with the same `sessionId` resumes where the run stopped.
-  Tool calls the run never reached get an `{ error }` result saying they were
-  cancelled, so the conversation stays valid for the provider.
+  `execute()` again with the same `sessionId` resumes where the run stopped;
+  new `input` is appended as the next user message (see
+  [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). Tool calls the run never
+  reached get an `{ error }` result saying they were cancelled, so the
+  conversation stays valid for the provider.
 - An already-aborted signal returns at once without calling the provider.
 
 ### Parallel tool calls
@@ -1284,10 +1352,10 @@ Guarantees, whatever the limit:
 - **Approvals.** The first call that needs approval stops the batch: the
   calls before it run (concurrently) and their results are recorded, then the
   run pauses on that call (`finishReason: 'awaiting-approval'`). Calls after
-  it never start in this run. **Known gap:** after `resumeAfterApproval()`
-  those later calls are still not run and get no result (tracked as LOU-U7).
-  Until that lands, use `toolConcurrency: 1` and keep approval tools out of
-  multi-call turns if this matters to you.
+  it never start in this run. `resumeAfterApproval()` records the paused
+  call's result (or rejection) and then runs those later calls the same way,
+  so every call of the turn gets exactly one result - see
+  [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#approvals-in-the-middle-of-a-tool-batch).
 - **Failures are isolated.** A tool that throws gets its own error result;
   its siblings carry on. A propagating error (`PropagatingToolError`, such as
   the delegation depth guard, or a throwing hook) stops new calls from
@@ -1297,9 +1365,11 @@ Guarantees, whatever the limit:
   `finishReason: 'aborted'`. Calls that finished keep their results; the rest
   get a "cancelled" result. Running tools see the abort through their
   `abortSignal`.
-- **Checkpoints.** With `sessionId` + `checkpointStore`, a checkpoint is
-  written each time the in-order run of finished calls grows (with `1`, after
-  every call, as before). A resumed run never runs a recorded call again.
+- **Checkpoints.** With `sessionId` + `checkpointStore`, the model's turn is
+  checkpointed before any call starts, then again each time the in-order run
+  of finished calls grows (with `1`, after every call). A resumed run never
+  runs a recorded call again, and never asks the model again for a turn it
+  already checkpointed.
 
 ## Declarative specs
 
@@ -1317,6 +1387,7 @@ Guarantees, whatever the limit:
 | `LLMProviderRegistry`           | Registry of provider factories (`create`, `register`, `has`). |
 | `OpenAIProvider`, `AnthropicProvider`, `OllamaProvider`, `OpenRouterProvider` | Provider classes. |
 | `createMockProvider()`, `MockLLMProvider` | Deterministic mock provider for tests and demos.   |
+| `withRetry(provider, opts?)`, `withFallback(providers, opts?)` | Retry transient provider failures with backoff; fall back to the next provider. See [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#provider-retries-and-fallback). |
 
 ## Testing
 
@@ -2168,6 +2239,7 @@ validated with zod by `loadSpec()` (`src/spec/schema.ts`). It is the format
 | `provider.type`  | `string`   | yes      | `openai`, `anthropic`, `ollama`, `openrouter` or `mock`. |
 | `provider.model` | `string`   | yes      | Model id every call uses (the provider's configured model; an agent's own `settings.model` would override it). |
 | `tools`          | `string[]` | no       | Built-in tool names (see below).                       |
+| `mcpServers`     | `Record<string, McpServerSpec>` | no | MCP servers the agent uses, keyed by name (see below). |
 
 A missing or invalid field fails with an error naming the exact field, e.g.
 `'prompt': Required`.
@@ -2195,10 +2267,53 @@ tools:
 them throws an error telling you to build the agent with `createAgent()` and
 pass a configured tool instead.
 
+### MCP servers (`mcpServers`)
+
+`mcpServers` declares the MCP servers an agent uses, as a map from a server
+name (it namespaces that server's tools) to either a stdio server (`command`,
+optional `args` and `env`) or an HTTP server (`url`, optional `headers`).
+Each entry sets exactly one of `command` / `url`; `args`/`env` apply only to
+stdio and `headers` only to HTTP. The field is validated by `loadSpec()`, and
+an invalid entry fails with the entry name in the message, e.g.
+`'mcpServers.files': AgentSpec validation failed: missing 'command' (stdio server) or 'url' (HTTP server)`.
+`loushy doctor` checks each stdio `command` is resolvable.
+
+```yaml
+mcpServers:
+  filesystem:
+    command: npx
+    args: [-y, '@modelcontextprotocol/server-filesystem', ./data]
+    env:
+      LOG_LEVEL: warn
+  docs:
+    url: https://example.com/mcp
+    headers:
+      Authorization: Bearer <token>
+```
+
+```ts
+import { agentSpecSchema, specToAgent, type McpServerSpec } from '@loushy/build-ai-agent';
+
+const filesystem: McpServerSpec = { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem'] };
+const spec = agentSpecSchema.parse({
+  name: 'support-bot',
+  prompt: 'You are a friendly support agent.',
+  provider: { type: 'mock', model: 'mock-1' },
+  mcpServers: { filesystem, docs: { url: 'https://example.com/mcp' } },
+});
+
+// specToAgent() does not connect the servers yet (TODO(LOU-D20.2)); it
+// exposes the validated entries so a host can connect them.
+const agent = specToAgent(spec);
+console.log(Object.keys(agent.mcpServers)); // ['filesystem', 'docs']
+```
+
+Connecting the servers and registering their tools automatically is tracked
+as LOU-D20.2; until then use `loadMcpTools()` as described next.
+
 ### MCP (Model Context Protocol) tools
 
-Tools advertised by a remote MCP server aren't referenced by name in a spec
-file - connect a `Client` from `@modelcontextprotocol/sdk` yourself and load
+Tools advertised by a remote MCP server can also be loaded by hand - connect a `Client` from `@modelcontextprotocol/sdk` yourself and load
 its tools with `loadMcpTools()`, then pass the result to `createAgent()` (or
 register it on a `ToolRegistry`):
 
@@ -2288,6 +2403,48 @@ Real providers are resolved by `resolveProvider('<provider>/<model>')`
 
 The `mock` provider needs no credentials and returns canned responses; it is
 what the examples and the Quick Start use by default.
+
+## Provider retries and fallback
+
+`withRetry(provider, options)` and `withFallback(providers, options)` wrap any
+`LLMProvider` and return another one, so they compose and can be passed
+anywhere a provider is accepted:
+
+```ts
+import { createAgent, resolveProvider, withFallback, withRetry } from '@loushy/build-ai-agent';
+
+const provider = withFallback(
+  [
+    withRetry(resolveProvider('openai/gpt-4o-mini'), {
+      maxRetries: 3,
+      backoff: { initialMs: 500, maxMs: 10_000 },
+      onRetry: ({ attempt, delayMs }) => console.warn(`retry ${attempt} in ${delayMs}ms`),
+    }),
+    withRetry(resolveProvider('anthropic/claude-3-5-haiku-latest')),
+  ],
+  { onFallback: ({ from, to }) => console.warn(`falling back from ${from} to ${to}`) }
+);
+
+const agent = createAgent({ prompt: 'You are helpful.', provider });
+```
+
+- `withRetry` retries `generate()` and `stream()` (default `maxRetries: 2`)
+  on rate limits, timeouts, network errors and 5xx responses, using the same
+  classification as `compactProviderError()`. Auth failures, invalid requests
+  and context-length errors are not retried; neither is a cancellation. A
+  provider's `retryAfterMs` hint (a `Retry-After` header) replaces the backoff
+  delay. Pass `retryOn(error, attempt)` to change the rule, `timeoutMs` for a
+  per-attempt time limit, and `signal` to stop retrying.
+- A `stream()` call is retried only when it rejects. An error inside a stream
+  that was already returned is not retried.
+- `withFallback` tries each provider in order and rethrows the last error
+  when all fail. By default it falls back on any error except a cancellation
+  (`fallbackOn` changes that). Each fallback runs on its own `defaultModel`.
+  `name` and `defaultModel` report the provider that served the latest call.
+- `resilientProvider(provider, { maxRetries, timeout })` applies the
+  `LLMProviderConfig` fields of the same names.
+- The built-in providers also run the `ai` SDK's own internal retries (2 by
+  default) inside each attempt.
 
 ## `createAgent()` options
 
@@ -2558,6 +2715,194 @@ any are found.
 Targets are `DeploymentAdapter` objects (`scaffold`, `build`, `describe`)
 registered by name with `registerAdapter()`; both are exported from the
 package root.
+
+# Durable execution
+
+Source: docs/durable-execution.md
+
+Pass a `sessionId` and a `checkpointStore` to `AgentExecutor.execute()` and
+the run survives a crash, a restart, an abort or a human approval that takes
+days. Nothing here depends on a particular host: any `CheckpointStore`
+(`LocalStorageCheckpointStore` on Node, the Cloudflare KV store the
+`cloudflare-worker` build wires up, or your own three-method implementation)
+and any `ApprovalStore` work the same way.
+
+```ts
+import { AgentExecutor, LocalStorageCheckpointStore } from '@loushy/build-ai-agent';
+
+const checkpoints = new LocalStorageCheckpointStore(storage);
+
+// First message of a conversation.
+await AgentExecutor.execute({ agent, input: 'Book a table for 2 tonight', provider, sessionId: 'chat-42', checkpointStore: checkpoints });
+
+// Later - same process or another one - the next message of the same conversation.
+await AgentExecutor.execute({ agent, input: 'Make it 3 people', provider, sessionId: 'chat-42', checkpointStore: checkpoints });
+```
+
+## What is checkpointed, and when
+
+A checkpoint is the run's whole transcript plus its step count, usage,
+`businessState` and a `status`. It is written under the `sessionId`:
+
+| Moment | `status` |
+| ------ | -------- |
+| Right after each model response that asks for tools, before any tool runs | `'in-progress'` |
+| Each time a tool result is recorded (results are recorded in call order) | `'in-progress'` |
+| When the run is aborted (`signal`) | `'in-progress'` |
+| When the run pauses for an approval | `'awaiting-approval'` (with `approvalId`) |
+| When the run finishes (the model stopped calling tools, or `maxSteps` ran out) | `'finished'` |
+
+A run that rejects (a provider error, a throwing hook, a
+`PropagatingToolError`, a process crash) keeps its last `'in-progress'`
+checkpoint.
+
+## What happens when you call `execute()` again with the same `sessionId`
+
+It depends on the stored `status`:
+
+- **Unfinished run** (`'in-progress'`: it crashed, was aborted, or a store
+  write failed). The run resumes. If its last model turn has tool calls
+  without a result, exactly those calls run first, through the normal tool
+  path (argument validation, hooks, `needsApproval`, `toolConcurrency`),
+  **without calling the model again**. Then the loop continues, with the
+  remaining `maxSteps` budget; `usage` continues from the checkpointed
+  totals (the same holds for `resumeAfterApproval()`, from the snapshot).
+  - New `input` is appended as a user message after those tool results.
+    It is never placed between a tool-call turn and its results, so the
+    transcript stays valid for every provider. This is what lets a user
+    interrupt a run (abort it) and redirect it with a new message.
+  - `input` that re-sends the message the run started from (the natural
+    "retry the same request after a crash") is treated as a retry and is
+    not appended again. `input: []` also just resumes.
+- **Finished run** (`'finished'`). The session continues as a conversation:
+  the stored messages are kept and `input` becomes the next user turn. Pass
+  only the new message(s); if you re-send the stored history followed by
+  new messages, the history is recognised and not duplicated. `steps`,
+  `usage` and `toolCalls` on the result count from zero for the new run;
+  `messages` is the whole conversation.
+- **Paused awaiting approval** (`'awaiting-approval'`). `execute()` throws
+  `SessionAwaitingApprovalError` (with `sessionId` and `approvalId`) and
+  does not call the model or any tool: new input must not bypass a pending
+  decision. Resolve it with `resumeAfterApproval()` first, passing the same
+  `checkpointStore`, then send the new message.
+
+System messages in `input` are ignored when it is added to a stored
+session (the session already has its system prompt). To end a session and
+start over under the same id, call `checkpointStore.delete(sessionId)`.
+
+```ts
+import { AgentExecutor, SessionAwaitingApprovalError } from '@loushy/build-ai-agent';
+
+try {
+  await AgentExecutor.execute({ agent, input: 'Are you done?', provider, sessionId: 'chat-42', checkpointStore });
+} catch (error) {
+  if (error instanceof SessionAwaitingApprovalError) {
+    console.log(`Waiting on approval ${error.approvalId} - resolve it with resumeAfterApproval() first.`);
+  }
+}
+```
+
+## Approvals in the middle of a tool batch
+
+When one model turn asks for several tools and one of them needs approval,
+the calls before it run and are recorded, and the run pauses on it. The
+approval snapshot records the calls after it (`remainingToolCalls`).
+`resumeAfterApproval()` then:
+
+1. records the paused call's result - the tool's result if approved, or a
+   structured `{ error, note }` rejection result if rejected;
+2. runs the remaining calls through the same batch logic: they can run,
+   fail validation, or pause the run again on another approval (a new
+   `approvalId`; resolve it the same way, as many times as needed);
+3. calls the model once every call of the turn has exactly one result.
+
+```ts
+import { AgentExecutor, resumeAfterApproval } from '@loushy/build-ai-agent';
+
+const paused = await AgentExecutor.execute({
+  agent, input, provider, toolRegistry, approvalStore, sessionId: 'chat-42', checkpointStore,
+});
+
+if (paused.finishReason === 'awaiting-approval') {
+  // ...a human decides, possibly days later, in another process...
+  const result = await resumeAfterApproval(
+    { id: paused.approvalId!, approved: true },
+    approvalStore,
+    toolRegistry,
+    provider,
+    {},
+    checkpointStore, // clears the 'awaiting-approval' mark and keeps checkpointing
+  );
+  console.log(result.finishReason); // 'stop', or 'awaiting-approval' again for the next gated call
+}
+```
+
+The resumed run uses the same `approvalStore` for any later approval unless
+you pass a different one in the options.
+
+## Guarantees
+
+- **Every tool call gets exactly one result, in call order**, after any
+  sequence of crashes, aborts, pauses and resumes. (An aborted call gets a
+  "cancelled" result; a rejected call gets a rejection result.)
+- **A recorded result is never re-executed.** Results are checkpointed as
+  the in-order prefix of finished calls grows; a resumed run only runs calls
+  that have no recorded result.
+- **A checkpointed model turn is never generated again.** If the process
+  dies after the model answered, the resumed run executes that answer's tool
+  calls instead of asking the model again (no extra cost, no different
+  plan).
+- **The provider always receives a valid transcript**: tool results
+  directly follow their tool-call turn, and new user input comes after them.
+
+## At-least-once tools: make side effects idempotent
+
+A tool that was **running** when the process died has no recorded result,
+so it runs again on resume. Tool execution is therefore at-least-once, not
+exactly-once. For tools with side effects (charging a card, sending an
+email), either gate them with `needsApproval` or make them idempotent.
+Each call's `toolCallId` (the model's id for the call, unchanged when it is
+re-run on resume) is passed to `execute`, so it works as an idempotency
+key:
+
+```ts
+import { defineTool } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+
+declare const payments: { charge(amount: number, opts: { idempotencyKey: string }): Promise<{ id: string }> };
+
+const chargeCard = defineTool({
+  name: 'charge_card',
+  description: 'Charge the customer',
+  input: z.object({ amount: z.number() }),
+  execute: async ({ amount }, { toolCallId }) =>
+    payments.charge(amount, { idempotencyKey: toolCallId }), // a re-run cannot charge twice
+});
+```
+
+(`toolCallId` is set for tools run by `AgentExecutor` and by
+`resumeAfterApproval()`, but not yet for tools that route through
+`sandboxExecute`.)
+
+## Compatibility with stored data
+
+- Checkpoints written before `status` existed are treated as
+  `'in-progress'` (before this change, finished runs deleted their
+  checkpoint, so only unfinished runs were ever stored).
+- Approval snapshots written before `remainingToolCalls` existed resume as
+  they used to: the calls after the paused one do not run. Each of them gets
+  an error result saying it was not run, so the transcript stays valid.
+
+## Limits
+
+- A `sessionId` identifies one logical conversation; running two
+  `execute()` calls on the same id at the same time is not supported.
+- If you call `resumeAfterApproval()` without the `checkpointStore`, the
+  session keeps its `'awaiting-approval'` mark and later `execute()` calls
+  keep throwing `SessionAwaitingApprovalError`; pass the store (or delete
+  the checkpoint).
+- Workers KV is eventually consistent across locations - see
+  [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md) for the caveat.
 
 # Evals
 
@@ -3015,10 +3360,18 @@ exactly as it was before that call. An aborted `send()` resolves with
 `finishReason: 'aborted'`, as `agent.send()` does. The stored transcript never
 contains an assistant tool-call turn without the matching tool results.
 
+A `send()` that pauses on a `needsApproval` tool resolves with
+`finishReason: 'awaiting-approval'`. `agent.approvals.resolve({ id, approved })`
+then continues the run as the session's next turn, so the tool call, its result
+and the final answer join the transcript (see
+[approval gates](https://github.com/LinuxDevil/agent-sdk/blob/main/README.md#human-in-the-loop-approval-gates)).
+
 Sessions are a thin layer: the session owns the transcript and hands it to the
 executor on each turn. They do not use the checkpoint/resume mechanism
-(`sessionId` + `checkpointStore` on `AgentExecutor.execute()`), which is for
-resuming one interrupted run, not for continuing a conversation.
+(`sessionId` + `checkpointStore` on `AgentExecutor.execute()`). That lower-level
+mechanism also continues a finished conversation, and additionally resumes a
+run interrupted mid-turn (a crash, an abort, an approval pause) without
+re-running finished tools - see [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md).
 
 ## Stores
 
@@ -3065,7 +3418,7 @@ implementation by where the process runs:
 
 | Store | Sessions | Checkpoints | Approvals | Use it when |
 | --- | --- | --- | --- | --- |
-| In memory | `MemorySessionStore` | (supply your own) | (supply your own) | Tests, scripts, one process that never restarts |
+| In memory | `MemorySessionStore` | (supply your own) | `InMemoryApprovalStore` | Tests, scripts, one process that never restarts |
 | Files | `FileSessionStore(dir)` | `LocalStorageCheckpointStore` | `StorageServiceApprovalStore` | One machine, you want plain inspectable files |
 | SQLite | `store.sessions` | `store.checkpoints` | `store.approvals` | A Node server: one durable, transactional file, shared safely by several processes |
 | Cloudflare KV | - | `KVCheckpointStore` | - | Workers deployments (see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)) |
@@ -3586,8 +3939,9 @@ const { text } = await lead.send('Write a short article about the history of the
 ```
 
 `AgentExecutor.execute()` takes the same `subagents` and `maxSubagentDepth`
-options. Use it when you need hooks, tracing or approvals on the lead run -
-sub-agents inherit those (see [Inheritance](#what-a-sub-agent-inherits)).
+options. Use it when you need hooks or tracing on the lead run - sub-agents
+inherit those (see [Inheritance](#what-a-sub-agent-inherits)). Approvals work
+from `createAgent()` too (see [Approvals](#approvals-inside-a-sub-agent)).
 
 ## How it works
 
@@ -3749,6 +4103,10 @@ continues the lead. If the sub-agent needs another approval, the run pauses
 again with a new `approvalId`. This works at any depth and for
 `createDelegateTool()` children (pass the registry that holds the delegate
 tool).
+
+With a `createAgent()` lead, `lead.send()` pauses the same way and
+`lead.approvals.resolve({ id, approved })` resumes it (the lead already knows
+its `subagents`); the lead's `approve` option decides its sub-agents' calls too.
 
 Guarantees and limits:
 

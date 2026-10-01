@@ -33,6 +33,10 @@ import { basename } from 'node:path';
 import type { Subagents } from './subagents/types';
 import { assertMaxSubagentDepth, assertNoTaskTool, assertSubagents, registerSubagent } from './subagents/withSubagents';
 import type { SubagentSpec } from './execution/delegation';
+import type { ApprovalStore } from './execution/ApprovalGate';
+import { InMemoryApprovalStore } from './execution/InMemoryApprovalStore';
+import { resumeAfterApproval } from './execution/resume';
+import { createAgentApprovals, type AgentApprovals, type ApproveToolCall } from './createAgentApprovals';
 
 /**
  * Options for createAgent() that do not depend on how the instructions and
@@ -119,6 +123,24 @@ export interface CreateAgentBase {
    * ```
    */
   projectInstructions?: boolean | { cwd?: string; files?: readonly string[] };
+  /**
+   * Where a run that hits a `needsApproval` tool saves its pause (LOU-D21).
+   * Defaults to a new `InMemoryApprovalStore` per agent; pass a durable store
+   * (e.g. `SqliteStore.approvals`) to resolve after a restart. Decide pauses
+   * with `agent.approvals.resolve()`.
+   */
+  approvalStore?: ApprovalStore;
+  /**
+   * Decides approvals as they come up instead of pausing (LOU-D21): `true`
+   * runs the tool, `false` gives the model a rejection. Applies to `send()`,
+   * sessions and `agent.approvals.resolve()`; `stream()` still ends at the pause.
+   *
+   * @example
+   * ```ts
+   * createAgent({ prompt: '...', provider, tools: [sendEmail], approve: ({ args }) => args.to === 'me@example.com' });
+   * ```
+   */
+  approve?: ApproveToolCall;
 }
 
 /**
@@ -229,6 +251,19 @@ export interface SimpleAgent {
    * ```
    */
   session: (options?: SessionOptions) => AgentSession;
+  /**
+   * Tool calls this agent is paused on, waiting for approval (LOU-D21). A
+   * paused `send()` resolves with `finishReason: 'awaiting-approval'` and an
+   * `approvalId`; `resolve()` runs or rejects the call and continues the run
+   * (in its session, if it paused in one).
+   *
+   * @example
+   * ```ts
+   * const paused = await agent.send('Email the report to Sam');
+   * const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+   * ```
+   */
+  approvals: AgentApprovals;
 }
 
 /**
@@ -264,18 +299,27 @@ export function createAgent(config: CreateAgentConfig = {}): SimpleAgent {
   const agent = builder.build();
   if (config.subagents) assertNoTaskTool(agent, toolRegistry);
 
-  const spec: SubagentSpec = {
-    agent,
-    provider,
-    toolRegistry,
+  const runOptions = {
     skills: config.skills,
     subagents: config.subagents,
     maxSubagentDepth: config.maxSubagentDepth,
     maxSteps: config.maxSteps,
     toolConcurrency: config.toolConcurrency,
   };
+  const spec: SubagentSpec = { agent, provider, toolRegistry, ...runOptions };
+  const approvals = createAgentApprovals({
+    store: config.approvalStore ?? new InMemoryApprovalStore(),
+    approve: config.approve,
+    resume: (approvalStore, decision, signal) =>
+      resumeAfterApproval(decision, approvalStore, toolRegistry ?? new ToolRegistry(), provider, {
+        ...runOptions,
+        approvalStore,
+        signal,
+      }),
+  });
   const executeOptions = (input: string | Message[], signal?: AbortSignal): ExecuteOptions => ({
     ...spec,
+    approvalStore: approvals.store,
     input,
     signal,
   });
@@ -284,12 +328,13 @@ export function createAgent(config: CreateAgentConfig = {}): SimpleAgent {
 
   const simpleAgent: SimpleAgent = {
     async send(message: string, options: SendOptions = {}): Promise<ExecutionResult> {
-      return run(message, options.signal);
+      return approvals.settle(await run(message, options.signal), options.signal);
     },
     stream(message: string, options: SendOptions = {}): AgentRun {
       return AgentExecutor.stream(executeOptions(message, options.signal));
     },
-    session: (options?: SessionOptions) => new AgentSession(run, options),
+    session: (options?: SessionOptions) => approvals.session(run, options),
+    approvals: approvals.approvals,
   };
   registerSubagent(simpleAgent, { spec, description: config.description });
   return simpleAgent;

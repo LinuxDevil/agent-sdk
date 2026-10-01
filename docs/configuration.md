@@ -13,6 +13,7 @@ validated with zod by `loadSpec()` (`src/spec/schema.ts`). It is the format
 | `provider.type`  | `string`   | yes      | `openai`, `anthropic`, `ollama`, `openrouter` or `mock`. |
 | `provider.model` | `string`   | yes      | Model id every call uses (the provider's configured model; an agent's own `settings.model` would override it). |
 | `tools`          | `string[]` | no       | Built-in tool names (see below).                       |
+| `mcpServers`     | `Record<string, McpServerSpec>` | no | MCP servers the agent uses, keyed by name (see below). |
 
 A missing or invalid field fails with an error naming the exact field, e.g.
 `'prompt': Required`.
@@ -40,10 +41,53 @@ tools:
 them throws an error telling you to build the agent with `createAgent()` and
 pass a configured tool instead.
 
+### MCP servers (`mcpServers`)
+
+`mcpServers` declares the MCP servers an agent uses, as a map from a server
+name (it namespaces that server's tools) to either a stdio server (`command`,
+optional `args` and `env`) or an HTTP server (`url`, optional `headers`).
+Each entry sets exactly one of `command` / `url`; `args`/`env` apply only to
+stdio and `headers` only to HTTP. The field is validated by `loadSpec()`, and
+an invalid entry fails with the entry name in the message, e.g.
+`'mcpServers.files': AgentSpec validation failed: missing 'command' (stdio server) or 'url' (HTTP server)`.
+`loushy doctor` checks each stdio `command` is resolvable.
+
+```yaml
+mcpServers:
+  filesystem:
+    command: npx
+    args: [-y, '@modelcontextprotocol/server-filesystem', ./data]
+    env:
+      LOG_LEVEL: warn
+  docs:
+    url: https://example.com/mcp
+    headers:
+      Authorization: Bearer <token>
+```
+
+```ts
+import { agentSpecSchema, specToAgent, type McpServerSpec } from '@loushy/build-ai-agent';
+
+const filesystem: McpServerSpec = { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem'] };
+const spec = agentSpecSchema.parse({
+  name: 'support-bot',
+  prompt: 'You are a friendly support agent.',
+  provider: { type: 'mock', model: 'mock-1' },
+  mcpServers: { filesystem, docs: { url: 'https://example.com/mcp' } },
+});
+
+// specToAgent() does not connect the servers yet (TODO(LOU-D20.2)); it
+// exposes the validated entries so a host can connect them.
+const agent = specToAgent(spec);
+console.log(Object.keys(agent.mcpServers)); // ['filesystem', 'docs']
+```
+
+Connecting the servers and registering their tools automatically is tracked
+as LOU-D20.2; until then use `loadMcpTools()` as described next.
+
 ### MCP (Model Context Protocol) tools
 
-Tools advertised by a remote MCP server aren't referenced by name in a spec
-file - connect a `Client` from `@modelcontextprotocol/sdk` yourself and load
+Tools advertised by a remote MCP server can also be loaded by hand - connect a `Client` from `@modelcontextprotocol/sdk` yourself and load
 its tools with `loadMcpTools()`, then pass the result to `createAgent()` (or
 register it on a `ToolRegistry`):
 
@@ -133,6 +177,48 @@ Real providers are resolved by `resolveProvider('<provider>/<model>')`
 
 The `mock` provider needs no credentials and returns canned responses; it is
 what the examples and the Quick Start use by default.
+
+## Provider retries and fallback
+
+`withRetry(provider, options)` and `withFallback(providers, options)` wrap any
+`LLMProvider` and return another one, so they compose and can be passed
+anywhere a provider is accepted:
+
+```ts
+import { createAgent, resolveProvider, withFallback, withRetry } from '@loushy/build-ai-agent';
+
+const provider = withFallback(
+  [
+    withRetry(resolveProvider('openai/gpt-4o-mini'), {
+      maxRetries: 3,
+      backoff: { initialMs: 500, maxMs: 10_000 },
+      onRetry: ({ attempt, delayMs }) => console.warn(`retry ${attempt} in ${delayMs}ms`),
+    }),
+    withRetry(resolveProvider('anthropic/claude-3-5-haiku-latest')),
+  ],
+  { onFallback: ({ from, to }) => console.warn(`falling back from ${from} to ${to}`) }
+);
+
+const agent = createAgent({ prompt: 'You are helpful.', provider });
+```
+
+- `withRetry` retries `generate()` and `stream()` (default `maxRetries: 2`)
+  on rate limits, timeouts, network errors and 5xx responses, using the same
+  classification as `compactProviderError()`. Auth failures, invalid requests
+  and context-length errors are not retried; neither is a cancellation. A
+  provider's `retryAfterMs` hint (a `Retry-After` header) replaces the backoff
+  delay. Pass `retryOn(error, attempt)` to change the rule, `timeoutMs` for a
+  per-attempt time limit, and `signal` to stop retrying.
+- A `stream()` call is retried only when it rejects. An error inside a stream
+  that was already returned is not retried.
+- `withFallback` tries each provider in order and rethrows the last error
+  when all fail. By default it falls back on any error except a cancellation
+  (`fallbackOn` changes that). Each fallback runs on its own `defaultModel`.
+  `name` and `defaultModel` report the provider that served the latest call.
+- `resilientProvider(provider, { maxRetries, timeout })` applies the
+  `LLMProviderConfig` fields of the same names.
+- The built-in providers also run the `ai` SDK's own internal retries (2 by
+  default) inside each attempt.
 
 ## `createAgent()` options
 

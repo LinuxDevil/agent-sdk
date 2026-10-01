@@ -130,6 +130,24 @@ describe('Execution - LocalStorageCheckpointStore', () => {
     });
   });
 
+  // LOU-U8
+  it('should round-trip status, approvalId and a transcript with queued input behind a pending turn', async () => {
+    const store = createCheckpointStore();
+    const checkpoint = buildCheckpoint({
+      status: 'awaiting-approval',
+      approvalId: 'approval-9',
+      messages: [
+        { role: 'user', content: 'Hi' },
+        { role: 'assistant', content: '', toolCalls: [{ id: 'call-1', type: 'function', function: { name: 'noop', arguments: '{}' } }] },
+        { role: 'user', content: 'queued' },
+      ],
+    });
+
+    await store.save('session-1', checkpoint);
+
+    expect(await store.load('session-1')).toEqual(checkpoint);
+  });
+
   it('should leave businessState absent (undefined) when never set - backward compatible', async () => {
     const store = createCheckpointStore();
     const checkpoint = buildCheckpoint();

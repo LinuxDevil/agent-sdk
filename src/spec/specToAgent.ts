@@ -1,4 +1,4 @@
-import { AgentSpec } from './schema';
+import { AgentSpec, McpServerSpec } from './schema';
 import { createAgent, SimpleAgent, CreateAgentConfig } from '../createAgent';
 import { resolveProvider } from '../providers/resolveProvider';
 import { LLMProvider, LLMProviderRegistry } from '../providers/llm';
@@ -86,11 +86,23 @@ export function resolveSpecTool(name: string): ToolDescriptor {
   );
 }
 
+/** The agent specToAgent() builds, plus the spec's validated MCP servers for a host to connect. */
+export type SpecAgent = SimpleAgent & {
+  readonly mcpServers: Readonly<Record<string, McpServerSpec>>;
+};
+
 /**
  * Maps a validated AgentSpec to a live agent via createAgent() (LOU-H1),
  * resolving each spec tool name against the SDK's real built-in tools.
+ *
+ * TODO(LOU-D20.2): `spec.mcpServers` are validated but NOT connected here.
+ * specToAgent() is synchronous and the SDK has no helper that opens an MCP
+ * client transport (stdio spawn / HTTP) yet - only loadMcpTools(client, ...)
+ * for an already-connected client. Until that lands, the parsed servers are
+ * exposed as `agent.mcpServers` so a host can connect them and register
+ * the resulting tools itself.
  */
-export function specToAgent(spec: AgentSpec): SimpleAgent {
+export function specToAgent(spec: AgentSpec): SpecAgent {
   const provider = resolveSpecProvider(spec.provider.type, spec.provider.model);
 
   const tools: CreateAgentConfig['tools'] = {};
@@ -98,10 +110,11 @@ export function specToAgent(spec: AgentSpec): SimpleAgent {
     tools[name] = resolveSpecTool(name);
   }
 
-  return createAgent({
+  const agent = createAgent({
     name: spec.name,
     prompt: spec.prompt,
     provider,
     tools: Object.keys(tools).length > 0 ? tools : undefined,
   });
+  return Object.assign(agent, { mcpServers: spec.mcpServers ?? {} });
 }
