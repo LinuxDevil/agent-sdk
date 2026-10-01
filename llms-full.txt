@@ -178,7 +178,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md) | On-demand instructions: `defineSkill()`, `loadSkills()` |
 | [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md) | An agent as a folder: layout, mapping to `createAgent()`, security |
 | [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md) | Prune old tool results with `createCompactionHook()` |
-| [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) | `defineChannel()`, `mountChannels()`, `httpChannel()`, `webhookChannel()`: surfaces mapped to sessions, replies and approvals sent back |
+| [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) | `defineChannel()`, `mountChannels()`, `httpChannel()`, `webhookChannel()`, `slackChannel()`: surfaces mapped to sessions, replies and approvals sent back |
 | [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md) | `defineSchedule()` cron schedules, `schedules/` in an agent directory, `startSchedules()` |
 | [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md) | Fixed multi-step workflows with `FlowBuilder` and `FlowExecutor` |
 | [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md) | File system and shell tools for coding agents, and their security model |
@@ -2243,7 +2243,7 @@ can mount it next to your own routes.
 | ----- | ----------- |
 | `name` | Route segment: `POST <basePath>/<name>`. Letters, digits, `_` and `-`. |
 | `verify(req)` | Optional. Authenticate the request (a signature, a token). Return `true`/`false` or `{ ok, reason? }`; `false` answers `401 {"error":"Unauthorized"}` before anything is parsed or run. |
-| `parse(req)` | The message: `{ sessionKey, input, metadata?, replyTo, event? }`, or `null` to acknowledge the request without a turn (a bot's own message, a retry). |
+| `parse(req, respond)` | The message: `{ sessionKey, input, metadata?, replyTo, event? }`; `{ decision: { id, approved?, note?, answer? } }` to resolve a pause this channel's turn stopped on (a button click); or `null` to acknowledge the request without a turn (a bot's own message, a retry). Call `respond(status, body)` to answer before the turn runs (a surface with a short timeout, a handshake). |
 | `reply(ctx)` | Deliver the reply: `ctx.text`, plus `inbound`, `sessionId`, `result`, `events`, `approval`, and `respond(status, body)` while the request is still open. |
 | `onApproval(ctx)` | Optional. Render a pause (buttons, a form). Default: `reply` with a text prompt in `ctx.text` and the request in `ctx.approval`. |
 | `stream` | Optional. `true` calls `reply` with `partial: true` and the text so far as the model writes, then once more with the final text. |
@@ -2344,6 +2344,7 @@ await channels.resolveApproval({ id: 'the-approval-id', approved: true });
 | ------- | ------- | -------- |
 | `httpChannel({ name?, verify? })` | JSON `{ sessionKey, input }` (`input` a string or content parts); anything else is a 400 | `200 { sessionId, text, finishReason }`; when paused, `approval` too and `text` is the prompt |
 | `webhookChannel({ secret?, auth?, name? })` | The JSON body's `input` string, or the whole body; a one-shot session unless the body has a `sessionKey` | `200` with the turn's `ExecutionResult`, as `WebhookTriggerAdapter` answers |
+| `slackChannel({ signingSecret, botToken, name?, fetch? })` | Slack Events API and interactivity requests (see [Slack](#slack)) | `200` at once; replies are posted in the Slack thread |
 
 `webhookChannel({ secret })` checks an HMAC-SHA256 signature of the raw body in
 `x-signature-256: sha256=<hex>`; `auth` takes any
@@ -2362,10 +2363,68 @@ const handler = mountChannels(agent, [
 ]);
 ```
 
-Slack and Discord channels are planned (LOU-P5, LOU-P6), as are channels
-loaded from an agent directory's `channels/*.ts` (LOU-P7.2). Until then, use
-`SlackTriggerAdapter` and `verifySlackSignature()` (see
-[Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#triggers)), or write a channel with `defineChannel()`.
+## Slack
+
+`slackChannel({ signingSecret, botToken, name?, fetch? })` connects a Slack app.
+Each Slack thread is one session: a mention of the bot starts (or continues)
+the session of its thread, keyed by team, channel and the thread's root `ts`;
+later messages in a thread the bot was mentioned in continue it without a
+mention. Replies are posted in the thread with `chat.postMessage` (plain
+`fetch`, no Slack SDK; pass `fetch` to inject one in tests).
+
+- Every request's signature is checked (`v0` HMAC-SHA256 with Web Crypto,
+  five-minute replay window); a failure answers 401.
+- The request is answered right away (`200`, or the `url_verification`
+  challenge) and the turn runs after the response, within Slack's 3-second
+  limit.
+- Retries (`X-Slack-Retry-Num`), bot messages (including the bot's own) and
+  the `message` copy of a mention are acknowledged and skipped, so a turn
+  never runs twice.
+- A tool approval is posted in the thread with **Approve** and **Deny**
+  buttons; the click resumes the session and the continuation is posted in the
+  thread. An `ask_question` is posted as text, and the next message in the
+  thread is the answer.
+
+Set up the app at [api.slack.com/apps](https://api.slack.com/apps):
+
+1. **OAuth & Permissions**: bot token scopes `app_mentions:read`, `chat:write`,
+   and `channels:history` (plus `groups:history` for private channels) for
+   follow-ups without a mention. Install the app and copy the bot token
+   (`xoxb-...`).
+2. **Event Subscriptions**: Request URL `https://<host>/channels/slack`; bot
+   events `app_mention` and `message.channels` (`message.groups` for private
+   channels).
+3. **Interactivity & Shortcuts**: Request URL `https://<host>/channels/slack`
+   (the same route).
+4. **Basic Information**: copy the signing secret.
+
+```ts
+import * as http from 'node:http';
+import { createAgent, mountChannels, slackChannel } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ instructions: 'You are a helpful Slack bot.', provider });
+
+const channels = mountChannels(agent, [
+  slackChannel({
+    signingSecret: process.env.SLACK_SIGNING_SECRET ?? '',
+    botToken: process.env.SLACK_BOT_TOKEN ?? '',
+  }),
+]);
+
+http.createServer((req, res) => {
+  void channels(req, res).then((handled) => handled || res.writeHead(404).end());
+}).listen(3000);
+```
+
+The set of threads the bot was mentioned in, and pending questions, live in
+the handler's memory: after a restart, a thread continues on its next mention
+(its transcript is in the `store` you pass `mountChannels()`). Only one
+process should serve a Slack app's events.
+
+Discord is planned (LOU-P6), as are channels loaded from an agent directory's
+`channels/*.ts` (LOU-P7.2). `SlackTriggerAdapter` and `verifySlackSignature()`
+(see [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#triggers)) still work for one-shot replies
+through an incoming webhook.
 
 # CLI
 

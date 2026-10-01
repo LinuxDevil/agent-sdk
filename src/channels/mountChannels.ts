@@ -2,7 +2,7 @@
  * Runs channels (LOU-P7) behind one framework-free `(req, res)` handler, in
  * the style of the `/chat` routes (src/server/chatRoutes.ts):
  *
- *   POST <basePath>/<name>                verify -> parse -> a session turn -> reply
+ *   POST <basePath>/<name>                verify -> parse -> a session turn (or a decision) -> reply
  *   POST <basePath>/<name>/approvals/:id  verify -> { approved, note? } or { answer } -> the continuation's reply
  *
  * No runtime `node:*` import (the node types are type-only).
@@ -19,6 +19,7 @@ import {
   channelSessionId,
   toChannelRequest,
   type Channel,
+  type ChannelApprovalDecision,
   type ChannelInbound,
   type ChannelRequest,
   type ChannelRespond,
@@ -33,14 +34,6 @@ export interface MountChannelsOptions {
   store?: SessionStore | SessionStores;
   /** Path prefix of the routes. Default `/channels`. */
   basePath?: string;
-}
-
-/** A decision on a pause: `{ approved, note? }` for a tool call, `{ answer }` for a question. */
-export interface ChannelApprovalDecision {
-  id: string;
-  approved?: boolean;
-  note?: string;
-  answer?: string;
 }
 
 /** The handler `mountChannels()` returns. */
@@ -154,14 +147,19 @@ export function mountChannels(
   async function handle(channel: Channel, approvalId: string | undefined, req: ChannelRequest, respond: ChannelRespond): Promise<void> {
     if (!(await isAuthorized(channel, req))) return respond(401, { error: 'Unauthorized' });
     if (approvalId === undefined) {
-      const inbound = await channel.parse(req);
-      if (!inbound) return;
+      const inbound = await channel.parse(req, respond);
+      if (!inbound || 'decision' in inbound) return inbound ? decide(channel, inbound.decision, respond) : undefined;
       const turn = { channel, inbound, sessionId: channelSessionId(channel, inbound) };
       return serialized(turn.sessionId, () => runTurn(turn, respond));
     }
     const decision = readDecision(approvalId, req.text);
     if (!decision) return respond(400, { error: "Request body must be JSON with 'approved' (and optional 'note') or 'answer'" });
-    if (paused.get(approvalId)?.channel !== channel) return respond(404, { error: `No pending approval '${approvalId}' on channel '${channel.name}'` });
+    await decide(channel, decision, respond);
+  }
+
+  /** Resolves `decision` when `channel` paused on it, else answers 404. */
+  async function decide(channel: Channel, decision: ChannelApprovalDecision, respond: ChannelRespond): Promise<void> {
+    if (paused.get(decision.id)?.channel !== channel) return respond(404, { error: `No pending approval '${decision.id}' on channel '${channel.name}'` });
     await resolveApproval(decision, respond);
   }
 
