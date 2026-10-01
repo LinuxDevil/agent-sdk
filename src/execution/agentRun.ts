@@ -34,6 +34,7 @@ import { compactProviderError } from './errors';
 import { withProviderEvents, type ProviderEventListener } from '../providers/providerEvents';
 import type { Usage } from '../models/usage';
 import type { BudgetExceeded } from './budget';
+import type { GuardrailTrip } from './ioGuardrails';
 
 /**
  * The handle returned by `agent.stream()` and `AgentExecutor.stream()`.
@@ -78,6 +79,8 @@ export interface RunEventSink {
   permissionDecision(entry: PermissionDecisionEntry): void;
   /** LOU-V6: a `limits` budget tripped. */
   budgetExceeded(budget: BudgetExceeded): void;
+  /** LOU-X4: a guardrail blocked or rewrote. */
+  guardrail(event: GuardrailTrip & { type: 'guardrail.tripped' | 'guardrail.rewrote' }): void;
   /** LOU-W3.2: an event a hook emits (`GenerateHookContext.emit`). */
   hookEvent(event: HookEventPayload): void;
   /** Obtains one model step - streamed when the provider can. */
@@ -353,6 +356,7 @@ class AgentRunImpl implements AgentRun {
         ),
       budgetExceeded: (budget) => this.emit({ type: 'budget.exceeded', ...budget }, subagent),
       hookEvent: (event) => this.emit(event, subagent),
+      guardrail: (event) => this.emit(event, subagent),
       generate: async (provider, request) => {
         const call = withProviderEvents(request, this.providerEvents(subagent));
         const generated = await this.generateStep(provider, call, subagent);

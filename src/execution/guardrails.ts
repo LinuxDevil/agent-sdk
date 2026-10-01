@@ -199,9 +199,10 @@ export function createDiffSizeGuardrail(maxLines: number): Guardrail {
  * Patterns for content that must never appear in a diff about to be
  * committed/PR'd. Kept intentionally small and specific (as opposed to a
  * broad secret-detection library) to minimize false positives; extend
- * with more patterns as needed.
+ * with more patterns as needed. Also the default patterns of
+ * `regexGuardrail()` (LOU-X4).
  */
-const SECRET_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
+export const SECRET_PATTERNS: ReadonlyArray<{ label: string; pattern: RegExp }> = [
   { label: 'private key header', pattern: /-----BEGIN (RSA |EC )?PRIVATE KEY-----/ },
   { label: 'OpenAI-style API key', pattern: /sk-[A-Za-z0-9]{20,}/ },
   { label: 'AWS access key', pattern: /AKIA[0-9A-Z]{16}/ },
