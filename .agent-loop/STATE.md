@@ -3,7 +3,7 @@
 Mission: make `@loushy/build-ai-agent` the best TypeScript AI agent SDK (capabilities and DX) against
 Vercel eve and MaxGfeller/open-harness. This file is the loop's memory: read it first, update it last.
 
-- Loop started: 2026-10-01. Iterations completed: 11.
+- Loop started: 2026-10-01. Iterations completed: 12. Since iteration 12 the loop runs on the owner's Windows checkout (Node 26); see BRIEF.md and BASELINE.md.
 - Audit: `.agent-loop/AUDIT.md`, refreshed 2026-10-01 at main `a03b1a3` (eve 0.69.0 @682c7a6, open-harness 0.7.0 @026e8d9).
   Reference agents (3 agents x 3 SDKs, measured): `.agent-loop/reference-agents/`. Older material: `docs/research/*.md`, `docs/plan/tickets.md`.
   Audit is stale when: a competitor ships a new major, or more than ~25 PRs land after `a03b1a3` (re-run the DX measurement then).
@@ -15,11 +15,13 @@ Vercel eve and MaxGfeller/open-harness. This file is the loop's memory: read it 
 | 1 | Ticket keys keep the repo's `LOU-<epic><n>` scheme. PR titles: `[EPIC-<letter>][LOU-<id>] <summary>`. |
 | 2 | Jira: the connected Atlassian site (`data4altayyargroup.atlassian.net`) has no `LOU` project. Tracking lives here until the owner names a project key. Not blocking. |
 | 3 | Merge policy: squash-merge once the subagent's local typecheck + lint + full vitest + build + fallow pass; CI is not awaited. **Owner instruction (2026-10-01): do not delete branches**, ever (merged or not). Remaining open PRs get `origin/main` merged in (never rebased) and generated `llms*.txt` regenerated with `npm run docs:llms`. |
-| 4 | Subagents work in git worktrees, run `npm ci` there (666 MB each, disk is fine), and follow `/tmp/.../scratchpad/BRIEF.md` (shared brief; recreate from this file's "Subagent brief" section if the scratchpad is gone). |
+| 4 | Subagents work in git worktrees, run `npm ci` there (666 MB each; E: had 30 GB free at iteration 12), and follow `.agent-loop/BRIEF.md` (the orchestrator copies it to its scratchpad and gives agents that path). |
 | 5 | Max one ticket per batch may touch `src/execution/AgentExecutor.ts`, `resume.ts` or `toolCallExecution.ts`; those files are the conflict hub. |
 | 6 | New epics from the audit: Epic P (UI bindings, channels, schedules). Letters E and F are reserved (historic tickets cited in code comments). The `ai` v4 -> v7 upgrade is D22-D29 (supersedes the D11 umbrella). |
 | 7 | Audit ticket X10 (in-memory approval store) is covered by D21's `InMemoryApprovalStore`; closed as duplicate. |
 | 9 | Owner instruction (2026-10-01): do not wait for CI; iterate continuously. CI results are read only when a failure is reported. |
+| 10 | Owner instruction (2026-10-01, iteration 12): keep launching batches without asking until every ticket is done, then bring the scorecard artifact up to date. PRs are opened with `gh` (no GitHub MCP on this machine). |
+| 11 | D28 was too big for one point (16 type errors, ~55 v4-only tests, Worker bundle leak on `ai` 7). Split: D28a source type-checks on both majors, D28b tests run on either major, D28c Worker bundle on `ai` 7, D28d widen the peers last. Ollama on `ai` 7 waits on D29 (zod 4). |
 | 8 | A second Claude session (`session_01F3s6hrJ2zhYHbSjvVCSEjZ`, now idle) merged PR #68 during iteration 1. If another session is active on this repo again, check `list_sessions` before merging. |
 
 ## Competitor matrix (summary)
@@ -36,7 +38,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Compaction | ✅ flipped (W2 prune #80, W3 summarize/two-phase/pinned #84) | ✅ | ✅ | W3.2 (`compaction.*` events, `createAgent({ compaction })`) |
 | Subagents | ✅ | ✅ | ✅ | - |
 | Background / resumable subagents | ✅ flipped (Y4 #91 + Y4.2 #92: run-end cancel/await, `result.backgroundTasks`, `subagentOptions`) | ✅ | ✅ | Y6 (resumable children) |
-| Remote subagents | ❌ | ✅ | ❌ | Y7 |
+| Remote subagents | ✅ flipped (Y7 #132: `remoteAgent({ url, auth })` over the session API, background tasks included) | ✅ | ❌ | Y7.2 (proxy remote approvals, session reuse) |
 | Approvals / HITL | ✅ flipped (D21, #75) | ✅ | ⚠️ | X8 (policies) |
 | Agent asks the user a question | ✅ flipped (X9 #111: `ask_question`, durable pause, `approvals.answer`, hook `answer()`) | ✅ | ❌ | - |
 | Steering (mid-run input) | ✅ flipped (V9 #122 enqueue + V10 #128 `run.steer()`, `turnPolicy: 'steer'`, `input.steered`) | ✅ | ❌ | - |
@@ -46,11 +48,11 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Skills (SKILL.md) | ✅ | ✅ | ✅ | - |
 | AGENTS.md loading | ✅ | ⚠️ | ✅ | - |
 | Evals | ✅ | ✅ | ❌ | - |
-| Eval against deployed URL | ❌ | ✅ | ❌ | D47 |
+| Eval against deployed URL | ✅ flipped (D47 #131: `loushy eval --url`, `remoteTarget()`) | ✅ | ❌ | - |
 | Test utils (mock model, record/replay) | ✅ | ⚠️ | ❌ | - |
 | Tracing / OTel GenAI | ✅ | ✅ | ❌ | - |
-| Metrics / trace viewer | ❌ | ✅ | ❌ | D48 |
-| Multi-provider | ⚠️ (D26 #123 + D27 #127: generate and stream on `ai` v4 and v6/v7; peer ranges pending) | ✅ | ✅ | D28, D29 |
+| Metrics / trace viewer | ⚠️ (D48 #95 metrics + cost; no trace viewer) | ✅ | ❌ | - (viewer not ticketed) |
+| Multi-provider | ⚠️ (D26 #123 + D27 #127: generate and stream on `ai` v4 and v6/v7; D28a #134: source type-checks on both, CI job; peer ranges pending) | ✅ | ✅ | D28b-D28d, D29 |
 | Fallbacks / retry policy | ✅ (V7.1 #74, V7.2 agent-level + events #86) | ⚠️ | ⚠️ | - |
 | Structured output | ✅ flipped (V4 #90: `output` schema, repair step, `output-invalid`) | ✅ | ❌ | - |
 | Multimodal input | ✅ flipped (V11 #106 + V12 #109: `AgentInput` on send/stream/session/evals/hook, SQLite bytes) | ✅ | ✅ | - (files degrade to text on the pinned `ai` v4 peers; D26+) |
@@ -63,8 +65,8 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | CLI scaffolding | ⚠️ (unpublished) | ✅ | ❌ | D49, U20 |
 | Dev TUI / REPL | ✅ flipped (D31 dev + D32 streaming web chat + D33 #120 `loushy chat` terminal REPL) | ✅ | ⚠️ | - |
 | Visual studio / debugger | ✅ | ❌ | ❌ | - |
-| Channels | ⚠️ (P7 #126: `defineChannel`, `mountChannels`, http/webhook channels) | ✅ | ❌ | P5 Slack, P6 Discord |
-| Schedules | ⚠️ | ✅ | ❌ | P8, P9 |
+| Channels | ⚠️ (P7 #126: `defineChannel`, `mountChannels`, http/webhook channels; P5 #133: Slack with a session per thread and approval buttons) | ✅ | ❌ | P6 Discord, P7.2, P5.2 |
+| Schedules | ⚠️ (P8 #130: `defineSchedule`, `schedules/*.ts`, `startSchedules`, node server option) | ✅ | ❌ | P8.2 (deployed agent dirs), P9 (Worker cron) |
 | Deploy story | ✅ (D14 #119 node/docker + D51 #125 Worker: sessions over KV, SSE, auth; Fetch-native shared routes) | ✅ | ❌ | - |
 | Edge runtime (Workers) | ✅ | ❌ | ❌ | - |
 | Budgets / limits | ✅ flipped (V6 #118: run and session `limits`, `budget-exceeded`, `BudgetExceededError`) | ✅ | ⚠️ | - |
@@ -79,11 +81,11 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Directory authoring | ✅ | ✅ | ❌ | - |
 | Agent-readable docs | ✅ | ✅ | ✅ | - |
 | Published on npm | ❌ (owner action) | ✅ | ✅ | D49 |
-| Current `ai` major | ❌ | ✅ | ✅ | D22-D29 |
+| Current `ai` major | ❌ (runtime and types ready; peers still pin v4) | ✅ | ✅ | D28b-D28d, D29 |
 
-Score (us): 34 ✅ / 7 ⚠️ / 10 ❌ of 51 after iteration 11 (iteration 10: 33/8/10; iteration 9: 30/10/11; iteration 8: 28/11/12; iteration 7: 25/13/13; iteration 6: 24/13/14; iteration 5: 23/14/14; iteration 4: 22/15/14; iteration 3: 20/15/16 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
+Score (us): 36 ✅ / 7 ⚠️ / 8 ❌ of 51 after iteration 12 (iteration 11: 34/7/10 with the Metrics row counted as ❌, now ⚠️ since D48 shipped; iteration 10: 33/8/10; iteration 9: 30/10/11; iteration 8: 28/11/12; iteration 7: 25/13/13; iteration 6: 24/13/14; iteration 5: 23/14/14; iteration 4: 22/15/14; iteration 3: 20/15/16 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
 
-Differentiators shipped (target: 3): 3 of 8 (#1 host-agnostic durable sessions: W9 #89 + D30 #94; #2 record/replay evals: D46 #96; #6 OTel GenAI metrics + cost: D48 #95). Remaining (candidates in AUDIT section 7: host-agnostic durable sessions D30; record/replay evals D46; Forge time-travel D43-D45; MCP+ACP+HTTP reach Z6/D14; both authoring modes with hot reload D31-D33; OTel metrics D48; trajectory evals remote D47; edge-native agents D51/P9).
+Differentiators shipped (target: 3): 6 of 8 (#1 host-agnostic durable sessions: W9 #89 + D30 #94; #2 record/replay evals: D46 #96; #3 Forge time-travel: D43-D45; #6 OTel GenAI metrics + cost: D48 #95; #7 trajectory evals that run anywhere: D46 + D47 #131; #8 edge-native agents: D51 #125). Open: #4 reach (ACP, Z6); #5 both authoring modes with hot reload is done in practice (D31-D33). Original candidate list (candidates in AUDIT section 7: host-agnostic durable sessions D30; record/replay evals D46; Forge time-travel D43-D45; MCP+ACP+HTTP reach Z6/D14; both authoring modes with hot reload D31-D33; OTel metrics D48; trajectory evals remote D47; edge-native agents D51/P9).
 
 ## Ticket tree
 
@@ -159,7 +161,8 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | Y4 | Background sub-agents (`background: true`, `agent_status/await/cancel`, `withSubagentOptions({ maxConcurrent })`) | ✅ #91 | |
 | Y4.2 | Executor `onRunEnd` hook; background children cancelled/awaited at run end; `createAgent({ subagentOptions })` | ✅ #92 | |
 | Y6 | Resumable sub-agent sessions | ⬜ | Y4 |
-| Y7 | Remote sub-agent | ⬜ | D14 |
+| Y7 | Remote sub-agent (`remoteAgent()`, SSE over `/chat`, `LOUSHY_REMOTE_AGENT_FAILED`) | ✅ #132 | |
+| Y7.2 | Proxy a remote approval pause to the lead run; reuse the remote session across tasks | ⬜ | Y7 |
 
 ### Epic Z — MCP
 | ID | Title | Status | Deps |
@@ -189,7 +192,11 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D25 | github and jira to `defineTool` (48 tools; `src/tools` has no `ai` import) | ✅ #114 | |
 | D26 | `ai` v6/v7 adapter: generate (`aiSdkCompat.ts`, tests on real `ai@7` via dev alias) | ✅ #123 | |
 | D27 | `ai` v6/v7 adapter: stream (`streamCompat`; mid-stream errors now throw on v4 too) | ✅ #127 | |
-| D28 | Provider peers and ranges | ⬜ | D27 |
+| D28 | Provider peers and ranges | split into D28a-d | D27 |
+| D28a | SDK source type-checks on `ai` v4 and v7 (`legacyAiTool`, SDK-owned types in aiSdkProvider, CI job `typecheck-ai7`) | ✅ #134 | |
+| D28b | Test suite runs on either major (gate or port the ~55 v4-only tests; vitest in the ai-7 CI job) | ⬜ | D28a |
+| D28c | Worker bundle on `ai` 7 (Node built-ins leak into worker.js) | ⬜ | D28a |
+| D28d | Widen peers (`ai` 4, 6 and 7; `@ai-sdk/*`; `ollama-ai-provider-v2`); install hints, doctor and scaffold follow the installed major | ⬜ | D28b, D28c |
 | D29 | zod 4 / Standard Schema | ⬜ | D22 |
 | D30 | One `store` option (`AgentStore`, `memoryStore()`, `send({ sessionId })`, `agent.resume(id)`) | ✅ #94 | |
 | D31 | `loushy dev` for dirs and TS, hot reload (`devReload.ts`, `/dev/status`) | ✅ #110 | |
@@ -211,7 +218,8 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D45 | Forge time-travel: server API (D45.1 #112) + History tab (D45.2 #113) | ✅ | |
 | D46 | `loushy eval --record/--replay/--drift` (cassettes per case, drift table + JUnit, `--strict`) | ✅ #96 | |
 | D46.2 | Proper provider-middleware hook for eval cassettes (replaces runtime reassignment of `AgentExecutor.execute`) | ⬜ | D46 |
-| D47 | Remote eval target | ⬜ | D14 |
+| D47 | Remote eval target (`loushy eval --url`, `remoteTarget()`, `LOUSHY_REMOTE_*` codes) | ✅ #131 | |
+| D53 | One session-API client shared by `remoteAgent` (Y7) and `remoteTarget` (D47); one set of remote error codes | ⬜ | Y7, D47 |
 | D48 | OTel GenAI metrics (`gen_ai.client.token.usage`, `operation.duration`) + `loushy.cost_usd` | ✅ #95 | |
 | D49 | Publish readiness | ⬜ | U20 |
 | D50 | `loushy add` | ⬜ | |
@@ -227,11 +235,13 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | P2 | Vue composable | ⬜ | D15 |
 | P3 | Svelte store | ⬜ | D15 |
 | P4 | Next.js route helper | ⬜ | D14, P1 |
-| P5 | Slack channel with threads | ⬜ | P7, D21 |
+| P5 | Slack channel (`slackChannel`, Web Crypto signatures, thread sessions, approval buttons; `parse(req, respond)` and `{ decision }` added to the channel contract) | ✅ #133 | |
+| P5.2 | Slack hardening: approver allowlist, delivery-error reporting, DMs, button message update | ⬜ | P5 |
 | P6 | Discord channel | ⬜ | P7 |
 | P7 | `defineChannel` contract + `mountChannels`, `httpChannel`, `webhookChannel` | ✅ #126 | |
 | P7.2 | `loadAgentDir()` picks up `channels/*.ts`; Slack 3-second ack | ⬜ | P7 |
-| P8 | Schedules in agent dirs | ⬜ | |
+| P8 | Schedules in agent dirs (`defineSchedule`, `resolveAgentDir().schedules`, `startSchedules`, `createDeployedServer({ schedules })`) | ✅ #130 | |
+| P8.2 | Node deploy target serves agent directories (and so passes their schedules and channels) | ⬜ | P8 |
 | P9 | Schedules on deploy targets | ⬜ | P8 |
 
 ## PR log
@@ -296,6 +306,13 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | #128 | V10 | merged (squash) | steering |
 | #125 | D51 | merged (squash) | Worker parity |
 | #126 | P7 | merged (squash; chatRoutes conflict: D51 adapter + P7 helpers) | defineChannel |
+| #129 | HEALTH | merged (squash) | `loushy chat` piped input failed on Node 26 (readline closed) |
+| #130 | P8 | merged (squash) | schedules in agent dirs |
+| #131 | D47 | merged (squash) | remote eval target |
+| #132 | Y7 | merged (squash) | remote sub-agent |
+| #133 | P5 | merged (squash) | Slack channel |
+| #135 | HEALTH | merged (squash) | Forge client typecheck broken since X5 (#124) |
+| #134 | D28a | merged (squash) | source type-checks on ai v4 and v7 |
 
 ## Main health
 
@@ -364,15 +381,30 @@ CI runs only on `pull_request`, so "main is green" means the last PR's CI run pa
 - Matrix flips: Steering ⚠️->✅. Deploy story and Guardrails now fully done (no follow-ups).
 - Helper fix: the marker check only scans conflicted docs files now.
 
-## Next batch (iteration 12)
+### Iteration 12 (2026-10-01)
+- First iteration on the owner's Windows checkout (Node 26.2, npm 11, `gh`). Baseline on main found `loushy chat` broken on Node 26 for piped input (4 tests, and so coverage and fallow); fixed in #129.
+- Merged: #129 (HEALTH), #130 (P8), #131 (D47), #132 (Y7), #133 (P5), #135 (HEALTH), #134 (D28a). D28 itself was split (decision 11).
+- Health run on main at a662bbe: tsc, lint 0 errors / 400 warnings, test:types, builds, 140 snippets, llms, coverage 2606 passed / 4 skipped (180 files), fallow 0 above threshold, Forge server typecheck and both Forge suites green; Forge client typecheck was red since X5 (#124), fixed in #135. Lint warnings after D28a: 399.
+- Matrix flips: Remote subagents ❌->✅, Eval against deployed URL ❌->✅. Metrics row corrected to ⚠️ (D48).
+- Helper fixes: merges run on a detached HEAD (PR branches are checked out in agent worktrees); the helper refuses to push when vitest prints no summary.
+- Flaky under load on this machine: guardrails E9 timeout test, NodeWorkspace env/pid tests, sandbox-wiring (each passes alone).
 
-1. D28 (opus): provider peers and ranges (`ai ^4 || ^6 || ^7`, `@ai-sdk/*` current majors, `ollama-ai-provider-v2`), scaffold/Forge/doctor ranges, CI matrix on ai 4 and 7; package.json, providers' v4-typed internals.
-2. P5 (opus): Slack channel with threads (session per thread, Web API replies in-thread, approvals as buttons, 3-second ack); src/channels/slack.
-3. P8 (sonnet): schedules in agent dirs (`schedules/*.ts` `defineSchedule({ cron, prompt | run })` loaded by `loadAgentDir()`, run by the node server); src/agentDir, src/triggers, src/deploy/nodeServer.
-4. Y7 (sonnet): remote sub-agent (`remoteAgent({ url, auth })` usable in `subagents`, over the D14/D51 session API); src/subagents.
-5. D47 (sonnet): remote eval target (`loushy eval --url` drives a deployed agent over the session API); src/cli/eval, src/evals.
-Then: D29, V13, V15, X3, X8, X11, X12, Y6, Z6, D49, D50, P1-P4, P6, P9, P7.2, D2.2, D43.2, U14.2, V4.2, W9.2, D23.2, W6.2, W6.3, Z5.2, D32.2, D46.2, U20, U21, U23, D16, D37-D39, D41, D42, W8, V14.
+## Plan to the end (owner: run every batch, no check-ins)
+
+One hub ticket per batch (AgentExecutor / resume / toolCallExecution), one package.json ticket per batch.
+
+13. V15 (opus, createAgent), D28b (sonnet), U21 (sonnet), W6.2 (sonnet), P2 Vue (sonnet, package.json).
+14. V14 (opus, hub), D28c (opus), P3 Svelte (sonnet, package.json), X11 (opus), Z5.2 (sonnet).
+15. X8 (opus, hub), D28d (opus, package.json), P7.2 (sonnet), W8 (sonnet), D53 (sonnet).
+16. X3 (opus, hub), D29 (opus, package.json), P6 Discord (sonnet), X12 (opus), W6.3 (sonnet).
+17. Z6 ACP (opus), D32.2 (sonnet), W9.2 (sonnet, hub), P1 (sonnet), D37 (sonnet, package.json).
+18. Y6 (opus, hub), P4 (sonnet), P9 (sonnet), D43.2 (sonnet), D42 (sonnet, build config).
+19. D41 (opus, hub), D50 (sonnet), U23 (sonnet), P8.2 (sonnet), D39 (sonnet, package.json).
+20. V13 (opus, hub), D38 (sonnet), U14.2 (sonnet), V4.2 (sonnet), P5.2 (sonnet).
+21. D23.2 (sonnet, hub), D46.2 (sonnet), D2.2 (sonnet), Y7.2 (opus), U20 (sonnet).
+22. D16 ESLint ratchet alone (quiet batch), then D49 publish readiness (no publish, no release-config change).
+Then: final health run, AUDIT refresh note, scorecard artifact brought up to date.
 
 ## Subagent brief (canonical copy)
 
-See `/tmp/claude-0/-home-user-agent-sdk/15860ad4-fff3-53a9-a88b-1d410d4e9ab7/scratchpad/BRIEF.md`; if missing, recreate it with: worktree setup (`git checkout -b <branch> origin/main`, `npm ci`), conventions (tests beside source, `mockModel`, no `any`, regenerate `llms*.txt` via `npm run docs:llms`), the verification list (tsc, lint, test:types, vitest, build both packages, docs:verify-snippets --skip-build, docs:llms:check, test:coverage, fallow), commit trailers (`Co-Authored-By` + `Claude-Session`), PR title/body format with the Claude Code footer, "do not merge", and "never delete branches".
+See `.agent-loop/BRIEF.md` (Windows version since iteration 12) and `.agent-loop/BASELINE.md`. Original outline: worktree setup (`git checkout -b <branch> origin/main`, `npm ci`), conventions (tests beside source, `mockModel`, no `any`, regenerate `llms*.txt` via `npm run docs:llms`), the verification list (tsc, lint, test:types, vitest, build both packages, docs:verify-snippets --skip-build, docs:llms:check, test:coverage, fallow), commit trailers (`Co-Authored-By` + `Claude-Session`), PR title/body format with the Claude Code footer, "do not merge", and "never delete branches".
