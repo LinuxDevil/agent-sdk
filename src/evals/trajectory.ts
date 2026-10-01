@@ -14,6 +14,7 @@ import type { Check } from './checks';
 import type { AssertionKind, AssertionResult, EvalResult, EvalToolCall } from './evalResult';
 import { gateFailures } from './evalResult';
 import { describeCalled, diffArgs, isSubsequence, parseToolCalls } from './toolMatch';
+import type { EvalTarget, RemoteExecutionResult } from './remoteTarget';
 
 /** The judge provider a trajectory eval grades with, set via `defineEval({ judge })`. */
 export interface EvalJudgeConfig {
@@ -24,8 +25,8 @@ export interface EvalJudgeConfig {
   temperature?: number;
 }
 
-/** An agent, or a factory that builds a fresh one per case. */
-export type AgentSource = SimpleAgent | (() => SimpleAgent | Promise<SimpleAgent>);
+/** An agent (or a remote target), or a factory that builds a fresh one per case. */
+export type AgentSource = SimpleAgent | EvalTarget | (() => SimpleAgent | EvalTarget | Promise<SimpleAgent | EvalTarget>);
 
 /** Options for {@link EvalTestContext.calledTool}. */
 export interface CalledToolOptions {
@@ -88,6 +89,8 @@ const NO_JUDGE_MESSAGE =
   'use mockModel for a deterministic CI eval, or put the eval in a "*.judge.eval.ts" file ' +
   '(run by `loushy eval --judge`) with a real provider. loushy never calls a real LLM unless you configure one.';
 
+const REMOTE_MISSING = (what: string) => `the remote stream carried no ${what}, so this cannot be checked against a deployment`;
+
 function sumUsage(results: readonly ExecutionResult[]): EvalResult['usage'] {
   if (results.length === 0) return undefined;
   const total = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
@@ -104,7 +107,7 @@ class TrajectoryContext implements EvalTestContext {
   private readonly results: ExecutionResult[] = [];
   private readonly calls: EvalToolCall[] = [];
   private readonly recorded: AssertionResult[] = [];
-  private agent: SimpleAgent | undefined;
+  private agent: EvalTarget | undefined;
 
   /**
    * @param agentSource the agent, or a factory called once, on the first
@@ -168,11 +171,13 @@ class TrajectoryContext implements EvalTestContext {
   }
 
   maxSteps(limit: number): void {
+    if (this.missingFromRemote('steps')) return this.gate(`maxSteps(${limit})`, false, `maxSteps(${limit}) failed: ${REMOTE_MISSING('step events')}`);
     const steps = this.totalSteps();
     this.gate(`maxSteps(${limit})`, steps <= limit, `maxSteps(${limit}) failed: the agent took ${steps} steps`);
   }
 
   maxTokens(limit: number): void {
+    if (this.missingFromRemote('usage')) return this.gate(`maxTokens(${limit})`, false, `maxTokens(${limit}) failed: ${REMOTE_MISSING('usage')}`);
     const tokens = sumUsage(this.results)?.totalTokens ?? 0;
     this.gate(`maxTokens(${limit})`, tokens <= limit, `maxTokens(${limit}) failed: the agent used ${tokens} tokens`);
   }
@@ -224,6 +229,10 @@ class TrajectoryContext implements EvalTestContext {
     };
     result.passed = error === undefined && gateFailures(result).length === 0;
     return result;
+  }
+
+  private missingFromRemote(field: 'usage' | 'steps'): boolean {
+    return this.results.some((result) => (result as Partial<RemoteExecutionResult>).missing?.includes(field));
   }
 
   private totalSteps(): number {

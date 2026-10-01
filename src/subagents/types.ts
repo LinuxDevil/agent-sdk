@@ -23,7 +23,34 @@ export interface SubagentSummary {
  */
 export interface SubagentCatalog {
   list(): readonly SubagentSummary[] | Promise<readonly SubagentSummary[]>;
-  resolve(name: string): SimpleAgent | undefined | Promise<SimpleAgent | undefined>;
+  resolve(name: string): LocalOrRemoteSubagent | undefined | Promise<LocalOrRemoteSubagent | undefined>;
+}
+
+/** What a sub-agent can be: a `createAgent()` agent, or a deployed one from `remoteAgent()`. */
+type LocalOrRemoteSubagent = SimpleAgent | RemoteSubagent;
+
+/** Options of `remoteAgent()` (LOU-Y7). */
+export interface RemoteAgentOptions {
+  /** Base URL of the deployed agent; the task goes to `<url>/chat`. */
+  url: string;
+  /** Bearer token (`LOUSHY_API_TOKEN` of the deployment), or a function returning it, called per task. */
+  auth?: string | (() => string | Promise<string>);
+  /** Name used in errors and the footer; defaults to the key in `subagents`. */
+  name?: string;
+  /** What the remote agent is for, shown to the lead model. */
+  description?: string;
+  /** Extra request headers (`Authorization` from `auth` wins). */
+  headers?: Record<string, string>;
+  /** `fetch` to use; defaults to the global one. For tests and custom transports. */
+  fetch?: typeof fetch;
+}
+
+/** A deployed agent usable as a sub-agent; made by `remoteAgent()`. */
+export interface RemoteSubagent {
+  readonly name?: string;
+  readonly description: string;
+  /** Runs one task in a fresh remote session and resolves with the remote agent's final text. */
+  run(prompt: string, options?: { name?: string; signal?: AbortSignal }): Promise<string>;
 }
 
 /**
@@ -31,4 +58,4 @@ export interface SubagentCatalog {
  * of `createAgent()` agents keyed by name (each needs a `description`), or a
  * {@link SubagentCatalog}.
  */
-export type Subagents = Readonly<Record<string, SimpleAgent>> | SubagentCatalog;
+export type Subagents = Readonly<Record<string, LocalOrRemoteSubagent>> | SubagentCatalog;

@@ -7,6 +7,7 @@
  */
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
+import { isFresh, precheckSlackSignature } from './slackSignature';
 
 /**
  * Verify a signature computed with a shared secret over the RAW request
@@ -106,13 +107,6 @@ function headerValue(req: IncomingMessage, name: string): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-function isFresh(timestamp: string, toleranceSeconds: number, nowMs: number): boolean {
-  const parsed = Number(timestamp);
-  if (!Number.isFinite(parsed)) return false;
-  const seconds = parsed > 1e12 ? parsed / 1000 : parsed;
-  return Math.abs(nowMs / 1000 - seconds) <= toleranceSeconds;
-}
-
 function checkTimestamp(auth: HmacWebhookAuth, req: IncomingMessage, nowMs: number): string | undefined {
   if (!auth.timestampHeader) return undefined;
   const timestamp = headerValue(req, auth.timestampHeader);
@@ -165,10 +159,6 @@ export async function checkWebhookAuth(
   return checkCustom(auth, req, rawBody);
 }
 
-/** Slack's documented replay window: reject requests more than five minutes from local time. */
-const SLACK_TOLERANCE_SECONDS = 300;
-const SLACK_SIGNATURE_PATTERN = /^v0=[0-9a-f]{64}$/i;
-
 /** Inputs of {@link verifySlackSignature}. */
 export interface SlackSignatureInput {
   /** Your Slack app's signing secret (Basic Information > App Credentials). */
@@ -195,10 +185,8 @@ export interface SlackSignatureInput {
  */
 export function checkSlackSignature(input: SlackSignatureInput): string | undefined {
   const { signingSecret, timestamp, signature, rawBody, now = Date.now() } = input;
-  if (!signingSecret) return 'no signing secret configured';
-  if (timestamp === undefined || signature === undefined) return 'missing signature headers';
-  if (!SLACK_SIGNATURE_PATTERN.test(signature)) return 'malformed signature';
-  if (!/^\d+$/.test(timestamp) || !isFresh(timestamp, SLACK_TOLERANCE_SECONDS, now)) return 'stale or invalid timestamp';
+  const failure = precheckSlackSignature(signingSecret, timestamp, signature, now);
+  if (failure !== undefined || timestamp === undefined || signature === undefined) return failure;
   const expected = createHmac('sha256', signingSecret).update(`v0:${timestamp}:`).update(rawBody).digest('hex');
   return safeEqual(signature.slice(3).toLowerCase(), expected) ? undefined : 'signature mismatch';
 }
