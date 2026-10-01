@@ -57,10 +57,9 @@
  * repository.
  */
 
-import { tool } from 'ai';
 import { z } from 'zod';
 import { ToolRegistry } from '../ToolRegistry';
-import type { DefinedTool } from '../defineTool';
+import { defineTool, type DefinedTool } from '../defineTool';
 import { ToolDescriptor } from '../../types';
 import { routeFetchThroughSandbox } from './sandboxFetch';
 import { assertOk } from './assertOk';
@@ -361,29 +360,33 @@ export class GitHubTools extends ToolRegistry {
    * registerX() method below still calls `this.register(...)` exactly as
    * before; this override applies uniformly without touching their
    * individual implementations.
+   *
+   * The disabled tool is a separate descriptor whose canonical `execute`
+   * (the one the runtime calls, see getToolExecute()) and legacy
+   * `tool.execute` both throw; the real implementation is never exposed.
    */
   public register(tool: DefinedTool): void;
   public register(name: string, descriptor: ToolDescriptor): void;
   public register(nameOrTool: string | DefinedTool, maybeDescriptor?: ToolDescriptor): void {
-    if (typeof nameOrTool !== 'string') {
-      super.register(nameOrTool);
-      return;
-    }
-    const name = nameOrTool;
-    const descriptor = maybeDescriptor as ToolDescriptor;
+    const name = typeof nameOrTool === 'string' ? nameOrTool : nameOrTool.name;
+    const descriptor = typeof nameOrTool === 'string' ? (maybeDescriptor as ToolDescriptor) : nameOrTool;
     if (GitHubTools.OUT_OF_SCOPE_TOOLS.has(name) && descriptor.tool) {
-      descriptor.tool.execute = (async () => {
+      const disabled = async () => {
         throw new Error(
           `GitHub tool '${name}' is out of scope for a PR-creation/reading-scoped token ` +
             `(requires broader permissions than "Pull requests: write" + "Issues: write" + ` +
             `"Contents: read" - see the scope documentation at the top of github.ts) and has ` +
             `been disabled.`
         );
-      }) as typeof descriptor.tool.execute;
+      };
       // Out-of-scope tools above throw before ever making an HTTP request,
       // so there's no real outbound call for a sandbox boundary to be
       // meaningful on - they're deliberately left unflagged below.
-      super.register(name, descriptor);
+      super.register(name, {
+        ...descriptor,
+        execute: disabled,
+        tool: { ...descriptor.tool, execute: disabled as ToolDescriptor['tool']['execute'] },
+      });
       return;
     }
 
@@ -450,11 +453,12 @@ export class GitHubTools extends ToolRegistry {
   // ========================================================================
 
   private registerGetRepository() {
-    this.register('github_get_repository', {
-      displayName: 'Get GitHub Repository',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_get_repository',
+        displayName: 'Get GitHub Repository',
         description: 'Get information about the GitHub repository',
-        parameters: z.object({}),
+        input: z.object({}),
         execute: async () => {
           const response = await fetch(this.baseUrl, {
             headers: {
@@ -477,16 +481,17 @@ export class GitHubTools extends ToolRegistry {
             openIssuesCount: data.open_issues_count,
           }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerListBranches() {
-    this.register('github_list_branches', {
-      displayName: 'List GitHub Branches',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_list_branches',
+        displayName: 'List GitHub Branches',
         description: 'List all branches in the repository',
-        parameters: z.object({
+        input: z.object({
           protected: z.boolean().optional().describe('Filter by protected status'),
           perPage: z.number().optional().default(30).describe('Results per page'),
           page: z.number().optional().default(1).describe('Page number'),
@@ -515,16 +520,17 @@ export class GitHubTools extends ToolRegistry {
 
           return JSON.stringify({ branches }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerGetBranch() {
-    this.register('github_get_branch', {
-      displayName: 'Get GitHub Branch',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_get_branch',
+        displayName: 'Get GitHub Branch',
         description: 'Get information about a specific branch',
-        parameters: z.object({
+        input: z.object({
           branchName: z.string().describe('Branch name'),
         }),
         execute: async ({ branchName }) => {
@@ -548,16 +554,17 @@ export class GitHubTools extends ToolRegistry {
             commitMessage: data.commit.commit.message,
           }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerCreateBranch() {
-    this.register('github_create_branch', {
-      displayName: 'Create GitHub Branch',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_create_branch',
+        displayName: 'Create GitHub Branch',
         description: 'Create a new branch in the repository',
-        parameters: z.object({
+        input: z.object({
           branchName: z.string().describe('Name for the new branch'),
           fromBranch: z.string().optional().describe('Source branch (default: repository default branch)'),
         }),
@@ -605,16 +612,17 @@ export class GitHubTools extends ToolRegistry {
             branchName,
           }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerDeleteBranch() {
-    this.register('github_delete_branch', {
-      displayName: 'Delete GitHub Branch',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_delete_branch',
+        displayName: 'Delete GitHub Branch',
         description: 'Delete a branch from the repository',
-        parameters: z.object({
+        input: z.object({
           branchName: z.string().describe('Branch name to delete'),
         }),
         execute: async ({ branchName }) => {
@@ -633,8 +641,8 @@ export class GitHubTools extends ToolRegistry {
 
           return JSON.stringify({ success: true, branchName });
         },
-      }),
-    });
+      })
+    );
   }
 
   // ========================================================================
@@ -642,11 +650,12 @@ export class GitHubTools extends ToolRegistry {
   // ========================================================================
 
   private registerListFiles() {
-    this.register('github_list_files', {
-      displayName: 'List GitHub Files',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_list_files',
+        displayName: 'List GitHub Files',
         description: 'List files and directories at a given path in the repository',
-        parameters: z.object({
+        input: z.object({
           path: z.string().default('').describe('Directory path (empty for root)'),
           ref: z.string().optional().describe('Branch, tag, or commit SHA'),
         }),
@@ -678,16 +687,17 @@ export class GitHubTools extends ToolRegistry {
 
           return JSON.stringify({ files: result }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerGetFile() {
-    this.register('github_get_file', {
-      displayName: 'Get GitHub File Content',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_get_file',
+        displayName: 'Get GitHub File Content',
         description: 'Get the content of a specific file from the repository',
-        parameters: z.object({
+        input: z.object({
           path: z.string().describe('File path in repository'),
           ref: z.string().optional().describe('Branch, tag, or commit SHA'),
         }),
@@ -716,16 +726,17 @@ export class GitHubTools extends ToolRegistry {
             sha: data.sha,
           }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerCreateOrUpdateFile() {
-    this.register('github_create_or_update_file', {
-      displayName: 'Create or Update GitHub File',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_create_or_update_file',
+        displayName: 'Create or Update GitHub File',
         description: 'Create a new file or update an existing file in the repository',
-        parameters: z.object({
+        input: z.object({
           path: z.string().describe('File path in repository'),
           content: z.string().describe('File content'),
           message: z.string().describe('Commit message'),
@@ -766,16 +777,17 @@ export class GitHubTools extends ToolRegistry {
             commitSha: data.commit.sha,
           }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerDeleteFile() {
-    this.register('github_delete_file', {
-      displayName: 'Delete GitHub File',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_delete_file',
+        displayName: 'Delete GitHub File',
         description: 'Delete a file from the repository',
-        parameters: z.object({
+        input: z.object({
           path: z.string().describe('File path to delete'),
           message: z.string().describe('Commit message'),
           branch: z.string().describe('Branch name'),
@@ -803,16 +815,17 @@ export class GitHubTools extends ToolRegistry {
 
           return JSON.stringify({ success: true, path });
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerSearchCode() {
-    this.register('github_search_code', {
-      displayName: 'Search GitHub Code',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_search_code',
+        displayName: 'Search GitHub Code',
         description: 'Search for code in the repository',
-        parameters: z.object({
+        input: z.object({
           query: z.string().describe('Search query'),
           extension: z.string().optional().describe('File extension filter (e.g., "ts", "js")'),
           path: z.string().optional().describe('Path filter'),
@@ -854,8 +867,8 @@ export class GitHubTools extends ToolRegistry {
 
           return JSON.stringify(result, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   // ========================================================================
@@ -863,11 +876,12 @@ export class GitHubTools extends ToolRegistry {
   // ========================================================================
 
   private registerListPullRequests() {
-    this.register('github_list_pull_requests', {
-      displayName: 'List GitHub Pull Requests',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_list_pull_requests',
+        displayName: 'List GitHub Pull Requests',
         description: 'List pull requests in the repository',
-        parameters: z.object({
+        input: z.object({
           state: z.enum(['open', 'closed', 'all']).default('open').describe('PR state'),
           sort: z.enum(['created', 'updated', 'popularity', 'long-running']).optional().describe('Sort by'),
           direction: z.enum(['asc', 'desc']).optional().describe('Sort direction'),
@@ -905,16 +919,17 @@ export class GitHubTools extends ToolRegistry {
 
           return JSON.stringify({ pullRequests: prs }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerGetPullRequest() {
-    this.register('github_get_pull_request', {
-      displayName: 'Get GitHub Pull Request',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_get_pull_request',
+        displayName: 'Get GitHub Pull Request',
         description: 'Get detailed information about a specific pull request',
-        parameters: z.object({
+        input: z.object({
           prNumber: z.number().describe('Pull request number'),
         }),
         execute: async ({ prNumber }) => {
@@ -944,16 +959,17 @@ export class GitHubTools extends ToolRegistry {
 
           return JSON.stringify(pr, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerCreatePullRequest() {
-    this.register('github_create_pull_request', {
-      displayName: 'Create GitHub Pull Request',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_create_pull_request',
+        displayName: 'Create GitHub Pull Request',
         description: 'Create a new pull request',
-        parameters: z.object({
+        input: z.object({
           title: z.string().describe('PR title'),
           body: z.string().describe('PR description/body'),
           head: z.string().describe('Source branch name'),
@@ -991,16 +1007,17 @@ export class GitHubTools extends ToolRegistry {
             state: data.state,
           }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerUpdatePullRequest() {
-    this.register('github_update_pull_request', {
-      displayName: 'Update GitHub Pull Request',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_update_pull_request',
+        displayName: 'Update GitHub Pull Request',
         description: 'Update an existing pull request',
-        parameters: z.object({
+        input: z.object({
           prNumber: z.number().describe('Pull request number'),
           title: z.string().optional().describe('New title'),
           body: z.string().optional().describe('New body'),
@@ -1038,16 +1055,17 @@ export class GitHubTools extends ToolRegistry {
             url: data.html_url,
           });
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerMergePullRequest() {
-    this.register('github_merge_pull_request', {
-      displayName: 'Merge GitHub Pull Request',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_merge_pull_request',
+        displayName: 'Merge GitHub Pull Request',
         description: 'Merge a pull request',
-        parameters: z.object({
+        input: z.object({
           prNumber: z.number().describe('Pull request number'),
           commitTitle: z.string().optional().describe('Title for merge commit'),
           commitMessage: z.string().optional().describe('Message for merge commit'),
@@ -1083,16 +1101,17 @@ export class GitHubTools extends ToolRegistry {
             message: data.message,
           });
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerClosePullRequest() {
-    this.register('github_close_pull_request', {
-      displayName: 'Close GitHub Pull Request',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_close_pull_request',
+        displayName: 'Close GitHub Pull Request',
         description: 'Close a pull request without merging',
-        parameters: z.object({
+        input: z.object({
           prNumber: z.number().describe('Pull request number'),
         }),
         execute: async ({ prNumber }) => {
@@ -1113,16 +1132,17 @@ export class GitHubTools extends ToolRegistry {
 
           return JSON.stringify({ success: true, prNumber, state: 'closed' });
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerGetPRFiles() {
-    this.register('github_get_pr_files', {
-      displayName: 'Get Pull Request Files',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_get_pr_files',
+        displayName: 'Get Pull Request Files',
         description: 'Get the list of files changed in a pull request',
-        parameters: z.object({
+        input: z.object({
           prNumber: z.number().describe('Pull request number'),
         }),
         execute: async ({ prNumber }) => {
@@ -1151,16 +1171,17 @@ export class GitHubTools extends ToolRegistry {
 
           return JSON.stringify({ files }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerGetPRComments() {
-    this.register('github_get_pr_comments', {
-      displayName: 'Get Pull Request Comments',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_get_pr_comments',
+        displayName: 'Get Pull Request Comments',
         description: 'Get comments on a pull request',
-        parameters: z.object({
+        input: z.object({
           prNumber: z.number().describe('Pull request number'),
         }),
         execute: async ({ prNumber }) => {
@@ -1189,16 +1210,17 @@ export class GitHubTools extends ToolRegistry {
 
           return JSON.stringify({ comments }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerAddPRComment() {
-    this.register('github_add_pr_comment', {
-      displayName: 'Add Pull Request Comment',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_add_pr_comment',
+        displayName: 'Add Pull Request Comment',
         description: 'Add a comment to a pull request',
-        parameters: z.object({
+        input: z.object({
           prNumber: z.number().describe('Pull request number'),
           body: z.string().describe('Comment body'),
         }),
@@ -1224,8 +1246,8 @@ export class GitHubTools extends ToolRegistry {
             url: data.html_url,
           });
         },
-      }),
-    });
+      })
+    );
   }
 
   // ========================================================================
@@ -1233,11 +1255,12 @@ export class GitHubTools extends ToolRegistry {
   // ========================================================================
 
   private registerListIssues() {
-    this.register('github_list_issues', {
-      displayName: 'List GitHub Issues',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_list_issues',
+        displayName: 'List GitHub Issues',
         description: 'List issues in the repository',
-        parameters: z.object({
+        input: z.object({
           state: z.enum(['open', 'closed', 'all']).default('open').describe('Issue state'),
           labels: z.array(z.string()).optional().describe('Filter by labels'),
           assignee: z.string().optional().describe('Filter by assignee'),
@@ -1281,16 +1304,17 @@ export class GitHubTools extends ToolRegistry {
 
           return JSON.stringify({ issues }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerGetIssue() {
-    this.register('github_get_issue', {
-      displayName: 'Get GitHub Issue',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_get_issue',
+        displayName: 'Get GitHub Issue',
         description: 'Get detailed information about a specific issue',
-        parameters: z.object({
+        input: z.object({
           issueNumber: z.number().describe('Issue number'),
         }),
         execute: async ({ issueNumber }) => {
@@ -1320,16 +1344,17 @@ export class GitHubTools extends ToolRegistry {
             updatedAt: data.updated_at,
           }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerCreateIssue() {
-    this.register('github_create_issue', {
-      displayName: 'Create GitHub Issue',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_create_issue',
+        displayName: 'Create GitHub Issue',
         description: 'Create a new issue in the repository',
-        parameters: z.object({
+        input: z.object({
           title: z.string().describe('Issue title'),
           body: z.string().optional().describe('Issue body/description'),
           assignees: z.array(z.string()).optional().describe('Assignee usernames'),
@@ -1363,16 +1388,17 @@ export class GitHubTools extends ToolRegistry {
             url: data.html_url,
           });
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerUpdateIssue() {
-    this.register('github_update_issue', {
-      displayName: 'Update GitHub Issue',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_update_issue',
+        displayName: 'Update GitHub Issue',
         description: 'Update an existing issue',
-        parameters: z.object({
+        input: z.object({
           issueNumber: z.number().describe('Issue number'),
           title: z.string().optional().describe('New title'),
           body: z.string().optional().describe('New body'),
@@ -1407,16 +1433,17 @@ export class GitHubTools extends ToolRegistry {
 
           return JSON.stringify({ success: true, issueNumber });
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerCloseIssue() {
-    this.register('github_close_issue', {
-      displayName: 'Close GitHub Issue',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_close_issue',
+        displayName: 'Close GitHub Issue',
         description: 'Close an issue',
-        parameters: z.object({
+        input: z.object({
           issueNumber: z.number().describe('Issue number'),
         }),
         execute: async ({ issueNumber }) => {
@@ -1437,16 +1464,17 @@ export class GitHubTools extends ToolRegistry {
 
           return JSON.stringify({ success: true, issueNumber, state: 'closed' });
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerAddIssueComment() {
-    this.register('github_add_issue_comment', {
-      displayName: 'Add GitHub Issue Comment',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_add_issue_comment',
+        displayName: 'Add GitHub Issue Comment',
         description: 'Add a comment to an issue',
-        parameters: z.object({
+        input: z.object({
           issueNumber: z.number().describe('Issue number'),
           body: z.string().describe('Comment body'),
         }),
@@ -1472,8 +1500,8 @@ export class GitHubTools extends ToolRegistry {
             url: data.html_url,
           });
         },
-      }),
-    });
+      })
+    );
   }
 
   // ========================================================================
@@ -1481,11 +1509,12 @@ export class GitHubTools extends ToolRegistry {
   // ========================================================================
 
   private registerListCommits() {
-    this.register('github_list_commits', {
-      displayName: 'List GitHub Commits',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_list_commits',
+        displayName: 'List GitHub Commits',
         description: 'List commits in the repository',
-        parameters: z.object({
+        input: z.object({
           sha: z.string().optional().describe('Branch or commit SHA to start from'),
           path: z.string().optional().describe('Only commits containing this file path'),
           perPage: z.number().optional().default(30).describe('Results per page'),
@@ -1518,16 +1547,17 @@ export class GitHubTools extends ToolRegistry {
 
           return JSON.stringify({ commits }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerGetCommit() {
-    this.register('github_get_commit', {
-      displayName: 'Get GitHub Commit',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_get_commit',
+        displayName: 'Get GitHub Commit',
         description: 'Get detailed information about a specific commit',
-        parameters: z.object({
+        input: z.object({
           sha: z.string().describe('Commit SHA'),
         }),
         execute: async ({ sha }) => {
@@ -1558,16 +1588,17 @@ export class GitHubTools extends ToolRegistry {
             })),
           }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   private registerCompareCommits() {
-    this.register('github_compare_commits', {
-      displayName: 'Compare GitHub Commits',
-      tool: tool({
+    this.register(
+      defineTool({
+        name: 'github_compare_commits',
+        displayName: 'Compare GitHub Commits',
         description: 'Compare two commits and see the differences',
-        parameters: z.object({
+        input: z.object({
           base: z.string().describe('Base commit SHA or branch'),
           head: z.string().describe('Head commit SHA or branch'),
         }),
@@ -1598,8 +1629,8 @@ export class GitHubTools extends ToolRegistry {
             })),
           }, null, 2);
         },
-      }),
-    });
+      })
+    );
   }
 
   // ========================================================================
