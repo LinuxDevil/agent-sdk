@@ -19,8 +19,25 @@ await AgentExecutor.execute({ agent, input: 'Book a table for 2 tonight', provid
 await AgentExecutor.execute({ agent, input: 'Make it 3 people', provider, sessionId: 'chat-42', checkpointStore: checkpoints });
 ```
 
-With `createAgent()`, a session does this for you: `agent.session({ id, store, checkpointStore })`
-checkpoints every turn and `session.resume()` finishes an interrupted one - see
+With `createAgent()`, one `store` option does the wiring: pass a `sessionId` to
+`send()` (or `stream()`) and the run is checkpointed in `store.checkpoints`;
+after a crash, `agent.resume(sessionId)` finishes it (and returns `null` when
+nothing is pending). No `AgentExecutor` needed:
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
+
+const agent = createAgent({ provider, store: new SqliteStore('./.loushy/jobs.db') });
+
+const finished = await agent.resume('job-1'); // the interrupted run, if any
+const next = await agent.send('Now write a summary', { sessionId: 'job-1' }); // continues the same run's conversation
+```
+
+`store.approvals` holds approval pauses, and `agent.approvals.resolve()`
+keeps checkpointing the run under its `sessionId`. Sessions are checkpointed
+too: `agent.session({ id })` checkpoints every turn and `agent.resume(id)` (or
+`session.resume()`) finishes an interrupted one - see
 [Durable sessions](./sessions.md#durable-sessions).
 
 ## What is checkpointed, and when

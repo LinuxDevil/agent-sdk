@@ -92,6 +92,7 @@ describe('thrown tool errors reach the model (LOU-U12)', () => {
       error: 'TypeError',
       toolName: 'boom',
       message: 'query must not be empty',
+      kind: 'execution',
     });
     // The follow-up call succeeded.
     const secondTools = seenMessages[2].filter(m => m.role === 'tool');
@@ -126,7 +127,7 @@ describe('thrown tool errors reach the model (LOU-U12)', () => {
     await AgentExecutor.execute({ agent, input: 'go', provider, toolRegistry });
 
     const payload = JSON.parse(seenMessages[1].find(m => m.role === 'tool').content);
-    expect(payload).toEqual({ error: 'Error', toolName: 'boom', message: 'plain string' });
+    expect(payload).toEqual({ error: 'Error', toolName: 'boom', message: 'plain string', kind: 'execution' });
   });
 
   it('still aborts the run on a PropagatingToolError', async () => {
