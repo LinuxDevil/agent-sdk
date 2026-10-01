@@ -1,4 +1,5 @@
-import { Tool as AITool } from 'ai';
+import type { Tool as AITool, ToolExecutionOptions } from 'ai';
+import type { z } from 'zod';
 import { SandboxAdapter } from '../security/sandboxCore';
 
 /**
@@ -34,6 +35,21 @@ export interface ToolConfiguration {
  */
 export interface ToolDescriptor {
   displayName: string;
+  /**
+   * Zod schema of the tool's arguments. Canonical: when set, it is used
+   * instead of `tool.parameters` for argument validation and the schema
+   * sent to the model (LOU-D22). {@link defineTool} sets it.
+   */
+  inputSchema?: z.ZodTypeAny;
+  /**
+   * Runs the tool. Canonical: when set, it is called instead of
+   * `tool.execute` (LOU-D22). {@link defineTool} sets it.
+   */
+  execute?(args: unknown, ctx: ToolExecutionOptions): unknown;
+  /**
+   * Legacy: an `ai` v4 `Tool` (`{ description, parameters, execute }`),
+   * kept for compatibility this release. Prefer `inputSchema` and `execute`.
+   */
   tool: AITool;
   needsApproval?: boolean | ((args: any) => boolean | Promise<boolean>);
   injectStreamingController?: (controller: ReadableStreamDefaultController<unknown>) => void;

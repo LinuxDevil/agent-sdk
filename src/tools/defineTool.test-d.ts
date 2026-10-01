@@ -43,6 +43,17 @@ describe('defineTool types', () => {
     new ToolRegistry().register(sendEmail);
   });
 
+  it('carries the canonical inputSchema and execute (LOU-D22)', () => {
+    const input = z.object({ to: z.string().email(), count: z.number().default(1) });
+    const t = defineTool({ name: 't', description: 'd', input, execute: async () => ({ ok: true }) });
+    expectTypeOf(t.inputSchema).toEqualTypeOf<typeof input>();
+    expectTypeOf(t.execute).parameter(0).toEqualTypeOf<{ to: string; count: number }>();
+    expectTypeOf(t.execute).parameter(1).toEqualTypeOf<ToolExecutionOptions>();
+    expectTypeOf(t.execute).returns.toEqualTypeOf<Promise<{ ok: boolean }>>();
+    // @ts-expect-error - `count` must be a number
+    void t.execute({ to: 'a@b.c', count: 'x' }, {} as ToolExecutionOptions);
+  });
+
   it('rejects execute args that do not match the schema', () => {
     defineTool({
       name: 'bad',
