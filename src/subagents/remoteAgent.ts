@@ -42,28 +42,34 @@ function failed(name: string, sessionId: string, what: string): SDKError {
   return new SDKError(`Remote agent '${name}' (session '${sessionId}') ${what}`, REMOTE_FAILED);
 }
 
-/** The final text of the remote run's events (with a footer), or the error that says why there is none. */
+type RunDone = Extract<AgentEvent, { type: 'run.done' }>;
+
+/** The text of a finished remote run (with a footer), or the error that says why there is none. */
+function outcome(name: string, sessionId: string, done: RunDone, errorMessage?: string, approvalId?: string): string {
+  const { finishReason, text } = done;
+  if (finishReason === 'awaiting-approval') {
+    throw new SDKError(
+      `Remote agent '${name}' is awaiting approval${approvalId ? ` '${approvalId}'` : ''} in its session '${sessionId}'. ` +
+        'Approvals of remote sub-agents are not proxied: decide it on the remote agent (POST /chat/<session>/approvals/<id>), or give the remote agent no tools that need approval.',
+      'LOUSHY_SESSION_AWAITING_APPROVAL'
+    );
+  }
+  if (finishReason === 'error') throw failed(name, sessionId, `failed: ${errorMessage ?? 'unknown error'}`);
+  if (finishReason !== 'stop' && finishReason !== 'length') {
+    throw failed(name, sessionId, `ended with finish reason '${finishReason}' without a final answer.`);
+  }
+  const footer = `[remote sub-agent '${name}': session '${sessionId}', finish reason '${finishReason}']`;
+  return text ? `${text}\n\n${footer}` : footer;
+}
+
+/** Reads the remote run's events up to its `run.done`. */
 async function finalText(name: string, sessionId: string, events: AsyncIterable<AgentEvent>): Promise<string> {
   let errorMessage: string | undefined;
   let approvalId: string | undefined;
   for await (const event of events) {
     if (event.type === 'error') errorMessage = event.error.message;
     if (event.type === 'approval.requested') approvalId = event.approvalId;
-    if (event.type !== 'run.done') continue;
-    const { finishReason, text } = event;
-    if (finishReason === 'awaiting-approval') {
-      throw new SDKError(
-        `Remote agent '${name}' is awaiting approval${approvalId ? ` '${approvalId}'` : ''} in its session '${sessionId}'. ` +
-          'Approvals of remote sub-agents are not proxied: decide it on the remote agent (POST /chat/<session>/approvals/<id>), or give the remote agent no tools that need approval.',
-        'LOUSHY_SESSION_AWAITING_APPROVAL'
-      );
-    }
-    if (finishReason === 'error') throw failed(name, sessionId, `failed: ${errorMessage ?? 'unknown error'}`);
-    if (finishReason !== 'stop' && finishReason !== 'length') {
-      throw failed(name, sessionId, `ended with finish reason '${finishReason}' without a final answer.`);
-    }
-    const footer = `[remote sub-agent '${name}': session '${sessionId}', finish reason '${finishReason}']`;
-    return text ? `${text}\n\n${footer}` : footer;
+    if (event.type === 'run.done') return outcome(name, sessionId, event, errorMessage, approvalId);
   }
   throw failed(name, sessionId, 'closed the stream without a final event; is the url a loushy /chat API?');
 }
