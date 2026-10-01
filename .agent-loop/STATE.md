@@ -14,7 +14,7 @@ Vercel eve and MaxGfeller/open-harness. This file is the loop's memory: read it 
 |---|---|
 | 1 | Ticket keys keep the repo's `LOU-<epic><n>` scheme. PR titles: `[EPIC-<letter>][LOU-<id>] <summary>`. |
 | 2 | Jira: the connected Atlassian site (`data4altayyargroup.atlassian.net`) has no `LOU` project. Tracking lives here until the owner names a project key. Not blocking. |
-| 3 | Merge policy (branch deletion blocked, see iteration 1 log): squash-merge once the subagent's local typecheck + lint + full vitest + build + fallow pass; CI is not awaited. Branches deleted on merge. Remaining open PRs get `origin/main` merged in (never rebased) and generated `llms*.txt` regenerated with `npm run docs:llms`. |
+| 3 | Merge policy: squash-merge once the subagent's local typecheck + lint + full vitest + build + fallow pass; CI is not awaited. **Owner instruction (2026-10-01): do not delete branches**, ever (merged or not). Remaining open PRs get `origin/main` merged in (never rebased) and generated `llms*.txt` regenerated with `npm run docs:llms`. |
 | 4 | Subagents work in git worktrees, run `npm ci` there (666 MB each, disk is fine), and follow `/tmp/.../scratchpad/BRIEF.md` (shared brief; recreate from this file's "Subagent brief" section if the scratchpad is gone). |
 | 5 | Max one ticket per batch may touch `src/execution/AgentExecutor.ts`, `resume.ts` or `toolCallExecution.ts`; those files are the conflict hub. |
 | 6 | New epics from the audit: Epic P (UI bindings, channels, schedules). Letters E and F are reserved (historic tickets cited in code comments). The `ai` v4 -> v7 upgrade is D22-D29 (supersedes the D11 umbrella). |
@@ -233,7 +233,7 @@ CI runs only on `pull_request`, so "main is green" means the last PR's CI run pa
 
 ### Iteration 1 (2026-10-01)
 - Audit refreshed (`.agent-loop/AUDIT.md`), 64 new tickets planned.
-- Merged: #72 (U17), #75 (D21), #74 (V7.1), #73 (D20); #68 (U7-U9) merged by a parallel session. Remote branch deletion is blocked for this session (git push of a delete ref gets HTTP 403 from the proxy, and the GitHub MCP has no delete-branch tool); ~45 merged `lou-*` branches remain on origin. Owner action: enable "Automatically delete head branches" in the repo settings or delete them manually.
+- Merged: #72 (U17), #75 (D21), #74 (V7.1), #73 (D20); #68 (U7-U9) merged by a parallel session. Remote branch deletion is blocked for this session (git push of a delete ref gets HTTP 403 from the proxy, and the GitHub MCP has no delete-branch tool); ~45 merged `lou-*` branches remain on origin. Owner then said: do not delete branches. Branches stay.
 - Main at end of iteration: `a37cc61`.
 - Matrix flips: Approvals/HITL ⚠️->✅, Fallbacks/retry ❌->✅.
 
@@ -249,4 +249,4 @@ Then: U14, U15, U19, V7.2, X8, D35, D36, D40.
 
 ## Subagent brief (canonical copy)
 
-See `/tmp/claude-0/-home-user-agent-sdk/15860ad4-fff3-53a9-a88b-1d410d4e9ab7/scratchpad/BRIEF.md`; if missing, recreate it with: worktree setup (`git checkout -b <branch> origin/main`, `npm ci`), conventions (tests beside source, `mockModel`, no `any`, regenerate `llms*.txt` via `npm run docs:llms`), the verification list (tsc, lint, test:types, vitest, build both packages, docs:verify-snippets --skip-build, docs:llms:check, test:coverage, fallow), commit trailers (`Co-Authored-By` + `Claude-Session`), PR title/body format with the Claude Code footer, and "do not merge".
+See `/tmp/claude-0/-home-user-agent-sdk/15860ad4-fff3-53a9-a88b-1d410d4e9ab7/scratchpad/BRIEF.md`; if missing, recreate it with: worktree setup (`git checkout -b <branch> origin/main`, `npm ci`), conventions (tests beside source, `mockModel`, no `any`, regenerate `llms*.txt` via `npm run docs:llms`), the verification list (tsc, lint, test:types, vitest, build both packages, docs:verify-snippets --skip-build, docs:llms:check, test:coverage, fallow), commit trailers (`Co-Authored-By` + `Claude-Session`), PR title/body format with the Claude Code footer, "do not merge", and "never delete branches".
