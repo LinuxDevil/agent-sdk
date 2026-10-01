@@ -14,17 +14,17 @@
  * designed-for successor) exists - the two shapes are compatible (a plain
  * .json config in the old shape is a valid AgentSpec), so no existing
  * configs need to change.
+ *
+ * Targets (LOU-D31): the path may also be an agent directory (loadAgentDir)
+ * or a .ts/.js module exporting a SimpleAgent / createAgent() config; see
+ * devReload.ts for detection, watching and the reload swap.
  */
 import * as http from 'node:http';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { SimpleAgent } from '../createAgent';
-import { loadSpec } from '../spec/loadSpec';
-import { specToAgent } from '../spec/specToAgent';
+import { detectTarget, startReloader, type DevOptions, type DevState } from './devReload';
 
-function loadAgentFromConfig(configPath: string): SimpleAgent {
-  return specToAgent(loadSpec(configPath));
-}
+export type { DevOptions } from './devReload';
 
 export interface DevServerHandle {
   server: http.Server;
@@ -77,9 +77,7 @@ function serveChatUi(res: http.ServerResponse): void {
  * reads the latest reloaded version without restarting the HTTP server or
  * dropping connections.
  */
-interface AgentHolder {
-  agent: SimpleAgent;
-}
+type AgentHolder = DevState;
 
 type RouteHandler = (
   req: http.IncomingMessage,
@@ -138,8 +136,14 @@ async function handleChat(
   }
 }
 
+function handleStatus(_req: http.IncomingMessage, res: http.ServerResponse, holder: AgentHolder): void {
+  const { target, reloads, error } = holder;
+  sendJson(res, 200, { kind: target.kind, path: target.path, reloads, error: error ?? null });
+}
+
 const ROUTES = new Map<string, RouteHandler>([
   ['GET /health', (_req, res) => sendText(res, 200, 'ok')],
+  ['GET /dev/status', handleStatus],
   ['GET /', handleChatUi],
   ['POST /chat', handleChat],
 ]);
@@ -155,24 +159,6 @@ async function handleRequest(
     return;
   }
   await handler(req, res, holder);
-}
-
-/** Reloads the agent into `holder` whenever configPath changes; keeps the old agent on a bad edit. */
-function watchConfig(configPath: string, holder: AgentHolder): fs.FSWatcher {
-  return fs.watch(configPath, { persistent: false }, () => {
-    try {
-      holder.agent = loadAgentFromConfig(configPath);
-      // eslint-disable-next-line no-console
-      console.log(`[loushy dev] reloaded config from ${configPath}`);
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error(
-        `[loushy dev] failed to reload ${configPath}, keeping previous config: ${
-          (error as Error).message
-        }`
-      );
-    }
-  });
 }
 
 function createDevHttpServer(holder: AgentHolder): http.Server {
@@ -218,30 +204,35 @@ function listenOnPort(server: http.Server, port: number, host: string): Promise<
  * explicit host (e.g. '0.0.0.0') to opt in to LAN access, such as testing
  * from a phone on the same network.
  *
- * Watches configPath (LOU-H8) via fs.watch: on a valid edit, the live
- * agent is swapped in-place through the mutable AgentHolder above; on an
- * invalid edit (e.g. a JSON syntax error, or a missing required field),
- * the error is logged and the previous working agent is kept - the server
- * never crashes and never drops the port on a bad config edit.
+ * `configPath` is a spec file, an agent directory or a .ts/.js agent module
+ * (detected by path type and extension, see `detectTarget`). Its sources are
+ * watched (LOU-H8, LOU-D31): on a valid edit the live agent is swapped
+ * in-place through the mutable AgentHolder above and the previous agent is
+ * closed; on an invalid edit the error is logged and shown in the chat UI,
+ * and the previous working agent is kept - the server never crashes and never
+ * drops the port on a bad edit.
  */
 export async function startDevServer(
   configPath: string,
   port = 3737,
-  host = '127.0.0.1'
+  host = '127.0.0.1',
+  options: DevOptions = {}
 ): Promise<DevServerHandle> {
-  const holder: AgentHolder = { agent: loadAgentFromConfig(configPath) };
-
-  const watcher = watchConfig(configPath, holder);
-  const server = createDevHttpServer(holder);
-  await listenOnPort(server, port, host);
+  const reloader = await startReloader(detectTarget(configPath), options);
+  const server = createDevHttpServer(reloader.state);
+  try {
+    await listenOnPort(server, port, host);
+  } catch (error) {
+    await reloader.close();
+    throw error;
+  }
 
   return {
     server,
     port,
-    close: () =>
-      new Promise<void>((resolve, reject) => {
-        watcher.close();
-        server.close((err) => (err ? reject(err) : resolve()));
-      }),
+    close: async () => {
+      await reloader.close();
+      await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+    },
   };
 }

@@ -12,10 +12,13 @@
   button { padding: 0.5rem 1rem; }
   .entry { margin-bottom: 0.5rem; }
   .entry.user { font-weight: 600; }
+  #status { border-radius: 8px; padding: 0.5rem 0.75rem; margin-bottom: 1rem; background: #fde8e8; color: #7a1b1b; white-space: pre-wrap; }
+  #status[hidden] { display: none; }
 </style>
 </head>
 <body>
   <h1>loushy dev</h1>
+  <div id="status" hidden></div>
   <div id="log"></div>
   <div class="row">
     <input id="msg" type="text" placeholder="Say something..." autocomplete="off" />
@@ -56,6 +59,20 @@
         input.focus();
       }
     }
+
+    // Hot reload (LOU-D31): show the last failed reload; the previous agent keeps answering.
+    const status = document.getElementById('status');
+    async function refreshStatus() {
+      try {
+        const info = await (await fetch('/dev/status')).json();
+        status.hidden = !info.error;
+        status.textContent = info.error ? 'Last reload failed, still serving the previous agent:\n' + info.error : '';
+      } catch (err) {
+        status.hidden = true;
+      }
+    }
+    refreshStatus();
+    setInterval(refreshStatus, 2000);
 
     button.addEventListener('click', send);
     input.addEventListener('keydown', (e) => {

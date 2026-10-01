@@ -146,7 +146,20 @@ says so. Compile the directory first, or use `.js`/`.mjs` tools with an
 `import` syntax needs `"type": "module"` in the nearest `package.json` (or the
 `.mjs` extension).
 
+## Run it with `loushy dev`
+
+```bash
+npx loushy dev ./my-agent
+```
+
+Serves the chat UI and `POST /chat` for the directory and reloads it when
+`instructions.md`, the config file, `tools/`, `skills/` or `subagents/` change
+(see [`loushy dev`](cli.md#loushy-dev) for the details). A tool file is
+imported afresh on each reload, so an edit to `tools/*.ts` takes effect on the
+next message. A failed reload (a syntax error, an empty `instructions.md`) is
+logged and shown in the chat page, and the previous agent keeps answering.
+
 ## What is not covered
 
-`loushy dev` and `loushy mcp` still take an agent spec file
-([Configuration](configuration.md)), not a directory.
+`loushy mcp` still takes an agent spec file ([Configuration](configuration.md)),
+not a directory.

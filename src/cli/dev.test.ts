@@ -1,10 +1,12 @@
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { startDevServer, DevServerHandle } from './dev';
 import { LLMProviderRegistry } from '../providers/llm';
 import { createMockProvider } from '../providers/mock';
+import { mockModel } from '../testing';
+import { collectLocalImports, detectTarget } from './devReload';
 
 const MOCK_RESPONSE = 'This is the mock dev-server response.';
 
@@ -195,6 +197,140 @@ describe('hot reload (LOU-H8)', () => {
       })
     ).json();
     expect(third.text).toBe(UPDATED_RESPONSE);
+  });
+});
+
+describe('agent directories and TS modules (LOU-D31)', () => {
+  const fixtures = path.join(__dirname, '__fixtures__');
+  const copies: string[] = [];
+
+  /** A scratch copy of a fixture next to it, so the fixture's relative imports still resolve. */
+  function copyFixture(name: string): string {
+    const copy = fs.mkdtempSync(path.join(fixtures, `tmp-${name}-`));
+    copies.push(copy);
+    fs.cpSync(path.join(fixtures, name), copy, { recursive: true });
+    return copy;
+  }
+  afterEach(() => {
+    for (const copy of copies.splice(0)) fs.rmSync(copy, { recursive: true, force: true });
+  });
+
+  const url = (h: DevServerHandle, route: string) => `http://localhost:${addressPort(h)}${route}`;
+  const chat = async (h: DevServerHandle, message = 'hi') =>
+    (
+      await fetch(url(h, '/chat'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message }),
+      })
+    ).json();
+  const status = async (h: DevServerHandle) => (await fetch(url(h, '/dev/status'))).json();
+  async function waitFor(check: () => Promise<boolean>): Promise<void> {
+    for (let i = 0; i < 100; i++) {
+      if (await check()) return;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error('timed out waiting for the dev server');
+  }
+  const systemOf = (call: { messages: readonly { role: string; content: unknown }[] }) =>
+    String(call.messages.find((m) => m.role === 'system')?.content);
+
+  it('detects a spec, a directory and a module by path type and extension, with coded errors otherwise', () => {
+    expect(detectTarget(path.join(fixtures, 'dev-agent')).kind).toBe('dir');
+    expect(detectTarget(path.join(fixtures, 'dev-module', 'agent.ts')).kind).toBe('module');
+    expect(detectTarget('agent.yaml').kind).toBe('spec');
+    expect(() => detectTarget(path.join(fixtures, 'nope.ts'))).toThrow(/LOUSHY_CONFIG_INVALID/);
+    expect(() => detectTarget(path.join(fixtures, 'dev-agent', 'instructions.md'))).toThrow(
+      /LOUSHY_SPEC_UNSUPPORTED_FORMAT/
+    );
+  });
+
+  it('serves an agent directory with loadAgentDir', async () => {
+    const provider = mockModel(['dir says hi']);
+    handle = await startDevServer(path.join(fixtures, 'dev-agent'), 0, '127.0.0.1', { overrides: { provider } });
+
+    expect((await chat(handle)).text).toBe('dir says hi');
+    expect(systemOf(provider.calls[0])).toContain('You are the dev fixture agent.');
+    expect(provider.calls[0].tools?.map((t) => t.function.name)).toEqual(['ping']);
+    expect(await status(handle)).toMatchObject({ kind: 'dir', reloads: 0, error: null });
+  });
+
+  it('serves a TS module whose default export is a SimpleAgent, and accepts a config export', async () => {
+    handle = await startDevServer(path.join(fixtures, 'dev-module', 'agent.ts'), 0);
+    expect((await chat(handle)).text).toBe('module says hi');
+    expect(await status(handle)).toMatchObject({ kind: 'module' });
+    await handle.close();
+
+    const provider = mockModel(['config says hi']);
+    handle = await startDevServer(path.join(fixtures, 'dev-module', 'config.ts'), 0, '127.0.0.1', {
+      overrides: { provider },
+    });
+    expect((await chat(handle)).text).toBe('config says hi');
+    expect(systemOf(provider.calls[0])).toContain('config-export agent');
+  });
+
+  it('rejects a module that exports no agent with a coded error', async () => {
+    await expect(startDevServer(path.join(fixtures, 'dev-module', 'bad.ts'), 0)).rejects.toThrow(
+      /LOUSHY_CONFIG_INVALID/
+    );
+  });
+
+  it('reloads when instructions.md or a tool changes, without restarting the server', async () => {
+    const dir = copyFixture('dev-agent');
+    const provider = mockModel(['ok', 'ok', 'ok']);
+    handle = await startDevServer(dir, 0, '127.0.0.1', { overrides: { provider }, debounceMs: 20 });
+    const server = handle.server;
+    await chat(handle);
+
+    fs.writeFileSync(path.join(dir, 'instructions.md'), 'You are the EDITED agent.\n');
+    await waitFor(async () => (await status(handle!)).reloads >= 1);
+    await chat(handle);
+    expect(systemOf(provider.calls[1])).toContain('EDITED');
+
+    const toolFile = path.join(dir, 'tools', 'ping.ts');
+    fs.writeFileSync(toolFile, fs.readFileSync(toolFile, 'utf8').replace("'ping'", "'ping_v2'"));
+    await waitFor(async () => (await status(handle!)).reloads >= 2);
+    await chat(handle);
+    expect(provider.calls[2].tools?.map((t) => t.function.name)).toEqual(['ping_v2']);
+    expect(handle.server).toBe(server);
+  });
+
+  it('keeps the previous agent after a failed reload and reports the error', async () => {
+    const dir = copyFixture('dev-agent');
+    const provider = mockModel(['ok', 'ok', 'ok']);
+    handle = await startDevServer(dir, 0, '127.0.0.1', { overrides: { provider }, debounceMs: 20 });
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    fs.writeFileSync(path.join(dir, 'tools', 'ping.ts'), 'export default (');
+    await waitFor(async () => (await status(handle!)).error !== null);
+    expect((await status(handle)).reloads).toBe(0);
+    expect(await chat(handle)).toMatchObject({ text: 'ok' });
+    expect(systemOf(provider.calls[0])).toContain('You are the dev fixture agent.');
+    expect(quiet).toHaveBeenCalledWith(expect.stringContaining('keeping the previous agent'));
+
+    // Fixing the file recovers and clears the error.
+    fs.copyFileSync(path.join(fixtures, 'dev-agent', 'tools', 'ping.ts'), path.join(dir, 'tools', 'ping.ts'));
+    await waitFor(async () => (await status(handle!)).error === null);
+    expect((await status(handle)).reloads).toBe(1);
+    quiet.mockRestore();
+  });
+
+  it('reloads a module when it or a local import changes', async () => {
+    const dir = copyFixture('dev-module');
+    const file = path.join(dir, 'agent.ts');
+    const local = collectLocalImports(file).filter((f) => f.startsWith(dir));
+    expect(local.map((f) => path.basename(f)).sort()).toEqual(['agent.ts', 'greeting.ts']);
+
+    handle = await startDevServer(file, 0, '127.0.0.1', { debounceMs: 20 });
+    expect((await chat(handle)).text).toBe('module says hi');
+
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replaceAll('module says hi', 'edited reply'));
+    await waitFor(async () => (await status(handle!)).reloads >= 1);
+    expect((await chat(handle)).text).toBe('edited reply');
+
+    // An edit to an imported file triggers a reload too.
+    fs.appendFileSync(path.join(dir, 'greeting.ts'), '// touched\n');
+    await waitFor(async () => (await status(handle!)).reloads >= 2);
   });
 });
 
