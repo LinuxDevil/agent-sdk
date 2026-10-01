@@ -3,7 +3,7 @@
 Mission: make `@loushy/build-ai-agent` the best TypeScript AI agent SDK (capabilities and DX) against
 Vercel eve and MaxGfeller/open-harness. This file is the loop's memory: read it first, update it last.
 
-- Loop started: 2026-10-01. Iterations completed: 10.
+- Loop started: 2026-10-01. Iterations completed: 11.
 - Audit: `.agent-loop/AUDIT.md`, refreshed 2026-10-01 at main `a03b1a3` (eve 0.69.0 @682c7a6, open-harness 0.7.0 @026e8d9).
   Reference agents (3 agents x 3 SDKs, measured): `.agent-loop/reference-agents/`. Older material: `docs/research/*.md`, `docs/plan/tickets.md`.
   Audit is stale when: a competitor ships a new major, or more than ~25 PRs land after `a03b1a3` (re-run the DX measurement then).
@@ -39,7 +39,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Remote subagents | ❌ | ✅ | ❌ | Y7 |
 | Approvals / HITL | ✅ flipped (D21, #75) | ✅ | ⚠️ | X8 (policies) |
 | Agent asks the user a question | ✅ flipped (X9 #111: `ask_question`, durable pause, `approvals.answer`, hook `answer()`) | ✅ | ❌ | - |
-| Steering (mid-run input) | ⚠️ flipped (V9 #122: `run.enqueue()`, `InputQueue`, session `turnPolicy: 'queue'`, checkpointed) | ✅ | ❌ | V10 (abort-and-redirect) |
+| Steering (mid-run input) | ✅ flipped (V9 #122 enqueue + V10 #128 `run.steer()`, `turnPolicy: 'steer'`, `input.steered`) | ✅ | ❌ | - |
 | Cancellation | ✅ | ✅ | ✅ | - |
 | Memory (cross-session) | ✅ flipped (W6 #117: `defineMemory` slots, scopes, in-memory/file providers, remember/recall tools) | ✅ | ❌ | W6.2 sqlite provider, W6.3 agent-dir `memory/` |
 | Sessions (multi-turn) | ✅ flipped (V8 session.stream, #78) | ✅ | ✅ | W9 (checkpointing sessions, durability row) |
@@ -50,7 +50,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Test utils (mock model, record/replay) | ✅ | ⚠️ | ❌ | - |
 | Tracing / OTel GenAI | ✅ | ✅ | ❌ | - |
 | Metrics / trace viewer | ❌ | ✅ | ❌ | D48 |
-| Multi-provider | ⚠️ (D26 #123: `generate()` on `ai` v4 and v6/v7 via `aiSdkCompat`; stream and peers pending) | ✅ | ✅ | D27, D28, D29 |
+| Multi-provider | ⚠️ (D26 #123 + D27 #127: generate and stream on `ai` v4 and v6/v7; peer ranges pending) | ✅ | ✅ | D28, D29 |
 | Fallbacks / retry policy | ✅ (V7.1 #74, V7.2 agent-level + events #86) | ⚠️ | ⚠️ | - |
 | Structured output | ✅ flipped (V4 #90: `output` schema, repair step, `output-invalid`) | ✅ | ❌ | - |
 | Multimodal input | ✅ flipped (V11 #106 + V12 #109: `AgentInput` on send/stream/session/evals/hook, SQLite bytes) | ✅ | ✅ | - (files degrade to text on the pinned `ai` v4 peers; D26+) |
@@ -63,12 +63,12 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | CLI scaffolding | ⚠️ (unpublished) | ✅ | ❌ | D49, U20 |
 | Dev TUI / REPL | ✅ flipped (D31 dev + D32 streaming web chat + D33 #120 `loushy chat` terminal REPL) | ✅ | ⚠️ | - |
 | Visual studio / debugger | ✅ | ❌ | ❌ | - |
-| Channels | ⚠️ | ✅ | ❌ | P5-P7 |
+| Channels | ⚠️ (P7 #126: `defineChannel`, `mountChannels`, http/webhook channels) | ✅ | ❌ | P5 Slack, P6 Discord |
 | Schedules | ⚠️ | ✅ | ❌ | P8, P9 |
-| Deploy story | ✅ flipped (D14 #119: node/docker serve sessions, SSE, approvals, bearer auth; Worker parity D51) | ✅ | ❌ | D51 |
+| Deploy story | ✅ (D14 #119 node/docker + D51 #125 Worker: sessions over KV, SSE, auth; Fetch-native shared routes) | ✅ | ❌ | - |
 | Edge runtime (Workers) | ✅ | ❌ | ❌ | - |
 | Budgets / limits | ✅ flipped (V6 #118: run and session `limits`, `budget-exceeded`, `BudgetExceededError`) | ✅ | ⚠️ | - |
-| Guardrails (input/output) | ✅ flipped (X4 #121: input/output/tool guardrails, `guardrail` finish reason, built-ins) | ⚠️ | ❌ | X5 (spec policy) |
+| Guardrails (input/output) | ✅ (X4 #121 + X5 #124 spec policy compiled) | ⚠️ | ❌ | - |
 | Permissions policy | ✅ flipped (X2 #105: `permissions` rules, audit log, `permission.decision` event, inherited by sub-agents) | ✅ | ⚠️ | X8 (policy helpers on needsApproval) |
 | Credential brokering | ❌ | ✅ | ❌ | X11, X12 |
 | Dynamic config | ❌ | ✅ | ⚠️ | V15 |
@@ -81,7 +81,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Published on npm | ❌ (owner action) | ✅ | ✅ | D49 |
 | Current `ai` major | ❌ | ✅ | ✅ | D22-D29 |
 
-Score (us): 33 ✅ / 8 ⚠️ / 10 ❌ of 51 after iteration 10 (iteration 9: 30/10/11; iteration 8: 28/11/12; iteration 7: 25/13/13; iteration 6: 24/13/14; iteration 5: 23/14/14; iteration 4: 22/15/14; iteration 3: 20/15/16 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
+Score (us): 34 ✅ / 7 ⚠️ / 10 ❌ of 51 after iteration 11 (iteration 10: 33/8/10; iteration 9: 30/10/11; iteration 8: 28/11/12; iteration 7: 25/13/13; iteration 6: 24/13/14; iteration 5: 23/14/14; iteration 4: 22/15/14; iteration 3: 20/15/16 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
 
 Differentiators shipped (target: 3): 3 of 8 (#1 host-agnostic durable sessions: W9 #89 + D30 #94; #2 record/replay evals: D46 #96; #6 OTel GenAI metrics + cost: D48 #95). Remaining (candidates in AUDIT section 7: host-agnostic durable sessions D30; record/replay evals D46; Forge time-travel D43-D45; MCP+ACP+HTTP reach Z6/D14; both authoring modes with hot reload D31-D33; OTel metrics D48; trajectory evals remote D47; edge-native agents D51/P9).
 
@@ -116,7 +116,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | V7.2 | `createAgent({ retry, fallbackModels })` + `provider.retry`/`provider.fallback` events; retries no longer stack | ✅ #86 | |
 | V8 | `session.stream()` | ✅ #78 | |
 | V9 | Queued follow-up input (`run.enqueue`, `InputQueue`, `turnPolicy`) | ✅ #122 | |
-| V10 | Steering | ⬜ | V9 |
+| V10 | Steering (`run.steer`, per-call abort, `turnPolicy: 'steer'`) | ✅ #128 | |
 | V11 | Multimodal message parts (`textOf()`, provider conversion, store round-trip) | ✅ #106 | |
 | V11.2 | `SqliteStore` sessions/checkpoints encode `Uint8Array` parts | ✅ (in #109) | |
 | V12 | Multimodal through the public API (`AgentInput`) | ✅ #109 | |
@@ -145,7 +145,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | X2 | Permission policies (`permissions`, `allow/deny/ask`, audit log, event) | ✅ #105 | |
 | X3 | Hook outcomes (deny/replace/modify) | ⬜ | |
 | X4 | Input/output/tool guardrails (`guardrails` option, built-ins, `GuardrailError`) | ✅ #121 | |
-| X5 | Enforce `spec.policy` | ⬜ | X2, X4 |
+| X5 | Enforce `spec.policy` (`compilePolicy`, guardrail name registry, doctor summary) | ✅ #124 | |
 | X8 | Approval policies (`'approve'|'deny'|'ask'`, `once()`) | ⬜ | |
 | X9 | `ask_question` tool (`createAgent({ askQuestion: true })`, `approvals.answer`) | ✅ #111 | |
 | X10 | In-memory approval store | ✅ (D21, #75) | |
@@ -188,7 +188,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D24 | Small built-ins to `defineTool` (+ `toolDescriptorFromSchema` for MCP) | ✅ #108 | |
 | D25 | github and jira to `defineTool` (48 tools; `src/tools` has no `ai` import) | ✅ #114 | |
 | D26 | `ai` v6/v7 adapter: generate (`aiSdkCompat.ts`, tests on real `ai@7` via dev alias) | ✅ #123 | |
-| D27 | `ai` v6/v7 adapter: stream | ⬜ | D26 |
+| D27 | `ai` v6/v7 adapter: stream (`streamCompat`; mid-stream errors now throw on v4 too) | ✅ #127 | |
 | D28 | Provider peers and ranges | ⬜ | D27 |
 | D29 | zod 4 / Standard Schema | ⬜ | D22 |
 | D30 | One `store` option (`AgentStore`, `memoryStore()`, `send({ sessionId })`, `agent.resume(id)`) | ✅ #94 | |
@@ -215,7 +215,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D48 | OTel GenAI metrics (`gen_ai.client.token.usage`, `operation.duration`) + `loushy.cost_usd` | ✅ #95 | |
 | D49 | Publish readiness | ⬜ | U20 |
 | D50 | `loushy add` | ⬜ | |
-| D51 | Deployed API auth + Worker parity | ⬜ | D14 |
+| D51 | Worker parity: `KVStore`, Fetch-native `fetchRoutes.ts`, auth from env, node shim plugin | ✅ #125 | |
 | D52 | README revamp (owner request): 805 -> 257 lines, 7 new docs pages | ✅ #81 | |
 | D34.2 | Drop `setType` from apps/examples/tests; `ContextBuilder` cast removed | ✅ #97 | |
 | D25 hazard | github.ts disables tools by replacing `.tool.execute`; sandboxFetch reads `.tool.execute`: must move to canonical `execute` when converted | note | D22 |
@@ -229,7 +229,8 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | P4 | Next.js route helper | ⬜ | D14, P1 |
 | P5 | Slack channel with threads | ⬜ | P7, D21 |
 | P6 | Discord channel | ⬜ | P7 |
-| P7 | `defineChannel` contract | ⬜ | |
+| P7 | `defineChannel` contract + `mountChannels`, `httpChannel`, `webhookChannel` | ✅ #126 | |
+| P7.2 | `loadAgentDir()` picks up `channels/*.ts`; Slack 3-second ack | ⬜ | P7 |
 | P8 | Schedules in agent dirs | ⬜ | |
 | P9 | Schedules on deploy targets | ⬜ | P8 |
 
@@ -290,6 +291,11 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | #121 | X4 | merged (squash) | io guardrails |
 | #122 | V9 | merged (squash; additive conflicts with X4 resolved in a follow-up commit after a botched first merge commit) | queued input |
 | #123 | D26 | merged (squash) | ai v7 generate adapter |
+| #124 | X5 | merged (squash) | spec policy enforced |
+| #127 | D27 | merged (squash) | ai v7 stream adapter |
+| #128 | V10 | merged (squash) | steering |
+| #125 | D51 | merged (squash) | Worker parity |
+| #126 | P7 | merged (squash; chatRoutes conflict: D51 adapter + P7 helpers) | defineChannel |
 
 ## Main health
 
@@ -353,14 +359,19 @@ CI runs only on `pull_request`, so "main is green" means the last PR's CI run pa
 - Matrix flips: Guardrails ⚠️->✅, Deploy story ⚠️->✅, Dev TUI/REPL ⚠️->✅, Steering ❌->⚠️.
 - Process note: the V9 merge commit was first pushed with conflict markers (resolver script syntax error); fixed in the next commit before merging. The sync helper now must never commit when markers remain (fixed).
 
-## Next batch (iteration 11)
+### Iteration 11 (2026-10-01)
+- Merged: #124 (X5), #127 (D27), #128 (V10), #125 (D51), #126 (P7).
+- Matrix flips: Steering ⚠️->✅. Deploy story and Guardrails now fully done (no follow-ups).
+- Helper fix: the marker check only scans conflicted docs files now.
 
-1. D27 (opus): `ai` v6/v7 adapter for `stream()` through `aiSdkCompat`; src/providers.
-2. V10 (opus): steering (`run.steer(text)`: abort the in-flight model call that has not emitted text, keep finished tool results, continue); AgentExecutor/agentRun/session.
-3. X5 (sonnet): enforce `spec.policy` (`requiresApproval` -> permissions `ask`, `guardrails: string[]` -> named built-ins); src/spec.
-4. D51 (sonnet): Cloudflare Worker parity: sessions over KV, SSE, bearer auth using the shared chat routes; src/deploy/runtime.worker.ts.
-5. P7 (opus): `defineChannel` contract (inbound event -> session id, reply delivery, auth hook); webhook trigger reimplemented on it; src/channels (new), src/triggers.
-Then: D28, D29, V13, V15, X3, X8, X11, X12, Y6, Y7, Z6, D47, D49, D50, P1-P6, P8, P9, D2.2, D43.2, U14.2, V4.2, W9.2, D23.2, W6.2, W6.3, Z5.2, D32.2, D46.2, U20, U21, U23, D16, D37-D39, D41, D42, W8, V14.
+## Next batch (iteration 12)
+
+1. D28 (opus): provider peers and ranges (`ai ^4 || ^6 || ^7`, `@ai-sdk/*` current majors, `ollama-ai-provider-v2`), scaffold/Forge/doctor ranges, CI matrix on ai 4 and 7; package.json, providers' v4-typed internals.
+2. P5 (opus): Slack channel with threads (session per thread, Web API replies in-thread, approvals as buttons, 3-second ack); src/channels/slack.
+3. P8 (sonnet): schedules in agent dirs (`schedules/*.ts` `defineSchedule({ cron, prompt | run })` loaded by `loadAgentDir()`, run by the node server); src/agentDir, src/triggers, src/deploy/nodeServer.
+4. Y7 (sonnet): remote sub-agent (`remoteAgent({ url, auth })` usable in `subagents`, over the D14/D51 session API); src/subagents.
+5. D47 (sonnet): remote eval target (`loushy eval --url` drives a deployed agent over the session API); src/cli/eval, src/evals.
+Then: D29, V13, V15, X3, X8, X11, X12, Y6, Z6, D49, D50, P1-P4, P6, P9, P7.2, D2.2, D43.2, U14.2, V4.2, W9.2, D23.2, W6.2, W6.3, Z5.2, D32.2, D46.2, U20, U21, U23, D16, D37-D39, D41, D42, W8, V14.
 
 ## Subagent brief (canonical copy)
 
