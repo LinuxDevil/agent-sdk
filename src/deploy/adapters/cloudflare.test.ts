@@ -37,6 +37,7 @@ import {
   workerName,
   wranglerTomlSource,
 } from './cloudflare';
+import { CHECKPOINT_KV_BINDING } from '../checkpointBinding';
 import { getAdapter, registerBuiltInAdapters } from '../index';
 import { LLMProviderRegistry } from '../../providers/llm';
 import { prepareWorkerSpec } from '../runtime.worker';
@@ -112,7 +113,9 @@ describe('CloudflareWorkerAdapter', () => {
       '"node:fs"',
       "'node:http'",
     ]);
-    expect(findNodeBuiltinReferences('const x = "no builtins here";')).toEqual([]);
+    // esbuild drops the prefix of a builtin it leaves external: a bare specifier is a leak too.
+    expect(findNodeBuiltinReferences(`import { randomUUID } from "crypto"; const m = await import("fs/promises");`)).toEqual(['"crypto"', '"fs/promises"']);
+    expect(findNodeBuiltinReferences('const x = "no builtins here"; import { x } from "./path";')).toEqual([]);
   });
 
   it('rejects tools and providers that cannot run on Workers', async () => {
@@ -170,7 +173,7 @@ describe('CloudflareWorkerAdapter', () => {
     it('scaffolds worker.ts (fetch handler, no Node builtins), agent.config.js and wrangler.toml', () => {
       const worker = fs.readFileSync(path.join(outDir, 'worker.ts'), 'utf8');
       expect(worker).toContain('export async function fetch(request: Request');
-      expect(worker).toContain('AgentExecutor.execute(');
+      expect(worker).toContain('handleWorkerRequest(request, env, spec)');
       expect(findNodeBuiltinReferences(worker)).toEqual([]);
       expect(fs.readFileSync(path.join(outDir, 'agent.config.js'), 'utf8')).toContain('CF Test Agent!');
       expect(fs.readFileSync(path.join(outDir, 'wrangler.toml'), 'utf8')).toContain('main = "dist/worker.js"');
@@ -277,6 +280,27 @@ describe('CloudflareWorkerAdapter', () => {
       expect(oversized.status).toBe(413);
     });
 
+    it("the built bundle serves sessions, SSE and bearer auth like the node server (LOU-D51)", async () => {
+      const mod = await import(pathToFileURL(path.join(outDir, 'dist', 'worker.js')).href);
+      const handler = mod.default as { fetch: (r: Request, env?: Record<string, unknown>) => Promise<Response> };
+      const env = { LOUSHY_API_TOKEN: 'tok' };
+      const auth = { Authorization: 'Bearer tok' };
+      const post = (body: unknown, headers: Record<string, string> = {}) =>
+        handler.fetch(new Request('http://worker/chat', { method: 'POST', headers, body: JSON.stringify(body) }), env);
+
+      expect((await handler.fetch(new Request('http://worker/health'), env)).status).toBe(200);
+      expect((await post({ sessionId: 'built-1', input: 'hi' })).status).toBe(401);
+
+      const turn = await post({ sessionId: 'built-1', input: 'hi' }, auth);
+      expect(turn.headers.get('content-type')).toContain('text/event-stream');
+      const raw = await turn.text();
+      expect(raw).toContain('"type":"run.done"');
+      expect(raw.endsWith('event: done\ndata: {}\n\n')).toBe(true);
+
+      const transcript = await handler.fetch(new Request('http://worker/chat/built-1', { headers: auth }), env);
+      expect((await transcript.json()).messages.map((m: { role: string }) => m.role)).toEqual(['user', 'assistant']);
+    });
+
     describe.skipIf(!wranglerBin)('real wrangler tooling (requires the wrangler CLI)', () => {
       it('`wrangler deploy --dry-run` accepts the generated wrangler.toml and bundle', () => {
         const dryOut = path.join(outDir, '.dry-run');
@@ -317,6 +341,9 @@ describe('CloudflareWorkerAdapter', () => {
 
       it('`wrangler dev` serves the worker on the local workerd runtime', async () => {
         const port = await freePort();
+        // The KV binding the generated wrangler.toml leaves commented out, and the token secret (a .dev.vars file).
+        fs.appendFileSync(path.join(outDir, 'wrangler.toml'), `[[kv_namespaces]]\nbinding = "${CHECKPOINT_KV_BINDING}"\nid = "local-dev"\n`);
+        fs.writeFileSync(path.join(outDir, '.dev.vars'), 'LOUSHY_API_TOKEN=dev-token\n');
         const child = spawn(
           process.execPath,
           [wranglerBin!, 'dev', '--port', String(port), '--ip', '127.0.0.1'],
@@ -337,10 +364,27 @@ describe('CloudflareWorkerAdapter', () => {
 
           const chat = await fetch(`${base}/chat`, {
             method: 'POST',
+            headers: { Authorization: 'Bearer dev-token' },
             body: JSON.stringify({ message: 'hello from workerd' }),
           });
           expect(chat.status).toBe(200);
           expect((await chat.json()).text).toBe('This is a mock response.');
+
+          // LOU-D51: a streamed turn with a session, over the KV namespace wrangler dev simulates.
+          const streamed = await fetch(`${base}/chat`, {
+            method: 'POST',
+            headers: { Authorization: 'Bearer dev-token' },
+            body: JSON.stringify({ sessionId: 'workerd-1', input: 'hello from workerd' }),
+          });
+          expect(streamed.status).toBe(200);
+          expect(streamed.headers.get('content-type')).toContain('text/event-stream');
+          const raw = await streamed.text();
+          expect(raw).toContain('"text":"This is a mock response. "');
+          expect(raw.endsWith('event: done\ndata: {}\n\n')).toBe(true);
+
+          const transcript = await fetch(`${base}/chat/workerd-1`, { headers: { Authorization: 'Bearer dev-token' } });
+          expect((await transcript.json()).messages.map((m: { role: string }) => m.role)).toEqual(['user', 'assistant']);
+          expect((await fetch(`${base}/chat/workerd-1`)).status).toBe(401);
         } finally {
           killTree(child);
         }
