@@ -287,6 +287,12 @@ export async function createCredentialBroker(options: CredentialBrokerOptions): 
   };
 }
 
+/** True when there is no subnet restriction, or `peer` is an address inside it. */
+function admits(clients: net.BlockList | undefined, peer: string | undefined): boolean {
+  if (!clients) return true;
+  return peer !== undefined && net.isIP(peer) !== 0 && inList(clients, peer);
+}
+
 type Listening = { url: string; close: () => Promise<void> };
 type ServeOptions = Pick<BrokerListenOptions, 'host' | 'port' | 'peerAddress'> & { clients?: net.BlockList };
 
@@ -298,11 +304,7 @@ async function serve(policy: Policy, { host, port, clients, peerAddress = (s) =>
     socket.once('close', () => sockets.delete(socket));
   };
   const server = http.createServer((req, res) => void handleRequest(policy, track, req, res));
-  server.on('connection', (socket: net.Socket) => {
-    const peer = peerAddress(socket);
-    if (clients && !(peer && net.isIP(peer) && inList(clients, peer))) socket.destroy();
-    else track(socket);
-  });
+  server.on('connection', (socket: net.Socket) => (admits(clients, peerAddress(socket)) ? track(socket) : socket.destroy()));
   server.on('connect', (req: http.IncomingMessage, socket: Duplex, head: Buffer) => void handleConnect(policy, track, req, socket, head));
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
