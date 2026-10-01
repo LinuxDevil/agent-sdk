@@ -15,7 +15,6 @@ import type { AgentSession } from '../session/AgentSession';
 import { assertSessionId } from '../session/sessionStore';
 import { memoryStore, type AgentStore } from '../storage/agentStore';
 import { newId } from '../utils/id';
-import { continuationEvents } from './devEvents';
 import { hasOwnStore } from './devReload';
 
 export interface ChatReplOptions {
@@ -113,7 +112,7 @@ export async function runChatRepl(options: ChatReplOptions): Promise<number> {
   };
 
   /** Prints a turn's events; resolves to the approval it paused on, if any. */
-  async function render(events: AsyncIterable<AgentEvent> | AgentEvent[]): Promise<AgentEventOf<'approval.requested'> | undefined> {
+  async function render(events: AsyncIterable<AgentEvent>): Promise<AgentEventOf<'approval.requested'> | undefined> {
     let paused: AgentEventOf<'approval.requested'> | undefined;
     for await (const event of events) {
       (printers[event.type] as ((event: AgentEvent) => void) | undefined)?.(event);
@@ -135,24 +134,20 @@ export async function runChatRepl(options: ChatReplOptions): Promise<number> {
     return undefined;
   }
 
-  /** Asks the user about `request` and continues the turn; resolves to the continued turn's events. */
-  async function decide(request: PendingApproval): Promise<AgentEvent[]> {
+  /** Asks the user about `request` and continues the turn; resolves to the continued turn's live events. */
+  async function decide(request: PendingApproval): Promise<AsyncIterable<AgentEvent>> {
     const { id } = request;
-    let result;
     if (request.kind === 'question' && request.question) {
       const answer = await readAnswer(request.question);
-      result = answer === undefined ? await agent.approvals.resolve({ id, approved: false }) : await agent.approvals.answer({ id, answer });
-    } else {
-      const reply = await ask(`Approve ${request.toolName}(${show(request.args)})? [y/N] `);
-      result = await agent.approvals.resolve({ id, approved: /^y(es)?$/i.test(reply ?? '') });
+      return answer === undefined ? agent.approvals.streamResolve({ id, approved: false }) : agent.approvals.streamAnswer({ id, answer });
     }
-    const pausedAgain = (await agent.approvals.list()).find((pending) => pending.id === result.approvalId);
-    return continuationEvents(result, request, pausedAgain);
+    const reply = await ask(`Approve ${request.toolName}(${show(request.args)})? [y/N] `);
+    return agent.approvals.streamResolve({ id, approved: /^y(es)?$/i.test(reply ?? '') });
   }
 
   async function turn(input: string): Promise<void> {
     try {
-      let events: AsyncIterable<AgentEvent> | AgentEvent[] = openSession().stream(input);
+      let events: AsyncIterable<AgentEvent> = openSession().stream(input);
       for (let paused = await render(events); paused; paused = await render(events)) {
         const request = (await agent.approvals.list()).find((pending) => pending.id === paused?.approvalId);
         if (!request) throw new Error(`No pending approval '${paused.approvalId}'.`);

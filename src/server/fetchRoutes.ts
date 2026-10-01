@@ -18,9 +18,8 @@ import type { AgentEvent } from '../execution/agentEvents';
 import type { SimpleAgent } from '../createAgent';
 import { assertSessionId } from '../session/sessionStore';
 import type { AgentSession } from '../session/AgentSession';
-import type { PendingApproval } from '../execution/ApprovalGate';
 import { SessionAwaitingApprovalError } from '../execution/errors';
-import { continuationEvents, errorEvents } from '../cli/devEvents';
+import { errorEvents } from '../cli/devEvents';
 
 /** What the routes need from their host: the live agent and how sessions are opened on it. */
 export interface ChatRoutesContext {
@@ -138,15 +137,14 @@ const runChat: RouteHandler = async (request, ctx) => {
  * isolate that is gone): `agent.approvals.list()` only knows pauses of this
  * process, but a checkpointed session names its pending approval, and
  * `resume()` tells the agent which session it belongs to (docs/sessions.md).
- * Only `id` is known then, so the continuation's events skip the decided tool call.
  */
-async function recoverApproval(session: AgentSession, id: string): Promise<PendingApproval | undefined> {
+async function recoverApproval(session: AgentSession, id: string): Promise<boolean> {
   const turn = await session.pending();
-  if (turn?.status !== 'awaiting-approval' || turn.approvalId !== id) return undefined;
+  if (turn?.status !== 'awaiting-approval' || turn.approvalId !== id) return false;
   await session.resume().catch((error) => {
     if (!(error instanceof SessionAwaitingApprovalError)) throw error;
   });
-  return { id, toolCallId: '', toolName: '', args: {}, createdAt: new Date().toISOString() };
+  return true;
 }
 
 const runApproval: RouteHandler = async (request, ctx, [sessionId, id]) => {
@@ -157,18 +155,16 @@ const runApproval: RouteHandler = async (request, ctx, [sessionId, id]) => {
     return jsonResponse(400, { error: "Request body must be JSON with 'approved' (and optional 'note') or 'answer'" });
   }
   const agent = ctx.agent();
-  const pending = (await agent.approvals.list()).find((candidate) => candidate.id === id) ?? (await recoverApproval(session, id));
+  const pending = (await agent.approvals.list()).some((candidate) => candidate.id === id) || (await recoverApproval(session, id));
   if (!pending) {
     return jsonResponse(404, { error: `No pending approval '${id}' (it was decided already, or the agent was reloaded)` });
   }
-  return sseResponse(request, async function* (signal) {
-    const result =
-      typeof answer === 'string'
-        ? await agent.approvals.answer({ id, answer }, { signal })
-        : await agent.approvals.resolve({ id, approved: approved === true, note: typeof note === 'string' ? note : undefined }, { signal });
-    const pausedAgain = (await agent.approvals.list()).find((candidate) => candidate.id === result.approvalId);
-    yield* continuationEvents(result, pending, pausedAgain);
-  });
+  // LOU-D32.2: the continuation streams live (decided call, text deltas, a further pause, run.done).
+  return sseResponse(request, (signal) =>
+    typeof answer === 'string'
+      ? agent.approvals.streamAnswer({ id, answer }, { signal })
+      : agent.approvals.streamResolve({ id, approved: approved === true, note: typeof note === 'string' ? note : undefined }, { signal })
+  );
 };
 
 const runTranscript: RouteHandler = async (_request, ctx, [sessionId]) => {

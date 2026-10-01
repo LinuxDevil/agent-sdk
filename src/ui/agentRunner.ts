@@ -30,8 +30,8 @@ export type LoushyAgentSource = LocalAgentSource | RemoteAgentSource;
 export interface LoushyAgentOptions {
   /**
    * Remote mode: `approve()`/`reject()` POST `{ approved, note }` to
-   * `${approvalsUrl}/${approvalId}` and read an {@link ApprovalOutcome} JSON
-   * response. Without it they do nothing: resolve `pendingApproval` yourself.
+   * `${approvalsUrl}/${approvalId}` and show the continuation live from the
+   * SSE response (an older server's {@link ApprovalOutcome} JSON still works). Without it they do nothing: resolve `pendingApproval` yourself.
    */
   approvalsUrl?: string;
 }
@@ -68,6 +68,14 @@ async function post(source: RemoteAgentSource, url: string, body: unknown, signa
   const response = await (source.fetch ?? fetch)(url, { method: 'POST', headers, body: JSON.stringify(body), signal });
   if (!response.ok) throw new Error(`POST ${url} failed with ${response.status}`);
   return response;
+}
+
+/** LOU-D32.2: the session API streams the continuation as SSE; an older server answers with an ApprovalOutcome JSON. */
+async function relayContinuation(response: Response, emit: Emit): Promise<void> {
+  if (!response.headers.get('content-type')?.includes('text/event-stream')) {
+    return emit({ type: 'ui.resumed', outcome: (await response.json()) as ApprovalOutcome });
+  }
+  for await (const event of parseEventStream(response)) emit(event);
 }
 
 /**
@@ -123,16 +131,12 @@ export function createAgentRunner(host: AgentRunnerHost): AgentCommands & { rese
     return run(async (emit, signal) => {
       emit({ type: 'ui.decide', approved });
       const decision = { id: pending.id, approved, note };
-      let outcome: ApprovalOutcome;
       if ('agent' in source) {
-        const result = await source.agent.approvals.resolve(decision, { signal });
-        const approval = (await source.agent.approvals.list()).find((a) => a.id === result.approvalId);
-        outcome = { text: result.text, finishReason: result.finishReason, usage: result.usage, approval };
-      } else {
-        const url = `${options.approvalsUrl}/${encodeURIComponent(pending.id)}`;
-        outcome = (await (await post(source, url, { approved, note }, signal)).json()) as ApprovalOutcome;
+        for await (const event of source.agent.approvals.streamResolve(decision, { signal })) emit(event);
+        return;
       }
-      emit({ type: 'ui.resumed', outcome });
+      const url = `${options.approvalsUrl}/${encodeURIComponent(pending.id)}`;
+      await relayContinuation(await post(source, url, { approved, note }, signal), emit);
     });
   };
 

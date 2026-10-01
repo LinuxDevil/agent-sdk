@@ -201,6 +201,13 @@ describe('loushy chat REPL', () => {
     expect(out).toContain('Recovered.');
   });
 
+  it('streams the continuation after y, and asks again when it pauses a second time (LOU-D32.2)', async () => {
+    const { out } = await converse(['ping twice', 'y', 'y', '/quit'], [{ toolCalls: [{ name: 'ping' }] }, { toolCalls: [{ name: 'ping' }] }, 'Both done.']);
+    expect(out.match(/Approve ping\(\{\}\)\? \[y\/N\] /g)).toHaveLength(2);
+    expect(out).toContain('-> pong');
+    expect(out).toContain('Both done.');
+  });
+
   it('declines a pending approval when the input ends, and still closes the agent', async () => {
     const { out, code } = await converse(['ping it'], [{ toolCalls: [{ name: 'ping' }] }, 'Not pinging.']);
     expect(code).toBe(0);

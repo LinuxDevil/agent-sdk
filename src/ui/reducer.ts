@@ -190,7 +190,8 @@ export function reduceAgentEvents(state: AgentUIState, event: AgentEvent | Agent
     case 'tool.done':
       return { ...next, messages: patchTool(state.messages, event.toolCallId, { status: 'done', result: event.result }) };
     case 'tool.error':
-      return { ...next, messages: patchTool(state.messages, event.toolCallId, { status: 'error', error: event.error }) };
+      // A reviewer's rejection (streamed continuation, LOU-D32.2) is `rejected`, not a failure.
+      return { ...next, messages: patchTool(state.messages, event.toolCallId, event.error.name === 'ToolRejectedError' ? { status: 'rejected' } : { status: 'error', error: event.error }) };
     case 'approval.requested':
       return pause(next, pendingOf(event));
     case 'error':
