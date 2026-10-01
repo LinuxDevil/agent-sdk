@@ -6,10 +6,11 @@
 import { LLMProvider, Message, ToolCall } from '../providers';
 import { ToolRegistry } from '../tools';
 import { getToolExecute } from '../tools/toolContract';
-import { ToolDescriptor } from '../types';
+import type { ToolDescriptor, ToolExecutionContext } from '../types';
 import {
   ApprovalDecision,
   ApprovalStore,
+  describeApproval,
   ExecutionSnapshot,
   PendingApproval,
 } from './ApprovalGate';
@@ -168,8 +169,12 @@ async function decidedToolMessage(
   pending: PendingApproval
 ): Promise<{ message: Message } | { paused: ExecutionResult }> {
   const { snapshot, messages, executeOptions } = ctx;
-  const runApproved = (call: PendingApproval, registry: ToolRegistry, scope: ToolCallScope): Promise<Message> =>
-    runApprovedToolCall(call, snapshot, messages, registry, executeOptions, scope);
+  const runApproved = (
+    call: PendingApproval,
+    registry: ToolRegistry,
+    scope: ToolCallScope,
+    approval?: ToolExecutionContext['approval']
+  ): Promise<Message> => runApprovedToolCall(call, snapshot, messages, registry, executeOptions, scope, approval);
   if (snapshot.subagent) {
     return resumeSubagentCall(ctx, snapshot.subagent, runApproved);
   }
@@ -179,7 +184,11 @@ async function decidedToolMessage(
         pending,
         toolErrorResult({
           toolName: pending.toolName,
-          error: 'Tool execution was rejected by the reviewer',
+          // LOU-X9: declining an `ask_question` call is not a tool rejection.
+          error:
+            describeApproval(pending).kind === 'question'
+              ? 'The user declined to answer the question'
+              : 'Tool execution was rejected by the reviewer',
           kind: 'rejected',
           details: { note: ctx.decision.note },
         }),
@@ -194,7 +203,8 @@ async function decidedToolMessage(
     onDelegatedUsage: (child) => mergeDelegatedUsage(ctx.usage, child),
     execute: ctx.execute,
   };
-  return { message: await runApproved(pending, ctx.toolRegistry, scope) };
+  // LOU-X9: the tool sees the decision's note (an `ask_question` answer) as `ctx.approval`.
+  return { message: await runApproved(pending, ctx.toolRegistry, scope, { note: ctx.decision.note }) };
 }
 
 /**
@@ -325,7 +335,8 @@ async function runApprovedToolCall(
   messages: Message[],
   toolRegistry: ToolRegistry,
   executeOptions: ResumeExecuteOptions,
-  scope?: ToolCallScope
+  scope?: ToolCallScope,
+  approval?: ToolExecutionContext['approval']
 ): Promise<Message> {
   const toolDesc = toolRegistry.get(pending.toolName);
   // A `requiresSandbox` tool may have no `tool.execute` implementation at
@@ -372,7 +383,7 @@ async function runApprovedToolCall(
     await hooks.runPreToolCall(hookCtx);
   }
 
-  const { result, toolError, errorResult } = await executeApprovedTool(pending, toolDesc, hookArgs, executeOptions, messages, scope);
+  const { result, toolError, errorResult } = await executeApprovedTool(pending, toolDesc, hookArgs, executeOptions, { messages, approval }, scope);
 
   // Fires (with the settled result/error) regardless of how the tool
   // settled - matching AgentHook.postToolCall's documented contract
@@ -408,7 +419,7 @@ async function executeApprovedTool(
   toolDesc: ToolDescriptor,
   args: Record<string, unknown>,
   executeOptions: ResumeExecuteOptions,
-  messages: Message[],
+  { messages, approval }: { messages: Message[]; approval?: ToolExecutionContext['approval'] },
   scope?: ToolCallScope
 ): Promise<{ result: unknown; toolError?: string; errorResult?: ToolErrorResult }> {
   try {
@@ -425,7 +436,7 @@ async function executeApprovedTool(
         args,
         sandbox,
         executeOptions.signal,
-        { toolCallId: pending.toolCallId, messages },
+        { toolCallId: pending.toolCallId, messages, approval },
         scope
       ),
     };

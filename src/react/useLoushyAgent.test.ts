@@ -46,6 +46,23 @@ function emailAgent(...turns: Parameters<typeof mockModel>[0]) {
 const callEmail = { toolCalls: [{ name: 'send_email', args: { to: 'sam' }, id: 'call_email' }] };
 
 describe('useLoushyAgent in process (LOU-D15)', () => {
+  it('send(parts) sends one user message with the parts and shows their text and a marker (LOU-V12)', async () => {
+    const model = mockModel(['A cat.']);
+    mount({ agent: createAgent({ provider: model }) });
+    const parts = [
+      { type: 'text' as const, text: 'What is this?' },
+      { type: 'image' as const, image: 'https://example.com/cat.png' },
+    ];
+
+    await act(() => hook.send(parts));
+
+    expect(hook.messages.map(({ role, text }) => ({ role, text }))).toEqual([
+      { role: 'user', text: 'What is this? [image]' },
+      { role: 'assistant', text: 'A cat.' },
+    ]);
+    expect(model.calls[0].messages.filter((m) => m.role === 'user')).toEqual([{ role: 'user', content: parts }]);
+  });
+
   it('send() streams the reply into messages and ends idle with usage', async () => {
     const agent = createAgent({ provider: mockModel([{ text: 'Hello there!', usage: { inputTokens: 5, outputTokens: 3 } }]) });
     mount({ agent });
@@ -89,6 +106,25 @@ describe('useLoushyAgent in process (LOU-D15)', () => {
     expect(hook.status).toBe('idle');
     expect(hook.pendingApproval).toBeNull();
     expect(hook.messages[1]).toMatchObject({ text: 'Email sent.', toolCalls: [{ name: 'send_email', status: 'done' }] });
+  });
+
+  it("answer(text) answers an ask_question pause (LOU-X9)", async () => {
+    const ask = { toolCalls: [{ name: 'ask_question', args: { question: 'Which city?', options: ['Porto', 'Lisbon'] }, id: 'call_q' }] };
+    const model = mockModel([ask, 'Booking Lisbon.']);
+    mount({ agent: createAgent({ provider: model, askQuestion: true }) });
+
+    await act(() => hook.send('Book a trip'));
+    expect(hook.pendingApproval).toMatchObject({
+      kind: 'question',
+      question: { text: 'Which city?', options: ['Porto', 'Lisbon'] },
+    });
+
+    await act(() => hook.answer('Lisbon'));
+
+    expect(hook.status).toBe('idle');
+    expect(hook.messages[1]).toMatchObject({ text: 'Booking Lisbon.', toolCalls: [{ name: 'ask_question', status: 'done' }] });
+    const result = model.lastCall?.messages.find((m) => m.role === 'tool' && m.toolCallId === 'call_q');
+    expect(JSON.parse(result?.content as string)).toEqual({ answer: 'Lisbon', option: 1 });
   });
 
   it('reject() gives the model a rejection and marks the call rejected', async () => {
