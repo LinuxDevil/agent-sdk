@@ -74,7 +74,7 @@ const history: Message[] = [
   },
   {
     role: 'tool',
-    content: '{"error":"Rome station offline"}',
+    content: '{"error":"Error","toolName":"get_weather","message":"Rome station offline"}',
     name: 'get_weather',
     toolCallId: 'call_B',
     toolName: 'get_weather',
@@ -107,7 +107,7 @@ const expectedPayload: CoreMessage[] = [
         type: 'tool-result',
         toolCallId: 'call_B',
         toolName: 'get_weather',
-        result: { error: 'Rome station offline' },
+        result: { error: 'Error', toolName: 'get_weather', message: 'Rome station offline' },
         isError: true,
       },
     ],
