@@ -4,17 +4,19 @@
  * `recordReplay()`, one cassette per case and provider, committed next to the
  * eval file at `__cassettes__/<eval>/<case>.json`.
  *
- * The hook: while a case runs, `AgentExecutor.execute()` - which
- * `createAgent()` agents, `AgentExecutor.stream()`, sub-agents and approval
- * resumes all go through - swaps `options.provider` for the case's wrapper.
- * The running case is found with AsyncLocalStorage, so eval files need no
- * change and concurrent cases never share a cassette.
+ * The hook: `setProviderInterceptor()` (src/providers/interception.ts), the
+ * seam the run loop consults for every model call. While a case runs, the
+ * interceptor answers with the case's record/replay wrapper for the run's
+ * provider, so top-level runs, streamed runs, sub-agents and approval resumes
+ * are all covered with no change to the executor. The running case is found
+ * with AsyncLocalStorage, so eval files need no change and concurrent cases
+ * never share a cassette.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { AgentExecutor, type ExecuteOptions } from '../execution/AgentExecutor';
+import { setProviderInterceptor } from '../providers/interception';
 import type { LLMProvider } from '../providers/llm';
 import { recordReplay } from '../testing/recordReplay';
 import type { EvalResult } from './evalResult';
@@ -84,11 +86,10 @@ function wrapperFor(run: CaseRun, provider: LLMProvider): LLMProvider {
 function installHook(): void {
   if (installed) return;
   installed = true;
-  const execute = AgentExecutor.execute.bind(AgentExecutor);
-  AgentExecutor.execute = async (options: ExecuteOptions) => {
+  setProviderInterceptor((provider) => {
     const run = activeCase.getStore();
-    return execute(run && options.provider ? { ...options, provider: wrapperFor(run, options.provider) } : options);
-  };
+    return run ? wrapperFor(run, provider) : provider;
+  });
 }
 
 function cassetteMode(): Mode | undefined {

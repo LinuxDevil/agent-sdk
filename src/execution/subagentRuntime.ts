@@ -104,6 +104,9 @@ export function subagentBudget(maxSubagentDepth: number | undefined): number {
  * pauses the parent run once the turn's tool calls are done.
  */
 export class SubagentApprovalPause extends PropagatingToolError {
+  /** Args the paused tool call is re-entered with on resume, over its own (LOU-Y6: the `task` call's taskId). */
+  resumeArgs?: Record<string, unknown>;
+
   constructor(
     readonly agentName: string,
     readonly snapshot: ExecutionSnapshot
@@ -140,7 +143,7 @@ export function toSuspension(
   return {
     toolCallId: call.toolCallId,
     toolName: call.toolName,
-    args: call.args,
+    args: pause.resumeArgs ? { ...call.args, ...pause.resumeArgs } : call.args,
     agentName: pause.agentName,
     snapshot: pause.snapshot,
   };

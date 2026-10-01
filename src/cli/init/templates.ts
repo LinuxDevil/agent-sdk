@@ -5,6 +5,7 @@
 import { AI_RANGES, listProviders, type AiMajor } from '../../providers/providerSpec';
 import type { PackageManager, Template } from './options';
 import type { SdkManifest } from './sdkDependency';
+import { ConfigurationError } from '../../execution/errors';
 
 export interface ProjectConfig {
   /** npm package name (also the directory's base name). */
@@ -19,7 +20,7 @@ export interface ProjectConfig {
 
 function providerInfo(provider: string) {
   const info = listProviders().find((candidate) => candidate.name === provider);
-  if (!info) throw new Error(`loushy init: unknown provider '${provider}'.`);
+  if (!info) throw new ConfigurationError(`loushy init: unknown provider '${provider}'.`, 'provider', 'LOUSHY_PROVIDER_UNKNOWN');
   return info;
 }
 
@@ -204,6 +205,7 @@ function yamlTestSource(config: ProjectConfig): string {
   return `import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { loadSpec } from '@loushy/build-ai-agent';
+import { ConfigurationError } from '../../execution/errors';
 
 describe('agent.yaml', () => {
   it('is a valid agent spec', () => {

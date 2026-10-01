@@ -109,6 +109,17 @@ is only loaded by the `http` tool when a request sets `validateSSL: false`
 (a per-request TLS setting that the global `fetch` cannot express); every
 other request uses the runtime's global `fetch`.
 
+## Entry points share code (ESM and CJS)
+
+The package entries (`.`, `./hooks`, `./tools`, `./mcp`, ...) are built with code
+splitting: they import shared chunks from `dist/`, so a class or singleton such
+as `HookRegistry`, `SDKError` or `globalToolRegistry` is the same object whichever
+entry you import it from, in ESM and in CJS. An ESM `import` and a CJS `require`
+of the package in one process still load two separate copies (Node's dual-package
+hazard), so a class from one is not `===` the other. `instanceof SDKError` and
+`instanceof HookRegistry` are safe across the two copies (they check a
+`Symbol.for` brand); for other classes, use one module format per process.
+
 ## Installing from a local build
 
 To try an unreleased version, build and pack the SDK from a checkout of this
