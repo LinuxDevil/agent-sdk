@@ -14,6 +14,12 @@ export type BackgroundTaskStatus = 'queued' | 'running' | 'done' | 'failed' | 'c
 export interface SubagentOptions {
   /** How many background sub-agents of one lead run run at once (default 3). Further `background: true` calls queue. */
   maxConcurrent?: number;
+  /**
+   * What happens to background sub-agents still queued or running when the
+   * lead run ends: `false` (default) cancels them, `true` waits for them
+   * before the run resolves. Either way `result.backgroundTasks` reports them.
+   */
+  awaitBackgroundOnFinish?: boolean;
 }
 
 /** What `agent_status` / `agent_await` report for a task. */
@@ -40,6 +46,8 @@ interface BackgroundTask extends BackgroundTaskView {
   launch: () => void;
   settled: Promise<void>;
   settle: () => void;
+  /** Resolves once the child run itself has returned (after a cancel, once it has wound down). */
+  stopped: Promise<void>;
 }
 
 const DEFAULT_MAX_CONCURRENT = 3;
@@ -94,10 +102,11 @@ export class BackgroundTasks {
       controller,
       settled: new Promise<void>((resolve) => (settle = resolve)),
       settle,
+      stopped: Promise.resolve(),
       launch: () => {
         this.running++;
         task.status = 'running';
-        run(controller.signal).then(
+        task.stopped = run(controller.signal).then(
           (result) => this.end(task, { status: 'done', result }),
           (error: unknown) => this.end(task, failure(error))
         );
@@ -140,6 +149,20 @@ export class BackgroundTasks {
       task.settle();
     }
     return this.view(task);
+  }
+
+  /**
+   * At the end of the lead run (LOU-Y4.2): cancels the tasks still queued or
+   * running - or, with `awaitAll`, waits for them to end - then waits until
+   * their runs have stopped, so none of their events comes after this. Returns
+   * every task with its final status (none when no task was started).
+   */
+  async finish(awaitAll: boolean): Promise<BackgroundTaskView[]> {
+    const tasks = [...this.tasks.values()];
+    if (awaitAll) await Promise.all(tasks.map((task) => task.settled));
+    else tasks.forEach((task) => this.cancel(task.taskId));
+    await Promise.all(tasks.map((task) => task.stopped));
+    return this.status();
   }
 
   private watch(signal: AbortSignal | undefined): void {

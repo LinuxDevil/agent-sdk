@@ -4682,41 +4682,77 @@ more tasks) while it runs. The lead then uses:
 
 At most `maxConcurrent` background sub-agents of one lead run run at once
 (default 3); further `background: true` calls get `status: 'queued'` and start
-as slots free. Set it with `withSubagentOptions()`, which returns the same
-`subagents` value:
+as slots free. Set it with `subagentOptions` on `createAgent()`:
 
 ```ts
-import { createAgent, withSubagentOptions } from '@loushy/build-ai-agent';
+import { createAgent } from '@loushy/build-ai-agent';
 
 const researcher = createAgent({ provider, instructions: 'You research.', description: 'Finds and summarizes sources' });
 
 const lead = createAgent({
   provider,
   instructions: 'You coordinate research.',
-  subagents: withSubagentOptions({ researcher }, { maxConcurrent: 2 }),
+  subagents: { researcher },
+  subagentOptions: { maxConcurrent: 2, awaitBackgroundOnFinish: true },
 });
 ```
+
+For `AgentExecutor.execute()`, attach the same options to the `subagents`
+value with `withSubagentOptions(subagents, options)`, which returns it. On
+`createAgent()`, `subagentOptions` override options attached that way.
 
 A background sub-agent inherits from the lead run like a synchronous one
 (hooks, tracing, `onEvent`, usage roll-up), and `maxSubagentDepth` applies the
 same way. Aborting the lead's signal cancels its background sub-agents, queued
 or running.
 
-Limits (follow-up LOU-Y4.2, which needs a run-end hook in the executor):
+### When the lead run ends
 
-- Background tasks belong to one `execute()` call. When the lead's run
-  finishes, sub-agents still running are **not** cancelled or awaited yet:
-  they run to completion on their own, and their events still reach
-  `onEvent`. Have the lead collect them with `agent_await` before its final
-  answer (the system prompt tells it to), or abort the signal you passed to
-  the run to stop them.
+Background tasks belong to one run (one `execute()` / `send()` / `stream()`).
+When that run ends, however it ends, the tasks still queued or running are
+**cancelled** by default (their runs are aborted). With
+`awaitBackgroundOnFinish: true` the run instead waits for them to finish
+before it resolves (an aborted or failed lead run still cancels them). Either
+way the run resolves only once their runs have stopped, so no sub-agent event
+reaches `onEvent` after it; with `awaitBackgroundOnFinish` their events arrive
+after the lead's own `finish` event.
+
+The result lists every background task of the run with its final status:
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const researcher = createAgent({ provider, instructions: 'You research.', description: 'Finds and summarizes sources' });
+const lead = createAgent({ provider, instructions: 'You coordinate research.', subagents: { researcher } });
+
+const result = await lead.send('Research three topics in the background.');
+for (const task of result.backgroundTasks ?? []) {
+  console.log(task.taskId, task.agent, task.status); // e.g. task_1 researcher cancelled
+}
+```
+
+`result.backgroundTasks` holds `{ taskId, agent, status, elapsedMs, error?,
+approvalId?, toolName? }` per task (the `agent_status` shape) and is absent
+when the run started none. Use `agent_await` in the lead (the system prompt
+tells it to) to get their answers into the conversation.
+
+The executor hook behind this is public: `ExecuteOptions.onRunEnd` is called
+exactly once per run, with `{ result }` (whatever the `finishReason`) or
+`{ error }`; the run settles after it returns. Background tasks are reported
+on `result` before your `onRunEnd` sees it.
+
+Limits:
+
+- A lead run that pauses for approval (`finishReason: 'awaiting-approval'`)
+  ends there: its background tasks are cancelled (or awaited) like at any
+  other end, and the resumed run starts with none. The resumed run is a
+  separate run with no link to the paused one's tasks (it may even run in
+  another process), so they cannot be kept alive across the pause.
 - A background sub-agent that needs approval stops with
   `status: 'awaiting-approval'` (with the child's `approvalId` and
   `toolName`); its call does not run, and it cannot be resumed through the
   approval store. Run that task synchronously (`background: false`) when it
   may need approval.
-- A lead that pauses for approval and is resumed starts with no background
-  tasks: those started before the pause cannot be observed afterwards.
 
 ## Dynamic catalogs
 
