@@ -144,9 +144,10 @@ async function isBlockedHost(hostname: string): Promise<boolean> {
 /**
  * A minimal fetch-response-shaped transport function that actually performs
  * the outbound request. `makeHttpRequest()` is transport-agnostic: the
- * default transport calls undici's `fetch` directly (unchanged, original
- * behavior); `makeHttpRequestViaSandbox()` below supplies a transport that
- * routes the same request through a SandboxAdapter instead (LOU-K2).
+ * default transport calls `fetch` directly (undici's, only for
+ * `validateSSL: false`); `makeHttpRequestViaSandbox()` below supplies a
+ * transport that routes the same request through a SandboxAdapter instead
+ * (LOU-K2).
  */
 type HttpTransport = (
   url: string,
@@ -160,20 +161,22 @@ type HttpTransport = (
 ) => Promise<Response>;
 
 /**
- * Default transport: the exact undici `fetch` + per-request TLS dispatcher
- * behavior this file always had. Per-request TLS verification is scoped to
- * a dedicated undici Agent (dispatcher) rather than the process-wide
- * NODE_TLS_REJECT_UNAUTHORIZED env var, since the env var is global mutable
- * state and toggling it around an await point would race under concurrent
- * requests.
+ * Default transport. With TLS verification on (the default) it is the
+ * runtime's global `fetch`: nothing about the request needs `undici`, so the
+ * package is not even loaded (LOU-D40). Only `validateSSL: false` needs a
+ * per-request TLS setting, which is scoped to a dedicated undici Agent
+ * (dispatcher) rather than the process-wide NODE_TLS_REJECT_UNAUTHORIZED env
+ * var, since the env var is global mutable state and toggling it around an
+ * await point would race under concurrent requests.
  */
 function createDirectTransport(validateSSL: boolean): { transport: HttpTransport; close: () => Promise<void> } {
+  if (validateSSL) return { transport: (url, init) => fetch(url, init), close: async () => {} };
   // undici is loaded on first request, not at import time (LOU-D19).
   let started = false;
   const load = lazyValue(async () => {
     const { Agent, fetch } = await loadOptionalPeer('undici', () => import('undici'));
     started = true;
-    return { fetch, dispatcher: new Agent({ connect: { rejectUnauthorized: validateSSL } }) };
+    return { fetch, dispatcher: new Agent({ connect: { rejectUnauthorized: false } }) };
   });
   return {
     transport: async (url, init) => {

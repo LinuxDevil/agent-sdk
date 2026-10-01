@@ -71,6 +71,7 @@ agent can be an `agent.yaml` spec served with `npx loushy dev agent.yaml`
 - **Tools**: `defineTool()` with a zod `input`; arguments are typed, validated, and run in parallel. [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md)
 - **Approvals**: `needsApproval` pauses a run; `agent.approvals.resolve()` continues it, or `approve` decides in code. [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)
 - **Sessions**: `agent.session()` keeps a multi-turn conversation in memory, files or SQLite. [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md)
+- **Structured output**: `output: zodSchema` makes the final reply a typed, validated `result.object`, with one repair step. [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)
 - **Streaming**: `agent.stream()` and `session.stream()` yield typed, versioned JSON events ready for SSE. [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)
 - **UI bindings**: `useLoushyAgent()` from `@loushy/build-ai-agent/react` turns the event stream into chat state, with approvals. [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md)
 - **Durable execution**: `sessionId` + `checkpointStore` resume a crashed or paused run without redoing finished tools. [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)
@@ -169,6 +170,7 @@ const { text } = await session.send('What is my name?'); // "Ali"
 | [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md) | `defineTool()`, validation and errors, built-in tools, `ToolRegistry` |
 | [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md) | `needsApproval`, `agent.approvals`, the `approve` callback, `resumeAfterApproval()`, stores |
 | [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md) | Multi-turn conversations, `session.stream()`, session stores, `SqliteStore` |
+| [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md) | `output: zodSchema`: typed `result.object`, the repair step, `'output-invalid'` |
 | [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md) | `agent.stream()`: the typed event schema, terminal and SSE examples |
 | [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md) | `useLoushyAgent()`: chat state from the event stream, in process or over HTTP; `reduceAgentEvents()`, `parseEventStream()` |
 | [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md) | Checkpoints, crash resume, approvals mid-batch, at-least-once tools |
@@ -310,9 +312,35 @@ try {
 }
 ```
 
-The same applies to the dependencies the SDK ships with but only loads when a
-feature needs them: `undici` (the built-in `http` tool), `dockerode`
-(`SubprocessSandbox`) and `@modelcontextprotocol/sdk` (`serveMcp`).
+### Optional peers
+
+Three heavier packages are optional peers too. A project that never uses
+Docker sandboxing, MCP or the `loushy init` questions installs none of them:
+
+| Package                     | Range     | Enables                                                                                       | Install                                          |
+| --------------------------- | --------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `dockerode`                 | `^5.0.1`  | Docker sandboxing: `SubprocessSandbox` (and `loushy doctor`'s Docker ping)                    | `npm install dockerode@^5.0.1`                   |
+| `@modelcontextprotocol/sdk` | `^1.30.1` | MCP: `serveMcp()`, `loushy mcp`, and the `Client` you connect before `loadMcpTools()`         | `npm install @modelcontextprotocol/sdk@^1.30.1`  |
+| `prompts`                   | `^2.4.2`  | The interactive questions of `loushy init` (`loushy init --yes` and flags need nothing)       | `npm install prompts@^2.4.2`                     |
+
+Like the provider packages, each is loaded on first use, never at import
+time, and a missing one fails that call with a `MissingPeerDependencyError`
+that names the feature and the exact command, for example:
+
+```text
+The optional package 'dockerode' is not installed, but Docker sandboxing (SubprocessSandbox) needs it. Run: npm install dockerode@^5.0.1
+```
+
+`npm create loushy-agent` installs `prompts` itself, so scaffolding with it
+needs nothing extra. `loushy doctor` lists every optional peer, what it
+enables and whether it is installed (a missing `dockerode` is an error only
+when the agent spec uses a sandboxed tool).
+
+`undici` and `yaml` stay regular dependencies. `yaml` parses agent specs,
+`agent.yaml` files and skills, and Node has no built-in YAML parser. `undici`
+is only loaded by the `http` tool when a request sets `validateSSL: false`
+(a per-request TLS setting that the global `fetch` cannot express); every
+other request uses the runtime's global `fetch`.
 
 ## Installing from a local build
 
@@ -735,6 +763,18 @@ in). Pauses are kept in a per-agent `InMemoryApprovalStore` unless you pass
 decides each call in code without pausing (`stream()` still ends at the
 pause). See [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md).
 
+### Structured output
+
+Pass `output: zodSchema` to `createAgent()` (or `AgentExecutor.execute()` /
+`stream()`): the final reply must be a JSON object matching the schema, and
+`send()` / `run.result` resolve with it validated as `result.object`, typed
+`z.output<typeof schema>` (`result.text` keeps the raw JSON). Tools still run
+first. Each model call carries a `responseFormat: { type: 'json', schema }`
+hint, which the `ai`-SDK providers map to JSON mode. An invalid reply gets one
+repair step listing the issues (it counts against `maxSteps`); if that is
+invalid too, the run ends with `finishReason: 'output-invalid'` and
+`outputError: { message, issues }`. See [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md).
+
 ### Skills
 
 Pass `skills: [defineSkill({ name, description, content }), ...(await loadSkills(dir))]` to
@@ -805,7 +845,9 @@ How it behaves:
 `result.finishReason` says why a run ended: the model's own reason for its last
 turn (`'stop'`, `'length'`, `'tool_calls'`, `'content_filter'`, `'error'`),
 `'awaiting-approval'` (paused on a tool call that needs a human), `'aborted'`
-(cancelled with `signal`), or `'max-steps'`. `'max-steps'` means the `maxSteps`
+(cancelled with `signal`), `'max-steps'`, or `'output-invalid'` (the reply
+did not match the `output` schema even after the repair step, see
+[Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)). `'max-steps'` means the `maxSteps`
 budget (default 10) ran out while the model still wanted to continue, so the
 reply may be empty or partial; a run that finishes naturally within the budget
 keeps its `'stop'`. Steps carried over by `initialSteps` or an approval resume
@@ -2625,8 +2667,8 @@ Workers have no Node.js builtins, so this target currently supports:
 - tools: `current-date` and `day-name`. `http` is **not** supported: its
   SSRF protection resolves the hostname via `node:dns` and checks *every*
   resolved address against a denylist before connecting (closing a
-  DNS-rebinding gap), then pins TLS settings per request via a dedicated
-  `undici` `Agent`. Workers' native `fetch()` has no equivalent hook to
+  DNS-rebinding gap), then, for `validateSSL: false`, pins that TLS setting
+  per request via a dedicated `undici` `Agent`. Workers' native `fetch()` has no equivalent hook to
   resolve a hostname up front and pin the connection to the verified IP, so
   a Workers version of this tool built on plain `fetch()` would silently
   drop that protection rather than just losing convenience functionality -
@@ -3271,8 +3313,8 @@ await AgentExecutor.execute({ agent, input, provider, toolRegistry, sandbox: new
   isolation.
 - `SubprocessSandbox` runs each command in a new, network-isolated,
   auto-removed Docker container, with no host directory mounted except the
-  `cwd` you pass. It needs a running Docker daemon and the `dockerode` package
-  (loaded on first use).
+  `cwd` you pass. It needs a running Docker daemon and the optional peer
+  `dockerode` (`npm install dockerode@^5.0.1`; loaded on first use).
 - Implement `SandboxAdapter` (`name`, `run(cmd, args, opts)`, `writeFile(path, content)`)
   for another backend.
 
@@ -4209,7 +4251,7 @@ The event types and their extra fields:
 | `error`              | `error: { name: string, message: string }` | An error. If it ends the run, `run.done` with `finishReason: 'error'` follows. A provider error retried under `surfaceRetryableProviderErrors` is followed by further steps instead. |
 | `provider.retry`     | `attempt: number`, `maxRetries: number`, `delayMs: number`, `error: { message: string, category?: string }`, `provider: string` | A model call failed and is retried after `delayMs` (`createAgent({ retry })` or any `withRetry()` provider). `attempt` is the attempt that failed (1 = first); `category` is `'rate-limit'`, `'timeout'`, ... and absent when unknown (a 5xx, for example). |
 | `provider.fallback`  | `from: string`, `to: string`, `error: { message: string }` | A model call still failed after its retries and the next provider takes over (`createAgent({ fallbackModels })` or any `withFallback()` provider). `from` and `to` are provider names. |
-| `run.done`           | `finishReason: string`, `text: string`, `usage?: { promptTokens, completionTokens, totalTokens }` | Last event of every run, exactly once, including aborted, failed and awaiting-approval runs. `finishReason` and `text` match `run.result` (`'max-steps'` when the `maxSteps` budget ran out while the model still wanted to continue); a failed run has `finishReason: 'error'`, `text: ''` and no `usage`. |
+| `run.done`           | `finishReason: string`, `text: string`, `usage?: { promptTokens, completionTokens, totalTokens }`, `object?: unknown` | Last event of every run, exactly once, including aborted, failed and awaiting-approval runs. `finishReason` and `text` match `run.result` (`'max-steps'` when the `maxSteps` budget ran out while the model still wanted to continue); a failed run has `finishReason: 'error'`, `text: ''` and no `usage`. `object` is `run.result`'s validated `object` for an agent with an `output` schema (see [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)), absent otherwise. |
 
 Optional fields are left out when they have no value. They are never
 `undefined`, so `JSON.parse(JSON.stringify(event))` returns an equal object.
@@ -4445,6 +4487,91 @@ for await (const event of run) {
 const paused = await run.result; // paused.finishReason === 'awaiting-approval'
 ```
 
+# Structured output
+
+Source: docs/structured-output.md
+
+Give an agent a zod schema as `output` and its final reply becomes a typed,
+validated object: `result.object`. The agent can still call tools first; only
+the final answer has to match the schema.
+
+```ts
+import { z } from 'zod';
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  instructions: 'You report the weather.',
+  output: z.object({ city: z.string(), tempC: z.number(), summary: z.string() }),
+});
+
+const result = await agent.send('Weather in Paris?');
+if (result.object) {
+  console.log(result.object.tempC); // typed: number
+} else {
+  console.error(result.finishReason, result.outputError?.issues); // 'output-invalid', [{ path, message }]
+}
+```
+
+`result.object` is typed as `z.output<typeof schema>`, so zod defaults and
+transforms apply. `result.text` keeps the raw JSON text the model wrote.
+
+## How it works
+
+1. The system prompt gets an `## Output format` section asking for the final
+   answer as only a JSON object matching the schema, rendered as JSON Schema.
+2. Every model call carries `responseFormat: { type: 'json', schema }` on
+   `GenerateOptions`. It is a hint: the built-in `ai`-SDK providers turn on
+   the model's JSON mode (with the schema, for models that support structured
+   outputs); a custom provider may use it or ignore it.
+3. When the model replies without tool calls, the reply is parsed as JSON (a
+   ```` ```json ```` code fence around it is tolerated) and validated with
+   the schema.
+4. If it is invalid, the model gets one repair step: a user message
+   starting with `[output-invalid]` that lists the issues, for example
+   `1 issue (tempC: Expected number, received string)`. The repair step
+   counts against `maxSteps`, and there is none when the budget is spent.
+5. Still invalid, the run resolves (it does not reject) with
+   `finishReason: 'output-invalid'`, no `object`, and `outputError`:
+   `{ message, issues: [{ path, message }] }`.
+
+## Streaming
+
+`agent.stream()` works the same way: `run.result` resolves with `object`,
+and the final `run.done` event carries `object` (JSON-encoded) when the
+reply was valid. The repair step shows up as one more
+`step.start` / `step.done` pair. See [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md).
+
+## Without createAgent()
+
+`AgentExecutor.execute()` and `AgentExecutor.stream()` take the same
+`output` option. There `result.object` is `unknown`; parse it again with your
+schema, or use `createAgent()` for the inferred type.
+
+```ts
+import { z } from 'zod';
+import { AgentBuilder, AgentExecutor, createMockProvider } from '@loushy/build-ai-agent';
+
+const Ticket = z.object({ title: z.string(), priority: z.enum(['low', 'high']) });
+const agent = AgentBuilder.create().setName('triage').setPrompt('You triage bug reports.').build();
+const result = await AgentExecutor.execute({ agent, input: 'The app crashes on login', provider: createMockProvider(), output: Ticket });
+const ticket = result.object === undefined ? undefined : Ticket.parse(result.object);
+```
+
+## Testing
+
+With `mockModel`, script the JSON text the model would write:
+
+```ts
+import { z } from 'zod';
+import { createAgent } from '@loushy/build-ai-agent';
+import { mockModel } from '@loushy/build-ai-agent/testing';
+
+const agent = createAgent({ provider: mockModel(['{"city":"Paris","tempC":21}']), output: z.object({ city: z.string(), tempC: z.number() }) });
+const { object } = await agent.send('Weather in Paris?');
+console.log(object?.city); // 'Paris'
+```
+
 # Sub-agents
 
 Source: docs/sub-agents.md
@@ -4504,8 +4631,10 @@ With `subagents`, the lead agent gets:
    sub-agent (`- name: description`), plus a sentence saying that a sub-agent
    sees only the prompt it is given.
 2. ONE tool, `task`, with the input
-   `{ agent: <one of the names>, prompt: string, description: string }`
+   `{ agent: <one of the names>, prompt: string, description: string, background?: boolean }`
    (`description` is a 3-5 word label used in events and hooks).
+3. Three tools for background tasks: `agent_status`, `agent_await` and
+   `agent_cancel` (see [Background sub-agents](#background-sub-agents)).
 
 When the lead calls `task`, the named sub-agent runs on `prompt` alone. The
 tool result is the sub-agent's final text plus a small footer the lead can
@@ -4525,7 +4654,7 @@ the valid names. Sub-agent token usage is added to the lead's `result.usage`.
 
 Errors at setup time are thrown with a fix: a sub-agent without a
 `description`, a value that is not a `createAgent()` agent, or a tool of your
-own already named `task`.
+own already named `task` (or `agent_status`, `agent_await`, `agent_cancel`).
 
 ## Parallel tasks
 
@@ -4533,6 +4662,56 @@ Tool calls of one model turn run concurrently (see `toolConcurrency`), so when
 the lead calls `task` several times in one turn, those sub-agents run in
 parallel. Results reach the lead's transcript in the order the model made the
 calls. Cap it with `toolConcurrency` on the lead (`1` runs them one at a time).
+
+## Background sub-agents
+
+With `background: true`, `task` starts the sub-agent and returns at once with
+`{ taskId, status: 'running', agent }`, so the lead can keep working (or start
+more tasks) while it runs. The lead then uses:
+
+| Tool | Input | Result |
+| --- | --- | --- |
+| `agent_status` | `{ taskId? }` | `{ tasks: [{ taskId, agent, status, elapsedMs, approvalId?, toolName?, error? }] }` for one task or all of them. `status` is `queued`, `running`, `done`, `failed`, `cancelled` or `awaiting-approval`. |
+| `agent_await` | `{ taskId }` or `{ taskIds }`, optional `timeoutMs` | Waits until the task(s) end. A `done` task carries `result`: the same text (with footer) a synchronous `task` returns. A `failed` one carries `error`. A task still running after `timeoutMs` reports `status: 'timeout'`. With `taskIds` the result is `{ tasks: [...] }`. |
+| `agent_cancel` | `{ taskId }` | Cancels a queued or running task (its run is aborted) and returns its status. |
+
+At most `maxConcurrent` background sub-agents of one lead run run at once
+(default 3); further `background: true` calls get `status: 'queued'` and start
+as slots free. Set it with `withSubagentOptions()`, which returns the same
+`subagents` value:
+
+```ts
+import { createAgent, withSubagentOptions } from '@loushy/build-ai-agent';
+
+const researcher = createAgent({ provider, instructions: 'You research.', description: 'Finds and summarizes sources' });
+
+const lead = createAgent({
+  provider,
+  instructions: 'You coordinate research.',
+  subagents: withSubagentOptions({ researcher }, { maxConcurrent: 2 }),
+});
+```
+
+A background sub-agent inherits from the lead run like a synchronous one
+(hooks, tracing, `onEvent`, usage roll-up), and `maxSubagentDepth` applies the
+same way. Aborting the lead's signal cancels its background sub-agents, queued
+or running.
+
+Limits (follow-up LOU-Y4.2, which needs a run-end hook in the executor):
+
+- Background tasks belong to one `execute()` call. When the lead's run
+  finishes, sub-agents still running are **not** cancelled or awaited yet:
+  they run to completion on their own, and their events still reach
+  `onEvent`. Have the lead collect them with `agent_await` before its final
+  answer (the system prompt tells it to), or abort the signal you passed to
+  the run to stop them.
+- A background sub-agent that needs approval stops with
+  `status: 'awaiting-approval'` (with the child's `approvalId` and
+  `toolName`); its call does not run, and it cannot be resumed through the
+  approval store. Run that task synchronously (`background: false`) when it
+  may need approval.
+- A lead that pauses for approval and is resumed starts with no background
+  tasks: those started before the pause cannot be observed afterwards.
 
 ## Dynamic catalogs
 

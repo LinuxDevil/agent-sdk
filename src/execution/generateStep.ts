@@ -22,6 +22,7 @@ import {
 } from './errors';
 import type { ExecuteOptions } from './AgentExecutor';
 import { runEventsOf } from './agentRun';
+import { outputResponseFormat } from './structuredOutput';
 
 /**
  * Build tools from agent and registry
@@ -97,6 +98,8 @@ export async function prepareGenerateRequest(
     temperature,
     maxTokens,
     tools: tools.length > 0 ? tools : undefined,
+    // LOU-V4: a JSON-mode hint for runs with an `output` schema.
+    ...(options.output ? { responseFormat: outputResponseFormat(options.output) } : {}),
     // LOU-V1: lets the provider cancel the in-flight request.
     ...(signal ? { signal } : {}),
   };

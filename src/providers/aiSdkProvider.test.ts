@@ -117,6 +117,24 @@ describe('AiSdkProvider', () => {
     expect(streamTextMock.mock.calls[0][0].abortSignal).toBe(signal);
   });
 
+  it('LOU-V4: maps responseFormat to a JSON-mode experimental_output that leaves prompt and text alone', async () => {
+    generateTextMock.mockResolvedValue(textResult('stop'));
+    const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });
+    const schema = { type: 'object', properties: { a: { type: 'number' } } };
+
+    await provider.generate({ messages: [] });
+    await provider.generate({ messages: [], responseFormat: { type: 'json', schema } });
+
+    expect(generateTextMock.mock.calls[0][0].experimental_output).toBeUndefined();
+    const output = generateTextMock.mock.calls[1][0].experimental_output;
+    expect(output.type).toBe('object');
+    expect(output.responseFormat({ model: { supportsStructuredOutputs: true } })).toEqual({ type: 'json', schema });
+    expect(output.responseFormat({ model: { supportsStructuredOutputs: false } })).toEqual({ type: 'json', schema: undefined });
+    expect(output.injectIntoSystemPrompt({ system: undefined, model: {} })).toBeUndefined();
+    expect(output.parsePartial({ text: '{"a"' })).toEqual({ partial: '{"a"' });
+    expect(output.parseOutput({ text: 'raw' }, {})).toBe('raw');
+  });
+
   it.each([
     ['stop', 'stop'],
     ['length', 'length'],

@@ -12,13 +12,16 @@ import type { ToolRegistry } from '../tools/ToolRegistry';
 import { defineTool, type DefinedTool } from '../tools/defineTool';
 import { withPromptTool } from '../skills/withSkills';
 import { runSubagent, type SubagentSpec } from '../execution/delegation';
-import { subagentBudget } from '../execution/subagentRuntime';
+import { bindToolCallScope, extendAgent, subagentBudget, toolCallScopeOf } from '../execution/subagentRuntime';
 import { isPropagatingToolError } from '../execution/propagatingToolError';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import type { SubagentCatalog, SubagentSummary, Subagents } from './types';
+import { BackgroundTasks, subagentOptionsOf } from './backgroundTasks';
 
 /** Name of the tool the lead model delegates with. */
 const TASK_TOOL = 'task';
+/** Tools that observe and steer background tasks (LOU-Y4), registered with `task`. */
+const BACKGROUND_TOOLS = ['agent_status', 'agent_await', 'agent_cancel'] as const;
 
 /** Same default as `ExecuteOptions.maxSteps`. */
 const DEFAULT_MAX_STEPS = 10;
@@ -126,7 +129,7 @@ function subagentsPromptBlock(summaries: readonly SubagentSummary[]): string {
   return [
     '## Available sub-agents',
     '',
-    `Delegate a self-contained task to one of these with the \`${TASK_TOOL}\` tool. A sub-agent sees only the prompt you give it, not this conversation, so include everything it needs. Several \`${TASK_TOOL}\` calls in one turn run in parallel.`,
+    `Delegate a self-contained task to one of these with the \`${TASK_TOOL}\` tool. A sub-agent sees only the prompt you give it, not this conversation, so include everything it needs. Several \`${TASK_TOOL}\` calls in one turn run in parallel. With \`background: true\` a task runs while you keep working: check it with \`agent_status\`, collect its answer with \`agent_await\` before you finish, or stop it with \`agent_cancel\`.`,
     '',
     ...summaries.map((s) => `- ${s.name}: ${s.description.replace(/\s+/g, ' ').trim()}`),
   ].join('\n');
@@ -153,13 +156,10 @@ function taskResult(name: string, result: ExecutionResult, maxSteps: number): st
   return result.text ? `${result.text}\n\n${footer}` : footer;
 }
 
-async function runTask(
-  subagents: Subagents,
-  names: readonly string[],
-  args: { agent: string; prompt: string; description: string },
-  toolOptions: { abortSignal?: AbortSignal } | undefined
-): Promise<string> {
-  const { spec } = await resolveSubagent(subagents, args.agent, names);
+type TaskArgs = { agent: string; prompt: string; description: string; background?: boolean };
+type ToolOptions = { abortSignal?: AbortSignal } | undefined;
+
+async function runTask(spec: SubagentSpec, args: TaskArgs, toolOptions: ToolOptions): Promise<string> {
   let result: ExecutionResult;
   try {
     result = await runSubagent(spec, {
@@ -175,7 +175,33 @@ async function runTask(
   return taskResult(args.agent, result, spec.maxSteps ?? DEFAULT_MAX_STEPS);
 }
 
-function createTaskTool(subagents: Subagents, summaries: readonly SubagentSummary[]): DefinedTool {
+/** The tool options a background child runs with: the same parent run, its own abort signal. */
+function withAbortSignal(toolOptions: ToolOptions, abortSignal: AbortSignal): { abortSignal: AbortSignal } {
+  const options = { ...toolOptions, abortSignal };
+  bindToolCallScope(options, toolCallScopeOf(toolOptions));
+  return options;
+}
+
+async function startTask(
+  subagents: Subagents,
+  names: readonly string[],
+  background: BackgroundTasks,
+  args: TaskArgs,
+  toolOptions: ToolOptions
+): Promise<unknown> {
+  const { spec } = await resolveSubagent(subagents, args.agent, names);
+  if (!args.background) {
+    return runTask(spec, args, toolOptions);
+  }
+  const { taskId, status, agent } = background.start(
+    args.agent,
+    (signal) => runTask(spec, args, withAbortSignal(toolOptions, signal)),
+    toolOptions?.abortSignal
+  );
+  return { taskId, status, agent };
+}
+
+function createTaskTool(subagents: Subagents, summaries: readonly SubagentSummary[], background: BackgroundTasks): DefinedTool {
   const names = summaries.map((s) => s.name);
   return defineTool({
     name: TASK_TOOL,
@@ -186,16 +212,54 @@ function createTaskTool(subagents: Subagents, summaries: readonly SubagentSummar
       agent: z.enum(names as [string, ...string[]]).describe('Name of the sub-agent, exactly as listed'),
       prompt: z.string().describe('Complete instructions for the sub-agent, including all context it needs'),
       description: z.string().describe('A short (3-5 word) label for this task'),
+      background: z
+        .boolean()
+        .optional()
+        .describe('true: start the sub-agent and return a taskId at once; collect the answer later with agent_await'),
     }),
-    execute: (args, ctx) => runTask(subagents, names, args, ctx),
+    execute: (args, ctx) => startTask(subagents, names, background, args, ctx),
   });
 }
 
-/** Throws when the agent already has a tool named `task`. */
+function createBackgroundTools(background: BackgroundTasks): DefinedTool[] {
+  const taskId = z.string().describe('The taskId returned by task with background: true');
+  return [
+    defineTool({
+      name: 'agent_status',
+      description: 'Status of one background task, or of all of them: queued, running, done, failed, cancelled or awaiting-approval, with elapsedMs.',
+      input: z.object({ taskId: taskId.optional() }),
+      execute: ({ taskId: id }) => ({ tasks: background.status(id) }),
+    }),
+    defineTool({
+      name: 'agent_await',
+      description: "Waits for background tasks and returns each one's answer (or failure). Tasks still running after timeoutMs report status 'timeout'.",
+      input: z.object({
+        taskId: taskId.optional(),
+        taskIds: z.array(z.string()).optional().describe('Several taskIds to wait for'),
+        timeoutMs: z.number().int().positive().optional().describe('Stop waiting after this many milliseconds'),
+      }),
+      execute: async (args, ctx) => {
+        const ids = args.taskIds ?? (args.taskId === undefined ? [] : [args.taskId]);
+        if (ids.length === 0) throw new Error('agent_await: pass taskId or taskIds.');
+        const views = await background.wait(ids, args.timeoutMs, ctx.abortSignal);
+        return args.taskIds ? { tasks: views } : views[0];
+      },
+    }),
+    defineTool({
+      name: 'agent_cancel',
+      description: 'Cancels a queued or running background task.',
+      input: z.object({ taskId }),
+      execute: ({ taskId: id }) => background.cancel(id),
+    }),
+  ];
+}
+
+/** Throws when the agent already has a tool named `task` (or one of the background-task tools). */
 export function assertNoTaskTool(agent: AgentConfig, toolRegistry: ToolRegistry | undefined): void {
-  if (toolRegistry?.has(TASK_TOOL) || agent.tools?.[TASK_TOOL]) {
+  const taken = [TASK_TOOL, ...BACKGROUND_TOOLS].find((name) => toolRegistry?.has(name) || agent.tools?.[name]);
+  if (taken) {
     throw new Error(
-      `subagents: a tool named '${TASK_TOOL}' is already registered, but agents with sub-agents get one automatically. ` +
+      `subagents: a tool named '${taken}' is already registered, but agents with sub-agents get one automatically. ` +
         `Rename your tool, or remove the 'subagents' option.`
     );
   }
@@ -221,5 +285,12 @@ export async function withSubagents(
   if (summaries.length === 0) {
     return { agent, toolRegistry };
   }
-  return withPromptTool(agent, toolRegistry, createTaskTool(subagents, summaries), subagentsPromptBlock(summaries));
+  const background = new BackgroundTasks(subagentOptionsOf(subagents).maxConcurrent);
+  const extended = withPromptTool(agent, toolRegistry, createTaskTool(subagents, summaries, background), subagentsPromptBlock(summaries));
+  const tools = { ...extended.agent.tools };
+  for (const tool of createBackgroundTools(background)) {
+    extended.toolRegistry.register(tool);
+    tools[tool.name] = { tool: tool.name };
+  }
+  return { agent: extendAgent(extended.agent, { tools }), toolRegistry: extended.toolRegistry };
 }

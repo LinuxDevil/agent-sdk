@@ -1,0 +1,198 @@
+import { describe, it, expect } from 'vitest';
+import { z } from 'zod';
+import { createAgent } from '../createAgent';
+import { defineTool } from '../tools/defineTool';
+import { mockModel, type MockTurn } from '../testing';
+import type { Message } from '../providers';
+import { withSubagentOptions } from './backgroundTasks';
+
+const bgTask = (agent: string, prompt: string) => ({
+  name: 'task',
+  args: { agent, prompt, description: `${agent} task`, background: true },
+});
+
+/** The parsed results of the lead's tool calls named `name`, in order. */
+function results(messages: readonly Message[], name: string): Record<string, unknown>[] {
+  return messages
+    .filter((m) => m.role === 'tool' && m.toolName === name)
+    .map((m) => JSON.parse(m.content as string) as Record<string, unknown>);
+}
+
+/** A child tool that blocks until `release()` or until its run is aborted. */
+function gate() {
+  let release!: () => void;
+  const opened = new Promise<void>((resolve) => (release = resolve));
+  let onAbort!: () => void;
+  const aborted = new Promise<void>((resolve) => (onAbort = resolve));
+  let onEnter!: () => void;
+  const entered = new Promise<void>((resolve) => (onEnter = resolve));
+  const tool = defineTool({
+    name: 'wait',
+    description: 'Waits',
+    input: z.object({}),
+    execute: (_args, ctx) =>
+      new Promise<string>((resolve, reject) => {
+        onEnter();
+        void opened.then(() => resolve('waited'));
+        ctx.abortSignal?.addEventListener('abort', () => {
+          onAbort();
+          reject(new Error('aborted'));
+        });
+      }),
+  });
+  return { tool, release, aborted, entered };
+}
+
+/** A sub-agent that calls `wait` once, then answers with `answer` (`#n` for its n-th run). */
+function waitingChild(tool: ReturnType<typeof gate>['tool'], answer = 'answer') {
+  let runs = 0;
+  const turn: MockTurn = (req) =>
+    req.messages.at(-1)?.role === 'tool' ? `${answer} #${runs}` : (runs++, { toolCalls: [{ name: 'wait' }] });
+  return createAgent({ provider: mockModel([turn], { onExhausted: 'repeat-last' }), tools: [tool], description: 'Researches' });
+}
+
+describe('background sub-agents (LOU-Y4)', () => {
+  it('returns a taskId at once; agent_status and agent_await report the answer', async () => {
+    const { tool, release } = gate();
+    const researcher = waitingChild(tool, 'Paris');
+    const leadModel = mockModel([
+      { toolCalls: [bgTask('researcher', 'capital of France?')] },
+      { toolCalls: [{ name: 'agent_status', args: {} }] },
+      () => (release(), { toolCalls: [{ name: 'agent_await', args: { taskId: 'task_1' } }] }),
+      'done',
+    ]);
+    const lead = createAgent({ provider: leadModel, subagents: { researcher } });
+
+    const result = await lead.send('go');
+
+    expect(results(result.messages, 'task')).toEqual([{ taskId: 'task_1', status: 'running', agent: 'researcher' }]);
+    const [status] = results(result.messages, 'agent_status');
+    expect(status.tasks).toEqual([{ taskId: 'task_1', agent: 'researcher', status: 'running', elapsedMs: expect.any(Number) }]);
+    expect(results(result.messages, 'agent_await')[0]).toMatchObject({
+      taskId: 'task_1',
+      status: 'done',
+      result: "Paris #1\n\n[sub-agent 'researcher': 2 step(s), finish reason 'stop']",
+    });
+    expect(leadModel.calls[0].tools?.map((t) => t.function.name)).toEqual(['task', 'agent_status', 'agent_await', 'agent_cancel']);
+    expect(result.text).toBe('done');
+  });
+
+  it('queues tasks beyond maxConcurrent and starts them as slots free', async () => {
+    const { tool, release } = gate();
+    const researcher = waitingChild(tool);
+    const leadModel = mockModel([
+      { toolCalls: [bgTask('researcher', 'a'), bgTask('researcher', 'b')] },
+      { toolCalls: [{ name: 'agent_status', args: {} }] },
+      () => (release(), { toolCalls: [{ name: 'agent_await', args: { taskIds: ['task_1', 'task_2'] } }] }),
+      'done',
+    ]);
+    const lead = createAgent({ provider: leadModel, subagents: withSubagentOptions({ researcher }, { maxConcurrent: 1 }) });
+
+    const result = await lead.send('go');
+
+    expect(results(result.messages, 'task').map((r) => r.status)).toEqual(['running', 'queued']);
+    const [status] = results(result.messages, 'agent_status');
+    expect((status.tasks as { status: string }[]).map((t) => t.status)).toEqual(['running', 'queued']);
+    const [awaited] = results(result.messages, 'agent_await');
+    expect((awaited.tasks as { status: string; result: string }[]).map((t) => [t.status, t.result.split('\n')[0]])).toEqual([
+      ['done', 'answer #1'],
+      ['done', 'answer #2'],
+    ]);
+  });
+
+  it('agent_await times out on a running task, and agent_cancel stops it', async () => {
+    const { tool, aborted } = gate();
+    const lead = createAgent({
+      provider: mockModel([
+        { toolCalls: [bgTask('researcher', 'a')] },
+        { toolCalls: [{ name: 'agent_await', args: { taskId: 'task_1', timeoutMs: 5 } }] },
+        { toolCalls: [{ name: 'agent_cancel', args: { taskId: 'task_1' } }] },
+        { toolCalls: [{ name: 'agent_await', args: { taskId: 'task_1' } }] },
+        'done',
+      ]),
+      subagents: { researcher: waitingChild(tool) },
+    });
+
+    const result = await lead.send('go');
+
+    expect(results(result.messages, 'agent_await').map((r) => r.status)).toEqual(['timeout', 'cancelled']);
+    expect(results(result.messages, 'agent_cancel')[0]).toMatchObject({ taskId: 'task_1', status: 'cancelled' });
+    await aborted;
+  });
+
+  it('aborting the lead cancels its background sub-agents', async () => {
+    const { tool, aborted, entered } = gate();
+    const controller = new AbortController();
+    const abortOnceRunning = async () => {
+      await entered;
+      controller.abort();
+      return 'stopping';
+    };
+    const lead = createAgent({
+      provider: mockModel([{ toolCalls: [bgTask('researcher', 'a')] }, abortOnceRunning]),
+      subagents: { researcher: waitingChild(tool) },
+    });
+
+    await lead.send('go', { signal: controller.signal });
+
+    // The child's in-flight tool call sees the abort (the test times out otherwise).
+    await aborted;
+  });
+
+  it('reports a sub-agent paused for approval as awaiting-approval, with its approvalId', async () => {
+    let ran = false;
+    const deploy = defineTool({ name: 'deploy', description: 'Deploys', input: z.object({}), needsApproval: true, execute: () => (ran = true) });
+    const researcher = createAgent({ provider: mockModel([{ toolCalls: [{ name: 'deploy' }] }]), tools: [deploy], description: 'Deploys' });
+    const lead = createAgent({
+      provider: mockModel([
+        { toolCalls: [bgTask('researcher', 'ship it')] },
+        { toolCalls: [{ name: 'agent_await', args: { taskId: 'task_1' } }] },
+        'done',
+      ]),
+      subagents: { researcher },
+    });
+
+    const result = await lead.send('go');
+
+    expect(results(result.messages, 'agent_await')[0]).toMatchObject({
+      status: 'awaiting-approval',
+      toolName: 'deploy',
+      approvalId: expect.any(String),
+    });
+    expect(ran).toBe(false);
+    expect(result.text).toBe('done');
+  });
+
+  it('still applies maxSubagentDepth to background sub-agents', async () => {
+    const researcherModel = mockModel(['researched']);
+    const researcher = createAgent({
+      provider: researcherModel,
+      description: 'Researches',
+      subagents: { deeper: createAgent({ provider: mockModel(['x']), description: 'Deeper' }) },
+    });
+    const lead = createAgent({
+      provider: mockModel([
+        { toolCalls: [bgTask('researcher', 'a')] },
+        { toolCalls: [{ name: 'agent_await', args: { taskId: 'task_1' } }] },
+        'done',
+      ]),
+      subagents: { researcher },
+    });
+
+    const result = await lead.send('go');
+
+    expect(researcherModel.calls[0].tools).toBeUndefined();
+    expect(results(result.messages, 'agent_await')[0]).toMatchObject({ status: 'done' });
+  });
+
+  it('reports unknown task ids and bad options', async () => {
+    const lead = createAgent({
+      provider: mockModel([{ toolCalls: [{ name: 'agent_cancel', args: { taskId: 'task_9' } }] }, 'ok']),
+      subagents: { researcher: createAgent({ provider: mockModel([]), description: 'Researches' }) },
+    });
+    const [message] = (await lead.send('go')).messages.filter((m) => m.role === 'tool');
+    expect(message.isError).toBe(true);
+    expect(message.content).toContain("Unknown background task 'task_9'");
+    expect(() => withSubagentOptions({}, { maxConcurrent: 0 })).toThrow(/maxConcurrent/);
+  });
+});
