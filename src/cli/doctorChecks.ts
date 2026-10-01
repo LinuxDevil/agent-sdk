@@ -2,6 +2,7 @@
  * The individual `loushy doctor` checks. Each is a small function over the
  * injected DoctorEnvironment returning one or more DoctorCheck lines.
  */
+import { FEATURE_PEERS } from '../providers/optionalPeer';
 import { listProviders, modelFromEnv, type ProviderInfo } from '../providers/providerSpec';
 import type { DoctorCheck, DoctorEnvironment } from './doctorTypes';
 import { satisfiesRange } from './versionRange';
@@ -68,39 +69,55 @@ export function checkRequiredPeers(env: DoctorEnvironment): DoctorCheck[] {
 }
 
 interface OptionalPeer {
-  providers: string[];
-  /** The `npm install` argument from providerSpec.ts, e.g. `@ai-sdk/openai@^0.0.42`. */
+  title: string;
+  /** What the package enables, appended to the finding (feature peers only). */
+  enables?: string;
+  /** The `npm install` argument, e.g. `@ai-sdk/openai@^0.0.42`. */
   install: string;
+  /** True when the agent spec cannot work without it (not installed becomes a failure). */
+  required: boolean;
 }
 
-/** The optional peer packages behind the providers, each with the providers that need it. */
-function optionalPeerProviders(): Map<string, OptionalPeer> {
+/** The optional peer packages behind the providers; required when the spec uses one of its providers. */
+function providerPeers(needs: SpecNeeds): Map<string, OptionalPeer> {
   const peers = new Map<string, OptionalPeer>();
   for (const info of listProviders()) {
-    const existing = peers.get(info.peerPackage);
     peers.set(info.peerPackage, {
-      providers: [...(existing?.providers ?? []), info.name],
+      title: `Provider package ${info.peerPackage}`,
       install: info.peerInstall,
+      required: (peers.get(info.peerPackage)?.required ?? false) || needs.providers.has(info.name),
     });
   }
   return peers;
 }
 
-function checkOptionalPeer(
-  env: DoctorEnvironment,
-  name: string,
-  peer: OptionalPeer,
-  needs: SpecNeeds
-): DoctorCheck {
-  const required = peer.providers.some((provider) => needs.providers.has(provider));
+/** The optional peers behind SDK features (LOU-D40); only Docker can be known from the spec. */
+function featurePeers(needs: SpecNeeds): Map<string, OptionalPeer> {
+  return new Map(
+    Object.entries(FEATURE_PEERS).map(([name, peer]) => [
+      name,
+      {
+        title: `Optional package ${name}`,
+        enables: peer.feature,
+        install: `${name}@${peer.range}`,
+        required: name === 'dockerode' && needs.usesSandbox,
+      },
+    ])
+  );
+}
+
+function checkOptionalPeer(env: DoctorEnvironment, name: string, peer: OptionalPeer): DoctorCheck {
   const fix = `npm install ${peer.install}`;
-  const base = { id: `optional-peer.${name}`, title: `Provider package ${name}` };
+  const base = { id: `optional-peer.${name}`, title: peer.title };
+  const enables = peer.enables ? ` - enables ${peer.enables}` : '';
   const version = env.resolvePackageVersion(name);
   if (version === null) {
     return {
       ...base,
-      status: required ? 'fail' : 'warn',
-      finding: required ? 'not installed, and the agent spec needs it' : 'not installed (optional)',
+      status: peer.required ? 'fail' : 'warn',
+      finding: peer.required
+        ? `not installed, and the agent spec needs it${enables}`
+        : `not installed (optional)${enables}`,
       fix,
     };
   }
@@ -108,16 +125,16 @@ function checkOptionalPeer(
   if (range && !satisfiesRange(version, range)) {
     return {
       ...base,
-      status: required ? 'fail' : 'warn',
-      finding: `${version} installed, but the SDK expects ${range}`,
+      status: peer.required ? 'fail' : 'warn',
+      finding: `${version} installed, but the SDK expects ${range}${enables}`,
       fix,
     };
   }
-  return { ...base, status: 'ok', finding: `${version} installed` };
+  return { ...base, status: 'ok', finding: `${version} installed${enables}` };
 }
 
 export function checkOptionalPeers(env: DoctorEnvironment, needs: SpecNeeds): DoctorCheck[] {
-  return [...optionalPeerProviders()].map(([name, peer]) => checkOptionalPeer(env, name, peer, needs));
+  return [...providerPeers(needs), ...featurePeers(needs)].map(([name, peer]) => checkOptionalPeer(env, name, peer));
 }
 
 function checkApiKey(env: DoctorEnvironment, info: ProviderInfo, needs: SpecNeeds): DoctorCheck {

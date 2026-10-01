@@ -12,6 +12,9 @@ const INSTALLED: Record<string, string> = {
   '@ai-sdk/openai': '0.0.42',
   '@ai-sdk/anthropic': '0.0.42',
   'ollama-ai-provider': '1.2.0',
+  dockerode: '5.0.1',
+  '@modelcontextprotocol/sdk': '1.30.1',
+  prompts: '2.4.2',
 };
 
 function makeEnv(overrides: Partial<DoctorEnvironment> = {}): DoctorEnvironment {
@@ -26,6 +29,9 @@ function makeEnv(overrides: Partial<DoctorEnvironment> = {}): DoctorEnvironment 
         '@ai-sdk/openai': '^0.0.42',
         '@ai-sdk/anthropic': '^0.0.42',
         'ollama-ai-provider': '^1.2.0',
+        dockerode: '^5.0.1',
+        '@modelcontextprotocol/sdk': '^1.30.1',
+        prompts: '^2.4.2',
       },
     },
     resolvePackageVersion: (name) => INSTALLED[name] ?? null,
@@ -118,6 +124,45 @@ describe('optional provider peers', () => {
       loadSpec: () => spec({ provider: { type: 'ollama', model: 'llama3' } }),
     });
     expect((await check(needed, 'optional-peer.ollama-ai-provider')).status).toBe('fail');
+  });
+});
+
+describe('optional feature peers (LOU-D40)', () => {
+  const without = (missing: string) => (n: string) => (n === missing ? null : INSTALLED[n] ?? null);
+
+  it.each([
+    ['dockerode', 'Docker sandboxing'],
+    ['@modelcontextprotocol/sdk', 'MCP'],
+    ['prompts', 'loushy init'],
+  ])('%s: ok line says what it enables', async (name, enables) => {
+    const result = await check(makeEnv(), `optional-peer.${name}`);
+    expect(result.status).toBe('ok');
+    expect(result.finding).toContain(enables);
+  });
+
+  it.each([
+    ['dockerode', 'npm install dockerode@^5.0.1'],
+    ['@modelcontextprotocol/sdk', 'npm install @modelcontextprotocol/sdk@^1.30.1'],
+    ['prompts', 'npm install prompts@^2.4.2'],
+  ])('%s: warn with the exact install command when missing', async (name, fix) => {
+    const result = await check(makeEnv({ resolvePackageVersion: without(name) }), `optional-peer.${name}`);
+    expect(result.status).toBe('warn');
+    expect(result.fix).toBe(fix);
+  });
+
+  it('dockerode fails when missing and the spec uses a sandboxed tool', async () => {
+    const env = makeEnv({
+      resolvePackageVersion: without('dockerode'),
+      specPath: 'a.yaml',
+      loadSpec: () => spec({ tools: ['sandboxed'] }),
+      resolveTool: () => ({ requiresSandbox: true }),
+    });
+    expect((await check(env, 'optional-peer.dockerode')).status).toBe('fail');
+  });
+
+  it('warns on an out-of-range version', async () => {
+    const old = (n: string) => (n === 'prompts' ? '1.0.0' : INSTALLED[n] ?? null);
+    expect((await check(makeEnv({ resolvePackageVersion: old }), 'optional-peer.prompts')).finding).toContain('expects ^2.4.2');
   });
 });
 
@@ -321,6 +366,9 @@ describe('report, rendering and exit codes', () => {
       [ ok ] Provider package @ai-sdk/anthropic: 0.0.42 installed
       [warn] Provider package ollama-ai-provider: not installed (optional)
              fix: npm install ollama-ai-provider@^1.2.0
+      [ ok ] Optional package dockerode: 5.0.1 installed - enables Docker sandboxing (SubprocessSandbox)
+      [ ok ] Optional package @modelcontextprotocol/sdk: 1.30.1 installed - enables MCP (serveMcp, \`loushy mcp\` and MCP client connections)
+      [ ok ] Optional package prompts: 2.4.2 installed - enables the interactive prompts of \`loushy init\` (pass --yes to skip them)
       [ ok ] openai (OPENAI_API_KEY): set
       [warn] anthropic (ANTHROPIC_API_KEY): not set
              fix: Set ANTHROPIC_API_KEY in your environment, e.g. export ANTHROPIC_API_KEY=<your key>
@@ -330,7 +378,7 @@ describe('report, rendering and exit codes', () => {
       [ ok ] Default provider for createAgent(): would use 'openai/gpt-4o-mini'
       [ ok ] Docker: daemon not reachable (only needed for sandboxed tools; none configured)
 
-      8 ok, 3 warnings, 1 failure"
+      11 ok, 3 warnings, 1 failure"
     `);
     expect(text).not.toMatch(/[^\x20-\x7e\n]/);
   });

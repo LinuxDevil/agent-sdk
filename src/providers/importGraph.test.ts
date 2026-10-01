@@ -19,6 +19,7 @@ const NEVER_LOADED_AT_IMPORT = [
   'undici',
   'dockerode',
   '@modelcontextprotocol/sdk',
+  'prompts', // LOU-D40: only `loushy init`'s interactive questions use it, on first ask
   'node:sqlite', // LOU-W5: only the lazily-loaded /sqlite subpath may use it, and only when a store is constructed
 ];
 
