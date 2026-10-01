@@ -87,7 +87,7 @@ function sortKeys(record: Record<string, unknown>): Record<string, unknown> {
  * Reduce any value to plain, key-sorted JSON. Zod schemas become a
  * JSON-schema-ish fingerprint; functions and `undefined` are dropped.
  */
-export function canonicalize(value: unknown, depth = 0): unknown {
+function canonicalize(value: unknown, depth = 0): unknown {
   if (value === undefined || typeof value === 'function') return undefined;
   if (typeof value !== 'object' || value === null) return value;
   if (depth > MAX_DEPTH) return '[max depth]';
@@ -105,7 +105,7 @@ export function stableStringify(value: unknown): string {
 }
 
 /** Apply `fn` to every string inside a JSON-like value (keys are left alone). */
-export function mapStrings<T>(value: T, fn: (text: string) => string): T {
+function mapStrings<T>(value: T, fn: (text: string) => string): T {
   if (typeof value === 'string') return fn(value) as T;
   if (Array.isArray(value)) return value.map((item) => mapStrings(item, fn)) as T;
   if (typeof value === 'object' && value !== null) {
@@ -232,26 +232,32 @@ function childPaths(a: unknown, b: unknown): Array<string | number> {
   return [...keys].sort();
 }
 
-function isContainer(value: unknown): boolean {
+function isContainer(value: unknown): value is object {
   return typeof value === 'object' && value !== null;
 }
 
-/** The first place two canonical JSON values differ, or `undefined` if equal. */
-export function firstDifference(expected: unknown, actual: unknown, path = ''): Difference | undefined {
-  const bothContainers = isContainer(expected) && isContainer(actual);
-  if (bothContainers && Array.isArray(expected) === Array.isArray(actual)) {
-    for (const key of childPaths(expected, actual)) {
-      const child = (value: unknown): unknown => (value as Record<string | number, unknown>)[key];
-      const where = typeof key === 'number' ? `${path}[${key}]` : path ? `${path}.${key}` : key;
-      const found = firstDifference(child(expected), child(actual), where);
-      if (found) return found;
-    }
-    return undefined;
+function childDifference(expected: unknown, actual: unknown, path: string): Difference | undefined {
+  for (const key of childPaths(expected, actual)) {
+    const child = (value: unknown): unknown => (value as Record<string | number, unknown>)[key];
+    const where = typeof key === 'number' ? `${path}[${key}]` : path ? `${path}.${key}` : key;
+    const found = firstDifference(child(expected), child(actual), where);
+    if (found) return found;
   }
+  return undefined;
+}
+
+function leafDifference(expected: unknown, actual: unknown, path: string): Difference | undefined {
   if (JSON.stringify(expected) === JSON.stringify(actual)) return undefined;
   const [shownExpected, shownActual] =
     typeof expected === 'string' && typeof actual === 'string'
       ? showStrings(expected, actual)
       : [show(expected), show(actual)];
   return { path: path || '(root)', expected: shownExpected, actual: shownActual };
+}
+
+/** The first place two canonical JSON values differ, or `undefined` if equal. */
+export function firstDifference(expected: unknown, actual: unknown, path = ''): Difference | undefined {
+  const comparable =
+    isContainer(expected) && isContainer(actual) && Array.isArray(expected) === Array.isArray(actual);
+  return comparable ? childDifference(expected, actual, path) : leafDifference(expected, actual, path);
 }

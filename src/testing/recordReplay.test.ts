@@ -416,15 +416,17 @@ describe('recordReplay stream()', () => {
     const recorder = recordReplay(slowStream, { cassette: file, mode: 'record' });
     await recorder.stream(ask('s'));
 
-    const timed = async (replayTiming: boolean): Promise<number> => {
-      const start = Date.now();
+    const delaysRequested = async (replayTiming: boolean): Promise<number[]> => {
+      const timers = vi.spyOn(globalThis, 'setTimeout');
       const replay = await recordReplay(undefined, { cassette: file, mode: 'replay', replayTiming }).stream(ask('s'));
       await collect(replay.fullStream);
-      return Date.now() - start;
+      const delays = timers.mock.calls.map((call) => Number(call[1]));
+      timers.mockRestore();
+      return delays;
     };
 
-    expect(await timed(false)).toBeLessThan(40);
-    expect(await timed(true)).toBeGreaterThanOrEqual(50);
+    expect(await delaysRequested(false)).toEqual([]);
+    expect((await delaysRequested(true)).some((ms) => ms >= 50)).toBe(true);
   });
 
   it('records error chunks', async () => {

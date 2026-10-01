@@ -308,8 +308,9 @@ class Player implements RecordReplayProvider {
     private readonly options: RecordReplayOptions
   ) {
     this.cassette = readCassette(options.cassette);
-    this.name = provider?.name ?? this.cassette.provider.name;
-    this.defaultModel = provider?.defaultModel ?? this.cassette.provider.defaultModel;
+    const identity: { name: string; defaultModel?: string } = provider ?? this.cassette.provider;
+    this.name = identity.name;
+    this.defaultModel = identity.defaultModel;
     this.sanitizer = createSanitizer({
       normalize: options.normalize,
       redact: options.redact,
