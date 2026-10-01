@@ -68,3 +68,8 @@ jobs:
       - run: npm ci
       - run: npm install --no-save ai@7 @ai-sdk/openai@4 @ai-sdk/anthropic@4
       - run: npx tsc --noEmit
+      # LOU-D28b: the suite runs on ai v7 too. The v4-only tests and the Worker bundle
+      # tests (LOU-D28c) are gated by the shared describeOnAiV4/itOnAiV4 helpers.
+      - run: npm run build
+      - run: npm run build --workspace=packages/create-loushy-agent
+      - run: npx vitest run

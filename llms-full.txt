@@ -75,7 +75,7 @@ agent can be an `agent.yaml` spec served with `npx loushy dev agent.yaml`
 - **Memory**: `defineMemory()` slots, scoped globally, per session or per user, are recalled into the prompt at the start of a run and read and written with `remember_` / `recall_` tools. [Memory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md)
 - **Structured output**: `output: zodSchema` makes the final reply a typed, validated `result.object`, with one repair step. [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)
 - **Streaming**: `agent.stream()` and `session.stream()` yield typed, versioned JSON events ready for SSE. [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)
-- **UI bindings**: `useLoushyAgent()` from `@loushy/build-ai-agent/react` (and `/vue`) turns the event stream into chat state, with approvals. [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md), [Vue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/vue.md)
+- **UI bindings**: `useLoushyAgent()` from `@loushy/build-ai-agent/react` (and `/vue`; `loushyAgent()` store from `/svelte`) turns the event stream into chat state, with approvals. [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md), [Vue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/vue.md), [Svelte](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/svelte.md)
 - **Durable execution**: `sessionId` + `checkpointStore` resume a crashed or paused run without redoing finished tools. [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)
 - **Cancellation, usage and cost**: pass an `AbortSignal`; every result carries token usage and USD cost for priced models. [API overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#cancellation)
 - **Providers**: OpenAI, Anthropic, OpenRouter, Ollama or a mock, with `withRetry()` and `withFallback()`. [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md)
@@ -738,6 +738,49 @@ How the pieces fit:
 | `SDKError`, `ERROR_CODES`    | Base class of the SDK's errors: a stable `code`, a `hint` and a `docs` link (see [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md)). |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
 
+### Dynamic config
+
+`createAgent()`'s `model`, `instructions` (or `prompt`) and `tools` each take
+the static value or a function of the run, `(ctx) => value | Promise<value>`
+(type `PerRun<T>`). `ctx` is `{ sessionId?, input, metadata? }` (type
+`RunConfigContext`): the `sessionId` of `send()` / `stream()` or the
+`agent.session()` id, the run's user input, and the `metadata` call option of
+`send()`, `stream()`, `session.send()` and `session.stream()`. The functions
+run once when a run starts, before the first model call, and again on every
+session turn. Everything else applies to what they return: `fallbackModels`
+and `retry`, `projectInstructions`, memory, skills, sub-agents, MCP tools,
+permissions, approvals and guardrails. A dynamic agent used as a sub-agent
+resolves with the task prompt as `input`.
+
+```ts
+import { createAgent, defineTool } from '@loushy/build-ai-agent';
+import { mockModel } from '@loushy/build-ai-agent/testing';
+import { z } from 'zod';
+
+const refund = defineTool({ name: 'refund', description: 'Refunds an order', input: z.object({ orderId: z.string() }), execute: async () => 'ok' });
+
+const agent = createAgent({
+  provider: mockModel(['Hello!']),
+  // A cheaper model for short inputs, tenant instructions, tools by role.
+  model: ({ input }) => (typeof input === 'string' && input.length < 200 ? 'small-model' : 'large-model'),
+  instructions: ({ metadata }) => `You are the support agent of ${String(metadata?.tenant ?? 'Acme')}.`,
+  tools: ({ metadata }) => (metadata?.role === 'admin' ? [refund] : []),
+});
+
+await agent.send('Hi', { metadata: { tenant: 'Globex', role: 'admin' } });
+```
+
+A function that throws fails the run with `LOUSHY_CONFIG_RESOLVER_FAILED`
+(`error.field` names the option, `error.cause` is the thrown error): `send()`
+rejects, `stream()` ends with an `error` event and a session keeps its
+transcript as it was. A run paused for an approval or a question keeps the
+`ctx` and the model it resolved in the paused snapshot: resuming it, even from
+another process, uses that model (it never switches mid-turn) and calls the
+`tools` function again with the same `ctx`. A run resumed from a crash
+checkpoint (`agent.resume(id)`) resolves again with `input: []` and no
+`metadata`. With only static values nothing changes: the agent is built once,
+when it is created.
+
 ### UI bindings
 
 `@loushy/build-ai-agent/react` exports `useLoushyAgent(source, options?)`, a
@@ -747,7 +790,8 @@ React hook that runs an agent in process (`{ agent, sessionId? }`) or over HTTP
 `reduceAgentEvents()` and `parseEventStream()`, are exported too. See
 [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md). `@loushy/build-ai-agent/vue` exports the same
 `useLoushyAgent()` as a Vue 3 composable, with the state as refs. See
-[Vue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/vue.md).
+[Vue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/vue.md). `@loushy/build-ai-agent/svelte` exports `loushyAgent()`, the
+same state and actions as a Svelte store (`$agent`). See [Svelte](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/svelte.md).
 
 ### Sub-agents
 
@@ -4174,6 +4218,19 @@ durable, but the agent has no checkpoint store.
 
 **Example:** `createAgent({ provider }).send('hi', { sessionId: 'job-1' })`.
 
+### LOUSHY_CONFIG_RESOLVER_FAILED
+
+**Means:** a `createAgent()` option given as a function of the run (`model`,
+`instructions` / `prompt` or `tools`) threw while the run's config was being
+resolved. The run never started: `send()` rejects, `stream()` ends with an
+`error` event, and a session's transcript is left as it was. `error.field`
+names the option and `error.cause` is what the function threw.
+
+**Fix:** fix the function named in the message. See
+[Dynamic config](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#dynamic-config).
+
+**Example:** `createAgent({ provider, model: ({ metadata }) => plans[metadata.plan].model })` with an unknown plan.
+
 ## Providers and peers
 
 ### LOUSHY_PROVIDER_SPEC_INVALID
@@ -7339,6 +7396,76 @@ const result = await AgentExecutor.execute({
   toolRegistry: registry,
 });
 ```
+
+# Svelte
+
+Source: docs/svelte.md
+
+`loushyAgent()` for Svelte is the [React hook](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md) as a store: the same
+sources, the same state and the same actions, over the same
+[typed event stream](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md). Read [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md) for what each
+field means, the two kinds of source, how approvals work and the server side;
+this page covers what differs.
+
+It lives in the `@loushy/build-ai-agent/svelte` subpath. The store implements
+Svelte's store contract (`subscribe(run) => unsubscribe`) by hand, so it works
+with `$agent` in Svelte 4 and 5 and needs no `svelte` import: there is no peer
+dependency to install.
+
+```ts
+import { loushyAgent } from '@loushy/build-ai-agent/svelte';
+
+// In a component's <script lang="ts">, or a module that several components share:
+export const agent = loushyAgent({ url: '/api/agent' }, { approvalsUrl: '/api/approvals' });
+
+export async function submit(text: string): Promise<void> {
+  if (text.trim()) await agent.send(text);
+}
+```
+
+and in the component (a Svelte template, so not type-checked with the other
+snippets here):
+
+```html
+{#each $agent.messages as message (message.id)}
+  <article>
+    <header>{message.role}</header>
+    <p>{message.text}</p>
+    {#each message.toolCalls ?? [] as call (call.id)}
+      <code>{call.name}: {call.status}</code>
+    {/each}
+  </article>
+{/each}
+{#if $agent.pendingApproval}
+  <p>
+    Run {$agent.pendingApproval.toolName}?
+    <button on:click={() => agent.approve()}>Approve</button>
+    <button on:click={() => agent.reject('Not now')}>Reject</button>
+  </p>
+{/if}
+{#if $agent.status === 'streaming'}<button on:click={agent.stop}>Stop</button>{/if}
+```
+
+## What differs from React
+
+- **State is the store value.** `$agent` is the React hook's state object:
+  `messages`, `status`, `pendingApproval`, `error`, `usage` and `lastEvent`.
+  The commands (`send`, `stop`, `approve`, `reject`, `answer`) sit on the
+  store itself with the React hook's signatures; they do not need a
+  subscriber.
+- **`reset()`** aborts the run in flight, forgets the in-process session
+  (`{ agent, sessionId }` starts a new conversation) and clears the state.
+- **The source and options are plain values**, read when a turn starts. To use
+  another agent or `url`, create another store.
+- **Cleanup is unsubscribing.** `stop()` aborts the request in flight, and so
+  does the last subscriber going away (the component using `$agent` is
+  destroyed). There is no `destroy()`: this is how Svelte stores stop their
+  work. A store nobody subscribes to still runs a turn you started with
+  `send()`; call `stop()` yourself if you drop it.
+
+The reducer and the stream parser are exported from this subpath too
+(`reduceAgentEvents`, `initialAgentUIState`, `parseEventStream`), the same
+ones as in `@loushy/build-ai-agent/react`.
 
 # Testing agents
 

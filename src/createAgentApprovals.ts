@@ -154,9 +154,9 @@ export function createAgentApprovals(options: { store: ApprovalStore; approve?: 
     settle,
     session(run: SessionRunner, stream: SessionStreamRunner, sessionOptions?: SessionOptions): AgentSession {
       const session: ApprovalSession = new ApprovalSession(
-        async (input, signal, turn) => {
+        async (input, signal, turn, call) => {
           try {
-            return inSession(session, await settle(await run(input, signal, turn), signal, turn?.checkpointStore));
+            return inSession(session, await settle(await run(input, signal, turn, call), signal, turn?.checkpointStore));
           } catch (error) {
             // A checkpointed turn found paused (e.g. after a restart): resolving it continues this session.
             if (error instanceof SessionAwaitingApprovalError && error.approvalId) sessions.set(error.approvalId, session);
@@ -164,7 +164,7 @@ export function createAgentApprovals(options: { store: ApprovalStore; approve?: 
           }
         },
         sessionOptions,
-        (input, signal, turn) => inSessionRun(session, stream(input, signal, turn))
+        (input, signal, turn, call) => inSessionRun(session, stream(input, signal, turn, call))
       );
       return session;
     },

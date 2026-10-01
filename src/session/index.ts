@@ -5,6 +5,7 @@ export type {
   SessionRunner,
   SessionStores,
   SessionStreamRunner,
+  SessionTurnCall,
   SessionTurnCheckpoint,
   SessionTurnOptions,
 } from './AgentSession';
