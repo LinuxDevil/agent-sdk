@@ -51,6 +51,7 @@ import {
   saveStepCheckpoint,
   toExecutionResult,
 } from './agentRunState';
+import { AgentRun, RUN_EVENTS, StreamingExecuteOptions, runEventsOf, startAgentRun } from './agentRun';
 
 export { PropagatingToolError } from './propagatingToolError';
 
@@ -454,6 +455,45 @@ export class AgentExecutor {
   }
 
   /**
+   * Runs the agent like {@link AgentExecutor.execute} - same options, same
+   * loop, same `ExecutionResult` - and streams the run as typed
+   * `AgentEvent`s (LOU-V2). Model output is streamed through
+   * `provider.stream()` when the provider has it (one `text.delta` per
+   * chunk); otherwise each step uses `generate()` and emits its text as a
+   * single `text.delta`. `onEvent` and the other callbacks still fire.
+   *
+   * The run starts immediately. Iterate the returned {@link AgentRun} for
+   * the events, or await `run.result`; breaking out of the `for await`
+   * early aborts the run (`result` then resolves with
+   * `finishReason: 'aborted'`). Invalid options throw synchronously.
+   * See docs/streaming.md for the event schema.
+   *
+   * @example
+   * ```ts
+   * const run = AgentExecutor.stream({ agent, input: 'Weather in Paris?', provider, toolRegistry });
+   * for await (const event of run) {
+   *   if (event.type === 'text.delta') process.stdout.write(event.text);
+   * }
+   * const { finishReason } = await run.result;
+   * ```
+   */
+  static stream(options: ExecuteOptions): AgentRun {
+    this.validateExecuteOptions(options, 'AgentExecutor.stream');
+    return startAgentRun(({ signal, onEvent, sink }) => {
+      const streaming: StreamingExecuteOptions = {
+        ...options,
+        signal,
+        onEvent: (event) => {
+          options.onEvent?.(event);
+          onEvent(event);
+        },
+        [RUN_EVENTS]: sink,
+      };
+      return this.execute(streaming);
+    }, options.signal);
+  }
+
+  /**
    * The actual execution loop, split out of execute() so the top-level
    * 'agent.run' span (LOU-E5) can wrap it via withSpan() while still
    * exposing execute() as the same static, instance-free entry point.
@@ -512,21 +552,27 @@ export class AgentExecutor {
   }
 
   /**
-   * Runs one step (runStep(), or the resumed pending tool calls), with a
-   * thrown error emitted as an `error` event and rethrown - unless the
+   * Runs one step (runStep(), or the resumed pending tool calls of the
+   * current step - LOU-U7/U9), bracketed by the stream's step events, with
+   * a thrown error emitted as an `error` event and rethrown - unless the
    * run's signal was aborted, in which case the rejection is the abort
    * itself (e.g. the provider's AbortError) and the run ends as 'aborted'
    * instead (LOU-V1).
    */
-  private static async runStepOrAbort<T>(
+  private static async runStepOrAbort<T extends string>(
     options: ExecuteOptions,
     state: AgentRunState,
-    step: () => Promise<T>
+    step: () => Promise<T | ExecutionResult>
   ): Promise<T | ExecutionResult> {
+    const runEvents = runEventsOf(options);
+    runEvents?.stepStart(state.steps);
     try {
-      return await step();
+      const outcome = await step();
+      runEvents?.stepDone(state.steps, typeof outcome === 'string' ? undefined : outcome.finishReason);
+      return outcome;
     } catch (error) {
       if (options.signal?.aborted) {
+        runEvents?.stepDone(state.steps, 'aborted');
         return this.abortRun(options, state);
       }
       this.emitEvent(options.onEvent, {
@@ -534,6 +580,7 @@ export class AgentExecutor {
         timestamp: new Date(),
         error: error as Error,
       });
+      runEvents?.stepDone(state.steps, 'error');
       throw error;
     }
   }
@@ -895,6 +942,7 @@ export class AgentExecutor {
     // resumable 'in-progress' checkpoint, never one naming a lost approval.
     await approvalStore.save(pending, snapshot);
     await saveStepCheckpoint(options, state, 'awaiting-approval', pending.id);
+    runEventsOf(options)?.approvalRequested(pending);
 
     this.emitEvent(onEvent, {
       type: 'finish',
@@ -1024,26 +1072,29 @@ export class AgentExecutor {
    * runAgentLoop() (e.g. `provider.generate(...)` when `provider` is
    * undefined).
    */
-  private static validateExecuteOptions(options: ExecuteOptions): void {
+  private static validateExecuteOptions(
+    options: ExecuteOptions,
+    caller = 'AgentExecutor.execute'
+  ): void {
     if (!options || !options.provider) {
       throw new Error(
-        "AgentExecutor.execute: 'provider' is required. " +
+        `${caller}: 'provider' is required. ` +
           "Example: AgentExecutor.execute({ agent, input, provider: myProvider })"
       );
     }
     if (!options.agent) {
       throw new Error(
-        "AgentExecutor.execute: 'agent' is required. " +
+        `${caller}: 'agent' is required. ` +
           'Example: AgentExecutor.execute({ agent: AgentBuilder.create()...build(), input, provider })'
       );
     }
     if (options.input === undefined || options.input === null) {
       throw new Error(
-        "AgentExecutor.execute: 'input' is required. " +
+        `${caller}: 'input' is required. ` +
           "Example: AgentExecutor.execute({ agent, input: 'hello', provider })"
       );
     }
-    assertToolConcurrency(options.toolConcurrency, 'AgentExecutor.execute');
+    assertToolConcurrency(options.toolConcurrency, caller);
   }
 
   /**

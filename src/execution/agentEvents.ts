@@ -1,0 +1,235 @@
+/**
+ * LOU-V2: the typed, versioned event schema of `agent.stream()` /
+ * `AgentExecutor.stream()`. Every event is a plain JSON value (no `Error`
+ * instances, no functions, no `undefined` fields), so it can be sent over
+ * SSE or a WebSocket unchanged and parsed back to the same object.
+ *
+ * See docs/streaming.md for the full table - this file is the public schema.
+ */
+
+import type { ExecutionFinishReason } from './AgentExecutor';
+
+/**
+ * Version of the {@link AgentEvent} schema, carried on every event as `v`.
+ * It changes only on a breaking change to an existing event (a field removed,
+ * renamed or retyped); new event types and new optional fields keep it.
+ */
+export const AGENT_EVENT_SCHEMA_VERSION = 1 as const;
+
+/** Token usage, as reported on `step.done` and `run.done`. */
+export interface AgentEventUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+/** A JSON-safe error: the `name` and `message` of the original error. */
+export interface AgentEventError {
+  name: string;
+  message: string;
+}
+
+/** Fields every {@link AgentEvent} carries. */
+export interface AgentEventBase<TType extends string> {
+  /** Discriminant: narrow on it to get the event's payload. */
+  type: TType;
+  /** Identifies the run; the same on every event of one `stream()` call. */
+  runId: string;
+  /** 0 for the first event of the run, then +1 per event, with no gaps. */
+  seq: number;
+  /** When the event was emitted, as an ISO-8601 string. */
+  timestamp: string;
+  /** Schema version, always {@link AGENT_EVENT_SCHEMA_VERSION}. */
+  v: typeof AGENT_EVENT_SCHEMA_VERSION;
+}
+
+/** First event of every run. */
+export interface RunStartEvent extends AgentEventBase<'run.start'> {
+  agentName: string;
+  /** The agent's id, when it has one. */
+  agentId?: string;
+}
+
+/** A model step (one model call plus the tool calls it asked for) begins. `step` counts from 1. */
+export interface StepStartEvent extends AgentEventBase<'step.start'> {
+  step: number;
+}
+
+/** A chunk of model text, emitted as it arrives. */
+export interface TextDeltaEvent extends AgentEventBase<'text.delta'> {
+  text: string;
+}
+
+/** The complete text of the current step (the concatenation of its `text.delta`s). */
+export interface TextDoneEvent extends AgentEventBase<'text.done'> {
+  text: string;
+}
+
+/** A tool call starts. Emitted in the model's call order. */
+export interface ToolStartEvent extends AgentEventBase<'tool.start'> {
+  toolCallId: string;
+  toolName: string;
+  /** The arguments the model sent, parsed from JSON (`{}` when they are not valid JSON). */
+  args: Record<string, unknown>;
+}
+
+/** A tool call returned. Emitted in completion order. */
+export interface ToolDoneEvent extends AgentEventBase<'tool.done'> {
+  toolCallId: string;
+  toolName: string;
+  /** The tool's result as it would be JSON-encoded (`undefined` becomes `null`). */
+  result: unknown;
+  /** Milliseconds since this call's `tool.start`. */
+  durationMs: number;
+}
+
+/**
+ * A tool call failed (it threw, its arguments were invalid, or the tool does
+ * not exist). The model receives the error as the call's result and the run
+ * continues.
+ */
+export interface ToolErrorEvent extends AgentEventBase<'tool.error'> {
+  toolCallId: string;
+  toolName: string;
+  error: AgentEventError;
+  /** Milliseconds since this call's `tool.start`. */
+  durationMs: number;
+}
+
+/**
+ * A tool call needs a human decision. The run then ends with
+ * `run.done { finishReason: 'awaiting-approval' }`; resume it with
+ * `resumeAfterApproval(approvalId, ...)`.
+ */
+export interface ApprovalRequestedEvent extends AgentEventBase<'approval.requested'> {
+  approvalId: string;
+  toolCallId: string;
+  toolName: string;
+  args: Record<string, unknown>;
+}
+
+/** A step ends. Every `step.start` is followed by exactly one `step.done`. */
+export interface StepDoneEvent extends AgentEventBase<'step.done'> {
+  step: number;
+  /**
+   * The model's finish reason for this step (`'stop'`, `'tool_calls'`, ...),
+   * or `'awaiting-approval'`, `'aborted'` or `'error'` when the step ended that way.
+   */
+  finishReason: ExecutionFinishReason;
+  /** Tokens used by this step's model call, when it produced a response. */
+  usage?: AgentEventUsage;
+}
+
+/**
+ * An error. When it ends the run, `run.done { finishReason: 'error' }`
+ * follows; a provider error retried under `surfaceRetryableProviderErrors`
+ * is followed by more steps instead.
+ */
+export interface AgentErrorEvent extends AgentEventBase<'error'> {
+  error: AgentEventError;
+}
+
+/**
+ * Last event of every run, emitted exactly once - also for aborted, failed
+ * and awaiting-approval runs.
+ */
+export interface RunDoneEvent extends AgentEventBase<'run.done'> {
+  /** `ExecutionResult.finishReason`, or `'error'` when the run failed. */
+  finishReason: ExecutionFinishReason;
+  /** `ExecutionResult.text` (`''` when the run failed). */
+  text: string;
+  /** Total tokens of the run; absent when the run failed. */
+  usage?: AgentEventUsage;
+}
+
+/**
+ * Every event `agent.stream()` yields, discriminated by `type`.
+ *
+ * @example
+ * ```ts
+ * for await (const event of agent.stream('Weather in Paris?')) {
+ *   if (event.type === 'text.delta') process.stdout.write(event.text);
+ *   if (event.type === 'tool.start') console.log(`calling ${event.toolName}`, event.args);
+ * }
+ * ```
+ */
+export type AgentEvent =
+  | RunStartEvent
+  | StepStartEvent
+  | TextDeltaEvent
+  | TextDoneEvent
+  | ToolStartEvent
+  | ToolDoneEvent
+  | ToolErrorEvent
+  | ApprovalRequestedEvent
+  | StepDoneEvent
+  | AgentErrorEvent
+  | RunDoneEvent;
+
+/** The `type` of an {@link AgentEvent}. */
+export type AgentEventType = AgentEvent['type'];
+
+/**
+ * The event with the given `type`.
+ *
+ * @example
+ * ```ts
+ * const onTool = (e: AgentEventOf<'tool.done'>) => console.log(e.toolName, e.durationMs);
+ * ```
+ */
+export type AgentEventOf<TType extends AgentEventType> = Extract<AgentEvent, { type: TType }>;
+
+/** An event without the fields the run fills in (`runId`, `seq`, `timestamp`, `v`). */
+export type AgentEventPayload = {
+  [K in AgentEventType]: Omit<AgentEventOf<K>, keyof AgentEventBase<string>> & { type: K };
+}[AgentEventType];
+
+const EVENT_TYPES: ReadonlySet<string> = new Set<AgentEventType>([
+  'run.start',
+  'step.start',
+  'text.delta',
+  'text.done',
+  'tool.start',
+  'tool.done',
+  'tool.error',
+  'approval.requested',
+  'step.done',
+  'error',
+  'run.done',
+]);
+
+/**
+ * Whether `value` looks like an {@link AgentEvent} of this schema version -
+ * for a client parsing events received over SSE/WebSocket.
+ *
+ * @example
+ * ```ts
+ * const data: unknown = JSON.parse('{"type":"run.start"}');
+ * if (isAgentEvent(data) && data.type === 'text.delta') console.log(data.text);
+ * ```
+ */
+export function isAgentEvent(value: unknown): value is AgentEvent {
+  if (typeof value !== 'object' || value === null) return false;
+  const event = value as Partial<AgentEventBase<string>>;
+  return (
+    event.v === AGENT_EVENT_SCHEMA_VERSION &&
+    typeof event.type === 'string' &&
+    EVENT_TYPES.has(event.type) &&
+    typeof event.seq === 'number'
+  );
+}
+
+/** `tool.start`, `tool.done` or `tool.error` - they all carry `toolCallId` and `toolName`. */
+export function isToolEvent(event: AgentEvent): event is ToolStartEvent | ToolDoneEvent | ToolErrorEvent {
+  return event.type.startsWith('tool.');
+}
+
+/** `text.delta` or `text.done` - both carry `text`. */
+export function isTextEvent(event: AgentEvent): event is TextDeltaEvent | TextDoneEvent {
+  return event.type.startsWith('text.');
+}
+
+/** `step.start` or `step.done` - both carry `step`. */
+export function isStepEvent(event: AgentEvent): event is StepStartEvent | StepDoneEvent {
+  return event.type.startsWith('step.');
+}
