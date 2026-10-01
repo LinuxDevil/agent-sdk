@@ -44,14 +44,14 @@ export * from './storage';
 // Templates
 export * from './templates';
 
+// Token estimation and model registry (LOU-W1)
+export * from './models';
+
 // Utils
 export * from './utils';
 
 // createAgent() convenience API (LOU-H1)
 export * from './createAgent';
-
-// Skills: progressive disclosure of instructions (LOU-Y2)
-export * from './skills';
 
 // Declarative agent spec file format (LOU-H9)
 export * from './spec';

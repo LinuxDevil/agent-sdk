@@ -1,14 +1,16 @@
 /**
- * MCP Tool Loader (LOU-F2 / LOU-F3)
+ * MCP Tool Loader (LOU-F2 / LOU-F3 / LOU-Z1 / LOU-Z2)
  *
  * Loads tools advertised by a remote MCP server (via an already-connected
  * `Client` from `@modelcontextprotocol/sdk`) and turns them into raw MCP
- * tool descriptions (listRemoteTools).
+ * tool descriptions (listRemoteTools) or SDK tool descriptors (loadMcpTools).
  */
 
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { tool as aiTool } from 'ai';
 import { ToolDescriptor } from '../../types';
+import { noopLogger, type Logger } from '../../execution/logger';
+import { handleCallToolResult } from './result';
 import { jsonSchemaToZod } from './schema';
 
 /**
@@ -43,6 +45,25 @@ export async function listRemoteTools(client: Client): Promise<RawMcpTool[]> {
   return response.tools as unknown as RawMcpTool[];
 }
 
+/** A tool that {@link loadMcpTools} could not load. */
+export interface SkippedMcpTool {
+  /** The bare MCP tool name (not namespaced). */
+  name: string;
+  /** Why the tool was skipped. */
+  reason: string;
+}
+
+/** Options for {@link loadMcpTools}. */
+export interface LoadMcpToolsOptions {
+  /**
+   * Receives a warning for every tool that is skipped (naming the server,
+   * the tool and the reason). Defaults to a no-op logger.
+   */
+  logger?: Logger;
+  /** Called once per skipped tool, so callers can surface what was left out. */
+  onSkip?: (skipped: SkippedMcpTool) => void;
+}
+
 /**
  * Load a connected MCP client's tools and synthesize a ToolDescriptor for
  * each one, keyed by `${connectionName}__${tool.name}` so tools from
@@ -53,29 +74,58 @@ export async function listRemoteTools(client: Client): Promise<RawMcpTool[]> {
  * `client.callTool({ name: tool.name, arguments: args })` - the *raw*
  * MCP tool name, not the namespaced key - since that's what the remote
  * server actually knows about.
+ *
+ * A tool whose schema cannot be converted is skipped (warned through
+ * `options.logger`, reported to `options.onSkip`) and never prevents the
+ * server's other tools from loading. Results with `isError: true` throw an
+ * {@link McpToolError}; other results keep text, structured and media
+ * content (see {@link handleCallToolResult}).
+ *
+ * @example
+ * const skipped: SkippedMcpTool[] = [];
+ * const tools = await loadMcpTools(client, 'github', {
+ *   logger: console,
+ *   onSkip: (s) => skipped.push(s),
+ * });
  */
 export async function loadMcpTools(
   client: Client,
-  connectionName: string
+  connectionName: string,
+  options: LoadMcpToolsOptions = {}
 ): Promise<Record<string, ToolDescriptor>> {
+  const { logger = noopLogger, onSkip } = options;
   const rawTools = await listRemoteTools(client);
   const descriptors: Record<string, ToolDescriptor> = {};
 
   for (const rawTool of rawTools) {
-    const key = `${connectionName}__${rawTool.name}`;
-    const parameters = jsonSchemaToZod(rawTool.inputSchema);
-
-    descriptors[key] = {
-      displayName: rawTool.description || rawTool.name,
-      tool: aiTool({
-        description: rawTool.description || '',
-        parameters: parameters as any,
-        execute: async (args: Record<string, unknown>) => {
-          return client.callTool({ name: rawTool.name, arguments: args });
-        },
-      }),
-    };
+    try {
+      descriptors[`${connectionName}__${rawTool.name}`] = buildDescriptor(client, rawTool);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      logger.warn(`MCP server '${connectionName}': skipping tool '${rawTool.name}': ${reason}`, {
+        server: connectionName,
+        tool: rawTool.name,
+        reason,
+      });
+      onSkip?.({ name: rawTool.name, reason });
+    }
   }
 
   return descriptors;
+}
+
+function buildDescriptor(client: Client, rawTool: RawMcpTool): ToolDescriptor {
+  const parameters = jsonSchemaToZod(rawTool.inputSchema);
+  return {
+    displayName: rawTool.description || rawTool.name,
+    tool: aiTool({
+      description: rawTool.description || '',
+      parameters: parameters as any,
+      execute: async (args: Record<string, unknown>) =>
+        handleCallToolResult(
+          await client.callTool({ name: rawTool.name, arguments: args }),
+          rawTool.name
+        ),
+    }),
+  };
 }
