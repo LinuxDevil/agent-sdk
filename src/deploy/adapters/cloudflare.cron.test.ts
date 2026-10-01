@@ -13,6 +13,7 @@ import { SDKError } from '../../execution/errors';
 import type { KVBinding } from '../kvCheckpointStore';
 import { CloudflareWorkerAdapter, findNodeBuiltinReferences, workerCrons, wranglerTomlSource } from './cloudflare';
 import { CHECKPOINT_KV_BINDING } from '../checkpointBinding';
+import { withBuildLock } from '../buildLock.testkit';
 
 const SPEC = {
   name: 'cron-agent',
@@ -87,7 +88,7 @@ describe('built Worker bundle scheduled()', () => {
       const specPath = path.join(dir, `${name}.json`);
       fs.writeFileSync(specPath, JSON.stringify(value));
       await CloudflareWorkerAdapter.scaffold(specPath, out);
-      await CloudflareWorkerAdapter.build(out);
+      await withBuildLock(() => CloudflareWorkerAdapter.build(out));
       return out;
     };
     outDir = await build('with-crons', spec);
