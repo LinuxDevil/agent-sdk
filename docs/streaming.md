@@ -324,6 +324,9 @@ source.onmessage = (message) => {
 };
 ```
 
+For a React chat UI over this kind of endpoint, see [React](./react.md):
+`useLoushyAgent()` POSTs the input and reads the same `data:` lines.
+
 ## Example: the full API
 
 `AgentExecutor.stream()` accepts every `execute()` option. Here a tool that

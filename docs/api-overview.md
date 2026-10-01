@@ -52,6 +52,15 @@ How the pieces fit:
 | `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](./durable-execution.md)). |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
 
+### UI bindings
+
+`@loushy/build-ai-agent/react` exports `useLoushyAgent(source, options?)`, a
+React hook that runs an agent in process (`{ agent, sessionId? }`) or over HTTP
+(`{ url }`) and returns `messages`, `status`, `pendingApproval`,
+`send()`, `stop()`, `approve()` and `reject()`. Its framework-neutral parts,
+`reduceAgentEvents()` and `parseEventStream()`, are exported too. See
+[React](./react.md).
+
 ### Sub-agents
 
 Pass `subagents: { researcher, writer }` (agents from `createAgent()` with a
