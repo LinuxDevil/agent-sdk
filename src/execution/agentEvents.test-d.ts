@@ -98,6 +98,13 @@ describe('AgentEvent types', () => {
     if (event.type === 'input.steered') expectTypeOf(event.mode).toEqualTypeOf<'immediate' | 'queued'>();
   });
 
+  it('narrows agent.drift on event.type (LOU-W9.2)', () => {
+    if (event.type === 'agent.drift') {
+      expectTypeOf(event.toolsAdded).toEqualTypeOf<string[]>();
+      expectTypeOf(event.instructions).toBeBoolean();
+    }
+  });
+
   it('narrows guardrail events on event.type (LOU-X4)', () => {
     if (event.type === 'guardrail.tripped' || event.type === 'guardrail.rewrote') {
       expectTypeOf(event.kind).toEqualTypeOf<'input' | 'output' | 'tool'>();
@@ -129,6 +136,7 @@ describe('AgentEvent types', () => {
       | 'input.applied'
       | 'guardrail.tripped'
       | 'guardrail.rewrote'
+      | 'agent.drift'
       | 'run.done'
     >();
   });

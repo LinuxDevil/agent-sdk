@@ -85,7 +85,7 @@ export async function resumeSubagentCall(
 async function pauseAgain(ctx: ResumeContext, suspension: SubagentSuspension): Promise<ExecutionResult> {
   const { snapshot, messages } = ctx;
   const { usage } = ctx;
-  const record = suspensionRecord(snapshot, { messages, steps: snapshot.steps, usage }, suspension);
+  const record = suspensionRecord(snapshot, { messages, steps: snapshot.steps, usage, fingerprint: snapshot.agentFingerprint }, suspension);
   await ctx.approvalStore.save(record.pending, record.snapshot);
   // LOU-V14: a streamed resume reports the new pause like a fresh run does.
   runEventsOf(ctx.executeOptions as ExecuteOptions)?.approvalRequested(record.pending);

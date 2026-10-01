@@ -2583,6 +2583,21 @@ const agent = createAgent({ provider, tools: [emailTool], store }); // or approv
 continued run joins a session only when it is resolved through the agent that
 owns that session object.
 
+### Resuming with a changed agent
+
+An approval snapshot carries the paused agent's fingerprint, and resolving it
+with an agent whose model, tools or instructions differ warns (`'warn'`, the
+default), rejects with `LOUSHY_AGENT_DRIFT` (`onAgentDrift: 'error'`, the
+approval stays pending) or carries on (`'ignore'`). An approved call whose tool
+no longer exists always rejects with `LOUSHY_RESUME_TOOL_MISSING`. See
+[Resuming with a changed agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#resuming-with-a-changed-agent).
+
+On a resumed approved call the pre-tool hooks run again, and the arguments they
+leave (whether through `{ input }` or by changing `ctx.args` in place) must equal
+what was approved, key order aside; otherwise the call is refused with a
+`kind: 'validation'` tool error. A hook that redacts or normalizes its input
+should run on the paused run too, so the human approves the redacted input.
+
 ### Deciding in code
 
 Pass `approve` to decide each call as it comes up instead of pausing: `true`
@@ -4786,6 +4801,60 @@ const result = await assistant.resume(fork.sessionId);
   ids aside) and `drift`, the tool-order, argument, step-count and
   finish-reason differences in the same shape as `loushy eval --drift`.
 
+## Resuming with a changed agent
+
+Every checkpoint and approval snapshot carries an **agent fingerprint**: the
+model id, each tool's name with a hash of its JSON input schema, and a hash of
+the system instructions (plus a short SHA-256 over all of them, computed with
+Web Crypto). Functions and other values that cannot be serialized (a tool's
+`execute`, hooks, callbacks) are not part of it, so changing only code never
+counts as a change. The parts are stored one by one so a mismatch can say what
+changed.
+
+When a run is resumed (`agent.resume(id)`, `session.resume()`, a later
+`execute()` on an unfinished `sessionId`, `agent.approvals.resolve()` and the
+streamed forms), the resuming agent's fingerprint is compared with the saved
+one, before any model call or tool runs. `onAgentDrift` on `createAgent()` (and
+on `AgentExecutor.execute()` / `resumeAfterApproval()`) decides what a
+difference does:
+
+| `onAgentDrift` | On a different model, tools or instructions |
+| -------------- | ------------------------------------------- |
+| `'warn'` (default) | A `console.warn` naming what changed and an `agent.drift` event (`model`, `toolsAdded`, `toolsRemoved`, `toolsChanged`, `instructions`); the run continues. |
+| `'error'` | Rejects with [`LOUSHY_AGENT_DRIFT`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#loushy_agent_drift). The checkpoint is left as it was; an approval is put back, so the right agent can still resolve it. |
+| `'ignore'` | Nothing. |
+
+A pending tool call whose tool no longer exists (the model's last turn called
+it and it has no result yet, or the human approved it) always rejects with
+[`LOUSHY_RESUME_TOOL_MISSING`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#loushy_resume_tool_missing),
+whatever the option.
+
+```ts
+import { createAgent, memoryStore } from '@loushy/build-ai-agent';
+import type { LLMProvider } from '@loushy/build-ai-agent';
+
+declare const provider: LLMProvider;
+
+// After a deploy that renamed a tool or changed the model, refuse to continue old runs.
+const agent = createAgent({ provider, store: memoryStore(), onAgentDrift: 'error' });
+const result = await agent.resume('job-1');
+```
+
+Notes:
+
+- Checkpoints and snapshots written before this existed have no fingerprint
+  and resume exactly as before, with no warning.
+- A run of a [dynamic agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#dynamic-config) saves the `ctx`
+  and the model it chose in the checkpoint (`runConfig`), and a crash resume
+  uses them: the saved model, and tools and instructions resolved again with
+  the saved `ctx` (before, it resolved with `input: []` and no `metadata`).
+- The fingerprint covers the agent's own tools, model and instructions, not
+  the tools that `subagents` and `skills` add. A sub-agent that pauses for an
+  approval has its own fingerprint in its nested snapshot, but a resume
+  compares only the top-level agent.
+- A run resumed after an approval continues with the instructions it started
+  with (they are in its transcript), so its later checkpoints record those.
+
 ## Compatibility with stored data
 
 - Checkpoints written before `status` existed are treated as
@@ -5169,6 +5238,35 @@ The message lists the steps that are kept.
 See [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#fork-and-replay).
 
 **Example:** `agent.fork('job-1', { fromStep: 9 })` after a 3-step run.
+
+### LOUSHY_AGENT_DRIFT
+
+**Means:** a paused or interrupted run was resumed by an agent that differs
+from the one that saved it, and `onAgentDrift` is `'error'`. The message names
+what changed: the model, tools added, removed or with a changed input schema,
+or the instructions. It is thrown before any model call or tool runs; the
+checkpoint (and, for an approval, the pending record) is left as it was.
+
+**Fix:** resume with the agent that paused the run, or set `onAgentDrift` to
+`'warn'` (the default) or `'ignore'` to continue anyway. See
+[Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#resuming-with-a-changed-agent).
+
+**Example:** `createAgent({ store, onAgentDrift: 'error' })` after a deploy that
+renamed a tool, then `agent.resume('job-1')`.
+
+### LOUSHY_RESUME_TOOL_MISSING
+
+**Means:** a resumed run is waiting on a tool call (an approved call, or a call
+of the model's last turn that has no result yet) whose tool the resuming agent
+no longer has. This is an error whatever `onAgentDrift` is, because the call
+cannot run.
+
+**Fix:** give the tool back under the same name, or drop the paused run (delete
+its checkpoint, reject its approval). See
+[Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#resuming-with-a-changed-agent).
+
+**Example:** a run paused on `charge_card`, then a deploy removes that tool and
+`agent.approvals.resolve({ id, approved: true })` is called.
 
 ### LOUSHY_RUN_ALREADY_ITERATED
 

@@ -91,11 +91,14 @@ async function runResume(options: {
   approved: boolean;
   resumeTools?: DefinedTool[];
   dropRemaining?: boolean;
+  /** A snapshot saved before LOU-W9.2: no agent fingerprint. */
+  legacySnapshot?: boolean;
 }): Promise<Message[]> {
   const inner = new InMemoryApprovalStore();
   const approvalStore: ApprovalStore = {
     save: async (pending, snapshot) => {
       if (options.dropRemaining) delete snapshot.remainingToolCalls;
+      if (options.legacySnapshot) delete snapshot.agentFingerprint;
       await inner.save(pending, snapshot);
     },
     resolve: (id) => inner.resolve(id),
@@ -229,11 +232,11 @@ const rows: Row[] = [
     ),
   },
   {
-    path: 'tool not found (resume)',
+    path: 'tool not found (resume of a snapshot without an agent fingerprint)',
     kind: 'not-found',
     error: 'ToolNotFoundError',
     message: "Tool 'approve_me' not found in registry",
-    run: viaResume(() => runResume({ tools: [approveMe()], resumeTools: [], approved: true })),
+    run: viaResume(() => runResume({ tools: [approveMe()], resumeTools: [], approved: true, legacySnapshot: true })),
   },
   {
     path: 'thrown error after approval (resume)',
