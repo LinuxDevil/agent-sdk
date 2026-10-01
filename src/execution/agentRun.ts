@@ -34,8 +34,12 @@ import { compactProviderError } from './errors';
 import { withProviderEvents, type ProviderEventListener } from '../providers/providerEvents';
 import type { Usage } from '../models/usage';
 import type { BudgetExceeded } from './budget';
+<<<<<<< HEAD
 import type { AgentInput } from '../providers/content';
 import { InputQueue, type EnqueueResult, type QueuedInput } from './inputQueue';
+=======
+import type { GuardrailTrip } from './ioGuardrails';
+>>>>>>> origin/main
 
 /**
  * The handle returned by `agent.stream()` and `AgentExecutor.stream()`.
@@ -95,9 +99,14 @@ export interface RunEventSink {
   permissionDecision(entry: PermissionDecisionEntry): void;
   /** LOU-V6: a `limits` budget tripped. */
   budgetExceeded(budget: BudgetExceeded): void;
+<<<<<<< HEAD
   /** LOU-V9: an input was queued, then applied before the model call of `step`. */
   inputQueued(input: QueuedInput): void;
   inputApplied(id: string, step: number): void;
+=======
+  /** LOU-X4: a guardrail blocked or rewrote. */
+  guardrail(event: GuardrailTrip & { type: 'guardrail.tripped' | 'guardrail.rewrote' }): void;
+>>>>>>> origin/main
   /** LOU-W3.2: an event a hook emits (`GenerateHookContext.emit`). */
   hookEvent(event: HookEventPayload): void;
   /** Obtains one model step - streamed when the provider can. */
@@ -383,6 +392,7 @@ class AgentRunImpl implements AgentRun {
       inputQueued: ({ id, text }) => this.emit({ type: 'input.queued', id, text }, subagent),
       inputApplied: (id, step) => this.emit({ type: 'input.applied', id, step }, subagent),
       hookEvent: (event) => this.emit(event, subagent),
+      guardrail: (event) => this.emit(event, subagent),
       generate: async (provider, request) => {
         const call = withProviderEvents(request, this.providerEvents(subagent));
         const generated = await this.generateStep(provider, call, subagent);

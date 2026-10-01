@@ -120,6 +120,8 @@ The event types and their extra fields:
 | `budget.exceeded`    | `limit: string`, `value: number`, `max: number`, `scope: 'run' \| 'session'` | A [`limits` budget](./configuration.md#budgets) tripped: `limit` is `'maxTokens'`, `'maxInputTokens'`, `'maxOutputTokens'`, `'maxCostUsd'`, `'maxDurationMs'` or `'maxSteps'`, `value` what was spent, `max` the limit. `run.done` (`'budget-exceeded'`) follows; with `onExceeded: 'throw'`, `error` and `run.done` (`'error'`). |
 | `input.queued`       | `id: string`, `text: string` | `run.enqueue()` took an input (`id` is `EnqueueResult.id`, `text` its user text). Can come at any point of the run, also inside a step. See [Queued input](#queued-input). |
 | `input.applied`      | `id: string`, `step: number` | The queued input joined the transcript, right before the model call of `step`: the `step.start` of that step follows. |
+| `guardrail.tripped`  | `name: string`, `kind: 'input' \| 'output' \| 'tool'`, `reason: string`, `toolName?: string` | An [input, output or tool guardrail](./guardrails.md#input-and-output-guardrails) blocked: before the first model call (input), before the step's `text.done` (output) or after the call's `tool.start` (tool). `run.done` (`'guardrail'`) follows; with `onTripped: 'throw'`, `error` and `run.done` (`'error'`). |
+| `guardrail.rewrote`  | `name`, `kind`, `reason`, `toolName?` | A guardrail rewrote the input, the step's text (before its `text.done`, which carries the new text) or a tool call's arguments. The run continues. |
 | `run.done`           | `finishReason: string`, `text: string`, `usage?: { promptTokens, completionTokens, totalTokens }`, `object?: unknown` | Last event of every run, exactly once, including aborted, failed and awaiting-approval runs. `finishReason` and `text` match `run.result` (`'max-steps'` when the `maxSteps` budget ran out while the model still wanted to continue); a failed run has `finishReason: 'error'`, `text: ''` and no `usage`. `object` is `run.result`'s validated `object` for an agent with an `output` schema (see [Structured output](./structured-output.md)), absent otherwise. |
 
 Optional fields are left out when they have no value. They are never
@@ -144,6 +146,11 @@ Optional fields are left out when they have no value. They are never
 - When a call needs approval, the calls before it run and report, then
   `approval.requested`, `step.done` (`'awaiting-approval'`) and `run.done`
   (`'awaiting-approval'`) follow. Calls after it never start.
+- When a guardrail blocks, `guardrail.tripped` comes just before the end: for
+  an input guardrail right after `run.start` (no step starts); for an output or
+  tool guardrail inside the step, followed by `step.done` and `run.done`
+  (`'guardrail'`). A blocked output has no `text.done`; calls after a blocked
+  tool call never start.
 
 A text-only run:
 

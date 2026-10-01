@@ -18,12 +18,61 @@ deploy the result). `tsup` must be installed (`npm install --save-dev tsup`).
 | `docker`            | everything `node-server` writes, plus `Dockerfile`       | `docker build -t loushy-agent . && docker run -p 3000:3000 loushy-agent` |
 | `cloudflare-worker` | `worker.ts`, `agent.config.js`, `wrangler.toml`, `dist/worker.js` | `wrangler deploy`                                                      |
 
-Every target serves the same HTTP API as `loushy dev`:
+Every target answers `GET /health` (`200 ok`) and `POST /chat`. The
+`node-server` and `docker` targets serve the full [HTTP API](#http-api) below;
+the `cloudflare-worker` target still serves the single-turn `{ "message" }`
+call (sessions, SSE and bearer auth there are tracked as LOU-D51).
 
-- `GET /health` - `200 ok`
-- `POST /chat` - JSON `{ "message": "..." }` in, the agent's
-  `ExecutionResult` (from `AgentExecutor.execute()`) out. Bodies over 1MB
-  are rejected with `413`.
+## HTTP API
+
+The `node-server` and `docker` targets serve the same `/chat` protocol as
+`loushy dev` ([CLI](./cli.md#loushy-dev)), from the same code
+(`src/server/chatRoutes.ts`), so a page or script written against the dev
+server works against the deployed one.
+
+| Endpoint | What it does |
+| -------- | ------------ |
+| `GET /health` | `200 ok`. Never needs auth: point load balancers and container health checks here. |
+| `POST /chat` `{ "sessionId", "input" }` | Runs a turn of session `sessionId` (1-128 characters of `A-Za-z0-9_-`; a new id starts a conversation, a known one continues it) and streams it as SSE: one `data: <AgentEvent JSON>` per event ([Streaming](./streaming.md)), then `event: done`. `input` is a string or an array of content parts. |
+| `GET /chat/:sessionId` | The session's transcript: `{ sessionId, messages, pending }`. |
+| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn as SSE. `404` when `id` is not pending. |
+| `POST /chat` `{ "message" }` | Legacy, single turn without history or streaming: returns the agent's `ExecutionResult` as JSON, with a `Deprecation: true` header. |
+
+Bodies over 1MB get `413`, invalid JSON `400`.
+
+```bash
+curl -N http://127.0.0.1:3000/chat \
+  -H 'Authorization: Bearer '"$LOUSHY_API_TOKEN" -H 'Content-Type: application/json' \
+  -d '{ "sessionId": "alice", "input": "Hello" }'
+```
+
+### Auth
+
+Set `LOUSHY_API_TOKEN` and every route except `/health` requires
+`Authorization: Bearer <token>`; anything else gets `401` with a JSON error
+(the token is compared in constant time). Without it the server is open: that
+is fine on `127.0.0.1`, but **treat the token as required for anything that is
+not on localhost** (the server logs a warning when it listens on another
+interface without one, and the `docker` image listens on all interfaces).
+Terminate TLS in front of the server, since a bearer token travels in clear
+text over plain HTTP. Pass the token at run time (`docker run -e
+LOUSHY_API_TOKEN=...`).
+
+Programmatically, `adapter.scaffold(agentPath, outDir, { auth: { token } })`
+bakes a token into the built server for when the variable is not set. The
+variable wins, and a baked token is readable in `dist/server.js`, so prefer the
+variable.
+
+### Sessions and the store
+
+`LOUSHY_STORE` chooses where sessions, checkpoints and approvals live:
+
+| Value | Store |
+| ----- | ----- |
+| `memory` (default) | `memoryStore()`: gone when the process restarts, and not shared between instances. |
+| `sqlite:<path>` | A [`SqliteStore`](./sessions.md) file (created with its directory): sessions survive restarts. Needs Node 22 (`node:sqlite`); the `docker` image uses `node:22-slim`. Mount the file's directory as a volume. |
+
+SQLite is one file on one disk, so run a single instance per database file.
 
 ## `node-server`
 
@@ -38,13 +87,14 @@ node dist/server.js --port=8080 --host=0.0.0.0
 
 Like `loushy dev`, it binds to `127.0.0.1` unless you opt in to another
 interface with `--host=<h>` (or `HOST=<h>`); the port comes from `--port`,
-`PORT`, or defaults to `3000`. Provider credentials are read from the same
+`PORT`, or defaults to `3000`. SIGINT/SIGTERM close the agent before exiting.
+Provider credentials are read from the same
 environment variables as everywhere else (`OPENAI_API_KEY`, ...).
 
 ## `docker`
 
 Reuses the `node-server` scaffold and bundle and adds a `Dockerfile` based
-on `node:20-slim` that copies `dist/` and runs `node dist/server.js` on port
+on `node:22-slim` that copies `dist/` and runs `node dist/server.js` on port
 3000. The image sets `HOST=0.0.0.0` - inside a container the server has to
 listen on all interfaces for `docker run -p` to reach it. Pass provider
 credentials at run time:
