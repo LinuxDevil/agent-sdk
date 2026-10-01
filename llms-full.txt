@@ -1301,7 +1301,8 @@ See [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/
 - `HookRegistry`, `AgentHook`, `HookContext`, `ToolCallHookContext`,
   `GenerateHookContext` - pre/post agent hooks (run before/after a tool call
   or an LLM `generate`, can mutate args/messages/results or throw to abort
-  the step). Available from the package root and from
+  the step; tool-call hooks can also deny a call, replace its result or
+  modify its input, see [Hook outcomes](#hook-outcomes)). Available from the package root and from
   `@loushy/build-ai-agent/hooks`. Agent Forge's canvas hook editor
   ([docs/agent-forge.md](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md#hooks)) compiles the hooks a user
   attaches to a node into a `HookRegistry` this way, run sandboxed via
@@ -1321,6 +1322,58 @@ See [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/
   ```
 - `EncryptionUtils`, `sha256`, `StorageService`, `renderTemplate`,
   `MemoryManager` - supporting utilities; see [Utilities](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/utilities.md).
+
+### Hook outcomes
+
+A tool-call hook can change what happens, not just watch it. A `preToolCall`
+hook may return:
+
+- nothing: the call goes on unchanged (mutating `ctx.args` in place still works).
+- `{ deny: reason }`: the call does not run. The model gets the same
+  `kind: 'denied'` tool error a `needsApproval` deny produces (see
+  [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#approve-deny-or-ask)), streams see `tool.error`,
+  and `onPermissionDecision` records `decision: 'deny'` with `hook` and `reason`.
+- `{ result: value }`: the call does not run and `value` is its result. The
+  `tool.done` event and the transcript's `tool` message (`metadata`) carry
+  `replacedByHook: '<hook name>'`.
+- `{ input: args }`: the call runs with `args`. They are validated against
+  the tool's input schema again; a mismatch becomes a `kind: 'validation'`
+  tool error whose message names the hook, and the tool does not run.
+
+A `postToolCall` hook may return `{ result: value }` to replace the result the
+model sees (to redact or truncate it); nothing keeps it. Hooks run in
+registration order: the first `deny` or `result` of a pre-hook skips the
+pre-hooks after it, `input`s chain (each hook sees the previous one's as
+`ctx.args`), and each post-hook sees the result an earlier one replaced. A hook
+that throws still rejects the run, as before. Sub-agents inherit the lead
+agent's hooks and their outcomes.
+
+For one tool call, the order is: argument validation, `preToolCall` hooks,
+permission rules (`permissions`), tool guardrails, the tool's `needsApproval`,
+the approval pause, execution, `postToolCall` hooks. Hooks run before every
+approval decision, so rules, `needsApproval` and the human all see (and approve)
+the input a hook produced; the pending approval's `args` show it. When an
+approved call is resumed, the pre-hooks run again: they may still deny it or
+supply its result, but an `{ input }` that differs from the approved input is
+refused with a tool error instead of running.
+
+```ts
+import { createAgent, type AgentHook } from '@loushy/build-ai-agent';
+
+const guard: AgentHook = {
+  name: 'guard',
+  preToolCall(ctx) {
+    if (ctx.toolName === 'shell') return { deny: 'Use the workspace tools instead' };
+    if (ctx.toolName === 'search') return { input: { ...ctx.args, limit: 10 } };
+    return undefined; // continue unchanged
+  },
+  postToolCall(_ctx, result) {
+    return typeof result.result === 'string' ? { result: result.result.slice(0, 2000) } : undefined;
+  },
+};
+
+const agent = createAgent({ provider, instructions: 'You research things.', hooks: [guard] });
+```
 
 ### Flow expressions
 
@@ -2362,6 +2415,7 @@ per server with `approval: 'annotations' | 'always' | 'never'` or a function; se
 before the tool's own `needsApproval`. The first rule that matches decides:
 
 - `allow` runs the call, without approval even if `needsApproval` would ask.
+  A `needsApproval` that denies the call still denies it.
 - `deny` does not run it. The model gets a tool error with `kind: 'denied'`
   and the rule's `reason` (see [Tool errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md)), and streams see
   `tool.error`.
@@ -2463,10 +2517,13 @@ const agent = createAgent({ provider, instructions: 'You deploy services.', tool
 const chat = agent.session(); // the first staging deploy asks, later ones in this session run
 ```
 
-With `permissions`, a matching rule decides alone: a `deny` rule always wins,
-an `allow` rule runs the call without consulting `needsApproval` (so it also
-skips the tool's own `'ask'`, `once()` or `'deny'`), and an `ask` rule pauses.
-The tool's `needsApproval` outcome applies only when no rule matches. MCP
+With `permissions`, a `deny` rule always wins, and the tool's `needsApproval`
+is not called. Otherwise the tool's own `'deny'` (or `{ deny }`) always
+denies, whatever rule matched. An `allow` rule replaces the tool's ask (so it
+skips `'ask'`, `true` and `once()`), and an `ask` rule pauses even when the
+tool would approve. With no matching rule, the tool's `needsApproval` outcome
+applies. A `preToolCall` hook runs before all of these and can deny the call
+first (see [Hook outcomes](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#hook-outcomes)). MCP
 tools keep their annotation-derived `needsApproval` (a boolean). Sub-agents
 evaluate their tools' `needsApproval` the same way, and a `once()` approval
 given through the lead agent is remembered for the rest of that sub-agent's
@@ -3400,7 +3457,8 @@ console.log(summarized.summary ?? summarized.error?.message);
 now, whatever its size, saves it to the session's store (memory, file, SQLite
 or KV) and resolves to `{ messagesBefore, messagesAfter, tokensBefore, tokensAfter, strategy, error? }`.
 It runs `options.strategy`, else the strategy of `agent.session({ compaction })`
-(the same value as `createAgent({ compaction })`), else prunes old tool results.
+(the same value as `createAgent({ compaction })`, and the agent's own
+`compaction` when the session does not set one), else prunes old tool results.
 Pinned messages stay. A session with no messages resolves without doing
 anything. It rejects with `LOUSHY_SESSION_BUSY` while a turn is running, and
 with `LOUSHY_SESSION_TURN_PENDING` / `LOUSHY_SESSION_AWAITING_APPROVAL` while a
@@ -4274,7 +4332,7 @@ write. Keys, with an optional `prefix` before each:
 | Key | Value |
 | --- | ----- |
 | `sessions/<id>` | The transcript as JSON (image and file bytes as `{ "$bytes": "<base64>" }`, like `FileSessionStore`). |
-| `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, no history). |
+| `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, with its history under `checkpoints/<id>#history`). |
 | `approvals/<id>` | A paused approval and the snapshot that resumes it (deleted when it is decided). |
 
 `ttl: { sessions?, checkpoints?, approvals? }` (seconds, KV accepts 60 or more)
@@ -4552,7 +4610,18 @@ every `save()` appends the record to a ring (the newest `historyLimit` saves,
 default 50; the oldest are dropped), which is what replaying or forking a run
 from an earlier step is built on.
 
-`memoryStore()`, `SqliteStore` and `LocalStorageCheckpointStore` keep one:
+Which stores keep one:
+
+| Store | History | Option |
+| --- | --- | --- |
+| `memoryStore()` | yes | `memoryStore({ historyLimit })` |
+| `SqliteStore` | yes (`checkpoint_history` table) | `new SqliteStore(path, { historyLimit })` |
+| `LocalStorageCheckpointStore` | yes | `new LocalStorageCheckpointStore(storage, { historyLimit })` |
+| `KVCheckpointStore` / `KVStore` (Cloudflare Workers KV) | yes (see below) | `new KVStore(kv, { historyLimit })` |
+| Agent Forge's `FileCheckpointStore` | yes | `new FileCheckpointStore(dir, { historyLimit })` |
+| a custom `CheckpointStore` | only if it implements `history()` | - |
+
+For example, with the in-memory store:
 
 ```ts
 import { getCheckpointHistory, memoryStore } from '@loushy/build-ai-agent';
@@ -4578,9 +4647,24 @@ await checkpoints.delete('chat-42', { keepHistory: true });
   for long transcripts. An unknown session gives `[]`.
 - `history` is optional on `CheckpointStore`: a custom store without it keeps
   working, and `getCheckpointHistory()` returns `undefined` for it instead of
-  throwing. `KVCheckpointStore` does not keep a history yet (TODO(LOU-D43.2):
-  one KV value per session would hit the 25 MiB value limit and races between
-  concurrent saves), and neither does Agent Forge's file store.
+  throwing.
+- `KVCheckpointStore` keeps one index key per session
+  (`<prefix><sessionId>#history`, the entry ids oldest first) and one key per
+  entry (`<prefix><sessionId>#history/<id>`), so no value grows with the
+  history; the latest checkpoint stays at `<prefix><sessionId>`, so a store
+  written before history existed still loads. A save writes the checkpoint,
+  then the entry, then the index, then deletes the entries it dropped: a crash
+  between writes leaves an unlisted entry at worst (it expires with the TTL),
+  never an unreadable store. KV has no transactions, so two concurrent saves of
+  one session can lose one index update (that entry is missing from
+  `history()`), and an entry can be missing for a while at another edge
+  location (eventual consistency; `history()` skips it). Route a session's
+  requests to one location when that matters. Each save costs one `get` and two
+  `put`s more; `historyLimit: 0` turns it off.
+- Agent Forge's file store writes the history as one file per session
+  (`.loushy/agents/<id>/checkpoint-history/<session>.json`, replaced
+  atomically); a file damaged by a crash reads as no history and is rebuilt by
+  the next save.
 - `SqliteStore` keeps the history in a new `checkpoint_history` table, added when
   an existing database file is opened; `prune()` also removes history entries
   older than its cutoff.

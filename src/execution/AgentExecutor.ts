@@ -145,6 +145,8 @@ export interface ExecutionEvent {
     toolName: string;
     result: any;
     error?: string;
+    /** LOU-X3: the hook whose `{ result }` outcome became this call's result. */
+    replacedByHook?: string;
   };
   finishReason?: ExecutionFinishReason;
   /** Running usage of the whole run so far (LOU-V5); on `finish`, the final total. */

@@ -3,8 +3,11 @@
  * binding (the same store runs once under workerd in adapters/cloudflare.test.ts).
  */
 import { describe, it, expect } from 'vitest';
+import { z } from 'zod';
 import { createAgent } from '../createAgent';
-import { mockModel } from '../testing';
+import { defineTool } from '../tools/defineTool';
+import { compareTrajectories } from '../evals/drift';
+import { mockModel, type MockTurn } from '../testing';
 import type { Message } from '../providers/llm';
 import type { ExecutionSnapshot, PendingApproval } from '../execution/ApprovalGate';
 import { decodeBytes, encodeBytes } from '../session/sessionStore';
@@ -101,12 +104,13 @@ describe('KVStore options', () => {
     await store.sessions.save('a', []);
     await store.approvals.save(pending, snapshot);
     await store.checkpoints.save('a', { agentId: 'a', sessionId: 'a', stepIndex: 0, messages: [], toolCalls: [], usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 } });
-    expect([...data.keys()].sort()).toEqual(['bot-7/approvals/ap-1', 'bot-7/checkpoints/a', 'bot-7/sessions/a']);
+    expect([...data.keys()].filter((key) => !key.includes('#history')).sort()).toEqual(['bot-7/approvals/ap-1', 'bot-7/checkpoints/a', 'bot-7/sessions/a']);
+    expect([...data.keys()].filter((key) => key.includes('#history')).every((key) => key.startsWith('bot-7/checkpoints/a#history'))).toBe(true);
   });
 
   it('expires each kind of record with its own TTL, and none by default', async () => {
     const { kv, ttls } = fakeKV();
-    const store = new KVStore(kv, { ttl: { sessions: 86_400, checkpoints: 3_600, approvals: 600 } });
+    const store = new KVStore(kv, { ttl: { sessions: 86_400, checkpoints: 3_600, approvals: 600 }, historyLimit: 0 });
     await store.sessions.save('a', []);
     await store.approvals.save(pending, snapshot);
     await store.checkpoints.save('a', { agentId: 'a', sessionId: 'a', stepIndex: 0, messages: [], toolCalls: [], usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 } });
@@ -130,5 +134,29 @@ describe('createAgent({ store: new KVStore(kv) })', () => {
     expect(provider.calls[0].messages.map((m) => `${m.role}:${String(m.content)}`)).toEqual(
       expect.arrayContaining(['user:My name is Ali.', 'assistant:Nice to meet you, Ali.', 'user:Who am I?'])
     );
+  });
+});
+
+describe('agent.fork() with a KVStore (LOU-D43.2)', () => {
+  it('forks a run from its KV history, resumes the fork and compares the trajectories', async () => {
+    const { kv } = fakeKV();
+    const store = new KVStore(kv);
+    const weather = defineTool({ name: 'weather', description: 'weather', input: z.object({}), execute: async () => ({ forecast: 'sunny' }) });
+    const askWeather: MockTurn = { toolCalls: [{ name: 'weather', id: 'call_weather' }] };
+    const report: MockTurn = (req) => `done: ${req.messages.at(-1)?.content}`;
+    const provider = mockModel([askWeather, report, report]);
+    const agent = createAgent({ provider, instructions: 'Report the weather.', tools: [weather], store });
+
+    expect((await agent.send('Weather?', { sessionId: 'trip' })).text).toBe('done: {"forecast":"sunny"}');
+    expect((await store.checkpoints.history('trip')).map((entry) => entry.step)).toEqual([2, 1, 1]); // the model turn and the tool result both save step 1
+
+    const fork = await agent.fork('trip', { fromStep: 1, patch: { toolResult: { toolCallId: 'call_weather', result: { forecast: 'rain' } } } });
+    expect(fork.sessionId).toBe('trip.fork-1');
+    expect((await agent.resume(fork.sessionId))?.text).toBe('done: {"forecast":"rain"}');
+    provider.assertExhausted();
+
+    const original = await store.checkpoints.load('trip');
+    const forked = await store.checkpoints.load(fork.sessionId);
+    expect(compareTrajectories(original!, forked!).divergedAt).toBe(1);
   });
 });
