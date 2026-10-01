@@ -5,7 +5,7 @@
  */
 
 import { Message, ToolCall } from '../providers';
-import { AgentConfig, ToolDescriptor } from '../types';
+import { AgentConfig, ToolDescriptor, type ApprovalCheckContext, type ApprovalOutcome } from '../types';
 import { ToolRegistry } from '../tools';
 import { getToolExecute } from '../tools/toolContract';
 import { SandboxAdapter } from '../security/sandboxCore';
@@ -15,7 +15,7 @@ import { HookRegistry, ToolCallHookContext } from './hooks';
 import { toolErrorMessage } from './propagatingToolError';
 import { toolErrorResult, type ToolErrorKind } from './toolErrors';
 import { ToolArgumentsValidationError, parseToolArguments, validateToolArguments } from './toolArgsValidation';
-import { checkPermission } from './permissions';
+import { checkPermission, reportPermission, type PermissionDecisionEntry } from './permissions';
 import { checkToolGuardrails } from './ioGuardrails';
 import type { ExecuteOptions } from './AgentExecutor';
 import type { SubagentSuspension } from './ApprovalGate';
@@ -140,46 +140,61 @@ async function prepareToolCall(toolCall: ToolCall, ctx: ToolCallContext): Promis
   }
 
   // LOU-X2: a matching permission rule decides before `needsApproval` does.
-  const permission = await checkPermissionRules(toolCall, ctx, checked.args);
-  if (permission?.rejection) {
-    return { toolCall, args: checked.args, ...permission };
+  const { entry, gate: ruled } = await checkPermissionRules(toolCall, ctx, checked.args);
+  let audit = entry;
+  try {
+    if (ruled?.rejection) {
+      return { toolCall, args: checked.args, requiresApproval: false, rejection: ruled.rejection };
+    }
+    // LOU-X4: tool guardrails run on calls that were not denied; a block throws GuardrailError.
+    const args = ctx.scope
+      ? await checkToolGuardrails(ctx.scope.runtime, { toolName: toolCall.function.name, args: checked.args, messages: ctx.messages })
+      : checked.args;
+    const { denied, ...gate } = ruled ?? (await checkNeedsApproval(toolCall, ctx, args));
+    // LOU-X8: the tool's own deny is audited like a rule's.
+    if (denied && audit) audit = { ...audit, decision: 'deny', ...(denied.reason !== undefined && { reason: denied.reason }) };
+    return { toolCall, args, ...gate };
+  } finally {
+    if (audit && ctx.scope) reportPermission(ctx.scope.runtime, audit);
   }
-  // LOU-X4: tool guardrails run on calls that were not denied; a block throws GuardrailError.
-  const args = ctx.scope
-    ? await checkToolGuardrails(ctx.scope.runtime, { toolName: toolCall.function.name, args: checked.args, messages: ctx.messages })
-    : checked.args;
-  const gate = permission ?? (await checkNeedsApproval(toolCall, ctx.toolRegistry, args));
-  return { toolCall, args, ...gate };
 }
+
+/** The gate part of a {@link PreparedToolCall}; `denied` when the tool's `needsApproval` denied it (LOU-X8). */
+type ToolGate = Pick<PreparedToolCall, 'rejection' | 'requiresApproval'> & { denied?: { reason?: string } };
 
 /**
  * Applies the run's permission rules (LOU-X2, read from `ctx.scope.runtime`).
- * Undefined when no rule decided the call; a throwing `when` becomes the
- * call's error outcome, like a throwing `needsApproval`.
+ * `gate` is undefined when no rule decided the call; a throwing `when`
+ * becomes the call's error outcome, like a throwing `needsApproval`. `entry`
+ * is the audit entry to report once the call is decided.
  */
 async function checkPermissionRules(
   toolCall: ToolCall,
   ctx: ToolCallContext,
   args: Record<string, unknown>
-): Promise<Pick<PreparedToolCall, 'rejection' | 'requiresApproval'> | undefined> {
+): Promise<{ entry?: PermissionDecisionEntry; gate?: ToolGate }> {
   if (!ctx.scope) {
-    return undefined;
+    return {};
   }
   const toolName = toolCall.function.name;
   try {
     const entry = await checkPermission(ctx.scope.runtime, { toolName, toolCallId: toolCall.id, sessionId: ctx.sessionId, args });
     if (entry?.decision === 'deny') {
-      const reason = entry.rule?.reason;
-      const error = `Tool '${toolName}' was denied by a permission rule${reason ? `: ${reason}` : ''}`;
-      const result = toolErrorResult({ toolName, error, kind: 'denied', details: reason ? { reason } : undefined });
-      return { requiresApproval: false, rejection: { ...toolFailure(toolCall, 'denied', error), result } };
+      return { entry, gate: deniedGate(toolCall, 'a permission rule', entry.rule?.reason) };
     }
-    return entry?.decision === 'allow' || entry?.decision === 'ask'
-      ? { requiresApproval: entry.decision === 'ask' }
-      : undefined;
+    const gate = entry?.decision === 'allow' || entry?.decision === 'ask' ? { requiresApproval: entry.decision === 'ask' } : undefined;
+    return { entry, gate };
   } catch (error) {
-    return { requiresApproval: false, rejection: thrownToolFailure(toolCall, error) };
+    return { gate: { requiresApproval: false, rejection: thrownToolFailure(toolCall, error) } };
   }
+}
+
+/** A call refused by `by` (a permission rule or the tool's `needsApproval`): a `kind: 'denied'` tool error with `reason`. */
+function deniedGate(toolCall: ToolCall, by: string, reason: string | undefined): ToolGate {
+  const toolName = toolCall.function.name;
+  const error = `Tool '${toolName}' was denied by ${by}${reason ? `: ${reason}` : ''}`;
+  const result = toolErrorResult({ toolName, error, kind: 'denied', details: reason ? { reason } : undefined });
+  return { requiresApproval: false, rejection: { ...toolFailure(toolCall, 'denied', error), result }, denied: { reason } };
 }
 
 /**
@@ -188,18 +203,27 @@ async function checkPermissionRules(
  */
 async function checkNeedsApproval(
   toolCall: ToolCall,
-  toolRegistry: ToolRegistry | undefined,
+  ctx: ToolCallContext,
   args: Record<string, unknown>
-): Promise<Pick<PreparedToolCall, 'rejection' | 'requiresApproval'>> {
-  const toolDesc = toolRegistry && findExecutableTool(toolRegistry, toolCall.function.name);
+): Promise<ToolGate> {
+  const toolDesc = ctx.toolRegistry && findExecutableTool(ctx.toolRegistry, toolCall.function.name);
   if (!toolDesc) {
     return { requiresApproval: false };
   }
   try {
-    return { requiresApproval: await resolveNeedsApproval(toolDesc, args) };
+    const check = { toolName: toolCall.function.name, toolCallId: toolCall.id, sessionId: ctx.sessionId, messages: ctx.messages };
+    return approvalGate(toolCall, await resolveNeedsApproval(toolDesc, args, check));
   } catch (error) {
     return { requiresApproval: false, rejection: thrownToolFailure(toolCall, error) };
   }
+}
+
+/** LOU-X8: what a `needsApproval` outcome does with the call. */
+function approvalGate(toolCall: ToolCall, outcome: ApprovalOutcome): ToolGate {
+  if (outcome === 'deny' || (typeof outcome === 'object' && outcome !== null)) {
+    return deniedGate(toolCall, 'its needsApproval policy', outcome === 'deny' ? undefined : outcome.deny);
+  }
+  return { requiresApproval: outcome === true || outcome === 'ask' };
 }
 
 /**
@@ -306,10 +330,11 @@ function findExecutableTool(
 /** Resolves a tool's static or per-call `needsApproval` setting. */
 async function resolveNeedsApproval(
   toolDesc: ToolDescriptor,
-  args: Record<string, unknown>
-): Promise<boolean> {
+  args: Record<string, unknown>,
+  check: ApprovalCheckContext
+): Promise<ApprovalOutcome> {
   return typeof toolDesc.needsApproval === 'function'
-    ? await toolDesc.needsApproval(args)
+    ? await toolDesc.needsApproval(args, check)
     : !!toolDesc.needsApproval;
 }
 

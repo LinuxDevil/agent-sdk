@@ -6,6 +6,7 @@
 import { LLMProvider, Message, ToolCall } from '../providers';
 import { ToolRegistry } from '../tools';
 import { getToolExecute } from '../tools/toolContract';
+import { approvalMarker } from '../tools/approvalPolicies';
 import type { ToolDescriptor, ToolExecutionContext } from '../types';
 import {
   ApprovalDecision,
@@ -278,7 +279,9 @@ async function decidedToolMessage(
     execute: ctx.execute,
   };
   // LOU-X9: the tool sees the decision's note (an `ask_question` answer) as `ctx.approval`.
-  return { message: await runApproved(pending, ctx.toolRegistry, scope, { note: ctx.decision.note }) };
+  const message = await runApproved(pending, ctx.toolRegistry, scope, { note: ctx.decision.note });
+  // LOU-X8: the transcript remembers the approval, for `once()`.
+  return { message: { ...message, metadata: { ...message.metadata, ...approvalMarker(pending.args) } } };
 }
 
 /**
