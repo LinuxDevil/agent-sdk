@@ -4,7 +4,8 @@
  * the install command.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { MissingPeerDependencyError, loadOptionalPeer, lazyValue } from './optionalPeer';
+import { readFileSync } from 'node:fs';
+import { FEATURE_PEERS, MissingPeerDependencyError, loadOptionalPeer, lazyValue } from './optionalPeer';
 
 function moduleNotFound(packageName: string): Error {
   return Object.assign(new Error(`Cannot find module '${packageName}'`), { code: 'MODULE_NOT_FOUND' });
@@ -98,8 +99,45 @@ describe('SubprocessSandbox with dockerode not installed', () => {
     await expect(sandbox.run('echo', ['hi'])).rejects.toMatchObject({
       name: 'MissingPeerDependencyError',
       packageName: 'dockerode',
-      installCommand: 'npm install dockerode',
+      installCommand: 'npm install dockerode@^5.0.1',
     });
+  });
+});
+
+describe('feature peers (LOU-D40)', () => {
+  const manifest = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+
+  it.each(Object.entries(FEATURE_PEERS))('%s is an optional peer whose range matches package.json', (name, peer) => {
+    expect(manifest.peerDependencies[name]).toBe(peer.range);
+    expect(manifest.peerDependenciesMeta[name]).toEqual({ optional: true });
+    expect(manifest.devDependencies[name]).toBe(peer.range); // the repo's own tests still run
+    expect(manifest.dependencies?.[name]).toBeUndefined();
+  });
+
+  it.each([
+    ['dockerode', 'Docker sandboxing', 'npm install dockerode@^5.0.1'],
+    ['@modelcontextprotocol/sdk', 'MCP', 'npm install @modelcontextprotocol/sdk@^1.30.1'],
+    ['prompts', '`loushy init`', 'npm install prompts@^2.4.2'],
+  ])('the error for %s names the feature and the exact install command', async (name, feature, command) => {
+    const error = await loadOptionalPeer(name, () => Promise.reject(moduleNotFound(name))).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(MissingPeerDependencyError);
+    expect(error).toMatchObject({ packageName: name, installCommand: command });
+    expect((error as MissingPeerDependencyError).feature).toContain(feature);
+    expect((error as Error).message).toContain(feature);
+    expect((error as Error).message).toContain(`Run: ${command}`);
+  });
+
+  it('buildServer() rejects with the MCP install hint when the MCP SDK is missing', async () => {
+    vi.resetModules();
+    vi.doMock('@modelcontextprotocol/sdk/server/mcp.js', () => {
+      throw moduleNotFound('@modelcontextprotocol/sdk/server/mcp.js');
+    });
+    const { buildServer } = await import('../tools/mcp/server/buildServer');
+    await expect(buildServer({ name: 'x', version: '1', tools: [] } as never)).rejects.toMatchObject({
+      name: 'MissingPeerDependencyError',
+      installCommand: 'npm install @modelcontextprotocol/sdk@^1.30.1',
+    });
+    vi.doUnmock('@modelcontextprotocol/sdk/server/mcp.js');
   });
 });
 
