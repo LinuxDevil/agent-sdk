@@ -58,6 +58,11 @@
       "import": "./dist/execution/hooks.mjs",
       "require": "./dist/execution/hooks.js"
     },
+    "./sqlite": {
+      "types": "./dist/storage/sqlite/index.d.ts",
+      "import": "./dist/storage/sqlite/index.mjs",
+      "require": "./dist/storage/sqlite/index.js"
+    },
     "./triggers": {
       "types": "./dist/triggers/index.d.ts",
       "import": "./dist/triggers/index.mjs",

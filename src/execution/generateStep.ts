@@ -18,6 +18,7 @@ import {
   isModelActionableProviderErrorCategory,
 } from './errors';
 import type { ExecuteOptions } from './AgentExecutor';
+import { runEventsOf } from './agentRun';
 
 /**
  * Build tools from agent and registry
@@ -124,7 +125,12 @@ export function generateInSpan(
     init.attributes,
     async (llmSpan) => {
       const llmStart = Date.now();
-      const generated = await provider.generate(generateRequest);
+      // LOU-V2: a streaming run obtains the step through its sink (streamed
+      // when the provider can); everything around it is the same.
+      const runEvents = runEventsOf(options);
+      const generated = runEvents
+        ? await runEvents.generate(provider, generateRequest)
+        : await provider.generate(generateRequest);
       const llmLatencyMs = Date.now() - llmStart;
 
       recordLlmResult(llmSpan, generated, captureContent);
