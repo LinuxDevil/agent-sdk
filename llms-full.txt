@@ -2462,6 +2462,14 @@ loushy doctor [agent.yaml|json] [--json]
 loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]]
 ```
 
+Every command parses its flags the same way (Node's `parseArgs`, strict):
+`--flag value` and `--flag=value` both work, the last of a repeated flag wins
+(`--tag` accumulates), `--` ends the flags, and `-h` / `--help` prints the
+command's usage and exits 0. An unknown flag, a flag without its value (it
+never takes the next flag as its value) or an extra argument fails with
+`LOUSHY_CONFIG_INVALID` and the usage line. A value that starts with `-` needs
+the `=` form: `--model=-x`.
+
 `npm create loushy-agent my-agent` runs `loushy init` with the same arguments.
 While the package is not on npm, scaffold from a checkout of this repository
 with `node bin/loushy.js init my-agent --sdk-path .` (see

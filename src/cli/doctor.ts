@@ -11,6 +11,7 @@ import * as path from 'node:path';
 import { MissingPeerDependencyError, loadOptionalPeer } from '../providers/optionalPeer';
 import { loadSpec } from '../spec/loadSpec';
 import { resolveSpecTool } from '../spec/specToAgent';
+import { parseCommand, type CommandSpec } from './args';
 import { runDoctor } from './doctorCore';
 import { renderJson, renderReport } from './doctorRender';
 import type { DoctorEnvironment, SdkManifest } from './doctorTypes';
@@ -20,13 +21,18 @@ const DOCKER_TIMEOUT_MS = 2000;
 export interface DoctorArgs {
   specPath?: string;
   json: boolean;
+  /** `-h` / `--help` was given: print the usage, run nothing. */
+  help?: boolean;
 }
 
+const USAGE = 'Usage: loushy doctor [agent.yaml|json] [--json]';
+
+const SPEC: CommandSpec = { command: 'doctor', usage: USAGE, positionals: 1, options: { json: { type: 'boolean' } } };
+
+/** Parses `loushy doctor` arguments; throws `LOUSHY_CONFIG_INVALID` for an unknown flag or a second path. */
 export function parseDoctorArgs(argv: string[]): DoctorArgs {
-  return {
-    specPath: argv.find((arg) => !arg.startsWith('--')),
-    json: argv.includes('--json'),
-  };
+  const { values, positionals, help } = parseCommand(SPEC, argv);
+  return { specPath: positionals[0], json: values.json === true, help: help || undefined };
 }
 
 /** Walks up from a resolved entry file to the package.json named `name`. */
@@ -109,6 +115,10 @@ export async function runDoctorCommand(
   write: (text: string) => void = (text) => console.log(text)
 ): Promise<number> {
   const args = parseDoctorArgs(argv);
+  if (args.help) {
+    write(USAGE);
+    return 0;
+  }
   const report = await runDoctor(env ?? buildEnvironment(args));
   const color = process.stdout.isTTY === true && !process.env.NO_COLOR;
   write(args.json ? renderJson(report) : renderReport(report, { color }));

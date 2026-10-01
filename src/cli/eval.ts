@@ -21,6 +21,7 @@ import { RESULTS_ENV, TAGS_ENV } from '../evals/recorder';
 import { REMOTE_TOKEN_ENV, REMOTE_URL_ENV } from '../evals/remoteTarget';
 import { SDKError } from '../execution/errors';
 import { readCassette } from '../testing/cassette';
+import { parseCommand, stringValue, usageError, type CommandSpec } from './args';
 import { failsRun, parseResults, renderDriftTable, renderJson, renderJunit, renderTable, type DriftRow } from './evalReport';
 
 const USAGE =
@@ -52,16 +53,28 @@ export interface EvalCliArgs {
   drift?: boolean;
   /** With `drift`: compare token usage too. */
   driftUsage?: boolean;
+  /** `-h` / `--help` was given: print the usage, run nothing. */
+  help?: boolean;
 }
 
-const VALUE_FLAGS = new Set(['tag', 'junit', 'json', 'config', 'url', 'token']);
-const BOOLEAN_FLAGS: Record<string, 'strict' | 'judge' | 'record' | 'replay' | 'drift' | 'driftUsage'> = {
-  strict: 'strict',
-  judge: 'judge',
-  record: 'record',
-  replay: 'replay',
-  drift: 'drift',
-  'drift-usage': 'driftUsage',
+const SPEC: CommandSpec = {
+  command: 'eval',
+  usage: USAGE,
+  positionals: Infinity,
+  options: {
+    tag: { type: 'string', multiple: true },
+    junit: { type: 'string' },
+    json: { type: 'string' },
+    config: { type: 'string' },
+    url: { type: 'string' },
+    token: { type: 'string' },
+    strict: { type: 'boolean' },
+    judge: { type: 'boolean' },
+    record: { type: 'boolean' },
+    replay: { type: 'boolean' },
+    drift: { type: 'boolean' },
+    'drift-usage': { type: 'boolean' },
+  },
 };
 
 function assertOneCassetteMode(args: EvalCliArgs): void {
@@ -73,30 +86,29 @@ function assertOneCassetteMode(args: EvalCliArgs): void {
     );
   }
   if ([args.record, args.replay, args.drift].filter(Boolean).length > 1) {
-    throw new Error(`loushy eval: use only one of --record, --replay and --drift. ${USAGE}`);
+    throw usageError(SPEC, 'use only one of --record, --replay and --drift.');
   }
 }
 
-/** Parses `loushy eval` arguments; throws an Error that says how to fix a bad invocation. */
+/** Parses `loushy eval` arguments; throws a `LOUSHY_CONFIG_INVALID` error (usage as the hint) for a bad invocation. */
 export function parseEvalArgs(rest: string[]): EvalCliArgs {
-  const args: EvalCliArgs = { globs: [], tags: [], strict: false, judge: false };
-  for (let i = 0; i < rest.length; i++) {
-    const arg = rest[i];
-    if (!arg.startsWith('--')) {
-      args.globs.push(arg);
-      continue;
-    }
-    const [name, inline] = arg.slice(2).split(/=(.*)/s);
-    if (Object.hasOwn(BOOLEAN_FLAGS, name)) {
-      args[BOOLEAN_FLAGS[name]] = true;
-      continue;
-    }
-    if (!VALUE_FLAGS.has(name)) throw new Error(`loushy eval: unknown option '--${name}'. ${USAGE}`);
-    const value = inline ?? rest[++i];
-    if (!value || value.startsWith('--')) throw new Error(`loushy eval: --${name} needs a value. ${USAGE}`);
-    if (name === 'tag') args.tags.push(...value.split(',').filter(Boolean));
-    else args[name as 'junit' | 'json' | 'config' | 'url' | 'token'] = value;
-  }
+  const { values: v, positionals, help } = parseCommand(SPEC, rest);
+  if (help) return { globs: [], tags: [], strict: false, judge: false, help };
+  const args: EvalCliArgs = {
+    globs: positionals,
+    tags: ((v.tag as string[] | undefined) ?? []).flatMap((tag) => tag.split(',')).filter(Boolean),
+    strict: v.strict === true,
+    judge: v.judge === true,
+    junit: stringValue(v.junit),
+    json: stringValue(v.json),
+    config: stringValue(v.config),
+    url: stringValue(v.url),
+    token: stringValue(v.token),
+    record: v.record === true || undefined,
+    replay: v.replay === true || undefined,
+    drift: v.drift === true || undefined,
+    driftUsage: v['drift-usage'] === true || undefined,
+  };
   assertOneCassetteMode(args);
   return args;
 }
@@ -275,6 +287,10 @@ export async function runEval(rest: string[], deps: EvalDeps = {}): Promise<numb
   };
   try {
     const args = parseEvalArgs(rest);
+    if (args.help) {
+      resolved.log(USAGE);
+      return 0;
+    }
     const vitestBin = resolved.resolveVitest(resolved.cwd);
     if (!vitestBin) {
       console.error('loushy eval: vitest is not installed in this project. Install it with:\n  npm install --save-dev vitest');

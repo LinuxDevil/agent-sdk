@@ -15,41 +15,11 @@ const USAGE = [
   '  loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge]',
 ].join('\n');
 
-/**
- * Reads `--<name>=value` / `--<name> value` from `rest`. Returns `fallback`
- * when the flag is absent, otherwise `convert` applied to the (possibly
- * undefined) value.
- */
-function readFlag(rest, name, fallback, convert = (value) => value) {
-  const flag = rest.find((arg) => arg.startsWith(`--${name}`));
-  if (!flag) return fallback;
-  return convert(flag.split('=')[1] || rest[rest.indexOf(flag) + 1]);
-}
-
-function reportError(error) {
-  console.error(error && error.message ? error.message : String(error));
-  process.exitCode = 1;
-}
-
+// Flag parsing for every command lives in src/cli/args.ts (node:util parseArgs, strict);
+// each command's `run*` resolves with its exit code.
 async function runDev(rest) {
-  const configPath = rest.find((arg) => !arg.startsWith('--'));
-  const port = readFlag(rest, 'port', 3737, Number);
-  const host = readFlag(rest, 'host', '127.0.0.1');
-
-  if (!configPath) {
-    console.error('loushy dev: a path is required (a spec file, an agent directory or a .ts/.js agent module). Usage: loushy dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H]');
-    process.exitCode = 1;
-    return;
-  }
-
-  const { startDevServer } = require(path.join(__dirname, '..', 'dist', 'cli', 'dev.js'));
-
-  try {
-    const handle = await startDevServer(path.resolve(configPath), port, host);
-    console.log(`loushy dev: listening on http://${host}:${handle.port}`);
-  } catch (error) {
-    reportError(error);
-  }
+  const { runDev: run } = require(path.join(__dirname, '..', 'dist', 'cli', 'dev.js'));
+  process.exitCode = await run(rest);
 }
 
 // A terminal REPL for an agent (LOU-D33); see src/cli/chat.ts. Returns the exit code.
@@ -59,9 +29,6 @@ async function runChatCommand(rest) {
 }
 
 async function runBuildCommand(rest) {
-  // Flag parsing (--target/--agent/--out) lives in src/cli/build.ts's
-  // parseBuildArgs(), which follows the same `--flag=value` / `--flag value`
-  // convention as runDev() above.
   const { runBuild } = require(path.join(__dirname, '..', 'dist', 'cli', 'build.js'));
   process.exitCode = await runBuild(rest);
 }
@@ -69,23 +36,9 @@ async function runBuildCommand(rest) {
 // Default 'auto': prod (single built server+UI) when apps/agent-forge has
 // been built (`npm run build:studio`), dev (Vite + tsx, two processes)
 // otherwise. --prod/--dev force one or the other - see src/cli/studio.ts.
-function studioMode(rest) {
-  if (rest.includes('--prod')) return 'prod';
-  return rest.includes('--dev') ? 'dev' : 'auto';
-}
-
-async function runStudio(rest) {
-  const apiPort = readFlag(rest, 'port', 4750, Number);
-  const apiHost = readFlag(rest, 'host', '127.0.0.1');
-  const mode = studioMode(rest);
-
-  const { startStudio } = require(path.join(__dirname, '..', 'dist', 'cli', 'studio.js'));
-
-  try {
-    startStudio({ repoRoot: process.cwd(), apiPort, apiHost, mode });
-  } catch (error) {
-    reportError(error);
-  }
+async function runStudioCommand(rest) {
+  const { runStudio } = require(path.join(__dirname, '..', 'dist', 'cli', 'studio.js'));
+  process.exitCode = await runStudio(rest);
 }
 
 // Scaffolds a new project (LOU-D3); see src/cli/init.ts. Also what `npm create loushy-agent` runs.
@@ -118,7 +71,7 @@ const COMMANDS = new Map([
   ['dev', runDev],
   ['chat', runChatCommand],
   ['build', runBuildCommand],
-  ['studio', runStudio],
+  ['studio', runStudioCommand],
   ['mcp', runMcp],
   ['doctor', runDoctorCommand],
   ['eval', runEvalCommand],
