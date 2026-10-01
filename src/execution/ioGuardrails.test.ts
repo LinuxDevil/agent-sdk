@@ -176,7 +176,7 @@ describe('tool guardrails (LOU-X4)', () => {
     expect(sent).toHaveLength(0);
     expect(seen[0]).toMatchObject({ kind: 'tool', toolName: 'send_email', args: { to: 'x@evil.com' } });
     // The blocked call still gets a result, so the transcript stays valid.
-    expect(JSON.parse(String(result.messages.at(-1)?.content)).error).toMatch(/guardrail/);
+    expect(JSON.parse(String(result.messages.at(-1)?.content)).message).toMatch(/guardrail/);
   });
 
   it('is skipped for a call a permission rule denies', async () => {
