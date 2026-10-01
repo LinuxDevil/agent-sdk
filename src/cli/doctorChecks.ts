@@ -3,7 +3,7 @@
  * injected DoctorEnvironment returning one or more DoctorCheck lines.
  */
 import { FEATURE_PEERS } from '../providers/optionalPeer';
-import { listProviders, modelFromEnv, type ProviderInfo } from '../providers/providerSpec';
+import { listProviders, modelFromEnv, type AiMajor, type ProviderInfo } from '../providers/providerSpec';
 import type { DoctorCheck, DoctorEnvironment } from './doctorTypes';
 import { satisfiesRange } from './versionRange';
 
@@ -24,9 +24,20 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** The newest alternative of a `||` range: `^4.3.19 || ^7.0.0` installs `^7.0.0`. */
+function newestAlternative(range: string): string {
+  return range.split('||').pop()!.trim();
+}
+
 function installCommand(env: DoctorEnvironment, name: string): string {
   const range = env.sdk.peerDependencies?.[name];
-  return range ? `npm install ${name}@${range}` : `npm install ${name}`;
+  return range ? `npm install ${name}@${newestAlternative(range)}` : `npm install ${name}`;
+}
+
+/** The installed `ai` major when the SDK supports it; else 7, the major the `ai` fix installs. */
+function installedAiMajor(env: DoctorEnvironment): AiMajor {
+  const major = Number.parseInt(env.resolvePackageVersion('ai') ?? '', 10);
+  return major === 4 || major === 6 ? major : 7;
 }
 
 export function checkNode(env: DoctorEnvironment): DoctorCheck {
@@ -76,16 +87,24 @@ interface OptionalPeer {
   install: string;
   /** True when the agent spec cannot work without it (not installed becomes a failure). */
   required: boolean;
+  /** Provider packages: the versions that pair with the installed `ai` (LOU-D28d), e.g. `ai 7` and `^4.0.0`. */
+  pairing?: { ai: string; accepts: string; note?: string };
 }
 
-/** The optional peer packages behind the providers; required when the spec uses one of its providers. */
-function providerPeers(needs: SpecNeeds): Map<string, OptionalPeer> {
+/**
+ * The optional peer packages behind the providers, in the version that pairs
+ * with the installed `ai` major; required when the spec uses one of its providers.
+ */
+function providerPeers(env: DoctorEnvironment, needs: SpecNeeds): Map<string, OptionalPeer> {
+  const major = installedAiMajor(env);
   const peers = new Map<string, OptionalPeer>();
   for (const info of listProviders()) {
-    peers.set(info.peerPackage, {
-      title: `Provider package ${info.peerPackage}`,
-      install: info.peerInstall,
-      required: (peers.get(info.peerPackage)?.required ?? false) || needs.providers.has(info.name),
+    const { name, range, accepts, note } = info.peers[major];
+    peers.set(name, {
+      title: `Provider package ${name}`,
+      install: `${name}@${range}`,
+      required: (peers.get(name)?.required ?? false) || needs.providers.has(info.name),
+      pairing: { ai: `ai ${major}`, accepts, note },
     });
   }
   return peers;
@@ -107,7 +126,8 @@ function featurePeers(needs: SpecNeeds): Map<string, OptionalPeer> {
 }
 
 function checkOptionalPeer(env: DoctorEnvironment, name: string, peer: OptionalPeer): DoctorCheck {
-  const fix = `npm install ${peer.install}`;
+  const note = peer.pairing?.note;
+  const fix = `npm install ${peer.install}` + (note ? ` (note: ${note})` : '');
   const base = { id: `optional-peer.${name}`, title: peer.title };
   const enables = peer.enables ? ` - enables ${peer.enables}` : '';
   const version = env.resolvePackageVersion(name);
@@ -121,20 +141,25 @@ function checkOptionalPeer(env: DoctorEnvironment, name: string, peer: OptionalP
       fix,
     };
   }
-  const range = env.sdk.peerDependencies?.[name];
-  if (range && !satisfiesRange(version, range)) {
-    return {
-      ...base,
-      status: peer.required ? 'fail' : 'warn',
-      finding: `${version} installed, but the SDK expects ${range}${enables}`,
-      fix,
-    };
-  }
+  const mismatch = versionMismatch(env, name, peer, version);
+  if (mismatch) return { ...base, status: peer.required ? 'fail' : 'warn', finding: mismatch + enables, fix };
   return { ...base, status: 'ok', finding: `${version} installed${enables}` };
 }
 
+/**
+ * Why the installed version is wrong, or null: a provider package must pair with
+ * the installed `ai` (LOU-D28d); any other peer must match the SDK's own range.
+ */
+function versionMismatch(env: DoctorEnvironment, name: string, peer: OptionalPeer, version: string): string | null {
+  const expected = peer.pairing
+    ? { range: peer.pairing.accepts, by: `${peer.pairing.ai} needs` }
+    : { range: env.sdk.peerDependencies?.[name], by: 'the SDK expects' };
+  if (!expected.range || satisfiesRange(version, expected.range)) return null;
+  return `${version} installed, but ${expected.by} ${expected.range}`;
+}
+
 export function checkOptionalPeers(env: DoctorEnvironment, needs: SpecNeeds): DoctorCheck[] {
-  return [...providerPeers(needs), ...featurePeers(needs)].map(([name, peer]) => checkOptionalPeer(env, name, peer));
+  return [...providerPeers(env, needs), ...featurePeers(needs)].map(([name, peer]) => checkOptionalPeer(env, name, peer));
 }
 
 function checkApiKey(env: DoctorEnvironment, info: ProviderInfo, needs: SpecNeeds): DoctorCheck {

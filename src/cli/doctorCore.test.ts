@@ -127,6 +127,55 @@ describe('optional provider peers', () => {
   });
 });
 
+describe('ai / provider package pairing (LOU-D28d)', () => {
+  const WIDE_PEERS = {
+    ai: '^4.3.19 || ^6.0.0 || ^7.0.0',
+    zod: '^3.25.76',
+    '@ai-sdk/openai': '^0.0.42 || ^1.0.0 || ^3.0.0 || ^4.0.0',
+    '@ai-sdk/anthropic': '^0.0.42 || ^1.0.0 || ^3.0.0 || ^4.0.0',
+  };
+  const installed = (versions: Record<string, string | null>) => (n: string) =>
+    n in versions ? versions[n] : INSTALLED[n] ?? null;
+  const envWith = (versions: Record<string, string | null>, extra: Partial<DoctorEnvironment> = {}) =>
+    makeEnv({ sdk: { peerDependencies: WIDE_PEERS }, resolvePackageVersion: installed(versions), ...extra });
+
+  it('flags ai 7 with @ai-sdk/openai 1.x, with the fix for ai 7', async () => {
+    const result = await check(envWith({ ai: '7.0.1', '@ai-sdk/openai': '1.3.24' }), 'optional-peer.@ai-sdk/openai');
+    expect(result).toMatchObject({
+      status: 'warn',
+      finding: '1.3.24 installed, but ai 7 needs ^4.0.0',
+      fix: 'npm install @ai-sdk/openai@^4.0.0',
+    });
+  });
+
+  it('fails a mismatched pairing the agent spec needs', async () => {
+    const env = envWith({ ai: '6.0.5', '@ai-sdk/openai': '4.0.1' }, { specPath: 'a.yaml', loadSpec: () => spec() });
+    const result = await check(env, 'optional-peer.@ai-sdk/openai');
+    expect(result).toMatchObject({ status: 'fail', fix: 'npm install @ai-sdk/openai@^3.0.0' });
+  });
+
+  it('accepts @ai-sdk/* 0.0.x and 1.x with ai 4, and 4.x with ai 7', async () => {
+    expect((await check(envWith({ '@ai-sdk/openai': '1.3.24' }), 'optional-peer.@ai-sdk/openai')).status).toBe('ok');
+    expect((await check(envWith({ ai: '7.0.0', '@ai-sdk/openai': '4.0.83' }), 'optional-peer.@ai-sdk/openai')).status).toBe('ok');
+  });
+
+  it('checks ollama-ai-provider-v2 on ai 7, and its fix states the zod 4 limitation', async () => {
+    const report = await runDoctor(envWith({ ai: '7.0.0', 'ollama-ai-provider-v2': null }));
+    expect(report.checks.find((c) => c.id === 'optional-peer.ollama-ai-provider')).toBeUndefined();
+    const result = await check(envWith({ ai: '7.0.0', 'ollama-ai-provider-v2': null }), 'optional-peer.ollama-ai-provider-v2');
+    expect(result.fix).toMatch(/^npm install ollama-ai-provider-v2@\^4\.0\.0 \(note: .*zod 4/);
+  });
+
+  it('a missing or unsupported ai gets one installable range, and provider hints for ai 7', async () => {
+    for (const ai of [null, '5.0.0']) {
+      expect((await check(envWith({ ai }), 'peer.ai')).fix).toBe('npm install ai@^7.0.0');
+      expect((await check(envWith({ ai, '@ai-sdk/openai': null }), 'optional-peer.@ai-sdk/openai')).fix).toBe(
+        'npm install @ai-sdk/openai@^4.0.0'
+      );
+    }
+  });
+});
+
 describe('optional feature peers (LOU-D40)', () => {
   const without = (missing: string) => (n: string) => (n === missing ? null : INSTALLED[n] ?? null);
 

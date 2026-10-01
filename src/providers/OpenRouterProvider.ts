@@ -5,6 +5,7 @@
 
 import { LanguageModel } from 'ai';
 import { AiSdkProvider, AiSdkProviderConfig } from './aiSdkProvider';
+import { aiMajorOf } from './aiSdkCompat';
 import { lazyValue, loadOptionalPeer } from './optionalPeer';
 import { Logger, noopLogger } from '../execution/logger';
 
@@ -52,7 +53,7 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
 
   /** Loads `@ai-sdk/openai` on first use (it is an optional peer) and points it at OpenRouter. */
   private readonly loadProvider = lazyValue(async () => {
-    const { createOpenAI } = await loadOptionalPeer('@ai-sdk/openai', () => import('@ai-sdk/openai'));
+    const { createOpenAI } = await loadOptionalPeer('@ai-sdk/openai', () => import('@ai-sdk/openai'), aiMajorOf(this.ai));
     return createOpenAI({
       apiKey: this.config.apiKey,
       baseURL: OPENROUTER_API_URL,

@@ -141,13 +141,15 @@ function setUpProject(projectDir: string, skipBuild: boolean): void {
 
   // Everything a reader installs per docs/installation.md: the SDK, its
   // required peers (ai, zod) and - because the root entry currently loads
-  // every provider module - the optional provider packages too.
+  // every provider module - the optional provider packages too. `ai` and
+  // `@ai-sdk/*` peer on several majors (LOU-D28d): pin the pairing the repo
+  // develops against (its devDependencies), not whatever the widest range resolves to.
   const dependencies: Record<string, string> = {
     '@loushy/build-ai-agent': `file:./${tarball}`,
-    ai: peers.ai,
+    ai: dev.ai,
     zod: peers.zod,
-    '@ai-sdk/openai': peers['@ai-sdk/openai'],
-    '@ai-sdk/anthropic': peers['@ai-sdk/anthropic'],
+    '@ai-sdk/openai': dev['@ai-sdk/openai'],
+    '@ai-sdk/anthropic': dev['@ai-sdk/anthropic'],
     'ollama-ai-provider': peers['ollama-ai-provider'],
   };
   const devDependencies: Record<string, string> = {

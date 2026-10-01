@@ -2,7 +2,7 @@
  * File contents for the generated project. Pure functions: a
  * {@link ProjectConfig} in, strings out, so every combination is snapshot-testable.
  */
-import { listProviders } from '../../providers/providerSpec';
+import { AI_RANGES, listProviders, type AiMajor } from '../../providers/providerSpec';
 import type { PackageManager, Template } from './options';
 import type { SdkManifest } from './sdkDependency';
 
@@ -27,10 +27,19 @@ function sortKeys(record: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)));
 }
 
-/** Only the chosen provider's package: the SDK loads provider packages on first use. */
-function providerPackage(provider: string): Record<string, string> {
-  const info = providerInfo(provider);
-  return { [info.peerPackage]: info.peerInstall.slice(info.peerPackage.length + 1) };
+/**
+ * The `ai` major a new project gets (LOU-D28d): the current one, 7, for the
+ * providers CI runs on it (`@ai-sdk/openai` and `@ai-sdk/anthropic` 4). Ollama
+ * stays on 4 because its `ai` 6/7 package needs zod 4 (LOU-D29), and OpenRouter
+ * because `@ai-sdk/openai` 2+ defaults to the Responses API, not yet verified there.
+ */
+const SCAFFOLD_AI_MAJOR: Readonly<Record<string, AiMajor>> = { openai: 7, anthropic: 7, openrouter: 4, ollama: 4 };
+
+/** `ai` and only the chosen provider's package (the SDK loads provider packages on first use), as one pairing. */
+function aiPackages(provider: string): Record<string, string> {
+  const major = SCAFFOLD_AI_MAJOR[provider] ?? 4;
+  const { name, range } = providerInfo(provider).peers[major];
+  return { ai: AI_RANGES[major], [name]: range };
 }
 
 function packageJson(config: ProjectConfig): string {
@@ -49,9 +58,8 @@ function packageJson(config: ProjectConfig): string {
     },
     dependencies: sortKeys({
       '@loushy/build-ai-agent': config.sdkDependency,
-      ai: peers.ai ?? '^4.3.19',
       zod: peers.zod ?? '^3.25.76',
-      ...providerPackage(config.provider),
+      ...aiPackages(config.provider),
     }),
     devDependencies: {
       '@types/node': '^22.0.0',

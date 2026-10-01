@@ -21,6 +21,7 @@ import type {
   ToolCall,
   ToolDefinition,
 } from './llm';
+import type { AiMajor } from './providerSpec';
 
 /** The parts of the `ai` module this layer calls; v4, v6 and v7 all fit. */
 export interface AiSdkModule {
@@ -55,6 +56,15 @@ export interface AiSdkCallSettings {
 export function isModernAi(ai: AiSdkModule): boolean {
   // `in`, not a read: vitest's module mocks throw on reading a missing export.
   return 'stepCountIs' in ai;
+}
+
+/**
+ * The installed `ai` major (LOU-D28d), from its exports: `stepCountIs` from
+ * v5 on, and `registerTelemetry` from v7 on (v6 calls it `registerTelemetryIntegration`).
+ */
+export function aiMajorOf(ai: AiSdkModule): AiMajor {
+  if (!isModernAi(ai)) return 4;
+  return 'registerTelemetry' in ai ? 7 : 6;
 }
 
 /** A tool call as `ai` v4 (`args`) or v5+ (`input`) returns it. */
