@@ -1,27 +1,38 @@
 /**
- * One `generateText()` call on `ai` v4 or `ai` v6/v7 (LOU-D26).
+ * One `generateText()` (LOU-D26) or `streamText()` (LOU-D27) call on `ai` v4
+ * or `ai` v6/v7.
  *
  * aiSdkProvider builds its request in the `ai` v4 shape (CoreMessages,
  * `maxTokens`, ...). On v4 it is sent as it is; on v6/v7, detected by the
  * module exporting `stepCountIs`, it is mapped to the new call shape
  * (ModelMessages, `maxOutputTokens`, `stopWhen`, tools with `inputSchema`,
- * `output`). Both majors' results are normalized to our `GenerateResult`.
+ * `output`). Both majors' results are normalized to our `GenerateResult`, and
+ * both majors' `fullStream` parts to our `StreamChunk`s.
  * The module is a parameter, so tests can pass an aliased `ai` v7.
  */
 
 import type { LanguageModel } from 'ai';
-import type { GenerateOptions, GenerateResult, ProviderUsage, ToolCall, ToolDefinition } from './llm';
+import type {
+  GenerateOptions,
+  GenerateResult,
+  ProviderUsage,
+  StreamChunk,
+  StreamResult,
+  ToolCall,
+  ToolDefinition,
+} from './llm';
 
 /** The parts of the `ai` module this layer calls; v4, v6 and v7 all fit. */
 export interface AiSdkModule {
   generateText(options: never): PromiseLike<unknown>;
+  streamText(options: never): unknown;
   jsonSchema(schema: never): unknown;
   /** Exported from `ai` v5 on, where it replaced `maxSteps`. */
   stepCountIs?: (count: number) => unknown;
 }
 
 /** A v4 CoreMessage, structurally (so this module type-checks against any `ai` major). */
-interface V4Message {
+export interface AiSdkMessage {
   role: string;
   content: string | ReadonlyArray<object>;
 }
@@ -29,7 +40,7 @@ interface V4Message {
 /** The v4-shaped request aiSdkProvider builds (the fields mapped for v6/v7). */
 export interface AiSdkCallSettings {
   model: LanguageModel;
-  messages: V4Message[];
+  messages: AiSdkMessage[];
   temperature?: number;
   maxTokens?: number;
   topP?: number;
@@ -64,7 +75,7 @@ interface AiSdkGenerateResult {
 }
 
 /** Convert tool calls from 'ai' SDK format to our format. */
-export function convertToolCalls(calls: AiSdkToolCall[]): ToolCall[] {
+function convertToolCalls(calls: AiSdkToolCall[]): ToolCall[] {
   return calls.map((tc) => ({
     id: tc.toolCallId,
     type: 'function' as const,
@@ -116,7 +127,7 @@ function withDetails(usage: ProviderUsage, cachedInputTokens?: number, reasoning
  * read from `providerMetadata` when the provider package documents them
  * (OpenAI `cachedPromptTokens`/`reasoningTokens`, Anthropic `cacheReadInputTokens`).
  */
-export function toGenerateUsage(
+function toGenerateUsage(
   usage: Partial<ProviderUsage>,
   metadata: Record<string, unknown> | undefined
 ): ProviderUsage | undefined {
@@ -168,7 +179,7 @@ function toModernPart(part: Record<string, unknown>): Record<string, unknown> {
 }
 
 /** A v4 CoreMessage as a v5+ ModelMessage. */
-function toModelMessage(message: V4Message) {
+function toModelMessage(message: AiSdkMessage) {
   if (typeof message.content === 'string') return message;
   return { ...message, content: message.content.map((part) => toModernPart(part as Record<string, unknown>)) };
 }
@@ -225,6 +236,15 @@ function toModernRequest(ai: AiSdkModule, settings: AiSdkCallSettings, options: 
   };
 }
 
+/** Either major's usage as ours; `undefined` when the backend reported none. */
+function usageOf(
+  modern: boolean,
+  usage: Record<string, unknown> | undefined,
+  metadata: Record<string, unknown> | undefined
+): ProviderUsage | undefined {
+  return modern ? modernUsage(usage) : toGenerateUsage(usage ?? {}, metadata);
+}
+
 /** Call `generateText()` on `ai` (v4 or v6/v7) and normalize its result. */
 export async function compatGenerateText(
   ai: AiSdkModule,
@@ -237,8 +257,147 @@ export async function compatGenerateText(
   return {
     text: result.text,
     finishReason: mapFinishReason(result.finishReason),
-    usage: modern ? modernUsage(result.usage) : toGenerateUsage(result.usage ?? {}, result.providerMetadata),
+    usage: usageOf(modern, result.usage, result.providerMetadata),
     toolCalls: result.toolCalls && convertToolCalls(result.toolCalls),
     rawResponse: result,
   };
+}
+
+/** A `fullStream` part of either major: the fields read here. */
+interface AiSdkStreamPart extends Partial<AiSdkToolCall> {
+  type: string;
+  /** `text-delta`: v6/v7 `text`, v4 `textDelta`. */
+  text?: string;
+  textDelta?: string;
+  /** `tool-input-start` / `-delta` (v6/v7). */
+  id?: string;
+  delta?: string;
+  finishReason?: string;
+  /** `finish`: v4 `usage` (and `providerMetadata`), v6/v7 `totalUsage`. */
+  usage?: Record<string, unknown>;
+  totalUsage?: Record<string, unknown>;
+  providerMetadata?: Record<string, unknown>;
+  error?: unknown;
+}
+
+/** The subset of either major's `streamText()` result read here (v6/v7 `usage` is the total). */
+interface AiSdkStreamResult {
+  fullStream?: AsyncIterable<AiSdkStreamPart>;
+  textStream: AsyncIterable<string>;
+  text: PromiseLike<string> | string;
+  usage: PromiseLike<Record<string, unknown> | undefined> | Record<string, unknown>;
+  providerMetadata?: PromiseLike<Record<string, unknown> | undefined>;
+  finishReason: PromiseLike<string> | string;
+  toolCalls: PromiseLike<AiSdkToolCall[]> | AiSdkToolCall[];
+}
+
+/** What reading one stream keeps: the major, the signal, and tool inputs streamed so far by call id. */
+interface ChunkState {
+  modern: boolean;
+  signal?: AbortSignal;
+  inputs: Map<string, { toolName: string; input: string }>;
+}
+
+/**
+ * The finish chunk, after a tool call for each input streamed with
+ * `tool-input-start`/`-delta`/`-end` that no `tool-call` followed (when one
+ * does, v6/v7 emits that whole call after the input, and it is used instead).
+ */
+function finishChunks(part: AiSdkStreamPart, { modern, inputs }: ChunkState): StreamChunk[] {
+  const chunks: StreamChunk[] = [...inputs].map(([id, { toolName, input }]) => ({
+    type: 'tool-call',
+    toolCall: { id, type: 'function', function: { name: toolName, arguments: input || '{}' } },
+  }));
+  const usage = usageOf(modern, modern ? part.totalUsage : part.usage, part.providerMetadata);
+  chunks.push({ type: 'finish', finishReason: part.finishReason, ...(usage ? { usage } : {}) });
+  return chunks;
+}
+
+/**
+ * The chunks each `fullStream` part type becomes, on either major. An `error`
+ * part rejects the stream with its error, an `abort` part with the signal's
+ * reason. Unlisted parts are dropped: reasoning (v4 `reasoning`, v6/v7
+ * `reasoning-delta`), as `StreamChunkType` has no reasoning chunk yet
+ * (LOU-V13); steps, sources, files, `raw` and v4's results of the
+ * placeholder `execute` carry nothing a chunk reports.
+ */
+const PART_CHUNKS = new Map<string, (part: AiSdkStreamPart, state: ChunkState) => StreamChunk[]>([
+  ['text-delta', (part) => {
+    const textDelta = part.text ?? part.textDelta;
+    return textDelta ? [{ type: 'text-delta', textDelta }] : [];
+  }],
+  ['tool-input-start', (part, { inputs }) => {
+    inputs.set(part.id ?? '', { toolName: part.toolName ?? '', input: '' });
+    return [];
+  }],
+  ['tool-input-delta', (part, { inputs }) => {
+    const pending = inputs.get(part.id ?? '');
+    if (pending) pending.input += part.delta ?? '';
+    return [];
+  }],
+  ['tool-call', (part, { inputs }) => {
+    inputs.delete(part.toolCallId ?? '');
+    return [{ type: 'tool-call', toolCall: convertToolCalls([part as AiSdkToolCall])[0] }];
+  }],
+  ['finish', finishChunks],
+  ['error', (part) => {
+    throw part.error ?? new Error('The model stream reported an error without details');
+  }],
+  ['abort', (_part, { signal }) => {
+    throw signal?.reason ?? new DOMException('The operation was aborted.', 'AbortError');
+  }],
+]);
+
+/** Either major's `fullStream` as our chunks (see PART_CHUNKS). */
+async function* toChunks(result: AiSdkStreamResult, modern: boolean, signal?: AbortSignal): AsyncGenerator<StreamChunk> {
+  const state: ChunkState = { modern, signal, inputs: new Map() };
+  for await (const part of result.fullStream ?? []) {
+    yield* PART_CHUNKS.get(part.type)?.(part, state) ?? [];
+  }
+}
+
+/** The final usage of either major's stream. */
+async function finalUsage(result: AiSdkStreamResult, modern: boolean): Promise<ProviderUsage | undefined> {
+  return usageOf(modern, await result.usage, await result.providerMetadata);
+}
+
+/** A v4 result without `fullStream` (as this repo's v4 test doubles script it): its text deltas, then the finish. */
+async function* textStreamChunks(result: AiSdkStreamResult): AsyncGenerator<StreamChunk> {
+  for await (const textDelta of result.textStream) yield { type: 'text-delta', textDelta };
+  yield { type: 'finish', finishReason: await result.finishReason, usage: await finalUsage(result, false) };
+}
+
+async function* textDeltas(chunks: AsyncIterable<StreamChunk>): AsyncGenerator<string> {
+  for await (const chunk of chunks) if (chunk.type === 'text-delta' && chunk.textDelta) yield chunk.textDelta;
+}
+
+/**
+ * Call `streamText()` on `ai` (v4 or v6/v7), with the request mapped as
+ * `compatGenerateText()` maps it, and normalize its stream and final values.
+ * `textStream` and `fullStream` each read their own copy of the SDK stream.
+ */
+export async function streamCompat(
+  ai: AiSdkModule,
+  settings: AiSdkCallSettings,
+  options: GenerateOptions
+): Promise<StreamResult> {
+  const modern = isModernAi(ai);
+  const request = modern ? toModernRequest(ai, settings, options) : settings;
+  // Errors reject the stream (toChunks); the SDK's default onError would also log them.
+  const result = (await ai.streamText({ ...request, onError: () => undefined } as never)) as AiSdkStreamResult;
+  const chunks = () => ('fullStream' in result ? toChunks(result, modern, settings.abortSignal) : textStreamChunks(result));
+  return {
+    textStream: textDeltas(chunks()),
+    fullStream: chunks(),
+    text: handled(Promise.resolve(result.text)),
+    usage: handled(finalUsage(result, modern)),
+    finishReason: handled(Promise.resolve(result.finishReason)),
+    toolCalls: handled(Promise.resolve(result.toolCalls).then(convertToolCalls)),
+  };
+}
+
+/** `promise`, marked handled: a final value nobody reads must not become an unhandled rejection when the stream fails. */
+function handled<T>(promise: Promise<T>): Promise<T> {
+  promise.catch(() => undefined);
+  return promise;
 }

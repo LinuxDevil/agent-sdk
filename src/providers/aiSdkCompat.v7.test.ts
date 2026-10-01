@@ -265,13 +265,6 @@ describe.each(providers)('%s provider on ai v7: generate() (LOU-D26)', (_name, m
       { role: 'assistant', content: [{ type: 'text', text: 'Hello' }] },
     ]);
   });
-
-  it('refuses to stream until LOU-D27', async () => {
-    const provider = make();
-    onV7(provider);
-
-    await expect(provider.stream({ messages: [{ role: 'user', content: 'hi' }] })).rejects.toThrow(/LOU-D27/);
-  });
 });
 
 describe('file parts for a provider that accepts them, on ai v7', () => {
