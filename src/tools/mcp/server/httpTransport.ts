@@ -5,8 +5,8 @@
  */
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { loadOptionalPeer } from '../../../providers/optionalPeer';
 import { checkWebhookAuth } from '../../../triggers/webhookAuth';
 
 /** Options of the `{ type: 'http' }` transport. */
@@ -75,12 +75,15 @@ function readJsonBody(req: http.IncomingMessage): Promise<unknown> {
 }
 
 async function serveRequest(
-  createServer: () => McpServer,
+  createServer: () => Promise<McpServer>,
   req: http.IncomingMessage,
   res: http.ServerResponse
 ): Promise<void> {
   const body = await readJsonBody(req);
-  const mcp = createServer();
+  const mcp = await createServer();
+  const { StreamableHTTPServerTransport } = await loadOptionalPeer('@modelcontextprotocol/sdk', () =>
+    import('@modelcontextprotocol/sdk/server/streamableHttp.js')
+  );
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   res.on('close', () => {
     void transport.close();
@@ -91,7 +94,7 @@ async function serveRequest(
 }
 
 async function handle(
-  createServer: () => McpServer,
+  createServer: () => Promise<McpServer>,
   path: string,
   auth: McpHttpTransportOptions['auth'],
   req: http.IncomingMessage,
@@ -126,7 +129,7 @@ function assertAuth(auth: McpHttpTransportOptions['auth']): void {
 /** Starts the HTTP listener. Resolves once it is accepting connections. */
 export function listenHttp(
   options: McpHttpTransportOptions,
-  createServer: () => McpServer,
+  createServer: () => Promise<McpServer>,
   warn: (message: string) => void
 ): Promise<HttpListener> {
   const host = options.host ?? '127.0.0.1';

@@ -10,8 +10,11 @@ export * from './OllamaProvider';
 export * from './OpenRouterProvider';
 export * from './AnthropicProvider';
 export * from './resolveProvider';
+export { MissingPeerDependencyError } from './optionalPeer';
 
-// Auto-register built-in providers
+// Auto-register built-in providers. The factories only construct provider
+// objects; each provider loads its optional peer SDK on first use (LOU-D10,
+// LOU-D19), so this registration never loads (or requires) a peer package.
 import { LLMProviderRegistry } from './llm';
 import { OpenAIProvider, OpenAIProviderConfig } from './OpenAIProvider';
 import { OllamaProvider, OllamaProviderConfig } from './OllamaProvider';
