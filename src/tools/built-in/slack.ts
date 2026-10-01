@@ -10,9 +10,7 @@
  * it) - this tool itself only sends the message; it does not bypass or
  * reimplement the approval gate.
  *
- * Follows the same ToolDescriptor pattern established in
- * src/tools/built-in/http.ts and github.ts: wraps an AI SDK `tool()` call
- * (not a plain object literal).
+ * Built with `defineTool()`, like src/tools/built-in/http.ts.
  *
  * ## Env var convention (LOU-F8 style)
  *
@@ -21,9 +19,9 @@
  * convention resolveProvider.ts's PROVIDER_ENV_TABLE uses for LLM
  * providers (e.g. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`).
  */
-import { tool } from 'ai';
 import { z } from 'zod';
-import { ToolDescriptor } from '../../types';
+import { ToolDescriptor, ToolExecutionContext } from '../../types';
+import { defineTool } from '../defineTool';
 import { SandboxAdapter } from '../../security/sandboxCore';
 import { sandboxHttpFetch } from './sandboxFetch';
 
@@ -179,21 +177,20 @@ export async function postSlackAlertViaSandbox(
  * via resumeAfterApproval().
  */
 export function createSlackTool(options: SlackToolOptions = {}): ToolDescriptor {
-  return {
+  return defineTool({
+    name: 'slack_alert',
     displayName: 'Post Slack Alert',
-    tool: tool({
-      description:
-        'Posts an alert to a Slack channel with a "Fix it" button that resumes a pending approval.',
-      parameters: z.object({
-        channel: z.string().describe('Slack channel to post to (e.g. "#incidents")'),
-        message: z.string().describe('Alert message text'),
-        approvalId: z.string().describe('The pending approval id the "Fix it" button will resolve'),
-      }),
-      execute: async ({ channel, message, approvalId }, executeOptions) => {
-        // `?.`: direct callers have historically passed no options object.
-        return postSlackAlert(channel, message, approvalId, options, executeOptions?.abortSignal);
-      },
+    description:
+      'Posts an alert to a Slack channel with a "Fix it" button that resumes a pending approval.',
+    input: z.object({
+      channel: z.string().describe('Slack channel to post to (e.g. "#incidents")'),
+      message: z.string().describe('Alert message text'),
+      approvalId: z.string().describe('The pending approval id the "Fix it" button will resolve'),
     }),
+    execute: async ({ channel, message, approvalId }, ctx) => {
+      // `?.`: direct callers have historically passed no context object.
+      return postSlackAlert(channel, message, approvalId, options, ctx?.abortSignal);
+    },
     // LOU-K2: this tool POSTs to a webhook URL read from an env var /
     // options (an external endpoint, not something the model chooses
     // directly, but still a real outbound network call) - route it through
@@ -201,11 +198,9 @@ export function createSlackTool(options: SlackToolOptions = {}): ToolDescriptor 
     // above is left unchanged for direct callers (e.g.
     // examples/ops-pipeline, which calls descriptor.tool.execute() itself).
     requiresSandbox: true,
-    sandboxExecute: async (args, sandbox, callOptions) => {
-      const { channel, message, approvalId } = args as { channel: string; message: string; approvalId: string };
-      return postSlackAlertViaSandbox(channel, message, approvalId, sandbox, options, callOptions?.abortSignal);
-    },
-  };
+    sandboxExecute: async ({ channel, message, approvalId }, sandbox, callOptions?: ToolExecutionContext) =>
+      postSlackAlertViaSandbox(channel, message, approvalId, sandbox, options, callOptions?.abortSignal),
+  });
 }
 
 /** Default Slack tool instance, reading SLACK_WEBHOOK_URL at call time. */

@@ -6,7 +6,7 @@ import type { ChatMessage } from '../../shared/wireTypes';
 const T1 = '2026-01-01T00:00:00.000Z';
 const T2 = '2026-01-01T00:00:05.000Z';
 
-function chatMsg(m: Message, id: string, timestamp = T1): ChatMessage {
+function chatMsg(m: Message & { content: string }, id: string, timestamp = T1): ChatMessage {
   return { ...m, id, timestamp };
 }
 

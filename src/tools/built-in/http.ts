@@ -1,11 +1,11 @@
 import { z } from 'zod';
-import { tool } from 'ai';
 import { isIP } from 'net';
 import { promises as dnsPromises } from 'dns';
 import { lazyValue, loadOptionalPeer } from '../../providers/optionalPeer';
-import { ToolDescriptor } from '../../types';
+import { ToolDescriptor, ToolExecutionContext } from '../../types';
 import { SandboxAdapter } from '../../security/sandboxCore';
 import { sandboxHttpFetch } from './sandboxFetch';
+import { defineTool } from '../defineTool';
 
 /**
  * HTTP Tool Configuration Options
@@ -403,38 +403,32 @@ export async function makeHttpRequestViaSandbox(
  * Factory function to create an HTTP tool with custom options
  */
 export function createHttpTool(options: HttpToolOptions = {}): ToolDescriptor {
-  return {
+  return defineTool({
+    name: 'http_request',
     displayName: 'Make HTTP request',
-    tool: tool({
-      description: 'Makes HTTP requests to specified URLs with configurable method, headers, and body. Supports GET, POST, PUT, DELETE, and PATCH methods.',
-      parameters: z.object({
-        url: z.string().describe('The URL to make the request to (must be a valid HTTP/HTTPS URL)'),
-        method: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']).describe('The HTTP method to use'),
-        headers: z.record(z.string()).optional().describe('Optional headers to include in the request as key-value pairs'),
-        body: z.string().optional().describe('The body of the request. For POST/PUT/PATCH, this should be a JSON string. Not used for GET/DELETE.'),
-      }),
-      execute: async ({ url, method, headers, body }, executeOptions) => {
-        // `?.`: direct callers have historically passed no options object.
-        const signal = executeOptions?.abortSignal;
-        return makeHttpRequest({ url, method, headers, body, options, signal });
-      },
+    description: 'Makes HTTP requests to specified URLs with configurable method, headers, and body. Supports GET, POST, PUT, DELETE, and PATCH methods.',
+    input: z.object({
+      url: z.string().describe('The URL to make the request to (must be a valid HTTP/HTTPS URL)'),
+      method: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']).describe('The HTTP method to use'),
+      headers: z.record(z.string()).optional().describe('Optional headers to include in the request as key-value pairs'),
+      body: z.string().optional().describe('The body of the request. For POST/PUT/PATCH, this should be a JSON string. Not used for GET/DELETE.'),
     }),
+    execute: async ({ url, method, headers, body }, ctx) => {
+      // `?.`: direct callers have historically passed no context object.
+      const signal = ctx?.abortSignal;
+      return makeHttpRequest({ url, method, headers, body, options, signal });
+    },
     // LOU-K2: httpTool makes arbitrary, model-chosen outbound HTTP requests
     // - the highest-risk built-in tool for a sandbox boundary to be
     // meaningful on. A caller going through executeToolWithSandboxGuard()
     // (AgentExecutor, resume.ts) gets the actual fetch routed through the
     // configured SandboxAdapter via sandboxExecute(); execute() above is
     // left unchanged (still real, directly callable) for callers that
-    // invoke descriptor.tool.execute() directly.
+    // invoke descriptor.execute() directly.
     requiresSandbox: true,
-    sandboxExecute: async (args, sandbox, callOptions) => {
-      const { url, method, headers, body } = args as Omit<HttpRequestArgs, 'options' | 'signal'>;
-      return makeHttpRequestViaSandbox(
-        { url, method, headers, body, options, signal: callOptions?.abortSignal },
-        sandbox
-      );
-    },
-  };
+    sandboxExecute: async (args, sandbox, callOptions?: ToolExecutionContext) =>
+      makeHttpRequestViaSandbox({ ...args, options, signal: callOptions?.abortSignal }, sandbox),
+  });
 }
 
 /**

@@ -70,6 +70,7 @@ agent can be an `agent.yaml` spec served with `npx loushy dev agent.yaml`
 
 - **Tools**: `defineTool()` with a zod `input`; arguments are typed, validated, and run in parallel. [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md)
 - **Approvals and permission policies**: `needsApproval` pauses a run; `agent.approvals.resolve()` continues it, or `approve` decides in code. `permissions` rules allow, deny or ask per tool before that, with an audit log. [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)
+- **Ask the user a question**: `createAgent({ askQuestion: true })` adds the built-in `ask_question` tool; the run pauses durably until `agent.approvals.answer()`. [Asking the user a question](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#asking-the-user-a-question)
 - **Sessions**: `agent.session()` keeps a multi-turn conversation in memory, files or SQLite. [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md)
 - **Structured output**: `output: zodSchema` makes the final reply a typed, validated `result.object`, with one repair step. [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)
 - **Streaming**: `agent.stream()` and `session.stream()` yield typed, versioned JSON events ready for SSE. [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)
@@ -759,9 +760,11 @@ and an `approvalId`. `agent.approvals.list()` returns the pending calls and
 `agent.approvals.resolve({ id, approved, note? })` runs or rejects the call and
 resolves with the continued run's result (continuing the session it paused
 in). Pauses are kept in a per-agent `InMemoryApprovalStore` unless you pass
-`approvalStore` (e.g. `SqliteStore.approvals`) or a `store`; `approve: (call) => boolean`
+`approvalStore` (e.g. `SqliteStore.approvals`) or a `store`; `approve: (call) => boolean | string`
 decides each call in code without pausing (`stream()` still ends at the
-pause). See [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md).
+pause). With `askQuestion: true` the agent can ask the user a question
+(`kind: 'question'`), answered with `agent.approvals.answer({ id, answer })`.
+See [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md).
 
 ### Structured output
 
@@ -1598,8 +1601,9 @@ reading and writing the exact same `AgentSpec` YAML that `loushy dev` and
 ships as part of this SDK's npm package (LOU-S).
 
 This doc covers: installation, the `loushy studio` quickstart, a
-first-agent walkthrough, hook authoring, and how settings/secrets/deploy
-wiring works (and doesn't yet).
+first-agent walkthrough, hook authoring, time travel (replaying a run from
+a past step), and how settings/secrets/deploy wiring works (and doesn't
+yet).
 
 ## Installation
 
@@ -1751,6 +1755,45 @@ Saving the agent persists these as `spec.policy.hooks` in the agent's YAML;
 the server compiles enabled hooks into a real `HookRegistry` for the run
 (`server/compileHooks.ts`), routed through the same `SandboxAdapter` a
 sandboxed tool uses.
+
+## Time travel
+
+Agent Forge keeps every run's checkpoints, not just the latest: its file
+store (`server/checkpointStore.ts`) keeps the same bounded history as the
+SDK's `LocalStorageCheckpointStore` (the newest 50 saves per run, under
+`.loushy/agents/<id>/checkpoint-history/`; see
+[Checkpoint history](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#checkpoint-history)). From
+that history you can fork a run at any step, change what happened there,
+and replay it next to the original, with
+[`AgentExecutor.fork()`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#fork-and-replay) and
+`compareTrajectories()` doing the work.
+
+A run id is the run's checkpoint session id: the agent id for the agent's
+own runs, `<id>.fork-<n>` for a fork of run `<id>`. The runtime control
+server has three routes for it:
+
+| Route | What it does |
+| --- | --- |
+| `GET /runs/:id/history` | `{ runId, steps }`: one entry per step of the run's latest execution (the newest checkpoint saved at that step), oldest first, with `status`, `savedAt`, `finishReason`, `toolCalls` (`{ id, name, args, result? }`), and `tokens` / `costUsd` of the step's model call when known. 404 when the run has no checkpoints. |
+| `POST /runs/:id/fork` | Body `{ fromStep, patch? }`, where `patch` is `{ toolResult?: { toolCallId, result }, appendInput?, businessState? }`. Forks the run at `fromStep`, then starts the fork through the run registry with the original run's spec. Returns 202 `{ runId, fromStep, status }`; the fork streams on `WS /agents/<runId>/stream` and reports on `GET /agents/<runId>/status` like any run. 400 for a bad body or an unknown `toolCallId`, 404 for an unknown run or a step with no checkpoint. |
+| `GET /runs/compare?a=&b=` | `compareTrajectories(a, b)` of two runs' latest checkpoints: each run's model turns, `divergedAt` (the first turn that differs) and the `drift` entries. 404 when either run has no checkpoint. |
+
+The flow, for an agent `weather` that has run once:
+
+```bash
+curl localhost:4750/runs/weather/history
+# {"runId":"weather","steps":[{"step":1,"status":"finished","finishReason":"stop","toolCalls":[],"tokens":...}]}
+
+curl -X POST localhost:4750/runs/weather/fork -H 'content-type: application/json' \
+  -d '{"fromStep":1,"patch":{"appendInput":"And in Celsius?"}}'
+# {"runId":"weather.fork-1","fromStep":1,"status":{"status":"running",...}}
+
+curl 'localhost:4750/runs/compare?a=weather&b=weather.fork-1'
+# {"a":[...],"b":[...],"divergedAt":2,"drift":[{"field":"steps","committed":"1","current":"2"}]}
+```
+
+The fork is a run of its own: the original run's checkpoints, status and
+chat are unchanged.
 
 ## Settings, secrets and deploy wiring
 
@@ -1983,6 +2026,53 @@ const trusted = createAgent({
   approve: ({ toolName, args }) => toolName !== 'send_email' || String(args.to).endsWith('@example.com'),
 });
 ```
+
+## Asking the user a question
+
+`createAgent({ askQuestion: true })` gives the agent the built-in
+`ask_question` tool (off by default; `askQuestionTool()` returns the same tool
+to pass in `tools` yourself). Its input is
+`{ question: string; options?: string[]; allowFreeText?: boolean }`. A call
+pauses the run through the approval mechanism, so it waits exactly like an
+approval: in sessions, in durable stores and across a restart.
+
+- The pending record has `kind: 'question'` and
+  `question: { text, options?, allowFreeText? }`, in `agent.approvals.list()`,
+  in the `approve` callback and on the `approval.requested` event, so a UI can
+  render a question instead of an approve button.
+- `agent.approvals.answer({ id, answer })` (the same as
+  `resolve({ id, approved: true, note: answer })`) continues the run. The
+  model gets `{ answer, option? }`, where `option` is the index of the matching
+  entry of `options` (case-insensitive). With `allowFreeText: false`, an answer
+  outside the options reaches the model as a tool error.
+- `resolve({ id, approved: false, note? })` declines: the model gets a
+  `kind: 'rejected'` tool error saying the user declined to answer.
+- An `approve` callback may return a string to answer in code, which is handy
+  in tests and scripted agents.
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ prompt: 'Plan the trip with the user.', provider, askQuestion: true });
+
+const paused = await agent.send('Book me a weekend away');
+const [pending] = await agent.approvals.list();
+if (paused.approvalId && pending?.kind === 'question') {
+  console.log(pending.question?.text, pending.question?.options);
+  const result = await agent.approvals.answer({ id: paused.approvalId, answer: 'Lisbon' });
+  console.log(result.text);
+}
+
+// Scripted: answer every question in code.
+const scripted = createAgent({
+  provider,
+  askQuestion: true,
+  approve: (request) => (request.kind === 'question' ? 'Lisbon' : false),
+});
+```
+
+A permission rule that `allow`s `ask_question` skips the pause, so the call
+fails with "No answer"; leave the tool to its default.
 
 ## `AgentExecutor` and `resumeAfterApproval()`
 
@@ -4532,13 +4622,14 @@ on the server.
 | `messages` | `UIMessage[]`: `{ id, role: 'user' \| 'assistant', text, toolCalls }`. Each `send()` adds a user message and an assistant message that fills in as `text.delta` and tool events arrive. |
 | `toolCalls[i]` | `{ id, name, args, status, result?, error? }`, `status` being `'running'`, `'awaiting-approval'`, `'done'`, `'error'` or `'rejected'`. |
 | `status` | `'idle'`, `'streaming'`, `'awaiting-approval'` or `'error'`. |
-| `pendingApproval` | `{ id, toolCallId, toolName, args }` of the tool call the run paused on, else `null`. |
+| `pendingApproval` | `{ id, toolCallId, toolName, args }` of the tool call the run paused on, else `null`. For an `ask_question` call it also has `kind: 'question'` and `question: { text, options?, allowFreeText? }`. |
 | `error` | `{ name, message }` of the last `error` event or a failed request, else `null`. |
 | `usage` | Token usage of the last finished run (from `run.done`), else `null`. |
 | `lastEvent` | The last event received, for anything the projection does not cover. |
 | `send(input)` | Starts a turn. If a turn is still running, it is aborted first. `input` is a string, content parts or a `Message[]` (an `AgentInput`); the user bubble shows the text with an `[image]` / `[file]` marker per other part (remote mode POSTs it as `{ "input": ... }`). |
 | `stop()` | Aborts the turn in flight through its `AbortSignal`; `status` goes back to `'idle'`. |
 | `approve(note?)`, `reject(note?)` | Decide `pendingApproval` (see below). |
+| `answer(text)` | Answers a question (`pendingApproval.kind === 'question'`); the same as `approve(text)`. `reject()` declines it. |
 
 Unmounting the component aborts the turn in flight. Events of a
 [sub-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md)'s run (they carry `subagent`) do not change
@@ -4561,6 +4652,11 @@ When a tool with `needsApproval` is called, the run stops with
 - **Remote without `approvalsUrl`**, `approve()` and `reject()` do nothing.
   Show `pendingApproval` and resolve it through your own API, then `send()`
   the next turn.
+
+An agent created with `askQuestion: true` can ask the user something (see
+[Asking the user a question](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#asking-the-user-a-question)). The
+pause arrives the same way, with `pendingApproval.kind === 'question'`: show
+`pendingApproval.question.text` and its `options`, and call `answer(text)`.
 
 ## The server side
 
@@ -5131,7 +5227,7 @@ The event types and their extra fields:
 | `tool.start`         | `toolCallId: string`, `toolName: string`, `args: Record<string, unknown>` | A tool call starts. `args` are the model's arguments parsed from JSON (`{}` when they are not valid JSON). |
 | `tool.done`          | `toolCallId`, `toolName`, `result: unknown`, `durationMs: number` | A tool call returned. `result` is the value as it would be JSON-encoded (`undefined` becomes `null`, a `Date` becomes a string). `durationMs` counts from its `tool.start`. |
 | `tool.error`         | `toolCallId`, `toolName`, `error: { name: string, message: string }`, `durationMs: number` | A tool call failed: it threw, its arguments did not match its schema (`name: 'ToolArgumentsValidationError'`), or the tool does not exist. The model gets the error as the call's result and the run continues. |
-| `approval.requested` | `approvalId: string`, `toolCallId`, `toolName`, `args: Record<string, unknown>` | A tool call needs a human decision. The run then stops; resume it with `agent.approvals.resolve()` or `resumeAfterApproval()` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)). |
+| `approval.requested` | `approvalId: string`, `toolCallId`, `toolName`, `args: Record<string, unknown>`, `kind?: 'question'`, `question?: { text, options?, allowFreeText? }` | A tool call needs a human decision. The run then stops; resume it with `agent.approvals.resolve()` or `resumeAfterApproval()` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)). An `ask_question` call carries `kind: 'question'` and its `question`; answer it with `agent.approvals.answer()` (see [Asking the user a question](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#asking-the-user-a-question)). |
 | `permission.decision` | `toolCallId`, `toolName`, `decision: 'allow' \| 'deny' \| 'ask' \| 'default'`, `rule?: { index: number, reason?: string }`, `args?: Record<string, unknown>`, `at: string` | How a tool call's [permission rules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies) decided it: after its `tool.start`, before the call's own `tool.done` / `tool.error` / `approval.requested`. Only when the run sets `permissions` or `onPermissionDecision`; `args` is left out under `redactContent`. |
 | `step.done`          | `step: number`, `finishReason: string`, `usage?: { promptTokens, completionTokens, totalTokens }` | A step ends. `finishReason` is the model's (`'stop'`, `'tool_calls'`, `'length'`, ...), or `'awaiting-approval'`, `'aborted'` or `'error'` when the step ended that way (a run that runs out of `maxSteps` still wanting to continue ends with `run.done` `'max-steps'`). `usage` is this step's model call, absent when the call produced no response. |
 | `error`              | `error: { name: string, message: string }` | An error. If it ends the run, `run.done` with `finishReason: 'error'` follows. A provider error retried under `surfaceRetryableProviderErrors` is followed by further steps instead. |
@@ -6238,6 +6334,7 @@ its kind by carrying a `toolErrorKind` property. An error extending
 | `httpTool`, `createHttpTool(options)` | HTTP requests, with SSRF protection (every resolved address is checked before connecting). |
 | `currentDateTool`, `dayNameTool` | Current date/time (ISO, UTC) and day of the week. |
 | `createTodoTools()` | `todo_write` / `todo_read` so an agent can plan multi-step work; see [Todo tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#todo-tools). |
+| `askQuestionTool()`, `createAgent({ askQuestion: true })` | `ask_question`: the agent asks the user something and the run pauses until `agent.approvals.answer()`; see [Asking the user a question](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#asking-the-user-a-question). |
 | `createFsTools()`, `createShellTool()` | File system and shell tools for coding agents; see [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md). |
 | `createEmailTool()`, `createSlackTool()`, `createGitHubTools()`, `createJiraTools()` | Integrations that need credentials, so they are built with options. |
 | `createAgent({ mcpServers })`, `connectMcp(servers)` | Every tool of MCP servers given as config (stdio `command` or HTTP `url`), named `<server>__<tool>`; see [Connect MCP servers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#connect-mcp-servers-mcpservers-connectmcp). |

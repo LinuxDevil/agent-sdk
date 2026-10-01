@@ -49,6 +49,8 @@ export interface UseLoushyAgentResult extends AgentUIState {
   stop(): void;
   approve(note?: string): Promise<void>;
   reject(note?: string): Promise<void>;
+  /** LOU-X9: answers the question in `pendingApproval` (`kind: 'question'`); same as `approve(text)`. */
+  answer(text: string): Promise<void>;
 }
 
 type Emit = (action: AgentEvent | AgentUIAction) => void;
@@ -152,5 +154,7 @@ export function useLoushyAgent(source: LoushyAgentSource, options: UseLoushyAgen
   const approve = useCallback((note?: string) => decide(true, note), [decide]);
   const reject = useCallback((note?: string) => decide(false, note), [decide]);
 
-  return { ...state, send, stop, approve, reject };
+  const answer = useCallback((text: string) => decide(true, text), [decide]);
+
+  return { ...state, send, stop, approve, reject, answer };
 }

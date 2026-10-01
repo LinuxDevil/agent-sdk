@@ -67,13 +67,14 @@ on the server.
 | `messages` | `UIMessage[]`: `{ id, role: 'user' \| 'assistant', text, toolCalls }`. Each `send()` adds a user message and an assistant message that fills in as `text.delta` and tool events arrive. |
 | `toolCalls[i]` | `{ id, name, args, status, result?, error? }`, `status` being `'running'`, `'awaiting-approval'`, `'done'`, `'error'` or `'rejected'`. |
 | `status` | `'idle'`, `'streaming'`, `'awaiting-approval'` or `'error'`. |
-| `pendingApproval` | `{ id, toolCallId, toolName, args }` of the tool call the run paused on, else `null`. |
+| `pendingApproval` | `{ id, toolCallId, toolName, args }` of the tool call the run paused on, else `null`. For an `ask_question` call it also has `kind: 'question'` and `question: { text, options?, allowFreeText? }`. |
 | `error` | `{ name, message }` of the last `error` event or a failed request, else `null`. |
 | `usage` | Token usage of the last finished run (from `run.done`), else `null`. |
 | `lastEvent` | The last event received, for anything the projection does not cover. |
 | `send(input)` | Starts a turn. If a turn is still running, it is aborted first. `input` is a string, content parts or a `Message[]` (an `AgentInput`); the user bubble shows the text with an `[image]` / `[file]` marker per other part (remote mode POSTs it as `{ "input": ... }`). |
 | `stop()` | Aborts the turn in flight through its `AbortSignal`; `status` goes back to `'idle'`. |
 | `approve(note?)`, `reject(note?)` | Decide `pendingApproval` (see below). |
+| `answer(text)` | Answers a question (`pendingApproval.kind === 'question'`); the same as `approve(text)`. `reject()` declines it. |
 
 Unmounting the component aborts the turn in flight. Events of a
 [sub-agent](./sub-agents.md)'s run (they carry `subagent`) do not change
@@ -96,6 +97,11 @@ When a tool with `needsApproval` is called, the run stops with
 - **Remote without `approvalsUrl`**, `approve()` and `reject()` do nothing.
   Show `pendingApproval` and resolve it through your own API, then `send()`
   the next turn.
+
+An agent created with `askQuestion: true` can ask the user something (see
+[Asking the user a question](./approvals.md#asking-the-user-a-question)). The
+pause arrives the same way, with `pendingApproval.kind === 'question'`: show
+`pendingApproval.question.text` and its `options`, and call `answer(text)`.
 
 ## The server side
 

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { tool } from 'ai';
+import { defineTool } from '../defineTool';
 import { ToolDescriptor } from '../../types';
 
 /**
@@ -87,34 +87,33 @@ export function createEmailTool(options: EmailToolOptions): ToolDescriptor {
     throw new Error('Email tool requires an apiKey in options');
   }
 
-  return {
+  return defineTool({
+    name: 'send_email',
     displayName: 'Send email',
-    tool: tool({
-      description: 'Sends an email using the Resend.com API. Provide sender, recipients, subject, and content.',
-      parameters: z.object({
-        from: z.string().describe('The sender email address (e.g., "Sender Name <sender@example.com>"). Can use default if configured.').optional(),
-        to: z.array(z.string()).describe('Array of recipient email addresses (e.g., ["user@example.com"])'),
-        subject: z.string().describe('The subject line of the email'),
-        text: z.string().describe('Plain text content of the email'),
-        html: z.string().describe('HTML content of the email'),
-      }),
-      execute: async ({ from, to, subject, text, html }) => {
-        const senderEmail = from || defaultFrom;
-        
-        if (!senderEmail) {
-          throw new Error('Email "from" address is required. Provide it in the parameters or set defaultFrom in options.');
-        }
-
-        return sendEmail({
-          from: senderEmail,
-          to,
-          subject,
-          text,
-          html,
-          apiKey,
-          apiUrl,
-        });
-      },
+    description: 'Sends an email using the Resend.com API. Provide sender, recipients, subject, and content.',
+    input: z.object({
+      from: z.string().describe('The sender email address (e.g., "Sender Name <sender@example.com>"). Can use default if configured.').optional(),
+      to: z.array(z.string()).describe('Array of recipient email addresses (e.g., ["user@example.com"])'),
+      subject: z.string().describe('The subject line of the email'),
+      text: z.string().describe('Plain text content of the email'),
+      html: z.string().describe('HTML content of the email'),
     }),
-  };
+    execute: async ({ from, to, subject, text, html }) => {
+      const senderEmail = from || defaultFrom;
+
+      if (!senderEmail) {
+        throw new Error('Email "from" address is required. Provide it in the parameters or set defaultFrom in options.');
+      }
+
+      return sendEmail({
+        from: senderEmail,
+        to,
+        subject,
+        text,
+        html,
+        apiKey,
+        apiUrl,
+      });
+    },
+  });
 }

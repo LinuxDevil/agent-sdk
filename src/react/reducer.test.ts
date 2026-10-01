@@ -109,6 +109,21 @@ describe('reduceAgentEvents (LOU-D15)', () => {
     expect(rejected.messages[1].toolCalls[0].status).toBe('rejected');
   });
 
+  it("an ask_question pause exposes kind: 'question' and the question (LOU-X9)", () => {
+    const question = { text: 'Which city?', options: ['Porto', 'Lisbon'], allowFreeText: false };
+    const args = { question: 'Which city?', options: ['Porto', 'Lisbon'], allowFreeText: false };
+    const paused = reduce(
+      send,
+      ...events(
+        { type: 'approval.requested', approvalId: 'q1', toolCallId: 'c1', toolName: 'ask_question', args, kind: 'question', question },
+        { type: 'run.done', finishReason: 'awaiting-approval', text: '' }
+      )
+    );
+    expect(paused.status).toBe('awaiting-approval');
+    expect(paused.pendingApproval).toEqual({ id: 'q1', toolCallId: 'c1', toolName: 'ask_question', args, kind: 'question', question });
+    expect(paused.messages[1].toolCalls[0]).toMatchObject({ name: 'ask_question', status: 'awaiting-approval' });
+  });
+
   it('a resumed run that pauses again exposes the next approval', () => {
     const next = { id: 'ap2', toolCallId: 'c2', toolName: 'pay', args: {} };
     const state = reduce(send, { type: 'ui.resumed', outcome: { text: '', finishReason: 'awaiting-approval', approval: next } });

@@ -108,6 +108,25 @@ describe('useLoushyAgent in process (LOU-D15)', () => {
     expect(hook.messages[1]).toMatchObject({ text: 'Email sent.', toolCalls: [{ name: 'send_email', status: 'done' }] });
   });
 
+  it("answer(text) answers an ask_question pause (LOU-X9)", async () => {
+    const ask = { toolCalls: [{ name: 'ask_question', args: { question: 'Which city?', options: ['Porto', 'Lisbon'] }, id: 'call_q' }] };
+    const model = mockModel([ask, 'Booking Lisbon.']);
+    mount({ agent: createAgent({ provider: model, askQuestion: true }) });
+
+    await act(() => hook.send('Book a trip'));
+    expect(hook.pendingApproval).toMatchObject({
+      kind: 'question',
+      question: { text: 'Which city?', options: ['Porto', 'Lisbon'] },
+    });
+
+    await act(() => hook.answer('Lisbon'));
+
+    expect(hook.status).toBe('idle');
+    expect(hook.messages[1]).toMatchObject({ text: 'Booking Lisbon.', toolCalls: [{ name: 'ask_question', status: 'done' }] });
+    const result = model.lastCall?.messages.find((m) => m.role === 'tool' && m.toolCallId === 'call_q');
+    expect(JSON.parse(result?.content as string)).toEqual({ answer: 'Lisbon', option: 1 });
+  });
+
   it('reject() gives the model a rejection and marks the call rejected', async () => {
     const { agent, execute } = emailAgent(callEmail, 'OK, not sent.');
     mount({ agent });
