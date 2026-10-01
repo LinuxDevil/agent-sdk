@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { SandboxAdapter, SandboxResult, SandboxRunOptions } from '../../security/sandboxCore';
+import { NoopSandbox, type SandboxAdapter, type SandboxResult, type SandboxRunOptions } from '../../security/sandboxCore';
 import { SandboxShell } from './SandboxShell';
 import { createShellTool } from './shellTool';
 
@@ -18,11 +18,42 @@ describe('SandboxShell (LOU-X6)', () => {
       exitCode: 0,
       timedOut: false,
     });
-    expect(sandbox.run).toHaveBeenCalledWith('sh', ['-c', 'npm test'], { cwd: '/work/project/pkg', env: { CI: '1' }, timeoutMs: 1000 });
+    expect(sandbox.run).toHaveBeenCalledWith('sh', ['-c', 'npm test'], {
+      cwd: '/work/project/pkg',
+      env: { CI: '1' },
+      inheritEnv: false,
+      timeoutMs: 1000,
+    });
     await new SandboxShell(sandbox, { shell: 'bash' }).exec('ls');
-    expect(sandbox.run).toHaveBeenLastCalledWith('bash', ['-c', 'ls'], { cwd: undefined, env: undefined, timeoutMs: undefined });
+    expect(sandbox.run).toHaveBeenLastCalledWith('bash', ['-c', 'ls'], { cwd: undefined, env: {}, inheritEnv: false, timeoutMs: undefined });
     await new SandboxShell(sandbox).exec('ls', { cwd: 'sub' });
-    expect(sandbox.run).toHaveBeenLastCalledWith('sh', ['-c', 'ls'], { cwd: 'sub', env: undefined, timeoutMs: undefined });
+    expect(sandbox.run).toHaveBeenLastCalledWith('sh', ['-c', 'ls'], { cwd: 'sub', env: {}, inheritEnv: false, timeoutMs: undefined });
+  });
+
+  it('passes only set values and allowed host names, never planted secrets (LOU-X11)', async () => {
+    Object.assign(process.env, { FAKE_SECRET_FOR_TEST: 'fake-secret-x11', FAKE_ALLOWED_FOR_TEST: 'allowed-x11' });
+    try {
+      const sandbox = fakeSandbox(async () => ({ stdout: '', stderr: '', exitCode: 0 }));
+      await new SandboxShell(sandbox, { env: { FOO: 'bar', CI: '0' }, inheritEnv: ['FAKE_ALLOWED_FOR_TEST'] }).exec('env', { env: { CI: '1' } });
+      expect(sandbox.run).toHaveBeenLastCalledWith('sh', ['-c', 'env'], expect.objectContaining({
+        env: { FOO: 'bar', CI: '1', FAKE_ALLOWED_FOR_TEST: 'allowed-x11' },
+        inheritEnv: false,
+      }));
+      await new SandboxShell(sandbox, { inheritEnv: true }).exec('env');
+      expect(sandbox.run).toHaveBeenLastCalledWith('sh', ['-c', 'env'], expect.objectContaining({ env: {}, inheritEnv: true }));
+
+      // On the host (NoopSandbox) the command gets the shell base, never the rest of the host env.
+      // `sh -c <script>` becomes `node -e <script>` so this runs the same on every platform.
+      const hostNode: SandboxAdapter = { ...NoopSandbox, run: (_cmd, args, opts) => NoopSandbox.run(process.execPath, ['-e', args[1]], opts) };
+      const script = "process.stdout.write([process.env.FAKE_SECRET_FOR_TEST||'absent',process.env.FOO,process.env.PATH?'path':'nopath'].join(','))";
+      const onHost = new SandboxShell(hostNode, { env: { FOO: 'bar' } });
+      expect((await onHost.exec(script)).stdout).toBe('absent,bar,path');
+      const optedOut = new SandboxShell(hostNode, { inheritEnv: true });
+      expect((await optedOut.exec("process.stdout.write(process.env.FAKE_SECRET_FOR_TEST||'absent')")).stdout).toBe('fake-secret-x11');
+    } finally {
+      delete process.env.FAKE_SECRET_FOR_TEST;
+      delete process.env.FAKE_ALLOWED_FOR_TEST;
+    }
   });
 
   it('rejects a per-call cwd that escapes the base directory', async () => {
