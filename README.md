@@ -149,14 +149,11 @@ if (run.finishReason === 'awaiting-approval') {
 import { createAgent, resolveProvider } from '@loushy/build-ai-agent';
 import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
 
-const store = new SqliteStore('./.loushy/agent.db'); // sessions, checkpoints and approvals in one file
-const agent = createAgent({ provider: resolveProvider('openai/gpt-4o-mini'), approvalStore: store.approvals });
+// Transcripts, per-step checkpoints and approvals in one SQLite file, wired by one option.
+const agent = createAgent({ provider: resolveProvider('openai/gpt-4o-mini'), store: new SqliteStore('./.loushy/agent.db') });
 
-// Same id + same file = same conversation, checkpointed after every model response and tool result.
-await agent.session({ id: 'user-42', store }).send('My name is Ali.');
-const session = agent.session({ id: 'user-42', store });
-await session.resume(); // after a crash: finishes the interrupted turn without redoing finished steps
-const { text } = await session.send('What is my name?'); // "Ali"
+await agent.resume('user-42'); // after a crash: finishes the interrupted turn without redoing finished steps
+const { text } = await agent.session({ id: 'user-42' }).send('What is my name?'); // same id, same conversation
 ```
 
 ## Documentation
