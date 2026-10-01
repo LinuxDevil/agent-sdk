@@ -6,6 +6,10 @@ function isBlank(value: string | undefined): boolean {
 
 /**
  * Validate agent configuration
+ *
+ * `agentType` is optional; it is only checked when present.
+ *
+ * @deprecated Has no runtime effect and will be removed in the next minor release.
  */
 export function validateAgentConfig(config: Partial<AgentConfig>): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
@@ -16,11 +20,7 @@ export function validateAgentConfig(config: Partial<AgentConfig>): { valid: bool
     );
   }
 
-  if (!config.agentType) {
-    errors.push(
-      'Agent type is required. Example: AgentBuilder.create().setType(AgentType.SmartAssistant)...build()'
-    );
-  } else if (!Object.values(AgentType).includes(config.agentType)) {
+  if (config.agentType !== undefined && !Object.values(AgentType).includes(config.agentType)) {
     errors.push(`Invalid agent type: ${config.agentType}`);
   }
 
@@ -32,6 +32,8 @@ export function validateAgentConfig(config: Partial<AgentConfig>): { valid: bool
 
 /**
  * Validate agent tools configuration
+ *
+ * @deprecated Has no runtime effect and will be removed in the next minor release.
  */
 export function validateAgentTools(tools: Record<string, any>): { valid: boolean; errors: string[] } {
   const errors: string[] = [];

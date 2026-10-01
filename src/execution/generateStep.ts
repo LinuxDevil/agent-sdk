@@ -8,6 +8,7 @@
 import { GenerateOptions, GenerateResult, Message, ToolDefinition } from '../providers';
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
+import { getToolInputSchema } from '../tools/toolContract';
 import { withSpan } from './tracing';
 import type { CallUsage } from '../models/usage';
 import { measureUsage } from './runUsage';
@@ -44,7 +45,7 @@ export function buildTools(
         function: {
           name: toolName,
           description: toolDesc.tool.description || toolConfig.description || '',
-          parameters: toolDesc.tool.parameters || {},
+          parameters: getToolInputSchema(toolDesc) || {},
         },
       });
     }

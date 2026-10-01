@@ -5,6 +5,7 @@
 
 import { LLMProvider, Message, ToolCall } from '../providers';
 import { ToolRegistry } from '../tools';
+import { getToolExecute } from '../tools/toolContract';
 import { ToolDescriptor } from '../types';
 import {
   ApprovalDecision,
@@ -132,6 +133,9 @@ export async function resumeAfterApproval(
   };
   const step = await decidedToolMessage(ctx, pending);
   if ('paused' in step) {
+    // LOU-U8: the sub-agent paused again, so the session still awaits an approval.
+    const businessState = executeOptions.businessState !== undefined ? executeOptions.businessState : staleBusinessState;
+    await markAwaitingApproval(snapshot, step.paused, checkpointStore, businessState);
     return step.paused;
   }
   // LOU-Y1: a call whose sub-agent paused already has a placeholder result.
@@ -227,6 +231,37 @@ async function clearStaleCheckpoint(
 }
 
 /**
+ * LOU-U8 + LOU-Y1: when a resumed sub-agent pauses again, no execute() call
+ * of this run writes a checkpoint (the stale one was just deleted), so mark
+ * the session 'awaiting-approval' here - a later execute() on it then throws
+ * SessionAwaitingApprovalError instead of starting over. Only the status,
+ * approval id and businessState are read back: the next resumeAfterApproval()
+ * rebuilds the run from its approval snapshot.
+ */
+async function markAwaitingApproval(
+  snapshot: ExecutionSnapshot,
+  paused: ExecutionResult,
+  checkpointStore: CheckpointStore | undefined,
+  businessState: unknown
+): Promise<void> {
+  if (!snapshot.sessionId || !checkpointStore) {
+    return;
+  }
+  await checkpointStore.save(snapshot.sessionId, {
+    agentId: snapshot.agent.id || '',
+    sessionId: snapshot.sessionId,
+    stepIndex: paused.steps,
+    messages: paused.messages,
+    toolCalls: [],
+    usage: structuredClone(paused.usage),
+    finishReason: paused.finishReason,
+    businessState,
+    status: 'awaiting-approval',
+    approvalId: paused.approvalId,
+  });
+}
+
+/**
  * LOU-U7 backward compatibility: a snapshot saved before
  * `remainingToolCalls` existed records no remaining calls, so - as before -
  * no other call of the paused turn runs on resume. Each one still without a
@@ -283,7 +318,7 @@ async function runApprovedToolCall(
   // "not found" guard below must not reject that case outright; it only
   // means there is genuinely no way to run the tool (neither a direct
   // `execute` nor a `sandboxExecute`).
-  if (!toolDesc || !toolDesc.tool || (!toolDesc.tool.execute && !toolDesc.sandboxExecute)) {
+  if (!toolDesc || !toolDesc.tool || (!getToolExecute(toolDesc) && !toolDesc.sandboxExecute)) {
     throw new Error(`Tool '${pending.toolName}' not found in registry`);
   }
 

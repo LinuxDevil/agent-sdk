@@ -16,7 +16,6 @@
  */
 
 import { AgentBuilder } from './core/AgentBuilder';
-import { AgentType } from './types';
 import { AgentExecutor, ExecuteOptions, ExecutionResult } from './execution/AgentExecutor';
 import type { AgentRun } from './execution/agentRun';
 import { LLMProvider } from './providers/llm';
@@ -290,7 +289,6 @@ export function createAgent(config: CreateAgentConfig = {}): SimpleAgent {
   const { toolRegistry, toolsConfig } = registerTools(config.tools ?? {});
 
   const builder = AgentBuilder.create()
-    .setType(AgentType.SmartAssistant)
     .setName(config.name || 'agent')
     .setPrompt(instructions)
     .setTools(toolsConfig);
@@ -333,7 +331,8 @@ export function createAgent(config: CreateAgentConfig = {}): SimpleAgent {
     stream(message: string, options: SendOptions = {}): AgentRun {
       return AgentExecutor.stream(executeOptions(message, options.signal));
     },
-    session: (options?: SessionOptions) => approvals.session(run, options),
+    session: (options?: SessionOptions) =>
+      approvals.session(run, (input, signal) => AgentExecutor.stream(executeOptions(input, signal)), options),
     approvals: approvals.approvals,
   };
   registerSubagent(simpleAgent, { spec, description: config.description });
