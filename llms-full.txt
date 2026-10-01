@@ -5371,6 +5371,23 @@ See [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.m
 
 **Example:** `loushy add web-search` twice.
 
+## Sandbox
+
+### LOUSHY_SANDBOX_EGRESS_UNSUPPORTED
+
+**Means:** a `SubprocessSandbox` with `network: { allow }` and a `broker` cannot make
+the credential broker the container's only route out on this Docker daemon, so it
+started no container instead of granting open egress. The message names the reason:
+Docker Desktop (containers run in a VM, so the host has no address on the internal
+network), rootless Docker, a daemon on another machine (the broker cannot listen on
+the network's gateway), a reused network that is not internal, or an Engine older
+than 25.0.5, which forwards DNS from internal networks.
+
+**Fix:** run the agent on the Linux host of a Docker Engine 25.0.5 or later, or use
+`network: 'none'`. See [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md#sandboxed-shell-sandboxshell).
+
+**Example:** `new SubprocessSandbox({ network: { allow: ['api.github.com'] }, broker })` with Docker Desktop.
+
 ## General
 
 ### LOUSHY_GENERIC_ERROR
@@ -9474,18 +9491,85 @@ there, but a container still never receives it.
 |---|---|
 | `'none'` (default) | No network at all (Docker `NetworkMode: 'none'`). |
 | `'default'` | Docker's default network: unrestricted egress. |
-| `{ allow: ['api.github.com', '*.npmjs.org'] }` | No network. See below. |
+| `{ allow: ['api.github.com', '*.npmjs.org'] }` with a `broker` | Only these hosts, through the [credential broker](#credential-broker). See below. |
+| `{ allow: [...] }` without a `broker` | No network (fails closed). |
 
-Docker cannot filter outgoing traffic by host name by itself. An `allow`
-list is only enforced when the proxy is the container's only way out. The
-[credential broker](#credential-broker) is such a proxy, but
-`SubprocessSandbox` does not route a container through it yet (LOU-X12.2):
-with dockerode options alone, a container can only reach a host-side proxy
-over a Docker network that also lets it reach everything else, so that would
-not be enforcement. So `{ allow }` still fails closed:
-the container runs with no network, and the validated list is kept on
-`sandbox.network`. Host names are checked when the sandbox is constructed,
-so a URL or a malformed name throws.
+Host names are checked when the sandbox is constructed, so a URL or a
+malformed name throws; the validated list is kept on `sandbox.network`.
+
+#### Allowlisted egress: `network: { allow }` with a broker
+
+Docker cannot filter outgoing traffic by host name by itself, so an `allow`
+list is only enforced when a proxy is the container's only way out.
+`SubprocessSandbox` builds that with Docker's own primitives:
+
+1. On the first `run()` it creates an **internal** bridge network
+   (`Internal: true`, no IPv6, label `com.loushy.sandbox=egress`), named
+   `networkName` or `loushy-egress-<random>`. An internal network has no
+   route off the bridge. If a network with that name exists, it is reused,
+   but only if it is internal.
+2. The broker gets a second listener on that network's gateway address,
+   which on Docker Engine for Linux is the host's own interface on the
+   bridge. It accepts connections only from the network's subnet (any other
+   peer is dropped before a byte is read), so it is not an open proxy on the
+   host's other interfaces. Its allowlist is the broker's rule hosts plus the
+   sandbox's `allow` list. The broker's own `allow` option and its loopback
+   listener are unchanged.
+3. Every container joins that network with `HTTP_PROXY`/`HTTPS_PROXY` (and
+   lower-case forms) set to the gateway listener, merged over the `env` you
+   pass. `NO_PROXY` holds only the gateway address, so
+   `$HTTP_PROXY/__broker/<host>/<path>` (the path form that adds credentials)
+   reaches the broker directly; it gives no other bypass, because nothing
+   else is reachable.
+4. `sandbox.close()` stops the listener and removes the network if this
+   sandbox created it. An aborted or timed-out run removes its container as
+   before; the network stays for the sandbox's next run until `close()`.
+
+```ts
+import { createCredentialBroker, createShellTool, SandboxShell, SubprocessSandbox } from '@loushy/build-ai-agent';
+
+const token = 'ghp_example'; // read from your secret store; it never enters the container
+const broker = await createCredentialBroker({ rules: { 'api.github.com': { authorization: () => `Bearer ${token}` } } });
+const sandbox = new SubprocessSandbox({ image: 'node:20-alpine', network: { allow: ['registry.npmjs.org'] }, broker });
+const tool = createShellTool(new SandboxShell(sandbox, { cwd: '/abs/path/to/project' }), { needsApproval: false });
+// ... run the agent with `tool` ...
+await sandbox.close();
+await broker.close();
+```
+
+What this enforces, and where:
+
+- **Docker Engine on Linux, with the agent on the same host: enforced.** The
+  container can reach the gateway address and nothing past the bridge. DNS:
+  the container resolves no outside names itself (Engine 25.0.5 and later do
+  not forward DNS from internal networks, CVE-2024-29018; older Engines are
+  refused), so names go to the proxy, which resolves them on the host after
+  the allowlist check. Raw IP connections have no route. Non-HTTP protocols
+  (SSH, raw TCP, UDP) are blocked, because only the proxy is reachable, and
+  `CONNECT` tunnels are checked against the allowlist like any request.
+- **Docker Desktop (Windows, macOS, and Desktop on Linux): refused.**
+  Containers run in a VM, so the host has no address on the internal
+  network. `host.docker.internal` reaches the host only from non-internal
+  networks, which would also reach everything else. `run()` rejects with
+  [`LOUSHY_SANDBOX_EGRESS_UNSUPPORTED`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#loushy_sandbox_egress_unsupported)
+  and starts no container. So do rootless Docker (the bridge lives in its
+  own network namespace), a daemon on another machine (the broker cannot
+  bind the gateway address), a reused network that is not internal, and an
+  Engine older than 25.0.5.
+- **Other services on the host's bridge address.** A container on an
+  internal network can reach any host service that listens on the gateway
+  address or on all addresses (`0.0.0.0`). Bind host services to
+  `127.0.0.1`, or firewall the bridge subnet to the broker's port only. A
+  host firewall that drops traffic from the bridge (a strict `INPUT` policy)
+  blocks the broker too: runs then fail to connect, they do not get open
+  egress.
+- **Host commands are still not firewalled.** A `NodeWorkspace` or
+  `NoopSandbox` command can ignore the proxy variables; see the credential
+  broker notes below.
+
+These guarantees come from Docker's documented behavior of internal networks;
+the SDK's tests exercise the wiring against a fake Docker client, not a live
+daemon.
 
 ```ts
 import { createShellTool, SandboxShell, SubprocessSandbox } from '@loushy/build-ai-agent';
@@ -9560,10 +9644,15 @@ await broker.close();
   ignore the proxy variables and open its own connections; the allowlist
   only covers traffic sent through the broker. What the broker guarantees is
   that the token is never in the command's reach.
-- **Containers.** Passing `broker.env` to a `SubprocessSandbox` command does
-  not help yet: the container has no network for `{ allow }`, and the proxy
-  listens on the host's loopback. Routing containers through the broker is
-  LOU-X12.2.
+- **Containers.** Do not pass `broker.env` to a `SubprocessSandbox`: it
+  points at the host's loopback. Pass the broker itself instead,
+  `new SubprocessSandbox({ network: { allow }, broker })`, and the sandbox
+  routes its containers through it (see
+  [Allowlisted egress](#allowlisted-egress-network--allow--with-a-broker)).
+  It does that with `broker.listen({ host, clients, allow })`, which adds a
+  listener on another address that serves only peers from the `clients`
+  subnet, with the rule hosts plus `allow` as its allowlist. The broker
+  listens on loopback only unless you call it.
 
 ## Writing your own provider
 

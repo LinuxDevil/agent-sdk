@@ -25,12 +25,16 @@
  */
 
 
+import { randomBytes } from 'node:crypto';
 import { writeFile as fsWriteFile } from 'node:fs/promises';
 import { PassThrough } from 'node:stream';
 import type Docker from 'dockerode';
 import { lazyValue, loadOptionalPeer } from '../providers/optionalPeer';
 import { SandboxAdapter, SandboxResult, SandboxRunOptions } from './sandboxCore';
 import { isHostPattern } from './hostPattern';
+import { commandEnv } from './commandEnv';
+import type { CredentialBroker } from './credentialBroker';
+import { Egress, ignoreFailure, startEgress } from './sandboxEgress';
 
 export * from './sandboxCore';
 
@@ -55,10 +59,11 @@ function isNoSuchImageError(err: unknown, image: string): boolean {
  * - `'default'`: Docker's default network, unrestricted egress.
  * - `{ allow: ['api.github.com', '*.npmjs.org'] }`: only these hosts. Docker
  *   cannot filter egress by host name on its own, so this needs an egress
- *   proxy that is the container's only route out. `createCredentialBroker()`
- *   (LOU-X12) is such a proxy, but containers are not routed through it yet
- *   (LOU-X12.2), so the container gets no network (fail closed); the
- *   validated list is kept on {@link SubprocessSandbox.network}.
+ *   proxy that is the container's only route out. With a `broker`
+ *   (`createCredentialBroker()`), the container joins an internal Docker
+ *   network whose only reachable peer is the broker (LOU-X12.2; Docker Engine
+ *   on Linux only, see `sandboxEgress.ts`). Without one it gets no network
+ *   (fail closed). The validated list is kept on {@link SubprocessSandbox.network}.
  */
 export type SandboxNetwork = 'none' | 'default' | { allow: readonly string[] };
 
@@ -75,30 +80,40 @@ function validateNetwork(network: SandboxNetwork = 'none'): SandboxNetwork {
   return { allow: Object.freeze(network.allow.map((host) => host.toLowerCase())) };
 }
 
+/** `NetworkMode`: the egress network when there is one, else `'default'` or `'none'`. */
+function networkMode(network: SandboxNetwork, egress: Egress | undefined): string {
+  if (egress) return egress.network;
+  return network === 'default' ? 'default' : 'none';
+}
+
 /**
  * Container config for one `run()` call: auto-removed, bind-mounting only
  * `opts.cwd` (when given), with only `opts.env` (never the host env) and no
- * network unless the policy is `'default'`.
+ * network unless the policy is `'default'` or there is an `egress` network,
+ * whose proxy variables are then added to the env.
  */
 function buildContainerOptions(
   image: string,
   network: SandboxNetwork,
+  egress: Egress | undefined,
   cmd: string,
   args: string[],
   opts: SandboxRunOptions
 ): Docker.ContainerCreateOptions {
   const binds = opts.cwd ? [`${opts.cwd}:${opts.cwd}`] : undefined;
+  const env = egress ? commandEnv({ env: { ...opts.env, ...egress.env } }, { base: false }) : opts.env;
   return {
     Image: image,
     Cmd: [cmd, ...args],
     WorkingDir: opts.cwd,
-    Env: opts.env ? Object.entries(opts.env).map(([k, v]) => `${k}=${v}`) : undefined,
+    Env: env ? Object.entries(env).map(([k, v]) => `${k}=${v}`) : undefined,
+    NetworkingConfig: egress ? { EndpointsConfig: { [egress.network]: {} } } : undefined,
     AttachStdin: false,
     AttachStdout: true,
     AttachStderr: true,
     Tty: false,
     HostConfig: {
-      NetworkMode: network === 'default' ? 'default' : 'none',
+      NetworkMode: networkMode(network, egress),
       AutoRemove: true,
       Binds: binds,
     },
@@ -121,15 +136,6 @@ function captureOutput() {
       stderr: Buffer.concat(stderrChunks).toString('utf-8'),
     }),
   };
-}
-
-/** Runs `fn` and ignores its failure: the container may already be stopped or gone (AutoRemove). */
-async function ignoreFailure(fn: () => Promise<unknown>): Promise<void> {
-  try {
-    await fn();
-  } catch {
-    /* already stopped or removed */
-  }
 }
 
 /** Kills the container and force-removes it (LOU-U23); safe when it already exited or AutoRemove took it. */
@@ -189,8 +195,16 @@ export interface SubprocessSandboxOptions {
    * (npipe on Windows, unix socket on Linux/macOS).
    */
   dockerOptions?: Docker.DockerOptions;
-  /** Network access for each container. Defaults to `'none'`. See {@link SandboxNetwork} for what `{ allow }` enforces today. */
+  /** Network access for each container. Defaults to `'none'`. See {@link SandboxNetwork} for what `{ allow }` enforces. */
   network?: SandboxNetwork;
+  /**
+   * Egress proxy for `network: { allow }` (LOU-X12.2). The container's only
+   * route is to this broker on an internal Docker network; its allowlist there
+   * is the broker's rule hosts plus `allow`. Call {@link SubprocessSandbox.close} when done.
+   */
+  broker?: CredentialBroker;
+  /** Internal network to create, or reuse when it exists. Defaults to a fresh `loushy-egress-<random>` name. */
+  networkName?: string;
 }
 
 /**
@@ -208,11 +222,17 @@ export class SubprocessSandbox implements SandboxAdapter {
   /** dockerode is loaded on first `run()`, not at import or construction time (LOU-D19). */
   private readonly getDocker: () => Promise<Docker>;
   private readonly image: string;
-  /** The validated network policy. An `{ allow }` list is kept here; until containers are routed through the credential broker (LOU-X12.2) it means no network. */
+  /** The validated network policy. Without a `broker`, an `{ allow }` list means no network. */
   readonly network: SandboxNetwork;
+  private readonly broker?: CredentialBroker;
+  private readonly networkName: string;
+  /** The internal network and broker listener, set up on the first `run()` (LOU-X12.2). */
+  private egress?: Promise<Egress>;
 
   constructor(options: SubprocessSandboxOptions = {}) {
     this.network = validateNetwork(options.network);
+    this.broker = options.broker;
+    this.networkName = options.networkName ?? `loushy-egress-${randomBytes(4).toString('hex')}`;
     this.getDocker = lazyValue(async () => {
       const { default: DockerClient } = await loadOptionalPeer('dockerode', () => import('dockerode'));
       return new DockerClient(options.dockerOptions);
@@ -265,7 +285,9 @@ export class SubprocessSandbox implements SandboxAdapter {
   async run(cmd: string, args: string[], opts: SandboxRunOptions = {}): Promise<SandboxResult> {
     opts.signal?.throwIfAborted();
     const docker = await this.getDocker();
-    const container = await this.createContainer(docker, buildContainerOptions(this.image, this.network, cmd, args, opts));
+    const egress = await this.startEgress(docker);
+    opts.signal?.throwIfAborted();
+    const container = await this.createContainer(docker, buildContainerOptions(this.image, this.network, egress, cmd, args, opts));
 
     const output = captureOutput();
     const attachStream = await container.attach({ stream: true, stdout: true, stderr: true });
@@ -278,6 +300,28 @@ export class SubprocessSandbox implements SandboxAdapter {
       ...output.read(),
       exitCode: (result as { StatusCode: number }).StatusCode,
     };
+  }
+
+  /** The egress network for `{ allow }` with a broker, set up once and shared by every run; `undefined` otherwise. */
+  private async startEgress(docker: Docker): Promise<Egress | undefined> {
+    if (!this.broker || typeof this.network === 'string') return undefined;
+    this.egress ??= startEgress(docker, this.broker, this.network.allow, this.networkName).catch((error: unknown) => {
+      this.egress = undefined;
+      throw error;
+    });
+    return this.egress;
+  }
+
+  /**
+   * Stops the broker listener and removes the internal network if this
+   * sandbox created it (LOU-X12.2). Call it once no `run()` is in flight; a
+   * later `run()` sets them up again. The broker itself keeps running.
+   */
+  async close(): Promise<void> {
+    const egress = this.egress;
+    this.egress = undefined;
+    const started = await egress?.catch(() => undefined);
+    await started?.close();
   }
 
   /**

@@ -481,6 +481,23 @@ See [Registry](./registry.md#safety-rules).
 
 **Example:** `loushy add web-search` twice.
 
+## Sandbox
+
+### LOUSHY_SANDBOX_EGRESS_UNSUPPORTED
+
+**Means:** a `SubprocessSandbox` with `network: { allow }` and a `broker` cannot make
+the credential broker the container's only route out on this Docker daemon, so it
+started no container instead of granting open egress. The message names the reason:
+Docker Desktop (containers run in a VM, so the host has no address on the internal
+network), rootless Docker, a daemon on another machine (the broker cannot listen on
+the network's gateway), a reused network that is not internal, or an Engine older
+than 25.0.5, which forwards DNS from internal networks.
+
+**Fix:** run the agent on the Linux host of a Docker Engine 25.0.5 or later, or use
+`network: 'none'`. See [Workspace tools](./workspace-tools.md#sandboxed-shell-sandboxshell).
+
+**Example:** `new SubprocessSandbox({ network: { allow: ['api.github.com'] }, broker })` with Docker Desktop.
+
 ## General
 
 ### LOUSHY_GENERIC_ERROR
