@@ -111,13 +111,16 @@ export function createDelegateTool(opts: DelegateAgentOptions): ToolDescriptor {
             'Optional prior conversation history to share with the child agent (only used when contextMode is "full-history")'
           ),
       }),
-      execute: async ({
-        task,
-        context,
-      }: {
-        task: string;
-        context?: Message[];
-      }): Promise<DelegateAgentResult> => {
+      execute: async (
+        {
+          task,
+          context,
+        }: {
+          task: string;
+          context?: Message[];
+        },
+        options?: { abortSignal?: AbortSignal }
+      ): Promise<DelegateAgentResult> => {
         const currentDepth = delegationDepthStorage.getStore() ?? 0;
 
         if (currentDepth >= maxDepth) {
@@ -136,6 +139,8 @@ export function createDelegateTool(opts: DelegateAgentOptions): ToolDescriptor {
             provider: opts.provider,
             toolRegistry: opts.toolRegistry,
             maxSteps: opts.maxSteps,
+            // LOU-V1: aborting the parent run aborts the child with it.
+            signal: options?.abortSignal,
           });
 
           return {

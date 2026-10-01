@@ -156,6 +156,26 @@ export async function saveStepCheckpoint(
   await checkpointStore.save(sessionId, checkpoint);
 }
 
+/**
+ * LOU-V1: gives each tool call the run was aborted before reaching a
+ * `{error}` tool result, so the transcript stays well-formed (every
+ * assistant tool call has a matching result) and a checkpointed run can be
+ * resumed without the provider rejecting an unanswered tool call.
+ */
+export function pushCancelledToolResults(state: AgentRunState, toolCalls: ToolCall[]): void {
+  for (const toolCall of toolCalls) {
+    state.messages.push({
+      role: 'tool',
+      content: JSON.stringify({
+        error: 'Tool call was cancelled before it ran because the run was aborted',
+      }),
+      name: toolCall.function.name,
+      toolCallId: toolCall.id,
+      toolName: toolCall.function.name,
+    });
+  }
+}
+
 /** The ExecutionResult reflecting the run's current state. */
 export function toExecutionResult(
   state: AgentRunState,

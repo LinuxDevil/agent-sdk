@@ -268,6 +268,7 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
       seed: options.seed,
       tools: convertTools(options.tools),
       maxSteps: 1, // Single step - tool execution happens in AgentExecutor
+      abortSignal: options.signal,
     };
   }
 

@@ -37,6 +37,8 @@ export interface ToolCallContext {
   hooks?: HookRegistry;
   sessionId?: string;
   messages: Message[];
+  /** LOU-V1: the run's signal, handed to the tool as `abortSignal`. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -114,7 +116,7 @@ export async function runToolCall(
   try {
     outcome =
       checked.rejection ??
-      (await doExecuteToolCall(toolCall, ctx.toolRegistry, ctx.sandbox, hookArgs));
+      (await doExecuteToolCall(toolCall, ctx.toolRegistry, ctx.sandbox, hookArgs, ctx.signal));
     if (ctx.hooks) {
       await ctx.hooks.runPostToolCall(toolHookContext(toolCall, ctx, hookArgs), {
         result: outcome.result,
@@ -202,7 +204,8 @@ async function doExecuteToolCall(
   toolCall: ToolCall,
   toolRegistry: ToolRegistry | undefined,
   sandbox: SandboxAdapter,
-  overrideArgs?: Record<string, unknown>
+  overrideArgs?: Record<string, unknown>,
+  signal?: AbortSignal
 ): Promise<ToolCallOutcome> {
   if (!toolRegistry) {
     return toolFailure(toolCall, 'No tool registry available');
@@ -242,7 +245,8 @@ async function doExecuteToolCall(
       toolCall.function.name,
       toolDesc,
       args,
-      sandbox
+      sandbox,
+      signal
     );
 
     return {

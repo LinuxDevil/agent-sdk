@@ -25,6 +25,24 @@ export interface MockProviderConfig extends LLMProviderConfig {
 }
 
 /**
+ * Waits `ms`, rejecting with the signal's reason as soon as it is aborted
+ * (LOU-V1), so a simulated slow call can be cancelled mid-delay.
+ */
+function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+/**
  * Mock LLM Provider
  */
 export class MockLLMProvider implements LLMProvider {
@@ -46,12 +64,13 @@ export class MockLLMProvider implements LLMProvider {
   }
 
   async generate(options: GenerateOptions): Promise<GenerateResult> {
+    options.signal?.throwIfAborted();
     if (this.simulateError) {
       throw new Error(this.errorMessage);
     }
 
     if (this.delay > 0) {
-      await new Promise(resolve => setTimeout(resolve, this.delay));
+      await abortableDelay(this.delay, options.signal);
     }
 
     const text = this.getNextResponse();
@@ -70,6 +89,7 @@ export class MockLLMProvider implements LLMProvider {
   }
 
   async stream(options: GenerateOptions): Promise<StreamResult> {
+    options.signal?.throwIfAborted();
     if (this.simulateError) {
       throw new Error(this.errorMessage);
     }
@@ -83,7 +103,7 @@ export class MockLLMProvider implements LLMProvider {
     ): AsyncGenerator<StreamChunk> {
       for (const word of words) {
         if (this.delay > 0) {
-          await new Promise(resolve => setTimeout(resolve, this.delay));
+          await abortableDelay(this.delay, options.signal);
         }
 
         const chunk: StreamChunk = {

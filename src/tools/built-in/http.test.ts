@@ -80,6 +80,24 @@ describe('makeHttpRequest', () => {
     expect(elapsed).toBeLessThan(2000);
   });
 
+  it('LOU-V1: the tool passes its abortSignal to fetch and rejects with an AbortError', async () => {
+    server = http.createServer(() => {
+      // Never respond
+    });
+    const baseUrl = await listen(server);
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 20);
+
+    const start = Date.now();
+    await expect(
+      createHttpTool({ timeout: 10_000 }).tool.execute!(
+        { url: baseUrl, method: 'GET' },
+        { toolCallId: 't', messages: [], abortSignal: controller.signal }
+      )
+    ).rejects.toMatchObject({ name: 'AbortError', message: 'HTTP request was aborted' });
+    expect(Date.now() - start).toBeLessThan(2000);
+  });
+
   it('throws when a redirect chain exceeds maxRedirects', async () => {
     server = http.createServer((req, res) => {
       const url = new URL(req.url ?? '/', 'http://localhost');
