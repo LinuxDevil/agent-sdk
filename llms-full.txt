@@ -2951,11 +2951,54 @@ const chargeCard = defineTool({
 `resumeAfterApproval()`, but not yet for tools that route through
 `sandboxExecute`.)
 
+## Checkpoint history
+
+A checkpoint record is overwritten on every save, so the run's earlier steps are
+gone once it moves on. A store can also keep a bounded history per session:
+every `save()` appends the record to a ring (the newest `historyLimit` saves,
+default 50; the oldest are dropped), which is what replaying or forking a run
+from an earlier step is built on.
+
+`memoryStore()`, `SqliteStore` and `LocalStorageCheckpointStore` keep one:
+
+```ts
+import { getCheckpointHistory, memoryStore } from '@loushy/build-ai-agent';
+
+const { checkpoints } = memoryStore({ historyLimit: 20 }); // default 50, 0 keeps none
+// new SqliteStore(path, { historyLimit }), new LocalStorageCheckpointStore(storage, { historyLimit })
+
+// ... after a run with sessionId 'chat-42' ...
+const history = await getCheckpointHistory(checkpoints, 'chat-42', { limit: 10 });
+for (const { step, savedAt, status, checkpoint } of history ?? []) {
+  console.log(step, status, savedAt, checkpoint.messages.length);
+}
+
+// Clear the checkpoint but keep its history (by default delete() clears both).
+await checkpoints.delete('chat-42', { keepHistory: true });
+```
+
+- `history(sessionId, { limit? })` returns `{ step, savedAt, status, checkpoint }`
+  entries, newest first (`step` is `checkpoint.stepIndex`, `savedAt` an ISO
+  timestamp, `status` is `'in-progress'` for a checkpoint without one). The
+  executor saves after every model turn and tool batch, so a session has one
+  entry per save; the entries hold full checkpoints, so lower `historyLimit`
+  for long transcripts. An unknown session gives `[]`.
+- `history` is optional on `CheckpointStore`: a custom store without it keeps
+  working, and `getCheckpointHistory()` returns `undefined` for it instead of
+  throwing. `KVCheckpointStore` does not keep a history yet (TODO(LOU-D43.2):
+  one KV value per session would hit the 25 MiB value limit and races between
+  concurrent saves), and neither does Agent Forge's file store.
+- `SqliteStore` keeps the history in a new `checkpoint_history` table, added when
+  an existing database file is opened; `prune()` also removes history entries
+  older than its cutoff.
+
 ## Compatibility with stored data
 
 - Checkpoints written before `status` existed are treated as
   `'in-progress'` (before this change, finished runs deleted their
   checkpoint, so only unfinished runs were ever stored).
+- Sessions saved before a store kept a history have an empty history until
+  their next save.
 - Approval snapshots written before `remainingToolCalls` existed resume as
   they used to: the calls after the paused one do not run. Each of them gets
   an error result saying it was not run, so the transcript stays valid.
@@ -5805,6 +5848,21 @@ descriptors that set neither `inputSchema` nor `execute`.
 - **Retries after a crash.** With durable execution a tool can run more than
   once across a crash; use `ctx.toolCallId` as an idempotency key. See
   [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#at-least-once-tools-make-side-effects-idempotent).
+
+## Execute context
+
+`execute(args, ctx)` always gets a real second argument, on every path that
+runs a tool: the main loop, the call that runs after an approval, tools that
+run in a sandbox (`sandboxExecute(args, sandbox, ctx)`) and a flow's tool-call
+node.
+
+| Field | Value |
+| --- | --- |
+| `ctx.toolCallId` | The model's id for this call. It stays the same when the call is re-run after a crash. A call with no model turn behind it (a flow node) gets a generated id. |
+| `ctx.messages` | A read-only copy of the transcript the model had seen before it made the call: no system prompt and not the assistant turn that made the call. Empty for a flow node. |
+| `ctx.abortSignal` | The run's `AbortSignal`, set when the run has one. |
+
+A `sandboxExecute(args, sandbox)` that ignores the third argument keeps working.
 
 ## Errors
 

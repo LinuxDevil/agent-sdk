@@ -88,12 +88,91 @@ export interface Checkpoint {
 }
 
 /**
+ * One saved checkpoint in a session's history (LOU-D43).
+ */
+export interface CheckpointHistoryEntry {
+  /** `checkpoint.stepIndex` at the time of the save. */
+  step: number;
+  /** When the store saved it, as an ISO 8601 timestamp. */
+  savedAt: string;
+  /** `checkpoint.status`, `'in-progress'` when the checkpoint has none. */
+  status: CheckpointStatus;
+  checkpoint: Checkpoint;
+}
+
+/** Options for {@link CheckpointStore.history}. */
+export interface CheckpointHistoryOptions {
+  /** Return at most this many entries (the newest). Default: all that are kept. */
+  limit?: number;
+}
+
+/** Options for {@link CheckpointStore.delete}. */
+export interface CheckpointDeleteOptions {
+  /** Keep the session's history (default: delete it with the checkpoint). */
+  keepHistory?: boolean;
+}
+
+/** How many checkpoints a store's history keeps per session unless told otherwise. */
+export const DEFAULT_CHECKPOINT_HISTORY_LIMIT = 50;
+
+/**
  * Storage-backend-agnostic interface for persisting/loading Checkpoints.
+ *
+ * `history` is optional (LOU-D43): a store that implements it also appends
+ * every `save()` to a bounded per-session history (oldest dropped past the
+ * store's `historyLimit`), and `delete()` clears that history unless called
+ * with `{ keepHistory: true }`. Use {@link getCheckpointHistory} to read it
+ * from a store that may not have it.
  */
 export interface CheckpointStore {
   save(sessionId: string, checkpoint: Checkpoint): Promise<void>;
   load(sessionId: string): Promise<Checkpoint | null>;
-  delete(sessionId: string): Promise<void>;
+  delete(sessionId: string, options?: CheckpointDeleteOptions): Promise<void>;
+  /** Saved checkpoints of the session, newest first; `[]` when there are none. */
+  history?(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]>;
+}
+
+/**
+ * The session's checkpoint history, or `undefined` when `store` does not keep
+ * one (it has no `history()`).
+ */
+export async function getCheckpointHistory(
+  store: CheckpointStore,
+  sessionId: string,
+  options?: CheckpointHistoryOptions
+): Promise<CheckpointHistoryEntry[] | undefined> {
+  return store.history?.(sessionId, options);
+}
+
+/** Validate a store's `historyLimit` (a non-negative integer; `0` keeps no history). */
+export function resolveHistoryLimit(limit: number | undefined): number {
+  const value = limit ?? DEFAULT_CHECKPOINT_HISTORY_LIMIT;
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`historyLimit must be a non-negative integer, got ${limit}.`);
+  }
+  return value;
+}
+
+/** Build the history entry for a checkpoint saved now. */
+export function toHistoryEntry(checkpoint: Checkpoint, savedAt: Date = new Date()): CheckpointHistoryEntry {
+  return {
+    step: checkpoint.stepIndex,
+    savedAt: savedAt.toISOString(),
+    status: checkpoint.status ?? 'in-progress',
+    checkpoint,
+  };
+}
+
+/** Append to an oldest-first ring, dropping the oldest past `limit`. */
+export function appendToRing<T>(ring: readonly T[], entry: T, limit: number): T[] {
+  return limit === 0 ? [] : [...ring, entry].slice(-limit);
+}
+
+/** An oldest-first ring as a newest-first list, at most `options.limit` long. */
+export function newestFirst<T>(ring: readonly T[], options?: CheckpointHistoryOptions): T[] {
+  const list = [...ring].reverse();
+  const limit = options?.limit;
+  return limit === undefined ? list : list.slice(0, Math.max(0, limit));
 }
 
 /**
@@ -101,10 +180,31 @@ export interface CheckpointStore {
  * `checkpoints/{sessionId}.json`.
  */
 export class LocalStorageCheckpointStore implements CheckpointStore {
-  constructor(private readonly storageService: StorageService) {}
+  private readonly historyLimit: number;
+
+  /**
+   * @param options.historyLimit checkpoints kept per session in `history()` (default 50, `0` keeps none)
+   */
+  constructor(
+    private readonly storageService: StorageService,
+    options: { historyLimit?: number } = {}
+  ) {
+    this.historyLimit = resolveHistoryLimit(options.historyLimit);
+  }
 
   private getStorageKey(sessionId: string): string {
     return `checkpoints/${sessionId}.json`;
+  }
+
+  private getHistoryKey(sessionId: string): string {
+    return `checkpoint-history/${sessionId}.json`;
+  }
+
+  private readRing(sessionId: string): CheckpointHistoryEntry[] {
+    const key = this.getHistoryKey(sessionId);
+    return this.storageService.fileExists(key)
+      ? this.storageService.readPlainJSONAttachment<CheckpointHistoryEntry[]>(key)
+      : [];
   }
 
   async save(sessionId: string, checkpoint: Checkpoint): Promise<void> {
@@ -112,6 +212,10 @@ export class LocalStorageCheckpointStore implements CheckpointStore {
     await this.storageService.acquireLock(storageKey);
     try {
       this.storageService.writePlainJSONAttachment(storageKey, checkpoint);
+      if (this.historyLimit > 0) {
+        const ring = appendToRing(this.readRing(sessionId), toHistoryEntry(checkpoint), this.historyLimit);
+        this.storageService.writePlainJSONAttachment(this.getHistoryKey(sessionId), ring);
+      }
     } finally {
       this.storageService.releaseLock(storageKey);
     }
@@ -130,10 +234,20 @@ export class LocalStorageCheckpointStore implements CheckpointStore {
     }
   }
 
-  async delete(sessionId: string): Promise<void> {
-    const storageKey = this.getStorageKey(sessionId);
+  async delete(sessionId: string, options: CheckpointDeleteOptions = {}): Promise<void> {
     // deleteAttachment already swallows "not found" (it no-ops if the file
     // doesn't exist), so no extra try/catch is needed here.
-    this.storageService.deleteAttachment(storageKey);
+    this.storageService.deleteAttachment(this.getStorageKey(sessionId));
+    if (!options.keepHistory) this.storageService.deleteAttachment(this.getHistoryKey(sessionId));
+  }
+
+  async history(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]> {
+    const storageKey = this.getStorageKey(sessionId);
+    await this.storageService.acquireLock(storageKey);
+    try {
+      return newestFirst(this.readRing(sessionId), options);
+    } finally {
+      this.storageService.releaseLock(storageKey);
+    }
   }
 }

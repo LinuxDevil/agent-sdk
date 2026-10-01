@@ -14,7 +14,6 @@ import { AgentExecutor } from '../execution/AgentExecutor';
 import { defineTool } from '../tools/defineTool';
 import { ToolRegistry } from '../tools';
 import { mockModel } from '../testing';
-import { AgentType } from '../types';
 
 const BIG = 'x'.repeat(4_000); // about 1,000 tokens
 
@@ -222,7 +221,6 @@ describe('compaction in a run', () => {
       agent: {
         id: 'a',
         name: 'Agent',
-        agentType: AgentType.SmartAssistant,
         prompt: 'Read pages.',
         tools: { fetch_page: { tool: 'fetch_page' } },
       },

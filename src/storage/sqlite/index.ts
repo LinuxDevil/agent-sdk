@@ -3,4 +3,4 @@
  * and approvals. Deliberately NOT re-exported from the root entry.
  */
 export { SqliteStore } from './SqliteStore';
-export type { PruneOptions, PruneResult } from './SqliteStore';
+export type { PruneOptions, PruneResult, SqliteStoreOptions } from './SqliteStore';

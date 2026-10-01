@@ -11,7 +11,6 @@ import { AgentExecutor } from './AgentExecutor';
 import { Span, TraceExporter } from './tracing';
 import { ToolRegistry, defineTool } from '../tools';
 import { AgentBuilder } from '../core';
-import { AgentType } from '../types';
 import { mockModel } from '../testing';
 
 /**
@@ -243,7 +242,6 @@ describe('createOtelTraceExporter GenAI metrics (LOU-D48)', () => {
     toolRegistry.register(weather);
     const agent = {
       ...AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Weather Bot')
         .addTool('get_weather', { tool: 'get_weather', options: {} })
         .build(),

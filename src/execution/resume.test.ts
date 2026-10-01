@@ -6,7 +6,6 @@ import { Checkpoint, CheckpointStore } from './checkpoint';
 import { createMockProvider } from '../providers/mock';
 import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
-import { AgentType } from '../types';
 
 /** Simple in-memory ApprovalStore, good enough for resume tests. */
 function createInMemoryApprovalStore(): ApprovalStore {
@@ -58,7 +57,6 @@ describe('Execution - resumeAfterApproval', () => {
     });
 
     const agent = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .addTool('chargeCard', { tool: 'chargeCard', options: {} })
       .build();
@@ -112,7 +110,6 @@ describe('Execution - resumeAfterApproval', () => {
     });
 
     const agent = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .addTool('chargeCard', { tool: 'chargeCard', options: {} })
       .build();
@@ -157,7 +154,6 @@ describe('Execution - resumeAfterApproval', () => {
 
     const systemPrompt = 'You are a careful billing assistant.';
     const agent = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .setPrompt(systemPrompt)
       .addTool('chargeCard', { tool: 'chargeCard', options: {} })
@@ -210,7 +206,6 @@ describe('Execution - resumeAfterApproval', () => {
     });
 
     const agent = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .addTool('chargeCard', { tool: 'chargeCard', options: {} })
       .build();
@@ -267,7 +262,6 @@ describe('Execution - resumeAfterApproval', () => {
     });
 
     const agent = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .addTool('delegate', { tool: 'delegate', options: {} })
       .build();
@@ -309,7 +303,6 @@ describe('Execution - resumeAfterApproval', () => {
     });
 
     const agent = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .addTool('chargeCard', { tool: 'chargeCard', options: {} })
       .build();
@@ -432,7 +425,6 @@ describe('Execution - resumeAfterApproval', () => {
     });
 
     const agent = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .addTool('lookup', { tool: 'lookup', options: {} })
       .addTool('chargeCard', { tool: 'chargeCard', options: {} })
@@ -593,7 +585,6 @@ describe('Execution - resumeAfterApproval', () => {
     });
 
     const agent = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .addTool('chargeCard', { tool: 'chargeCard', options: {} })
       .addTool('lookup', { tool: 'lookup', options: {} })
@@ -719,7 +710,6 @@ describe('Execution - resumeAfterApproval', () => {
     });
 
     const agent = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .addTool('lookup', { tool: 'lookup', options: {} })
       .addTool('chargeCard', { tool: 'chargeCard', options: {} })
@@ -853,7 +843,6 @@ describe('Execution - resumeAfterApproval', () => {
     });
 
     const agent = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .addTool('chargeCard', { tool: 'chargeCard', options: {} })
       .addTool('lookup', { tool: 'lookup', options: {} })
@@ -951,7 +940,6 @@ describe('Execution - resumeAfterApproval', () => {
     });
 
     const agent = AgentBuilder.create()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .addTool('chargeCard', { tool: 'chargeCard', options: {} })
       .build();
@@ -1014,7 +1002,6 @@ describe('Execution - resumeAfterApproval', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .addTool('chargeCard', { tool: 'chargeCard', options: {} })
         .build();
@@ -1068,7 +1055,6 @@ describe('Execution - resumeAfterApproval', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .addTool('sendEmail', { tool: 'sendEmail', options: {} })
         .build();
@@ -1118,7 +1104,7 @@ describe('Execution - resumeAfterApproval', () => {
         { hooks }
       );
 
-      expect(execute).toHaveBeenCalledWith({ email: '[REDACTED]' }, { toolCallId: 'call-1' });
+      expect(execute).toHaveBeenCalledWith({ email: '[REDACTED]' }, expect.objectContaining({ toolCallId: 'call-1', messages: expect.any(Array) }));
     });
 
     it('a postToolCall hook that throws on the resume path propagates as a rejected promise, not a swallowed {error} tool-result', async () => {
@@ -1148,7 +1134,6 @@ describe('Execution - resumeAfterApproval', () => {
       });
 
       const agent = AgentBuilder.create()
-        .setType(AgentType.SmartAssistant)
         .setName('Test Agent')
         .addTool('chargeCard', { tool: 'chargeCard', options: {} })
         .build();

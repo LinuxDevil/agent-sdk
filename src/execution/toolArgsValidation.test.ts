@@ -4,7 +4,6 @@ import { AgentExecutor, ExecutionEvent } from './AgentExecutor';
 import { ToolArgumentsValidationError } from './index';
 import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
-import { AgentType } from '../types';
 import { HookRegistry } from './hooks';
 
 const usage = { promptTokens: 1, completionTokens: 1, totalTokens: 2 };
@@ -50,7 +49,6 @@ function setup(descriptor: Parameters<ToolRegistry['register']>[1]) {
   const toolRegistry = new ToolRegistry();
   toolRegistry.register('send', descriptor);
   const agent = AgentBuilder.create()
-    .setType(AgentType.SmartAssistant)
     .setName('Test Agent')
     .addTool('send', { tool: 'send', options: {} })
     .build();
