@@ -15,6 +15,8 @@ import { loadSkills } from '../skills/loadSkills';
 import type { Skill } from '../skills/defineSkill';
 import { isDirectory, isFile, readText } from './fsUtil';
 import type { DefinedSchedule } from '../schedules/defineSchedule';
+import type { Channel } from '../channels/defineChannel';
+import { loadChannels } from './loadChannels';
 import { loadSchedules } from './loadSchedules';
 import { loadTools, type LoadedTool } from './loadTools';
 import { readConfig, type AgentDirConfig } from './readConfig';
@@ -52,6 +54,8 @@ export interface AgentDirManifest {
   subagents: string[];
   /** Schedule names discovered in `schedules/` (the file name unless the schedule sets its own). */
   schedules: string[];
+  /** Channel names discovered in `channels/` (the file name unless the channel sets its own). */
+  channels: string[];
 }
 
 /** The result of {@link resolveAgentDir}: ready-to-use `createAgent()` options plus what was discovered. */
@@ -61,6 +65,8 @@ export interface ResolvedAgentDir {
   manifest: AgentDirManifest;
   /** The schedules of `schedules/`; run them with `startSchedules(agent, schedules)`. `loadAgentDir()` does not start them. */
   schedules: DefinedSchedule[];
+  /** The channels of `channels/`; serve them with `createDeployedServer(agent, { channels })` or `mountChannels()`. `loadAgentDir()` does not mount them. */
+  channels: Channel[];
 }
 
 /** The model source a parent hands down to sub-agents that do not choose their own. */
@@ -164,6 +170,7 @@ async function resolveWith(
   const skills = await skillsFor(dir, overrides);
   const subagents = await loadSubagents(dir, overrides, source);
   const schedules = await loadSchedules(dir);
+  const channels = await loadChannels(dir);
   const name = overrides.name ?? config.name ?? path.basename(dir);
 
   const fileTools = [...tools.map((t) => t.tool), ...subagents.map(delegateTool)];
@@ -185,6 +192,7 @@ async function resolveWith(
   return {
     config: assembled,
     schedules,
+    channels,
     manifest: {
       dir,
       name,
@@ -194,6 +202,7 @@ async function resolveWith(
       skills: skills.map((s) => s.name),
       subagents: subagents.map((s) => s.name),
       schedules: schedules.map((s) => s.name as string),
+      channels: channels.map((c) => c.name),
     },
   };
 }
@@ -220,6 +229,7 @@ async function skillsFor(dir: string, overrides: AgentDirOverrides): Promise<Ski
  *   skills/                                          same layouts as loadSkills()
  *   subagents/<name>/                                nested agent directories (need a description)
  *   schedules/*.ts|js                                each default-exports defineSchedule(); run with startSchedules()
+ *   channels/*.ts|js                                 each default-exports a channel (defineChannel(), webhookChannel(), ...)
  * ```
  *
  * Loading executes the directory's code. Only load directories you trust.

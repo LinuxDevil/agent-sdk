@@ -171,6 +171,13 @@ const handler = mountChannels(agent, [
 ]);
 ```
 
+## In an agent directory
+
+An [agent directory](./agent-directories.md#channels) can keep its channels in
+`channels/*.ts`, one default-exported channel per file (named by the file unless
+the channel sets a name). `resolveAgentDir()` returns them as `channels`, and
+the node server mounts them with `createDeployedServer(agent, { channels })`.
+
 ## Slack
 
 `slackChannel({ signingSecret, botToken, name?, fetch? })` connects a Slack app.

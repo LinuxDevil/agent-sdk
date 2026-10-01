@@ -372,6 +372,18 @@ See [Schedules](./schedules.md).
 
 **Example:** `defineSchedule({ cron: '61 * * * *', prompt: 'hi' })`.
 
+## Channels
+
+### LOUSHY_CHANNEL_INVALID
+
+**Means:** a file in an agent directory's `channels/` folder does not default-export
+a channel (an object with `parse` and `reply`). The message names the file.
+
+**Fix:** default-export a channel made with `defineChannel()`, `httpChannel()`,
+`webhookChannel()` or `slackChannel()`. See [Channels](./channels.md).
+
+**Example:** `export default { cron: 'x' }` in `channels/sms.ts`.
+
 ## General
 
 ### LOUSHY_GENERIC_ERROR
