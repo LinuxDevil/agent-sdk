@@ -18,7 +18,7 @@ import { newId } from '../utils/id';
 import type { GenerateOptions, GenerateResult, LLMProvider } from '../providers';
 import type { ExecuteOptions, ExecutionEvent, ExecutionResult } from './AgentExecutor';
 import type { PendingApproval } from './ApprovalGate';
-import type { SubagentInfo } from './hooks';
+import type { HookEventPayload, SubagentInfo } from './hooks';
 import {
   AGENT_EVENT_SCHEMA_VERSION,
   AgentEvent,
@@ -26,7 +26,8 @@ import {
   AgentEventPayload,
   AgentEventUsage,
 } from './agentEvents';
-import { parseToolArguments } from './toolCallExecution';
+import { parseToolArguments } from './toolArgsValidation';
+import type { PermissionDecisionEntry } from './permissions';
 import { canStream, generateViaStream } from './streamStep';
 import { measureUsage } from './runUsage';
 import { compactProviderError } from './errors';
@@ -72,6 +73,10 @@ export interface RunEventSink {
   /** `finishReason` overrides the step's own (the model's) finish reason. */
   stepDone(step: number, finishReason?: string): void;
   approvalRequested(pending: PendingApproval): void;
+  /** LOU-X2: a tool call's permission decision. */
+  permissionDecision(entry: PermissionDecisionEntry): void;
+  /** LOU-W3.2: an event a hook emits (`GenerateHookContext.emit`). */
+  hookEvent(event: HookEventPayload): void;
   /** Obtains one model step - streamed when the provider can. */
   generate(provider: LLMProvider, request: GenerateOptions): Promise<GenerateResult>;
   /** LOU-Y1: the sink for a sub-agent's run, whose events carry `subagent`. */
@@ -334,6 +339,12 @@ class AgentRunImpl implements AgentRun {
           args: toJsonValue(pending.args) as Record<string, unknown>,
         });
       },
+      permissionDecision: (entry) =>
+        this.emit(
+          { type: 'permission.decision', ...entry, ...(entry.args && { args: toJsonValue(entry.args) as Record<string, unknown> }) },
+          subagent
+        ),
+      hookEvent: (event) => this.emit(event, subagent),
       generate: async (provider, request) => {
         const call = withProviderEvents(request, this.providerEvents(subagent));
         const generated = await this.generateStep(provider, call, subagent);

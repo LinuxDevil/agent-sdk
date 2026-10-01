@@ -522,7 +522,10 @@ and, if the run is still too big, replaces old turns with a summary written
 by `model`; `summarizeStrategy()` only summarizes. `pinMessage(message)` marks
 a message that is never pruned or summarized. `compactMessages(messages, options)`
 does the same once, by hand (async), and `CompactionStrategy` is the
-pluggable interface (`compact()` may be async). See [Context compaction](./compaction.md).
+pluggable interface (`compact()` may be async). `createAgent({ compaction: true })`
+installs the hook on an agent (`createAgent({ hooks })` takes any other
+`AgentHook`s), and `stream()` emits `compaction.start` / `compaction.done`.
+See [Context compaction](./compaction.md).
 
 ## Flows, evals, observability and security
 

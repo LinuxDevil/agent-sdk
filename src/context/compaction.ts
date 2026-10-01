@@ -343,16 +343,27 @@ export function createCompactionHook(options: CompactionHookOptions = {}): Agent
       const { strategy, input } = prepare(messages, { ...options, model: ctx.request.model }, ctx.request.signal);
       const tokens = input.estimateTokens(messages);
       if (tokens <= input.thresholdTokens) return;
+      const { contextWindow, thresholdTokens } = input;
+      ctx.emit?.({ type: 'compaction.start', strategy: strategy.name, tokensBefore: tokens, contextWindow, thresholdTokens });
       let result: CompactionResult;
       try {
         result = await strategy.compact(input);
       } catch (cause) {
         result = { messages, tokensBefore: tokens, tokensAfter: tokens, prunedToolCallIds: [], error: toError(cause) };
       }
-      if (result.messages === messages && !result.error) return;
+      const { tokensBefore, tokensAfter, prunedToolCallIds, summary, error } = result;
+      ctx.emit?.({
+        type: 'compaction.done',
+        strategy: strategy.name,
+        tokensBefore,
+        tokensAfter,
+        prunedToolCallIds,
+        ...(summary && { summary: true }),
+        ...(error && { error: { message: error.message } }),
+      });
+      if (result.messages === messages && !error) return;
       // In place: request.messages is the run's transcript (see the file comment).
       if (result.messages !== messages) messages.splice(0, messages.length, ...result.messages);
-      const { tokensBefore, tokensAfter, prunedToolCallIds, summary, error } = result;
       onCompaction?.({ tokensBefore, tokensAfter, prunedToolCallIds, strategy: strategy.name, summary, error });
     },
   };

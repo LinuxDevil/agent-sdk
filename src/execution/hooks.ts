@@ -40,6 +40,7 @@
  */
 
 import { GenerateOptions, GenerateResult, Message, ToolCall } from '../providers';
+import type { AgentEventPayload } from './agentEvents';
 
 /**
  * Fields common to every hook invocation.
@@ -115,8 +116,18 @@ export interface ToolCallHookResult {
   requiresApproval?: boolean;
 }
 
+/** The stream events a hook may emit with `GenerateHookContext.emit` (LOU-W3.2). */
+export type HookEventPayload = Extract<AgentEventPayload, { type: 'compaction.start' | 'compaction.done' }>;
+
 /** Context passed to `AgentHook.preGenerate` / `postGenerate`. */
 export interface GenerateHookContext extends HookContext {
+  /**
+   * Adds an event to the run's stream, inside the current step (LOU-W3.2).
+   * Set only when the run is streamed (`agent.stream()`, `session.stream()`,
+   * `AgentExecutor.stream()`); `ctx.emit?.(...)` is a no-op otherwise. The run
+   * fills in `runId`, `seq`, `timestamp` and `v`, and tags a sub-agent's events.
+   */
+  emit?: (event: HookEventPayload) => void;
   /**
    * Live reference to the request about to be sent to
    * `provider.generate()`. Mutating it (e.g. appending a message, changing
