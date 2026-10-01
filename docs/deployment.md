@@ -82,8 +82,8 @@ Workers have no Node.js builtins, so this target currently supports:
 - tools: `current-date` and `day-name`. `http` is **not** supported: its
   SSRF protection resolves the hostname via `node:dns` and checks *every*
   resolved address against a denylist before connecting (closing a
-  DNS-rebinding gap), then pins TLS settings per request via a dedicated
-  `undici` `Agent`. Workers' native `fetch()` has no equivalent hook to
+  DNS-rebinding gap), then, for `validateSSL: false`, pins that TLS setting
+  per request via a dedicated `undici` `Agent`. Workers' native `fetch()` has no equivalent hook to
   resolve a hostname up front and pin the connection to the verified IP, so
   a Workers version of this tool built on plain `fetch()` would silently
   drop that protection rather than just losing convenience functionality -

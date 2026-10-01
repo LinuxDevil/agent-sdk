@@ -1,4 +1,5 @@
-import prompts, { type PromptObject } from 'prompts';
+import type { PromptObject } from 'prompts';
+import { loadOptionalPeer } from '../../providers/optionalPeer';
 import { PROVIDER_NAMES, TEMPLATES } from './options';
 
 /** The answers `loushy init` can ask for; a key is only asked when it is missing. */
@@ -48,9 +49,11 @@ function questions({ known, defaults }: AskInput): PromptObject<keyof InitAnswer
 /**
  * Interactively asks only for the answers not already given as flags, using
  * the `prompts` library (tests drive it with `prompts.inject()`). Ctrl+C
- * cancels the whole scaffold.
+ * cancels the whole scaffold. `prompts` is an optional peer, loaded here on
+ * first use (LOU-D40), so `loushy init --yes` never needs it.
  */
 export async function askMissing(input: AskInput): Promise<InitAnswers> {
+  const { default: prompts } = await loadOptionalPeer('prompts', () => import('prompts'));
   let cancelled = false;
   const response = await prompts(questions(input), {
     onCancel: () => {

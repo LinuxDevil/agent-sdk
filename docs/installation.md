@@ -56,9 +56,35 @@ try {
 }
 ```
 
-The same applies to the dependencies the SDK ships with but only loads when a
-feature needs them: `undici` (the built-in `http` tool), `dockerode`
-(`SubprocessSandbox`) and `@modelcontextprotocol/sdk` (`serveMcp`).
+### Optional peers
+
+Three heavier packages are optional peers too. A project that never uses
+Docker sandboxing, MCP or the `loushy init` questions installs none of them:
+
+| Package                     | Range     | Enables                                                                                       | Install                                          |
+| --------------------------- | --------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `dockerode`                 | `^5.0.1`  | Docker sandboxing: `SubprocessSandbox` (and `loushy doctor`'s Docker ping)                    | `npm install dockerode@^5.0.1`                   |
+| `@modelcontextprotocol/sdk` | `^1.30.1` | MCP: `serveMcp()`, `loushy mcp`, and the `Client` you connect before `loadMcpTools()`         | `npm install @modelcontextprotocol/sdk@^1.30.1`  |
+| `prompts`                   | `^2.4.2`  | The interactive questions of `loushy init` (`loushy init --yes` and flags need nothing)       | `npm install prompts@^2.4.2`                     |
+
+Like the provider packages, each is loaded on first use, never at import
+time, and a missing one fails that call with a `MissingPeerDependencyError`
+that names the feature and the exact command, for example:
+
+```text
+The optional package 'dockerode' is not installed, but Docker sandboxing (SubprocessSandbox) needs it. Run: npm install dockerode@^5.0.1
+```
+
+`npm create loushy-agent` installs `prompts` itself, so scaffolding with it
+needs nothing extra. `loushy doctor` lists every optional peer, what it
+enables and whether it is installed (a missing `dockerode` is an error only
+when the agent spec uses a sandboxed tool).
+
+`undici` and `yaml` stay regular dependencies. `yaml` parses agent specs,
+`agent.yaml` files and skills, and Node has no built-in YAML parser. `undici`
+is only loaded by the `http` tool when a request sets `validateSSL: false`
+(a per-request TLS setting that the global `fetch` cannot express); every
+other request uses the runtime's global `fetch`.
 
 ## Installing from a local build
 

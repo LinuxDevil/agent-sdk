@@ -8,6 +8,7 @@
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
+import { MissingPeerDependencyError, loadOptionalPeer } from '../providers/optionalPeer';
 import { loadSpec } from '../spec/loadSpec';
 import { resolveSpecTool } from '../spec/specToAgent';
 import { runDoctor } from './doctorCore';
@@ -42,17 +43,18 @@ function findPackageJson(entry: string, name: string): string | null {
 /** Version of `name` as Node would resolve it from `cwd`, or null when it is not installed. */
 function resolveVersion(cwd: string, name: string): string | null {
   const require = createRequire(path.join(cwd, 'noop.js'));
-  try {
-    return JSON.parse(fs.readFileSync(require.resolve(`${name}/package.json`), 'utf8')).version;
-  } catch {
-    // Not installed, or the package's "exports" hides package.json: fall back to its entry point.
+  // The first specifier can land on a nested package.json (the MCP SDK's exports map sends
+  // `<name>/package.json` to dist/cjs/package.json), so walk up to the manifest named `name`.
+  // Not installed, or "exports" hides both specifiers: null.
+  for (const specifier of [`${name}/package.json`, name]) {
+    try {
+      const manifest = findPackageJson(require.resolve(specifier), name);
+      if (manifest) return JSON.parse(fs.readFileSync(manifest, 'utf8')).version;
+    } catch {
+      // try the next specifier
+    }
   }
-  try {
-    const manifest = findPackageJson(require.resolve(name), name);
-    return manifest ? JSON.parse(fs.readFileSync(manifest, 'utf8')).version : null;
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 function commandExists(command: string, env: NodeJS.ProcessEnv): boolean {
@@ -65,7 +67,14 @@ function commandExists(command: string, env: NodeJS.ProcessEnv): boolean {
 }
 
 async function dockerReachable(): Promise<boolean> {
-  const { default: Docker } = await import('dockerode');
+  let Docker: typeof import('dockerode');
+  try {
+    Docker = (await loadOptionalPeer('dockerode', () => import('dockerode'))).default;
+  } catch (error) {
+    // Without the optional dockerode peer there is no way to ask; its own check reports that.
+    if (error instanceof MissingPeerDependencyError) return false;
+    throw error;
+  }
   const ping = new Docker().ping().then(() => true);
   const timeout = new Promise<boolean>((resolve) => setTimeout(() => resolve(false), DOCKER_TIMEOUT_MS).unref());
   return Promise.race([ping, timeout]);
