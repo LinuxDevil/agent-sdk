@@ -14,7 +14,8 @@ import {
   ExecutionSnapshot,
   PendingApproval,
 } from './ApprovalGate';
-import { AgentExecutor, ExecuteOptions, ExecutionResult } from './AgentExecutor';
+import { AgentExecutor, ExecuteOptions, ExecutionEvent, ExecutionResult } from './AgentExecutor';
+import { runEventsOf, streamResumed, type AgentRun } from './agentRun';
 import { Checkpoint, CheckpointStore } from './checkpoint';
 import { NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
@@ -134,7 +135,7 @@ export async function resumeAfterApproval(
     execute: (options) => AgentExecutor.execute(options),
     resumeRun: resumeAfterApproval,
   };
-  const step = await decidedToolMessage(ctx, pending);
+  const step = await streamedDecision(ctx, pending);
   if ('paused' in step) {
     // LOU-U8: the sub-agent paused again, so the session still awaits an approval.
     const businessState = executeOptions.businessState !== undefined ? executeOptions.businessState : staleBusinessState;
@@ -157,6 +158,79 @@ export async function resumeAfterApproval(
     staleBusinessState,
     usage: ctx.usage,
   });
+}
+
+/**
+ * LOU-V14: {@link resumeAfterApproval} (same arguments, same result) streamed
+ * as the `AgentRun` that `AgentExecutor.stream()` returns: `run.start`, the
+ * decided call's `tool.start` / `tool.done` (`tool.error` for a rejection),
+ * then the continuation's events as in a fresh run. A further pause ends it
+ * with `approval.requested` and `run.done`. Aborting (`signal` or an early
+ * `break`), `enqueue()` and `steer()` work as on a fresh run.
+ *
+ * @example
+ * ```ts
+ * const run = streamResumeAfterApproval({ id: approvalId, approved: true }, approvalStore, toolRegistry, provider);
+ * for await (const event of run) if (event.type === 'text.delta') process.stdout.write(event.text);
+ * ```
+ */
+export function streamResumeAfterApproval(
+  decision: ApprovalDecision,
+  approvalStore: ApprovalStore,
+  toolRegistry: ToolRegistry,
+  provider: LLMProvider,
+  executeOptions: ResumeExecuteOptions = {},
+  checkpointStore?: CheckpointStore
+): AgentRun {
+  return streamResumed(
+    (wire) => resumeAfterApproval(decision, approvalStore, toolRegistry, provider, wire(executeOptions), checkpointStore),
+    executeOptions.signal,
+    executeOptions.inputQueue
+  );
+}
+
+/** What resumeAfterApproval() takes, as one object (LOU-V14). */
+export interface ResumeRequest {
+  decision: ApprovalDecision;
+  approvalStore: ApprovalStore;
+  toolRegistry: ToolRegistry;
+  provider: LLMProvider;
+  executeOptions?: ResumeExecuteOptions;
+  checkpointStore?: CheckpointStore;
+}
+
+/** resumeAfterApproval() with its arguments as one {@link ResumeRequest}. */
+export function resumeRequest(request: ResumeRequest): Promise<ExecutionResult> {
+  const { decision, approvalStore, toolRegistry, provider, executeOptions, checkpointStore } = request;
+  return resumeAfterApproval(decision, approvalStore, toolRegistry, provider, executeOptions, checkpointStore);
+}
+
+/**
+ * decidedToolMessage(), reported on a streamed resume (LOU-V14) as the run's
+ * `start` and the decided call's `tool-call` / `tool-result` events.
+ */
+async function streamedDecision(ctx: ResumeContext, pending: PendingApproval): ReturnType<typeof decidedToolMessage> {
+  const emit = runEventsOf(ctx.executeOptions as ExecuteOptions) ? ctx.executeOptions.onEvent : undefined;
+  if (!emit) return decidedToolMessage(ctx, pending);
+  const { agent, subagent } = ctx.snapshot;
+  const call = subagent ?? pending;
+  emit({ type: 'start', timestamp: new Date(), agentId: agent.id, agentName: agent.name });
+  const toolCall: ToolCall = {
+    id: call.toolCallId,
+    type: 'function',
+    function: { name: call.toolName, arguments: JSON.stringify(call.args) },
+  };
+  emit({ type: 'tool-call', timestamp: new Date(), toolCall });
+  const step = await decidedToolMessage(ctx, pending);
+  if ('message' in step) emit({ type: 'tool-result', timestamp: new Date(), toolResult: toolResultOf(step.message) });
+  return step;
+}
+
+/** The `tool-result` event payload of a decided call's `tool` message. */
+function toolResultOf(message: Message): NonNullable<ExecutionEvent['toolResult']> {
+  const result: unknown = typeof message.content === 'string' ? JSON.parse(message.content) : message.content;
+  const error = message.isError ? String((result as { message?: unknown } | null)?.message ?? '') : undefined;
+  return { toolCallId: message.toolCallId ?? '', toolName: message.toolName ?? '', result, ...(error !== undefined && { error }) };
 }
 
 /**

@@ -174,6 +174,33 @@ const trusted = createAgent({
 });
 ```
 
+### Streaming the continued run
+
+`agent.approvals.streamResolve(decision, { signal })` and
+`agent.approvals.streamAnswer({ id, answer }, { signal })` continue the run
+like `resolve()` and `answer()`, but return the `AgentRun` that
+`agent.stream()` returns (see [Streaming](./streaming.md#streaming-after-an-approval)):
+`run.start`, the decided call's `tool.start` and `tool.done` (`tool.error` for
+a rejection), then the continuation's events up to `run.done`. `run.result`
+is what `resolve()` resolves with. A continuation that pauses again ends with
+`approval.requested` and `run.done` (`'awaiting-approval'`), even with an
+`approve` callback, as `stream()` does. A pause made inside a session
+continues in that session, and `run.done` comes once the transcript is saved.
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ provider, tools: [emailTool] });
+const paused = await agent.send('Email Sam the report');
+
+if (paused.approvalId) {
+  const run = agent.approvals.streamResolve({ id: paused.approvalId, approved: true });
+  for await (const event of run) {
+    if (event.type === 'text.delta') process.stdout.write(event.text);
+  }
+}
+```
+
 ## Asking the user a question
 
 `createAgent({ askQuestion: true })` gives the agent the built-in
@@ -253,6 +280,9 @@ takes most of the execution options of `execute()` (for example `signal`,
 checkpointed, and `execute()` with that `sessionId` throws
 `SessionAwaitingApprovalError` until the approval is decided, so a pending
 approval cannot be bypassed (see [Durable execution](./durable-execution.md)).
+`streamResumeAfterApproval()` takes the same arguments and streams the
+continued run as an `AgentRun` (see
+[Streaming after an approval](./streaming.md#streaming-after-an-approval)).
 
 | Store | Where the pause lives |
 | ----- | --------------------- |
