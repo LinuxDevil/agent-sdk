@@ -54,8 +54,11 @@ const DEFAULT_THRESHOLD_PERCENT = 0.9;
 
 const PRUNED_MARKER = /^\[pruned: .* result, \d+ chars\]$/;
 
-function prunedMarker(message: Message): string {
-  return `[pruned: ${message.toolName ?? 'tool'} result, ${message.content.length} chars]`;
+/** The message with its result replaced by a marker, or `undefined` when it is not a tool result worth pruning. */
+function prunedToolResult(message: Message): Message | undefined {
+  if (message.role !== 'tool' || PRUNED_MARKER.test(message.content)) return undefined;
+  const marker = `[pruned: ${message.toolName ?? 'tool'} result, ${message.content.length} chars]`;
+  return marker.length < message.content.length ? { ...message, content: marker } : undefined;
 }
 
 /**
@@ -89,17 +92,10 @@ export function pruneToolResultsStrategy(): CompactionStrategy {
     compact({ messages, estimateTokens: count, protectedTokens }) {
       const tokensBefore = count(messages);
       const tailStart = protectedTailStart(messages, count, protectedTokens);
-      const prunedToolCallIds: string[] = [];
-      let changed = false;
-      const compacted = messages.map((message, index) => {
-        if (index >= tailStart || message.role !== 'tool' || PRUNED_MARKER.test(message.content)) return message;
-        const marker = prunedMarker(message);
-        if (marker.length >= message.content.length) return message;
-        changed = true;
-        if (message.toolCallId) prunedToolCallIds.push(message.toolCallId);
-        return { ...message, content: marker };
-      });
-      if (!changed) return { messages, tokensBefore, tokensAfter: tokensBefore, prunedToolCallIds };
+      const compacted = messages.map((message, index) => (index < tailStart && prunedToolResult(message)) || message);
+      const pruned = compacted.filter((message, index) => message !== messages[index]);
+      const prunedToolCallIds = pruned.flatMap((message) => (message.toolCallId ? [message.toolCallId] : []));
+      if (pruned.length === 0) return { messages, tokensBefore, tokensAfter: tokensBefore, prunedToolCallIds };
       return { messages: compacted, tokensBefore, tokensAfter: count(compacted), prunedToolCallIds };
     },
   };
