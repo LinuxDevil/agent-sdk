@@ -78,12 +78,14 @@ const UPDATES: Updates = {
   'tool.error': (e) => ({ sessionUpdate: 'tool_call_update', toolCallId: e.toolCallId, status: 'failed', content: toolOutput(e.error.message), rawOutput: { error: e.error.message } }),
 };
 
-/** The prompt's text: text blocks as they are, `resource_link` blocks as Markdown links. */
+/** How prompt blocks become text: text blocks as they are, `resource_link` blocks as Markdown links; others are dropped. */
+const BLOCK_TEXT: Record<string, (block: Json) => string> = {
+  text: (block) => String(block.text ?? ''),
+  resource_link: (block) => `[${String(block.name ?? block.uri)}](${String(block.uri)})`,
+};
+
 function promptText(blocks: unknown): string {
-  const parts = (Array.isArray(blocks) ? (blocks as Json[]) : []).map((block) => {
-    if (block.type === 'text') return String(block.text ?? '');
-    return block.type === 'resource_link' ? `[${String(block.name ?? block.uri)}](${String(block.uri)})` : '';
-  });
+  const parts = (Array.isArray(blocks) ? (blocks as Json[]) : []).map((block) => BLOCK_TEXT[String(block.type)]?.(block) ?? '');
   const joined = parts.filter(Boolean).join('\n');
   if (!joined) throw new RpcError(-32602, 'session/prompt needs at least one text or resource_link block.');
   return joined;

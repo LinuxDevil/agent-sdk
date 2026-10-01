@@ -175,6 +175,16 @@ describe('serveAcp', () => {
     await c.end();
   });
 
+  it('reads text and resource_link blocks as the input, and rejects a prompt without either', async () => {
+    const c = client(['Read it.']);
+    const sessionId = await c.newSession();
+    const blocks = [{ type: 'text', text: 'Summarize' }, { type: 'resource_link', uri: 'file:///a.md', name: 'a.md' }, { type: 'image', data: 'x' }];
+    expect((await c.call('session/prompt', { sessionId, prompt: blocks })).result.stopReason).toBe('end_turn');
+    expect(c.model.calls[0].messages.at(-1)?.content).toBe('Summarize\n[a.md](file:///a.md)');
+    expect((await c.call('session/prompt', { sessionId, prompt: [{ type: 'image', data: 'x' }] })).error).toMatchObject({ code: -32602 });
+    await c.end();
+  });
+
   it('keeps one history across the prompts of a session', async () => {
     const c = client(['Hi Ali.', 'You are Ali.']);
     const sessionId = await c.newSession();
