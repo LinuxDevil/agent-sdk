@@ -14,7 +14,7 @@
  * buffered without loss until they are read.
  */
 
-import { nanoid } from 'nanoid';
+import { newId } from '../utils/id';
 import type { GenerateOptions, GenerateResult, LLMProvider } from '../providers';
 import type { ExecuteOptions, ExecutionEvent, ExecutionResult } from './AgentExecutor';
 import type { PendingApproval } from './ApprovalGate';
@@ -140,7 +140,7 @@ function toJsonValue(value: unknown): unknown {
 type MeasuredStep = { finishReason: GenerateResult['finishReason']; usage: Usage; estimated: boolean; costUsd?: number };
 
 class AgentRunImpl implements AgentRun {
-  readonly runId = nanoid();
+  readonly runId = newId();
   readonly result: Promise<ExecutionResult>;
   private readonly controller = new AbortController();
   private readonly queue: AgentEvent[] = [];

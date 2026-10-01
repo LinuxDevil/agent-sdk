@@ -4,7 +4,7 @@
  */
 
 import { Memory, MemoryRepository } from '../data';
-import { nanoid } from 'nanoid';
+import { newId } from '../utils/id';
 
 /**
  * Memory manager configuration
@@ -124,7 +124,7 @@ export class MemoryManager {
     };
 
     const memory = new Memory({
-      id: nanoid(),
+      id: newId(),
       agentId,
       content,
       embedding: embedding ?? [],

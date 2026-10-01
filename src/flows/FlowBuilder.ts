@@ -1,4 +1,4 @@
-import { nanoid } from 'nanoid';
+import { newId } from '../utils/id';
 import { EditorStep, AgentFlow, FlowInputVariable } from '../types';
 
 /** Throw on the first input variable with a missing or duplicate name. */
@@ -107,7 +107,7 @@ export class FlowBuilder {
     this.validate();
 
     return {
-      id: this.flow.id || nanoid(),
+      id: this.flow.id || newId(),
       code: this.flow.code!,
       name: this.flow.name!,
       description: this.flow.description,
