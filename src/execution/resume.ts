@@ -14,10 +14,13 @@ import {
   describeApproval,
   ExecutionSnapshot,
   PendingApproval,
+  ResolvedApproval,
 } from './ApprovalGate';
 import { AgentExecutor, ExecuteOptions, ExecutionEvent, ExecutionResult } from './AgentExecutor';
 import { runEventsOf, streamResumed, type AgentRun } from './agentRun';
-import { Checkpoint, CheckpointStore } from './checkpoint';
+import { Checkpoint, CheckpointStore, RUN_CONFIG_KEY } from './checkpoint';
+import { checkAgentDrift, fingerprintOf, type AgentDrift } from './agentFingerprint';
+import type { AgentConfig } from '../types';
 import { NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
 import { HookRegistry } from './hooks';
@@ -72,7 +75,15 @@ export type ResumeExecuteOptions = Omit<
   | 'initialUsage'
   | 'sessionId'
   | 'checkpointStore'
->;
+> & {
+  /**
+   * LOU-W9.2: the agent as it is now, so `onAgentDrift` can compare its
+   * instructions and model with the paused run's. Default: the paused agent
+   * (`snapshot.agent`), which only drifts in its tools and the provider's
+   * default model. `createAgent()` passes its own.
+   */
+  currentAgent?: AgentConfig;
+};
 
 /**
  * Resume a paused AgentExecutor run after a human approves or rejects the
@@ -123,6 +134,7 @@ export async function resumeAfterApproval(
 
   const { pending, snapshot } = record;
   const messages: Message[] = [...snapshot.currentMessages];
+  const drift = await checkApprovalDrift(record, decision, { approvalStore, toolRegistry, provider, executeOptions });
 
   const staleBusinessState = await clearStaleCheckpoint(snapshot.sessionId, checkpointStore);
 
@@ -137,7 +149,7 @@ export async function resumeAfterApproval(
     execute: (options) => AgentExecutor.execute(options),
     resumeRun: resumeAfterApproval,
   };
-  const step = await streamedDecision(ctx, pending);
+  const step = await streamedDecision(ctx, pending, drift);
   if ('paused' in step) {
     // LOU-U8: the sub-agent paused again, so the session still awaits an approval.
     const businessState = executeOptions.businessState !== undefined ? executeOptions.businessState : staleBusinessState;
@@ -208,15 +220,44 @@ export function resumeRequest(request: ResumeRequest): Promise<ExecutionResult> 
 }
 
 /**
+ * LOU-W9.2: compares the agent resuming a paused run with the one that paused
+ * it (`onAgentDrift`) before anything runs: an approved call, or a call still
+ * to run, whose tool is gone is always an error. On an error the approval
+ * record, already taken from the store, is put back so the run stays paused.
+ */
+async function checkApprovalDrift(
+  { pending, snapshot }: ResolvedApproval,
+  decision: ApprovalDecision,
+  run: { approvalStore: ApprovalStore; toolRegistry: ToolRegistry; provider: LLMProvider; executeOptions: ResumeExecuteOptions }
+): Promise<AgentDrift | undefined> {
+  const { agentFingerprint: saved } = snapshot;
+  if (!saved) return undefined;
+  const { toolRegistry, executeOptions } = run;
+  const configured = snapshot.agent.tools ?? {};
+  const decided = decision.approved && !snapshot.subagent ? [pending.toolName] : [];
+  const calls = [...decided, ...(snapshot.remainingToolCalls ?? []).map((call) => call.function.name)];
+  const missingTools = [...new Set(calls)].filter((name) => name in configured && !toolRegistry.get(name)?.tool);
+  try {
+    const current = await fingerprintOf(executeOptions.currentAgent ?? snapshot.agent, toolRegistry, run.provider);
+    return checkAgentDrift({ saved, current, mode: executeOptions.onAgentDrift, missingTools });
+  } catch (error) {
+    await run.approvalStore.save(pending, snapshot);
+    throw error;
+  }
+}
+
+/**
  * decidedToolMessage(), reported on a streamed resume (LOU-V14) as the run's
  * `start` and the decided call's `tool-call` / `tool-result` events.
  */
-async function streamedDecision(ctx: ResumeContext, pending: PendingApproval): ReturnType<typeof decidedToolMessage> {
-  const emit = runEventsOf(ctx.executeOptions as ExecuteOptions) ? ctx.executeOptions.onEvent : undefined;
+async function streamedDecision(ctx: ResumeContext, pending: PendingApproval, drift?: AgentDrift): ReturnType<typeof decidedToolMessage> {
+  const sink = runEventsOf(ctx.executeOptions as ExecuteOptions);
+  const emit = sink ? ctx.executeOptions.onEvent : undefined;
   if (!emit) return decidedToolMessage(ctx, pending);
   const { agent, subagent } = ctx.snapshot;
   const call = subagent ?? pending;
   emit({ type: 'start', timestamp: new Date(), agentId: agent.id, agentName: agent.name });
+  if (drift) sink?.agentDrift(drift);
   const toolCall: ToolCall = {
     id: call.toolCallId,
     type: 'function',
@@ -364,6 +405,8 @@ async function markAwaitingApproval(
     businessState,
     status: 'awaiting-approval',
     approvalId: paused.approvalId,
+    agentFingerprint: snapshot.agentFingerprint,
+    runConfig: snapshot.agent.metadata?.[RUN_CONFIG_KEY],
   });
 }
 
@@ -449,7 +492,8 @@ async function runApprovedToolCall(
   // redact-pii) can rewrite in place before the real execution below, the
   // same contract AgentExecutor.executeToolCall() offers.
   const hooks: HookRegistry | undefined = executeOptions.hooks;
-  const hookArgs: Record<string, unknown> = { ...pending.args };
+  // A copy hooks may change freely: LOU-X3.2 compares it with `pending.args`.
+  const hookArgs: Record<string, unknown> = structuredClone(pending.args);
   const hookCtx = {
     agentId: snapshot.agent.id,
     agentName: snapshot.agent.name,

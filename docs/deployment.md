@@ -224,6 +224,15 @@ behaviour on Workers: with a `sessionId` the run is checkpointed to
 `checkpoints/<sessionId>` after each tool result and rehydrated by a later
 request that reuses the `sessionId` (after a crash or a recycled isolate).
 
+### Optional peers in node and docker builds
+
+`dist/server.js` bundles the SDK but leaves its optional peers (the `peerDependenciesMeta`
+entries of its package.json: provider packages, `dockerode`, the MCP SDK, `prompts`, ...) external, so a build
+never needs one you do not use. Install, where the server runs, only the peers its agent needs (for example
+`@ai-sdk/openai` for an OpenAI agent); a code path that needs one that is missing raises the SDK's coded
+missing-peer error. A spec's cron triggers run on the node-server and docker targets as well as on Workers
+([Schedules](schedules.md#on-the-node-server)).
+
 ### Cron triggers and `handleScheduled`
 
 Cron triggers in the spec (`triggers: [{ type: 'cron', cron: '0 9 * * MON', input: '...' }]`)

@@ -358,6 +358,35 @@ See [Durable execution](./durable-execution.md#fork-and-replay).
 
 **Example:** `agent.fork('job-1', { fromStep: 9 })` after a 3-step run.
 
+### LOUSHY_AGENT_DRIFT
+
+**Means:** a paused or interrupted run was resumed by an agent that differs
+from the one that saved it, and `onAgentDrift` is `'error'`. The message names
+what changed: the model, tools added, removed or with a changed input schema,
+or the instructions. It is thrown before any model call or tool runs; the
+checkpoint (and, for an approval, the pending record) is left as it was.
+
+**Fix:** resume with the agent that paused the run, or set `onAgentDrift` to
+`'warn'` (the default) or `'ignore'` to continue anyway. See
+[Durable execution](./durable-execution.md#resuming-with-a-changed-agent).
+
+**Example:** `createAgent({ store, onAgentDrift: 'error' })` after a deploy that
+renamed a tool, then `agent.resume('job-1')`.
+
+### LOUSHY_RESUME_TOOL_MISSING
+
+**Means:** a resumed run is waiting on a tool call (an approved call, or a call
+of the model's last turn that has no result yet) whose tool the resuming agent
+no longer has. This is an error whatever `onAgentDrift` is, because the call
+cannot run.
+
+**Fix:** give the tool back under the same name, or drop the paused run (delete
+its checkpoint, reject its approval). See
+[Durable execution](./durable-execution.md#resuming-with-a-changed-agent).
+
+**Example:** a run paused on `charge_card`, then a deploy removes that tool and
+`agent.approvals.resolve({ id, approved: true })` is called.
+
 ### LOUSHY_RUN_ALREADY_ITERATED
 
 **Means:** an `AgentRun` from `session.stream()` was iterated a second time.
