@@ -63,7 +63,8 @@ React hook that runs an agent in process (`{ agent, sessionId? }`) or over HTTP
 `reduceAgentEvents()` and `parseEventStream()`, are exported too. See
 [React](./react.md). `@loushy/build-ai-agent/vue` exports the same
 `useLoushyAgent()` as a Vue 3 composable, with the state as refs. See
-[Vue](./vue.md).
+[Vue](./vue.md). `@loushy/build-ai-agent/svelte` exports `loushyAgent()`, the
+same state and actions as a Svelte store (`$agent`). See [Svelte](./svelte.md).
 
 ### Sub-agents
 
