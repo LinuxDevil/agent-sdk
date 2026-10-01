@@ -1,0 +1,64 @@
+{
+  "$schema": "./node_modules/fallow/schema.json",
+  "entry": [
+    "src/cli/{dev,build,studio}.ts",
+    "src/data/index.ts",
+    "**/*.{test,spec}.{ts,tsx}",
+    "**/*.eval.ts"
+  ],
+  "dynamicallyLoaded": [
+    "src/deploy/runtime.ts",
+    "src/deploy/runtime.worker.ts",
+    "src/deploy/shims/sandboxCore.worker.ts"
+  ],
+  "ignoreDependencies": [
+    "@ai-sdk/anthropic",
+    "@ai-sdk/openai",
+    "ollama-ai-provider"
+  ],
+  "usedClassMembers": [
+    {
+      "implements": "TriggerAdapter",
+      "members": [
+        "type",
+        "trigger",
+        "listen"
+      ]
+    },
+    {
+      "implements": "CheckpointStore",
+      "members": [
+        "save",
+        "load",
+        "delete"
+      ]
+    },
+    {
+      "implements": "ApprovalStore",
+      "members": [
+        "save",
+        "load",
+        "delete"
+      ]
+    }
+  ],
+  "overrides": [
+    {
+      "files": [
+        "src/types/**"
+      ],
+      "rules": {
+        "unused-enum-members": "off"
+      }
+    }
+  ],
+  "health": {
+    "ignore": [
+      "**/*.{test,spec}.{ts,tsx}",
+      "**/*.eval.ts",
+      "**/__fixtures__/**",
+      "apps/agent-forge/e2e/**"
+    ],
+    "coverage": "coverage/coverage-final.json"
+  }
+}
