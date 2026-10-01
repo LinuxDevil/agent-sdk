@@ -25,13 +25,26 @@
 import {
   trace,
   context,
+  metrics as otelMetrics,
+  Attributes,
   AttributeValue,
   Context,
+  Histogram,
+  Meter,
   Span as OtelSpan,
   SpanKind as OtelSpanKind,
   SpanStatusCode,
   Tracer,
 } from '@opentelemetry/api';
+import {
+  ErrorAttr,
+  GenAiAttr,
+  GenAiMetric,
+  GenAiOperation,
+  OPERATION_DURATION_BUCKETS,
+  TOKEN_USAGE_BUCKETS,
+  TokenType,
+} from './semconv';
 import { Span, TraceExporter } from './tracing';
 
 /**
@@ -55,6 +68,19 @@ export interface OtelTraceExporterOptions {
    * tracer instance is used.
    */
   tracer?: Tracer;
+  /**
+   * Record the OpenTelemetry GenAI client metrics `gen_ai.client.token.usage`
+   * and `gen_ai.client.operation.duration` (one record per model call, and a
+   * duration per tool call) alongside the spans (LOU-D48). Default `true`;
+   * without a registered `MeterProvider` OTel's no-op meter discards them.
+   * See docs/observability.md.
+   */
+  metrics?: boolean;
+  /**
+   * Use an already-obtained OTel `Meter` instead of
+   * `metrics.getMeter(tracerName, tracerVersion)`. Ignored when `metrics` is `false`.
+   */
+  meter?: Meter;
 }
 
 /**
@@ -90,6 +116,8 @@ export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}):
   // Our Span.id -> the OTel span + context it was started in, so a child
   // Span (matched by parentId) can be started as a child of the right
   // OTel context instead of the ambient one.
+  const recordMetrics = resolveMetricsRecorder(options);
+
   const otelSpansById = new Map<string, { span: OtelSpan; ctx: Context }>();
 
   return {
@@ -124,8 +152,68 @@ export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}):
       }
       entry.span.end(span.endTime);
       otelSpansById.delete(span.id);
+      recordMetrics(span);
     },
   };
+}
+
+/** The metrics recorder for `options`: a no-op when `metrics` is `false`. */
+function resolveMetricsRecorder(options: OtelTraceExporterOptions): (span: Span) => void {
+  if (options.metrics === false) return () => undefined;
+  const name = options.tracerName ?? '@loushy/build-ai-agent';
+  return createMetricsRecorder(options.meter ?? otelMetrics.getMeter(name, options.tracerVersion));
+}
+
+/**
+ * Returns the function that records a finished span's GenAI client metrics:
+ * duration for `chat` and `execute_tool` spans, and token usage (input and
+ * output) for `chat` spans that carry token counts.
+ */
+function createMetricsRecorder(meter: Meter): (span: Span) => void {
+  const tokenUsage = meter.createHistogram(GenAiMetric.TOKEN_USAGE, {
+    description: 'Number of input and output tokens used',
+    unit: '{token}',
+    advice: { explicitBucketBoundaries: TOKEN_USAGE_BUCKETS },
+  });
+  const duration = meter.createHistogram(GenAiMetric.OPERATION_DURATION, {
+    description: 'GenAI operation duration',
+    unit: 's',
+    advice: { explicitBucketBoundaries: OPERATION_DURATION_BUCKETS },
+  });
+
+  return (span) => {
+    const attributes = metricAttributes(span);
+    if (!attributes) return;
+    if (span.endTime !== undefined) {
+      duration.record((span.endTime - span.startTime) / 1000, attributes);
+    }
+    recordTokens(tokenUsage, span, attributes);
+  };
+}
+
+/** Metric attributes of a `chat` / `execute_tool` span; `undefined` for any other span. */
+function metricAttributes(span: Span): Attributes | undefined {
+  const operation = span.attributes[GenAiAttr.OPERATION_NAME];
+  if (operation !== GenAiOperation.CHAT && operation !== GenAiOperation.EXECUTE_TOOL) {
+    return undefined;
+  }
+  const keys = [GenAiAttr.PROVIDER_NAME, GenAiAttr.REQUEST_MODEL, GenAiAttr.RESPONSE_MODEL, ErrorAttr.TYPE];
+  const attributes: Attributes = { [GenAiAttr.OPERATION_NAME]: operation };
+  for (const key of keys) {
+    const value = span.attributes[key];
+    if (typeof value === 'string') attributes[key] = value;
+  }
+  return attributes;
+}
+
+function recordTokens(histogram: Histogram, span: Span, attributes: Attributes): void {
+  const counts = {
+    [TokenType.INPUT]: span.attributes[GenAiAttr.USAGE_INPUT_TOKENS],
+    [TokenType.OUTPUT]: span.attributes[GenAiAttr.USAGE_OUTPUT_TOKENS],
+  };
+  for (const [type, count] of Object.entries(counts)) {
+    if (typeof count === 'number') histogram.record(count, { ...attributes, [GenAiAttr.TOKEN_TYPE]: type });
+  }
 }
 
 function setAttributes(otelSpan: OtelSpan, attributes: Record<string, unknown>): void {

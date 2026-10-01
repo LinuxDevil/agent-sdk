@@ -1,8 +1,18 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Tracer, Span as OtelSpan, Context } from '@opentelemetry/api';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { z } from 'zod';
+import * as otelApi from '@opentelemetry/api';
+import type { Tracer, Span as OtelSpan, Context, Meter } from '@opentelemetry/api';
 import { SpanKind, SpanStatusCode } from '@opentelemetry/api';
+import { AggregationTemporality, InMemoryMetricExporter, MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { createOtelTraceExporter } from './otel';
-import { Span } from './tracing';
+import { AgentExecutor } from './AgentExecutor';
+import { Span, TraceExporter } from './tracing';
+import { ToolRegistry, defineTool } from '../tools';
+import { AgentBuilder } from '../core';
+import { AgentType } from '../types';
+import { mockModel } from '../testing';
 
 /**
  * A minimal fake OTel span that just records what was done to it, so
@@ -193,5 +203,177 @@ describe('createOtelTraceExporter kind, status and array attributes (LOU-D9)', (
       mixed: JSON.stringify(['a', 1]),
       objs: JSON.stringify([{ a: 1 }]),
     });
+  });
+});
+
+describe('createOtelTraceExporter GenAI metrics (LOU-D48)', () => {
+  interface Recorded {
+    name: string;
+    value: number;
+    attributes: Record<string, unknown>;
+  }
+  interface Instrument {
+    name: string;
+    options: { unit?: string; advice?: { explicitBucketBoundaries?: number[] } };
+  }
+
+  /** A minimal recording Meter: every histogram record lands in `records`. */
+  function makeRecordingMeter() {
+    const records: Recorded[] = [];
+    const instruments: Instrument[] = [];
+    const meter = {
+      createHistogram: (name: string, options: Instrument['options']) => {
+        instruments.push({ name, options });
+        return { record: (value: number, attributes: Record<string, unknown> = {}) => records.push({ name, value, attributes }) };
+      },
+    } as unknown as Meter;
+    return { meter, records, instruments };
+  }
+
+  const weather = defineTool({
+    name: 'get_weather',
+    description: 'Get the weather for a city',
+    input: z.object({ city: z.string() }),
+    execute: async ({ city }) => ({ city, tempC: 21 }),
+  });
+
+  /** One run with a priced model and one tool call, exported through `exporter`. */
+  async function runPricedAgent(exporter: TraceExporter) {
+    const toolRegistry = new ToolRegistry();
+    toolRegistry.register(weather);
+    const agent = {
+      ...AgentBuilder.create()
+        .setType(AgentType.SmartAssistant)
+        .setName('Weather Bot')
+        .addTool('get_weather', { tool: 'get_weather', options: {} })
+        .build(),
+      id: 'agent-1',
+      settings: { model: 'gpt-4o-mini' },
+    };
+    const provider = mockModel([
+      { toolCalls: [{ name: 'get_weather', args: { city: 'Paris' } }], usage: { inputTokens: 10, outputTokens: 5 } },
+      { text: 'It is 21C.', usage: { inputTokens: 20, outputTokens: 7 } },
+    ]);
+    await AgentExecutor.execute({ agent, input: 'Weather?', provider, toolRegistry, exporter });
+    return provider;
+  }
+
+  it('records token usage and duration histograms for each model call of a run', async () => {
+    const fake = makeRecordingMeter();
+    const provider = await runPricedAgent(createOtelTraceExporter({ tracer: makeFakeTracer().tracer, meter: fake.meter }));
+
+    expect(fake.instruments).toEqual([
+      expect.objectContaining({ name: 'gen_ai.client.token.usage', options: expect.objectContaining({ unit: '{token}' }) }),
+      expect.objectContaining({ name: 'gen_ai.client.operation.duration', options: expect.objectContaining({ unit: 's' }) }),
+    ]);
+    expect(fake.instruments[0].options.advice?.explicitBucketBoundaries?.[0]).toBe(1);
+    expect(fake.instruments[1].options.advice?.explicitBucketBoundaries?.[0]).toBe(0.01);
+
+    const chat = { 'gen_ai.operation.name': 'chat', 'gen_ai.provider.name': provider.name, 'gen_ai.request.model': 'gpt-4o-mini' };
+    const tokens = fake.records.filter((r) => r.name === 'gen_ai.client.token.usage');
+    expect(tokens.map((r) => [r.value, r.attributes['gen_ai.token.type']])).toEqual([
+      [10, 'input'],
+      [5, 'output'],
+      [20, 'input'],
+      [7, 'output'],
+    ]);
+    for (const record of tokens) expect(record.attributes).toMatchObject(chat);
+
+    const durations = fake.records.filter((r) => r.name === 'gen_ai.client.operation.duration');
+    // two model calls and one tool call, in the order the spans ended
+    expect(durations.map((r) => r.attributes['gen_ai.operation.name'])).toEqual(['chat', 'execute_tool', 'chat']);
+    expect(durations[0].attributes).toMatchObject(chat);
+    expect(durations[1].attributes).toEqual({ 'gen_ai.operation.name': 'execute_tool' });
+    for (const record of durations) {
+      expect(record.value).toBeGreaterThanOrEqual(0);
+      expect(record.attributes).not.toHaveProperty('gen_ai.token.type');
+    }
+  });
+
+  it('records gen_ai.response.model and error.type when the spans have them', () => {
+    const fake = makeRecordingMeter();
+    const exporter = createOtelTraceExporter({ tracer: makeFakeTracer().tracer, meter: fake.meter });
+    const attributes = { 'gen_ai.operation.name': 'chat', 'gen_ai.response.model': 'gpt-4o-mini-2024', 'error.type': 'Error' };
+    exporter.onSpanStart(makeSpan({ id: 'c', attributes }));
+    exporter.onSpanEnd(makeSpan({ id: 'c', attributes, startTime: 1000, endTime: 3500 }));
+
+    expect(fake.records).toEqual([
+      { name: 'gen_ai.client.operation.duration', value: 2.5, attributes },
+    ]);
+  });
+
+  it('records nothing for non-model, non-tool spans, and no tokens when none were reported', () => {
+    const fake = makeRecordingMeter();
+    const exporter = createOtelTraceExporter({ tracer: makeFakeTracer().tracer, meter: fake.meter });
+    exporter.onSpanStart(makeSpan({ id: 'r', attributes: { 'gen_ai.operation.name': 'invoke_agent', 'gen_ai.usage.input_tokens': 3 } }));
+    exporter.onSpanEnd(makeSpan({ id: 'r', endTime: 2000, attributes: { 'gen_ai.operation.name': 'invoke_agent', 'gen_ai.usage.input_tokens': 3 } }));
+    exporter.onSpanStart(makeSpan({ id: 'x', attributes: {} }));
+    exporter.onSpanEnd(makeSpan({ id: 'x', endTime: 2000, attributes: {} }));
+    exporter.onSpanStart(makeSpan({ id: 'c', attributes: { 'gen_ai.operation.name': 'chat' } }));
+    exporter.onSpanEnd(makeSpan({ id: 'c', endTime: 2000, attributes: { 'gen_ai.operation.name': 'chat' } }));
+
+    expect(fake.records.map((r) => r.name)).toEqual(['gen_ai.client.operation.duration']);
+  });
+
+  it('creates no instruments when metrics is false', async () => {
+    const fake = makeRecordingMeter();
+    await runPricedAgent(createOtelTraceExporter({ tracer: makeFakeTracer().tracer, meter: fake.meter, metrics: false }));
+    expect(fake.instruments).toEqual([]);
+    expect(fake.records).toEqual([]);
+  });
+
+  describe('with the global MeterProvider', () => {
+    afterEach(() => {
+      otelApi.metrics.disable();
+    });
+
+    it('resolves the meter via metrics.getMeter(tracerName, tracerVersion) by default', async () => {
+      const fake = makeRecordingMeter();
+      const getMeter = vi.fn(() => fake.meter);
+      otelApi.metrics.setGlobalMeterProvider({ getMeter });
+
+      await runPricedAgent(createOtelTraceExporter({ tracer: makeFakeTracer().tracer, tracerName: 'my-agent', tracerVersion: '1.2.3' }));
+
+      expect(getMeter).toHaveBeenCalledWith('my-agent', '1.2.3', undefined);
+      expect(fake.records.some((r) => r.name === 'gen_ai.client.token.usage')).toBe(true);
+    });
+
+    it('records into a real SDK MeterProvider', async () => {
+      const exporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
+      const reader = new PeriodicExportingMetricReader({ exporter, exportIntervalMillis: 60_000 });
+      const meterProvider = new MeterProvider({ readers: [reader] });
+      otelApi.metrics.setGlobalMeterProvider(meterProvider);
+
+      await runPricedAgent(createOtelTraceExporter({ tracer: makeFakeTracer().tracer }));
+
+      await reader.forceFlush();
+      const collected = exporter.getMetrics().flatMap((rm) => rm.scopeMetrics.flatMap((scope) => scope.metrics));
+      const byName = Object.fromEntries(collected.map((m) => [m.descriptor.name, m]));
+      expect(byName['gen_ai.client.token.usage'].descriptor.unit).toBe('{token}');
+      expect(byName['gen_ai.client.operation.duration'].descriptor.unit).toBe('s');
+
+      const sums = (byName['gen_ai.client.token.usage'].dataPoints as Array<{ attributes: Record<string, unknown>; value: { sum?: number; count: number } }>)
+        .map((p) => [p.attributes['gen_ai.token.type'], p.value.sum, p.value.count]);
+      expect(sums).toEqual(expect.arrayContaining([['input', 30, 2], ['output', 12, 2]]));
+      await meterProvider.shutdown();
+    });
+  });
+});
+
+describe('optional peer', () => {
+  it('only the /otel entry imports @opentelemetry/api, so the main package works without it', () => {
+    const root = join(__dirname, '..');
+    const importers: string[] = [];
+    const visit = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) visit(path);
+        else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) {
+          if (/from\s+['"]@opentelemetry\//.test(readFileSync(path, 'utf8'))) importers.push(relative(root, path));
+        }
+      }
+    };
+    visit(root);
+    expect(importers).toEqual([join('execution', 'otel.ts')]);
   });
 });

@@ -107,3 +107,48 @@ describe('withSpan kind and error status (LOU-D9)', () => {
     expect(ends[0].status).toEqual({ code: 'error', message: 'plain string' });
   });
 });
+
+describe('withSpan cost rollup (LOU-D48)', () => {
+  /** Runs `children` (their attributes) as child spans of one parent span and returns the parent's final attributes. */
+  async function parentAttributes(children: Array<Record<string, unknown>>) {
+    const { exporter, ends } = createSpyExporter();
+    await withSpan(exporter, 'parent', {}, async (parent) => {
+      for (const attrs of children) await withSpan(exporter, 'child', attrs, async () => undefined, parent.id);
+    });
+    return ends[ends.length - 1].attributes;
+  }
+
+  it('sums the loushy.cost_usd of finished child spans onto the parent', async () => {
+    const attrs = await parentAttributes([{ 'loushy.cost_usd': 0.25 }, { 'loushy.cost_usd': 0.5 }]);
+    expect(attrs['loushy.cost_usd']).toBe(0.75);
+  });
+
+  it('reports a zero cost for priced children that cost nothing', async () => {
+    expect((await parentAttributes([{ 'loushy.cost_usd': 0 }]))['loushy.cost_usd']).toBe(0);
+  });
+
+  it('omits the sum when a child with token usage has no price', async () => {
+    const attrs = await parentAttributes([{ 'loushy.cost_usd': 0.25 }, { 'gen_ai.usage.input_tokens': 5 }]);
+    expect(attrs).not.toHaveProperty('loushy.cost_usd');
+  });
+
+  it('adds nothing for children without usage, and propagates through nested spans', async () => {
+    expect(await parentAttributes([{ other: 1 }])).toEqual({});
+
+    const { exporter, ends } = createSpyExporter();
+    await withSpan(exporter, 'run', {}, async (run) => {
+      await withSpan(
+        exporter,
+        'sub-run',
+        {},
+        async (sub) => {
+          const chatAttrs = { 'loushy.cost_usd': 1, 'loushy.usage.estimated': true };
+          await withSpan(exporter, 'chat', chatAttrs, async () => undefined, sub.id);
+        },
+        run.id
+      );
+    });
+    const run = ends[ends.length - 1];
+    expect(run.attributes).toEqual({ 'loushy.cost_usd': 1, 'loushy.usage.estimated': true });
+  });
+});
