@@ -8,6 +8,7 @@ import {
   type AssertionResult,
   type EvalResult,
 } from '../evals/evalResult';
+import type { DriftEntry } from '../evals/drift';
 
 /** Totals over a run of evals. */
 export interface EvalSummary {
@@ -114,6 +115,21 @@ export function renderTable(results: readonly EvalResult[], strict: boolean): st
     ...failureLines('Gate failures', gateFailed, gateMessages),
     ...failureLines(strict ? 'Soft failures (failing the run: --strict)' : 'Soft failures (not failing the run)', results, softMessages),
   ].join('\n');
+}
+
+/** One drifted field of one case (`loushy eval --drift`, LOU-D46). */
+export interface DriftRow {
+  result: EvalResult;
+  /** A trajectory difference, or `cassette` when one side was never recorded. */
+  entry: { field: DriftEntry['field'] | 'cassette'; committed: string; current: string };
+}
+
+/** The `--drift` section: one row per drifted field, committed value vs the fresh recording. */
+export function renderDriftTable(rows: readonly DriftRow[]): string {
+  if (rows.length === 0) return 'Drift: none (every recorded case matches its committed cassette).';
+  const header = ['EVAL', 'CASE', 'FIELD', 'COMMITTED', 'CURRENT'];
+  const body = rows.map(({ result, entry }) => [result.name, result.case ?? '-', entry.field, entry.committed, entry.current]);
+  return ['Drift:', ...renderRows([header, ...body])].join('\n');
 }
 
 /** Machine-readable report: the summary plus every structured result. */

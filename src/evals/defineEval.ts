@@ -11,6 +11,7 @@
 
 import type * as Vitest from 'vitest';
 import { AgentExecutor, ExecuteOptions, ExecutionResult } from '../execution/AgentExecutor';
+import { withEvalCassettes } from './cassettes';
 import { scoreAssertion } from './evalResult';
 import { matchesTagFilter, recordEvalResult } from './recorder';
 import { parseToolCalls } from './toolMatch';
@@ -123,22 +124,23 @@ async function runAndReport(
   label: string | undefined,
   file: string | undefined
 ): Promise<void> {
-  const result = await runTrajectoryCase(config, c, label, file);
+  const result = await withEvalCassettes({ file, name: config.name, label }, () => runTrajectoryCase(config, c, label, file));
   recordEvalResult(result);
   if (!result.passed) throw new Error(describeFailure(result));
 }
 
 function defineTrajectoryEval(config: TrajectoryEvalConfig<unknown>): void {
   const { test, expect } = currentVitest();
-  const file = currentTestPath(expect);
+  // expect.getState().testPath is only set while a test runs, not at collection.
+  const file = () => currentTestPath(expect);
   const register = matchesTagFilter(config.tags ?? []) ? test : test.skip;
   if (config.cases === undefined) {
-    register(config.name, () => runAndReport(config, NO_CASE, undefined, file));
+    register(config.name, () => runAndReport(config, NO_CASE, undefined, file()));
     return;
   }
   config.cases.forEach((c, index) => {
     const label = caseLabel(c, index);
-    register(`${config.name} [${label}]`, () => runAndReport(config, c, label, file));
+    register(`${config.name} [${label}]`, () => runAndReport(config, c, label, file()));
   });
 }
 
@@ -169,36 +171,37 @@ function currentVitest(): Pick<typeof Vitest, 'test' | 'expect'> {
 function defineClassicEval(config: EvalConfig): void {
   const { name, score, threshold, tags, ...executeFields } = config;
   const { test, expect } = currentVitest();
-  const file = currentTestPath(expect);
   const register = matchesTagFilter(tags ?? []) ? test : test.skip;
 
   register(name, async () => {
-    const started = Date.now();
-    const result = await AgentExecutor.execute({
-      agent: executeFields.agent,
-      input: executeFields.input,
-      provider: executeFields.provider,
-      toolRegistry: executeFields.toolRegistry,
-      maxSteps: executeFields.maxSteps,
-      temperature: executeFields.temperature,
-      maxTokens: executeFields.maxTokens,
+    const file = currentTestPath(expect);
+    const evalResult = await withEvalCassettes({ file, name }, async () => {
+      const started = Date.now();
+      const result = await AgentExecutor.execute({
+        agent: executeFields.agent,
+        input: executeFields.input,
+        provider: executeFields.provider,
+        toolRegistry: executeFields.toolRegistry,
+        maxSteps: executeFields.maxSteps,
+        temperature: executeFields.temperature,
+        maxTokens: executeFields.maxTokens,
+      });
+      const assertion = scoreAssertion(await score(result), threshold);
+      return {
+        name,
+        tags: tags ?? [],
+        passed: assertion.passed,
+        assertions: [assertion],
+        durationMs: Date.now() - started,
+        steps: result.steps,
+        toolCalls: parseToolCalls(result.toolCalls ?? []),
+        usage: result.usage,
+        file,
+      };
     });
+    recordEvalResult(evalResult);
 
-    const resultScore = await score(result);
-    const assertion = scoreAssertion(resultScore, threshold);
-    recordEvalResult({
-      name,
-      tags: tags ?? [],
-      passed: assertion.passed,
-      assertions: [assertion],
-      durationMs: Date.now() - started,
-      steps: result.steps,
-      toolCalls: parseToolCalls(result.toolCalls ?? []),
-      usage: result.usage,
-      file,
-    });
-
-    expect(resultScore).toBeGreaterThanOrEqual(threshold);
+    expect(evalResult.assertions[0].score).toBeGreaterThanOrEqual(threshold);
   });
 }
 

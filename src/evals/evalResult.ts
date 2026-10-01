@@ -51,6 +51,8 @@ export interface EvalResult {
   error?: string;
   /** Test file the eval was defined in, when known. */
   file?: string;
+  /** Cassettes the case recorded or replayed under `loushy eval --record` / `--replay` / `--drift`. */
+  cassettes?: string[];
 }
 
 /** Gate assertions that failed. */
