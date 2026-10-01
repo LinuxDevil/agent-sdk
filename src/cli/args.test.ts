@@ -88,7 +88,7 @@ const CASES: Case[] = [
   { command: 'doctor', parse: parseDoctorArgs, base: [], positionals: 1, run: (a) => runDoctorCommand(a, undefined, () => {}) },
 ];
 
-describe.each(CASES)('loushy $command flag parsing', ({ command, parse, base, flag, positionals, run }) => {
+describe.each(CASES)('loushy $command flag parsing', ({ command, parse, base, run }) => {
   const usage = new RegExp(`Usage: loushy ${command}`);
 
   it('rejects an unknown flag with LOUSHY_CONFIG_INVALID and the usage line', () => {
