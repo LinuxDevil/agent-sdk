@@ -123,30 +123,56 @@ function captureOutput() {
   };
 }
 
-/**
- * `container.wait()`, or - when `timeoutMs` is set - whichever comes first
- * of the container exiting and the timeout, which kills the container and
- * rejects.
- */
-async function waitForExit(container: Docker.Container, timeoutMs: number | undefined): Promise<unknown> {
-  const waitPromise = container.wait();
-  if (timeoutMs === undefined) {
-    return waitPromise;
-  }
-
-  let timeoutHandle: NodeJS.Timeout | undefined;
+/** Runs `fn` and ignores its failure: the container may already be stopped or gone (AutoRemove). */
+async function ignoreFailure(fn: () => Promise<unknown>): Promise<void> {
   try {
-    return await Promise.race([
-      waitPromise,
-      new Promise<never>((_, reject) => {
-        timeoutHandle = setTimeout(() => {
-          container.kill().catch(() => {});
-          reject(new Error(`SubprocessSandbox: command timed out after ${timeoutMs}ms`));
-        }, timeoutMs);
-      }),
-    ]);
+    await fn();
+  } catch {
+    /* already stopped or removed */
+  }
+}
+
+/** Kills the container and force-removes it (LOU-U23); safe when it already exited or AutoRemove took it. */
+async function stopContainer(container: Docker.Container): Promise<void> {
+  await ignoreFailure(() => container.kill());
+  await ignoreFailure(() => container.remove({ force: true }));
+}
+
+/**
+ * `container.wait()`, or whichever comes first of the container exiting, the
+ * timeout and the abort `signal`. A timeout or abort stops and removes the
+ * container (once) and rejects: with a "timed out" error, or an `AbortError`
+ * like `NoopSandbox` (LOU-U23). Listeners and the timer are always cleaned up.
+ */
+async function waitForExit(
+  container: Docker.Container,
+  { timeoutMs, signal }: Pick<SandboxRunOptions, 'timeoutMs' | 'signal'>
+): Promise<unknown> {
+  let cleanup = () => {};
+  const interrupted = new Promise<never>((_, reject) => {
+    let stopped = false;
+    const interrupt = (error: Error) => {
+      if (stopped) return;
+      stopped = true;
+      reject(error);
+      void stopContainer(container);
+    };
+    const onAbort = () => interrupt(new DOMException('The command was aborted', 'AbortError'));
+    const timer =
+      timeoutMs === undefined
+        ? undefined
+        : setTimeout(() => interrupt(new Error(`SubprocessSandbox: command timed out after ${timeoutMs}ms`)), timeoutMs);
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+    cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+    };
+  });
+  try {
+    return await Promise.race([container.wait(), interrupted]);
   } finally {
-    clearTimeout(timeoutHandle);
+    cleanup();
   }
 }
 
@@ -232,9 +258,12 @@ export class SubprocessSandbox implements SandboxAdapter {
 
   /**
    * Runs `cmd`/`args` inside a fresh, network-isolated container and
-   * resolves with its captured stdout/stderr/exitCode.
+   * resolves with its captured stdout/stderr/exitCode. When `opts.signal`
+   * aborts, the container is killed and removed and `run()` rejects with an
+   * `AbortError` (an already-aborted signal starts no container).
    */
   async run(cmd: string, args: string[], opts: SandboxRunOptions = {}): Promise<SandboxResult> {
+    opts.signal?.throwIfAborted();
     const docker = await this.getDocker();
     const container = await this.createContainer(docker, buildContainerOptions(this.image, this.network, cmd, args, opts));
 
@@ -243,7 +272,7 @@ export class SubprocessSandbox implements SandboxAdapter {
     docker.modem.demuxStream(attachStream, output.stdout, output.stderr);
 
     await container.start();
-    const result = await waitForExit(container, opts.timeoutMs);
+    const result = await waitForExit(container, opts);
 
     return {
       ...output.read(),

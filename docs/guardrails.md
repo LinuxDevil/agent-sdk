@@ -144,7 +144,9 @@ await AgentExecutor.execute({ agent, input, provider, toolRegistry, sandbox: new
 - `SubprocessSandbox` runs each command in a new, network-isolated,
   auto-removed Docker container, with no host directory mounted except the
   `cwd` you pass. It needs a running Docker daemon and the optional peer
-  `dockerode` (`npm install dockerode@^5.0.1`; loaded on first use).
+  `dockerode` (`npm install dockerode@^5.0.1`; loaded on first use). When the
+  run is cancelled (`run.abort()`, `signal`) or the command times out, the
+  container is killed and removed.
 - Implement `SandboxAdapter` (`name`, `run(cmd, args, opts)`, `writeFile(path, content)`)
   for another backend.
 
