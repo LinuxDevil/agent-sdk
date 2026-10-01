@@ -42,6 +42,12 @@ function aiPackages(provider: string): Record<string, string> {
   return { ai: AI_RANGES[major], [name]: range };
 }
 
+/** The SDK's zod range, narrowed to zod 3 for `ai` 4, whose packages peer on zod 3 only (LOU-D29). */
+function zodRange(peerRange: string | undefined, provider: string): string {
+  const range = peerRange ?? '^3.25.76';
+  return (SCAFFOLD_AI_MAJOR[provider] ?? 4) === 4 ? range.split('||')[0].trim() : range;
+}
+
 function packageJson(config: ProjectConfig): string {
   const peers = config.sdk.peerDependencies ?? {};
   const yaml = config.template === 'yaml';
@@ -58,7 +64,7 @@ function packageJson(config: ProjectConfig): string {
     },
     dependencies: sortKeys({
       '@loushy/build-ai-agent': config.sdkDependency,
-      zod: peers.zod ?? '^3.25.76',
+      zod: zodRange(peers.zod, config.provider),
       ...aiPackages(config.provider),
     }),
     devDependencies: {

@@ -4,6 +4,7 @@
  */
 import { z } from 'zod';
 import { closestMatch } from '../utils/closestMatch';
+import { anyError, issueMessage } from '../utils/zodCompat';
 
 /** The built-in guardrails `policy.guardrails` can name (LOU-X5); see `compilePolicy()`. */
 export const SPEC_GUARDRAIL_NAMES = ['max-length', 'secret-scan', 'regex', 'deny-topics', 'llm-judge'] as const;
@@ -57,9 +58,7 @@ export function guardrailParts(entry: AgentSpecGuardrail): { name: string; optio
 }
 
 export const guardrailEntrySchema = z
-  .union([z.string(), z.object({ name: z.string() }).passthrough()], {
-    errorMap: () => ({ message: `${POLICY} each guardrail must be a name or an object with a 'name'` }),
-  })
+  .union([z.string(), z.object({ name: z.string() }).passthrough()], anyError(`${POLICY} each guardrail must be a name or an object with a 'name'`))
   .superRefine((entry, ctx) => {
     const { name, options } = guardrailParts(entry);
     if (!isSpecGuardrailName(name)) {
@@ -69,6 +68,6 @@ export const guardrailEntrySchema = z
     const parsed = GUARDRAIL_OPTIONS[name].safeParse(options);
     for (const issue of parsed.success ? [] : parsed.error.issues) {
       const where = issue.path.length > 0 ? ` option '${issue.path.join('.')}'` : '';
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${POLICY} guardrail '${name}'${where}: ${issue.message}` });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${POLICY} guardrail '${name}'${where}: ${issueMessage(issue)}` });
     }
   });

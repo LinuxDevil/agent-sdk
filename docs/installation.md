@@ -20,7 +20,16 @@ yarn add @loushy/build-ai-agent ai zod
 ```
 
 `ai` (the Vercel AI SDK: `^4.3.19`, `^6.0.0` or `^7.0.0`) and `zod`
-(`^3.25.76`) are required peer dependencies. `ai` 5 is not supported.
+(`^3.25.76 || ^4.0.0`) are required peer dependencies. `ai` 5 is not supported.
+
+Schemas from either zod major work everywhere the SDK takes one
+(`defineTool({ input })`, structured `output`, MCP tools), including zod 4
+schemas from `zod/v4` while zod 3.25 is installed and zod 3 schemas from
+`zod/v3` on zod 4. A `defineTool` `input` can also be another
+[Standard Schema](https://standardschema.dev) library's schema if it exposes its
+JSON Schema (`~standard.jsonSchema`); the model needs a JSON Schema, so a
+Standard Schema without one is rejected (use zod for those tools). `ai` 4's
+provider packages declare zod 3 as a peer, so pair zod 4 with `ai` 6 or 7.
 
 ### Provider packages
 
@@ -40,10 +49,11 @@ npm install @loushy/build-ai-agent ai@^7.0.0 zod @ai-sdk/openai@^4.0.0
 ```
 
 **Ollama on `ai` 6/7 needs zod 4.** `ollama-ai-provider-v2` (the Ollama package
-for `ai` 6 and 7) declares `zod ^4` as a peer, and this SDK still declares
-`zod ^3.25.76`, so installing it next to the SDK is a peer conflict until zod 4
-support lands. For Ollama, use `ai@^4.3.19` with `ollama-ai-provider@^1.2.0`
-(what `loushy init --provider ollama` scaffolds).
+for `ai` 6 and 7) declares `zod ^4` as a peer. The SDK accepts zod 4 (LOU-D29),
+so install it with zod 4, for example
+`npm install ai@^7.0.0 ollama-ai-provider-v2@^4.0.0 zod@^4.0.0`. With zod 3,
+use `ai@^4.3.19` with `ollama-ai-provider@^1.2.0` (what
+`loushy init --provider ollama` scaffolds).
 
 Peers are loaded on demand: importing `@loushy/build-ai-agent` (or any of
 its sub-entries) never loads a provider package, so you only need to install
@@ -161,7 +171,7 @@ loushy doctor
 [ ok ] Node.js: v22.19.0 satisfies >=22.19.0
 [ ok ] Required peer ai: 4.3.19 satisfies ^4.3.19
 [FAIL] Required peer zod: not installed
-       fix: npm install zod@^3.25.76
+       fix: npm install zod@^4.0.0
 [ ok ] Provider package @ai-sdk/openai: 0.0.42 installed
 [warn] Provider package @ai-sdk/anthropic: not installed (optional)
        fix: npm install @ai-sdk/anthropic@^0.0.42

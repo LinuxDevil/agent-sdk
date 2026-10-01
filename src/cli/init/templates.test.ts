@@ -56,6 +56,13 @@ describe('renderProject', () => {
     expect(files['README.md']).toContain('npm run dev');
   });
 
+  it.each(PROVIDER_NAMES)('%s: zod pairs with the scaffolded ai major (LOU-D29)', (provider) => {
+    const sdk = { ...SDK, peerDependencies: { ...SDK.peerDependencies, zod: '^3.25.76 || ^4.0.0' } };
+    const pkg = JSON.parse(renderProject({ ...config(provider, 'minimal'), sdk })['package.json']!);
+    const zod3Only = SCAFFOLD_PAIRINGS[provider]!.ai === '^4.3.19';
+    expect(pkg.dependencies.zod).toBe(zod3Only ? '^3.25.76' : '^3.25.76 || ^4.0.0');
+  });
+
   it.each(combos.filter(([, template]) => template !== 'yaml'))(
     '%s / %s: agent.ts uses createAgent + defineTool and the test uses mockModel',
     (provider, template) => {

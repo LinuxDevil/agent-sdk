@@ -17,6 +17,7 @@ import { isPropagatingToolError } from '../execution/propagatingToolError';
 import type { ExecuteOptions, ExecutionResult } from '../execution/AgentExecutor';
 import type { RemoteSubagent, SubagentCatalog, SubagentSummary, Subagents } from './types';
 import { isRemoteSubagent } from './remoteAgent';
+import { anyError } from '../utils/zodCompat';
 import { BackgroundTasks, subagentOptionsOf, withSubagentOptions, type SubagentOptions } from './backgroundTasks';
 
 /** Name of the tool the lead model delegates with. */
@@ -228,6 +229,12 @@ async function startTask(
   return { taskId, status, agent };
 }
 
+/** The `agent` argument's error, the same on both zod majors: the name given and the valid ones. */
+function unknownSubagent(names: readonly string[]): (input: unknown) => string {
+  const valid = names.map((name) => `'${name}'`).join(', ');
+  return (input) => (input === undefined ? 'Required' : `Unknown sub-agent ${JSON.stringify(input)}. Expected one of: ${valid}`);
+}
+
 function createTaskTool(subagents: Subagents, summaries: readonly SubagentSummary[], background: BackgroundTasks): DefinedTool {
   const names = summaries.map((s) => s.name);
   return defineTool({
@@ -236,7 +243,7 @@ function createTaskTool(subagents: Subagents, summaries: readonly SubagentSummar
       'Delegate a self-contained task to a sub-agent listed under "Available sub-agents" and get its final answer back. ' +
       'The sub-agent sees only your prompt, not this conversation.',
     input: z.object({
-      agent: z.enum(names as [string, ...string[]]).describe('Name of the sub-agent, exactly as listed'),
+      agent: z.enum(names as [string, ...string[]], anyError(unknownSubagent(names))).describe('Name of the sub-agent, exactly as listed'),
       prompt: z.string().describe('Complete instructions for the sub-agent, including all context it needs'),
       description: z.string().describe('A short (3-5 word) label for this task'),
       background: z

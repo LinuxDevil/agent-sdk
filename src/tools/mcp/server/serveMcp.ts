@@ -50,8 +50,10 @@ export interface ServeMcpHandle {
   close(): Promise<void>;
 }
 
+/** A `z.object()` of zod 3 (`_def.typeName`) or zod 4 (`_zod.def.type`). */
 function isObjectSchema(schema: unknown): boolean {
-  return (schema as { _def?: { typeName?: string } } | undefined)?._def?.typeName === 'ZodObject';
+  const internals = schema as { _def?: { typeName?: string }; _zod?: { def?: { type?: string } } } | undefined;
+  return internals?._def?.typeName === 'ZodObject' || internals?._zod?.def?.type === 'object';
 }
 
 function assertTools(tools: readonly DefinedTool[], agentToolName: string): void {

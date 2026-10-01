@@ -10,6 +10,7 @@
 import type { FileContentPart, GenerateOptions, ImageContentPart, Message, ToolDefinition } from '../providers/llm';
 import { textOf } from '../providers/content';
 import type { CassetteRequest } from './cassette';
+import { isZod4Schema, schemaToJsonSchema } from '../utils/zodCompat';
 
 const MAX_DEPTH = 24;
 
@@ -86,7 +87,8 @@ function sortKeys(record: Record<string, unknown>): Record<string, unknown> {
 
 /**
  * Reduce any value to plain, key-sorted JSON. Zod schemas become a
- * JSON-schema-ish fingerprint; functions and `undefined` are dropped.
+ * JSON-schema-ish fingerprint (zod 4 ones their JSON Schema); functions and
+ * `undefined` are dropped.
  */
 function canonicalize(value: unknown, depth = 0): unknown {
   if (value === undefined || typeof value === 'function') return undefined;
@@ -95,6 +97,8 @@ function canonicalize(value: unknown, depth = 0): unknown {
   if (Array.isArray(value)) return value.map((item) => canonicalize(item, depth + 1) ?? null);
   const zodDef = zodDefOf(value);
   if (zodDef) return zodFingerprint(zodDef, depth);
+  // A zod 4 schema (LOU-D29): its JSON Schema.
+  if (isZod4Schema(value)) return canonicalize(schemaToJsonSchema(value), depth + 1);
   const out: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value)) out[key] = canonicalize(child, depth + 1);
   return sortKeys(out);

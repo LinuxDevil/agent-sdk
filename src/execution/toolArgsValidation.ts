@@ -1,6 +1,7 @@
 /**
  * Validates a model's tool-call arguments against the tool's zod parameter
- * schema before anything (hooks, approval gate, `execute`) sees them.
+ * schema (zod 3, zod 4 or any Standard Schema) before anything (hooks,
+ * approval gate, `execute`) sees them.
  */
 
 import { ToolDescriptor } from '../types';
@@ -8,6 +9,7 @@ import type { ToolCall } from '../providers';
 import { ToolExecutionError } from './errors';
 import { getToolInputSchema } from '../tools/toolContract';
 import { toolErrorResult, type ToolErrorResult } from './toolErrors';
+import { issueMessage, issuePath, type SchemaIssue, type StandardSchemaV1 } from '../utils/zodCompat';
 
 /**
  * Best-effort parse of a tool call's JSON `arguments`, returning
@@ -76,20 +78,30 @@ export class ToolArgumentsValidationError extends ToolExecutionError {
 interface SafeParseResult {
   success: boolean;
   data?: unknown;
-  error?: { issues: Array<{ path: Array<string | number>; message: string }> };
+  error?: { issues: readonly SchemaIssue[] };
 }
 
-interface ParseableSchema {
-  safeParse(value: unknown): SafeParseResult;
+/** A zod schema of either major (`safeParse`), or any Standard Schema (`~standard.validate`). */
+type ParseableSchema = Partial<StandardSchemaV1> & {
+  safeParse?(value: unknown): SafeParseResult;
   safeParseAsync?(value: unknown): Promise<SafeParseResult>;
-}
+};
 
 function isParseable(schema: unknown): schema is ParseableSchema {
+  const candidate = schema as ParseableSchema | null;
   return (
-    typeof schema === 'object' &&
-    schema !== null &&
-    typeof (schema as { safeParse?: unknown }).safeParse === 'function'
+    typeof candidate === 'object' &&
+    candidate !== null &&
+    (typeof candidate.safeParse === 'function' || typeof candidate['~standard']?.validate === 'function')
   );
+}
+
+/** Runs the schema: zod's own `safeParseAsync`/`safeParse`, else the Standard Schema `validate`. */
+async function runSchema(schema: ParseableSchema, value: unknown): Promise<SafeParseResult> {
+  if (schema.safeParseAsync) return schema.safeParseAsync(value);
+  if (schema.safeParse || !schema['~standard']) return schema.safeParse?.(value) ?? { success: true, data: value };
+  const result = await schema['~standard'].validate(value);
+  return result.issues ? { success: false, error: { issues: result.issues } } : { success: true, data: result.value };
 }
 
 /**
@@ -121,13 +133,13 @@ export async function parseWithIssues(
   schema: ParseableSchema,
   value: unknown
 ): Promise<{ success: true; data: unknown } | { success: false; issues: ToolArgumentIssue[] }> {
-  const result = schema.safeParseAsync ? await schema.safeParseAsync(value) : schema.safeParse(value);
+  const result = await runSchema(schema, value);
   if (result.success) {
     return { success: true, data: result.data };
   }
   const issues: ToolArgumentIssue[] = (result.error?.issues ?? []).map(issue => ({
-    path: issue.path.length > 0 ? issue.path.join('.') : '(root)',
-    message: issue.message,
+    path: issuePath(issue),
+    message: issueMessage(issue),
   }));
   return { success: false, issues };
 }

@@ -21,6 +21,7 @@ vi.mock('ai', async () => {
   };
 });
 
+import { z as z4 } from 'zod/v4';
 import { OpenAIProvider } from './OpenAIProvider';
 import { itOnAiV4 } from './aiMajor.testkit';
 
@@ -170,6 +171,21 @@ describe('AiSdkProvider', () => {
     expect(Object.keys(tools)).toEqual(['search']);
     expect(tools.search.description).toBe('Search');
     expect(await tools.search.execute()).toBeNull();
+  });
+
+  itOnAiV4('sends a zod 4 tool schema to ai v4 as its JSON Schema (LOU-D29)', async () => {
+    generateTextMock.mockResolvedValue(textResult('stop'));
+    const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });
+    const parameters = z4.object({ q: z4.string() }) as unknown as Record<string, unknown>;
+
+    await provider.generate({
+      model: 'gpt-4',
+      messages: [],
+      tools: [{ type: 'function', function: { name: 'search', description: 'Search', parameters } }],
+    });
+
+    const { tools } = generateTextMock.mock.calls[0][0];
+    expect(tools.search.parameters.jsonSchema).toMatchObject({ type: 'object', properties: { q: { type: 'string' } }, required: ['q'] });
   });
 
   itOnAiV4('stream() exposes textStream and resolved final values', async () => {
