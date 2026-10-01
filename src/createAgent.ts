@@ -52,6 +52,7 @@ import { compactionHookFor, type AgentCompaction } from './context/agentCompacti
 import type { MemoryScopeContext, MemorySlot } from './memory/defineMemory';
 import { agentMemory } from './memory/withMemory';
 import type { RunLimits } from './execution/budget';
+import type { AgentGuardrails } from './execution/ioGuardrails';
 
 /**
  * Options for createAgent() that do not depend on how the instructions and
@@ -143,6 +144,17 @@ export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> ex
    * ```
    */
   limits?: RunLimits;
+  /**
+   * Input, output and tool guardrails of each run (LOU-X4). A block ends the
+   * run with `finishReason: 'guardrail'` and `result.guardrail`; a rewrite
+   * replaces the text. Sub-agents inherit them. See docs/guardrails.md.
+   *
+   * @example
+   * ```ts
+   * createAgent({ model: 'openai/gpt-4o-mini', guardrails: { input: [maxLengthGuardrail({ maxChars: 4000 })], output: [regexGuardrail({ name: 'secrets', action: 'rewrite' })] } });
+   * ```
+   */
+  guardrails?: AgentGuardrails;
   /**
    * How many tool calls from one model turn may run at once (LOU-V3).
    * Defaults to `'unbounded'`; `1` runs them one at a time. Results always
@@ -527,6 +539,7 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     maxSubagentDepth: config.maxSubagentDepth,
     maxSteps: config.maxSteps,
     limits: config.limits,
+    guardrails: config.guardrails,
     toolConcurrency: config.toolConcurrency,
   };
   const spec: SubagentSpec = { agent, provider, toolRegistry, ...runOptions };

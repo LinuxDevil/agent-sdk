@@ -55,6 +55,8 @@ export interface AgentRunState {
   queuedInput: Message[];
   /** LOU-V6: the run's `limits`, when it has any. */
   budget?: RunBudget;
+  /** LOU-V9: the checkpoint writes so far - each starts after the one before, so the newest state lands last. */
+  saving?: Promise<void>;
 }
 
 /**
@@ -170,7 +172,9 @@ export async function saveStepCheckpoint(
   status: CheckpointStatus = 'in-progress',
   approvalId?: string
 ): Promise<void> {
-  const { agent, sessionId, checkpointStore } = options;
+  const { agent, sessionId, checkpointStore, inputQueue } = options;
+  // LOU-V9: a run that stops here takes no more queued input, and keeps none it did not apply.
+  if (status !== 'in-progress') inputQueue?.close();
   if (!sessionId || !checkpointStore) {
     return;
   }
@@ -179,7 +183,7 @@ export async function saveStepCheckpoint(
     agentId: agent.id || '',
     sessionId,
     stepIndex: state.steps,
-    messages: [...state.messages, ...state.queuedInput],
+    messages: [...state.messages, ...state.queuedInput, ...(inputQueue?.messages ?? [])],
     toolCalls: [...state.toolCalls],
     usage: structuredClone(state.usage),
     stepUsage: [...state.stepUsage],
@@ -188,7 +192,10 @@ export async function saveStepCheckpoint(
     status,
     ...(approvalId !== undefined && { approvalId }),
   };
-  await checkpointStore.save(sessionId, checkpoint);
+  const save = () => checkpointStore.save(sessionId, checkpoint);
+  const saved = state.saving ? state.saving.then(save) : save();
+  state.saving = saved.catch(() => undefined);
+  await saved;
 }
 
 /** Appends one settled tool call's result to the transcript. */

@@ -122,6 +122,7 @@ export function createAgentApprovals(options: { store: ApprovalStore; approve?: 
     return {
       runId: run.runId,
       result: run.result.then((result) => inSession(session, result)),
+      enqueue: (input) => run.enqueue(input),
       async *[Symbol.asyncIterator]() {
         for await (const event of run) {
           if (event.type === 'approval.requested') sessions.set(event.approvalId, session);
