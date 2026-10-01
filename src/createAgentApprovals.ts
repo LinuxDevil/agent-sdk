@@ -9,6 +9,8 @@
 import type { ApprovalDecision, ApprovalStore, PendingApproval } from './execution/ApprovalGate';
 import type { ExecutionResult } from './execution/AgentExecutor';
 import type { AgentRun } from './execution/agentRun';
+import type { CheckpointStore } from './execution/checkpoint';
+import { SessionAwaitingApprovalError } from './execution/errors';
 import { AgentSession, type SessionOptions, type SessionRunner, type SessionStreamRunner } from './session/AgentSession';
 
 /**
@@ -41,13 +43,21 @@ export interface AgentApprovals {
   resolve(decision: ApprovalDecision, options?: { signal?: AbortSignal }): Promise<ExecutionResult>;
 }
 
-/** resumeAfterApproval() bound to an agent's registry, provider and options. */
-type ResumeRun = (store: ApprovalStore, decision: ApprovalDecision, signal?: AbortSignal) => Promise<ExecutionResult>;
+/**
+ * resumeAfterApproval() bound to an agent's registry, provider and options;
+ * `checkpointStore` is the paused session's, when its turns are checkpointed.
+ */
+type ResumeRun = (
+  store: ApprovalStore,
+  decision: ApprovalDecision,
+  signal?: AbortSignal,
+  checkpointStore?: CheckpointStore
+) => Promise<ExecutionResult>;
 
 /** A session whose paused turn can be continued by `agent.approvals.resolve()`. */
 class ApprovalSession extends AgentSession {
-  resolveWith(next: () => Promise<ExecutionResult>): Promise<ExecutionResult> {
-    return this.continueTurn(next);
+  resolveWith(next: (checkpointStore?: CheckpointStore) => Promise<ExecutionResult>): Promise<ExecutionResult> {
+    return this.continueTurn(() => next(this.checkpointStore));
   }
 }
 
@@ -69,12 +79,16 @@ export function createAgentApprovals(options: { store: ApprovalStore; approve?: 
   };
 
   /** With an `approve` callback, decides every pause until the run finishes. */
-  async function settle(result: ExecutionResult, signal?: AbortSignal): Promise<ExecutionResult> {
+  async function settle(
+    result: ExecutionResult,
+    signal?: AbortSignal,
+    checkpointStore?: CheckpointStore
+  ): Promise<ExecutionResult> {
     let current = result;
     for (;;) {
       const request = current.approvalId ? pending.get(current.approvalId) : undefined;
       if (!approve || current.finishReason !== 'awaiting-approval' || !request) return current;
-      current = await resume(store, { id: request.id, approved: await approve(request) }, signal);
+      current = await resume(store, { id: request.id, approved: await approve(request) }, signal, checkpointStore);
     }
   }
 
@@ -104,7 +118,8 @@ export function createAgentApprovals(options: { store: ApprovalStore; approve?: 
     resolve(decision, { signal } = {}) {
       const session = sessions.get(decision.id);
       sessions.delete(decision.id);
-      const next = async () => inSession(session, await settle(await resume(store, decision, signal), signal));
+      const next = async (checkpointStore?: CheckpointStore) =>
+        inSession(session, await settle(await resume(store, decision, signal, checkpointStore), signal, checkpointStore));
       return session ? session.resolveWith(next) : next();
     },
   };
@@ -116,9 +131,17 @@ export function createAgentApprovals(options: { store: ApprovalStore; approve?: 
     settle,
     session(run: SessionRunner, stream: SessionStreamRunner, sessionOptions?: SessionOptions): AgentSession {
       const session: ApprovalSession = new ApprovalSession(
-        async (input, signal) => inSession(session, await settle(await run(input, signal), signal)),
+        async (input, signal, turn) => {
+          try {
+            return inSession(session, await settle(await run(input, signal, turn), signal, turn?.checkpointStore));
+          } catch (error) {
+            // A checkpointed turn found paused (e.g. after a restart): resolving it continues this session.
+            if (error instanceof SessionAwaitingApprovalError && error.approvalId) sessions.set(error.approvalId, session);
+            throw error;
+          }
+        },
         sessionOptions,
-        (input, signal) => inSessionRun(session, stream(input, signal))
+        (input, signal, turn) => inSessionRun(session, stream(input, signal, turn))
       );
       return session;
     },

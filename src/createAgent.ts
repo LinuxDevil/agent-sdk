@@ -358,13 +358,15 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
   const approvals = createAgentApprovals({
     store: config.approvalStore ?? new InMemoryApprovalStore(),
     approve: config.approve,
-    resume: (approvalStore, decision, signal) =>
-      resumeAfterApproval(decision, approvalStore, toolRegistry ?? new ToolRegistry(), provider, {
-        ...runOptions,
-        output: config.output,
+    resume: (approvalStore, decision, signal, checkpointStore) =>
+      resumeAfterApproval(
+        decision,
         approvalStore,
-        signal,
-      }),
+        toolRegistry ?? new ToolRegistry(),
+        provider,
+        { ...runOptions, output: config.output, approvalStore, signal },
+        checkpointStore
+      ),
   });
   const executeOptions = (input: string | Message[], signal?: AbortSignal): ExecuteOptions => ({
     ...spec,
@@ -385,8 +387,13 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     stream(message: string, options: SendOptions = {}): AgentRun<Typed> {
       return AgentExecutor.stream(executeOptions(message, options.signal)) as AgentRun<Typed>;
     },
+    // LOU-W9: a checkpointed session's turn runs under its own sessionId + checkpointStore.
     session: (options?: SessionOptions) =>
-      approvals.session(run, (input, signal) => AgentExecutor.stream(executeOptions(input, signal)), options),
+      approvals.session(
+        (input, signal, turn) => AgentExecutor.execute({ ...executeOptions(input, signal), ...turn }),
+        (input, signal, turn) => AgentExecutor.stream({ ...executeOptions(input, signal), ...turn }),
+        options
+      ),
     approvals: approvals.approvals,
   };
   registerSubagent(simpleAgent, { spec, description: config.description });

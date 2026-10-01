@@ -145,24 +145,17 @@ if (run.finishReason === 'awaiting-approval') {
 ### Durable sessions with SQLite
 
 ```ts
-import { AgentBuilder, AgentExecutor, createAgent, resolveProvider } from '@loushy/build-ai-agent';
+import { createAgent, resolveProvider } from '@loushy/build-ai-agent';
 import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
 
 const store = new SqliteStore('./.loushy/agent.db'); // sessions, checkpoints and approvals in one file
-const provider = resolveProvider('openai/gpt-4o-mini');
+const agent = createAgent({ provider: resolveProvider('openai/gpt-4o-mini'), approvalStore: store.approvals });
 
-// A conversation that survives restarts: same id + same file = same conversation.
-const agent = createAgent({ provider, approvalStore: store.approvals });
-await agent.session({ id: 'user-42', store: store.sessions }).send('My name is Ali.');
-const { text } = await agent.session({ id: 'user-42', store: store.sessions }).send('What is my name?'); // "Ali"
-
-// A crash-safe run: checkpointed after every model response and tool result.
-// Calling execute() again with the same sessionId resumes it instead of starting over.
-const booker = AgentBuilder.create().setName('booker').setPrompt('You book restaurant tables.').build();
-await AgentExecutor.execute({
-  agent: booker, input: 'Book a table for 2 tonight', provider,
-  sessionId: 'booking-7', checkpointStore: store.checkpoints,
-});
+// Same id + same file = same conversation, checkpointed after every model response and tool result.
+await agent.session({ id: 'user-42', store }).send('My name is Ali.');
+const session = agent.session({ id: 'user-42', store });
+await session.resume(); // after a crash: finishes the interrupted turn without redoing finished steps
+const { text } = await session.send('What is my name?'); // "Ali"
 ```
 
 ## Documentation
@@ -2785,6 +2778,10 @@ await AgentExecutor.execute({ agent, input: 'Book a table for 2 tonight', provid
 await AgentExecutor.execute({ agent, input: 'Make it 3 people', provider, sessionId: 'chat-42', checkpointStore: checkpoints });
 ```
 
+With `createAgent()`, a session does this for you: `agent.session({ id, store, checkpointStore })`
+checkpoints every turn and `session.resume()` finishes an interrupted one - see
+[Durable sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#durable-sessions).
+
 ## What is checkpointed, and when
 
 A checkpoint is the run's whole transcript plus its step count, usage,
@@ -3835,6 +3832,9 @@ console.log(session.id, session.messages.length);
 | `messages` | A read-only snapshot of the transcript (user, assistant and tool messages; no system prompt). Editing the snapshot does not change the session. |
 | `load()` | Reads the saved transcript from the store. `send()` does this for you; call it to show history before the first `send()` of a resumed session. |
 | `clear()` | Forgets the conversation, including in the store. |
+| `pending()` | In a [durable session](#durable-sessions), the turn that has not finished (`{ status, approvalId? }`), or `null`. |
+| `resume({ signal })` | In a durable session, finishes an interrupted turn and resolves with its result, or `null` when none is pending. |
+| `discardPending()` | In a durable session, drops an unfinished turn without running it. |
 
 Concurrent `send()` calls on one session are queued and run one after another in
 call order, so the transcript never interleaves.
@@ -3890,11 +3890,55 @@ const { text } = await session.send('What is my name?');
   to streams, as with `agent.stream()`.
 
 Sessions are a thin layer: the session owns the transcript and hands it to the
-executor on each turn. They do not use the checkpoint/resume mechanism
-(`sessionId` + `checkpointStore` on `AgentExecutor.execute()`). That lower-level
-mechanism also continues a finished conversation, and additionally resumes a
-run interrupted mid-turn (a crash, an abort, an approval pause) without
-re-running finished tools - see [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md).
+executor on each turn. Without a checkpoint store, a turn is saved only when it
+ends, so a crash in the middle of a turn loses it; see the next section.
+
+## Durable sessions
+
+Give the session a `CheckpointStore` and every turn is checkpointed after each
+model response and tool result, using the [durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)
+mechanism. A turn interrupted by a crash, a failed checkpoint write or a
+`PropagatingToolError` can then be finished later, in another process:
+
+```ts
+import { createAgent, FileSessionStore, type CheckpointStore } from '@loushy/build-ai-agent';
+
+declare const checkpointStore: CheckpointStore; // e.g. LocalStorageCheckpointStore, or SqliteStore's `checkpoints`
+
+const agent = createAgent({ provider });
+const store = new FileSessionStore('./.loushy/sessions');
+
+// After a restart: finish the turn that was running, if any.
+const session = agent.session({ id: 'user-42', store, checkpointStore });
+const finished = await session.resume(); // ExecutionResult, or null when nothing was pending
+console.log(finished?.text, await session.pending()); // pending() is null now
+```
+
+- Pass `checkpointStore`, or a `store` that carries both stores: any
+  `{ sessions, checkpoints }` object, such as a `SqliteStore`
+  (`agent.session({ id, store: sqliteStore })`).
+- Each turn runs with `sessionId: '<session id>.turn-<n>'` (`n` is the length
+  of the transcript when the turn started), so a new process finds the
+  interrupted turn without any extra bookkeeping. A finished turn joins the
+  transcript, exactly as a plain `send()` does, and its checkpoint is deleted.
+- `resume()` continues the turn through the executor's resume path
+  (`input: []`): tool calls whose results were recorded do not run again, and
+  a recorded model response is not requested again. A tool that was running
+  when the process died does run again (at-least-once, see
+  [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#at-least-once-tools-make-side-effects-idempotent)).
+- `send()` and `stream()` resume a pending turn first, then send the new
+  message, so the model sees the finished turn (the resumed turn's events are
+  not streamed). Use `pending()` to check first, or `discardPending()` to drop
+  the unfinished turn instead.
+- A turn that pauses on a `needsApproval` tool stays in its checkpoint, not in
+  the transcript, until it finishes. While it waits, `resume()`, `send()` and
+  `stream()` throw `SessionAwaitingApprovalError` (with its `approvalId`), and
+  `agent.approvals.resolve({ id, approved })` continues the turn in this
+  session. After a restart, open the session and call `resume()` (or `send()`)
+  once before resolving, so the agent knows which session the approval belongs
+  to; give both agents the same durable `approvalStore`.
+- An aborted turn is dropped (its checkpoint is deleted), as without a
+  checkpoint store. `clear()` deletes a pending turn too.
 
 ## Stores
 
@@ -3955,7 +3999,7 @@ import { createAgent, AgentExecutor } from '@loushy/build-ai-agent';
 import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
 
 const store = new SqliteStore('./.loushy/agent.db'); // or ':memory:'
-const session = createAgent({ provider }).session({ id: 'user-42', store: store.sessions });
+const session = createAgent({ provider }).session({ id: 'user-42', store }); // transcript + per-step checkpoints
 await session.send('Hello');
 
 // Same file, same store, for durable runs with approvals:
