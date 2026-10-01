@@ -5,6 +5,9 @@
  * and drives the shared generate()/stream() logic through concrete
  * providers: the call settings handed to the 'ai' SDK, finish-reason
  * mapping, tool conversion, and message conversion (shared by OpenRouter).
+ * Runs on every `ai` major (LOU-D28f): where the call or result shape differs
+ * (v4 `maxTokens`, `args`, `result`; v5+ `maxOutputTokens`, `input`, `output`)
+ * the test asserts the installed major's shape, built with aiShapes.testkit.ts.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -23,13 +26,14 @@ vi.mock('ai', async () => {
 
 import { z as z4 } from 'zod/v4';
 import { OpenAIProvider } from './OpenAIProvider';
-import { itOnAiV4 } from './aiMajor.testkit';
-
-// itOnAiV4 tests below mock generateText/streamText and assert the ai v4 call and result shapes (LOU-D28b);
-// the v7 shapes of the same behavior are asserted in aiSdkCompat.v7.test.ts and aiSdkCompat.stream.v7.test.ts.
 import { OpenRouterProvider } from './OpenRouterProvider';
+import { installedAiMajor, itOnAiV4 } from './aiMajor.testkit';
+import { mockToolCall, mockUsage, toolCallPart, toolResultPart } from './aiShapes.testkit';
 
-const usage = { promptTokens: 1, completionTokens: 2, totalTokens: 3 };
+const isV4 = installedAiMajor === 4;
+/** What the mocked `ai` calls report (the installed major's shape) and what the provider turns it into. */
+const usage = mockUsage();
+const providerUsage = { promptTokens: 1, completionTokens: 2, totalTokens: 3 };
 
 function textResult(finishReason: string) {
   return { text: 'ok', finishReason, usage, toolCalls: undefined };
@@ -41,7 +45,7 @@ describe('AiSdkProvider', () => {
     streamTextMock.mockReset();
   });
 
-  itOnAiV4('passes call settings through and falls back to the config default model', async () => {
+  it('passes call settings through and falls back to the config default model', async () => {
     generateTextMock.mockResolvedValue(textResult('stop'));
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k', defaultModel: 'gpt-4o' });
 
@@ -56,7 +60,13 @@ describe('AiSdkProvider', () => {
 
     const settings = generateTextMock.mock.calls[0][0];
     expect(settings.model.modelId).toBe('gpt-4o');
-    expect(settings).toMatchObject({ temperature: 0.2, maxTokens: 10, seed: 7, maxSteps: 1 });
+    expect(settings).toMatchObject({ temperature: 0.2, seed: 7 });
+    if (isV4) {
+      expect(settings).toMatchObject({ maxTokens: 10, maxSteps: 1 });
+    } else {
+      expect(settings).toMatchObject({ maxOutputTokens: 10, allowSystemInMessages: true });
+      expect(settings.stopWhen).toBeDefined();
+    }
     // An empty tool list is sent as "no tools"
     expect(settings.tools).toBeUndefined();
     expect(settings.messages).toEqual([{ role: 'user', content: 'hi' }]);
@@ -75,21 +85,24 @@ describe('AiSdkProvider', () => {
     expect(streamTextMock.mock.calls[0][0].maxRetries).toBe(0);
   });
 
-  itOnAiV4('LOU-V5: reports usage as-is, reads cache/reasoning tokens from provider metadata, and no usage when counts are NaN', async () => {
+  it('LOU-V5: reports usage as-is, reads cache/reasoning tokens from provider metadata, and no usage when counts are NaN', async () => {
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });
 
-    generateTextMock.mockResolvedValue({
-      ...textResult('stop'),
-      providerMetadata: { openai: { cachedPromptTokens: 1, reasoningTokens: 'n/a' } },
-    });
+    // v4 reports cache tokens in the provider metadata, v5+ in the usage details.
+    generateTextMock.mockResolvedValue(
+      isV4
+        ? { ...textResult('stop'), providerMetadata: { openai: { cachedPromptTokens: 1, reasoningTokens: 'n/a' } } }
+        : { ...textResult('stop'), usage: { ...usage, inputTokenDetails: { cacheReadTokens: 1 } } }
+    );
     expect((await provider.generate({ model: '', messages: [] })).usage).toEqual({
-      ...usage,
+      ...providerUsage,
       cachedInputTokens: 1,
     });
 
+    const nan = Number.NaN;
     generateTextMock.mockResolvedValue({
       ...textResult('stop'),
-      usage: { promptTokens: NaN, completionTokens: NaN, totalTokens: NaN },
+      usage: isV4 ? { promptTokens: nan, completionTokens: nan, totalTokens: nan } : { inputTokens: nan, outputTokens: nan, totalTokens: nan },
     });
     expect((await provider.generate({ model: '', messages: [] })).usage).toBeUndefined();
   });
@@ -122,7 +135,7 @@ describe('AiSdkProvider', () => {
     expect(streamTextMock.mock.calls[0][0].abortSignal).toBe(signal);
   });
 
-  itOnAiV4('LOU-V4: maps responseFormat to a JSON-mode experimental_output that leaves prompt and text alone', async () => {
+  it('LOU-V4: maps responseFormat to a JSON-mode experimental_output that leaves prompt and text alone', async () => {
     generateTextMock.mockResolvedValue(textResult('stop'));
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });
     const schema = { type: 'object', properties: { a: { type: 'number' } } };
@@ -130,14 +143,21 @@ describe('AiSdkProvider', () => {
     await provider.generate({ messages: [] });
     await provider.generate({ messages: [], responseFormat: { type: 'json', schema } });
 
-    expect(generateTextMock.mock.calls[0][0].experimental_output).toBeUndefined();
-    const output = generateTextMock.mock.calls[1][0].experimental_output;
-    expect(output.type).toBe('object');
-    expect(output.responseFormat({ model: { supportsStructuredOutputs: true } })).toEqual({ type: 'json', schema });
-    expect(output.responseFormat({ model: { supportsStructuredOutputs: false } })).toEqual({ type: 'json', schema: undefined });
-    expect(output.injectIntoSystemPrompt({ system: undefined, model: {} })).toBeUndefined();
-    expect(output.parsePartial({ text: '{"a"' })).toEqual({ partial: '{"a"' });
-    expect(output.parseOutput({ text: 'raw' }, {})).toBe('raw');
+    const key = isV4 ? 'experimental_output' : 'output';
+    expect(generateTextMock.mock.calls[0][0][key]).toBeUndefined();
+    const output = generateTextMock.mock.calls[1][0][key];
+    if (isV4) {
+      expect(output.type).toBe('object');
+      expect(output.responseFormat({ model: { supportsStructuredOutputs: true } })).toEqual({ type: 'json', schema });
+      expect(output.responseFormat({ model: { supportsStructuredOutputs: false } })).toEqual({ type: 'json', schema: undefined });
+      expect(output.injectIntoSystemPrompt({ system: undefined, model: {} })).toBeUndefined();
+      expect(output.parsePartial({ text: '{"a"' })).toEqual({ partial: '{"a"' });
+      expect(output.parseOutput({ text: 'raw' }, {})).toBe('raw');
+    } else {
+      expect(await output.responseFormat).toEqual({ type: 'json', schema });
+      expect(await output.parsePartialOutput({ text: '{"a"' })).toEqual({ partial: '{"a"' });
+      expect(await output.parseCompleteOutput({ text: 'raw' })).toBe('raw');
+    }
   });
 
   it.each([
@@ -157,7 +177,7 @@ describe('AiSdkProvider', () => {
     expect(result.toolCalls).toBeUndefined();
   });
 
-  itOnAiV4('converts tool definitions to named ai SDK tools', async () => {
+  it('converts tool definitions to named ai SDK tools', async () => {
     generateTextMock.mockResolvedValue(textResult('stop'));
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });
 
@@ -170,7 +190,13 @@ describe('AiSdkProvider', () => {
     const { tools } = generateTextMock.mock.calls[0][0];
     expect(Object.keys(tools)).toEqual(['search']);
     expect(tools.search.description).toBe('Search');
-    expect(await tools.search.execute()).toBeNull();
+    if (isV4) {
+      expect(await tools.search.execute()).toBeNull();
+    } else {
+      // v5+: an `inputSchema` and no `execute`, so the SDK returns the call and AgentExecutor runs it.
+      expect(tools.search.inputSchema).toBeDefined();
+      expect(tools.search.execute).toBeUndefined();
+    }
   });
 
   itOnAiV4('sends a zod 4 tool schema to ai v4 as its JSON Schema (LOU-D29)', async () => {
@@ -188,7 +214,7 @@ describe('AiSdkProvider', () => {
     expect(tools.search.parameters.jsonSchema).toMatchObject({ type: 'object', properties: { q: { type: 'string' } }, required: ['q'] });
   });
 
-  itOnAiV4('stream() exposes textStream and resolved final values', async () => {
+  it('stream() exposes textStream and resolved final values', async () => {
     async function* textStream() {
       yield 'a';
       yield 'b';
@@ -198,7 +224,7 @@ describe('AiSdkProvider', () => {
       text: Promise.resolve('ab'),
       usage: Promise.resolve(usage),
       finishReason: Promise.resolve('stop'),
-      toolCalls: Promise.resolve([{ toolCallId: 'c1', toolName: 't', args: { x: 1 } }]),
+      toolCalls: Promise.resolve([mockToolCall('c1', 't', { x: 1 })]),
     });
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });
 
@@ -207,14 +233,14 @@ describe('AiSdkProvider', () => {
     for await (const delta of result.textStream) deltas.push(delta);
 
     expect(deltas).toEqual(['a', 'b']);
-    expect(await result.usage).toEqual(usage);
+    expect(await result.usage).toEqual(providerUsage);
     expect(await result.finishReason).toBe('stop');
     expect(await result.toolCalls).toEqual([
       { id: 'c1', type: 'function', function: { name: 't', arguments: '{"x":1}' } },
     ]);
   });
 
-  itOnAiV4('uses the default converter for tool results (name -> toolName)', async () => {
+  it('uses the default converter for tool results (name -> toolName)', async () => {
     generateTextMock.mockResolvedValue(textResult('stop'));
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });
 
@@ -224,11 +250,11 @@ describe('AiSdkProvider', () => {
     });
 
     expect(generateTextMock.mock.calls[0][0].messages).toEqual([
-      { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'c1', toolName: 'search', result: 'r' }] },
+      { role: 'tool', content: [toolResultPart('c1', 'search', 'r')] },
     ]);
   });
 
-  itOnAiV4('converts OpenRouter tool-call turns with the shared converter', async () => {
+  it('converts OpenRouter tool-call turns with the shared converter', async () => {
     generateTextMock.mockResolvedValue(textResult('stop'));
     const provider = new OpenRouterProvider({ name: 'openrouter', apiKey: 'k' });
 
@@ -251,10 +277,10 @@ describe('AiSdkProvider', () => {
         role: 'assistant',
         content: [
           { type: 'text', text: 'calling' },
-          { type: 'tool-call', toolCallId: 'c1', toolName: 'search', args: { q: 'x' } },
+          toolCallPart('c1', 'search', { q: 'x' }),
         ],
       },
-      { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'c1', toolName: 'search', result: 'r' }] },
+      { role: 'tool', content: [toolResultPart('c1', 'search', 'r')] },
     ]);
   });
 });

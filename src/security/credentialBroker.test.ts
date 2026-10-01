@@ -168,6 +168,74 @@ describe('createCredentialBroker (LOU-X12)', () => {
     await expect(viaProxy(b, `http://${upstreamHost}/`)).rejects.toThrow(/ECONNREFUSED/);
   });
 
+  describe('listen() on another address for one subnet (LOU-X12.2)', () => {
+    /** Sends a plain-HTTP proxy request to `listenerUrl`; resolves with the status, or 'refused' when the connection is dropped. */
+    function viaListener(listenerUrl: string, target: string) {
+      const { hostname, port } = new URL(listenerUrl);
+      return new Promise<number | 'refused'>((resolve) => {
+        const req = http.request({ host: hostname, port: Number(port), path: target, agent: false }, (res) => {
+          res.resume();
+          res.on('end', () => resolve(res.statusCode ?? 0));
+        });
+        req.on('error', () => resolve('refused'));
+        req.end();
+      });
+    }
+
+    it('serves peers inside the subnet with the rule hosts plus its own allow list, not the broker-wide allow list', async () => {
+      const b = await broker({ allow: ['broker-wide.invalid'] });
+      const listener = await b.listen({ host: LOOPBACK, clients: '172.30.0.0/16', allow: ['listener-only.invalid'], peerAddress: () => '172.30.0.7' });
+      expect(listener.url).not.toBe(b.url);
+      expect(listener.env).toMatchObject({ HTTP_PROXY: listener.url, HTTPS_PROXY: listener.url, NO_PROXY: LOOPBACK });
+      expect(JSON.stringify(listener.env)).not.toContain(SECRET);
+
+      expect(await viaListener(listener.url, `http://${upstreamHost}/via-listener`)).toBe(200);
+      expect(seen[0].authorization).toBe(`Bearer ${SECRET}`);
+      expect(await viaListener(listener.url, 'http://broker-wide.invalid/')).toBe(403);
+      expect(await viaListener(listener.url, 'http://listener-only.invalid/')).toBe(502); // allowed, then fails to resolve
+      expect(await viaListener(b.url, 'http://broker-wide.invalid/')).toBe(502); // the main listener is unchanged
+    });
+
+    it('drops a peer outside the subnet before reading its request', async () => {
+      const b = await broker();
+      const outside = await b.listen({ host: LOOPBACK, clients: '172.30.0.0/16', peerAddress: () => '10.1.2.3' });
+      expect(await viaListener(outside.url, `http://${upstreamHost}/`)).toBe('refused');
+      const ipv4Mapped = await b.listen({ host: LOOPBACK, clients: '172.30.0.0/16', peerAddress: () => '::ffff:172.30.9.9' });
+      expect(await viaListener(ipv4Mapped.url, `http://${upstreamHost}/`)).toBe(200);
+      const unknownPeer = await b.listen({ host: LOOPBACK, clients: '172.30.0.0/16', peerAddress: () => undefined });
+      expect(await viaListener(unknownPeer.url, `http://${upstreamHost}/`)).toBe('refused');
+      expect(seen).toHaveLength(1);
+    });
+
+    it('checks the real peer address by default', async () => {
+      const b = await broker();
+      const other = await b.listen({ host: LOOPBACK, clients: '172.30.0.0/16' });
+      expect(await viaListener(other.url, `http://${upstreamHost}/`)).toBe('refused');
+      const loopback = await b.listen({ host: LOOPBACK, clients: '127.0.0.0/8' });
+      expect(await viaListener(loopback.url, `http://${upstreamHost}/`)).toBe(200);
+    });
+
+    it('rejects a malformed subnet and an address it cannot bind', async () => {
+      const b = await broker();
+      for (const clients of ['172.30.0.0', '172.30.0.0/33', 'example.com/8', '10.0.0.0/8/1']) {
+        await expect(b.listen({ host: LOOPBACK, clients })).rejects.toThrow(/subnet such as/);
+      }
+      await expect(b.listen({ host: '192.0.2.1', clients: '192.0.2.0/24' })).rejects.toThrow(/EADDRNOTAVAIL|EADDRINUSE|bind/i);
+    });
+
+    it('a listener closes on its own, and broker.close() closes the rest', async () => {
+      const b = await createCredentialBroker({ rules: { [LOOPBACK]: {} }, allowPrivate: [LOOPBACK] });
+      const first = await b.listen({ host: LOOPBACK, clients: '127.0.0.0/8' });
+      const second = await b.listen({ host: LOOPBACK, clients: '127.0.0.0/8' });
+      await first.close();
+      expect(await viaListener(first.url, `http://${upstreamHost}/`)).toBe('refused');
+      expect(await viaListener(b.url, `http://${upstreamHost}/`)).toBe(200);
+      await b.close();
+      expect(await viaListener(second.url, `http://${upstreamHost}/`)).toBe('refused');
+      expect(await viaListener(b.url, `http://${upstreamHost}/`)).toBe('refused');
+    });
+  });
+
   it('end to end: a NodeWorkspace command reaches the API through broker.env with the token it never holds', async () => {
     const b = await broker();
     const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-broker-')));

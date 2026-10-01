@@ -36,7 +36,7 @@
 - [Svelte](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/svelte.md): `loushyAgent()` for Svelte is the React hook as a store: the same sources, the same state and the same actions, over the same typed event stream.
 - [Testing agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md): `@loushy/build-ai-agent/testing` ships `mockModel`: a scripted, deterministic `LLMProvider` for unit tests.
 - [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md): A tool is a typed function the model can call.
-- [Utilities](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/utilities.md): Supporting helpers exported from the package root: encryption and hashing, file storage for attachments, and template rendering.
+- [Utilities](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/utilities.md): Supporting helpers exported from the package root: encryption and hashing, and file storage for attachments.
 - [Vue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/vue.md): `useLoushyAgent()` for Vue 3 is the React hook as a composable: the same sources, the same state and the same actions, over the same typed event stream.
 - [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md): Workspace tools give an agent a file system and a shell, so you can build coding agents in the style of Claude Code.
 
