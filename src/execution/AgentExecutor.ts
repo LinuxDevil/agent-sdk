@@ -5,12 +5,14 @@
 
 import type { Skill } from '../skills/defineSkill';
 import { withSkills } from '../skills/withSkills';
+import type { Subagents } from '../subagents/types';
+import { assertMaxSubagentDepth, withSubagents } from '../subagents/withSubagents';
 import { nanoid } from 'nanoid';
 import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult, ToolDefinition } from '../providers';
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
 import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
-import { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGate';
+import { ApprovalStore, ExecutionSnapshot, PendingApproval, SubagentSuspension } from './ApprovalGate';
 import { CheckpointStore } from './checkpoint';
 import { TraceExporter, withSpan } from './tracing';
 import {
@@ -19,7 +21,13 @@ import {
   resolveCaptureContent,
   toolSpanInit,
 } from './genAiSpans';
-import { HookRegistry } from './hooks';
+import { HookRegistry, type SubagentInfo } from './hooks';
+import {
+  baseAgentOf,
+  settleSuspensions,
+  suspensionRecord,
+  type ToolCallScope,
+} from './subagentRuntime';
 import { isAbortError } from './errors';
 import {
   PreparedToolCall,
@@ -114,6 +122,13 @@ export interface ExecutionEvent {
    * reason to `controller.abort(reason)`).
    */
   abortReason?: unknown;
+  /**
+   * LOU-Y1: set on events forwarded from a sub-agent (a child run started
+   * by the `task` tool or a `createDelegateTool()` tool): which sub-agent
+   * emitted it and which of this run's tool calls started it. Absent on the
+   * run's own events.
+   */
+  subagent?: SubagentInfo;
 }
 
 /**
@@ -134,6 +149,34 @@ export interface ExecuteOptions {
    * AgentExecutor.execute({ agent, input, provider, skills: [defineSkill({ name, description, content })] });
    */
   skills?: readonly Skill[];
+  /**
+   * Sub-agents (LOU-Y3) this agent can delegate to: a record of
+   * `createAgent()` agents keyed by name (each needs a `description`), or a
+   * dynamic `{ list, resolve }` catalog (listed at the start of each run).
+   * Registers ONE `task` tool (`{ agent, prompt, description }`) and lists the
+   * sub-agents in the system prompt. A sub-agent sees only the `prompt`, and
+   * inherits this run's signal, hooks, tracing, approval store,
+   * `toolConcurrency` and `onEvent` listener (see docs/sub-agents.md). Throws
+   * if a tool named `task` is already registered.
+   *
+   * @example
+   * AgentExecutor.execute({ agent, input, provider, subagents: { researcher, writer } });
+   */
+  subagents?: Subagents;
+  /**
+   * How deep sub-agents may nest (LOU-Y3). Defaults to 1: the lead agent can
+   * call sub-agents, but they cannot call sub-agents of their own. A run at
+   * the limit is simply not offered the `task` tool. The top-level run's
+   * value applies to the whole tree.
+   */
+  maxSubagentDepth?: number;
+  /**
+   * Span id to parent this run's `invoke_agent` span to (LOU-Y1). Set
+   * automatically for a sub-agent, whose span becomes a child of the
+   * parent's `execute_tool` span; set it yourself to nest a run inside your
+   * own trace.
+   */
+  parentSpanId?: string;
   streaming?: boolean;
   maxSteps?: number;
   temperature?: number;
@@ -411,14 +454,22 @@ export class AgentExecutor {
       exporter,
       init.name,
       init.attributes,
-      async (agentSpan) =>
-        this.runAgentLoop(
-          { ...options, ...withSkills(options.agent, options.toolRegistry, options.skills) },
-          agentSpan.id
-        ),
-      undefined,
+      async (agentSpan) => this.runAgentLoop(await this.withExtensions(options), agentSpan.id),
+      options.parentSpanId,
       init.kind
     );
+  }
+
+  /** Applies `skills` and `subagents`: their prompt blocks and their tools. */
+  private static async withExtensions(options: ExecuteOptions): Promise<ExecuteOptions> {
+    const skilled = withSkills(options.agent, options.toolRegistry, options.skills);
+    const extended = await withSubagents(
+      skilled.agent,
+      skilled.toolRegistry,
+      options.subagents,
+      options.maxSubagentDepth
+    );
+    return { ...options, ...extended };
   }
 
   /**
@@ -626,6 +677,8 @@ export class AgentExecutor {
   ): Promise<ExecutionResult | undefined> {
     const { onEvent } = options;
     state.toolCalls.push(...toolCalls);
+    // LOU-Y1: tool calls whose sub-agent paused for approval, in call order.
+    const suspensions: SubagentSuspension[] = [];
 
     // Add assistant message with tool calls
     state.messages.push({
@@ -644,13 +697,16 @@ export class AgentExecutor {
         },
         onComplete: (toolResult) =>
           this.emitEvent(onEvent, { type: 'tool-result', timestamp: new Date(), toolResult }),
-        record: (toolCall, outcome) => pushToolResult(state, toolCall, outcome),
+        record: (toolCall, outcome) => {
+          pushToolResult(state, toolCall, outcome);
+          if (outcome.subagent) suspensions.push(outcome.subagent);
+        },
         persist: () => saveStepCheckpoint(options, state),
       },
       options.signal
     );
 
-    return this.settleToolBatch(options, state, batch);
+    return this.settleToolBatch(options, state, batch, suspensions);
   }
 
   /**
@@ -661,7 +717,8 @@ export class AgentExecutor {
   private static settleToolBatch(
     options: ExecuteOptions,
     state: AgentRunState,
-    batch: ToolBatchResult
+    batch: ToolBatchResult,
+    suspensions: SubagentSuspension[]
   ): Promise<ExecutionResult> | undefined {
     if (options.signal?.aborted) {
       pushAbortedBatchResults(state, batch.unrecorded);
@@ -670,8 +727,12 @@ export class AgentExecutor {
     if (batch.failure) {
       throw batch.failure.error;
     }
+    const suspension = settleSuspensions(state.messages, suspensions, Boolean(batch.approval));
     if (batch.approval) {
       return this.pauseForApproval(options, state, batch.approval.toolCall, batch.approval.outcome);
+    }
+    if (suspension) {
+      return this.savePause(options, state, suspensionRecord(options, state, suspension));
     }
     return undefined;
   }
@@ -730,6 +791,14 @@ export class AgentExecutor {
       init.attributes,
       async (toolSpan) => {
         const toolCallStart = Date.now();
+        // LOU-Y1: a sub-agent started by this tool call inherits from this run.
+        const scope: ToolCallScope = {
+          runtime: options,
+          toolCallId: toolCall.id,
+          spanId: toolSpan.id,
+          addUsage: (usage) => addUsage(state.usage, usage),
+          execute: (childOptions) => AgentExecutor.execute(childOptions),
+        };
         const executed = await this.executeToolCall(
           toolCall,
           agent,
@@ -741,7 +810,8 @@ export class AgentExecutor {
           sessionId,
           state.messages,
           signal,
-          onPrepared
+          onPrepared,
+          scope
         );
         const parsedArgs =
           executed.args === undefined
@@ -775,7 +845,7 @@ export class AgentExecutor {
     toolCall: ToolCall,
     toolResult: ToolCallOutcome
   ): Promise<ExecutionResult> {
-    const { agent, approvalStore, sessionId, onEvent } = options;
+    const { agent, approvalStore, sessionId } = options;
     if (!approvalStore) {
       throw new Error(
         `Tool '${toolResult.toolName}' requires approval but no approvalStore was provided to AgentExecutor.execute()`
@@ -791,14 +861,27 @@ export class AgentExecutor {
       createdAt: new Date().toISOString(),
     };
     const snapshot: ExecutionSnapshot = {
-      agent,
+      // The agent as configured: resume re-applies skills and sub-agents.
+      agent: baseAgentOf(agent),
       currentMessages: state.messages,
       pendingToolCall: pending,
       steps: state.steps,
       sessionId,
     };
+    return this.savePause(options, state, { pending, snapshot });
+  }
 
-    await approvalStore.save(pending, snapshot);
+  /**
+   * Saves an approval record and ends this execute() call with an
+   * 'awaiting-approval' result.
+   */
+  private static async savePause(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    { pending, snapshot }: { pending: PendingApproval; snapshot: ExecutionSnapshot }
+  ): Promise<ExecutionResult> {
+    const { approvalStore, onEvent } = options;
+    await approvalStore?.save(pending, snapshot);
 
     this.emitEvent(onEvent, {
       type: 'finish',
@@ -905,7 +988,8 @@ export class AgentExecutor {
     sessionId?: string,
     messages: Message[] = [],
     signal?: AbortSignal,
-    onPrepared?: (prepared: PreparedToolCall) => void
+    onPrepared?: (prepared: PreparedToolCall) => void,
+    scope?: ToolCallScope
   ): Promise<ToolCallOutcome> {
     return runToolCall(
       toolCall,
@@ -919,6 +1003,7 @@ export class AgentExecutor {
         sessionId,
         messages,
         signal,
+        scope,
       },
       onPrepared
     );
@@ -952,6 +1037,7 @@ export class AgentExecutor {
       );
     }
     assertToolConcurrency(options.toolConcurrency, 'AgentExecutor.execute');
+    assertMaxSubagentDepth(options.maxSubagentDepth, 'AgentExecutor.execute');
   }
 
   /**

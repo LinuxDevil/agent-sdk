@@ -18,6 +18,8 @@ import { NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
 import { HookRegistry } from './hooks';
 import { toolErrorMessage } from './propagatingToolError';
+import { replaceToolResult, type ToolCallScope } from './subagentRuntime';
+import { resumeSubagentCall, type ResumeContext } from './resumeSubagent';
 
 /**
  * Options passed through to the underlying AgentExecutor.execute() call
@@ -113,13 +115,22 @@ export async function resumeAfterApproval(
 
   const staleBusinessState = await clearStaleCheckpoint(snapshot.sessionId, checkpointStore);
 
-  const toolMessage = decision.approved
-    ? await runApprovedToolCall(pending, snapshot, messages, toolRegistry, executeOptions)
-    : toolResultMessage(pending, {
-        error: 'Tool execution was rejected by the reviewer',
-        note: decision.note,
-      }, true);
-  messages.push(toolMessage);
+  const ctx: ResumeContext = {
+    decision,
+    approvalStore,
+    snapshot,
+    messages,
+    toolRegistry,
+    executeOptions,
+    execute: (options) => AgentExecutor.execute(options),
+    resumeRun: resumeAfterApproval,
+  };
+  const step = await decidedToolMessage(ctx, pending);
+  if ('paused' in step) {
+    return step.paused;
+  }
+  // LOU-Y1: a call whose sub-agent paused already has a placeholder result.
+  replaceToolResult(messages, step.message);
 
   return continueResumedRun(snapshot, messages, {
     provider,
@@ -128,6 +139,35 @@ export async function resumeAfterApproval(
     checkpointStore,
     staleBusinessState,
   });
+}
+
+/**
+ * The `tool` message for the decided call: the approved tool's result, the
+ * rejection - or, when the run paused on a sub-agent, the sub-agent's final
+ * answer after resuming it with the decision (LOU-Y1).
+ */
+async function decidedToolMessage(
+  ctx: ResumeContext,
+  pending: PendingApproval
+): Promise<{ message: Message } | { paused: ExecutionResult }> {
+  const { snapshot, messages, executeOptions } = ctx;
+  const runApproved = (call: PendingApproval, registry: ToolRegistry, scope: ToolCallScope): Promise<Message> =>
+    runApprovedToolCall(call, snapshot, messages, registry, executeOptions, scope);
+  if (snapshot.subagent) {
+    return resumeSubagentCall(ctx, snapshot.subagent, runApproved);
+  }
+  if (!ctx.decision.approved) {
+    return {
+      message: toolResultMessage(pending, { error: 'Tool execution was rejected by the reviewer', note: ctx.decision.note }, true),
+    };
+  }
+  // A sub-agent the approved tool starts inherits this resumed run's runtime.
+  const scope: ToolCallScope = {
+    runtime: { ...executeOptions, approvalStore: ctx.approvalStore },
+    toolCallId: pending.toolCallId,
+    execute: ctx.execute,
+  };
+  return { message: await runApproved(pending, ctx.toolRegistry, scope) };
 }
 
 /**
@@ -196,7 +236,8 @@ async function runApprovedToolCall(
   snapshot: ExecutionSnapshot,
   messages: Message[],
   toolRegistry: ToolRegistry,
-  executeOptions: ResumeExecuteOptions
+  executeOptions: ResumeExecuteOptions,
+  scope?: ToolCallScope
 ): Promise<Message> {
   const toolDesc = toolRegistry.get(pending.toolName);
   // A `requiresSandbox` tool may have no `tool.execute` implementation at
@@ -235,7 +276,7 @@ async function runApprovedToolCall(
     await hooks.runPreToolCall(hookCtx);
   }
 
-  const { result, toolError } = await executeApprovedTool(pending, toolDesc, hookArgs, executeOptions);
+  const { result, toolError } = await executeApprovedTool(pending, toolDesc, hookArgs, executeOptions, scope);
 
   // Fires (with the settled result/error) regardless of how the tool
   // settled - matching AgentHook.postToolCall's documented contract
@@ -270,7 +311,8 @@ async function executeApprovedTool(
   pending: PendingApproval,
   toolDesc: ToolDescriptor,
   args: Record<string, unknown>,
-  executeOptions: ResumeExecuteOptions
+  executeOptions: ResumeExecuteOptions,
+  scope?: ToolCallScope
 ): Promise<{ result: unknown; toolError?: string }> {
   try {
     // Mirrors AgentExecutor.executeToolCall()'s fail-closed handling of
@@ -285,7 +327,8 @@ async function executeApprovedTool(
         toolDesc,
         args,
         sandbox,
-        executeOptions.signal
+        executeOptions.signal,
+        scope
       ),
     };
   } catch (error) {

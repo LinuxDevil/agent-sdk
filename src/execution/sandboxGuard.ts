@@ -21,6 +21,7 @@
 import type { ToolExecutionOptions } from 'ai';
 import { ToolDescriptor } from '../types';
 import { SandboxAdapter } from '../security/sandboxCore';
+import { bindToolCallScope, type ToolCallScope } from './subagentRuntime';
 
 /**
  * Execute `toolDesc` against `args`, honoring `requiresSandbox`:
@@ -46,7 +47,8 @@ export async function executeToolWithSandboxGuard(
   toolDesc: ToolDescriptor,
   args: Record<string, unknown>,
   sandbox: SandboxAdapter,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  scope?: ToolCallScope
 ): Promise<unknown> {
   if (toolDesc.requiresSandbox) {
     if (!toolDesc.sandboxExecute) {
@@ -63,5 +65,7 @@ export async function executeToolWithSandboxGuard(
   // The 'ai' SDK types toolCallId/messages as required, but tools invoked
   // here are not part of an 'ai' SDK generation, so only abortSignal is set.
   const executeOptions = { abortSignal: signal } as ToolExecutionOptions;
+  // LOU-Y1: lets a delegate/`task` tool's sub-agent inherit from this run.
+  bindToolCallScope(executeOptions, scope);
   return toolDesc.tool.execute ? toolDesc.tool.execute(args, executeOptions) : null;
 }

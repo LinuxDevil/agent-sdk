@@ -62,6 +62,9 @@ export * from './projectInstructions';
 // Skills: progressive disclosure of instructions (LOU-Y2)
 export * from './skills';
 
+// Sub-agents: the `subagents` option and its `task` tool (LOU-Y3)
+export * from './subagents';
+
 // Declarative agent spec file format (LOU-H9)
 export * from './spec';
 

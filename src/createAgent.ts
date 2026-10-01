@@ -29,6 +29,9 @@ import type { Message } from './providers/llm';
 import { AgentSession, type SessionOptions } from './session/AgentSession';
 import { loadProjectInstructions } from './projectInstructions';
 import { basename } from 'node:path';
+import type { Subagents } from './subagents/types';
+import { assertMaxSubagentDepth, assertNoTaskTool, assertSubagents, registerSubagent } from './subagents/withSubagents';
+import type { SubagentSpec } from './execution/delegation';
 
 /**
  * Options for createAgent() that do not depend on how the instructions and
@@ -56,6 +59,37 @@ export interface CreateAgentBase {
   skills?: readonly Skill[];
   /** Optional agent name; defaults to 'agent'. */
   name?: string;
+  /**
+   * What this agent does, in a sentence (LOU-Y3). Required when the agent is
+   * used as a sub-agent: the lead model reads it to decide which sub-agent
+   * gets a task.
+   *
+   * @example
+   * ```ts
+   * const researcher = createAgent({ instructions: 'You research...', description: 'Finds and summarizes sources', provider });
+   * ```
+   */
+  description?: string;
+  /**
+   * Sub-agents this agent can delegate to (LOU-Y3): `createAgent()` agents
+   * keyed by name (each with a `description`), or a `{ list, resolve }`
+   * catalog. Registers one `task` tool and lists the sub-agents in the system
+   * prompt. Each sub-agent sees only the task prompt and runs with its own
+   * instructions, model and tools. Several `task` calls in one turn run in
+   * parallel. See docs/sub-agents.md.
+   *
+   * @example
+   * ```ts
+   * const lead = createAgent({ instructions: 'You coordinate...', provider, subagents: { researcher, writer } });
+   * ```
+   */
+  subagents?: Subagents;
+  /**
+   * How deep sub-agents may nest. Defaults to 1: this agent's sub-agents
+   * cannot call sub-agents of their own (they are not offered the `task`
+   * tool). The top-level agent's value applies to the whole tree.
+   */
+  maxSubagentDepth?: number;
   /** Optional maxSteps passed through to AgentExecutor.execute(). */
   maxSteps?: number;
   /**
@@ -196,6 +230,8 @@ export interface SimpleAgent {
  */
 export function createAgent(config: CreateAgentConfig = {}): SimpleAgent {
   assertToolConcurrency(config.toolConcurrency, 'createAgent');
+  assertMaxSubagentDepth(config.maxSubagentDepth, 'createAgent');
+  assertSubagents(config.subagents, 'createAgent');
   const instructions = withProjectInstructions(resolveInstructions(config), config.projectInstructions);
   const provider = resolveModelSource(config);
 
@@ -209,25 +245,29 @@ export function createAgent(config: CreateAgentConfig = {}): SimpleAgent {
   // With an explicit provider, `model` is a per-agent model setting.
   if (config.provider && config.model) builder.setSettings({ model: config.model });
   const agent = builder.build();
+  if (config.subagents) assertNoTaskTool(agent, toolRegistry);
 
+  const spec: SubagentSpec = {
+    agent,
+    provider,
+    toolRegistry,
+    skills: config.skills,
+    subagents: config.subagents,
+    maxSubagentDepth: config.maxSubagentDepth,
+    maxSteps: config.maxSteps,
+    toolConcurrency: config.toolConcurrency,
+  };
   const run = (input: string | Message[], signal?: AbortSignal): Promise<ExecutionResult> =>
-    AgentExecutor.execute({
-      agent,
-      input,
-      provider,
-      toolRegistry,
-      skills: config.skills,
-      maxSteps: config.maxSteps,
-      toolConcurrency: config.toolConcurrency,
-      signal,
-    });
+    AgentExecutor.execute({ ...spec, input, signal });
 
-  return {
+  const simpleAgent: SimpleAgent = {
     async send(message: string, options: SendOptions = {}): Promise<ExecutionResult> {
       return run(message, options.signal);
     },
     session: (options?: SessionOptions) => new AgentSession(run, options),
   };
+  registerSubagent(simpleAgent, { spec, description: config.description });
+  return simpleAgent;
 }
 
 /** Appends the nearest AGENTS.md / CLAUDE.md to `instructions` when `projectInstructions` is set. */

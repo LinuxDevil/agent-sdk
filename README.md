@@ -26,7 +26,7 @@ dashboard — any provider, any deploy target, no lock-in.
 - **Project instructions** — `createAgent({ projectInstructions: true })` appends the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (opt-in)
 - **Parallel tool calls** — when the model asks for several tools in one turn they run concurrently (cap it with `toolConcurrency`, or `1` for sequential), and results still reach the transcript in the model's call order
 - **Skills** — `defineSkill()` / `loadSkills('./skills')`: only each skill's name and description sit in the system prompt; the model loads the full markdown on demand through an auto-registered `load_skill` tool
-- **Multi-agent delegation** — wrap a child agent as a tool with `createDelegateTool()`, with a `maxDepth` guard against delegation loops
+- **Sub-agents** — `createAgent({ subagents: { researcher, writer } })` gives the lead one `task` tool: each sub-agent runs on the task prompt alone (isolated context) with its own instructions, model and tools, several tasks in one turn run in parallel, and sub-agents inherit the lead run's abort signal, hooks, tracing, approvals and events (`maxSubagentDepth`, dynamic `{ list, resolve }` catalogs; `createDelegateTool()` for a single hand-wired child) — see [Sub-agents](docs/sub-agents.md)
 - **Pre/post hooks** — a `HookRegistry` of `AgentHook`s that can inspect or mutate a tool call/LLM generate step, or throw to abort it, run sandboxed by Agent Forge's hook editor
 - **Guardrails** — fail-closed, concurrently-run checks (secret scan, diff size, test/lint commands) that gate a fixer agent's patch before it's used
 - **Workspace tools** — `createFsTools()` (`read_file`, `write_file`, `edit_file`, `list_dir`, `glob`, `grep`) and `createShellTool()` over pluggable `FsProvider`/`ShellProvider` backends (`NodeWorkspace`, `MemoryWorkspace`, Docker-backed `SandboxShell`), with paths confined to the workspace root (symlinks included) and shell commands approval-gated by default — see [Workspace tools](docs/workspace-tools.md)
@@ -231,6 +231,7 @@ console.log(session.id, session.messages.length);
 - [Testing](docs/testing.md) - unit-test agents deterministically with the scripted `mockModel`
 - [Sessions](docs/sessions.md) - multi-turn conversations: `agent.session()`, `MemorySessionStore`, `FileSessionStore`
 - [Skills](docs/skills.md) - on-demand instructions: `defineSkill()`, `loadSkills()`, how they save context
+- [Sub-agents](docs/sub-agents.md) - the `subagents` option and its `task` tool, what sub-agents inherit, approvals inside sub-agents
 - [Agent Forge](docs/agent-forge.md) - the visual dashboard (`loushy studio`): quickstart, first-agent walkthrough, hook authoring
 - Full guides site: [linuxdevil.github.io/agent-sdk-docs](https://linuxdevil.github.io/agent-sdk-docs/)
 
@@ -385,10 +386,27 @@ await AgentExecutor.execute({ agent, input, provider, sessionId: 'session-123', 
 await AgentExecutor.execute({ agent, input: 'continue', provider, sessionId: 'session-123', checkpointStore });
 ```
 
-### Multi-agent delegation
+### Sub-agents and delegation
 
-Wrap a child `AgentConfig` as a tool so a parent agent can delegate a task to
-it, running the child through `AgentExecutor.execute()` under the hood:
+Give a lead agent named sub-agents; it delegates with one auto-registered
+`task` tool, and each sub-agent sees only the task prompt:
+
+```typescript
+import { createAgent } from '@loushy/build-ai-agent';
+
+const researcher = createAgent({ provider, instructions: 'You research.', description: 'Finds and summarizes sources' });
+const writer = createAgent({ provider, instructions: 'You write.', description: 'Turns notes into an article' });
+
+const lead = createAgent({ provider, instructions: 'You coordinate.', subagents: { researcher, writer } });
+const { text } = await lead.send('Write a short article about bicycles.');
+```
+
+See [Sub-agents](docs/sub-agents.md) for catalogs, depth limits and how hooks,
+tracing and approvals carry into sub-agents.
+
+To wire one child `AgentConfig` as a tool yourself, use `createDelegateTool()`
+(it runs the child through `AgentExecutor.execute()` and inherits the parent
+run the same way):
 
 ```typescript
 import { AgentExecutor, createDelegateTool, ToolRegistry, AgentType } from '@loushy/build-ai-agent';
@@ -602,7 +620,7 @@ npm run pipeline:demo:trigger   # POSTs a synthetic error to kick it off
 
 - **`resumeAfterApproval()`**, **`StorageServiceApprovalStore`** - human-in-the-loop
 - **`LocalStorageCheckpointStore`** - durable execution
-- **`createDelegateTool()`** - multi-agent delegation
+- **`createDelegateTool()`** - delegate to one child agent through a tool (see `subagents` for named sub-agents)
 - **`runGuardrails()`**, **`secretScanGuardrail`**, **`createDiffSizeGuardrail()`**, **`createCommandGuardrail()`** - guardrails
 - **`withSpan()`**, **`TraceExporter`** - tracing
 - **`defineEval()`**, **`exactMatch`**, **`toolCallOrder`**, **`budget`**, **`llmJudge()`** - evals
