@@ -1088,6 +1088,7 @@ result; `preToolCall` hooks are skipped because there is no valid call):
   "error": "ToolArgumentsValidationError",
   "toolName": "sendEmail",
   "message": "Invalid arguments for tool 'sendEmail': 2 issues (to: Required; count: Expected number, received string)",
+  "kind": "validation",
   "issues": [
     { "path": "to", "message": "Required" },
     { "path": "count", "message": "Expected number, received string" }
@@ -1103,8 +1104,12 @@ the tool name and the message only (never a stack trace). Messages are capped
 at 2,000 characters and end with `... (truncated)` when cut:
 
 ```json
-{ "error": "TypeError", "toolName": "search", "message": "query must not be empty" }
+{ "error": "TypeError", "toolName": "search", "message": "query must not be empty", "kind": "execution" }
 ```
+
+Every other failure (unknown tool, rejected approval, a call that was not run,
+an MCP error, a refused sandboxed tool) uses the same `{ error, toolName,
+message, kind }` shape; see [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#errors) for the `kind` values.
 
 Errors extending `PropagatingToolError` (for example the delegation depth
 guard) are the exception: they are rethrown and abort the run instead of being
@@ -5273,8 +5278,8 @@ descriptors that set neither `inputSchema` nor `execute`.
   the model gets a structured `ToolArgumentsValidationError` result and can
   retry.
 - **Errors are results.** A tool that throws gives the model
-  `{ error, toolName, message }` (no stack trace) and the run continues. See
-  [Tool errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#tool-errors) for the exact shapes.
+  `{ error, toolName, message, kind }` (no stack trace) and the run continues.
+  See [Errors](#errors).
 - **Parallel calls.** Several calls in one model turn run concurrently; cap
   them with `toolConcurrency` (`1` for strictly sequential). Results reach the
   transcript in the model's call order. See
@@ -5284,6 +5289,37 @@ descriptors that set neither `inputSchema` nor `execute`.
 - **Retries after a crash.** With durable execution a tool can run more than
   once across a crash; use `ctx.toolCallId` as an idempotency key. See
   [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#at-least-once-tools-make-side-effects-idempotent).
+
+## Errors
+
+Every way a tool call can fail reaches the model as the same result, so one
+check works everywhere (including the call that runs after an approval):
+
+```json
+{ "error": "TypeError", "toolName": "search", "message": "query must not be empty", "kind": "execution" }
+```
+
+- `error`: the error's name (`TypeError`, `ToolArgumentsValidationError`, ...), or the kind's default name for a failure that is not a thrown error.
+- `toolName` and `message`: the message only, never a stack, capped at 2,000 characters (`... (truncated)` marks a cut).
+- `kind`: why the call failed.
+- Some kinds add fields: `issues` for `validation`, `note` for `rejected`.
+
+The transcript message carries `isError: true`; `tool-result` events, `onToolResult`, `postToolCall` hooks and `tool.error` events see the call as failed.
+
+| `kind` | `error` | When |
+| ------ | ------- | ---- |
+| `execution` | the thrown error's name | `execute` (or `needsApproval`) threw. |
+| `validation` | `ToolArgumentsValidationError` | The arguments did not match `inputSchema`; `execute` did not run. Adds `issues`. |
+| `not-found` | `ToolNotFoundError` | The model called a tool the registry does not have (or the run has no registry). |
+| `rejected` | `ToolRejectedError` | A reviewer rejected the call at an approval. Adds `note` when given. |
+| `not-run` | `ToolNotRunError` | The call was never started (a resumed run whose approval was saved without its remaining calls). |
+| `mcp` | `McpToolError` | An MCP server answered `isError: true`; `message` is the server's text. |
+| `sandbox` | `SandboxRequiredError` | The tool has `requiresSandbox` but no `sandboxExecute`, so it was refused rather than run unsandboxed. |
+
+`toolErrorResult({ toolName, error, kind?, toolCallId?, details? })` builds this
+result; use it in your own tool wrappers so they match. A thrown error can pick
+its kind by carrying a `toolErrorKind` property. An error extending
+`PropagatingToolError` is not a result: it aborts the run.
 
 ## Built-in tools
 

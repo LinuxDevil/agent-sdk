@@ -244,7 +244,7 @@ describe('Execution - resumeAfterApproval', () => {
     const toolMessage = resumed.messages[paused.messages.length];
     expect(toolMessage.role).toBe('tool');
     const parsed = JSON.parse(toolMessage.content);
-    expect(parsed.error).toBe('payment gateway timeout');
+    expect(parsed).toEqual({ error: 'Error', toolName: 'chargeCard', message: 'payment gateway timeout', kind: 'execution' });
     expect(toolMessage.isError).toBe(true);
   });
 

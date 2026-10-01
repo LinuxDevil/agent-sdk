@@ -408,6 +408,7 @@ result; `preToolCall` hooks are skipped because there is no valid call):
   "error": "ToolArgumentsValidationError",
   "toolName": "sendEmail",
   "message": "Invalid arguments for tool 'sendEmail': 2 issues (to: Required; count: Expected number, received string)",
+  "kind": "validation",
   "issues": [
     { "path": "to", "message": "Required" },
     { "path": "count", "message": "Expected number, received string" }
@@ -423,8 +424,12 @@ the tool name and the message only (never a stack trace). Messages are capped
 at 2,000 characters and end with `... (truncated)` when cut:
 
 ```json
-{ "error": "TypeError", "toolName": "search", "message": "query must not be empty" }
+{ "error": "TypeError", "toolName": "search", "message": "query must not be empty", "kind": "execution" }
 ```
+
+Every other failure (unknown tool, rejected approval, a call that was not run,
+an MCP error, a refused sandboxed tool) uses the same `{ error, toolName,
+message, kind }` shape; see [Errors](./tools.md#errors) for the `kind` values.
 
 Errors extending `PropagatingToolError` (for example the delegation depth
 guard) are the exception: they are rethrown and abort the run instead of being
