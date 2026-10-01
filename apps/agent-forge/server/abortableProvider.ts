@@ -43,10 +43,17 @@
  */
 import type { LLMProvider, GenerateOptions, GenerateResult, StreamResult } from '@loushy/build-ai-agent';
 
+/**
+ * Named `AbortError` (the fetch/AbortSignal convention) on purpose: the SDK's
+ * AgentExecutor rethrows an `AbortError` from provider.generate() untouched
+ * (see `isAbortError()` in src/execution/errors.ts) instead of compacting it
+ * into a `CompactedLLMProviderError`, which is what lets runRegistry.ts's
+ * `instanceof RunAbortedError` check recognise a user-initiated stop().
+ */
 export class RunAbortedError extends Error {
   constructor() {
     super('Run was stopped');
-    this.name = 'RunAbortedError';
+    this.name = 'AbortError';
   }
 }
 

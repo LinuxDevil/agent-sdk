@@ -12,6 +12,7 @@ import { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGat
 import { CheckpointStore } from './checkpoint';
 import { TraceExporter, withSpan } from './tracing';
 import { HookRegistry } from './hooks';
+import { isAbortError } from './errors';
 import { ToolCallOutcome, parseToolArguments, runToolCall } from './toolCallExecution';
 import {
   buildTools,
@@ -414,6 +415,12 @@ export class AgentExecutor {
     try {
       return await generateInSpan(options, generateRequest, state.messages, agentSpanId);
     } catch (generateError) {
+      // A cancellation is not a provider failure: rethrow it untouched so
+      // the caller that aborted still sees its own error (see isAbortError()).
+      if (isAbortError(generateError)) {
+        throw generateError;
+      }
+
       const { compacted, error: compactedError } = compactGenerateError(
         generateError,
         options.provider.name
