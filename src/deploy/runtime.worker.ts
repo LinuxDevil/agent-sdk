@@ -58,6 +58,13 @@ import { AgentSpec } from '../spec/schema';
 import { createAgent, SimpleAgent } from '../createAgent';
 import { memoryStore, AgentStore } from '../storage/agentStore';
 import { serveFetch } from '../server/fetchRoutes';
+import {
+  handleScheduled,
+  logScheduleFailure,
+  type ScheduledContext,
+  type ScheduledController,
+} from '../schedules/scheduled';
+import { specSchedules } from '../schedules/specSchedules';
 import { CHECKPOINT_KV_BINDING } from './checkpointBinding';
 import { KVBinding } from './kvCheckpointStore';
 import { KVStore } from './kvStore';
@@ -161,4 +168,28 @@ export function handleWorkerRequest(request: Request, env: WorkerEnv, spec: Agen
   let agent: SimpleAgent | undefined;
   const chat = { name: 'loushy worker', agent: () => (agent ??= workerAgent(spec, env)), durableMessage: true };
   return serveFetch(request, chat, typeof token === 'string' && token ? token : undefined);
+}
+
+export { handleScheduled } from '../schedules/scheduled';
+export type { ScheduledContext, ScheduledController } from '../schedules/scheduled';
+
+/**
+ * The Worker's `scheduled()` handler: runs the spec's `{ type: 'cron' }`
+ * triggers whose expression is `controller.cron` as agent turns (session
+ * `schedule:<name>`, in the KV store when bound) inside `ctx.waitUntil`. Never
+ * throws: a failure is logged with `console.error` and the schedule name.
+ */
+export function handleWorkerScheduled(
+  controller: ScheduledController,
+  env: WorkerEnv,
+  ctx: ScheduledContext,
+  spec: AgentSpec
+): Promise<void> {
+  try {
+    const schedules = specSchedules(spec.triggers);
+    return schedules.length === 0 ? Promise.resolve() : handleScheduled(workerAgent(spec, env), schedules, controller, ctx);
+  } catch (error) {
+    logScheduleFailure(controller.cron, error);
+    return Promise.resolve();
+  }
 }

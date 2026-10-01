@@ -1,6 +1,7 @@
 import type { SimpleAgent } from '../createAgent';
 import { parseCronExpression } from '../triggers/cronExpression';
 import type { DefinedSchedule } from './defineSchedule';
+import { fireSchedule, scheduleName } from './fireSchedule';
 
 /** setTimeout stores its delay in a signed 32-bit int; longer waits are chained. */
 const MAX_DELAY_MS = 2 ** 31 - 1;
@@ -25,11 +26,6 @@ function defaultSetTimer(fn: () => void, ms: number): () => void {
   return () => clearTimeout(timer);
 }
 
-async function fire(agent: SimpleAgent, schedule: DefinedSchedule, name: string, firedAt: Date): Promise<void> {
-  if (schedule.run) await schedule.run({ agent, firedAt, name });
-  else await agent.send(schedule.prompt as string);
-}
-
 /** One schedule's loop: one timer, always set to the next fire; a fire never overlaps its own previous one. */
 function startOne(agent: SimpleAgent, schedule: DefinedSchedule, name: string, options: Required<StartSchedulesOptions>): () => void {
   const cron = parseCronExpression(schedule.cron, schedule.timezone);
@@ -47,7 +43,7 @@ function startOne(agent: SimpleAgent, schedule: DefinedSchedule, name: string, o
       arm();
       if (running) return options.onError(new Error(`schedule '${name}' skipped: its previous run is still going`), { name });
       running = true;
-      fire(agent, schedule, name, new Date(target))
+      fireSchedule(agent, schedule, name, new Date(target))
         .catch((error: unknown) => options.onError(error, { name }))
         .finally(() => (running = false));
     }, Math.min(Math.max(0, target - options.now()), MAX_DELAY_MS));
@@ -82,6 +78,6 @@ export function startSchedules(
     setTimer: options.setTimer ?? defaultSetTimer,
     onError: options.onError ?? ((error, { name }) => console.error(`[loushy schedule] '${name}':`, error)),
   };
-  const stops = schedules.map((s, i) => startOne(agent, s, s.name ?? `schedule-${i + 1}`, resolved));
+  const stops = schedules.map((s, i) => startOne(agent, s, scheduleName(s, i), resolved));
   return { stop: () => stops.forEach((stop) => stop()) };
 }

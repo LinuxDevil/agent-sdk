@@ -69,4 +69,37 @@ const running = startSchedules(agent, schedules);
 
 `createDeployedServer(agent, { schedules })` (the server of the `node-server`
 and `docker` targets) starts the schedules when it listens and stops them when it
-closes. The Cloudflare Worker target does not run schedules yet.
+closes.
+
+## On Cloudflare Workers
+
+A Worker has no long-lived process, so no timers: Cloudflare calls the Worker's
+`scheduled()` handler once per cron expression listed under `[triggers] crons`
+in `wrangler.toml`. The `cloudflare-worker` target generates both from the
+`triggers` of the agent spec:
+
+```yaml
+triggers:
+  - type: cron
+    name: weekly-report      # optional, default cron-1, cron-2, ...
+    cron: "0 9 * * MON"      # five fields, UTC
+    input: Summarise last week.
+```
+
+`loushy build` writes the deduplicated expressions to `[triggers] crons` and the
+Worker's `scheduled()` runs every trigger whose `cron` equals the invoked one as
+an agent turn inside `ctx.waitUntil()`. Each trigger has its own session,
+`schedule:<name>`, so its runs are inspectable in the KV session store when
+`AGENT_CHECKPOINTS` is bound (`GET /chat/schedule:weekly-report`, URL-encoded).
+A failing trigger is logged with `console.error` (name and error code) and never
+stops the others, and `scheduled()` never throws.
+
+Cloudflare's cron triggers differ from the in-process ones, so the build fails
+with `LOUSHY_SCHEDULE_INVALID` naming the trigger instead of emitting a config
+that deploys and never fires: expressions are UTC (no `timezone`), exactly five
+fields (no seconds, no `@daily`), and the day-of-week must be `*` or names
+(`MON-FRI`), because Cloudflare numbers days 1-7 from Sunday. The finest
+granularity is one minute, and Cloudflare may start a run a few seconds late.
+
+To wire your own Worker entry, see
+[Cloudflare Worker](deployment.md#cron-triggers-and-handlescheduled).
