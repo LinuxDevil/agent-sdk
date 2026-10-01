@@ -68,6 +68,7 @@ import {
 } from './agentRunState';
 import { AgentRun, RUN_EVENTS, StreamingExecuteOptions, runEventsOf, startAgentRun } from './agentRun';
 import { OutputError, outputInstruction, outputRepairMessage, validateOutput } from './structuredOutput';
+import type { PermissionOptions } from './permissions';
 
 export { PropagatingToolError } from './propagatingToolError';
 
@@ -150,7 +151,7 @@ export interface ExecutionEvent {
 /**
  * Execution options
  */
-export interface ExecuteOptions {
+export interface ExecuteOptions extends PermissionOptions {
   agent: AgentConfig;
   input: string | Message[];
   provider: LLMProvider;

@@ -51,6 +51,73 @@ approval stops the batch: the calls before it run, the run pauses on it, and
 the calls after it run once it is decided (see
 [Approvals in the middle of a tool batch](./durable-execution.md#approvals-in-the-middle-of-a-tool-batch)).
 
+## Permission policies
+
+`permissions` sets rules for the whole agent instead of tool by tool: a list of
+`{ tool, when?, action, reason? }` rules, checked in order for every tool call
+before the tool's own `needsApproval`. The first rule that matches decides:
+
+- `allow` runs the call, without approval even if `needsApproval` would ask.
+- `deny` does not run it. The model gets a tool error with `kind: 'denied'`
+  and the rule's `reason` (see [Tool errors](./tools.md)), and streams see
+  `tool.error`.
+- `ask` pauses the run for approval, exactly like `needsApproval` (or asks the
+  `approve` callback).
+
+When no rule matches, the tool's own `needsApproval` decides, as before.
+`tool` is a name, a list of names, a `RegExp` tested against the name, or
+`'*'` for every tool. `when` narrows a rule to some calls: it gets the
+validated arguments (after `preToolCall` hooks) and `{ toolName, toolCallId,
+sessionId }`, and may be async; when it throws, the call fails with that
+error. `allow(tools)`, `deny(tools, reason?)` and `ask(tools)` build the
+common rules.
+
+```ts
+import { allow, ask, createAgent, defineTool, deny, type PermissionRule } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+
+const shell = defineTool({
+  name: 'shell',
+  description: 'Run a shell command',
+  input: z.object({ command: z.string() }),
+  execute: async ({ command }) => `ran ${command}`,
+});
+
+const noDeletes: PermissionRule = {
+  tool: 'shell',
+  when: (args) => /\brm\b/.test(String(args.command)),
+  action: 'deny',
+  reason: 'Deleting files is not allowed',
+};
+
+const agent = createAgent({
+  provider,
+  instructions: 'You are a coding assistant.',
+  tools: [shell],
+  permissions: [
+    noDeletes, // first match wins: this beats the `ask` below
+    allow(/^read_/), // read-only tools never pause
+    deny('delete_file', 'Use the trash tool instead'),
+    ask(['shell', 'write_file']),
+  ],
+  onPermissionDecision: (entry) => console.log(entry.at, entry.toolName, entry.decision, entry.rule?.reason),
+});
+```
+
+`onPermissionDecision` is the audit log: it is called once per tool call
+(except calls already refused for invalid arguments) with
+`{ toolName, toolCallId, decision, rule?, args?, at }`. `decision` is the
+matching rule's action or `'default'` when none matched, `rule` is that rule's
+`{ index, reason? }`, `at` is an ISO timestamp, and `args` is left out when the
+run sets `redactContent`. Streams get the same entry as a `permission.decision`
+event (see [Streaming](./streaming.md)). Both are only produced when the agent
+sets `permissions` or `onPermissionDecision`.
+
+Both options also exist on `AgentExecutor.execute()` / `stream()` and
+`resumeAfterApproval()`. Sub-agents inherit the lead agent's rules, checked
+before the sub-agent's own, and report their decisions to the lead's
+`onPermissionDecision`.
+
 ## `createAgent()` agents
 
 - A paused `send()` resolves (it does not throw) with

@@ -10,6 +10,7 @@
 import type { ExecutionFinishReason } from './AgentExecutor';
 import type { SubagentInfo } from './hooks';
 import type { CompactedProviderErrorCategory } from './errors';
+import type { PermissionDecisionEntry } from './permissions';
 
 /**
  * Version of the {@link AgentEvent} schema, carried on every event as `v`.
@@ -129,6 +130,14 @@ export interface ApprovalRequestedEvent extends AgentEventBase<'approval.request
   args: Record<string, unknown>;
 }
 
+/**
+ * LOU-X2: how a tool call's permission was decided - by the first matching
+ * rule of `permissions` (`allow`, `deny`, `ask`) or `'default'` when none
+ * matched. Emitted after `tool.start` when the run sets `permissions` or
+ * `onPermissionDecision`; carries the same audit entry `onPermissionDecision` gets.
+ */
+export interface PermissionDecisionEvent extends AgentEventBase<'permission.decision'>, PermissionDecisionEntry {}
+
 /** A step ends. Every `step.start` is followed by exactly one `step.done`. */
 export interface StepDoneEvent extends AgentEventBase<'step.done'> {
   step: number;
@@ -216,6 +225,7 @@ export type AgentEvent =
   | ToolDoneEvent
   | ToolErrorEvent
   | ApprovalRequestedEvent
+  | PermissionDecisionEvent
   | StepDoneEvent
   | AgentErrorEvent
   | ProviderRetryEvent
@@ -249,6 +259,7 @@ const EVENT_TYPES: ReadonlySet<string> = new Set<AgentEventType>([
   'tool.done',
   'tool.error',
   'approval.requested',
+  'permission.decision',
   'step.done',
   'error',
   'provider.retry',
