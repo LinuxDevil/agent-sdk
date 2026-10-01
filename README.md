@@ -28,6 +28,7 @@ dashboard — any provider, any deploy target, no lock-in.
 - **Pre/post hooks** — a `HookRegistry` of `AgentHook`s that can inspect or mutate a tool call/LLM generate step, or throw to abort it, run sandboxed by Agent Forge's hook editor
 - **Guardrails** — fail-closed, concurrently-run checks (secret scan, diff size, test/lint commands) that gate a fixer agent's patch before it's used
 - **MCP client** — `loadMcpTools()` turns any Model Context Protocol server's tools into `ToolDescriptor`s
+- **MCP server** — `serveMcp({ agent, name })` (or `loushy mcp agent.yaml`) exposes an agent as an MCP tool for Claude Code, Cursor and other agents
 - **Sandboxed tools** — opt a tool into `requiresSandbox` to route it through a Docker-backed `SandboxAdapter` instead of in-process
 - **Tracing & evals** — `withSpan()`/`TraceExporter` (with an OpenTelemetry bridge at `/otel`) for observability, and `defineEval()` for agent-behavior regression tests under `vitest`
 - **Any provider, any deploy target** — OpenAI, Anthropic, Ollama, OpenRouter, or a deterministic mock provider for tests; `loushy build` ships to a Node server, Docker, or Cloudflare Workers

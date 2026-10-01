@@ -58,6 +58,67 @@ const agent = createAgent({ prompt: '...', provider, tools });
 `loadMcpTools` is also available from the package root and from
 `@loushy/build-ai-agent/tools`.
 
+### Serve an agent over MCP
+
+`serveMcp()` is the reverse of `loadMcpTools()`: it exposes an agent (and,
+optionally, some of its tools) as an MCP server, so Claude Code, Cursor and
+other MCP clients can call it.
+
+```ts
+import { createAgent, defineTool } from '@loushy/build-ai-agent';
+import { serveMcp } from '@loushy/build-ai-agent/mcp';
+import { z } from 'zod';
+
+const searchDocs = defineTool({
+  name: 'search_docs',
+  description: 'Search the docs',
+  input: z.object({ query: z.string() }),
+  execute: ({ query }) => `results for ${query}`,
+});
+
+const supportAgent = createAgent({ prompt: 'You answer support questions.', provider, tools: [searchDocs] });
+
+const server = await serveMcp({
+  agent: supportAgent,            // exposed as ONE tool taking { message: string }
+  name: 'support-bot',            // server name; the tool name defaults to a sanitized version
+  description: 'Ask the support agent a question',
+  tools: [searchDocs],            // optional: also expose these tools directly
+  transport: { type: 'http', port: 3920, host: '127.0.0.1', path: '/mcp' }, // default: 'stdio'
+});
+await server.close();
+```
+
+- **Stateless.** Every call to the agent tool is a fresh conversation.
+- **Cancellation.** Cancelling the MCP request aborts the agent run
+  (`agent.send(message, { signal })`).
+- **Errors.** An agent failure comes back as an MCP result with `isError: true`.
+- **Approvals.** Approval-gated tools cannot be approved over MCP. A run that
+  pauses for approval returns `isError: true` with a message saying so. Tools
+  flagged `needsApproval` are not exposed directly unless you pass
+  `allowApprovalTools: true`; if you do, clients run them with **no human gate**.
+- **stdio.** Nothing but the MCP protocol is written to stdout; warnings go to stderr.
+- **HTTP.** Binds `127.0.0.1` by default. Add `auth: { type: 'bearer', token }`
+  to require an `Authorization: Bearer` header; binding a non-loopback host
+  without `auth` logs a warning.
+
+From the command line, `loushy mcp` serves an agent spec file (stdio by default):
+
+```sh
+npx loushy mcp agent.yaml
+npx loushy mcp agent.yaml --http --port 3920 --host 127.0.0.1
+```
+
+To use it from an MCP client, add it to the client's MCP config (for example
+`.mcp.json` for Claude Code):
+
+```json
+{
+  "mcpServers": {
+    "support-bot": { "command": "npx", "args": ["loushy", "mcp", "agent.yaml"] }
+  }
+}
+```
+
 ## Provider credentials
 
 Real providers are resolved by `resolveProvider('<provider>/<model>')`
