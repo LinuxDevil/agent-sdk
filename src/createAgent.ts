@@ -22,7 +22,6 @@ import { LLMProvider } from './providers/llm';
 import { ToolRegistry } from './tools/ToolRegistry';
 import { ToolDescriptor } from './types';
 import type { DefinedTool } from './tools/defineTool';
-import type { Skill } from './skills/defineSkill';
 
 /**
  * Configuration for createAgent(). Tools are keyed by the name the agent
@@ -42,15 +41,6 @@ export interface CreateAgentConfig {
    * createAgent({ prompt: '...', provider, tools: [sendEmail] });
    */
   tools?: readonly DefinedTool[] | Record<string, ToolDescriptor>;
-  /**
-   * Optional skills (LOU-Y2): only name + description go in the system
-   * prompt; the model loads a skill's full content with the auto-registered
-   * `load_skill` tool. Build them with `defineSkill()` or `loadSkills()`.
-   *
-   * @example
-   * createAgent({ prompt: '...', provider, skills: await loadSkills('./skills') });
-   */
-  skills?: readonly Skill[];
   /** Optional agent name; defaults to 'agent'. */
   name?: string;
   /** Optional maxSteps passed through to AgentExecutor.execute(). */
@@ -101,7 +91,6 @@ export function createAgent(config: CreateAgentConfig): SimpleAgent {
         input: message,
         provider: config.provider,
         toolRegistry,
-        skills: config.skills,
         maxSteps: config.maxSteps,
         signal: options.signal,
       });

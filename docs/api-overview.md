@@ -19,13 +19,6 @@ npm run docs:build   # writes docs/api/index.html
 | `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
 
-### Skills
-
-Pass `skills: [defineSkill({ name, description, content }), ...(await loadSkills(dir))]` to
-`createAgent()` or `AgentExecutor.execute()`: only names and descriptions go in
-the system prompt and the model loads bodies through an auto-registered
-`load_skill` tool. See [Skills](./skills.md).
-
 ### Cancellation
 
 Pass an `AbortSignal` to stop a run: `agent.send(input, { signal })`,
@@ -132,6 +125,49 @@ import { loadMcpTools } from '@loushy/build-ai-agent/mcp';
 const tools = await loadMcpTools(mcpClient, 'my-server');
 ```
 
+**Schema support.** Each tool's JSON Schema `inputSchema` is converted to a
+zod schema, and the model's arguments are validated against it before the
+server is called. The converter handles `type` (including arrays such as
+`["string", "null"]`), `enum` with mixed types, `const`, `anyOf` / `oneOf`
+(a union; `anyOf: [X, { type: "null" }]` becomes `X.nullable()`), `allOf`
+(merge / intersection), local `$ref` into `$defs` / `definitions`,
+`properties` / `required`, `additionalProperties` (boolean or schema), `items`,
+`default`, and the constraints `minimum`, `maximum`, `exclusiveMinimum`,
+`exclusiveMaximum`, `minLength`, `maxLength`, `pattern`, `minItems` and
+`maxItems`. Where JSON Schema is ambiguous the conversion is permissive:
+unknown keywords, empty schemas, tuple `items` and unresolvable refs become
+`z.any()`, a recursive `$ref` is expanded once and `z.any()` is used for the
+inner occurrence, an invalid `pattern` regex is skipped, and objects keep
+extra properties unless `additionalProperties` is `false`. The converter never
+throws on schema content.
+
+**Skipped tools.** If one tool still cannot be converted, only that tool is
+skipped; the rest of the server's tools load. Pass a `logger` to receive a
+warning naming the server, the tool and the reason, and `onSkip` to collect
+what was left out:
+
+```ts
+import { loadMcpTools, type SkippedMcpTool } from '@loushy/build-ai-agent/mcp';
+
+const skipped: SkippedMcpTool[] = [];
+const tools = await loadMcpTools(mcpClient, 'my-server', {
+  logger: console,
+  onSkip: (tool) => skipped.push(tool), // { name, reason }
+});
+```
+
+**Results.** An MCP result with `isError: true` is a normal tool failure: the
+model receives `{ "error": "McpToolError", "toolName": "...", "message": "..." }`
+where `message` is the server's text content. Successful results are
+JSON-serializable: if the server returns `structuredContent` it is the result
+object; otherwise the result is `{ text, content }`, where `text` joins all
+text parts and `content` keeps every part in order (`text`, `image`, `audio`,
+`resource`, `resource_link`; an unrecognised part type is kept as
+`{ type: 'unknown', raw }`). When `structuredContent` arrives together with
+non-text parts the result is `{ structuredContent, text, content }` with
+`content` holding only the non-text parts, so images, audio and resources are
+never dropped.
+
 ### Tool errors
 
 A tool call can fail in two ways. In both, the run continues and the model
@@ -176,6 +212,34 @@ at 2,000 characters and end with `... (truncated)` when cut:
 Errors extending `PropagatingToolError` (for example the delegation depth
 guard) are the exception: they are rethrown and abort the run instead of being
 shown to the model.
+
+## Models, tokens and cost
+
+Dependency-free helpers for budgeting and context decisions.
+
+```ts
+import { estimateTokens, estimateCost, getModelInfo, registerModel } from '@loushy/build-ai-agent';
+
+// A custom or self-hosted model: add it (or override a built-in) before use.
+registerModel({
+  id: 'my-llama',
+  provider: 'ollama',
+  contextWindow: 32768,
+  inputCostPerMTok: 0.2, // optional; omit for unknown or free
+  outputCostPerMTok: 0.6,
+});
+
+const used = estimateTokens([{ role: 'user', content: 'Summarise this report' }], { model: 'my-llama' });
+const info = getModelInfo('openai/gpt-4o-mini'); // exact id, `provider/id`, or a dated snapshot
+const usd = estimateCost({ inputTokens: used, outputTokens: 500 }, 'my-llama'); // undefined if unpriced
+```
+
+- `estimateTokens(input, { model?, estimator? })` is a heuristic (about 4 characters per token for English, more for CJK and other scripts, plus per-message overhead and tool-call JSON). Expect roughly 15-20% error on English: fine for compaction and budgets, not for billing. Plug in a real tokenizer with `setTokenEstimator(fn)` or `options.estimator`.
+- `getModelInfo(id)` matches the exact id, then `provider/id`, then dated snapshots (`gpt-4o-mini-2024-07-18` resolves to `gpt-4o-mini`). Unknown models return `undefined`.
+- `registerModel(info)` adds or overrides an entry; the latest registration wins.
+- `estimateCost(usage, model)` returns USD, or `undefined` (not `0`) when the model or its prices are unknown.
+
+The built-in context windows and prices are a dated snapshot (see the retrieval date and sources at the top of `src/models/modelData.ts`). Providers change prices and models, so override entries with `registerModel` when you need billing-grade numbers.
 
 ## Flows, evals, observability and security
 
