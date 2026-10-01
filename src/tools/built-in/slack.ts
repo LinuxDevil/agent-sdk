@@ -103,7 +103,8 @@ export async function postSlackAlert(
   channel: string,
   message: string,
   approvalId: string,
-  options: SlackToolOptions = {}
+  options: SlackToolOptions = {},
+  signal?: AbortSignal
 ): Promise<{ ok: boolean }> {
   const webhookUrl = options.webhookUrl ?? process.env[SLACK_WEBHOOK_URL_ENV_KEY];
   if (!webhookUrl) {
@@ -119,6 +120,7 @@ export async function postSlackAlert(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+    signal,
   });
 
   if (!response.ok) {
@@ -139,7 +141,8 @@ export async function postSlackAlertViaSandbox(
   message: string,
   approvalId: string,
   sandbox: SandboxAdapter,
-  options: SlackToolOptions = {}
+  options: SlackToolOptions = {},
+  signal?: AbortSignal
 ): Promise<{ ok: boolean }> {
   const webhookUrl = options.webhookUrl ?? process.env[SLACK_WEBHOOK_URL_ENV_KEY];
   if (!webhookUrl) {
@@ -150,12 +153,16 @@ export async function postSlackAlertViaSandbox(
 
   const payload = buildSlackAlertPayload(channel, message, approvalId);
 
-  const response = await sandboxHttpFetch(sandbox, {
-    url: webhookUrl,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  const response = await sandboxHttpFetch(
+    sandbox,
+    {
+      url: webhookUrl,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+    { signal }
+  );
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -182,8 +189,9 @@ export function createSlackTool(options: SlackToolOptions = {}): ToolDescriptor 
         message: z.string().describe('Alert message text'),
         approvalId: z.string().describe('The pending approval id the "Fix it" button will resolve'),
       }),
-      execute: async ({ channel, message, approvalId }) => {
-        return postSlackAlert(channel, message, approvalId, options);
+      execute: async ({ channel, message, approvalId }, executeOptions) => {
+        // `?.`: direct callers have historically passed no options object.
+        return postSlackAlert(channel, message, approvalId, options, executeOptions?.abortSignal);
       },
     }),
     // LOU-K2: this tool POSTs to a webhook URL read from an env var /
@@ -193,9 +201,9 @@ export function createSlackTool(options: SlackToolOptions = {}): ToolDescriptor 
     // above is left unchanged for direct callers (e.g.
     // examples/ops-pipeline, which calls descriptor.tool.execute() itself).
     requiresSandbox: true,
-    sandboxExecute: async (args, sandbox) => {
+    sandboxExecute: async (args, sandbox, callOptions) => {
       const { channel, message, approvalId } = args as { channel: string; message: string; approvalId: string };
-      return postSlackAlertViaSandbox(channel, message, approvalId, sandbox, options);
+      return postSlackAlertViaSandbox(channel, message, approvalId, sandbox, options, callOptions?.abortSignal);
     },
   };
 }
