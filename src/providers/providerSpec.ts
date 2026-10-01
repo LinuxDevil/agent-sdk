@@ -31,6 +31,8 @@ export interface ProviderInfo {
   peerPackage: string;
   /** The `npm install` argument for the peer, e.g. `@ai-sdk/openai@^0.0.42`. */
   peerInstall: string;
+  /** Model used when the provider is picked from the environment alone. */
+  defaultModel: string;
 }
 
 /** Every supported provider, in env-detection order. */
@@ -41,7 +43,17 @@ export function listProviders(): ProviderInfo[] {
     envRequired: entry.envRequired,
     peerPackage: peerPackageName(entry.peer),
     peerInstall: entry.peer,
+    defaultModel: entry.envDefaultModel,
   }));
+}
+
+/**
+ * Name of the first provider (in env-detection order) whose env var is set in
+ * `env`, or `undefined` when none is. `loushy init --yes` uses it to pick a
+ * provider; `LOUSHY_MODEL` is deliberately not consulted.
+ */
+export function detectProviderFromEnv(env: Record<string, string | undefined> = process.env): string | undefined {
+  return Object.entries(PROVIDERS).find(([, entry]) => env[entry.envKey])?.[0];
 }
 
 /**
