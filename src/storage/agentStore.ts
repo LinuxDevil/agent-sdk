@@ -4,7 +4,17 @@
  * `memoryStore()` builds an in-memory one.
  */
 
-import type { Checkpoint, CheckpointStore } from '../execution/checkpoint';
+import {
+  appendToRing,
+  newestFirst,
+  resolveHistoryLimit,
+  toHistoryEntry,
+  type Checkpoint,
+  type CheckpointDeleteOptions,
+  type CheckpointHistoryEntry,
+  type CheckpointHistoryOptions,
+  type CheckpointStore,
+} from '../execution/checkpoint';
 import type { ApprovalStore } from '../execution/ApprovalGate';
 import { InMemoryApprovalStore } from '../execution/InMemoryApprovalStore';
 import { MemorySessionStore, type SessionStore } from '../session/sessionStore';
@@ -28,12 +38,22 @@ export interface AgentStore {
   approvals?: ApprovalStore;
 }
 
-/** Checkpoints in a Map, copied on save and load. */
+/** Checkpoints and their bounded history in Maps, copied on save and load. */
 class MemoryCheckpointStore implements CheckpointStore {
   private readonly checkpoints = new Map<string, Checkpoint>();
+  private readonly rings = new Map<string, CheckpointHistoryEntry[]>();
+  private readonly historyLimit: number;
+
+  constructor(options: MemoryStoreOptions = {}) {
+    this.historyLimit = resolveHistoryLimit(options.historyLimit);
+  }
 
   async save(sessionId: string, checkpoint: Checkpoint): Promise<void> {
     this.checkpoints.set(sessionId, structuredClone(checkpoint));
+    if (this.historyLimit > 0) {
+      const entry = toHistoryEntry(structuredClone(checkpoint));
+      this.rings.set(sessionId, appendToRing(this.rings.get(sessionId) ?? [], entry, this.historyLimit));
+    }
   }
 
   async load(sessionId: string): Promise<Checkpoint | null> {
@@ -41,9 +61,20 @@ class MemoryCheckpointStore implements CheckpointStore {
     return checkpoint ? structuredClone(checkpoint) : null;
   }
 
-  async delete(sessionId: string): Promise<void> {
+  async delete(sessionId: string, options: CheckpointDeleteOptions = {}): Promise<void> {
     this.checkpoints.delete(sessionId);
+    if (!options.keepHistory) this.rings.delete(sessionId);
   }
+
+  async history(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]> {
+    return structuredClone(newestFirst(this.rings.get(sessionId) ?? [], options));
+  }
+}
+
+/** Options for {@link memoryStore}. */
+export interface MemoryStoreOptions {
+  /** Checkpoints kept per session in `checkpoints.history()` (default 50, `0` keeps none). */
+  historyLimit?: number;
 }
 
 /**
@@ -57,10 +88,10 @@ class MemoryCheckpointStore implements CheckpointStore {
  * await agent.session({ id: 'user-42' }).send('Hello');
  * ```
  */
-export function memoryStore(): Required<AgentStore> {
+export function memoryStore(options: MemoryStoreOptions = {}): Required<AgentStore> {
   return {
     sessions: new MemorySessionStore(),
-    checkpoints: new MemoryCheckpointStore(),
+    checkpoints: new MemoryCheckpointStore(options),
     approvals: new InMemoryApprovalStore(),
   };
 }

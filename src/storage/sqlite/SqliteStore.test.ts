@@ -142,6 +142,25 @@ describe('SqliteStore migrations', () => {
     db.close();
   });
 
+  it('opens a file written before the checkpoint history existed (LOU-D43)', async () => {
+    const file = join(tempDir(), 'old.db');
+    const raw = new DatabaseSync(file);
+    expect(migrate(raw, MIGRATIONS.slice(0, 1))).toBe(1);
+    raw
+      .prepare('INSERT INTO checkpoints (session_id, payload, created_at, updated_at) VALUES (?, ?, ?, ?)')
+      .run('legacy', JSON.stringify(makeCheckpoint({ stepIndex: 5 })), 1, 1);
+    raw.close();
+
+    const store = open(file);
+    expect((await store.checkpoints.load('legacy'))?.stepIndex).toBe(5);
+    expect(await store.checkpoints.history?.('legacy')).toEqual([]); // saved before history existed
+    await store.checkpoints.save('legacy', makeCheckpoint({ stepIndex: 6 }));
+    expect((await store.checkpoints.history?.('legacy'))?.map((entry) => entry.step)).toEqual([6]);
+    const check = new DatabaseSync(file);
+    expect(check.prepare('PRAGMA user_version').get()).toEqual({ user_version: MIGRATIONS.length });
+    check.close();
+  });
+
   it('refuses a database written by a newer version', () => {
     const file = join(tempDir(), 'future.db');
     const raw = new DatabaseSync(file);
@@ -188,6 +207,31 @@ describe('SqliteStore.prune', () => {
     const store = open(':memory:');
     expect(() => store.prune({ olderThanMs: -1 })).toThrow(/olderThanMs/);
     expect(() => store.prune({ olderThanMs: Number.NaN })).toThrow(/olderThanMs/);
+  });
+});
+
+describe('SqliteStore checkpoint history', () => {
+  it('survives close and reopen, and honors historyLimit', async () => {
+    const file = join(tempDir(), 'history.db');
+    const first = new SqliteStore(file, { historyLimit: 2 });
+    for (const stepIndex of [1, 2, 3]) await first.checkpoints.save('s', makeCheckpoint({ stepIndex }));
+    first.close();
+
+    const second = open(file);
+    expect((await second.checkpoints.history?.('s'))?.map((entry) => entry.step)).toEqual([3, 2]);
+  });
+
+  it('prune() removes history entries older than the cutoff but keeps recent ones', async () => {
+    const file = join(tempDir(), 'history-prune.db');
+    const store = open(file);
+    await store.checkpoints.save('s', makeCheckpoint({ stepIndex: 1 }));
+    await store.checkpoints.save('s', makeCheckpoint({ stepIndex: 2 }));
+    const raw = new DatabaseSync(file);
+    raw.prepare('UPDATE checkpoint_history SET saved_at = saved_at - ? WHERE step = 1').run(10 * 60 * 1000);
+    raw.close();
+
+    store.prune({ olderThanMs: 60 * 1000 });
+    expect((await store.checkpoints.history?.('s'))?.map((entry) => entry.step)).toEqual([2]);
   });
 });
 
