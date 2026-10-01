@@ -15,6 +15,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { coreMessageSchema, type CoreMessage } from 'ai';
 import { z } from 'zod';
+import { describeOnAiV4 } from './aiMajor.testkit';
 
 const generateTextMock = vi.fn();
 
@@ -122,7 +123,8 @@ async function wirePayload(provider: LLMProvider, messages: Message[]): Promise<
   return generateTextMock.mock.calls[0][0].messages;
 }
 
-describe.each(providers)('%s provider: tool-call turns at the ai-SDK boundary', (_name, create) => {
+// v4 only: asserts the ai v4 message shapes (LOU-D28b); the v7 shapes of these scenarios are asserted in aiSdkCompat.v7.test.ts.
+describeOnAiV4.each(providers)('%s provider: tool-call turns at the ai-SDK boundary', (_name, create) => {
   beforeEach(() => {
     generateTextMock.mockReset();
   });
@@ -202,7 +204,8 @@ describe.each(providers)('%s provider: tool-call turns at the ai-SDK boundary', 
   });
 });
 
-describe('AgentExecutor -> provider: second step sees the first step tool calls', () => {
+// v4 only: asserts the ai v4 message shapes (LOU-D28b); the v7 shapes of these scenarios are asserted in aiSdkCompat.v7.test.ts.
+describeOnAiV4('AgentExecutor -> provider: second step sees the first step tool calls', () => {
   beforeEach(() => {
     generateTextMock.mockReset();
   });

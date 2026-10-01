@@ -22,6 +22,10 @@ vi.mock('ai', async () => {
 });
 
 import { OpenAIProvider } from './OpenAIProvider';
+import { itOnAiV4 } from './aiMajor.testkit';
+
+// itOnAiV4 tests below mock generateText/streamText and assert the ai v4 call and result shapes (LOU-D28b);
+// the v7 shapes of the same behavior are asserted in aiSdkCompat.v7.test.ts and aiSdkCompat.stream.v7.test.ts.
 import { OpenRouterProvider } from './OpenRouterProvider';
 
 const usage = { promptTokens: 1, completionTokens: 2, totalTokens: 3 };
@@ -36,7 +40,7 @@ describe('AiSdkProvider', () => {
     streamTextMock.mockReset();
   });
 
-  it('passes call settings through and falls back to the config default model', async () => {
+  itOnAiV4('passes call settings through and falls back to the config default model', async () => {
     generateTextMock.mockResolvedValue(textResult('stop'));
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k', defaultModel: 'gpt-4o' });
 
@@ -70,7 +74,7 @@ describe('AiSdkProvider', () => {
     expect(streamTextMock.mock.calls[0][0].maxRetries).toBe(0);
   });
 
-  it('LOU-V5: reports usage as-is, reads cache/reasoning tokens from provider metadata, and no usage when counts are NaN', async () => {
+  itOnAiV4('LOU-V5: reports usage as-is, reads cache/reasoning tokens from provider metadata, and no usage when counts are NaN', async () => {
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });
 
     generateTextMock.mockResolvedValue({
@@ -117,7 +121,7 @@ describe('AiSdkProvider', () => {
     expect(streamTextMock.mock.calls[0][0].abortSignal).toBe(signal);
   });
 
-  it('LOU-V4: maps responseFormat to a JSON-mode experimental_output that leaves prompt and text alone', async () => {
+  itOnAiV4('LOU-V4: maps responseFormat to a JSON-mode experimental_output that leaves prompt and text alone', async () => {
     generateTextMock.mockResolvedValue(textResult('stop'));
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });
     const schema = { type: 'object', properties: { a: { type: 'number' } } };
@@ -152,7 +156,7 @@ describe('AiSdkProvider', () => {
     expect(result.toolCalls).toBeUndefined();
   });
 
-  it('converts tool definitions to named ai SDK tools', async () => {
+  itOnAiV4('converts tool definitions to named ai SDK tools', async () => {
     generateTextMock.mockResolvedValue(textResult('stop'));
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });
 
@@ -168,7 +172,7 @@ describe('AiSdkProvider', () => {
     expect(await tools.search.execute()).toBeNull();
   });
 
-  it('stream() exposes textStream and resolved final values', async () => {
+  itOnAiV4('stream() exposes textStream and resolved final values', async () => {
     async function* textStream() {
       yield 'a';
       yield 'b';
@@ -194,7 +198,7 @@ describe('AiSdkProvider', () => {
     ]);
   });
 
-  it('uses the default converter for tool results (name -> toolName)', async () => {
+  itOnAiV4('uses the default converter for tool results (name -> toolName)', async () => {
     generateTextMock.mockResolvedValue(textResult('stop'));
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });
 
@@ -208,7 +212,7 @@ describe('AiSdkProvider', () => {
     ]);
   });
 
-  it('converts OpenRouter tool-call turns with the shared converter', async () => {
+  itOnAiV4('converts OpenRouter tool-call turns with the shared converter', async () => {
     generateTextMock.mockResolvedValue(textResult('stop'));
     const provider = new OpenRouterProvider({ name: 'openrouter', apiKey: 'k' });
 

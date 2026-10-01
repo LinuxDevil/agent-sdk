@@ -17,6 +17,7 @@ import { OllamaProvider } from './OllamaProvider';
 import { OpenRouterProvider } from './OpenRouterProvider';
 import type { LLMProvider, StreamChunk } from './llm';
 import type { AiSdkModule } from './aiSdkCompat';
+import { itOnAiV4 } from './aiMajor.testkit';
 import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import type { AgentEvent } from '../execution/agentEvents';
@@ -328,22 +329,17 @@ describe('agent.stream() on both ai majors (LOU-D27)', () => {
     ]);
   });
 
-  it('yields the same events on ai v4', async () => {
+  // v4 only: scripts the model with the ai v4 MockLanguageModelV1 (LOU-D28b); the v7 half runs above.
+  itOnAiV4('yields the same events on ai v4', async () => {
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k', maxRetries: 0 });
     onV4(provider, toolLoop);
 
     await expectToolLoopRun(createAgent({ provider, tools: [lookup] }).stream('Weather in Paris?'));
   });
 
-  it.each(['v7', 'v4'])('ends the run with an error when the model stream fails, on ai %s', async (major) => {
-    const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k', maxRetries: 0 });
-    const error = new Error('model overloaded');
-    if (major === 'v7') onV7(provider, [[{ type: 'error', error }]]);
-    else {
-      const stream = streamOf<V4Part>([{ type: 'text-delta', textDelta: 'Hal' }, { type: 'error', error }]);
-      useModel(provider, new MockLanguageModelV1({ doStream: async () => ({ stream, rawCall: { rawPrompt: null, rawSettings: {} } }) }));
-    }
+  const failure = new Error('model overloaded');
 
+  async function expectFailedRun(provider: LLMProvider): Promise<void> {
     const run = createAgent({ provider }).stream('hi');
     const events = await collect(run);
 
@@ -351,5 +347,19 @@ describe('agent.stream() on both ai majors (LOU-D27)', () => {
     expect(events.find((e) => e.type === 'error')).toMatchObject({ error: { message: expect.stringContaining('model overloaded') } });
     expect(events.at(-1)).toMatchObject({ type: 'run.done', finishReason: 'error' });
     await expect(run.result).rejects.toThrow(/model overloaded/);
+  }
+
+  it('ends the run with an error when the model stream fails, on ai v7', async () => {
+    const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k', maxRetries: 0 });
+    onV7(provider, [[{ type: 'error', error: failure }]]);
+    await expectFailedRun(provider);
+  });
+
+  // v4 only: scripts the model with the ai v4 MockLanguageModelV1 (LOU-D28b).
+  itOnAiV4('ends the run with an error when the model stream fails, on ai v4', async () => {
+    const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k', maxRetries: 0 });
+    const stream = streamOf<V4Part>([{ type: 'text-delta', textDelta: 'Hal' }, { type: 'error', error: failure }]);
+    useModel(provider, new MockLanguageModelV1({ doStream: async () => ({ stream, rawCall: { rawPrompt: null, rawSettings: {} } }) }));
+    await expectFailedRun(provider);
   });
 });
