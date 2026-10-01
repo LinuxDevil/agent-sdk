@@ -15,7 +15,8 @@ import { runSubagent, type SubagentSpec } from '../execution/delegation';
 import { bindToolCallScope, extendAgent, subagentBudget, toolCallScopeOf } from '../execution/subagentRuntime';
 import { isPropagatingToolError } from '../execution/propagatingToolError';
 import type { ExecuteOptions, ExecutionResult } from '../execution/AgentExecutor';
-import type { SubagentCatalog, SubagentSummary, Subagents } from './types';
+import type { RemoteSubagent, SubagentCatalog, SubagentSummary, Subagents } from './types';
+import { isRemoteSubagent } from './remoteAgent';
 import { BackgroundTasks, subagentOptionsOf, withSubagentOptions, type SubagentOptions } from './backgroundTasks';
 
 /** Name of the tool the lead model delegates with. */
@@ -32,6 +33,9 @@ interface RegisteredSubagent {
   description?: string;
 }
 
+/** A sub-agent to run: a local one by its spec, or a deployed one (LOU-Y7). */
+type ResolvedSubagent = RegisteredSubagent | { remote: RemoteSubagent; description: string };
+
 const registeredSubagents = new WeakMap<object, RegisteredSubagent>();
 
 /** Makes `agent` (a `createAgent()` result) usable as a sub-agent. */
@@ -44,7 +48,8 @@ function isCatalog(subagents: Subagents): subagents is SubagentCatalog {
   return typeof candidate.list === 'function' && typeof candidate.resolve === 'function';
 }
 
-function registrationOf(agent: unknown, name: string, caller: string): RegisteredSubagent {
+function registrationOf(agent: unknown, name: string, caller: string): ResolvedSubagent {
+  if (isRemoteSubagent(agent)) return { remote: agent, description: agent.description };
   const registration = typeof agent === 'object' && agent !== null ? registeredSubagents.get(agent) : undefined;
   if (!registration) {
     throw new Error(
@@ -122,11 +127,11 @@ async function listSubagents(subagents: Subagents): Promise<SubagentSummary[]> {
   assertSubagents(subagents, 'subagents');
   return Object.entries(subagents).map(([name, agent]) => ({
     name,
-    description: registeredSubagents.get(agent)?.description ?? '',
+    description: registrationOf(agent, name, 'subagents').description ?? '',
   }));
 }
 
-async function resolveSubagent(subagents: Subagents, name: string, names: readonly string[]): Promise<RegisteredSubagent> {
+async function resolveSubagent(subagents: Subagents, name: string, names: readonly string[]): Promise<ResolvedSubagent> {
   const agent = !names.includes(name)
     ? undefined
     : isCatalog(subagents)
@@ -195,6 +200,11 @@ function withAbortSignal(toolOptions: ToolOptions, abortSignal: AbortSignal): { 
   return options;
 }
 
+/** A deployed sub-agent's task: its final text, or a thrown coded error (never wrapped, so the code stays visible). */
+function runRemoteTask(remote: RemoteSubagent, args: TaskArgs, toolOptions: ToolOptions): Promise<string> {
+  return remote.run(args.prompt, { name: args.agent, signal: toolOptions?.abortSignal });
+}
+
 async function startTask(
   subagents: Subagents,
   names: readonly string[],
@@ -202,13 +212,14 @@ async function startTask(
   args: TaskArgs,
   toolOptions: ToolOptions
 ): Promise<unknown> {
-  const { spec } = await resolveSubagent(subagents, args.agent, names);
+  const resolved = await resolveSubagent(subagents, args.agent, names);
+  const run = (options: ToolOptions) => ('remote' in resolved ? runRemoteTask(resolved.remote, args, options) : runTask(resolved.spec, args, options));
   if (!args.background) {
-    return runTask(spec, args, toolOptions);
+    return run(toolOptions);
   }
   const { taskId, status, agent } = background.start(
     args.agent,
-    (signal) => runTask(spec, args, withAbortSignal(toolOptions, signal)),
+    (signal) => run(withAbortSignal(toolOptions, signal)),
     toolOptions?.abortSignal
   );
   return { taskId, status, agent };

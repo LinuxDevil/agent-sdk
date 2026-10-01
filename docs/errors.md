@@ -228,6 +228,20 @@ input it was given.
 
 **Example:** a tool's `execute` threw.
 
+### LOUSHY_REMOTE_AGENT_FAILED
+
+**Means:** a `remoteAgent()` sub-agent could not deliver an answer: the
+deployed agent was unreachable, answered 401 or another non-2xx status, sent a
+malformed or unfinished stream, or its run ended in an error. The lead model
+gets it as a structured tool error; the bearer token is never part of it.
+
+**Fix:** read the message (it names the url and the remote session id); for a
+401, fix the `auth` token; for a remote run error, look at the remote agent's
+logs for that session.
+
+**Example:** `remoteAgent({ url, auth: 'wrong-token' })` against a deployment
+that sets `LOUSHY_API_TOKEN`.
+
 ## Approvals and sessions
 
 ### LOUSHY_APPROVAL_STORE_MISSING
