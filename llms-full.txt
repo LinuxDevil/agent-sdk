@@ -75,7 +75,7 @@ agent can be an `agent.yaml` spec served with `npx loushy dev agent.yaml`
 - **Memory**: `defineMemory()` slots, scoped globally, per session or per user, are recalled into the prompt at the start of a run and read and written with `remember_` / `recall_` tools. [Memory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md)
 - **Structured output**: `output: zodSchema` makes the final reply a typed, validated `result.object`, with one repair step. [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)
 - **Streaming**: `agent.stream()` and `session.stream()` yield typed, versioned JSON events ready for SSE. [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)
-- **UI bindings**: `useLoushyAgent()` from `@loushy/build-ai-agent/react` turns the event stream into chat state, with approvals. [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md)
+- **UI bindings**: `useLoushyAgent()` from `@loushy/build-ai-agent/react` (and `/vue`) turns the event stream into chat state, with approvals. [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md), [Vue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/vue.md)
 - **Durable execution**: `sessionId` + `checkpointStore` resume a crashed or paused run without redoing finished tools. [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)
 - **Cancellation, usage and cost**: pass an `AbortSignal`; every result carries token usage and USD cost for priced models. [API overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#cancellation)
 - **Providers**: OpenAI, Anthropic, OpenRouter, Ollama or a mock, with `withRetry()` and `withFallback()`. [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md)
@@ -788,7 +788,9 @@ React hook that runs an agent in process (`{ agent, sessionId? }`) or over HTTP
 (`{ url }`) and returns `messages`, `status`, `pendingApproval`,
 `send()`, `stop()`, `approve()` and `reject()`. Its framework-neutral parts,
 `reduceAgentEvents()` and `parseEventStream()`, are exported too. See
-[React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md).
+[React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md). `@loushy/build-ai-agent/vue` exports the same
+`useLoushyAgent()` as a Vue 3 composable, with the state as refs. See
+[Vue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/vue.md).
 
 ### Sub-agents
 
@@ -2504,6 +2506,14 @@ loushy mcp <agent.yaml|json> [--http --port N --host H]
 loushy doctor [agent.yaml|json] [--json]
 loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]]
 ```
+
+Every command parses its flags the same way (Node's `parseArgs`, strict):
+`--flag value` and `--flag=value` both work, the last of a repeated flag wins
+(`--tag` accumulates), `--` ends the flags, and `-h` / `--help` prints the
+command's usage and exits 0. An unknown flag, a flag without its value (it
+never takes the next flag as its value) or an extra argument fails with
+`LOUSHY_CONFIG_INVALID` and the usage line. A value that starts with `-` needs
+the `=` form: `--model=-x`.
 
 `npm create loushy-agent my-agent` runs `loushy init` with the same arguments.
 While the package is not on npm, scaffold from a checkout of this repository
@@ -7864,6 +7874,71 @@ const template = 'Hello {{ name }}! You have {{ count }} messages.';
 const result = renderTemplate(template, { name: 'Alice', count: 5 });
 // "Hello Alice! You have 5 messages."
 ```
+
+# Vue
+
+Source: docs/vue.md
+
+`useLoushyAgent()` for Vue 3 is the [React hook](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md) as a composable:
+the same sources, the same state and the same actions, over the same
+[typed event stream](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md). Read [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md) for what each
+field means, the two kinds of source, how approvals work and the server side;
+this page covers what differs.
+
+It lives in the `@loushy/build-ai-agent/vue` subpath. `vue` (3.x) is an
+optional peer dependency: install it in the app that uses the composable.
+
+```ts
+import { useLoushyAgent } from '@loushy/build-ai-agent/vue';
+
+// In <script setup>:
+const { messages, status, pendingApproval, send, stop, approve, reject, reset } = useLoushyAgent(
+  { url: '/api/agent' },
+  { approvalsUrl: '/api/approvals' }
+);
+
+export async function submit(text: string): Promise<void> {
+  if (text.trim() && status.value !== 'streaming') await send(text);
+}
+
+export { messages, status, pendingApproval, stop, approve, reject, reset };
+```
+
+and in the template:
+
+```html
+<article v-for="message in messages" :key="message.id">
+  <header>{{ message.role }}</header>
+  <p>{{ message.text }}</p>
+  <code v-for="call in message.toolCalls" :key="call.id">{{ call.name }}: {{ call.status }}</code>
+</article>
+<p v-if="pendingApproval">
+  Run {{ pendingApproval.toolName }}?
+  <button @click="approve()">Approve</button>
+  <button @click="reject('Not now')">Reject</button>
+</p>
+<button v-if="status === 'streaming'" @click="stop">Stop</button>
+```
+
+## What differs from React
+
+- **State is refs.** `messages`, `status`, `pendingApproval`, `error`, `usage`
+  and `lastEvent` are read-only `ComputedRef`s: use `.value` in script,
+  nothing in a template. The commands (`send`, `stop`, `approve`, `reject`,
+  `answer`) are plain functions with the React hook's signatures.
+- **`reset()`** aborts the run in flight, forgets the in-process session
+  (`{ agent, sessionId }` starts a new conversation) and clears the state.
+- **The source and options can be refs.** Pass a plain object or a `ref`; it is
+  read when a turn starts, so a changed `url` or `agent` applies to the next
+  turn.
+- **Cleanup is scope disposal.** `stop()` aborts the request in flight, and so
+  does stopping the owning scope: a component unmounting, or
+  `effectScope().stop()` in tests and plain scripts. Called outside any scope,
+  the composable has nothing to dispose: call `stop()` yourself.
+
+The reducer and the stream parser are exported from this subpath too
+(`reduceAgentEvents`, `initialAgentUIState`, `parseEventStream`), the same
+ones as in `@loushy/build-ai-agent/react`.
 
 # Workspace tools
 

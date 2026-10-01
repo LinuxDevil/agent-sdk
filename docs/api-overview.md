@@ -104,7 +104,9 @@ React hook that runs an agent in process (`{ agent, sessionId? }`) or over HTTP
 (`{ url }`) and returns `messages`, `status`, `pendingApproval`,
 `send()`, `stop()`, `approve()` and `reject()`. Its framework-neutral parts,
 `reduceAgentEvents()` and `parseEventStream()`, are exported too. See
-[React](./react.md).
+[React](./react.md). `@loushy/build-ai-agent/vue` exports the same
+`useLoushyAgent()` as a Vue 3 composable, with the state as refs. See
+[Vue](./vue.md).
 
 ### Sub-agents
 
