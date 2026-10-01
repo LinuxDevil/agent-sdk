@@ -3,7 +3,7 @@
 Mission: make `@loushy/build-ai-agent` the best TypeScript AI agent SDK (capabilities and DX) against
 Vercel eve and MaxGfeller/open-harness. This file is the loop's memory: read it first, update it last.
 
-- Loop started: 2026-10-01. Iterations completed: 12. Since iteration 12 the loop runs on the owner's Windows checkout (Node 26); see BRIEF.md and BASELINE.md.
+- Loop started: 2026-10-01. Iterations completed: 13. Since iteration 12 the loop runs on the owner's Windows checkout (Node 26); see BRIEF.md and BASELINE.md.
 - Audit: `.agent-loop/AUDIT.md`, refreshed 2026-10-01 at main `a03b1a3` (eve 0.69.0 @682c7a6, open-harness 0.7.0 @026e8d9).
   Reference agents (3 agents x 3 SDKs, measured): `.agent-loop/reference-agents/`. Older material: `docs/research/*.md`, `docs/plan/tickets.md`.
   Audit is stale when: a competitor ships a new major, or more than ~25 PRs land after `a03b1a3` (re-run the DX measurement then).
@@ -43,7 +43,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Agent asks the user a question | ✅ flipped (X9 #111: `ask_question`, durable pause, `approvals.answer`, hook `answer()`) | ✅ | ❌ | - |
 | Steering (mid-run input) | ✅ flipped (V9 #122 enqueue + V10 #128 `run.steer()`, `turnPolicy: 'steer'`, `input.steered`) | ✅ | ❌ | - |
 | Cancellation | ✅ | ✅ | ✅ | - |
-| Memory (cross-session) | ✅ flipped (W6 #117: `defineMemory` slots, scopes, in-memory/file providers, remember/recall tools) | ✅ | ❌ | W6.2 sqlite provider, W6.3 agent-dir `memory/` |
+| Memory (cross-session) | ✅ flipped (W6 #117 slots and providers; W6.2 #136 `sqliteMemory`) | ✅ | ❌ | W6.3 agent-dir `memory/` |
 | Sessions (multi-turn) | ✅ flipped (V8 session.stream, #78) | ✅ | ✅ | W9 (checkpointing sessions, durability row) |
 | Skills (SKILL.md) | ✅ | ✅ | ✅ | - |
 | AGENTS.md loading | ✅ | ⚠️ | ✅ | - |
@@ -52,15 +52,15 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Test utils (mock model, record/replay) | ✅ | ⚠️ | ❌ | - |
 | Tracing / OTel GenAI | ✅ | ✅ | ❌ | - |
 | Metrics / trace viewer | ⚠️ (D48 #95 metrics + cost; no trace viewer) | ✅ | ❌ | - (viewer not ticketed) |
-| Multi-provider | ⚠️ (D26 #123 + D27 #127: generate and stream on `ai` v4 and v6/v7; D28a #134: source type-checks on both, CI job; peer ranges pending) | ✅ | ✅ | D28b-D28d, D29 |
+| Multi-provider | ⚠️ (generate/stream on `ai` v4 and v6/v7; D28a #134 types, D28b #140 tests on both; peer ranges pending) | ✅ | ✅ | D28c, D28d, D29 |
 | Fallbacks / retry policy | ✅ (V7.1 #74, V7.2 agent-level + events #86) | ⚠️ | ⚠️ | - |
 | Structured output | ✅ flipped (V4 #90: `output` schema, repair step, `output-invalid`) | ✅ | ❌ | - |
 | Multimodal input | ✅ flipped (V11 #106 + V12 #109: `AgentInput` on send/stream/session/evals/hook, SQLite bytes) | ✅ | ✅ | - (files degrade to text on the pinned `ai` v4 peers; D26+) |
 | Reasoning control / events | ❌ | ✅ | ⚠️ | V13 |
-| MCP client | ✅ flipped (Z4 #100: `connectMcp()`, `createAgent({ mcpServers })`, `agent.ready()/close()`, spec connects) | ✅ | ✅ | Z5 (annotations drive approval) |
-| MCP server | ✅ | ✅ | ❌ | - |
+| MCP client | ✅ flipped (Z4 #100 `connectMcp()`; Z5 #115 annotations drive approval) | ✅ | ✅ | - |
+| MCP server | ✅ (Z5.2 #142: `serveMcp` advertises annotations) | ✅ | ❌ | - |
 | Typed event stream | ✅ | ✅ | ✅ | - |
-| UI bindings React/Vue/Svelte | ⚠️ flipped (React `useLoushyAgent` #85) | ✅ | ⚠️ | P2, P3 |
+| UI bindings React/Vue/Svelte | ✅ flipped (React #85, Vue #138, Svelte #141 over one `src/ui` core) | ✅ | ⚠️ | - |
 | AI SDK UI stream | ❌ | ⚠️ | ✅ | P1 |
 | CLI scaffolding | ⚠️ (unpublished) | ✅ | ❌ | D49, U20 |
 | Dev TUI / REPL | ✅ flipped (D31 dev + D32 streaming web chat + D33 #120 `loushy chat` terminal REPL) | ✅ | ⚠️ | - |
@@ -73,7 +73,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Guardrails (input/output) | ✅ (X4 #121 + X5 #124 spec policy compiled) | ⚠️ | ❌ | - |
 | Permissions policy | ✅ flipped (X2 #105: `permissions` rules, audit log, `permission.decision` event, inherited by sub-agents) | ✅ | ⚠️ | X8 (policy helpers on needsApproval) |
 | Credential brokering | ❌ | ✅ | ❌ | X11, X12 |
-| Dynamic config | ❌ | ✅ | ⚠️ | V15 |
+| Dynamic config | ✅ flipped (V15 #139: per-run `model`, `instructions`, `tools` functions; model pinned across approval resume) | ✅ | ⚠️ | V15.2 (crash resume) |
 | Hot reload | ✅ flipped (D31 #110: dirs, TS modules and specs, cache-busted reload) | ✅ | ❌ | - |
 | Registry / extensions | ❌ | ✅ | ❌ | D50 |
 | ACP | ❌ | ✅ | ❌ | Z6 |
@@ -81,9 +81,9 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Directory authoring | ✅ | ✅ | ❌ | - |
 | Agent-readable docs | ✅ | ✅ | ✅ | - |
 | Published on npm | ❌ (owner action) | ✅ | ✅ | D49 |
-| Current `ai` major | ❌ (runtime and types ready; peers still pin v4) | ✅ | ✅ | D28b-D28d, D29 |
+| Current `ai` major | ❌ (runtime, types and tests ready; peers still pin v4) | ✅ | ✅ | D28c, D28d, D29 |
 
-Score (us): 36 ✅ / 7 ⚠️ / 8 ❌ of 51 after iteration 12 (iteration 11: 34/7/10 with the Metrics row counted as ❌, now ⚠️ since D48 shipped; iteration 10: 33/8/10; iteration 9: 30/10/11; iteration 8: 28/11/12; iteration 7: 25/13/13; iteration 6: 24/13/14; iteration 5: 23/14/14; iteration 4: 22/15/14; iteration 3: 20/15/16 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
+Score (us): 38 ✅ / 6 ⚠️ / 7 ❌ of 51 after iteration 13 (iteration 12: 36/7/8; iteration 11: 34/7/10 with the Metrics row counted as ❌, now ⚠️ since D48 shipped; iteration 10: 33/8/10; iteration 9: 30/10/11; iteration 8: 28/11/12; iteration 7: 25/13/13; iteration 6: 24/13/14; iteration 5: 23/14/14; iteration 4: 22/15/14; iteration 3: 20/15/16 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
 
 Differentiators shipped (target: 3): 6 of 8 (#1 host-agnostic durable sessions: W9 #89 + D30 #94; #2 record/replay evals: D46 #96; #3 Forge time-travel: D43-D45; #6 OTel GenAI metrics + cost: D48 #95; #7 trajectory evals that run anywhere: D46 + D47 #131; #8 edge-native agents: D51 #125). Open: #4 reach (ACP, Z6); #5 both authoring modes with hot reload is done in practice (D31-D33). Original candidate list (candidates in AUDIT section 7: host-agnostic durable sessions D30; record/replay evals D46; Forge time-travel D43-D45; MCP+ACP+HTTP reach Z6/D14; both authoring modes with hot reload D31-D33; OTel metrics D48; trajectory evals remote D47; edge-native agents D51/P9).
 
@@ -103,7 +103,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | U17 | Sandboxed HTTP honors cancellation | ✅ #72 | |
 | U19 | Explicit `maxSteps` exhaustion (`finishReason: 'max-steps'`) | ✅ #83 | |
 | U20 | Install and roadmap truth (no `npx loushy` of an unpublished package) | ⬜ | |
-| U21 | Robust CLI flag parsing (`parseArgs`) | ⬜ | |
+| U21 | Robust CLI flag parsing (`parseArgs`) (shared strict `parseArgs` helper in `src/cli/args.ts`; unknown flags now fail) | ✅ #137 | |
 | U22 | Resumed sub-agent that pauses again keeps the session awaiting approval | ✅ #77 | |
 | U23 | `SubprocessSandbox` (Docker) honors `signal` (follow-up of U17) | ⬜ | |
 
@@ -124,7 +124,8 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | V12 | Multimodal through the public API (`AgentInput`) | ✅ #109 | |
 | V13 | Reasoning effort + events | ⬜ | D26 |
 | V14 | Streaming resume after approval (`approve` callback on `stream()` too) | ⬜ | D21 |
-| V15 | Per-run dynamic config | ⬜ | |
+| V15 | Per-run dynamic config (`model` / `instructions` / `tools` as functions of `{ sessionId, input, metadata }`; `LOUSHY_CONFIG_RESOLVER_FAILED`) | ✅ #139 | |
+| V15.2 | Crash resume keeps the dynamic config: save `{ ctx, model }` on the checkpoint (today a crash resume re-resolves with empty input and no metadata) | ⬜ | V15 |
 
 ### Epic W — Context and memory
 | ID | Title | Status | Deps |
@@ -134,7 +135,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | W3 | Compaction: summarize + two-phase strategies, pinned messages, async `compact` | ✅ #84 | |
 | W3.2 | `compaction.start/done` events, `createAgent({ compaction, hooks })` | ✅ #102 | |
 | W6 | Scoped memory slots (`defineMemory`, `createAgent({ memory })`) | ✅ #117 | |
-| W6.2 | `sqliteMemory(store)` provider | ⬜ | W6 |
+| W6.2 | `sqliteMemory(store)` provider (exported from `/sqlite`; migration 3 `memory_items`; shared provider contract suite) | ✅ #136 | W6 |
 | W6.3 | `loadAgentDir()` picks up `memory/<slot>.ts` | ⬜ | W6 |
 | W8 | Manual compact and clear | ⬜ | W2, W3 |
 | W9 | Sessions that checkpoint (`checkpointStore`, `session.resume()/pending()/discardPending()`) | ✅ #89 | |
@@ -170,7 +171,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | Z1, Z2, Z3 | | ✅ | |
 | Z4 | `connectMcp()` + `createAgent({ mcpServers })` + specToAgent connects (D20.2 closed) | ✅ #100 | |
 | Z5 | MCP annotations drive approval (`approval` per server; default asks for non-read-only) | ✅ #115 | |
-| Z5.2 | `serveMcp` emits annotations from `needsApproval` | ⬜ | Z5 |
+| Z5.2 | `serveMcp` emits annotations from `needsApproval` (`defineTool({ annotations })`; read-only built-ins annotated) | ✅ #142 | Z5 |
 | Z6 | `loushy acp` | ⬜ | V14 |
 
 ### Epic D — DX, CLI, packaging, testing
@@ -194,9 +195,10 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D27 | `ai` v6/v7 adapter: stream (`streamCompat`; mid-stream errors now throw on v4 too) | ✅ #127 | |
 | D28 | Provider peers and ranges | split into D28a-d | D27 |
 | D28a | SDK source type-checks on `ai` v4 and v7 (`legacyAiTool`, SDK-owned types in aiSdkProvider, CI job `typecheck-ai7`) | ✅ #134 | |
-| D28b | Test suite runs on either major (gate or port the ~55 v4-only tests; vitest in the ai-7 CI job) | ⬜ | D28a |
+| D28b | Test suite runs on either major (gate or port the ~55 v4-only tests; vitest in the ai-7 CI job) (66 tests gated to v4 via `aiMajor.testkit.ts`; ai-7 CI job builds and runs vitest) | ✅ #140 | D28a |
 | D28c | Worker bundle on `ai` 7 (Node built-ins leak into worker.js) | ⬜ | D28a |
 | D28d | Widen peers (`ai` 4, 6 and 7; `@ai-sdk/*`; `ollama-ai-provider-v2`); install hints, doctor and scaffold follow the installed major | ⬜ | D28b, D28c |
+| D28e | Port the v4-only contract tests (`toolCallTurns.contract`, `multimodal.contract`, part of `aiSdkProvider.test`) to a v7 mock model so the contracts are tested on both majors | ⬜ | D28b |
 | D29 | zod 4 / Standard Schema | ⬜ | D22 |
 | D30 | One `store` option (`AgentStore`, `memoryStore()`, `send({ sessionId })`, `agent.resume(id)`) | ✅ #94 | |
 | D31 | `loushy dev` for dirs and TS, hot reload (`devReload.ts`, `/dev/status`) | ✅ #110 | |
@@ -232,8 +234,8 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | ID | Title | Status | Deps |
 |---|---|---|---|
 | P1 | AI SDK UI stream adapter | ⬜ | D27 |
-| P2 | Vue composable | ⬜ | D15 |
-| P3 | Svelte store | ⬜ | D15 |
+| P2 | Vue composable (`./vue` subpath; reducer, parser and `createAgentRunner` moved to framework-neutral `src/ui/`) | ✅ #138 | D15 |
+| P3 | Svelte store (`./svelte` subpath, hand-written store contract, no svelte dependency) | ✅ #141 | D15 |
 | P4 | Next.js route helper | ⬜ | D14, P1 |
 | P5 | Slack channel (`slackChannel`, Web Crypto signatures, thread sessions, approval buttons; `parse(req, respond)` and `{ decision }` added to the channel contract) | ✅ #133 | |
 | P5.2 | Slack hardening: approver allowlist, delivery-error reporting, DMs, button message update | ⬜ | P5 |
@@ -313,6 +315,13 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | #133 | P5 | merged (squash) | Slack channel |
 | #135 | HEALTH | merged (squash) | Forge client typecheck broken since X5 (#124) |
 | #134 | D28a | merged (squash) | source type-checks on ai v4 and v7 |
+| #136 | W6.2 | merged (squash) | sqliteMemory |
+| #137 | U21 | merged (squash) | CLI parseArgs (breaking: unknown flags rejected) |
+| #138 | P2 | merged (squash) | Vue composable; `src/ui` core |
+| #139 | V15 | merged (squash) | dynamic config |
+| #140 | D28b | merged (squash) | tests on either ai major (merged with 2 importGraph failures that were a stale dist in the orchestrator worktree; main verified green after) |
+| #141 | P3 | merged (squash) | Svelte store (iteration 14) |
+| #142 | Z5.2 | merged (squash) | serveMcp annotations (iteration 14) |
 
 ## Main health
 
@@ -388,6 +397,15 @@ CI runs only on `pull_request`, so "main is green" means the last PR's CI run pa
 - Matrix flips: Remote subagents ❌->✅, Eval against deployed URL ❌->✅. Metrics row corrected to ⚠️ (D48).
 - Helper fixes: merges run on a detached HEAD (PR branches are checked out in agent worktrees); the helper refuses to push when vitest prints no summary.
 - Flaky under load on this machine: guardrails E9 timeout test, NodeWorkspace env/pid tests, sandbox-wiring (each passes alone).
+
+### Iteration 13 (2026-10-01)
+- Merged: #136 (W6.2), #137 (U21), #138 (P2), #139 (V15), #140 (D28b).
+- Health run on main at 499c57b: tsc, lint 0 errors / 399 warnings, test:types, builds, 145 snippets, llms, coverage 2693 passed / 4 skipped, fallow 0 above threshold, all four Forge checks green.
+- Matrix flips: Dynamic config ❌->✅, UI bindings ⚠️->✅ (with P3 from iteration 14).
+- Breaking (CHANGELOG'd): CLI commands reject unknown flags (U21).
+- New follow-ups: V15.2 (crash resume keeps dynamic config), D28e (contract tests on ai 7).
+- Helper bug: the sync helper did not see colored FAIL lines and merged #140 with 2 failing importGraph tests; they were a stale `dist/` in the orchestrator worktree, not a break. The helper now strips ANSI and blocks on any failure except importGraph.
+- Idle slots are filled early: P3, X11, Z5.2 (iteration 14) were launched while V15 and D28b were still running.
 
 ## Plan to the end (owner: run every batch, no check-ins)
 
