@@ -83,6 +83,15 @@ describe('AgentEvent types', () => {
     }
   });
 
+  it('narrows budget.exceeded on event.type (LOU-V6)', () => {
+    if (event.type === 'budget.exceeded') {
+      expectTypeOf(event.limit).toEqualTypeOf<
+        'maxTokens' | 'maxInputTokens' | 'maxOutputTokens' | 'maxCostUsd' | 'maxDurationMs' | 'maxSteps'
+      >();
+      expectTypeOf(event.scope).toEqualTypeOf<'run' | 'session'>();
+    }
+  });
+
   it('covers every event type', () => {
     expectTypeOf<AgentEventType>().toEqualTypeOf<
       | 'run.start'
@@ -100,6 +109,7 @@ describe('AgentEvent types', () => {
       | 'provider.fallback'
       | 'compaction.start'
       | 'compaction.done'
+      | 'budget.exceeded'
       | 'run.done'
     >();
   });
