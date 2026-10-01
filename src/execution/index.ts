@@ -16,3 +16,5 @@ export * from './tracing';
 export * from './logger';
 export * from './guardrails';
 export * from './hooks';
+export { ToolArgumentsValidationError } from './toolArgsValidation';
+export type { ToolArgumentIssue } from './toolArgsValidation';

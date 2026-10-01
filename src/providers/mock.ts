@@ -29,6 +29,8 @@ export interface MockProviderConfig extends LLMProviderConfig {
  */
 export class MockLLMProvider implements LLMProvider {
   readonly name = 'mock';
+  /** The `defaultModel` the mock was configured with, if any. */
+  readonly defaultModel?: string;
   private responseIndex = 0;
   private responses: string[];
   private delay: number;
@@ -36,6 +38,7 @@ export class MockLLMProvider implements LLMProvider {
   private errorMessage: string;
 
   constructor(config: MockProviderConfig) {
+    this.defaultModel = config.defaultModel;
     this.responses = config.responses || ['This is a mock response.'];
     this.delay = config.delay || 0;
     this.simulateError = config.simulateError || false;

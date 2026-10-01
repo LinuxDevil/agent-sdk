@@ -1761,6 +1761,49 @@ describe('AgentExecutor', () => {
       expect(result.finishReason).toBeDefined();
     });
 
+    describe('cancellation (AbortError) is not a provider failure', () => {
+      function abortError(): Error {
+        // Same shape fetch()/AbortSignal and the 'ai' SDK throw on abort.
+        const error = new Error('This operation was aborted');
+        error.name = 'AbortError';
+        return error;
+      }
+
+      it('rethrows an AbortError from provider.generate() unchanged instead of compacting it', async () => {
+        const raw = abortError();
+        const scripted = makeScriptedProvider([raw]);
+        const agent = AgentBuilder.create()
+          .setType(AgentType.SmartAssistant)
+          .setName('Test Agent')
+          .build();
+
+        await expect(
+          AgentExecutor.execute({ agent, input: 'Hello', provider: scripted })
+        ).rejects.toBe(raw);
+      });
+
+      it('never folds an AbortError into messages and retries, even with surfaceRetryableProviderErrors', async () => {
+        const raw = abortError();
+        const base = makeScriptedProvider([raw, 'success']);
+        const generate = vi.fn(base.generate);
+        const scripted: LLMProvider = { ...base, generate };
+        const agent = AgentBuilder.create()
+          .setType(AgentType.SmartAssistant)
+          .setName('Test Agent')
+          .build();
+
+        await expect(
+          AgentExecutor.execute({
+            agent,
+            input: 'Hello',
+            provider: scripted,
+            surfaceRetryableProviderErrors: true,
+          })
+        ).rejects.toBe(raw);
+        expect(generate).toHaveBeenCalledTimes(1);
+      });
+    });
+
     describe('with surfaceRetryableProviderErrors: true', () => {
       it('surfaces a rate-limit failure into messages (tagged, not a raw stack) and retries generation', async () => {
         const rawError = new APICallError({

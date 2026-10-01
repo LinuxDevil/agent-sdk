@@ -77,10 +77,12 @@ export async function prepareGenerateRequest(
   messages: Message[],
   tools: ToolDefinition[]
 ): Promise<GenerateOptions> {
-  const { agent, temperature, maxTokens, onLLMRequest, hooks } = options;
+  const { agent, provider, temperature, maxTokens, onLLMRequest, hooks } = options;
 
   const generateRequest: GenerateOptions = {
-    model: agent.settings?.model || 'gpt-4',
+    // agent.settings.model > the model the provider was configured with >
+    // undefined (the provider then applies its own built-in default).
+    model: agent.settings?.model || provider.defaultModel,
     messages,
     temperature,
     maxTokens,
