@@ -5,6 +5,7 @@
 
 import { LLMProvider, Message, ToolCall } from '../providers';
 import { ToolRegistry } from '../tools';
+import { getToolExecute } from '../tools/toolContract';
 import { ToolDescriptor } from '../types';
 import {
   ApprovalDecision,
@@ -283,7 +284,7 @@ async function runApprovedToolCall(
   // "not found" guard below must not reject that case outright; it only
   // means there is genuinely no way to run the tool (neither a direct
   // `execute` nor a `sandboxExecute`).
-  if (!toolDesc || !toolDesc.tool || (!toolDesc.tool.execute && !toolDesc.sandboxExecute)) {
+  if (!toolDesc || !toolDesc.tool || (!getToolExecute(toolDesc) && !toolDesc.sandboxExecute)) {
     throw new Error(`Tool '${pending.toolName}' not found in registry`);
   }
 

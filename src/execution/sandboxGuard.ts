@@ -20,6 +20,7 @@
 
 import type { ToolExecutionOptions } from 'ai';
 import { ToolDescriptor } from '../types';
+import { getToolExecute } from '../tools/toolContract';
 import { SandboxAdapter } from '../security/sandboxCore';
 import { bindToolCallScope, type ToolCallScope } from './subagentRuntime';
 import type { RunUsage } from '../models/usage';
@@ -83,5 +84,6 @@ export async function executeToolWithSandboxGuard(
   const executeOptions = { abortSignal: signal, ...runContext } as ToolExecutionOptions;
   // LOU-Y1: lets a delegate/`task` tool's sub-agent inherit from this run.
   bindToolCallScope(executeOptions, scope);
-  return toolDesc.tool.execute ? toolDesc.tool.execute(args, executeOptions) : null;
+  const execute = getToolExecute(toolDesc);
+  return execute ? execute(args, executeOptions) : null;
 }

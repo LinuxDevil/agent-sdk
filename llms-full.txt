@@ -1431,6 +1431,12 @@ Optional fields: `displayName`, `needsApproval` (boolean or predicate),
 description and zod `input` immediately; registering two tools with the same
 name throws an error naming the conflict.
 
+A defined tool carries its schema as `inputSchema` (the same zod schema as
+`input`) and its `execute` function directly. These are the canonical fields of
+a `ToolDescriptor`; the `.tool` object (an `ai` v4 `{ description, parameters,
+execute }`) is legacy, still built for compatibility, and used only for
+descriptors that do not set `inputSchema` / `execute`.
+
 ```ts
 import { loadMcpTools } from '@loushy/build-ai-agent/mcp';
 
@@ -1513,7 +1519,7 @@ so it can recover. `tool-result` events, tracing, `onToolResult` and
 `postToolCall` hooks see the call as an error.
 
 **Argument validation.** Before a tool runs, the model's arguments are parsed with the tool's zod
-`parameters` schema. Validation happens first, so pre-tool hooks, the
+`inputSchema` (for a legacy descriptor, `tool.parameters`). Validation happens first, so pre-tool hooks, the
 `needsApproval` predicate and `execute` all receive the **parsed** value
 (defaults, coercions and transforms applied). Tools without a zod schema are
 passed through unchanged.

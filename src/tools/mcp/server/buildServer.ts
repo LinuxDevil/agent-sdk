@@ -8,6 +8,7 @@ import { z } from 'zod';
 import type { SimpleAgent } from '../../../createAgent';
 import type { ExecutionResult } from '../../../execution/AgentExecutor';
 import type { DefinedTool } from '../../defineTool';
+import { getToolExecute } from '../../toolContract';
 import { loadOptionalPeer } from '../../../providers/optionalPeer';
 import { needsApprovalGate } from './toolNames';
 
@@ -84,7 +85,7 @@ function registerDirectTool(server: McpServer, tool: DefinedTool): void {
     { description: tool.description, inputSchema: tool.input },
     async (args: unknown, extra) => {
       try {
-        const execute = tool.tool.execute as ToolExecute | undefined;
+        const execute = getToolExecute(tool) as ToolExecute | undefined;
         if (!execute) return textResult(`Tool '${tool.name}' has no execute function.`, true);
         const output = await execute(args, {
           toolCallId: String(extra.requestId),
