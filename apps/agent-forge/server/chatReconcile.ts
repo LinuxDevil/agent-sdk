@@ -27,13 +27,18 @@
  * fresh ones for genuinely new messages.
  */
 import { randomUUID } from 'node:crypto';
-import type { Message } from '@loushy/build-ai-agent';
+import { textOf, type Message } from '@loushy/build-ai-agent';
 import type { ChatMessage } from '../shared/wireTypes';
 
-function sameMessage(a: Message, b: Message): boolean {
+/** The transcript keeps text only (LOU-V11 content parts are flattened with `textOf()`). */
+function toChatMessage(m: Message, id: string, timestamp: string): ChatMessage {
+  return { ...m, content: textOf(m), id, timestamp };
+}
+
+function sameMessage(a: ChatMessage, b: Message): boolean {
   return (
     a.role === b.role &&
-    a.content === b.content &&
+    a.content === textOf(b) &&
     a.toolCallId === b.toolCallId &&
     a.toolName === b.toolName &&
     JSON.stringify(a.toolCalls ?? null) === JSON.stringify(b.toolCalls ?? null)
@@ -67,14 +72,12 @@ export function reconcileChatMessages(
   const offset = offset1 > offset0 ? 1 : 0;
   const matched = offset === 1 ? offset1 : offset0;
 
-  const leading: ChatMessage[] = next.slice(0, offset).map((m) => ({ ...m, id: randomUUID(), timestamp: settledAt }));
-  const matchedPart: ChatMessage[] = prev.slice(0, matched).map((old, idx) => ({
-    ...next[offset + idx],
-    id: old.id,
-    timestamp: old.timestamp,
-  }));
+  const leading: ChatMessage[] = next.slice(0, offset).map((m) => toChatMessage(m, randomUUID(), settledAt));
+  const matchedPart: ChatMessage[] = prev
+    .slice(0, matched)
+    .map((old, idx) => toChatMessage(next[offset + idx], old.id, old.timestamp));
   const trailing: ChatMessage[] = next
     .slice(offset + matched)
-    .map((m) => ({ ...m, id: randomUUID(), timestamp: settledAt }));
+    .map((m) => toChatMessage(m, randomUUID(), settledAt));
   return [...leading, ...matchedPart, ...trailing];
 }

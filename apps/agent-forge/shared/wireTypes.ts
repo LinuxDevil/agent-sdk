@@ -10,6 +10,7 @@
  * defines the wire shape of the status/events the server reports back to
  * the app over `GET /agents/:id/status` and `WS /agents/:id/stream`.
  */
+import type { CheckpointStatus, TrajectoryComparison, TrajectoryStep } from '@loushy/build-ai-agent';
 
 /**
  * Status pill states the app's agent list / topbar render (LOU-L/M's
@@ -221,3 +222,42 @@ export interface DeployResult {
   stderr: string;
   command: string;
 }
+
+/**
+ * LOU-D45: one step of a run's checkpoint history (`GET /runs/:id/history`,
+ * where a run id is the session id: the agent id, or a fork's id) - the
+ * newest checkpoint saved at that step of the latest execution.
+ */
+export interface RunHistoryStep {
+  step: number;
+  status: CheckpointStatus;
+  savedAt: string;
+  /** The model's finish reason for this step: `tool_calls` when it called tools, else as recorded. */
+  finishReason?: string;
+  /** The step's tool calls; `result` is absent while a call has none. */
+  toolCalls: TrajectoryStep['tools'];
+  /** This step's model call, when its usage (and price) is known. */
+  tokens?: number;
+  costUsd?: number;
+}
+
+export interface RunHistoryPayload {
+  runId: string;
+  steps: RunHistoryStep[];
+}
+
+/** LOU-D45: `POST /runs/:id/fork` body - see `ForkPatch` (src/execution/checkpoint.ts). */
+export interface ForkRunRequest {
+  fromStep: number;
+  patch?: { toolResult?: { toolCallId: string; result: unknown }; appendInput?: string; businessState?: unknown };
+}
+
+/** LOU-D45: the started fork; its live status streams on `WS /agents/<runId>/stream`. */
+export interface ForkRunResponse {
+  runId: string;
+  fromStep: number;
+  status: AgentRunStatusPayload;
+}
+
+/** LOU-D45: `GET /runs/compare?a=&b=` - `compareTrajectories(a, b)`. */
+export type RunComparisonPayload = TrajectoryComparison;

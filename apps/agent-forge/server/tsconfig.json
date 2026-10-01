@@ -1,7 +1,9 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022"],
+    // DOM as in the SDK's own tsconfig: server tests import SDK sources
+    // (e.g. the shared checkpoint-history contract) that use fetch's DOM types.
+    "lib": ["ES2022", "DOM"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "declaration": false,
