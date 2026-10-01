@@ -230,7 +230,7 @@ lead run's abort signal aborts the request. Options: `url`, `auth`, `name`,
 
 Failures (the agent is unreachable, a 401 or other non-2xx answer, a malformed
 stream, or a remote run that ends in an error) reach the lead as the
-structured tool error with the code `LOUSHY_REMOTE_AGENT_FAILED`; the token is
+structured tool error with the code `LOUSHY_REMOTE_REQUEST_FAILED` (`LOUSHY_REMOTE_UNAUTHORIZED` for a 401); the token is
 never part of an error or an event. If the remote run pauses for an approval,
 the task fails with `LOUSHY_SESSION_AWAITING_APPROVAL`, naming the remote
 session and approval id: approvals are not proxied to the lead yet, so decide
