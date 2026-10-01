@@ -90,6 +90,10 @@ required for the default demo:
 
 - `SLACK_WEBHOOK_URL` - real Slack Incoming Webhook (see
   `src/tools/built-in/slack.ts`)
+- `SLACK_SIGNING_SECRET` - your Slack app's signing secret. When set,
+  `POST /slack/interactions` verifies every request's `X-Slack-Signature`
+  (via the SDK's `verifySlackSignature`) and answers 401 otherwise. Set it
+  whenever the endpoint is reachable from the internet.
 - `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` - real LLM provider (pass a real
   `LLMProvider` to `startOpsPipeline({ provider })` instead of the default
   `demoProvider`)
