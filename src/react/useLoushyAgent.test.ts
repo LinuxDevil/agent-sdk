@@ -1,0 +1,217 @@
+// @vitest-environment node
+/**
+ * LOU-D15: useLoushyAgent() rendered with react-test-renderer (no DOM
+ * needed), in process with mockModel and remote with a scripted fetch.
+ */
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { createElement } from 'react';
+import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { z } from 'zod';
+import { createAgent } from '../createAgent';
+import { defineTool } from '../tools/defineTool';
+import { mockModel } from '../testing';
+import { AGENT_EVENT_SCHEMA_VERSION, type AgentEvent } from '../execution/agentEvents';
+import { useLoushyAgent, type LoushyAgentSource, type UseLoushyAgentOptions, type UseLoushyAgentResult } from './useLoushyAgent';
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+let hook: UseLoushyAgentResult;
+let renderer: ReactTestRenderer | undefined;
+const statuses: string[] = [];
+
+function Probe({ source, options }: { source: LoushyAgentSource; options?: UseLoushyAgentOptions }) {
+  hook = useLoushyAgent(source, options);
+  statuses.push(hook.status);
+  return null;
+}
+
+function mount(source: LoushyAgentSource, options?: UseLoushyAgentOptions): void {
+  statuses.length = 0;
+  act(() => {
+    renderer = create(createElement(Probe, { source, options }));
+  });
+}
+
+afterEach(() => {
+  act(() => renderer?.unmount());
+  renderer = undefined;
+});
+
+function emailAgent(...turns: Parameters<typeof mockModel>[0]) {
+  const execute = vi.fn(async ({ to }: { to: string }) => `sent to ${to}`);
+  const tool = defineTool({ name: 'send_email', description: 'Sends an email', input: z.object({ to: z.string() }), needsApproval: true, execute });
+  return { agent: createAgent({ provider: mockModel(turns), tools: [tool] }), execute };
+}
+
+const callEmail = { toolCalls: [{ name: 'send_email', args: { to: 'sam' }, id: 'call_email' }] };
+
+describe('useLoushyAgent in process (LOU-D15)', () => {
+  it('send() streams the reply into messages and ends idle with usage', async () => {
+    const agent = createAgent({ provider: mockModel([{ text: 'Hello there!', usage: { inputTokens: 5, outputTokens: 3 } }]) });
+    mount({ agent });
+    expect(hook.status).toBe('idle');
+
+    await act(() => hook.send('Hi'));
+
+    expect(statuses).toContain('streaming');
+    expect(hook.status).toBe('idle');
+    expect(hook.messages.map(({ role, text }) => ({ role, text }))).toEqual([
+      { role: 'user', text: 'Hi' },
+      { role: 'assistant', text: 'Hello there!' },
+    ]);
+    expect(hook.usage?.totalTokens).toBe(8);
+    expect(hook.lastEvent?.type).toBe('run.done');
+    expect(hook.error).toBeNull();
+  });
+
+  it('with sessionId, turns share one session', async () => {
+    const model = mockModel(['Nice to meet you, Ali.', 'You are Ali.']);
+    mount({ agent: createAgent({ provider: model }), sessionId: 'chat-1' });
+
+    await act(() => hook.send('My name is Ali.'));
+    await act(() => hook.send('What is my name?'));
+
+    expect(model.lastCall?.messages.some((m) => m.content === 'My name is Ali.')).toBe(true);
+    expect(hook.messages.map((m) => m.text)).toEqual(['My name is Ali.', 'Nice to meet you, Ali.', 'What is my name?', 'You are Ali.']);
+  });
+
+  it('pauses for approval and approve() continues the run through agent.approvals', async () => {
+    const { agent, execute } = emailAgent(callEmail, 'Email sent.');
+    mount({ agent });
+
+    await act(() => hook.send('Email Sam'));
+    expect(hook.status).toBe('awaiting-approval');
+    expect(hook.pendingApproval).toMatchObject({ toolName: 'send_email', args: { to: 'sam' } });
+
+    await act(() => hook.approve());
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(hook.status).toBe('idle');
+    expect(hook.pendingApproval).toBeNull();
+    expect(hook.messages[1]).toMatchObject({ text: 'Email sent.', toolCalls: [{ name: 'send_email', status: 'done' }] });
+  });
+
+  it('reject() gives the model a rejection and marks the call rejected', async () => {
+    const { agent, execute } = emailAgent(callEmail, 'OK, not sent.');
+    mount({ agent });
+
+    await act(() => hook.send('Email Sam'));
+    await act(() => hook.reject('not today'));
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(hook.status).toBe('idle');
+    expect(hook.messages[1]).toMatchObject({ text: 'OK, not sent.', toolCalls: [{ status: 'rejected' }] });
+  });
+
+  it('a failing run ends in the error status', async () => {
+    mount({ agent: createAgent({ provider: mockModel([{ error: new Error('provider down') }]) }) });
+    await act(() => hook.send('Hi'));
+    expect(hook.status).toBe('error');
+    expect(hook.error?.message).toMatch(/provider down/);
+  });
+});
+
+const base = { runId: 'r1', timestamp: new Date(0).toISOString(), v: AGENT_EVENT_SCHEMA_VERSION };
+const sse = (events: AgentEvent[]) => events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join('');
+
+/** A fetch whose response body streams `body` and, unless `close` is false, ends; aborting the request errors it. */
+function scriptedFetch(responses: { body: string; close?: boolean; status?: number }[]) {
+  const signals: AbortSignal[] = [];
+  const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+    const { body, close = true, status = 200 } = responses.shift() ?? { body: '' };
+    const signal = init?.signal ?? new AbortController().signal;
+    signals.push(signal);
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(body));
+        if (close) controller.close();
+        else signal.addEventListener('abort', () => controller.error(signal.reason));
+      },
+    });
+    return new Response(stream, { status });
+  });
+  return { fetch: fetchMock as unknown as typeof fetch, fetchMock, signals };
+}
+
+describe('useLoushyAgent remote (LOU-D15)', () => {
+  it('POSTs { input } with headers and reads the SSE event stream', async () => {
+    const remote = scriptedFetch([
+      {
+        body: sse([
+          { ...base, seq: 0, type: 'run.start', agentName: 'a' },
+          { ...base, seq: 1, type: 'text.delta', text: 'Hi from the server' },
+          { ...base, seq: 2, type: 'run.done', finishReason: 'stop', text: 'Hi from the server' },
+        ]),
+      },
+    ]);
+    mount({ url: '/api/agent', headers: { Authorization: 'Bearer t' }, fetch: remote.fetch });
+
+    await act(() => hook.send('Hello'));
+
+    const [url, init] = remote.fetchMock.mock.calls[0];
+    expect(url).toBe('/api/agent');
+    expect(init).toMatchObject({ method: 'POST', body: JSON.stringify({ input: 'Hello' }), headers: { Authorization: 'Bearer t' } });
+    expect(hook.status).toBe('idle');
+    expect(hook.messages[1].text).toBe('Hi from the server');
+  });
+
+  it('approve() POSTs to approvalsUrl and applies the outcome; without it, it does nothing', async () => {
+    const paused = sse([
+      { ...base, seq: 0, type: 'approval.requested', approvalId: 'ap 1', toolCallId: 'c1', toolName: 'pay', args: {} },
+      { ...base, seq: 1, type: 'run.done', finishReason: 'awaiting-approval', text: '' },
+    ]);
+    const remote = scriptedFetch([{ body: paused }, { body: JSON.stringify({ text: 'Paid.', finishReason: 'stop' }) }, { body: paused }]);
+    mount({ url: '/api/agent', fetch: remote.fetch }, { approvalsUrl: '/api/approvals' });
+
+    await act(() => hook.send('Pay'));
+    expect(hook.status).toBe('awaiting-approval');
+    await act(() => hook.approve('ok'));
+
+    expect(remote.fetchMock.mock.calls[1][0]).toBe('/api/approvals/ap%201');
+    expect(remote.fetchMock.mock.calls[1][1]?.body).toBe(JSON.stringify({ approved: true, note: 'ok' }));
+    expect(hook.status).toBe('idle');
+    expect(hook.messages[1].text).toBe('Paid.');
+
+    act(() => renderer?.unmount());
+    mount({ url: '/api/agent', fetch: remote.fetch });
+    await act(() => hook.send('Pay'));
+    await act(() => hook.approve());
+    expect(remote.fetchMock).toHaveBeenCalledTimes(3);
+    expect(hook.status).toBe('awaiting-approval');
+  });
+
+  it('a failed response sets the error status', async () => {
+    mount({ url: '/api/agent', fetch: scriptedFetch([{ body: 'nope', status: 500 }]).fetch });
+    await act(() => hook.send('Hi'));
+    expect(hook.status).toBe('error');
+    expect(hook.error?.message).toMatch(/500/);
+  });
+
+  it('stop() aborts the request and returns to idle; unmount aborts too', async () => {
+    const open = sse([{ ...base, seq: 0, type: 'text.delta', text: 'partial' }]);
+    const remote = scriptedFetch([{ body: open, close: false }, { body: open, close: false }]);
+    mount({ url: '/api/agent', fetch: remote.fetch });
+
+    let sending: Promise<void> = Promise.resolve();
+    act(() => {
+      sending = hook.send('Long story');
+    });
+    await act(() => vi.waitFor(() => expect(hook.messages[1]?.text).toBe('partial')));
+    expect(hook.status).toBe('streaming');
+    await act(async () => {
+      hook.stop();
+      await sending;
+    });
+    expect(remote.signals[0].aborted).toBe(true);
+    expect(hook.status).toBe('idle');
+    expect(hook.error).toBeNull();
+
+    act(() => {
+      void hook.send('Again');
+    });
+    await act(() => vi.waitFor(() => expect(remote.signals).toHaveLength(2)));
+    act(() => renderer?.unmount());
+    renderer = undefined;
+    expect(remote.signals[1].aborted).toBe(true);
+  });
+});

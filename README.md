@@ -73,6 +73,7 @@ agent can be an `agent.yaml` spec served with `npx loushy dev agent.yaml`
 - **Approvals**: `needsApproval` pauses a run; `agent.approvals.resolve()` continues it, or `approve` decides in code. [Approvals](docs/approvals.md)
 - **Sessions**: `agent.session()` keeps a multi-turn conversation in memory, files or SQLite. [Sessions](docs/sessions.md)
 - **Streaming**: `agent.stream()` and `session.stream()` yield typed, versioned JSON events ready for SSE. [Streaming](docs/streaming.md)
+- **UI bindings**: `useLoushyAgent()` from `@loushy/build-ai-agent/react` turns the event stream into chat state, with approvals. [React](docs/react.md)
 - **Durable execution**: `sessionId` + `checkpointStore` resume a crashed or paused run without redoing finished tools. [Durable execution](docs/durable-execution.md)
 - **Cancellation, usage and cost**: pass an `AbortSignal`; every result carries token usage and USD cost for priced models. [API overview](docs/api-overview.md#cancellation)
 - **Providers**: OpenAI, Anthropic, OpenRouter, Ollama or a mock, with `withRetry()` and `withFallback()`. [Providers](docs/providers.md)
@@ -177,6 +178,7 @@ await AgentExecutor.execute({
 | [Approvals](docs/approvals.md) | `needsApproval`, `agent.approvals`, the `approve` callback, `resumeAfterApproval()`, stores |
 | [Sessions](docs/sessions.md) | Multi-turn conversations, `session.stream()`, session stores, `SqliteStore` |
 | [Streaming](docs/streaming.md) | `agent.stream()`: the typed event schema, terminal and SSE examples |
+| [React](docs/react.md) | `useLoushyAgent()`: chat state from the event stream, in process or over HTTP; `reduceAgentEvents()`, `parseEventStream()` |
 | [Durable execution](docs/durable-execution.md) | Checkpoints, crash resume, approvals mid-batch, at-least-once tools |
 | [Sub-agents](docs/sub-agents.md) | The `subagents` option and its `task` tool, inheritance, approvals in sub-agents |
 | [Skills](docs/skills.md) | On-demand instructions: `defineSkill()`, `loadSkills()` |
