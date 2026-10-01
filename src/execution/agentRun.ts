@@ -18,6 +18,7 @@ import { nanoid } from 'nanoid';
 import type { GenerateOptions, GenerateResult, LLMProvider } from '../providers';
 import type { ExecuteOptions, ExecutionEvent, ExecutionResult } from './AgentExecutor';
 import type { PendingApproval } from './ApprovalGate';
+import type { SubagentInfo } from './hooks';
 import {
   AGENT_EVENT_SCHEMA_VERSION,
   AgentEvent,
@@ -71,6 +72,8 @@ export interface RunEventSink {
   approvalRequested(pending: PendingApproval): void;
   /** Obtains one model step - streamed when the provider can. */
   generate(provider: LLMProvider, request: GenerateOptions): Promise<GenerateResult>;
+  /** LOU-Y1: the sink for a sub-agent's run, whose events carry `subagent`. */
+  forSubagent(subagent: SubagentInfo): RunEventSink;
 }
 
 /** Options key under which a streaming run hands the loop its {@link RunEventSink}. */
@@ -131,6 +134,9 @@ function toJsonValue(value: unknown): unknown {
   }
 }
 
+/** A finished model step's finish reason and measured usage (LOU-V5). */
+type MeasuredStep = { finishReason: GenerateResult['finishReason']; usage: Usage; estimated: boolean; costUsd?: number };
+
 class AgentRunImpl implements AgentRun {
   readonly runId = nanoid();
   readonly result: Promise<ExecutionResult>;
@@ -141,7 +147,6 @@ class AgentRunImpl implements AgentRun {
   private closed = false;
   private iterated = false;
   private wake: (() => void) | undefined;
-  private stepResult: { finishReason: GenerateResult['finishReason']; usage: Usage; estimated: boolean; costUsd?: number } | undefined;
   private lastError: unknown;
 
   constructor(start: RunStarter, signal: AbortSignal | undefined) {
@@ -187,10 +192,12 @@ class AgentRunImpl implements AgentRun {
     }
   }
 
-  private emit(payload: AgentEventPayload): void {
+  /** Queues an event; `subagent` tags one forwarded from a sub-agent's run (LOU-Y1). */
+  private emit(payload: AgentEventPayload, subagent?: SubagentInfo): void {
     if (this.closed) return;
     const event = {
       ...payload,
+      ...(subagent && { subagent }),
       runId: this.runId,
       seq: this.seq++,
       timestamp: new Date().toISOString(),
@@ -220,10 +227,18 @@ class AgentRunImpl implements AgentRun {
     throw error;
   }
 
-  /** Maps the loop's `onEvent` callbacks to AgentEvents (`abort`/`finish` are covered by `run.done`). */
+  /**
+   * Maps the loop's `onEvent` callbacks to AgentEvents (`abort`/`finish` are
+   * covered by `run.done`). Events forwarded from a sub-agent (LOU-Y1) keep
+   * their `subagent` tag; its `start`/`finish` are left out, since
+   * `run.start`/`run.done` mark the top-level run only (the sub-agent's run
+   * spans the parent's `tool.start`/`tool.done` of the calling tool).
+   */
   private translate(event: ExecutionEvent): void {
+    const { subagent } = event;
     switch (event.type) {
       case 'start':
+        if (subagent) break;
         this.emit({
           type: 'run.start',
           agentName: event.agentName ?? '',
@@ -231,84 +246,108 @@ class AgentRunImpl implements AgentRun {
         });
         break;
       case 'text-complete':
-        this.emit({ type: 'text.done', text: event.text ?? '' });
+        this.emit({ type: 'text.done', text: event.text ?? '' }, subagent);
         break;
       case 'tool-call':
-        if (event.toolCall) this.toolStarted(event.toolCall);
+        if (event.toolCall) this.toolStarted(event.toolCall, subagent);
         break;
       case 'tool-result':
-        if (event.toolResult) this.toolSettled(event.toolResult);
+        if (event.toolResult) this.toolSettled(event.toolResult, subagent);
         break;
       case 'error':
-        this.lastError = event.error;
-        this.emit({ type: 'error', error: toEventError(event.error) });
+        if (!subagent) this.lastError = event.error;
+        this.emit({ type: 'error', error: toEventError(event.error) }, subagent);
         break;
     }
   }
 
-  private toolStarted(toolCall: NonNullable<ExecutionEvent['toolCall']>): void {
-    this.toolStarts.set(toolCall.id, Date.now());
+  private toolStarted(toolCall: NonNullable<ExecutionEvent['toolCall']>, subagent?: SubagentInfo): void {
+    this.toolStarts.set(toolStartKey(toolCall.id, subagent), Date.now());
     const args = parseToolArguments(toolCall, {});
-    this.emit({
-      type: 'tool.start',
-      toolCallId: toolCall.id,
-      toolName: toolCall.function.name,
-      args: (typeof args === 'object' && args !== null ? args : {}) as Record<string, unknown>,
-    });
+    this.emit(
+      {
+        type: 'tool.start',
+        toolCallId: toolCall.id,
+        toolName: toolCall.function.name,
+        args: (typeof args === 'object' && args !== null ? args : {}) as Record<string, unknown>,
+      },
+      subagent
+    );
   }
 
-  private toolSettled(outcome: NonNullable<ExecutionEvent['toolResult']>): void {
+  private toolSettled(outcome: NonNullable<ExecutionEvent['toolResult']>, subagent?: SubagentInfo): void {
     const { toolCallId, toolName } = outcome;
-    const durationMs = Date.now() - (this.toolStarts.get(toolCallId) ?? Date.now());
+    const durationMs = Date.now() - (this.toolStarts.get(toolStartKey(toolCallId, subagent)) ?? Date.now());
     if (outcome.error === undefined) {
-      this.emit({ type: 'tool.done', toolCallId, toolName, result: toJsonValue(outcome.result), durationMs });
+      this.emit({ type: 'tool.done', toolCallId, toolName, result: toJsonValue(outcome.result), durationMs }, subagent);
       return;
     }
     const name = (outcome.result as { error?: unknown } | null)?.error;
-    this.emit({
-      type: 'tool.error',
-      toolCallId,
-      toolName,
-      error: { name: typeof name === 'string' ? name : 'Error', message: outcome.error },
-      durationMs,
-    });
+    this.emit(
+      {
+        type: 'tool.error',
+        toolCallId,
+        toolName,
+        error: { name: typeof name === 'string' ? name : 'Error', message: outcome.error },
+        durationMs,
+      },
+      subagent
+    );
   }
 
-  private sink(): RunEventSink {
+  /**
+   * The sink for the top-level run, or (LOU-Y1) for a sub-agent's run, whose
+   * events carry `subagent`. A sub-agent's approval request is reported by
+   * the top-level run it pauses, so its own sink does not emit one.
+   */
+  private sink(subagent?: SubagentInfo): RunEventSink {
+    let stepResult: MeasuredStep | undefined;
     return {
       stepStart: (step) => {
-        this.stepResult = undefined;
-        this.emit({ type: 'step.start', step });
+        stepResult = undefined;
+        this.emit({ type: 'step.start', step }, subagent);
       },
       stepDone: (step, finishReason) => {
-        const measured = this.stepResult;
-        this.emit({
-          type: 'step.done',
-          step,
-          finishReason: finishReason ?? measured?.finishReason ?? 'error',
-          ...(measured && { usage: toEventUsage({ ...measured.usage, estimated: measured.estimated, costUsd: measured.costUsd }) }),
-        });
+        const measured = stepResult;
+        this.emit(
+          {
+            type: 'step.done',
+            step,
+            finishReason: finishReason ?? measured?.finishReason ?? 'error',
+            ...(measured && {
+              usage: toEventUsage({ ...measured.usage, estimated: measured.estimated, costUsd: measured.costUsd }),
+            }),
+          },
+          subagent
+        );
       },
-      approvalRequested: (pending) =>
+      approvalRequested: (pending) => {
+        if (subagent) return;
         this.emit({
           type: 'approval.requested',
           approvalId: pending.id,
           toolCallId: pending.toolCallId,
           toolName: pending.toolName,
           args: toJsonValue(pending.args) as Record<string, unknown>,
-        }),
+        });
+      },
       generate: async (provider, request) => {
-        const generated = await this.generateStep(provider, request);
+        const generated = await this.generateStep(provider, request, subagent);
         const measured = measureUsage(request.model ?? provider.name, request.messages, generated);
-        this.stepResult = { finishReason: generated.finishReason, ...measured, usage: measured.usage };
+        stepResult = { finishReason: generated.finishReason, ...measured, usage: measured.usage };
         return generated;
       },
+      forSubagent: (child) => this.sink(subagent ? { ...child, depth: subagent.depth + 1, parent: subagent } : child),
     };
   }
 
   /** Streams the step when the provider can; otherwise one `generate()` and a single `text.delta`. */
-  private async generateStep(provider: LLMProvider, request: GenerateOptions): Promise<GenerateResult> {
-    const onTextDelta = (text: string) => this.emit({ type: 'text.delta', text });
+  private async generateStep(
+    provider: LLMProvider,
+    request: GenerateOptions,
+    subagent: SubagentInfo | undefined
+  ): Promise<GenerateResult> {
+    const onTextDelta = (text: string) => this.emit({ type: 'text.delta', text }, subagent);
     if (canStream(provider, request)) {
       return generateViaStream(provider, request, onTextDelta);
     }
@@ -316,6 +355,16 @@ class AgentRunImpl implements AgentRun {
     if (generated.text) onTextDelta(generated.text);
     return generated;
   }
+}
+
+/** Identifies a sub-agent run within the stream: the chain of tool calls that started it. */
+function subagentKey(subagent: SubagentInfo): string {
+  return subagent.parent ? `${subagentKey(subagent.parent)}/${subagent.toolCallId}` : subagent.toolCallId;
+}
+
+/** Tool call ids are only unique per run, so a sub-agent's are keyed by its chain. */
+function toolStartKey(toolCallId: string, subagent: SubagentInfo | undefined): string {
+  return subagent ? `${subagentKey(subagent)}:${toolCallId}` : toolCallId;
 }
 
 /**

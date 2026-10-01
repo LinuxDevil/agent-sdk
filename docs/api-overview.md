@@ -19,6 +19,16 @@ npm run docs:build   # writes docs/api/index.html
 | `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
 
+### Sub-agents
+
+Pass `subagents: { researcher, writer }` (agents from `createAgent()` with a
+`description`, or a `{ list, resolve }` catalog) to `createAgent()` or
+`AgentExecutor.execute()`: the lead gets one `task` tool and a prompt listing,
+each sub-agent runs on the task prompt alone, and it inherits the lead run's
+signal, hooks (`ctx.subagent`), tracing, approval store and `onEvent`
+(`event.subagent`). `maxSubagentDepth` (default 1) bounds nesting. See
+[Sub-agents](./sub-agents.md).
+
 ### Skills
 
 Pass `skills: [defineSkill({ name, description, content }), ...(await loadSkills(dir))]` to

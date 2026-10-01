@@ -14,6 +14,8 @@ import { HookRegistry, ToolCallHookContext } from './hooks';
 import { toolErrorMessage, toolErrorResult } from './propagatingToolError';
 import { ToolArgumentsValidationError, validateToolArguments } from './toolArgsValidation';
 import type { ExecuteOptions } from './AgentExecutor';
+import type { SubagentSuspension } from './ApprovalGate';
+import { SubagentApprovalPause, suspendedToolResult, toSuspension, type ToolCallScope } from './subagentRuntime';
 
 /**
  * Settled outcome of one tool call, as emitted in the 'tool-result' event
@@ -26,6 +28,11 @@ export interface ToolCallOutcome {
   error?: string;
   requiresApproval?: boolean;
   args?: Record<string, unknown>;
+  /**
+   * LOU-Y1: set when the tool started a sub-agent that paused for approval.
+   * `result` is then a placeholder; the run pauses once the turn is done.
+   */
+  subagent?: SubagentSuspension;
 }
 
 /** Everything a tool call needs from the surrounding execute() run. */
@@ -40,6 +47,8 @@ export interface ToolCallContext {
   messages: Message[];
   /** LOU-V1: the run's signal, handed to the tool as `abortSignal`. */
   signal?: AbortSignal;
+  /** LOU-Y1: this call, as seen by a sub-agent the tool starts. */
+  scope?: ToolCallScope;
   /** LOU-V5: where a delegated child's usage is reported (see ToolRunContext). */
   onDelegatedUsage?: ToolRunContext['onDelegatedUsage'];
 }
@@ -205,9 +214,7 @@ async function executePrepared(
   if (prepared.requiresApproval) {
     return approvalOutcome(prepared);
   }
-  return doExecuteToolCall(prepared.toolCall, ctx.toolRegistry, ctx.sandbox, prepared.args, ctx.signal, {
-    onDelegatedUsage: ctx.onDelegatedUsage,
-  });
+  return doExecuteToolCall(prepared.toolCall, ctx, prepared.args);
 }
 
 /**
@@ -302,12 +309,10 @@ function thrownToolFailure(toolCall: ToolCall, error: unknown): ToolCallOutcome 
  */
 async function doExecuteToolCall(
   toolCall: ToolCall,
-  toolRegistry: ToolRegistry | undefined,
-  sandbox: SandboxAdapter,
-  overrideArgs?: Record<string, unknown>,
-  signal?: AbortSignal,
-  runContext?: ToolRunContext
+  ctx: ToolCallContext,
+  overrideArgs?: Record<string, unknown>
 ): Promise<ToolCallOutcome> {
+  const { toolRegistry } = ctx;
   if (!toolRegistry) {
     return toolFailure(toolCall, 'No tool registry available');
   }
@@ -336,9 +341,10 @@ async function doExecuteToolCall(
       toolCall.function.name,
       toolDesc,
       args,
-      sandbox,
-      signal,
-      runContext
+      ctx.sandbox,
+      ctx.signal,
+      { onDelegatedUsage: ctx.onDelegatedUsage },
+      ctx.scope
     );
 
     return {
@@ -347,6 +353,25 @@ async function doExecuteToolCall(
       result,
     };
   } catch (error) {
+    if (error instanceof SubagentApprovalPause) {
+      return suspendedOutcome(toolCall, overrideArgs ?? {}, error);
+    }
     return thrownToolFailure(toolCall, error);
   }
+}
+
+/** The outcome of a tool call whose sub-agent paused for approval. */
+function suspendedOutcome(
+  toolCall: ToolCall,
+  args: Record<string, unknown>,
+  pause: SubagentApprovalPause
+): ToolCallOutcome {
+  const subagent = toSuspension(pause, { toolCallId: toolCall.id, toolName: toolCall.function.name, args });
+  return {
+    toolCallId: toolCall.id,
+    toolName: toolCall.function.name,
+    result: suspendedToolResult(subagent),
+    args,
+    subagent,
+  };
 }

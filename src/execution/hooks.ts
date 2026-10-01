@@ -59,6 +59,40 @@ export interface HookContext {
   messages: Message[];
   /** Free-form bag for hook-to-hook or hook-to-caller data passing. */
   metadata?: Record<string, unknown>;
+  /**
+   * LOU-Y1: set when the hook fires inside a sub-agent (a child run started
+   * by the `task` tool or a `createDelegateTool()` tool). A parent run's
+   * hooks apply to its sub-agents' model calls and tool calls too; a hook
+   * that should only see the top-level run can return early on it.
+   *
+   * @example
+   * ```ts
+   * const audit: AgentHook = {
+   *   name: 'audit',
+   *   preToolCall(ctx) {
+   *     if (ctx.subagent) return; // top-level calls only
+   *     console.log(ctx.toolName);
+   *   },
+   * };
+   * ```
+   */
+  subagent?: SubagentInfo;
+}
+
+/**
+ * Which sub-agent a hook call or an execution event comes from (LOU-Y1).
+ */
+export interface SubagentInfo {
+  /** The sub-agent's name: the `task` tool's `agent`, or the delegated agent's name. */
+  name: string;
+  /** 1 for a sub-agent of the top-level run, 2 for a sub-agent of that sub-agent, and so on. */
+  depth: number;
+  /** The parent run's tool call that started this sub-agent. */
+  toolCallId: string;
+  /** The `task` call's short `description` label, when there is one. */
+  description?: string;
+  /** The sub-agent that started this one, when it is nested deeper than depth 1. */
+  parent?: SubagentInfo;
 }
 
 /** Context passed to `AgentHook.preToolCall` / `postToolCall`. */

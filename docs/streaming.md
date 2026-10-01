@@ -71,6 +71,7 @@ Every event has these fields:
 | `seq`       | number   | `0` for the first event, then `+1` per event, with no gaps. |
 | `timestamp` | string   | When the event was emitted, ISO 8601 (`2026-10-01T09:30:00.000Z`). |
 | `v`         | `1`      | Schema version, exported as `AGENT_EVENT_SCHEMA_VERSION`. |
+| `subagent`  | object, optional | Only on events of a sub-agent's run - see [Sub-agents](#sub-agents). |
 
 The event types and their extra fields:
 
@@ -157,6 +158,39 @@ if (isAgentEvent(received)) console.log(render(received), toolNames([received]))
 `v` changes only when an existing event changes incompatibly (a field
 removed, renamed or retyped). New event types and new optional fields can be
 added without changing `v`, so ignore event types you do not know.
+
+## Sub-agents
+
+When the agent delegates with the `task` tool or a `createDelegateTool()`
+tool (see [Sub-agents](./sub-agents.md)), the sub-agent's run is streamed
+inside the same stream: its steps, `text.delta`s, `text.done`s, tool events
+and errors appear between the lead's `tool.start` and `tool.done` (or
+`tool.error`) for that call, each with a `subagent` field:
+
+```json
+{ "name": "researcher", "depth": 1, "toolCallId": "call_1", "description": "find sources" }
+```
+
+`toolCallId` is the lead's tool call that started the sub-agent; a sub-agent
+of a sub-agent has `depth: 2` and the enclosing one as `parent`. Events
+without `subagent` are the top-level run's: the ordering guarantees above hold
+for them, and separately for each sub-agent's steps (several sub-agents
+running in parallel interleave). `run.start` and `run.done` belong to the
+top-level run only, so they still come exactly once. A sub-agent that pauses
+for approval is reported once, by the top-level `approval.requested` (which
+carries the sub-agent's call).
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const researcher = createAgent({ provider, instructions: 'You research.', description: 'Finds sources' });
+const lead = createAgent({ provider, instructions: 'You coordinate.', subagents: { researcher } });
+
+for await (const event of lead.stream('Write about bicycles')) {
+  const who = event.subagent ? `[${event.subagent.name}] ` : '';
+  if (event.type === 'text.delta') process.stdout.write(who + event.text);
+}
+```
 
 ## Token streaming and providers
 
