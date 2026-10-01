@@ -201,7 +201,7 @@ export async function handleChatFetch(request: Request, ctx: ChatRoutesContext):
 const digest = async (value: string): Promise<Uint8Array> => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)));
 
 /** Whether `header` is `Bearer <token>`; compared in constant time (both sides hashed to one length first). */
-async function hasBearerToken(header: string | null, token: string): Promise<boolean> {
+export async function hasBearerToken(header: string | null, token: string): Promise<boolean> {
   const presented = /^Bearer\s+(.+)$/i.exec(header ?? '')?.[1];
   if (presented === undefined) return false;
   const [a, b] = await Promise.all([digest(presented), digest(token)]);

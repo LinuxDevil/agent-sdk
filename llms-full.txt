@@ -77,6 +77,7 @@ agent can be an `agent.yaml` spec served with `npx loushy dev agent.yaml`
 - **Streaming**: `agent.stream()` and `session.stream()` yield typed, versioned JSON events ready for SSE. [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)
 - **UI bindings**: `useLoushyAgent()` from `@loushy/build-ai-agent/react` (and `/vue`; `loushyAgent()` store from `/svelte`) turns the event stream into chat state, with approvals. [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md), [Vue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/vue.md), [Svelte](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/svelte.md)
 - **AI SDK UI**: `toUIMessageStreamResponse(agent.stream(...))` renders a run with the Vercel AI SDK's `useChat`. [AI SDK UI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/ai-sdk-ui.md)
+- **Next.js and Fetch frameworks**: `createRouteHandler(agent)` serves the session API from an App Router, SvelteKit, Hono or Bun route. [Next.js](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md)
 - **Durable execution**: `sessionId` + `checkpointStore` resume a crashed or paused run without redoing finished tools. [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)
 - **Cancellation, usage and cost**: pass an `AbortSignal`; every result carries token usage and USD cost for priced models. [API overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#cancellation)
 - **Providers**: OpenAI, Anthropic, OpenRouter, Ollama or a mock, with `withRetry()` and `withFallback()`. [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md)
@@ -174,6 +175,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md) | `output: zodSchema`: typed `result.object`, the repair step, `'output-invalid'` |
 | [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md) | `agent.stream()`: the typed event schema, terminal and SSE examples |
 | [AI SDK UI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/ai-sdk-ui.md) | `useChat` on a Loushy run: `toUIMessageStreamResponse()`, `fromUIMessages()`, approvals |
+| [Next.js](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md) | `createRouteHandler(agent)`: the session API as a Fetch route (App Router, SvelteKit, Hono), auth, `useChat` endpoint |
 | [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md) | `useLoushyAgent()`: chat state from the event stream, in process or over HTTP; `reduceAgentEvents()`, `parseEventStream()` |
 | [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md) | Checkpoints, crash resume, approvals mid-batch, at-least-once tools |
 | [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md) | The `subagents` option and its `task` tool, inheritance, approvals in sub-agents |
@@ -5760,6 +5762,106 @@ console.log((await store.list('global')).map((item) => item.text)); // ['Lives i
   are not offered for the rest of that run.
 - An agent directory's `memory/` folder is part of the agent: see
   [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md#memory).
+
+# Next.js and other Fetch-API frameworks
+
+Source: docs/nextjs.md
+
+`createRouteHandler(agent, options?)` serves an agent from a route file of any
+framework whose handlers take a Web `Request` and return a `Response`: the
+Next.js App Router, SvelteKit, Remix / React Router, Hono, Bun.serve. It is a
+thin wrapper over the same session API as `loushy dev` and the deployed server
+(docs/deployment.md), so the React, Vue and Svelte bindings work against it
+unchanged. It imports no framework and no `node:*` module.
+
+## Next.js App Router
+
+```ts
+// app/api/agent/[[...path]]/route.ts
+import { createAgent, createRouteHandler } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are helpful.' });
+
+export const { GET, POST } = createRouteHandler(agent, {
+  basePath: '/api/agent',
+  auth: process.env.AGENT_TOKEN,
+  uiMessageStream: true,
+});
+```
+
+**A route with no `auth` is public**: anyone who can reach it can run your agent
+and spend your model budget. Pass a bearer token, or a function that checks your
+own session or cookie:
+
+```ts
+import { createAgent, createRouteHandler } from '@loushy/build-ai-agent';
+
+declare function isSignedIn(request: Request): Promise<boolean>;
+
+export const { GET, POST } = createRouteHandler(createAgent({ model: 'openai/gpt-4o-mini' }), {
+  auth: (request) => isSignedIn(request),
+});
+```
+
+## Routes
+
+All paths are under `basePath` (default `/api/agent`; a trailing slash is
+accepted, and a request outside the base path is a 404).
+
+| Route | What it does |
+| --- | --- |
+| `POST <basePath>` | `{ input, sessionId? }`: the turn streamed as SSE. This is what `useLoushyAgent({ url })` posts; without a `sessionId` each turn is a fresh session |
+| `POST <basePath>/approvals/:id` | `{ approved, note? }` or `{ answer }`: the continuation streamed (`useLoushyAgent`'s `approvalsUrl`) |
+| `POST <basePath>/chat` | `{ sessionId, input }`: the session API of the deployed server |
+| `GET <basePath>/chat/:sessionId` | the session's transcript and pending approvals |
+| `POST <basePath>/chat/:sessionId/approvals/:id` | decide an approval in a session |
+| `POST <basePath>/ui` | with `uiMessageStream: true`: the AI SDK `useChat` endpoint |
+| `GET <basePath>/health` | `ok`, never behind `auth` |
+
+Sessions are kept by the agent's `store` (`createAgent({ store })`), so give
+the agent one that outlives a serverless invocation when you use sessions.
+
+## Client: `useLoushyAgent`
+
+```tsx no-verify
+'use client';
+import { useLoushyAgent } from '@loushy/build-ai-agent/react';
+
+export function Chat() {
+  const agent = useLoushyAgent({ url: '/api/agent', headers: { Authorization: `Bearer ${token}` } }, { approvalsUrl: '/api/agent/approvals' });
+  // agent.messages, agent.send(text), agent.approve() ...
+}
+```
+
+## Client: `useChat`
+
+With `uiMessageStream: true`, point `useChat` at the `ui` route. The chat `id`
+names the session, so only the newest user message is sent to the agent
+(docs/ai-sdk-ui.md).
+
+```tsx no-verify
+import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport } from 'ai';
+
+const { messages, sendMessage } = useChat({ transport: new DefaultChatTransport({ api: '/api/agent/ui' }) });
+```
+
+## Other frameworks
+
+The same handler, mounted where the framework wants it:
+
+```ts
+import { createAgent, createRouteHandler } from '@loushy/build-ai-agent';
+
+const { handler } = createRouteHandler(createAgent({ model: 'openai/gpt-4o-mini' }), { basePath: '/agent', auth: 'secret' });
+
+// SvelteKit: src/routes/agent/[...path]/+server.ts
+export const GET = ({ request }: { request: Request }) => handler(request);
+export const POST = ({ request }: { request: Request }) => handler(request);
+
+// Hono: app.all('/agent/*', (c) => handler(c.req.raw))
+// Bun.serve: fetch: handler
+```
 
 # Tracing and observability
 
