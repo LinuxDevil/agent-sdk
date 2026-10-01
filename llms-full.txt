@@ -807,6 +807,26 @@ How it behaves:
   conversation stays valid for the provider.
 - An already-aborted signal returns at once without calling the provider.
 
+### Finish reasons
+
+`result.finishReason` says why a run ended: the model's own reason for its last
+turn (`'stop'`, `'length'`, `'tool_calls'`, `'content_filter'`, `'error'`),
+`'awaiting-approval'` (paused on a tool call that needs a human), `'aborted'`
+(cancelled with `signal`), or `'max-steps'`. `'max-steps'` means the `maxSteps`
+budget (default 10) ran out while the model still wanted to continue, so the
+reply may be empty or partial; a run that finishes naturally within the budget
+keeps its `'stop'`. Steps carried over by `initialSteps` or an approval resume
+count against the budget, and `result.steps` is the number of steps taken. The
+same reason is on the `finish` event and on `run.done` in
+[streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md).
+
+```ts
+import { createAgent, createMockProvider } from '@loushy/build-ai-agent';
+const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider(), maxSteps: 3 });
+const result = await agent.send('Research this thoroughly');
+if (result.finishReason === 'max-steps') console.warn(`Gave up after ${result.steps} steps`);
+```
+
 ### Parallel tool calls
 
 When the model asks for several tools in one turn, they run concurrently.
@@ -1129,9 +1149,12 @@ returns an `AgentHook` that, before each model call above 90% (by default) of
 the model's context window, replaces tool results older than the newest
 40,000 tokens with a `[pruned: <tool> result, N chars]` marker. It edits the
 run's transcript in place, so pruning persists in checkpoints and
-`result.messages`. `compactMessages(messages, options)` does the same once,
-by hand, and `pruneToolResultsStrategy()` / `CompactionStrategy` are the
-built-in and pluggable strategies. See [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md).
+`result.messages`. `twoPhaseStrategy({ model })` (recommended) prunes first
+and, if the run is still too big, replaces old turns with a summary written
+by `model`; `summarizeStrategy()` only summarizes. `pinMessage(message)` marks
+a message that is never pruned or summarized. `compactMessages(messages, options)`
+does the same once, by hand (async), and `CompactionStrategy` is the
+pluggable interface (`compact()` may be async). See [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md).
 
 ## Flows, evals, observability and security
 
@@ -1977,24 +2000,31 @@ Source: docs/compaction.md
 
 A long agent run fills its context window mostly with tool results: file
 contents, search hits, API responses the model read once and no longer needs
-in full. Compaction keeps such a run under the model's limit by replacing old
-tool results with a short marker before the request is sent.
+in full. Compaction keeps such a run under the model's limit in two phases:
+first it replaces old tool results with a short marker, and if that is not
+enough it replaces the oldest turns with a summary written by a (cheaper)
+model.
 
-## Pruning old tool results in a run
+## Compacting a run
 
 `createCompactionHook()` returns an `AgentHook` named `compaction`. Register it
-and pass the registry to `AgentExecutor.execute()`:
+and pass the registry to `AgentExecutor.execute()`. The recommended setup is
+the two-phase strategy with a cheap summarizer model:
 
 ```ts
-import { AgentExecutor, HookRegistry, createCompactionHook } from '@loushy/build-ai-agent';
+import { AgentExecutor, HookRegistry, createCompactionHook, twoPhaseStrategy } from '@loushy/build-ai-agent';
 
 const hooks = new HookRegistry();
 hooks.register(
   createCompactionHook({
+    strategy: twoPhaseStrategy({ model: 'openai/gpt-4o-mini' }), // prune, then summarize if still too big
     thresholdPercent: 0.9, // compact above 90% of the context window (the default)
-    protectedTokens: 40_000, // never prune the newest 40K tokens (the default)
-    onCompaction: ({ tokensBefore, tokensAfter, prunedToolCallIds }) =>
-      console.log(`compacted ${tokensBefore} -> ${tokensAfter} tokens (${prunedToolCallIds.length} results)`),
+    protectedTokens: 40_000, // never change the newest 40K tokens (the default)
+    onCompaction: ({ tokensBefore, tokensAfter, prunedToolCallIds, summary, error }) => {
+      console.log(`compacted ${tokensBefore} -> ${tokensAfter} tokens (${prunedToolCallIds.length} results pruned)`);
+      if (summary) console.log('summary:', summary);
+      if (error) console.warn('summarizer failed, kept the pruned conversation:', error.message);
+    },
   })
 );
 
@@ -2004,18 +2034,39 @@ const result = await AgentExecutor.execute({ agent, input, provider, toolRegistr
 Before every model call the hook estimates the request's size with
 `estimateTokens` (see [Models, tokens and cost](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#models-tokens-and-cost)).
 When it is above `thresholdPercent` of the context window, the hook runs its
-strategy and calls `onCompaction` with the token counts, the pruned
-`toolCallId`s and the strategy name.
+strategy (and waits for it, if it is async) and calls `onCompaction` with the
+token counts, the pruned `toolCallId`s, the summary if there is one and the
+strategy name.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `thresholdPercent` | `0.9` | Compact when the estimated request is above this share of the context window. Must be in (0, 1]. |
 | `contextWindow` | registry, else `128_000` | Context window in tokens. By default it is looked up for `request.model` with `getModelInfo()`; register your own models with `registerModel()`. |
 | `protectedTokens` | `40_000` | The newest messages that fit in this many tokens are never changed. |
-| `strategy` | `pruneToolResultsStrategy()` | How to compact (see below). |
-| `onCompaction` | none | Called after each compaction that changed the conversation. |
+| `strategy` | `pruneToolResultsStrategy()` | How to compact (see below). `twoPhaseStrategy()` is recommended; it needs a summarizer model, so it is not the default. |
+| `onCompaction` | none | Called after each compaction that changed the conversation or reported an `error`. |
 
-## What pruning changes
+Compaction never fails a run. If the strategy throws, or the summarizer call
+fails, the run continues (with the pruned conversation, or unchanged) and
+`onCompaction` receives the `error`.
+
+The hook rewrites the run's transcript itself, not a copy: the request's
+`messages` array is the run's message list, and the hook changes it in place.
+A pruned result or a summary therefore stays in later steps, in checkpoints
+(a resumed session does not bring the full history back) and in
+`result.messages`, and it is not compacted again on the next step.
+Compaction is lossy: if the model needs a pruned result again, it has to call
+the tool again.
+
+## Strategies
+
+| Strategy | What it does |
+| --- | --- |
+| `pruneToolResultsStrategy()` | Replaces old tool results with a marker. No model call. |
+| `summarizeStrategy({ model, ... })` | Replaces old turns with one summary message written by `model`. |
+| `twoPhaseStrategy({ model, ... })` | Prunes first; summarizes only if the conversation is still above the threshold. Recommended. |
+
+### Pruning tool results
 
 `pruneToolResultsStrategy()` replaces the `content` of each tool result older
 than the protected tail with a marker such as
@@ -2026,53 +2077,112 @@ than the protected tail with a marker such as
   for every provider;
 - the results of the latest assistant turn, which the model has not read yet,
   even when they are bigger than `protectedTokens`;
-- results that are already a marker, or shorter than one.
+- pinned results, results that are already a marker, or results shorter than
+  a marker.
 
-The hook rewrites the run's transcript itself, not a copy: the request's
-`messages` array is the run's message list, and the hook changes it in place.
-A pruned result therefore stays pruned in later steps, in checkpoints (a
-resumed session does not bring the full result back) and in
-`result.messages`, and it is not pruned again on the next step. Pruning is
-lossy: if the model needs a pruned result again, it has to call the tool
-again.
+### Summarizing old turns
+
+`summarizeStrategy()` sends the messages before the protected tail to the
+summarizer with a focused instruction and replaces them with one `user`
+message:
+
+```text
+[Conversation summary]
+<the summary>
+```
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `model` | required | The summarizer: an `LLMProvider`, or a `"provider/model"` spec resolved with `resolveProvider()`. A small, cheap model is usually enough. |
+| `protectedTokens` | the hook's | Recent tokens kept as they are. |
+| `prompt` | `DEFAULT_SUMMARY_PROMPT` | The instruction sent as the summarizer's system message. The conversation to summarize is the user message. |
+| `maxSummaryTokens` | provider default | `maxTokens` of the summary call. |
+
+The summary keeps the transcript valid for every provider:
+
+- system messages and pinned messages stay where they are, and the summary
+  goes where the first summarized message was;
+- an assistant turn is summarized or kept together with all its tool results,
+  so no tool call loses its result (and no result loses its call);
+- the last message and the latest assistant turn's results are always kept.
+
+If the summary call fails (or returns nothing), the strategy falls back to
+pruning and returns the failure as `error`.
+
+### Two phases
+
+`twoPhaseStrategy()` takes the same options. It prunes tool results first,
+which is free, and calls the summarizer only when the pruned conversation is
+still above `thresholdPercent` of the context window. The summarizer then
+reads the pruned conversation. If it fails, the pruned conversation is kept and
+`error` is reported.
+
+## Pinning messages
+
+`pinMessage(message)` returns a copy of the message marked as pinned (it sets
+`metadata.pinned: true`; `Message.metadata` is application data that is never
+sent to the model). The built-in strategies never prune or summarize a pinned
+message; a pinned tool result keeps its whole assistant turn. Pin what the
+agent must always see in full, such as the task statement or a key document:
+
+```ts
+import { pinMessage, isPinned, type Message } from '@loushy/build-ai-agent';
+
+const messages: Message[] = [
+  { role: 'system', content: 'You are a research assistant.' },
+  pinMessage({ role: 'user', content: 'Goal: compare the three vendors on price and support.' }),
+];
+console.log(isPinned(messages[1])); // true
+```
+
+Custom strategies should honor `isPinned()` too.
 
 ## Compacting by hand
 
 `compactMessages(messages, options)` runs a strategy once, whatever the size
-of the conversation, and returns a new array (its input is not modified). Use
-it to shrink a stored transcript before you continue it:
+of the conversation, and resolves to a new array (its input is not modified).
+Use it to shrink a stored transcript before you continue it:
 
 ```ts
-import { compactMessages, type Message } from '@loushy/build-ai-agent';
+import { compactMessages, summarizeStrategy, type Message } from '@loushy/build-ai-agent';
 
 declare const history: Message[];
 
-const { messages, tokensBefore, tokensAfter, prunedToolCallIds } = compactMessages(history, {
+const { messages, tokensBefore, tokensAfter, prunedToolCallIds } = await compactMessages(history, {
   protectedTokens: 8_000,
   model: 'gpt-4o-mini', // for the context-window lookup and the token estimator
 });
 console.log(`${tokensBefore} -> ${tokensAfter} tokens, pruned ${prunedToolCallIds.length} results`);
+
+const summarized = await compactMessages(history, {
+  protectedTokens: 8_000,
+  strategy: summarizeStrategy({ model: 'openai/gpt-4o-mini' }),
+});
+console.log(summarized.summary ?? summarized.error?.message);
 ```
 
 ## Writing a strategy
 
-A strategy is a name and a `compact()` function. It receives the messages, a
-token counter for the request's model, the context window and
-`protectedTokens`, and returns the new messages with before/after token counts.
-Return the input array unchanged when there is nothing to do: the hook then
-leaves the run alone and does not call `onCompaction`.
+A strategy is a name and a `compact()` function, which may be async. It
+receives the messages, a token counter for the request's model, the context
+window, `protectedTokens`, `thresholdTokens` (the size to get under) and the
+run's abort `signal`, and returns the new messages with before/after token
+counts (and optionally a `summary` or an `error`). Return the input array
+unchanged when there is nothing to do: the hook then leaves the run alone and
+does not call `onCompaction`.
 
 ```ts
-import { createCompactionHook, type CompactionStrategy } from '@loushy/build-ai-agent';
+import { createCompactionHook, isPinned, type CompactionStrategy } from '@loushy/build-ai-agent';
 
-// Keep the system prompt, the first user message and the last 20 messages.
+// Keep the system prompt, pinned messages and the last 20 messages.
 const keepRecent: CompactionStrategy = {
   name: 'keep-recent',
   compact({ messages, estimateTokens }) {
     const tokensBefore = estimateTokens(messages);
     if (messages.length <= 22) return { messages, tokensBefore, tokensAfter: tokensBefore, prunedToolCallIds: [] };
     // A real strategy must not split a tool call from its result.
-    const kept = [...messages.slice(0, 2), ...messages.slice(-20)];
+    const older = messages.slice(0, -20).filter((m) => m.role === 'system' || isPinned(m));
+    const kept = [...older, ...messages.slice(-20)];
     return { messages: kept, tokensBefore, tokensAfter: estimateTokens(kept), prunedToolCallIds: [] };
   },
 };
@@ -2080,9 +2190,9 @@ const keepRecent: CompactionStrategy = {
 const hook = createCompactionHook({ strategy: keepRecent });
 ```
 
-A summarizing strategy (replace old turns with a model-written summary) and
-typed `compaction.*` stream events are planned; `onCompaction` is where they
-will plug in.
+Typed `compaction.*` stream events and a `createAgent({ compaction })` option
+are planned (LOU-W3.2); until then `onCompaction` is where to observe
+compactions.
 
 # Configuration
 
@@ -2268,6 +2378,40 @@ what the examples and the Quick Start use by default.
 
 ## Provider retries and fallback
 
+`createAgent()` retries failed model calls on its own, and can fall back to
+other models:
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  retry: { maxRetries: 3, backoff: { initialMs: 1000 } }, // default { maxRetries: 2 }; false turns it off
+  fallbackModels: ['anthropic/claude-3-5-haiku-latest'], // tried in order once the retries are used up
+});
+
+for await (const event of agent.stream('Hello!')) {
+  if (event.type === 'provider.retry') console.warn(`retry ${event.attempt} in ${event.delayMs}ms: ${event.error.message}`);
+  if (event.type === 'provider.fallback') console.warn(`falling back from ${event.from} to ${event.to}`);
+}
+```
+
+- `retry` takes the `withRetry()` options below. It applies to the `model`
+  string (or the model picked from the environment) and to every
+  `fallbackModels` entry. createAgent builds those providers with the `ai`
+  SDK's own retries off (`maxRetries: 0`), so retries happen in one place and
+  the default `{ maxRetries: 2 }` makes as many calls as before.
+- A `provider` instance you pass keeps its own retry behaviour; it is wrapped
+  in `withRetry()` only when you set `retry`. `fallbackModels` work with it too.
+- `fallbackModels` are `provider/model` strings, resolved like `model` when the
+  agent is created. The agent runs `withFallback([withRetry(primary), withRetry(fallback1), ...])`:
+  every call starts with the primary model.
+- `stream()` and `session.stream()` report each retry as a `provider.retry`
+  event and each switch as `provider.fallback` (see
+  [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#event-schema-version-1)). `send()` returns the
+  final result as before.
+
+To build the same thing by hand, or for providers you construct yourself,
 `withRetry(provider, options)` and `withFallback(providers, options)` wrap any
 `LLMProvider` and return another one, so they compose and can be passed
 anywhere a provider is accepted:
@@ -2305,8 +2449,11 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
   `name` and `defaultModel` report the provider that served the latest call.
 - `resilientProvider(provider, { maxRetries, timeout })` applies the
   `LLMProviderConfig` fields of the same names.
-- The built-in providers also run the `ai` SDK's own internal retries (2 by
-  default) inside each attempt.
+- The built-in providers pass their config's `maxRetries` (default 2) to the
+  `ai` SDK's own internal retries, which run inside each `withRetry` attempt.
+  Build a provider you wrap with `maxRetries: 0`
+  (`new OpenAIProvider({ apiKey, maxRetries: 0 })`) to retry in one place.
+  `createAgent()` does this for the models it resolves.
 
 ## `createAgent()` options
 
@@ -2326,6 +2473,8 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `approvalStore` | Where a `needsApproval` pause is saved (default: a per-agent `InMemoryApprovalStore`); see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md). |
 | `approve`  | `(call) => boolean`: decide approvals in code instead of pausing. |
 | `projectInstructions` | `true` or `{ cwd?, files? }`: append the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (off by default; see [Project instructions](#project-instructions)). |
+| `retry`    | `withRetry()` options for failed model calls, or `false`. Default `{ maxRetries: 2 }` for `model` strings; a `provider` instance is wrapped only when set. See [Provider retries and fallback](#provider-retries-and-fallback). |
+| `fallbackModels` | `provider/model` strings tried in order when the model still fails after its retries. |
 
 With neither `model` nor `provider`, `createAgent()` resolves from the
 environment: `LOUSHY_MODEL` (a `'provider/model'` string) if set, otherwise
@@ -3369,6 +3518,28 @@ Misconfiguration errors say how to fix themselves: a missing key names the
 variable, an unknown prefix lists the supported ones and suggests the closest,
 and a missing peer package prints the exact `npm install` command.
 
+### Retries and fallback models
+
+`createAgent()` retries a failed model call (rate limit, timeout, network
+error, 5xx) twice by default, and with `fallbackModels` moves on to the next
+model when the call still fails:
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  retry: { maxRetries: 3 }, // or false
+  fallbackModels: ['anthropic/claude-3-5-haiku-latest', 'openrouter/meta-llama/llama-3.1-70b-instruct'],
+});
+```
+
+The `model` string and each fallback are resolved with the `ai` SDK's own
+retries off, so `retry` is the only retry layer. A `provider` instance is
+wrapped only when you set `retry`. `agent.stream()` reports `provider.retry`
+and `provider.fallback` events. Details in
+[Provider retries and fallback](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#provider-retries-and-fallback).
+
 ## Which model runs?
 
 In order: the agent's own `settings.model` (set with
@@ -3990,9 +4161,11 @@ The event types and their extra fields:
 | `tool.done`          | `toolCallId`, `toolName`, `result: unknown`, `durationMs: number` | A tool call returned. `result` is the value as it would be JSON-encoded (`undefined` becomes `null`, a `Date` becomes a string). `durationMs` counts from its `tool.start`. |
 | `tool.error`         | `toolCallId`, `toolName`, `error: { name: string, message: string }`, `durationMs: number` | A tool call failed: it threw, its arguments did not match its schema (`name: 'ToolArgumentsValidationError'`), or the tool does not exist. The model gets the error as the call's result and the run continues. |
 | `approval.requested` | `approvalId: string`, `toolCallId`, `toolName`, `args: Record<string, unknown>` | A tool call needs a human decision. The run then stops; resume it with `agent.approvals.resolve()` or `resumeAfterApproval()` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)). |
-| `step.done`          | `step: number`, `finishReason: string`, `usage?: { promptTokens, completionTokens, totalTokens }` | A step ends. `finishReason` is the model's (`'stop'`, `'tool_calls'`, `'length'`, ...), or `'awaiting-approval'`, `'aborted'` or `'error'` when the step ended that way. `usage` is this step's model call, absent when the call produced no response. |
+| `step.done`          | `step: number`, `finishReason: string`, `usage?: { promptTokens, completionTokens, totalTokens }` | A step ends. `finishReason` is the model's (`'stop'`, `'tool_calls'`, `'length'`, ...), or `'awaiting-approval'`, `'aborted'` or `'error'` when the step ended that way (a run that runs out of `maxSteps` still wanting to continue ends with `run.done` `'max-steps'`). `usage` is this step's model call, absent when the call produced no response. |
 | `error`              | `error: { name: string, message: string }` | An error. If it ends the run, `run.done` with `finishReason: 'error'` follows. A provider error retried under `surfaceRetryableProviderErrors` is followed by further steps instead. |
-| `run.done`           | `finishReason: string`, `text: string`, `usage?: { promptTokens, completionTokens, totalTokens }` | Last event of every run, exactly once, including aborted, failed and awaiting-approval runs. `finishReason` and `text` match `run.result`; a failed run has `finishReason: 'error'`, `text: ''` and no `usage`. |
+| `provider.retry`     | `attempt: number`, `maxRetries: number`, `delayMs: number`, `error: { message: string, category?: string }`, `provider: string` | A model call failed and is retried after `delayMs` (`createAgent({ retry })` or any `withRetry()` provider). `attempt` is the attempt that failed (1 = first); `category` is `'rate-limit'`, `'timeout'`, ... and absent when unknown (a 5xx, for example). |
+| `provider.fallback`  | `from: string`, `to: string`, `error: { message: string }` | A model call still failed after its retries and the next provider takes over (`createAgent({ fallbackModels })` or any `withFallback()` provider). `from` and `to` are provider names. |
+| `run.done`           | `finishReason: string`, `text: string`, `usage?: { promptTokens, completionTokens, totalTokens }` | Last event of every run, exactly once, including aborted, failed and awaiting-approval runs. `finishReason` and `text` match `run.result` (`'max-steps'` when the `maxSteps` budget ran out while the model still wanted to continue); a failed run has `finishReason: 'error'`, `text: ''` and no `usage`. |
 
 Optional fields are left out when they have no value. They are never
 `undefined`, so `JSON.parse(JSON.stringify(event))` returns an equal object.
@@ -4003,7 +4176,8 @@ Optional fields are left out when they have no value. They are never
 - Each `step.start` is followed by exactly one `step.done` with the same
   `step`, before the next `step.start`. Everything a step does happens between
   the two.
-- Inside a step: `text.delta` events, then `text.done`, then the tool events.
+- Inside a step: `provider.retry` / `provider.fallback` events (if the model
+  call fails), then `text.delta` events, then `text.done`, then the tool events.
 - Tool calls of one step run in parallel (see `toolConcurrency`):
   `tool.start` events come in the model's call order and `tool.done` /
   `tool.error` events in completion order. Match them by `toolCallId`.

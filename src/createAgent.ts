@@ -22,6 +22,7 @@ import { LLMProvider } from './providers/llm';
 import { ToolRegistry } from './tools/ToolRegistry';
 import { ToolDescriptor } from './types';
 import { modelFromEnv, resolveProviderSpec } from './providers/providerSpec';
+import { withFallback, withRetry, type WithRetryOptions } from './providers/resilience';
 import type { DefinedTool } from './tools/defineTool';
 import { ToolConcurrency, assertToolConcurrency } from './execution/toolBatch';
 import type { Skill } from './skills/defineSkill';
@@ -140,6 +141,33 @@ export interface CreateAgentBase {
    * ```
    */
   approve?: ApproveToolCall;
+  /**
+   * Retries of a failed model call (LOU-V7.2), with `withRetry()`: rate
+   * limits, timeouts, network errors and 5xx responses, with exponential
+   * backoff. Defaults to `{ maxRetries: 2 }` for every model given as a
+   * `provider/model` string (resolved with the `ai` SDK's own retries off, so
+   * this is the only retry layer); `false` turns retries off. A `provider`
+   * instance you pass is wrapped only when you set `retry`. `stream()`
+   * reports each retry as a `provider.retry` event.
+   *
+   * @example
+   * ```ts
+   * createAgent({ model: 'openai/gpt-4o-mini', retry: { maxRetries: 4, backoff: { initialMs: 1000 } } });
+   * ```
+   */
+  retry?: WithRetryOptions | false;
+  /**
+   * `provider/model` strings tried in order when the primary model's call
+   * still fails after its retries (LOU-V7.2), each resolved like `model` and
+   * retried with `retry`. Every call starts with the primary. `stream()`
+   * reports each switch as a `provider.fallback` event.
+   *
+   * @example
+   * ```ts
+   * createAgent({ model: 'openai/gpt-4o-mini', fallbackModels: ['anthropic/claude-3-5-haiku-latest'] });
+   * ```
+   */
+  fallbackModels?: readonly string[];
 }
 
 /**
@@ -367,10 +395,28 @@ function resolveInstructions(config: CreateAgentConfig): string {
   return config.instructions ?? config.prompt ?? DEFAULT_INSTRUCTIONS;
 }
 
-/** The provider to run with: the given instance, else `model` resolved from env, else the env's choice. */
+/** The default `retry` for models given as strings: as many retries as the `ai` SDK makes on its own. */
+const DEFAULT_RETRY: WithRetryOptions = { maxRetries: 2 };
+
+/**
+ * The provider to run with: the given instance, else `model` resolved (else
+ * the env's choice), wrapped in `withRetry()` and, with `fallbackModels`,
+ * `withFallback()` (LOU-V7.2).
+ */
 function resolveModelSource(config: CreateAgentConfig): LLMProvider {
-  if (config.provider) return config.provider;
-  return resolveProviderSpec(config.model ?? modelFromEnv('createAgent'), 'createAgent');
+  const { retry, fallbackModels = [] } = config;
+  const resolve = (spec: string) => {
+    // maxRetries: 0 turns off the 'ai' SDK's own retries: withRetry() is the only layer.
+    const provider = resolveProviderSpec(spec, 'createAgent', { maxRetries: 0 });
+    return retry === false ? provider : withRetry(provider, retry ?? DEFAULT_RETRY);
+  };
+  let primary: LLMProvider;
+  if (config.provider) {
+    primary = retry ? withRetry(config.provider, retry) : config.provider;
+  } else {
+    primary = resolve(config.model ?? modelFromEnv('createAgent'));
+  }
+  return fallbackModels.length > 0 ? withFallback([primary, ...fallbackModels.map(resolve)]) : primary;
 }
 
 /**

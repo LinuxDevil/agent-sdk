@@ -49,6 +49,28 @@ Misconfiguration errors say how to fix themselves: a missing key names the
 variable, an unknown prefix lists the supported ones and suggests the closest,
 and a missing peer package prints the exact `npm install` command.
 
+### Retries and fallback models
+
+`createAgent()` retries a failed model call (rate limit, timeout, network
+error, 5xx) twice by default, and with `fallbackModels` moves on to the next
+model when the call still fails:
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  retry: { maxRetries: 3 }, // or false
+  fallbackModels: ['anthropic/claude-3-5-haiku-latest', 'openrouter/meta-llama/llama-3.1-70b-instruct'],
+});
+```
+
+The `model` string and each fallback are resolved with the `ai` SDK's own
+retries off, so `retry` is the only retry layer. A `provider` instance is
+wrapped only when you set `retry`. `agent.stream()` reports `provider.retry`
+and `provider.fallback` events. Details in
+[Provider retries and fallback](./configuration.md#provider-retries-and-fallback).
+
 ## Which model runs?
 
 In order: the agent's own `settings.model` (set with

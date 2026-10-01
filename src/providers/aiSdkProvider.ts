@@ -306,6 +306,9 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
       seed: options.seed,
       tools: convertTools(options.tools),
       maxSteps: 1, // Single step - tool execution happens in AgentExecutor
+      // The 'ai' SDK's own retries (its default is 2). createAgent() resolves
+      // providers with 0 and retries in its withRetry() wrapper instead.
+      maxRetries: this.config.maxRetries ?? 2,
       abortSignal: options.signal,
     };
   }
