@@ -46,6 +46,9 @@ const sendEmail = defineTool({
 });
 ```
 
+The predicate can also deny a call or approve it only once per session; see
+[Approve, deny or ask](#approve-deny-or-ask).
+
 When the model asks for several tools in one turn, the first call that needs
 approval stops the batch: the calls before it run, the run pauses on it, and
 the calls after it run once it is decided (see
@@ -122,6 +125,56 @@ Both options also exist on `AgentExecutor.execute()` / `stream()` and
 `resumeAfterApproval()`. Sub-agents inherit the lead agent's rules, checked
 before the sub-agent's own, and report their decisions to the lead's
 `onPermissionDecision`.
+
+## Approve, deny or ask
+
+A `needsApproval` function may return more than a boolean. It gets the
+validated arguments and `{ toolName, toolCallId, sessionId, messages }`, and
+returns (or resolves to):
+
+- `'ask'` or `true`: pause for approval, as before.
+- `'approve'` or `false`: run the call.
+- `'deny'` or `{ deny: reason }`: do not run it and do not pause. The model
+  gets a tool error with `kind: 'denied'` and the `reason`, so it can try
+  something else; streams see `tool.error`, and `onPermissionDecision`
+  records `decision: 'deny'` with the `reason` (and no `rule`).
+
+Three helpers cover the common policies: `always()` (the same as `true`),
+`never()` (`false`) and `once()`. `once()` asks the first time the tool is
+called in a session; once a human approves a call, later calls of that tool in
+the same session run without asking. A rejection is not remembered, and a new
+session asks again. `once({ per: 'args' })` remembers approvals per tool and
+arguments instead, so a call with different arguments asks again. The memory
+lives in the transcript (the approved call's `tool` message carries
+`metadata.approval`), so it is saved wherever the session, checkpoint or
+approval snapshot is, and holds after a resume in another process. Without a
+session, each `send()` is its own transcript. Compacting away that message
+makes the tool ask again.
+
+```ts
+import { createAgent, defineTool, once } from '@loushy/build-ai-agent';
+import { z } from 'zod';
+
+const askOnce = once();
+const deploy = defineTool({
+  name: 'deploy',
+  description: 'Deploy a service',
+  input: z.object({ service: z.string(), env: z.enum(['staging', 'prod']) }),
+  needsApproval: (args, ctx) => (args.env === 'prod' ? { deny: 'Production deploys go through CI' } : askOnce(args, ctx)),
+  execute: async ({ service, env }) => `deployed ${service} to ${env}`,
+});
+const agent = createAgent({ provider, instructions: 'You deploy services.', tools: [deploy] });
+const chat = agent.session(); // the first staging deploy asks, later ones in this session run
+```
+
+With `permissions`, a matching rule decides alone: a `deny` rule always wins,
+an `allow` rule runs the call without consulting `needsApproval` (so it also
+skips the tool's own `'ask'`, `once()` or `'deny'`), and an `ask` rule pauses.
+The tool's `needsApproval` outcome applies only when no rule matches. MCP
+tools keep their annotation-derived `needsApproval` (a boolean). Sub-agents
+evaluate their tools' `needsApproval` the same way, and a `once()` approval
+given through the lead agent is remembered for the rest of that sub-agent's
+task.
 
 ## `createAgent()` agents
 

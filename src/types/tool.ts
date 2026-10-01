@@ -84,6 +84,23 @@ export interface ToolMetadata {
   };
 }
 
+/**
+ * What a tool's `needsApproval` function decides for one call (LOU-X8):
+ * `'ask'` (or `true`) pauses for approval, `'approve'` (or `false`) runs the
+ * call, `'deny'` or `{ deny: reason }` does not run it and gives the model a
+ * `kind: 'denied'` tool error with the reason.
+ */
+export type ApprovalOutcome = boolean | 'approve' | 'deny' | 'ask' | { deny: string };
+
+/** The second argument of a `needsApproval` function (LOU-X8): the call being checked. */
+export interface ApprovalCheckContext {
+  toolName: string;
+  toolCallId: string;
+  sessionId?: string;
+  /** The run's transcript so far, including earlier turns of a session. */
+  messages: readonly Message[];
+}
+
 export interface ToolDescriptor {
   displayName: string;
   /**
@@ -102,7 +119,7 @@ export interface ToolDescriptor {
    * kept for compatibility this release. Prefer `inputSchema` and `execute`.
    */
   tool: AITool;
-  needsApproval?: boolean | ((args: any) => boolean | Promise<boolean>);
+  needsApproval?: boolean | ((args: any, ctx: ApprovalCheckContext) => ApprovalOutcome | Promise<ApprovalOutcome>);
   /** Where the tool came from, e.g. an MCP server's annotations (LOU-Z5). */
   metadata?: ToolMetadata;
   injectStreamingController?: (controller: ReadableStreamDefaultController<unknown>) => void;
