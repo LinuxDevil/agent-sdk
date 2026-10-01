@@ -27,7 +27,12 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"; echo "llms regenerate
 if ! git diff --quiet ORIG_HEAD_DEPS -- package.json package-lock.json 2>/dev/null; then npm ci --no-audit --no-fund >/dev/null 2>&1 && echo "deps synced"; fi
 git tag -f ORIG_HEAD_DEPS HEAD >/dev/null 2>&1
 npx tsc --noEmit && echo "tsc ok" || { echo "TSC FAILED"; exit 3; }
-out=$(npx vitest run "$@" 2>&1 | sed 's/\[[0-9;]*m//g')
+runtests() { out=$(npx vitest run "$@" 2>&1 | sed 's/\[[0-9;]*m//g'); }
+runtests "$@"
+for attempt in 2 3; do
+  if echo "$out" | grep -qE "Test Files "; then break; fi
+  echo "(vitest exited without a summary; waiting and retrying, attempt $attempt)"; sleep 15; runtests "$@"
+done
 echo "$out" | grep -E "Test Files|Tests |FAIL" | grep -v importGraph
 if echo "$out" | grep -E "^ +FAIL " | grep -qv importGraph; then echo "TESTS FAILED, not pushing"; echo "$out" | grep -E "^ +FAIL " | grep -v importGraph | head -10; exit 4; fi
 if echo "$out" | grep -E "^ +FAIL " | grep -q importGraph; then echo "(importGraph failures ignored: they need a fresh dist/ build)"; fi
