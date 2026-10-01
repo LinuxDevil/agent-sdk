@@ -107,7 +107,7 @@ describe('MCP result handling (LOU-Z2)', () => {
   it('reaches the model as a structured { error, toolName, message } tool error', async () => {
     const client = fakeClient({ isError: true, content: [{ type: 'text', text: 'rate limited' }] });
     const toolRegistry = new ToolRegistry();
-    toolRegistry.registerMany(await loadMcpTools(client, 'srv'));
+    toolRegistry.registerMany(await loadMcpTools(client, 'srv', { approval: 'never' }));
     const agent = AgentBuilder.create()
       .setName('Test Agent')
       .addTool('srv__do_it', { tool: 'srv__do_it', options: {} })

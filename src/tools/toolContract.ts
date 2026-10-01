@@ -28,6 +28,9 @@ export interface ToolFromSchemaOptions {
   /** Zod schema of the arguments, e.g. one built by `jsonSchemaToZod()`. */
   inputSchema: z.ZodTypeAny;
   execute: (args: Record<string, unknown>, ctx: ToolExecutionContext) => unknown;
+  /** Copied onto the descriptor as given. */
+  needsApproval?: ToolDescriptor['needsApproval'];
+  metadata?: ToolDescriptor['metadata'];
 }
 
 /**
@@ -44,6 +47,8 @@ export function toolDescriptorFromSchema(opts: ToolFromSchemaOptions): ToolDescr
     displayName: opts.displayName,
     inputSchema: opts.inputSchema,
     execute,
+    needsApproval: opts.needsApproval,
+    metadata: opts.metadata,
     // legacy (.tool): the same schema and execute in the `ai` v4 shape. Removed in D26.
     tool: {
       description: opts.description,

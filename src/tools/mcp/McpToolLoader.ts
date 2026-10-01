@@ -7,7 +7,7 @@
  */
 
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { ToolDescriptor } from '../../types';
+import type { McpToolAnnotations, ToolDescriptor } from '../../types';
 import { noopLogger, type Logger } from '../../execution/logger';
 import { handleCallToolResult } from './result';
 import { jsonSchemaToZod } from './schema';
@@ -30,6 +30,28 @@ export interface RawMcpTool {
     required?: string[];
     [key: string]: unknown;
   };
+  /** The server's `ToolAnnotations` (hints), when it sends any (LOU-Z5). */
+  annotations?: McpToolAnnotations;
+}
+
+/**
+ * Which MCP tools ask for approval (LOU-Z5). `'annotations'` (default) follows the
+ * server's hints: `readOnlyHint: true` runs, `destructiveHint` true or absent (the
+ * MCP spec's default) asks, `destructiveHint: false` runs. `'always'` / `'never'`
+ * ask for every / no tool. A function decides per tool from its bare name and
+ * annotations (`{}` when it sent none).
+ */
+export type McpApproval =
+  | 'annotations'
+  | 'always'
+  | 'never'
+  | ((tool: { name: string; annotations: McpToolAnnotations }) => boolean);
+
+function needsApproval(approval: McpApproval, name: string, annotations: McpToolAnnotations = {}): boolean {
+  if (approval === 'always') return true;
+  if (approval === 'never') return false;
+  if (typeof approval === 'function') return approval({ name, annotations });
+  return annotations.readOnlyHint !== true && annotations.destructiveHint !== false;
 }
 
 /**
@@ -68,6 +90,8 @@ export interface LoadMcpToolsOptions {
   logger?: Logger;
   /** Called once per skipped tool, so callers can surface what was left out. */
   onSkip?: (skipped: SkippedMcpTool) => void;
+  /** Which tools ask for approval; see {@link McpApproval}. Default `'annotations'`. */
+  approval?: McpApproval;
 }
 
 /**
@@ -83,7 +107,8 @@ export interface LoadMcpToolsOptions {
  *
  * A tool whose schema cannot be converted is skipped (warned through
  * `options.logger`, reported to `options.onSkip`) and never prevents the
- * server's other tools from loading. Results with `isError: true` throw an
+ * server's other tools from loading. Tools ask for approval per `options.approval` (by default from the
+ * server's annotations). Results with `isError: true` throw an
  * {@link McpToolError}; other results keep text, structured and media
  * content (see {@link handleCallToolResult}).
  *
@@ -99,13 +124,13 @@ export async function loadMcpTools(
   connectionName: string,
   options: LoadMcpToolsOptions = {}
 ): Promise<Record<string, ToolDescriptor>> {
-  const { logger = noopLogger, onSkip } = options;
+  const { logger = noopLogger, onSkip, approval = 'annotations' } = options;
   const rawTools = await listRemoteTools(client);
   const descriptors: Record<string, ToolDescriptor> = {};
 
   for (const rawTool of rawTools) {
     try {
-      descriptors[`${connectionName}__${rawTool.name}`] = buildDescriptor(client, rawTool);
+      descriptors[`${connectionName}__${rawTool.name}`] = buildDescriptor(client, rawTool, approval);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       logger.warn(`MCP server '${connectionName}': skipping tool '${rawTool.name}': ${reason}`, {
@@ -120,11 +145,13 @@ export async function loadMcpTools(
   return descriptors;
 }
 
-function buildDescriptor(client: McpClientLike, rawTool: RawMcpTool): ToolDescriptor {
+function buildDescriptor(client: McpClientLike, rawTool: RawMcpTool, approval: McpApproval): ToolDescriptor {
   return toolDescriptorFromSchema({
-    displayName: rawTool.description || rawTool.name,
+    displayName: rawTool.annotations?.title || rawTool.description || rawTool.name,
     description: rawTool.description || '',
     inputSchema: jsonSchemaToZod(rawTool.inputSchema),
+    needsApproval: needsApproval(approval, rawTool.name, rawTool.annotations),
+    metadata: { mcp: { annotations: rawTool.annotations } },
     execute: async (args) =>
       handleCallToolResult(await client.callTool({ name: rawTool.name, arguments: args }), rawTool.name),
   });
