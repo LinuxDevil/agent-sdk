@@ -13,6 +13,7 @@ import {
   StreamChunk,
   ToolCall,
 } from './llm';
+import { abortableDelay } from './abortableDelay';
 
 /**
  * Mock response configuration
@@ -22,24 +23,6 @@ export interface MockProviderConfig extends LLMProviderConfig {
   delay?: number;
   simulateError?: boolean;
   errorMessage?: string;
-}
-
-/**
- * Waits `ms`, rejecting with the signal's reason as soon as it is aborted
- * (LOU-V1), so a simulated slow call can be cancelled mid-delay.
- */
-function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(signal?.reason);
-    };
-    const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort);
-      resolve();
-    }, ms);
-    signal?.addEventListener('abort', onAbort, { once: true });
-  });
 }
 
 /**
