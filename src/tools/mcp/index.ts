@@ -7,6 +7,7 @@
  */
 
 export * from './McpToolLoader';
+export * from './connect';
 export * from './result';
 export * from './schema';
 export * from './server/serveMcp';

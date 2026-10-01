@@ -282,6 +282,7 @@ Exported from `@loushy/build-ai-agent/testing` (see [Testing agents](testing.md)
 | `createFsTools(fs, options?)`, `createShellTool(shell, options?)` | Workspace tools (`read_file`, `write_file`, `edit_file`, `list_dir`, `glob`, `grep`, `shell`) over an `FsProvider` / `ShellProvider`. See [Workspace tools](workspace-tools.md). |
 | `NodeWorkspace`, `MemoryWorkspace`, `SandboxShell` | Workspace providers: a real directory (paths confined to `root`, minimal shell env), an in-memory tree with a scripted `exec` for tests, and a `ShellProvider` over a `SandboxAdapter` (Docker). |
 | `createTodoTools({ store?, onChange? })`     | `todo_write` / `todo_read` tools (plus `getTodos()`) so agents can plan and track multi-step work; see [Todo tools](#todo-tools). |
+| `connectMcp(servers, options?)`             | Connect MCP servers from config (stdio or HTTP) and load their tools; see [Connect MCP servers](./configuration.md#connect-mcp-servers-mcpservers-connectmcp). |
 | `loadMcpTools(client, connectionName)`       | Load a connected MCP server's tools as `ToolDescriptor`s. Available from the package root, `@loushy/build-ai-agent/tools`, and `@loushy/build-ai-agent/mcp`. |
 
 See [Tools](./tools.md) for a guide to defining and registering tools.

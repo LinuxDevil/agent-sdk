@@ -33,6 +33,12 @@ export interface RawMcpTool {
 }
 
 /**
+ * The part of an `@modelcontextprotocol/sdk` `Client` the loader uses: a
+ * connected `Client`, or a stand-in that connects on demand (see `connectMcp()`).
+ */
+export type McpClientLike = Pick<Client, 'listTools' | 'callTool'>;
+
+/**
  * List the tools a connected MCP client's server advertises.
  *
  * This is a thin wrapper around `client.listTools()` - it returns
@@ -40,7 +46,7 @@ export interface RawMcpTool {
  * errors: a `listTools()` rejection (e.g. the client isn't connected, or
  * the transport drops) propagates straight out to the caller.
  */
-export async function listRemoteTools(client: Client): Promise<RawMcpTool[]> {
+export async function listRemoteTools(client: McpClientLike): Promise<RawMcpTool[]> {
   const response = await client.listTools();
   return response.tools as unknown as RawMcpTool[];
 }
@@ -89,7 +95,7 @@ export interface LoadMcpToolsOptions {
  * });
  */
 export async function loadMcpTools(
-  client: Client,
+  client: McpClientLike,
   connectionName: string,
   options: LoadMcpToolsOptions = {}
 ): Promise<Record<string, ToolDescriptor>> {
@@ -114,7 +120,7 @@ export async function loadMcpTools(
   return descriptors;
 }
 
-function buildDescriptor(client: Client, rawTool: RawMcpTool): ToolDescriptor {
+function buildDescriptor(client: McpClientLike, rawTool: RawMcpTool): ToolDescriptor {
   const parameters = jsonSchemaToZod(rawTool.inputSchema);
   return {
     displayName: rawTool.description || rawTool.name,
