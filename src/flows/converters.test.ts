@@ -18,6 +18,19 @@ describe('Flow Converters', () => {
       expect(result.id).toBeDefined();
     });
 
+    it('should map executor-shaped nodes to the unknownAgent placeholder instead of throwing', () => {
+      const nodes: EditorStep[] = [
+        { type: 'oneOf', options: [{ step: { type: 'end' } }] },
+        { type: 'forEach', items: [1, 2] },
+        { type: 'evaluator', expression: 'true' },
+        { type: 'llmCall', prompt: 'hi' },
+      ];
+
+      for (const node of nodes) {
+        expect(convertToFlowDefinition(node).agent).toBe('unknownAgent');
+      }
+    });
+
     it('should convert sequence', () => {
       const step: EditorStep = {
         type: 'sequence',

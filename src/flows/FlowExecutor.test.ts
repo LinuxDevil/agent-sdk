@@ -286,6 +286,26 @@ describe('FlowExecutor', () => {
       expect(result.output).toBe('B');
     });
 
+    it('binds {{vars}} as values: a hostile value cannot change the condition logic', async () => {
+      context.variables = { input: "x' === 'x' || 'a" };
+
+      const flow: AgentFlow = {
+        code: 'test-flow',
+        name: 'Test Flow',
+        flow: {
+          type: 'oneOf',
+          options: [
+            { condition: "'{{input}}' === 'admin'", step: { type: 'return', value: 'admin' } },
+            { step: { type: 'return', value: 'guest' } },
+          ],
+        },
+      };
+
+      const result = await FlowExecutor.execute(flow, context);
+
+      expect(result.output).toBe('guest');
+    });
+
     it('should execute default option when no conditions match', async () => {
       context.variables = { score: 50 };
 

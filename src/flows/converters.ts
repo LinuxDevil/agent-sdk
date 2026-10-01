@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid';
 import {
   EditorStep,
+  EditorShapeStep,
   StepNode,
   SequenceNode,
   ParallelNode,
@@ -20,7 +21,7 @@ const convertChildren = (steps: EditorStep[]): any[] =>
 // ------------------------------------
 // EditorStep -> FlowDefinition, one converter per step type
 // ------------------------------------
-type StepConverters = { [K in EditorStep['type']]: (step: Extract<EditorStep, { type: K }>) => any };
+type StepConverters = { [K in EditorShapeStep['type']]: (step: Extract<EditorShapeStep, { type: K }>) => any };
 
 const STEP_CONVERTERS: StepConverters = {
   // STEP - Basic agent execution
@@ -127,13 +128,27 @@ const STEP_CONVERTER_BY_TYPE: ReadonlyMap<string, (step: any) => any> = new Map(
   Object.entries(STEP_CONVERTERS)
 );
 
+// Executor-side shapes of node types that also have an editor shape
+// (`options` / `items` / `expression` instead of branches / inputFlow / subFlow);
+// they have no flows-ai equivalent, so they convert to the unknownAgent placeholder.
+const EXECUTOR_ONLY_FIELD: Readonly<Record<string, string>> = {
+  oneOf: 'options',
+  forEach: 'items',
+  evaluator: 'expression',
+};
+
+function isExecutorShaped(step: EditorStep): boolean {
+  const field = EXECUTOR_ONLY_FIELD[step.type];
+  return field !== undefined && field in step;
+}
+
 /**
  * Convert EditorStep to flows-ai compatible FlowDefinition
  * This recursively transforms the internal EditorStep structure
  * to the format expected by the flows-ai execution engine
  */
 export function convertToFlowDefinition(step: EditorStep): any {
-  const convert = STEP_CONVERTER_BY_TYPE.get(step.type);
+  const convert = isExecutorShaped(step) ? undefined : STEP_CONVERTER_BY_TYPE.get(step.type);
   if (convert) {
     return convert(step);
   }

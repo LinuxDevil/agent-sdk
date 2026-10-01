@@ -192,3 +192,54 @@ describe('evaluateSafeExpression: rejected syntax', () => {
     expect(() => evaluateSafeExpression('!'.repeat(5000) + 'flag', scope)).toThrow(/nested too deeply/);
   });
 });
+
+describe('evaluateSafeExpression: bound placeholders', () => {
+  const bound = (expr: string, scope: Record<string, unknown>) =>
+    evaluateSafeExpression(expr, scope, { bindPlaceholders: true });
+
+  it('keeps the quoted and bare forms working for benign values', () => {
+    expect(bound("'{{role}}' === 'admin'", { role: 'admin' })).toBe(true);
+    expect(bound("'{{role}}' === 'admin'", { role: 'user' })).toBe(false);
+    expect(bound('{{score}} >= 90', { score: 95 })).toBe(true);
+    expect(bound('{{score}} >= 90', { score: 80 })).toBe(false);
+    expect(bound("{{ok}} && '{{a}}-{{b}}' === 'x-y'", { ok: true, a: 'x', b: 'y' })).toBe(true);
+  });
+
+  it('treats an injection attempt in a quoted placeholder as data', () => {
+    const hostile = "x' === 'x' || 'a";
+    expect(bound("'{{input}}' === 'admin'", { input: hostile })).toBe(false);
+    expect(bound('"{{input}}" === "admin"', { input: 'x" === "x" || "a' })).toBe(false);
+    expect(bound("'{{input}}' === 'admin'", { input: "' || true || '" })).toBe(false);
+    expect(bound("'{{input}}' === 'x\\' === \\'x\\' || \\'a'", { input: hostile })).toBe(true);
+  });
+
+  it('handles each quote type and backslashes inside values literally', () => {
+    expect(bound("'{{v}}' === \"it's\"", { v: "it's" })).toBe(true);
+    expect(bound("'{{v}}' === 'say \"hi\"'", { v: 'say "hi"' })).toBe(true);
+    expect(bound("'{{v}}'.length", { v: 'a\\nb' })).toBe(4);
+    expect(bound("'{{v}}' === 'a'", { v: 'a\\' })).toBe(false);
+    expect(bound("'{{v}}'.endsWith('\\\\')", { v: 'a\\' })).toBe(true);
+    expect(bound("'{{v}}'.includes('\\\\q')", { v: 'x\\q' })).toBe(true);
+  });
+
+  it('binds a bare string value as a string, never as code or a variable', () => {
+    expect(bound("{{v}} === 'process'", { v: 'process' })).toBe(true);
+    expect(bound("{{v}} === 'a'", { v: "'a' || 'b'" })).toBe(false);
+  });
+
+  it('treats missing variables like the old text substitution', () => {
+    expect(bound("'{{nope}}' === ''", {})).toBe(true);
+    expect(bound("'{{nope}}' === ''", { nope: null })).toBe(true);
+    expect(bound('{{nope}}', {})).toBeUndefined();
+    expect(() => bound('{{nope}} >= 90', {})).toThrow(ExpressionError);
+    expect(bound("'{{z}}'", { z: 0 })).toBe('0');
+  });
+
+  it('does not read inherited properties as variables', () => {
+    expect(bound("'{{toString}}' === ''", {})).toBe(true);
+  });
+
+  it('leaves placeholders unsupported unless binding is enabled', () => {
+    expect(() => evaluateSafeExpression('{{score}} >= 90', { score: 95 })).toThrow(ExpressionError);
+  });
+});

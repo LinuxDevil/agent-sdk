@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true, "noUnusedLocals": false },
+  "include": ["src/**/*.test-d.ts", "typings/**/*.d.ts"],
+  "exclude": ["node_modules", "dist"]
+}
