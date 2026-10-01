@@ -12,7 +12,7 @@ npm run docs:build   # writes docs/api/index.html
 
 | Export                        | Description                                                                 |
 | ----------------------------- | --------------------------------------------------------------------------- |
-| `createAgent(config)`         | Zero-config `{ send(message) }` agent from a prompt + provider (+ tools).   |
+| `createAgent(config)`         | Zero-config `{ send(message) }` agent from a `model` string or provider (+ instructions, tools). |
 | `AgentBuilder`                | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). |
 | `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. |
 | `AgentType`                   | Agent type enum (e.g. `AgentType.SmartAssistant`).                          |
