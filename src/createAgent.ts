@@ -38,6 +38,7 @@ import type { SubagentSpec } from './execution/delegation';
 import type { ApprovalStore } from './execution/ApprovalGate';
 import { InMemoryApprovalStore } from './execution/InMemoryApprovalStore';
 import { resumeAfterApproval } from './execution/resume';
+import type { ForkOptions, ForkResult } from './execution/checkpoint';
 import { ConfigurationError } from './execution/errors';
 import { createAgentApprovals, type AgentApprovals, type ApproveToolCall } from './createAgentApprovals';
 import type { z } from 'zod';
@@ -364,6 +365,18 @@ export interface SimpleAgent<TObject = unknown> {
    */
   resume: (sessionId: string, options?: { signal?: AbortSignal }) => Promise<ExecutionResult<TObject> | null>;
   /**
+   * Forks the `sessionId` run at `fromStep` (LOU-D44): `AgentExecutor.fork()`
+   * over the agent's `store.checkpoints`, which must keep a history. Continue
+   * the fork with `agent.resume(fork.sessionId)`; the original is unchanged.
+   *
+   * @example
+   * ```ts
+   * const fork = await agent.fork('job-1', { fromStep: 1, patch: { appendInput: 'Use Celsius.' } });
+   * const replayed = await agent.resume(fork.sessionId);
+   * ```
+   */
+  fork: (sessionId: string, options: Omit<ForkOptions, 'sessionId' | 'checkpointStore'>) => Promise<ForkResult>;
+  /**
    * Tool calls this agent is paused on, waiting for approval (LOU-D21). A
    * paused `send()` resolves with `finishReason: 'awaiting-approval'` and an
    * `approvalId`; `resolve()` runs or rejects the call and continues the run
@@ -507,6 +520,8 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
       if (checkpoint.status === 'finished') return null;
       return approvals.settle(await run([], signal, durable(sessionId)), signal) as Promise<ExecutionResult<Typed>>;
     },
+    // durable() throws LOUSHY_CONFIG_MISSING_CHECKPOINT_STORE without `store.checkpoints`.
+    fork: async (sessionId, options) => AgentExecutor.fork({ ...options, ...(durable(sessionId) as SessionTurnCheckpoint) }),
     approvals: approvals.approvals,
     ready: mcp.ready,
     close: mcp.close,

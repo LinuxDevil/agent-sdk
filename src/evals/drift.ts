@@ -5,6 +5,8 @@
  */
 import type { Cassette } from '../testing/cassette';
 import { stableStringify } from '../testing/fingerprint';
+import type { Checkpoint } from '../execution/checkpoint';
+import type { Message } from '../providers';
 
 /** What a recorded case did. */
 export interface Trajectory {
@@ -69,4 +71,67 @@ export function diffTrajectories(committed: Trajectory, current: Trajectory, opt
   compare('finishReason', committed.finishReason ?? '-', current.finishReason ?? '-');
   if (options.usage) compare('tokens', String(committed.totalTokens ?? '-'), String(current.totalTokens ?? '-'));
   return drift;
+}
+
+/** One model turn of a transcript (LOU-D44). */
+export interface TrajectoryStep {
+  /** The assistant's text this turn (`''` for none). */
+  text: string;
+  /** Its tool calls; `result` is the recorded result's content, absent while the call has none. */
+  tools: { id: string; name: string; args: string; result?: string }[];
+}
+
+/** How two runs differ (LOU-D44): e.g. a session and a fork of it, for side-by-side rendering. */
+export interface TrajectoryComparison {
+  /** Each run's model turns, in order (step `n` is index `n - 1`). */
+  a: TrajectoryStep[];
+  b: TrajectoryStep[];
+  /** The first step (from 1) whose text, tool calls or tool results differ (call ids aside); absent when none does. */
+  divergedAt?: number;
+  /** Tool order, arguments, step count and finish reason differences, as `diffTrajectories()` (`a` as committed). */
+  drift: DriftEntry[];
+}
+
+function stepsOf(run: Checkpoint | Message[]): TrajectoryStep[] {
+  const messages = Array.isArray(run) ? run : run.messages;
+  const results = new Map(messages.filter((m) => m.role === 'tool').map((m) => [m.toolCallId, m.content]));
+  return messages
+    .filter((m) => m.role === 'assistant')
+    .map((m) => ({
+      text: m.content,
+      tools: (m.toolCalls ?? []).map((call) => ({
+        id: call.id,
+        name: call.function.name,
+        args: normalizeArgs(call.function.arguments),
+        ...(results.has(call.id) ? { result: results.get(call.id) } : {}),
+      })),
+    }));
+}
+
+function trajectoryOfSteps(steps: TrajectoryStep[], run: Checkpoint | Message[]): Trajectory {
+  const tools = steps.flatMap((step) => step.tools.map(({ name, args }) => ({ name, args })));
+  return { tools, steps: steps.length, finishReason: Array.isArray(run) ? undefined : run.finishReason };
+}
+
+/** A step as compared: its call ids left out (each run gets its own). */
+function stepKey(step: TrajectoryStep | undefined): string {
+  return step ? stableStringify({ ...step, tools: step.tools.map(({ name, args, result }) => ({ name, args, result })) }) : '-';
+}
+
+/**
+ * Compares two runs (LOU-D44) - checkpoints, such as a session's and its
+ * `AgentExecutor.fork()`'s, or transcripts - turn by turn. A step is one
+ * assistant turn of the transcript.
+ */
+export function compareTrajectories(a: Checkpoint | Message[], b: Checkpoint | Message[]): TrajectoryComparison {
+  const left = stepsOf(a);
+  const right = stepsOf(b);
+  const length = Math.max(left.length, right.length);
+  const index = Array.from({ length }, (_, i) => i).find((i) => stepKey(left[i]) !== stepKey(right[i]));
+  return {
+    a: left,
+    b: right,
+    ...(index !== undefined ? { divergedAt: index + 1 } : {}),
+    drift: diffTrajectories(trajectoryOfSteps(left, a), trajectoryOfSteps(right, b)),
+  };
 }

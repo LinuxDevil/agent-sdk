@@ -15,7 +15,8 @@ import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
 import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
 import { ApprovalStore, ExecutionSnapshot, PendingApproval, SubagentSuspension } from './ApprovalGate';
-import { CheckpointStore } from './checkpoint';
+import { CheckpointStore, ForkOptions, ForkResult } from './checkpoint';
+import { forkSession } from './fork';
 import type { CallUsage, RunUsage, StepUsage } from '../models/usage';
 import { mergeDelegatedUsage } from './runUsage';
 import { TraceExporter, withSpan } from './tracing';
@@ -620,6 +621,25 @@ export class AgentExecutor {
       };
       return this.execute(streaming);
     }, options.signal);
+  }
+
+  /**
+   * Forks a checkpointed run at an earlier step (LOU-D44): takes the newest
+   * entry of `fromStep` in the session's checkpoint history, applies `patch`
+   * (rewrite messages, replace a tool result, change `businessState`, queue
+   * a user message) and saves it as the `'in-progress'` checkpoint of a new
+   * session. The original session is not changed. Throws
+   * `LOUSHY_CHECKPOINT_NOT_FOUND` when the history has no such step. See
+   * docs/durable-execution.md#fork-and-replay.
+   *
+   * @example
+   * ```ts
+   * const fork = await AgentExecutor.fork({ sessionId: 'job-1', fromStep: 1, checkpointStore, patch: { appendInput: 'Use Celsius.' } });
+   * await AgentExecutor.execute({ agent, provider, input: [], sessionId: fork.sessionId, checkpointStore });
+   * ```
+   */
+  static fork(options: ForkOptions): Promise<ForkResult> {
+    return forkSession(options);
   }
 
   /**

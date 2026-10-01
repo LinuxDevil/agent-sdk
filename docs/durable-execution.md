@@ -226,6 +226,75 @@ await checkpoints.delete('chat-42', { keepHistory: true });
   an existing database file is opened; `prune()` also removes history entries
   older than its cutoff.
 
+## Fork and replay
+
+`AgentExecutor.fork()` starts a new session from a step of another session's
+history: "what if the tool had returned something else at step 1?" It takes the
+newest history entry of `fromStep`, applies `patch`, saves the result as the
+`'in-progress'` checkpoint of the new session and returns
+`{ sessionId, step, checkpoint }`. Resume the fork like any unfinished run:
+
+```ts
+import { AgentExecutor, compareTrajectories, memoryStore } from '@loushy/build-ai-agent';
+
+const { checkpoints } = memoryStore();
+await AgentExecutor.execute({ agent, provider, toolRegistry, input: 'Plan my trip', sessionId: 'trip', checkpointStore: checkpoints });
+
+const fork = await AgentExecutor.fork({
+  sessionId: 'trip',
+  fromStep: 1,
+  checkpointStore: checkpoints,
+  patch: { toolResult: { toolCallId: 'call_weather', result: { forecast: 'rain' } } },
+});
+// fork.sessionId is 'trip.fork-1'; the 'trip' checkpoint and history are unchanged.
+await AgentExecutor.execute({ agent, provider, toolRegistry, input: [], sessionId: fork.sessionId, checkpointStore: checkpoints });
+
+const original = await checkpoints.load('trip');
+const replayed = await checkpoints.load(fork.sessionId);
+if (original && replayed) {
+  const { divergedAt, a, b, drift } = compareTrajectories(original, replayed);
+  console.log(divergedAt, a.length, b.length, drift); // 1, then each run's steps and the tool-call diff
+}
+```
+
+With `createAgent({ store })`, `agent.fork(sessionId, { fromStep, patch? })`
+does the same over `store.checkpoints`, and `agent.resume(fork.sessionId)`
+continues the fork:
+
+```ts
+import { createAgent, memoryStore } from '@loushy/build-ai-agent';
+
+const assistant = createAgent({ provider, store: memoryStore() });
+await assistant.send('Plan my trip', { sessionId: 'trip' });
+const fork = await assistant.fork('trip', { fromStep: 1, patch: { appendInput: 'It will rain, plan for that.' } });
+const result = await assistant.resume(fork.sessionId);
+```
+
+- `patch` is applied in this order: `messages(messages)` rewrites the
+  transcript; `businessState` replaces it; `toolResult: { toolCallId, result }`
+  replaces that call's result in place (same position, call id and tool name,
+  so the transcript stays valid for every provider), or records it when the
+  call has no result yet; `appendInput` queues a user message, which is sent
+  after any tool calls still pending.
+- The fork keeps the source checkpoint's step count and usage, so the rest of
+  the `maxSteps` budget applies to it. Recorded tool results are not re-run;
+  tool calls without a result run first, as on any resume (so a fork of an
+  `'awaiting-approval'` entry goes through `needsApproval` again; the old
+  `approvalId` is not carried over).
+- `newSessionId` names the fork; the default is `<sessionId>.fork-<n>`, the
+  first `n` with no checkpoint. A `newSessionId` that already has a checkpoint
+  is refused.
+- A step the history does not have (the session is unknown, the step never
+  ran, or it was dropped past `historyLimit`) throws an `SDKError` with code
+  [`LOUSHY_CHECKPOINT_NOT_FOUND`](./errors.md#loushy_checkpoint_not_found),
+  whose message lists the steps that are kept. A store without `history()`
+  cannot fork (`ConfigurationError`).
+- `compareTrajectories(a, b)` takes two checkpoints or two transcripts and
+  returns each run's steps (one per assistant turn: its text and tool calls
+  with their results), `divergedAt` (the first step that differs, tool call
+  ids aside) and `drift`, the tool-order, argument, step-count and
+  finish-reason differences in the same shape as `loushy eval --drift`.
+
 ## Compatibility with stored data
 
 - Checkpoints written before `status` existed are treated as

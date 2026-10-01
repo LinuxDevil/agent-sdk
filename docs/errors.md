@@ -290,6 +290,18 @@ streaming runner.
 
 **Example:** `new AgentSession(run).stream('hi')`.
 
+### LOUSHY_CHECKPOINT_NOT_FOUND
+
+**Means:** `AgentExecutor.fork()` or `agent.fork()` was asked for a step the
+session's checkpoint history does not have: the session is unknown, the step
+was never reached, or its entries were dropped past the store's `historyLimit`.
+The message lists the steps that are kept.
+
+**Fix:** fork at one of the listed steps, or raise `historyLimit` on the store.
+See [Durable execution](./durable-execution.md#fork-and-replay).
+
+**Example:** `agent.fork('job-1', { fromStep: 9 })` after a 3-step run.
+
 ### LOUSHY_RUN_ALREADY_ITERATED
 
 **Means:** an `AgentRun` from `session.stream()` was iterated a second time.
