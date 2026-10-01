@@ -9,7 +9,6 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { AgentExecutor } from '../../src/execution/AgentExecutor';
 import { AgentBuilder } from '../../src/core';
-import { AgentType } from '../../src/types';
 import { ToolRegistry } from '../../src/tools';
 import { LLMProvider, GenerateOptions, GenerateResult } from '../../src/providers';
 import type { TraceExporter } from '../../src/execution/tracing';
@@ -74,7 +73,6 @@ function createWeatherToolRegistry(): ToolRegistry {
 
 function createWeatherAgent() {
   return AgentBuilder.create()
-    .setType(AgentType.SmartAssistant)
     .setName('Weather Agent')
     .setPrompt('You are a helpful weather assistant.')
     // A priced model id, so spans carry `loushy.cost_usd` (the provider is still a mock).

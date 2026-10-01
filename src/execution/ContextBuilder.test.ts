@@ -17,7 +17,6 @@ describe('ContextBuilder', () => {
     testAgent = {
       id: 'agent-1',
       name: 'Test Agent',
-      agentType: 'smart-assistant' as any,
       metadata: {
         description: 'A helpful assistant',
       },
@@ -156,14 +155,24 @@ describe('ContextBuilder', () => {
         memoryManager,
       });
 
-      expect(context.metadata).toEqual({
+      expect(context.metadata).toStrictEqual({
         agentId: 'agent-1',
         agentName: 'Test Agent',
-        agentType: 'smart-assistant',
         hasMemories: true,
         memoryCount: 0,
         historyCount: 0,
       });
+    });
+
+    it('should omit agentType from metadata when the agent has none, and keep a deprecated one', async () => {
+      const untyped = await ContextBuilder.build({ agent: testAgent, input: 'Hello!' });
+      expect('agentType' in untyped.metadata).toBe(false);
+
+      const typed = await ContextBuilder.build({
+        agent: { ...testAgent, agentType: 'smart-assistant' as any },
+        input: 'Hello!',
+      });
+      expect(typed.metadata.agentType).toBe('smart-assistant');
     });
   });
 

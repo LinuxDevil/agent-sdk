@@ -20,7 +20,7 @@ import {
   ExecuteOptions,
   ExecutionResult,
 } from '../../src/execution/AgentExecutor';
-import { AgentConfig, AgentType, ToolDescriptor } from '../../src/types';
+import { AgentConfig, ToolDescriptor } from '../../src/types';
 import { LLMProvider } from '../../src/providers';
 import {
   createDelegateTool,
@@ -48,7 +48,6 @@ const FIXER_SYSTEM_PROMPT =
 export function buildFixerAgent(name = 'fixer'): AgentConfig {
   return {
     name,
-    agentType: AgentType.SmartAssistant,
     prompt: FIXER_SYSTEM_PROMPT,
   };
 }

@@ -9,7 +9,6 @@ import {
 import { ApprovalStore, ExecutionSnapshot, PendingApproval } from '../../src/execution/ApprovalGate';
 import { ToolRegistry } from '../../src/tools';
 import { createMockProvider } from '../../src/providers/mock';
-import { AgentType } from '../../src/types';
 
 describe('extractApprovalIdFromInteraction', () => {
   it('extracts the approvalId from a fix_it block_actions click', () => {
@@ -61,7 +60,7 @@ describe('handleSlackInteraction routes to the REAL resumeAfterApproval', () => 
       createdAt: new Date().toISOString(),
     };
     const snapshot: ExecutionSnapshot = {
-      agent: { name: 'fixer', agentType: AgentType.SmartAssistant, prompt: 'fix it' },
+      agent: { name: 'fixer', prompt: 'fix it' },
       currentMessages: [],
       pendingToolCall: pending,
       steps: 1,

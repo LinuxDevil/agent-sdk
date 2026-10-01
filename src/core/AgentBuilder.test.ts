@@ -19,9 +19,7 @@ describe('AgentBuilder', () => {
 
   it('should throw error when name is missing', () => {
     expect(() => {
-      new AgentBuilder()
-        .setType(AgentType.SmartAssistant)
-        .build();
+      new AgentBuilder().build();
     }).toThrow('Agent name is required');
   });
 
@@ -47,7 +45,6 @@ describe('AgentBuilder', () => {
 
   it('should add tools correctly', () => {
     const agent = new AgentBuilder()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .addTool('calendar', {
         tool: 'calendarSchedule',
@@ -62,7 +59,6 @@ describe('AgentBuilder', () => {
 
   it('should remove tools correctly', () => {
     const agent = new AgentBuilder()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .addTool('calendar', {
         tool: 'calendarSchedule',
@@ -77,7 +73,6 @@ describe('AgentBuilder', () => {
   it('should set custom ID', () => {
     const customId = 'my-custom-id';
     const agent = new AgentBuilder()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .setId(customId)
       .build();
@@ -87,7 +82,6 @@ describe('AgentBuilder', () => {
 
   it('should set locale', () => {
     const agent = new AgentBuilder()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .setLocale('ar')
       .build();
@@ -98,7 +92,6 @@ describe('AgentBuilder', () => {
   it('should set metadata', () => {
     const metadata = { key: 'value', number: 123 };
     const agent = new AgentBuilder()
-      .setType(AgentType.SmartAssistant)
       .setName('Test Agent')
       .setMetadata(metadata)
       .build();
