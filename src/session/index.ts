@@ -6,6 +6,7 @@ export type {
   SessionStores,
   SessionStreamRunner,
   SessionTurnCheckpoint,
+  SessionTurnOptions,
 } from './AgentSession';
 export { MemorySessionStore, FileSessionStore } from './sessionStore';
 export type { SessionStore } from './sessionStore';

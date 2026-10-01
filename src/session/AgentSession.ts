@@ -14,6 +14,8 @@ import type { Checkpoint, CheckpointStore } from '../execution/checkpoint';
 import { SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 import { streamSessionTurn } from './sessionStream';
 import { MemorySessionStore, assertSessionId, type SessionStore } from './sessionStore';
+import { addSpent, runSpent, sessionSpent, type BudgetSpent, type RunLimits, type SessionBudget } from '../execution/budget';
+import { restoreRunUsage } from '../execution/runUsage';
 
 /** Options for `agent.session()`. */
 export interface SessionOptions {
@@ -34,6 +36,15 @@ export interface SessionOptions {
    * docs/sessions.md, "Durable sessions"). Overrides `store.checkpoints`.
    */
   checkpointStore?: CheckpointStore;
+  /**
+   * Budgets across all of the session's turns (LOU-V6), the same limits as
+   * `createAgent({ limits })`: a turn stops with
+   * `finishReason: 'budget-exceeded'` once the session's tokens, cost, steps
+   * or run time reach a limit. What the turns spent is saved with the
+   * transcript (`metadata.sessionUsage` of its last message), so it holds
+   * for a session continued from its store. See docs/configuration.md#budgets.
+   */
+  limits?: RunLimits;
 }
 
 /** A transcript store plus, optionally, a checkpoint store (e.g. a `SqliteStore`). */
@@ -56,6 +67,9 @@ export interface SessionTurnCheckpoint {
   checkpointStore: CheckpointStore;
 }
 
+/** How a session's turn runs: where it is checkpointed, and the session's budget (LOU-V6). */
+export type SessionTurnOptions = Partial<SessionTurnCheckpoint> & { sessionBudget?: SessionBudget };
+
 /**
  * Runs one turn: `input` is the whole transcript so far, ending in the new
  * user message (or `[]` to resume the checkpointed turn). With `checkpoint`,
@@ -65,14 +79,14 @@ export interface SessionTurnCheckpoint {
 export type SessionRunner = (
   input: Message[],
   signal?: AbortSignal,
-  checkpoint?: SessionTurnCheckpoint
+  checkpoint?: SessionTurnOptions
 ) => Promise<ExecutionResult>;
 
 /**
  * Streams one turn (LOU-V8): like {@link SessionRunner}, but returns the
  * run's `AgentRun`. Supplied by `createAgent()`.
  */
-export type SessionStreamRunner = (input: Message[], signal?: AbortSignal, checkpoint?: SessionTurnCheckpoint) => AgentRun;
+export type SessionStreamRunner = (input: Message[], signal?: AbortSignal, checkpoint?: SessionTurnOptions) => AgentRun;
 
 /** `store` as its parts: a plain `SessionStore` is the transcript store. */
 function splitStores(store: SessionOptions['store']): Partial<SessionStores> {
@@ -139,6 +153,8 @@ export class AgentSession {
   protected readonly checkpointStore: CheckpointStore | undefined;
   private readonly run: SessionRunner;
   private readonly streamRun: SessionStreamRunner | undefined;
+  private readonly limits: RunLimits | undefined;
+  private turnStartedAt = 0;
   private history: Message[] = [];
   private loaded = false;
   private tail: Promise<unknown> = Promise.resolve();
@@ -149,6 +165,7 @@ export class AgentSession {
     const stores = splitStores(options.store);
     this.store = stores.sessions ?? new MemorySessionStore();
     this.checkpointStore = options.checkpointStore ?? stores.checkpoints;
+    this.limits = options.limits;
     this.run = run;
     this.streamRun = streamRun;
   }
@@ -220,7 +237,7 @@ export class AgentSession {
       (signal, started) =>
         this.enqueue(async () => {
           await this.beforeTurn(signal);
-          const run = streamRun([...this.history, ...toMessages(input)], signal, this.turnCheckpoint());
+          const run = streamRun([...this.history, ...toMessages(input)], signal, this.turnOptions());
           started(run);
           return this.record(await run.result);
         }),
@@ -295,7 +312,7 @@ export class AgentSession {
 
   private async turn(input: AgentInput, signal?: AbortSignal): Promise<ExecutionResult> {
     await this.beforeTurn(signal);
-    return this.record(await this.run([...this.history, ...toMessages(input)], signal, this.turnCheckpoint()));
+    return this.record(await this.run([...this.history, ...toMessages(input)], signal, this.turnOptions()));
   }
 
   /** Loads the history and, in a checkpointed session, finishes a pending turn first. */
@@ -312,6 +329,14 @@ export class AgentSession {
     return checkpointStore && { sessionId: `${this.id}.turn-${this.history.length}`, checkpointStore };
   }
 
+  /** The next turn's checkpoint and, with `limits`, the session's budget (LOU-V6); starts the turn's clock. */
+  private turnOptions(): SessionTurnOptions | undefined {
+    this.turnStartedAt = Date.now();
+    const checkpoint = this.turnCheckpoint();
+    if (!this.limits) return checkpoint;
+    return { ...checkpoint, sessionBudget: { limits: this.limits, spent: sessionSpent(this.history) } };
+  }
+
   private async deleteCheckpoint(): Promise<void> {
     const turn = this.turnCheckpoint();
     await turn?.checkpointStore.delete(turn.sessionId);
@@ -323,13 +348,13 @@ export class AgentSession {
     const turn = this.turnCheckpoint();
     const checkpoint = turn ? await turn.checkpointStore.load(turn.sessionId) : null;
     if (checkpoint?.status !== 'finished') return checkpoint;
-    await this.commit(checkpoint.messages);
+    await this.commit(checkpoint.messages, runSpent(restoreRunUsage(checkpoint.usage), checkpoint.stepIndex, 0));
     return null;
   }
 
   private async resumePending(signal?: AbortSignal): Promise<ExecutionResult | null> {
     if (!(await this.pendingCheckpoint())) return null;
-    return this.record(await this.run([], signal, this.turnCheckpoint()));
+    return this.record(await this.run([], signal, this.turnOptions()));
   }
 
   /**
@@ -340,6 +365,7 @@ export class AgentSession {
   protected continueTurn(next: () => Promise<ExecutionResult>): Promise<ExecutionResult> {
     return this.enqueue(async () => {
       await this.ensureLoaded();
+      this.turnStartedAt = Date.now();
       return this.record(await next());
     });
   }
@@ -350,14 +376,28 @@ export class AgentSession {
       return result;
     }
     // A checkpointed turn joins the transcript once, when it finishes; until then its checkpoint holds it.
-    if (!this.checkpointStore || result.finishReason !== 'awaiting-approval') await this.commit(result.messages);
+    if (result.finishReason === 'awaiting-approval') {
+      // Its spend is recorded once the turn finishes (the resumed result counts it all).
+      if (!this.checkpointStore) await this.commit(result.messages);
+    } else {
+      await this.commit(result.messages, runSpent(result.usage, result.steps, Date.now() - this.turnStartedAt));
+    }
     return result;
   }
 
-  /** Saves `messages` (minus the system prompt) as the transcript, then drops the finished turn's checkpoint. */
-  private async commit(messages: readonly Message[]): Promise<void> {
+  /**
+   * Saves `messages` (minus the system prompt) as the transcript, then drops
+   * the finished turn's checkpoint. With `limits`, the last message records
+   * what the session has spent, this turn included (LOU-V6).
+   */
+  private async commit(messages: readonly Message[], spent?: BudgetSpent): Promise<void> {
     const withoutSystem = messages[0]?.role === 'system' ? messages.slice(1) : messages;
     const next = providerValidPrefix(withoutSystem);
+    const last = next.at(-1);
+    if (this.limits && spent && last) {
+      const sessionUsage = addSpent(sessionSpent(this.history), spent);
+      next[next.length - 1] = { ...last, metadata: { ...last.metadata, sessionUsage } };
+    }
     await this.store.save(this.id, next);
     const turn = this.turnCheckpoint();
     this.history = next;

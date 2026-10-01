@@ -33,6 +33,7 @@ import { measureUsage } from './runUsage';
 import { compactProviderError } from './errors';
 import { withProviderEvents, type ProviderEventListener } from '../providers/providerEvents';
 import type { Usage } from '../models/usage';
+import type { BudgetExceeded } from './budget';
 
 /**
  * The handle returned by `agent.stream()` and `AgentExecutor.stream()`.
@@ -75,6 +76,8 @@ export interface RunEventSink {
   approvalRequested(pending: PendingApproval): void;
   /** LOU-X2: a tool call's permission decision. */
   permissionDecision(entry: PermissionDecisionEntry): void;
+  /** LOU-V6: a `limits` budget tripped. */
+  budgetExceeded(budget: BudgetExceeded): void;
   /** LOU-W3.2: an event a hook emits (`GenerateHookContext.emit`). */
   hookEvent(event: HookEventPayload): void;
   /** Obtains one model step - streamed when the provider can. */
@@ -348,6 +351,7 @@ class AgentRunImpl implements AgentRun {
           { type: 'permission.decision', ...entry, ...(entry.args && { args: toJsonValue(entry.args) as Record<string, unknown> }) },
           subagent
         ),
+      budgetExceeded: (budget) => this.emit({ type: 'budget.exceeded', ...budget }, subagent),
       hookEvent: (event) => this.emit(event, subagent),
       generate: async (provider, request) => {
         const call = withProviderEvents(request, this.providerEvents(subagent));

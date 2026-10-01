@@ -365,8 +365,13 @@ run ends with `finishReason: 'output-invalid'` and `outputError`.
 
 ### LOUSHY_BUDGET_EXCEEDED
 
-**Means:** reserved for run budgets (token or cost limits); nothing throws it yet.
+**Means:** a run's or a session's `limits` budget (`maxTokens`, `maxCostUsd`,
+`maxDurationMs`, ...) tripped under `onExceeded: 'throw'`. `BudgetExceededError`
+carries `budget: { limit, value, max, scope }`. With the default
+`onExceeded: 'stop'` nothing is thrown: the run ends with
+`finishReason: 'budget-exceeded'`.
 
-**Fix:** none needed today.
+**Fix:** raise the limit named in the message, or drop `onExceeded: 'throw'`.
+See [Budgets](./configuration.md#budgets).
 
-**Example:** none yet.
+**Example:** `createAgent({ provider, limits: { maxCostUsd: 0.01, onExceeded: 'throw' } })` whose run costs more than a cent.
