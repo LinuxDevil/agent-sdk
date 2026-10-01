@@ -30,6 +30,7 @@ import { PassThrough } from 'node:stream';
 import type Docker from 'dockerode';
 import { lazyValue, loadOptionalPeer } from '../providers/optionalPeer';
 import { SandboxAdapter, SandboxResult, SandboxRunOptions } from './sandboxCore';
+import { isHostPattern } from './hostPattern';
 
 export * from './sandboxCore';
 
@@ -53,21 +54,13 @@ function isNoSuchImageError(err: unknown, image: string): boolean {
  * - `'none'` (default): no network at all (Docker `NetworkMode: 'none'`).
  * - `'default'`: Docker's default network, unrestricted egress.
  * - `{ allow: ['api.github.com', '*.npmjs.org'] }`: only these hosts. Docker
- *   cannot filter egress by host name on its own, so this is enforced only
- *   by an egress proxy (credential brokering, LOU-X12). No such proxy exists
- *   yet, so the container gets no network (fail closed); the validated list
- *   is kept on {@link SubprocessSandbox.network} for the proxy to enforce.
+ *   cannot filter egress by host name on its own, so this needs an egress
+ *   proxy that is the container's only route out. `createCredentialBroker()`
+ *   (LOU-X12) is such a proxy, but containers are not routed through it yet
+ *   (LOU-X12.2), so the container gets no network (fail closed); the
+ *   validated list is kept on {@link SubprocessSandbox.network}.
  */
 export type SandboxNetwork = 'none' | 'default' | { allow: readonly string[] };
-
-const HOST_LABEL = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/i;
-
-/** A host name (`api.github.com`) or a `*.` wildcard over one (`*.npmjs.org`). */
-function isHostPattern(host: unknown): boolean {
-  if (typeof host !== 'string' || host.length > 255) return false;
-  const labels = (host.startsWith('*.') ? host.slice(2) : host).split('.');
-  return labels.every((label) => HOST_LABEL.test(label));
-}
 
 /** Validates a network policy, lower-casing allowlisted host names. Throws a readable error on a bad one. */
 function validateNetwork(network: SandboxNetwork = 'none'): SandboxNetwork {
@@ -189,7 +182,7 @@ export class SubprocessSandbox implements SandboxAdapter {
   /** dockerode is loaded on first `run()`, not at import or construction time (LOU-D19). */
   private readonly getDocker: () => Promise<Docker>;
   private readonly image: string;
-  /** The validated network policy. An `{ allow }` list is kept here for an egress proxy (LOU-X12); until then it means no network. */
+  /** The validated network policy. An `{ allow }` list is kept here; until containers are routed through the credential broker (LOU-X12.2) it means no network. */
   readonly network: SandboxNetwork;
 
   constructor(options: SubprocessSandboxOptions = {}) {
