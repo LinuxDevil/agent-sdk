@@ -44,6 +44,9 @@ export * from './storage';
 // Templates
 export * from './templates';
 
+// Token estimation and model registry (LOU-W1)
+export * from './models';
+
 // Utils
 export * from './utils';
 
