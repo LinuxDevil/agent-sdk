@@ -8,8 +8,12 @@
 
 ## Install the package
 
-> **Not on npm yet.** The package is not published to the npm registry yet;
-> until it is, use [Installing from a local build](#installing-from-a-local-build).
+> **Not on npm yet.** `@loushy/build-ai-agent` is not published, so the
+> commands below (and `npx loushy ...`, `npm create loushy-agent`) fail with a
+> 404 until it is. Today, install from a checkout or a packed tarball:
+> [Installing before the first release](#installing-before-the-first-release).
+
+When it is published:
 
 ```bash
 npm install @loushy/build-ai-agent ai zod
@@ -120,11 +124,16 @@ hazard), so a class from one is not `===` the other. `instanceof SDKError` and
 `instanceof HookRegistry` are safe across the two copies (they check a
 `Symbol.for` brand); for other classes, use one module format per process.
 
-## Installing from a local build
+## Installing before the first release
 
-To try an unreleased version, build and pack the SDK from a checkout of this
+<!-- AFTER PUBLISH: this section is the single place that explains the pre-publish install;
+     see the "after publish" checklist in the LOU-D49 pull request. -->
+
+Until the package is on npm, build and pack the SDK from a checkout of this
 repository, then install the tarball into your project - the same approach
-`loushy init --sdk-path` uses for the projects it generates:
+`loushy init --sdk-path` uses for the projects it generates. This is verified
+in CI by `npm run pack-smoke`, which installs the packed tarball into a fresh
+project and loads every entry point, in ESM and CJS:
 
 ```bash
 # in the SDK checkout
@@ -132,9 +141,16 @@ npm install
 npm run build
 npm pack --pack-destination /path/to/your-project
 
-# in your project
+# in your project (peers come from the registry)
 npm install ./loushy-build-ai-agent-<version>.tgz ai zod
 ```
+
+To scaffold a new project the same way, from the checkout:
+`node bin/loushy.js init ../my-agent --sdk-path .`.
+
+`npm install github:LinuxDevil/agent-sdk` does **not** work: `dist/` is not in
+git and the repository has no `prepare` build step, so the install has no
+entry points.
 
 ## Scaffolding a new project
 
@@ -144,6 +160,9 @@ on this SDK by version range), a strict `tsconfig.json`, `src/agent.ts` calling
 offline `src/agent.test.ts` using `mockModel`, a `.env.example` naming your
 provider's key variable, `.gitignore` and a README. It then installs the
 dependencies and runs `git init`.
+
+Not on npm yet: until it is, run it from a built checkout with `--sdk-path`
+(see [Installing before the first release](#installing-before-the-first-release)).
 
 ```bash
 npx loushy init my-agent                 # or: npm create loushy-agent my-agent

@@ -96,6 +96,12 @@ const COMMANDS = new Map([
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
 
+  // `loushy --help` / `-h` / `help` print the usage and succeed (a bare `loushy` is still an error).
+  if (command === '--help' || command === '-h' || command === 'help') {
+    console.log(USAGE);
+    return;
+  }
+
   const run = COMMANDS.get(command);
   if (!run) {
     console.error(`loushy: unknown command '${command || ''}'.\n${USAGE}`);
