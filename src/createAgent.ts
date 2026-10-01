@@ -24,6 +24,7 @@ import { ToolDescriptor } from './types';
 import { modelFromEnv, resolveProviderSpec } from './providers/providerSpec';
 import { withFallback, withRetry, type WithRetryOptions } from './providers/resilience';
 import type { DefinedTool } from './tools/defineTool';
+import { withAskQuestion } from './tools/built-in/askQuestion';
 import { ToolConcurrency, assertToolConcurrency } from './execution/toolBatch';
 import type { Skill } from './skills/defineSkill';
 import type { Message } from './providers/llm';
@@ -184,6 +185,12 @@ export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> ex
    * ```
    */
   approve?: ApproveToolCall;
+  /**
+   * Adds the built-in `ask_question` tool (LOU-X9): the agent can ask the
+   * user a question, and the run pauses (like an approval, `kind: 'question'`)
+   * until `agent.approvals.answer({ id, answer })`. Off by default.
+   */
+  askQuestion?: boolean;
   /**
    * Retries of a failed model call (LOU-V7.2), with `withRetry()`: rate
    * limits, timeouts, network errors and 5xx responses, with exponential
@@ -451,7 +458,7 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
   const provider = resolveModelSource(config);
 
   const hasMcp = Object.keys(config.mcpServers ?? {}).length > 0;
-  const { toolRegistry, toolsConfig } = registerTools(config.tools ?? {}, hasMcp);
+  const { toolRegistry, toolsConfig } = registerTools(withAskQuestion(config.tools, config.askQuestion) ?? {}, hasMcp);
   // LOU-Z4: MCP tools join the registry and the agent's tools once connected.
   const mcp = agentMcp(config.mcpServers, (tools) => {
     for (const [name, descriptor] of Object.entries(tools)) {

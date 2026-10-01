@@ -6,6 +6,7 @@
  */
 
 import type { AgentEvent, AgentEventError, AgentEventUsage } from '../execution/agentEvents';
+import type { ApprovalKind, ApprovalQuestion } from '../execution/ApprovalGate';
 import type { ContentPart } from '../providers/llm';
 import { textOf } from '../providers/content';
 
@@ -43,6 +44,10 @@ export interface UIPendingApproval {
   toolCallId: string;
   toolName: string;
   args: Record<string, unknown>;
+  /** LOU-X9: `'question'` when the agent asked the user something (`ask_question`); answer it with `answer(text)`. */
+  kind?: ApprovalKind;
+  /** LOU-X9: the question's text and options, when `kind` is `'question'`. */
+  question?: ApprovalQuestion;
 }
 
 /** How a run continued after an approval decision (built from `agent.approvals.resolve()`'s result). */
@@ -108,6 +113,12 @@ function patchTool(messages: UIMessage[], id: string, patch: Partial<UIToolCall>
   });
 }
 
+/** The paused call of an `approval.requested` event, with its question when it has one (LOU-X9). */
+function pendingOf(event: Extract<AgentEvent, { type: 'approval.requested' }>): UIPendingApproval {
+  const { approvalId: id, toolCallId, toolName, args, kind, question } = event;
+  return { id, toolCallId, toolName, args, ...(kind && { kind }), ...(question && { question }) };
+}
+
 function pause(state: AgentUIState, approval: UIPendingApproval): AgentUIState {
   const { toolCallId: id, toolName: name, args } = approval;
   const messages = patchTool(state.messages, id, { status: 'awaiting-approval' }, { id, name, args, status: 'running' });
@@ -169,7 +180,7 @@ export function reduceAgentEvents(state: AgentUIState, event: AgentEvent | Agent
     case 'tool.error':
       return { ...next, messages: patchTool(state.messages, event.toolCallId, { status: 'error', error: event.error }) };
     case 'approval.requested':
-      return pause(next, { id: event.approvalId, toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
+      return pause(next, pendingOf(event));
     case 'error':
       return { ...next, error: event.error };
     case 'run.done':
