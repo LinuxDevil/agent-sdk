@@ -49,6 +49,8 @@ import { agentMcp, streamAfter } from './tools/mcp/agentMcp';
 import { HookRegistry, type AgentHook } from './execution/hooks';
 import { toMessages, type AgentInput } from './providers/content';
 import { compactionHookFor, type AgentCompaction } from './context/agentCompaction';
+import type { MemoryScopeContext, MemorySlot } from './memory/defineMemory';
+import { agentMemory } from './memory/withMemory';
 
 /**
  * Options for createAgent() that do not depend on how the instructions and
@@ -261,6 +263,21 @@ export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> ex
    * ```
    */
   compaction?: AgentCompaction;
+  /**
+   * Long-term memory slots (LOU-W6), from `defineMemory()`. On the first
+   * model call of each run, a slot recalls its newest items into the system
+   * prompt (a `<memory name="...">` block), and the model gets
+   * `remember_<name>` / `recall_<name>` tools. `scope: 'session'` keys memory
+   * by the session id (`agent.session()`'s id, or `send()`'s `sessionId`).
+   * See docs/memory.md.
+   *
+   * @example
+   * ```ts
+   * const notes = defineMemory({ name: 'notes', scope: 'global', provider: fileMemory({ dir: './.loushy/memory' }) });
+   * createAgent({ model: 'openai/gpt-4o-mini', memory: [notes] });
+   * ```
+   */
+  memory?: readonly MemorySlot[];
 }
 
 /**
@@ -352,6 +369,8 @@ export interface SendOptions {
    * ```
    */
   sessionId?: string;
+  /** Passed to memory scope functions (LOU-W6), e.g. `{ userId }` for `scope: ({ metadata }) => \`user:${metadata?.userId}\``. */
+  metadata?: Record<string, unknown>;
 }
 
 /** `TObject`: the type of `result.object` - `z.output` of the `output` schema. */
@@ -463,7 +482,9 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
   const provider = resolveModelSource(config);
 
   const hasMcp = Object.keys(config.mcpServers ?? {}).length > 0;
+  const memory = agentMemory(config.memory);
   const { toolRegistry, toolsConfig } = registerTools(withAskQuestion(config.tools, config.askQuestion) ?? {}, hasMcp);
+  memory?.addTools(toolsConfig);
   // LOU-Z4: MCP tools join the registry and the agent's tools once connected.
   const mcp = agentMcp(config.mcpServers, (tools) => {
     for (const [name, descriptor] of Object.entries(tools)) {
@@ -526,7 +547,8 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
   const executeOptions = (
     input: string | Message[],
     signal?: AbortSignal,
-    turn?: Partial<SessionTurnCheckpoint>
+    turn?: Partial<SessionTurnCheckpoint>,
+    scope: MemoryScopeContext = { sessionId: turn?.sessionId }
   ): ExecuteOptions => ({
     ...spec,
     output: config.output,
@@ -535,28 +557,41 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     input,
     signal,
     ...turn,
+    // LOU-W6: memory tools and recall bound to this run's scope keys.
+    ...memory?.forRun(scope, toolRegistry, hooks),
   });
-  const run = async (input: string | Message[], signal?: AbortSignal, turn?: Partial<SessionTurnCheckpoint>) => {
+  const run = async (
+    input: string | Message[],
+    signal?: AbortSignal,
+    turn?: Partial<SessionTurnCheckpoint>,
+    scope?: MemoryScopeContext
+  ) => {
     await mcp.ready();
-    return AgentExecutor.execute(executeOptions(input, signal, turn));
+    return AgentExecutor.execute(executeOptions(input, signal, turn, scope));
   };
   // LOU-W9: a checkpointed session's turn runs under its own sessionId + checkpointStore.
-  const session = (options?: SessionOptions): AgentSession =>
-    approvals.session(
-      run,
-      (input, signal, turn) => startStream(executeOptions(input, signal, turn)),
-      withDefaultStores(options, config.store)
+  const session = (options: SessionOptions = {}): AgentSession => {
+    // The id is chosen here so memory scoped to the session sees it on every turn.
+    const scope = { sessionId: options.id ?? globalThis.crypto.randomUUID() };
+    return approvals.session(
+      (input, signal, turn) => run(input, signal, turn, scope),
+      (input, signal, turn) => startStream(executeOptions(input, signal, turn, scope)),
+      withDefaultStores({ ...options, id: scope.sessionId }, config.store)
     );
+  };
 
   // `object` was validated with `config.output`, so it has its output type.
   type Typed = z.output<TOutput>;
   const simpleAgent: SimpleAgent<Typed> = {
     async send(message: AgentInput, options: SendOptions = {}): Promise<ExecutionResult<Typed>> {
-      const result = await run(toMessages(message), options.signal, durable(options.sessionId));
+      const { sessionId, metadata } = options;
+      const result = await run(toMessages(message), options.signal, durable(sessionId), { sessionId, metadata });
       return approvals.settle(result, options.signal) as Promise<ExecutionResult<Typed>>;
     },
     stream(message: AgentInput, options: SendOptions = {}): AgentRun<Typed> {
-      return startStream(executeOptions(toMessages(message), options.signal, durable(options.sessionId))) as AgentRun<Typed>;
+      const { sessionId, metadata } = options;
+      const execute = executeOptions(toMessages(message), options.signal, durable(sessionId), { sessionId, metadata });
+      return startStream(execute) as AgentRun<Typed>;
     },
     session,
     async resume(sessionId: string, { signal } = {}): Promise<ExecutionResult<Typed> | null> {

@@ -68,6 +68,9 @@ export * from './projectInstructions';
 // Skills: progressive disclosure of instructions (LOU-Y2)
 export * from './skills';
 
+// Memory slots: scoped long-term memory for createAgent() (LOU-W6)
+export * from './memory';
+
 // Sub-agents: the `subagents` option and its `task` tool (LOU-Y3)
 export * from './subagents';
 

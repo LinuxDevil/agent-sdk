@@ -329,6 +329,7 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `skills`   | Skills from `defineSkill()` / `loadSkills()`; see [Skills](./skills.md). |
 | `subagents`, `maxSubagentDepth` | Named sub-agents behind one `task` tool, and how deep they may nest (default 1); see [Sub-agents](./sub-agents.md). |
 | `store`    | An `AgentStore` (`SqliteStore`, `memoryStore()`, or `{ sessions?, checkpoints?, approvals? }`): the default stores of `agent.session()`, approvals, and `send(message, { sessionId })` runs; `agent.resume(id)` finishes an interrupted one. See [Durable sessions](./sessions.md#durable-sessions). |
+| `memory`   | Memory slots from `defineMemory()`: recalled into the system prompt at the start of each run, with `remember_<name>` / `recall_<name>` tools. See [Memory](./memory.md). |
 | `approvalStore` | Where a `needsApproval` pause is saved (default: `store.approvals`, else a per-agent `InMemoryApprovalStore`); see [Approvals](./approvals.md). |
 | `approve`  | `(call) => boolean`: decide approvals in code instead of pausing. |
 | `projectInstructions` | `true` or `{ cwd?, files? }`: append the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (off by default; see [Project instructions](#project-instructions)). |

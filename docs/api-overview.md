@@ -106,6 +106,15 @@ Pass `skills: [defineSkill({ name, description, content }), ...(await loadSkills
 the system prompt and the model loads bodies through an auto-registered
 `load_skill` tool. See [Skills](./skills.md).
 
+### Memory
+
+Pass `memory: [defineMemory({ name, scope, provider })]` to `createAgent()` to
+keep items across conversations: each run recalls a slot's newest items into
+the system prompt on its first model call, and the model gets
+`remember_<name>` / `recall_<name>` tools. `scope` is `'global'`, `'session'`
+or a function of `{ sessionId, metadata }`; `inMemoryMemory()` and
+`fileMemory({ dir })` are the built-in providers. See [Memory](./memory.md).
+
 ### Durable execution
 
 `sessionId` + `checkpointStore` make a run crash-safe and a session
