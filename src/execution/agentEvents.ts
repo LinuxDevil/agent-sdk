@@ -213,6 +213,8 @@ export interface CompactionStartEvent extends AgentEventBase<'compaction.start'>
   contextWindow: number;
   /** The size (`thresholdPercent` of the window) the request is compared with. */
   thresholdTokens: number;
+  /** `'manual'` for `session.compact()` (LOU-W8); absent for the hook's automatic compaction. */
+  trigger?: 'manual';
 }
 
 /**
@@ -230,6 +232,18 @@ export interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
   /** `true` when old turns were replaced by a model-written summary (the text is not sent). */
   summary?: boolean;
   error?: { message: string };
+  /** `'manual'` for `session.compact()` (LOU-W8); absent for the hook's automatic compaction. */
+  trigger?: 'manual';
+}
+
+/**
+ * `session.clear()` emptied a session's transcript (LOU-W8). Delivered to
+ * `session.on()` listeners, not to a run's stream; `runId` is `session:<id>`.
+ */
+export interface ContextClearedEvent extends AgentEventBase<'context.cleared'> {
+  sessionId: string;
+  /** How many messages the transcript held. */
+  messagesCleared: number;
 }
 
 /**
@@ -318,6 +332,7 @@ export type AgentEvent =
   | ProviderFallbackEvent
   | CompactionStartEvent
   | CompactionDoneEvent
+  | ContextClearedEvent
   | BudgetExceededEvent
   | InputQueuedEvent
   | InputSteeredEvent
@@ -360,6 +375,7 @@ const EVENT_TYPES: ReadonlySet<string> = new Set<AgentEventType>([
   'provider.fallback',
   'compaction.start',
   'compaction.done',
+  'context.cleared',
   'budget.exceeded',
   'input.queued',
   'input.steered',

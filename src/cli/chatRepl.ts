@@ -39,7 +39,7 @@ export interface ChatReplOptions {
 }
 
 const QUIET_FINISH: ReadonlySet<string> = new Set(['stop', 'awaiting-approval', 'error', 'tool_calls']);
-const COMMANDS = '/new, /model <provider/model>, /history, /quit';
+const COMMANDS = '/new, /compact, /clear, /model <provider/model>, /history, /quit';
 
 function clip(text: string, max = 160): string {
   const line = text.replace(/\s+/g, ' ').trim();
@@ -181,6 +181,19 @@ export async function runChatRepl(options: ChatReplOptions): Promise<number> {
       const messages = await openSession().load();
       if (messages.length === 0) say('(no messages yet)');
       messages.flatMap(transcriptLine).forEach(say);
+    } else if (name === '/compact' || name === '/clear') {
+      try {
+        const session = openSession();
+        if (name === '/clear') {
+          await session.clear();
+          say('Conversation cleared.');
+        } else {
+          const { tokensBefore, tokensAfter, messagesBefore, messagesAfter } = await session.compact();
+          say(`Compacted: ${messagesBefore} -> ${messagesAfter} messages, ~${tokensBefore} -> ~${tokensAfter} tokens.`);
+        }
+      } catch (error) {
+        fail(error);
+      }
     } else if (name === '/model' && rest.length === 1) {
       try {
         const next = await createAgent(rest[0]);

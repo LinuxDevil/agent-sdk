@@ -163,6 +163,8 @@ Done, the report is on its way.
 | ------- | ------------ |
 | `/new` | Start a new session (the old one is kept in the store). |
 | `/model <provider/model>` | Rebuild the agent on another model; the session continues. A failure keeps the current model. |
+| `/compact` | Compact the session's transcript now (old tool results are pruned) and print the before/after size. |
+| `/clear` | Empty the session's transcript; the session id stays. |
 | `/history` | Print the session's transcript. |
 | `/quit` | Leave (Ctrl-D works too). |
 
