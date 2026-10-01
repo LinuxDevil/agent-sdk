@@ -52,8 +52,8 @@ export interface ChatIo {
   overrides?: CreateAgentConfig;
 }
 
-/** Builds the target's agent; `model` (`provider/model`) replaces the one it names. */
-async function buildAgent(path: string, io: ChatIo, model?: string): Promise<SimpleAgent> {
+/** Builds the target's agent; `model` (`provider/model`) replaces the one it names. Shared with `loushy acp`. */
+export async function buildAgent(path: string, io: Pick<ChatIo, 'overrides'>, model?: string): Promise<SimpleAgent> {
   const target = detectTarget(path);
   if (target.kind === 'spec' && model) {
     const spec = loadSpec(target.path);

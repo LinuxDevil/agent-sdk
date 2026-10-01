@@ -29,6 +29,7 @@ export default defineConfig({
     'testing/index': 'src/testing/index.ts',
     'cli/dev': 'src/cli/dev.ts',
     'cli/chat': 'src/cli/chat.ts',
+    'cli/acp': 'src/cli/acp.ts',
     'cli/build': 'src/cli/build.ts',
     'cli/studio': 'src/cli/studio.ts',
     'cli/mcp': 'src/cli/mcp.ts',
