@@ -10,6 +10,7 @@ Run it with `npx loushy <command>` inside a project that has the SDK installed.
 | `loushy init [dir]` | Scaffold a project: an agent with an example tool, an offline test, `.env.example`; installs dependencies and runs `git init`. | [Installation](./installation.md#scaffolding-a-new-project) |
 | `loushy doctor [spec] [--json]` | Check Node, peer packages, provider keys, and optionally a spec file; prints a fix for every problem. | [Installation](./installation.md#troubleshooting-loushy-doctor) |
 | `loushy dev <path>` | Local dev server for a spec file, an agent directory or a TS agent: chat UI with a session per tab and streamed events, hot reload on save. | [Below](#loushy-dev) |
+| `loushy chat <path>` | Terminal REPL for a spec file, an agent directory or a TS agent: streams replies, shows tool calls, asks for approvals and questions. | [Below](#loushy-chat) |
 | `loushy mcp <spec>` | Serve the agent as an MCP server (stdio, or HTTP with `--http`). | [Configuration](./configuration.md#serve-an-agent-over-mcp) |
 | `loushy eval [globs...]` | Run `*.eval.ts` files under vitest; print a summary and write JUnit/JSON reports. | [Evals](./evals.md#loushy-eval) |
 | `loushy build --target=<t> --agent=<spec>` | Build a deployable Node server, Docker image or Cloudflare Worker. | [Deployment](./deployment.md) |
@@ -23,6 +24,7 @@ Every command that takes a `<spec>` reads an agent spec file (`.yaml`,
 ```text
 loushy init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force]
 loushy dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H]
+loushy chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>]
 loushy build --target=<name> --agent=<path> [--out=<dir>]
 loushy studio [--port N] [--host H] [--prod|--dev]
 loushy mcp <agent.yaml|json> [--http --port N --host H]
@@ -79,6 +81,10 @@ The continuation of an approval is not streamed token by token: the endpoint
 runs it with `agent.approvals.resolve()` and sends the turn's tool results and
 text as events once it finishes.
 
+`loushy build` servers (`node-server`, `docker`) serve these same endpoints from
+the same code, with sessions in a store chosen by `LOUSHY_STORE` and optional
+bearer auth: see [Deployment: HTTP API](./deployment.md#http-api).
+
 **Hot reload.** The agent is rebuilt a moment (100 ms) after a file changes,
 without restarting the server or dropping the port:
 
@@ -106,6 +112,61 @@ Directories and modules are your code and run with your permissions; only run
 - `--port` - default `3737`.
 - `--host` - default `127.0.0.1` (localhost only). Pass e.g. `--host=0.0.0.0`
   to opt in to LAN access.
+
+## `loushy chat`
+
+```bash
+npx loushy chat agent.yaml                          # a spec file
+npx loushy chat ./my-agent --model openai/gpt-4o    # an agent directory, on another model
+npx loushy chat src/agent.ts --store sqlite:.loushy/chat.db --session support
+```
+
+A terminal REPL: each line you type is one turn of a session. `<path>` is
+loaded like `loushy dev` loads it (spec file, agent directory or `.ts`/`.js`
+module, see [`loushy dev`](#loushy-dev)); a missing path or bad extension fails
+with the same coded error (`LOUSHY_CONFIG_INVALID`,
+`LOUSHY_SPEC_UNSUPPORTED_FORMAT`), and so does an invalid `--session` id
+(`LOUSHY_SESSION_ID_INVALID`).
+
+```text
+> look up cats
+[lookup] {"q":"cats"}
+  -> found cats
+Cats are great.
+[usage] 20 in / 6 out tokens, $0.0004
+> email the report to sam
+Approve send_email({"to":"sam@example.com"})? [y/N] y
+  -> sent
+Done, the report is on its way.
+```
+
+- Text is written as the model produces it. Each tool call is one dim line,
+  `[tool_name] {args}`, followed by `  -> result` (or `  -> error: ...`).
+- A tool call that needs approval asks `Approve <tool>(args)? [y/N]`: `y` or
+  `yes` runs it, anything else rejects it and the model carries on. An
+  `ask_question` call (`askQuestion: true`) prints the question with numbered
+  options; answer with the number or with free text.
+- After each turn `[usage]` shows the tokens and, when every model used has
+  known pricing, the cost (`~` marks estimated tokens).
+- Errors from the SDK print with their `[LOUSHY_...]` code and fix, and the
+  session continues.
+
+| Command | What it does |
+| ------- | ------------ |
+| `/new` | Start a new session (the old one is kept in the store). |
+| `/model <provider/model>` | Rebuild the agent on another model; the session continues. A failure keeps the current model. |
+| `/history` | Print the session's transcript. |
+| `/quit` | Leave (Ctrl-D works too). |
+
+| Option | Meaning |
+| ------ | ------- |
+| `--model provider/model` | Use this model instead of the one the target names. Applies to spec files, agent directories and `createAgent()` options exports; a module that exports an already built agent keeps its model. |
+| `--session id` | Open this session (1-128 characters of `A-Za-z0-9_-`); default is a new `chat-<id>`. |
+| `--store sqlite:<file>` | Keep sessions in a SQLite file ([`SqliteStore`](./durable-execution.md)), so `--session id` continues a conversation after a restart. Default: in memory. Pending approvals are not restored after a restart. |
+
+The REPL itself is `runChatRepl()` in `src/cli/chatRepl.ts`; it takes the
+input lines, an output stream and an agent factory, so it can be tested with
+scripted lines and a `mockModel` agent and no terminal.
 
 ## `loushy build`
 

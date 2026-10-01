@@ -68,6 +68,7 @@ import {
   toExecutionResult,
 } from './agentRunState';
 import { AgentRun, RUN_EVENTS, StreamingExecuteOptions, runEventsOf, startAgentRun } from './agentRun';
+import type { InputQueue } from './inputQueue';
 import { OutputError, outputInstruction, outputRepairMessage, validateOutput } from './structuredOutput';
 import type { PermissionOptions } from './permissions';
 import {
@@ -80,6 +81,7 @@ import {
   maxStepsOf,
   startBudget,
 } from './budget';
+import { GuardrailError, checkInputGuardrails, checkOutputGuardrails, type AgentGuardrails, type GuardrailTrip } from './ioGuardrails';
 
 export { PropagatingToolError } from './propagatingToolError';
 
@@ -114,6 +116,8 @@ export type ExecutionEventType =
  *   see `ExecutionResult.outputError`.
  * - `'budget-exceeded'`: a `limits` budget tripped (LOU-V6); see
  *   `ExecutionResult.budget`.
+ * - `'guardrail'`: an input, output or tool guardrail blocked (LOU-X4); see
+ *   `ExecutionResult.guardrail`.
  */
 export type ExecutionFinishReason =
   | GenerateResult['finishReason']
@@ -122,6 +126,7 @@ export type ExecutionFinishReason =
   | 'max-steps'
   | 'output-invalid'
   | 'budget-exceeded'
+  | 'guardrail'
   | (string & {});
 
 /**
@@ -223,6 +228,13 @@ export interface ExecuteOptions extends PermissionOptions {
    * ```
    */
   limits?: RunLimits;
+  /**
+   * LOU-X4: input, output and tool guardrails. A block ends the run with
+   * `finishReason: 'guardrail'` and `result.guardrail` (or throws
+   * `GuardrailError` with `onTripped: 'throw'`); an input block makes no
+   * model call. Sub-agents inherit them. See docs/guardrails.md.
+   */
+  guardrails?: AgentGuardrails;
   /** LOU-V6: a session's `limits` and what its earlier turns spent; set by `agent.session({ limits })`. */
   sessionBudget?: SessionBudget;
   temperature?: number;
@@ -455,6 +467,16 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   signal?: AbortSignal;
   /**
+   * LOU-V9: input pushed while the run goes on (`inputQueue.push()`), so
+   * a non-streaming caller can add to it like `run.enqueue()` does. Each
+   * input joins the transcript at the next safe point - after the current
+   * step's tool results, before the next model call - and a run whose model
+   * just gave its final reply takes another step for it. With checkpointing,
+   * an input still waiting rides at the end of every checkpoint, so a crash
+   * does not lose it. One queue serves one run. See docs/streaming.md.
+   */
+  inputQueue?: InputQueue;
+  /**
    * LOU-V3: how many tool calls from ONE model turn may run at the same
    * time. Defaults to `'unbounded'` (every call of the turn runs
    * concurrently); `1` restores strictly sequential execution. Must be a
@@ -538,6 +560,8 @@ export interface ExecutionResult<TObject = unknown> {
   backgroundTasks?: BackgroundTaskView[];
   /** LOU-V6: the limit that ended the run (`finishReason: 'budget-exceeded'`). */
   budget?: BudgetExceeded;
+  /** LOU-X4: the guardrail that ended the run (`finishReason: 'guardrail'`). */
+  guardrail?: GuardrailTrip;
 }
 
 /**
@@ -596,6 +620,7 @@ export class AgentExecutor {
       throw error;
     } finally {
       budget?.dispose();
+      options.inputQueue?.close();
       await run.onRunEnd?.(end);
     }
   }
@@ -643,10 +668,11 @@ export class AgentExecutor {
    */
   static stream(options: ExecuteOptions): AgentRun {
     this.validateExecuteOptions(options, 'AgentExecutor.stream');
-    return startAgentRun(({ signal, onEvent, sink }) => {
+    return startAgentRun(({ signal, onEvent, sink, inputQueue }) => {
       const streaming: StreamingExecuteOptions = {
         ...options,
         signal,
+        inputQueue,
         onEvent: (event) => {
           options.onEvent?.(event);
           onEvent(event);
@@ -654,7 +680,7 @@ export class AgentExecutor {
         [RUN_EVENTS]: sink,
       };
       return this.execute(streaming);
-    }, options.signal);
+    }, options.signal, options.inputQueue);
   }
 
   /**
@@ -701,6 +727,15 @@ export class AgentExecutor {
 
     const state = await loadRunState(options);
     state.budget = budget;
+    // LOU-X4: the new input is checked before anything else runs.
+    const blocked = await checkInputGuardrails(options, [state.messages, state.queuedInput]);
+    if (blocked) return this.stopForGuardrail(options, state, blocked);
+
+    options.inputQueue?.listen((queued) => {
+      runEventsOf(options)?.inputQueued(queued);
+      // LOU-V9: checkpointed at once, so a crash before it is applied does not lose it.
+      saveStepCheckpoint(options, state).catch(() => undefined);
+    });
 
     // LOU-U7/U9: a resumed transcript may end with a model turn whose tool
     // calls (some of them) have no result yet - finish those first, without
@@ -736,10 +771,15 @@ export class AgentExecutor {
         return stopped;
       }
       state.steps++;
+      this.applyQueuedInput(options, state);
 
       const outcome = await this.runStepOrAbort(options, state, () =>
         this.runStep(options, state, tools, agentSpanId)
       );
+      // LOU-V9: input queued during the final reply gets its own step.
+      if (outcome === 'stop' && options.inputQueue?.messages.length && state.steps < maxSteps) {
+        continue;
+      }
       if (outcome === 'stop') {
         const output = await this.checkOutput(options, state, !repaired && state.steps < maxSteps);
         if (output === 'repair') {
@@ -761,6 +801,14 @@ export class AgentExecutor {
     // spent while the model still wanted to go on.
     state.finishReason = 'max-steps';
     return this.finishRun(options, state);
+  }
+
+  /** LOU-V9: appends the queued input to the transcript, for the model call of step `state.steps`. */
+  private static applyQueuedInput(options: ExecuteOptions, state: AgentRunState): void {
+    for (const queued of options.inputQueue?.take() ?? []) {
+      state.messages.push(...queued.messages);
+      runEventsOf(options)?.inputApplied(queued.id, state.steps);
+    }
   }
 
   /** The run's end when it must stop before the next model call: aborted (LOU-V1) or over budget (LOU-V6). */
@@ -841,7 +889,7 @@ export class AgentExecutor {
     if (!generatedStep) {
       return 'continue';
     }
-    const { generated: result, measured } = generatedStep;
+    const { generated, measured } = generatedStep;
 
     // A turn produced a real result - any pending "the last thing that
     // happened was a provider failure" tracking no longer applies.
@@ -849,6 +897,10 @@ export class AgentExecutor {
 
     // Update usage (LOU-V5)
     const stepUsage = recordStep(state, measured);
+
+    const text = await this.guardOutput(options, state, generated);
+    if (typeof text !== 'string') return text;
+    const result = { ...generated, text };
 
     // Handle text response
     if (result.text) {
@@ -898,6 +950,21 @@ export class AgentExecutor {
     }
     state.finishReason = result.finishReason;
     return 'stop';
+  }
+
+  /**
+   * LOU-X4: the step's text after the output guardrails (they check the final
+   * reply, and every step's text when streamed, before it is emitted), or the
+   * blocked run's result.
+   */
+  private static async guardOutput(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    { text, toolCalls }: GenerateResult
+  ): Promise<string | ExecutionResult> {
+    if (!text || (toolCalls?.length && !runEventsOf(options))) return text;
+    const checked = await checkOutputGuardrails(options, text, state.messages);
+    return 'tripped' in checked ? this.stopForGuardrail(options, state, checked.tripped) : checked.text;
   }
 
   /**
@@ -1055,6 +1122,11 @@ export class AgentExecutor {
     if (options.signal?.aborted) {
       pushAbortedBatchResults(state, batch.unrecorded);
       return this.abortRun(options, state);
+    }
+    // LOU-X4: a tool guardrail blocked a call before it ran; the rest of the batch did not start.
+    if (batch.failure?.error instanceof GuardrailError) {
+      pushAbortedBatchResults(state, batch.unrecorded, 'a guardrail stopped the run');
+      return this.stopForGuardrail(options, state, batch.failure.error.guardrail);
     }
     if (batch.failure) {
       throw batch.failure.error;
@@ -1257,6 +1329,7 @@ export class AgentExecutor {
     const timedOut = budgetOfAbort(signal);
     if (timedOut) return this.stopForBudget(options, state, timedOut);
     state.finishReason = 'aborted';
+    options.inputQueue?.close();
     await saveStepCheckpoint(options, state);
 
     this.emitEvent(onEvent, {
@@ -1292,6 +1365,22 @@ export class AgentExecutor {
       throw new BudgetExceededError(budget);
     }
     return { ...(await this.finishRun(options, state)), budget };
+  }
+
+  /** LOU-X4: ends a blocked run like {@link stopForBudget}, after a `guardrail.tripped` event. */
+  private static async stopForGuardrail(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    guardrail: GuardrailTrip
+  ): Promise<ExecutionResult> {
+    state.finishReason = 'guardrail';
+    state.finalText = '';
+    runEventsOf(options)?.guardrail({ type: 'guardrail.tripped', ...guardrail });
+    if (options.guardrails?.onTripped === 'throw') {
+      await saveStepCheckpoint(options, state, 'finished');
+      throw new GuardrailError(guardrail);
+    }
+    return { ...(await this.finishRun(options, state)), guardrail };
   }
 
   /**

@@ -92,6 +92,18 @@ describe('AgentEvent types', () => {
     }
   });
 
+  it('narrows input events on event.type (LOU-V9)', () => {
+    if (event.type === 'input.queued') expectTypeOf(event.text).toBeString();
+    if (event.type === 'input.applied') expectTypeOf(event.step).toBeNumber();
+  });
+
+  it('narrows guardrail events on event.type (LOU-X4)', () => {
+    if (event.type === 'guardrail.tripped' || event.type === 'guardrail.rewrote') {
+      expectTypeOf(event.kind).toEqualTypeOf<'input' | 'output' | 'tool'>();
+      expectTypeOf(event.toolName).toEqualTypeOf<string | undefined>();
+    }
+  });
+
   it('covers every event type', () => {
     expectTypeOf<AgentEventType>().toEqualTypeOf<
       | 'run.start'
@@ -110,6 +122,10 @@ describe('AgentEvent types', () => {
       | 'compaction.start'
       | 'compaction.done'
       | 'budget.exceeded'
+      | 'input.queued'
+      | 'input.applied'
+      | 'guardrail.tripped'
+      | 'guardrail.rewrote'
       | 'run.done'
     >();
   });

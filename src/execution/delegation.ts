@@ -23,6 +23,7 @@ import type { ResumeExecuteOptions } from './resume';
 import type { ApprovalStore, ExecutionSnapshot } from './ApprovalGate';
 import type { ToolConcurrency } from './toolBatch';
 import type { PermissionRule } from './permissions';
+import { inheritGuardrails, type AgentGuardrails } from './ioGuardrails';
 import { HookRegistry, type AgentHook, type HookContext, type SubagentInfo } from './hooks';
 import { markPropagating } from './propagatingToolError';
 import { SubagentApprovalPause, subagentBudget, toolCallScopeOf, type ToolCallScope } from './subagentRuntime';
@@ -41,6 +42,8 @@ export interface SubagentSpec {
   toolConcurrency?: ToolConcurrency;
   /** LOU-X2: the sub-agent's own permission rules, checked after the ones it inherits. */
   permissions?: readonly PermissionRule[];
+  /** LOU-X4: the sub-agent's own guardrails, run after the ones it inherits. */
+  guardrails?: AgentGuardrails;
 }
 
 /** One child run requested by a parent tool call. */
@@ -166,6 +169,7 @@ function childOptions(
         ? [...runtime.permissions, ...spec.permissions]
         : (runtime.permissions ?? spec.permissions),
     onPermissionDecision: runtime.onPermissionDecision,
+    guardrails: inheritGuardrails(runtime.guardrails, spec.guardrails),
   };
 }
 

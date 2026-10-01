@@ -222,6 +222,7 @@ Most examples run offline with a mock provider; see the
 | `loushy init [dir]` | Scaffold a project with an agent, a tool and an offline test |
 | `loushy doctor [spec]` | Check Node, peers, API keys and a spec file; print fixes |
 | `loushy dev <spec>` | Local chat UI and `POST /chat` with hot reload |
+| `loushy chat <path>` | Terminal REPL: streamed replies, tool calls, approvals and questions |
 | `loushy mcp <spec>` | Serve the agent as an MCP server (stdio or HTTP) |
 | `loushy eval [globs]` | Run `*.eval.ts` files; JUnit and JSON reports |
 | `loushy build --target=<t> --agent=<spec>` | Build a Node server, Docker image or Cloudflare Worker |
@@ -861,9 +862,11 @@ turn (`'stop'`, `'length'`, `'tool_calls'`, `'content_filter'`, `'error'`),
 `'awaiting-approval'` (paused on a tool call that needs a human), `'aborted'`
 (cancelled with `signal`), `'max-steps'`, `'output-invalid'` (the reply
 did not match the `output` schema even after the repair step, see
-[Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)), or `'budget-exceeded'` (a
+[Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)), `'budget-exceeded'` (a
 `limits` budget such as `maxTokens` or `maxCostUsd` tripped; `result.budget`
-says which, see [Budgets](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#budgets)). `'max-steps'` means the `maxSteps`
+says which, see [Budgets](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#budgets)), or `'guardrail'` (an
+input, output or tool guardrail blocked; `result.guardrail` says which, see
+[Input and output guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md#input-and-output-guardrails)). `'max-steps'` means the `maxSteps`
 budget (default 10) ran out while the model still wanted to continue, so the
 reply may be empty or partial; a run that finishes naturally within the budget
 keeps its `'stop'`. Steps carried over by `initialSteps` or an approval resume
@@ -2190,6 +2193,7 @@ Run it with `npx loushy <command>` inside a project that has the SDK installed.
 | `loushy init [dir]` | Scaffold a project: an agent with an example tool, an offline test, `.env.example`; installs dependencies and runs `git init`. | [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#scaffolding-a-new-project) |
 | `loushy doctor [spec] [--json]` | Check Node, peer packages, provider keys, and optionally a spec file; prints a fix for every problem. | [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#troubleshooting-loushy-doctor) |
 | `loushy dev <path>` | Local dev server for a spec file, an agent directory or a TS agent: chat UI with a session per tab and streamed events, hot reload on save. | [Below](#loushy-dev) |
+| `loushy chat <path>` | Terminal REPL for a spec file, an agent directory or a TS agent: streams replies, shows tool calls, asks for approvals and questions. | [Below](#loushy-chat) |
 | `loushy mcp <spec>` | Serve the agent as an MCP server (stdio, or HTTP with `--http`). | [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#serve-an-agent-over-mcp) |
 | `loushy eval [globs...]` | Run `*.eval.ts` files under vitest; print a summary and write JUnit/JSON reports. | [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md#loushy-eval) |
 | `loushy build --target=<t> --agent=<spec>` | Build a deployable Node server, Docker image or Cloudflare Worker. | [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md) |
@@ -2203,6 +2207,7 @@ Every command that takes a `<spec>` reads an agent spec file (`.yaml`,
 ```text
 loushy init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force]
 loushy dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H]
+loushy chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>]
 loushy build --target=<name> --agent=<path> [--out=<dir>]
 loushy studio [--port N] [--host H] [--prod|--dev]
 loushy mcp <agent.yaml|json> [--http --port N --host H]
@@ -2259,6 +2264,10 @@ The continuation of an approval is not streamed token by token: the endpoint
 runs it with `agent.approvals.resolve()` and sends the turn's tool results and
 text as events once it finishes.
 
+`loushy build` servers (`node-server`, `docker`) serve these same endpoints from
+the same code, with sessions in a store chosen by `LOUSHY_STORE` and optional
+bearer auth: see [Deployment: HTTP API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#http-api).
+
 **Hot reload.** The agent is rebuilt a moment (100 ms) after a file changes,
 without restarting the server or dropping the port:
 
@@ -2286,6 +2295,61 @@ Directories and modules are your code and run with your permissions; only run
 - `--port` - default `3737`.
 - `--host` - default `127.0.0.1` (localhost only). Pass e.g. `--host=0.0.0.0`
   to opt in to LAN access.
+
+## `loushy chat`
+
+```bash
+npx loushy chat agent.yaml                          # a spec file
+npx loushy chat ./my-agent --model openai/gpt-4o    # an agent directory, on another model
+npx loushy chat src/agent.ts --store sqlite:.loushy/chat.db --session support
+```
+
+A terminal REPL: each line you type is one turn of a session. `<path>` is
+loaded like `loushy dev` loads it (spec file, agent directory or `.ts`/`.js`
+module, see [`loushy dev`](#loushy-dev)); a missing path or bad extension fails
+with the same coded error (`LOUSHY_CONFIG_INVALID`,
+`LOUSHY_SPEC_UNSUPPORTED_FORMAT`), and so does an invalid `--session` id
+(`LOUSHY_SESSION_ID_INVALID`).
+
+```text
+> look up cats
+[lookup] {"q":"cats"}
+  -> found cats
+Cats are great.
+[usage] 20 in / 6 out tokens, $0.0004
+> email the report to sam
+Approve send_email({"to":"sam@example.com"})? [y/N] y
+  -> sent
+Done, the report is on its way.
+```
+
+- Text is written as the model produces it. Each tool call is one dim line,
+  `[tool_name] {args}`, followed by `  -> result` (or `  -> error: ...`).
+- A tool call that needs approval asks `Approve <tool>(args)? [y/N]`: `y` or
+  `yes` runs it, anything else rejects it and the model carries on. An
+  `ask_question` call (`askQuestion: true`) prints the question with numbered
+  options; answer with the number or with free text.
+- After each turn `[usage]` shows the tokens and, when every model used has
+  known pricing, the cost (`~` marks estimated tokens).
+- Errors from the SDK print with their `[LOUSHY_...]` code and fix, and the
+  session continues.
+
+| Command | What it does |
+| ------- | ------------ |
+| `/new` | Start a new session (the old one is kept in the store). |
+| `/model <provider/model>` | Rebuild the agent on another model; the session continues. A failure keeps the current model. |
+| `/history` | Print the session's transcript. |
+| `/quit` | Leave (Ctrl-D works too). |
+
+| Option | Meaning |
+| ------ | ------- |
+| `--model provider/model` | Use this model instead of the one the target names. Applies to spec files, agent directories and `createAgent()` options exports; a module that exports an already built agent keeps its model. |
+| `--session id` | Open this session (1-128 characters of `A-Za-z0-9_-`); default is a new `chat-<id>`. |
+| `--store sqlite:<file>` | Keep sessions in a SQLite file ([`SqliteStore`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)), so `--session id` continues a conversation after a restart. Default: in memory. Pending approvals are not restored after a restart. |
+
+The REPL itself is `runChatRepl()` in `src/cli/chatRepl.ts`; it takes the
+input lines, an output stream and an agent factory, so it can be tested with
+scripted lines and a `mockModel` agent and no terminal.
 
 ## `loushy build`
 
@@ -3106,12 +3170,61 @@ deploy the result). `tsup` must be installed (`npm install --save-dev tsup`).
 | `docker`            | everything `node-server` writes, plus `Dockerfile`       | `docker build -t loushy-agent . && docker run -p 3000:3000 loushy-agent` |
 | `cloudflare-worker` | `worker.ts`, `agent.config.js`, `wrangler.toml`, `dist/worker.js` | `wrangler deploy`                                                      |
 
-Every target serves the same HTTP API as `loushy dev`:
+Every target answers `GET /health` (`200 ok`) and `POST /chat`. The
+`node-server` and `docker` targets serve the full [HTTP API](#http-api) below;
+the `cloudflare-worker` target still serves the single-turn `{ "message" }`
+call (sessions, SSE and bearer auth there are tracked as LOU-D51).
 
-- `GET /health` - `200 ok`
-- `POST /chat` - JSON `{ "message": "..." }` in, the agent's
-  `ExecutionResult` (from `AgentExecutor.execute()`) out. Bodies over 1MB
-  are rejected with `413`.
+## HTTP API
+
+The `node-server` and `docker` targets serve the same `/chat` protocol as
+`loushy dev` ([CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md#loushy-dev)), from the same code
+(`src/server/chatRoutes.ts`), so a page or script written against the dev
+server works against the deployed one.
+
+| Endpoint | What it does |
+| -------- | ------------ |
+| `GET /health` | `200 ok`. Never needs auth: point load balancers and container health checks here. |
+| `POST /chat` `{ "sessionId", "input" }` | Runs a turn of session `sessionId` (1-128 characters of `A-Za-z0-9_-`; a new id starts a conversation, a known one continues it) and streams it as SSE: one `data: <AgentEvent JSON>` per event ([Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)), then `event: done`. `input` is a string or an array of content parts. |
+| `GET /chat/:sessionId` | The session's transcript: `{ sessionId, messages, pending }`. |
+| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn as SSE. `404` when `id` is not pending. |
+| `POST /chat` `{ "message" }` | Legacy, single turn without history or streaming: returns the agent's `ExecutionResult` as JSON, with a `Deprecation: true` header. |
+
+Bodies over 1MB get `413`, invalid JSON `400`.
+
+```bash
+curl -N http://127.0.0.1:3000/chat \
+  -H 'Authorization: Bearer '"$LOUSHY_API_TOKEN" -H 'Content-Type: application/json' \
+  -d '{ "sessionId": "alice", "input": "Hello" }'
+```
+
+### Auth
+
+Set `LOUSHY_API_TOKEN` and every route except `/health` requires
+`Authorization: Bearer <token>`; anything else gets `401` with a JSON error
+(the token is compared in constant time). Without it the server is open: that
+is fine on `127.0.0.1`, but **treat the token as required for anything that is
+not on localhost** (the server logs a warning when it listens on another
+interface without one, and the `docker` image listens on all interfaces).
+Terminate TLS in front of the server, since a bearer token travels in clear
+text over plain HTTP. Pass the token at run time (`docker run -e
+LOUSHY_API_TOKEN=...`).
+
+Programmatically, `adapter.scaffold(agentPath, outDir, { auth: { token } })`
+bakes a token into the built server for when the variable is not set. The
+variable wins, and a baked token is readable in `dist/server.js`, so prefer the
+variable.
+
+### Sessions and the store
+
+`LOUSHY_STORE` chooses where sessions, checkpoints and approvals live:
+
+| Value | Store |
+| ----- | ----- |
+| `memory` (default) | `memoryStore()`: gone when the process restarts, and not shared between instances. |
+| `sqlite:<path>` | A [`SqliteStore`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md) file (created with its directory): sessions survive restarts. Needs Node 22 (`node:sqlite`); the `docker` image uses `node:22-slim`. Mount the file's directory as a volume. |
+
+SQLite is one file on one disk, so run a single instance per database file.
 
 ## `node-server`
 
@@ -3126,13 +3239,14 @@ node dist/server.js --port=8080 --host=0.0.0.0
 
 Like `loushy dev`, it binds to `127.0.0.1` unless you opt in to another
 interface with `--host=<h>` (or `HOST=<h>`); the port comes from `--port`,
-`PORT`, or defaults to `3000`. Provider credentials are read from the same
+`PORT`, or defaults to `3000`. SIGINT/SIGTERM close the agent before exiting.
+Provider credentials are read from the same
 environment variables as everywhere else (`OPENAI_API_KEY`, ...).
 
 ## `docker`
 
 Reuses the `node-server` scaffold and bundle and adds a `Dockerfile` based
-on `node:20-slim` that copies `dist/` and runs `node dist/server.js` on port
+on `node:22-slim` that copies `dist/` and runs `node dist/server.js` on port
 3000. The image sets `HOST=0.0.0.0` - inside a container the server has to
 listen on all interfaces for `docker run -p` to reach it. Pass provider
 credentials at run time:
@@ -3959,6 +4073,19 @@ See [Budgets](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configurati
 
 **Example:** `createAgent({ provider, limits: { maxCostUsd: 0.01, onExceeded: 'throw' } })` whose run costs more than a cent.
 
+### LOUSHY_GUARDRAIL_TRIPPED
+
+**Means:** an input, output or tool guardrail blocked a run under
+`onTripped: 'throw'`. `GuardrailError` carries
+`guardrail: { name, kind, reason, toolName? }`. With the default
+`onTripped: 'stop'` nothing is thrown: the run ends with
+`finishReason: 'guardrail'`.
+
+**Fix:** look at `error.guardrail` for which guardrail blocked and why, or drop
+`onTripped: 'throw'`. See [Input and output guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md#input-and-output-guardrails).
+
+**Example:** `createAgent({ provider, guardrails: { input: [maxLengthGuardrail({ maxChars: 10 })], onTripped: 'throw' } })` sent a longer message.
+
 # Evals
 
 Source: docs/evals.md
@@ -4318,14 +4445,94 @@ Flows are traced like agent runs (see
 
 Source: docs/guardrails.md
 
-Two tools for running agent output and agent tools safely: **guardrails** are
-fail-closed checks over a proposed change before you act on it, and
-**sandboxed tools** run inside an isolated container instead of the host
-process. For per-call human decisions see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md); for
+Tools for running agents safely: **input and output guardrails** check what
+goes into and comes out of any run (and its tool arguments), **patch
+guardrails** are fail-closed checks over a proposed change before you act on
+it, and **sandboxed tools** run inside an isolated container instead of the
+host process. For per-call human decisions see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md); for
 hooks that inspect or veto each tool call see `HookRegistry` in the
 [API overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#flows-evals-observability-and-security).
 
-## Guardrails
+## Input and output guardrails
+
+`createAgent({ guardrails })` (or `ExecuteOptions.guardrails`) checks a run at
+three points, each list in order:
+
+| List | Runs on | When |
+| ---- | ------- | ---- |
+| `input` | Each new user message (the user messages that end the transcript) | Before the first model call. A block makes no model call. |
+| `output` | The final assistant text; in a streamed run, every step's text | Before it is emitted: before its `text.done`, and before `run.done`. |
+| `tools` | A tool call's arguments (`text` is them as JSON, `args` the object) | After the [permission rules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies) (skipped when a rule denies the call) and before `needsApproval`. |
+
+A guardrail is `{ name, check(ctx) }`. `ctx` has `kind` (`'input'`, `'output'`
+or `'tool'`), `text`, the run's `messages`, `toolName` and `args` for a tool
+call, and the run's `signal`. `check` returns (or resolves to) `{ ok: true }`
+or `{ ok: false, reason, action?, replacement? }`:
+
+- `action: 'block'` (the default) ends the run with `finishReason: 'guardrail'`
+  and `result.guardrail` (`{ name, kind, reason, toolName? }`). `result.text`
+  is `''` and a blocked reply is not added to the transcript; a blocked tool
+  call does not run (nor do the calls after it in that turn) and gets a
+  "cancelled" result, so the transcript stays valid. `stream()` emits
+  `guardrail.tripped` before `run.done`.
+- `action: 'rewrite'` replaces the text with `replacement` (a tool call's
+  arguments: `replacement` is the new arguments as JSON), the next guardrail
+  sees the new text, and `stream()` emits `guardrail.rewrote`.
+
+With `onTripped: 'throw'` a block rejects with `GuardrailError`
+(`LOUSHY_GUARDRAIL_TRIPPED`, with the same `guardrail`) instead. A `check`
+that throws fails the run. Sub-agents run their parent's guardrails, then their
+own. (Wiring `spec.policy.guardrails` in agent spec files is LOU-X5.)
+
+```ts
+import {
+  createAgent,
+  denyTopicsGuardrail,
+  GuardrailError,
+  llmJudgeGuardrail,
+  maxLengthGuardrail,
+  regexGuardrail,
+  type IoGuardrail,
+} from '@loushy/build-ai-agent';
+
+const noProdWrites: IoGuardrail = {
+  name: 'no-prod-writes',
+  check: ({ toolName, args }) =>
+    toolName === 'run_sql' && String(args?.db) === 'prod' ? { ok: false, reason: 'prod is read-only' } : { ok: true },
+};
+
+const agent = createAgent({
+  provider,
+  guardrails: {
+    input: [maxLengthGuardrail({ maxChars: 4_000 }), denyTopicsGuardrail({ topics: ['medical advice'] })],
+    output: [
+      regexGuardrail({ name: 'secrets', action: 'rewrite' }),
+      llmJudgeGuardrail({ model: 'openai/gpt-4o-mini', instruction: 'Replies must stay on the topic of cooking.' }),
+    ],
+    tools: [noProdWrites],
+  },
+});
+
+const result = await agent.send('What should I cook tonight?');
+if (result.finishReason === 'guardrail') {
+  console.warn(`Blocked by ${result.guardrail?.name} (${result.guardrail?.kind}): ${result.guardrail?.reason}`);
+}
+
+try {
+  await createAgent({ provider, guardrails: { input: [maxLengthGuardrail({ maxChars: 10 })], onTripped: 'throw' } }).send('A long question');
+} catch (error) {
+  if (error instanceof GuardrailError) console.error(error.guardrail);
+}
+```
+
+| Built-in | Fails when |
+| -------- | ---------- |
+| `maxLengthGuardrail({ maxChars })` | The text is longer than `maxChars` characters. |
+| `regexGuardrail({ name, pattern?, action?, replacement? })` | The text matches `pattern` (a `RegExp` or a list; default: the `secretScanGuardrail` patterns). With `action: 'rewrite'` every match becomes `replacement` (default `'[redacted]'`). |
+| `denyTopicsGuardrail({ topics })` | The text contains one of `topics` (case-insensitive keywords). |
+| `llmJudgeGuardrail({ model, instruction, name? })` | `model` (an `LLMProvider` or `"provider/model"`), asked once per check whether the text follows `instruction`, does not reply `PASS`; its `FAIL: <reason>` is the reason. |
+
+## Patch guardrails
 
 `runGuardrails(action, guardrails)` runs every check concurrently over a
 proposed patch and rolls the results up into one verdict. The
@@ -4933,6 +5140,40 @@ To use another backend, implement the `LLMProvider` interface (`name`,
 `getModels()`, optionally `defaultModel`) and pass the instance as `provider`,
 or register a factory with `LLMProviderRegistry.register(name, factory)`.
 
+## Vercel AI SDK versions
+
+The built-in providers are adapters over the Vercel AI SDK (`ai`). What works
+on each major today:
+
+| `ai` | `generate()` | `stream()` | Notes |
+| ---- | ------------ | ---------- | ----- |
+| v4 (`^4.3.19`, the peer range) | Yes | Yes | Everything in these docs. |
+| v6, v7 | Yes, through a compatibility layer (LOU-D26) | Not yet (LOU-D27): it throws an error naming LOU-D27 | Peer ranges still name v4 (LOU-D28). |
+
+`generate()` picks the call shape from the installed `ai` module: when it
+exports `stepCountIs` (v5 and later), the request is sent in the v6/v7 shape
+and the result is read back into the same `GenerateResult`:
+
+- messages become `ModelMessage`s: a tool call's arguments are its `input`, a
+  tool result is an `output` (`json` or `text`, `error-json` or `error-text`
+  when the tool failed), and an image or file part's `mimeType` is its
+  `mediaType`. System messages are kept in place (`allowSystemInMessages`).
+- `maxTokens` is sent as `maxOutputTokens`, one step as `stopWhen:
+  stepCountIs(1)`, tools as `inputSchema` (a zod schema as it is, a JSON
+  Schema through `jsonSchema()`) with no `execute`, and `responseFormat` as a
+  JSON-mode `output` that leaves the reply text alone.
+- usage comes from `inputTokens` / `outputTokens` / `totalTokens`, with
+  `cachedInputTokens` from `inputTokenDetails.cacheReadTokens` and
+  `reasoningTokens` from `outputTokenDetails.reasoningTokens`.
+
+On v6/v7 the model must come from a provider package for that major (for
+example `@ai-sdk/openai` v3 or `@ai-sdk/anthropic` v3); the `0.0.x`
+packages the peer ranges name produce models `ai` v7 rejects. Image parts are
+sent as `image` parts, which `ai` v7 accepts with a deprecation warning per
+part (`globalThis.AI_SDK_LOG_WARNINGS = false` turns `ai`'s warnings off).
+`ai` v5 is not supported. Until LOU-D28 widens the peer
+ranges, npm reports a peer conflict when `ai` v6 or v7 is installed.
+
 ## Where each provider runs
 
 All providers run on Node. The `cloudflare-worker` deploy target supports
@@ -5173,6 +5414,33 @@ console.log(session.id, session.messages.length);
 
 Concurrent `send()` calls on one session are queued and run one after another in
 call order, so the transcript never interleaves.
+
+`agent.session({ id, turnPolicy })` chooses what a `send()` or `stream()` does
+while a turn is running or waiting to start:
+
+- `'wait'` (the default): it waits and runs as its own turn, as above.
+- `'queue'`: its input joins that turn, like
+  [`run.enqueue()`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#queued-input): it is added after the
+  current step's tool results and the turn's next model call sees it. The call
+  resolves with that turn's result (its own `signal` does not apply to the
+  turn), and the transcript saved when the turn ends holds the queued user
+  message in order. A joining `stream()` yields only the turn's `run.done`;
+  the turn's events, `input.queued` and `input.applied` included, stream on
+  the run that started it. If the turn ends before it could take the input
+  (it finished, paused or was aborted), the call runs as the next turn after
+  all. If the turn fails, the call rejects with the same error; in a durable
+  session the input stays in the turn's checkpoint and `resume()` applies it.
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini' });
+const session = agent.session({ id: 'user-42', turnPolicy: 'queue' });
+
+const first = session.send('Find flights to Rome.');
+const second = session.send('Only direct ones, please.'); // joins the first turn
+console.log((await second) === (await first)); // true: one turn, one result
+```
 
 `send()` and `stream()` take a string, content parts (`[{ type: 'text', ... }, { type: 'image', ... }]`, one user message) or a `Message[]`; the stores keep the parts, see [Multimodal input](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md#multimodal-input).
 
@@ -5542,6 +5810,7 @@ tracing, `toolConcurrency`, ...).
 interface AgentRun extends AsyncIterable<AgentEvent> {
   readonly runId: string;                   // the runId on every event
   readonly result: Promise<ExecutionResult>; // what send() / execute() would return
+  enqueue(input: AgentInput): EnqueueResult; // add user input to the running run
 }
 ```
 
@@ -5559,6 +5828,8 @@ interface AgentRun extends AsyncIterable<AgentEvent> {
   consumer. Events are buffered until you read them, so a slow consumer sees
   every event, in order. Iterating after the run finished still yields all of
   its events.
+- **`enqueue(input)`** adds user input to the run while it runs: it joins the
+  transcript before the next model call. See [Queued input](#queued-input).
 - **One consumer.** An `AgentRun` can be iterated once; a second `for await`
   throws. To fan out, collect the events yourself.
 - Invalid options (no `provider`, `agent` or `input`, a bad `toolConcurrency`)
@@ -5629,6 +5900,10 @@ The event types and their extra fields:
 | `compaction.start`   | `strategy: string`, `tokensBefore: number`, `contextWindow: number`, `thresholdTokens: number` | The compaction hook (`createAgent({ compaction })`) found the next model request above its threshold and starts compacting it. Exactly one `compaction.done` follows. See [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md). |
 | `compaction.done`    | `strategy: string`, `tokensBefore: number`, `tokensAfter: number`, `prunedToolCallIds: string[]`, `summary?: boolean`, `error?: { message: string }` | A compaction ended. `tokensAfter` equals `tokensBefore` when nothing could be compacted; `summary` is set when old turns were replaced by a summary; `error` is set when the strategy failed or fell back (the run continues). |
 | `budget.exceeded`    | `limit: string`, `value: number`, `max: number`, `scope: 'run' \| 'session'` | A [`limits` budget](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#budgets) tripped: `limit` is `'maxTokens'`, `'maxInputTokens'`, `'maxOutputTokens'`, `'maxCostUsd'`, `'maxDurationMs'` or `'maxSteps'`, `value` what was spent, `max` the limit. `run.done` (`'budget-exceeded'`) follows; with `onExceeded: 'throw'`, `error` and `run.done` (`'error'`). |
+| `input.queued`       | `id: string`, `text: string` | `run.enqueue()` took an input (`id` is `EnqueueResult.id`, `text` its user text). Can come at any point of the run, also inside a step. See [Queued input](#queued-input). |
+| `input.applied`      | `id: string`, `step: number` | The queued input joined the transcript, right before the model call of `step`: the `step.start` of that step follows. |
+| `guardrail.tripped`  | `name: string`, `kind: 'input' \| 'output' \| 'tool'`, `reason: string`, `toolName?: string` | An [input, output or tool guardrail](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md#input-and-output-guardrails) blocked: before the first model call (input), before the step's `text.done` (output) or after the call's `tool.start` (tool). `run.done` (`'guardrail'`) follows; with `onTripped: 'throw'`, `error` and `run.done` (`'error'`). |
+| `guardrail.rewrote`  | `name`, `kind`, `reason`, `toolName?` | A guardrail rewrote the input, the step's text (before its `text.done`, which carries the new text) or a tool call's arguments. The run continues. |
 | `run.done`           | `finishReason: string`, `text: string`, `usage?: { promptTokens, completionTokens, totalTokens }`, `object?: unknown` | Last event of every run, exactly once, including aborted, failed and awaiting-approval runs. `finishReason` and `text` match `run.result` (`'max-steps'` when the `maxSteps` budget ran out while the model still wanted to continue); a failed run has `finishReason: 'error'`, `text: ''` and no `usage`. `object` is `run.result`'s validated `object` for an agent with an `output` schema (see [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)), absent otherwise. |
 
 Optional fields are left out when they have no value. They are never
@@ -5646,9 +5921,18 @@ Optional fields are left out when they have no value. They are never
 - Tool calls of one step run in parallel (see `toolConcurrency`):
   `tool.start` events come in the model's call order and `tool.done` /
   `tool.error` events in completion order. Match them by `toolCallId`.
+- `input.queued` comes when `run.enqueue()` is called (after `run.start`, even
+  for input queued before the run got going), so it can fall inside a step.
+  Its `input.applied` comes between the `step.done` of the step that was
+  running and the next `step.start`, which carries the `step` it names.
 - When a call needs approval, the calls before it run and report, then
   `approval.requested`, `step.done` (`'awaiting-approval'`) and `run.done`
   (`'awaiting-approval'`) follow. Calls after it never start.
+- When a guardrail blocks, `guardrail.tripped` comes just before the end: for
+  an input guardrail right after `run.start` (no step starts); for an output or
+  tool guardrail inside the step, followed by `step.done` and `run.done`
+  (`'guardrail'`). A blocked output has no `text.done`; calls after a blocked
+  tool call never start.
 
 A text-only run:
 
@@ -5776,6 +6060,68 @@ for await (const event of run) {
   if (chars > 500) break; // aborts the run
 }
 console.log((await run.result).finishReason); // 'aborted'
+```
+
+## Queued input
+
+`run.enqueue(input)` adds user input (a string, content parts or a
+`Message[]`) to a run that is still going, for example a follow-up the user
+types while the agent works. The run does not stop: the input joins the
+transcript at the next safe point - after the current step's tool results,
+never between a tool-call turn and its results - and the next model call sees
+it, as if the user had typed it. Input queued while the model writes its final
+reply gets one more step, so the model answers it in the same run.
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini' });
+const run = agent.stream('Plan a weekend in Rome.');
+
+const queued = run.enqueue('Keep it under 500 EUR.');
+for await (const event of run) {
+  if (event.type === 'input.applied') console.log(`applied before step ${event.step}`);
+}
+if (queued.applied === false || !(await queued.applied)) {
+  // The run ended without it: send it as a new turn (e.g. session.send()).
+}
+```
+
+`enqueue()` returns `{ id, applied }`. `id` is on the `input.queued` and
+`input.applied` events. `applied` is `false` when the run had already
+finished: the input was not taken, so send it yourself, as a new turn
+(`session.send()`). Otherwise it is a promise that resolves to `true` once the
+input is in the transcript, or to `false` when the run stopped before its next
+model call (aborted, paused for approval, out of `maxSteps` or budget, or
+failed); the input is then left to you too.
+
+- Several inputs queued before the same model call are applied together, in
+  the order they were queued.
+- With checkpointing (`sessionId` or a durable session), an input that is
+  still waiting is saved at the end of the run's checkpoint right away, the
+  same slot as input queued behind unanswered tool calls (see
+  [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). A crash, or a run that fails,
+  does not lose it: `agent.resume()` applies it (`applied` of a run that
+  failed in-process still resolves `false`). A run that finishes, pauses or is
+  aborted does not keep it.
+- Without a stream, pass an `InputQueue` as `ExecuteOptions.inputQueue` and
+  call its `push()`: the same queue that is behind `run.enqueue()`. One
+  queue serves one run.
+- In a session, `agent.session({ turnPolicy: 'queue' })` makes a `send()` or
+  `stream()` made while a turn runs (or waits to start) join that turn this way. See
+  [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#the-session-object).
+
+Queued input waits for the step that is running. Steering, which aborts the
+in-flight model call and redirects the run at once, is planned as a follow-up
+(LOU-V10).
+
+```ts
+import { AgentExecutor, InputQueue } from '@loushy/build-ai-agent';
+
+const inputQueue = new InputQueue();
+const pending = AgentExecutor.execute({ agent, provider, input: 'Plan my trip.', inputQueue });
+inputQueue.push('Also book a hotel.');
+const result = await pending;
 ```
 
 ## Example: terminal

@@ -13,6 +13,7 @@ import type { CompactedProviderErrorCategory } from './errors';
 import type { PermissionDecisionEntry } from './permissions';
 import type { ApprovalKind, ApprovalQuestion } from './ApprovalGate';
 import type { BudgetExceeded } from './budget';
+import type { GuardrailTrip } from './ioGuardrails';
 
 /**
  * Version of the {@link AgentEvent} schema, carried on every event as `v`.
@@ -237,6 +238,30 @@ export interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
  */
 export interface BudgetExceededEvent extends AgentEventBase<'budget.exceeded'>, BudgetExceeded {}
 
+/** LOU-V9: `run.enqueue()` took an input; `input.applied` follows when it joins the transcript. */
+export interface InputQueuedEvent extends AgentEventBase<'input.queued'> {
+  /** `EnqueueResult.id`. */
+  id: string;
+  /** The input's user text. */
+  text: string;
+}
+
+/** LOU-V9: a queued input joined the transcript, right before the model call of `step` (whose `step.start` follows). */
+export interface InputAppliedEvent extends AgentEventBase<'input.applied'> {
+  id: string;
+  step: number;
+}
+
+/**
+ * An input, output or tool guardrail blocked (LOU-X4).
+ * `run.done { finishReason: 'guardrail' }` follows (or, with
+ * `onTripped: 'throw'`, `error` and `run.done { finishReason: 'error' }`).
+ */
+export interface GuardrailTrippedEvent extends AgentEventBase<'guardrail.tripped'>, GuardrailTrip {}
+
+/** A guardrail rewrote the input, the output (before its `text.done`) or a tool call's arguments (LOU-X4). */
+export interface GuardrailRewroteEvent extends AgentEventBase<'guardrail.rewrote'>, GuardrailTrip {}
+
 /**
  * Last event of every run, emitted exactly once - also for aborted, failed
  * and awaiting-approval runs.
@@ -280,6 +305,10 @@ export type AgentEvent =
   | CompactionStartEvent
   | CompactionDoneEvent
   | BudgetExceededEvent
+  | InputQueuedEvent
+  | InputAppliedEvent
+  | GuardrailTrippedEvent
+  | GuardrailRewroteEvent
   | RunDoneEvent;
 
 /** The `type` of an {@link AgentEvent}. */
@@ -317,6 +346,10 @@ const EVENT_TYPES: ReadonlySet<string> = new Set<AgentEventType>([
   'compaction.start',
   'compaction.done',
   'budget.exceeded',
+  'input.queued',
+  'input.applied',
+  'guardrail.tripped',
+  'guardrail.rewrote',
   'run.done',
 ]);
 

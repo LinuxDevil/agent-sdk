@@ -25,10 +25,11 @@ const SPEC = {
   tools: ['current-date'],
 };
 
-function startServer(outDir: string, extraArgs: string[] = []): Promise<{ child: ChildProcess; port: number; host: string }> {
+function startServer(outDir: string, extraArgs: string[] = [], env: Record<string, string> = {}): Promise<{ child: ChildProcess; port: number; host: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['dist/server.js', '--port=0', ...extraArgs], {
       cwd: outDir,
+      env: { ...process.env, ...env },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stdout = '';
@@ -67,6 +68,13 @@ describe('NodeServerAdapter', () => {
     expect(() => loadAgentSpecForDeploy(bad)).toThrow(/'prompt'/);
   });
 
+  it('bakes the auth.token build option into the generated server', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-node-server-auth-'));
+    const outDir = path.join(dir, 'out');
+    await NodeServerAdapter.scaffold(writeSpec(dir, SPEC), outDir, { auth: { token: 'build-time-token' } });
+    expect(fs.readFileSync(path.join(outDir, 'server.ts'), 'utf8')).toContain('createDeployedServer(agent, {"auth":{"token":"build-time-token"}})');
+  });
+
   describe('scaffold + build + run (real subprocess)', () => {
     let outDir: string;
 
@@ -80,9 +88,8 @@ describe('NodeServerAdapter', () => {
 
     it('scaffolds server.ts, agent.config.js and package.json, and builds dist/server.js', () => {
       const server = fs.readFileSync(path.join(outDir, 'server.ts'), 'utf8');
-      expect(server).toContain('AgentExecutor.execute(');
+      expect(server).toContain('createDeployedServer(agent, {})');
       expect(server).toContain("'127.0.0.1'");
-      expect(server).toContain('MAX_BODY_BYTES = 1024 * 1024');
       expect(fs.readFileSync(path.join(outDir, 'agent.config.js'), 'utf8')).toContain('deploy-test-agent');
       expect(JSON.parse(fs.readFileSync(path.join(outDir, 'package.json'), 'utf8')).scripts.start).toBe(
         'node dist/server.js'
@@ -123,6 +130,74 @@ describe('NodeServerAdapter', () => {
         child.kill();
       }
     }, 30_000);
+
+    it('serves sessions over SSE, and keeps them in the sqlite file LOUSHY_STORE names across restarts', async () => {
+      const db = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-node-server-db-')), 'agent.db');
+      const env = { LOUSHY_STORE: `sqlite:${db}` };
+      const send = (base: string, sessionId: string, input: string) =>
+        fetch(`${base}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId, input }),
+        });
+
+      const first = await startServer(outDir, [], env);
+      try {
+        const res = await send(`http://127.0.0.1:${first.port}`, 'persisted', 'hello');
+        expect(res.headers.get('content-type')).toContain('text/event-stream');
+        const body = await res.text();
+        expect(body).toContain('This is a mock response.');
+        expect(body.endsWith('event: done\ndata: {}\n\n')).toBe(true);
+      } finally {
+        first.child.kill();
+      }
+
+      const second = await startServer(outDir, [], env);
+      try {
+        const base = `http://127.0.0.1:${second.port}`;
+        await (await send(base, 'persisted', 'again')).text();
+        const saved = await (await fetch(`${base}/chat/persisted`)).json();
+        expect(saved.messages.map((m: { role: string }) => m.role)).toEqual(['user', 'assistant', 'user', 'assistant']);
+      } finally {
+        second.child.kill();
+      }
+    }, 60_000);
+
+    it('requires LOUSHY_API_TOKEN as a bearer token on every route but /health, and warns when public without one', async () => {
+      const { child, port } = await startServer(outDir, [], { LOUSHY_API_TOKEN: 'deploy-secret' });
+      try {
+        const base = `http://127.0.0.1:${port}`;
+        expect((await fetch(`${base}/health`)).status).toBe(200);
+        const denied = await fetch(`${base}/chat`, { method: 'POST', body: JSON.stringify({ message: 'hi' }) });
+        expect(denied.status).toBe(401);
+        const ok = await fetch(`${base}/chat`, {
+          method: 'POST',
+          headers: { Authorization: 'Bearer deploy-secret' },
+          body: JSON.stringify({ message: 'hi' }),
+        });
+        expect((await ok.json()).text).toBe('This is a mock response.');
+      } finally {
+        child.kill();
+      }
+
+      const open = spawn(process.execPath, ['dist/server.js', '--port=0', '--host=0.0.0.0'], {
+        cwd: outDir,
+        env: { ...process.env, LOUSHY_API_TOKEN: '' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      try {
+        const warning = await new Promise<string>((resolve) => {
+          let err = '';
+          open.stderr!.on('data', (chunk) => {
+            err += chunk;
+            if (err.includes('no LOUSHY_API_TOKEN')) resolve(err);
+          });
+        });
+        expect(warning).toContain('anyone who can reach 0.0.0.0');
+      } finally {
+        open.kill();
+      }
+    }, 60_000);
 
     it('binds to an explicitly opted-in host via --host', async () => {
       const { child, host } = await startServer(outDir, ['--host=0.0.0.0']);

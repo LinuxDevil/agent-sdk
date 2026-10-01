@@ -375,3 +375,16 @@ carries `budget: { limit, value, max, scope }`. With the default
 See [Budgets](./configuration.md#budgets).
 
 **Example:** `createAgent({ provider, limits: { maxCostUsd: 0.01, onExceeded: 'throw' } })` whose run costs more than a cent.
+
+### LOUSHY_GUARDRAIL_TRIPPED
+
+**Means:** an input, output or tool guardrail blocked a run under
+`onTripped: 'throw'`. `GuardrailError` carries
+`guardrail: { name, kind, reason, toolName? }`. With the default
+`onTripped: 'stop'` nothing is thrown: the run ends with
+`finishReason: 'guardrail'`.
+
+**Fix:** look at `error.guardrail` for which guardrail blocked and why, or drop
+`onTripped: 'throw'`. See [Input and output guardrails](./guardrails.md#input-and-output-guardrails).
+
+**Example:** `createAgent({ provider, guardrails: { input: [maxLengthGuardrail({ maxChars: 10 })], onTripped: 'throw' } })` sent a longer message.

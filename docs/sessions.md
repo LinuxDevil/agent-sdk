@@ -33,6 +33,33 @@ console.log(session.id, session.messages.length);
 Concurrent `send()` calls on one session are queued and run one after another in
 call order, so the transcript never interleaves.
 
+`agent.session({ id, turnPolicy })` chooses what a `send()` or `stream()` does
+while a turn is running or waiting to start:
+
+- `'wait'` (the default): it waits and runs as its own turn, as above.
+- `'queue'`: its input joins that turn, like
+  [`run.enqueue()`](./streaming.md#queued-input): it is added after the
+  current step's tool results and the turn's next model call sees it. The call
+  resolves with that turn's result (its own `signal` does not apply to the
+  turn), and the transcript saved when the turn ends holds the queued user
+  message in order. A joining `stream()` yields only the turn's `run.done`;
+  the turn's events, `input.queued` and `input.applied` included, stream on
+  the run that started it. If the turn ends before it could take the input
+  (it finished, paused or was aborted), the call runs as the next turn after
+  all. If the turn fails, the call rejects with the same error; in a durable
+  session the input stays in the turn's checkpoint and `resume()` applies it.
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini' });
+const session = agent.session({ id: 'user-42', turnPolicy: 'queue' });
+
+const first = session.send('Find flights to Rome.');
+const second = session.send('Only direct ones, please.'); // joins the first turn
+console.log((await second) === (await first)); // true: one turn, one result
+```
+
 `send()` and `stream()` take a string, content parts (`[{ type: 'text', ... }, { type: 'image', ... }]`, one user message) or a `Message[]`; the stores keep the parts, see [Multimodal input](./providers.md#multimodal-input).
 
 A `send()` that throws (a provider error, or a tool that throws a

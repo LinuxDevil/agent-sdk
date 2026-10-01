@@ -213,6 +213,7 @@
     "@types/react": "^18.3.31",
     "@types/react-test-renderer": "^18.3.1",
     "@vitest/coverage-v8": "^1.0.0",
+    "ai-v7": "npm:ai@^7.0.126",
     "dockerode": "^5.0.1",
     "esbuild": "^0.25.12",
     "eslint": "^10.11.0",

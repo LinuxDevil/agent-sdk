@@ -40,6 +40,7 @@ export type InheritedRuntime = Pick<
   | 'maxSubagentDepth'
   | 'permissions'
   | 'onPermissionDecision'
+  | 'guardrails'
 >;
 
 /** What the executor knows about the tool call that is running. */

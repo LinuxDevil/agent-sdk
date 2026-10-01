@@ -48,6 +48,8 @@ export const ERROR_CODES = {
   LOUSHY_OUTPUT_INVALID: "Reserved: an invalid structured reply is reported as finishReason 'output-invalid', not thrown.",
   LOUSHY_BUDGET_EXCEEDED:
     "Raise the limit named in the message, or use onExceeded: 'stop' (the default) to get finishReason 'budget-exceeded' instead of an error.",
+  LOUSHY_GUARDRAIL_TRIPPED:
+    "Look at `error.guardrail` for which guardrail blocked and why, or use onTripped: 'stop' (the default) to get finishReason 'guardrail' instead of an error.",
 } as const;
 
 /** A stable error code, e.g. `'LOUSHY_CONFIG_MISSING_PROVIDER'`. */
