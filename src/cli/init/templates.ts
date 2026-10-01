@@ -29,11 +29,11 @@ function sortKeys(record: Record<string, string>): Record<string, string> {
 
 /**
  * The `ai` major a new project gets (LOU-D28d): the current one, 7, for the
- * providers CI runs on it (`@ai-sdk/openai` and `@ai-sdk/anthropic` 4). Ollama
- * stays on 4 because its `ai` 6/7 package needs zod 4 (LOU-D29), and OpenRouter
- * because `@ai-sdk/openai` 2+ defaults to the Responses API, not yet verified there.
+ * providers CI runs on it (`@ai-sdk/openai` and `@ai-sdk/anthropic` 4); OpenRouter
+ * is one of them since it asks `@ai-sdk/openai` for its Chat Completions model
+ * (LOU-D28f). Ollama stays on 4 because its `ai` 6/7 package needs zod 4 (LOU-D29).
  */
-const SCAFFOLD_AI_MAJOR: Readonly<Record<string, AiMajor>> = { openai: 7, anthropic: 7, openrouter: 4, ollama: 4 };
+const SCAFFOLD_AI_MAJOR: Readonly<Record<string, AiMajor>> = { openai: 7, anthropic: 7, openrouter: 7, ollama: 4 };
 
 /** `ai` and only the chosen provider's package (the SDK loads provider packages on first use), as one pairing. */
 function aiPackages(provider: string): Record<string, string> {

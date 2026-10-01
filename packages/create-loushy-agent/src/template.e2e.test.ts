@@ -8,7 +8,7 @@
  *
  * Needs the SDK built first: `npm run build` at the repository root.
  */
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { execFileSync, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -33,19 +33,21 @@ function npm(args: string[], cwd: string): string {
 describe('end-to-end scaffold + install + typecheck + test', () => {
   let base: string | undefined;
 
-  afterAll(() => {
+  afterEach(() => {
     if (base) fs.rmSync(base, { recursive: true, force: true });
+    base = undefined;
   });
 
-  it(
-    'generates a project that installs from the locally packed SDK, typechecks, and passes its own tests',
-    () => {
-      base = fs.mkdtempSync(path.join(os.tmpdir(), 'create-loushy-agent-e2e-'));
+  // OpenRouter runs on `@ai-sdk/openai` 4 through its Chat Completions model (LOU-D28f), like OpenAI.
+  it.each(['openai', 'openrouter'])(
+    '%s: generates a project that installs from the locally packed SDK, typechecks, and passes its own tests',
+    (provider) => {
+      base = fs.mkdtempSync(path.join(os.tmpdir(), `create-loushy-agent-e2e-${provider}-`));
       const dir = path.join(base, 'test-agent');
 
       execFileSync(
         process.execPath,
-        [CLI, dir, '--yes', '--no-git', '--provider', 'openai', '--package-manager', 'npm', '--sdk-path', SDK_ROOT],
+        [CLI, dir, '--yes', '--no-git', '--provider', provider, '--package-manager', 'npm', '--sdk-path', SDK_ROOT],
         { encoding: 'utf8', env: offlineEnv(), stdio: 'pipe' }
       );
 
@@ -63,7 +65,7 @@ describe('end-to-end scaffold + install + typecheck + test', () => {
       );
       expect(installed.version).toBe(sdkPkg.version);
 
-      // The OpenAI scaffold is on the current `ai` major with its provider package major (LOU-D28d).
+      // The scaffold is on the current `ai` major with its provider package major (LOU-D28d).
       const versionOf = (name: string) =>
         JSON.parse(fs.readFileSync(path.join(dir, 'node_modules', name, 'package.json'), 'utf8')).version as string;
       expect(versionOf('ai')).toMatch(/^7\./);
