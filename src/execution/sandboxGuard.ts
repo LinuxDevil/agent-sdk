@@ -18,12 +18,11 @@
  * function rather than calling `toolDesc.tool.execute()` directly.
  */
 
-import type { ToolExecutionOptions } from 'ai';
 import { ToolDescriptor } from '../types';
 import { getToolExecute } from '../tools/toolContract';
 import { SandboxAdapter } from '../security/sandboxCore';
-import { bindToolCallScope, type ToolCallScope } from './subagentRuntime';
-import type { RunUsage } from '../models/usage';
+import type { ToolCallScope } from './subagentRuntime';
+import { buildToolRunContext, type ToolRunInput } from './toolRunContext';
 
 /**
  * Thrown when a `requiresSandbox` tool cannot be sandboxed (LOU-U14: reaches
@@ -38,17 +37,7 @@ class SandboxRequiredError extends Error {
   }
 }
 
-/** Extra context the executor hands a tool next to the 'ai' SDK's own execute options (LOU-V5). */
-export interface ToolRunContext {
-  /** Called by the delegate tool with a finished child run's usage, so the parent run adds it to its totals. */
-  onDelegatedUsage?: (usage: RunUsage) => void;
-  /**
-   * LOU-U9: the model's id for this tool call - unchanged when a call that
-   * was running when the process died is re-run on resume, so tools can use
-   * it as an idempotency key.
-   */
-  toolCallId?: string;
-}
+export type { ToolRunContext } from './toolRunContext';
 
 /**
  * Execute `toolDesc` against `args`, honoring `requiresSandbox`:
@@ -61,13 +50,14 @@ export interface ToolRunContext {
  *   to `tool.execute()` would run the tool's real code unsandboxed on the
  *   host while claiming it was isolated. So this fails closed and throws,
  *   matching this codebase's established fail-closed philosophy.
- * - Otherwise (no `requiresSandbox`), calls `tool.execute(args, { abortSignal })`
- *   directly - the exact, unchanged pre-existing path - or resolves to
- *   `null` if the tool has no `execute` implementation at all.
+ * - Otherwise (no `requiresSandbox`), calls `tool.execute(args, ctx)`
+ *   directly - or resolves to `null` if the tool has no `execute`
+ *   implementation at all.
  *
- * LOU-V1: `signal` (the run's cancellation signal) reaches the tool as
- * `abortSignal` - the option name the 'ai' SDK's own `tool()` execute
- * signature uses - in both branches.
+ * LOU-U15: both branches hand the tool the same context, built by
+ * buildToolRunContext(): `toolCallId`, `messages` (the transcript before
+ * this call), `abortSignal` (LOU-V1, the run's cancellation signal) and the
+ * SDK's own run fields.
  */
 export async function executeToolWithSandboxGuard(
   toolName: string,
@@ -75,9 +65,11 @@ export async function executeToolWithSandboxGuard(
   args: Record<string, unknown>,
   sandbox: SandboxAdapter,
   signal?: AbortSignal,
-  runContext?: ToolRunContext,
+  runContext?: Omit<ToolRunInput, 'signal' | 'scope'>,
   scope?: ToolCallScope
 ): Promise<unknown> {
+  // LOU-U15: one context for both routes (toolCallId, messages, abortSignal).
+  const ctx = buildToolRunContext({ ...runContext, signal, scope });
   if (toolDesc.requiresSandbox) {
     if (!toolDesc.sandboxExecute) {
       throw new SandboxRequiredError(
@@ -85,18 +77,9 @@ export async function executeToolWithSandboxGuard(
           `- cannot be safely sandboxed, refusing to fall back to unsandboxed execution`
       );
     }
-    return signal
-      ? toolDesc.sandboxExecute(args, sandbox, { abortSignal: signal })
-      : toolDesc.sandboxExecute(args, sandbox);
+    return toolDesc.sandboxExecute(args, sandbox, ctx);
   }
 
-  // The 'ai' SDK types toolCallId/messages as required, but tools invoked
-  // here are not part of an 'ai' SDK generation, so `messages` is not set
-  // (LOU-U15). `runContext` carries `toolCallId` (LOU-U9) and
-  // `onDelegatedUsage` (LOU-V5).
-  const executeOptions = { abortSignal: signal, ...runContext } as ToolExecutionOptions;
-  // LOU-Y1: lets a delegate/`task` tool's sub-agent inherit from this run.
-  bindToolCallScope(executeOptions, scope);
   const execute = getToolExecute(toolDesc);
-  return execute ? execute(args, executeOptions) : null;
+  return execute ? execute(args, ctx) : null;
 }

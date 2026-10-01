@@ -10,7 +10,7 @@ import { ToolRegistry } from '../tools';
 import { getToolExecute } from '../tools/toolContract';
 import { SandboxAdapter } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
-import type { ToolRunContext } from './sandboxGuard';
+import type { ToolRunContext } from './toolRunContext';
 import { HookRegistry, ToolCallHookContext } from './hooks';
 import { toolErrorMessage } from './propagatingToolError';
 import { toolErrorResult, type ToolErrorKind } from './toolErrors';
@@ -350,7 +350,8 @@ async function doExecuteToolCall(
       ctx.sandbox,
       ctx.signal,
       // LOU-U9: `toolCallId` is the tool's idempotency key on a re-run.
-      { onDelegatedUsage: ctx.onDelegatedUsage, toolCallId: toolCall.id },
+      // LOU-U15: `messages` is the run's transcript (the guard copies it).
+      { onDelegatedUsage: ctx.onDelegatedUsage, toolCallId: toolCall.id, messages: ctx.messages },
       ctx.scope
     );
 

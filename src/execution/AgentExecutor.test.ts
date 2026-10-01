@@ -261,7 +261,7 @@ describe('AgentExecutor', () => {
         toolRegistry
       );
 
-      expect(execute).toHaveBeenCalledWith({ amount: 5 }, { toolCallId: 'call-2' });
+      expect(execute).toHaveBeenCalledWith({ amount: 5 }, expect.objectContaining({ toolCallId: 'call-2', messages: expect.any(Array) }));
       expect(result.requiresApproval).toBeUndefined();
       expect(result.result).toEqual({ ok: true });
     });
@@ -1555,7 +1555,7 @@ describe('AgentExecutor', () => {
 
       await (AgentExecutor as any).executeToolCall(toolCall, agent, toolRegistry, undefined, undefined, undefined, hooks, undefined, []);
 
-      expect(execute).toHaveBeenCalledWith({ email: '[REDACTED]' }, { toolCallId: 'call-1' });
+      expect(execute).toHaveBeenCalledWith({ email: '[REDACTED]' }, expect.objectContaining({ toolCallId: 'call-1', messages: expect.any(Array) }));
     });
 
     it('a thrown hook error aborts the run and rejects execute(), without being swallowed', async () => {
