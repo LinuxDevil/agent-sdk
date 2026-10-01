@@ -5,6 +5,7 @@
 
 import { LanguageModel } from 'ai';
 import { AiSdkProvider, AiSdkProviderConfig } from './aiSdkProvider';
+import { aiMajorOf } from './aiSdkCompat';
 import { lazyValue, loadOptionalPeer } from './optionalPeer';
 import { Logger, noopLogger } from '../execution/logger';
 
@@ -21,12 +22,17 @@ export class OllamaProvider extends AiSdkProvider<OllamaProviderConfig> {
   protected readonly fallbackModel = 'llama3.1';
   private logger: Logger;
 
-  /** Loads `ollama-ai-provider` on first use (it is an optional peer). */
+  /**
+   * Loads the Ollama package on first use (an optional peer): `ollama-ai-provider`
+   * on `ai` 4, `ollama-ai-provider-v2` on `ai` 6/7 (LOU-D28d).
+   */
   private readonly loadProvider = lazyValue(async () => {
-    const { createOllama } = await loadOptionalPeer('ollama-ai-provider', () => import('ollama-ai-provider'));
-    return createOllama({
-      baseURL: this.config.baseURL || 'http://localhost:11434',
-    });
+    const major = aiMajorOf(this.ai);
+    const { createOllama } =
+      major === 4
+        ? await loadOptionalPeer('ollama-ai-provider', () => import('ollama-ai-provider'), major)
+        : await loadOptionalPeer('ollama-ai-provider-v2', () => import('ollama-ai-provider-v2'), major);
+    return { modern: major !== 4, ollama: createOllama({ baseURL: this.config.baseURL || 'http://localhost:11434' }) };
   });
 
   constructor(config: OllamaProviderConfig, logger: Logger = noopLogger) {
@@ -35,10 +41,9 @@ export class OllamaProvider extends AiSdkProvider<OllamaProviderConfig> {
   }
 
   protected async createModel(modelId: string): Promise<LanguageModel> {
-    return (await this.loadProvider())(modelId, {
-      simulateStreaming: true,
-      structuredOutputs: true,
-    });
+    const { modern, ollama } = await this.loadProvider();
+    // The v2 package takes no per-model settings: it streams and does structured output natively.
+    return modern ? ollama(modelId) : ollama(modelId, { simulateStreaming: true, structuredOutputs: true });
   }
 
   /**

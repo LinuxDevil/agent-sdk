@@ -62,6 +62,12 @@ describe('end-to-end scaffold + install + typecheck + test', () => {
         fs.readFileSync(path.join(dir, 'node_modules', '@loushy', 'build-ai-agent', 'package.json'), 'utf8')
       );
       expect(installed.version).toBe(sdkPkg.version);
+
+      // The OpenAI scaffold is on the current `ai` major with its provider package major (LOU-D28d).
+      const versionOf = (name: string) =>
+        JSON.parse(fs.readFileSync(path.join(dir, 'node_modules', name, 'package.json'), 'utf8')).version as string;
+      expect(versionOf('ai')).toMatch(/^7\./);
+      expect(versionOf('@ai-sdk/openai')).toMatch(/^4\./);
     },
     300_000
   );

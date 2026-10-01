@@ -42,9 +42,12 @@ Prefer to add the SDK to an existing project? Install it by hand (see
 [Installation](./installation.md)):
 
 ```bash
-npm install @loushy/build-ai-agent ai zod
-npm install @ai-sdk/openai@^0.0.42 @ai-sdk/anthropic@^0.0.42 ollama-ai-provider@^1.2.0
+npm install @loushy/build-ai-agent ai@^7.0.0 zod
+npm install @ai-sdk/openai@^4.0.0 @ai-sdk/anthropic@^4.0.0
 ```
+
+That is the current `ai` major; for Ollama, use `ai@^4.3.19` with
+`ollama-ai-provider@^1.2.0` (see [the pairings](./installation.md#provider-packages)).
 
 ## 1. Hello world in five lines
 
