@@ -3,7 +3,7 @@
 Mission: make `@loushy/build-ai-agent` the best TypeScript AI agent SDK (capabilities and DX) against
 Vercel eve and MaxGfeller/open-harness. This file is the loop's memory: read it first, update it last.
 
-- Loop started: 2026-10-01. Iterations completed: 7.
+- Loop started: 2026-10-01. Iterations completed: 8.
 - Audit: `.agent-loop/AUDIT.md`, refreshed 2026-10-01 at main `a03b1a3` (eve 0.69.0 @682c7a6, open-harness 0.7.0 @026e8d9).
   Reference agents (3 agents x 3 SDKs, measured): `.agent-loop/reference-agents/`. Older material: `docs/research/*.md`, `docs/plan/tickets.md`.
   Audit is stale when: a competitor ships a new major, or more than ~25 PRs land after `a03b1a3` (re-run the DX measurement then).
@@ -38,7 +38,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Background / resumable subagents | ✅ flipped (Y4 #91 + Y4.2 #92: run-end cancel/await, `result.backgroundTasks`, `subagentOptions`) | ✅ | ✅ | Y6 (resumable children) |
 | Remote subagents | ❌ | ✅ | ❌ | Y7 |
 | Approvals / HITL | ✅ flipped (D21, #75) | ✅ | ⚠️ | X8 (policies) |
-| Agent asks the user a question | ❌ | ✅ | ❌ | X9 |
+| Agent asks the user a question | ✅ flipped (X9 #111: `ask_question`, durable pause, `approvals.answer`, hook `answer()`) | ✅ | ❌ | - |
 | Steering (mid-run input) | ❌ | ✅ | ❌ | V9, V10 |
 | Cancellation | ✅ | ✅ | ✅ | - |
 | Memory (cross-session) | ❌ | ✅ | ❌ | W6 |
@@ -53,7 +53,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Multi-provider | ⚠️ (`ai` v4) | ✅ | ✅ | D22-D29 |
 | Fallbacks / retry policy | ✅ (V7.1 #74, V7.2 agent-level + events #86) | ⚠️ | ⚠️ | - |
 | Structured output | ✅ flipped (V4 #90: `output` schema, repair step, `output-invalid`) | ✅ | ❌ | - |
-| Multimodal input | ⚠️ flipped (V11 #106: `ContentPart[]`, providers convert images; files degrade) | ✅ | ✅ | V12 (public `send(parts)`) |
+| Multimodal input | ✅ flipped (V11 #106 + V12 #109: `AgentInput` on send/stream/session/evals/hook, SQLite bytes) | ✅ | ✅ | - (files degrade to text on the pinned `ai` v4 peers; D26+) |
 | Reasoning control / events | ❌ | ✅ | ⚠️ | V13 |
 | MCP client | ✅ flipped (Z4 #100: `connectMcp()`, `createAgent({ mcpServers })`, `agent.ready()/close()`, spec connects) | ✅ | ✅ | Z5 (annotations drive approval) |
 | MCP server | ✅ | ✅ | ❌ | - |
@@ -61,7 +61,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | UI bindings React/Vue/Svelte | ⚠️ flipped (React `useLoushyAgent` #85) | ✅ | ⚠️ | P2, P3 |
 | AI SDK UI stream | ❌ | ⚠️ | ✅ | P1 |
 | CLI scaffolding | ⚠️ (unpublished) | ✅ | ❌ | D49, U20 |
-| Dev TUI / REPL | ⚠️ | ✅ | ⚠️ | D32, D33 |
+| Dev TUI / REPL | ⚠️ (D31 dev serves dirs/TS) | ✅ | ⚠️ | D32 (stateful streaming chat), D33 (`loushy chat`) |
 | Visual studio / debugger | ✅ | ❌ | ❌ | - |
 | Channels | ⚠️ | ✅ | ❌ | P5-P7 |
 | Schedules | ⚠️ | ✅ | ❌ | P8, P9 |
@@ -72,7 +72,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Permissions policy | ✅ flipped (X2 #105: `permissions` rules, audit log, `permission.decision` event, inherited by sub-agents) | ✅ | ⚠️ | X8 (policy helpers on needsApproval) |
 | Credential brokering | ❌ | ✅ | ❌ | X11, X12 |
 | Dynamic config | ❌ | ✅ | ⚠️ | V15 |
-| Hot reload | ⚠️ | ✅ | ❌ | D31 |
+| Hot reload | ✅ flipped (D31 #110: dirs, TS modules and specs, cache-busted reload) | ✅ | ❌ | - |
 | Registry / extensions | ❌ | ✅ | ❌ | D50 |
 | ACP | ❌ | ✅ | ❌ | Z6 |
 | Code-first authoring | ✅ | ⚠️ | ✅ | - |
@@ -81,7 +81,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Published on npm | ❌ (owner action) | ✅ | ✅ | D49 |
 | Current `ai` major | ❌ | ✅ | ✅ | D22-D29 |
 
-Score (us): 25 ✅ / 13 ⚠️ / 13 ❌ of 51 after iteration 7 (iteration 6: 24/13/14; iteration 5: 23/14/14; iteration 4: 22/15/14; iteration 3: 20/15/16 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
+Score (us): 28 ✅ / 11 ⚠️ / 12 ❌ of 51 after iteration 8 (iteration 7: 25/13/13; iteration 6: 24/13/14; iteration 5: 23/14/14; iteration 4: 22/15/14; iteration 3: 20/15/16 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
 
 Differentiators shipped (target: 3): 3 of 8 (#1 host-agnostic durable sessions: W9 #89 + D30 #94; #2 record/replay evals: D46 #96; #6 OTel GenAI metrics + cost: D48 #95). Remaining (candidates in AUDIT section 7: host-agnostic durable sessions D30; record/replay evals D46; Forge time-travel D43-D45; MCP+ACP+HTTP reach Z6/D14; both authoring modes with hot reload D31-D33; OTel metrics D48; trajectory evals remote D47; edge-native agents D51/P9).
 
@@ -118,8 +118,8 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | V9 | Queued follow-up input | ⬜ | V8 |
 | V10 | Steering | ⬜ | V9 |
 | V11 | Multimodal message parts (`textOf()`, provider conversion, store round-trip) | ✅ #106 | |
-| V11.2 | `SqliteStore` sessions/checkpoints encode `Uint8Array` parts | ⬜ | V11 |
-| V12 | Multimodal through the public API | ⬜ | V11 |
+| V11.2 | `SqliteStore` sessions/checkpoints encode `Uint8Array` parts | ✅ (in #109) | |
+| V12 | Multimodal through the public API (`AgentInput`) | ✅ #109 | |
 | V13 | Reasoning effort + events | ⬜ | D26 |
 | V14 | Streaming resume after approval (`approve` callback on `stream()` too) | ⬜ | D21 |
 | V15 | Per-run dynamic config | ⬜ | |
@@ -145,7 +145,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | X4 | Input/output guardrails | ⬜ | |
 | X5 | Enforce `spec.policy` | ⬜ | X2, X4 |
 | X8 | Approval policies (`'approve'|'deny'|'ask'`, `once()`) | ⬜ | |
-| X9 | `ask_question` tool | ⬜ | X8 |
+| X9 | `ask_question` tool (`createAgent({ askQuestion: true })`, `approvals.answer`) | ✅ #111 | |
 | X10 | In-memory approval store | ✅ (D21, #75) | |
 | X11 | Secret-free sandbox exec + egress allowlist | ⬜ | |
 | X12 | Credential brokering proxy | ⬜ | X11 |
@@ -182,14 +182,14 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D22 | Own the tool contract (`inputSchema` + `execute`, no `ai.tool()`) | ✅ #79 | |
 | D23 | Own the execute-context type (`ToolExecutionContext`) | ✅ #103 | |
 | D23.2 | Executor sets `sessionId` on the execute context | ⬜ | D23 |
-| D24 | Small built-ins to `defineTool` | ⬜ | D22 |
+| D24 | Small built-ins to `defineTool` (+ `toolDescriptorFromSchema` for MCP) | ✅ #108 | |
 | D25 | github and jira to `defineTool` | ⬜ | D22 |
 | D26 | `ai` v6/v7 adapter: generate | ⬜ | D23-D25 |
 | D27 | `ai` v6/v7 adapter: stream | ⬜ | D26 |
 | D28 | Provider peers and ranges | ⬜ | D27 |
 | D29 | zod 4 / Standard Schema | ⬜ | D22 |
 | D30 | One `store` option (`AgentStore`, `memoryStore()`, `send({ sessionId })`, `agent.resume(id)`) | ✅ #94 | |
-| D31 | `loushy dev` for dirs and TS, hot reload | ⬜ | |
+| D31 | `loushy dev` for dirs and TS, hot reload (`devReload.ts`, `/dev/status`) | ✅ #110 | |
 | D32 | Stateful streaming dev chat | ⬜ | D31 |
 | D33 | `loushy chat` REPL | ⬜ | V14 |
 | D34 | `AgentType` off the user path (deprecated; apps/examples still call `setType`, follow-up D34.2) | ✅ #76 | |
@@ -204,7 +204,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D43 | Checkpoint history (memory, SQLite migration 2, local storage; `historyLimit`) | ✅ #98 | |
 | D43.2 | `KVCheckpointStore` history (list key per session) and Forge `FileCheckpointStore` history | ⬜ | D43 |
 | D44 | Fork and replay from step N (`AgentExecutor.fork`, `agent.fork`, `compareTrajectories`) | ✅ #104 | |
-| D45 | Forge time-travel panel | ⬜ | D44 |
+| D45 | Forge time-travel: server API (D45.1 #112) + History tab (D45.2 #113) | ✅ | |
 | D46 | `loushy eval --record/--replay/--drift` (cassettes per case, drift table + JUnit, `--strict`) | ✅ #96 | |
 | D46.2 | Proper provider-middleware hook for eval cassettes (replaces runtime reassignment of `AgentExecutor.execute`) | ⬜ | D46 |
 | D47 | Remote eval target | ⬜ | D14 |
@@ -270,6 +270,12 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | #105 | X2 | merged (squash; agentRun/test-d additive conflicts kept both) | permission policies |
 | #106 | V11 | merged (squash) | multimodal parts |
 | #104 | D44 | merged (squash; drift.ts adapted to textOf) | fork from step N |
+| #112 | D45.1 | merged (squash; also fixed Forge server typecheck broken by V11) | Forge time-travel API |
+| #108 | D24 | merged (squash) | built-ins on defineTool |
+| #111 | X9 | merged (squash) | ask_question |
+| #109 | V12 | merged (squash; reducer import conflict) | multimodal public API |
+| #110 | D31 | merged (squash) | loushy dev dirs + hot reload |
+| #113 | D45.2 | merged (squash; docs duplicate paragraph removed) | Forge History tab |
 
 ## Main health
 
@@ -316,14 +322,20 @@ CI runs only on `pull_request`, so "main is green" means the last PR's CI run pa
 - Matrix flips: Permissions policy ⚠️->✅, Multimodal input ❌->⚠️.
 - Rule learned: `src/execution/*` must not import `node:*`; the Worker bundle test catches it. Added to the brief.
 
-## Next batch (iteration 8)
+### Iteration 8 (2026-10-01)
+- Merged: #112 (D45.1), #108 (D24), #111 (X9), #109 (V12), #110 (D31), #113 (D45.2). Forge server typecheck had been broken on main by V11 (multimodal content in chat reconcile); #112 carried the fix.
+- Matrix flips: Agent asks a question ❌->✅, Multimodal input ⚠️->✅, Hot reload ⚠️->✅.
+- Lint warnings: 404 -> 402.
+- Note: a local `dist/` must be rebuilt before Forge typechecks in the orchestrator checkout (Forge resolves the SDK via `file:../..`).
 
-1. V12 (sonnet): multimodal through the public API (`agent.send(parts)`, `session.send(parts)`, eval `t.send`, React hook `send`); createAgent.ts send/stream region, src/session, src/evals, src/react.
-2. X9 (opus): built-in `ask_question` tool pausing durably through the approval store; the human's answer is the tool result; src/tools/built-in, createAgentApprovals.
-3. D45 (opus): Agent Forge time-travel panel (step list with tokens/cost, "edit and replay from here", side-by-side via `compareTrajectories`); apps/agent-forge + server endpoints over D43/D44.
-4. D24 (sonnet): small built-ins to `defineTool` (http, slack, email, currentDate, dayName, DelegationTool, McpToolLoader) with no `ai` `tool()` import.
-5. D31 (sonnet): `loushy dev <dir|file.ts|spec.yaml>` serves `loadAgentDir()`/TS agents with hot reload; src/cli/dev.ts.
-Then: X8, Z5, D25, D26, D32, D33, D2.2, D43.2, U14.2, V4.2, W9.2, V11.2, D23.2, V6, V9, W6.
+## Next batch (iteration 9)
+
+1. V6 (opus): budgets `limits: { maxTokens, maxCostUsd, maxDurationMs, maxSteps }` -> `finishReason: 'budget-exceeded'` + typed detail; AgentExecutor loop + runUsage; createAgent option.
+2. W6 (opus): scoped memory slots (`defineMemory({ scope, provider })`, recall on session start, `remember`/`recall` tools, file provider); new src/memory; createAgent option.
+3. D25 (sonnet): github and jira to `defineTool` (48 calls; override canonical `execute` for disabled tools).
+4. D32 (sonnet): stateful streaming dev chat (session per tab, SSE `AgentEvent`s, approval/question buttons); src/cli/dev*, dev-ui.
+5. Z5 (sonnet): MCP annotations drive approval (`destructiveHint` -> needsApproval, `readOnlyHint` -> false; per-server override); src/tools/mcp.
+Then: X8, D26, D27, D28, D29, D33, V9, V10, V13, V15, X4, X5, X11, X12, Y6, Y7, Z6, D14, D47, D49, D50, D51, P1-P9, D2.2, D43.2, U14.2, V4.2, W9.2, D23.2, U20, U21.
 
 ## Subagent brief (canonical copy)
 
