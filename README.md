@@ -72,6 +72,7 @@ agent can be an `agent.yaml` spec served with `npx loushy dev agent.yaml`
 - **Tools**: `defineTool()` with a zod `input`; arguments are typed, validated, and run in parallel. [Tools](docs/tools.md)
 - **Approvals**: `needsApproval` pauses a run; `agent.approvals.resolve()` continues it, or `approve` decides in code. [Approvals](docs/approvals.md)
 - **Sessions**: `agent.session()` keeps a multi-turn conversation in memory, files or SQLite. [Sessions](docs/sessions.md)
+- **Structured output**: `output: zodSchema` makes the final reply a typed, validated `result.object`, with one repair step. [Structured output](docs/structured-output.md)
 - **Streaming**: `agent.stream()` and `session.stream()` yield typed, versioned JSON events ready for SSE. [Streaming](docs/streaming.md)
 - **UI bindings**: `useLoushyAgent()` from `@loushy/build-ai-agent/react` turns the event stream into chat state, with approvals. [React](docs/react.md)
 - **Durable execution**: `sessionId` + `checkpointStore` resume a crashed or paused run without redoing finished tools. [Durable execution](docs/durable-execution.md)
@@ -177,6 +178,7 @@ await AgentExecutor.execute({
 | [Tools](docs/tools.md) | `defineTool()`, validation and errors, built-in tools, `ToolRegistry` |
 | [Approvals](docs/approvals.md) | `needsApproval`, `agent.approvals`, the `approve` callback, `resumeAfterApproval()`, stores |
 | [Sessions](docs/sessions.md) | Multi-turn conversations, `session.stream()`, session stores, `SqliteStore` |
+| [Structured output](docs/structured-output.md) | `output: zodSchema`: typed `result.object`, the repair step, `'output-invalid'` |
 | [Streaming](docs/streaming.md) | `agent.stream()`: the typed event schema, terminal and SSE examples |
 | [React](docs/react.md) | `useLoushyAgent()`: chat state from the event stream, in process or over HTTP; `reduceAgentEvents()`, `parseEventStream()` |
 | [Durable execution](docs/durable-execution.md) | Checkpoints, crash resume, approvals mid-batch, at-least-once tools |
