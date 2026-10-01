@@ -22,6 +22,7 @@ dashboard — any provider, any deploy target, no lock-in.
 - **Human-in-the-loop** — flag a tool `needsApproval` and pause execution until a human approves or rejects it, then `resumeAfterApproval()` from any process
 - **Durable execution** — pass a `sessionId` + `checkpointStore` and a crash mid-conversation resumes instead of restarting
 - **Cancellation** — pass an `AbortSignal` (`agent.send(input, { signal })`) to stop a run; it resolves with `finishReason: 'aborted'` and the transcript so far, and the signal reaches the provider, tools and delegated agents
+- **Streaming events** — `for await (const event of agent.stream(input))` yields a typed, versioned, JSON-serializable event stream (`text.delta` tokens as they arrive, `tool.start`/`tool.done`, steps, approvals, a final `run.done`) ready to forward over SSE or WebSockets; `await run.result` gives the same result as `send()` ([docs/streaming.md](docs/streaming.md))
 - **Parallel tool calls** — when the model asks for several tools in one turn they run concurrently (cap it with `toolConcurrency`, or `1` for sequential), and results still reach the transcript in the model's call order
 - **Skills** — `defineSkill()` / `loadSkills('./skills')`: only each skill's name and description sit in the system prompt; the model loads the full markdown on demand through an auto-registered `load_skill` tool
 - **Multi-agent delegation** — wrap a child agent as a tool with `createDelegateTool()`, with a `maxDepth` guard against delegation loops
@@ -51,6 +52,17 @@ console.log(text);
 `model` out and the agent uses `LOUSHY_MODEL` if set, otherwise the first of
 `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`,
 `OLLAMA_BASE_URL` that is present.
+
+Stream the reply token by token instead (see [docs/streaming.md](docs/streaming.md) for every event):
+
+```typescript
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini' });
+for await (const event of agent.stream('Hello!')) {
+  if (event.type === 'text.delta') process.stdout.write(event.text);
+}
+```
 
 When you need a custom provider (your own `LLMProvider`, a mock, extra
 config), pass the instance instead:
@@ -212,6 +224,7 @@ console.log(result.usage.totalTokens, result.finishReason, result.steps);
 - [Configuration](docs/configuration.md) - agent spec fields, provider env vars, `AgentExecutor.execute()` options, CLI flags
 - [Deployment](docs/deployment.md) - `loushy build` targets: Node server, Docker, Cloudflare Workers
 - [API Overview](docs/api-overview.md) - the main exports; `npm run docs:build` generates the full TypeDoc reference
+- [Streaming](docs/streaming.md) - `agent.stream()`: the typed event schema, terminal and SSE examples
 - [Tracing and observability](docs/observability.md) - OpenTelemetry GenAI spans, attribute table, content opt-in
 - [Testing](docs/testing.md) - unit-test agents deterministically with the scripted `mockModel`
 - [Skills](docs/skills.md) - on-demand instructions: `defineSkill()`, `loadSkills()`, how they save context
@@ -575,7 +588,7 @@ npm run pipeline:demo:trigger   # POSTs a synthetic error to kick it off
 
 ### Core
 
-- **`createAgent()`** - zero-config `{ send }` agent
+- **`createAgent()`** - zero-config `{ send, stream }` agent
 - **`AgentBuilder`** - fluent `AgentConfig` builder
 - **`AgentExecutor`** - static executor (`execute()`, approvals, checkpoints, tracing)
 - **`ToolRegistry`** - manage available tools

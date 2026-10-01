@@ -20,3 +20,30 @@ export * from './hooks';
 export { ToolArgumentsValidationError } from './toolArgsValidation';
 export type { ToolArgumentIssue } from './toolArgsValidation';
 export type { ToolConcurrency } from './toolBatch';
+export {
+  AGENT_EVENT_SCHEMA_VERSION,
+  isAgentEvent,
+  isToolEvent,
+  isTextEvent,
+  isStepEvent,
+} from './agentEvents';
+export type {
+  AgentEvent,
+  AgentEventType,
+  AgentEventOf,
+  AgentEventBase,
+  AgentEventUsage,
+  AgentEventError,
+  RunStartEvent,
+  StepStartEvent,
+  TextDeltaEvent,
+  TextDoneEvent,
+  ToolStartEvent,
+  ToolDoneEvent,
+  ToolErrorEvent,
+  ApprovalRequestedEvent,
+  StepDoneEvent,
+  AgentErrorEvent,
+  RunDoneEvent,
+} from './agentEvents';
+export type { AgentRun } from './agentRun';

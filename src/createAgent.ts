@@ -17,7 +17,8 @@
 
 import { AgentBuilder } from './core/AgentBuilder';
 import { AgentType } from './types';
-import { AgentExecutor, ExecutionResult } from './execution/AgentExecutor';
+import { AgentExecutor, ExecuteOptions, ExecutionResult } from './execution/AgentExecutor';
+import type { AgentRun } from './execution/agentRun';
 import { LLMProvider } from './providers/llm';
 import { ToolRegistry } from './tools/ToolRegistry';
 import { ToolDescriptor } from './types';
@@ -147,6 +148,22 @@ export interface SendOptions {
 export interface SimpleAgent {
   /** Send a single user message and get back the full execution result text. */
   send: (message: string, options?: SendOptions) => Promise<ExecutionResult>;
+  /**
+   * Send a single user message and stream the run as typed events (LOU-V2):
+   * `text.delta` chunks as the model writes, `tool.start`/`tool.done`,
+   * step boundaries, and a final `run.done`. Iterate the returned
+   * `AgentRun`, or await its `result` (the same `ExecutionResult` `send()`
+   * returns). Breaking out of the loop early aborts the run. See
+   * docs/streaming.md.
+   *
+   * @example
+   * ```ts
+   * for await (const event of agent.stream('Weather in Paris?')) {
+   *   if (event.type === 'text.delta') process.stdout.write(event.text);
+   * }
+   * ```
+   */
+  stream: (message: string, options?: SendOptions) => AgentRun;
 }
 
 /**
@@ -179,18 +196,23 @@ export function createAgent(config: CreateAgentConfig = {}): SimpleAgent {
   if (config.provider && config.model) builder.setSettings({ model: config.model });
   const agent = builder.build();
 
+  const executeOptions = (message: string, options: SendOptions): ExecuteOptions => ({
+    agent,
+    input: message,
+    provider,
+    toolRegistry,
+    skills: config.skills,
+    maxSteps: config.maxSteps,
+    toolConcurrency: config.toolConcurrency,
+    signal: options.signal,
+  });
+
   return {
     async send(message: string, options: SendOptions = {}): Promise<ExecutionResult> {
-      return AgentExecutor.execute({
-        agent,
-        input: message,
-        provider,
-        toolRegistry,
-        skills: config.skills,
-        maxSteps: config.maxSteps,
-        toolConcurrency: config.toolConcurrency,
-        signal: options.signal,
-      });
+      return AgentExecutor.execute(executeOptions(message, options));
+    },
+    stream(message: string, options: SendOptions = {}): AgentRun {
+      return AgentExecutor.stream(executeOptions(message, options));
     },
   };
 }
