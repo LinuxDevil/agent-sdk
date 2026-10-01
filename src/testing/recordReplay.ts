@@ -116,6 +116,7 @@ function serializeChunk(chunk: StreamChunk): StoredChunk {
   return {
     type: chunk.type,
     ...(chunk.textDelta !== undefined ? { textDelta: chunk.textDelta } : {}),
+    ...(chunk.reasoning ? { reasoning: chunk.reasoning } : {}),
     ...(chunk.toolCall ? { toolCall: chunk.toolCall } : {}),
     ...(chunk.toolResult ? { toolResult: chunk.toolResult } : {}),
     ...(chunk.finishReason !== undefined ? { finishReason: chunk.finishReason } : {}),

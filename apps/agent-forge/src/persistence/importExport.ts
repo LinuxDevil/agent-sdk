@@ -31,7 +31,7 @@ export function parseSpecText(text: string, format: ExportFormat): AgentSpec {
   const result = agentSpecSchema.safeParse(data);
   if (!result.success) {
     const details = result.error.issues
-      .map((issue) => `'${issue.path.join('.') || '(root)'}': ${issue.message}`)
+      .map((issue) => `'${(issue.path ?? []).join('.') || '(root)'}': ${issue.message}`)
       .join('; ');
     throw new Error(`parseSpecText: import failed validation - ${details}`);
   }

@@ -74,6 +74,7 @@ type Updates = { [K in AgentEventType]?: (event: AgentEventOf<K>) => Json | unde
 /** How the run's events become `session/update`s; a sub-agent's own events stay inside its tool call. */
 const UPDATES: Updates = {
   'text.delta': (e) => (e.text ? { sessionUpdate: 'agent_message_chunk', content: text(e.text) } : undefined),
+  'reasoning.delta': (e) => (e.text ? { sessionUpdate: 'agent_thought_chunk', content: text(e.text) } : undefined),
   'tool.start': (e) => ({ sessionUpdate: 'tool_call', toolCallId: e.toolCallId, title: e.toolName, kind: 'other', status: 'in_progress', rawInput: e.args }),
   'tool.done': (e) => ({ sessionUpdate: 'tool_call_update', toolCallId: e.toolCallId, status: 'completed', content: toolOutput(show(e.result)), rawOutput: e.result }),
   'tool.error': (e) => ({ sessionUpdate: 'tool_call_update', toolCallId: e.toolCallId, status: 'failed', content: toolOutput(e.error.message), rawOutput: { error: e.error.message } }),

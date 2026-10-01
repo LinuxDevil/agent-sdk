@@ -4,7 +4,8 @@
  * the same GenerateResult the rest of the AgentExecutor loop works with.
  */
 
-import type { GenerateOptions, GenerateResult, LLMProvider, StreamChunk, StreamResult, ToolCall } from '../providers';
+import type { GenerateOptions, GenerateResult, LLMProvider, ReasoningBlock, StreamChunk, StreamResult, ToolCall } from '../providers';
+import type { AgentEventPayload } from './agentEvents';
 
 const FINISH_REASONS: ReadonlySet<string> = new Set<GenerateResult['finishReason']>([
   'stop',
@@ -31,26 +32,78 @@ export function canStream(provider: LLMProvider, request: GenerateOptions): bool
   return typeof candidate.supportsStreaming !== 'function' || candidate.supportsStreaming.call(provider, request.model ?? '');
 }
 
+/** LOU-V13: the `reasoning.*` events of a step. */
+type ReasoningEventPayload = Extract<AgentEventPayload, { type: 'reasoning.start' | 'reasoning.delta' | 'reasoning.done' }>;
+
+/** Where a step reports what it streams. */
+export interface StepSink {
+  onTextDelta(text: string): void;
+  onReasoning(event: ReasoningEventPayload): void;
+  /** Called before the first text delta or tool call is applied (LOU-V10). */
+  onOutput?: () => void;
+}
+
 interface StreamedParts {
   text: string;
   toolCalls: ToolCall[];
   finish?: StreamChunk;
+  /** LOU-V13: finished reasoning blocks, the open block's text, and the text of the reasoning reported since `reasoning.start`. */
+  reasoning: ReasoningBlock[];
+  block: string;
+  thought: string;
 }
 
-/** Folds one chunk into the parts collected so far; throws on an `error` chunk. */
-function applyChunk(parts: StreamedParts, chunk: StreamChunk, onTextDelta: (text: string) => void, onOutput?: () => void): void {
-  if (chunk.type === 'text-delta' && chunk.textDelta) {
-    parts.text += chunk.textDelta;
-    onOutput?.();
-    onTextDelta(chunk.textDelta);
-  } else if (chunk.type === 'tool-call' && chunk.toolCall) {
-    onOutput?.();
-    parts.toolCalls.push(chunk.toolCall);
-  } else if (chunk.type === 'finish') {
+/** LOU-V13: closes the open block and, if reasoning was reported, ends it with `reasoning.done`. */
+function closeReasoning(parts: StreamedParts, sink: StepSink, tokens?: number): void {
+  if (parts.block) parts.reasoning.push({ text: parts.block });
+  parts.block = '';
+  if (parts.thought) sink.onReasoning({ type: 'reasoning.done', text: parts.thought, ...(tokens !== undefined && { tokens }) });
+  parts.thought = '';
+}
+
+type ChunkHandler = (parts: StreamedParts, chunk: StreamChunk, sink: StepSink) => void;
+
+const CHUNK_HANDLERS: Partial<Record<StreamChunk['type'], ChunkHandler>> = {
+  'reasoning-delta': (parts, { textDelta = '' }, sink) => {
+    if (!parts.thought) sink.onReasoning({ type: 'reasoning.start' });
+    parts.block += textDelta;
+    parts.thought += textDelta;
+    sink.onReasoning({ type: 'reasoning.delta', text: textDelta });
+  },
+  'reasoning-end': (parts, { reasoning }) => {
+    if (parts.block || reasoning?.signature || reasoning?.redactedData) parts.reasoning.push({ text: parts.block, ...reasoning });
+    parts.block = '';
+  },
+  'text-delta': (parts, { textDelta }, sink) => {
+    if (!textDelta) return;
+    closeReasoning(parts, sink);
+    parts.text += textDelta;
+    sink.onOutput?.();
+    sink.onTextDelta(textDelta);
+  },
+  'tool-call': (parts, { toolCall }, sink) => {
+    if (!toolCall) return;
+    closeReasoning(parts, sink);
+    sink.onOutput?.();
+    parts.toolCalls.push(toolCall);
+  },
+  finish: (parts, chunk, sink) => {
+    closeReasoning(parts, sink, chunk.usage?.reasoningTokens);
     parts.finish = chunk;
-  } else if (chunk.type === 'error') {
+  },
+  error: (_parts, chunk) => {
     throw chunk.error ?? new Error('The model stream reported an error without details');
-  }
+  },
+};
+
+/** LOU-V13: a non-streamed step's reasoning, as one `reasoning.start` / `.delta` / `.done`. */
+export function reportReasoning(generated: GenerateResult, sink: Pick<StepSink, 'onReasoning'>): void {
+  const text = (generated.reasoning ?? []).map((block) => block.text).join('');
+  if (!text) return;
+  const tokens = generated.usage?.reasoningTokens;
+  sink.onReasoning({ type: 'reasoning.start' });
+  sink.onReasoning({ type: 'reasoning.delta', text });
+  sink.onReasoning({ type: 'reasoning.done', text, ...(tokens !== undefined && { tokens }) });
 }
 
 /**
@@ -68,23 +121,20 @@ function silenceFinalValues(streamed: StreamResult): void {
  * `text-delta` chunks; tool calls from `tool-call` chunks, else from the
  * stream's `toolCalls` promise (the 'ai' SDK adapters only report them
  * there); finish reason and usage from the `finish` chunk, else from the
- * stream's promises. The signal is checked between chunks. `onOutput` is
- * called before the first text delta or tool call is applied (LOU-V10).
+ * stream's promises. The signal is checked between chunks. Reasoning
+ * (LOU-V13) is reported as `reasoning.*` events, ended before the first text
+ * or tool call, and returned in blocks.
  */
-export async function generateViaStream(
-  provider: LLMProvider,
-  request: GenerateOptions,
-  onTextDelta: (text: string) => void,
-  onOutput?: () => void
-): Promise<GenerateResult> {
+export async function generateViaStream(provider: LLMProvider, request: GenerateOptions, sink: StepSink): Promise<GenerateResult> {
   const streamed = await provider.stream(request);
   silenceFinalValues(streamed);
-  const parts: StreamedParts = { text: '', toolCalls: [] };
+  const parts: StreamedParts = { text: '', toolCalls: [], reasoning: [], block: '', thought: '' };
   for await (const chunk of streamed.fullStream) {
     request.signal?.throwIfAborted();
-    applyChunk(parts, chunk, onTextDelta, onOutput);
+    CHUNK_HANDLERS[chunk.type]?.(parts, chunk, sink);
   }
   request.signal?.throwIfAborted();
+  closeReasoning(parts, sink);
 
   const toolCalls = parts.toolCalls.length > 0 ? parts.toolCalls : ((await streamed.toolCalls) ?? []);
   return {
@@ -92,5 +142,6 @@ export async function generateViaStream(
     finishReason: toFinishReason(parts.finish?.finishReason ?? (await streamed.finishReason)),
     usage: parts.finish?.usage ?? (await streamed.usage),
     ...(toolCalls.length > 0 ? { toolCalls } : {}),
+    ...(parts.reasoning.length > 0 && { reasoning: parts.reasoning }),
   };
 }

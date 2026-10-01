@@ -5,7 +5,7 @@
  * ExecutionResult.
  */
 
-import { Message, ToolCall, ToolDefinition } from '../providers';
+import { GenerateResult, Message, ReasoningBlock, ToolCall, ToolDefinition } from '../providers';
 import { AgentConfig } from '../types';
 import { Checkpoint, CheckpointStatus, RUN_CONFIG_KEY } from './checkpoint';
 import { checkAgentDrift, fingerprintOf, type AgentFingerprint } from './agentFingerprint';
@@ -31,6 +31,8 @@ export interface AgentRunState {
   businessState: unknown;
   finalText: string;
   finishReason: string;
+  /** LOU-V13: the reasoning text of this run's steps so far. */
+  reasoning?: string;
   /**
    * LOU-T4: set right before a compacted, model-actionable provider error
    * is pushed onto `messages` and the loop retries; cleared on any turn
@@ -313,6 +315,7 @@ export function toExecutionResult(
 ): ExecutionResult {
   return {
     text,
+    ...(state.reasoning && { reasoning: state.reasoning }),
     messages: state.messages,
     toolCalls: state.toolCalls,
     usage: state.usage,
@@ -320,4 +323,22 @@ export function toExecutionResult(
     finishReason,
     steps: state.steps,
   };
+}
+
+/** LOU-V13: adds a step's reasoning text to the run's. */
+export function noteReasoning(state: AgentRunState, reasoning: ReasoningBlock[] | undefined): void {
+  const text = (reasoning ?? []).map((block) => block.text).join('');
+  if (text) state.reasoning = state.reasoning ? `${state.reasoning}
+
+${text}` : text;
+}
+
+/**
+ * The assistant message of a tool-call turn. LOU-V13: it keeps only the
+ * reasoning blocks a provider needs back (signed or redacted Anthropic
+ * thinking), so they survive the next step, a checkpoint and a resume.
+ */
+export function assistantTurn(result: GenerateResult): Message {
+  const replayed = (result.reasoning ?? []).filter((block) => block.signature || block.redactedData);
+  return { role: 'assistant', content: result.text || '', toolCalls: result.toolCalls, ...(replayed.length > 0 && { reasoning: replayed }) };
 }

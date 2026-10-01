@@ -516,7 +516,7 @@ async function runApprovedToolCall(
     : { args: hookArgs };
   const settled: SettledCall = verdict.outcome
     ? settledByHook(verdict.outcome)
-    : await executeApprovedTool(pending, toolDesc, verdict.args, executeOptions, { messages, approval }, scope);
+    : await executeApprovedTool(pending, toolDesc, verdict.args, executeOptions, { messages, approval, sessionId: snapshot.sessionId }, scope);
   const { result, toolError, errorResult } = settled;
 
   // Fires (with the settled result/error) regardless of how the tool
@@ -569,7 +569,7 @@ async function executeApprovedTool(
   toolDesc: ToolDescriptor,
   args: Record<string, unknown>,
   executeOptions: ResumeExecuteOptions,
-  { messages, approval }: { messages: Message[]; approval?: ToolExecutionContext['approval'] },
+  { messages, approval, sessionId }: { messages: Message[]; approval?: ToolExecutionContext['approval']; sessionId?: string },
   scope?: ToolCallScope
 ): Promise<SettledCall> {
   try {
@@ -586,7 +586,7 @@ async function executeApprovedTool(
         args,
         sandbox,
         executeOptions.signal,
-        { toolCallId: pending.toolCallId, messages, approval },
+        { toolCallId: pending.toolCallId, messages, approval, sessionId },
         scope
       ),
     };

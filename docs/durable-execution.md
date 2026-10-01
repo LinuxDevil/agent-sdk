@@ -181,8 +181,7 @@ const chargeCard = defineTool({
 });
 ```
 
-(`toolCallId` is set for tools run by `AgentExecutor` and by
-`resumeAfterApproval()`, but not yet for tools that route through
+(`toolCallId` is set for every tool run, including tools that route through
 `sandboxExecute`.)
 
 ## Checkpoint history

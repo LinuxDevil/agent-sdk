@@ -8,7 +8,7 @@
  * schema-to-type codegen is set up in this repo).
  */
 import { z } from 'zod';
-import { anyError, typeErrors } from '../utils/zodCompat';
+import { anyError, typeErrors, type SafeParser } from '../utils/zodCompat';
 import type { McpApproval } from '../tools/mcp/McpToolLoader';
 import type { RunLimits } from '../execution/budget';
 import { guardrailEntrySchema, type AgentSpecGuardrail } from './guardrailOptions';
@@ -102,7 +102,7 @@ export interface AgentSpec {
   mcpServers?: Record<string, McpServerSpec>;
 }
 
-export const agentSpecProviderSchema = z.object({
+const providerSchema = z.object({
   type: z.string(typeErrors({ required: "AgentSpec validation failed: missing required field 'provider.type'" })),
   model: z.string(typeErrors({ required: "AgentSpec validation failed: missing required field 'provider.model'" })),
 });
@@ -123,7 +123,7 @@ const runLimitsSchema = z
   })
   .strict();
 
-export const agentSpecPolicySchema = z
+const policySchema = z
   .object({
     requiresApproval: z
       .union([z.boolean(), z.array(z.string().min(1))], anyError(`${POLICY} 'requiresApproval' must be true, false or a list of tool names`))
@@ -140,7 +140,7 @@ export const agentSpecPolicySchema = z
   })
   .passthrough();
 
-export const agentSpecTriggerSchema = z
+const triggerSchema = z
   .object({
     type: z.string(typeErrors({ required: "AgentSpec validation failed: missing required field 'triggers[].type'" })),
   })
@@ -175,7 +175,7 @@ function mcpServerProblem(server: Record<string, unknown>): string | undefined {
  * server and vice versa), so this validates a loose object and then narrows it
  * to McpServerSpec. Issue paths include the entry name (`mcpServers.fs.env`).
  */
-export const mcpServerSpecSchema = z
+const mcpServerSchema = z
   .object(
     {
       command: z
@@ -215,15 +215,35 @@ const mcpServersSchema = z.preprocess(
           })
         )
       : value,
-  z.record(z.string(), mcpServerSpecSchema, typeErrors({ invalid: `${MCP_PREFIX} 'mcpServers' must be a map of server name to config` }))
+  z.record(z.string(), mcpServerSchema, typeErrors({ invalid: `${MCP_PREFIX} 'mcpServers' must be a map of server name to config` }))
 );
 
-export const agentSpecSchema = z.object({
+const specSchema = z.object({
   name: z.string(typeErrors({ required: "AgentSpec validation failed: missing required field 'name'" })),
   prompt: z.string(typeErrors({ required: "AgentSpec validation failed: missing required field 'prompt'" })),
-  provider: agentSpecProviderSchema,
+  provider: providerSchema,
   tools: z.array(z.string()).optional(),
-  policy: agentSpecPolicySchema.optional(),
-  triggers: z.array(agentSpecTriggerSchema).optional(),
+  policy: policySchema.optional(),
+  triggers: z.array(triggerSchema).optional(),
   mcpServers: mcpServersSchema.optional(),
 });
+
+/**
+ * The spec schemas as published: structural types, not zod's, so their
+ * declarations do not depend on the installed zod major (LOU-V4.2). `safeParse`
+ * and `parse` work as on a zod schema.
+ */
+export interface SpecSchema<T> extends SafeParser<T> {
+  parse(value: unknown): T;
+}
+
+/** {@link SpecSchema} of an object schema, with its `shape` (the spec's field names). */
+export interface SpecObjectSchema<T> extends SpecSchema<T> {
+  readonly shape: Readonly<Record<string, unknown>>;
+}
+
+export const agentSpecProviderSchema = providerSchema as unknown as SpecSchema<AgentSpecProvider>;
+export const agentSpecPolicySchema = policySchema as unknown as SpecSchema<AgentSpecPolicy>;
+export const agentSpecTriggerSchema = triggerSchema as unknown as SpecSchema<AgentSpecTrigger>;
+export const mcpServerSpecSchema = mcpServerSchema as unknown as SpecSchema<McpServerSpec>;
+export const agentSpecSchema = specSchema as unknown as SpecObjectSchema<AgentSpec>;

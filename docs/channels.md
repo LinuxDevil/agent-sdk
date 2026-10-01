@@ -332,7 +332,7 @@ it); pending approvals are resolved from the button click and the approval
 store. As on Slack, a continuation after a restart is not appended to the
 session transcript.
 
-Channels loaded from an agent directory's `channels/*.ts` are planned
-(LOU-P7.2). `SlackTriggerAdapter` and `verifySlackSignature()`
+An [agent directory](./agent-directories.md)'s `channels/*.ts` files are loaded
+as channels too, and the node server mounts them. `SlackTriggerAdapter` and `verifySlackSignature()`
 (see [Triggers](api-overview.md#triggers)) still work for one-shot replies
 through an incoming webhook.

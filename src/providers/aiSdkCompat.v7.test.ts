@@ -243,7 +243,8 @@ describe.each(providers)('%s provider on ai v7: generate() (LOU-D26)', (_name, m
         { type: 'text', text: 'What is this?' },
         { type: 'file', mediaType: 'image/png' },
         { type: 'file', mediaType: 'image/jpeg' },
-        { type: 'file', mediaType: 'image', data: { type: 'url', url: new URL('https://example.com/cat.png') } },
+        // LOU-V13 (D-follow-up): sent as a `file` part, not the deprecated `image` part; `image/*` when the type is unknown.
+        { type: 'file', mediaType: 'image/*', data: { type: 'url', url: new URL('https://example.com/cat.png') } },
       ],
     });
   });

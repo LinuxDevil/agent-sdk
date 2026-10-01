@@ -10,6 +10,9 @@ import { AgentType, type ToolExecutionContext } from '../types';
 import type { SandboxAdapter } from '../security/sandboxCore';
 import { NoopSandbox } from '../security/sandboxCore';
 import { mockModel } from '../testing';
+import { createAgent } from '../createAgent';
+import { defineTool } from '../tools/defineTool';
+import { z } from 'zod';
 
 /** What a tool saw as its execute context. */
 interface Seen {
@@ -168,5 +171,51 @@ describe('tool execute context (LOU-U15)', () => {
       ],
     });
     expect(ctx.messages).toEqual([{ role: 'user', content: 'hi' }]);
+  });
+});
+
+describe('the tool execute context carries the run session (LOU-D23.2)', () => {
+  const sessionProbe = (seen: string[]) =>
+    defineTool({
+      name: 'where',
+      description: 'Reports its session',
+      input: z.object({}),
+      execute: (_args, ctx) => {
+        seen.push(ctx.sessionId ?? 'none');
+        return 'ok';
+      },
+    });
+  const callWhere = () => mockModel([{ toolCalls: [{ id: 'c1', name: 'where' }] }, 'done']);
+
+  it('main loop and resume after approval: the run sessionId; none without one', async () => {
+    const seen: Partial<Seen> = {};
+    const registry = new ToolRegistry();
+    register(registry, seen, { sandboxed: false, approval: false });
+    await AgentExecutor.execute({ agent: agentFor(), input: 'hi', provider: callScript(), toolRegistry: registry, sessionId: 's-1' });
+    expect(seen.ctx!.sessionId).toBe('s-1');
+
+    await AgentExecutor.execute({ agent: agentFor(), input: 'hi', provider: callScript(), toolRegistry: registry });
+    expect(seen.ctx!.sessionId).toBeUndefined();
+
+    const approvals = new ToolRegistry();
+    register(approvals, seen, { sandboxed: false, approval: true });
+    const approvalStore = inMemoryApprovalStore();
+    const paused = await AgentExecutor.execute({ agent: agentFor(), input: 'hi', provider: callScript(), toolRegistry: approvals, approvalStore, sessionId: 's-2' });
+    await resumeAfterApproval({ id: paused.approvalId!, approved: true }, approvalStore, approvals, mockModel(['done']), {});
+    expect(seen.ctx!.sessionId).toBe('s-2');
+  });
+
+  it("createAgent: a session's id, and a sub-agent's own id under it", async () => {
+    const seen: string[] = [];
+    const agent = createAgent({ provider: callWhere(), tools: [sessionProbe(seen)] });
+    await agent.session({ id: 'chat-1' }).send('where?');
+
+    const child = createAgent({ provider: callWhere(), tools: [sessionProbe(seen)], description: 'Finds out' });
+    const lead = createAgent({
+      provider: mockModel([{ toolCalls: [{ id: 't1', name: 'task', args: { agent: 'child', prompt: 'where?', description: 'where' } }] }, 'done']),
+      subagents: { child },
+    });
+    await lead.session({ id: 'chat-2' }).send('delegate');
+    expect(seen).toEqual(['chat-1', 'chat-2/t1']);
   });
 });

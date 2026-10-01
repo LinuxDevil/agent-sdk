@@ -137,7 +137,8 @@
     "docs:llms:check": "tsx scripts/generate-llms-txt.ts --check",
     "fallow": "fallow",
     "fallow:score": "fallow health --score",
-    "example:openrouter": "tsx examples/openrouter/index.ts"
+    "example:openrouter": "tsx examples/openrouter/index.ts",
+    "pack-smoke": "tsx scripts/pack-smoke.ts"
   },
   "keywords": [
     "ai",

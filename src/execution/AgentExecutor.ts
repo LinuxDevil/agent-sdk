@@ -8,9 +8,9 @@ import { withSkills } from '../skills/withSkills';
 import type { Subagents } from '../subagents/types';
 import type { BackgroundTaskView } from '../subagents/backgroundTasks';
 import { assertMaxSubagentDepth, withSubagents } from '../subagents/withSubagents';
-import type { z } from 'zod';
+import type { StandardSchemaV1 } from '../utils/zodCompat';
 import { newId } from '../utils/id';
-import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult, ToolDefinition } from '../providers';
+import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult, ToolDefinition, type ReasoningOption } from '../providers';
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
 import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
@@ -61,10 +61,12 @@ import {
 } from './generateStep';
 import {
   AgentRunState,
+  assistantTurn,
   checkResumedAgent,
   ensureFingerprint,
   loadRunState,
   pushAbortedBatchResults,
+  noteReasoning,
   pushToolResult,
   recordStep,
   saveStepCheckpoint,
@@ -529,7 +531,7 @@ export interface ExecuteOptions extends PermissionOptions {
    * const { object } = await AgentExecutor.execute({ agent, input: 'Weather in Paris?', provider, output: z.object({ tempC: z.number() }) });
    * ```
    */
-  output?: z.ZodTypeAny;
+  output?: StandardSchemaV1;
   /**
    * LOU-Y4.2: called exactly once when this run ends, however it ends: with
    * `{ result }` when it resolves (any `finishReason`, including `'aborted'`,
@@ -551,6 +553,11 @@ export interface ExecuteOptions extends PermissionOptions {
    * See docs/durable-execution.md#resuming-with-a-changed-agent.
    */
   onAgentDrift?: AgentDriftMode;
+  /**
+   * LOU-V13: how much the model reasons, sent on every model call of the run
+   * (`GenerateOptions.reasoning`). See docs/reasoning.md.
+   */
+  reasoning?: ReasoningOption;
 }
 
 /**
@@ -559,6 +566,8 @@ export interface ExecuteOptions extends PermissionOptions {
  */
 export interface ExecutionResult<TObject = unknown> {
   text: string;
+  /** LOU-V13: the model's reasoning text over the run's steps, when it reported any (never part of `text` or `messages` content). */
+  reasoning?: string;
   messages: Message[];
   toolCalls: ToolCall[];
   /**
@@ -932,6 +941,7 @@ export class AgentExecutor {
     const text = await this.guardOutput(options, state, generated);
     if (typeof text !== 'string') return text;
     const result = { ...generated, text };
+    noteReasoning(state, result.reasoning);
 
     // Handle text response
     if (result.text) {
@@ -950,11 +960,11 @@ export class AgentExecutor {
       const exceeded = state.budget?.check(state.usage, state.steps, true);
       if (exceeded) {
         state.toolCalls.push(...result.toolCalls);
-        state.messages.push({ role: 'assistant', content: result.text || '', toolCalls: result.toolCalls });
+        state.messages.push(assistantTurn(result));
         pushAbortedBatchResults(state, result.toolCalls.map((toolCall) => ({ toolCall })), 'the run reached a budget limit');
         return this.stopForBudget(options, state, exceeded);
       }
-      const paused = await this.runToolCalls(options, state, result.text, result.toolCalls, agentSpanId);
+      const paused = await this.runToolCalls(options, state, assistantTurn(result), result.toolCalls, agentSpanId);
       if (paused) {
         return paused;
       }
@@ -1071,18 +1081,14 @@ export class AgentExecutor {
   private static async runToolCalls(
     options: ExecuteOptions,
     state: AgentRunState,
-    assistantText: string | undefined,
+    turn: Message,
     toolCalls: ToolCall[],
     agentSpanId: string
   ): Promise<ExecutionResult | undefined> {
     state.toolCalls.push(...toolCalls);
 
-    // Add assistant message with tool calls
-    state.messages.push({
-      role: 'assistant',
-      content: assistantText || '',
-      toolCalls,
-    });
+    // Add assistant message with tool calls (and LOU-V13: its signed reasoning)
+    state.messages.push(turn);
 
     // LOU-U9: checkpoint the model's turn before any tool runs, so a crash
     // from here on resumes by running the calls - never by asking the

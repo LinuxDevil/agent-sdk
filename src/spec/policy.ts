@@ -59,7 +59,7 @@ export function compilePolicy(policy: AgentSpecPolicy | undefined): CompiledPoli
   if (!policy) return {};
   const parsed = agentSpecPolicySchema.safeParse(policy);
   if (!parsed.success) {
-    const issues = parsed.error.issues.map((issue) => `'policy.${issue.path.join('.')}': ${issue.message}`);
+    const issues = parsed.error.issues.map((issue) => `'policy.${(issue.path ?? []).join('.')}': ${issue.message}`);
     throw new ValidationError(`specToAgent: invalid policy - ${issues.join('; ')}`, undefined, 'LOUSHY_SPEC_INVALID');
   }
   const { requiresApproval, guardrails, limits, askQuestion, compaction } = parsed.data as AgentSpecPolicy;

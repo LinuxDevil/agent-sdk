@@ -15,7 +15,9 @@ yet).
 ## Installation
 
 Agent Forge ships inside `@loushy/build-ai-agent` itself - there's no
-separate package to install:
+separate package to install. The package is not on npm yet (see
+[Installing before the first release](./installation.md#installing-before-the-first-release));
+once it is:
 
 ```bash
 npm install @loushy/build-ai-agent
@@ -224,13 +226,15 @@ chat are unchanged.
 
 ## Settings, secrets and deploy wiring
 
-The bottom drawer has a **Settings** tab, but provider API keys, secrets and
-deploy-target wiring are a separate, later piece of work (tracked as
-LOU-R) and aren't implemented in the UI yet as of this doc - the tab
-currently just says so. Until then, configure providers the same way
-`loushy dev`/`loushy build` do: via environment variables (see
-[Configuration](./configuration.md)), or by using the `mock` provider for
-anything you just want to try out inside Agent Forge without credentials.
+The bottom drawer has a **Settings** tab with three parts: provider API keys
+(OpenAI and Anthropic, stored encrypted under `.loushy/` and never shown
+again), named settings profiles (provider, deploy adapter, hook timeout,
+OpenTelemetry toggle; kept in `.loushy/settings.json`, which holds no
+secrets), and a **Deploy** section that picks an adapter (`node-server`,
+`docker` or `cloudflare-worker`) and runs `loushy build` for the selected
+agent. Other providers still read their environment variables, the same way
+`loushy dev`/`loushy build` do (see [Configuration](./configuration.md)), and
+the `mock` provider needs no credentials.
 
 ## Dev mode
 

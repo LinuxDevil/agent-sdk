@@ -28,6 +28,7 @@ import { withAskQuestion } from './tools/built-in/askQuestion';
 import { ToolConcurrency, assertToolConcurrency } from './execution/toolBatch';
 import type { Skill } from './skills/defineSkill';
 import type { Message } from './providers/llm';
+import type { ReasoningOption } from './providers/reasoning';
 import {
   AgentSession,
   withDefaultStores,
@@ -52,7 +53,7 @@ import { ConfigurationError, SDKError } from './execution/errors';
 import { newId } from './utils/id';
 import { createAgentApprovals, type AgentApprovals, type ApproveToolCall } from './createAgentApprovals';
 import type { PermissionOptions } from './execution/permissions';
-import type { z } from 'zod';
+import type { InferSchemaOutput, StandardSchemaV1 } from './utils/zodCompat';
 import type { McpServerSpec } from './spec/schema';
 import { agentMcp, streamAfter, streamPrepared } from './tools/mcp/agentMcp';
 import { HookRegistry, type AgentHook } from './execution/hooks';
@@ -93,7 +94,7 @@ type AgentToolsOption = readonly DefinedTool[] | Record<string, ToolDescriptor>;
  * AgentConfig.tools) will refer to them by - createAgent() registers each
  * one into a fresh ToolRegistry under that key.
  */
-export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> extends PermissionOptions {
+export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSchemaV1> extends PermissionOptions {
   /**
    * Optional tools: an array of `defineTool()` results (named by the tool),
    * or a record of descriptors keyed by the name the agent should call them by.
@@ -218,6 +219,19 @@ export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> ex
    */
   onAgentDrift?: AgentDriftMode;
   /**
+   * How much the model reasons before it answers (LOU-V13): an effort, or
+   * `{ effort, budgetTokens, summary, force }`. Sent only to model families
+   * known to accept it; `stream()` reports it as `reasoning.*` events and
+   * `result.reasoning` holds its text. A `send()` / `stream()` call's own
+   * `reasoning` overrides it. See docs/reasoning.md.
+   *
+   * @example
+   * ```ts
+   * createAgent({ model: 'anthropic/claude-sonnet-4-5', reasoning: 'high' });
+   * ```
+   */
+  reasoning?: ReasoningOption;
+  /**
    * Opt in to appending the nearest `AGENTS.md` / `CLAUDE.md` (found by
    * walking up from `cwd`, see `loadProjectInstructions()`) to the agent's
    * instructions, under a `## Project instructions (from AGENTS.md)` heading
@@ -298,10 +312,10 @@ export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> ex
    */
   fallbackModels?: readonly string[];
   /**
-   * A zod schema for the agent's final reply (LOU-V4): the model is asked
+   * A zod schema (zod 3 or 4, or any Standard Schema that can produce JSON Schema) for the agent's final reply (LOU-V4): the model is asked
    * to answer with a JSON object matching it, and `send()` / `stream()`
    * resolve with it parsed and validated as `result.object`, typed
-   * `z.output<typeof output>` (`result.text` keeps the raw JSON). An invalid
+   * the schema's output type (`result.text` keeps the raw JSON). An invalid
    * reply gets one repair step; still invalid, the run ends with
    * `finishReason: 'output-invalid'` and `outputError`. See
    * docs/structured-output.md and `ExecuteOptions.output`.
@@ -419,7 +433,7 @@ export type CreateAgentModelSource =
  * @example
  * createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are a helpful assistant.' });
  */
-export type CreateAgentConfig<TOutput extends z.ZodTypeAny = z.ZodTypeAny> = CreateAgentBase<TOutput> &
+export type CreateAgentConfig<TOutput extends StandardSchemaV1 = StandardSchemaV1> = CreateAgentBase<TOutput> &
   CreateAgentInstructions &
   CreateAgentModelSource;
 
@@ -455,7 +469,12 @@ export interface SendOptions {
    * `model` / `instructions` / `tools` functions (LOU-V15).
    */
   metadata?: Record<string, unknown>;
+  /** This run's reasoning (LOU-V13), instead of the agent's `reasoning`. */
+  reasoning?: ReasoningOption;
 }
+
+/** How a run is checkpointed, plus (LOU-V13) a `send()` / `stream()` call's own `reasoning`. */
+type RunTurn = SessionTurnOptions & Pick<ExecuteOptions, 'reasoning'>;
 
 /** `TObject`: the type of `result.object` - `z.output` of the `output` schema. */
 export interface SimpleAgent<TObject = unknown> {
@@ -493,7 +512,7 @@ export interface SimpleAgent<TObject = unknown> {
    * const { text } = await session.send('What is my name?');
    * ```
    */
-  session: (options?: SessionOptions) => AgentSession;
+  session: (options?: SessionOptions) => AgentSession<TObject>;
   /**
    * Finishes what was interrupted under `sessionId` (LOU-D30), from the
    * agent's `store.checkpoints`: a `send(message, { sessionId })` run, or
@@ -556,9 +575,9 @@ export interface SimpleAgent<TObject = unknown> {
  * const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are a helpful assistant.' });
  * const { text } = await agent.send('Hello!');
  */
-export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
+export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>(
   config: CreateAgentConfig<TOutput> = {}
-): SimpleAgent<z.output<TOutput>> {
+): SimpleAgent<InferSchemaOutput<TOutput>> {
   assertToolConcurrency(config.toolConcurrency, 'createAgent');
   assertMaxSubagentDepth(config.maxSubagentDepth, 'createAgent');
   assertSubagents(config.subagents, 'createAgent');
@@ -588,6 +607,7 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     guardrails: config.guardrails,
     toolConcurrency: config.toolConcurrency,
     onAgentDrift: config.onAgentDrift,
+    reasoning: config.reasoning,
   };
   const specs = agentSpecs(config, toolsFor, runOptions);
   const staticSpec = specs.static;
@@ -641,12 +661,13 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     }
     return { sessionId, checkpointStore: checkpoints };
   };
+  const callTurn = ({ sessionId, reasoning }: SendOptions): RunTurn => ({ ...durable(sessionId), ...(reasoning !== undefined && { reasoning }) });
   const executeOptions = (
     spec: SubagentSpec,
     input: Message[],
     ctx: RunConfigContext,
     signal?: AbortSignal,
-    turn?: SessionTurnOptions
+    turn?: RunTurn
   ): ExecuteOptions => ({
     ...spec,
     output: config.output,
@@ -654,6 +675,8 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     approvalStore: approvals.store,
     input,
     signal,
+    // LOU-D23.2: a session's turn runs under its id (tools see it), unless the turn is checkpointed under its own.
+    ...(ctx.sessionId !== undefined && { sessionId: ctx.sessionId }),
     ...turn,
     // LOU-W6: memory tools and recall bound to this run's scope keys.
     ...memory?.forRun({ sessionId: ctx.sessionId, metadata: ctx.metadata }, spec.toolRegistry, hooks),
@@ -662,21 +685,21 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
    * The run's options once MCP servers are connected, with its spec resolved for `ctx` (LOU-V15). A dynamic run
    * restarted from its checkpoint resolves with the `ctx` and model it began with (LOU-V15.2).
    */
-  const prepare = async (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: SessionTurnOptions) => {
+  const prepare = async (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: RunTurn) => {
     await mcp.ready();
     if (staticSpec) return executeOptions(staticSpec, input, ctx, signal, turn);
     const pinned = await checkpointedRunConfig(turn);
     return executeOptions(await specs.resolve(pinned?.ctx ?? ctx, pinned), input, pinned?.ctx ?? ctx, signal, turn);
   };
-  const run = async (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: SessionTurnOptions) =>
+  const run = async (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: RunTurn) =>
     AgentExecutor.execute(await prepare(input, ctx, signal, turn));
-  const stream = (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: SessionTurnOptions): AgentRun => {
+  const stream = (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: RunTurn): AgentRun => {
     if (!staticSpec) return streamPrepared(() => prepare(input, ctx, signal, turn), signal, turn?.inputQueue);
     const options = executeOptions(staticSpec, input, ctx, signal, turn);
     return hasMcp ? streamAfter(mcp.ready, options) : AgentExecutor.stream(options);
   };
   // LOU-W9: a checkpointed session's turn runs under its own sessionId + checkpointStore.
-  const session = (options: SessionOptions = {}): AgentSession => {
+  const session = (options: SessionOptions = {}): AgentSession<Typed> => {
     // The id is chosen here so memory scoped to the session sees it on every turn.
     const sessionId = options.id ?? globalThis.crypto.randomUUID();
     const ctxOf = (input: Message[], call?: SessionTurnCall): RunConfigContext => ({
@@ -689,20 +712,20 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
       (input, signal, turn, call) => stream(input, ctxOf(input, call), signal, turn),
       // LOU-W8 follow-up: `session.compact()` uses the agent's `compaction` unless the session sets its own.
       withDefaultStores({ ...options, compaction: options.compaction ?? config.compaction, id: sessionId }, config.store)
-    );
+    ) as AgentSession<Typed>;
   };
 
   // `object` was validated with `config.output`, so it has its output type.
-  type Typed = z.output<TOutput>;
+  type Typed = InferSchemaOutput<TOutput>;
   const simpleAgent: SimpleAgent<Typed> = {
     async send(message: AgentInput, options: SendOptions = {}): Promise<ExecutionResult<Typed>> {
       const { sessionId, metadata } = options;
-      const result = await run(toMessages(message), { sessionId, input: message, metadata }, options.signal, durable(sessionId));
+      const result = await run(toMessages(message), { sessionId, input: message, metadata }, options.signal, callTurn(options));
       return approvals.settle(result, options.signal) as Promise<ExecutionResult<Typed>>;
     },
     stream(message: AgentInput, options: SendOptions = {}): AgentRun<Typed> {
       const { sessionId, metadata } = options;
-      return stream(toMessages(message), { sessionId, input: message, metadata }, options.signal, durable(sessionId)) as AgentRun<Typed>;
+      return stream(toMessages(message), { sessionId, input: message, metadata }, options.signal, callTurn(options)) as AgentRun<Typed>;
     },
     session,
     async resume(sessionId: string, { signal } = {}): Promise<ExecutionResult<Typed> | null> {
@@ -719,7 +742,9 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     close: mcp.close,
   };
   // As a sub-agent, a dynamic agent resolves its config with the task prompt as `input`.
-  registerSubagent(simpleAgent, { spec: staticSpec ?? ((prompt) => specs.resolve({ input: prompt })), description: config.description });
+  // LOU-V4.2: a sub-agent answers with its own `output` object, never the lead's schema.
+  const subagentSpec = async (prompt: string): Promise<SubagentSpec> => ({ ...(await specs.resolve({ input: prompt })), output: config.output });
+  registerSubagent(simpleAgent, { spec: staticSpec ? { ...staticSpec, output: config.output } : subagentSpec, description: config.description });
   return simpleAgent;
 }
 
