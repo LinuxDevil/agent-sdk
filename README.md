@@ -71,6 +71,7 @@ agent can be an `agent.yaml` spec served with `npx loushy dev agent.yaml`
 
 - **Tools**: `defineTool()` with a zod `input`; arguments are typed, validated, and run in parallel. [Tools](docs/tools.md)
 - **Approvals and permission policies**: `needsApproval` pauses a run; `agent.approvals.resolve()` continues it, or `approve` decides in code. `permissions` rules allow, deny or ask per tool before that, with an audit log. [Approvals](docs/approvals.md)
+- **Ask the user a question**: `createAgent({ askQuestion: true })` adds the built-in `ask_question` tool; the run pauses durably until `agent.approvals.answer()`. [Asking the user a question](docs/approvals.md#asking-the-user-a-question)
 - **Sessions**: `agent.session()` keeps a multi-turn conversation in memory, files or SQLite. [Sessions](docs/sessions.md)
 - **Structured output**: `output: zodSchema` makes the final reply a typed, validated `result.object`, with one repair step. [Structured output](docs/structured-output.md)
 - **Streaming**: `agent.stream()` and `session.stream()` yield typed, versioned JSON events ready for SSE. [Streaming](docs/streaming.md)

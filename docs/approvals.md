@@ -169,6 +169,53 @@ const trusted = createAgent({
 });
 ```
 
+## Asking the user a question
+
+`createAgent({ askQuestion: true })` gives the agent the built-in
+`ask_question` tool (off by default; `askQuestionTool()` returns the same tool
+to pass in `tools` yourself). Its input is
+`{ question: string; options?: string[]; allowFreeText?: boolean }`. A call
+pauses the run through the approval mechanism, so it waits exactly like an
+approval: in sessions, in durable stores and across a restart.
+
+- The pending record has `kind: 'question'` and
+  `question: { text, options?, allowFreeText? }`, in `agent.approvals.list()`,
+  in the `approve` callback and on the `approval.requested` event, so a UI can
+  render a question instead of an approve button.
+- `agent.approvals.answer({ id, answer })` (the same as
+  `resolve({ id, approved: true, note: answer })`) continues the run. The
+  model gets `{ answer, option? }`, where `option` is the index of the matching
+  entry of `options` (case-insensitive). With `allowFreeText: false`, an answer
+  outside the options reaches the model as a tool error.
+- `resolve({ id, approved: false, note? })` declines: the model gets a
+  `kind: 'rejected'` tool error saying the user declined to answer.
+- An `approve` callback may return a string to answer in code, which is handy
+  in tests and scripted agents.
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ prompt: 'Plan the trip with the user.', provider, askQuestion: true });
+
+const paused = await agent.send('Book me a weekend away');
+const [pending] = await agent.approvals.list();
+if (paused.approvalId && pending?.kind === 'question') {
+  console.log(pending.question?.text, pending.question?.options);
+  const result = await agent.approvals.answer({ id: paused.approvalId, answer: 'Lisbon' });
+  console.log(result.text);
+}
+
+// Scripted: answer every question in code.
+const scripted = createAgent({
+  provider,
+  askQuestion: true,
+  approve: (request) => (request.kind === 'question' ? 'Lisbon' : false),
+});
+```
+
+A permission rule that `allow`s `ask_question` skips the pause, so the call
+fails with "No answer"; leave the tool to its default.
+
 ## `AgentExecutor` and `resumeAfterApproval()`
 
 With `AgentExecutor.execute()` directly, pass an `approvalStore`. On a gated
