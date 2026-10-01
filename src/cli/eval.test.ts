@@ -180,6 +180,33 @@ describe('runEval with a fake vitest', () => {
   });
 });
 
+describe('loushy eval --url (LOU-D47)', () => {
+  it('parses --url and --token', () => {
+    expect(parseEvalArgs(['--url', 'https://a.test', '--token=abc'])).toMatchObject({ url: 'https://a.test', token: 'abc' });
+  });
+
+  it('rejects --url with --record, --replay and --drift with a coded error', async () => {
+    for (const flag of ['--record', '--replay', '--drift']) {
+      expect(() => parseEvalArgs(['--url', 'https://a.test', flag])).toThrow(/cannot be combined/);
+      expect(() => parseEvalArgs(['--url', 'https://a.test', flag])).toThrowError(
+        expect.objectContaining({ code: 'LOUSHY_CONFIG_CONFLICTING_OPTIONS' })
+      );
+    }
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await runEval(['--url', 'https://a.test', '--replay'], { resolveVitest: () => 'v', log: () => {} })).toBe(2);
+  });
+
+  it('hands the URL and token to the vitest worker, turns cassettes off, and never prints the token', async () => {
+    vi.stubEnv('CI', 'true');
+    const fake = fakeVitest([result({})]);
+    const log = vi.fn();
+    await runEval(['--url', 'https://a.test', '--token', 'tok-123'], { resolveVitest: () => 'v', spawnVitest: fake.spawnVitest, log });
+    vi.unstubAllEnvs();
+    expect(fake.calls[0].env).toMatchObject({ LOUSHY_EVAL_URL: 'https://a.test', LOUSHY_EVAL_TOKEN: 'tok-123', LOUSHY_EVAL_CASSETTES: '' });
+    expect(log.mock.calls.join('\n')).not.toContain('tok-123');
+  });
+});
+
 describe('loushy eval end to end (real vitest, mockModel fixtures)', () => {
   // The real vitest, with its own console output discarded to keep this suite's log readable.
   const quietVitest = createVitestSpawner('ignore');

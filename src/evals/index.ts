@@ -7,6 +7,8 @@ export * from './defineEval';
 export * from './scorers';
 export * from './llmJudge';
 
+export { remoteTarget } from './remoteTarget';
+export type { EvalTarget, RemoteTargetOptions, RemoteExecutionResult } from './remoteTarget';
 export * from './checks';
 export * from './evalResult';
 export { compareTrajectories } from './drift';

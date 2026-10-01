@@ -26,6 +26,7 @@ my-agent/
   tools/*.ts | *.js                                # defineTool() tools
   skills/                                          # same layouts as loadSkills()
   subagents/<name>/                                # nested agent directories
+  schedules/*.ts|js                                # defineSchedule() cron schedules (see schedules.md)
 ```
 
 Only one config file may exist. Files inside `tools/` and the entries of

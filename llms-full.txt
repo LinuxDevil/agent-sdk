@@ -178,7 +178,8 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md) | On-demand instructions: `defineSkill()`, `loadSkills()` |
 | [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md) | An agent as a folder: layout, mapping to `createAgent()`, security |
 | [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md) | Prune old tool results with `createCompactionHook()` |
-| [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) | `defineChannel()`, `mountChannels()`, `httpChannel()`, `webhookChannel()`: surfaces mapped to sessions, replies and approvals sent back |
+| [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) | `defineChannel()`, `mountChannels()`, `httpChannel()`, `webhookChannel()`, `slackChannel()`: surfaces mapped to sessions, replies and approvals sent back |
+| [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md) | `defineSchedule()` cron schedules, `schedules/` in an agent directory, `startSchedules()` |
 | [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md) | Fixed multi-step workflows with `FlowBuilder` and `FlowExecutor` |
 | [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md) | File system and shell tools for coding agents, and their security model |
 | [Guardrails and sandboxing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md) | `runGuardrails()`, built-in guardrails, `requiresSandbox`, `SubprocessSandbox` |
@@ -1487,6 +1488,7 @@ my-agent/
   tools/*.ts | *.js                                # defineTool() tools
   skills/                                          # same layouts as loadSkills()
   subagents/<name>/                                # nested agent directories
+  schedules/*.ts|js                                # defineSchedule() cron schedules (see schedules.md)
 ```
 
 Only one config file may exist. Files inside `tools/` and the entries of
@@ -2241,7 +2243,7 @@ can mount it next to your own routes.
 | ----- | ----------- |
 | `name` | Route segment: `POST <basePath>/<name>`. Letters, digits, `_` and `-`. |
 | `verify(req)` | Optional. Authenticate the request (a signature, a token). Return `true`/`false` or `{ ok, reason? }`; `false` answers `401 {"error":"Unauthorized"}` before anything is parsed or run. |
-| `parse(req)` | The message: `{ sessionKey, input, metadata?, replyTo, event? }`, or `null` to acknowledge the request without a turn (a bot's own message, a retry). |
+| `parse(req, respond)` | The message: `{ sessionKey, input, metadata?, replyTo, event? }`; `{ decision: { id, approved?, note?, answer? } }` to resolve a pause this channel's turn stopped on (a button click); or `null` to acknowledge the request without a turn (a bot's own message, a retry). Call `respond(status, body)` to answer before the turn runs (a surface with a short timeout, a handshake). |
 | `reply(ctx)` | Deliver the reply: `ctx.text`, plus `inbound`, `sessionId`, `result`, `events`, `approval`, and `respond(status, body)` while the request is still open. |
 | `onApproval(ctx)` | Optional. Render a pause (buttons, a form). Default: `reply` with a text prompt in `ctx.text` and the request in `ctx.approval`. |
 | `stream` | Optional. `true` calls `reply` with `partial: true` and the text so far as the model writes, then once more with the final text. |
@@ -2342,6 +2344,7 @@ await channels.resolveApproval({ id: 'the-approval-id', approved: true });
 | ------- | ------- | -------- |
 | `httpChannel({ name?, verify? })` | JSON `{ sessionKey, input }` (`input` a string or content parts); anything else is a 400 | `200 { sessionId, text, finishReason }`; when paused, `approval` too and `text` is the prompt |
 | `webhookChannel({ secret?, auth?, name? })` | The JSON body's `input` string, or the whole body; a one-shot session unless the body has a `sessionKey` | `200` with the turn's `ExecutionResult`, as `WebhookTriggerAdapter` answers |
+| `slackChannel({ signingSecret, botToken, name?, fetch? })` | Slack Events API and interactivity requests (see [Slack](#slack)) | `200` at once; replies are posted in the Slack thread |
 
 `webhookChannel({ secret })` checks an HMAC-SHA256 signature of the raw body in
 `x-signature-256: sha256=<hex>`; `auth` takes any
@@ -2360,10 +2363,68 @@ const handler = mountChannels(agent, [
 ]);
 ```
 
-Slack and Discord channels are planned (LOU-P5, LOU-P6), as are channels
-loaded from an agent directory's `channels/*.ts` (LOU-P7.2). Until then, use
-`SlackTriggerAdapter` and `verifySlackSignature()` (see
-[Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#triggers)), or write a channel with `defineChannel()`.
+## Slack
+
+`slackChannel({ signingSecret, botToken, name?, fetch? })` connects a Slack app.
+Each Slack thread is one session: a mention of the bot starts (or continues)
+the session of its thread, keyed by team, channel and the thread's root `ts`;
+later messages in a thread the bot was mentioned in continue it without a
+mention. Replies are posted in the thread with `chat.postMessage` (plain
+`fetch`, no Slack SDK; pass `fetch` to inject one in tests).
+
+- Every request's signature is checked (`v0` HMAC-SHA256 with Web Crypto,
+  five-minute replay window); a failure answers 401.
+- The request is answered right away (`200`, or the `url_verification`
+  challenge) and the turn runs after the response, within Slack's 3-second
+  limit.
+- Retries (`X-Slack-Retry-Num`), bot messages (including the bot's own) and
+  the `message` copy of a mention are acknowledged and skipped, so a turn
+  never runs twice.
+- A tool approval is posted in the thread with **Approve** and **Deny**
+  buttons; the click resumes the session and the continuation is posted in the
+  thread. An `ask_question` is posted as text, and the next message in the
+  thread is the answer.
+
+Set up the app at [api.slack.com/apps](https://api.slack.com/apps):
+
+1. **OAuth & Permissions**: bot token scopes `app_mentions:read`, `chat:write`,
+   and `channels:history` (plus `groups:history` for private channels) for
+   follow-ups without a mention. Install the app and copy the bot token
+   (`xoxb-...`).
+2. **Event Subscriptions**: Request URL `https://<host>/channels/slack`; bot
+   events `app_mention` and `message.channels` (`message.groups` for private
+   channels).
+3. **Interactivity & Shortcuts**: Request URL `https://<host>/channels/slack`
+   (the same route).
+4. **Basic Information**: copy the signing secret.
+
+```ts
+import * as http from 'node:http';
+import { createAgent, mountChannels, slackChannel } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ instructions: 'You are a helpful Slack bot.', provider });
+
+const channels = mountChannels(agent, [
+  slackChannel({
+    signingSecret: process.env.SLACK_SIGNING_SECRET ?? '',
+    botToken: process.env.SLACK_BOT_TOKEN ?? '',
+  }),
+]);
+
+http.createServer((req, res) => {
+  void channels(req, res).then((handled) => handled || res.writeHead(404).end());
+}).listen(3000);
+```
+
+The set of threads the bot was mentioned in, and pending questions, live in
+the handler's memory: after a restart, a thread continues on its next mention
+(its transcript is in the `store` you pass `mountChannels()`). Only one
+process should serve a Slack app's events.
+
+Discord is planned (LOU-P6), as are channels loaded from an agent directory's
+`channels/*.ts` (LOU-P7.2). `SlackTriggerAdapter` and `verifySlackSignature()`
+(see [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#triggers)) still work for one-shot replies
+through an incoming webhook.
 
 # CLI
 
@@ -2398,7 +2459,7 @@ loushy build --target=<name> --agent=<path> [--out=<dir>]
 loushy studio [--port N] [--host H] [--prod|--dev]
 loushy mcp <agent.yaml|json> [--http --port N --host H]
 loushy doctor [agent.yaml|json] [--json]
-loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]]
+loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]]
 ```
 
 `npm create loushy-agent my-agent` runs `loushy init` with the same arguments.
@@ -4208,6 +4269,20 @@ input it was given.
 
 **Example:** a tool's `execute` threw.
 
+### LOUSHY_REMOTE_AGENT_FAILED
+
+**Means:** a `remoteAgent()` sub-agent could not deliver an answer: the
+deployed agent was unreachable, answered 401 or another non-2xx status, sent a
+malformed or unfinished stream, or its run ended in an error. The lead model
+gets it as a structured tool error; the bearer token is never part of it.
+
+**Fix:** read the message (it names the url and the remote session id); for a
+401, fix the `auth` token; for a remote run error, look at the remote agent's
+logs for that session.
+
+**Example:** `remoteAgent({ url, auth: 'wrong-token' })` against a deployment
+that sets `LOUSHY_API_TOKEN`.
+
 ## Approvals and sessions
 
 ### LOUSHY_APPROVAL_STORE_MISSING
@@ -4270,6 +4345,27 @@ streaming runner.
 
 **Example:** `new AgentSession(run).stream('hi')`.
 
+### LOUSHY_REMOTE_UNAUTHORIZED
+
+**Means:** `loushy eval --url` (or `remoteTarget()`) got `401` from the deployed
+agent: the bearer token is missing or wrong. The case fails; the run goes on.
+
+**Fix:** pass the deployment's `LOUSHY_API_TOKEN` with `--token` or the
+`LOUSHY_EVAL_TOKEN` environment variable. See
+[Run evals against a deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md#run-evals-against-a-deployment).
+
+**Example:** `loushy eval --url https://agent.example.com` against a deployment with a token set.
+
+### LOUSHY_REMOTE_REQUEST_FAILED
+
+**Means:** a remote eval case could not run: the deployment was unreachable,
+answered with a non-2xx status, or its event stream was truncated (no
+`run.done`).
+
+**Fix:** check the URL, `GET <url>/health` and the deployment's logs.
+
+**Example:** `loushy eval --url http://localhost:1` with nothing listening.
+
 ### LOUSHY_CHECKPOINT_NOT_FOUND
 
 **Means:** `AgentExecutor.fork()` or `agent.fork()` was asked for a step the
@@ -4290,6 +4386,19 @@ See [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/d
 again for a new run. See [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md).
 
 **Example:** two `for await (const event of run)` loops over the same `run`.
+
+## Schedules
+
+### LOUSHY_SCHEDULE_INVALID
+
+**Means:** `defineSchedule()` was given an invalid definition: a cron expression
+that does not parse (the message names the field), or not exactly one of
+`prompt` and `run`. Agent directories hit this while loading `schedules/`.
+
+**Fix:** correct the expression or give the schedule one of `prompt` / `run`.
+See [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md).
+
+**Example:** `defineSchedule({ cron: '61 * * * *', prompt: 'hi' })`.
 
 ## General
 
@@ -4540,7 +4649,7 @@ repository) runs them.
 ## `loushy eval`
 
 ```text
-loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]]
+loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]]
 ```
 
 | Option | Meaning |
@@ -4551,6 +4660,7 @@ loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judg
 | `--json path` | write the summary and every structured result as JSON |
 | `--strict` | soft failures fail the run |
 | `--judge` | run `*.judge.eval.ts` files instead of the normal ones |
+| `--url base` | run every case against the deployed agent at `base` instead of in-process; `--token` (or `LOUSHY_EVAL_TOKEN`) is the bearer token. See [Run evals against a deployment](#run-evals-against-a-deployment) |
 | `--config path` | use your own vitest config instead of the generated one |
 | `--record` | run against the real provider and write one cassette per case ([below](#record-replay-and-drift)) |
 | `--replay` | run every case from its cassette, with no network; a missing cassette fails the case |
@@ -4658,6 +4768,55 @@ How it works: while a case runs under one of these modes, every
 `AgentExecutor.execute()` call (which `createAgent()` agents, streaming,
 sub-agents and approval resumes go through) gets its provider wrapped with
 `recordReplay()` for that case's cassette.
+
+## Run evals against a deployment
+
+The same eval file that gates CI in-process can smoke-test a deployed agent (the
+[node server or Cloudflare Worker](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#http-api)). Point `loushy eval` at its base
+URL and every case runs against the deployment instead of the in-process agent:
+
+```bash
+npx loushy eval --url https://agent.example.com --token "$DEPLOY_TOKEN"   # or LOUSHY_EVAL_TOKEN
+```
+
+Each case gets its own remote session (`POST /chat { sessionId, input }`, one
+session per case, shared by its `t.send()` calls) and the SSE stream is read to
+`run.done`. The events become the same result an in-process run produces: tool
+calls, final reply, finish reason, steps and usage. So `t.calledTool()`,
+`t.completed()`, scorers, `t.judge()`, the summary and `--junit` work
+unchanged. The `agent` in the file is not used; give the deployment's own model
+and tools the behaviour you want to check.
+
+- A check that needs data the stream does not carry fails and says so (for
+  example `maxTokens` when `run.done` has no usage); `maxCostUsd` is reported as
+  skipped when there is no cost.
+- `--url` cannot be combined with `--record`, `--replay` or `--drift`
+  (`LOUSHY_CONFIG_CONFLICTING_OPTIONS`): cassettes record a provider in-process.
+  Score/threshold evals (`score:` form) also need an in-process provider and fail
+  with the same code; use trajectory evals.
+- An unreachable deployment, a non-2xx answer or a truncated stream fails that
+  case with `LOUSHY_REMOTE_REQUEST_FAILED`, and `401` with
+  `LOUSHY_REMOTE_UNAUTHORIZED`; the run goes on. The token is never printed or
+  written to a report.
+
+In code, pass a `target` (this overrides `agent`; `--url` overrides both):
+
+```ts
+import { defineEval, remoteTarget } from '@loushy/build-ai-agent';
+
+defineEval({
+  name: 'deployed refund flow',
+  target: remoteTarget({ url: 'https://agent.example.com', auth: process.env.LOUSHY_EVAL_TOKEN }),
+  async test(t) {
+    await t.send('Refund order 42');
+    t.completed();
+    t.calledTool('lookup_order');
+  },
+});
+```
+
+`remoteTarget({ url, auth?, fetch? })` takes an injectable `fetch`, which is how
+the SDK's own tests run the real routes in-process without a socket.
 
 # Flows
 
@@ -5670,6 +5829,81 @@ console.log(state.status, state.messages.at(-1)?.text, state.usage?.totalTokens)
 `parseEventStream()` skips blank lines, SSE comments and `event:`/`id:`
 fields, and any line that is not a known event, so it reads both framings.
 Breaking out of its loop cancels the response body.
+
+# Schedules
+
+Source: docs/schedules.md
+
+A **schedule** runs the agent on a cron expression, with nobody asking: a
+morning summary, a nightly cleanup. `defineSchedule()` declares one, an
+[agent directory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md) picks them up from `schedules/`, and
+`startSchedules()` (or the node server) runs them in process.
+
+## Define a schedule
+
+Give a cron expression and exactly one of `prompt` (text sent to the agent as a
+new turn) or `run` (your own function).
+
+```ts
+import { createAgent, createMockProvider, defineSchedule, startSchedules } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ instructions: 'You write reports.', provider: createMockProvider() });
+
+const morning = defineSchedule({ cron: '0 9 * * MON-FRI', timezone: 'Europe/Paris', prompt: 'Summarise yesterday.' });
+const cleanup = defineSchedule({
+  name: 'cleanup',
+  cron: '@daily',
+  run: async ({ agent, firedAt }) => {
+    await agent.send(`Clean up, as of ${firedAt.toISOString()}.`);
+  },
+});
+
+const running = startSchedules(agent, [morning, cleanup]);
+// later, on shutdown:
+running.stop();
+```
+
+- `cron`: five fields (`minute hour day-of-month month day-of-week`) or
+  `@hourly`, `@daily`, `@weekly`, `@monthly`; evaluated in `timezone` (an IANA
+  name, default the machine's zone). An invalid expression, or both/neither of
+  `prompt` and `run`, throws `LOUSHY_SCHEDULE_INVALID` from `defineSchedule()`,
+  not at the first fire. See [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#loushy_schedule_invalid).
+- `run` receives `{ agent, firedAt, name }`.
+
+`startSchedules(agent, schedules, { now?, setTimer?, onError? })` keeps one
+timer per schedule. A run that throws goes to `onError` (default: `console.error`)
+and never stops the other schedules. A schedule does not overlap itself: if the
+previous fire is still running, the next one is skipped and reported to
+`onError`. Fires missed while the process was suspended are skipped, not
+replayed. `now` and `setTimer` are injectable so tests never sleep.
+
+## In an agent directory
+
+```text
+my-agent/
+  instructions.md
+  schedules/
+    daily-report.ts    # export default defineSchedule({ cron: '0 9 * * *', prompt: '...' })
+    nightly.ts         # name defaults to the file name ("nightly") unless the schedule sets `name`
+```
+
+`resolveAgentDir()` returns them as `schedules` (and their names in
+`manifest.schedules`); `loadAgentDir()` does not start them. A directory without
+`schedules/` loads exactly as before.
+
+```ts
+import { createAgent, resolveAgentDir, startSchedules } from '@loushy/build-ai-agent';
+
+const { config, schedules } = await resolveAgentDir('./my-agent');
+const agent = createAgent(config);
+const running = startSchedules(agent, schedules);
+```
+
+## On the node server
+
+`createDeployedServer(agent, { schedules })` (the server of the `node-server`
+and `docker` targets) starts the schedules when it listens and stops them when it
+closes. The Cloudflare Worker target does not run schedules yet.
 
 # Sessions
 
@@ -6848,6 +7082,47 @@ const catalog: SubagentCatalog = {
 
 const lead = createAgent({ provider, instructions: 'You coordinate.', subagents: catalog });
 ```
+
+## Remote sub-agents
+
+`remoteAgent()` uses an agent you already deployed (`loushy deploy`: the node
+server, Docker or a Cloudflare Worker) as a sub-agent. It goes in `subagents`
+next to local ones, and the lead delegates to it with the same `task` tool,
+including `background: true`.
+
+```ts
+import { createAgent, remoteAgent } from '@loushy/build-ai-agent';
+
+const lead = createAgent({
+  provider,
+  instructions: 'You coordinate.',
+  subagents: {
+    researcher: remoteAgent({
+      url: 'https://researcher.example.workers.dev',
+      auth: process.env.RESEARCHER_TOKEN, // the deployment's LOUSHY_API_TOKEN; or () => string | Promise<string>
+      description: 'Finds and summarizes sources',
+    }),
+  },
+});
+```
+
+Each task opens a new session on the remote agent (`POST <url>/chat` with
+`{ sessionId, input }`, read as the SSE event stream, see
+[Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#http-api)), sends the task prompt and returns the
+remote agent's final text, followed by a footer naming the session. The remote
+agent sees only that prompt, and runs with its own model, tools and limits, so
+the lead's runtime (hooks, sandbox, approval store) does not reach it. The
+lead run's abort signal aborts the request. Options: `url`, `auth`, `name`,
+`description`, `headers`, and `fetch` (inject one in tests; the
+`serveFetch()` routes of an in-process agent work as a fake deployment).
+
+Failures (the agent is unreachable, a 401 or other non-2xx answer, a malformed
+stream, or a remote run that ends in an error) reach the lead as the
+structured tool error with the code `LOUSHY_REMOTE_AGENT_FAILED`; the token is
+never part of an error or an event. If the remote run pauses for an approval,
+the task fails with `LOUSHY_SESSION_AWAITING_APPROVAL`, naming the remote
+session and approval id: approvals are not proxied to the lead yet, so decide
+it on the remote agent or leave tools that need approval off it.
 
 ## Depth
 

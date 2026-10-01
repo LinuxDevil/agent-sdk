@@ -2,6 +2,7 @@
  * `loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge]`
  * - run eval files under vitest and report the results (LOU-D8).
  * `--record` / `--replay` / `--drift` run every case through a cassette (LOU-D46, src/evals/cassettes.ts).
+ * `--url <base> [--token t]` runs the cases against a deployed agent instead (LOU-D47, src/evals/remoteTarget.ts).
  *
  * vitest is the user's dependency, not ours: it is resolved from the
  * project's own node_modules and the command exits 2 with the install
@@ -17,11 +18,13 @@ import { CASSETTES_ENV, DRIFT_DIR_ENV, driftCassettePath } from '../evals/casset
 import { diffTrajectories, trajectoryOf, type Trajectory } from '../evals/drift';
 import type { EvalResult } from '../evals/evalResult';
 import { RESULTS_ENV, TAGS_ENV } from '../evals/recorder';
+import { REMOTE_TOKEN_ENV, REMOTE_URL_ENV } from '../evals/remoteTarget';
+import { SDKError } from '../execution/errors';
 import { readCassette } from '../testing/cassette';
 import { failsRun, parseResults, renderDriftTable, renderJson, renderJunit, renderTable, type DriftRow } from './evalReport';
 
 const USAGE =
-  'Usage: loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--config vitest.config.ts]';
+  'Usage: loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts]';
 
 /** Parsed `loushy eval` arguments. */
 export interface EvalCliArgs {
@@ -37,6 +40,10 @@ export interface EvalCliArgs {
   judge: boolean;
   /** Use this vitest config instead of the generated one. */
   config?: string;
+  /** Run the cases against the deployed agent at this base URL instead of in-process (LOU-D47). */
+  url?: string;
+  /** Bearer token for `url`; defaults to the `LOUSHY_EVAL_TOKEN` environment variable. Never printed. */
+  token?: string;
   /** Record a cassette per case from the real provider (LOU-D46). */
   record?: boolean;
   /** Replay every case from its cassette; a missing cassette fails the case. */
@@ -47,7 +54,7 @@ export interface EvalCliArgs {
   driftUsage?: boolean;
 }
 
-const VALUE_FLAGS = new Set(['tag', 'junit', 'json', 'config']);
+const VALUE_FLAGS = new Set(['tag', 'junit', 'json', 'config', 'url', 'token']);
 const BOOLEAN_FLAGS: Record<string, 'strict' | 'judge' | 'record' | 'replay' | 'drift' | 'driftUsage'> = {
   strict: 'strict',
   judge: 'judge',
@@ -59,6 +66,12 @@ const BOOLEAN_FLAGS: Record<string, 'strict' | 'judge' | 'record' | 'replay' | '
 
 function assertOneCassetteMode(args: EvalCliArgs): void {
   if (args.driftUsage) args.drift = true;
+  if (args.url && (args.record || args.replay || args.drift)) {
+    throw new SDKError(
+      'loushy eval: --url cannot be combined with --record, --replay or --drift: cassettes record a provider in-process, and a deployed agent runs its own.',
+      'LOUSHY_CONFIG_CONFLICTING_OPTIONS'
+    );
+  }
   if ([args.record, args.replay, args.drift].filter(Boolean).length > 1) {
     throw new Error(`loushy eval: use only one of --record, --replay and --drift. ${USAGE}`);
   }
@@ -82,7 +95,7 @@ export function parseEvalArgs(rest: string[]): EvalCliArgs {
     const value = inline ?? rest[++i];
     if (!value || value.startsWith('--')) throw new Error(`loushy eval: --${name} needs a value. ${USAGE}`);
     if (name === 'tag') args.tags.push(...value.split(',').filter(Boolean));
-    else args[name as 'junit' | 'json' | 'config'] = value;
+    else args[name as 'junit' | 'json' | 'config' | 'url' | 'token'] = value;
   }
   assertOneCassetteMode(args);
   return args;
@@ -180,7 +193,9 @@ function prepareInvocation(args: EvalCliArgs, cwd: string, workDir: string): Vit
       [RESULTS_ENV]: resultsFile,
       [TAGS_ENV]: args.tags.join(','),
       ...(args.judge ? { LOUSHY_ALLOW_LLM_JUDGE: '1' } : {}),
+      ...(args.token ? { [REMOTE_TOKEN_ENV]: args.token } : {}),
       [CASSETTES_ENV]: cassetteMode(args),
+      [REMOTE_URL_ENV]: args.url ?? '',
       [DRIFT_DIR_ENV]: args.drift ? path.join(workDir, 'drift') : '',
     },
     resultsFile,
@@ -189,6 +204,7 @@ function prepareInvocation(args: EvalCliArgs, cwd: string, workDir: string): Vit
 
 /** `--record`/`--drift` record, `--replay` replays; under CI a case with a cassette replays. '' runs live. */
 function cassetteMode(args: EvalCliArgs): string {
+  if (args.url) return '';
   if (args.record || args.drift) return 'record';
   if (args.replay) return 'replay';
   const ci = process.env.CI;
