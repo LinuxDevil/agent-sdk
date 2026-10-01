@@ -4,7 +4,17 @@
  * Crypto (Ed25519): no `node:*` import and no Discord library.
  */
 import { ConfigurationError } from '../execution/errors';
-import { defineChannel, type Channel, type ChannelDecision, type ChannelInbound, type ChannelRequest, type ChannelRespond } from './defineChannel';
+import { decodeApprovalRef, encodeApprovalRef, mayApprove, type Approvers } from './channelSupport';
+import {
+  defineChannel,
+  type Channel,
+  type ChannelContext,
+  type ChannelDecision,
+  type ChannelErrorHandler,
+  type ChannelInbound,
+  type ChannelRequest,
+  type ChannelRespond,
+} from './defineChannel';
 
 /** Options of {@link discordChannel}. */
 export interface DiscordChannelOptions {
@@ -18,6 +28,15 @@ export interface DiscordChannelOptions {
   name?: string;
   /** The `fetch` used for the Discord API (tests inject a fake). Default: the global `fetch`. */
   fetch?: typeof fetch;
+  /**
+   * Who may click Approve / Deny: Discord user ids (snowflakes), or a function
+   * `(user, { toolName, input, sessionId })` (`user.roles` has the member's role ids). Default:
+   * only the user who ran the command. Anyone else gets an ephemeral "not allowed" reply and
+   * the approval stays pending.
+   */
+  approvers?: Approvers;
+  /** Failures after the interaction was acknowledged (reply delivery, the turn, an approval). Default: `console.error`. */
+  onError?: ChannelErrorHandler;
 }
 
 /** A Discord interaction (slash command or button click), as `discordChannel()` reads it. */
@@ -28,8 +47,8 @@ export interface DiscordInteraction {
   guild_id?: string;
   channel_id?: string;
   channel?: { id?: string; type?: number; parent_id?: string };
-  member?: { user?: { id?: string } };
-  user?: { id?: string };
+  member?: { user?: { id?: string; username?: string }; roles?: string[] };
+  user?: { id?: string; username?: string };
   message?: { content?: string };
   data?: { name?: string; custom_id?: string; options?: Array<{ name: string; type: number; value?: unknown }> };
 }
@@ -44,6 +63,7 @@ const API = 'https://discord.com/api/v10';
 const APPROVE = 'loushy_approve:';
 const DENY = 'loushy_deny:';
 const MAX_LENGTH = 2000;
+const NOT_ALLOWED = 'You are not allowed to approve this request.';
 const THREAD_TYPES = new Set([10, 11, 12]);
 
 function header(req: ChannelRequest, name: string): string | undefined {
@@ -107,7 +127,8 @@ function button(label: string, customId: string, style: number) {
  * runs, and its reply edits the original response (longer than 2000
  * characters: continued in follow-up messages). Commands in the same channel
  * (or thread) share one session. A tool approval is posted with Approve / Deny
- * buttons; an `ask_question` as text, answered by the next command in that
+ * buttons that only `approvers` (default: the user who ran the command) can use;
+ * a click names the conversation itself, so it works after a restart. An `ask_question` as text, answered by the next command in that
  * channel. Interaction tokens last 15 minutes, which bounds a reply's delay.
  *
  * @example
@@ -128,7 +149,6 @@ export function discordChannel(options: DiscordChannelOptions): Channel<DiscordI
   const doFetch = options.fetch ?? ((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init));
   let key: Promise<CryptoKey> | undefined;
   const publicKey = () => (key ??= crypto.subtle.importKey('raw', keyBytes, 'Ed25519', false, ['verify']));
-  const pending = new Map<string, DiscordTarget>();
   const questions = new Map<string, string>();
 
   async function call(method: string, path: string, content: string, components?: unknown[]): Promise<void> {
@@ -160,56 +180,53 @@ export function discordChannel(options: DiscordChannelOptions): Channel<DiscordI
     const key = sessionKey(interaction);
     const target: DiscordTarget = { token: interaction.token, edited: false };
     const question = questions.get(key);
-    const waiting = question ? pending.get(question) : undefined;
-    if (question && waiting) {
-      questions.delete(key);
-      pending.delete(question);
-      Object.assign(waiting, target); // the answer's own "thinking" message is the one to edit
-      return { decision: { id: question, answer: input } };
-    }
-    const user = interaction.member?.user?.id ?? interaction.user?.id;
-    return { sessionKey: key, input, replyTo: target, event: interaction, metadata: { user } };
+    const inbound = { sessionKey: key, input, replyTo: target, event: interaction, metadata: { user: interaction.member?.user?.id ?? interaction.user?.id } };
+    if (!question) return inbound;
+    questions.delete(key);
+    return { decision: { id: question, answer: input }, inbound }; // the answer's own "thinking" message is the one to edit
   }
 
-  function readClick(interaction: DiscordInteraction, respond: ChannelRespond): ChannelDecision | null {
+  async function readClick(interaction: DiscordInteraction, respond: ChannelRespond, ctx: ChannelContext): Promise<ChannelDecision | null> {
     const customId = interaction.data?.custom_id ?? '';
     const approved = customId.startsWith(APPROVE);
-    const id = customId.slice((approved ? APPROVE : DENY).length);
-    const target = pending.get(id);
-    if (!(approved || customId.startsWith(DENY)) || !target || !interaction.token) {
-      respond(200, { type: 6 });
-      return null;
-    }
-    pending.delete(id);
-    respond(200, { type: 7, data: { content: `${interaction.message?.content ?? ''}\n${approved ? 'Approved.' : 'Denied.'}`.trim(), components: [] } });
-    Object.assign(target, { token: interaction.token, edited: true }); // the continuation follows the clicked message
-    return { decision: { id, approved } };
+    if (!(approved || customId.startsWith(DENY)) || !interaction.token) return respond(200, { type: 6 }), null;
+    const ref = decodeApprovalRef(customId.slice((approved ? APPROVE : DENY).length));
+    const key = sessionKey(interaction);
+    const raw = interaction.member?.user ?? interaction.user;
+    const user = raw?.id ? { id: raw.id, name: raw.username, roles: interaction.member?.roles } : undefined;
+    if (!(await mayApprove(options.approvers, user, ref, ctx, key))) return respond(200, { type: 4, data: { content: NOT_ALLOWED, flags: 64 } }), null;
+    const content = `${interaction.message?.content ?? ''}\n${approved ? 'Approved' : 'Denied'} by <@${user?.id}>.`.trim().slice(0, MAX_LENGTH);
+    respond(200, { type: 7, data: { content, components: [], allowed_mentions: { parse: [] } } });
+    // the continuation follows the clicked message, whichever process posted it
+    const target: DiscordTarget = { token: interaction.token, edited: true };
+    return { decision: { id: ref.id, approved }, inbound: { sessionKey: key, input: '', replyTo: target, event: interaction }, approver: user };
   }
 
   return defineChannel<DiscordInteraction>({
     name: options.name ?? 'discord',
+    onError: options.onError,
     async verify(req) {
       const reason = await checkSignature(publicKey(), header(req, 'x-signature-timestamp'), header(req, 'x-signature-ed25519'), req.rawBody);
       return { ok: reason === undefined, reason };
     },
-    async parse(req, respond) {
+    async parse(req, respond, ctx) {
       const interaction = JSON.parse(req.text || '{}') as DiscordInteraction;
       if (interaction.type === 1) return respond(200, { type: 1 }), null;
       if (interaction.type === 2) return readCommand(interaction, respond);
-      if (interaction.type === 3) return readClick(interaction, respond);
+      if (interaction.type === 3) return readClick(interaction, respond, ctx);
       return respond(200, { type: 6 }), null;
     },
     reply: ({ inbound, text }) => post(inbound.replyTo as DiscordTarget, text),
     async onApproval({ inbound, approval, text }) {
       const target = inbound.replyTo as DiscordTarget;
-      pending.set(approval.id, target);
       if (approval.question) {
         questions.set(inbound.sessionKey, approval.id);
         return post(target, text);
       }
       const prompt = `Approve \`${approval.toolName}\` with \`${JSON.stringify(approval.args)}\`?`;
-      const row = { type: 1, components: [button('Approve', APPROVE + approval.id, 3), button('Deny', DENY + approval.id, 4)] };
-      return post(target, prompt.slice(0, MAX_LENGTH), [row]);
+      const ref = encodeApprovalRef(inbound.metadata?.user, approval.id);
+      const row = { type: 1, components: [button('Approve', APPROVE + ref, 3), button('Deny', DENY + ref, 4)] };
+      return post(target, prompt.slice(0, MAX_LENGTH - 100), [row]);
     },
   });
 }
