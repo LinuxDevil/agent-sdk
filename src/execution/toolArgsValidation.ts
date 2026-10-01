@@ -4,9 +4,22 @@
  */
 
 import { ToolDescriptor } from '../types';
+import type { ToolCall } from '../providers';
 import { ToolExecutionError } from './errors';
 import { getToolInputSchema } from '../tools/toolContract';
 import { toolErrorResult, type ToolErrorResult } from './toolErrors';
+
+/**
+ * Best-effort parse of a tool call's JSON `arguments`, returning
+ * `fallback` when they are not valid JSON.
+ */
+export function parseToolArguments(toolCall: ToolCall, fallback: unknown): unknown {
+  try {
+    return JSON.parse(toolCall.function.arguments);
+  } catch {
+    return fallback;
+  }
+}
 
 /** One problem found while validating a tool call's arguments. */
 export interface ToolArgumentIssue {

@@ -225,7 +225,9 @@ const provider = recordReplay(mockModel(['ok']), {
   cassette: './__cassettes__/users.json',
   normalize: (request) => ({
     ...request,
-    messages: request.messages.map((m) => ({ ...m, content: m.content.replace(/user-\d+/g, 'user-N') })),
+    messages: request.messages.map((m) =>
+      typeof m.content === 'string' ? { ...m, content: m.content.replace(/user-\d+/g, 'user-N') } : m
+    ),
   }),
 });
 ```

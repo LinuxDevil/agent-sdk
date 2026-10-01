@@ -1,8 +1,8 @@
 /**
  * LOU-U14: the one shape of a failed tool call. Every failure path (a thrown
  * error, invalid arguments, an unknown tool, a rejected approval, a call that
- * was never run, an MCP `isError` result, a failed sandbox guard) hands the
- * model the object {@link toolErrorResult} builds.
+ * was never run, a call a permission rule denied, an MCP `isError` result, a
+ * failed sandbox guard) hands the model the object {@link toolErrorResult} builds.
  */
 
 /** Why a tool call produced an error result. */
@@ -13,7 +13,8 @@ export type ToolErrorKind =
   | 'rejected'
   | 'not-run'
   | 'mcp'
-  | 'sandbox';
+  | 'sandbox'
+  | 'denied';
 
 /** Max characters of an error message sent to the model (see {@link toolErrorResult}). */
 const MAX_TOOL_ERROR_MESSAGE_LENGTH = 2000;
@@ -27,6 +28,7 @@ const DEFAULT_ERROR_NAME: Record<ToolErrorKind, string> = {
   'not-run': 'ToolNotRunError',
   mcp: 'McpToolError',
   sandbox: 'SandboxRequiredError',
+  denied: 'ToolDeniedError',
 };
 
 /**

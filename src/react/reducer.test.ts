@@ -29,6 +29,14 @@ describe('reduceAgentEvents (LOU-D15)', () => {
     ]);
   });
 
+  it('ui.send with content parts shows their text (LOU-V11)', () => {
+    const state = reduce({
+      type: 'ui.send',
+      input: [{ type: 'text', text: 'What is this?' }, { type: 'image', image: 'https://example.com/a.png' }],
+    });
+    expect(state.messages[0]).toEqual({ id: 'm0', role: 'user', text: 'What is this?', toolCalls: [] });
+  });
+
   it('accumulates text deltas, then run.done sets idle and usage', () => {
     const script = events(
       { type: 'run.start', agentName: 'a' },

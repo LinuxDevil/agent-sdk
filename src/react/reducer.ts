@@ -6,6 +6,8 @@
  */
 
 import type { AgentEvent, AgentEventError, AgentEventUsage } from '../execution/agentEvents';
+import type { ContentPart } from '../providers/llm';
+import { textOf } from '../providers/content';
 
 /** Where a tool call stands: running, paused for approval, or finished. */
 export type UIToolCallStatus = 'running' | 'awaiting-approval' | 'done' | 'error' | 'rejected';
@@ -65,7 +67,8 @@ export interface AgentUIState {
 
 /** Local actions, besides the events themselves. */
 export type AgentUIAction =
-  | { type: 'ui.send'; input: string }
+  /** `input` may be multimodal parts (LOU-V11); the bubble shows their text. */
+  | { type: 'ui.send'; input: string | ContentPart[] }
   | { type: 'ui.decide'; approved: boolean }
   | { type: 'ui.resumed'; outcome: ApprovalOutcome }
   | { type: 'ui.stopped' }
@@ -136,7 +139,7 @@ function resumed(state: AgentUIState, { text, finishReason, usage, approval }: A
 export function reduceAgentEvents(state: AgentUIState, event: AgentEvent | AgentUIAction): AgentUIState {
   switch (event.type) {
     case 'ui.send': {
-      const user: UIMessage = { id: `m${state.messages.length}`, role: 'user', text: event.input, toolCalls: [] };
+      const user: UIMessage = { id: `m${state.messages.length}`, role: 'user', text: textOf(event.input), toolCalls: [] };
       const messages = onAssistant([...state.messages, user], (message) => message);
       return { ...state, messages, status: 'streaming', error: null, pendingApproval: null };
     }

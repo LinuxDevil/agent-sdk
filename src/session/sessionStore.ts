@@ -9,6 +9,22 @@ import { randomUUID } from 'node:crypto';
 import type { Message } from '../providers/llm';
 import { ConfigurationError, SDKError } from '../execution/errors';
 
+/** How bytes (image and file parts, LOU-V11) are saved in a JSON transcript: `{ "$bytes": "<base64>" }`. */
+const BYTES_KEY = '$bytes';
+
+/** `JSON.stringify` replacer: a `Uint8Array` (a `Buffer` too, read before its `toJSON()`) becomes `{ $bytes }`. */
+function encodeBytes(this: Record<string, unknown>, key: string, value: unknown): unknown {
+  const raw = this[key];
+  return raw instanceof Uint8Array ? { [BYTES_KEY]: Buffer.from(raw).toString('base64') } : value;
+}
+
+/** `JSON.parse` reviver: `{ $bytes }` back to a `Uint8Array`. */
+function decodeBytes(_key: string, value: unknown): unknown {
+  if (typeof value !== 'object' || value === null || Object.keys(value).length !== 1) return value;
+  const base64 = (value as Record<string, unknown>)[BYTES_KEY];
+  return typeof base64 === 'string' ? new Uint8Array(Buffer.from(base64, 'base64')) : value;
+}
+
 /**
  * Persistence for session transcripts. A transcript is the conversation
  * without the system prompt (the agent supplies that on every run).
@@ -108,7 +124,7 @@ export class FileSessionStore implements SessionStore {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
       throw error;
     }
-    const parsed: unknown = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(raw, decodeBytes);
     if (!Array.isArray(parsed)) {
       throw new SDKError(`Session file ${file} is corrupt: expected a JSON array of messages.`, 'LOUSHY_SESSION_FILE_CORRUPT');
     }
@@ -120,7 +136,7 @@ export class FileSessionStore implements SessionStore {
     await mkdir(this.dir, { recursive: true });
     const temp = `${file}.${process.pid}.${randomUUID()}.tmp`;
     try {
-      await writeFile(temp, JSON.stringify(messages), 'utf8');
+      await writeFile(temp, JSON.stringify(messages, encodeBytes), 'utf8');
       await rename(temp, file);
     } catch (error) {
       await rm(temp, { force: true });

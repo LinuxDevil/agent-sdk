@@ -1,5 +1,7 @@
-import type { Tool as AITool, ToolExecutionOptions } from 'ai';
+import type { Tool as AITool } from 'ai'; // legacy (.tool), removed in D26
 import type { z } from 'zod';
+import type { RunUsage } from '../models/usage';
+import type { Message } from '../providers/llm';
 import { SandboxAdapter } from '../security/sandboxCore';
 
 /**
@@ -31,6 +33,30 @@ export interface ToolConfiguration {
 }
 
 /**
+ * The second argument of a tool's `execute(args, ctx)`: what the SDK tells
+ * a tool about the call it is running. The same object reaches `defineTool`'s
+ * `execute`, `ToolDescriptor.execute` and `sandboxExecute`, on every path
+ * that runs a tool (main loop, resume after an approval, sandbox, flow node).
+ * Structurally it stays assignable from the `ai` SDK's own execute options.
+ */
+export interface ToolExecutionContext {
+  /**
+   * The model's id for this tool call. It stays the same when a call that
+   * was running when the process died is re-run on resume, so a tool can use
+   * it as an idempotency key (LOU-U9).
+   */
+  toolCallId: string;
+  /** A read-only copy of the transcript the model had seen before it made this call. */
+  messages: readonly Message[];
+  /** The run's cancellation signal, set when the run has one. */
+  abortSignal?: AbortSignal;
+  /** The session the run belongs to, when it has one. */
+  sessionId?: string;
+  /** Called by the delegate tool with a finished child run's usage, so the parent run adds it to its totals (LOU-V5). */
+  onDelegatedUsage?: (usage: RunUsage) => void;
+}
+
+/**
  * Tool descriptor with display name
  */
 export interface ToolDescriptor {
@@ -45,7 +71,7 @@ export interface ToolDescriptor {
    * Runs the tool. Canonical: when set, it is called instead of
    * `tool.execute` (LOU-D22). {@link defineTool} sets it.
    */
-  execute?(args: unknown, ctx: ToolExecutionOptions): unknown;
+  execute?(args: unknown, ctx: ToolExecutionContext): unknown;
   /**
    * Legacy: an `ai` v4 `Tool` (`{ description, parameters, execute }`),
    * kept for compatibility this release. Prefer `inputSchema` and `execute`.
@@ -77,14 +103,14 @@ export interface ToolDescriptor {
    * silently falling back to unsandboxed in-process execution.
    *
    * LOU-U15: the third argument is the same execute context
-   * `tool.execute()` receives (`toolCallId`, `messages`, `abortSignal`).
+   * `tool.execute()` receives (a {@link ToolExecutionContext}).
    * It is optional to declare: an implementation that takes only
    * `(args, sandbox)` keeps working.
    */
   sandboxExecute?: (
     args: unknown,
     sandbox: SandboxAdapter,
-    ctx?: ToolExecutionOptions
+    ctx?: ToolExecutionContext
   ) => Promise<unknown>;
 }
 

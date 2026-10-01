@@ -7,6 +7,60 @@ first it replaces old tool results with a short marker, and if that is not
 enough it replaces the oldest turns with a summary written by a (cheaper)
 model.
 
+## Compacting an agent
+
+With `createAgent()`, turn compaction on with the `compaction` option. `true`
+installs the hook with its defaults (prune old tool results above 90% of the
+model's window); an object configures it, and `summarizer` selects
+`twoPhaseStrategy()` with that model (a `"provider/model"` string or an
+`LLMProvider`):
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const simple = createAgent({ model: 'openai/gpt-4o', compaction: true });
+
+const agent = createAgent({
+  model: 'openai/gpt-4o',
+  compaction: {
+    thresholdPercent: 0.8, // compact above 80% of the context window (default 0.9)
+    protectedTokens: 20_000, // never change the newest 20K tokens (default 40_000)
+    summarizer: 'openai/gpt-4o-mini', // prune, then summarize if still too big
+  },
+});
+
+for await (const event of agent.stream('Audit the repository.')) {
+  if (event.type === 'compaction.done') console.log(`${event.tokensBefore} -> ${event.tokensAfter} tokens`);
+}
+```
+
+The object takes `strategy`, `thresholdPercent`, `contextWindow` and
+`protectedTokens` (as in the table below) and `summarizer`; combining
+`summarizer` with `strategy` is a configuration error (pass
+`twoPhaseStrategy({ model })` as the `strategy` instead). `createAgent({ hooks })`
+takes any other `AgentHook`s, which run before the compaction hook, so
+compaction sees what they added. Hooks and compaction apply to `send()`,
+`stream()` and sessions.
+
+### Stream events
+
+`agent.stream()`, `session.stream()` and `AgentExecutor.stream()` report each
+compaction as two events, inside the step and before the model call that
+triggered it (see [Streaming](./streaming.md#event-schema-version-1)):
+
+| `type` | Fields |
+| --- | --- |
+| `compaction.start` | `strategy`, `tokensBefore`, `contextWindow`, `thresholdTokens` |
+| `compaction.done` | `strategy`, `tokensBefore`, `tokensAfter`, `prunedToolCallIds`, `summary?: boolean`, `error?: { message }` |
+
+Every `compaction.start` is followed by exactly one `compaction.done`. When the
+strategy could not shrink anything, `tokensAfter` equals `tokensBefore`; when it
+failed (or the summarizer failed and the hook fell back to pruning), `error` is
+set and the run continues. `summary` is `true` when old turns were replaced by
+a summary (the text itself is not sent; use `onCompaction` for it). A
+non-streaming `send()` emits no events. Hooks add their own events with
+`ctx.emit?.(...)` on the `preGenerate` context, which exists only in streamed runs.
+
 ## Compacting a run
 
 `createCompactionHook()` returns an `AgentHook` named `compaction`. Register it
@@ -192,6 +246,6 @@ const keepRecent: CompactionStrategy = {
 const hook = createCompactionHook({ strategy: keepRecent });
 ```
 
-Typed `compaction.*` stream events and a `createAgent({ compaction })` option
-are planned (LOU-W3.2); until then `onCompaction` is where to observe
-compactions.
+A custom strategy gets the same `compaction.start` / `compaction.done` events as
+the built-in ones. `onCompaction` (on `createCompactionHook()`) still receives
+the summary text and the `Error`.
