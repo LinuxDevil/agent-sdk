@@ -8218,13 +8218,19 @@ path.
 
 **Commands get a minimal environment.** `NodeWorkspace` runs commands with
 `cwd` set to the root. It does not pass on the parent process's environment.
-Only `PATH`, `HOME`, `USERPROFILE`, `TEMP`, `TMP`, `TMPDIR` and `LANG` are
-copied, plus `SystemRoot`, `SystemDrive`, `ComSpec`, `PATHEXT` and `WINDIR`
-on Windows, because cmd.exe and most programs need them to start. So
-`OPENAI_API_KEY` and other secrets in your server's environment are not
-visible to commands the model writes. To give commands more, either pass
-values (`env: { GITHUB_TOKEN: scopedToken }`) or name host variables to copy
-(`inheritEnv: ['CI']`). Anything you pass this way is visible to the model.
+Only `PATH`, `HOME`, `USERPROFILE`, `TEMP`, `TMP`, `TMPDIR`, `LANG`, `LC_*`
+and `TERM` are copied, plus `SystemRoot`, `SystemDrive`, `ComSpec`,
+`PATHEXT` and `WINDIR` on Windows, because a shell needs them to start. So
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, cloud credentials and other secrets
+in your server's environment are not visible to commands the model writes,
+and `env` or `printenv` cannot reveal them. To give commands more, either
+pass values (`env: { GITHUB_TOKEN: scopedToken }`) or name host variables to
+copy (`inheritEnv: ['CI']`). Anything you pass this way is visible to the
+model. `inheritEnv: true` passes the whole host environment, as before
+this default existed; use it only for commands you trust. On Windows,
+Node's process launcher also adds the session variables every process needs
+(`HOMEDRIVE`, `HOMEPATH`, `USERNAME`, `USERDOMAIN`, `LOGONSERVER`); none of
+them is a secret.
 
 ```ts
 import { NodeWorkspace } from '@loushy/build-ai-agent';
@@ -8287,6 +8293,46 @@ const workspace = new NodeWorkspace({ root: './project' });
 const shell = new SandboxShell(new SubprocessSandbox({ image: 'node:20-alpine' }), { cwd: workspace.root });
 const tools = [...createFsTools(workspace), createShellTool(shell, { needsApproval: false })];
 ```
+
+**Environment and network.** `SandboxShell` takes the same `env` and
+`inheritEnv` options as `NodeWorkspace`. A container gets only those
+variables: never the host environment, and not the host's `PATH` or `HOME`
+either, because the image brings its own. With `NoopSandbox` (which runs on
+the host) a command gets the same small base `NodeWorkspace` uses, plus
+your variables; `inheritEnv: true` restores the whole host environment
+there, but a container still never receives it.
+
+`SubprocessSandbox` takes a `network` policy:
+
+| `network` | What the container gets |
+|---|---|
+| `'none'` (default) | No network at all (Docker `NetworkMode: 'none'`). |
+| `'default'` | Docker's default network: unrestricted egress. |
+| `{ allow: ['api.github.com', '*.npmjs.org'] }` | Today: no network. See below. |
+
+Docker cannot filter outgoing traffic by host name by itself. An `allow`
+list is only enforced when traffic goes through an egress proxy, which the
+credential-brokering work (LOU-X12) adds. Until then, `{ allow }` fails
+closed: the container runs with no network, and the validated list is kept
+on `sandbox.network` for the proxy to use. Host names are checked when the
+sandbox is constructed, so a URL or a malformed name throws.
+
+```ts
+import { createShellTool, SandboxShell, SubprocessSandbox } from '@loushy/build-ai-agent';
+
+const sandbox = new SubprocessSandbox({ image: 'node:20-alpine', network: 'none' });
+const shell = new SandboxShell(sandbox, {
+  cwd: '/abs/path/to/project',
+  env: { NODE_ENV: 'test' }, // set for every command
+  inheritEnv: ['CI'],        // copied from the host environment
+});
+const tool = createShellTool(shell, { needsApproval: false });
+```
+
+What this does not cover: a value you pass in `env` or `inheritEnv` is
+readable by the model's commands, and `network: 'default'` lets a command
+send it anywhere. Keep long-lived secrets out of both until credential
+brokering lands.
 
 `SandboxAdapter` has no way to cancel a command. When the run is aborted,
 `SandboxShell` returns `aborted: true` immediately, but the container keeps
