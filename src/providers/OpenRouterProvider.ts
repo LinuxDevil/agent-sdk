@@ -6,7 +6,6 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { LanguageModel } from 'ai';
 import { AiSdkProvider, AiSdkProviderConfig } from './aiSdkProvider';
-import { Message, ToolCall } from './llm';
 import { Logger, noopLogger } from '../execution/logger';
 
 export interface OpenRouterProviderConfig extends AiSdkProviderConfig {
@@ -22,67 +21,6 @@ const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1';
 interface OpenRouterModel {
   id: string;
   [key: string]: unknown;
-}
-
-/**
- * Tool result messages
- */
-function toToolResultMessage(msg: Message) {
-  return {
-    role: 'tool',
-    content: [
-      {
-        type: 'tool-result',
-        toolCallId: msg.toolCallId || '',
-        toolName: msg.toolName || 'unknown',
-        result: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
-      },
-    ],
-  };
-}
-
-/**
- * Assistant messages with tool calls become text + tool-call content parts
- */
-function toAssistantToolCallMessage(msg: Message, toolCalls: ToolCall[]) {
-  const toolInvocations = toolCalls.map(tc => ({
-    type: 'tool-call' as const,
-    toolCallId: tc.id,
-    toolName: tc.function.name,
-    args: typeof tc.function.arguments === 'string'
-      ? JSON.parse(tc.function.arguments)
-      : tc.function.arguments,
-  }));
-
-  return {
-    role: 'assistant',
-    content: [
-      ...(msg.content ? [{ type: 'text', text: msg.content }] : []),
-      ...toolInvocations,
-    ],
-  };
-}
-
-/**
- * Convert our Message type to 'ai' SDK CoreMessage
- */
-function convertMessages(messages: Message[]): any[] {
-  return messages.map((msg) => {
-    if (msg.role === 'tool') {
-      return toToolResultMessage(msg);
-    }
-
-    // Handle assistant messages with tool calls
-    if (msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0) {
-      return toAssistantToolCallMessage(msg, msg.toolCalls);
-    }
-
-    // Regular messages
-    return {
-      role: msg.role,
-      content: msg.content || '',
-    };
-  });
 }
 
 /**
@@ -127,10 +65,6 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
 
   protected createModel(modelId: string): LanguageModel {
     return this.provider(modelId);
-  }
-
-  protected convertMessages(messages: Message[]): any[] {
-    return convertMessages(messages);
   }
 
   /**

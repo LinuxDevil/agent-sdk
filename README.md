@@ -78,8 +78,8 @@ const paused = await AgentExecutor.execute({
 const result = await resumeAfterApproval(
   { id: paused.approvalId!, approved: true },
   approvalStore,
-  provider,
   registry,
+  provider,
 );
 ```
 
@@ -243,16 +243,29 @@ tools, an existing `tool()` from the `ai` SDK) register by name:
 Flows orchestrate multi-step workflows within a single agent:
 
 ```typescript
-import { FlowBuilder, FlowExecutor } from '@loushy/build-ai-agent';
+import { FlowBuilder, FlowExecutor, type EditorStep } from '@loushy/build-ai-agent';
+
+// FlowBuilder is a metadata builder: setCode/setName/setInputs/setFlow(...).build().
+// The executable node types ('sequence', 'llmCall', 'oneOf', 'setVariable', ...) are
+// those handled by FlowExecutor; EditorStep currently types the editor-side shapes,
+// hence the cast.
+const steps = {
+  type: 'sequence',
+  steps: [
+    { type: 'llmCall', prompt: 'Classify this message as billing, technical or sales: {{message}}', outputVariable: 'category' },
+    { type: 'llmCall', prompt: 'Write a one-line reply for a {{category}} request: {{message}}' },
+  ],
+} as unknown as EditorStep;
 
 const flow = new FlowBuilder()
-  .addNode({ id: 'start', type: 'llm', data: { prompt: 'Analyze user input' } })
-  .addNode({ id: 'decide', type: 'conditional', data: { condition: 'output.sentiment === "positive"' } })
-  .addEdge('start', 'decide')
+  .setCode('triage')
+  .setName('Triage')
+  .addInput({ name: 'message', type: 'shortText', required: true })
+  .setFlow(steps)
   .build();
 
 // FlowExecutor is a static API too: execute(flow, context, onEvent?)
-const result = await FlowExecutor.execute(flow, { agent, provider, variables: {} });
+const result = await FlowExecutor.execute(flow, { agent, provider, variables: { message: input } });
 ```
 
 ### LLM Providers
@@ -301,8 +314,8 @@ const paused = await AgentExecutor.execute({
 const result = await resumeAfterApproval(
   { id: paused.approvalId!, approved: true },
   approvalStore,
-  provider,
   toolRegistry,
+  provider,
 );
 ```
 
@@ -389,9 +402,9 @@ if (!verdict.pass) {
 ### Tracing & observability
 
 ```typescript
-import { AgentExecutor, withSpan } from '@loushy/build-ai-agent';
+import { AgentExecutor, withSpan, type TraceExporter } from '@loushy/build-ai-agent';
 
-const exporter = {
+const exporter: TraceExporter = {
   onSpanStart: (span) => console.log('[start]', span.name, span.attributes),
   onSpanEnd: (span) => console.log('[end]', span.name, span.endTime! - span.startTime, 'ms'),
 };
@@ -426,8 +439,8 @@ defineEval({
 ### MCP tools & sandboxing
 
 ```typescript
-import { loadMcpTools } from '@loushy/build-ai-agent/tools/mcp/McpToolLoader';
-import { SubprocessSandbox } from '@loushy/build-ai-agent';
+import { loadMcpTools } from '@loushy/build-ai-agent/mcp';
+import { AgentExecutor, SubprocessSandbox } from '@loushy/build-ai-agent';
 
 // Turn any MCP server's tools into ToolDescriptors, namespaced <connection>__<tool>
 const linearTools = await loadMcpTools(mcpClient, 'linear');
@@ -453,12 +466,13 @@ const hash = await sha256('password', 'salt');
 ### Storage
 
 ```typescript
-import { StorageService } from '@loushy/build-ai-agent';
+import { StorageService, type FileSystemAdapter } from '@loushy/build-ai-agent';
 import fs from 'node:fs';
 import path from 'node:path';
 
-// fs/path are injected as typed adapters (LOU-A7) rather than `any`
-const storage = new StorageService('user-123', 'attachments', fs, path);
+// fs/path are injected as adapters (LOU-A7). Node's `fs` is structurally close
+// but its writeFileSync options type is wider, so it needs a cast.
+const storage = new StorageService('user-123', 'attachments', fs as unknown as FileSystemAdapter, path);
 
 await storage.saveAttachment(file, 'document.pdf');
 const buffer = storage.readAttachment('document.pdf');

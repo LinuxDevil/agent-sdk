@@ -319,6 +319,62 @@ describe('FlowExecutor', () => {
     });
   });
 
+  describe('Expression safety (no eval)', () => {
+    const hostileFlow = (condition: string): AgentFlow => ({
+      code: 'test-flow',
+      name: 'Test Flow',
+      flow: {
+        type: 'oneOf',
+        options: [
+          { condition, step: { type: 'return', value: 'INJECTED' } },
+          { step: { type: 'return', value: 'default' } },
+        ],
+      },
+    });
+
+    it.each([
+      "process.exit(1)",
+      "require('fs')",
+      "constructor.constructor('return process')()",
+      'globalThis',
+      'score = 1',
+    ])('treats %s as a failed condition instead of executing it', async (condition) => {
+      const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+      context.variables = { score: 85 };
+
+      const result = await FlowExecutor.execute(hostileFlow(condition), context);
+
+      expect(result.output).toBe('default');
+      expect(exit).not.toHaveBeenCalled();
+      expect(context.variables.score).toBe(85);
+      exit.mockRestore();
+    });
+
+    it('still interpolates {{vars}} into conditions', async () => {
+      context.variables = { classify: 'refund' };
+      const result = await FlowExecutor.execute(hostileFlow("'{{classify}}' === 'refund'"), context);
+      expect(result.output).toBe('INJECTED');
+    });
+
+    it('evaluator nodes compute safe expressions and fail the flow on unsupported syntax', async () => {
+      context.variables = { a: 2, b: 3 };
+      const ok = await FlowExecutor.execute(
+        { code: 'f', name: 'F', flow: { type: 'evaluator', expression: 'a * b + 1' } } as AgentFlow,
+        context
+      );
+      expect(ok.success).toBe(true);
+      expect(ok.output).toBe(7);
+
+      const bad = await FlowExecutor.execute(
+        { code: 'f', name: 'F', flow: { type: 'evaluator', expression: "require('fs')" } } as AgentFlow,
+        context
+      );
+      expect(bad.success).toBe(false);
+      expect(bad.error?.message).toContain('Failed to evaluate expression: require');
+      expect(bad.error?.message).toContain('position');
+    });
+  });
+
   describe('Loop Execution (forEach)', () => {
     it('should iterate over items', async () => {
       context.variables = { numbers: [1, 2, 3] };

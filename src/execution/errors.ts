@@ -454,6 +454,34 @@ export function compactProviderError(
 }
 
 /**
+ * True for a cancellation, i.e. an error named `AbortError`: what
+ * `fetch()`/`AbortSignal` throw on `controller.abort()`, what the 'ai' SDK
+ * rethrows untouched for an aborted request, and what a caller-supplied
+ * provider wrapper throws to stop a run between steps.
+ *
+ * A cancellation is NOT a provider failure, so AgentExecutor never compacts
+ * it into a `CompactedLLMProviderError` (that would hide the error's
+ * identity from the caller that requested the abort) and never folds it
+ * into `messages` for a retry (TIMEOUT_PATTERN above would otherwise
+ * bucket "This operation was aborted" as a retryable 'timeout'). A timeout
+ * implemented via `AbortSignal.timeout()` throws a `TimeoutError` instead,
+ * so it is still compacted as before.
+ *
+ * @example
+ * ```ts
+ * try {
+ *   await AgentExecutor.execute({ agent, input, provider });
+ * } catch (error) {
+ *   if (isAbortError(error)) return; // the run was stopped on purpose
+ *   throw error;
+ * }
+ * ```
+ */
+export function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
+}
+
+/**
  * Categories AgentExecutor is willing to surface into `messages` for the
  * model to see and react to, rather than rejecting `execute()` outright -
  * see the design note on `providerErrorMessage()` (generateStep.ts) for
