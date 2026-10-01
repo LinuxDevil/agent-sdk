@@ -87,11 +87,9 @@ exports[`renderProject > snapshot: minimal package.json 1`] = `
     "doctor": "loushy doctor"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^0.0.42",
     "@ai-sdk/openai": "^0.0.42",
     "@loushy/build-ai-agent": "^1.0.0-alpha.8",
     "ai": "^4.3.19",
-    "ollama-ai-provider": "^1.2.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
@@ -342,11 +340,9 @@ exports[`renderProject > snapshot: tools package.json 1`] = `
     "doctor": "loushy doctor"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^0.0.42",
     "@ai-sdk/openai": "^0.0.42",
     "@loushy/build-ai-agent": "^1.0.0-alpha.8",
     "ai": "^4.3.19",
-    "ollama-ai-provider": "^1.2.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
@@ -375,11 +371,9 @@ exports[`renderProject > snapshot: yaml package.json 1`] = `
     "doctor": "loushy doctor agent.yaml"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^0.0.42",
     "@ai-sdk/openai": "^0.0.42",
     "@loushy/build-ai-agent": "^1.0.0-alpha.8",
     "ai": "^4.3.19",
-    "ollama-ai-provider": "^1.2.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {

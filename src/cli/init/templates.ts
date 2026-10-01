@@ -23,21 +23,14 @@ function providerInfo(provider: string) {
   return info;
 }
 
-function splitRange(spec: string): [string, string] {
-  const at = spec.lastIndexOf('@');
-  return [spec.slice(0, at), spec.slice(at + 1)];
-}
-
 function sortKeys(record: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)));
 }
 
-/**
- * Every provider package is a dependency, not just the chosen one: the SDK's
- * root entry point currently imports all provider modules (see docs/installation.md).
- */
-function providerPackages(): Record<string, string> {
-  return Object.fromEntries(listProviders().map((info) => splitRange(info.peerInstall)));
+/** Only the chosen provider's package: the SDK loads provider packages on first use. */
+function providerPackage(provider: string): Record<string, string> {
+  const info = providerInfo(provider);
+  return { [info.peerPackage]: info.peerInstall.slice(info.peerPackage.length + 1) };
 }
 
 function packageJson(config: ProjectConfig): string {
@@ -58,7 +51,7 @@ function packageJson(config: ProjectConfig): string {
       '@loushy/build-ai-agent': config.sdkDependency,
       ai: peers.ai ?? '^4.3.19',
       zod: peers.zod ?? '^3.25.76',
-      ...providerPackages(),
+      ...providerPackage(config.provider),
     }),
     devDependencies: {
       '@types/node': '^22.0.0',

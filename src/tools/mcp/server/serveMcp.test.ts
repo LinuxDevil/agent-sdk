@@ -51,7 +51,7 @@ afterEach(async () => {
 });
 
 async function connect(serverSpec: ServerSpec): Promise<Client> {
-  const server = buildServer(serverSpec);
+  const server = await buildServer(serverSpec);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: 'test-client', version: '1.0.0' });
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);

@@ -68,6 +68,17 @@ describe('renderProject', () => {
     expect(count('tools')).toBe(3);
   });
 
+  it.each([
+    ['openai', '@ai-sdk/openai', ['@ai-sdk/anthropic', 'ollama-ai-provider']],
+    ['openrouter', '@ai-sdk/openai', ['@ai-sdk/anthropic', 'ollama-ai-provider']],
+    ['anthropic', '@ai-sdk/anthropic', ['@ai-sdk/openai', 'ollama-ai-provider']],
+    ['ollama', 'ollama-ai-provider', ['@ai-sdk/openai', '@ai-sdk/anthropic']],
+  ])('%s depends on its own provider package only', (provider, peer, others) => {
+    const dependencies = JSON.parse(renderProject(config(provider, 'minimal'))['package.json']!).dependencies;
+    expect(Object.keys(dependencies)).toContain(peer);
+    for (const other of others) expect(Object.keys(dependencies)).not.toContain(other);
+  });
+
   it('the yaml template ships agent.yaml and runs it with loushy dev', () => {
     const files = renderProject(config('anthropic', 'yaml'));
     expect(files['agent.yaml']).toContain('type: anthropic');
