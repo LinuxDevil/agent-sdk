@@ -14,16 +14,32 @@ import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Socket } from 'node:net';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { RunManager } from './runRegistry';
-import {
-  isValidAgentId,
-  type StreamMessage,
-  type LogEntry,
-  type SpanEvent,
-  type DebugStatePayload,
-  type ChatStatePayload,
-} from './types';
+import { isValidAgentId } from './types';
+import type { StreamMessage } from '../shared/wireTypes';
 
 const STREAM_PATH_RE = /^\/agents\/([^/]+)\/stream$/;
+
+function send(ws: WebSocket, message: StreamMessage): void {
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(message));
+  }
+}
+
+/**
+ * Parses `/agents/:id/stream` out of an upgrade request URL, or returns
+ * undefined when the path doesn't match or the id fails the same
+ * path-traversal boundary as app.ts's `/agents/:id` middleware - this
+ * handler parses `:id` itself (see the module doc comment) rather than
+ * going through Express routing, so it needs its own check before the id is
+ * used as a registry/status key alongside the HTTP routes.
+ */
+function streamAgentId(req: IncomingMessage): string | undefined {
+  const url = new URL(req.url ?? '', 'http://localhost');
+  const match = STREAM_PATH_RE.exec(url.pathname);
+  if (!match) return undefined;
+  const agentId = decodeURIComponent(match[1]);
+  return isValidAgentId(agentId) ? agentId : undefined;
+}
 
 export function attachWebSocketServer(server: HttpServer, runManager: RunManager): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true });
@@ -31,66 +47,27 @@ export function attachWebSocketServer(server: HttpServer, runManager: RunManager
   // to clients watching that one agent's run.
   const subscribers = new Map<string, Set<WebSocket>>();
 
-  function send(ws: WebSocket, message: StreamMessage): void {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(message));
-    }
+  function broadcast(agentId: string, message: StreamMessage): void {
+    const sockets = subscribers.get(agentId);
+    if (!sockets) return;
+    for (const ws of sockets) send(ws, message);
   }
 
-  runManager.on('status', (payload) => {
-    const sockets = subscribers.get(payload.agentId);
-    if (!sockets) return;
-    for (const ws of sockets) send(ws, { type: 'status', payload });
-  });
+  runManager.on('status', (payload) => broadcast(payload.agentId, { type: 'status', payload }));
 
-  runManager.on('event', (agentId: string, payload: Record<string, unknown>) => {
-    const sockets = subscribers.get(agentId);
-    if (!sockets) return;
-    for (const ws of sockets) send(ws, { type: 'event', payload });
-  });
-
-  // O1/O2/O3: same fan-out pattern as 'status'/'event' above, over the
-  // same WS connection - no second channel.
-  runManager.on('log', (agentId: string, payload: LogEntry) => {
-    const sockets = subscribers.get(agentId);
-    if (!sockets) return;
-    for (const ws of sockets) send(ws, { type: 'log', payload });
-  });
-
-  runManager.on('span', (agentId: string, payload: SpanEvent) => {
-    const sockets = subscribers.get(agentId);
-    if (!sockets) return;
-    for (const ws of sockets) send(ws, { type: 'span', payload });
-  });
-
-  runManager.on('debug', (agentId: string, payload: DebugStatePayload) => {
-    const sockets = subscribers.get(agentId);
-    if (!sockets) return;
-    for (const ws of sockets) send(ws, { type: 'debug', payload });
-  });
-
-  // P1: same fan-out pattern - the chat transcript, reconciled from the
-  // real ExecutionResult.messages (see chatReconcile.ts), over this same
-  // channel rather than a second WS connection.
-  runManager.on('chat', (agentId: string, payload: ChatStatePayload) => {
-    const sockets = subscribers.get(agentId);
-    if (!sockets) return;
-    for (const ws of sockets) send(ws, { type: 'chat', payload });
-  });
+  // 'event' plus O1/O2/O3 'log'/'span'/'debug' and P1 'chat' (the chat
+  // transcript, reconciled from the real ExecutionResult.messages - see
+  // chatReconcile.ts): same fan-out pattern as 'status', over the same WS
+  // connection - no second channel.
+  for (const type of ['event', 'log', 'span', 'debug', 'chat'] as const) {
+    runManager.on(type, (agentId: string, payload: unknown) =>
+      broadcast(agentId, { type, payload } as StreamMessage)
+    );
+  }
 
   server.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {
-    const url = new URL(req.url ?? '', 'http://localhost');
-    const match = STREAM_PATH_RE.exec(url.pathname);
-    if (!match) {
-      socket.destroy();
-      return;
-    }
-    const agentId = decodeURIComponent(match[1]);
-    // Same path-traversal boundary as app.ts's `/agents/:id` middleware -
-    // this handler parses `:id` itself (see the module doc comment) rather
-    // than going through Express routing, so it needs its own check before
-    // `agentId` is used as a registry/status key alongside the HTTP routes.
-    if (!isValidAgentId(agentId)) {
+    const agentId = streamAgentId(req);
+    if (!agentId) {
       socket.destroy();
       return;
     }

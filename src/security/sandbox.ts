@@ -32,11 +32,92 @@ import { SandboxAdapter, SandboxResult, SandboxRunOptions } from './sandboxCore'
 
 export * from './sandboxCore';
 
+/** The fields of a dockerode rejection this module inspects. */
+type DockerodeError = { statusCode?: number; json?: { message?: string }; message?: string };
+
+/** dockerode carries the daemon's message under `json.message`; fall back to `message`. */
+function dockerErrorMessage(e: DockerodeError): string {
+  return e.json?.message ?? e.message ?? '';
+}
+
 /** True if `err` is dockerode's 404 "no such image" rejection for `image`. */
 function isNoSuchImageError(err: unknown, image: string): boolean {
-  const e = err as { statusCode?: number; json?: { message?: string }; message?: string } | undefined;
-  const message = e?.json?.message ?? e?.message ?? '';
-  return e?.statusCode === 404 && message.toLowerCase().includes('no such image') && message.includes(image);
+  const e = (err ?? {}) as DockerodeError;
+  const message = dockerErrorMessage(e);
+  return e.statusCode === 404 && message.toLowerCase().includes('no such image') && message.includes(image);
+}
+
+/**
+ * Container config for one `run()` call: network-isolated, auto-removed,
+ * bind-mounting only `opts.cwd` (when given).
+ */
+function buildContainerOptions(
+  image: string,
+  cmd: string,
+  args: string[],
+  opts: SandboxRunOptions
+): Docker.ContainerCreateOptions {
+  const binds = opts.cwd ? [`${opts.cwd}:${opts.cwd}`] : undefined;
+  return {
+    Image: image,
+    Cmd: [cmd, ...args],
+    WorkingDir: opts.cwd,
+    Env: opts.env ? Object.entries(opts.env).map(([k, v]) => `${k}=${v}`) : undefined,
+    AttachStdin: false,
+    AttachStdout: true,
+    AttachStderr: true,
+    Tty: false,
+    HostConfig: {
+      NetworkMode: 'none',
+      AutoRemove: true,
+      Binds: binds,
+    },
+  };
+}
+
+/** A pair of PassThrough sinks that buffer everything written to them. */
+function captureOutput() {
+  const stdoutChunks: Buffer[] = [];
+  const stderrChunks: Buffer[] = [];
+  const stdout = new PassThrough();
+  const stderr = new PassThrough();
+  stdout.on('data', (chunk: Buffer) => stdoutChunks.push(chunk));
+  stderr.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
+  return {
+    stdout,
+    stderr,
+    read: () => ({
+      stdout: Buffer.concat(stdoutChunks).toString('utf-8'),
+      stderr: Buffer.concat(stderrChunks).toString('utf-8'),
+    }),
+  };
+}
+
+/**
+ * `container.wait()`, or - when `timeoutMs` is set - whichever comes first
+ * of the container exiting and the timeout, which kills the container and
+ * rejects.
+ */
+async function waitForExit(container: Docker.Container, timeoutMs: number | undefined): Promise<unknown> {
+  const waitPromise = container.wait();
+  if (timeoutMs === undefined) {
+    return waitPromise;
+  }
+
+  let timeoutHandle: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      waitPromise,
+      new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          container.kill().catch(() => {});
+          reject(new Error(`SubprocessSandbox: command timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
 }
 
 /**
@@ -113,62 +194,19 @@ export class SubprocessSandbox implements SandboxAdapter {
    * resolves with its captured stdout/stderr/exitCode.
    */
   async run(cmd: string, args: string[], opts: SandboxRunOptions = {}): Promise<SandboxResult> {
-    const binds = opts.cwd ? [`${opts.cwd}:${opts.cwd}`] : undefined;
+    const container = await this.createContainer(buildContainerOptions(this.image, cmd, args, opts));
 
-    const container = await this.createContainer({
-      Image: this.image,
-      Cmd: [cmd, ...args],
-      WorkingDir: opts.cwd,
-      Env: opts.env ? Object.entries(opts.env).map(([k, v]) => `${k}=${v}`) : undefined,
-      AttachStdin: false,
-      AttachStdout: true,
-      AttachStderr: true,
-      Tty: false,
-      HostConfig: {
-        NetworkMode: 'none',
-        AutoRemove: true,
-        Binds: binds,
-      },
-    });
-
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
-    const stdoutStream = new PassThrough();
-    const stderrStream = new PassThrough();
-    stdoutStream.on('data', (chunk: Buffer) => stdoutChunks.push(chunk));
-    stderrStream.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
-
+    const output = captureOutput();
     const attachStream = await container.attach({ stream: true, stdout: true, stderr: true });
-    this.docker.modem.demuxStream(attachStream, stdoutStream, stderrStream);
+    this.docker.modem.demuxStream(attachStream, output.stdout, output.stderr);
 
-    let timeoutHandle: NodeJS.Timeout | undefined;
-    try {
-      await container.start();
+    await container.start();
+    const result = await waitForExit(container, opts.timeoutMs);
 
-      const waitPromise = container.wait();
-      const result =
-        opts.timeoutMs !== undefined
-          ? await Promise.race([
-              waitPromise,
-              new Promise<never>((_, reject) => {
-                timeoutHandle = setTimeout(() => {
-                  container.kill().catch(() => {});
-                  reject(new Error(`SubprocessSandbox: command timed out after ${opts.timeoutMs}ms`));
-                }, opts.timeoutMs);
-              }),
-            ])
-          : await waitPromise;
-
-      return {
-        stdout: Buffer.concat(stdoutChunks).toString('utf-8'),
-        stderr: Buffer.concat(stderrChunks).toString('utf-8'),
-        exitCode: (result as { StatusCode: number }).StatusCode,
-      };
-    } finally {
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-      }
-    }
+    return {
+      ...output.read(),
+      exitCode: (result as { StatusCode: number }).StatusCode,
+    };
   }
 
   /**

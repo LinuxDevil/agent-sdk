@@ -96,58 +96,75 @@ export function findCodeBlocks(block: string, singleBlockMode = true): CodeBlock
       PATTERN.lastIndex++; // avoid infinite loops with zero-width matches
     }
 
-    const [match, prefix, syntax, content, postFix] = matches;
-    const lang = syntax || 'none';
-    const lineNumber = getLineNumber(block, matches);
-    let hasError = false;
-
-    /* Validate code blocks */
-    if (prefix && prefix.match(/\S/)) {
-      hasError = true;
-      errors.push({
-        line: lineNumber,
-        position: matches.index,
-        message: `Prefix "${prefix}" not allowed on line ${lineNumber}. Remove it to fix the code block.`,
-        block: match,
-      });
+    const blockErrors = validateCodeBlockMatch(block, matches);
+    if (blockErrors.length > 0) {
+      errors.push(...blockErrors);
+    } else {
+      blocks.push(toCodeBlock(block, matches));
     }
-
-    if (postFix && postFix.match(/\S/)) {
-      hasError = true;
-      const line = lineNumber + (countLines(match) - 1);
-      errors.push({
-        line,
-        position: matches.index + match.length,
-        message: `Postfix "${postFix}" not allowed on line ${line}. Remove it to fix the code block.`,
-        block: match,
-      });
-    }
-
-    if (!hasError) {
-      blocks.push({
-        line: lineNumber,
-        position: matches.index,
-        syntax: lang,
-        block: match,
-        code: content.trim(),
-      });
-    }
-  }
-
-  if (blocks.length === 0 && singleBlockMode) {
-    blocks.push({
-      line: 0,
-      position: 0,
-      syntax: '',
-      block: '',
-      code: block.trim(),
-    });
   }
 
   return {
     errors,
-    blocks,
+    blocks: withSingleBlockFallback(blocks, block, singleBlockMode),
   };
+}
+
+/** Validate a code block match: no prefix before the opening fence, no postfix after the closing one. */
+function validateCodeBlockMatch(text: string, matches: RegExpExecArray): CodeBlockError[] {
+  const lineNumber = getLineNumber(text, matches);
+  const errors = [prefixError(matches, lineNumber), postfixError(matches, lineNumber)];
+  return errors.filter((error): error is CodeBlockError => error !== null);
+}
+
+function prefixError(matches: RegExpExecArray, lineNumber: number): CodeBlockError | null {
+  const [match, prefix] = matches;
+  if (!prefix || !prefix.match(/\S/)) return null;
+
+  return {
+    line: lineNumber,
+    position: matches.index,
+    message: `Prefix "${prefix}" not allowed on line ${lineNumber}. Remove it to fix the code block.`,
+    block: match,
+  };
+}
+
+function postfixError(matches: RegExpExecArray, lineNumber: number): CodeBlockError | null {
+  const [match, , , , postFix] = matches;
+  if (!postFix || !postFix.match(/\S/)) return null;
+
+  const line = lineNumber + (countLines(match) - 1);
+  return {
+    line,
+    position: matches.index + match.length,
+    message: `Postfix "${postFix}" not allowed on line ${line}. Remove it to fix the code block.`,
+    block: match,
+  };
+}
+
+function toCodeBlock(text: string, matches: RegExpExecArray): CodeBlock {
+  const [match, , syntax, content] = matches;
+  return {
+    line: getLineNumber(text, matches),
+    position: matches.index,
+    syntax: syntax || 'none',
+    block: match,
+    code: content.trim(),
+  };
+}
+
+/** In single-block mode, treat the whole text as one block when no fenced blocks were found. */
+function withSingleBlockFallback(blocks: CodeBlock[], text: string, singleBlockMode: boolean): CodeBlock[] {
+  if (blocks.length > 0 || !singleBlockMode) return blocks;
+  return [
+    {
+      line: 0,
+      position: 0,
+      syntax: '',
+      block: '',
+      code: text.trim(),
+    },
+  ];
 }
 
 /**

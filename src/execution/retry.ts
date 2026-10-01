@@ -68,10 +68,7 @@ export async function retry<T>(
     attempt++;
 
     try {
-      // Apply timeout if specified
-      const value = timeout
-        ? await withTimeout(operation(), timeout)
-        : await operation();
+      const value = await runAttempt(operation, timeout);
 
       return {
         value,
@@ -81,33 +78,16 @@ export async function retry<T>(
     } catch (error) {
       lastError = error as Error;
 
-      // Don't retry if it's the last attempt
-      if (attempt >= maxAttempts) {
+      // Don't retry if it's the last attempt, or if the error isn't retryable
+      if (attempt >= maxAttempts || !shouldRetry(lastError, attempt)) {
         break;
       }
 
-      // Check if error is retryable
-      if (!shouldRetry(lastError, attempt)) {
-        break;
-      }
-
-      // Calculate delay
-      let delayMs = getRetryDelay(lastError);
-      
-      if (delayMs === undefined) {
-        // Use exponential backoff
-        delayMs = Math.min(
-          initialDelayMs * Math.pow(backoffMultiplier, attempt - 1),
-          maxDelayMs
-        );
-
-        // Add jitter (±20%)
-        const jitter = delayMs * 0.2 * (Math.random() - 0.5);
-        delayMs = Math.round(delayMs + jitter);
-        
-        // Ensure delay doesn't exceed maxDelayMs after jitter
-        delayMs = Math.min(delayMs, maxDelayMs);
-      }
+      const delayMs = computeRetryDelay(lastError, attempt, {
+        initialDelayMs,
+        maxDelayMs,
+        backoffMultiplier,
+      });
 
       totalDelayMs += delayMs;
 
@@ -123,6 +103,43 @@ export async function retry<T>(
 
   // All attempts failed
   throw lastError;
+}
+
+/**
+ * Run one attempt of the operation, applying the per-attempt timeout if specified
+ */
+async function runAttempt<T>(operation: () => Promise<T>, timeout: number | undefined): Promise<T> {
+  return timeout ? await withTimeout(operation(), timeout) : await operation();
+}
+
+/**
+ * Delay before the next attempt: the error's own retry-after hint if it has
+ * one, otherwise exponential backoff with jitter
+ */
+function computeRetryDelay(
+  error: Error,
+  attempt: number,
+  backoff: { initialDelayMs: number; maxDelayMs: number; backoffMultiplier: number }
+): number {
+  const retryAfterMs = getRetryDelay(error);
+  if (retryAfterMs !== undefined) {
+    return retryAfterMs;
+  }
+
+  const { initialDelayMs, maxDelayMs, backoffMultiplier } = backoff;
+
+  // Use exponential backoff
+  let delayMs = Math.min(
+    initialDelayMs * Math.pow(backoffMultiplier, attempt - 1),
+    maxDelayMs
+  );
+
+  // Add jitter (±20%)
+  const jitter = delayMs * 0.2 * (Math.random() - 0.5);
+  delayMs = Math.round(delayMs + jitter);
+
+  // Ensure delay doesn't exceed maxDelayMs after jitter
+  return Math.min(delayMs, maxDelayMs);
 }
 
 /**

@@ -22,8 +22,8 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { ToolRegistry } from '../ToolRegistry';
 import { ToolDescriptor } from '../../types';
-import { SandboxAdapter } from '../../security/sandboxCore';
-import { withSandboxedFetch } from './sandboxFetch';
+import { routeFetchThroughSandbox } from './sandboxFetch';
+import { assertOk } from './assertOk';
 
 // ============================================================================
 // Type Definitions
@@ -69,6 +69,11 @@ export interface JiraTransition {
   };
 }
 
+/** A Jira user's display name, or `fallback` when there is no such user. */
+function displayNameOr(user: { displayName?: string } | null | undefined, fallback: string): string {
+  return user?.displayName || fallback;
+}
+
 // ============================================================================
 // Jira Tools Registry
 // ============================================================================
@@ -101,12 +106,7 @@ export class JiraTools extends ToolRegistry {
    * through the guard.
    */
   public register(name: string, descriptor: ToolDescriptor): void {
-    if (descriptor.tool?.execute) {
-      const originalExecute = descriptor.tool.execute;
-      descriptor.requiresSandbox = true;
-      descriptor.sandboxExecute = (args: unknown, sandbox: SandboxAdapter) =>
-        withSandboxedFetch(sandbox, async () => originalExecute(args as any, {} as any));
-    }
+    routeFetchThroughSandbox(descriptor);
     super.register(name, descriptor);
   }
 
@@ -157,36 +157,13 @@ export class JiraTools extends ToolRegistry {
           const url = `${this.config.baseUrl}/rest/api/3/issue/${ticketKey}${params.toString() ? `?${params}` : ''}`;
           
           const response = await fetch(url, {
-            headers: {
-              'Authorization': this.authHeader,
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
+            headers: this.jsonHeaders(),
           });
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to fetch Jira ticket: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to fetch Jira ticket');
 
           const data = await response.json();
-          
-          const ticket: JiraTicket = {
-            key: data.key,
-            summary: data.fields.summary,
-            description: this.extractTextFromADF(data.fields.description),
-            issueType: data.fields.issuetype.name,
-            priority: data.fields.priority?.name || 'None',
-            status: data.fields.status.name,
-            assignee: data.fields.assignee?.displayName || 'Unassigned',
-            reporter: data.fields.reporter?.displayName || 'Unknown',
-            project: data.fields.project.key,
-            components: data.fields.components?.map((c: any) => c.name) || [],
-            labels: data.fields.labels || [],
-            created: data.fields.created,
-            updated: data.fields.updated,
-            customFields: this.extractCustomFields(data.fields),
-          };
+          const ticket = this.toJiraTicket(data);
 
           return JSON.stringify(ticket, null, 2);
         },
@@ -216,23 +193,9 @@ export class JiraTools extends ToolRegistry {
             body.fields = fields;
           }
 
-          const response = await fetch(
-            `${this.config.baseUrl}/rest/api/3/search`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': this.authHeader,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-              },
-              body: JSON.stringify(body),
-            }
-          );
+          const response = await this.sendJson('/rest/api/3/search', body);
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to search tickets: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to search tickets');
 
           const data = await response.json();
           
@@ -240,7 +203,7 @@ export class JiraTools extends ToolRegistry {
             key: issue.key,
             summary: issue.fields.summary,
             status: issue.fields.status.name,
-            assignee: issue.fields.assignee?.displayName || 'Unassigned',
+            assignee: displayNameOr(issue.fields.assignee, 'Unassigned'),
             priority: issue.fields.priority?.name || 'None',
             updated: issue.fields.updated,
           }));
@@ -295,23 +258,9 @@ export class JiraTools extends ToolRegistry {
             fields.components = components.map(name => ({ name }));
           }
 
-          const response = await fetch(
-            `${this.config.baseUrl}/rest/api/3/issue`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': this.authHeader,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-              },
-              body: JSON.stringify({ fields }),
-            }
-          );
+          const response = await this.sendJson('/rest/api/3/issue', { fields });
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to create ticket: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to create ticket');
 
           const data = await response.json();
           return JSON.stringify({
@@ -361,10 +310,7 @@ export class JiraTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to update ticket: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to update ticket');
 
           return JSON.stringify({ success: true, ticketKey }, null, 2);
         },
@@ -392,10 +338,7 @@ export class JiraTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to delete ticket: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to delete ticket');
 
           return JSON.stringify({ success: true, ticketKey, message: 'Ticket deleted successfully' });
         },
@@ -430,43 +373,18 @@ export class JiraTools extends ToolRegistry {
             fields.assignee = { accountId: assignee };
           }
 
-          let response = await fetch(
-            `${this.config.baseUrl}/rest/api/3/issue`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': this.authHeader,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-              },
-              body: JSON.stringify({ fields }),
-            }
-          );
+          let response = await this.sendJson('/rest/api/3/issue', { fields });
 
           // If "Sub-task" fails, try "Subtask"
           if (!response.ok) {
             const errorText = await response.text();
             if (errorText.includes('issuetype')) {
               fields.issuetype = { name: 'Subtask' };
-              response = await fetch(
-                `${this.config.baseUrl}/rest/api/3/issue`,
-                {
-                  method: 'POST',
-                  headers: {
-                    'Authorization': this.authHeader,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                  },
-                  body: JSON.stringify({ fields }),
-                }
-              );
+              response = await this.sendJson('/rest/api/3/issue', { fields });
             }
           }
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to create subtask: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to create subtask');
 
           const data = await response.json();
           return JSON.stringify({ key: data.key, id: data.id }, null, 2);
@@ -510,10 +428,7 @@ export class JiraTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to link issues: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to link issues');
 
           return JSON.stringify({
             success: true,
@@ -555,10 +470,7 @@ export class JiraTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to add comment: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to add comment');
 
           const data = await response.json();
           return JSON.stringify({
@@ -592,10 +504,7 @@ export class JiraTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to get comments: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to get comments');
 
           const data = await response.json();
           
@@ -644,10 +553,7 @@ export class JiraTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to update comment: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to update comment');
 
           const data = await response.json();
           return JSON.stringify({
@@ -680,10 +586,7 @@ export class JiraTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to delete comment: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to delete comment');
 
           return JSON.stringify({ success: true, commentId });
         },
@@ -731,10 +634,7 @@ export class JiraTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to transition issue: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to transition issue');
 
           return JSON.stringify({ success: true, ticketKey, transitionId });
         },
@@ -761,10 +661,7 @@ export class JiraTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to get transitions: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to get transitions');
 
           const data = await response.json();
           
@@ -814,10 +711,7 @@ export class JiraTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to assign issue: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to assign issue');
 
           return JSON.stringify({ success: true, ticketKey, assignee: accountId });
         },
@@ -848,10 +742,7 @@ export class JiraTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to add watcher: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to add watcher');
 
           return JSON.stringify({ success: true, ticketKey, watcher: accountId });
         },
@@ -885,10 +776,7 @@ export class JiraTools extends ToolRegistry {
             },
           });
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to get issue types: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to get issue types');
 
           const data = await response.json();
           const issueTypes = Array.isArray(data) ? data : [data];
@@ -925,10 +813,7 @@ export class JiraTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to get projects: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to get projects');
 
           const data = await response.json();
           
@@ -978,10 +863,7 @@ export class JiraTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to add attachment: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to add attachment');
 
           const data = await response.json();
           return JSON.stringify({
@@ -1031,10 +913,7 @@ export class JiraTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to add worklog: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to add worklog');
 
           const data = await response.json();
           return JSON.stringify({
@@ -1066,10 +945,7 @@ export class JiraTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to get worklogs: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to get worklogs');
 
           const data = await response.json();
           
@@ -1090,6 +966,50 @@ export class JiraTools extends ToolRegistry {
   // ========================================================================
   // Helper Methods
   // ========================================================================
+
+  /**
+   * Headers for a JSON request/response against the Jira REST API
+   */
+  private jsonHeaders(): Record<string, string> {
+    return {
+      'Authorization': this.authHeader,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+  }
+
+  /**
+   * Send `payload` as JSON to a Jira REST API path (POST by default)
+   */
+  private sendJson(path: string, payload: unknown, method: 'POST' | 'PUT' = 'POST'): Promise<Response> {
+    return fetch(`${this.config.baseUrl}${path}`, {
+      method,
+      headers: this.jsonHeaders(),
+      body: JSON.stringify(payload),
+    });
+  }
+
+  /**
+   * Map a Jira issue resource to a JiraTicket
+   */
+  private toJiraTicket(data: any): JiraTicket {
+    return {
+      key: data.key,
+      summary: data.fields.summary,
+      description: this.extractTextFromADF(data.fields.description),
+      issueType: data.fields.issuetype.name,
+      priority: data.fields.priority?.name || 'None',
+      status: data.fields.status.name,
+      assignee: displayNameOr(data.fields.assignee, 'Unassigned'),
+      reporter: displayNameOr(data.fields.reporter, 'Unknown'),
+      project: data.fields.project.key,
+      components: data.fields.components?.map((c: any) => c.name) || [],
+      labels: data.fields.labels || [],
+      created: data.fields.created,
+      updated: data.fields.updated,
+      customFields: this.extractCustomFields(data.fields),
+    };
+  }
 
   /**
    * Convert text to Atlassian Document Format (ADF)

@@ -17,6 +17,48 @@ export function hookNodeKey(node: AgentGraphNode): string {
 }
 
 /**
+ * LOU-Q3: serialize every ENABLED hook on every node into `spec.policy`,
+ * the one open/passthrough record `AgentSpec` already has (see
+ * src/spec/schema.ts's doc comment on `AgentSpecPolicy` - `[key: string]:
+ * unknown`, deliberately extensible without a core schema migration).
+ * This is what lets the app's runtime control server (LOU-N,
+ * server/runRegistry.ts) compile a real SDK `HookRegistry` and pass it
+ * into `AgentExecutor.execute()`'s `hooks` option purely from the
+ * `AgentSpec` it already transports over the wire - no separate endpoint
+ * or second source of truth for "what hooks does this agent run with".
+ * Disabled hooks are left out entirely: a disabled hook has no runtime
+ * effect, and there's no reason to make the compiled server side account
+ * for `enabled: false` when the Inspector's toggle already filtered it.
+ */
+function serializeEnabledHooks(graph: AgentGraphSpec) {
+  return graph.nodes.flatMap((n) =>
+    (n.hooks ?? [])
+      .filter((h) => h.enabled)
+      .map((h) => ({ nodeKey: hookNodeKey(n), id: h.id, name: h.name, phase: h.phase, point: h.point, code: h.code }))
+  );
+}
+
+/** Applies the optional tools/policy/triggers sections of `spec` from the graph's tool, approval and trigger nodes. */
+function applyPipelineNodes(spec: AgentSpec, graph: AgentGraphSpec): void {
+  const toolNodes = graph.nodes.filter((n) => n.type === 'tool');
+  if (toolNodes.length > 0) {
+    spec.tools = toolNodes.map((n) => (n.type === 'tool' ? n.data.toolName : '')).filter(Boolean);
+  }
+
+  const approvalNode = graph.nodes.find((n) => n.type === 'approval');
+  if (approvalNode && approvalNode.type === 'approval') {
+    spec.policy = { ...approvalNode.data.policy };
+  }
+
+  const triggerNodes = graph.nodes.filter((n) => n.type === 'trigger');
+  if (triggerNodes.length > 0) {
+    spec.triggers = triggerNodes.map((n) =>
+      n.type === 'trigger' ? ({ ...n.data.trigger } as AgentSpecTrigger) : ({} as AgentSpecTrigger)
+    );
+  }
+}
+
+/**
  * Converts a canvas graph to the SDK's declarative `AgentSpec` (see
  * src/spec/schema.ts in the core SDK). Reads node `data` only - edges carry
  * no information `AgentSpec` can represent (see graph/types.ts for why) -
@@ -39,40 +81,9 @@ export function graphToSpec(graph: AgentGraphSpec): AgentSpec {
     provider: { ...llmNode.data.provider },
   };
 
-  const toolNodes = graph.nodes.filter((n) => n.type === 'tool');
-  if (toolNodes.length > 0) {
-    spec.tools = toolNodes.map((n) => (n.type === 'tool' ? n.data.toolName : '')).filter(Boolean);
-  }
+  applyPipelineNodes(spec, graph);
 
-  const approvalNode = graph.nodes.find((n) => n.type === 'approval');
-  if (approvalNode && approvalNode.type === 'approval') {
-    spec.policy = { ...approvalNode.data.policy };
-  }
-
-  const triggerNodes = graph.nodes.filter((n) => n.type === 'trigger');
-  if (triggerNodes.length > 0) {
-    spec.triggers = triggerNodes.map((n) =>
-      n.type === 'trigger' ? ({ ...n.data.trigger } as AgentSpecTrigger) : ({} as AgentSpecTrigger)
-    );
-  }
-
-  // LOU-Q3: serialize every ENABLED hook on every node into `spec.policy`,
-  // the one open/passthrough record `AgentSpec` already has (see
-  // src/spec/schema.ts's doc comment on `AgentSpecPolicy` - `[key: string]:
-  // unknown`, deliberately extensible without a core schema migration).
-  // This is what lets the app's runtime control server (LOU-N,
-  // server/runRegistry.ts) compile a real SDK `HookRegistry` and pass it
-  // into `AgentExecutor.execute()`'s `hooks` option purely from the
-  // `AgentSpec` it already transports over the wire - no separate endpoint
-  // or second source of truth for "what hooks does this agent run with".
-  // Disabled hooks are left out entirely: a disabled hook has no runtime
-  // effect, and there's no reason to make the compiled server side account
-  // for `enabled: false` when the Inspector's toggle already filtered it.
-  const serializedHooks = graph.nodes.flatMap((n) =>
-    (n.hooks ?? [])
-      .filter((h) => h.enabled)
-      .map((h) => ({ nodeKey: hookNodeKey(n), id: h.id, name: h.name, phase: h.phase, point: h.point, code: h.code }))
-  );
+  const serializedHooks = serializeEnabledHooks(graph);
   if (serializedHooks.length > 0) {
     spec.policy = { ...spec.policy, hooks: serializedHooks };
   }

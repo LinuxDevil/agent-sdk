@@ -6,7 +6,7 @@ import { nanoid } from 'nanoid';
  */
 export function setRecursiveNames(obj: any, path: string[] = []): void {
   // Skip if not an object
-  if (!obj || typeof obj !== 'object') {
+  if (!isTraversable(obj)) {
     return;
   }
 
@@ -15,45 +15,30 @@ export function setRecursiveNames(obj: any, path: string[] = []): void {
   }
 
   // If this node has an 'agent', extend our path
+  let childPath = path;
   if (typeof obj.agent === 'string') {
-    const newPath = [...path, obj.agent];
+    childPath = [...path, obj.agent];
     // Update the node's name to be the full path joined by " > "
-    obj.name = newPath.join(' > ');
+    obj.name = childPath.join(' > ');
+  }
 
-    // Recursively handle "input"
-    if (Array.isArray(obj.input)) {
-      for (const child of obj.input) {
-        setRecursiveNames(child, newPath);
-      }
-    } else if (obj.input && typeof obj.input === 'object') {
-      setRecursiveNames(obj.input, newPath);
-    }
+  // Go deeper through "input" and "item" whether or not this node had an 'agent'
+  visitChildren(obj.input, childPath);
+  visitChildren(obj.item, childPath);
+}
 
-    // Recursively handle "item"
-    if (Array.isArray(obj.item)) {
-      for (const child of obj.item) {
-        setRecursiveNames(child, newPath);
-      }
-    } else if (obj.item && typeof obj.item === 'object') {
-      setRecursiveNames(obj.item, newPath);
-    }
-  } else {
-    // Even if there's no 'agent', we should still go deeper if "input" or "item" exist
-    if (Array.isArray(obj.input)) {
-      for (const child of obj.input) {
-        setRecursiveNames(child, path);
-      }
-    } else if (obj.input && typeof obj.input === 'object') {
-      setRecursiveNames(obj.input, path);
-    }
+function isTraversable(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object';
+}
 
-    if (Array.isArray(obj.item)) {
-      for (const child of obj.item) {
-        setRecursiveNames(child, path);
-      }
-    } else if (obj.item && typeof obj.item === 'object') {
-      setRecursiveNames(obj.item, path);
+/** Recurse into a child slot that may hold an array of nodes or a single node. */
+function visitChildren(child: unknown, path: string[]): void {
+  if (Array.isArray(child)) {
+    for (const item of child) {
+      setRecursiveNames(item, path);
     }
+  } else if (isTraversable(child)) {
+    setRecursiveNames(child, path);
   }
 }
 
@@ -76,11 +61,15 @@ export function getObjectByPath(obj: any, path: string): any {
 
   let current = obj;
   for (const key of keys) {
-    if (typeof current !== 'object' || current === null || !current.hasOwnProperty(key)) {
+    if (!hasOwnKey(current, key)) {
       return undefined; // Return undefined if path is invalid
     }
     current = current[key];
   }
 
   return current;
+}
+
+function hasOwnKey(value: unknown, key: string): boolean {
+  return typeof value === 'object' && value !== null && Object.prototype.hasOwnProperty.call(value, key);
 }

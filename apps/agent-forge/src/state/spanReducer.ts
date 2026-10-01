@@ -1,4 +1,4 @@
-import type { SpanEvent } from '../runtime/runtimeClient';
+import type { SpanEvent } from '../../shared/wireTypes';
 
 /**
  * O2: folds a stream of `{type:'span'}` WS messages (one per

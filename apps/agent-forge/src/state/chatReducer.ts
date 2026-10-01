@@ -16,7 +16,7 @@
  * or the user started a new chat) always replaces state outright, since
  * that's a genuinely different conversation, not a stale duplicate.
  */
-import type { ChatStatePayload } from '../runtime/runtimeClient';
+import type { ChatStatePayload } from '../../shared/wireTypes';
 
 export interface ChatState {
   sessionId: string | undefined;

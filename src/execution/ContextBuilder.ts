@@ -149,22 +149,36 @@ export class ContextBuilder {
 
     // Recall and inject relevant memories
     if (memoryManager && agent.id) {
-      const memories = await memoryManager.recall({
-        agentId: agent.id,
-        limit: maxMemories,
-        minRelevance: 0.3, // Lower threshold for when no query/embedding provided
-      });
-
-      if (memories.length > 0) {
-        const memoryText = memories
-          .map((m, i) => `${i + 1}. ${m.memory.content}`)
-          .join('\n');
-
-        parts.push(`## Relevant Memories\n${memoryText}`);
-      }
+      parts.push(await this.buildMemoriesSection(memoryManager, agent.id, maxMemories));
     }
 
     return parts.filter(p => p).join('\n\n').trim();
+  }
+
+  /**
+   * Recall the agent's relevant memories as a "## Relevant Memories"
+   * prompt section, or '' when there are none
+   */
+  private static async buildMemoriesSection(
+    memoryManager: MemoryManager,
+    agentId: string,
+    maxMemories: number
+  ): Promise<string> {
+    const memories = await memoryManager.recall({
+      agentId,
+      limit: maxMemories,
+      minRelevance: 0.3, // Lower threshold for when no query/embedding provided
+    });
+
+    if (memories.length === 0) {
+      return '';
+    }
+
+    const memoryText = memories
+      .map((m, i) => `${i + 1}. ${m.memory.content}`)
+      .join('\n');
+
+    return `## Relevant Memories\n${memoryText}`;
   }
 
   /**
@@ -255,64 +269,59 @@ export class ContextBuilder {
       return contexts[0];
     }
 
-    const merged: ExecutionContext = {
-      messages: [],
-      variables: {},
-      systemPrompt: '',
-      metadata: {
-        agentId: contexts[0].metadata.agentId,
-        agentName: contexts[0].metadata.agentName,
-        agentType: contexts[0].metadata.agentType,
-        hasMemories: false,
-        memoryCount: 0,
-        historyCount: 0,
-      },
-    };
+    // Merge variables (later contexts override earlier ones)
+    let variables: Record<string, any> = {};
+    for (const context of contexts) {
+      variables = { ...variables, ...context.variables };
+    }
 
-    // Merge messages (deduplicate system messages)
+    return {
+      messages: this.mergeMessages(contexts),
+      variables,
+      // Merge system prompts
+      systemPrompt: contexts
+        .map((c) => c.systemPrompt)
+        .filter((p) => p)
+        .join('\n\n---\n\n'),
+      metadata: this.mergeMetadata(contexts),
+    };
+  }
+
+  /**
+   * Merge messages (deduplicate system messages)
+   */
+  private static mergeMessages(contexts: ExecutionContext[]): Message[] {
     const systemMessages: Message[] = [];
     const otherMessages: Message[] = [];
 
     for (const context of contexts) {
       for (const message of context.messages) {
-        if (message.role === 'system') {
-          // Only add unique system messages
-          if (
-            !systemMessages.some((m) => m.content === message.content)
-          ) {
-            systemMessages.push(message);
-          }
-        } else {
+        if (message.role !== 'system') {
           otherMessages.push(message);
+        } else if (!systemMessages.some((m) => m.content === message.content)) {
+          // Only add unique system messages
+          systemMessages.push(message);
         }
       }
     }
 
-    merged.messages = [...systemMessages, ...otherMessages];
+    return [...systemMessages, ...otherMessages];
+  }
 
-    // Merge variables (later contexts override earlier ones)
-    for (const context of contexts) {
-      merged.variables = { ...merged.variables, ...context.variables };
-    }
-
-    // Merge system prompts
-    merged.systemPrompt = contexts
-      .map((c) => c.systemPrompt)
-      .filter((p) => p)
-      .join('\n\n---\n\n');
-
-    // Merge metadata
-    merged.metadata.hasMemories = contexts.some((c) => c.metadata.hasMemories);
-    merged.metadata.memoryCount = contexts.reduce(
-      (sum, c) => sum + c.metadata.memoryCount,
-      0
-    );
-    merged.metadata.historyCount = contexts.reduce(
-      (sum, c) => sum + c.metadata.historyCount,
-      0
-    );
-
-    return merged;
+  /**
+   * Merge metadata: identity from the first context, memory/history
+   * stats aggregated across all of them
+   */
+  private static mergeMetadata(contexts: ExecutionContext[]): ExecutionContext['metadata'] {
+    const { agentId, agentName, agentType } = contexts[0].metadata;
+    return {
+      agentId,
+      agentName,
+      agentType,
+      hasMemories: contexts.some((c) => c.metadata.hasMemories),
+      memoryCount: contexts.reduce((sum, c) => sum + c.metadata.memoryCount, 0),
+      historyCount: contexts.reduce((sum, c) => sum + c.metadata.historyCount, 0),
+    };
   }
 
   /**

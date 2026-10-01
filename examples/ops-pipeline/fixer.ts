@@ -37,7 +37,7 @@ export interface FixRequest {
   files: string[];
 }
 
-export const FIXER_SYSTEM_PROMPT =
+const FIXER_SYSTEM_PROMPT =
   'You are a fixer agent. Given error logs and the repository files involved, diagnose the root ' +
   'cause and produce a MINIMAL unified diff that fixes it. Always respond with the diff in a ' +
   "fenced ```diff code block. Never invent files you were not shown.";
@@ -56,7 +56,7 @@ export function buildFixerAgent(name = 'fixer'): AgentConfig {
 /**
  * Builds the user-message input for a FixRequest.
  */
-export function buildFixerInput(request: FixRequest): string {
+function buildFixerInput(request: FixRequest): string {
   return [
     `Error signature: ${request.errorSignature}`,
     '',

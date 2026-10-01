@@ -28,6 +28,34 @@ const ENDFOR_RE = /^\{%\s*endfor\s*%\}/;
 const EXPRESSION_RE = /^\{\{\s*(.*?)\s*\}\}/;
 
 /**
+ * Ordered tag rules. The first rule whose pattern matches at a tag boundary wins.
+ */
+const TAG_RULES: { re: RegExp; build: (m: RegExpExecArray) => Token }[] = [
+  { re: IF_OPEN_RE, build: (m) => ({ type: 'open-if', expr: m[1] }) },
+  { re: FOR_OPEN_RE, build: (m) => ({ type: 'open-for', varName: m[1], iterable: m[2] }) },
+  { re: ENDIF_RE, build: () => ({ type: 'close-if' }) },
+  { re: ENDFOR_RE, build: () => ({ type: 'close-for' }) },
+  { re: ELSE_RE, build: () => ({ type: 'else' }) },
+  { re: EXPRESSION_RE, build: (m) => ({ type: 'expression', expr: m[1] }) },
+];
+
+/** Only attempt tag matching at a {% or {{ boundary. */
+function isTagBoundary(source: string, pos: number): boolean {
+  return source[pos] === '{' && (source[pos + 1] === '%' || source[pos + 1] === '{');
+}
+
+/** Match a tag at the start of the source; returns the token and how many characters it consumed. */
+function matchTag(remainder: string): { token: Token; length: number } | null {
+  for (const rule of TAG_RULES) {
+    const match = rule.re.exec(remainder);
+    if (match) {
+      return { token: rule.build(match), length: match[0].length };
+    }
+  }
+  return null;
+}
+
+/**
  * Tokenize a template source string into a flat token stream.
  */
 export function tokenize(source: string): Token[] {
@@ -42,66 +70,15 @@ export function tokenize(source: string): Token[] {
   };
 
   while (pos < source.length) {
-    // Only attempt tag matching at a `{%` or `{{` boundary.
-    if (source[pos] === '{' && (source[pos + 1] === '%' || source[pos + 1] === '{')) {
-      const remainder = source.slice(pos);
-
-      const ifMatch = IF_OPEN_RE.exec(remainder);
-      if (ifMatch) {
-        flushText(pos);
-        tokens.push({ type: 'open-if', expr: ifMatch[1] });
-        pos += ifMatch[0].length;
-        textStart = pos;
-        continue;
-      }
-
-      const forMatch = FOR_OPEN_RE.exec(remainder);
-      if (forMatch) {
-        flushText(pos);
-        tokens.push({ type: 'open-for', varName: forMatch[1], iterable: forMatch[2] });
-        pos += forMatch[0].length;
-        textStart = pos;
-        continue;
-      }
-
-      const endifMatch = ENDIF_RE.exec(remainder);
-      if (endifMatch) {
-        flushText(pos);
-        tokens.push({ type: 'close-if' });
-        pos += endifMatch[0].length;
-        textStart = pos;
-        continue;
-      }
-
-      const endforMatch = ENDFOR_RE.exec(remainder);
-      if (endforMatch) {
-        flushText(pos);
-        tokens.push({ type: 'close-for' });
-        pos += endforMatch[0].length;
-        textStart = pos;
-        continue;
-      }
-
-      const elseMatch = ELSE_RE.exec(remainder);
-      if (elseMatch) {
-        flushText(pos);
-        tokens.push({ type: 'else' });
-        pos += elseMatch[0].length;
-        textStart = pos;
-        continue;
-      }
-
-      const exprMatch = EXPRESSION_RE.exec(remainder);
-      if (exprMatch) {
-        flushText(pos);
-        tokens.push({ type: 'expression', expr: exprMatch[1] });
-        pos += exprMatch[0].length;
-        textStart = pos;
-        continue;
-      }
+    const tag = isTagBoundary(source, pos) ? matchTag(source.slice(pos)) : null;
+    if (tag) {
+      flushText(pos);
+      tokens.push(tag.token);
+      pos += tag.length;
+      textStart = pos;
+    } else {
+      pos++;
     }
-
-    pos++;
   }
 
   flushText(source.length);

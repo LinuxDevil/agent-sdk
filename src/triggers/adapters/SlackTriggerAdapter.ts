@@ -80,13 +80,18 @@ export class SlackTriggerAdapter implements TriggerAdapter<string> {
     return result;
   }
 
-  public async reply(channel: string, message: string): Promise<void> {
+  private resolveWebhookUrl(): string {
     const webhookUrl = this.options.webhookUrl ?? process.env[SLACK_WEBHOOK_URL_ENV_KEY];
     if (!webhookUrl) {
       throw new Error(
         `SlackTriggerAdapter: no webhook URL configured. Set ${SLACK_WEBHOOK_URL_ENV_KEY} or pass options.webhookUrl.`
       );
     }
+    return webhookUrl;
+  }
+
+  public async reply(channel: string, message: string): Promise<void> {
+    const webhookUrl = this.resolveWebhookUrl();
 
     const doFetch = this.options.fetchImpl ?? fetch;
     const response = await doFetch(webhookUrl, {

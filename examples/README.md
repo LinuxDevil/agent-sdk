@@ -9,6 +9,10 @@ to try.
 
 A question-answering agent scoped to a single fixed document (LOU-H10).
 
+## [openrouter](./openrouter)
+
+Runnable snippets showing `OpenRouterProvider` usage: generation, streaming, tool calling, model listing and more (LOU-B6). Needs `OPENROUTER_API_KEY`.
+
 ## [ops-pipeline](./ops-pipeline)
 
 A flagship end-to-end pipeline: a Grafana/Datadog monitor delegates a fix (behind a real
@@ -34,7 +38,3 @@ Runnable examples of `AgentExecutor.execute()` wired to console and OpenTelemetr
 ## [workflow-router](./workflow-router)
 
 An agent that classifies an incoming request into a fixed set of categories (LOU-H10).
-
----
-
-Not a directory, but also worth knowing about: [OpenRouterProvider.examples.ts](./OpenRouterProvider.examples.ts) - runnable snippets showing `OpenRouterProvider` usage (LOU-B6).

@@ -7,143 +7,29 @@
  * details.
  */
 import type { AgentSpec } from '@loushy/build-ai-agent';
-
-export type RunStatus = 'idle' | 'running' | 'stopped' | 'error' | 'paused';
-
-export interface PendingApprovalInfo {
-  approvalId: string;
-  toolName: string;
-  args: Record<string, unknown>;
-  createdAt: string;
-}
-
-export interface AgentRunStatusPayload {
-  agentId: string;
-  status: RunStatus;
-  sessionId?: string;
-  reason?: 'awaiting_approval';
-  pendingApproval?: PendingApprovalInfo;
-  error?: string;
-  resultText?: string;
-  /** O4: full ExecutionResult (messages/toolCalls/usage/steps/finishReason) once a run completes or pauses. */
-  result?: unknown;
-  updatedAt: string;
-}
-
-export type LogLevel = 'info' | 'warn' | 'error' | 'tool';
-export type LogPhase = 'trigger' | 'llm' | 'tool' | 'sandbox' | 'checkpoint' | 'approval' | 'debug';
-
-export interface LogEntry {
-  id: string;
-  agentId: string;
-  timestamp: string;
-  level: LogLevel;
-  phase: LogPhase;
-  toolName?: string;
-  message: string;
-  detail?: unknown;
-}
-
-export interface SpanEvent {
-  id: string;
-  name: string;
-  parentId?: string;
-  startTime: number;
-  endTime?: number;
-  attributes: Record<string, unknown>;
-}
-
-export interface DebugStatePayload {
-  agentId: string;
-  paused: boolean;
-  atBreakpoint?: { phase: string; boundary: 'before' | 'after' };
-  messages: unknown[];
-  stepCount: number;
-  breakpoints: string[];
-}
-
-/**
- * P1/P2: one message in the chat thread - mirrors the server's `ChatMessage`
- * (server/types.ts), itself a 1:1 mapping of the SDK's real `Message`
- * (src/providers/llm.ts) plus `id`/`timestamp` for React keys and the
- * mockup's per-bubble timestamp. `role: 'system'` messages are part of the
- * real conversation but are filtered out of the rendered bubble list by
- * ChatPanel, matching the mockup (user/agent bubbles only).
- */
-export interface ChatMessage {
-  id: string;
-  role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string;
-  name?: string;
-  toolCallId?: string;
-  toolName?: string;
-  toolCalls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
-  timestamp: string;
-}
-
-export interface ChatStatePayload {
-  agentId: string;
-  sessionId: string;
-  messages: ChatMessage[];
-}
-
-export interface ChatSessionMeta {
-  sessionId: string;
-  startedAt: string;
-  updatedAt: string;
-  messageCount: number;
-  preview: string;
-}
-
-export interface ChatSessionRecord extends ChatSessionMeta {
-  messages: ChatMessage[];
-}
-
-/** R1: masked provider key status - see server/secretsStore.ts's `ProviderKeyStatus`. Never carries a real key. */
-export interface ProviderKeyStatus {
-  provider: 'openai' | 'anthropic';
-  hasKey: boolean;
-  masked: string | null;
-}
-
-/** R3: a settings profile - see server/settingsStore.ts's `SettingsProfile`. */
-export interface SettingsProfile {
-  id: string;
-  name: string;
-  providerType: string;
-  providerKeyRef?: string;
-  deployAdapter: string;
-  otelEnabled: boolean;
-  hookTimeoutMs: number;
-  sandboxBackend: 'noop';
-}
-
-export interface SettingsFile {
-  activeProfileId: string;
-  profiles: SettingsProfile[];
-}
-
-/** R2: `POST /agents/:id/deploy`'s result - the shelled-out `loushy build` child process's outcome. */
-export interface DeployResult {
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-  command: string;
-}
-
-export type StreamMessage =
-  | { type: 'status'; payload: AgentRunStatusPayload }
-  | { type: 'event'; payload: Record<string, unknown> }
-  | { type: 'log'; payload: LogEntry }
-  | { type: 'span'; payload: SpanEvent }
-  | { type: 'debug'; payload: DebugStatePayload }
-  | { type: 'chat'; payload: ChatStatePayload };
+import type {
+  AgentRunStatusPayload,
+  ChatSessionMeta,
+  ChatSessionRecord,
+  ChatStatePayload,
+  DebugStatePayload,
+  DeployResult,
+  ProviderKeyStatus,
+  SettingsFile,
+  SettingsProfile,
+  StreamMessage,
+} from '../../shared/wireTypes';
 
 /** Same-origin default: `loushy studio` prints the API server's own URL, but in dev the Vite server proxies to it (see vite.config.ts). */
 const DEFAULT_BASE_URL = '';
 
-export interface RuntimeClientOptions {
+interface RuntimeClientOptions {
   baseUrl?: string;
+}
+
+/** Builds the error for a non-ok response: the server's `{ error }` message when present, else `fallback`. */
+function apiError(body: { error?: string } | undefined, fallback: string, status: number): RuntimeApiError {
+  return new RuntimeApiError(body?.error || fallback, status);
 }
 
 export class RuntimeApiError extends Error {
@@ -155,7 +41,7 @@ export class RuntimeApiError extends Error {
   }
 }
 
-export class RuntimeClient {
+class RuntimeClient {
   private readonly baseUrl: string;
 
   constructor(options: RuntimeClientOptions = {}) {
@@ -177,7 +63,7 @@ export class RuntimeClient {
     });
     const body = res.status === 204 ? undefined : await res.json().catch(() => undefined);
     if (!res.ok) {
-      throw new RuntimeApiError((body && body.error) || `Request to ${path} failed with ${res.status}`, res.status);
+      throw apiError(body, `Request to ${path} failed with ${res.status}`, res.status);
     }
     return body as AgentRunStatusPayload;
   }
@@ -265,7 +151,7 @@ export class RuntimeClient {
     const res = await fetch(`${this.baseUrl}/agents/${encodeURIComponent(agentId)}/chats/${encodeURIComponent(sessionId)}`);
     if (!res.ok) {
       const body = await res.json().catch(() => undefined);
-      throw new RuntimeApiError((body && body.error) || `Failed to load chat session '${sessionId}'`, res.status);
+      throw apiError(body, `Failed to load chat session '${sessionId}'`, res.status);
     }
     return (await res.json()) as ChatSessionRecord;
   }
@@ -284,7 +170,7 @@ export class RuntimeClient {
       body: JSON.stringify({ apiKey }),
     });
     const body = await res.json().catch(() => undefined);
-    if (!res.ok) throw new RuntimeApiError((body && body.error) || `Failed to set key for '${provider}'`, res.status);
+    if (!res.ok) throw apiError(body, `Failed to set key for '${provider}'`, res.status);
     return body as ProviderKeyStatus;
   }
 
@@ -307,7 +193,7 @@ export class RuntimeClient {
       body: JSON.stringify(profile),
     });
     const body = await res.json().catch(() => undefined);
-    if (!res.ok) throw new RuntimeApiError((body && body.error) || 'Failed to save settings profile', res.status);
+    if (!res.ok) throw apiError(body, 'Failed to save settings profile', res.status);
     return body as SettingsFile;
   }
 
@@ -315,7 +201,7 @@ export class RuntimeClient {
   async deleteSettingsProfile(profileId: string): Promise<SettingsFile> {
     const res = await fetch(`${this.baseUrl}/settings/profiles/${encodeURIComponent(profileId)}`, { method: 'DELETE' });
     const body = await res.json().catch(() => undefined);
-    if (!res.ok) throw new RuntimeApiError((body && body.error) || 'Failed to delete settings profile', res.status);
+    if (!res.ok) throw apiError(body, 'Failed to delete settings profile', res.status);
     return body as SettingsFile;
   }
 
@@ -323,7 +209,7 @@ export class RuntimeClient {
   async activateSettingsProfile(profileId: string): Promise<SettingsFile> {
     const res = await fetch(`${this.baseUrl}/settings/profiles/${encodeURIComponent(profileId)}/activate`, { method: 'POST' });
     const body = await res.json().catch(() => undefined);
-    if (!res.ok) throw new RuntimeApiError((body && body.error) || 'Failed to activate settings profile', res.status);
+    if (!res.ok) throw apiError(body, 'Failed to activate settings profile', res.status);
     return body as SettingsFile;
   }
 

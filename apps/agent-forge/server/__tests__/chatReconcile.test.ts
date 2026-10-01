@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Message } from '@loushy/build-ai-agent';
 import { reconcileChatMessages } from '../chatReconcile';
-import type { ChatMessage } from '../types';
+import type { ChatMessage } from '../../shared/wireTypes';
 
 const T1 = '2026-01-01T00:00:00.000Z';
 const T2 = '2026-01-01T00:00:05.000Z';

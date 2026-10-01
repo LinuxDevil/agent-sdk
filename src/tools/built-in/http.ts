@@ -191,6 +191,76 @@ function createSandboxTransport(sandbox: SandboxAdapter, validateSSL: boolean, t
     );
 }
 
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+
+const DEFAULT_TIMEOUT_MS = 30000;
+const DEFAULT_MAX_REDIRECTS = 5;
+
+/** Reject `hostname` if it is on the SSRF denylist. */
+async function assertHostAllowed(hostname: string): Promise<void> {
+  if (await isBlockedHost(hostname)) {
+    throw new Error(`Request to blocked host ${hostname} rejected by SSRF denylist`);
+  }
+}
+
+/** The redirect target of a 3xx response, or null/'' when it is not a redirect. */
+function redirectLocation(response: Response): string | null {
+  return response.status >= 300 && response.status < 400 ? response.headers.get('location') : null;
+}
+
+/**
+ * Issue the request and follow up to `maxRedirects` redirects by hand
+ * (`redirect: 'manual'`), SSRF-checking every redirect target first.
+ */
+async function fetchFollowingRedirects(
+  transport: HttpTransport,
+  url: string,
+  init: Parameters<HttpTransport>[1],
+  maxRedirects: number
+): Promise<Response> {
+  let currentUrl = url;
+  let redirectCount = 0;
+  let response = await transport(currentUrl, init);
+  let location = redirectLocation(response);
+
+  while (location) {
+    redirectCount++;
+    if (redirectCount > maxRedirects) {
+      throw new Error(`Exceeded maxRedirects (${maxRedirects})`);
+    }
+    currentUrl = new URL(location, currentUrl).toString();
+    await assertHostAllowed(new URL(currentUrl).hostname);
+    response = await transport(currentUrl, init);
+    location = redirectLocation(response);
+  }
+  return response;
+}
+
+/** Throw on a non-2xx response; otherwise return the body (JSON re-serialized). */
+async function readResponseBody(response: Response): Promise<string> {
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  const contentType = response.headers.get('content-type');
+  if (contentType?.includes('application/json')) {
+    const data = await response.json();
+    return JSON.stringify(data);
+  }
+  return await response.text();
+}
+
+/** Map whatever a request threw to the error performHttpRequest() reports. */
+function toHttpRequestError(error: unknown, timeoutMs: number): Error {
+  if (error instanceof Error && error.name === 'AbortError') {
+    return new Error(`Request timed out after ${timeoutMs}ms`);
+  }
+  if (error instanceof Error) {
+    return new Error(`HTTP request failed: ${error.message}`);
+  }
+  return new Error('HTTP request failed with unknown error');
+}
+
 /**
  * Core request/redirect/SSRF logic, parameterized by `transport` so it can
  * be shared between the direct (unsandboxed) and sandboxed code paths
@@ -205,7 +275,7 @@ async function performHttpRequest(
     options = {},
   }: {
     url: string;
-    method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+    method: HttpMethod;
     headers?: Record<string, string>;
     body?: string;
     options?: HttpToolOptions;
@@ -213,13 +283,11 @@ async function performHttpRequest(
   transport: HttpTransport,
   getCleanup: () => (() => void | Promise<void>) | void
 ): Promise<string> {
-  const parsedUrl = new URL(url);
-  if (await isBlockedHost(parsedUrl.hostname)) {
-    throw new Error(`Request to blocked host ${parsedUrl.hostname} rejected by SSRF denylist`);
-  }
+  await assertHostAllowed(new URL(url).hostname);
 
+  const timeoutMs = options.timeout ?? DEFAULT_TIMEOUT_MS;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), options.timeout ?? 30000);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   const cleanup = getCleanup();
 
   try {
@@ -234,45 +302,18 @@ async function performHttpRequest(
       redirect: 'manual' as const,
     };
 
-    let currentUrl = url;
-    let redirectCount = 0;
-    let response = await transport(currentUrl, fetchOptions);
-
-    while (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
-      redirectCount++;
-      if (redirectCount > (options.maxRedirects ?? 5)) {
-        throw new Error(`Exceeded maxRedirects (${options.maxRedirects ?? 5})`);
-      }
-      currentUrl = new URL(response.headers.get('location')!, currentUrl).toString();
-      const redirectHostname = new URL(currentUrl).hostname;
-      if (await isBlockedHost(redirectHostname)) {
-        throw new Error(`Request to blocked host ${redirectHostname} rejected by SSRF denylist`);
-      }
-      response = await transport(currentUrl, fetchOptions);
-    }
+    const response = await fetchFollowingRedirects(
+      transport,
+      url,
+      fetchOptions,
+      options.maxRedirects ?? DEFAULT_MAX_REDIRECTS
+    );
 
     clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    const contentType = response.headers.get('content-type');
-    if (contentType?.includes('application/json')) {
-      const data = await response.json();
-      return JSON.stringify(data);
-    } else {
-      return await response.text();
-    }
+    return await readResponseBody(response);
   } catch (error) {
     clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error(`Request timed out after ${options.timeout ?? 30000}ms`);
-    }
-    if (error instanceof Error) {
-      throw new Error(`HTTP request failed: ${error.message}`);
-    }
-    throw new Error('HTTP request failed with unknown error');
+    throw toHttpRequestError(error, timeoutMs);
   } finally {
     clearTimeout(timeoutId);
     await cleanup?.();

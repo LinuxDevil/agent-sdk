@@ -40,7 +40,8 @@ import {
 import { ChatTriggerAdapter } from './chatTriggerAdapter';
 import { isValidAgentId } from './types';
 import { SecretsStore, isSecretProvider } from './secretsStore';
-import { SettingsStore, type SettingsProfile } from './settingsStore';
+import { SettingsStore } from './settingsStore';
+import type { SettingsProfile } from '../shared/wireTypes';
 import { DEPLOY_ADAPTERS, isDeployAdapter, runDeploy } from './deployRunner';
 
 export interface CreateAppOptions {
@@ -72,6 +73,19 @@ function asyncRoute(fn: (req: Request, res: Response) => Promise<void>) {
   };
 }
 
+type ErrorClass = new (...args: never[]) => Error;
+
+/**
+ * Replies with the HTTP status mapped to `error`'s class (first match wins)
+ * and `{ error: message }`; an error matching none of `mappings` is rethrown
+ * so asyncRoute() hands it to the 500 handler.
+ */
+function respondWithMappedError(res: Response, error: unknown, mappings: [ErrorClass, number][]): void {
+  const match = mappings.find(([errorClass]) => error instanceof errorClass);
+  if (!match) throw error;
+  res.status(match[1]).json({ error: (error as Error).message });
+}
+
 /**
  * Express 5's `req.params[name]` is typed `string | string[]` (a route
  * param can repeat, e.g. `/:id+`). None of this file's routes use repeating
@@ -83,45 +97,8 @@ function paramId(req: Request): string {
   return Array.isArray(id) ? id[0] : id;
 }
 
-export function createApp({
-  agentStore,
-  runManager,
-  baseDir,
-  secretsStore,
-  settingsStore,
-  staticDir,
-}: CreateAppOptions): Express {
-  const app = express();
-  app.use(cors());
-  app.use(express.json({ limit: '2mb' }));
-
-  const secrets = secretsStore ?? new SecretsStore(baseDir);
-  const settings = settingsStore ?? new SettingsStore(baseDir);
-
-  // LOU-T5: `POST /agents/:id/message` below is routed through a
-  // TriggerRegistry-registered ChatTriggerAdapter rather than calling
-  // `runManager.sendMessage()` directly - see chatTriggerAdapter.ts for why
-  // this is a behavior-preserving wrapper, not a rewrite.
-  const triggerRegistry = new TriggerRegistry();
-  triggerRegistry.register('chat', new ChatTriggerAdapter(runManager));
-
-  app.get('/health', (_req, res) => res.status(200).send('ok'));
-
-  // Every `/agents/:id/**` route below eventually turns `:id` into a
-  // filesystem path segment (agent spec YAML, checkpoint/approval files -
-  // see fsAgentStore.ts/checkpointStore.ts/approvalStore.ts). Reject
-  // anything that isn't a safe single-segment token here, once, rather than
-  // trusting each store to sanitize it - closes off path traversal via a
-  // percent-encoded `..%2F..%2F...` id, which Express happily hands to
-  // `req.params.id` as a decoded string containing `/`/`..`.
-  app.use('/agents/:id', (req, res, next) => {
-    if (!isValidAgentId(paramId(req))) {
-      res.status(400).json({ error: 'Invalid agent id' });
-      return;
-    }
-    next();
-  });
-
+/** Saved-agent CRUD: list, load, save. */
+function registerAgentRoutes(app: Express, agentStore: AgentStore): void {
   app.get(
     '/agents',
     asyncRoute(async (_req, res) => {
@@ -153,7 +130,10 @@ export function createApp({
       res.status(204).end();
     })
   );
+}
 
+/** Run lifecycle: start, stop, status, and resolving a pending tool approval. */
+function registerRunRoutes(app: Express, runManager: RunManager): void {
   app.post(
     '/agents/:id/run',
     asyncRoute(async (req, res) => {
@@ -166,15 +146,10 @@ export function createApp({
         await runManager.run(paramId(req), input, spec);
         res.status(202).json(runManager.status(paramId(req)));
       } catch (error) {
-        if (error instanceof AlreadyRunningError) {
-          res.status(409).json({ error: error.message });
-          return;
-        }
-        if (error instanceof AgentNotFoundError) {
-          res.status(404).json({ error: error.message });
-          return;
-        }
-        throw error;
+        respondWithMappedError(res, error, [
+          [AlreadyRunningError, 409],
+          [AgentNotFoundError, 404],
+        ]);
       }
     })
   );
@@ -206,15 +181,17 @@ export function createApp({
         await runManager.approve(paramId(req), approvalId, approved, note);
         res.status(202).json(runManager.status(paramId(req)));
       } catch (error) {
-        if (error instanceof NoActiveRunError || error instanceof AgentNotFoundError) {
-          res.status(409).json({ error: error.message });
-          return;
-        }
-        throw error;
+        respondWithMappedError(res, error, [
+          [NoActiveRunError, 409],
+          [AgentNotFoundError, 409],
+        ]);
       }
     })
   );
+}
 
+/** P1/P3 chat transport and multi-session history. */
+function registerChatRoutes(app: Express, runManager: RunManager, triggerRegistry: TriggerRegistry): void {
   // P1: chat transport. `POST /agents/:id/message` appends a user message
   // and either continues the agent's existing conversation or starts a
   // fresh one (see RunManager.sendMessage()'s doc comment for the exact
@@ -234,15 +211,11 @@ export function createApp({
         await chatTrigger.trigger(paramId(req), message, spec);
         res.status(202).json(runManager.status(paramId(req)));
       } catch (error) {
-        if (error instanceof AlreadyRunningError || error instanceof ApprovalPendingError) {
-          res.status(409).json({ error: error.message });
-          return;
-        }
-        if (error instanceof AgentNotFoundError) {
-          res.status(404).json({ error: error.message });
-          return;
-        }
-        throw error;
+        respondWithMappedError(res, error, [
+          [AlreadyRunningError, 409],
+          [ApprovalPendingError, 409],
+          [AgentNotFoundError, 404],
+        ]);
       }
     })
   );
@@ -277,7 +250,10 @@ export function createApp({
     }
     res.json(record);
   });
+}
 
+/** O3 step-debugger controls. */
+function registerDebugRoutes(app: Express, runManager: RunManager): void {
   // O3: step-through debugger controls (Topbar's "Debug" button). See
   // debugController.ts for exactly what "breakpoint"/"paused" mean given
   // AgentExecutor's real control surface.
@@ -307,7 +283,9 @@ export function createApp({
     runManager.stepRun(paramId(req));
     res.json(runManager.debugState(paramId(req)));
   });
+}
 
+function registerProviderKeyRoutes(app: Express, secrets: SecretsStore): void {
   // ---------------------------------------------------------------------
   // LOU-R1: provider key management. GET only ever returns masked status
   // (never a real key - see secretsStore.ts's `list()`/`ProviderKeyStatus`).
@@ -349,7 +327,9 @@ export function createApp({
     secrets.removeKey(provider);
     res.status(204).end();
   });
+}
 
+function registerProfileRoutes(app: Express, settings: SettingsStore): void {
   // ---------------------------------------------------------------------
   // LOU-R3: per-environment settings profiles.
   // ---------------------------------------------------------------------
@@ -402,7 +382,9 @@ export function createApp({
       res.status(400).json({ error: (error as Error).message });
     }
   });
+}
 
+function registerDeployRoutes(app: Express, agentStore: AgentStore, baseDir: string): void {
   // ---------------------------------------------------------------------
   // LOU-R2: deploy target picker + "Deploy this agent" action.
   // ---------------------------------------------------------------------
@@ -427,7 +409,9 @@ export function createApp({
       res.status(result.exitCode === 0 ? 200 : 422).json(result);
     })
   );
+}
 
+function registerStaticClient(app: Express, staticDir: string | undefined): void {
   // S1: serve the pre-built client (production mode only - see `staticDir`'s
   // doc comment above). Registered after every API route above so a real
   // `/agents/**`/`/health` request is always handled by its own route first;
@@ -444,6 +428,55 @@ export function createApp({
       res.sendFile(indexHtml);
     });
   }
+}
+
+export function createApp({
+  agentStore,
+  runManager,
+  baseDir,
+  secretsStore,
+  settingsStore,
+  staticDir,
+}: CreateAppOptions): Express {
+  const app = express();
+  app.use(cors());
+  app.use(express.json({ limit: '2mb' }));
+
+  const secrets = secretsStore ?? new SecretsStore(baseDir);
+  const settings = settingsStore ?? new SettingsStore(baseDir);
+
+  // LOU-T5: `POST /agents/:id/message` below is routed through a
+  // TriggerRegistry-registered ChatTriggerAdapter rather than calling
+  // `runManager.sendMessage()` directly - see chatTriggerAdapter.ts for why
+  // this is a behavior-preserving wrapper, not a rewrite.
+  const triggerRegistry = new TriggerRegistry();
+  triggerRegistry.register('chat', new ChatTriggerAdapter(runManager));
+
+  app.get('/health', (_req, res) => res.status(200).send('ok'));
+
+  // Every `/agents/:id/**` route below eventually turns `:id` into a
+  // filesystem path segment (agent spec YAML, checkpoint/approval files -
+  // see fsAgentStore.ts/checkpointStore.ts/approvalStore.ts). Reject
+  // anything that isn't a safe single-segment token here, once, rather than
+  // trusting each store to sanitize it - closes off path traversal via a
+  // percent-encoded `..%2F..%2F...` id, which Express happily hands to
+  // `req.params.id` as a decoded string containing `/`/`..`.
+  app.use('/agents/:id', (req, res, next) => {
+    if (!isValidAgentId(paramId(req))) {
+      res.status(400).json({ error: 'Invalid agent id' });
+      return;
+    }
+    next();
+  });
+
+  registerAgentRoutes(app, agentStore);
+  registerRunRoutes(app, runManager);
+  registerChatRoutes(app, runManager, triggerRegistry);
+  registerDebugRoutes(app, runManager);
+  registerProviderKeyRoutes(app, secrets);
+  registerProfileRoutes(app, settings);
+  registerDeployRoutes(app, agentStore, baseDir);
+  registerStaticClient(app, staticDir);
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {

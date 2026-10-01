@@ -194,3 +194,135 @@ describe('GitHubTools sandbox seam (LOU-K2)', () => {
     ).rejects.toThrow(/requiresSandbox but does not implement sandboxExecute/);
   });
 });
+
+describe('GitHubTools github_update_pull_request execute()', () => {
+  let fetchSpy: ReturnType<typeof vi.fn>;
+  const run = (args: Record<string, unknown>) =>
+    createGitHubTools({ token: 'test-token', owner: 'test-owner', repo: 'test-repo' })
+      .get('github_update_pull_request')!
+      .tool.execute!(args as any, {} as any);
+
+  beforeEach(() => {
+    fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('PATCHes title, body and state and returns number/state/url', async () => {
+    fetchSpy.mockResolvedValue({
+      ok: true,
+      json: async () => ({ number: 12, state: 'closed', html_url: 'https://github.com/test-owner/test-repo/pull/12', other: 1 }),
+    });
+
+    const result = await run({ prNumber: 12, title: 'T', body: 'B', state: 'closed' });
+
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe('https://api.github.com/repos/test-owner/test-repo/pulls/12');
+    expect(init.method).toBe('PATCH');
+    expect(init.headers.Authorization).toBe('Bearer test-token');
+    expect(JSON.parse(init.body)).toEqual({ title: 'T', body: 'B', state: 'closed' });
+    expect(JSON.parse(result as string)).toEqual({
+      number: 12,
+      state: 'closed',
+      url: 'https://github.com/test-owner/test-repo/pull/12',
+    });
+  });
+
+  it.each([
+    ['title', { title: 'Only' }],
+    ['body', { body: 'Only' }],
+    ['state', { state: 'open' }],
+  ])('sends only %s when it is the sole field', async (_name, args) => {
+    fetchSpy.mockResolvedValue({ ok: true, json: async () => ({ number: 1, state: 'open', html_url: 'u' }) });
+
+    await run({ prNumber: 1, ...args });
+
+    expect(JSON.parse(fetchSpy.mock.calls[0][1].body)).toEqual(args);
+  });
+
+  it('throws before any request when no fields are provided', async () => {
+    await expect(run({ prNumber: 1 })).rejects.toThrow('At least one field must be provided to update');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('throws a descriptive error on a non-OK response', async () => {
+    fetchSpy.mockResolvedValue({ ok: false, statusText: 'Unprocessable Entity', text: async () => 'bad state' });
+
+    await expect(run({ prNumber: 1, title: 'x' })).rejects.toThrow(
+      'Failed to update PR: Unprocessable Entity - bad state'
+    );
+  });
+});
+
+describe('GitHubTools github_update_issue real implementation', () => {
+  // github_update_issue is in OUT_OF_SCOPE_TOOLS, so the registry replaces its
+  // execute() with a thrower and the real implementation is unreachable through
+  // the public API. To still test that implementation, temporarily remove the
+  // name from the (private static) scope set while constructing the registry,
+  // then restore it so no other test is affected.
+  let fetchSpy: ReturnType<typeof vi.fn>;
+  let issueTool: { execute?: (args: any, ctx: any) => unknown };
+
+  beforeEach(() => {
+    const scopeSet = (GitHubTools as any).OUT_OF_SCOPE_TOOLS as Set<string>;
+    scopeSet.delete('github_update_issue');
+    try {
+      issueTool = createGitHubTools({ token: 'test-token', owner: 'test-owner', repo: 'test-repo' }).get(
+        'github_update_issue'
+      )!.tool as any;
+    } finally {
+      scopeSet.add('github_update_issue');
+    }
+    fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const run = (args: Record<string, unknown>) => issueTool.execute!(args, {} as any);
+
+  it('keeps the public registry gated (scope set restored)', async () => {
+    const gated = createGitHubTools({ token: 't', owner: 'o', repo: 'r' }).get('github_update_issue')!;
+    await expect(gated.tool.execute!({ issueNumber: 1, title: 'x' } as any, {} as any)).rejects.toThrow(/out of scope/i);
+  });
+
+  it('PATCHes title, body, state and labels and returns success', async () => {
+    fetchSpy.mockResolvedValue({ ok: true });
+
+    const result = await run({ issueNumber: 3, title: 'T', body: 'B', state: 'closed', labels: ['bug'] });
+
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe('https://api.github.com/repos/test-owner/test-repo/issues/3');
+    expect(init.method).toBe('PATCH');
+    expect(init.headers.Authorization).toBe('Bearer test-token');
+    expect(JSON.parse(init.body)).toEqual({ title: 'T', body: 'B', state: 'closed', labels: ['bug'] });
+    expect(JSON.parse(result as string)).toEqual({ success: true, issueNumber: 3 });
+  });
+
+  it.each([
+    ['title', { title: 'Only' }],
+    ['body', { body: 'Only' }],
+    ['state', { state: 'open' }],
+    ['labels (empty array clears them)', { labels: [] }],
+  ])('sends only %s when it is the sole field', async (_name, args) => {
+    fetchSpy.mockResolvedValue({ ok: true });
+
+    await run({ issueNumber: 4, ...args });
+
+    expect(JSON.parse(fetchSpy.mock.calls[0][1].body)).toEqual(args);
+  });
+
+  it('throws before any request when no fields are provided', async () => {
+    await expect(run({ issueNumber: 5 })).rejects.toThrow('At least one field must be provided to update');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('throws a descriptive error on a non-OK response', async () => {
+    fetchSpy.mockResolvedValue({ ok: false, statusText: 'Forbidden', text: async () => 'nope' });
+
+    await expect(run({ issueNumber: 5, title: 'x' })).rejects.toThrow('Failed to update issue: Forbidden - nope');
+  });
+});

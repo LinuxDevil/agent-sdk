@@ -77,6 +77,27 @@ export interface FlowExecutionResult {
   error?: Error;
 }
 
+/** Record an event and notify the optional listener. */
+function emitEvent(
+  events: FlowExecutionEvent[],
+  onEvent: ((event: FlowExecutionEvent) => void) | undefined,
+  event: FlowExecutionEvent
+): void {
+  events.push(event);
+  onEvent?.(event);
+}
+
+function isObjectLike(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object';
+}
+
+type NodeHandler = (
+  node: any,
+  context: FlowExecutionContext,
+  events: FlowExecutionEvent[],
+  onEvent?: (event: FlowExecutionEvent) => void
+) => any;
+
 /**
  * Flow Executor
  */
@@ -91,16 +112,13 @@ export class FlowExecutor {
   ): Promise<FlowExecutionResult> {
     const events: FlowExecutionEvent[] = [];
     const variables = { ...context.variables };
-    let steps = 0;
 
     // Emit flow start event
-    const startEvent: FlowExecutionEvent = {
+    emitEvent(events, onEvent, {
       type: 'flow-start',
       timestamp: new Date(),
       data: { flowCode: flow.code, flowName: flow.name },
-    };
-    events.push(startEvent);
-    onEvent?.(startEvent);
+    });
 
     try {
       // Execute the flow
@@ -110,17 +128,15 @@ export class FlowExecutor {
         events,
         onEvent
       );
-      steps = events.filter(e => e.type === 'step-complete').length;
+      const steps = this.countCompletedSteps(events);
 
       // Emit flow complete event
-      const completeEvent: FlowExecutionEvent = {
+      emitEvent(events, onEvent, {
         type: 'flow-complete',
         timestamp: new Date(),
         data: { output, steps },
         variables,
-      };
-      events.push(completeEvent);
-      onEvent?.(completeEvent);
+      });
 
       return {
         success: true,
@@ -131,22 +147,76 @@ export class FlowExecutor {
       };
     } catch (error) {
       // Emit flow error event
-      const errorEvent: FlowExecutionEvent = {
+      emitEvent(events, onEvent, {
         type: 'flow-error',
         timestamp: new Date(),
         error: error as Error,
-      };
-      events.push(errorEvent);
-      onEvent?.(errorEvent);
+      });
 
       return {
         success: false,
         output: null,
         variables,
-        steps: events.filter(e => e.type === 'step-complete').length,
+        steps: this.countCompletedSteps(events),
         events,
         error: error as Error,
       };
+    }
+  }
+
+  private static countCompletedSteps(events: FlowExecutionEvent[]): number {
+    return events.filter(e => e.type === 'step-complete').length;
+  }
+
+  /**
+   * Handler per node type. Handlers are looked up at call time so each one
+   * dispatches through the class. Synchronous handlers return their value
+   * directly (not a promise) so executeNode() doesn't add an extra await.
+   */
+  private static readonly nodeHandlers: ReadonlyMap<string, NodeHandler> = new Map<string, NodeHandler>([
+    ['sequence', (node, context, events, onEvent) => this.executeSequence(node, context, events, onEvent)],
+    ['parallel', (node, context, events, onEvent) => this.executeParallel(node, context, events, onEvent)],
+    ['oneOf', (node, context, events, onEvent) => this.executeOneOf(node, context, events, onEvent)],
+    ['forEach', (node, context, events, onEvent) => this.executeForEach(node, context, events, onEvent)],
+    ['evaluator', (node, context, events, onEvent) => this.executeEvaluator(node, context, events, onEvent)],
+    ['llmCall', (node, context, events, onEvent) => this.executeLLMCall(node, context, events, onEvent)],
+    ['toolCall', (node, context, events, onEvent) => this.executeToolCall(node, context, events, onEvent)],
+    ['setVariable', (node, context, events, onEvent) => this.executeSetVariable(node, context, events, onEvent)],
+    ['return', (node, context) => this.executeReturn(node, context)],
+    ['end', (node, context) => this.executeEnd(node, context)],
+    [
+      'throw',
+      (node, context) => {
+        throw new Error(this.interpolate((node as any).message || 'Flow error', context.variables));
+      },
+    ],
+  ]);
+
+  /**
+   * Run the handler for a node's type; unknown types are rejected.
+   */
+  private static dispatchNode(
+    node: any,
+    context: FlowExecutionContext,
+    events: FlowExecutionEvent[],
+    onEvent?: (event: FlowExecutionEvent) => void
+  ): any {
+    const handler = this.nodeHandlers.get(node.type);
+    if (!handler) {
+      throw new Error(`Unknown node type: ${(node as any).type}`);
+    }
+    return handler(node, context, events, onEvent);
+  }
+
+  /**
+   * Throw if the flow has recursed deeper than the context allows
+   */
+  private static assertWithinDepthLimit(context: FlowExecutionContext): void {
+    // Check depth to prevent infinite recursion
+    const maxDepth = context.maxDepth || 100;
+    const currentDepth = context.currentDepth || 0;
+    if (currentDepth > maxDepth) {
+      throw new Error(`Maximum flow depth ${maxDepth} exceeded`);
     }
   }
 
@@ -159,91 +229,51 @@ export class FlowExecutor {
     events: FlowExecutionEvent[],
     onEvent?: (event: FlowExecutionEvent) => void
   ): Promise<any> {
-    // Check depth to prevent infinite recursion
-    const maxDepth = context.maxDepth || 100;
-    const currentDepth = context.currentDepth || 0;
-    if (currentDepth > maxDepth) {
-      throw new Error(`Maximum flow depth ${maxDepth} exceeded`);
-    }
+    this.assertWithinDepthLimit(context);
 
     const stepId = (node as any).id || `step-${Date.now()}`;
 
     // Emit step start event
-    const startEvent: FlowExecutionEvent = {
+    emitEvent(events, onEvent, {
       type: 'step-start',
       timestamp: new Date(),
       stepId,
       stepType: node.type,
-    };
-    events.push(startEvent);
-    onEvent?.(startEvent);
+    });
 
     try {
-      let result: any;
-
-      switch (node.type) {
-        case 'sequence':
-          result = await this.executeSequence(node, context, events, onEvent);
-          break;
-        case 'parallel':
-          result = await this.executeParallel(node, context, events, onEvent);
-          break;
-        case 'oneOf':
-          result = await this.executeOneOf(node, context, events, onEvent);
-          break;
-        case 'forEach':
-          result = await this.executeForEach(node, context, events, onEvent);
-          break;
-        case 'evaluator':
-          result = await this.executeEvaluator(node, context, events, onEvent);
-          break;
-        case 'llmCall':
-          result = await this.executeLLMCall(node, context, events, onEvent);
-          break;
-        case 'toolCall':
-          result = await this.executeToolCall(node, context, events, onEvent);
-          break;
-        case 'setVariable':
-          result = await this.executeSetVariable(node, context, events, onEvent);
-          break;
-        case 'return':
-          result = this.executeReturn(node, context);
-          break;
-        case 'end':
-          result = this.executeEnd(node, context);
-          break;
-        case 'throw':
-          throw new Error(this.interpolate((node as any).message || 'Flow error', context.variables));
-        default:
-          throw new Error(`Unknown node type: ${(node as any).type}`);
-      }
+      const output = this.dispatchNode(node, context, events, onEvent);
+      const result = output instanceof Promise ? await output : output;
 
       // Emit step complete event
-      const completeEvent: FlowExecutionEvent = {
+      emitEvent(events, onEvent, {
         type: 'step-complete',
         timestamp: new Date(),
         stepId,
         stepType: node.type,
         data: result,
-      };
-      events.push(completeEvent);
-      onEvent?.(completeEvent);
+      });
 
       return result;
     } catch (error) {
       // Emit step error event
-      const errorEvent: FlowExecutionEvent = {
+      emitEvent(events, onEvent, {
         type: 'step-error',
         timestamp: new Date(),
         stepId,
         stepType: node.type,
         error: error as Error,
-      };
-      events.push(errorEvent);
-      onEvent?.(errorEvent);
+      });
 
       throw error;
     }
+  }
+
+  /**
+   * Context for a node nested one level below the given context
+   */
+  private static childContext(context: FlowExecutionContext): FlowExecutionContext {
+    return { ...context, currentDepth: (context.currentDepth || 0) + 1 };
   }
 
   /**
@@ -259,12 +289,7 @@ export class FlowExecutor {
     let lastResult: any = null;
 
     for (const step of steps) {
-      lastResult = await this.executeNode(
-        step,
-        { ...context, currentDepth: (context.currentDepth || 0) + 1 },
-        events,
-        onEvent
-      );
+      lastResult = await this.executeNode(step, this.childContext(context), events, onEvent);
     }
 
     return lastResult;
@@ -280,19 +305,47 @@ export class FlowExecutor {
     onEvent?: (event: FlowExecutionEvent) => void
   ): Promise<any[]> {
     const steps = node.steps || [];
-    
+
     const results = await Promise.all(
       steps.map((step: any) =>
-        this.executeNode(
-          step,
-          { ...context, currentDepth: (context.currentDepth || 0) + 1 },
-          events,
-          onEvent
-        )
+        this.executeNode(step, this.childContext(context), events, onEvent)
       )
     );
 
     return results;
+  }
+
+  /**
+   * Whether a oneOf option should run. An option with no condition is the default option.
+   */
+  private static optionApplies(
+    option: any,
+    context: FlowExecutionContext,
+    events: FlowExecutionEvent[],
+    onEvent?: (event: FlowExecutionEvent) => void
+  ): boolean {
+    return !option.condition || this.checkOptionCondition(option, context, events, onEvent);
+  }
+
+  /**
+   * Evaluate a oneOf option's condition and emit the condition-evaluated event
+   */
+  private static checkOptionCondition(
+    option: any,
+    context: FlowExecutionContext,
+    events: FlowExecutionEvent[],
+    onEvent?: (event: FlowExecutionEvent) => void
+  ): boolean {
+    const conditionMet = this.evaluateCondition(option.condition, context.variables);
+
+    // Emit condition evaluated event
+    emitEvent(events, onEvent, {
+      type: 'condition-evaluated',
+      timestamp: new Date(),
+      data: { condition: option.condition, result: conditionMet },
+    });
+
+    return conditionMet;
   }
 
   /**
@@ -304,42 +357,29 @@ export class FlowExecutor {
     events: FlowExecutionEvent[],
     onEvent?: (event: FlowExecutionEvent) => void
   ): Promise<any> {
+    const option = this.selectOption(node, context, events, onEvent);
+
+    return option ? await this.executeNode(option.step, this.childContext(context), events, onEvent) : null;
+  }
+
+  /**
+   * First option whose condition holds (or that has none), if any
+   */
+  private static selectOption(
+    node: any,
+    context: FlowExecutionContext,
+    events: FlowExecutionEvent[],
+    onEvent?: (event: FlowExecutionEvent) => void
+  ): any | undefined {
     const options = node.options || [];
 
     for (const option of options) {
-      // Evaluate condition if present
-      if (option.condition) {
-        const conditionMet = this.evaluateCondition(option.condition, context.variables);
-        
-        // Emit condition evaluated event
-        const conditionEvent: FlowExecutionEvent = {
-          type: 'condition-evaluated',
-          timestamp: new Date(),
-          data: { condition: option.condition, result: conditionMet },
-        };
-        events.push(conditionEvent);
-        onEvent?.(conditionEvent);
-
-        if (conditionMet) {
-          return await this.executeNode(
-            option.step,
-            { ...context, currentDepth: (context.currentDepth || 0) + 1 },
-            events,
-            onEvent
-          );
-        }
-      } else {
-        // Default option (no condition)
-        return await this.executeNode(
-          option.step,
-          { ...context, currentDepth: (context.currentDepth || 0) + 1 },
-          events,
-          onEvent
-        );
+      if (this.optionApplies(option, context, events, onEvent)) {
+        return option;
       }
     }
 
-    return null;
+    return undefined;
   }
 
   /**
@@ -352,8 +392,7 @@ export class FlowExecutor {
     onEvent?: (event: FlowExecutionEvent) => void
   ): Promise<any[]> {
     const items = this.resolveValue(node.items, context.variables) || [];
-    const itemVar = node.itemVariable || 'item';
-    const indexVar = node.indexVariable || 'index';
+    const { itemVar, indexVar } = this.loopVariableNames(node);
     const results: any[] = [];
 
     for (let i = 0; i < items.length; i++) {
@@ -362,27 +401,27 @@ export class FlowExecutor {
       context.variables[indexVar] = i;
 
       // Emit loop iteration event
-      const iterationEvent: FlowExecutionEvent = {
+      emitEvent(events, onEvent, {
         type: 'loop-iteration',
         timestamp: new Date(),
         data: { item: items[i], index: i },
-      };
-      events.push(iterationEvent);
-      onEvent?.(iterationEvent);
+      });
 
       // Execute step with updated context
       if (node.step) {
-        const result = await this.executeNode(
-          node.step,
-          { ...context, currentDepth: (context.currentDepth || 0) + 1 },
-          events,
-          onEvent
-        );
+        const result = await this.executeNode(node.step, this.childContext(context), events, onEvent);
         results.push(result);
       }
     }
 
     return results;
+  }
+
+  private static loopVariableNames(node: any): { itemVar: string; indexVar: string } {
+    return {
+      itemVar: node.itemVariable || 'item',
+      indexVar: node.indexVariable || 'index',
+    };
   }
 
   /**
@@ -399,20 +438,34 @@ export class FlowExecutor {
   }
 
   /**
-   * Execute LLM call node
+   * Store a node's result in its outputVariable, if it has one, and emit variable-set
    */
-  private static async executeLLMCall(
+  private static storeOutputVariable(
     node: any,
+    value: any,
     context: FlowExecutionContext,
     events: FlowExecutionEvent[],
     onEvent?: (event: FlowExecutionEvent) => void
-  ): Promise<string> {
-    const prompt = this.interpolate(node.prompt || '', context.variables);
-    const model = node.model || context.agent.settings?.model || 'gpt-4';
+  ): void {
+    if (!node.outputVariable) {
+      return;
+    }
 
-    // Build messages
+    context.variables[node.outputVariable] = value;
+
+    emitEvent(events, onEvent, {
+      type: 'variable-set',
+      timestamp: new Date(),
+      data: { variable: node.outputVariable, value },
+    });
+  }
+
+  /**
+   * Build the chat messages for an LLM call node
+   */
+  private static buildLLMMessages(context: FlowExecutionContext, prompt: string): Message[] {
     const messages: Message[] = [];
-    
+
     // Add system prompt if available
     if (context.agent.prompt) {
       messages.push({
@@ -427,14 +480,32 @@ export class FlowExecutor {
       content: prompt,
     });
 
+    return messages;
+  }
+
+  private static resolveLLMModel(node: any, context: FlowExecutionContext): string {
+    return node.model || context.agent.settings?.model || 'gpt-4';
+  }
+
+  /**
+   * Execute LLM call node
+   */
+  private static async executeLLMCall(
+    node: any,
+    context: FlowExecutionContext,
+    events: FlowExecutionEvent[],
+    onEvent?: (event: FlowExecutionEvent) => void
+  ): Promise<string> {
+    const prompt = this.interpolate(node.prompt || '', context.variables);
+    const model = this.resolveLLMModel(node, context);
+    const messages = this.buildLLMMessages(context, prompt);
+
     // Emit LLM call event
-    const callEvent: FlowExecutionEvent = {
+    emitEvent(events, onEvent, {
       type: 'llm-call',
       timestamp: new Date(),
       data: { model, prompt },
-    };
-    events.push(callEvent);
-    onEvent?.(callEvent);
+    });
 
     // Call LLM
     const result = await context.provider.generate({
@@ -445,28 +516,42 @@ export class FlowExecutor {
     });
 
     // Emit LLM response event
-    const responseEvent: FlowExecutionEvent = {
+    emitEvent(events, onEvent, {
       type: 'llm-response',
       timestamp: new Date(),
       data: { text: result.text, usage: result.usage },
-    };
-    events.push(responseEvent);
-    onEvent?.(responseEvent);
+    });
 
     // Store result in variable if specified
-    if (node.outputVariable) {
-      context.variables[node.outputVariable] = result.text;
-      
-      const varEvent: FlowExecutionEvent = {
-        type: 'variable-set',
-        timestamp: new Date(),
-        data: { variable: node.outputVariable, value: result.text },
-      };
-      events.push(varEvent);
-      onEvent?.(varEvent);
-    }
+    this.storeOutputVariable(node, result.text, context, events, onEvent);
 
     return result.text;
+  }
+
+  private static requireToolRegistry(context: FlowExecutionContext): ToolRegistry {
+    if (!context.toolRegistry) {
+      throw new Error('Tool registry not available');
+    }
+    return context.toolRegistry;
+  }
+
+  /**
+   * Resolve the tool a toolCall node refers to, failing if it isn't available
+   */
+  private static lookupTool(
+    node: any,
+    context: FlowExecutionContext
+  ): { toolName: string; toolDesc: NonNullable<ReturnType<ToolRegistry['get']>> } {
+    const toolRegistry = this.requireToolRegistry(context);
+
+    const toolName = node.tool || '';
+    const toolDesc = toolRegistry.get(toolName);
+
+    if (!toolDesc || !toolDesc.tool) {
+      throw new Error(`Tool '${toolName}' not found`);
+    }
+
+    return { toolName, toolDesc };
   }
 
   /**
@@ -478,28 +563,17 @@ export class FlowExecutor {
     events: FlowExecutionEvent[],
     onEvent?: (event: FlowExecutionEvent) => void
   ): Promise<any> {
-    if (!context.toolRegistry) {
-      throw new Error('Tool registry not available');
-    }
-
-    const toolName = node.tool || '';
-    const toolDesc = context.toolRegistry.get(toolName);
-    
-    if (!toolDesc || !toolDesc.tool) {
-      throw new Error(`Tool '${toolName}' not found`);
-    }
+    const { toolName, toolDesc } = this.lookupTool(node, context);
 
     // Interpolate arguments
     const args = this.interpolateObject(node.arguments || {}, context.variables);
 
     // Emit tool call event
-    const callEvent: FlowExecutionEvent = {
+    emitEvent(events, onEvent, {
       type: 'tool-call',
       timestamp: new Date(),
       data: { tool: toolName, arguments: args },
-    };
-    events.push(callEvent);
-    onEvent?.(callEvent);
+    });
 
     // Execute tool. Tools flagged `requiresSandbox` are routed through the
     // configured SandboxAdapter instead of being invoked directly here -
@@ -511,26 +585,14 @@ export class FlowExecutor {
     const result = await executeToolWithSandboxGuard(toolName, toolDesc, args, sandbox);
 
     // Emit tool result event
-    const resultEvent: FlowExecutionEvent = {
+    emitEvent(events, onEvent, {
       type: 'tool-result',
       timestamp: new Date(),
       data: { tool: toolName, result },
-    };
-    events.push(resultEvent);
-    onEvent?.(resultEvent);
+    });
 
     // Store result in variable if specified
-    if (node.outputVariable) {
-      context.variables[node.outputVariable] = result;
-      
-      const varEvent: FlowExecutionEvent = {
-        type: 'variable-set',
-        timestamp: new Date(),
-        data: { variable: node.outputVariable, value: result },
-      };
-      events.push(varEvent);
-      onEvent?.(varEvent);
-    }
+    this.storeOutputVariable(node, result, context, events, onEvent);
 
     return result;
   }
@@ -549,13 +611,11 @@ export class FlowExecutor {
 
     context.variables[variableName] = value;
 
-    const varEvent: FlowExecutionEvent = {
+    emitEvent(events, onEvent, {
       type: 'variable-set',
       timestamp: new Date(),
       data: { variable: variableName, value },
-    };
-    events.push(varEvent);
-    onEvent?.(varEvent);
+    });
 
     return value;
   }
@@ -599,14 +659,18 @@ export class FlowExecutor {
     if (Array.isArray(obj)) {
       return obj.map(item => this.interpolateObject(item, variables));
     }
-    if (obj && typeof obj === 'object') {
-      const result: any = {};
-      for (const [key, value] of Object.entries(obj)) {
-        result[key] = this.interpolateObject(value, variables);
-      }
-      return result;
+    if (isObjectLike(obj)) {
+      return this.interpolateRecord(obj, variables);
     }
     return obj;
+  }
+
+  private static interpolateRecord(obj: Record<string, unknown>, variables: Record<string, any>): any {
+    const result: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = this.interpolateObject(value, variables);
+    }
+    return result;
   }
 
   /**

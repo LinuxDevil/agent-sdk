@@ -102,9 +102,18 @@ function resolveMode(appDir: string, requested: StudioMode): 'dev' | 'prod' {
  * `loushy studio`.
  */
 export function startStudio(options: StudioOptions = {}): StudioHandle {
-  const repoRoot = options.repoRoot ?? process.cwd();
+  const { repoRoot = process.cwd(), apiPort = 4750, apiHost = '127.0.0.1', mode: requested = 'auto' } = options;
   const appDir = path.join(repoRoot, 'apps', 'agent-forge');
 
+  assertAgentForgeApp(appDir, repoRoot);
+
+  const mode = resolveMode(appDir, requested);
+
+  if (mode === 'prod') return startProdStudio(appDir, repoRoot, apiPort, apiHost);
+  return startDevStudio(appDir, repoRoot, apiPort, apiHost);
+}
+
+function assertAgentForgeApp(appDir: string, repoRoot: string): void {
   if (!fs.existsSync(path.join(appDir, 'package.json'))) {
     throw new Error(
       `loushy studio: could not find apps/agent-forge under '${repoRoot}'. ` +
@@ -112,17 +121,17 @@ export function startStudio(options: StudioOptions = {}): StudioHandle {
         '(this SDK monorepo, or a project that vendors apps/agent-forge the same way).'
     );
   }
-
-  const apiPort = options.apiPort ?? 4750;
-  const apiHost = options.apiHost ?? '127.0.0.1';
-  const mode = resolveMode(appDir, options.mode ?? 'auto');
-
-  if (mode === 'prod') return startProdStudio(appDir, repoRoot, apiPort, apiHost);
-  return startDevStudio(appDir, repoRoot, apiPort, apiHost);
 }
 
-function startProdStudio(appDir: string, repoRoot: string, apiPort: number, apiHost: string): StudioHandle {
-  const entry = distServerEntry(appDir);
+/** Logs a child process's non-zero exit (a null code means it was killed by a signal). */
+function reportUnexpectedExit(label: string, code: number | null): void {
+  if (code !== 0 && code !== null) {
+    // eslint-disable-next-line no-console
+    console.error(`[loushy studio] ${label} exited with code ${code}`);
+  }
+}
+
+function assertProdBuildPresent(appDir: string, entry: string): void {
   if (!fs.existsSync(entry)) {
     throw new Error(
       `loushy studio --prod: '${entry}' does not exist. Build Agent Forge first: ` +
@@ -139,6 +148,11 @@ function startProdStudio(appDir: string, repoRoot: string, apiPort: number, apiH
         "be served. Run 'npm run build:studio' from the repo root to build the client too."
     );
   }
+}
+
+function startProdStudio(appDir: string, repoRoot: string, apiPort: number, apiHost: string): StudioHandle {
+  const entry = distServerEntry(appDir);
+  assertProdBuildPresent(appDir, entry);
 
   // eslint-disable-next-line no-console
   console.log(`[loushy studio] starting production server (port ${apiPort})...`);
@@ -153,12 +167,7 @@ function startProdStudio(appDir: string, repoRoot: string, apiPort: number, apiH
     apiProcess.kill();
   }
 
-  apiProcess.on('exit', (code) => {
-    if (code !== 0 && code !== null) {
-      // eslint-disable-next-line no-console
-      console.error(`[loushy studio] server exited with code ${code}`);
-    }
-  });
+  apiProcess.on('exit', (code) => reportUnexpectedExit('server', code));
 
   // eslint-disable-next-line no-console
   console.log(`[loushy studio] Agent Forge: http://${apiHost}:${apiPort}`);
@@ -166,7 +175,7 @@ function startProdStudio(appDir: string, repoRoot: string, apiPort: number, apiH
   return { apiProcess, mode: 'prod', stop };
 }
 
-function startDevStudio(appDir: string, repoRoot: string, apiPort: number, apiHost: string): StudioHandle {
+function assertDevSourcePresent(appDir: string): void {
   if (!fs.existsSync(path.join(appDir, 'server', 'index.ts'))) {
     throw new Error(
       `loushy studio --dev: '${path.join(appDir, 'server', 'index.ts')}' does not exist - dev mode ` +
@@ -175,6 +184,10 @@ function startDevStudio(appDir: string, repoRoot: string, apiPort: number, apiHo
         "'npm run build:studio'."
     );
   }
+}
+
+function startDevStudio(appDir: string, repoRoot: string, apiPort: number, apiHost: string): StudioHandle {
+  assertDevSourcePresent(appDir);
   const npmCmd = resolveNpmCommand();
 
   // eslint-disable-next-line no-console
@@ -213,17 +226,11 @@ function startDevStudio(appDir: string, repoRoot: string, apiPort: number, apiHo
   // leaving a half-running studio (a UI with no API, or an API with no UI)
   // silently orphaned.
   apiProcess.on('exit', (code) => {
-    if (code !== 0 && code !== null) {
-      // eslint-disable-next-line no-console
-      console.error(`[loushy studio] API server exited with code ${code}`);
-    }
+    reportUnexpectedExit('API server', code);
     viteProcess.kill();
   });
   viteProcess.on('exit', (code) => {
-    if (code !== 0 && code !== null) {
-      // eslint-disable-next-line no-console
-      console.error(`[loushy studio] Vite dev server exited with code ${code}`);
-    }
+    reportUnexpectedExit('Vite dev server', code);
     apiProcess.kill();
   });
 

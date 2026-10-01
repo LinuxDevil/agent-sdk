@@ -41,6 +41,50 @@ function readBody(req: http.IncomingMessage): Promise<string> {
   });
 }
 
+function writeJson(res: http.ServerResponse, status: number, value: unknown): void {
+  res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(value));
+}
+
+/** The agent input for a raw request body: its JSON `input` string if it has one, else the body itself. */
+function parseWebhookInput(raw: string): string {
+  if (!raw) return '';
+  try {
+    const parsed = JSON.parse(raw) as { input?: unknown };
+    return typeof parsed.input === 'string' ? parsed.input : raw;
+  } catch {
+    return raw;
+  }
+}
+
+type WebhookOnEvent = (input: string, context: TriggerContext) => Promise<ExecutionResult>;
+
+async function respondWithAgentResult(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  onEvent: WebhookOnEvent
+): Promise<void> {
+  try {
+    const input = parseWebhookInput(await readBody(req));
+    const result = await onEvent(input, { channel: res, request: req });
+    writeJson(res, 200, result);
+  } catch (error) {
+    writeJson(res, 500, { error: (error as Error).message });
+  }
+}
+
+async function handleWebhookRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  path: string,
+  onEvent: WebhookOnEvent
+): Promise<void> {
+  if (req.method !== 'POST' || req.url !== path) {
+    writeJson(res, 404, { error: 'Not found' });
+    return;
+  }
+  await respondWithAgentResult(req, res, onEvent);
+}
+
 export class WebhookTriggerAdapter implements TriggerAdapter<http.ServerResponse> {
   public readonly type = 'webhook';
 
@@ -48,40 +92,12 @@ export class WebhookTriggerAdapter implements TriggerAdapter<http.ServerResponse
 
   public listen(
     agent: RunnableAgent,
-    onEvent: (input: string, context: TriggerContext) => Promise<ExecutionResult>
+    onEvent: WebhookOnEvent
   ): WebhookTriggerHandle {
     const path = this.options.path ?? '/';
 
     const server = http.createServer((req, res) => {
-      void (async () => {
-        if (req.method !== 'POST' || req.url !== path) {
-          res.writeHead(404, { 'Content-Type': 'application/json' }).end(
-            JSON.stringify({ error: 'Not found' })
-          );
-          return;
-        }
-        try {
-          const raw = await readBody(req);
-          let input: string;
-          if (raw) {
-            try {
-              const parsed = JSON.parse(raw) as { input?: unknown };
-              input = typeof parsed.input === 'string' ? parsed.input : raw;
-            } catch {
-              input = raw;
-            }
-          } else {
-            input = '';
-          }
-
-          const result = await onEvent(input, { channel: res, request: req });
-          res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(result));
-        } catch (error) {
-          res
-            .writeHead(500, { 'Content-Type': 'application/json' })
-            .end(JSON.stringify({ error: (error as Error).message }));
-        }
-      })();
+      void handleWebhookRequest(req, res, path, onEvent);
     });
 
     server.listen(this.options.port ?? 0, this.options.host ?? '0.0.0.0');

@@ -1,46 +1,98 @@
 import { useRef, useState } from 'react';
 import { useAppState } from '../state/AppState';
 import { downloadSpec, importSpecFile } from '../persistence/importExport';
-import { RuntimeApiError } from '../runtime/runtimeClient';
 import { ApprovalCard } from './ApprovalCard';
+import { errorMessage } from './errorMessage';
+import { StatusPill } from './StatusPill';
 
-const STATUS_LABEL: Record<string, string> = {
-  idle: 'idle',
-  running: 'running',
-  stopped: 'stopped',
-  error: 'error',
-  paused: 'awaiting approval',
-};
+function BrandMark() {
+  return (
+    <div className="brand">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="3" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.8" />
+        <rect x="14" y="3" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.8" />
+        <rect x="14" y="14" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M6.5 10v4a2 2 0 0 0 2 2H14" stroke="currentColor" strokeWidth="1.8" />
+      </svg>
+      Agent Forge
+    </div>
+  );
+}
 
-export function Topbar() {
-  const {
-    spec,
-    setSpec,
-    save,
-    dirty,
-    agentId,
-    runStatus,
-    runAgent,
-    stopAgent,
-    debugMode,
-    setDebugMode,
-    setDrawerTab,
-    activeProfile,
-  } = useAppState();
+type RunStatusPayload = ReturnType<typeof useAppState>['runStatus'];
+type ActiveProfile = ReturnType<typeof useAppState>['activeProfile'];
+
+function pendingApprovalOf(runStatus: RunStatusPayload) {
+  return runStatus?.status === 'paused' ? runStatus.pendingApproval : undefined;
+}
+
+function runErrorOf(runStatus: RunStatusPayload) {
+  return runStatus?.status === 'error' ? runStatus.error : undefined;
+}
+
+function ApprovalNotice({ runStatus }: { runStatus: RunStatusPayload }) {
+  const pendingApproval = pendingApprovalOf(runStatus);
+  return pendingApproval ? <ApprovalCard toolName={pendingApproval.toolName} args={pendingApproval.args} /> : null;
+}
+
+function ErrorNotice({ message }: { message: string | undefined }) {
+  return message ? (
+    <span className="run-error" title={message}>
+      {message}
+    </span>
+  ) : null;
+}
+
+function RunNotices({ runStatus, actionError }: { runStatus: RunStatusPayload; actionError: string | undefined }) {
+  return (
+    <>
+      <ApprovalNotice runStatus={runStatus} />
+      <ErrorNotice message={runErrorOf(runStatus)} />
+      <ErrorNotice message={actionError} />
+    </>
+  );
+}
+
+function profileTitle(profile: ActiveProfile) {
+  return profile ? `Settings profile: ${profile.name}` : undefined;
+}
+
+function profileName(profile: ActiveProfile) {
+  return profile?.name ?? 'local';
+}
+
+function profileProviderType(profile: ActiveProfile, fallback: string) {
+  return profile?.providerType ?? fallback;
+}
+
+function EnvSelect() {
+  const { spec, activeProfile } = useAppState();
+  return (
+    <div className="env-select" title={profileTitle(activeProfile)}>
+      <span className="dot" /> {profileName(activeProfile)} &middot; {profileProviderType(activeProfile, spec.provider.type)} provider
+    </div>
+  );
+}
+
+function DebugToggle() {
+  const { debugMode, setDebugMode, setDrawerTab } = useAppState();
+  return (
+    <button
+      className={`btn${debugMode ? ' btn-primary' : ' btn-ghost'}`}
+      onClick={() => {
+        setDebugMode(!debugMode);
+        if (!debugMode) setDrawerTab('trace');
+      }}
+      title="Toggle step-through debug mode (set breakpoints in the Inspector)"
+    >
+      Debug
+    </button>
+  );
+}
+
+function SpecFileButtons() {
+  const { spec, setSpec, agentId } = useAppState();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [actionError, setActionError] = useState<string | undefined>(undefined);
-
-  const status = runStatus?.status ?? 'idle';
-  const isRunning = status === 'running';
-  const isPaused = status === 'paused' && !!runStatus?.pendingApproval;
-
-  function handleExport() {
-    downloadSpec(spec, `${spec.name || agentId}.yaml`);
-  }
-
-  function handleImportClick() {
-    fileInputRef.current?.click();
-  }
 
   async function handleImportChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -50,99 +102,9 @@ export function Topbar() {
     setSpec(() => imported);
   }
 
-  async function handleRun() {
-    setActionError(undefined);
-    try {
-      // A blank input is fine when resuming from a checkpoint (see
-      // runRegistry.ts's run() doc comment - AgentExecutor ignores `input`
-      // once a checkpoint exists), so this always sends *some* string
-      // rather than blocking Run on an empty prompt.
-      await runAgent('Run the agent.');
-    } catch (error) {
-      setActionError(error instanceof RuntimeApiError ? error.message : (error as Error).message);
-    }
-  }
-
-  async function handleStop() {
-    setActionError(undefined);
-    try {
-      await stopAgent();
-    } catch (error) {
-      setActionError(error instanceof RuntimeApiError ? error.message : (error as Error).message);
-    }
-  }
-
   return (
-    <div className="topbar">
-      <div className="brand">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.8" />
-          <rect x="14" y="3" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.8" />
-          <rect x="14" y="14" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.8" />
-          <path d="M6.5 10v4a2 2 0 0 0 2 2H14" stroke="currentColor" strokeWidth="1.8" />
-        </svg>
-        Agent Forge
-      </div>
-      <div className="crumbs">
-        <span>Agents</span>
-        <span className="crumb-sep">/</span>
-        <b>{spec.name}</b>
-        {dirty && <span className="dirty-dot" title="Unsaved changes" />}
-      </div>
-      <div className="topbar-spacer" />
-
-      {isPaused && runStatus?.pendingApproval && (
-        <ApprovalCard toolName={runStatus.pendingApproval.toolName} args={runStatus.pendingApproval.args} />
-      )}
-
-      {status === 'error' && runStatus?.error && (
-        <span className="run-error" title={runStatus.error}>
-          {runStatus.error}
-        </span>
-      )}
-      {actionError && (
-        <span className="run-error" title={actionError}>
-          {actionError}
-        </span>
-      )}
-
-      <span className={`status-pill status-${status}`}>
-        <span className="dot" />
-        {STATUS_LABEL[status] ?? status}
-      </span>
-
-      {/*
-        R3: real per-environment settings profile (name + provider type),
-        replacing the LOU-L/O mockup's static "local · mock provider" label.
-        Falls back to the current spec's own provider while the profile
-        fetch hasn't resolved yet (e.g. runtime server not reachable).
-      */}
-      <div className="env-select" title={activeProfile ? `Settings profile: ${activeProfile.name}` : undefined}>
-        <span className="dot" /> {activeProfile?.name ?? 'local'} &middot; {activeProfile?.providerType ?? spec.provider.type} provider
-      </div>
-      {/*
-        O3: toggles debug mode - the Inspector exposes breakpoint toggles
-        on llm/tool nodes while on, and the Trace tab's DebugBar shows
-        Step/Continue controls (also shown automatically whenever a run is
-        actually paused at a breakpoint, even with this off).
-      */}
-      <button
-        className={`btn${debugMode ? ' btn-primary' : ' btn-ghost'}`}
-        onClick={() => {
-          setDebugMode(!debugMode);
-          if (!debugMode) setDrawerTab('trace');
-        }}
-        title="Toggle step-through debug mode (set breakpoints in the Inspector)"
-      >
-        Debug
-      </button>
-      <button className="btn btn-danger" onClick={() => void handleStop()} disabled={!isRunning}>
-        Stop
-      </button>
-      <button className="btn btn-success" onClick={() => void handleRun()} disabled={isRunning}>
-        Run
-      </button>
-      <button className="btn" onClick={handleImportClick}>
+    <>
+      <button className="btn" onClick={() => fileInputRef.current?.click()}>
         Import
       </button>
       <input
@@ -152,9 +114,80 @@ export function Topbar() {
         style={{ display: 'none' }}
         onChange={handleImportChange}
       />
-      <button className="btn" onClick={handleExport}>
+      <button className="btn" onClick={() => downloadSpec(spec, `${spec.name || agentId}.yaml`)}>
         Export
       </button>
+    </>
+  );
+}
+
+/** Stop/Run actions, surfacing a failed attempt as a message next to the buttons. */
+function useRunActions() {
+  const { runAgent, stopAgent } = useAppState();
+  const [actionError, setActionError] = useState<string | undefined>(undefined);
+
+  async function attempt(action: () => Promise<unknown>) {
+    setActionError(undefined);
+    try {
+      await action();
+    } catch (error) {
+      setActionError(errorMessage(error));
+    }
+  }
+
+  // A blank input is fine when resuming from a checkpoint (see
+  // runRegistry.ts's run() doc comment - AgentExecutor ignores `input`
+  // once a checkpoint exists), so this always sends *some* string
+  // rather than blocking Run on an empty prompt.
+  const handleRun = () => attempt(() => runAgent('Run the agent.'));
+  const handleStop = () => attempt(() => stopAgent());
+
+  return { actionError, handleRun, handleStop };
+}
+
+export function Topbar() {
+  const { spec, save, dirty, runStatus } = useAppState();
+  const { actionError, handleRun, handleStop } = useRunActions();
+
+  const status = runStatus?.status ?? 'idle';
+  const isRunning = status === 'running';
+
+  return (
+    <div className="topbar">
+      <BrandMark />
+      <div className="crumbs">
+        <span>Agents</span>
+        <span className="crumb-sep">/</span>
+        <b>{spec.name}</b>
+        {dirty && <span className="dirty-dot" title="Unsaved changes" />}
+      </div>
+      <div className="topbar-spacer" />
+
+      <RunNotices runStatus={runStatus} actionError={actionError} />
+
+      <StatusPill status={status} />
+
+      {/*
+        R3: real per-environment settings profile (name + provider type),
+        replacing the LOU-L/O mockup's static "local · mock provider" label.
+        Falls back to the current spec's own provider while the profile
+        fetch hasn't resolved yet (e.g. runtime server not reachable).
+      */}
+      <EnvSelect />
+      {/*
+        O3: toggles debug mode - the Inspector exposes breakpoint toggles
+        on llm/tool nodes while on, and the Trace tab's DebugBar shows
+        Step/Continue controls (also shown automatically whenever a run is
+        actually paused at a breakpoint, even with this off).
+      */}
+      <DebugToggle />
+      <button className="btn btn-danger" onClick={() => void handleStop()} disabled={!isRunning}>
+        Stop
+      </button>
+      <button className="btn btn-success" onClick={() => void handleRun()} disabled={isRunning}>
+        Run
+      </button>
+      <SpecFileButtons />
       <button className="btn btn-primary" onClick={() => void save()}>
         Save
       </button>

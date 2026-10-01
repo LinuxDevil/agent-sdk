@@ -81,54 +81,131 @@ interface AgentHolder {
   agent: SimpleAgent;
 }
 
+type RouteHandler = (
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  holder: AgentHolder
+) => void | Promise<void>;
+
+function sendText(res: http.ServerResponse, status: number, text: string): void {
+  res.writeHead(status, { 'Content-Type': 'text/plain' });
+  res.end(text);
+}
+
+function sendJson(res: http.ServerResponse, status: number, value: unknown): void {
+  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(value));
+}
+
+function handleChatUi(_req: http.IncomingMessage, res: http.ServerResponse): void {
+  try {
+    serveChatUi(res);
+  } catch {
+    sendText(res, 404, 'dev UI not found');
+  }
+}
+
+/** The `message` string of a POST /chat body, or undefined when missing/invalid. */
+function parseChatMessage(body: string): string | undefined {
+  const { message } = JSON.parse(body || '{}');
+  return typeof message === 'string' && message ? message : undefined;
+}
+
+async function runChat(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  holder: AgentHolder
+): Promise<void> {
+  const message = parseChatMessage(await readBody(req));
+  if (!message) {
+    sendJson(res, 400, { error: "Request body must be JSON with a 'message' string" });
+    return;
+  }
+
+  sendJson(res, 200, await holder.agent.send(message));
+}
+
+async function handleChat(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  holder: AgentHolder
+): Promise<void> {
+  try {
+    await runChat(req, res, holder);
+  } catch (error) {
+    const status = error instanceof PayloadTooLargeError ? 413 : 500;
+    sendJson(res, status, { error: (error as Error).message });
+  }
+}
+
+const ROUTES = new Map<string, RouteHandler>([
+  ['GET /health', (_req, res) => sendText(res, 200, 'ok')],
+  ['GET /', handleChatUi],
+  ['POST /chat', handleChat],
+]);
+
 async function handleRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   holder: AgentHolder
 ): Promise<void> {
-  if (req.method === 'GET' && req.url === '/health') {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('ok');
+  const handler = ROUTES.get(`${req.method} ${req.url}`);
+  if (!handler) {
+    sendText(res, 404, 'not found');
     return;
   }
+  await handler(req, res, holder);
+}
 
-  if (req.method === 'GET' && req.url === '/') {
+/** Reloads the agent into `holder` whenever configPath changes; keeps the old agent on a bad edit. */
+function watchConfig(configPath: string, holder: AgentHolder): fs.FSWatcher {
+  return fs.watch(configPath, { persistent: false }, () => {
     try {
-      serveChatUi(res);
-    } catch {
-      res.writeHead(404, { 'Content-Type': 'text/plain' });
-      res.end('dev UI not found');
-    }
-    return;
-  }
-
-  if (req.method === 'POST' && req.url === '/chat') {
-    try {
-      const body = await readBody(req);
-      const { message } = JSON.parse(body || '{}');
-      if (typeof message !== 'string' || !message) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: "Request body must be JSON with a 'message' string" }));
-        return;
-      }
-
-      const result = await holder.agent.send(message);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(result));
+      holder.agent = loadAgentFromConfig(configPath);
+      // eslint-disable-next-line no-console
+      console.log(`[loushy dev] reloaded config from ${configPath}`);
     } catch (error) {
-      if (error instanceof PayloadTooLargeError) {
-        res.writeHead(413, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: error.message }));
-        return;
-      }
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: (error as Error).message }));
+      // eslint-disable-next-line no-console
+      console.error(
+        `[loushy dev] failed to reload ${configPath}, keeping previous config: ${
+          (error as Error).message
+        }`
+      );
     }
-    return;
-  }
+  });
+}
 
-  res.writeHead(404, { 'Content-Type': 'text/plain' });
-  res.end('not found');
+function createDevHttpServer(holder: AgentHolder): http.Server {
+  return http.createServer((req, res) => {
+    handleRequest(req, res, holder).catch((error) => {
+      // eslint-disable-next-line no-console
+      console.error('[loushy dev] unhandled request error:', error);
+      if (!res.headersSent) {
+        res.writeHead(500);
+      }
+      res.end();
+    });
+  });
+}
+
+function listenOnPort(server: http.Server, port: number, host: string): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const onError = (err: NodeJS.ErrnoException) => {
+      server.removeListener('listening', onListening);
+      if (err.code === 'EADDRINUSE') {
+        reject(new Error(`[loushy dev] port ${port} is already in use. Pass a different port.`));
+      } else {
+        reject(err);
+      }
+    };
+    const onListening = () => {
+      server.removeListener('error', onError);
+      resolve();
+    };
+    server.once('error', onError);
+    server.once('listening', onListening);
+    server.listen(port, host);
+  });
 }
 
 /**
@@ -154,49 +231,9 @@ export async function startDevServer(
 ): Promise<DevServerHandle> {
   const holder: AgentHolder = { agent: loadAgentFromConfig(configPath) };
 
-  const watcher = fs.watch(configPath, { persistent: false }, () => {
-    try {
-      holder.agent = loadAgentFromConfig(configPath);
-      // eslint-disable-next-line no-console
-      console.log(`[loushy dev] reloaded config from ${configPath}`);
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error(
-        `[loushy dev] failed to reload ${configPath}, keeping previous config: ${
-          (error as Error).message
-        }`
-      );
-    }
-  });
-
-  const server = http.createServer((req, res) => {
-    handleRequest(req, res, holder).catch((error) => {
-      // eslint-disable-next-line no-console
-      console.error('[loushy dev] unhandled request error:', error);
-      if (!res.headersSent) {
-        res.writeHead(500);
-      }
-      res.end();
-    });
-  });
-
-  await new Promise<void>((resolve, reject) => {
-    const onError = (err: NodeJS.ErrnoException) => {
-      server.removeListener('listening', onListening);
-      if (err.code === 'EADDRINUSE') {
-        reject(new Error(`[loushy dev] port ${port} is already in use. Pass a different port.`));
-      } else {
-        reject(err);
-      }
-    };
-    const onListening = () => {
-      server.removeListener('error', onError);
-      resolve();
-    };
-    server.once('error', onError);
-    server.once('listening', onListening);
-    server.listen(port, host);
-  });
+  const watcher = watchConfig(configPath, holder);
+  const server = createDevHttpServer(holder);
+  await listenOnPort(server, port, host);
 
   return {
     server,

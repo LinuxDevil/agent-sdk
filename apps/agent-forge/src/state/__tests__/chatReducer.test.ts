@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { applyChatState, emptyChatState } from '../chatReducer';
-import type { ChatMessage, ChatStatePayload } from '../../runtime/runtimeClient';
+import type { ChatMessage, ChatStatePayload } from '../../../shared/wireTypes';
 
 function msg(overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {

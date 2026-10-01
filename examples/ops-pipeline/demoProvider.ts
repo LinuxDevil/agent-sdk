@@ -15,7 +15,7 @@
  */
 import { GenerateOptions, GenerateResult, LLMProvider, StreamResult } from '../../src/providers';
 
-export const DEMO_FIXER_DIFF_RESPONSE = [
+const DEMO_FIXER_DIFF_RESPONSE = [
   'Root cause: `order` is not null-checked before `charge()` is called.',
   '',
   '```diff',
@@ -37,41 +37,54 @@ function usageFor(text: string): GenerateResult['usage'] {
   return { promptTokens: tokens, completionTokens: tokens, totalTokens: tokens * 2 };
 }
 
+function lastUserContent(options: GenerateOptions): string {
+  const lastUser = [...options.messages].reverse().find((m) => m.role === 'user');
+  return lastUser?.content ?? '';
+}
+
+/** Monitor agent's first turn: delegate the triggering message to the fixer. */
+function delegationTurn(options: GenerateOptions): GenerateResult {
+  const task = lastUserContent(options);
+  return {
+    text: '',
+    finishReason: 'tool_calls',
+    usage: usageFor(task),
+    toolCalls: [
+      {
+        id: 'call_delegate_1',
+        type: 'function',
+        function: {
+          name: 'delegate_to_fixer',
+          arguments: JSON.stringify({ task }),
+        },
+      },
+    ],
+  };
+}
+
+/** Monitor agent's follow-up turn, after the delegate tool has returned. */
+function confirmationTurn(): GenerateResult {
+  const text = 'Delegated to the fixer agent for review.';
+  return { text, finishReason: 'stop', usage: usageFor(text) };
+}
+
+/** Fixer agent turn: no tools registered for it. */
+function fixerTurn(): GenerateResult {
+  return {
+    text: DEMO_FIXER_DIFF_RESPONSE,
+    finishReason: 'stop',
+    usage: usageFor(DEMO_FIXER_DIFF_RESPONSE),
+  };
+}
+
 export function createDemoProvider(): LLMProvider {
   const generate = async (options: GenerateOptions): Promise<GenerateResult> => {
     const hasTools = !!options.tools && options.tools.length > 0;
+    if (!hasTools) {
+      return fixerTurn();
+    }
     const alreadyDelegated = options.messages.some((m) => m.role === 'tool');
-
-    if (hasTools && !alreadyDelegated) {
-      const lastUser = [...options.messages].reverse().find((m) => m.role === 'user');
-      return {
-        text: '',
-        finishReason: 'tool_calls',
-        usage: usageFor(lastUser?.content ?? ''),
-        toolCalls: [
-          {
-            id: 'call_delegate_1',
-            type: 'function',
-            function: {
-              name: 'delegate_to_fixer',
-              arguments: JSON.stringify({ task: lastUser?.content ?? '' }),
-            },
-          },
-        ],
-      };
-    }
-
-    if (hasTools && alreadyDelegated) {
-      const text = 'Delegated to the fixer agent for review.';
-      return { text, finishReason: 'stop', usage: usageFor(text) };
-    }
-
-    // Fixer agent turn: no tools registered for it.
-    return {
-      text: DEMO_FIXER_DIFF_RESPONSE,
-      finishReason: 'stop',
-      usage: usageFor(DEMO_FIXER_DIFF_RESPONSE),
-    };
+    return alreadyDelegated ? confirmationTurn() : delegationTurn(options);
   };
 
   return {

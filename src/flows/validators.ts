@@ -1,6 +1,54 @@
 import { AgentFlow, FlowAgentDefinition } from '../types';
 
 /**
+ * Errors for a missing or already-seen name. Records the name in `seen` so later
+ * duplicates are caught. `label` is e.g. "Agent" or "Input variable".
+ */
+function uniqueNameErrors(name: string | undefined, seen: Set<string>, label: string): string[] {
+  if (!name) {
+    return [`${label} name is required`];
+  }
+  const errors = seen.has(name) ? [`Duplicate ${label.toLowerCase()} name: ${name}`] : [];
+  seen.add(name);
+  return errors;
+}
+
+function validateInputVariables(inputs: AgentFlow['inputs'] | undefined): string[] {
+  if (!inputs) return [];
+
+  const errors: string[] = [];
+  const names = new Set<string>();
+  for (const input of inputs) {
+    errors.push(...uniqueNameErrors(input.name, names, 'Input variable'));
+
+    if (!input.type) {
+      errors.push(`Input variable '${input.name}' must have a type`);
+    }
+  }
+  return errors;
+}
+
+function validateAgentEntry(agent: FlowAgentDefinition, agentNames: Set<string>): string[] {
+  const errors = uniqueNameErrors(agent.name, agentNames, 'Agent');
+
+  if (!agent.model) {
+    errors.push(`Agent '${agent.name}' must have a model specified`);
+  }
+
+  if (!agent.system) {
+    errors.push(`Agent '${agent.name}' must have a system prompt`);
+  }
+  return errors;
+}
+
+function validateAgents(agents: AgentFlow['agents'] | undefined): string[] {
+  if (!agents) return [];
+
+  const agentNames = new Set<string>();
+  return agents.flatMap((agent) => validateAgentEntry(agent, agentNames));
+}
+
+/**
  * Validate flow configuration
  */
 export function validateFlow(flow: Partial<AgentFlow>): {
@@ -17,47 +65,7 @@ export function validateFlow(flow: Partial<AgentFlow>): {
     errors.push('Flow name is required');
   }
 
-  // Validate input variables
-  if (flow.inputs) {
-    const names = new Set<string>();
-    for (const input of flow.inputs) {
-      if (!input.name) {
-        errors.push('Input variable name is required');
-      } else {
-        if (names.has(input.name)) {
-          errors.push(`Duplicate input variable name: ${input.name}`);
-        }
-        names.add(input.name);
-      }
-
-      if (!input.type) {
-        errors.push(`Input variable '${input.name}' must have a type`);
-      }
-    }
-  }
-
-  // Validate agents
-  if (flow.agents) {
-    const agentNames = new Set<string>();
-    for (const agent of flow.agents) {
-      if (!agent.name) {
-        errors.push('Agent name is required');
-      } else {
-        if (agentNames.has(agent.name)) {
-          errors.push(`Duplicate agent name: ${agent.name}`);
-        }
-        agentNames.add(agent.name);
-      }
-
-      if (!agent.model) {
-        errors.push(`Agent '${agent.name}' must have a model specified`);
-      }
-
-      if (!agent.system) {
-        errors.push(`Agent '${agent.name}' must have a system prompt`);
-      }
-    }
-  }
+  errors.push(...validateInputVariables(flow.inputs), ...validateAgents(flow.agents));
 
   return {
     valid: errors.length === 0,

@@ -49,6 +49,7 @@ By participating in this project, you agree to maintain a respectful and inclusi
    ```bash
    npm run typecheck  # Type checking
    npm run lint       # Linting
+   npm run test:coverage && npm run fallow  # Dead code, duplication, complexity (must exit 0)
    npm test           # Tests
    npm run build      # Build
    ```

@@ -31,6 +31,37 @@ export function replaceVariablesInString(
   return result;
 }
 
+const LIST_CHILD_AGENTS: ReadonlySet<string> = new Set([
+  'sequenceAgent',
+  'parallelAgent',
+  'bestOfAllAgent',
+  'oneOfAgent',
+]);
+
+const SINGLE_CHILD_AGENTS: ReadonlySet<string> = new Set(['forEachAgent', 'optimizeAgent']);
+
+/**
+ * Nested flow nodes of a flow definition: the input array of list-style
+ * agents, or the single input object of wrapper-style agents.
+ */
+function getChildNodes(flowDef: any): any[] {
+  if (LIST_CHILD_AGENTS.has(flowDef.agent)) {
+    return listChildNodes(flowDef.input);
+  }
+  if (SINGLE_CHILD_AGENTS.has(flowDef.agent)) {
+    return singleChildNode(flowDef.input);
+  }
+  return [];
+}
+
+function listChildNodes(input: any): any[] {
+  return Array.isArray(input) ? input : [];
+}
+
+function singleChildNode(input: any): any[] {
+  return input && typeof input === 'object' ? [input] : [];
+}
+
 /**
  * Inject variable values into a flow definition recursively
  */
@@ -56,24 +87,7 @@ export function injectVariables(
   }
 
   // Recursively process nested flows
-  const agent = flowDef.agent;
-  switch (agent) {
-    case 'sequenceAgent':
-    case 'parallelAgent':
-    case 'bestOfAllAgent':
-    case 'oneOfAgent':
-      if (Array.isArray(flowDef.input)) {
-        flowDef.input.forEach((child: any) => injectVariables(child, variables));
-      }
-      break;
-
-    case 'forEachAgent':
-    case 'optimizeAgent':
-      if (flowDef.input && typeof flowDef.input === 'object') {
-        injectVariables(flowDef.input, variables);
-      }
-      break;
-  }
+  getChildNodes(flowDef).forEach((child) => injectVariables(child, variables));
 
   return flowDef;
 }
@@ -87,35 +101,37 @@ export async function applyInputTransformation(
 ): Promise<void> {
   // Transform current node's input
   flowDef.input = await transformFn(flowDef);
-  
+
   // Set name if not present
   if (!flowDef.name) {
     flowDef.name = flowDef.agent;
   }
 
   // Recursively transform nested nodes
-  const agent = flowDef.agent;
-  switch (agent) {
-    case 'sequenceAgent':
-    case 'parallelAgent':
-    case 'bestOfAllAgent':
-    case 'oneOfAgent':
-      if (Array.isArray(flowDef.input)) {
-        await Promise.all(
-          flowDef.input.map((child: any) =>
-            applyInputTransformation(child, transformFn)
-          )
-        );
-      }
-      break;
+  await Promise.all(
+    getChildNodes(flowDef).map((child) => applyInputTransformation(child, transformFn))
+  );
+}
 
-    case 'forEachAgent':
-    case 'optimizeAgent':
-      if (flowDef.input && typeof flowDef.input === 'object') {
-        await applyInputTransformation(flowDef.input, transformFn);
-      }
-      break;
+/** Base Zod schema for a flow input type (unknown types fall back to string). */
+function baseSchemaForInputType(type: FlowInputType): z.ZodTypeAny {
+  switch (type) {
+    case 'number':
+      return z.number();
+    case 'json':
+      return z.any();
+    default:
+      return z.string();
   }
+}
+
+function buildFieldSchema(inputVar: FlowInputVariable): z.ZodTypeAny {
+  const fieldSchema = baseSchemaForInputType(inputVar.type).describe(
+    inputVar.description || inputVar.name
+  );
+
+  // Make optional if not required
+  return inputVar.required ? fieldSchema : fieldSchema.optional();
 }
 
 /**
@@ -133,40 +149,34 @@ export function createDynamicZodSchemaForInputs(options: {
   const shape: Record<string, z.ZodTypeAny> = {};
 
   for (const inputVar of availableInputs) {
-    let fieldSchema: z.ZodTypeAny;
-
-    switch (inputVar.type) {
-      case 'shortText':
-      case 'longText':
-      case 'url':
-        fieldSchema = z.string().describe(inputVar.description || inputVar.name);
-        break;
-
-      case 'number':
-        fieldSchema = z.number().describe(inputVar.description || inputVar.name);
-        break;
-
-      case 'json':
-        fieldSchema = z.any().describe(inputVar.description || inputVar.name);
-        break;
-
-      case 'fileBase64':
-        fieldSchema = z.string().describe(inputVar.description || inputVar.name);
-        break;
-
-      default:
-        fieldSchema = z.string().describe(inputVar.description || inputVar.name);
-    }
-
-    // Make optional if not required
-    if (!inputVar.required) {
-      fieldSchema = fieldSchema.optional();
-    }
-
-    shape[inputVar.name] = fieldSchema;
+    shape[inputVar.name] = buildFieldSchema(inputVar);
   }
 
   return z.object(shape);
+}
+
+/** The JS typeof each input type must have; 'json' accepts any type. */
+const EXPECTED_JS_TYPE: Partial<Record<FlowInputType, 'number' | 'string'>> = {
+  number: 'number',
+  shortText: 'string',
+  longText: 'string',
+  url: 'string',
+  fileBase64: 'string',
+};
+
+function checkRequiredInput(variable: FlowInputVariable, value: unknown): string | null {
+  if (variable.required && (value === undefined || value === null)) {
+    return `Required input variable '${variable.name}' is missing`;
+  }
+  return null;
+}
+
+function checkInputType(variable: FlowInputVariable, value: unknown): string | null {
+  const expected = EXPECTED_JS_TYPE[variable.type];
+  if (value !== undefined && expected && typeof value !== expected) {
+    return `Input variable '${variable.name}' must be a ${expected}`;
+  }
+  return null;
 }
 
 /**
@@ -179,35 +189,12 @@ export function validateFlowInput(
   const errors: string[] = [];
 
   for (const variable of variables) {
-    if (variable.required && (input[variable.name] === undefined || input[variable.name] === null)) {
-      errors.push(`Required input variable '${variable.name}' is missing`);
-    }
+    const value = input[variable.name];
+    const requiredError = checkRequiredInput(variable, value);
+    if (requiredError) errors.push(requiredError);
 
-    if (input[variable.name] !== undefined) {
-      const value = input[variable.name];
-
-      // Type validation
-      switch (variable.type) {
-        case 'number':
-          if (typeof value !== 'number') {
-            errors.push(`Input variable '${variable.name}' must be a number`);
-          }
-          break;
-
-        case 'shortText':
-        case 'longText':
-        case 'url':
-        case 'fileBase64':
-          if (typeof value !== 'string') {
-            errors.push(`Input variable '${variable.name}' must be a string`);
-          }
-          break;
-
-        case 'json':
-          // Any type is acceptable
-          break;
-      }
-    }
+    const typeError = checkInputType(variable, value);
+    if (typeError) errors.push(typeError);
   }
 
   return {

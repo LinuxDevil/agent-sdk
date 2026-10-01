@@ -35,3 +35,7 @@ jobs:
       # test step (this is a separate package from the root SDK above).
       - run: npm run build --workspace=packages/create-loushy-agent
       - run: npm run test:coverage
+      # Dead code, duplication and complexity gate (config: .fallowrc.json).
+      # Bare `fallow` fails on any finding. Runs after the coverage step because
+      # its CRAP scores read coverage/coverage-final.json.
+      - run: npm run fallow

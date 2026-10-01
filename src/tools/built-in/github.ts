@@ -61,8 +61,8 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { ToolRegistry } from '../ToolRegistry';
 import { ToolDescriptor } from '../../types';
-import { SandboxAdapter } from '../../security/sandboxCore';
-import { withSandboxedFetch } from './sandboxFetch';
+import { routeFetchThroughSandbox } from './sandboxFetch';
+import { assertOk } from './assertOk';
 
 // ============================================================================
 // Type Definitions
@@ -391,12 +391,7 @@ export class GitHubTools extends ToolRegistry {
     // still a real, directly-callable implementation - for callers that
     // invoke descriptor.tool.execute() directly rather than through the
     // guard (e.g. examples/ops-pipeline's guardedPr.ts).
-    if (descriptor.tool?.execute) {
-      const originalExecute = descriptor.tool.execute;
-      descriptor.requiresSandbox = true;
-      descriptor.sandboxExecute = (args: unknown, sandbox: SandboxAdapter) =>
-        withSandboxedFetch(sandbox, async () => originalExecute(args as any, {} as any));
-    }
+    routeFetchThroughSandbox(descriptor);
 
     super.register(name, descriptor);
   }
@@ -459,10 +454,7 @@ export class GitHubTools extends ToolRegistry {
             },
           });
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to get repository: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to get repository');
 
           const data = (await response.json()) as GitHubApiRepository;
           return JSON.stringify({
@@ -503,10 +495,7 @@ export class GitHubTools extends ToolRegistry {
             },
           });
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to list branches: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to list branches');
 
           const data = (await response.json()) as GitHubApiBranchSummary[];
           const branches: GitHubBranch[] = data.map((branch) => ({
@@ -540,10 +529,7 @@ export class GitHubTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to get branch: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to get branch');
 
           const data = (await response.json()) as GitHubApiBranchDetail;
           return JSON.stringify({
@@ -579,10 +565,7 @@ export class GitHubTools extends ToolRegistry {
             }
           );
 
-          if (!refResponse.ok) {
-            const errorText = await refResponse.text();
-            throw new Error(`Failed to get source branch: ${refResponse.statusText} - ${errorText}`);
-          }
+          await assertOk(refResponse, 'Failed to get source branch');
 
           const refData = (await refResponse.json()) as GitHubApiRef;
           const sha = refData.object.sha;
@@ -604,10 +587,7 @@ export class GitHubTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to create branch: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to create branch');
 
           const data = (await response.json()) as GitHubApiRef;
           return JSON.stringify({
@@ -640,10 +620,7 @@ export class GitHubTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to delete branch: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to delete branch');
 
           return JSON.stringify({ success: true, branchName });
         },
@@ -677,10 +654,7 @@ export class GitHubTools extends ToolRegistry {
             },
           });
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to list files: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to list files');
 
           const data = (await response.json()) as GitHubApiContentItem | GitHubApiContentItem[];
           const files = Array.isArray(data) ? data : [data];
@@ -721,10 +695,7 @@ export class GitHubTools extends ToolRegistry {
             },
           });
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to get file: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to get file');
 
           const data = (await response.json()) as GitHubApiContentItem;
           const content = Buffer.from(data.content ?? '', 'base64').toString('utf-8');
@@ -776,10 +747,7 @@ export class GitHubTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to create/update file: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to create/update file');
 
           const data = (await response.json()) as GitHubApiFileCommitResult;
           return JSON.stringify({
@@ -822,10 +790,7 @@ export class GitHubTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to delete file: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to delete file');
 
           return JSON.stringify({ success: true, path });
         },
@@ -864,10 +829,7 @@ export class GitHubTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to search code: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to search code');
 
           const data = (await response.json()) as GitHubApiSearchCodeResponse;
 
@@ -916,10 +878,7 @@ export class GitHubTools extends ToolRegistry {
             },
           });
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to list PRs: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to list PRs');
 
           const data = (await response.json()) as GitHubApiPullRequestSummary[];
 
@@ -960,10 +919,7 @@ export class GitHubTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to get PR: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to get PR');
 
           const data = (await response.json()) as GitHubApiPullRequestDetail;
 
@@ -1017,10 +973,7 @@ export class GitHubTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to create PR: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to create PR');
 
           const data = (await response.json()) as GitHubApiCreateResult & { state: string };
           return JSON.stringify({
@@ -1067,10 +1020,7 @@ export class GitHubTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to update PR: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to update PR');
 
           const data = (await response.json()) as GitHubApiPullRequestDetail;
           return JSON.stringify({
@@ -1115,10 +1065,7 @@ export class GitHubTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to merge PR: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to merge PR');
 
           const data = (await response.json()) as GitHubApiMergeResult;
           return JSON.stringify({
@@ -1153,10 +1100,7 @@ export class GitHubTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to close PR: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to close PR');
 
           return JSON.stringify({ success: true, prNumber, state: 'closed' });
         },
@@ -1183,10 +1127,7 @@ export class GitHubTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to get PR files: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to get PR files');
 
           const data = (await response.json()) as GitHubApiPRFile[];
 
@@ -1224,10 +1165,7 @@ export class GitHubTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to get PR comments: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to get PR comments');
 
           const data = (await response.json()) as GitHubApiComment[];
 
@@ -1269,10 +1207,7 @@ export class GitHubTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to add PR comment: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to add PR comment');
 
           const data = (await response.json()) as GitHubApiCommentResult;
           return JSON.stringify({
@@ -1318,10 +1253,7 @@ export class GitHubTools extends ToolRegistry {
             },
           });
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to list issues: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to list issues');
 
           const data = (await response.json()) as GitHubApiIssueSummary[];
 
@@ -1363,10 +1295,7 @@ export class GitHubTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to get issue: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to get issue');
 
           const data = (await response.json()) as GitHubApiIssueDetail;
           return JSON.stringify({
@@ -1417,10 +1346,7 @@ export class GitHubTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to create issue: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to create issue');
 
           const data = (await response.json()) as GitHubApiCreateResult;
           return JSON.stringify({
@@ -1468,10 +1394,7 @@ export class GitHubTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to update issue: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to update issue');
 
           return JSON.stringify({ success: true, issueNumber });
         },
@@ -1501,10 +1424,7 @@ export class GitHubTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to close issue: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to close issue');
 
           return JSON.stringify({ success: true, issueNumber, state: 'closed' });
         },
@@ -1535,10 +1455,7 @@ export class GitHubTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to add issue comment: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to add issue comment');
 
           const data = (await response.json()) as GitHubApiCommentResult;
           return JSON.stringify({
@@ -1578,10 +1495,7 @@ export class GitHubTools extends ToolRegistry {
             },
           });
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to list commits: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to list commits');
 
           const data = (await response.json()) as GitHubApiCommitSummary[];
 
@@ -1618,10 +1532,7 @@ export class GitHubTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to get commit: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to get commit');
 
           const data = (await response.json()) as GitHubApiCommitDetail;
           return JSON.stringify({
@@ -1662,10 +1573,7 @@ export class GitHubTools extends ToolRegistry {
             }
           );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to compare commits: ${response.statusText} - ${errorText}`);
-          }
+          await assertOk(response, 'Failed to compare commits');
 
           const data = (await response.json()) as GitHubApiCompareResult;
           return JSON.stringify({

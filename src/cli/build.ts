@@ -29,9 +29,12 @@ export interface BuildArgs {
 function readFlag(argv: string[], name: string): string | undefined {
   const flag = argv.find((arg) => arg === `--${name}` || arg.startsWith(`--${name}=`));
   if (!flag) return undefined;
-  const inline = flag.split('=')[1];
-  if (inline) return inline;
-  const next = argv[argv.indexOf(flag) + 1];
+  return flag.split('=')[1] || nextValue(argv, argv.indexOf(flag) + 1);
+}
+
+/** The value in `argv[index]` when it isn't itself another --flag. */
+function nextValue(argv: string[], index: number): string | undefined {
+  const next = argv[index];
   return next && !next.startsWith('--') ? next : undefined;
 }
 
@@ -101,16 +104,20 @@ export async function runBuild(argv: string[], io: BuildIO = defaultIO): Promise
     return 1;
   }
 
-  const agentPath = args.agent ? path.resolve(args.agent) : '';
-  const outDir = path.resolve(args.out || path.join('.loushy', 'build', args.target));
-
   try {
-    await adapter.scaffold(agentPath, outDir);
-    await adapter.build(outDir);
-    io.stdout(adapter.describe(outDir));
+    io.stdout(await driveAdapter(adapter, args, args.target));
     return 0;
   } catch (error) {
     io.stderr(`Error: ${(error as Error).message}`);
     return 1;
   }
+}
+
+/** Runs scaffold() -> build() -> describe() and returns describe()'s output. */
+async function driveAdapter(adapter: DeploymentAdapter, args: BuildArgs, target: string): Promise<string> {
+  const agentPath = args.agent ? path.resolve(args.agent) : '';
+  const outDir = path.resolve(args.out || path.join('.loushy', 'build', target));
+  await adapter.scaffold(agentPath, outDir);
+  await adapter.build(outDir);
+  return adapter.describe(outDir);
 }

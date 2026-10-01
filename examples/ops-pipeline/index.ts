@@ -29,15 +29,17 @@ import * as http from 'node:http';
 import { AgentType, ToolDescriptor } from '../../src/types';
 import { ToolRegistry } from '../../src/tools';
 import { LLMProvider } from '../../src/providers/llm';
-import { startMonitorServer, MonitorServerHandle } from './monitor';
+import { startMonitorServer, MonitorServerHandle, StartMonitorServerOptions } from './monitor';
 import { createFixerDelegateTool, buildFixerAgent } from './fixer';
 import { handleFixerPatch } from './guardedPr';
 import {
   createInMemoryApprovalStore,
   extractApprovalIdFromInteraction,
-  SlackInteractionPayload,
   handleSlackInteraction,
+  parseSlackInteractionBody,
+  readBody,
 } from './slackInteractions';
+import { closeServer, listenOn, sendJson, sendNotFound } from './httpHelpers';
 import { ApprovalStore } from '../../src/execution/ApprovalGate';
 import { ExecutionResult } from '../../src/execution/AgentExecutor';
 import { Guardrail } from '../../src/execution/guardrails';
@@ -98,37 +100,122 @@ export interface OpsPipelineHandle {
   close: () => Promise<void>;
 }
 
-const MAX_BODY_BYTES = 1024 * 1024;
+/**
+ * Registers the fixer delegate tool - flagged as needing approval - and returns
+ * the registry the monitor agent (and the Slack resume path) will use.
+ */
+function buildGatedToolRegistry(provider: LLMProvider): ToolRegistry {
+  const fixerAgent = buildFixerAgent();
+  const delegateTool = createFixerDelegateTool({ agent: fixerAgent, provider });
+  // The fixer agent must never run without first passing through the
+  // approval gate (this epic's own non-negotiable safety property) -
+  // enforced here by flagging the delegate tool itself as needing
+  // approval, so AgentExecutor.execute() pauses BEFORE ever calling it.
+  const gatedDelegateTool: ToolDescriptor = { ...delegateTool, needsApproval: true };
 
-function readBody(req: http.IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let body = '';
-    let bytes = 0;
-    req.on('data', (chunk) => {
-      bytes += chunk.length;
-      if (bytes > MAX_BODY_BYTES) {
-        reject(new Error(`Request body exceeds ${MAX_BODY_BYTES} byte limit`));
-        req.destroy();
-        return;
-      }
-      body += chunk;
-    });
-    req.on('end', () => resolve(body));
-    req.on('error', reject);
-  });
+  const toolRegistry = new ToolRegistry();
+  toolRegistry.register(DELEGATE_TOOL_NAME, gatedDelegateTool);
+  return toolRegistry;
 }
 
-function parseSlackInteractionBody(raw: string): SlackInteractionPayload {
-  const trimmed = raw.trim();
-  if (trimmed.startsWith('{')) {
-    return JSON.parse(trimmed);
+const MONITOR_AGENT = {
+  name: 'ops-monitor',
+  agentType: AgentType.SmartAssistant,
+  prompt:
+    'You are an ops monitor. When an alert fires, delegate it to the fixer agent via the ' +
+    `${DELEGATE_TOOL_NAME} tool.`,
+  tools: { [DELEGATE_TOOL_NAME]: { tool: DELEGATE_TOOL_NAME } },
+};
+
+/** Everything the Slack interaction handler needs from the pipeline wiring. */
+interface SlackRouteContext {
+  provider: LLMProvider;
+  approvalStore: ApprovalStore;
+  toolRegistry: ToolRegistry;
+  githubCreatePrTool: ToolDescriptor;
+  slackTool: ToolDescriptor;
+  channel: string;
+  guardrails?: Guardrail[];
+}
+
+/**
+ * Handles one POST /slack/interactions request: resumes the paused run, then -
+ * if the fixer produced a patch - sends it through the guardrail-gated PR path.
+ */
+async function handleSlackInteractionRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ctx: SlackRouteContext
+): Promise<void> {
+  try {
+    const raw = await readBody(req);
+    const payload = parseSlackInteractionBody(raw);
+    const approvalId = extractApprovalIdFromInteraction(payload);
+
+    const result = await handleSlackInteraction(payload, {
+      approvalStore: ctx.approvalStore,
+      toolRegistry: ctx.toolRegistry,
+      provider: ctx.provider,
+    });
+
+    if (result && approvalId) {
+      const patch = extractDelegatedPatch(result, DELEGATE_TOOL_NAME);
+      if (patch) {
+        await handleFixerPatch(patch, {
+          githubCreatePrTool: ctx.githubCreatePrTool,
+          slackTool: ctx.slackTool,
+          channel: ctx.channel,
+          approvalId,
+          head: `fix/auto-${approvalId}`,
+          guardrails: ctx.guardrails,
+        });
+      }
+    }
+
+    sendJson(res, 200, { handled: result !== undefined });
+  } catch (error) {
+    sendJson(res, 400, { error: (error as Error).message });
   }
-  const params = new URLSearchParams(raw);
-  const payloadField = params.get('payload');
-  if (!payloadField) {
-    throw new Error('Slack interaction body missing "payload" field');
-  }
-  return JSON.parse(payloadField);
+}
+
+/**
+ * Builds the monitor's onResult hook: when a run pauses awaiting approval,
+ * posts the Slack alert carrying the "Fix it" button for that approvalId.
+ */
+function createApprovalNotifier(
+  slackTool: ToolDescriptor,
+  channel: string
+): NonNullable<StartMonitorServerOptions['onResult']> {
+  return async (signal, result) => {
+    if (result.finishReason === 'awaiting-approval' && result.approvalId) {
+      await slackTool.tool.execute!(
+        {
+          channel,
+          message: `New error detected (${signal.signature}): ${signal.message}. Approve the fix?`,
+          approvalId: result.approvalId,
+        },
+        {} as any
+      );
+    }
+  };
+}
+
+/** Starts the small server exposing POST /slack/interactions. */
+async function startSlackInteractionsServer(
+  ctx: SlackRouteContext,
+  port: number,
+  host: string
+): Promise<OpsPipelineHandle['slack']> {
+  const server = http.createServer((req, res) => {
+    if (req.method === 'POST' && req.url === '/slack/interactions') {
+      void handleSlackInteractionRequest(req, res, ctx);
+      return;
+    }
+    sendNotFound(res);
+  });
+
+  const actualPort = await listenOn(server, port, host);
+  return { server, port: actualPort, close: () => closeServer(server) };
 }
 
 /**
@@ -145,128 +232,42 @@ export async function startOpsPipeline(deps: OpsPipelineDeps = {}): Promise<OpsP
   const slackTool = deps.slackTool ?? createMockSlackTool().tool;
   const approvalStore = deps.approvalStore ?? createInMemoryApprovalStore();
   const channel = deps.channel ?? DEFAULT_CHANNEL;
-
-  const fixerAgent = buildFixerAgent();
-  const delegateTool = createFixerDelegateTool({ agent: fixerAgent, provider });
-  // The fixer agent must never run without first passing through the
-  // approval gate (this epic's own non-negotiable safety property) -
-  // enforced here by flagging the delegate tool itself as needing
-  // approval, so AgentExecutor.execute() pauses BEFORE ever calling it.
-  const gatedDelegateTool: ToolDescriptor = { ...delegateTool, needsApproval: true };
-
-  const toolRegistry = new ToolRegistry();
-  toolRegistry.register(DELEGATE_TOOL_NAME, gatedDelegateTool);
-
-  const monitorAgent = {
-    name: 'ops-monitor',
-    agentType: AgentType.SmartAssistant,
-    prompt:
-      'You are an ops monitor. When an alert fires, delegate it to the fixer agent via the ' +
-      `${DELEGATE_TOOL_NAME} tool.`,
-    tools: { [DELEGATE_TOOL_NAME]: { tool: DELEGATE_TOOL_NAME } },
-  };
+  const toolRegistry = buildGatedToolRegistry(provider);
 
   const monitor = await startMonitorServer({
     executeOptions: {
-      agent: monitorAgent,
+      agent: MONITOR_AGENT,
       provider,
       toolRegistry,
       approvalStore,
     },
     host: deps.monitorHost,
     port: deps.monitorPort,
-    onResult: async (signal, result) => {
-      if (result.finishReason === 'awaiting-approval' && result.approvalId) {
-        await slackTool.tool.execute!(
-          {
-            channel,
-            message: `New error detected (${signal.signature}): ${signal.message}. Approve the fix?`,
-            approvalId: result.approvalId,
-          },
-          {} as any
-        );
-      }
+    onResult: createApprovalNotifier(slackTool, channel),
+  });
+
+  const slack = await startSlackInteractionsServer(
+    {
+      provider,
+      approvalStore,
+      toolRegistry,
+      githubCreatePrTool,
+      slackTool,
+      channel,
+      guardrails: deps.guardrails,
     },
-  });
-
-  const slackServer = http.createServer((req, res) => {
-    void (async () => {
-      if (req.method === 'POST' && req.url === '/slack/interactions') {
-        try {
-          const raw = await readBody(req);
-          const payload = parseSlackInteractionBody(raw);
-          const approvalId = extractApprovalIdFromInteraction(payload);
-
-          const result = await handleSlackInteraction(payload, {
-            approvalStore,
-            toolRegistry,
-            provider,
-          });
-
-          if (result && approvalId) {
-            const patch = extractDelegatedPatch(result, DELEGATE_TOOL_NAME);
-            if (patch) {
-              await handleFixerPatch(patch, {
-                githubCreatePrTool,
-                slackTool,
-                channel,
-                approvalId,
-                head: `fix/auto-${approvalId}`,
-                guardrails: deps.guardrails,
-              });
-            }
-          }
-
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ handled: result !== undefined }));
-        } catch (error) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: (error as Error).message }));
-        }
-        return;
-      }
-      res.writeHead(404, { 'Content-Type': 'text/plain' });
-      res.end('not found');
-    })();
-  });
-
-  const slackHost = deps.slackHost ?? '127.0.0.1';
-  const slackPort = deps.slackPort ?? 0;
-  await new Promise<void>((resolve, reject) => {
-    slackServer.once('error', reject);
-    slackServer.listen(slackPort, slackHost, () => resolve());
-  });
-  const slackAddress = slackServer.address();
-  const actualSlackPort = typeof slackAddress === 'object' && slackAddress ? slackAddress.port : slackPort;
+    deps.slackPort ?? 0,
+    deps.slackHost ?? '127.0.0.1'
+  );
 
   return {
     monitor,
-    slack: {
-      server: slackServer,
-      port: actualSlackPort,
-      close: () => new Promise<void>((resolve, reject) => slackServer.close((e) => (e ? reject(e) : resolve()))),
-    },
+    slack,
     close: async () => {
       await monitor.close();
-      await new Promise<void>((resolve, reject) => slackServer.close((e) => (e ? reject(e) : resolve())));
+      await slack.close();
     },
   };
 }
 
-if (require.main === module) {
-  const monitorPort = Number(process.env.OPS_PIPELINE_MONITOR_PORT) || 8787;
-  const slackPort = Number(process.env.OPS_PIPELINE_SLACK_PORT) || 8788;
 
-  startOpsPipeline({ monitorPort, slackPort })
-    .then((handle) => {
-      console.log(`ops-pipeline monitor webhook listening on http://127.0.0.1:${handle.monitor.port}/webhook`);
-      console.log(
-        `ops-pipeline slack interactions listening on http://127.0.0.1:${handle.slack.port}/slack/interactions`
-      );
-      console.log('Running against mock Slack/GitHub APIs and a deterministic demo provider by default.');
-    })
-    .catch((error) => {
-      console.error(error);
-      process.exitCode = 1;
-    });
-}

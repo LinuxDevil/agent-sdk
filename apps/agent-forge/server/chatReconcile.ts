@@ -28,7 +28,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import type { Message } from '@loushy/build-ai-agent';
-import type { ChatMessage } from './types';
+import type { ChatMessage } from '../shared/wireTypes';
 
 function sameMessage(a: Message, b: Message): boolean {
   return (

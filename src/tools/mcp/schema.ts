@@ -30,7 +30,39 @@ export function jsonSchemaToZod(schema: any): ZodTypeAny {
   return convert(schema);
 }
 
+/**
+ * Builders for each supported JSON Schema `type`. A Map (not an object
+ * literal) so that a `type` like 'toString' can't resolve to an inherited
+ * Object.prototype member.
+ */
+const TYPE_CONVERTERS = new Map<string, typeof convertObject>([
+  ['object', (schema) => convertObject(schema)],
+  ['array', (schema) => convertArray(schema)],
+  ['string', () => z.string()],
+  ['number', () => z.number()],
+  ['integer', () => z.number().int()],
+  ['boolean', () => z.boolean()],
+]);
+
 function convert(schema: any): ZodTypeAny {
+  assertConvertible(schema);
+
+  // enum takes precedence over `type`, since a schema may specify both.
+  if (Array.isArray(schema.enum)) {
+    return applyDescription(convertEnum(schema.enum), schema);
+  }
+
+  const converter = TYPE_CONVERTERS.get(schema.type);
+  if (!converter) {
+    throw new Error(
+      `jsonSchemaToZod: unsupported schema type '${schema.type}' in ${JSON.stringify(schema)}`
+    );
+  }
+  return applyDescription(converter(schema), schema);
+}
+
+/** Reject non-objects and `$ref` schemas up front. */
+function assertConvertible(schema: unknown): void {
   if (schema === null || typeof schema !== 'object') {
     throw new Error(
       `jsonSchemaToZod: expected a JSON Schema object, got ${JSON.stringify(schema)}`
@@ -41,30 +73,6 @@ function convert(schema: any): ZodTypeAny {
     throw new Error(
       'jsonSchemaToZod: $ref (and recursive schemas) are not supported in this converter'
     );
-  }
-
-  // enum takes precedence over `type`, since a schema may specify both.
-  if (Array.isArray(schema.enum)) {
-    return applyDescription(convertEnum(schema.enum), schema);
-  }
-
-  switch (schema.type) {
-    case 'object':
-      return applyDescription(convertObject(schema), schema);
-    case 'array':
-      return applyDescription(convertArray(schema), schema);
-    case 'string':
-      return applyDescription(z.string(), schema);
-    case 'number':
-      return applyDescription(z.number(), schema);
-    case 'integer':
-      return applyDescription(z.number().int(), schema);
-    case 'boolean':
-      return applyDescription(z.boolean(), schema);
-    default:
-      throw new Error(
-        `jsonSchemaToZod: unsupported schema type '${schema.type}' in ${JSON.stringify(schema)}`
-      );
   }
 }
 

@@ -88,7 +88,3 @@ ctx.messages.push({ role: 'system', content: 'Current date: ' + new Date().toISO
 return ctx;`,
   },
 ];
-
-export function findHookTemplate(id: string): HookTemplate | undefined {
-  return HOOK_TEMPLATES.find((t) => t.id === id);
-}

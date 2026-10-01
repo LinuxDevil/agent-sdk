@@ -13,7 +13,6 @@ import { CloudflareWorkerAdapter } from './adapters/cloudflare';
 import { DockerAdapter } from './adapters/docker';
 
 export * from './types';
-export { NodeServerAdapter, CloudflareWorkerAdapter, DockerAdapter };
 
 /** Registers every built-in adapter under its target name. Idempotent. */
 export function registerBuiltInAdapters(): void {

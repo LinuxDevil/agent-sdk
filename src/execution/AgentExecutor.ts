@@ -4,43 +4,32 @@
  */
 
 import { nanoid } from 'nanoid';
-import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult } from '../providers';
+import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult, ToolDefinition } from '../providers';
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
 import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
 import { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGate';
-import { Checkpoint, CheckpointStore } from './checkpoint';
+import { CheckpointStore } from './checkpoint';
 import { TraceExporter, withSpan } from './tracing';
-import { executeToolWithSandboxGuard } from './sandboxGuard';
 import { HookRegistry } from './hooks';
+import { ToolCallOutcome, parseToolArguments, runToolCall } from './toolCallExecution';
 import {
-  CompactedLLMProviderError,
-  compactProviderError,
-  isModelActionableProviderErrorCategory,
-} from './errors';
+  buildTools,
+  compactGenerateError,
+  generateInSpan,
+  prepareGenerateRequest,
+  providerErrorMessage,
+  shouldSurfaceToModel,
+} from './generateStep';
+import {
+  AgentRunState,
+  addUsage,
+  loadRunState,
+  saveStepCheckpoint,
+  toExecutionResult,
+} from './agentRunState';
 
-/**
- * Base class for tool errors that must NOT be swallowed by
- * executeToolCall()'s catch-all and converted into a conversational
- * `{error: ...}` tool-result message fed back to the LLM. Instead they
- * should propagate up out of execute() as a rejected promise, terminating
- * the run and giving the caller (which may itself be a parent delegate
- * tool's execute(), see DelegationTool.ts) an unambiguous signal.
- *
- * DelegationTool.ts's DelegationDepthExceededError extends this so that a
- * runaway delegation cycle (A -> B -> A -> ...) is stopped dead the moment
- * any one level's maxDepth guard fires, rather than having that error
- * re-enter the conversation as tool output that prompts the LLM to retry
- * the delegation - which is what let the original bug grow unbounded
- * (O(maxSteps^maxDepth) LLM calls) instead of failing fast.
- *
- * This lives here (not in DelegationTool.ts) because DelegationTool.ts
- * already imports AgentExecutor from this file; having AgentExecutor.ts
- * import back from DelegationTool.ts would be a circular import. Defining
- * the shared marker in this lower-level file lets both directions work
- * without a cycle.
- */
-export class PropagatingToolError extends Error {}
+export { PropagatingToolError } from './propagatingToolError';
 
 /**
  * Execution event types
@@ -230,14 +219,14 @@ export interface ExecuteOptions {
    * - `true`: for the three model-actionable categories above, the
    *   compacted error is instead pushed onto `messages` (tagged so it's
    *   distinguishable from real user input - see the `[provider-error]`
-   *   prefix in runAgentLoop()) and the loop retries generation, consuming
+   *   prefix in providerErrorMessage()) and the loop retries generation, consuming
    *   one `maxSteps` step exactly like any other turn. THIS part is
    *   opt-in-only because it is a genuine behavior change for those three
    *   categories: today they always reject; with this flag set, a
    *   persistently-failing provider call instead keeps consuming steps
    *   until either it succeeds, a non-actionable failure occurs, or
    *   `maxSteps` is exhausted (at which point `execute()` still rejects
-   *   with the last compacted error - see runAgentLoop() - rather than
+   *   with the last compacted error - see finishRun() - rather than
    *   silently returning a hollow "successful" result).
    */
   surfaceRetryableProviderErrors?: boolean;
@@ -304,31 +293,7 @@ export class AgentExecutor {
     options: ExecuteOptions,
     agentSpanId: string
   ): Promise<ExecutionResult> {
-    const {
-      agent,
-      input,
-      provider,
-      toolRegistry,
-      maxSteps = 10,
-      temperature,
-      maxTokens,
-      onEvent,
-      approvalStore,
-      sessionId,
-      checkpointStore,
-      skipSystemPromptInjection,
-      initialSteps,
-      onLLMRequest,
-      onLLMResponse,
-      onToolCall,
-      onToolResult,
-      exporter,
-      redactContent = false,
-      sandbox = NoopSandbox,
-      hooks,
-      businessState,
-      surfaceRetryableProviderErrors = false,
-    } = options;
+    const { agent, toolRegistry, maxSteps = 10, onEvent } = options;
 
     // Emit start event
     this.emitEvent(onEvent, {
@@ -339,371 +304,22 @@ export class AgentExecutor {
     });
 
     // Build tools
-    const tools = this.buildTools(agent, toolRegistry);
+    const tools = buildTools(agent, toolRegistry);
 
-    // If a checkpoint exists for this sessionId, rehydrate state from it
-    // instead of building messages from scratch.
-    let checkpoint: Checkpoint | null = null;
-    if (sessionId && checkpointStore) {
-      checkpoint = await checkpointStore.load(sessionId);
-    }
-
-    let currentMessages: Message[];
-    let allToolCalls: ToolCall[];
-    let totalUsage: { promptTokens: number; completionTokens: number; totalTokens: number };
-    let steps: number;
-
-    // LOU-T1: on a rehydrated run (e.g. a fresh process resuming after a
-    // crash), the caller of this execute() call may have no way to know
-    // what businessState a *previous* process attached - that's exactly
-    // the "second store, hope it stays aligned" gap this field closes. So
-    // when a checkpoint is loaded and this call's own `businessState`
-    // option was left unset, fall back to the value already stored on the
-    // checkpoint rather than silently dropping it. An explicit
-    // `businessState` passed to *this* call always wins (e.g. a caller
-    // deliberately updating it as part of the resumed run).
-    let effectiveBusinessState = businessState;
-
-    if (checkpoint) {
-      currentMessages = [...checkpoint.messages];
-      allToolCalls = [...(checkpoint.toolCalls as ToolCall[])];
-      totalUsage = { ...checkpoint.usage };
-      steps = checkpoint.stepIndex;
-      if (effectiveBusinessState === undefined) {
-        effectiveBusinessState = checkpoint.businessState;
-      }
-    } else {
-      // Build messages from scratch (fallback path)
-      const messages = this.buildMessages(agent, input, skipSystemPromptInjection);
-      currentMessages = [...messages];
-      allToolCalls = [];
-      totalUsage = {
-        promptTokens: 0,
-        completionTokens: 0,
-        totalTokens: 0,
-      };
-      steps = initialSteps ?? 0;
-    }
-
-    let finalText = '';
-    let finishReason = 'stop';
-    // LOU-T4: set right before a compacted, model-actionable provider error
-    // is pushed onto `messages` and the loop retries; cleared on any turn
-    // that actually produces a result (text or tool calls). If the loop
-    // exits because `maxSteps` was exhausted while this is still set, the
-    // very last thing that happened was a provider failure, not a genuine
-    // stop/tool-calls turn - see the post-loop check below for why
-    // `execute()` still rejects in that case instead of returning a hollow
-    // "successful" result whose `finishReason` would otherwise misleadingly
-    // read as if the model actually gave up on its own.
-    let lastSurfacedProviderError: CompactedLLMProviderError | undefined;
+    const state = await loadRunState(options);
 
     // Execution loop with tool calling
-    while (steps < maxSteps) {
-      steps++;
+    while (state.steps < maxSteps) {
+      state.steps++;
 
       try {
-        const generateRequest: GenerateOptions = {
-          model: agent.settings?.model || 'gpt-4',
-          messages: currentMessages,
-          temperature,
-          maxTokens,
-          tools: tools.length > 0 ? tools : undefined,
-        };
-
-        if (onLLMRequest) {
-          await onLLMRequest(generateRequest);
+        const outcome = await this.runStep(options, state, tools, agentSpanId);
+        if (outcome === 'stop') {
+          break;
         }
-
-        if (hooks) {
-          await hooks.runPreGenerate({
-            agentId: agent.id,
-            agentName: agent.name,
-            sessionId,
-            messages: currentMessages,
-            request: generateRequest,
-          });
+        if (outcome !== 'continue') {
+          return outcome;
         }
-
-        let result: GenerateResult;
-        try {
-          result = await withSpan(
-            exporter,
-            'llm.generate',
-            {
-              model: generateRequest.model,
-              ...(redactContent ? {} : { prompt: JSON.stringify(generateRequest.messages) }),
-            },
-            async (llmSpan) => {
-              const llmStart = Date.now();
-              const generated = await provider.generate(generateRequest);
-              const llmLatencyMs = Date.now() - llmStart;
-
-              // Token counts and finish reason are never redacted.
-              llmSpan.attributes = {
-                ...llmSpan.attributes,
-                promptTokens: generated.usage.promptTokens,
-                completionTokens: generated.usage.completionTokens,
-                totalTokens: generated.usage.totalTokens,
-                finishReason: generated.finishReason,
-              };
-
-              if (onLLMResponse) {
-                await onLLMResponse(generated, llmLatencyMs);
-              }
-
-              if (hooks) {
-                await hooks.runPostGenerate(
-                  {
-                    agentId: agent.id,
-                    agentName: agent.name,
-                    sessionId,
-                    messages: currentMessages,
-                    request: generateRequest,
-                  },
-                  generated
-                );
-              }
-
-              return generated;
-            },
-            agentSpanId
-          );
-        } catch (generateError) {
-          // LOU-T4 (Factor 9): compact whatever the provider adapter threw
-          // - a raw 'ai'-SDK APICallError/LoadAPIKeyError/RetryError, or a
-          // bare network error - into a small CompactedProviderError before
-          // it goes anywhere near the caller or `messages`. See errors.ts's
-          // `compactProviderError()` doc comment for the full mapping
-          // evidence (all four adapters share the same 'ai'-SDK error
-          // taxonomy).
-          const compacted = compactProviderError(generateError, provider.name);
-          const compactedError = new CompactedLLMProviderError(
-            compacted,
-            generateError as Error
-          );
-
-          if (
-            surfaceRetryableProviderErrors &&
-            isModelActionableProviderErrorCategory(compacted.category)
-          ) {
-            // Fold the compacted error into the conversation so the MODEL
-            // sees it on its next turn and can react (back off, shorten its
-            // own ask, etc.) - this is what Factor 9 actually asks for
-            // ("compact errors into the CONTEXT WINDOW"), for the
-            // categories where handing it to the model is productive.
-            //
-            // This is pushed as a `role: 'user'` message, not `role:
-            // 'tool'`, despite using the same `{error: ...}` shape the
-            // tool-error compaction pattern uses: a `tool` message is only
-            // valid, for every provider here, when it's paired with a
-            // `toolCallId` from an assistant tool-call turn that actually
-            // happened - and a provider.generate() failure means no such
-            // assistant turn exists yet. Sending an orphaned `tool` message
-            // would itself be rejected by the next generate() call (OpenAI/
-            // Anthropic both require tool results to follow a matching
-            // tool-call), compounding the failure instead of compacting it.
-            // The `[provider-error]` prefix keeps this distinguishable from
-            // genuine human input in transcripts/logs.
-            currentMessages.push({
-              role: 'user',
-              content: `[provider-error] ${JSON.stringify({
-                error: compacted.error,
-                category: compacted.category,
-                retryable: compacted.retryable,
-                ...(compacted.retryAfterMs !== undefined
-                  ? { retryAfterMs: compacted.retryAfterMs }
-                  : {}),
-              })}`,
-            });
-
-            this.emitEvent(onEvent, {
-              type: 'error',
-              timestamp: new Date(),
-              error: compactedError,
-            });
-
-            lastSurfacedProviderError = compactedError;
-            continue;
-          }
-
-          // Non-actionable category ('auth-failure', 'unknown'), or the
-          // opt-in flag is off: reject execute() cleanly, exactly like
-          // before LOU-T4 - just with the small compacted error instead of
-          // the raw provider error. The outer catch block (below) emits the
-          // 'error' event for this, same as it does for every other thrown
-          // error in this loop - no need to duplicate that here.
-          throw compactedError;
-        }
-
-        // A turn produced a real result - any pending "the last thing that
-        // happened was a provider failure" tracking no longer applies.
-        lastSurfacedProviderError = undefined;
-
-        // Update usage
-        totalUsage.promptTokens += result.usage.promptTokens;
-        totalUsage.completionTokens += result.usage.completionTokens;
-        totalUsage.totalTokens += result.usage.totalTokens;
-
-        // Handle text response
-        if (result.text) {
-          finalText = result.text;
-          this.emitEvent(onEvent, {
-            type: 'text-complete',
-            timestamp: new Date(),
-            text: result.text,
-          });
-        }
-
-        // Handle tool calls
-        if (result.toolCalls && result.toolCalls.length > 0) {
-          allToolCalls.push(...result.toolCalls);
-
-          // Add assistant message with tool calls
-          currentMessages.push({
-            role: 'assistant',
-            content: result.text || '',
-            toolCalls: result.toolCalls,
-          });
-
-          // Execute tools and add results
-          for (const toolCall of result.toolCalls) {
-            this.emitEvent(onEvent, {
-              type: 'tool-call',
-              timestamp: new Date(),
-              toolCall,
-            });
-
-            const toolResult = await withSpan(
-              exporter,
-              'tool.call',
-              { toolName: toolCall.function.name },
-              async (toolSpan) => {
-                const toolCallStart = Date.now();
-                const executed = await this.executeToolCall(
-                  toolCall,
-                  agent,
-                  toolRegistry,
-                  onToolCall,
-                  onToolResult,
-                  sandbox,
-                  hooks,
-                  sessionId,
-                  currentMessages
-                );
-                let parsedArgs: unknown = executed.args;
-                if (parsedArgs === undefined) {
-                  try {
-                    parsedArgs = JSON.parse(toolCall.function.arguments);
-                  } catch {
-                    parsedArgs = toolCall.function.arguments;
-                  }
-                }
-                toolSpan.attributes = {
-                  ...toolSpan.attributes,
-                  ...(redactContent ? {} : { args: parsedArgs, result: executed.result }),
-                  error: !!executed.error,
-                  latencyMs: Date.now() - toolCallStart,
-                };
-                return executed;
-              },
-              agentSpanId
-            );
-
-            if (toolResult.requiresApproval) {
-              if (!approvalStore) {
-                throw new Error(
-                  `Tool '${toolResult.toolName}' requires approval but no approvalStore was provided to AgentExecutor.execute()`
-                );
-              }
-
-              const pending: PendingApproval = {
-                id: nanoid(),
-                toolCallId: toolCall.id,
-                toolName: toolCall.function.name,
-                args: toolResult.args || {},
-                agentId: agent.id,
-                createdAt: new Date().toISOString(),
-              };
-              const snapshot: ExecutionSnapshot = {
-                agent,
-                currentMessages,
-                pendingToolCall: pending,
-                steps,
-                sessionId,
-              };
-
-              await approvalStore.save(pending, snapshot);
-
-              this.emitEvent(onEvent, {
-                type: 'finish',
-                timestamp: new Date(),
-                finishReason: 'awaiting-approval',
-                usage: totalUsage,
-              });
-
-              return {
-                text: '',
-                messages: currentMessages,
-                toolCalls: allToolCalls,
-                usage: totalUsage,
-                finishReason: 'awaiting-approval',
-                steps,
-                approvalId: pending.id,
-              };
-            }
-
-            this.emitEvent(onEvent, {
-              type: 'tool-result',
-              timestamp: new Date(),
-              toolResult,
-            });
-
-            currentMessages.push({
-              role: 'tool',
-              content: JSON.stringify(toolResult.result),
-              name: toolCall.function.name,
-              toolCallId: toolCall.id,
-              toolName: toolCall.function.name,
-            });
-
-            if (sessionId && checkpointStore) {
-              const checkpoint: Checkpoint = {
-                agentId: agent.id || '',
-                sessionId,
-                stepIndex: steps,
-                messages: [...currentMessages],
-                toolCalls: [...allToolCalls],
-                usage: totalUsage,
-                finishReason,
-                businessState: effectiveBusinessState,
-              };
-              await checkpointStore.save(sessionId, checkpoint);
-            }
-          }
-
-          // Continue loop for next generation
-          finishReason = result.finishReason;
-          continue;
-        }
-
-        // No tool calls, we're done. Push the assistant's final reply onto
-        // currentMessages so `result.messages` (the returned conversation
-        // history) actually reflects it - previously this branch left
-        // `finalText`/`result.text` set but never appended a corresponding
-        // assistant message here (unlike the tool-call branch above, which
-        // always pushes one), so any caller treating `result.messages` as
-        // the authoritative conversation (e.g. to seed a follow-up turn)
-        // silently lost the agent's own last reply whenever a turn ended
-        // without a tool call - the common case for a plain chat exchange.
-        if (result.text) {
-          currentMessages.push({
-            role: 'assistant',
-            content: result.text,
-          });
-        }
-        finishReason = result.finishReason;
-        break;
       } catch (error) {
         this.emitEvent(onEvent, {
           type: 'error',
@@ -714,6 +330,289 @@ export class AgentExecutor {
       }
     }
 
+    return this.finishRun(options, state);
+  }
+
+  /**
+   * One generate -> (tool calls) turn of the loop. Resolves to 'continue'
+   * to take another step, 'stop' once the model replied without tool
+   * calls, or the ExecutionResult to return early when a tool call paused
+   * the run for approval.
+   */
+  private static async runStep(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    tools: ToolDefinition[],
+    agentSpanId: string
+  ): Promise<'continue' | 'stop' | ExecutionResult> {
+    const result = await this.generateOrSurfaceError(options, state, tools, agentSpanId);
+    if (!result) {
+      return 'continue';
+    }
+
+    // A turn produced a real result - any pending "the last thing that
+    // happened was a provider failure" tracking no longer applies.
+    state.lastSurfacedProviderError = undefined;
+
+    // Update usage
+    addUsage(state.usage, result.usage);
+
+    // Handle text response
+    if (result.text) {
+      state.finalText = result.text;
+      this.emitEvent(options.onEvent, {
+        type: 'text-complete',
+        timestamp: new Date(),
+        text: result.text,
+      });
+    }
+
+    // Handle tool calls
+    if (result.toolCalls && result.toolCalls.length > 0) {
+      const paused = await this.runToolCalls(options, state, result.text, result.toolCalls, agentSpanId);
+      if (paused) {
+        return paused;
+      }
+
+      // Continue loop for next generation
+      state.finishReason = result.finishReason;
+      return 'continue';
+    }
+
+    // No tool calls, we're done. Push the assistant's final reply onto
+    // currentMessages so `result.messages` (the returned conversation
+    // history) actually reflects it - previously this branch left
+    // `finalText`/`result.text` set but never appended a corresponding
+    // assistant message here (unlike the tool-call branch above, which
+    // always pushes one), so any caller treating `result.messages` as
+    // the authoritative conversation (e.g. to seed a follow-up turn)
+    // silently lost the agent's own last reply whenever a turn ended
+    // without a tool call - the common case for a plain chat exchange.
+    if (result.text) {
+      state.messages.push({
+        role: 'assistant',
+        content: result.text,
+      });
+    }
+    state.finishReason = result.finishReason;
+    return 'stop';
+  }
+
+  /**
+   * Calls provider.generate() for the next turn. Resolves to `undefined`
+   * when the failure was instead folded into the conversation for the
+   * model to react to (LOU-T4 `surfaceRetryableProviderErrors`).
+   */
+  private static async generateOrSurfaceError(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    tools: ToolDefinition[],
+    agentSpanId: string
+  ): Promise<GenerateResult | undefined> {
+    const generateRequest = await prepareGenerateRequest(options, state.messages, tools);
+
+    try {
+      return await generateInSpan(options, generateRequest, state.messages, agentSpanId);
+    } catch (generateError) {
+      const { compacted, error: compactedError } = compactGenerateError(
+        generateError,
+        options.provider.name
+      );
+
+      if (!shouldSurfaceToModel(options, compacted)) {
+        // Non-actionable category ('auth-failure', 'unknown'), or the
+        // opt-in flag is off: reject execute() cleanly, exactly like
+        // before LOU-T4 - just with the small compacted error instead of
+        // the raw provider error. runAgentLoop()'s catch block emits the
+        // 'error' event for this, same as it does for every other thrown
+        // error in the loop - no need to duplicate that here.
+        throw compactedError;
+      }
+
+      // See providerErrorMessage() for why this is a tagged `user` message.
+      state.messages.push(providerErrorMessage(compacted));
+
+      this.emitEvent(options.onEvent, {
+        type: 'error',
+        timestamp: new Date(),
+        error: compactedError,
+      });
+
+      state.lastSurfacedProviderError = compactedError;
+      return undefined;
+    }
+  }
+
+  /**
+   * Executes the tool calls of one assistant turn in order, appending each
+   * result to the conversation and checkpointing after it. Resolves to the
+   * ExecutionResult to return when a tool call requires approval.
+   */
+  private static async runToolCalls(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    assistantText: string | undefined,
+    toolCalls: ToolCall[],
+    agentSpanId: string
+  ): Promise<ExecutionResult | undefined> {
+    const { onEvent } = options;
+    state.toolCalls.push(...toolCalls);
+
+    // Add assistant message with tool calls
+    state.messages.push({
+      role: 'assistant',
+      content: assistantText || '',
+      toolCalls,
+    });
+
+    // Execute tools and add results
+    for (const toolCall of toolCalls) {
+      this.emitEvent(onEvent, {
+        type: 'tool-call',
+        timestamp: new Date(),
+        toolCall,
+      });
+
+      const toolResult = await this.runToolCallInSpan(options, state, toolCall, agentSpanId);
+
+      if (toolResult.requiresApproval) {
+        return this.pauseForApproval(options, state, toolCall, toolResult);
+      }
+
+      this.emitEvent(onEvent, {
+        type: 'tool-result',
+        timestamp: new Date(),
+        toolResult,
+      });
+
+      state.messages.push({
+        role: 'tool',
+        content: JSON.stringify(toolResult.result),
+        name: toolCall.function.name,
+        toolCallId: toolCall.id,
+        toolName: toolCall.function.name,
+      });
+
+      await saveStepCheckpoint(options, state);
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Runs one tool call inside a `tool.call` span parented to the run's
+   * `agent.run` span.
+   */
+  private static runToolCallInSpan(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    toolCall: ToolCall,
+    agentSpanId: string
+  ): Promise<ToolCallOutcome> {
+    const {
+      agent,
+      toolRegistry,
+      onToolCall,
+      onToolResult,
+      sandbox = NoopSandbox,
+      hooks,
+      sessionId,
+      exporter,
+      redactContent = false,
+    } = options;
+
+    return withSpan(
+      exporter,
+      'tool.call',
+      { toolName: toolCall.function.name },
+      async (toolSpan) => {
+        const toolCallStart = Date.now();
+        const executed = await this.executeToolCall(
+          toolCall,
+          agent,
+          toolRegistry,
+          onToolCall,
+          onToolResult,
+          sandbox,
+          hooks,
+          sessionId,
+          state.messages
+        );
+        const parsedArgs =
+          executed.args === undefined
+            ? parseToolArguments(toolCall, toolCall.function.arguments)
+            : executed.args;
+        toolSpan.attributes = {
+          ...toolSpan.attributes,
+          ...(redactContent ? {} : { args: parsedArgs, result: executed.result }),
+          error: !!executed.error,
+          latencyMs: Date.now() - toolCallStart,
+        };
+        return executed;
+      },
+      agentSpanId
+    );
+  }
+
+  /**
+   * Persists a pending approval (plus the snapshot resume.ts needs) and
+   * ends this execute() call with an 'awaiting-approval' result. The
+   * checkpoint is deliberately left in place so the run can be resumed.
+   */
+  private static async pauseForApproval(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    toolCall: ToolCall,
+    toolResult: ToolCallOutcome
+  ): Promise<ExecutionResult> {
+    const { agent, approvalStore, sessionId, onEvent } = options;
+    if (!approvalStore) {
+      throw new Error(
+        `Tool '${toolResult.toolName}' requires approval but no approvalStore was provided to AgentExecutor.execute()`
+      );
+    }
+
+    const pending: PendingApproval = {
+      id: nanoid(),
+      toolCallId: toolCall.id,
+      toolName: toolCall.function.name,
+      args: toolResult.args || {},
+      agentId: agent.id,
+      createdAt: new Date().toISOString(),
+    };
+    const snapshot: ExecutionSnapshot = {
+      agent,
+      currentMessages: state.messages,
+      pendingToolCall: pending,
+      steps: state.steps,
+      sessionId,
+    };
+
+    await approvalStore.save(pending, snapshot);
+
+    this.emitEvent(onEvent, {
+      type: 'finish',
+      timestamp: new Date(),
+      finishReason: 'awaiting-approval',
+      usage: state.usage,
+    });
+
+    return {
+      ...toExecutionResult(state, '', 'awaiting-approval'),
+      approvalId: pending.id,
+    };
+  }
+
+  /**
+   * Ends a run that left the loop - the model stopped requesting tools,
+   * or maxSteps was exhausted.
+   */
+  private static async finishRun(
+    options: ExecuteOptions,
+    state: AgentRunState
+  ): Promise<ExecutionResult> {
+    const { onEvent, sessionId, checkpointStore } = options;
+
     // LOU-T4: `maxSteps` was exhausted, but the very last thing that
     // happened was a surfaced-to-the-model provider failure (not a genuine
     // model stop/tool-calls turn) - every retry the model got a chance to
@@ -721,109 +620,40 @@ export class AgentExecutor {
     // instead of silently returning a "successful-looking" ExecutionResult
     // (finishReason would otherwise read as a stale value from before the
     // failures started, misrepresenting what actually happened).
-    if (lastSurfacedProviderError) {
+    if (state.lastSurfacedProviderError) {
       this.emitEvent(onEvent, {
         type: 'error',
         timestamp: new Date(),
-        error: lastSurfacedProviderError,
+        error: state.lastSurfacedProviderError,
       });
-      throw lastSurfacedProviderError;
+      throw state.lastSurfacedProviderError;
     }
 
     // Emit finish event
     this.emitEvent(onEvent, {
       type: 'finish',
       timestamp: new Date(),
-      finishReason,
-      usage: totalUsage,
+      finishReason: state.finishReason,
+      usage: state.usage,
     });
 
     // The run has reached a terminal state (either the model stopped
     // requesting tools, or maxSteps was exhausted) - as opposed to the
-    // 'awaiting-approval' early-return above, which is a mid-flight pause
-    // where the checkpoint must stay in place so it can still be resumed.
-    // Clear the checkpoint here so a later execute() call reusing this
-    // sessionId builds fresh messages from its own `input` instead of
-    // silently resuming from this now-finished run.
+    // 'awaiting-approval' early return in pauseForApproval(), which is a
+    // mid-flight pause where the checkpoint must stay in place so it can
+    // still be resumed. Clear the checkpoint here so a later execute() call
+    // reusing this sessionId builds fresh messages from its own `input`
+    // instead of silently resuming from this now-finished run.
     if (sessionId && checkpointStore) {
       await checkpointStore.delete(sessionId);
     }
 
-    return {
-      text: finalText,
-      messages: currentMessages,
-      toolCalls: allToolCalls,
-      usage: totalUsage,
-      finishReason,
-      steps,
-    };
+    return toExecutionResult(state, state.finalText, state.finishReason);
   }
 
   /**
-   * Build messages from input
-   */
-  private static buildMessages(
-    agent: AgentConfig,
-    input: string | Message[],
-    skipSystemPromptInjection = false
-  ): Message[] {
-    const messages: Message[] = [];
-
-    // Add system prompt, unless the caller has indicated `input` already
-    // includes one (e.g. resume.ts rebuilding from an ExecutionSnapshot).
-    if (agent.prompt && !skipSystemPromptInjection) {
-      messages.push({
-        role: 'system',
-        content: agent.prompt,
-      });
-    }
-
-    // Add input messages
-    if (typeof input === 'string') {
-      messages.push({
-        role: 'user',
-        content: input,
-      });
-    } else {
-      messages.push(...input);
-    }
-
-    return messages;
-  }
-
-  /**
-   * Build tools from agent and registry
-   */
-  private static buildTools(
-    agent: AgentConfig,
-    toolRegistry?: ToolRegistry
-  ): any[] {
-    if (!agent.tools || !toolRegistry) {
-      return [];
-    }
-
-    const tools: any[] = [];
-
-    for (const [toolName, toolConfig] of Object.entries(agent.tools)) {
-      const toolDesc = toolRegistry.get(toolName);
-      if (toolDesc && toolDesc.tool) {
-        // The tool from 'ai' SDK already has description and parameters
-        tools.push({
-          type: 'function',
-          function: {
-            name: toolName,
-            description: toolDesc.tool.description || toolConfig.description || '',
-            parameters: toolDesc.tool.parameters || {},
-          },
-        });
-      }
-    }
-
-    return tools;
-  }
-
-  /**
-   * Execute a tool call
+   * Execute a tool call (see toolCallExecution.ts). Kept as a positional,
+   * static entry point the loop above calls into.
    */
   private static async executeToolCall(
     toolCall: ToolCall,
@@ -835,187 +665,17 @@ export class AgentExecutor {
     hooks?: HookRegistry,
     sessionId?: string,
     messages: Message[] = []
-  ): Promise<{
-    toolCallId: string;
-    toolName: string;
-    result: any;
-    error?: string;
-    requiresApproval?: boolean;
-    args?: Record<string, unknown>;
-  }> {
-    if (onToolCall) {
-      await onToolCall(toolCall);
-    }
-
-    // Parse args up front (best-effort) so hooks get a real object to
-    // inspect/mutate even before doExecuteToolCall() parses them again for
-    // its own use (needsApproval/execute). A hook mutating this object has
-    // no effect on the actual call in this fallback case; see the
-    // `hooks.runPreToolCall` call below for the real, load-bearing parse.
-    let hookArgs: Record<string, unknown> = {};
-    try {
-      hookArgs = JSON.parse(toolCall.function.arguments);
-    } catch {
-      hookArgs = {};
-    }
-
-    if (hooks) {
-      await hooks.runPreToolCall({
-        agentId: agent.id,
-        agentName: agent.name,
-        sessionId,
-        messages,
-        toolCallId: toolCall.id,
-        toolName: toolCall.function.name,
-        args: hookArgs,
-        toolCall,
-      });
-    }
-
-    const toolStart = Date.now();
-    let outcome:
-      | {
-          toolCallId: string;
-          toolName: string;
-          result: any;
-          error?: string;
-          requiresApproval?: boolean;
-          args?: Record<string, unknown>;
-        }
-      | undefined;
-    let thrown: unknown;
-
-    try {
-      outcome = await this.doExecuteToolCall(toolCall, toolRegistry, sandbox, hookArgs);
-      if (hooks) {
-        await hooks.runPostToolCall(
-          {
-            agentId: agent.id,
-            agentName: agent.name,
-            sessionId,
-            messages,
-            toolCallId: toolCall.id,
-            toolName: toolCall.function.name,
-            args: hookArgs,
-            toolCall,
-          },
-          {
-            result: outcome.result,
-            error: outcome.error,
-            requiresApproval: outcome.requiresApproval,
-          }
-        );
-      }
-      return outcome;
-    } catch (error) {
-      thrown = error;
-      throw error;
-    } finally {
-      const latencyMs = Date.now() - toolStart;
-      if (onToolResult) {
-        await onToolResult(toolCall, outcome, latencyMs, thrown);
-      }
-    }
-  }
-
-  /**
-   * Actual tool-execution logic, split out from executeToolCall() so the
-   * onToolCall/onToolResult hooks (LOU-E2) can wrap it uniformly via
-   * try/finally regardless of which branch below returns or throws.
-   */
-  private static async doExecuteToolCall(
-    toolCall: ToolCall,
-    toolRegistry?: ToolRegistry,
-    sandbox: SandboxAdapter = NoopSandbox,
-    overrideArgs?: Record<string, unknown>
-  ): Promise<{
-    toolCallId: string;
-    toolName: string;
-    result: any;
-    error?: string;
-    requiresApproval?: boolean;
-    args?: Record<string, unknown>;
-  }> {
-    if (!toolRegistry) {
-      return {
-        toolCallId: toolCall.id,
-        toolName: toolCall.function.name,
-        result: null,
-        error: 'No tool registry available',
-      };
-    }
-
-    try {
-      const toolDesc = toolRegistry.get(toolCall.function.name);
-      if (!toolDesc || !toolDesc.tool || !toolDesc.tool.execute) {
-        return {
-          toolCallId: toolCall.id,
-          toolName: toolCall.function.name,
-          result: null,
-          error: `Tool '${toolCall.function.name}' not found`,
-        };
-      }
-
-      // `overrideArgs` is the (possibly hook-mutated) object built by
-      // executeToolCall() before preToolCall hooks ran - using it here
-      // instead of re-parsing `toolCall.function.arguments` is what makes a
-      // `preToolCall` hook (e.g. redact-pii) that mutates `ctx.args`
-      // actually affect what the tool is invoked with.
-      const args = overrideArgs ?? JSON.parse(toolCall.function.arguments);
-
-      const needsApproval =
-        typeof toolDesc.needsApproval === 'function'
-          ? await toolDesc.needsApproval(args)
-          : !!toolDesc.needsApproval;
-
-      if (needsApproval) {
-        return {
-          toolCallId: toolCall.id,
-          toolName: toolCall.function.name,
-          result: null,
-          requiresApproval: true,
-          args,
-        };
-      }
-
-      // The 'ai' SDK tool.execute expects (args, context). Tools flagged
-      // `requiresSandbox` (LOU-F5) are routed through the configured
-      // SandboxAdapter instead of being invoked directly here; a tool
-      // WITHOUT the flag takes this exact, unchanged branch. This
-      // branching now lives in the shared executeToolWithSandboxGuard()
-      // helper (LOU-F fix) so FlowExecutor.ts and resume.ts share the
-      // exact same fail-closed behavior instead of each reimplementing it.
-      const result = await executeToolWithSandboxGuard(
-        toolCall.function.name,
-        toolDesc,
-        args,
-        sandbox
-      );
-
-      return {
-        toolCallId: toolCall.id,
-        toolName: toolCall.function.name,
-        result,
-      };
-    } catch (error) {
-      // Errors that mark themselves as `PropagatingToolError` (e.g.
-      // DelegationDepthExceededError) must NOT be converted into a
-      // conversational {error} tool-result - that would hand the LLM
-      // exactly the kind of "your tool call failed, try again" signal
-      // that triggers another delegation attempt, defeating the whole
-      // point of the depth guard. Rethrow so it propagates out of
-      // execute() as a rejected promise instead.
-      if (error instanceof PropagatingToolError) {
-        throw error;
-      }
-
-      return {
-        toolCallId: toolCall.id,
-        toolName: toolCall.function.name,
-        result: null,
-        error: (error as Error).message,
-      };
-    }
+  ): Promise<ToolCallOutcome> {
+    return runToolCall(toolCall, {
+      agent,
+      toolRegistry,
+      onToolCall,
+      onToolResult,
+      sandbox,
+      hooks,
+      sessionId,
+      messages,
+    });
   }
 
   /**

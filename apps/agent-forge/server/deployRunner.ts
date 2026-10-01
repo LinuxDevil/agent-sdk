@@ -12,6 +12,7 @@
  */
 import { spawn } from 'node:child_process';
 import * as path from 'node:path';
+import type { DeployResult } from '../shared/wireTypes';
 import { agentSpecFilePath } from '../src/persistence/fsAgentStore';
 
 /**
@@ -32,13 +33,6 @@ export type DeployAdapter = (typeof DEPLOY_ADAPTERS)[number];
 
 export function isDeployAdapter(value: string): value is DeployAdapter {
   return (DEPLOY_ADAPTERS as readonly string[]).includes(value);
-}
-
-export interface DeployResult {
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-  command: string;
 }
 
 /**

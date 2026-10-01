@@ -92,7 +92,7 @@ export async function handleSlackInteraction(
 
 const MAX_BODY_BYTES = 1024 * 1024; // 1MB
 
-function readBody(req: http.IncomingMessage): Promise<string> {
+export function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let body = '';
     let bytes = 0;
@@ -115,7 +115,7 @@ function readBody(req: http.IncomingMessage): Promise<string> {
  * with the JSON payload under the `payload` field - this parses either that
  * form, or a raw JSON body (for convenience/tests).
  */
-function parseSlackInteractionBody(raw: string): SlackInteractionPayload {
+export function parseSlackInteractionBody(raw: string): SlackInteractionPayload {
   const trimmed = raw.trim();
   if (trimmed.startsWith('{')) {
     return JSON.parse(trimmed);
@@ -126,26 +126,4 @@ function parseSlackInteractionBody(raw: string): SlackInteractionPayload {
     throw new Error('Slack interaction body missing "payload" field');
   }
   return JSON.parse(payloadField);
-}
-
-/**
- * Builds an http.RequestListener-compatible handler for `POST
- * /slack/interactions`, for use with node:http's createServer (see
- * examples/ops-pipeline/index.ts).
- */
-export function createSlackInteractionsRoute(
-  deps: SlackInteractionsDeps
-): (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void> {
-  return async (req, res) => {
-    try {
-      const raw = await readBody(req);
-      const payload = parseSlackInteractionBody(raw);
-      const result = await handleSlackInteraction(payload, deps);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ handled: result !== undefined }));
-    } catch (error) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: (error as Error).message }));
-    }
-  };
 }

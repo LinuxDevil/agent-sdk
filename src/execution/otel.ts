@@ -111,16 +111,18 @@ export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}):
 
 function setAttributes(otelSpan: OtelSpan, attributes: Record<string, unknown>): void {
   for (const [key, value] of Object.entries(attributes)) {
-    if (value === undefined) {
-      continue;
-    }
-    // OTel attribute values must be a primitive or an array of a single
-    // primitive type - stringify anything else (objects/arrays of
-    // objects, e.g. `prompt`/`args`/`result`) so nothing throws.
-    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-      otelSpan.setAttribute(key, value);
-    } else {
-      otelSpan.setAttribute(key, JSON.stringify(value));
+    if (value !== undefined) {
+      otelSpan.setAttribute(key, toOtelAttributeValue(value));
     }
   }
+}
+
+// OTel attribute values must be a primitive or an array of a single
+// primitive type - stringify anything else (objects/arrays of
+// objects, e.g. `prompt`/`args`/`result`) so nothing throws.
+function toOtelAttributeValue(value: unknown): string | number | boolean {
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return value;
+  }
+  return JSON.stringify(value);
 }

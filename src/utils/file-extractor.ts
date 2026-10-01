@@ -61,10 +61,15 @@ export function replaceBase64Content(data: string): string {
  * Check if buffer contains binary data (non-printable characters)
  */
 export function isBinaryData(buffer: any): boolean {
-  return buffer.some(
-    (byte: number) =>
-      (byte < 32 && byte !== 9 && byte !== 10 && byte !== 13) || byte === 255
-  );
+  return buffer.some(isBinaryByte);
+}
+
+/** Whitespace control characters (tab, LF, CR) that are legitimate in text. */
+const TEXT_CONTROL_BYTES: ReadonlySet<number> = new Set([9, 10, 13]);
+
+function isBinaryByte(byte: number): boolean {
+  const isControlChar = byte < 32 && !TEXT_CONTROL_BYTES.has(byte);
+  return isControlChar || byte === 255;
 }
 
 /**
