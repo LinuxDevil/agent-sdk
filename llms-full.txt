@@ -211,10 +211,9 @@ you need `maxSteps`, approval gates, checkpoints, tracing hooks, or a
 API — there is no `new AgentExecutor()`.
 
 ```typescript
-import { AgentBuilder, AgentExecutor, AgentType, resolveProvider } from '@loushy/build-ai-agent';
+import { AgentBuilder, AgentExecutor, resolveProvider } from '@loushy/build-ai-agent';
 
 const agent = AgentBuilder.create()
-  .setType(AgentType.SmartAssistant)
   .setName('Customer Support Agent')
   .setPrompt('You are a helpful customer support assistant.')
   .build();
@@ -279,7 +278,7 @@ Both files are generated (`npm run docs:llms`) and checked in CI.
 
 ### Agents
 
-Agents combine a **type** (`AgentType.SmartAssistant`, etc.), a **prompt**,
+Agents combine a **prompt**,
 **tools**, optional **flows**, and conversation **memory**. Build one with
 `createAgent()` for the common case, or `AgentBuilder` when you need full
 control over the resulting `AgentConfig`.
@@ -475,11 +474,10 @@ To wire one child `AgentConfig` as a tool yourself, use `createDelegateTool()`
 run the same way):
 
 ```typescript
-import { AgentExecutor, createDelegateTool, ToolRegistry, AgentType } from '@loushy/build-ai-agent';
+import { AgentExecutor, createDelegateTool, ToolRegistry } from '@loushy/build-ai-agent';
 
 const billingAgent = {
   name: 'Billing Agent',
-  agentType: AgentType.SmartAssistant,
   prompt: 'You answer billing questions and look up invoices.',
 };
 
@@ -497,7 +495,6 @@ registry.register(
 
 const supportAgent = {
   name: 'Support Agent',
-  agentType: AgentType.SmartAssistant,
   prompt: 'You help customers. Delegate billing questions to the billing agent.',
   tools: { delegate_billing_agent: { tool: 'delegate_billing_agent' } },
 };
@@ -1129,12 +1126,10 @@ checkpoints, tracing, ...). `AgentExecutor` is a static API - there is no
 import {
   AgentBuilder,
   AgentExecutor,
-  AgentType,
   createMockProvider,
 } from '@loushy/build-ai-agent';
 
 const agent = AgentBuilder.create()
-  .setType(AgentType.SmartAssistant)
   .setName('Customer Support Agent')
   .setPrompt('You are a helpful customer support assistant.')
   .build();
@@ -1220,7 +1215,7 @@ npm run docs:build   # writes docs/api/index.html
 | `createAgent(config)`         | Zero-config `{ send(message) }` agent from a `model` string or provider (+ instructions, tools). |
 | `AgentBuilder`                | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). |
 | `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. |
-| `AgentType`                   | Agent type enum (e.g. `AgentType.SmartAssistant`).                          |
+| `AgentType`                   | Deprecated, no runtime effect: agents need no type (removed next minor).    |
 | `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
 | `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). |
@@ -1432,6 +1427,12 @@ Optional fields: `displayName`, `needsApproval` (boolean or predicate),
 description and zod `input` immediately; registering two tools with the same
 name throws an error naming the conflict.
 
+A defined tool carries its schema as `inputSchema` (the same zod schema as
+`input`) and its `execute` function directly. These are the canonical fields of
+a `ToolDescriptor`; the `.tool` object (an `ai` v4 `{ description, parameters,
+execute }`) is legacy, still built for compatibility, and used only for
+descriptors that do not set `inputSchema` / `execute`.
+
 ```ts
 import { loadMcpTools } from '@loushy/build-ai-agent/mcp';
 
@@ -1514,7 +1515,7 @@ so it can recover. `tool-result` events, tracing, `onToolResult` and
 `postToolCall` hooks see the call as an error.
 
 **Argument validation.** Before a tool runs, the model's arguments are parsed with the tool's zod
-`parameters` schema. Validation happens first, so pre-tool hooks, the
+`inputSchema` (for a legacy descriptor, `tool.parameters`). Validation happens first, so pre-tool hooks, the
 `needsApproval` predicate and `execute` all receive the **parsed** value
 (defaults, coercions and transforms applied). Tools without a zod schema are
 passed through unchanged.
@@ -2874,7 +2875,7 @@ A checkpoint is the run's whole transcript plus its step count, usage,
 | Right after each model response that asks for tools, before any tool runs | `'in-progress'` |
 | Each time a tool result is recorded (results are recorded in call order) | `'in-progress'` |
 | When the run is aborted (`signal`) | `'in-progress'` |
-| When the run pauses for an approval | `'awaiting-approval'` (with `approvalId`) |
+| When the run pauses for an approval (its own tool call's, or a [sub-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md)'s, also when a resumed sub-agent pauses again) | `'awaiting-approval'` (with `approvalId`) |
 | When the run finishes (the model stopped calling tools, or `maxSteps` ran out) | `'finished'` |
 
 A run that rejects (a provider error, a throwing hook, a
@@ -3472,6 +3473,7 @@ console.log(session.id, session.messages.length);
 | ------ | ----------- |
 | `id` | The session id: generated (a UUID) unless you pass one. |
 | `send(input, { signal })` | Sends a user message with the whole conversation so far and resolves with the usual `ExecutionResult`. |
+| `stream(input, { signal })` | Like `send()`, but returns an `AgentRun` that streams the turn as typed events - see [Streaming a session turn](#streaming-a-session-turn). |
 | `messages` | A read-only snapshot of the transcript (user, assistant and tool messages; no system prompt). Editing the snapshot does not change the session. |
 | `load()` | Reads the saved transcript from the store. `send()` does this for you; call it to show history before the first `send()` of a resumed session. |
 | `clear()` | Forgets the conversation, including in the store. |
@@ -3490,6 +3492,44 @@ A `send()` that pauses on a `needsApproval` tool resolves with
 then continues the run as the session's next turn, so the tool call, its result
 and the final answer join the transcript (see
 [approval gates](https://github.com/LinuxDevil/agent-sdk/blob/main/README.md#human-in-the-loop-approval-gates)).
+
+## Streaming a session turn
+
+`session.stream(input, { signal })` is `agent.stream()` for a conversation: it
+returns the same `AgentRun` (typed events plus a `result` promise, see
+[Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)), but the turn sees the transcript so far and joins
+it.
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const chat = createAgent({ instructions: 'Be brief.', provider });
+const session = chat.session();
+
+for await (const event of session.stream('My name is Ali.')) {
+  if (event.type === 'text.delta') process.stdout.write(event.text);
+}
+// The turn is already saved: this call sees it.
+const { text } = await session.send('What is my name?');
+```
+
+- It builds the same message list as `send()` and queues behind earlier calls
+  on the session (`send()` and `stream()` can be mixed).
+- When the run ends, the new user message and the run's output are saved
+  exactly as `send()` saves them, and only then is `run.done` delivered. When
+  the `for await` loop ends, or `run.result` resolves, the transcript is
+  complete. The events carry the `runId` of the returned handle.
+- An aborted run (`signal`, or breaking out of the loop early) or a failed one
+  leaves the transcript as it was before the call, like `send()`. A run that
+  was already finished when the loop was left is saved. A failed run ends the
+  stream with `error` and `run.done` (`finishReason: 'error'`), and
+  `run.result` rejects. This includes a store that fails to load or save: the
+  turn then has no `run.start`.
+- A run that pauses on a `needsApproval` tool ends with `approval.requested`
+  and `run.done` (`'awaiting-approval'`), exactly as `send()` resolves, and the
+  transcript holds the turn up to the pause. `agent.approvals.resolve()`
+  continues it as the session's next turn. An `approve` callback does not apply
+  to streams, as with `agent.stream()`.
 
 Sessions are a thin layer: the session owns the transcript and hands it to the
 executor on each turn. They do not use the checkpoint/resume mechanism
@@ -3756,6 +3796,28 @@ const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 const run = agent.stream('Summarize the report', { signal: AbortSignal.timeout(30_000) });
 const result = await run.result; // no iteration needed
 console.log(result.finishReason, result.text);
+```
+
+## Streaming a session turn
+
+`session.stream(input, { signal })` streams one turn of a multi-turn
+[session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md) and returns the same `AgentRun`. The run sees the
+conversation so far, and when it ends its turn is saved to the session's
+store, just as `session.send()` saves it. `run.done` is delivered after the
+save, so the transcript is complete when the loop ends. An aborted or failed
+run, or one you stop reading early, is not saved.
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini' });
+const session = agent.session({ id: 'user-42' });
+
+for await (const event of session.stream('My name is Ali.')) {
+  if (event.type === 'text.delta') process.stdout.write(event.text);
+}
+const again = session.stream('What is my name?'); // streams with the first turn in its history
+console.log((await again.result).text);
 ```
 
 ## Event schema (version 1)

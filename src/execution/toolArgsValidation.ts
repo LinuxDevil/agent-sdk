@@ -5,6 +5,7 @@
 
 import { ToolDescriptor } from '../types';
 import { ToolExecutionError } from './errors';
+import { getToolInputSchema } from '../tools/toolContract';
 
 /** One problem found while validating a tool call's arguments. */
 export interface ToolArgumentIssue {
@@ -89,7 +90,7 @@ export async function validateToolArguments(
   toolDesc: ToolDescriptor,
   args: unknown
 ): Promise<unknown> {
-  const schema = (toolDesc.tool as { parameters?: unknown }).parameters;
+  const schema = getToolInputSchema(toolDesc);
   if (!isParseable(schema)) {
     return args;
   }

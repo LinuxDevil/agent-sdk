@@ -7,6 +7,7 @@
 import { Message, ToolCall } from '../providers';
 import { AgentConfig, ToolDescriptor } from '../types';
 import { ToolRegistry } from '../tools';
+import { getToolExecute } from '../tools/toolContract';
 import { SandboxAdapter } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
 import type { ToolRunContext } from './sandboxGuard';
@@ -263,7 +264,7 @@ function findExecutableTool(
   toolName: string
 ): ToolDescriptor | undefined {
   const toolDesc = toolRegistry.get(toolName);
-  return toolDesc?.tool?.execute ? toolDesc : undefined;
+  return toolDesc && getToolExecute(toolDesc) ? toolDesc : undefined;
 }
 
 /** Resolves a tool's static or per-call `needsApproval` setting. */

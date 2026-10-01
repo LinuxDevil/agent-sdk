@@ -1,4 +1,4 @@
-import { tool, type ToolExecutionOptions } from 'ai';
+import type { ToolExecutionOptions } from 'ai';
 import type { z } from 'zod';
 import type { ToolDescriptor } from '../types';
 import type { SandboxAdapter } from '../security/sandboxCore';
@@ -35,12 +35,17 @@ export interface DefineToolOptions<S extends z.ZodTypeAny, R> {
  * A tool created by {@link defineTool}. It is a regular {@link ToolDescriptor}
  * (so it works anywhere a descriptor does) that also carries its `name` and
  * input/output types - see {@link ToolInput} and {@link ToolOutput}.
+ * `inputSchema` and `execute` are the canonical contract; `tool` is a
+ * legacy `ai` v4-shaped copy of them.
  */
 export interface DefinedTool<S extends z.ZodTypeAny = z.ZodTypeAny, O = unknown>
   extends ToolDescriptor {
   readonly name: string;
   readonly description: string;
   readonly input: S;
+  /** Same schema as `input`. */
+  readonly inputSchema: S;
+  execute(args: z.output<S>, ctx: ToolExecutionOptions): Promise<O>;
   /** Type-only marker; never set at runtime. */
   readonly _types?: { input: z.output<S>; output: O };
 }
@@ -126,16 +131,22 @@ export function defineTool<S extends z.ZodTypeAny, R>(
 ): DefinedTool<S, Awaited<R>> {
   assertValidOptions(opts);
 
+  const execute = async (args: z.output<S>, ctx: ToolExecutionOptions): Promise<Awaited<R>> =>
+    await opts.execute(args, ctx);
+  // Hand-built `ai` v4 Tool shape (its `tool()` is the identity function).
+  const legacyTool: ToolDescriptor['tool'] = {
+    description: opts.description,
+    parameters: opts.input,
+    execute,
+  };
   const defined: DefinedTool<S, Awaited<R>> = {
     name: opts.name,
     description: opts.description,
     input: opts.input,
+    inputSchema: opts.input,
+    execute,
     displayName: opts.displayName ?? opts.name,
-    tool: tool({
-      description: opts.description,
-      parameters: opts.input,
-      execute: async (args, ctx) => opts.execute(args, ctx),
-    }),
+    tool: legacyTool,
     needsApproval: opts.needsApproval,
     requiresSandbox: opts.requiresSandbox,
     sandboxExecute: opts.sandboxExecute as ToolDescriptor['sandboxExecute'],

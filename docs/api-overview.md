@@ -15,7 +15,7 @@ npm run docs:build   # writes docs/api/index.html
 | `createAgent(config)`         | Zero-config `{ send(message) }` agent from a `model` string or provider (+ instructions, tools). |
 | `AgentBuilder`                | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). |
 | `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. |
-| `AgentType`                   | Agent type enum (e.g. `AgentType.SmartAssistant`).                          |
+| `AgentType`                   | Deprecated, no runtime effect: agents need no type (removed next minor).    |
 | `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
 | `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](./durable-execution.md)). |
@@ -227,6 +227,12 @@ Optional fields: `displayName`, `needsApproval` (boolean or predicate),
 description and zod `input` immediately; registering two tools with the same
 name throws an error naming the conflict.
 
+A defined tool carries its schema as `inputSchema` (the same zod schema as
+`input`) and its `execute` function directly. These are the canonical fields of
+a `ToolDescriptor`; the `.tool` object (an `ai` v4 `{ description, parameters,
+execute }`) is legacy, still built for compatibility, and used only for
+descriptors that do not set `inputSchema` / `execute`.
+
 ```ts
 import { loadMcpTools } from '@loushy/build-ai-agent/mcp';
 
@@ -309,7 +315,7 @@ so it can recover. `tool-result` events, tracing, `onToolResult` and
 `postToolCall` hooks see the call as an error.
 
 **Argument validation.** Before a tool runs, the model's arguments are parsed with the tool's zod
-`parameters` schema. Validation happens first, so pre-tool hooks, the
+`inputSchema` (for a legacy descriptor, `tool.parameters`). Validation happens first, so pre-tool hooks, the
 `needsApproval` predicate and `execute` all receive the **parsed** value
 (defaults, coercions and transforms applied). Tools without a zod schema are
 passed through unchanged.
