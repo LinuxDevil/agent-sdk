@@ -4,7 +4,9 @@ import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import { mockModel, type MockTurn } from '../testing';
 import type { Message } from '../providers';
-import { withSubagentOptions } from './backgroundTasks';
+import { subagentOptionsOf, withSubagentOptions } from './backgroundTasks';
+import { AgentExecutor, type ExecutionEvent } from '../execution/AgentExecutor';
+import type { AgentConfig } from '../types';
 
 const bgTask = (agent: string, prompt: string) => ({
   name: 'task',
@@ -194,5 +196,93 @@ describe('background sub-agents (LOU-Y4)', () => {
     expect(message.isError).toBe(true);
     expect(message.content).toContain("Unknown background task 'task_9'");
     expect(() => withSubagentOptions({}, { maxConcurrent: 0 })).toThrow(/maxConcurrent/);
+  });
+});
+
+describe('background sub-agents at the end of the lead run (LOU-Y4.2)', () => {
+  const statuses = (tasks: readonly { status: string }[] | undefined) => tasks?.map((t) => t.status);
+
+  it('cancels queued and running background sub-agents when the lead finishes, before the run resolves', async () => {
+    const { tool, aborted, entered } = gate();
+    const events: ExecutionEvent[] = [];
+    const agent: AgentConfig = { id: 'lead', name: 'Lead', prompt: 'p' };
+    const finishOnceRunning = async () => (await entered, 'done');
+    const result = await AgentExecutor.execute({
+      agent,
+      input: 'go',
+      provider: mockModel([{ toolCalls: [bgTask('researcher', 'a'), bgTask('researcher', 'b')] }, finishOnceRunning]),
+      subagents: withSubagentOptions({ researcher: waitingChild(tool) }, { maxConcurrent: 1 }),
+      onEvent: (event) => events.push(event),
+    });
+
+    expect(result.text).toBe('done');
+    expect(result.backgroundTasks).toEqual([
+      { taskId: 'task_1', agent: 'researcher', status: 'cancelled', elapsedMs: expect.any(Number) },
+      { taskId: 'task_2', agent: 'researcher', status: 'cancelled', elapsedMs: expect.any(Number) },
+    ]);
+    await aborted;
+    // The running child has wound down by then: its last event came before the run resolved.
+    expect(events.some((e) => e.type === 'finish' && e.subagent?.name === 'researcher')).toBe(true);
+    const seen = events.length;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(events).toHaveLength(seen);
+  });
+
+  it('awaitBackgroundOnFinish waits for them and reports their final statuses', async () => {
+    const { tool, release } = gate();
+    const lead = createAgent({
+      provider: mockModel([{ toolCalls: [bgTask('researcher', 'a')] }, () => (setTimeout(release, 5), 'done')]),
+      subagents: { researcher: waitingChild(tool) },
+      subagentOptions: { awaitBackgroundOnFinish: true },
+    });
+
+    const result = await lead.send('go');
+
+    expect(result.text).toBe('done');
+    expect(result.backgroundTasks).toEqual([{ taskId: 'task_1', agent: 'researcher', status: 'done', elapsedMs: expect.any(Number) }]);
+  });
+
+  it('createAgent({ subagentOptions }) is forwarded over withSubagentOptions(), without changing the subagents value', async () => {
+    const { tool, release } = gate();
+    const subagents = withSubagentOptions({ researcher: waitingChild(tool) }, { maxConcurrent: 3, awaitBackgroundOnFinish: true });
+    const lead = createAgent({
+      provider: mockModel([{ toolCalls: [bgTask('researcher', 'a'), bgTask('researcher', 'b')] }, () => (release(), 'done')]),
+      subagents,
+      subagentOptions: { maxConcurrent: 1 },
+    });
+
+    const result = await lead.send('go');
+
+    expect(results(result.messages, 'task').map((r) => r.status)).toEqual(['running', 'queued']);
+    expect(statuses(result.backgroundTasks)).toEqual(['done', 'done']);
+    expect(subagentOptionsOf(subagents)).toEqual({ maxConcurrent: 3, awaitBackgroundOnFinish: true });
+  });
+
+  it('cancels them when the lead run fails, even with awaitBackgroundOnFinish', async () => {
+    const { tool, aborted, entered } = gate();
+    const lead = createAgent({
+      provider: mockModel([{ toolCalls: [bgTask('researcher', 'a')] }, async () => (await entered, { error: new Error('model down') })]),
+      subagents: { researcher: waitingChild(tool) },
+      subagentOptions: { awaitBackgroundOnFinish: true },
+    });
+
+    await expect(lead.send('go')).rejects.toThrow('model down');
+    await aborted;
+  });
+
+  it('cancels them when the lead pauses for approval', async () => {
+    const { tool, aborted, entered } = gate();
+    const deploy = defineTool({ name: 'deploy', description: 'Deploys', input: z.object({}), needsApproval: true, execute: () => 'deployed' });
+    const lead = createAgent({
+      provider: mockModel([{ toolCalls: [bgTask('researcher', 'a')] }, async () => (await entered, { toolCalls: [{ name: 'deploy' }] })]),
+      tools: [deploy],
+      subagents: { researcher: waitingChild(tool) },
+    });
+
+    const result = await lead.send('go');
+
+    expect(result.finishReason).toBe('awaiting-approval');
+    expect(statuses(result.backgroundTasks)).toEqual(['cancelled']);
+    await aborted;
   });
 });

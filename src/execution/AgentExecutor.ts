@@ -6,6 +6,7 @@
 import type { Skill } from '../skills/defineSkill';
 import { withSkills } from '../skills/withSkills';
 import type { Subagents } from '../subagents/types';
+import type { BackgroundTaskView } from '../subagents/backgroundTasks';
 import { assertMaxSubagentDepth, withSubagents } from '../subagents/withSubagents';
 import type { z } from 'zod';
 import { newId } from '../utils/id';
@@ -472,6 +473,13 @@ export interface ExecuteOptions {
    * ```
    */
   output?: z.ZodTypeAny;
+  /**
+   * LOU-Y4.2: called exactly once when this run ends, however it ends: with
+   * `{ result }` when it resolves (any `finishReason`, including `'aborted'`,
+   * `'awaiting-approval'` and `'max-steps'`) or `{ error }` when it rejects.
+   * The run settles after it returns; an error it throws rejects the run.
+   */
+  onRunEnd?: (end: { result?: ExecutionResult; error?: unknown }) => void | Promise<void>;
 }
 
 /**
@@ -496,6 +504,8 @@ export interface ExecutionResult<TObject = unknown> {
   object?: TObject;
   /** LOU-V4: why the final reply did not match `output` (`finishReason: 'output-invalid'`). */
   outputError?: OutputError;
+  /** LOU-Y4.2: the run's background sub-agents and their final statuses; absent when it started none. */
+  backgroundTasks?: BackgroundTaskView[];
 }
 
 /**
@@ -532,10 +542,27 @@ export class AgentExecutor {
       exporter,
       init.name,
       init.attributes,
-      async (agentSpan) => this.runAgentLoop(await this.withExtensions(options), agentSpan.id),
+      async (agentSpan) => this.runWithEnd(options, agentSpan.id),
       options.parentSpanId,
       init.kind
     );
+  }
+
+  /** runAgentLoop() with `skills`/`subagents` applied, then `onRunEnd` once, however the run ends (LOU-Y4.2). */
+  private static async runWithEnd(options: ExecuteOptions, agentSpanId: string): Promise<ExecutionResult> {
+    let run = options;
+    let end: { result?: ExecutionResult; error?: unknown } = {};
+    try {
+      run = await this.withExtensions(options);
+      const result = await this.runAgentLoop(run, agentSpanId);
+      end = { result };
+      return result;
+    } catch (error) {
+      end = { error };
+      throw error;
+    } finally {
+      await run.onRunEnd?.(end);
+    }
   }
 
   /** Applies `skills` and `subagents`: their prompt blocks and their tools. */
@@ -545,7 +572,8 @@ export class AgentExecutor {
       skilled.agent,
       skilled.toolRegistry,
       options.subagents,
-      options.maxSubagentDepth
+      options.maxSubagentDepth,
+      options.onRunEnd
     );
     // LOU-V4: the output instruction goes last in the system prompt.
     const { agent } = extended;
