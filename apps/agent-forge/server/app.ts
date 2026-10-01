@@ -10,6 +10,9 @@
  *   POST /agents/:id/stop            -> abort the in-flight run, if any
  *   GET  /agents/:id/status          -> AgentRunStatusPayload
  *   POST /agents/:id/approve         -> body: { approvalId, approved, note? }
+ *   GET  /runs/:id/history           -> RunHistoryPayload (LOU-D45 time travel)
+ *   POST /runs/:id/fork              -> body: ForkRunRequest; starts the fork, 202 ForkRunResponse
+ *   GET  /runs/compare?a=&b=         -> RunComparisonPayload (compareTrajectories)
  *
  * `WS /agents/:id/stream` is wired separately in wsServer.ts (attached to
  * the same underlying http.Server, since `ws` needs the raw HTTP upgrade
@@ -27,7 +30,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
-import type { AgentSpec } from '@loushy/build-ai-agent';
+import { ConfigurationError, SDKError, type AgentSpec, type ForkPatch } from '@loushy/build-ai-agent';
 import { TriggerRegistry } from '@loushy/build-ai-agent/triggers';
 import type { AgentStore } from '../src/persistence/AgentStore';
 import {
@@ -41,7 +44,7 @@ import { ChatTriggerAdapter } from './chatTriggerAdapter';
 import { isValidAgentId } from './types';
 import { SecretsStore, isSecretProvider } from './secretsStore';
 import { SettingsStore } from './settingsStore';
-import type { SettingsProfile } from '../shared/wireTypes';
+import type { ForkRunRequest, ForkRunResponse, SettingsProfile } from '../shared/wireTypes';
 import { DEPLOY_ADAPTERS, isDeployAdapter, runDeploy } from './deployRunner';
 
 export interface CreateAppOptions {
@@ -184,6 +187,80 @@ function registerRunRoutes(app: Express, runManager: RunManager): void {
         respondWithMappedError(res, error, [
           [NoActiveRunError, 409],
           [AgentNotFoundError, 409],
+        ]);
+      }
+    })
+  );
+}
+
+const FORK_PATCH_KEYS = new Set(['toolResult', 'appendInput', 'businessState']);
+
+/** LOU-D45: a validated `POST /runs/:id/fork` body, or the 400 message. */
+function parseForkRequest(body: Partial<ForkRunRequest> | undefined): { fromStep: number; patch: ForkPatch } | string {
+  const { fromStep, patch = {} } = body ?? {};
+  if (typeof fromStep !== 'number' || !Number.isInteger(fromStep) || fromStep < 0) {
+    return "'fromStep' must be a non-negative integer";
+  }
+  if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) return "'patch' must be an object";
+  const unknownKey = Object.keys(patch).find((key) => !FORK_PATCH_KEYS.has(key));
+  if (unknownKey) return `'patch.${unknownKey}' is not supported (use toolResult, appendInput or businessState)`;
+  const { toolResult, appendInput } = patch;
+  if (appendInput !== undefined && (typeof appendInput !== 'string' || !appendInput.trim())) {
+    return "'patch.appendInput' must be a non-empty string";
+  }
+  if (toolResult !== undefined && (typeof toolResult?.toolCallId !== 'string' || !('result' in toolResult))) {
+    return "'patch.toolResult' must be { toolCallId: string, result }";
+  }
+  return { fromStep, patch };
+}
+
+/** LOU-D45 time travel: a run's step history, forking it from a step, and comparing two runs. */
+function registerTimeTravelRoutes(app: Express, runManager: RunManager): void {
+  app.get(
+    '/runs/compare',
+    asyncRoute(async (req, res) => {
+      const { a, b } = req.query;
+      if (typeof a !== 'string' || typeof b !== 'string' || !isValidAgentId(a) || !isValidAgentId(b)) {
+        res.status(400).json({ error: "Query must include valid run ids 'a' and 'b'" });
+        return;
+      }
+      const comparison = await runManager.compare(a, b);
+      if (!comparison) {
+        res.status(404).json({ error: `No checkpoint for run '${a}' or '${b}'` });
+        return;
+      }
+      res.json(comparison);
+    })
+  );
+
+  app.get(
+    '/runs/:id/history',
+    asyncRoute(async (req, res) => {
+      const steps = await runManager.history(paramId(req));
+      if (!steps) {
+        res.status(404).json({ error: `No checkpoint history for run '${paramId(req)}'` });
+        return;
+      }
+      res.json({ runId: paramId(req), steps });
+    })
+  );
+
+  app.post(
+    '/runs/:id/fork',
+    asyncRoute(async (req, res) => {
+      const parsed = parseForkRequest(req.body as Partial<ForkRunRequest> | undefined);
+      if (typeof parsed === 'string') {
+        res.status(400).json({ error: parsed });
+        return;
+      }
+      try {
+        const runId = await runManager.fork(paramId(req), parsed.fromStep, parsed.patch);
+        res.status(202).json({ runId, fromStep: parsed.fromStep, status: runManager.status(runId) } satisfies ForkRunResponse);
+      } catch (error) {
+        respondWithMappedError(res, error, [
+          [AgentNotFoundError, 404],
+          [ConfigurationError, 400],
+          [SDKError, 404], // LOUSHY_CHECKPOINT_NOT_FOUND: no checkpoint at that step
         ]);
       }
     })
@@ -424,7 +501,7 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
     // `App.tsx` view state, but still refresh-safe) - serve `index.html` and
     // let the client app take over, the same as `vite preview`/most SPA
     // hosts do.
-    app.get(/^(?!\/health|\/agents).*/, (_req, res) => {
+    app.get(/^(?!\/health|\/agents|\/runs).*/, (_req, res) => {
       res.sendFile(indexHtml);
     });
   }
@@ -461,7 +538,7 @@ export function createApp({
   // trusting each store to sanitize it - closes off path traversal via a
   // percent-encoded `..%2F..%2F...` id, which Express happily hands to
   // `req.params.id` as a decoded string containing `/`/`..`.
-  app.use('/agents/:id', (req, res, next) => {
+  app.use(['/agents/:id', '/runs/:id'], (req, res, next) => {
     if (!isValidAgentId(paramId(req))) {
       res.status(400).json({ error: 'Invalid agent id' });
       return;
@@ -473,6 +550,7 @@ export function createApp({
   registerRunRoutes(app, runManager);
   registerChatRoutes(app, runManager, triggerRegistry);
   registerDebugRoutes(app, runManager);
+  registerTimeTravelRoutes(app, runManager);
   registerProviderKeyRoutes(app, secrets);
   registerProfileRoutes(app, settings);
   registerDeployRoutes(app, agentStore, baseDir);
