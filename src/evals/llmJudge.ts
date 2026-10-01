@@ -20,6 +20,11 @@ export interface LLMJudgeConfig {
   /** Grading rubric / instructions shown to the judge model. */
   rubric: string;
   temperature?: number;
+  /**
+   * Skip the "only inside the judge-eval runner" guard. `t.judge()` sets this
+   * because the judge provider was configured explicitly on the eval.
+   */
+  allowOutsideJudgeRunner?: boolean;
 }
 
 /**
@@ -69,7 +74,7 @@ export function llmJudge(config: LLMJudgeConfig): (result: ExecutionResult) => P
     // llmJudge() but is accidentally picked up by the main vitest run (e.g.
     // a misnamed or mis-globbed file) fails loudly here instead of silently
     // making a real, budgeted LLM call as part of default/CI test runs.
-    if (process.env.LOUSHY_ALLOW_LLM_JUDGE !== '1') {
+    if (!config.allowOutsideJudgeRunner && process.env.LOUSHY_ALLOW_LLM_JUDGE !== '1') {
       throw new Error(
         'llmJudge() was invoked outside the judge-eval runner. ' +
           'llmJudge()-based evals must live in a "*.judge.eval.ts" file and run via ' +

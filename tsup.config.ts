@@ -32,6 +32,7 @@ export default defineConfig({
     'cli/studio': 'src/cli/studio.ts',
     'cli/mcp': 'src/cli/mcp.ts',
     'cli/doctor': 'src/cli/doctor.ts',
+    'cli/eval': 'src/cli/eval.ts',
     'cli/init': 'src/cli/init.ts',
     'execution/otel': 'src/execution/otel.ts',
     'execution/hooks': 'src/execution/hooks.ts',
