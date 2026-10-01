@@ -353,8 +353,9 @@ The built-in context windows and prices are a dated snapshot (see the retrieval 
 ## Flows, evals, observability and security
 
 - `FlowBuilder` / `FlowExecutor` - multi-step workflow graphs.
-- `defineEval()`, scorers such as `exactMatch` and `toolCallOrder`, and
-  `llmJudge()` - agent evals run under vitest.
+- `defineEval()`, scorers such as `exactMatch` and `toolCallOrder`, checks such
+  as `includes` and `atLeast`, and `llmJudge()` - agent evals run under vitest
+  or `loushy eval`; see [Evals](evals.md).
 - `withSpan()` and `TraceExporter` - tracing for `AgentExecutor.execute()`.
   `TraceExporter` is a bring-your-own-exporter interface (no exporter
   ships by default); for real OpenTelemetry spans, import

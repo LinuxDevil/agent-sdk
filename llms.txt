@@ -10,6 +10,7 @@
 - [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md): The package root (`@loushy/build-ai-agent`) exports everything below.
 - [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md): A declarative agent is a YAML (`.yaml`/`.yml`) or JSON (`.json`) file, validated with zod by `loadSpec()` (`src/spec/schema.ts`).
 - [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md): Pass a `sessionId` and a `checkpointStore` to `AgentExecutor.execute()` and the run survives a crash, a restart, an abort or a human approval that takes days.
+- [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md): Evals are regression tests for agent *behaviour*: which tools the agent called, in what order, with which arguments, how many steps it took, and what it said.
 - [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md): `AgentExecutor.execute()` and `FlowExecutor.execute()` emit spans through a `TraceExporter`.
 - [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md): `agent.send(text)` is single-turn: every call starts from an empty history.
 - [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md): A skill is a named chunk of instructions (a markdown document) that the model loads only when it needs it.
