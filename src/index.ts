@@ -77,6 +77,9 @@ export * from './subagents';
 // Filesystem agent loader: an agent as a directory (LOU-Y5)
 export * from './agentDir';
 
+// Channels: inbound surfaces mapped to sessions, replies back to the surface (LOU-P7)
+export * from './channels';
+
 // Declarative agent spec file format (LOU-H9)
 export * from './spec';
 

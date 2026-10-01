@@ -35,32 +35,43 @@ const MAX_BODY_BYTES = 1024 * 1024; // 1MB
 
 class PayloadTooLargeError extends Error {}
 
-function readBody(req: http.IncomingMessage): Promise<string> {
+/**
+ * The request body's exact bytes (signatures are checked over these), at
+ * most 1MB: a larger body rejects with an error `sendFailure()` answers with
+ * 413. Shared with the channel handler (src/channels/mountChannels.ts).
+ */
+export function readRawBody(req: http.IncomingMessage): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
-    let body = '';
+    const chunks: Uint8Array[] = [];
     let bytes = 0;
-    let tooLarge = false;
-    req.on('data', (chunk) => {
-      bytes += chunk.length;
-      if (bytes > MAX_BODY_BYTES) {
-        // Stop growing `body` once over the cap, but keep draining the
-        // stream (rather than destroying it or dropping listeners) so the
-        // client can finish writing and the connection doesn't deadlock -
-        // we reject once the request actually ends.
-        tooLarge = true;
-        return;
-      }
-      body += chunk;
+    req.on('data', (chunk: Uint8Array | string) => {
+      const data = typeof chunk === 'string' ? new TextEncoder().encode(chunk) : chunk;
+      bytes += data.length;
+      // Over the cap: stop keeping chunks, but keep draining the stream
+      // (rather than destroying it or dropping listeners) so the client can
+      // finish writing and the connection doesn't deadlock - we reject once
+      // the request actually ends.
+      if (bytes <= MAX_BODY_BYTES) chunks.push(data);
     });
     req.on('end', () => {
-      if (tooLarge) {
+      if (bytes > MAX_BODY_BYTES) {
         reject(new PayloadTooLargeError(`Request body exceeds ${MAX_BODY_BYTES} byte limit`));
         return;
+      }
+      const body = new Uint8Array(bytes);
+      let offset = 0;
+      for (const chunk of chunks) {
+        body.set(chunk, offset);
+        offset += chunk.length;
       }
       resolve(body);
     });
     req.on('error', reject);
   });
+}
+
+async function readBody(req: http.IncomingMessage): Promise<string> {
+  return new TextDecoder().decode(await readRawBody(req));
 }
 
 export function sendText(res: http.ServerResponse, status: number, text: string): void {
@@ -95,7 +106,7 @@ async function readJson(req: http.IncomingMessage): Promise<Record<string, unkno
 }
 
 /** Sends the error status for a failed handler: 413 over the size cap, 400 for bad JSON, else 500. */
-function sendFailure(res: http.ServerResponse, error: unknown): void {
+export function sendFailure(res: http.ServerResponse, error: unknown): void {
   const status = error instanceof PayloadTooLargeError ? 413 : error instanceof SyntaxError ? 400 : 500;
   sendJson(res, status, { error: (error as Error).message });
 }
