@@ -31,5 +31,6 @@ out=$(npx vitest run "$@" 2>&1)
 echo "$out" | grep -E "Test Files|Tests |FAIL" | grep -v importGraph
 if echo "$out" | grep -E "^ FAIL" | grep -qv importGraph; then echo "TESTS FAILED, not pushing"; exit 4; fi
 if ! echo "$out" | grep -qE "Test Files .*passed"; then echo "NO TEST SUMMARY (vitest did not finish?), not pushing"; echo "$out" | tail -15; exit 4; fi
-if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "DIRTY TREE after verify:"; git status --short --untracked-files=no | head; exit 6; fi
+if ! git diff --quiet 2>/dev/null; then echo "DIRTY TREE after verify:"; git status --short --untracked-files=no | head; exit 6; fi
+git checkout -q -- . 2>/dev/null
 git push -q origin "HEAD:$b" && echo "HEAD $(git rev-parse HEAD)"
