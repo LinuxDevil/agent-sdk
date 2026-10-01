@@ -28,6 +28,7 @@
 import * as http from 'node:http';
 import { AgentType, ToolDescriptor } from '../../src/types';
 import { ToolRegistry } from '../../src/tools';
+import { verifySlackSignature } from '../../src/triggers';
 import { LLMProvider } from '../../src/providers/llm';
 import { startMonitorServer, MonitorServerHandle, StartMonitorServerOptions } from './monitor';
 import { createFixerDelegateTool, buildFixerAgent } from './fixer';
@@ -85,6 +86,11 @@ export interface OpsPipelineDeps {
   slackPort?: number;
   channel?: string;
   /**
+   * Slack signing secret. When set (default: `SLACK_SIGNING_SECRET`), requests to
+   * POST /slack/interactions must carry a valid Slack signature or get a 401.
+   */
+  slackSigningSecret?: string;
+  /**
    * Guardrails to run before considering the GitHub PR call. Defaults to
    * handleFixerPatch()'s own defaults (real secretScanGuardrail + a
    * diff-size cap) when omitted. Exposed here so callers (e.g. LOU-J9's
@@ -135,7 +141,20 @@ interface SlackRouteContext {
   githubCreatePrTool: ToolDescriptor;
   slackTool: ToolDescriptor;
   channel: string;
+  signingSecret?: string;
   guardrails?: Guardrail[];
+}
+
+/** True when no signing secret is configured, or the request carries a valid Slack signature over the raw body. */
+function isAuthenticSlackRequest(req: http.IncomingMessage, raw: string, signingSecret: string | undefined): boolean {
+  if (!signingSecret) return true;
+  const header = (name: string) => (typeof req.headers[name] === 'string' ? (req.headers[name] as string) : undefined);
+  return verifySlackSignature({
+    signingSecret,
+    timestamp: header('x-slack-request-timestamp'),
+    signature: header('x-slack-signature'),
+    rawBody: raw,
+  });
 }
 
 /**
@@ -149,6 +168,10 @@ async function handleSlackInteractionRequest(
 ): Promise<void> {
   try {
     const raw = await readBody(req);
+    if (!isAuthenticSlackRequest(req, raw, ctx.signingSecret)) {
+      sendJson(res, 401, { error: 'Unauthorized' });
+      return;
+    }
     const payload = parseSlackInteractionBody(raw);
     const approvalId = extractApprovalIdFromInteraction(payload);
 
@@ -254,6 +277,7 @@ export async function startOpsPipeline(deps: OpsPipelineDeps = {}): Promise<OpsP
       githubCreatePrTool,
       slackTool,
       channel,
+      signingSecret: deps.slackSigningSecret ?? process.env.SLACK_SIGNING_SECRET,
       guardrails: deps.guardrails,
     },
     deps.slackPort ?? 0,

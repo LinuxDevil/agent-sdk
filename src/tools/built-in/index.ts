@@ -10,3 +10,4 @@ export * from './email';
 export * from './jira';
 export * from './github';
 export * from './slack';
+export * from './todo';
