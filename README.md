@@ -18,7 +18,7 @@ dashboard — any provider, any deploy target, no lock-in.
 
 ## Features
 
-- **Zero-config to full control** — `createAgent({ prompt, provider })` in one line, or the full `AgentBuilder` + `AgentExecutor` API when you need `maxSteps`, checkpoints, or tracing hooks
+- **Zero-config to full control** — `createAgent({ model: 'openai/gpt-4o-mini' })` in one line, or the full `AgentBuilder` + `AgentExecutor` API when you need `maxSteps`, checkpoints, or tracing hooks
 - **Human-in-the-loop** — flag a tool `needsApproval` and pause execution until a human approves or rejects it, then `resumeAfterApproval()` from any process
 - **Durable execution** — pass a `sessionId` + `checkpointStore` and a crash mid-conversation resumes instead of restarting
 - **Cancellation** — pass an `AbortSignal` (`agent.send(input, { signal })`) to stop a run; it resolves with `finishReason: 'aborted'` and the transcript so far, and the signal reaches the provider, tools and delegated agents
@@ -33,19 +33,32 @@ dashboard — any provider, any deploy target, no lock-in.
 
 ## Quick example
 
-The zero-config path — one function call, no manually-wired executor or
-registry:
+Hello world in five lines (reads `OPENAI_API_KEY` from your environment):
 
 ```typescript
-import { createAgent, resolveProvider } from '@loushy/build-ai-agent';
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are a helpful assistant.' });
+const { text } = await agent.send('Hello!');
+console.log(text);
+```
+
+`model` is a `provider/model` string (`openai`, `anthropic`, `openrouter`,
+`ollama`); the key comes from the provider's conventional env var. Leave
+`model` out and the agent uses `LOUSHY_MODEL` if set, otherwise the first of
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`,
+`OLLAMA_BASE_URL` that is present.
+
+When you need a custom provider (your own `LLMProvider`, a mock, extra
+config), pass the instance instead:
+
+```typescript
+import { createAgent, createMockProvider } from '@loushy/build-ai-agent';
 
 const agent = createAgent({
-  prompt: 'You are a helpful customer support assistant.',
-  provider: resolveProvider('openai/gpt-4o-mini'), // reads OPENAI_API_KEY
+  instructions: 'You are a helpful customer support assistant.',
+  provider: createMockProvider({ responses: ['Hi! How can I help?'] }),
 });
-
-const result = await agent.send('Hello!');
-console.log(result.text);
 ```
 
 The same agent with an approval gate on a sensitive tool — `defineTool()`

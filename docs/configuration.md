@@ -75,13 +75,28 @@ what the examples and the Quick Start use by default.
 
 ## `createAgent()` options
 
-| Option     | Description                                                        |
-| ---------- | ------------------------------------------------------------------ |
-| `prompt`   | System prompt (required).                                          |
-| `provider` | An `LLMProvider` instance (required).                              |
+| Option         | Description                                                    |
+| -------------- | -------------------------------------------------------------- |
+| `model`        | A `'provider/model'` string such as `'openai/gpt-4o-mini'`, resolved with `resolveProvider()` (key from the env var above). Alternative to `provider`. |
+| `provider`     | An `LLMProvider` instance (real or mock). Alternative to `model`. If you pass both, `provider` is used and `model` becomes the agent's per-run model setting (a bare model id such as `'gpt-4o'`). |
+| `instructions` | System prompt. Optional (defaults to `'You are a helpful assistant.'`). |
+| `prompt`       | Working alias of `instructions`; passing both is an error.      |
 | `tools`    | `Record<string, ToolDescriptor>`, keyed by the name the agent uses. |
 | `name`     | Agent name (default `'agent'`).                                    |
 | `maxSteps` | Passed through to `AgentExecutor.execute()`.                        |
+
+With neither `model` nor `provider`, `createAgent()` resolves from the
+environment: `LOUSHY_MODEL` (a `'provider/model'` string) if set, otherwise
+the first provider whose variable is set, checked in this order:
+`OPENAI_API_KEY` (`openai/gpt-4o-mini`), `ANTHROPIC_API_KEY`
+(`anthropic/claude-3-5-sonnet-latest`), `OPENROUTER_API_KEY`
+(`openrouter/openai/gpt-4o-mini`), `OLLAMA_BASE_URL` (`ollama/llama3`). If none
+is set it throws an error listing exactly which options or variables fix it.
+
+Misconfiguration errors say how to fix themselves: a missing key names the
+variable (`createAgent: OPENAI_API_KEY is not set. ...`), an unknown prefix
+lists the supported ones and suggests the closest, and a missing optional peer
+dependency prints the exact `npm install` command.
 
 ## `AgentExecutor.execute()` options
 

@@ -1,10 +1,11 @@
 # Quick Start
 
 Every TypeScript snippet on this page is a complete, standalone ES module
-(`.mts`) that runs as-is with the SDK's built-in mock provider - no API key
-needed. They are executed against a locally packed build of the SDK by
-`npx tsx scripts/verify-docs-snippets.ts`, so they are kept in sync with the
-real API.
+(`.mts`). They are type-checked and executed against a locally packed build of
+the SDK by `npx tsx scripts/verify-docs-snippets.ts`, so they are kept in sync
+with the real API. All of them run as-is with the SDK's built-in mock
+provider - no API key needed - except the first, which talks to a real model
+and is therefore only type-checked.
 
 Install first (see [Installation](./installation.md)):
 
@@ -13,16 +14,40 @@ npm install @loushy/build-ai-agent ai zod
 npm install @ai-sdk/openai@^0.0.42 @ai-sdk/anthropic@^0.0.42 ollama-ai-provider@^1.2.0
 ```
 
-## 1. One-liner agent with `createAgent()`
+## 1. Hello world in five lines
 
-`createAgent()` is the zero-config entry point: a prompt and a provider in, a
-`{ send }` agent out.
+`createAgent()` is the zero-config entry point: a `provider/model` string and
+instructions in, a `{ send }` agent out. The API key is read from the
+provider's conventional environment variable (`OPENAI_API_KEY` here;
+`ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY` or `OLLAMA_BASE_URL` for the other
+providers).
+
+```ts no-run
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are a helpful assistant.' });
+const { text } = await agent.send('Hello!');
+console.log(text);
+```
+
+Leave `model` out to let the environment decide: `LOUSHY_MODEL` (a
+`provider/model` string) if set, otherwise the first of `OPENAI_API_KEY`,
+`ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `OLLAMA_BASE_URL` that is present.
+If a key is missing or the prefix is misspelled, the error tells you exactly
+what to set or fix. `instructions` is optional; `prompt` is accepted as an
+alias for it.
+
+## 2. When you need a custom provider
+
+Pass a provider instance instead of `model` when you have your own
+`LLMProvider`, want the mock provider for tests, or need extra provider
+config. This one needs no API key:
 
 ```ts
 import { createAgent, createMockProvider } from '@loushy/build-ai-agent';
 
 const agent = createAgent({
-  prompt: 'You are a helpful assistant.',
+  instructions: 'You are a helpful assistant.',
   provider: createMockProvider({ responses: ['Hello! How can I help you today?'] }),
 });
 
@@ -30,14 +55,11 @@ const result = await agent.send('Hi there');
 console.log(result.text); // "Hello! How can I help you today?"
 ```
 
-## 2. Switching to a real provider
-
-`resolveProvider('<provider>/<model>')` builds a real provider, reading its
-credential from the environment (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
-`OPENROUTER_API_KEY`, or `OLLAMA_BASE_URL` for Ollama). This snippet uses
-OpenAI when `OPENAI_API_KEY` is set and falls back to the mock provider
-otherwise - the same pattern the runnable [examples](../examples/README.md)
-use.
+`resolveProvider('<provider>/<model>')` is the function `model` uses under
+the hood; call it yourself when you want the provider object, as in this
+snippet, which uses OpenAI when `OPENAI_API_KEY` is set and falls back to the
+mock provider otherwise - the same pattern the runnable
+[examples](../examples/README.md) use.
 
 ```ts
 import { createAgent, createMockProvider, resolveProvider } from '@loushy/build-ai-agent';
