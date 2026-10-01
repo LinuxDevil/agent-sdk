@@ -1,18 +1,17 @@
 {
  "date": "2026-10-02",
- "iterations": 15,
- "prsMerged": 94,
+ "iterations": 16,
+ "prsMerged": 104,
  "differentiatorsShipped": 8,
- "lintWarnings": 399,
- "tests": "2,947",
+ "lintWarnings": 345,
+ "tests": "2,907",
  "matrix": [
   [
    "Durability / resume",
    "ok",
    "ok",
    "warn",
-   "W9.2 fingerprint on resume",
-   "pend"
+   ""
   ],
   [
    "Durable stores (SQLite / file / KV)",
@@ -23,11 +22,10 @@
   ],
   [
    "Sandboxing",
-   "warn",
+   "ok",
    "ok",
    "warn",
-   "X12.2",
-   "pend"
+   ""
   ],
   [
    "Workspace fs + shell tools",
@@ -55,14 +53,14 @@
    "ok",
    "ok",
    "ok",
-   "Y6 resumable children"
+   ""
   ],
   [
    "Remote subagents",
    "ok",
    "ok",
    "bad",
-   "Y7.2 approval proxying"
+   "Y7.3 approval proxying"
   ],
   [
    "Approvals / HITL",
@@ -157,11 +155,10 @@
   ],
   [
    "Multi-provider",
-   "warn",
    "ok",
    "ok",
-   "D28f, D29",
-   "pend"
+   "ok",
+   "D29b Ollama wording"
   ],
   [
    "Fallbacks / retry policy",
@@ -189,7 +186,8 @@
    "bad",
    "ok",
    "warn",
-   "V13"
+   "V13",
+   "pend"
   ],
   [
    "MCP client",
@@ -231,7 +229,8 @@
    "warn",
    "ok",
    "bad",
-   "D49, U20 (publish)"
+   "D49 (publish is an owner action)",
+   "pend"
   ],
   [
    "Dev TUI / REPL",
@@ -252,15 +251,14 @@
    "ok",
    "ok",
    "bad",
-   "P5.2 Slack hardening"
+   ""
   ],
   [
    "Schedules",
    "ok",
    "ok",
    "bad",
-   "P8.3 spec cron on node",
-   "pend"
+   ""
   ],
   [
    "Deploy story",
@@ -302,16 +300,14 @@
    "ok",
    "ok",
    "bad",
-   "X12.2 Docker route",
-   "pend"
+   ""
   ],
   [
    "Dynamic config",
    "ok",
    "ok",
    "warn",
-   "W9.2 crash resume",
-   "pend"
+   ""
   ],
   [
    "Hot reload",
@@ -360,7 +356,8 @@
    "bad",
    "ok",
    "ok",
-   "D49 (owner action)"
+   "owner action; D49 prepares it",
+   "pend"
   ],
   [
    "Current ai major",
@@ -572,6 +569,11 @@
     "W8",
     "session.compact() and session.clear(); /compact and /clear in loushy chat",
     151
+   ],
+   [
+    "W9.2",
+    "Checkpoints carry an agent fingerprint: resuming with a changed agent warns or refuses",
+    165
    ]
   ],
   "X · Tools, permissions, hooks": [
@@ -619,6 +621,11 @@
     "X3",
     "Hooks can deny a tool call, replace its result or modify its input",
     158
+   ],
+   [
+    "X12.2",
+    "Docker sandbox egress goes through the credential broker: network allowlists are enforced",
+    168
    ]
   ],
   "Y · Sub-agents": [
@@ -636,6 +643,11 @@
     "Y7",
     "remoteAgent(): a deployed agent used as a sub-agent over the session API",
     132
+   ],
+   [
+    "Y6",
+    "The task tool can continue a sub-agent: new, resume and fork modes",
+    170
    ]
   ],
   "Z · MCP": [
@@ -845,6 +857,31 @@
     "D50",
     "loushy add: install items from a JSON registry, showing their permission manifest first",
     161
+   ],
+   [
+    "D28f",
+    "OpenRouter on ai v6/v7; Ollama base URL fixed; provider contract tests on both ai majors",
+    167
+   ],
+   [
+    "D38",
+    "Unwired memory/context/retry modules, data and templates removed; /testing is test utilities only",
+    169
+   ],
+   [
+    "D42",
+    "Package entries share one copy of each module; dist 25.2 MB to 8.8 MB",
+    171
+   ],
+   [
+    "D46.2",
+    "Eval cassettes record and replay at the model-call step; more plain Errors get codes",
+    172
+   ],
+   [
+    "D29",
+    "zod 3 or zod 4 for tool schemas, structured output and spec validation",
+    174
    ]
   ],
   "P · UI bindings, channels, schedules": [
@@ -902,128 +939,67 @@
     "P9",
     "Cloudflare Worker target runs schedules through cron triggers",
     162
+   ],
+   [
+    "P8.3",
+    "Directory builds keep optional peers external; the node target runs spec cron triggers",
+    166
+   ],
+   [
+    "P5.2",
+    "Slack and Discord: approver allowlists, delivery-error reporting, Slack DMs",
+    173
    ]
   ]
  },
  "inFlight": [
   [
-   "W9.2",
-   "Checkpoints carry an agent fingerprint so resuming with a changed agent warns or refuses; crash resume keeps dynamic config."
+   "V13",
+   "reasoning option mapped to each provider, and reasoning events in the stream; also sets sessionId on the tool context."
   ],
   [
-   "D29",
-   "zod 3 or zod 4: tool schemas, structured output and spec validation work on both."
+   "D49",
+   "Pack-and-install smoke test in CI and truthful install docs. Does not publish and does not change release config."
   ],
   [
-   "P8.3",
-   "Agent-directory builds keep optional peers external; the node target runs spec cron triggers."
-  ],
-  [
-   "D28f",
-   "OpenRouter on ai v6/v7, the Ollama base URL, and provider contract tests on both ai majors."
-  ],
-  [
-   "X12.2",
-   "Docker-sandboxed commands routed through the credential broker so network allowlists are enforced."
+   "D2.3",
+   "Remaining plain Errors get SDK error codes, with a test that stops new ones; investigates the vitest startup crash."
   ]
  ],
- "inFlightNote": "After these: sixteen tickets in five groups, ending with the ESLint ratchet and publish readiness. The order is in STATE.md.",
+ "inFlightNote": "After these: D41 (one event system), V4.2, D29b, Y7.3, then the ESLint ratchet (D16) alone.",
  "remaining": {
-  "U · Correctness": [
-   [
-    "U20",
-    "Install and roadmap truth once the package is on npm",
-    "",
-    19
-   ]
-  ],
+  "U · Correctness": [],
   "V · Run loop": [
    [
     "V4.2",
     "Sub-agents inherit output schema; typed session.send() object",
     "V4",
-    17
+    18
    ],
    [
     "V13",
-    "Reasoning effort option and reasoning events",
+    "Reasoning effort option and reasoning events; sessionId on the tool execute context",
     "D26",
-    19
+    17
    ]
   ],
-  "W · Context and memory": [
-   [
-    "W9.2",
-    "Agent fingerprint on resume; crash resume keeps dynamic config; approved calls cannot be changed by a hook",
-    "",
-    16
-   ]
-  ],
-  "X · Tools, permissions, hooks": [
-   [
-    "X12.2",
-    "Docker containers routed through the credential broker so network allowlists are enforced",
-    "X12",
-    16
-   ]
-  ],
+  "W · Context and memory": [],
+  "X · Tools, permissions, hooks": [],
   "Y · Sub-agents": [
    [
+    "Y7.3",
+    "Proxy a remote approval pause to the lead run",
     "Y6",
-    "Resumable sub-agent sessions (new, resume, fork)",
-    "",
-    17
-   ],
-   [
-    "Y7.2",
-    "Proxy a remote approval pause to the lead run; reuse the remote session",
-    "Y7",
     18
    ]
   ],
   "Z · MCP": [],
   "D · DX, CLI, packaging": [
    [
-    "D2.2",
-    "Remaining plain Errors get codes (agentRun, tools, cli, workspace, validation)",
-    "",
-    18
-   ],
-   [
     "D16",
     "ESLint ratchet: 399 warnings to 0, error severity",
     "quiet batch",
-    21
-   ],
-   [
-    "D23.2",
-    "Executor sets sessionId on the execute context",
-    "",
-    20
-   ],
-   [
-    "D29",
-    "zod 4 / Standard Schema support",
-    "",
-    16
-   ],
-   [
-    "D37",
-    "Templates out of the root entry",
-    "",
-    17
-   ],
-   [
-    "D38",
-    "Remove unwired MemoryManager, ContextBuilder, retry.ts",
-    "",
-    17
-   ],
-   [
-    "D39",
-    "Clean /testing; deprecate data/",
-    "",
-    18
+    19
    ],
    [
     "D41",
@@ -1032,53 +1008,34 @@
     18
    ],
    [
-    "D42",
-    "Shared chunks across entries (tsup splitting)",
-    "",
-    19
-   ],
-   [
-    "D46.2",
-    "Provider-middleware hook for eval cassettes",
-    "",
-    18
-   ],
-   [
-    "D49",
-    "Publish readiness: dry-run publish and pack-install smoke test",
-    "U20",
-    21
-   ],
-   [
-    "D28f",
-    "OpenRouter on ai v6/v7, Ollama base URL fix, provider contract tests on both ai majors",
-    "D28d",
-    16
-   ]
-  ],
-  "P · UI bindings, channels, schedules": [
-   [
-    "P5.2",
-    "Slack hardening: approver allowlist, delivery-error reporting, DMs",
-    "P5",
+    "D2.3",
+    "The rest of the plain Errors get codes, with a guard test; vitest startup-crash investigation",
+    "D2.2",
     17
    ],
    [
-    "P8.3",
-    "Directory builds keep optional peers external; the node target runs spec cron triggers",
-    "P8.2, P9",
-    16
+    "D49",
+    "Publish readiness and install truth: pack-and-install smoke test in CI; docs say how to install today",
+    "",
+    17
+   ],
+   [
+    "D29b",
+    "Ollama note mentions zod 4; structured output typed for either zod major",
+    "D29",
+    18
    ]
-  ]
+  ],
+  "P · UI bindings, channels, schedules": []
  },
  "notes": [
-  "<strong>All eight differentiators are shipped</strong> and 45 of 51 matrix rows are at parity or better. The two missing rows are reasoning control (V13, planned) and npm publication (owner action).",
-  "<strong>The loop runs on the owner's Windows machine</strong> (Node 26). Main passes the full local suite after every group of merges: typecheck, lint, 2,947 tests with coverage, fallow, docs snippets and the four Agent Forge checks. The last run found both Forge typechecks broken by the peer-range change; fixed in #164, and every ticket now runs them.",
-  "<strong>ai v7:</strong> peers accept ai 4, 6 and 7 (D28d #160). OpenAI and Anthropic projects are scaffolded on ai 7. Ollama and OpenRouter stay on ai 4 until D28f and zod 4 support (D29) land; both are in flight.",
-  "<strong>Breaking or model-visible changes shipped pre-1.0</strong> (all in CHANGELOG with migration notes): sandboxed commands no longer inherit the host environment (X11); CLI commands reject unknown flags (U21); a tool's own deny now beats a permissions allow rule (X3); a cancelled tool call's result uses the shared error shape (U14.2); MCP tools without <code>readOnlyHint</code> ask for approval by default; error codes renamed to <code>LOUSHY_*</code>.",
-  "<strong>Limits left in shipped features, each with a ticket:</strong> Docker containers are not routed through the credential broker yet (X12.2, in flight); agent-directory builds fail when an unused optional peer is not installed (P8.3, in flight); any Slack workspace member can click Approve or Deny (P5.2); a remote sub-agent that pauses for approval is reported as an error (Y7.2). Without tickets: the registry's permission manifest is shown but not enforced; ACP has no file or terminal methods; Slack and Discord hold pending approvals in memory (one process each).",
-  "<strong>Open problem:</strong> on this machine the deploy test folder intermittently makes vitest exit at startup when run right after another deploy run. It passes on retry; the cause is not found.",
-  "<strong>Branches are never deleted</strong> (owner instruction). To save disk, installed dependencies are removed from an agent's worktree after its PR merges.",
-  "<strong>CI is not awaited</strong> (owner instruction). CI pins Node 22; the local runs use Node 26. <strong>npm publish</strong> is an owner action (D49 prepares it)."
+  "<strong>All eight differentiators are shipped</strong> and 47 of 51 matrix rows are at parity or better. Missing: reasoning control (V13, in flight) and npm publication (owner action). Partial: no trace viewer; the CLI scaffold cannot be used from npm until the package is published.",
+  "<strong>Main passes the full local suite</strong> after every group of merges (Windows, Node 26): typecheck, lint, 2,907 tests with coverage, fallow, 165 docs snippets and the four Agent Forge checks. The test count fell from 2,947 because the surface cleanup deleted unused modules together with their tests.",
+  "<strong>ai v7 and zod 4:</strong> peers accept ai 4, 6 and 7 and zod 3 or 4. OpenAI, Anthropic and OpenRouter projects are scaffolded on ai 7. Ollama stays on ai 4 in the scaffold; on ai 6/7 it needs zod 4 and has not been tested.",
+  "<strong>What was verified how:</strong> every PR got typecheck and targeted tests after syncing with main, then a full run per group. The Docker sandbox features (container cleanup on cancel, egress through the broker) were tested against a Docker fake only: there is no Docker daemon on the machine.",
+  "<strong>Breaking or model-visible changes shipped pre-1.0</strong> (all in CHANGELOG with migration notes): removed <code>MemoryManager</code>, <code>ContextBuilder</code>, <code>retry()</code>, <code>data</code> and <code>templates</code>; default channel approver is the user who started the turn; sandboxed commands no longer inherit the host environment; CLI commands reject unknown flags; a tool's own deny beats a permissions allow rule; cancelled tool results use the shared error shape.",
+  "<strong>Limits left in shipped features:</strong> a remote sub-agent that pauses for approval must be approved on the remote agent, then continued by task id (Y7.3). Without tickets: the registry's permission manifest is shown but not enforced; ACP has no file or terminal methods; a pending <code>ask_question</code> in Slack or Discord is lost on restart; sub-agent fingerprints are stored but not compared on resume.",
+  "<strong>Open problem:</strong> the deploy test folder intermittently makes vitest exit at startup when run right after another deploy run; it passes on retry. D2.3 is investigating.",
+  "<strong>Owner instructions in force:</strong> branches are never deleted; CI is not awaited (it pins Node 22, the local runs use Node 26); npm publish and release config are the owner's."
  ]
 }
