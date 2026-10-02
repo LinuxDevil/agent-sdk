@@ -60,6 +60,7 @@ console.log(events); // includes 'run.start' and 'run.done'
 | `limits`                                | Token, cost, time and step budgets of the run; see [Budgets](./configuration.md#budgets). |
 | `temperature`, `maxTokens`              | Generation parameters.                                          |
 | `onAgentEvent`                          | Listener for the run's `AgentEvent`s (`run.start`, `tool.start`, `run.done`, ...); see [Streaming](./streaming.md#listening-without-iterating). |
+| `streamModelCalls`                      | With a listener, stream each model call so text arrives as several `text.delta` events (default `true`); `false` generates whole steps, one `text.delta` each. Ignored by `stream()`. |
 | `approvalStore`, `sessionId`            | Human-in-the-loop approvals (see `resumeAfterApproval()`).       |
 | `checkpointStore`                       | Persist/resume execution checkpoints.                           |
 | `exporter`                              | A `TraceExporter` for tracing spans (OpenTelemetry GenAI conventions, see [observability](observability.md)). |

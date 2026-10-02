@@ -42,7 +42,7 @@ function scriptedProvider(generate: (options: GenerateOptions) => Promise<Genera
     generate: spy,
     stream: vi.fn() as never,
     supportsTools: () => true,
-    supportsStreaming: () => true,
+    supportsStreaming: () => false, // generate-only: `stream` is a stub
     getModels: async () => [],
   };
   return { provider, generate: spy };

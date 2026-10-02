@@ -40,7 +40,7 @@
  * cancellation; this wrapper's shape (signal checked, forwarded if the
  * real provider accepts one) is what that wiring would build on.
  */
-import type { LLMProvider, GenerateOptions, GenerateResult, StreamResult } from '@lousho/build-ai-agent';
+import type { LLMProvider, GenerateOptions, GenerateResult, StreamChunk, StreamResult } from '@lousho/build-ai-agent';
 
 /**
  * Named `AbortError` (the fetch/AbortSignal convention) on purpose: the SDK's
@@ -69,9 +69,27 @@ export function withAbortSignal(provider: LLMProvider, signal: AbortSignal): LLM
       checkAborted();
       return result;
     },
+    // M9: AgentExecutor.execute({ onAgentEvent }) streams model calls, so a
+    // stop() during a streamed call is checked between chunks and after the
+    // last one - the same point generate() checks after its call returns.
     async stream(options: GenerateOptions): Promise<StreamResult> {
       checkAborted();
-      return provider.stream(options);
+      const streamed = await provider.stream(options);
+      async function* fullStream(): AsyncGenerator<StreamChunk> {
+        for await (const chunk of streamed.fullStream) {
+          checkAborted();
+          yield chunk;
+        }
+        checkAborted();
+      }
+      return {
+        fullStream: fullStream(),
+        textStream: streamed.textStream,
+        text: streamed.text,
+        usage: streamed.usage,
+        finishReason: streamed.finishReason,
+        toolCalls: streamed.toolCalls,
+      };
     },
     supportsTools(model: string): boolean {
       return provider.supportsTools(model);

@@ -6,13 +6,13 @@
  * ported from `.design-ref/agent-forge-mockup.html`'s bubble/avatar/
  * timestamp layout.
  *
- * Streaming granularity: MESSAGE-level, not token-level. AgentExecutor's
- * execution loop (src/execution/AgentExecutor.ts) only ever calls
- * `provider.generate()` - never `provider.stream()` - so there is no
- * per-token event to render incrementally even for a provider (like
- * MockLLMProvider) that DOES implement `.stream()`. A message appears in
- * the thread once its run turn settles (completes, or pauses for
- * approval); the "typing" indicator below fills the gap, driven by the
+ * Streaming granularity: MESSAGE-level, not token-level. Since M9 the
+ * server's `AgentExecutor.execute({ onAgentEvent })` streams each model
+ * call through `provider.stream()` when the provider can, so the
+ * WebSocket carries several `text.delta` events per step - but this panel
+ * renders the reconciled `Message[]` history, not the deltas. A message
+ * appears in the thread once its run turn settles (completes, or pauses
+ * for approval); the "typing" indicator below fills the gap, driven by the
  * real `status: 'running'` from LOU-N rather than a fake timeout.
  */
 import { useEffect, useRef, useState } from 'react';
