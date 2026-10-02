@@ -139,7 +139,8 @@
     "fallow": "fallow",
     "fallow:score": "fallow health --score",
     "example:openrouter": "tsx examples/openrouter/index.ts",
-    "pack-smoke": "tsx scripts/pack-smoke.ts"
+    "pack-smoke": "tsx scripts/pack-smoke.ts",
+    "registry-smoke": "tsx scripts/registrySmoke.ts"
   },
   "keywords": [
     "ai",
