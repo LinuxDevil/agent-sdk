@@ -38,6 +38,8 @@ function memoryTools([slot, key]: BoundSlot): DefinedTool[] {
   });
   const recall = defineTool({
     name: `recall_${slot.name}`,
+    // N4: recalling changes nothing, so plan mode can use it.
+    annotations: { readOnlyHint: true, destructiveHint: false },
     description: `Search the "${slot.name}" memory${slot.provider.ranking === 'relevance' ? ' by meaning, most relevant first' : ', newest items first'}.${about}`,
     input: z.object({ query: z.string().optional(), limit: z.number().int().positive().optional() }),
     execute: async ({ query, limit = slot.recall.maxItems }) => ({

@@ -14,6 +14,10 @@ import { SessionAwaitingApprovalError } from './execution/errors';
 import type { InputQueue } from './execution/inputQueue';
 import { streamSessionTurn } from './session/sessionStream';
 import { AgentSession, type SessionOptions, type SessionRunner, type SessionStreamRunner } from './session/AgentSession';
+import type { PermissionOptions } from './execution/permissions';
+
+/** N4: the mode a continued run uses: the paused session's (a getter), or undefined for the agent's. */
+type ResumeMode = PermissionOptions['permissionMode'];
 
 /**
  * Decides a tool call that needs approval without pausing the run: `true`
@@ -77,13 +81,15 @@ export interface AgentApprovals {
 
 /**
  * resumeAfterApproval() bound to an agent's registry, provider and options;
- * `checkpointStore` is the paused session's, when its turns are checkpointed.
+ * `checkpointStore` is the paused session's, when its turns are checkpointed,
+ * and `permissionMode` (N4) the session's mode.
  */
 type ResumeRun = (
   store: ApprovalStore,
   decision: ApprovalDecision,
   signal?: AbortSignal,
-  checkpointStore?: CheckpointStore
+  checkpointStore?: CheckpointStore,
+  permissionMode?: ResumeMode
 ) => Promise<ExecutionResult>;
 
 /** {@link ResumeRun}, streamed (LOU-V14); `inputQueue` is what `run.enqueue()` pushes to. */
@@ -92,24 +98,25 @@ type StreamResumeRun = (
   decision: ApprovalDecision,
   signal?: AbortSignal,
   checkpointStore?: CheckpointStore,
-  inputQueue?: InputQueue
+  inputQueue?: InputQueue,
+  permissionMode?: ResumeMode
 ) => AgentRun;
 
 /** A session whose paused turn can be continued by `agent.approvals.resolve()`. */
 class ApprovalSession extends AgentSession {
-  resolveWith(next: (checkpointStore?: CheckpointStore) => Promise<ExecutionResult>): Promise<ExecutionResult> {
-    return this.continueTurn(() => next(this.checkpointStore));
+  resolveWith(next: (checkpointStore?: CheckpointStore, permissionMode?: ResumeMode) => Promise<ExecutionResult>): Promise<ExecutionResult> {
+    return this.continueTurn(() => next(this.checkpointStore, this.currentPermissionMode));
   }
 
   /** LOU-V14: `resolveWith()`, streamed: `run.done` comes once the session has recorded the turn. */
   streamResolveWith(
-    next: (checkpointStore: CheckpointStore | undefined, signal: AbortSignal, inputs: InputQueue) => AgentRun,
+    next: (checkpointStore: CheckpointStore | undefined, signal: AbortSignal, inputs: InputQueue, permissionMode: ResumeMode) => AgentRun,
     signal?: AbortSignal
   ): AgentRun {
     return streamSessionTurn(
       (runSignal, started, inputs) =>
         this.continueTurn(() => {
-          const run = next(this.checkpointStore, runSignal, inputs);
+          const run = next(this.checkpointStore, runSignal, inputs, this.currentPermissionMode);
           started(run);
           return run.result;
         }),
@@ -146,7 +153,8 @@ export function createAgentApprovals(options: {
   async function settle(
     result: ExecutionResult,
     signal?: AbortSignal,
-    checkpointStore?: CheckpointStore
+    checkpointStore?: CheckpointStore,
+    permissionMode?: ResumeMode
   ): Promise<ExecutionResult> {
     let current = result;
     for (;;) {
@@ -154,7 +162,7 @@ export function createAgentApprovals(options: {
       if (!approve || current.finishReason !== 'awaiting-approval' || !request) return current;
       const verdict = await approve(request);
       const decision = typeof verdict === 'string' ? { id: request.id, approved: true, note: verdict } : { id: request.id, approved: verdict };
-      current = await resume(store, decision, signal, checkpointStore);
+      current = await resume(store, decision, signal, checkpointStore, permissionMode);
     }
   }
 
@@ -184,8 +192,8 @@ export function createAgentApprovals(options: {
   function resolve(decision: ApprovalDecision, { signal }: { signal?: AbortSignal } = {}): Promise<ExecutionResult> {
     const session = sessions.get(decision.id);
     sessions.delete(decision.id);
-    const next = async (checkpointStore?: CheckpointStore) =>
-      inSession(session, await settle(await resume(store, decision, signal, checkpointStore), signal, checkpointStore));
+    const next = async (checkpointStore?: CheckpointStore, permissionMode?: ResumeMode) =>
+      inSession(session, await settle(await resume(store, decision, signal, checkpointStore, permissionMode), signal, checkpointStore, permissionMode));
     return session ? session.resolveWith(next) : next();
   }
 
@@ -194,7 +202,8 @@ export function createAgentApprovals(options: {
     sessions.delete(decision.id);
     if (!session) return streamResume(store, decision, signal);
     return session.streamResolveWith(
-      (checkpointStore, runSignal, inputs) => inSessionRun(session, streamResume(store, decision, runSignal, checkpointStore, inputs)),
+      (checkpointStore, runSignal, inputs, permissionMode) =>
+        inSessionRun(session, streamResume(store, decision, runSignal, checkpointStore, inputs, permissionMode)),
       signal
     );
   }
@@ -216,7 +225,7 @@ export function createAgentApprovals(options: {
       const session: ApprovalSession = new ApprovalSession(
         async (input, signal, turn, call) => {
           try {
-            return inSession(session, await settle(await run(input, signal, turn, call), signal, turn?.checkpointStore));
+            return inSession(session, await settle(await run(input, signal, turn, call), signal, turn?.checkpointStore, turn?.permissionMode));
           } catch (error) {
             // A checkpointed turn found paused (e.g. after a restart): resolving it continues this session.
             if (error instanceof SessionAwaitingApprovalError && error.approvalId) sessions.set(error.approvalId, session);

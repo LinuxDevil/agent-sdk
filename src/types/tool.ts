@@ -82,6 +82,11 @@ export interface ToolMetadata {
     /** The server's raw annotations for this tool, when it sent any. */
     annotations?: McpToolAnnotations;
   };
+  /**
+   * N4: the tool edits files in a workspace (`defineTool({ editsFiles })`):
+   * `permissionMode: 'acceptEdits'` runs its calls without asking.
+   */
+  editsFiles?: boolean;
 }
 
 /**

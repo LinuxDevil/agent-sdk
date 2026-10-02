@@ -23,6 +23,10 @@ A flagship end-to-end pipeline: a Grafana/Datadog monitor delegates a fix (behin
 human approval gate, with a Slack "Fix it" button) to a fixer agent, whose patch is
 guardrail-gated before a GitHub PR is opened (LOU-J4-J9).
 
+## [plan-mode](./plan-mode)
+
+Plan first, then edit: a coding agent in `plan` mode reads and proposes, then `session.setPermissionMode('acceptEdits')` lets it apply the plan; runs offline with a mock model (N4).
+
 ## [research-assistant](./research-assistant)
 
 A research agent with the built-in `http` tool wired up (LOU-H10).
