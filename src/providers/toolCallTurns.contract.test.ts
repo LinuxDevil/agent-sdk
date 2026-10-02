@@ -19,7 +19,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { z } from 'zod';
-import { installedAiMajor } from './aiMajor.testkit';
+import { installedAiMajor, ollamaV2Installed } from './aiMajor.testkit';
 import { aiTool, mockToolCall, mockUsage, parseModelMessage, toolCallPart, toolResultPart } from './aiShapes.testkit';
 
 const generateTextMock = vi.fn();
@@ -59,11 +59,12 @@ function textResult(text = 'ok') {
 
 /**
  * `generateText` is mocked, so the model is never called. On `ai` 6/7 the Ollama package
- * (`ollama-ai-provider-v2`, zod 4 peer) cannot be installed here yet, so its model is a stand-in.
+ * (`ollama-ai-provider-v2`, zod 4 peer) is installed only in the zod 4 CI jobs (LOU-M8); without it
+ * the model is a stand-in.
  */
 function ollama(): LLMProvider {
   const provider = new OllamaProvider({ name: 'ollama' });
-  if (installedAiMajor !== 4) {
+  if (installedAiMajor !== 4 && !ollamaV2Installed) {
     const target = provider as unknown as { createModel: () => Promise<LanguageModel> };
     vi.spyOn(target, 'createModel').mockResolvedValue({} as LanguageModel);
   }
