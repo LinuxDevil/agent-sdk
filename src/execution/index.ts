@@ -85,8 +85,10 @@ export type {
   GuardrailTrippedEvent,
   GuardrailRewroteEvent,
   AgentDriftEvent,
+  HandoffEvent,
   RunDoneEvent,
 } from './agentEvents';
+export type { HandoffInputData, HandoffMarker, HandoffTarget, ResolvedHandoff } from './handoffRun';
 export { BudgetExceededError } from './budget';
 export type { BudgetExceeded, BudgetLimit, BudgetSpent, RunLimits, SessionBudget } from './budget';
 export type { AgentRun } from './agentRun';

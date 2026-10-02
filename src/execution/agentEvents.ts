@@ -353,6 +353,20 @@ export interface GuardrailRewroteEvent extends AgentEventBase<'guardrail.rewrote
 export interface AgentDriftEvent extends AgentEventBase<'agent.drift'>, AgentDrift {}
 
 /**
+ * N6: the run handed the conversation to another agent (`createAgent({ handoffs })`):
+ * after the handoff call's `tool.start` / `tool.done`, before the target's
+ * first `step.start`. From here on the run's steps are the target's. See docs/handoffs.md.
+ */
+export interface HandoffEvent extends AgentEventBase<'handoff'> {
+  /** The agent that handed off. */
+  from: string;
+  /** The agent that takes over (`result.agentName` unless it hands on). */
+  to: string;
+  /** The handoff tool call. */
+  toolCallId: string;
+}
+
+/**
  * Last event of every run, emitted exactly once - also for aborted, failed
  * and awaiting-approval runs.
  */
@@ -406,6 +420,7 @@ export type AgentEvent =
   | GuardrailTrippedEvent
   | GuardrailRewroteEvent
   | AgentDriftEvent
+  | HandoffEvent
   | RunDoneEvent;
 
 /** The `type` of an {@link AgentEvent}. */
@@ -455,6 +470,7 @@ const EVENT_TYPE_MAP: Record<AgentEventType, true> = {
   'guardrail.tripped': true,
   'guardrail.rewrote': true,
   'agent.drift': true,
+  handoff: true,
   'run.done': true,
 };
 
