@@ -113,7 +113,7 @@ describe('build-a-coding-agent', () => {
       });
       const agent = buildAgent(workspace, provider);
 
-      const { result, pauses } = await runTask(agent, 'Fix the failing test');
+      const { result, pauses } = await runTask(agent, 'The test in math.test.js fails. Read the files, fix the bug in math.js, and run the tests with node --test.');
 
       expect(pauses).toBeGreaterThan(0);
       expect(workspace.snapshot()['math.js']).toContain('a + b');
