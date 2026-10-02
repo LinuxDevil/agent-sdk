@@ -56,6 +56,21 @@ export const MIGRATIONS: readonly string[] = [
     updated_at INTEGER NOT NULL
   );
   `,
+  // N9a: OAuth tokens and registered clients (`key` is tokenStoreKey() or
+  // `<provider>|client`) and pending sign-ins. Payloads are AES-256-GCM
+  // sealed records (`v1.<iv>.<ciphertext>`), never plaintext tokens.
+  `
+  CREATE TABLE oauth_tokens (
+    key TEXT PRIMARY KEY,
+    payload TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE TABLE oauth_pending (
+    state TEXT PRIMARY KEY,
+    payload TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 function readVersion(db: SqlDatabase): number {

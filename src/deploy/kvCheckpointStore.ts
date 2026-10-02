@@ -85,6 +85,21 @@ export interface KVBinding {
   get(key: string): Promise<string | null>;
   put(key: string, value: string, options?: KVPutOptions): Promise<void>;
   delete(key: string): Promise<void>;
+  /** Keys under a prefix, a page at a time. Optional: only `KVStore`'s `tokens.list()` needs it (a real KV namespace has it). */
+  list?(options: KVListOptions): Promise<KVListResult>;
+}
+
+/** Options of {@link KVBinding.list}, as on a real KV namespace. */
+export interface KVListOptions {
+  prefix?: string;
+  cursor?: string;
+}
+
+/** One page of {@link KVBinding.list}; `cursor` continues it while `list_complete` is false. */
+export interface KVListResult {
+  keys: Array<{ name: string }>;
+  list_complete: boolean;
+  cursor?: string;
 }
 
 /** Default key prefix `KVCheckpointStore` namespaces its keys under. */

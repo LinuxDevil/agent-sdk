@@ -208,6 +208,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md) | File system and shell tools for coding agents, and their security model |
 | [Build a coding agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/build-a-coding-agent.md) | A terminal coding agent step by step: workspace tools, approvals, streaming, a session, offline tests |
 | [Hooks](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hooks.md) | `createAgent({ hooks })`: observe, deny, rewrite or redact tool calls and model calls; `HookRegistry` |
+| [OAuth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md) | `AgentStore.tokens`: OAuth tokens per provider and credential owner (app or user), encrypted at rest with your `tokenKey` |
 | [Guardrails and sandboxing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md) | `runGuardrails()`, built-in guardrails, `requiresSandbox`, `SubprocessSandbox` |
 | [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md) | Deterministic tests with `mockModel`; record and replay with `recordReplay` |
 | [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md) | Trajectory evals with `defineEval()`, datasets, judges, `lousho eval` reports |
@@ -912,7 +913,7 @@ How the pieces fit:
 | `SqliteStore` (from `/sqlite`) | Sessions, checkpoints and approvals in one SQLite file (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
 | `fileStore(dir)`              | Sessions, checkpoints and approvals as plain JSON files under `dir` (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
 | `KVStore`, `KVCheckpointStore` (from `/kv`) | Stores on a Cloudflare Workers KV binding, for a hand-written Worker (see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)). |
-| `AgentStore`, `memoryStore()` | The `createAgent({ store })` option: `{ sessions?, checkpoints?, approvals? }`, and an in-memory one (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
+| `AgentStore`, `memoryStore()` | The `createAgent({ store })` option: `{ sessions?, checkpoints?, approvals?, tokens? }`, and an in-memory one (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store); `tokens` holds OAuth tokens, see [OAuth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md)). |
 | `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). |
 | `SDKError`, `ERROR_CODES`    | Base class of the SDK's errors: a stable `code`, a `hint` and a `docs` link (see [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md)). |
 | `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation. Superseded by `subagents`. |
@@ -3997,7 +3998,7 @@ curl -N https://<your-worker>.workers.dev/chat \
 
 ## Sessions, checkpoints and approvals
 
-`KVStore(kvBinding, { prefix?, ttl?, historyLimit? })` is the `AgentStore` the
+`KVStore(kvBinding, { prefix?, ttl?, historyLimit?, tokenKey? })` is the `AgentStore` the
 generated Worker builds from the binding. A hand-written Worker imports it from
 the `/kv` subpath, which has no `node:*` import anywhere in its graph, with the
 binding typed as `KVBinding` (the `get`/`put`/`delete` part of Cloudflare's
@@ -4030,6 +4031,7 @@ Worker reads). `KVStore`'s keys, with an optional `prefix` before each:
 | `sessions/<id>` | The transcript as JSON (image and file bytes as `{ "$bytes": "<base64>" }`, like `FileSessionStore`). |
 | `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, with its history under `checkpoints/<id>#history`). |
 | `approvals/<id>` | A paused approval and the snapshot that resumes it (deleted when it is decided). |
+| `oauth/tokens/<key>`, `oauth/pending/<state>` | OAuth tokens and pending sign-ins, encrypted with `tokenKey` (the `LOUSHO_TOKEN_KEY` secret in the generated Worker); see [OAuth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#token-storage). |
 
 `ttl: { sessions?, checkpoints?, approvals? }` (seconds, KV accepts 60 or more)
 makes each kind of record expire that long after its last write; by default
@@ -5553,6 +5555,7 @@ Find a code by area:
 | [Storage, deployment and integrations](#storage-deployment-and-integrations) | [`LOUSHO_STORAGE_FAILED`](#lousho_storage_failed), [`LOUSHO_TRIGGER_INVALID`](#lousho_trigger_invalid), [`LOUSHO_CHANNEL_REQUEST_FAILED`](#lousho_channel_request_failed), [`LOUSHO_DEPLOY_FAILED`](#lousho_deploy_failed) | A storage backend, a trigger, a channel request or `lousho build`. |
 | [Tests and evals](#tests-and-evals) | [`LOUSHO_EVALS_INVALID`](#lousho_evals_invalid), [`LOUSHO_TEST_FAILED`](#lousho_test_failed), [`LOUSHO_CASSETTE_INVALID`](#lousho_cassette_invalid) | `defineEval()`, `mockModel` and cassettes. |
 | [General](#general) | [`LOUSHO_GENERIC_ERROR`](#lousho_generic_error), [`LOUSHO_AGENT_EXECUTION_FAILED`](#lousho_agent_execution_failed), [`LOUSHO_FLOW_EXECUTION_FAILED`](#lousho_flow_execution_failed), [`LOUSHO_VALIDATION_FAILED`](#lousho_validation_failed), [`LOUSHO_OPERATION_TIMEOUT`](#lousho_operation_timeout), [`LOUSHO_OUTPUT_INVALID`](#lousho_output_invalid), [`LOUSHO_BUDGET_EXCEEDED`](#lousho_budget_exceeded), [`LOUSHO_GUARDRAIL_TRIPPED`](#lousho_guardrail_tripped) | Run-level failures: a timeout, a budget or guardrail stop, invalid output, and the catch-all codes. |
+| [OAuth](#oauth) | [`LOUSHO_TOKEN_KEY_MISSING`](#lousho_token_key_missing), [`LOUSHO_TOKEN_DECRYPT_FAILED`](#lousho_token_decrypt_failed) | Storing or reading OAuth tokens in a file, SQLite or KV store. |
 
 ## Configuration
 
@@ -6272,6 +6275,39 @@ empty user list or token.
 **Fix:** change the option the message names. See [Route auth and principals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md).
 
 **Example:** `jwt({ secret: process.env.JWT_SECRET! })` without `audience`.
+
+## OAuth
+
+### LOUSHO_TOKEN_KEY_MISSING
+
+**Means:** a file, SQLite or KV store was asked to store an OAuth token, a
+pending sign-in or a registered client (or to read one that exists), and it has
+no token key: neither its `tokenKey` option nor the `LOUSHO_TOKEN_KEY`
+environment variable is set. Tokens are only ever stored encrypted, and there
+is no default key. Reads of records that do not exist need no key.
+
+**Fix:** generate a key once with `generateTokenKey()` (32 random bytes as
+base64), keep it as a secret, and pass it as `tokenKey` or set
+`LOUSHO_TOKEN_KEY`. On Cloudflare Workers, add it with
+`wrangler secret put LOUSHO_TOKEN_KEY`. See [Token storage](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#token-storage).
+
+**Example:** `new SqliteStore('./agent.db').tokens.set('github', { owner: 'app' }, token)`
+with `LOUSHO_TOKEN_KEY` unset.
+
+### LOUSHO_TOKEN_DECRYPT_FAILED
+
+**Means:** a stored OAuth record could not be decrypted: the store's key is not
+the one it was written with, or the record was changed or copied to another
+owner. The message names the provider, never the token.
+
+**Fix:** use the key the tokens were written with. While rotating, list the old
+key after the new one (`tokenKey: [newKey, oldKey]`, or
+`LOUSHO_TOKEN_KEY="<new>,<old>"`). If the old key is lost, delete the record
+(`tokens.delete(provider, owner)`) and sign in again. See
+[Token storage](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#token-storage).
+
+**Example:** a `SqliteStore` file written with one `tokenKey` and opened with
+another.
 
 # Evals
 
@@ -8040,6 +8076,145 @@ export const POST = ({ request }: { request: Request }) => handler(request);
 // Hono: app.all('/agent/*', (c) => handler(c.req.raw))
 // Bun.serve: fetch: handler
 ```
+
+# OAuth
+
+Source: docs/oauth.md
+
+Tools and MCP servers that call an API on someone's behalf need an OAuth
+access token, and usually a refresh token to get the next one. This page covers
+where those tokens live: the `tokens` part of an `AgentStore`, keyed by
+provider and by who owns the credential. Signing in (the redirect, the
+callback route, pausing a run until the user connects) comes in a later
+release; for now the store is the building block, and nothing signs in by
+itself.
+
+## Credential owners
+
+Every stored credential has a provider (a name such as `github`, 1-64
+characters from `A-Z`, `a-z`, `0-9`, `_` and `-`) and an owner:
+
+- **The app** (`{ owner: 'app' }`): one credential the agent uses for
+  everybody, such as a service account or a bot installation.
+- **A user** (`{ owner: 'user', principalId, issuer? }`): one credential per
+  signed-in person. `principalId` is the user's id and `issuer` names the
+  identity provider that issued it, so `alice` from one issuer and `alice`
+  from another are different owners. With [route auth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md), a request's
+  principal maps onto it as `{ owner: 'user', principalId: principal.id,
+  issuer: principal.issuer }`; a user credential needs that principal,
+  because without one there is no user to own it.
+
+`tokenStoreKey(provider, owner)` is the record key of a credential:
+`<provider>|app`, or `<provider>|user|<issuer>|<principalId>` with the issuer
+and id percent-encoded (an absent issuer is the empty part). Encoding makes the
+key unambiguous: a principal id containing `|` cannot collide with another
+owner.
+
+```ts
+import { tokenStoreKey } from '@lousho/build-ai-agent';
+
+tokenStoreKey('github', { owner: 'app' }); // 'github|app'
+tokenStoreKey('github', { owner: 'user', principalId: 'a|b', issuer: 'https://id.example.com' });
+// 'github|user|https%3A%2F%2Fid.example.com|a%7Cb'
+```
+
+## Token storage
+
+`AgentStore.tokens` is an `OAuthTokenStore`:
+
+```ts
+import { memoryStore } from '@lousho/build-ai-agent';
+
+const { tokens } = memoryStore();
+const alice = { owner: 'user', principalId: 'alice', issuer: 'https://id.example.com' } as const;
+
+await tokens.set('github', alice, { accessToken: 'gho_...', refreshToken: 'ghr_...', tokenType: 'Bearer', expiresAt: Date.now() + 3_600_000 });
+const token = await tokens.get('github', alice); // { accessToken, refreshToken, ... } or undefined
+const connected = await tokens.list({ owner: alice }); // [{ provider: 'github', owner, expiresAt, scope, hasRefreshToken: true, updatedAt }]
+await tokens.delete('github', alice); // disconnect
+```
+
+- `get`, `set` and `delete` read, write (replacing) and remove one credential.
+- `list({ provider?, owner? })` returns metadata only: provider, owner, token
+  type, expiry, scope, whether a refresh token is stored, and when the record
+  was written. It never returns an access or refresh token.
+- `putPending(state, value, ttlMs)` and `takePending(state)` keep a sign-in in
+  progress (the PKCE verifier and where to return) between the redirect and the
+  callback. `takePending` returns it once and deletes it; after `ttlMs` it is
+  gone. `state` is 16-128 characters from `A-Z`, `a-z`, `0-9`, `_` and `-`; a
+  malformed state passed to `takePending` is simply not found.
+- `setClient(provider, client)` and `getClient(provider)` keep a client
+  registered with an authorization server (dynamic client registration). The
+  record may hold a client secret, so it is encrypted like a token.
+
+Every ready-made store has `tokens`:
+
+| Store | Where tokens are kept | Encrypted |
+| --- | --- | --- |
+| `memoryStore()` | Plain objects in process memory | No: nothing leaves the process |
+| `fileStore(dir, { tokenKey })` | `<dir>/oauth/tokens/<sha256 of the key>.json`, `<dir>/oauth/pending/<state>.json` | Yes |
+| `new SqliteStore(path, { tokenKey })` | Tables `oauth_tokens` and `oauth_pending` | Yes |
+| `new KVStore(kv, { tokenKey })` | `<prefix>oauth/tokens/<key>`, `<prefix>oauth/pending/<state>` (with an expiration) | Yes |
+
+**The key.** The persistent stores encrypt every record with AES-256-GCM under
+a 32-byte key that you supply as base64: the `tokenKey` option, or else the
+`LOUSHO_TOKEN_KEY` environment variable. There is no default key and nothing
+is derived from a password. Make one with `generateTokenKey()` or in a shell:
+
+```bash
+node -e "console.log(Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64'))"
+```
+
+```ts
+import { createAgent, fileStore, generateTokenKey } from '@lousho/build-ai-agent';
+
+console.log(generateTokenKey()); // store it as a secret, e.g. LOUSHO_TOKEN_KEY
+
+const agent = createAgent({ provider, store: fileStore('./.lousho', { tokenKey: process.env.LOUSHO_TOKEN_KEY }) });
+```
+
+On Cloudflare Workers there is no `process.env`: add the key as a secret
+(`wrangler secret put LOUSHO_TOKEN_KEY`) and pass `env.LOUSHO_TOKEN_KEY` as
+`tokenKey`. The Worker that `lousho build --target=cloudflare-worker`
+generates does this for you.
+
+- A key that is not exactly 32 bytes of base64 is a `ConfigurationError` when
+  the store is built.
+- With no key, an agent that never stores a token works as before: reads find
+  nothing. The first `set`, `setClient` or `putPending` throws
+  [`LOUSHO_TOKEN_KEY_MISSING`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_token_key_missing), and so does
+  reading a record that exists.
+- Each write uses a fresh random 12-byte IV, so the same token written twice
+  gives two different ciphertexts. The record key is authenticated with it: a
+  ciphertext copied to another owner's row does not decrypt. The stored form is
+  `v1.<base64 iv>.<base64 ciphertext>`.
+- A record written under another key, or changed on disk, fails with
+  [`LOUSHO_TOKEN_DECRYPT_FAILED`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_token_decrypt_failed), which
+  names the provider and never the token.
+
+**Rotating the key.** Pass several keys, newest first:
+`tokenKey: [newKey, oldKey]`, or `LOUSHO_TOKEN_KEY="<new>,<old>"`. Writes use
+the first key and reads try each in turn, so tokens move to the new key as they
+are refreshed. There is no command that re-encrypts every record; once you drop
+the old key, tokens still written under it can no longer be read, and their
+users sign in again (delete those records).
+
+**Nothing logs a token.** The stores never put an access token, refresh token,
+PKCE verifier or client secret into an error message, a log line or an error
+`cause`, and the token values are not part of agent events, transcripts,
+checkpoints, traces or recorded cassettes unless a tool returns one itself. A
+tool that uses a token should return the API's answer, not the token.
+
+**Consistency.** SQLite takes a pending sign-in in one transaction, and the
+file store claims it with an exclusive file create, so exactly one caller gets
+it. Workers KV has no transactions: `takePending` reads and then deletes, so two
+callbacks at different edge locations within KV's propagation delay (up to
+about a minute) could both read the same state. The state is a 128-bit random
+value that only the user's browser holds, so reusing it gains nothing to anyone
+who does not already have it. `KVStore`'s `tokens.list()` needs the binding's
+`list()` (a real KV namespace has it; a hand-made fake may not). `prune()` of a
+`SqliteStore` also deletes expired pending sign-ins; the file store drops them
+when the next sign-in starts, and KV expires them itself.
 
 # Tracing and observability
 
@@ -9959,6 +10134,11 @@ Session ids must match `^[A-Za-z0-9_-]{1,128}$` (they become file names, so
 `../x` and `a/b` are refused with an error that says so). Implement
 `SessionStore` yourself to keep transcripts in a database or Redis.
 
+An `AgentStore` has a fourth optional part next to `sessions`, `checkpoints`
+and `approvals`: `tokens`, the OAuth access and refresh tokens of tools and
+connections, kept encrypted by the file, SQLite and KV stores (see
+[OAuth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#token-storage)).
+
 ## Choosing a store
 
 Sessions, durable-execution checkpoints and approvals each have a store
@@ -10008,7 +10188,7 @@ const store = new SqliteStore('./.lousho/agent.db'); // or ':memory:'
 const agent = createAgent({ provider, store }); // transcripts, per-step checkpoints and approvals
 await agent.session({ id: 'user-42' }).send('Hello');
 
-store.prune({ olderThanMs: 7 * 24 * 60 * 60 * 1000 }); // { sessions, checkpoints, approvals } deleted
+store.prune({ olderThanMs: 7 * 24 * 60 * 60 * 1000 }); // { sessions, checkpoints, approvals, oauthPending } deleted
 store.close();
 ```
 
@@ -10023,7 +10203,8 @@ With the executor directly, pass `store.checkpoints` as `checkpointStore` and
 - Checkpoints and approval snapshots are stored as opaque JSON, so new fields
   round-trip unchanged.
 - `prune()` removes sessions and checkpoints not updated within `olderThanMs`,
-  and approvals resolved that long ago; unresolved approvals are kept.
+  approvals resolved that long ago and expired pending OAuth sign-ins;
+  unresolved approvals and OAuth tokens are kept.
 - A file that is not a SQLite database fails with an error naming the path;
   using the store after `close()` throws a clear error.
 
