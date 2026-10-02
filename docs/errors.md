@@ -59,6 +59,7 @@ Find a code by area:
 | [Storage, deployment and integrations](#storage-deployment-and-integrations) | [`LOUSHO_STORAGE_FAILED`](#lousho_storage_failed), [`LOUSHO_TRIGGER_INVALID`](#lousho_trigger_invalid), [`LOUSHO_CHANNEL_REQUEST_FAILED`](#lousho_channel_request_failed), [`LOUSHO_DEPLOY_FAILED`](#lousho_deploy_failed) | A storage backend, a trigger, a channel request or `lousho build`. |
 | [Tests and evals](#tests-and-evals) | [`LOUSHO_EVALS_INVALID`](#lousho_evals_invalid), [`LOUSHO_TEST_FAILED`](#lousho_test_failed), [`LOUSHO_CASSETTE_INVALID`](#lousho_cassette_invalid) | `defineEval()`, `mockModel` and cassettes. |
 | [General](#general) | [`LOUSHO_GENERIC_ERROR`](#lousho_generic_error), [`LOUSHO_AGENT_EXECUTION_FAILED`](#lousho_agent_execution_failed), [`LOUSHO_FLOW_EXECUTION_FAILED`](#lousho_flow_execution_failed), [`LOUSHO_VALIDATION_FAILED`](#lousho_validation_failed), [`LOUSHO_OPERATION_TIMEOUT`](#lousho_operation_timeout), [`LOUSHO_OUTPUT_INVALID`](#lousho_output_invalid), [`LOUSHO_BUDGET_EXCEEDED`](#lousho_budget_exceeded), [`LOUSHO_GUARDRAIL_TRIPPED`](#lousho_guardrail_tripped) | Run-level failures: a timeout, a budget or guardrail stop, invalid output, and the catch-all codes. |
+| [OAuth](#oauth) | [`LOUSHO_TOKEN_KEY_MISSING`](#lousho_token_key_missing), [`LOUSHO_TOKEN_DECRYPT_FAILED`](#lousho_token_decrypt_failed) | Storing or reading OAuth tokens in a file, SQLite or KV store. |
 
 ## Configuration
 
@@ -807,3 +808,36 @@ empty user list or token.
 **Fix:** change the option the message names. See [Route auth and principals](./auth.md).
 
 **Example:** `jwt({ secret: process.env.JWT_SECRET! })` without `audience`.
+
+## OAuth
+
+### LOUSHO_TOKEN_KEY_MISSING
+
+**Means:** a file, SQLite or KV store was asked to store an OAuth token, a
+pending sign-in or a registered client (or to read one that exists), and it has
+no token key: neither its `tokenKey` option nor the `LOUSHO_TOKEN_KEY`
+environment variable is set. Tokens are only ever stored encrypted, and there
+is no default key. Reads of records that do not exist need no key.
+
+**Fix:** generate a key once with `generateTokenKey()` (32 random bytes as
+base64), keep it as a secret, and pass it as `tokenKey` or set
+`LOUSHO_TOKEN_KEY`. On Cloudflare Workers, add it with
+`wrangler secret put LOUSHO_TOKEN_KEY`. See [Token storage](./oauth.md#token-storage).
+
+**Example:** `new SqliteStore('./agent.db').tokens.set('github', { owner: 'app' }, token)`
+with `LOUSHO_TOKEN_KEY` unset.
+
+### LOUSHO_TOKEN_DECRYPT_FAILED
+
+**Means:** a stored OAuth record could not be decrypted: the store's key is not
+the one it was written with, or the record was changed or copied to another
+owner. The message names the provider, never the token.
+
+**Fix:** use the key the tokens were written with. While rotating, list the old
+key after the new one (`tokenKey: [newKey, oldKey]`, or
+`LOUSHO_TOKEN_KEY="<new>,<old>"`). If the old key is lost, delete the record
+(`tokens.delete(provider, owner)`) and sign in again. See
+[Token storage](./oauth.md#token-storage).
+
+**Example:** a `SqliteStore` file written with one `tokenKey` and opened with
+another.

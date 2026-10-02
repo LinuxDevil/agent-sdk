@@ -211,6 +211,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Workspace tools](docs/workspace-tools.md) | File system and shell tools for coding agents, and their security model |
 | [Build a coding agent](docs/build-a-coding-agent.md) | A terminal coding agent step by step: workspace tools, approvals, streaming, a session, offline tests |
 | [Hooks](docs/hooks.md) | `createAgent({ hooks })`: observe, deny, rewrite or redact tool calls and model calls; `HookRegistry` |
+| [OAuth](docs/oauth.md) | `AgentStore.tokens`: OAuth tokens per provider and credential owner (app or user), encrypted at rest with your `tokenKey` |
 | [Guardrails and sandboxing](docs/guardrails.md) | `runGuardrails()`, built-in guardrails, `requiresSandbox`, `SubprocessSandbox` |
 | [Testing](docs/testing.md) | Deterministic tests with `mockModel`; record and replay with `recordReplay` |
 | [Evals](docs/evals.md) | Trajectory evals with `defineEval()`, datasets, judges, `lousho eval` reports |
