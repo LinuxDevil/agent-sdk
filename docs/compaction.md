@@ -46,7 +46,7 @@ compaction sees what they added. Hooks and compaction apply to `send()`,
 
 `agent.stream()`, `session.stream()` and `AgentExecutor.stream()` report each
 compaction as two events, inside the step and before the model call that
-triggered it (see [Streaming](./streaming.md#event-schema-version-1)):
+triggered it (see [Streaming](./stream-events.md#event-schema-version-1)):
 
 | `type` | Fields |
 | --- | --- |
@@ -88,7 +88,7 @@ const agent = createAgent({
 ```
 
 Before every model call the hook estimates the request's size with
-`estimateTokens` (see [Models, tokens and cost](./api-overview.md#models-tokens-and-cost)).
+`estimateTokens` (see [Models, tokens and cost](./models-and-cost.md#models-and-the-price-table)).
 When it is above `thresholdPercent` of the context window, the hook runs its
 strategy (and waits for it, if it is async) and calls `onCompaction` with the
 token counts, the pruned `toolCallId`s, the summary if there is one and the

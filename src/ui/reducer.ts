@@ -1,6 +1,6 @@
 /**
  * LOU-D15: the framework-neutral state behind `useLoushoAgent()`: a pure
- * reducer from the typed {@link AgentEvent} stream (docs/streaming.md), plus
+ * reducer from the typed {@link AgentEvent} stream (docs/stream-events.md), plus
  * a few local actions, to chat UI state. A UI binding (React, Vue, Svelte
  * later) only holds this state and dispatches into it.
  */
