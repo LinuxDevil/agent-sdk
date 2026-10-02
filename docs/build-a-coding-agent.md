@@ -268,6 +268,7 @@ recording afterwards, see [Record and replay](./testing.md#record-and-replay).
 ## Next steps
 
 - [Workspace tools](./workspace-tools.md): the full tool reference, the security model, and `SandboxShell` to run commands in Docker.
+- [Undo the agent's file changes](./workspace-tools.md#the-tools): pass `createFsTools(workspace, { checkpoints })` a `WorkspaceCheckpoints`, then `checkpoints.rewind(turn, { sessionId: session.id, dryRun: true })` shows what rewinding to a turn would restore.
 - [Approvals](./approvals.md): durable approval stores, `approve` callbacks and deciding from another process.
 - [Streaming](./streaming.md): every event type, cancelling a run, and the web stream formats.
 - [Sessions](./sessions.md): stores, limits and durable sessions.

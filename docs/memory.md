@@ -79,6 +79,10 @@ When a run has no scope key (a `'session'` slot in a `send()` without a
 `sessionId`, or a scope function that returns `undefined`), the slot is off
 for that run: nothing is recalled and its tools are not offered.
 
+A scope function also sees `principal`, the caller a route's auth verified, which
+is safer to key on than `metadata` (the caller can send any metadata): see
+[Route auth and principals](./auth.md#reading-the-principal-in-the-run).
+
 ## Configuration options
 
 `defineMemory(options)` returns a `MemorySlot`:

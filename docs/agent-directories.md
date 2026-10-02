@@ -29,6 +29,7 @@ my-agent/
   schedules/*.ts|js                                # defineSchedule() cron schedules (see schedules.md)
   channels/*.ts|js                                 # a channel each: defineChannel(), webhookChannel(), ... (see channels.md)
   memory/*.ts|js                                   # a memory slot each: defineMemory() (see memory.md); part of the agent
+  auth.ts | auth.js                                # route auth for the deployed server: jwt(), oidc(), basic(), ... (see auth.md)
 ```
 
 Only one config file may exist. Files inside `tools/` and the entries of
@@ -99,7 +100,7 @@ all of them.
 
 Each file in `channels/` default-exports a [channel](./channels.md) made with
 `defineChannel()` or a built-in factory (`webhookChannel()`, `httpChannel()`,
-`slackChannel()`, `discordChannel()`, `telegramChannel()`). The channel's name is the one it sets, else the file name.
+`slackChannel()`, `discordChannel()`, `telegramChannel()`, `githubChannel()`). The channel's name is the one it sets, else the file name.
 A file that does not export a channel fails with `LOUSHO_CHANNEL_INVALID`
 naming the file. `resolveAgentDir()` returns them as `channels` (and their names
 as `manifest.channels`); `loadAgentDir()` does not mount them. The node server
@@ -221,8 +222,9 @@ npx lousho build ./my-agent --target=node-server    # or docker
 
 The agent directory is the unit of deployment: the built server loads it with
 `resolveAgentDir()` at start-up, starts its `schedules/` and mounts its
-`channels/` under `/channels`, and prints which it found. The code files (the
-config, `tools/`, `schedules/`, `channels/`, `memory/`, and the same in each
+`channels/` under `/channels`, guards its chat routes with `auth.ts` when there
+is one ([Route auth and principals](auth.md)), and prints which it found. The code files (the
+config, `auth.ts`, `tools/`, `schedules/`, `channels/`, `memory/`, and the same in each
 sub-agent) are bundled to `dist/agent/**.js`, and `instructions.md`, `skills/`
 and JSON/YAML config are copied next to them, so the server needs no TypeScript
 loader, sources or `node_modules`. See [Deployment](deployment.md#agent-directories).

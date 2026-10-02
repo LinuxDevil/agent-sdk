@@ -192,6 +192,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Models and cost](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/models-and-cost.md) | Token estimates, the model price table, usage and USD cost of a run |
 | [AI SDK UI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/ai-sdk-ui.md) | `useChat` on a Lousho run: `toUIMessageStreamResponse()`, `fromUIMessages()`, approvals |
 | [Next.js](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md) | `createRouteHandler(agent)`: the session API as a Fetch route (App Router, SvelteKit, Hono), auth, `useChat` endpoint |
+| [Route auth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md) | `@lousho/build-ai-agent/auth`: `jwt()`, `oidc()`, `basic()`, `apiToken()` as an ordered list; the caller as `principal` in the run |
 | [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md) | `useLoushoAgent()`: chat state from the event stream, in process or over HTTP; `reduceAgentEvents()`, `parseEventStream()` |
 | [Vue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/vue.md) | `useLoushoAgent()` from `@lousho/build-ai-agent/vue`: the React hook as a Vue 3 composable |
 | [Svelte](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/svelte.md) | `loushoAgent()` from `@lousho/build-ai-agent/svelte`: the React hook as a Svelte store |
@@ -1173,6 +1174,9 @@ Token estimates, the model price table, and the usage and cost of a run: see [Mo
 - `WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter` and `TriggerRegistry`
   (`@lousho/build-ai-agent/triggers`) - wake an agent from a webhook, a Slack
   message or a schedule; see [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md).
+- `jwt()`, `oidc()`, `basic()`, `apiToken()`, `anonymous()` and `routeAuth()`
+  (`@lousho/build-ai-agent/auth`) - route auth as an ordered list; the caller
+  it accepts reaches the run as `principal`; see [Route auth and principals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md).
 - `defineEval()`, scorers such as `exactMatch`, `toolCallOrder` and `budget`, checks such
   as `includes` and `atLeast`, and `llmJudge()` - agent evals run under vitest
   or `lousho eval`; see [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md).
@@ -1364,6 +1368,7 @@ my-agent/
   schedules/*.ts|js                                # defineSchedule() cron schedules (see schedules.md)
   channels/*.ts|js                                 # a channel each: defineChannel(), webhookChannel(), ... (see channels.md)
   memory/*.ts|js                                   # a memory slot each: defineMemory() (see memory.md); part of the agent
+  auth.ts | auth.js                                # route auth for the deployed server: jwt(), oidc(), basic(), ... (see auth.md)
 ```
 
 Only one config file may exist. Files inside `tools/` and the entries of
@@ -1434,7 +1439,7 @@ all of them.
 
 Each file in `channels/` default-exports a [channel](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) made with
 `defineChannel()` or a built-in factory (`webhookChannel()`, `httpChannel()`,
-`slackChannel()`, `discordChannel()`, `telegramChannel()`). The channel's name is the one it sets, else the file name.
+`slackChannel()`, `discordChannel()`, `telegramChannel()`, `githubChannel()`). The channel's name is the one it sets, else the file name.
 A file that does not export a channel fails with `LOUSHO_CHANNEL_INVALID`
 naming the file. `resolveAgentDir()` returns them as `channels` (and their names
 as `manifest.channels`); `loadAgentDir()` does not mount them. The node server
@@ -1556,8 +1561,9 @@ npx lousho build ./my-agent --target=node-server    # or docker
 
 The agent directory is the unit of deployment: the built server loads it with
 `resolveAgentDir()` at start-up, starts its `schedules/` and mounts its
-`channels/` under `/channels`, and prints which it found. The code files (the
-config, `tools/`, `schedules/`, `channels/`, `memory/`, and the same in each
+`channels/` under `/channels`, guards its chat routes with `auth.ts` when there
+is one ([Route auth and principals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md)), and prints which it found. The code files (the
+config, `auth.ts`, `tools/`, `schedules/`, `channels/`, `memory/`, and the same in each
 sub-agent) are bundled to `dist/agent/**.js`, and `instructions.md`, `skills/`
 and JSON/YAML config are copied next to them, so the server needs no TypeScript
 loader, sources or `node_modules`. See [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#agent-directories).
@@ -2389,6 +2395,288 @@ continued run as an `AgentRun` (see
 - **Agent Forge** shows pending approvals as inline cards in its chat; see
   [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md).
 
+# Route auth and principals
+
+Source: docs/auth.md
+
+An agent served over HTTP needs to know two things about each request: may it
+call at all, and who is it. `@lousho/build-ai-agent/auth` answers both. You
+give a route an ordered list of auth entries (`jwt()`, `oidc()`, `basic()`,
+`apiToken()`, `anonymous()` or your own function); the first entry that
+accepts the request returns a **principal**, and that principal goes into the
+run, where your `model` / `instructions` / `tools` functions and memory scopes
+can read it.
+
+```ts
+import { createAgent, createRouteHandler } from '@lousho/build-ai-agent';
+import { apiToken, jwt } from '@lousho/build-ai-agent/auth';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+
+const agent = createAgent({
+  provider: mockModel(['Hello!']),
+  instructions: ({ principal }) => `You are helping ${principal?.id ?? 'a guest'}.`,
+});
+
+export const { GET, POST } = createRouteHandler(agent, {
+  auth: [
+    jwt({ secret: process.env.JWT_SECRET ?? 'a-development-secret-of-32-bytes!!', issuer: 'https://auth.example.com', audience: 'agent-api' }),
+    apiToken(process.env.CI_TOKEN ?? 'ci-token', { id: 'ci' }),
+  ],
+});
+```
+
+## The auth list
+
+Entries run in order, and each one does one of three things:
+
+| An entry ... | Then |
+| --- | --- |
+| returns a `Principal` | the request is accepted; later entries are not asked |
+| returns `null` or `undefined` | it skips: the next entry is asked |
+| throws `AuthError(401)` or `AuthError(403)` | the request is refused with that status; later entries are not asked |
+
+When every entry skips, the request gets a `401`. An empty list refuses every
+request. An entry that throws anything else is a bug: the request gets a `500`
+with a generic body, and the error is logged with `console.error` (never sent).
+
+The built-in helpers never throw for a bad credential: a wrong password, an
+expired token or a token for another audience all skip, so the next entry gets
+its chance (two `jwt()` entries for two issuers work), and a request nobody
+accepts ends in the same `401`.
+
+A `Principal` is:
+
+```ts no-verify
+interface Principal {
+  id: string;                                 // JWT `sub`, Basic user name, 'api-token', ...
+  type: 'user' | 'service';
+  authenticator: string;                      // 'jwt' | 'oidc' | 'basic' | 'api-token' | 'anonymous' | your name
+  issuer?: string;                            // JWT `iss`: the same id from another issuer is another caller
+  claims?: Readonly<Record<string, unknown>>; // verified claims; never the raw token or a password
+}
+```
+
+## Helpers
+
+All helpers are created once, at start-up, and check their options then: a
+helper that cannot work throws [`LOUSHO_AUTH_CONFIG_INVALID`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_auth_config_invalid)
+instead of refusing every request later.
+
+### `jwt()`
+
+Accepts `Authorization: Bearer <JWT>` signed by the key you configure. Give
+exactly one key source:
+
+| Option | Key | Algorithms (default: all of the key's family) |
+| --- | --- | --- |
+| `secret` | an HMAC secret of at least 32 bytes | `HS256`, `HS384`, `HS512` |
+| `publicKey` | a PEM `-----BEGIN PUBLIC KEY-----` or a JWK | `RS256`, `RS384`, `RS512` (RSA, 2048 bits or more), `ES256` (P-256), `ES384` (P-384) |
+| `jwksUrl` | a JWKS endpoint (https, or http on localhost) | `RS256`, `ES256` by default; RSA and EC keys only |
+
+```ts
+import { jwt } from '@lousho/build-ai-agent/auth';
+
+const fromOurAuthServer = jwt({
+  jwksUrl: 'https://auth.example.com/.well-known/jwks.json',
+  issuer: 'https://auth.example.com',
+  audience: 'agent-api',
+  // Map the verified claims to the principal; return null to skip.
+  principal: (claims) => (typeof claims.sub === 'string' ? { id: claims.sub, type: 'user', authenticator: 'jwt', issuer: claims.iss, claims } : null),
+});
+```
+
+What is checked:
+
+- The header's `alg` must be one of `algorithms`; `none` is always refused, and
+  so is a token whose header marks an extension `crit`.
+- The algorithm must fit the key: a public key is never used as an HMAC secret,
+  whatever the token's header says, and a key set never supplies an HMAC key.
+- `exp` is required; `nbf` and `iat` are honored. All three allow
+  `clockToleranceSec` of clock skew (default 60, at most 300).
+- `iss` must equal one of `issuer` exactly (no trailing-slash tolerance), when
+  you set `issuer`.
+- `aud` (a string or a list) must contain one of `audience`. `audience` is
+  required; pass `allowAnyAudience: true` to skip that check on purpose.
+- A key set is fetched with a 5-second timeout, cached for 10 minutes, and
+  refetched at most once every 30 seconds when a token names a `kid` it does
+  not know (a failed fetch is retried on the same 30-second bound). Its URL is
+  configuration only: the `jku`, `x5u` and `jwk` headers of a token are ignored.
+
+The default principal is `{ id: sub, type: 'user', authenticator: 'jwt', issuer: iss, claims }`;
+a token without `sub` skips.
+
+### `oidc()`
+
+A `jwt()` whose keys come from an OpenID Connect provider. It fetches
+`<issuer>/.well-known/openid-configuration` once (or `discoveryUrl`), requires
+the document's `issuer` to equal yours exactly, and uses its `jwks_uri` (which
+must be https). Algorithms default to `RS256` and `ES256`; HMAC is not allowed.
+
+```ts
+import { oidc } from '@lousho/build-ai-agent/auth';
+
+const google = oidc({ issuer: 'https://accounts.google.com', audience: process.env.GOOGLE_CLIENT_ID ?? 'client-id' });
+```
+
+The principal has `authenticator: 'oidc'` and the provider's `iss` as `issuer`.
+
+### `basic()`
+
+HTTP Basic credentials. User names and passwords are NFC-normalized and
+compared in constant time, and every configured user is compared on every
+request, so an unknown user takes as long as a wrong password. The `401`
+carries `WWW-Authenticate: Basic realm="<realm>", charset="UTF-8"` so browsers
+show their login prompt.
+
+```ts
+import { basic } from '@lousho/build-ai-agent/auth';
+
+const operators = basic({ users: { ops: process.env.OPS_PASSWORD ?? 'change-me' }, realm: 'agent' });
+// Or check against your own store (compare in constant time there):
+const fromDatabase = basic({ users: async (user, password) => user === 'svc' && password === (process.env.SVC_PASSWORD ?? '') });
+```
+
+**Only use `basic()` over HTTPS**: the password travels with every request.
+
+### `apiToken()` and `anonymous()`
+
+`apiToken(token, { id })` accepts `Authorization: Bearer <token>` (compared in
+constant time) as the service principal `{ id: id ?? 'api-token', type: 'service', authenticator: 'api-token' }`.
+It is what a token string has always meant: `createRouteHandler({ auth: '<token>' })`
+and `LOUSHO_API_TOKEN` are `apiToken()`.
+
+`anonymous()` accepts everyone as `{ id: 'anonymous', type: 'user', authenticator: 'anonymous' }`:
+put it last for routes that serve signed-in and anonymous callers, and read
+`principal.authenticator` in the run.
+
+### Your own entry
+
+Any function of the `Request` is an entry. Declare the challenges it answers a
+`401` with, or it advertises `Bearer`:
+
+```ts
+import { AuthError, type AuthFn } from '@lousho/build-ai-agent/auth';
+
+const tenantKey: AuthFn = async (request) => {
+  const key = request.headers.get('x-tenant-key');
+  if (!key) return null; // not ours: ask the next entry
+  if (key === 'suspended-tenant') throw new AuthError(403); // stop here
+  return { id: key, type: 'service', authenticator: 'tenant-key' };
+};
+tenantKey.challenges = [{ scheme: 'Bearer', realm: 'tenants' }];
+```
+
+## 401, 403 and `WWW-Authenticate`
+
+- Nobody accepted the request (or an entry threw `AuthError(401)`): `401` with
+  `{ "error": "Unauthorized" }` and one `WWW-Authenticate` header per distinct
+  challenge of the list, in order (`Bearer` for `jwt`, `oidc`, `apiToken`;
+  `Basic realm="..."` for `basic`).
+- An entry threw `AuthError(403)`: `403` with `{ "error": "Forbidden" }`.
+- An entry failed in another way: `500` with `{ "error": "Internal Server Error" }`.
+
+The body never says which check failed: an expired token, a bad signature and
+a wrong audience all get the same `401`. Every auth response carries
+`Cache-Control: no-store`. Tokens and passwords are never logged.
+
+## Where it runs
+
+| Helper or server | Node 22+ | Cloudflare Workers, Vercel Edge, Bun, Deno |
+| --- | --- | --- |
+| `jwt()`, `oidc()`, `basic()`, `apiToken()`, `anonymous()`, `routeAuth()` | yes | yes: Web Crypto and `fetch` only, no `node:` import |
+| `createRouteHandler({ auth })` | yes | yes |
+| `createDeployedServer({ auth })`, the `node-server` and `docker` targets | yes | no (Node `http`) |
+| An agent directory's `auth.ts` | yes (`node-server`, `docker`) | no |
+| The `cloudflare-worker` build target | | `LOUSHO_API_TOKEN` only; no auth list yet |
+
+`oidc()` and `jwt({ jwksUrl })` need outbound `fetch` to the key set, which
+every listed runtime has. In a hand-written Worker, call `createRouteHandler`
+or `routeAuth()` yourself with any helper.
+
+## `createRouteHandler`
+
+`auth` takes the list, one entry, a token string, or (as before) a function
+that returns a boolean. `true` accepts with the principal
+`{ id: 'anonymous', type: 'user', authenticator: 'custom' }`, `false` is a
+`401`. Without `auth` the route is open, and in production
+(`NODE_ENV=production`) it logs one warning. `GET <basePath>/health` is never
+behind `auth`. The accepted principal reaches every route: `POST <basePath>`,
+`/chat`, approvals and the `useChat` endpoint. See [Next.js](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md#routes).
+
+## The node server and `auth.ts`
+
+`createDeployedServer(agent, { auth })` takes the same list (or one entry).
+When `LOUSHO_API_TOKEN` is set, `apiToken(LOUSHO_API_TOKEN)` is appended after
+your entries, so an operator's token keeps working. Channels under
+`/channels/<name>` are not behind the list: they verify their own requests.
+
+In an [agent directory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md), put the list in `auth.ts` (or
+`auth.js`), next to `agent.ts`:
+
+```ts no-verify
+// my-agent/auth.ts
+import { apiToken, oidc } from '@lousho/build-ai-agent/auth';
+
+export default [
+  oidc({ issuer: 'https://login.example.com', audience: 'agent-api' }),
+  apiToken(process.env.CI_TOKEN!, { id: 'ci' }),
+];
+```
+
+`lousho build --target=node-server` (or `docker`) bundles it, and the built
+server uses it (`resolveAgentDir()` returns it as `auth`; the manifest says
+`auth: true`). With an `auth.ts`, a token baked in with
+`adapter.scaffold(..., { auth: { token } })` is not used; `LOUSHO_API_TOKEN`
+still is. The `cloudflare-worker` target serves spec files only and keeps the
+`LOUSHO_API_TOKEN` token; see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#auth).
+
+## Reading the principal in the run
+
+The principal is on the run context next to `sessionId` and `metadata`:
+
+```ts
+import { createAgent, defineMemory, inMemoryMemory, type Principal } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+
+const notes = defineMemory({
+  name: 'notes',
+  // One memory per caller. Key on the issuer too: ids from different issuers can collide.
+  scope: ({ principal }) => principal && `user:${principal.issuer ?? ''}:${principal.id}`,
+  provider: inMemoryMemory(),
+});
+
+const agent = createAgent({
+  provider: mockModel(['Hi!']),
+  model: ({ principal }) => (principal?.claims?.plan === 'pro' ? 'openai/gpt-4o' : 'openai/gpt-4o-mini'),
+  instructions: ({ principal }) => (principal?.type === 'service' ? 'Answer in JSON.' : 'Be friendly.'),
+  memory: [notes],
+});
+
+// Outside a route, pass the principal yourself:
+const caller: Principal = { id: 'u-42', type: 'user', authenticator: 'jwt', issuer: 'https://auth.example.com' };
+await agent.send('Hello', { principal: caller });
+await agent.session({ id: 'chat-1' }).send('Hello again', { principal: caller });
+```
+
+`principal` is separate from `metadata` on purpose: `metadata` is whatever the
+caller sent, `principal` is what auth verified. A dynamic run that is resumed
+from its checkpoint keeps the principal it started with. Slack and Discord
+channels set the sender as the principal (`authenticator: 'slack'` /
+`'discord'`). Tools, approval policies and paused static runs do not see the
+principal yet.
+
+## Security notes
+
+- **Route auth does not check who owns a session.** Any caller who passes auth
+  and knows a session id can read its transcript (`GET /chat/:id`), continue
+  it, and decide its pending approvals. Use session ids that cannot be guessed,
+  derive them from the principal on your side, or check ownership in your own
+  route before calling the handler.
+- `basic()` only over HTTPS; a bearer token is a password too, so terminate TLS
+  in front of any server that is not on localhost.
+- Keep `issuer` and `audience` set for `jwt()`: a token minted for another of
+  your services is otherwise accepted here.
+
 # Build a coding agent
 
 Source: docs/build-a-coding-agent.md
@@ -2661,6 +2949,7 @@ recording afterwards, see [Record and replay](https://github.com/LinuxDevil/agen
 ## Next steps
 
 - [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md): the full tool reference, the security model, and `SandboxShell` to run commands in Docker.
+- [Undo the agent's file changes](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md#the-tools): pass `createFsTools(workspace, { checkpoints })` a `WorkspaceCheckpoints`, then `checkpoints.rewind(turn, { sessionId: session.id, dryRun: true })` shows what rewinding to a turn would restore.
 - [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md): durable approval stores, `approve` callbacks and deciding from another process.
 - [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md): every event type, cancelling a run, and the web stream formats.
 - [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md): stores, limits and durable sessions.
@@ -2829,6 +3118,7 @@ await channels.resolveApproval({ id: 'the-approval-id', approved: true });
 | `slackChannel({ signingSecret, botToken, name?, fetch?, approvers?, onError? })` | Slack Events API and interactivity requests (see [Slack](#slack)) | `200` at once; replies are posted in the Slack thread |
 | `discordChannel({ publicKey, applicationId, botToken?, name?, fetch?, approvers?, onError? })` | Discord slash-command and button interactions (see [Discord](#discord)) | Deferred ack at once; the reply edits the original response |
 | `telegramChannel({ botToken, secretToken, botUsername?, name?, fetch?, approvers?, onError? })` | Telegram bot webhook updates: messages and inline-keyboard taps (see [Telegram](#telegram)) | `200` at once; replies are sent with `sendMessage` as plain text |
+| `githubChannel({ webhookSecret, botName, token?, app?, name?, apiUrl?, fetch?, triggers?, approvers?, onError? })` | GitHub issue, pull-request and review comments that mention `@<botName>` (see [GitHub](#github)) | `200` at once; replies are posted as comments in the same thread |
 
 `webhookChannel({ secret })` checks an HMAC-SHA256 signature of the raw body in
 `x-signature-256: sha256=<hex>`; `auth` takes any
@@ -2871,7 +3161,6 @@ a restart); use the list form or the default for approvals that must survive
 one. Answers to an `ask_question` are not restricted: the next message (Slack)
 or `/ask` (Discord) in the conversation is the answer. Who decided goes to
 `mountChannels(agent, channels, { onDecision({ approver, decision, sessionId, channel }) {} })`.
-r
 The Telegram channel takes the same `approvers` (Telegram user ids as strings; a
 function gets `{ id, name }`, with `name` the username or first name).
 
@@ -3100,6 +3389,142 @@ for sessions, checkpoints and approvals: the next message in the chat is the
 answer and the continued turn is appended to the session transcript. A tap's
 continuation after a restart is sent but not appended to the session
 transcript.
+
+## GitHub
+
+`githubChannel({ webhookSecret, botName, token?, app?, name?, apiUrl?, fetch?, triggers?, approvers?, onError? })`
+lets people summon an agent with `@<botName>` in a GitHub issue, pull-request
+or review comment; the agent answers with a comment in the same thread. It reads
+the webhooks of a GitHub App (or of one repository) and posts through the REST
+API with `fetch` and Web Crypto only (no `node:*` import and no GitHub library),
+so it also runs on Workers.
+
+- Every request's `X-Hub-Signature-256` header is checked against the raw body
+  with `webhookSecret` (HMAC-SHA256, compared in constant time) before the body
+  is parsed; a missing or wrong signature answers 401. The channel has no
+  unauthenticated mode.
+- The webhook is acknowledged with `200` at once and the turn runs after: GitHub
+  waits 10 seconds and does not retry, and a slow reply is posted as a new
+  comment. A `ping` is acknowledged without a turn.
+- A comment on an issue, on a pull request (the conversation tab) or a review
+  comment (on a line of the diff) that contains `@<botName>` as a whole word
+  (case-insensitive) starts a turn, with the mention removed from the text. Once
+  a thread has a session, every later comment in it is a follow-up and needs no
+  mention. Edited and deleted comments, comments by bots (`user.type` is `Bot`),
+  by `<botName>[bot]`, by `botLogin` and any comment the channel itself posted
+  are ignored, so the agent never answers itself. Other events (issues opened,
+  pushes, reactions, check runs) are ignored.
+- One session per issue or pull request (`<owner>/<repo>#<number>`), and one
+  per review thread (a review comment and the replies under it).
+- The reply is a new comment: a timeline comment on the issue or pull request,
+  or a reply in the review thread. Text over 60,000 characters (GitHub's limit
+  is 65,536) is split at line breaks into several comments. Every comment
+  carries a hidden marker (an HTML comment) that the channel recognizes.
+- A tool approval is a comment with the tool and its arguments in a fenced block
+  and the line "Reply `/approve <id>` or `/deny <id>`.". A comment whose
+  **first line** is `/approve <id>` or `/deny <id>` (any case) decides it; lines
+  after the first are a note for the model. A quote of the prompt, or the
+  command anywhere but the first line, decides nothing. The channel answers
+  "Approved by @login." or "Denied by @login." and the run continues with a new
+  comment. The id is the pending approval's, so an old command (a redelivered
+  webhook, or the comment of an approval already decided) cannot decide a later
+  approval.
+- An `ask_question` is posted as a comment and the next comment in that thread is
+  the answer (no mention needed, from anyone `triggers` allows). A pending
+  question survives a restart given durable stores for sessions, checkpoints
+  and approvals, as on Slack and Discord; the cost is one store lookup for each
+  comment that is not a mention in a thread without a session.
+
+**Security note.** A GitHub comment is text written by anyone who can comment on
+the repository, which on a public repository is everybody. It is untrusted input
+to the agent, like any user message, and can try to steer it (prompt
+injection); the issue and pull-request text it refers to is just as untrusted.
+Give the agent only tools whose worst use you accept, and keep `needsApproval`
+on the ones that write or spend. Two options say who is trusted, and both are
+explicit:
+
+- `triggers` (default: everyone who can comment) says who may start a turn or
+  answer a question: a list of logins, or a function
+  `({ login, association }) => boolean`. On a public repository, restrict it
+  (for example to `association` `OWNER`, `MEMBER` or `COLLABORATOR`) unless you
+  want strangers to spend your model credits.
+- `approvers` says who may `/approve` and `/deny`, and it **defaults closed**:
+  without it only a commenter whose `author_association` is `OWNER`, `MEMBER` or
+  `COLLABORATOR` may decide. This differs from Slack and Discord on purpose: a
+  GitHub thread is visible to everyone who can read the repository, and the
+  person who started the turn may be anyone, so the author of the request is not
+  trusted to approve it. A refused command gets "@login is not allowed to
+  approve this request." and the approval stays pending. With a list of logins
+  (case-insensitive), only those users decide, whatever their association. With
+  a function `(user, { toolName, input, sessionId }) => boolean`, `user.id` is
+  the login and `user.roles` is `[author_association]`.
+
+The association is read from the webhook of the command comment itself, so the
+decision is based on what GitHub reported when that comment was written (the
+request is authentic because of the signature), not on the membership the
+commenter had when the approval was requested: a collaborator who was removed
+before posting `/approve` is refused. It is a snapshot taken at the command, not
+a live permission check; if a revocation must take effect inside that window,
+use `approvers` with a function that asks the GitHub API (for example the
+collaborator permission) before it returns `true`. A function `approvers`, as on
+the other channels, fails closed when the process does not know the pending
+call (after a restart).
+
+Set up a GitHub App:
+
+1. Create the app (Settings, Developer settings, GitHub Apps, New GitHub App).
+   Under Webhook, set the URL to `https://<host>/channels/github`, keep it
+   active, and choose a long random secret (this is `webhookSecret`).
+2. Permissions: Issues read and write, Pull requests read and write. Subscribe
+   to the events **Issue comment** and **Pull request review comment**.
+3. Generate a private key (GitHub downloads it as a PKCS#1 PEM, `BEGIN RSA PRIVATE KEY`;
+   PKCS#8 works too) and note the App ID. Install the app on the repositories it
+   should answer in. Every webhook names its installation, and the channel
+   exchanges a signed JWT for an installation token for each one and caches it
+   until 5 minutes before it expires.
+4. `botName` is the app's slug: `@my-agent` in a comment mentions the app
+   `my-agent`, which posts as `my-agent[bot]`.
+
+For a single repository you can skip the app: add a repository webhook
+(content type `application/json`, the same two events, the same URL and secret)
+and pass `token`, a fine-grained personal access token with Issues and Pull
+requests read and write on that repository (or a function that returns a
+token). Replies are then posted as the token's user, so also pass `botLogin`
+with that user's login. Without it, only the channel's hidden marker stops the
+agent from answering its own comments.
+
+```ts
+import * as http from 'node:http';
+import { createAgent, githubChannel, mountChannels } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ instructions: 'You answer questions about this repository.', provider });
+
+const channels = mountChannels(agent, [
+  githubChannel({
+    webhookSecret: process.env.GITHUB_WEBHOOK_SECRET ?? '',
+    botName: 'my-agent',
+    app: { appId: process.env.GITHUB_APP_ID ?? '', privateKey: process.env.GITHUB_APP_PRIVATE_KEY ?? '' },
+    triggers: ({ association }) => ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(association),
+  }),
+]);
+
+http.createServer((req, res) => {
+  void channels(req, res).then((handled) => handled || res.writeHead(404).end());
+}).listen(3000);
+```
+
+`apiUrl` points the channel at GitHub Enterprise Server
+(`https://<host>/api/v3`). The token, the private key and the JWT are never put
+in an error message or log line: a failed call is reported to `onError` with the
+call and the HTTP status only (`LOUSHO_CHANNEL_REQUEST_FAILED`).
+
+Pending approvals are resolved from the command comment and the approval store.
+A pending `ask_question` is kept in memory until the next comment, and survives
+a restart given durable stores, as on the other channels. After a restart, a
+command with an id that is no longer pending (decided already, expired) fails
+with the generic "Sorry, that request failed." comment instead of being ignored,
+and an id is no longer tied to the thread it was posted in. A continuation after
+a restart is posted but not appended to the session transcript.
 
 # CLI
 
@@ -3338,6 +3763,7 @@ Source: docs/cloudflare-workers.md
 | Sessions, checkpoints, approvals | one KV namespace, `AGENT_CHECKPOINTS` (eventually consistent) | memory, files, SQLite |
 | Schedules | cron triggers only, in UTC, five fields, one-minute granularity | full cron expressions, with a time zone |
 | Bundle | `lousho build` checks for Node builtins and reports its size | not checked |
+| [Route auth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md) | the `LOUSHO_API_TOKEN` bearer token only | the token, or an ordered list (`jwt()`, `oidc()`, `basic()`, ...) from an agent directory's `auth.ts` |
 
 `lousho build` rejects a spec whose provider or tool is not in the Worker column, with a `LOUSHO_DEPLOY_FAILED` error that names it and suggests `--target=node-server` or `--target=docker`.
 
@@ -4371,6 +4797,11 @@ variable is not set. The variable wins, and a baked token is readable in
 `dist/server.js`, so prefer the variable. The Worker reads the token from its
 `LOUSHO_API_TOKEN` binding only.
 
+For JWT, OpenID Connect or Basic auth, and to know who is calling, the
+`node-server` and `docker` targets take an ordered auth list from an agent
+directory's `auth.ts`, with `LOUSHO_API_TOKEN` appended to it: see
+[Route auth and principals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md).
+
 ### Sessions and the store
 
 `LOUSHO_STORE` chooses where sessions, checkpoints and approvals live:
@@ -5402,7 +5833,7 @@ See [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules
 a channel (an object with `parse` and `reply`). The message names the file.
 
 **Fix:** default-export a channel made with `defineChannel()`, `httpChannel()`,
-`webhookChannel()`, `slackChannel()`, `discordChannel()` or `telegramChannel()`. See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md).
+`webhookChannel()`, `slackChannel()`, `discordChannel()`, `telegramChannel()` or `githubChannel()`. See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md).
 
 **Example:** `export default { cron: 'x' }` in `channels/sms.ts`.
 
@@ -5557,12 +5988,12 @@ unknown type, or a Slack trigger that cannot verify requests.
 
 ### LOUSHO_CHANNEL_REQUEST_FAILED
 
-**Means:** a call to a chat platform's API (Slack, Discord, Telegram) failed; the message
+**Means:** a call to a chat platform's API (Slack, Discord, Telegram, GitHub) failed; the message
 names the call and the HTTP status or the platform's error.
 
 **Fix:** check the bot token and its permissions, and the platform status. See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md).
 
-**Example:** Slack `chat.postMessage` answering `channel_not_found`, or Telegram `sendMessage` answering 400 for an unknown chat.
+**Example:** Slack `chat.postMessage` answering `channel_not_found`, Telegram `sendMessage` answering 400 for an unknown chat, or GitHub `POST /repos/{owner}/{repo}/issues/{number}/comments` answering 403 for a token without write access.
 
 ### LOUSHO_DEPLOY_FAILED
 
@@ -5683,6 +6114,23 @@ See [Budgets](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configurati
 `onTripped: 'throw'`. See [Input and output guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md#input-and-output-guardrails).
 
 **Example:** `createAgent({ provider, guardrails: { input: [maxLengthGuardrail({ maxChars: 10 })], onTripped: 'throw' } })` sent a longer message.
+
+## Auth
+
+### LOUSHO_AUTH_CONFIG_INVALID
+
+**Means:** a route auth helper from `@lousho/build-ai-agent/auth` (`jwt()`,
+`oidc()`, `basic()`, `apiToken()`) got options it cannot verify with, and
+refused them when it was created, not at the first request. The message names
+the option: no key source or two of them, an HMAC `secret` shorter than 32
+bytes, an algorithm that does not fit the key (`secret` with `RS256`, a public
+key with `HS256`), no `audience` (and no `allowAnyAudience: true`), a
+`clockToleranceSec` above 300, a key-set or issuer URL that is not https, an
+empty user list or token.
+
+**Fix:** change the option the message names. See [Route auth and principals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md).
+
+**Example:** `jwt({ secret: process.env.JWT_SECRET! })` without `audience`.
 
 # Evals
 
@@ -6996,6 +7444,10 @@ When a run has no scope key (a `'session'` slot in a `send()` without a
 `sessionId`, or a scope function that returns `undefined`), the slot is off
 for that run: nothing is recalled and its tools are not offered.
 
+A scope function also sees `principal`, the caller a route's auth verified, which
+is safer to key on than `metadata` (the caller can send any metadata): see
+[Route auth and principals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#reading-the-principal-in-the-run).
+
 ## Configuration options
 
 `defineMemory(options)` returns a `MemorySlot`:
@@ -7401,6 +7853,10 @@ accepted, and a request outside the base path is a 404).
 
 Sessions are kept by the agent's `store` (`createAgent({ store })`), so give
 the agent one that outlives a serverless invocation when you use sessions.
+
+`auth` also takes an ordered list of `jwt()`, `oidc()`, `basic()` and
+`apiToken()` entries, and the caller it accepts reaches the run as `principal`:
+see [Route auth and principals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md).
 
 ## Client: `useLoushoAgent`
 
@@ -12008,6 +12464,7 @@ const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistr
 | `maxResults`      | 200                         | Most paths, matches or entries `glob`, `grep` and `list_dir` return. |
 | `maxFilesScanned` | 20,000                      | Most files a `glob` or `grep` walk visits. |
 | `ignore`          | `['.git', 'node_modules']`  | Directory names `glob` and `grep` skip. |
+| `checkpoints`     | none                        | A `WorkspaceCheckpoints`: back up every file `write_file` and `edit_file` change, so the changes can be rewound (see below). |
 
 `createShellTool(shell, options?)` returns one tool, `shell`, that takes
 `command` and an optional `timeout_ms`. It returns
@@ -12039,6 +12496,79 @@ Cancelling the run (`agent.send(input, { signal })` or
 `AgentExecutor.execute({ signal })`) kills the running command together with
 every process it started: a process group on Linux and macOS, and
 `taskkill /T` on Windows.
+
+To undo what the agent did to the files, pass a `WorkspaceCheckpoints` to
+`createFsTools(fs, { checkpoints })`. Before `write_file` or `edit_file`
+changes a file, the old content (and its permission bits, when the provider
+has `getMode` and `chmod`, as `NodeWorkspace` does) is recorded under the run's
+session and turn. A turn is the 0-based index of the user message the tool
+call answers: the first `session.send()` is turn 0, the next is turn 1.
+`checkpoints.list({ sessionId })` returns the turns with changes and the paths
+each one changed. `checkpoints.rewind(toTurn, { sessionId })` puts every file
+changed in turn `toTurn` or later back as it was before `toTurn`: a file the
+agent created is deleted, one it edited or overwrote gets its content back.
+With `dryRun: true` it changes nothing and returns the same report.
+
+```ts
+import { createAgent, createFsTools, MemoryWorkspace, WorkspaceCheckpoints } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+
+const workspace = new MemoryWorkspace({ files: { 'notes.md': '# Notes\n' } });
+const checkpoints = new WorkspaceCheckpoints(workspace); // backups in memory; FileWorkspaceCheckpointStore keeps them on disk
+const agent = createAgent({
+  instructions: 'You edit files in the workspace.',
+  provider: mockModel([
+    { toolCalls: [{ name: 'edit_file', args: { path: 'notes.md', old_string: '# Notes', new_string: '# Plan' } }] },
+    'Renamed the heading.',
+    { toolCalls: [{ name: 'write_file', args: { path: 'todo.md', content: '- ship it\n' } }] },
+    'Added a to-do list.',
+  ]),
+  tools: createFsTools(workspace, { checkpoints }),
+});
+
+const session = agent.session();
+await session.send('Rename the heading to Plan'); // turn 0
+await session.send('Start a to-do list'); // turn 1
+console.log(await checkpoints.list({ sessionId: session.id }));
+// [{ turn: 0, paths: ['notes.md'] }, { turn: 1, paths: ['todo.md'] }]
+
+const preview = await checkpoints.rewind(0, { sessionId: session.id, dryRun: true });
+console.log(preview); // { dryRun: true, restored: ['notes.md'], deleted: ['todo.md'], skipped: [] }
+await checkpoints.rewind(0, { sessionId: session.id });
+console.log(workspace.snapshot()); // { 'notes.md': '# Notes\n' }
+```
+
+A file whose content is no longer what the agent last wrote there was changed
+by something else (you, an editor, the `shell` tool), so rewind leaves it
+alone and reports it in `skipped` as `'changed-since'`; pass `force: true` to
+restore it anyway. Every path is checked before anything is written, and
+restores go through the same provider, so `NodeWorkspace` keeps them inside
+the root, symlinks included. A real rewind then forgets the backups of the
+rewound turns, skipped files' included, so a second rewind does nothing:
+look at the dry run first. Directories the agent created stay (empty) after
+their files are deleted. The conversation is not rewound; to branch it as
+well, fork the run (see [Fork and replay](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#fork-and-replay)).
+
+What is not tracked: changes made by the `shell` tool, files written by a
+sub-agent with its own file tools (unless it gets the same
+`WorkspaceCheckpoints`, in which case they are recorded under its own
+session id), and files larger than `maxFileBytes` (default 1,000,000 bytes):
+those are reported as `'too-large'` and never deleted. Without a session,
+every `agent.send()` is turn 0 of the session `'default'`, so use
+`agent.session()` to rewind by turn. Turns are counted in the transcript the
+model sees, so after a compaction removes old user messages the numbering
+of later turns shifts.
+
+Backups do not grow without bound. Only the newest `maxTurns` turns of each
+session are kept (default 20; `rewind()` to an older turn throws); a file
+over `maxFileBytes` is not copied; when one turn writes a path several
+times, only the first write keeps the old content (the later ones keep a
+hash, for the audit trail); a rewind drops the backups it rewound; and
+`checkpoints.clear({ sessionId })` forgets a session. The default store keeps
+backups in memory. `new FileWorkspaceCheckpointStore(dir)` writes one JSON
+file per session, atomically (temp file, then rename), so a rewind works after
+a restart; implement `WorkspaceCheckpointStore` to keep them elsewhere. File
+content lives only in the store, never in events or traces.
 
 ## Security model
 
@@ -12391,6 +12921,10 @@ export const remoteShell: ShellProvider = {
   },
 };
 ```
+
+Two optional methods, `getMode(path)` and `chmod(path, mode)`, let
+`WorkspaceCheckpoints` restore a file's permission bits along with its
+content; without them a rewind restores the content only.
 
 `ShellProvider.exec` should resolve, not reject, for a non-zero exit code,
 a timeout (`timedOut: true`) or an abort (`aborted: true`). It should reject

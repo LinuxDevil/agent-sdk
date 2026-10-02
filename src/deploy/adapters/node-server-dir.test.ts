@@ -22,6 +22,9 @@ export default { provider: createMockProvider({ name: 'mock', responses: ['pong'
   'schedules/daily.ts': `import { defineSchedule } from '@lousho/build-ai-agent';
 export default defineSchedule({ cron: '0 9 * * *', prompt: 'Good morning' });
 `,
+  'auth.ts': `import { apiToken, basic } from '@lousho/build-ai-agent/auth';
+export default [basic({ users: { ops: 'pw' } }), apiToken('dir-token', { id: 'ci' })];
+`,
   'channels/echo.ts': `import { defineChannel } from '@lousho/build-ai-agent';
 export default defineChannel({
   name: 'echo',
@@ -73,12 +76,12 @@ describe('NodeServerAdapter with an agent directory', () => {
   it('generates an entry that resolves the directory and passes its schedules and channels to the server', () => {
     const server = fs.readFileSync(path.join(outDir, 'server.ts'), 'utf8');
     expect(server).toContain('resolveAgentDir(');
-    expect(server).toContain('createDeployedServer(agent, { ...{}, schedules: resolved.schedules, channels: resolved.channels })');
+    expect(server).toContain('createDeployedServer(agent, { ...{}, ...(resolved.auth ? { auth: resolved.auth } : {}), schedules: resolved.schedules, channels: resolved.channels })');
     expect(fs.existsSync(path.join(outDir, 'agent.config.js'))).toBe(false);
   });
 
   it('bundles the code files to dist/agent and copies the rest', () => {
-    for (const file of ['agent.js', 'schedules/daily.js', 'channels/echo.js', 'instructions.md']) {
+    for (const file of ['agent.js', 'auth.js', 'schedules/daily.js', 'channels/echo.js', 'instructions.md']) {
       expect(fs.existsSync(path.join(outDir, 'dist', 'agent', file)), file).toBe(true);
     }
     expect(fs.existsSync(path.join(outDir, 'dist', 'agent', 'channels', 'echo.ts'))).toBe(false);
@@ -92,6 +95,13 @@ describe('NodeServerAdapter with an agent directory', () => {
       expect(hook.status).toBe(200);
       expect(((await hook.json()) as { reply: string }).reply.trim()).toBe('pong');
       expect((await fetch(`http://127.0.0.1:${port}/health`)).status).toBe(200);
+      // N10a: auth.ts guards the chat routes (the channel above was answered without it).
+      const chat = (headers: Record<string, string>) =>
+        fetch(`http://127.0.0.1:${port}/chat/s1`, { headers }).then((res) => res.status);
+      expect(await chat({})).toBe(401);
+      expect(await chat({ Authorization: 'Bearer wrong' })).toBe(401);
+      expect(await chat({ Authorization: 'Bearer dir-token' })).toBe(200);
+      expect(await chat({ Authorization: `Basic ${btoa('ops:pw')}` })).toBe(200);
     } finally {
       stop();
     }

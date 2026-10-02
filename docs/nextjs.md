@@ -54,6 +54,10 @@ accepted, and a request outside the base path is a 404).
 Sessions are kept by the agent's `store` (`createAgent({ store })`), so give
 the agent one that outlives a serverless invocation when you use sessions.
 
+`auth` also takes an ordered list of `jwt()`, `oidc()`, `basic()` and
+`apiToken()` entries, and the caller it accepts reaches the run as `principal`:
+see [Route auth and principals](./auth.md).
+
 ## Client: `useLoushoAgent`
 
 ```tsx no-verify

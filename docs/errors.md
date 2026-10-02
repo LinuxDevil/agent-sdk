@@ -480,7 +480,7 @@ See [Schedules](./schedules.md).
 a channel (an object with `parse` and `reply`). The message names the file.
 
 **Fix:** default-export a channel made with `defineChannel()`, `httpChannel()`,
-`webhookChannel()`, `slackChannel()`, `discordChannel()` or `telegramChannel()`. See [Channels](./channels.md).
+`webhookChannel()`, `slackChannel()`, `discordChannel()`, `telegramChannel()` or `githubChannel()`. See [Channels](./channels.md).
 
 **Example:** `export default { cron: 'x' }` in `channels/sms.ts`.
 
@@ -635,12 +635,12 @@ unknown type, or a Slack trigger that cannot verify requests.
 
 ### LOUSHO_CHANNEL_REQUEST_FAILED
 
-**Means:** a call to a chat platform's API (Slack, Discord, Telegram) failed; the message
+**Means:** a call to a chat platform's API (Slack, Discord, Telegram, GitHub) failed; the message
 names the call and the HTTP status or the platform's error.
 
 **Fix:** check the bot token and its permissions, and the platform status. See [Channels](./channels.md).
 
-**Example:** Slack `chat.postMessage` answering `channel_not_found`, or Telegram `sendMessage` answering 400 for an unknown chat.
+**Example:** Slack `chat.postMessage` answering `channel_not_found`, Telegram `sendMessage` answering 400 for an unknown chat, or GitHub `POST /repos/{owner}/{repo}/issues/{number}/comments` answering 403 for a token without write access.
 
 ### LOUSHO_DEPLOY_FAILED
 
@@ -761,3 +761,20 @@ See [Budgets](./configuration.md#budgets).
 `onTripped: 'throw'`. See [Input and output guardrails](./guardrails.md#input-and-output-guardrails).
 
 **Example:** `createAgent({ provider, guardrails: { input: [maxLengthGuardrail({ maxChars: 10 })], onTripped: 'throw' } })` sent a longer message.
+
+## Auth
+
+### LOUSHO_AUTH_CONFIG_INVALID
+
+**Means:** a route auth helper from `@lousho/build-ai-agent/auth` (`jwt()`,
+`oidc()`, `basic()`, `apiToken()`) got options it cannot verify with, and
+refused them when it was created, not at the first request. The message names
+the option: no key source or two of them, an HMAC `secret` shorter than 32
+bytes, an algorithm that does not fit the key (`secret` with `RS256`, a public
+key with `HS256`), no `audience` (and no `allowAnyAudience: true`), a
+`clockToleranceSec` above 300, a key-set or issuer URL that is not https, an
+empty user list or token.
+
+**Fix:** change the option the message names. See [Route auth and principals](./auth.md).
+
+**Example:** `jwt({ secret: process.env.JWT_SECRET! })` without `audience`.

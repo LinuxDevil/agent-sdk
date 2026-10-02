@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
 import { createAgent } from '../createAgent';
-import { serveFetch } from '../server/fetchRoutes';
+import { serveFetch, type ServeAuth } from '../server/fetchRoutes';
+import { apiToken, basic } from '../auth';
 import { defineTool } from '../tools/defineTool';
 import { mockModel, type MockTurn } from '../testing';
 import { renderJunit } from '../cli/evalReport';
@@ -24,9 +25,9 @@ const SCRIPT: MockTurn[] = [
 ];
 
 /** The "deployment": the real fetch routes serving a mockModel agent, called without a socket. */
-function deployment(script: MockTurn[] = SCRIPT): typeof fetch {
+function deployment(script: MockTurn[] = SCRIPT, auth: ServeAuth = TOKEN): typeof fetch {
   const agent = createAgent({ provider: mockModel(script), tools: [lookupOrder] });
-  return (input, init) => serveFetch(new Request(input as string, init), { name: 'test', agent: () => agent }, TOKEN);
+  return (input, init) => serveFetch(new Request(input as string, init), { name: 'test', agent: () => agent }, auth);
 }
 
 const target = (fetchImpl: typeof fetch, auth: string | undefined = TOKEN) => remoteTarget({ url: 'https://agent.test/', auth, fetch: fetchImpl });
@@ -48,6 +49,17 @@ describe('remoteTarget (LOU-D47)', () => {
     expect(result.passed).toBe(true);
     expect(result.steps).toBe(2);
     expect(result.toolCalls).toEqual([{ name: 'lookup_order', args: { orderId: '42' } }]);
+    expect(result.usage?.totalTokens).toBe(30);
+  });
+
+  it('passes against a server whose auth is a list, with the token as its apiToken() entry (N10a)', async () => {
+    const result = await run(target(deployment(SCRIPT, [basic({ users: { ops: 'pw' } }), apiToken(TOKEN)])), async (t) => {
+      await t.send('Where is order 42?');
+      t.calledTool('lookup_order', { args: { orderId: '42' } });
+      expect(t.reply).toBe('Order 42 has shipped.');
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.passed).toBe(true);
     expect(result.usage?.totalTokens).toBe(30);
   });
 

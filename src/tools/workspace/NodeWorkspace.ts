@@ -155,6 +155,23 @@ export class NodeWorkspace implements Workspace {
     }
   }
 
+  /** The permission bits of `path` (`0o7777` mask), or `undefined` when it does not exist. */
+  async getMode(path: string): Promise<number | undefined> {
+    const { rel, abs } = await this.resolve(path);
+    try {
+      return (await fsp.stat(abs)).mode & 0o7777;
+    } catch (error) {
+      if (isMissing(error)) return undefined;
+      throw toWorkspaceError(error, rel);
+    }
+  }
+
+  /** Sets the permission bits of `path` (on Windows only the read-only bit takes effect). */
+  async chmod(path: string, mode: number): Promise<void> {
+    const { rel, abs } = await this.resolve(path);
+    await fsp.chmod(abs, mode).catch((error) => Promise.reject(toWorkspaceError(error, rel)));
+  }
+
   async readdir(path: string): Promise<WorkspaceDirEntry[]> {
     const { rel, abs } = await this.resolve(path);
     try {

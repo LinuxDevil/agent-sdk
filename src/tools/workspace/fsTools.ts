@@ -5,7 +5,8 @@ import { z } from 'zod';
 import { defineTool, type DefinedTool } from '../defineTool';
 import type { FsProvider } from './types';
 import { normalizeWorkspacePath } from './paths';
-import { editFile, globFiles, grepFiles, listDirectory, readNumberedLines, type FsLimits } from './fsOperations';
+import { editFile, globFiles, grepFiles, listDirectory, prepareEdit, readNumberedLines, type FsLimits } from './fsOperations';
+import type { WorkspaceCheckpoints } from './checkpoints';
 
 const pathField = z.string().describe('Path relative to the workspace root, e.g. "src/index.ts".');
 
@@ -75,6 +76,12 @@ export interface FsToolsOptions {
   maxFilesScanned?: number;
   /** Directory names `glob` and `grep` never descend into. Defaults to `['.git', 'node_modules']`. */
   ignore?: readonly string[];
+  /**
+   * Back up every file `write_file` and `edit_file` change, so
+   * `checkpoints.rewind(turn)` can put it back (N7). Without it the tools do
+   * no extra reads before writing.
+   */
+  checkpoints?: WorkspaceCheckpoints;
 }
 
 function resolveLimits(options: FsToolsOptions): FsLimits {
@@ -133,16 +140,20 @@ function readOnlyTools(fs: FsProvider, limits: FsLimits, approvals: FsToolApprov
   ];
 }
 
-function mutatingTools(fs: FsProvider, approvals: FsToolApprovals): DefinedTool[] {
+function mutatingTools(fs: FsProvider, approvals: FsToolApprovals, checkpoints: WorkspaceCheckpoints | undefined): DefinedTool[] {
   return [
     defineTool({
       name: 'write_file',
       description: 'Create or overwrite a file with the given content. Missing parent directories are created.',
       input: writeFileInput,
       needsApproval: approvals.write_file,
-      async execute({ path, content }) {
+      async execute({ path, content }, ctx) {
         const target = normalizeWorkspacePath(path);
-        await fs.writeFile(target, content);
+        const write = async () => {
+          await fs.writeFile(target, content);
+          return content;
+        };
+        await (checkpoints ? checkpoints.track(ctx, target, write) : write());
         return `Wrote ${Buffer.byteLength(content, 'utf8')} bytes to ${target}.`;
       },
     }),
@@ -152,7 +163,17 @@ function mutatingTools(fs: FsProvider, approvals: FsToolApprovals): DefinedTool[
         'Replace exact text in a file. old_string must match the file exactly (whitespace included) and be unique, unless replace_all is true. Read the file first.',
       input: editFileInput,
       needsApproval: approvals.edit_file,
-      execute: (args) => editFile(fs, args),
+      async execute(args, ctx) {
+        if (!checkpoints) return editFile(fs, args);
+        let message = '';
+        await checkpoints.track(ctx, args.path, async () => {
+          const edit = await prepareEdit(fs, args);
+          await fs.writeFile(edit.path, edit.content);
+          message = edit.message;
+          return edit.content;
+        });
+        return message;
+      },
     }),
   ];
 }
@@ -182,5 +203,5 @@ export function createFsTools(fs: FsProvider, options: FsToolsOptions = {}): Def
   const limits = resolveLimits(options);
   const approvals = options.needsApproval ?? {};
   const tools = readOnlyTools(fs, limits, approvals);
-  return options.readOnly ? tools : [tools[0], ...mutatingTools(fs, approvals), ...tools.slice(1)];
+  return options.readOnly ? tools : [tools[0], ...mutatingTools(fs, approvals, options.checkpoints), ...tools.slice(1)];
 }

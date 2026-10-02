@@ -65,6 +65,7 @@ import type { MemorySlot } from './memory/defineMemory';
 import { agentMemory } from './memory/withMemory';
 import type { RunLimits } from './execution/budget';
 import type { AgentGuardrails } from './execution/ioGuardrails';
+import type { Principal } from './auth/types';
 
 /** What a `model` / `instructions` / `tools` function gets (LOU-V15): the run it is resolved for. */
 export interface RunConfigContext {
@@ -74,6 +75,11 @@ export interface RunConfigContext {
   input: AgentInput;
   /** The call's `metadata` option. */
   metadata?: Record<string, unknown>;
+  /**
+   * The caller the route's auth accepted (N10a, docs/auth.md), or the channel's
+   * sender; `undefined` for a call that did not pass one. Verified, unlike `metadata`.
+   */
+  principal?: Principal;
 }
 
 /**
@@ -509,6 +515,12 @@ export interface SendOptions {
    * `model` / `instructions` / `tools` functions (LOU-V15).
    */
   metadata?: Record<string, unknown>;
+  /**
+   * Who is calling (N10a): what a route's auth list accepted. Passed to memory
+   * scope functions and to `model` / `instructions` / `tools` functions; a
+   * resumed dynamic run gets the principal it started with. See docs/auth.md.
+   */
+  principal?: Principal;
   /** This run's reasoning (LOU-V13), instead of the agent's `reasoning`. */
   reasoning?: ReasoningOption;
 }
@@ -735,7 +747,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     ...(ctx.sessionId !== undefined && { sessionId: ctx.sessionId }),
     ...turn,
     // LOU-W6: memory tools and recall bound to this run's scope keys.
-    ...memory?.forRun({ sessionId: ctx.sessionId, metadata: ctx.metadata }, spec.toolRegistry, hooks),
+    ...memory?.forRun({ sessionId: ctx.sessionId, metadata: ctx.metadata, principal: ctx.principal }, spec.toolRegistry, hooks),
   });
   /**
    * The run's options once MCP servers are connected, with its spec resolved for `ctx` (LOU-V15). A dynamic run
@@ -762,6 +774,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
       sessionId,
       input: call?.input ?? input,
       metadata: call?.metadata,
+      principal: call?.principal,
     });
     return approvals.session(
       (input, signal, turn, call) => run(input, ctxOf(input, call), signal, turn),
@@ -775,13 +788,13 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   type Typed = InferSchemaOutput<TOutput>;
   const simpleAgent: SimpleAgent<Typed> = {
     async send(message: AgentInput, options: SendOptions = {}): Promise<ExecutionResult<Typed>> {
-      const { sessionId, metadata } = options;
-      const result = await run(toMessages(message), { sessionId, input: message, metadata }, options.signal, callTurn(options));
+      const { sessionId, metadata, principal } = options;
+      const result = await run(toMessages(message), { sessionId, input: message, metadata, principal }, options.signal, callTurn(options));
       return approvals.settle(result, options.signal) as Promise<ExecutionResult<Typed>>;
     },
     stream(message: AgentInput, options: SendOptions = {}): AgentRun<Typed> {
-      const { sessionId, metadata } = options;
-      return stream(toMessages(message), { sessionId, input: message, metadata }, options.signal, callTurn(options)) as AgentRun<Typed>;
+      const { sessionId, metadata, principal } = options;
+      return stream(toMessages(message), { sessionId, input: message, metadata, principal }, options.signal, callTurn(options)) as AgentRun<Typed>;
     },
     session,
     async resume(sessionId: string, { signal } = {}): Promise<ExecutionResult<Typed> | null> {

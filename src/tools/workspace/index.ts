@@ -29,4 +29,13 @@ export {
   type FsToolName,
   type FsToolsOptions,
 } from './fsTools';
+export {
+  WorkspaceCheckpoints,
+  MemoryWorkspaceCheckpointStore,
+  type RewindResult,
+  type WorkspaceCheckpointStore,
+  type WorkspaceCheckpointsOptions,
+  type WorkspaceFileBackup,
+} from './checkpoints';
+export { FileWorkspaceCheckpointStore } from './checkpointFileStore';
 export { createShellTool, type CommandPattern, type ShellToolOptions, type ShellToolResult } from './shellTool';

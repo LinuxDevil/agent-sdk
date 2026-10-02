@@ -8,6 +8,7 @@
  * No runtime `node:*` import here, so a Worker host can reuse the contract.
  */
 import type { AgentInput } from '../providers/content';
+import type { Principal } from '../auth/types';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import type { AgentEvent } from '../execution/agentEvents';
 import type { PendingApproval } from '../execution/ApprovalGate';
@@ -40,6 +41,12 @@ export interface ChannelInbound<TEvent = unknown> {
   sessionKey: string;
   input: AgentInput;
   metadata?: Record<string, unknown>;
+  /**
+   * The sender, as the surface identified them (N10a): passed to the turn as its
+   * `principal` (memory scopes, `model` / `instructions` / `tools` functions).
+   * Set it only from data the channel's `verify` vouched for.
+   */
+  principal?: Principal;
   /** Where the reply goes on the surface (a channel id, a response URL, ...). */
   replyTo: unknown;
   /** The parsed surface event, for `reply` / `onApproval`. */
