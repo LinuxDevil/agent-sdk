@@ -176,7 +176,7 @@ export interface ParallelInputCheck {
 }
 
 /** N5b: the abort reason of a model call a parallel input guardrail cancelled. */
-export class ParallelInputTripped extends Error {
+class ParallelInputTripped extends Error {
   constructor(readonly trip: GuardrailTrip) {
     super(`Guardrail '${trip.name}' blocked the input while the model call was in flight: ${trip.reason}`);
     this.name = 'AbortError';
