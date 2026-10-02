@@ -188,8 +188,11 @@ the node server mounts them with `createDeployedServer(agent, { channels })`.
 ## Who may approve (Slack and Discord)
 
 Both channels take `approvers`: a list of platform user ids, or a function
-`(user: { id, name?, roles? }, { toolName, input, sessionId }) => boolean | Promise<boolean>`
-(Discord fills `roles` with the member's role ids). A click from anyone else
+`(user: { id, name?, roles? }, { toolName, input, sessionId, principal? }) => boolean | Promise<boolean>`
+(Discord fills `roles` with the member's role ids; `principal` is the sender
+whose turn paused). The user who clicks is recorded as the approver
+(`ctx.approval.by` in the tool, see
+[auth](./auth.md#who-approved)); the tool still runs for the sender. A click from anyone else
 does not decide the approval: the user gets an ephemeral "not allowed" message
 and the approval stays pending.
 

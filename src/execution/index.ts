@@ -35,6 +35,7 @@ export type { ToolErrorKind, ToolErrorResult, ToolErrorInput } from './toolError
 export { allow, ask, deny } from './permissions';
 export type {
   PermissionAction,
+  PermissionAuditContext,
   PermissionContext,
   PermissionDecision,
   PermissionDecisionEntry,

@@ -30,6 +30,7 @@ import type { ExecuteOptions } from './AgentExecutor';
 import { stableStringify } from '../testing/fingerprint';
 import type { SubagentSuspension } from './ApprovalGate';
 import { SubagentApprovalPause, suspendedToolResult, toSuspension, type ToolCallScope } from './subagentRuntime';
+import type { Principal } from '../auth/types';
 
 export { parseToolArguments };
 
@@ -62,6 +63,8 @@ export interface ToolCallContext {
   sandbox: SandboxAdapter;
   hooks?: HookRegistry;
   sessionId?: string;
+  /** N10b: who the run acts for (frozen): reaches hooks, permission rules, `needsApproval` and the tool. */
+  principal?: Readonly<Principal>;
   messages: Message[];
   /** LOU-V1: the run's signal, handed to the tool as `abortSignal`. */
   signal?: AbortSignal;
@@ -85,6 +88,7 @@ function toolHookContext(
     agentId: ctx.agent.id,
     agentName: ctx.agent.name,
     sessionId: ctx.sessionId,
+    ...(ctx.principal && { principal: ctx.principal }),
     messages: ctx.messages,
     toolCallId: toolCall.id,
     toolName: toolCall.function.name,
@@ -250,9 +254,9 @@ export async function runPreToolHooks(
 
 /** The outcome of a call a pre-tool hook denied or answered (LOU-X3). */
 function hookStopOutcome(hookCtx: ToolCallHookContext, stop: NonNullable<PreToolCallDecision['stop']>, runtime?: PermissionRuntime): ToolCallOutcome {
-  const { toolCall, args, sessionId } = hookCtx;
+  const { toolCall, args, sessionId, principal } = hookCtx;
   if ('deny' in stop) {
-    if (runtime) reportHookDenial(runtime, { toolName: toolCall.function.name, toolCallId: toolCall.id, sessionId, args }, { hook: stop.hook, reason: stop.deny });
+    if (runtime) reportHookDenial(runtime, { toolName: toolCall.function.name, toolCallId: toolCall.id, sessionId, ...(principal && { principal }), args }, { hook: stop.hook, reason: stop.deny });
     return deniedGate(toolCall, `hook '${stop.hook}'`, stop.deny).rejection as ToolCallOutcome;
   }
   return { toolCallId: toolCall.id, toolName: toolCall.function.name, result: stop.result, replacedByHook: stop.hook };
@@ -285,7 +289,8 @@ async function checkPermissionRules(
   }
   const toolName = toolCall.function.name;
   try {
-    const entry = await checkPermission(ctx.scope.runtime, { toolName, toolCallId: toolCall.id, sessionId: ctx.sessionId, args }, mode);
+    const call = { toolName, toolCallId: toolCall.id, sessionId: ctx.sessionId, ...(ctx.principal && { principal: ctx.principal }), args };
+    const entry = await checkPermission(ctx.scope.runtime, call, mode);
     if (entry?.decision === 'deny') {
       return { entry, gate: deniedGate(toolCall, 'a permission rule', entry.rule?.reason) };
     }
@@ -318,7 +323,13 @@ async function checkNeedsApproval(
     return { requiresApproval: false };
   }
   try {
-    const check = { toolName: toolCall.function.name, toolCallId: toolCall.id, sessionId: ctx.sessionId, messages: ctx.messages };
+    const check: ApprovalCheckContext = {
+      toolName: toolCall.function.name,
+      toolCallId: toolCall.id,
+      sessionId: ctx.sessionId,
+      messages: ctx.messages,
+      ...(ctx.principal && { principal: ctx.principal }),
+    };
     return approvalGate(toolCall, await resolveNeedsApproval(toolDesc, args, check));
   } catch (error) {
     return { requiresApproval: false, rejection: thrownToolFailure(toolCall, error) };
@@ -520,8 +531,8 @@ async function doExecuteToolCall(
       ctx.signal,
       // LOU-U9: `toolCallId` is the tool's idempotency key on a re-run.
       // LOU-U15: `messages` is the run's transcript (the guard copies it).
-      // LOU-D23.2: and the run's `sessionId`, when it has one.
-      { onDelegatedUsage: ctx.onDelegatedUsage, toolCallId: toolCall.id, messages: ctx.messages, sessionId: ctx.sessionId },
+      // LOU-D23.2: and the run's `sessionId`, when it has one. N10b: and its principal.
+      { onDelegatedUsage: ctx.onDelegatedUsage, toolCallId: toolCall.id, messages: ctx.messages, sessionId: ctx.sessionId, principal: ctx.principal },
       ctx.scope
     );
 

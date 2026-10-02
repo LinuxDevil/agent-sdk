@@ -159,7 +159,9 @@ the mode changed the call's outcome: `'plan'` or `'dontAsk'` with
 `decision: 'deny'` and the mode's `reason`, `'acceptEdits'` with
 `decision: 'allow'`. When the mode denied a call an `allow` rule matched, the
 entry keeps that rule's `rule.index`. Mode switches go to
-`onPermissionModeChange`.
+`onPermissionModeChange`. `onPermissionDecision` gets who the run acts for as
+its second argument, `{ principal }`; the entry and the event carry no caller
+identity (see [auth](./auth.md#principals-in-tools-and-approvals)).
 
 ## Sub-agents
 

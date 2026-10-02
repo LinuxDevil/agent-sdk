@@ -236,8 +236,14 @@ describe('slackChannel (LOU-P5)', () => {
     expect(execute).toHaveBeenCalledTimes(1);
     expect(seen[1]).toEqual([
       { id: 'UADMIN', name: 'name-UADMIN' },
-      { toolName: 'send_email', input: { to: 'sam@example.com' }, sessionId: expect.stringContaining('slack_T1_C1_100_1') },
+      // N10b: the approvers function sees whose call it is (the turn's sender).
+      { toolName: 'send_email', input: { to: 'sam@example.com' }, sessionId: expect.stringContaining('slack_T1_C1_100_1'), principal: { id: 'U1', type: 'user', authenticator: 'slack' } },
     ]);
+    // N10b: the tool runs for the sender; the clicking user is recorded as the approver.
+    expect((execute.mock.calls[0] as unknown[])[1]).toMatchObject({
+      principal: { id: 'U1', type: 'user', authenticator: 'slack' },
+      approval: { by: { id: 'UADMIN', type: 'user', authenticator: 'slack' } },
+    });
     expect(onDecision).toHaveBeenCalledWith(expect.objectContaining({ approver: { id: 'UADMIN', name: 'name-UADMIN' }, decision: expect.objectContaining({ approved: true }), channel: 'slack' }));
   });
 

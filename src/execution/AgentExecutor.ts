@@ -17,6 +17,7 @@ import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
 import { ApprovalStore, describeApproval, ExecutionSnapshot, PendingApproval, SubagentSuspension } from './ApprovalGate';
 import { CheckpointStore, ForkOptions, ForkResult } from './checkpoint';
 import type { AgentDriftMode } from './agentFingerprint';
+import type { Principal } from '../auth/types';
 import { forkSession } from './fork';
 import type { CallUsage, RunUsage, StepUsage } from '../models/usage';
 import { mergeDelegatedUsage } from './runUsage';
@@ -320,6 +321,15 @@ export interface ExecuteOptions extends PermissionOptions {
    * ```
    */
   sessionId?: string;
+  /**
+   * N10b: who the run acts for (docs/auth.md): handed, frozen, to tools
+   * (`ctx.principal`), `needsApproval` policies, permission rules, tool-call
+   * hooks and in-process sub-agents, and stored with checkpoints and approval
+   * snapshots. Set it only from route auth or a channel's verified sender.
+   * An unfinished checkpointed run continues as the principal it was saved
+   * with; passing a different one throws `LOUSHO_CONFIG_INVALID`.
+   */
+  principal?: Principal;
   /** Where `sessionId` checkpoints are stored - see `sessionId` for the semantics. */
   checkpointStore?: CheckpointStore;
   /**
@@ -771,6 +781,9 @@ export class AgentExecutor {
     const tools = buildTools(agent, toolRegistry);
 
     const state = await loadRunState(options);
+    // N10b: the run's principal, as loaded (an unfinished checkpoint's wins), frozen once. `options` is
+    // this run's own copy (withExtensions() made it), and the scope every tool call hands on.
+    options.principal = state.principal;
     await checkResumedAgent(options, state, tools);
     state.budget = budget;
     // LOU-X4: the new input is checked before anything else runs.
@@ -1317,7 +1330,7 @@ export class AgentExecutor {
     toolResult: ToolCallOutcome,
     remainingToolCalls: ToolCall[]
   ): Promise<ExecutionResult> {
-    const { agent, approvalStore, sessionId } = options;
+    const { agent, approvalStore, sessionId, principal } = options;
     if (!approvalStore) {
       throw new ConfigurationError(
         `Tool '${toolResult.toolName}' requires approval but no approvalStore was provided to AgentExecutor.execute()`,
@@ -1333,6 +1346,8 @@ export class AgentExecutor {
       args: toolResult.args || {},
       agentId: agent.id,
       createdAt: new Date().toISOString(),
+      // N10b: whose call it is, for `approve` and channel `approvers`.
+      ...(principal && { principal }),
     };
     const snapshot: ExecutionSnapshot = {
       // The agent as configured: resume re-applies skills and sub-agents.
@@ -1344,6 +1359,8 @@ export class AgentExecutor {
       sessionId,
       remainingToolCalls,
       usage: structuredClone(state.usage),
+      // N10b: the resumed run acts for this caller, whoever decides.
+      ...(principal && { principal }),
     };
     return this.savePause(options, state, { pending, snapshot });
   }
@@ -1487,6 +1504,8 @@ export class AgentExecutor {
         sandbox,
         hooks,
         sessionId,
+        // N10b: the run's principal (the scope's runtime is the run's options).
+        principal: scope?.runtime.principal,
         messages,
         signal,
         onDelegatedUsage,

@@ -3,6 +3,7 @@ import type { StandardSchemaV1 } from '../utils/zodCompat';
 import type { RunUsage } from '../models/usage';
 import type { Message } from '../providers/llm';
 import { SandboxAdapter } from '../security/sandboxCore';
+import type { Principal } from '../auth/types';
 
 /**
  * Tool parameter definition
@@ -55,11 +56,21 @@ export interface ToolExecutionContext {
   /** Called by the delegate tool with a finished child run's usage, so the parent run adds it to its totals (LOU-V5). */
   onDelegatedUsage?: (usage: RunUsage) => void;
   /**
+   * N10b: who the run acts for - the caller route auth accepted, or a
+   * channel's verified sender (docs/auth.md). Fixed for the whole run, also
+   * after a pause or a crash; `undefined` for a run started without one.
+   * Frozen: a tool cannot change it.
+   */
+  principal?: Readonly<Principal>;
+  /**
    * Set when the call runs because a human approved it (`resumeAfterApproval()`,
    * `agent.approvals.resolve()`): the decision's `note`. For the built-in
-   * `ask_question` tool it is the user's answer (LOU-X9).
+   * `ask_question` tool it is the user's answer (LOU-X9). N10b: `by` is who
+   * decided, when the decision came with a principal (`resolve(decision, {
+   * principal })`, the approvals route, a channel button); it is never the
+   * run's `principal`.
    */
-  approval?: { note?: string };
+  approval?: { note?: string; by?: Readonly<Principal> };
 }
 
 /**
@@ -104,6 +115,8 @@ export interface ApprovalCheckContext {
   sessionId?: string;
   /** The run's transcript so far, including earlier turns of a session. */
   messages: readonly Message[];
+  /** N10b: who the run acts for (see `ToolExecutionContext.principal`). */
+  principal?: Readonly<Principal>;
 }
 
 /**

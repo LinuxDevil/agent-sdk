@@ -260,11 +260,12 @@ await agent.session({ id: 'chat-1' }).send('Hello again', { principal: caller })
 ```
 
 `principal` is separate from `metadata` on purpose: `metadata` is whatever the
-caller sent, `principal` is what auth verified. A dynamic run that is resumed
-from its checkpoint keeps the principal it started with. Slack and Discord
-channels set the sender as the principal (`authenticator: 'slack'` /
-`'discord'`). Tools, approval policies and paused static runs do not see the
-principal yet.
+caller sent, `principal` is what auth verified. A run that is resumed from its
+checkpoint or after an approval keeps the principal it started with. The Slack,
+Discord, Teams, GitHub and Telegram channels set the sender as the principal
+(`authenticator: 'slack'`, `'discord'`, ...). Tools, approval policies,
+permission rules and sub-agents see it too: see
+[Principals in tools and approvals](#principals-in-tools-and-approvals).
 
 ## Security notes
 
@@ -272,8 +273,149 @@ principal yet.
   and knows a session id can read its transcript (`GET /chat/:id`), continue
   it, and decide its pending approvals. Use session ids that cannot be guessed,
   derive them from the principal on your side, or check ownership in your own
-  route before calling the handler.
+  route before calling the handler. A caller who decides another caller's
+  approval is recorded as the approver (`ctx.approval.by`); the run keeps
+  acting for the caller that started it.
 - `basic()` only over HTTPS; a bearer token is a password too, so terminate TLS
   in front of any server that is not on localhost.
 - Keep `issuer` and `audience` set for `jwt()`: a token minted for another of
   your services is otherwise accepted here.
+
+## Principals in tools and approvals
+
+Everything that decides or acts on the caller's behalf gets the run's
+principal, frozen (a tool or a policy that assigns to it throws):
+
+| Where | How |
+| --- | --- |
+| A tool's `execute(args, ctx)` | `ctx.principal` |
+| A `needsApproval` function | `ctx.principal` (its second argument) |
+| A permission rule's `when(args, ctx)` | `ctx.principal` |
+| `preToolCall` / `postToolCall` hooks | `ctx.principal` |
+| `onPermissionDecision(entry, { principal })` | the second argument; the entry itself carries none |
+| A pending approval (`agent.approvals.list()`, `approve`, a channel's `approvers` function) | `request.principal`: whose call it is |
+| In-process sub-agents (`task`, background tasks, `createDelegateTool()`) | the lead's principal, everywhere above |
+
+A run without a principal (no route auth, `send()` without `principal`) has
+none in any of these places.
+
+### In a tool
+
+```ts
+import { defineTool } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+export const myOrders = defineTool({
+  name: 'my_orders',
+  description: "Lists the caller's orders",
+  input: z.object({}),
+  execute: async (_args, ctx) => {
+    if (!ctx.principal) return { error: 'Sign in first.' };
+    // Key on the issuer too: the same id from another issuer is another caller.
+    return { owner: `${ctx.principal.issuer ?? ''}:${ctx.principal.id}`, orders: [] };
+  },
+});
+```
+
+The principal comes only from route auth or a channel's verified sender, never
+from the request body or the model, and a tool cannot change it.
+
+### Approval policies and permission rules
+
+```ts
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+import { z } from 'zod';
+
+const deploy = defineTool({
+  name: 'deploy',
+  description: 'Deploys a service',
+  input: z.object({ service: z.string() }),
+  // Ask a human only when the caller has no `admin` claim.
+  needsApproval: (_args, ctx) => ctx.principal?.claims?.admin !== true,
+  execute: async ({ service }) => `deployed ${service}`,
+});
+
+const agent = createAgent({
+  provider: mockModel(['Ready.']),
+  tools: [deploy],
+  // Service accounts (CI tokens) may not deploy at all.
+  permissions: [{ tool: 'deploy', when: (_args, ctx) => ctx.principal?.type === 'service', action: 'deny', reason: 'Not for service accounts' }],
+});
+
+await agent.send('Deploy the API', { principal: { id: 'ci', type: 'service', authenticator: 'api-token' } });
+```
+
+### Who approved
+
+A decision can name who made it. The approved tool sees the decider as
+`ctx.approval.by`, next to `ctx.approval.note`:
+
+```ts
+import { createAgent, defineTool, type Principal } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+import { z } from 'zod';
+
+const sendEmail = defineTool({
+  name: 'send_email',
+  description: 'Sends an email',
+  input: z.object({ to: z.string() }),
+  needsApproval: true,
+  execute: async ({ to }, ctx) => `sent to ${to} for ${ctx.principal?.id}, approved by ${ctx.approval?.by?.id}`,
+});
+
+const agent = createAgent({
+  provider: mockModel([{ toolCalls: [{ name: 'send_email', args: { to: 'sam@example.com' } }] }, 'Sent.']),
+  tools: [sendEmail],
+});
+const alice: Principal = { id: 'alice', type: 'user', authenticator: 'jwt' };
+const lead: Principal = { id: 'lead', type: 'user', authenticator: 'jwt' };
+
+const paused = await agent.send('Email Sam', { principal: alice });
+// The tool runs for alice; lead is recorded as the approver.
+await agent.approvals.resolve({ id: paused.approvalId!, approved: true }, { principal: lead });
+```
+
+`resolve()`, `answer()`, `streamResolve()` and `streamAnswer()` take
+`{ principal }`. The approvals route (`POST /chat/:sessionId/approvals/:id`)
+passes the caller its auth list accepted; body fields cannot set it.
+`mountChannels()` passes the user who clicked as
+`{ id, type: 'user', authenticator: <channel name> }`, or, for a question
+answered with a message, that message's sender. Decisions made by an `approve`
+callback, or posted to `/channels/<name>/approvals/:id`, have no approver.
+
+The approver never becomes the run's principal: the approved call and the
+rest of the run act for the caller that paused it. A credential or a grant that
+belongs to that caller is used only for that caller's calls, whoever approves.
+
+### Pauses, crashes and forks
+
+The principal is saved with the run's checkpoints and approval snapshots, so a
+run resumed in another process (after a restart, `agent.approvals.resolve()`,
+`agent.resume()`, a session's pending turn) acts for the same caller. A call
+that continues an unfinished checkpointed run must pass no principal (it then
+continues as the saved one) or the same one; another caller's
+`send(message, { sessionId, principal })` throws `LOUSHO_CONFIG_INVALID`, so
+its input never runs under someone else's identity. Checkpoints and snapshots
+saved before this release have no principal and resume without one.
+
+`agent.fork()` / `AgentExecutor.fork()` copy a run's checkpoint, principal
+included: the fork is the same caller's run. A pending approval is not copied;
+the fork asks again. `session.fork()` copies only the conversation: the fork
+has no principal of its own, each of its turns runs with the principal its
+`send()` passes, and a pending approval stays with the original session.
+
+### Sub-agents
+
+In-process sub-agents (the `task` tool, background tasks and
+`createDelegateTool()`) act for the lead's caller, also when their approval is
+resumed. A [remote sub-agent](./sub-agents.md) (`remoteAgent()`) is not told who
+the caller is: the remote server's own route auth decides its principal (for
+example the `apiToken()` service principal of the lead's token).
+
+### What is stored and logged
+
+The principal, claims included, is stored in checkpoints and approval records,
+which already hold the transcript; treat those stores as personal data. It is
+not added to `AgentEvent`s (`permission.decision` included), OpenTelemetry
+spans or trace files, and error messages do not name callers.

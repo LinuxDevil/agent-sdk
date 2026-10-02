@@ -8,6 +8,7 @@ import { AgentConfig } from '../types';
 import { StorageService } from '../storage';
 import type { RunUsage } from '../models/usage';
 import type { AgentFingerprint } from './agentFingerprint';
+import type { Principal } from '../auth/types';
 
 /**
  * A tool call that is waiting on a human decision before it can execute.
@@ -33,6 +34,12 @@ export interface PendingApproval {
   kind?: ApprovalKind;
   /** LOU-X9: the question to show, when `kind` is `'question'`. */
   question?: ApprovalQuestion;
+  /**
+   * N10b: who the paused run acts for (docs/auth.md), so an `approve`
+   * callback or a channel's `approvers` function can see whose call it is.
+   * Absent for a run without a principal.
+   */
+  principal?: Principal;
 }
 
 /** LOU-X9: what a pending approval asks for. Absent on a record means `'tool'`. */
@@ -126,6 +133,13 @@ export interface ExecutionSnapshot {
    * which resume without any check.
    */
   agentFingerprint?: AgentFingerprint;
+  /**
+   * N10b: who the paused run acts for. `resumeAfterApproval()` runs the
+   * approved call and the rest of the run as this principal, whoever decides
+   * (the decider is the approver, `ctx.approval.by`). Absent for a run without
+   * one and on older snapshots (they resume with no principal).
+   */
+  principal?: Principal;
 }
 
 /**
