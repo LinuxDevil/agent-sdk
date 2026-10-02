@@ -9,12 +9,6 @@ and is therefore only type-checked.
 
 ## Start a new project
 
-> **Not on npm yet.** `@lousho/build-ai-agent` is not published, so the
-> `npx`/`npm install`/`npm create` commands on this page fail with a 404 until
-> it is. Today, install from a checkout or a packed tarball:
-> [Installing before the first release](./installation.md#installing-before-the-first-release)
-> (for example `node bin/lousho.js init my-agent --sdk-path .` from a built checkout).
-
 The fastest way in is one command, which creates a runnable project (an
 agent, an example tool, an offline test, a `.env.example` for your provider),
 installs its dependencies and runs `git init`:

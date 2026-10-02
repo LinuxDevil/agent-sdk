@@ -25,26 +25,19 @@ Three things set it apart:
   usage and USD cost.
 
 [Quickstart](#quickstart) · [Features](#features) · [Documentation](#documentation) ·
-[Examples](#examples) · [Docs site](https://linuxdevil.github.io/agent-sdk-docs/)
+[Examples](#examples) · [Docs site](https://lousho.mintlify.app)
 
 ## Installation
 
-Requires Node.js 22.19 or newer. **Not on npm yet:** `npm install
-@lousho/build-ai-agent`, `npx lousho ...` and `npm create lousho-agent` fail
-until it is published. Today, build it from a checkout and scaffold a project
-that depends on the build:
+Requires Node.js 22.19 or newer. Scaffold a new project with one command:
 
 ```bash
-git clone https://github.com/LinuxDevil/agent-sdk.git
-cd agent-sdk && npm install && npm run build
-node bin/lousho.js init ../my-agent --sdk-path .   # agent, example tool, offline test
-cd ../my-agent && cp .env.example .env              # then put your API key in .env
+npm create lousho-agent my-agent                     # agent, example tool, offline test
+cd my-agent && cp .env.example .env                  # then put your API key in .env
 npm run dev                                          # chat in the terminal; `npm test` runs offline
 ```
 
-To add it to an existing project, install the packed tarball instead
-([Installing before the first release](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#installing-before-the-first-release)).
-Once published: `npm install @lousho/build-ai-agent ai zod` plus
+To add it to an existing project: `npm install @lousho/build-ai-agent ai zod` plus
 the provider package you use (`@ai-sdk/openai`, `@ai-sdk/anthropic` or
 `ollama-ai-provider`). `npx lousho doctor` checks Node, peers and API keys and
 prints a fix for anything missing.
@@ -202,7 +195,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md) | The main exports, triggers, tokens and cost; `npm run docs:build` generates the full TypeDoc reference |
 | [Utilities](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/utilities.md) | Encryption, file storage and templates |
 
-The full guides site is at [linuxdevil.github.io/agent-sdk-docs](https://linuxdevil.github.io/agent-sdk-docs/).
+The full guides site is at [lousho.mintlify.app](https://lousho.mintlify.app).
 
 **For AI coding agents.** The package ships its docs in machine-readable form:
 `llms-full.txt` (this README and every docs page in one file, with absolute
@@ -250,7 +243,7 @@ writes a self-contained artifact and prints the command to run or deploy it
 
 Alpha (`1.0.0-alpha`, pre-1.0): APIs can still change between releases, and
 breaking changes are listed in the [CHANGELOG](https://github.com/LinuxDevil/agent-sdk/blob/main/CHANGELOG.md) with migration
-notes. The package is not published to npm yet. Known gaps include killing
+notes. Known gaps include killing
 the whole process group of a timed-out guardrail command on POSIX (only the
 direct child is signalled today) and interactive, in-browser Quick Start
 snippets; planned work is in the [ticket catalogue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/plan/tickets.md).
@@ -277,13 +270,6 @@ Source: docs/installation.md
   definitions.
 
 ## Install the package
-
-> **Not on npm yet.** `@lousho/build-ai-agent` is not published, so the
-> commands below (and `npx lousho ...`, `npm create lousho-agent`) fail with a
-> 404 until it is. Today, install from a checkout or a packed tarball:
-> [Installing before the first release](#installing-before-the-first-release).
-
-When it is published:
 
 ```bash
 npm install @lousho/build-ai-agent ai zod
@@ -394,9 +380,9 @@ hazard), so a class from one is not `===` the other. `instanceof SDKError` and
 `instanceof HookRegistry` are safe across the two copies (they check a
 `Symbol.for` brand); for other classes, use one module format per process.
 
-## Installing before the first release
+## Installing from a local build
 
-Until the package is on npm, build and pack the SDK from a checkout of this
+To try an unreleased commit, build and pack the SDK from a checkout of this
 repository, then install the tarball into your project - the same approach
 `lousho init --sdk-path` uses for the projects it generates. This is verified
 in CI by `npm run pack-smoke`, which installs the packed tarball into a fresh
@@ -427,9 +413,6 @@ on this SDK by version range), a strict `tsconfig.json`, `src/agent.ts` calling
 offline `src/agent.test.ts` using `mockModel`, a `.env.example` naming your
 provider's key variable, `.gitignore` and a README. It then installs the
 dependencies and runs `git init`.
-
-Not on npm yet: until it is, run it from a built checkout with `--sdk-path`
-(see [Installing before the first release](#installing-before-the-first-release)).
 
 ```bash
 npx lousho init my-agent                 # or: npm create lousho-agent my-agent
@@ -519,12 +502,6 @@ provider - no API key needed - except the first, which talks to a real model
 and is therefore only type-checked.
 
 ## Start a new project
-
-> **Not on npm yet.** `@lousho/build-ai-agent` is not published, so the
-> `npx`/`npm install`/`npm create` commands on this page fail with a 404 until
-> it is. Today, install from a checkout or a packed tarball:
-> [Installing before the first release](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#installing-before-the-first-release)
-> (for example `node bin/lousho.js init my-agent --sdk-path .` from a built checkout).
 
 The fastest way in is one command, which creates a runnable project (an
 agent, an example tool, an offline test, a `.env.example` for your provider),
@@ -2008,9 +1985,7 @@ yet).
 ## Installation
 
 Agent Forge ships inside `@lousho/build-ai-agent` itself - there's no
-separate package to install. The package is not on npm yet (see
-[Installing before the first release](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#installing-before-the-first-release));
-once it is:
+separate package to install:
 
 ```bash
 npm install @lousho/build-ai-agent
@@ -3134,9 +3109,7 @@ Source: docs/cli.md
 Installing the package also installs the `lousho` command. It scaffolds
 projects, checks your setup, runs an agent locally, serves it over MCP, runs
 evals, builds a deployable artifact and launches the Agent Forge dashboard.
-Run it with `npx lousho <command>` inside a project that has the SDK installed
-(the package is not on npm yet: see
-[Installing before the first release](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#installing-before-the-first-release)).
+Run it with `npx lousho <command>` inside a project that has the SDK installed.
 
 | Command | What it does | Details |
 | ------- | ------------ | ------- |
@@ -3178,10 +3151,8 @@ never takes the next flag as its value) or an extra argument fails with
 the `=` form: `--model=-x`.
 
 `npm create lousho-agent my-agent` runs `lousho init` with the same arguments.
-**Not on npm yet:** `npm create lousho-agent` and `npx lousho ...` fail until
-the package is published; today, scaffold from a built checkout of this
-repository with `node bin/lousho.js init my-agent --sdk-path .` (see
-[Installing before the first release](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#installing-before-the-first-release)).
+To scaffold against an unreleased build of the SDK, pass `--sdk-path` (see
+[Installing from a local build](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#installing-from-a-local-build)).
 
 ## `lousho dev`
 

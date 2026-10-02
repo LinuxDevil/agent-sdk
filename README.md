@@ -26,26 +26,19 @@ Three things set it apart:
   usage and USD cost.
 
 [Quickstart](#quickstart) · [Features](#features) · [Documentation](#documentation) ·
-[Examples](#examples) · [Docs site](https://linuxdevil.github.io/agent-sdk-docs/)
+[Examples](#examples) · [Docs site](https://lousho.mintlify.app)
 
 ## Installation
 
-Requires Node.js 22.19 or newer. **Not on npm yet:** `npm install
-@lousho/build-ai-agent`, `npx lousho ...` and `npm create lousho-agent` fail
-until it is published. Today, build it from a checkout and scaffold a project
-that depends on the build:
+Requires Node.js 22.19 or newer. Scaffold a new project with one command:
 
 ```bash
-git clone https://github.com/LinuxDevil/agent-sdk.git
-cd agent-sdk && npm install && npm run build
-node bin/lousho.js init ../my-agent --sdk-path .   # agent, example tool, offline test
-cd ../my-agent && cp .env.example .env              # then put your API key in .env
+npm create lousho-agent my-agent                     # agent, example tool, offline test
+cd my-agent && cp .env.example .env                  # then put your API key in .env
 npm run dev                                          # chat in the terminal; `npm test` runs offline
 ```
 
-To add it to an existing project, install the packed tarball instead
-([Installing before the first release](docs/installation.md#installing-before-the-first-release)).
-Once published: `npm install @lousho/build-ai-agent ai zod` plus
+To add it to an existing project: `npm install @lousho/build-ai-agent ai zod` plus
 the provider package you use (`@ai-sdk/openai`, `@ai-sdk/anthropic` or
 `ollama-ai-provider`). `npx lousho doctor` checks Node, peers and API keys and
 prints a fix for anything missing.
@@ -203,7 +196,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [API Overview](docs/api-overview.md) | The main exports, triggers, tokens and cost; `npm run docs:build` generates the full TypeDoc reference |
 | [Utilities](docs/utilities.md) | Encryption, file storage and templates |
 
-The full guides site is at [linuxdevil.github.io/agent-sdk-docs](https://linuxdevil.github.io/agent-sdk-docs/).
+The full guides site is at [lousho.mintlify.app](https://lousho.mintlify.app).
 
 **For AI coding agents.** The package ships its docs in machine-readable form:
 `llms-full.txt` (this README and every docs page in one file, with absolute
@@ -251,7 +244,7 @@ writes a self-contained artifact and prints the command to run or deploy it
 
 Alpha (`1.0.0-alpha`, pre-1.0): APIs can still change between releases, and
 breaking changes are listed in the [CHANGELOG](CHANGELOG.md) with migration
-notes. The package is not published to npm yet. Known gaps include killing
+notes. Known gaps include killing
 the whole process group of a timed-out guardrail command on POSIX (only the
 direct child is signalled today) and interactive, in-browser Quick Start
 snippets; planned work is in the [ticket catalogue](docs/plan/tickets.md).

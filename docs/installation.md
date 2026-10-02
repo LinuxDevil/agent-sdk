@@ -8,13 +8,6 @@
 
 ## Install the package
 
-> **Not on npm yet.** `@lousho/build-ai-agent` is not published, so the
-> commands below (and `npx lousho ...`, `npm create lousho-agent`) fail with a
-> 404 until it is. Today, install from a checkout or a packed tarball:
-> [Installing before the first release](#installing-before-the-first-release).
-
-When it is published:
-
 ```bash
 npm install @lousho/build-ai-agent ai zod
 # or
@@ -124,12 +117,9 @@ hazard), so a class from one is not `===` the other. `instanceof SDKError` and
 `instanceof HookRegistry` are safe across the two copies (they check a
 `Symbol.for` brand); for other classes, use one module format per process.
 
-## Installing before the first release
+## Installing from a local build
 
-<!-- AFTER PUBLISH: this section is the single place that explains the pre-publish install;
-     see the "after publish" checklist in the LOU-D49 pull request. -->
-
-Until the package is on npm, build and pack the SDK from a checkout of this
+To try an unreleased commit, build and pack the SDK from a checkout of this
 repository, then install the tarball into your project - the same approach
 `lousho init --sdk-path` uses for the projects it generates. This is verified
 in CI by `npm run pack-smoke`, which installs the packed tarball into a fresh
@@ -160,9 +150,6 @@ on this SDK by version range), a strict `tsconfig.json`, `src/agent.ts` calling
 offline `src/agent.test.ts` using `mockModel`, a `.env.example` naming your
 provider's key variable, `.gitignore` and a README. It then installs the
 dependencies and runs `git init`.
-
-Not on npm yet: until it is, run it from a built checkout with `--sdk-path`
-(see [Installing before the first release](#installing-before-the-first-release)).
 
 ```bash
 npx lousho init my-agent                 # or: npm create lousho-agent my-agent

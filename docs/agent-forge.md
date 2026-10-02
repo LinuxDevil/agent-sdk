@@ -15,9 +15,7 @@ yet).
 ## Installation
 
 Agent Forge ships inside `@lousho/build-ai-agent` itself - there's no
-separate package to install. The package is not on npm yet (see
-[Installing before the first release](./installation.md#installing-before-the-first-release));
-once it is:
+separate package to install:
 
 ```bash
 npm install @lousho/build-ai-agent

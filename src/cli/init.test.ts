@@ -159,7 +159,7 @@ describe('runInit guards', () => {
     const h = harness({}, 1);
     expect(await runInit(['demo', '--yes'], h.environment)).toBe(1);
     expect(h.err.join('')).toContain('`npm install` failed');
-    expect(h.err.join('')).toContain('not on npm yet');
+    expect(h.err.join('')).toContain('--sdk-path');
     expect(h.out.join('')).toContain('Next steps:');
     expect(h.out.join('')).toMatch(/\n {2}npm install\n/);
   });
