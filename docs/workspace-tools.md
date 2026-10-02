@@ -6,6 +6,7 @@ coding agents in the style of Claude Code. The tools never use `node:fs` or
 `FsProvider` and `ShellProvider`, so the same tools work against a local
 directory, an in-memory tree in tests, a Docker container, or a remote
 sandbox such as E2B, Daytona or Cloudflare.
+For a walkthrough, see [Build a coding agent](./build-a-coding-agent.md).
 
 ```ts
 import { createAgent, NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
