@@ -55,10 +55,34 @@ jobs:
       # Bare `fallow` fails on any finding. Runs after the coverage step because
       # its CRAP scores read coverage/coverage-final.json.
       - run: npm run fallow
-  # LOU-D28a: the SDK source must also type-check against `ai` v7 and its
-  # matching `@ai-sdk/*` majors (the peers still name v4; LOU-D28d widens them).
-  typecheck-ai7:
+  # LOU-M8: every `ai` and zod pairing the peer ranges accept, installed for real on top of the
+  # default install (`npm ci`; `--no-save` leaves the lockfile alone). The default dev install is
+  # `ai` 4 with zod 3 and runs in `ci`. `ollama-ai-provider-v2` peers on zod 4, so only the zod 4
+  # entries install it; ollamaV2.contract.test.ts runs against the real package in those two.
+  # `flags` for those two: ollama-ai-provider-v2 is an optional peer of this package, which npm does not
+  # install by name unless `--save-prod` (in-memory only with --no-save) makes it a dependency, and the dev
+  # install's ollama-ai-provider (v1, zod 3 peer) conflicts with zod 4, hence `--legacy-peer-deps`.
+  # The v4-only tests are gated by itOnAiV4/describeOnAiV4 (LOU-D28b); Worker bundle tests run on all.
+  peers:
+    name: peers (${{ matrix.name }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ai4-zod4
+            install: zod@4
+          - name: ai6-zod3
+            install: ai@6 @ai-sdk/openai@3 @ai-sdk/anthropic@3
+          - name: ai6-zod4
+            install: ai@6 @ai-sdk/openai@3 @ai-sdk/anthropic@3 ollama-ai-provider-v2@3 zod@4
+            flags: --save-prod --legacy-peer-deps
+          - name: ai7-zod3
+            install: ai@7 @ai-sdk/openai@4 @ai-sdk/anthropic@4
+          - name: ai7-zod4
+            install: ai@7 @ai-sdk/openai@4 @ai-sdk/anthropic@4 ollama-ai-provider-v2@4 zod@4
+            flags: --save-prod --legacy-peer-deps
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -66,25 +90,7 @@ jobs:
           node-version: '22.19.0'
           cache: 'npm'
       - run: npm ci
-      - run: npm install --no-save ai@7 @ai-sdk/openai@4 @ai-sdk/anthropic@4
-      - run: npx tsc --noEmit
-      # LOU-D28b: the suite runs on ai v7 too. The v4-only tests are gated by the shared
-      # describeOnAiV4/itOnAiV4 helpers; the Worker bundle tests run on both (LOU-D28c).
-      - run: npm run build
-      - run: npm run build --workspace=packages/create-lousho-agent
-      - run: npx vitest run
-  # LOU-D29: the peer is zod ^3.25.76 || ^4.0.0, and the dev install is zod 3.
-  # This job runs the type check, build and suite with zod 4 installed as `zod`.
-  typecheck-zod4:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22.19.0'
-          cache: 'npm'
-      - run: npm ci
-      - run: npm install --no-save zod@4
+      - run: npm install --no-save ${{ matrix.flags }} ${{ matrix.install }}
       - run: npx tsc --noEmit
       - run: npm run test:types
       - run: npm run build

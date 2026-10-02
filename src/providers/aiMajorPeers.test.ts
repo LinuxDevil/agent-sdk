@@ -12,9 +12,6 @@ import { aiMajorOf, type AiSdkModule } from './aiSdkCompat';
 import { installedAiMajor } from './aiMajor.testkit';
 import { AI_RANGES, listProviders, peerInstallCommand, type AiMajor } from './providerSpec';
 
-/** A module shaped like `ai` v6: `stepCountIs`, but no v7-only `registerTelemetry`. */
-const aiV6Like = { ...aiV4Stub(), stepCountIs: () => undefined } as AiSdkModule;
-
 function aiV4Stub(): AiSdkModule {
   const fail = () => {
     throw new Error('not called in these tests');
