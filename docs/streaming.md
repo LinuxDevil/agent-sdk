@@ -148,17 +148,33 @@ console.log((await again.result).text);
 ## Streaming after an approval
 
 A run that paused for an [approval](./approvals.md) can continue as a stream
-too. `streamResumeAfterApproval()` takes the arguments of
-`resumeAfterApproval()` and returns an `AgentRun` whose `result` is what
-`resumeAfterApproval()` returns. Its events are `run.start`, the decided
+too. `agent.approvals.streamResolve()` (or `streamAnswer()`) returns an
+`AgentRun` whose `result` is what `agent.approvals.resolve()` returns. Its events are `run.start`, the decided
 call's `tool.start` and `tool.done` (`tool.error` for a rejection), then the
 continuation's events exactly as in a fresh run, up to `run.done`; a further
 pause ends it with `approval.requested`. Cancellation, `enqueue()` and
 `steer()` work as on any run, and the approval can come from another
-process, since everything is read from the approval store. For
-`createAgent()` agents use `agent.approvals.streamResolve()` or
-`streamAnswer()`. A model chosen per run (`model` as a function) is the one
-the paused run used.
+process, since everything is read from the approval store. A model chosen per
+run (`model` as a function) is the one the paused run used.
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ provider /* , a tool with needsApproval */ });
+const paused = await agent.send('Delete the old reports.');
+// paused.finishReason === 'awaiting-approval'
+const run = agent.approvals.streamResolve({ id: paused.approvalId!, approved: true });
+for await (const event of run) {
+  if (event.type === 'tool.done') console.log(`${event.toolName} ran`);
+  if (event.type === 'text.delta') process.stdout.write(event.text);
+}
+```
+
+#### Advanced: the executor API
+
+With the executor directly, `streamResumeAfterApproval()` takes the arguments
+of `resumeAfterApproval()` (see [the executor API](./executor-api.md)) and
+returns the same `AgentRun`.
 
 ```ts
 import { AgentExecutor, streamResumeAfterApproval } from '@lousho/build-ai-agent';
@@ -426,6 +442,11 @@ failed); the input is then left to you too.
 Queued input waits for the step that is running. To redirect the run at
 once, steer it (next section).
 
+#### Advanced: the executor API
+
+Without a stream, pass an `InputQueue` to `AgentExecutor.execute()` (see
+[the executor API](./executor-api.md)):
+
 ```ts
 import { AgentExecutor, InputQueue } from '@lousho/build-ai-agent';
 
@@ -554,9 +575,10 @@ with `{ sessionId, input }` streams `agent.session({ id }).stream(input)` as
 `data:` lines ending with `event: done`, and approvals are decided through
 `POST /chat/:sessionId/approvals/:id` (see [CLI](./cli.md#lousho-dev)).
 
-## Example: the full API
+## Advanced: the executor API
 
-`AgentExecutor.stream()` accepts every `execute()` option. Here a tool that
+`AgentExecutor.stream()` accepts every `execute()` option (see
+[the executor API](./executor-api.md)). Here a tool that
 needs approval ends the stream with `approval.requested`:
 
 ```ts

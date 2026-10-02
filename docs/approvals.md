@@ -320,9 +320,11 @@ const scripted = createAgent({
 A permission rule that `allow`s `ask_question` skips the pause, so the call
 fails with "No answer"; leave the tool to its default.
 
-## `AgentExecutor` and `resumeAfterApproval()`
+## Advanced: the executor API
 
-With `AgentExecutor.execute()` directly, pass an `approvalStore`. On a gated
+`createAgent()` agents use `agent.approvals` (see
+[`createAgent()` agents](#createagent-agents)). With `AgentExecutor.execute()`
+directly (see [the executor API](./executor-api.md)), pass an `approvalStore`. On a gated
 call the executor persists an `ExecutionSnapshot` instead of invoking the
 tool. Resume later, after a real restart if you like, with
 `resumeAfterApproval()`:

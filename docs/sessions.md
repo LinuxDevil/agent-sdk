@@ -263,19 +263,19 @@ generated Worker uses `KVCheckpointStore`, see [Deployment](deployment.md)).
 re-exported from the root entry, so importing the SDK never loads it):
 
 ```ts
-import { createAgent, AgentExecutor } from '@lousho/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
 
 const store = new SqliteStore('./.lousho/agent.db'); // or ':memory:'
 const agent = createAgent({ provider, store }); // transcripts, per-step checkpoints and approvals
 await agent.session({ id: 'user-42' }).send('Hello');
 
-// With AgentExecutor directly, pass the parts:
-// AgentExecutor.execute({ ..., sessionId, checkpointStore: store.checkpoints, approvalStore: store.approvals })
-
 store.prune({ olderThanMs: 7 * 24 * 60 * 60 * 1000 }); // { sessions, checkpoints, approvals } deleted
 store.close();
 ```
+
+With the executor directly, pass `store.checkpoints` as `checkpointStore` and
+`store.approvals` as `approvalStore`; see [the executor API](./executor-api.md).
 
 - The directory is created if missing. The schema is versioned with
   `PRAGMA user_version` and migrated on open; a database written by a newer
