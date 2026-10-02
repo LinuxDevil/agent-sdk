@@ -6,7 +6,8 @@ where those tokens live: the `tokens` part of an `AgentStore`, keyed by
 provider and by who owns the credential, and how a tool gets one: a tool calls
 `ctx.getToken(provider)`, and when the user has not connected yet the run
 pauses until they sign in ([Tools that need sign-in](#tools-that-need-sign-in)).
-OAuth for MCP servers comes in a later release.
+HTTP MCP servers sign in with OAuth too
+([MCP servers with OAuth](#mcp-servers-with-oauth)).
 
 ## Credential owners
 
@@ -337,3 +338,92 @@ approval.
   call has it replaced with `[REDACTED]` before it is recorded, and a warning
   names the tool. Tokens never enter agent events, transcripts, checkpoints,
   approval records, trace spans or recorded cassettes.
+
+## MCP servers with OAuth
+
+Hosted MCP servers such as Linear, GitHub, Atlassian and Notion require OAuth
+2.1 as defined by the MCP authorization specification. Give an HTTP entry of
+`mcpServers` an `oauth` field and the SDK does the protocol: it reads the
+server's protected resource metadata (RFC 9728) to find its authorization
+server, reads that server's metadata (RFC 8414), registers a client when you
+have none (dynamic client registration, RFC 7591), and signs in with PKCE
+(S256) and a resource indicator (RFC 8707). Tokens are kept in the agent's
+token store (encrypted by the persistent stores) under the provider name
+`mcp-<server>` and refreshed by the MCP SDK when the server refuses an expired
+one.
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
+
+const agent = createAgent({
+  provider,
+  mcpServers: {
+    linear: {
+      url: 'https://mcp.linear.app/mcp',
+      oauth: { redirectUri: 'https://agent.example.com/oauth/callback' },
+    },
+  },
+  store: new SqliteStore('./agent.db', { tokenKey: process.env.LOUSHO_TOKEN_KEY }),
+});
+
+// connect-linear.ts: run once against the deployed agent's store, open the URL, approve.
+console.log('Open this to connect Linear:', await agent.oauth.mcpSignInUrl('linear'));
+```
+
+`oauth` takes:
+
+- `redirectUri` (required): the agent's callback URL, the
+  [callback route](#the-callback-route) of the deployed agent.
+- `clientId`, and `clientSecret` for a confidential client: a client you
+  registered with the authorization server yourself. Without `clientId`, the
+  SDK registers one at the first sign-in (as `clientName`, default `lousho`,
+  with `redirectUri` as its only redirect URI) and keeps it in the token store.
+- `scopes`: requested when the server's metadata names none.
+
+**Signing in.** The grant belongs to the app, like an
+[app credential](#tools-that-need-sign-in): one sign-in for the whole agent,
+by an operator: `agent.oauth.mcpSignInUrl('<server>')` (the last line of the
+example above) returns the authorization URL; the operator opens it and
+approves, and the callback route of the deployed agent, which shares the
+store, stores the token. The link works once, for 10 minutes. `mcpSignInUrl()` always makes a new link,
+even when a token is stored, so it also re-connects the app to another account.
+The next `ready()` or tool call connects with the new token; nothing needs a
+restart.
+
+**`needs-auth`.** Until the app is signed in, or after the grant was revoked
+(the token is refused and the refresh token too), the server's status is
+`'needs-auth'` and connecting fails with
+[`LOUSHO_MCP_AUTH_REQUIRED`](errors.md#lousho_mcp_auth_required): `ready()`
+and the first `send()` reject with it (or, with `connectMcp(servers, { onError:
+'skip' })`, the server is left out). A tool call refused during a run is an
+error result for the model, with the same code; the run does not pause, because
+a chat user never signs in for the app. A connection never registers a client
+or starts a sign-in by itself: only `mcpSignInUrl()` does.
+
+**Security.**
+
+- `oauth` needs an `https` url; plain `http` is allowed only for `localhost`,
+  `127.0.0.1` and `[::1]`. `headers` still work next to `oauth` (an API key
+  header, say) and are sent only to the MCP server's own origin, never to the
+  authorization server; an `Authorization` header together with `oauth` is
+  refused.
+- A token is sent only to the `url` it was obtained for. When the entry's
+  `url` changes, the stored grant and any registered client are not used, and
+  the server needs a new sign-in. The SDK also refuses protected resource
+  metadata whose `resource` does not match the server's url.
+- Tokens, authorization codes, PKCE verifiers and the client secret never
+  appear in error messages, log lines, `status()`, agent events or tool
+  results; an authorization server's error is reported by its OAuth `error`
+  code only.
+
+**Limits.** MCP grants are app-owned: one connection and one token per server
+for every user of the agent. Per-user MCP grants (each user signing in with
+their own account, with their own tool list) are not supported yet. OAuth
+applies to HTTP servers only, not stdio. Client ID metadata documents and
+`private_key_jwt` client authentication are not supported.
+
+For `connectMcp()` without an agent, pass the store as
+`connectMcp(servers, { tokens: store.tokens })`; it uses the stored token, and
+signing in goes through an agent's `agent.oauth.mcpSignInUrl()` on the same
+store.

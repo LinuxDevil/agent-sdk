@@ -62,6 +62,26 @@ describe('AgentSpec.mcpServers (LOU-D20)', () => {
     );
   });
 
+  it("accepts 'oauth' on HTTP entries and rejects it on stdio entries (N9c)", () => {
+    const mcpServers: AgentSpec['mcpServers'] = {
+      linear: { url: 'https://mcp.linear.app/mcp', oauth: { redirectUri: 'https://agent.example.com/oauth/callback' } },
+      notion: {
+        url: 'https://mcp.notion.com/mcp',
+        headers: { 'X-Team': 'a' },
+        oauth: { redirectUri: 'https://agent.example.com/oauth/callback', clientId: 'c', clientSecret: 's', scopes: ['read'], clientName: 'Support bot' },
+      },
+    };
+    expect(agentSpecSchema.parse({ ...base, mcpServers }).mcpServers).toEqual(mcpServers);
+    expect(issues({ fs: { command: 'npx', oauth: { redirectUri: 'https://a.example.com/cb' } } })[0]).toMatch(/'oauth' does not apply to a stdio/);
+    expect(issues({ web: { url: 'https://example.com', oauth: {} } })[0]).toMatch(/^mcpServers\.web\.oauth\.redirectUri: .*'oauth\.redirectUri' is required/);
+    expect(issues({ web: { url: 'https://example.com', oauth: { redirectUri: 'nope' } } })[0]).toMatch(/'oauth\.redirectUri' must be a valid URL/);
+    expect(issues({ web: { url: 'https://example.com', oauth: { redirectUri: 'https://a.example.com/cb', clientSecret: 's' } } })[0]).toMatch(
+      /'oauth\.clientSecret' needs 'oauth\.clientId'/
+    );
+    expect(issues({ web: { url: 'https://example.com', oauth: { redirectUri: 'https://a.example.com/cb', extra: 1 } } }).length).toBe(1);
+    expect(issues({ web: { url: 'https://example.com', oauth: 'yes' } })[0]).toMatch(/'oauth' must be an object/);
+  });
+
   it('rejects a bad env type and a bad url', () => {
     expect(issues({ fs: { command: 'npx', env: ['A=1'] } })).toEqual([
       "mcpServers.fs.env: AgentSpec validation failed: 'env' must be a map of string to string",

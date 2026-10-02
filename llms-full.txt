@@ -4723,6 +4723,7 @@ stdio and `headers` only to HTTP. The field is validated by `loadSpec()`, and
 an invalid entry fails with the entry name in the message, e.g.
 `'mcpServers.files': AgentSpec validation failed: missing 'command' (stdio server) or 'url' (HTTP server)`.
 An optional `approval` (`annotations`, `always` or `never`) says which of the server's tools ask for approval; see [Approval for MCP tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#approval-for-mcp-tools).
+An HTTP entry may set `oauth` (`redirectUri`, optional `clientId`, `clientSecret`, `scopes` and `clientName`) to sign in to the server with OAuth instead of a static `Authorization` header; see [MCP servers with OAuth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#mcp-servers-with-oauth).
 `lousho doctor` checks each stdio `command` is resolvable.
 
 ```yaml
@@ -6552,7 +6553,9 @@ operator connected Slack.
 
 **Means:** a tool called `ctx.getToken()`, or `agent.oauth` was used, on an
 agent without a token store, so there is nowhere to read or keep a token. The
-run stops with this error.
+run stops with this error. An HTTP MCP server with `oauth` needs the store
+too: connecting it (`ready()`, `connectMcp()` without `tokens`) fails with
+this error.
 
 **Fix:** pass `createAgent({ store })` with `tokens`: `memoryStore()`,
 `fileStore()`, `SqliteStore` or `KVStore` (the persistent ones need a
@@ -6591,7 +6594,8 @@ callback, then approve again; or approve with `false` to cancel the call. See
 code (or a request to it failed), or the callback came without a code, or no
 provider with the pending sign-in's name is defined in this process. The
 message names the provider, the HTTP status and the OAuth `error` code, never
-the code or the response body. The callback route answers 502.
+the code or the response body. The callback route answers 502. For an MCP
+server with `oauth` the message names the server and the OAuth `error` code.
 
 **Fix:** check `tokenUrl`, `clientId`, `clientSecret`, `clientAuth` and that
 `redirectUri` matches the one registered with the provider exactly, and that
@@ -6599,6 +6603,25 @@ the module defining the provider is loaded by the process serving the
 callback. Then sign in again. See [The callback route](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#the-callback-route).
 
 **Example:** `invalid_client` from GitHub after the client secret was rotated.
+
+### LOUSHO_MCP_AUTH_REQUIRED
+
+**Means:** an HTTP MCP server with `oauth` refused the connection or a tool
+call because the app has no usable token for it: nobody has signed the app in
+yet, the grant was revoked, or the server's `url` changed since the sign-in (a
+token is only sent to the url it was obtained for). The server's status becomes
+`'needs-auth'`. When connecting, `ready()` (and `connectMcp()`) fails with this
+error; during a run, the tool call's result is this error and the run goes on.
+A chat user is never asked to sign in for an MCP server, and the message never
+contains the authorization URL.
+
+**Fix:** sign the app in once: open the URL from
+`agent.oauth.mcpSignInUrl('<server>')` and let the provider redirect to the
+callback route. The next connection or tool call uses the stored token. See
+[MCP servers with OAuth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#mcp-servers-with-oauth).
+
+**Example:** `createAgent({ mcpServers: { linear: { url, oauth: { redirectUri } } }, store })`
+and `await agent.ready()` before the operator signed in.
 
 # Evals
 
@@ -7887,8 +7910,9 @@ await agent.close();
 stdio entries are spawned with `command` and `args`; `env` is added to the
 default environment (`PATH` and the like), not a replacement for it. HTTP
 entries use the streamable HTTP transport and send the static `headers` on every
-request. Static headers are the only authentication an HTTP entry supports
-today.
+request. An HTTP entry can also sign in with OAuth, as the MCP authorization
+spec describes: add `oauth: { redirectUri }` and an operator signs the agent in
+once; see [MCP servers with OAuth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#mcp-servers-with-oauth).
 
 The map is the same one a spec file declares; see
 [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md) (the `mcpServers` section) for the YAML form.
@@ -7906,9 +7930,12 @@ Options:
   tool call reconnects. With `false` that call fails instead. Listing tools
   needs a connection, so `lazy` never delays the first connect.
 - `logger`: receives skipped-server and skipped-tool warnings (default: none).
+- `tokens`: the token store (`AgentStore.tokens`) of servers with `oauth`;
+  required when any server has `oauth`.
 
 It returns `{ tools, close(), status() }`; `status()` maps each server to
-`'idle'`, `'connected'` or `'failed'`.
+`'idle'`, `'connected'`, `'failed'` or `'needs-auth'` (an `oauth` server the
+app is not signed in to).
 
 ```ts no-run
 import { createAgent } from '@lousho/build-ai-agent';
@@ -8068,7 +8095,7 @@ To use it from an MCP client, add it to the client's MCP config (for example
 ## Limits
 
 - Approval-gated tools cannot be approved over MCP when you serve an agent: a run that pauses for approval returns `isError: true`, and tools flagged `needsApproval` are not exposed unless `allowApprovalTools` is set.
-- HTTP clients use static headers: `headers` is sent on every request, and there is no OAuth flow.
+- HTTP clients send static `headers` on every request. OAuth (`oauth`) is app-owned: one grant per server for the whole agent, signed in by an operator; there are no per-user MCP grants yet.
 - `serveMcp()` calls are stateless: each call to the agent tool is a fresh conversation, and the HTTP transport accepts `POST` only.
 
 # Memory
@@ -8712,7 +8739,8 @@ where those tokens live: the `tokens` part of an `AgentStore`, keyed by
 provider and by who owns the credential, and how a tool gets one: a tool calls
 `ctx.getToken(provider)`, and when the user has not connected yet the run
 pauses until they sign in ([Tools that need sign-in](#tools-that-need-sign-in)).
-OAuth for MCP servers comes in a later release.
+HTTP MCP servers sign in with OAuth too
+([MCP servers with OAuth](#mcp-servers-with-oauth)).
 
 ## Credential owners
 
@@ -9043,6 +9071,95 @@ approval.
   call has it replaced with `[REDACTED]` before it is recorded, and a warning
   names the tool. Tokens never enter agent events, transcripts, checkpoints,
   approval records, trace spans or recorded cassettes.
+
+## MCP servers with OAuth
+
+Hosted MCP servers such as Linear, GitHub, Atlassian and Notion require OAuth
+2.1 as defined by the MCP authorization specification. Give an HTTP entry of
+`mcpServers` an `oauth` field and the SDK does the protocol: it reads the
+server's protected resource metadata (RFC 9728) to find its authorization
+server, reads that server's metadata (RFC 8414), registers a client when you
+have none (dynamic client registration, RFC 7591), and signs in with PKCE
+(S256) and a resource indicator (RFC 8707). Tokens are kept in the agent's
+token store (encrypted by the persistent stores) under the provider name
+`mcp-<server>` and refreshed by the MCP SDK when the server refuses an expired
+one.
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
+
+const agent = createAgent({
+  provider,
+  mcpServers: {
+    linear: {
+      url: 'https://mcp.linear.app/mcp',
+      oauth: { redirectUri: 'https://agent.example.com/oauth/callback' },
+    },
+  },
+  store: new SqliteStore('./agent.db', { tokenKey: process.env.LOUSHO_TOKEN_KEY }),
+});
+
+// connect-linear.ts: run once against the deployed agent's store, open the URL, approve.
+console.log('Open this to connect Linear:', await agent.oauth.mcpSignInUrl('linear'));
+```
+
+`oauth` takes:
+
+- `redirectUri` (required): the agent's callback URL, the
+  [callback route](#the-callback-route) of the deployed agent.
+- `clientId`, and `clientSecret` for a confidential client: a client you
+  registered with the authorization server yourself. Without `clientId`, the
+  SDK registers one at the first sign-in (as `clientName`, default `lousho`,
+  with `redirectUri` as its only redirect URI) and keeps it in the token store.
+- `scopes`: requested when the server's metadata names none.
+
+**Signing in.** The grant belongs to the app, like an
+[app credential](#tools-that-need-sign-in): one sign-in for the whole agent,
+by an operator: `agent.oauth.mcpSignInUrl('<server>')` (the last line of the
+example above) returns the authorization URL; the operator opens it and
+approves, and the callback route of the deployed agent, which shares the
+store, stores the token. The link works once, for 10 minutes. `mcpSignInUrl()` always makes a new link,
+even when a token is stored, so it also re-connects the app to another account.
+The next `ready()` or tool call connects with the new token; nothing needs a
+restart.
+
+**`needs-auth`.** Until the app is signed in, or after the grant was revoked
+(the token is refused and the refresh token too), the server's status is
+`'needs-auth'` and connecting fails with
+[`LOUSHO_MCP_AUTH_REQUIRED`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_mcp_auth_required): `ready()`
+and the first `send()` reject with it (or, with `connectMcp(servers, { onError:
+'skip' })`, the server is left out). A tool call refused during a run is an
+error result for the model, with the same code; the run does not pause, because
+a chat user never signs in for the app. A connection never registers a client
+or starts a sign-in by itself: only `mcpSignInUrl()` does.
+
+**Security.**
+
+- `oauth` needs an `https` url; plain `http` is allowed only for `localhost`,
+  `127.0.0.1` and `[::1]`. `headers` still work next to `oauth` (an API key
+  header, say) and are sent only to the MCP server's own origin, never to the
+  authorization server; an `Authorization` header together with `oauth` is
+  refused.
+- A token is sent only to the `url` it was obtained for. When the entry's
+  `url` changes, the stored grant and any registered client are not used, and
+  the server needs a new sign-in. The SDK also refuses protected resource
+  metadata whose `resource` does not match the server's url.
+- Tokens, authorization codes, PKCE verifiers and the client secret never
+  appear in error messages, log lines, `status()`, agent events or tool
+  results; an authorization server's error is reported by its OAuth `error`
+  code only.
+
+**Limits.** MCP grants are app-owned: one connection and one token per server
+for every user of the agent. Per-user MCP grants (each user signing in with
+their own account, with their own tool list) are not supported yet. OAuth
+applies to HTTP servers only, not stdio. Client ID metadata documents and
+`private_key_jwt` client authentication are not supported.
+
+For `connectMcp()` without an agent, pass the store as
+`connectMcp(servers, { tokens: store.tokens })`; it uses the stored token, and
+signing in goes through an agent's `agent.oauth.mcpSignInUrl()` on the same
+store.
 
 # Tracing and observability
 
