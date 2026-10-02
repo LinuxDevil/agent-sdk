@@ -86,7 +86,7 @@ describe('handleWorkerScheduled', () => {
   it('logs instead of throwing when the agent cannot be built', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     await expect(
-      handleWorkerScheduled({ cron: '*/5 * * * *' }, {}, ctx(), { ...spec, tools: ['http'] })
+      handleWorkerScheduled({ cron: '*/5 * * * *' }, {}, ctx(), { ...spec, tools: ['web-fetch'] })
     ).resolves.toBeUndefined();
     expect(String(error.mock.calls[0][0])).toContain('*/5 * * * *');
   });

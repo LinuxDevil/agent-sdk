@@ -75,7 +75,8 @@ If the sub-agent does not finish - it throws, runs out of `maxSteps`, or is
 aborted - the lead gets an error result (`isError: true`) that says why, for
 example `Sub-agent 'researcher' used all 10 of its steps (maxSteps) without
 giving a final answer.` An unknown agent name is also an error result listing
-the valid names. Sub-agent token usage is added to the lead's `result.usage`.
+the valid names. Sub-agent token usage is added to the lead's `result.usage`,
+a [remote sub-agent](#remote-sub-agents)'s too.
 
 Errors at setup time are thrown with a fix: a sub-agent without a
 `description`, a value that is not a `createAgent()` agent, or a tool of your
@@ -297,6 +298,19 @@ stream, or a remote run that ends in an error) reach the lead as the
 structured tool error with the code `LOUSHO_REMOTE_REQUEST_FAILED` (`LOUSHO_REMOTE_UNAUTHORIZED` for a 401); the token is
 never part of an error or an event.
 
+The remote run's token usage, as the remote agent reports it on its `run.done`
+event, is added to the lead's `result.usage`: to the totals, to
+`usage.delegated`, and to `byModel['remote:<name>']` (`<name>` is the key in
+`subagents`). The remote sends no per-model breakdown, so that one entry holds
+its totals and the remote's own `costUsd` estimate; when the remote sends no
+cost, the lead's `costUsd` becomes `undefined`. The lead trusts these numbers:
+it cannot check them. A deployment from before this change sends no usage, and
+then nothing is added. A remote run that pauses for an approval adds what it
+spent up to the pause, and the continuation adds only what it spent after it.
+The usage arrives when the remote run ends, so the lead's `limits` see it only
+after the `task` call returns. A hand-written `RemoteSubagent` gets the
+per-turn usage through the `onUsage` option of its `run()`.
+
 ### Remote approvals
 
 If the remote run pauses for an approval, the lead run pauses on it exactly as
@@ -358,7 +372,7 @@ inherits:
 | Event listeners (`onAgentEvent`, `createAgent({ onEvent })`) and `stream()` | Yes | The sub-agent's events are forwarded with a `subagent` field. |
 | `toolConcurrency` | Yes, unless the sub-agent sets its own | |
 | `sandbox` | Yes | |
-| Token usage | Rolls up | Added to the lead's `result.usage` (totals, `byModel`, and `usage.delegated`). |
+| Token usage | Rolls up | Added to the lead's `result.usage` (totals, `byModel`, and `usage.delegated`); a remote sub-agent's under `byModel['remote:<name>']`. |
 | `maxSubagentDepth` | The remaining budget | See [Depth](#depth). |
 | `onLLMRequest`, `onToolCall` and the other single-run callbacks | No | They describe one run; use hooks or an event listener to observe sub-agents. |
 | `sessionId` / `checkpointStore` | No | A sub-agent is not checkpointed on its own. If the process dies while a sub-agent runs, the resumed lead runs that `task` call again. |
