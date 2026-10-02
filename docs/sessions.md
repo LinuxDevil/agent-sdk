@@ -365,7 +365,8 @@ console.log(fork.id, reply.text); // 'trip-fork-1', 'Porto has a direct flight a
   the same way as `agent.fork()`'s patch.
 - The fork is saved in the session's own store and is a session of the same
   agent with the same options (`store`, checkpoints, `limits`, `turnPolicy`,
-  `compaction`), so streaming, approvals and checkpointed turns work as on any
+  `compaction`, and the [permission mode](./permission-modes.md) the session
+  has when it forks), so streaming, approvals and checkpointed turns work as on any
   `agent.session()`, and `agent.session({ id: fork.id, store })` continues it
   later, in another process too. Its id is `id` when you pass one, else
   `<id>-fork-<n>` for the first `n` from 1 that has no transcript. An `id` that

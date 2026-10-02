@@ -23,6 +23,7 @@ import { anyError } from '../utils/zodCompat';
 import { BackgroundTasks, subagentOptionsOf, withSubagentOptions, type BackgroundTaskView, type SubagentOptions } from './backgroundTasks';
 import { busy, taskNotFound, TaskSessions, type TaskMode, type TaskRecord } from './taskSessions';
 import { SDKError } from '../execution/errors';
+import { allowInPlanMode, PLAN_MODE_REASON, permissionModeOf } from '../execution/permissions';
 import { toolFailure } from '../tools/built-in/toolFailure';
 import { fromEventUsage, remoteModelKey, usageSince } from '../execution/runUsage';
 import type { RunUsage } from '../models/usage';
@@ -252,11 +253,15 @@ function withAbortSignal(toolOptions: ToolOptions, abortSignal: AbortSignal): { 
  */
 async function runRemoteTask(remote: RemoteSubagent, args: TaskArgs, toolOptions: ToolOptions, task: ChildTask): Promise<string> {
   const scope = toolCallScopeOf(toolOptions);
+  // N4: a deployed sub-agent runs under its own server's permissions, so it cannot be held to the lead's mode.
+  const mode = scope ? permissionModeOf(scope.runtime) : 'default';
+  if (mode === 'plan') throw toolFailure(`${PLAN_MODE_REASON} The sub-agent '${args.agent}' is deployed elsewhere and does not inherit plan mode.`);
   const paused = scope?.resume && { snapshot: scope.resume.suspension.snapshot, decision: scope.resume.decision };
   const sessionId = paused?.snapshot.sessionId ?? task.remoteSessionId ?? newId('task');
   await task.save({ messages: [], remoteSessionId: sessionId });
   const decision = paused && { approvalId: paused.snapshot.pendingToolCall.id, approved: paused.decision.approved, note: paused.decision.note };
-  const pausable = scope?.runtime.approvalStore !== undefined;
+  // N4: in dontAsk mode nothing pauses: a remote approval fails the task instead.
+  const pausable = scope?.runtime.approvalStore !== undefined && mode !== 'dontAsk';
   // M10b: the remote run's usage rolls into the lead's totals, like a local child's (LOU-V5). A continuation reports
   // the remote run's usage from its start: only what it spent since the pause (kept on the pause snapshot) is added.
   const reportUsage = scope?.onDelegatedUsage ?? toolOptions?.onDelegatedUsage;
@@ -340,7 +345,8 @@ function unknownSubagent(names: readonly string[]): (input: unknown) => string {
 }
 
 function createTaskTool(ctx: TaskContext): DefinedTool {
-  return defineTool({
+  // N4: usable in plan mode because a local sub-agent inherits the mode (a remote one is refused, see runRemoteTask).
+  return allowInPlanMode(defineTool({
     name: TASK_TOOL,
     description:
       'Delegate a self-contained task to a sub-agent listed under "Available sub-agents" and get its final answer back. ' +
@@ -361,7 +367,7 @@ function createTaskTool(ctx: TaskContext): DefinedTool {
         .describe("'new' (default without taskId): a fresh sub-agent. 'resume' (default with taskId): continue that task. 'fork': a new task starting from a copy of it"),
     }),
     execute: (args, options) => startTask(ctx, args, options),
-  });
+  }));
 }
 
 type AwaitArgs = { taskId?: string; taskIds?: string[]; timeoutMs?: number };
@@ -436,12 +442,15 @@ function createBackgroundTools(ctx: TaskContext): DefinedTool[] {
   return [
     defineTool({
       name: 'agent_status',
+      // N4: observing background tasks changes nothing, so plan mode can use it.
+      annotations: { readOnlyHint: true, destructiveHint: false },
       description: `Status of one background task, or of all of them: queued, running, done, failed, cancelled or awaiting-approval, with elapsedMs. ${AWAIT_APPROVAL_HINT}`,
       input: z.object({ taskId: taskId.optional() }),
       execute: ({ taskId: id }) => ({ tasks: background.status(id) }),
     }),
     defineTool({
       name: 'agent_await',
+      annotations: { readOnlyHint: true, destructiveHint: false },
       description: "Waits for background tasks and returns each one's answer (or failure). Tasks still running after timeoutMs report status 'timeout'.",
       input: z.object({
         taskId: taskId.optional(),

@@ -42,6 +42,7 @@ export type InheritedRuntime = Pick<
   | 'maxSubagentDepth'
   | 'permissions'
   | 'onPermissionDecision'
+  | 'permissionMode'
   | 'guardrails'
   | 'sessionId'
   // M10c: a paused sub-agent's resume uses the top-level run's drift mode.

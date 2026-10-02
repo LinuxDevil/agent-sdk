@@ -38,6 +38,12 @@ export interface DefineToolOptions<S extends StandardSchemaV1, R> {
    * advertised as read-only, whatever is set here.
    */
   annotations?: McpToolAnnotations;
+  /**
+   * N4: the tool edits files (like `write_file` and `edit_file`), so
+   * `permissionMode: 'acceptEdits'` runs its calls without asking. Stored as
+   * `metadata.editsFiles`. A tool is never a file edit by its name alone.
+   */
+  editsFiles?: boolean;
   /** Route execution through the configured SandboxAdapter (requires `sandboxExecute`). */
   requiresSandbox?: boolean;
   /** Sandboxed execution path used instead of `execute` when `requiresSandbox` is true. */
@@ -151,8 +157,14 @@ export function defineTool<S extends StandardSchemaV1, R>(
     needsApproval: opts.needsApproval,
     requiresSandbox: opts.requiresSandbox,
     sandboxExecute: opts.sandboxExecute as ToolDescriptor['sandboxExecute'],
-    ...(opts.annotations ? { metadata: { mcp: { annotations: opts.annotations } } } : {}),
+    ...toolMetadata(opts),
   };
   definedTools.add(defined);
   return defined;
+}
+
+/** `metadata` from the options: MCP `annotations` (LOU-Z5) and the `editsFiles` marker (N4); none when neither is set. */
+function toolMetadata(opts: Pick<DefineToolOptions<StandardSchemaV1, unknown>, 'annotations' | 'editsFiles'>): Pick<ToolDescriptor, 'metadata'> {
+  if (!opts.annotations && !opts.editsFiles) return {};
+  return { metadata: { ...(opts.annotations && { mcp: { annotations: opts.annotations } }), ...(opts.editsFiles && { editsFiles: true }) } };
 }

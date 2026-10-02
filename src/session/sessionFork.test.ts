@@ -242,6 +242,16 @@ describe('session.fork()', () => {
     expect(result.budget).toMatchObject({ limit: 'maxSteps', scope: 'session' });
   });
 
+  it('gives the fork the permission mode the session has when it forks (N4)', async () => {
+    const session = createAgent({ provider: mockModel(['a']) }).session({ permissionMode: 'plan' });
+    await session.send('hi');
+    session.setPermissionMode('acceptEdits');
+    const fork = await session.fork({ fromStep: 1 });
+    expect(fork.permissionMode).toBe('acceptEdits');
+    fork.setPermissionMode('default');
+    expect(session.permissionMode).toBe('acceptEdits');
+  });
+
   it('runs the fork under its own session id', async () => {
     const model = mockModel(['a', 'b']);
     const agent = createAgent({ provider: model, instructions: ({ sessionId }) => `session ${sessionId}` });

@@ -120,7 +120,12 @@ matching rule's action or `'default'` when none matched, `rule` is that rule's
 `{ index, reason? }`, `at` is an ISO timestamp, and `args` is left out when the
 run sets `redactContent`. Streams get the same entry as a `permission.decision`
 event (see [Streaming](./streaming.md)). Both are only produced when the agent
-sets `permissions` or `onPermissionDecision`.
+sets `permissions` or `onPermissionDecision`, or a permission mode other than
+`'default'`.
+
+For a named preset over these rules - `plan` (look, do not touch),
+`acceptEdits` or `dontAsk`, switchable in the middle of a session - see
+[Permission modes](./permission-modes.md).
 
 Both options also exist on `AgentExecutor.execute()` / `stream()` and
 `resumeAfterApproval()`. Sub-agents inherit the lead agent's rules, checked

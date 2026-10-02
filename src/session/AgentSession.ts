@@ -25,6 +25,7 @@ import type { Principal } from '../auth/types';
 import { forkTranscript, transcriptSteps, type SessionForkOptions, type SessionHistoryStep } from './sessionFork';
 
 export type { SessionForkOptions, SessionHistoryStep } from './sessionFork';
+import { assertPermissionMode, permissionModeOf, type PermissionMode, type PermissionOptions } from '../execution/permissions';
 
 /** Options for `agent.session()`. */
 export interface SessionOptions {
@@ -74,6 +75,14 @@ export interface SessionOptions {
    * defaults it to the agent's `compaction`. Default: prune old tool results.
    */
   compaction?: AgentCompaction;
+  /**
+   * The session's permission mode (N4) until `setPermissionMode()` switches
+   * it. `agent.session()` defaults it to the agent's `permissionMode`. See
+   * docs/permission-modes.md.
+   */
+  permissionMode?: PermissionOptions['permissionMode'];
+  /** Called by `setPermissionMode()` (N4). `agent.session()` defaults it to the agent's `onPermissionModeChange`. */
+  onPermissionModeChange?: PermissionOptions['onPermissionModeChange'];
 }
 
 /** A transcript store plus, optionally, a checkpoint store (e.g. a `SqliteStore`). */
@@ -99,7 +108,12 @@ export interface SessionTurnCheckpoint {
 }
 
 /** How a session's turn runs: where it is checkpointed, and the session's budget (LOU-V6). */
-export type SessionTurnOptions = Partial<SessionTurnCheckpoint> & { sessionBudget?: SessionBudget; inputQueue?: InputQueue };
+export type SessionTurnOptions = Partial<SessionTurnCheckpoint> & {
+  sessionBudget?: SessionBudget;
+  inputQueue?: InputQueue;
+  /** N4: the session's mode, read at each tool call of the turn. */
+  permissionMode?: PermissionOptions['permissionMode'];
+};
 
 /** A turn's own user input and `metadata` (LOU-V15), for `createAgent()`'s per-run config; absent on a resumed turn. */
 export interface SessionTurnCall {
@@ -218,6 +232,10 @@ export class AgentSession<TObject = unknown> {
   private readonly compaction: SessionOptions['compaction'];
   private readonly options: SessionOptions;
   private readonly spawn: SessionSpawner | undefined;
+  private mode: SessionOptions['permissionMode'];
+  private readonly onPermissionModeChange: SessionOptions['onPermissionModeChange'];
+  /** N4: the session's mode at the time of the call; handed to every turn, so a switch applies from the next tool call. */
+  protected readonly currentPermissionMode = (): PermissionMode => this.permissionMode;
   private readonly listeners = new Set<(event: AgentEvent) => void>();
   /** The turn running (or about to run) and the queue its run takes input from (LOU-V9). */
   private running: { inputs: InputQueue; result: Promise<ExecutionResult> } | undefined;
@@ -235,6 +253,9 @@ export class AgentSession<TObject = unknown> {
     this.limits = options.limits;
     this.turnPolicy = options.turnPolicy;
     this.compaction = options.compaction;
+    if (typeof options.permissionMode === 'string') assertPermissionMode(options.permissionMode, 'agent.session');
+    this.mode = options.permissionMode;
+    this.onPermissionModeChange = options.onPermissionModeChange;
     this.run = run;
     this.streamRun = streamRun;
     this.options = options;
@@ -248,6 +269,33 @@ export class AgentSession<TObject = unknown> {
    */
   get messages(): readonly Message[] {
     return structuredClone(this.transcript);
+  }
+
+  /** N4: the permission mode the session's next tool call runs under (`'default'` unless set). */
+  get permissionMode(): PermissionMode {
+    return permissionModeOf({ permissionMode: this.mode });
+  }
+
+  /**
+   * Switches the session's permission mode (N4). It applies from the next
+   * tool call, also in a turn that is running now, and to a paused turn
+   * continued by `agent.approvals.resolve()`. A turn's system prompt is not
+   * changed (only a turn that starts in plan mode is told about it). The switch
+   * is reported to `onPermissionModeChange`. Not saved with the transcript.
+   *
+   * @example
+   * ```ts
+   * const session = agent.session({ permissionMode: 'plan' });
+   * await session.send('Plan the refactor.');
+   * session.setPermissionMode('acceptEdits');
+   * await session.send('Apply the plan.');
+   * ```
+   */
+  setPermissionMode(mode: PermissionMode): void {
+    assertPermissionMode(mode, 'session.setPermissionMode');
+    const from = this.permissionMode;
+    this.mode = mode;
+    this.onPermissionModeChange?.({ sessionId: this.id, from, to: mode, at: new Date().toISOString() });
   }
 
   /** Read the saved transcript from the store (done automatically by `send()`). */
@@ -479,8 +527,8 @@ export class AgentSession<TObject = unknown> {
         throw new ConfigurationError(`fork: session '${id}' already exists; pick an id with no transcript in the store.`, 'id', 'LOUSHO_SESSION_EXISTS');
       }
       await this.store.save(id, messages);
-      // This session's own stores: without `store`, each session has its own new MemorySessionStore.
-      return spawn({ ...this.options, id, store: this.store, checkpointStore: this.checkpointStore }) as AgentSession<TObject>;
+      // This session's own stores (without `store`, each session has its own new MemorySessionStore) and current permission mode (N4).
+      return spawn({ ...this.options, id, store: this.store, checkpointStore: this.checkpointStore, permissionMode: this.mode }) as AgentSession<TObject>;
     });
   }
 
@@ -605,7 +653,7 @@ export class AgentSession<TObject = unknown> {
   /** The next turn's checkpoint and, with `limits`, the session's budget (LOU-V6); starts the turn's clock. */
   private turnOptions(inputQueue?: InputQueue): SessionTurnOptions | undefined {
     this.turnStartedAt = Date.now();
-    const checkpoint = inputQueue ? { ...this.turnCheckpoint(), inputQueue } : this.turnCheckpoint();
+    const checkpoint = { ...this.turnCheckpoint(), ...(inputQueue && { inputQueue }), permissionMode: this.currentPermissionMode };
     if (!this.limits) return checkpoint;
     return { ...checkpoint, sessionBudget: { limits: this.limits, spent: sessionSpent(this.transcript) } };
   }
