@@ -201,9 +201,13 @@ export function toolNameFor(info: OpenApiOperationInfo, prefix?: string): string
   return `${head}${info.name}`.slice(0, MAX_TOOL_NAME);
 }
 
-function parseOperation(document: Json, path: string, method: string, item: Json, operation: Json): ParsedOperation {
+function withDescription(schema: Json, description: unknown): Json {
+  return typeof description === 'string' && description !== '' && typeof schema.description !== 'string' ? { ...schema, description } : schema;
+}
+
+function operationInfo(path: string, method: string, operation: Json): OpenApiOperationInfo {
   const operationId = typeof operation.operationId === 'string' && operation.operationId !== '' ? operation.operationId : undefined;
-  const info: OpenApiOperationInfo = {
+  return {
     name: (operationId ? sanitize(operationId) : derivedName(method, path)).slice(0, MAX_TOOL_NAME),
     ...(operationId ? { operationId } : {}),
     method: method.toUpperCase(),
@@ -211,14 +215,10 @@ function parseOperation(document: Json, path: string, method: string, item: Json
     ...(typeof operation.summary === 'string' ? { summary: operation.summary } : {}),
     tags: Array.isArray(operation.tags) ? operation.tags.filter((t): t is string => typeof t === 'string') : [],
   };
-  const where = `${info.method} ${path}`;
+}
 
-  const properties: Json = {};
-  const required: string[] = [];
-  const parameters: OperationParameter[] = [];
-  const usedKeys = new Set<string>();
-
-  // Operation-level parameters override path-level ones with the same name and location.
+/** Operation-level parameters override path-level ones with the same name and location. */
+function declaredParameters(document: Json, item: Json, operation: Json, where: string): Json[] {
   const declared = new Map<string, Json>();
   for (const list of [item.parameters, operation.parameters]) {
     if (!Array.isArray(list)) continue;
@@ -229,60 +229,83 @@ function parseOperation(document: Json, path: string, method: string, item: Json
       }
     }
   }
+  return [...declared.values()];
+}
 
-  for (const parameter of declared.values()) {
+function parameterSchema(parameter: Json): Json {
+  if (isRecord(parameter.schema)) return parameter.schema;
+  const content = isRecord(parameter.content) ? Object.values(parameter.content).find(isRecord) : undefined;
+  return isRecord(content?.schema) ? content.schema : {};
+}
+
+interface ParameterSet {
+  properties: Json;
+  required: string[];
+  parameters: OperationParameter[];
+}
+
+function collectParameters(declared: Json[]): ParameterSet {
+  const set: ParameterSet = { properties: {}, required: [], parameters: [] };
+  const usedKeys = new Set<string>();
+  for (const parameter of declared) {
     const name = parameter.name as string;
     const location = parameter.in as ParameterLocation;
     if (!['path', 'query', 'header', 'cookie'].includes(location)) continue;
     if (location === 'header' && IGNORED_HEADER_PARAMETERS.has(name.toLowerCase())) continue;
     const key = usedKeys.has(name) ? `${location}_${name}` : name;
     usedKeys.add(key);
-    const isRequired = location === 'path' || parameter.required === true;
-    const content = isRecord(parameter.content) ? Object.values(parameter.content).find(isRecord) : undefined;
-    const schema = isRecord(parameter.schema) ? parameter.schema : isRecord(content?.schema) ? content.schema : {};
-    properties[key] = typeof parameter.description === 'string' && parameter.description !== '' && typeof schema.description !== 'string'
-      ? { ...schema, description: parameter.description }
-      : schema;
-    if (isRequired) required.push(key);
-    parameters.push({
+    const required = location === 'path' || parameter.required === true;
+    set.properties[key] = withDescription(parameterSchema(parameter), parameter.description);
+    if (required) set.required.push(key);
+    set.parameters.push({
       key,
       name,
       in: location,
-      required: isRequired,
+      required,
       ...(typeof parameter.style === 'string' ? { style: parameter.style } : {}),
       ...(typeof parameter.explode === 'boolean' ? { explode: parameter.explode } : {}),
     });
   }
+  return set;
+}
 
-  let bodyKey: string | undefined;
-  let unsupported: string | undefined;
-  const body = deref(document, operation.requestBody, `the request body of ${where}`);
-  if (body) {
-    const content = isRecord(body.content) ? body.content : {};
-    const jsonType = Object.keys(content).find((type) => /^application\/(.+\+)?json\b/i.test(type));
-    if (jsonType) {
-      bodyKey = usedKeys.has('body') ? 'requestBody' : 'body';
-      const media = content[jsonType];
-      const schema = isRecord(media) && isRecord(media.schema) ? media.schema : {};
-      properties[bodyKey] =
-        typeof body.description === 'string' && body.description !== '' && typeof schema.description !== 'string'
-          ? { ...schema, description: body.description }
-          : schema;
-      if (body.required === true) required.push(bodyKey);
-    } else if (Object.keys(content).length > 0) {
-      unsupported = `its request body is ${Object.keys(content).join(', ')}; only application/json bodies are supported`;
-    }
+/** The JSON request body, if the operation has one: its input key and schema, or why it is unsupported. */
+function jsonBody(body: Json | undefined, taken: Set<string>): { key?: string; schema?: Json; required?: boolean; unsupported?: string } {
+  if (!body) return {};
+  const content = isRecord(body.content) ? body.content : {};
+  const jsonType = Object.keys(content).find((type) => /^application\/(.+\+)?json\b/i.test(type));
+  if (!jsonType) {
+    const types = Object.keys(content);
+    return types.length > 0 ? { unsupported: `its request body is ${types.join(', ')}; only application/json bodies are supported` } : {};
   }
+  const media = content[jsonType];
+  const schema = isRecord(media) && isRecord(media.schema) ? media.schema : {};
+  return { key: taken.has('body') ? 'requestBody' : 'body', schema: withDescription(schema, body.description), required: body.required === true };
+}
 
-  const text = [operation.summary, operation.description].filter((part): part is string => typeof part === 'string' && part.trim() !== '').join('\n\n');
-  const description = `${text.slice(0, MAX_DESCRIPTION_CHARS)}${text ? '\n\n' : ''}${info.method} ${path}`;
+function describeOperation(info: OpenApiOperationInfo, operation: Json): string {
+  const text = [operation.summary, operation.description]
+    .filter((part): part is string => typeof part === 'string' && part.trim() !== '')
+    .join('\n\n');
+  return `${text.slice(0, MAX_DESCRIPTION_CHARS)}${text ? '\n\n' : ''}${info.method} ${info.path}`;
+}
+
+function parseOperation(document: Json, path: string, method: string, item: Json, operation: Json): ParsedOperation {
+  const info = operationInfo(path, method, operation);
+  const where = `${info.method} ${path}`;
+  const { properties, required, parameters } = collectParameters(declaredParameters(document, item, operation, where));
+  const body = jsonBody(deref(document, operation.requestBody, `the request body of ${where}`), new Set(parameters.map((p) => p.key)));
+  if (body.key && body.schema) {
+    properties[body.key] = body.schema;
+    if (body.required) required.push(body.key);
+  }
   return {
     info,
-    description,
+    description: describeOperation(info, operation),
     parameters,
-    ...(bodyKey ? { bodyKey } : {}),
+    ...(body.key ? { bodyKey: body.key } : {}),
     inputSchema: { type: 'object', properties, ...(required.length > 0 ? { required } : {}) },
-    ...(unsupported ? { unsupported } : {}),
+    ...(body.unsupported ? { unsupported: body.unsupported } : {}),
   };
 }
 

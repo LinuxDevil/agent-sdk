@@ -7,6 +7,7 @@
 import { z, ZodTypeAny } from 'zod';
 import { ConfigurationError } from '../../execution/errors';
 import { defineTool, type DefinedTool } from '../defineTool';
+import { toolFailure } from '../built-in/toolFailure';
 import { jsonSchemaToZod } from '../mcp/schema';
 import {
   parseDocumentText,
@@ -268,7 +269,7 @@ function prune(schema: Record<string, unknown>, keys: string[]): Record<string, 
  */
 function encodePathValue(value: unknown, name: string): string {
   const text = Array.isArray(value) ? value.map(scalarText).join(',') : scalarText(value);
-  if (text === '.' || text === '..') throw new Error(`path parameter '${name}' cannot be '.' or '..'`);
+  if (text === '.' || text === '..') throw toolFailure(`path parameter '${name}' cannot be '.' or '..'`);
   return encodeURIComponent(text);
 }
 
@@ -307,10 +308,7 @@ function buildUrl(operation: ParsedOperation, values: Record<string, unknown>, b
   return url;
 }
 
-async function buildHeaders(operation: ParsedOperation, values: Record<string, unknown>, options: ResolvedOptions): Promise<Headers> {
-  const headers = new Headers({ accept: 'application/json, text/plain;q=0.9, */*;q=0.5' });
-  if (operation.bodyKey && values[operation.bodyKey] !== undefined) headers.set('content-type', 'application/json');
-
+function parameterHeaders(operation: ParsedOperation, values: Record<string, unknown>, headers: Headers): void {
   const cookies: string[] = [];
   for (const parameter of operation.parameters) {
     const value = values[parameter.key];
@@ -319,6 +317,12 @@ async function buildHeaders(operation: ParsedOperation, values: Record<string, u
     if (parameter.in === 'cookie') cookies.push(`${parameter.name}=${encodeURIComponent(scalarText(value))}`);
   }
   if (cookies.length > 0) headers.set('cookie', cookies.join('; '));
+}
+
+async function buildHeaders(operation: ParsedOperation, values: Record<string, unknown>, options: ResolvedOptions): Promise<Headers> {
+  const headers = new Headers({ accept: 'application/json, text/plain;q=0.9, */*;q=0.5' });
+  if (operation.bodyKey && values[operation.bodyKey] !== undefined) headers.set('content-type', 'application/json');
+  parameterHeaders(operation, values, headers);
 
   // Configured credentials are applied last so a model-supplied header never overrides them.
   const configured = typeof options.headers === 'function' ? await options.headers(operation.info) : options.headers;
@@ -330,6 +334,43 @@ async function buildHeaders(operation: ParsedOperation, values: Record<string, u
   return headers;
 }
 
+interface PendingRequest {
+  url: URL;
+  method: string;
+  headers: Headers;
+  body?: string;
+}
+
+/** The request that follows a redirect: 303 (and 301 / 302 after POST) become a bodyless GET. */
+function redirectedRequest(request: PendingRequest, status: number, next: URL): PendingRequest {
+  if (status === 303 || ((status === 301 || status === 302) && request.method === 'POST')) {
+    const headers = new Headers(request.headers);
+    headers.delete('content-type');
+    return { url: next, method: 'GET', headers };
+  }
+  return { ...request, url: next };
+}
+
+async function fetchOnce(
+  request: PendingRequest,
+  label: string,
+  options: ResolvedOptions,
+  signals: { combined: AbortSignal; timeout: AbortSignal; user?: AbortSignal }
+): Promise<Response> {
+  try {
+    return await options.fetch(request.url.href, {
+      method: request.method,
+      headers: request.headers,
+      body: request.body,
+      redirect: 'manual',
+      signal: signals.combined,
+    });
+  } catch (error) {
+    if (signals.timeout.aborted && !signals.user?.aborted) throw toolFailure(`${label} timed out after ${options.timeoutMs} ms`);
+    throw toolFailure(`${label} failed: ${errorMessage(error)}`);
+  }
+}
+
 async function sendRequest(
   operation: ParsedOperation,
   values: Record<string, unknown>,
@@ -337,36 +378,29 @@ async function sendRequest(
   options: ResolvedOptions,
   ctx: { abortSignal?: AbortSignal }
 ): Promise<OpenApiToolResult> {
-  const headers = await buildHeaders(operation, values, options);
-  let url = buildUrl(operation, values, baseUrl);
-  let method = operation.info.method;
-  let body = operation.bodyKey && values[operation.bodyKey] !== undefined ? JSON.stringify(values[operation.bodyKey]) : undefined;
+  const label = `${operation.info.method} ${operation.info.path}`;
+  let request: PendingRequest = {
+    url: buildUrl(operation, values, baseUrl),
+    method: operation.info.method,
+    headers: await buildHeaders(operation, values, options),
+    body: operation.bodyKey && values[operation.bodyKey] !== undefined ? JSON.stringify(values[operation.bodyKey]) : undefined,
+  };
   const timeout = AbortSignal.timeout(options.timeoutMs);
-  const signal = ctx.abortSignal ? AbortSignal.any([ctx.abortSignal, timeout]) : timeout;
+  const signals = { combined: ctx.abortSignal ? AbortSignal.any([ctx.abortSignal, timeout]) : timeout, timeout, user: ctx.abortSignal };
 
-  let response: Response;
   for (let hop = 0; ; hop++) {
-    try {
-      response = await options.fetch(url.href, { method, headers, body, redirect: 'manual', signal });
-    } catch (error) {
-      if (timeout.aborted && !ctx.abortSignal?.aborted) throw new Error(`${operation.info.method} ${operation.info.path} timed out after ${options.timeoutMs} ms`);
-      throw new Error(`${operation.info.method} ${operation.info.path} failed: ${errorMessage(error)}`);
-    }
+    const response = await fetchOnce(request, label, options, signals);
     const location = response.headers.get('location');
-    if (response.status < 300 || response.status >= 400 || response.status === 304 || !location) break;
-    const next = new URL(location, url);
+    if (response.status < 300 || response.status >= 400 || response.status === 304 || !location) {
+      return shapeResponse(response, options.maxResponseChars ?? DEFAULT_MAX_RESPONSE_CHARS);
+    }
+    const next = new URL(location, request.url);
     if (next.origin !== baseUrl.origin) {
-      throw new Error(`${operation.info.method} ${operation.info.path} was redirected to ${next.origin}, which is not the configured origin ${baseUrl.origin}; not following (credentials stay on the configured origin)`);
+      throw toolFailure(`${label} was redirected to ${next.origin}, which is not the configured origin ${baseUrl.origin}; not following (credentials stay on the configured origin)`);
     }
-    if (hop >= MAX_REDIRECTS) throw new Error(`${operation.info.method} ${operation.info.path} was redirected more than ${MAX_REDIRECTS} times`);
-    if (response.status === 303 || ((response.status === 301 || response.status === 302) && method === 'POST')) {
-      method = 'GET';
-      body = undefined;
-      headers.delete('content-type');
-    }
-    url = next;
+    if (hop >= MAX_REDIRECTS) throw toolFailure(`${label} was redirected more than ${MAX_REDIRECTS} times`);
+    request = redirectedRequest(request, response.status, next);
   }
-  return shapeResponse(response, options.maxResponseChars ?? DEFAULT_MAX_RESPONSE_CHARS);
 }
 
 async function shapeResponse(response: Response, maxChars: number): Promise<OpenApiToolResult> {
