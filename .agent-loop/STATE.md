@@ -3,7 +3,7 @@
 Mission: make `@loushy/build-ai-agent` the best TypeScript AI agent SDK (capabilities and DX) against
 Vercel eve and MaxGfeller/open-harness. This file is the loop's memory: read it first, update it last.
 
-- Loop started: 2026-10-01. Iterations completed: 17. Since iteration 12 the loop runs on the owner's Windows checkout (Node 26); see BRIEF.md and BASELINE.md.
+- Loop started: 2026-10-01. Iterations completed: 18. Since iteration 12 the loop runs on the owner's Windows checkout (Node 26); see BRIEF.md and BASELINE.md.
 - Audit: `.agent-loop/AUDIT.md`, refreshed 2026-10-01 at main `a03b1a3` (eve 0.69.0 @682c7a6, open-harness 0.7.0 @026e8d9).
   Reference agents (3 agents x 3 SDKs, measured): `.agent-loop/reference-agents/`. Older material: `docs/research/*.md`, `docs/plan/tickets.md`.
   Audit is stale when: a competitor ships a new major, or more than ~25 PRs land after `a03b1a3` (re-run the DX measurement then).
@@ -187,7 +187,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D11 | Upgrade `ai` peer range | superseded by D22-D29 | |
 | D14 | Deployed node server: sessions, SSE, bearer auth (shared `src/server/chatRoutes.ts`) | ✅ #119 | |
 | D15 | React hook `useLoushyAgent` (`./react` subpath, reducer + SSE/NDJSON parser) | ✅ #85 | |
-| D16 | ESLint ratchet (433 warnings -> 0, `error` severity) | ⬜ | run in a quiet batch |
+| D16 | ESLint ratchet (433 warnings -> 0, `error` severity) (345 -> 0; three warn rules are now `error`; `eslint src --max-warnings 0`; includes D41.2 and the last two plain errors) | ✅ #181 | run in a quiet batch |
 | D20 | `mcpServers` in `AgentSpec` | ✅ #73 | |
 | D21 | Approvals for `createAgent()` | ✅ #75 | |
 | D22 | Own the tool contract (`inputSchema` + `execute`, no `ai.tool()`) | ✅ #79 | |
@@ -219,7 +219,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D39 | Clean `/testing`; deprecate `data/` | ✅ #169 | |
 | D40 | Heavy deps to optional peers (dockerode, MCP SDK, prompts; undici/yaml stay) | ✅ #88 | |
 | D41 | One event system (executor emits only `AgentEvent`; `createAgent({ onEvent })`; legacy adapter in `legacyEvents.ts`; `streaming` option deleted) | ✅ #180 | |
-| D41.2 | Delete `injectStreamingController` and `AgentExecutionOptions.streaming` (done inside D16) | ⬜ | D41 |
+| D41.2 | Delete `injectStreamingController` and `AgentExecutionOptions.streaming` (done inside D16) | ✅ #181 | D41 |
 | D42 | Shared chunks across entries (tsup `splitting: true` for ESM and CJS; `Symbol.for` brands on `SDKError` and `HookRegistry`; dist 25.2 MB -> 8.8 MB) | ✅ #171 | |
 | D43 | Checkpoint history (memory, SQLite migration 2, local storage; `historyLimit`) | ✅ #98 | |
 | D43.2 | `KVCheckpointStore` history (list key per session) and Forge `FileCheckpointStore` history (KV history index + entries; Forge file store tolerant of partial writes) | ✅ #159 | D43 |
@@ -368,6 +368,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | #178 | D2.3 | merged (squash) | error-code sweep; vitest crash cause and lock |
 | #179 | Y7.3 | merged (squash) | remote approval proxying |
 | #180 | D41 | merged (squash) | one event system |
+| #181 | D16, D41.2 | merged (squash) | ESLint ratchet to zero (full health run on the synced branch before merge) |
 
 ## Main health
 
@@ -487,12 +488,40 @@ CI runs only on `pull_request`, so "main is green" means the last PR's CI run pa
 - Open decision for the owner (D41): with a listener set, `send()` delivers one `text.delta` per step, not chunks; switching to the streaming path is small but changed Agent Forge results.
 - In flight: D16 (ESLint ratchet, alone), which also carries D41.2 and the last two plain errors.
 
+### Iteration 18 (2026-10-02), the last
+- Merged: #181 (D16 + D41.2). Lint is 0 errors / 0 warnings and enforced (`--max-warnings 0`, rules at `error`).
+- Health run on the D16 branch synced with main (tree identical to main 332385c): tsc, lint clean, test:types, builds, 171 snippets, llms, coverage 2955 passed / 4 skipped, fallow 0 above threshold, all four Forge checks green, first try.
+- Final numbers: 111 PRs merged since the loop started (#68, #72-#181 minus none open); matrix 48 ✅ / 2 ⚠️ / 1 ❌ of 51 (was 16/15/20); 8 of 8 differentiators shipped; lint warnings 433 -> 0; tests 1,921 -> 2,955; open PRs: none.
+
+## After the loop
+
+Owner actions (nothing here was changed by the loop):
+- Publish to npm. `npm run pack-smoke` passes. npm 11 needs an explicit `--tag` for a prerelease; publish the SDK before `create-loushy-agent`.
+- `files` ships 11 `*.test-d.ts`, 3 `*.testkit.ts` and 1 snapshot from `src/` (about 58 KB); suggested exclusions `!src/**/*.test-d.ts`, `!src/**/*.testkit.ts`, `!src/**/__snapshots__`.
+- Installing from GitHub would need a `prepare` script.
+- Decide whether `send()` with a listener should stream model calls so text deltas match `stream()` (D41 note).
+- A stray `/resume.fixed.ts` at the root of the old cloud container (from the previous environment).
+
+Known limits without tickets (candidates for a next round):
+- Trace viewer (the one feature-level ⚠️ in the matrix).
+- Docker sandbox features (abort cleanup, egress through the broker) were tested against a dockerode fake only; run them against a real Linux Engine.
+- Reasoning: option names for `ai` 6 provider packages unverified; OpenRouter does not return reasoning text; OpenAI encrypted reasoning items are not carried between steps; `reasoning` cannot be a per-run function.
+- Registry: the permission manifest is shown, not enforced; no hosted registry.
+- ACP: no `fs/*` / `terminal/*`, no `session/load`, text prompts only.
+- Channels: a pending `ask_question` in Slack or Discord is lost on restart; function-form `approvers` fail closed after a restart.
+- Sub-agents: nested fingerprints are stored but not compared on resume; a remote sub-agent's token usage is not added to the lead's totals; failed or cancelled tasks cannot be resumed.
+- Ollama on `ai` 6/7 with zod 4 is untested; the scaffold keeps Ollama on `ai` 4.
+- `skipLibCheck: false` consumers: `dist/index.d.ts` still references zod types outside the spec schemas; missing types for optional peers; TS1479 for ESM-only `ai` 7 under node16.
+- Test files are not type-checked by `tsc` in this repo (158 pre-existing errors when they are).
+- The native vitest crash on Node 26 / Windows (two workers bundling with esbuild) is avoided by a lock in the deploy tests, not fixed; it can still hit a coverage run. `src/security/credentialBroker.test.ts` end-to-end and `guardrails.test.ts` timeout tests are flaky under load.
+- The audit (`AUDIT.md`) is from main `a03b1a3` with eve 0.69.0 and open-harness 0.7.0: more than 100 PRs have landed since, so re-run the competitor audit and the DX measurement before planning another round.
+
 ## Plan to the end (owner: run every batch, no check-ins)
 
 One hub ticket per batch (AgentExecutor / resume / toolCallExecution), one package.json ticket per batch.
 
-Done through 17. Order from here (slots refilled as tickets merge):
-18. In flight: D16 ESLint ratchet alone (with D41.2 and the last two plain errors).
+Done through 18: every ticket in the tree is merged. Order from here (slots refilled as tickets merge):
+Nothing is in flight and nothing is planned. Candidates if the loop is restarted are listed under "After the loop" below.
 Then: final health run, AUDIT refresh note, scorecard artifact brought up to date.
 ## Subagent brief (canonical copy)
 

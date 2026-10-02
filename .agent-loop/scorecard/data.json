@@ -1,9 +1,9 @@
 {
  "date": "2026-10-02",
- "iterations": 17,
- "prsMerged": 110,
+ "iterations": 18,
+ "prsMerged": 111,
  "differentiatorsShipped": 8,
- "lintWarnings": 345,
+ "lintWarnings": 0,
  "tests": "2,955",
  "matrix": [
   [
@@ -909,6 +909,11 @@
     "D41",
     "One event system: AgentEvent listeners; the old onEvent API is a deprecated adapter",
     180
+   ],
+   [
+    "D16",
+    "ESLint ratchet: 345 warnings to 0, and the warning rules are now errors",
+    181
    ]
   ],
   "P · UI bindings, channels, schedules": [
@@ -979,13 +984,8 @@
    ]
   ]
  },
- "inFlight": [
-  [
-   "D16",
-   "ESLint ratchet, alone on the repo: fix the 345 warnings with no behavior change, then make the warn rules errors. Also deletes the last dead streaming hook and converts the last two plain errors."
-  ]
- ],
- "inFlightNote": "This is the last ticket. After it: a final full health run and a last refresh of this page.",
+ "inFlight": [],
+ "inFlightNote": "Every ticket is merged and there are no open pull requests. What is left is listed under Decisions and notes: the owner's publish steps and the known limits that have no ticket.",
  "remaining": {
   "U · Correctness": [],
   "V · Run loop": [],
@@ -993,25 +993,18 @@
   "X · Tools, permissions, hooks": [],
   "Y · Sub-agents": [],
   "Z · MCP": [],
-  "D · DX, CLI, packaging": [
-   [
-    "D16",
-    "ESLint ratchet: 345 warnings to 0, then the warn rules become errors",
-    "",
-    18
-   ]
-  ],
+  "D · DX, CLI, packaging": [],
   "P · UI bindings, channels, schedules": []
  },
  "notes": [
-  "<strong>All eight differentiators are shipped</strong> and 48 of 51 matrix rows are at parity or better. The one missing row is npm publication, which is the owner's action. Partial: no trace viewer (not ticketed); the CLI scaffold cannot be used from npm until the package is published.",
-  "<strong>Main passes the full local suite</strong> (Windows, Node 26): typecheck, lint, 2,955 tests with coverage, fallow, 171 docs snippets and the four Agent Forge checks. The last run needed two retries of the coverage step: one flaky end-to-end test (passes alone) and one native vitest crash (see below).",
-  "<strong>Owner actions before publishing</strong> (found by the pack-and-install smoke test, nothing was changed): <code>files</code> ships one type-test file from <code>src/</code>; npm 11 needs an explicit <code>--tag</code> for a prerelease; publish the SDK before <code>create-loushy-agent</code>; installing straight from GitHub would need a <code>prepare</code> script.",
+  "<strong>The loop is finished.</strong> 111 pull requests merged over 18 iterations, none open. 48 of 51 matrix rows are at parity or better (16 at the start), and all eight differentiators are shipped. Lint warnings went from 433 to 0 and are now enforced as errors; tests went from 1,921 to 2,955.",
+  "<strong>Main passes the full local suite</strong> (Windows, Node 26) at the final commit: typecheck, lint with zero warnings, 2,955 tests with coverage, fallow, 171 docs snippets and the four Agent Forge checks, all on the first try. CI was not awaited (owner instruction); it pins Node 22.",
+  "<strong>The three rows not at parity:</strong> npm publication is the owner's action; the CLI scaffold cannot be used from npm until then; there is no trace viewer (metrics and cost are shipped).",
+  "<strong>Owner actions before publishing</strong> (nothing was changed): publish the SDK before <code>create-loushy-agent</code>; npm 11 needs an explicit <code>--tag</code> for a prerelease; <code>files</code> ships 15 test-only files from <code>src/</code> (about 58 KB), with suggested exclusions in STATE.md; installing straight from GitHub would need a <code>prepare</code> script. <code>npm run pack-smoke</code> checks the packed tarball end to end and passes.",
   "<strong>Open decision:</strong> with an event listener set, <code>send()</code> delivers text as one delta per step, not in chunks. Making it identical to <code>stream()</code> is a small change but altered Agent Forge results when tried.",
-  "<strong>What was verified how:</strong> every PR got typecheck and targeted tests after syncing with main, then a full run per group. Docker sandbox features were tested against a Docker fake only (no daemon on the machine). Reasoning option names were checked against the installed provider packages, not against live APIs; ai v6 provider packages were not installed.",
-  "<strong>Vitest crash explained:</strong> a native crash of the vitest process on Node 26 / Windows when two test workers bundle with esbuild at once. A lock in the deploy tests avoids it there; it can still hit a coverage run occasionally and passes on retry.",
-  "<strong>Breaking or model-visible changes shipped pre-1.0</strong> are all in the CHANGELOG with migration notes; the largest are the removal of unwired donor-era modules, secret-free sandbox environments, strict CLI flags, the default channel approver, and the deprecation of the old <code>onEvent</code> / <code>ExecutionEvent</code> API.",
-  "<strong>Limits without tickets:</strong> the registry's permission manifest is shown but not enforced; ACP has no file or terminal methods; a pending <code>ask_question</code> in Slack or Discord is lost on restart; sub-agent fingerprints are stored but not compared on resume; OpenRouter does not return reasoning text; a remote sub-agent's token usage is not added to the lead's totals.",
-  "<strong>Owner instructions in force:</strong> branches are never deleted; CI is not awaited (it pins Node 22, the local runs use Node 26); npm publish and release config are the owner's."
+  "<strong>What was verified how:</strong> every PR got typecheck and targeted tests after syncing with main, then a full run per group; the last PR got the full run before merging. Docker sandbox features were tested against a Docker fake only (no daemon on the machine). Reasoning option names were checked against the installed provider packages, not live APIs. The suite was also run with ai 7 and with zod 4 installed.",
+  "<strong>Breaking or model-visible changes shipped pre-1.0</strong> are all in the CHANGELOG with migration notes. The largest: unwired donor-era modules removed; several exported types tightened from <code>any</code>; secret-free sandbox environments; strict CLI flags; the default channel approver; the old <code>onEvent</code> / <code>ExecutionEvent</code> API deprecated.",
+  "<strong>Known limits without tickets:</strong> the registry's permission manifest is shown but not enforced; ACP has no file or terminal methods; a pending <code>ask_question</code> in Slack or Discord is lost on restart; sub-agent fingerprints are stored but not compared on resume; OpenRouter does not return reasoning text; a remote sub-agent's token usage is not added to the lead's totals; Ollama on ai 6/7 is untested. The full list is in STATE.md under \"After the loop\".",
+  "<strong>Before another round:</strong> the competitor audit dates from before these 111 PRs (eve 0.69.0, open-harness 0.7.0) and should be re-run. Branches were never deleted (owner instruction)."
  ]
 }
