@@ -1,0 +1,70 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Petstore", "version": "1.0.0" },
+  "servers": [{ "url": "https://petstore.example.com/v1" }],
+  "paths": {
+    "/pets": {
+      "get": {
+        "operationId": "listPets",
+        "summary": "List pets",
+        "description": "Returns pets, newest first.",
+        "tags": ["pets"],
+        "parameters": [
+          { "name": "limit", "in": "query", "description": "How many to return", "schema": { "type": "integer", "minimum": 1, "maximum": 100 } },
+          { "name": "tag", "in": "query", "schema": { "type": "array", "items": { "type": "string" } } },
+          { "name": "X-Request-Source", "in": "header", "schema": { "type": "string" } }
+        ]
+      },
+      "post": {
+        "operationId": "createPet",
+        "summary": "Create a pet",
+        "tags": ["pets"],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NewPet" } } }
+        }
+      }
+    },
+    "/pets/{petId}": {
+      "parameters": [{ "$ref": "#/components/parameters/PetId" }],
+      "get": {
+        "operationId": "getPet",
+        "summary": "Get one pet",
+        "tags": ["pets"],
+        "parameters": [{ "name": "X-Tenant", "in": "header", "required": true, "schema": { "type": "string" } }]
+      },
+      "delete": { "operationId": "deletePet", "summary": "Delete a pet", "tags": ["pets"] },
+      "put": {
+        "summary": "Replace a pet",
+        "requestBody": { "$ref": "#/components/requestBodies/PetBody" }
+      }
+    },
+    "/pets/{petId}/photo": {
+      "post": {
+        "operationId": "uploadPhoto",
+        "requestBody": { "content": { "multipart/form-data": { "schema": { "type": "object" } } } }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "PetId": { "name": "petId", "in": "path", "required": true, "description": "The pet's id", "schema": { "type": "string" } }
+    },
+    "requestBodies": {
+      "PetBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NewPet" } } } }
+    },
+    "schemas": {
+      "NewPet": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "kind": { "type": "string", "enum": ["dog", "cat"] },
+          "nickname": { "type": "string", "nullable": true },
+          "owner": { "$ref": "#/components/schemas/Owner" }
+        }
+      },
+      "Owner": { "type": "object", "properties": { "email": { "type": "string" } } }
+    }
+  }
+}

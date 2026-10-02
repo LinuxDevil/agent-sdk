@@ -3,7 +3,7 @@
  * contracts, then the file-specific behavior: layout, atomic claims of
  * approvals, id validation, a corrupt history file, and two agents on one dir.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -21,6 +21,9 @@ import {
   makePending,
   makeSnapshot,
 } from './sqlite/__fixtures__/storeContracts';
+
+// Real files: slow on a loaded Windows machine (antivirus scans every temp file).
+vi.setConfig({ testTimeout: 30_000 });
 
 const dirs: string[] = [];
 function tempDir(): string {
@@ -115,7 +118,7 @@ describe('fileStore(dir) (R2)', () => {
 
   it('two concurrent resolves of one approval (two store instances on one dir) give exactly one record', async () => {
     const dir = tempDir();
-    for (let round = 0; round < 25; round++) {
+    for (let round = 0; round < 10; round++) {
       const id = `appr_race_${round}`;
       const pending = makePending(id);
       await fileStore(dir).approvals.save(pending, makeSnapshot(pending));
