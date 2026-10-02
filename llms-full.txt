@@ -5008,7 +5008,7 @@ Notes:
 
 `createAgent()` is built on `AgentExecutor`, which stays available when you
 want to own the wiring: the provider, the `ToolRegistry`, the stores and the
-resume calls are all explicit. Each snippet below says which `createAgent()`
+resume calls are all explicit (see [The executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md)). Each snippet below says which `createAgent()`
 call it corresponds to.
 
 `AgentExecutor.execute()` with a `sessionId` and a `checkpointStore` is
@@ -10063,7 +10063,8 @@ const result = await agent.send('Fix the failing test in src/math.test.ts');
 
 ### Advanced: the executor API
 
-`createAgent()` runs `AgentExecutor` underneath. To own the wiring yourself,
+`createAgent()` runs `AgentExecutor` underneath (see
+[The executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md)). To own the wiring yourself,
 register the tools in a `ToolRegistry` and call the executor; the pause is
 the same, and `resumeAfterApproval(...)` is what `agent.approvals.resolve()`
 calls once a human approves:
