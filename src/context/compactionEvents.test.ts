@@ -207,24 +207,24 @@ describe('createAgent({ hooks, compaction }) options (LOU-W3.2)', () => {
     expect(seen.filter((s) => s === 'tool:fetch_page')).toHaveLength(4);
   });
 
-  it('lets a hook add events with ctx.emit in streamed runs only', async () => {
+  it('lets a hook add events with ctx.emit when the run has listeners or is streamed', async () => {
     const hook: AgentHook = {
       name: 'emitter',
       preGenerate: (ctx) =>
         ctx.emit?.({ type: 'compaction.start', strategy: 'custom', tokensBefore: 1, contextWindow: 2, thresholdTokens: 3 }),
     };
+    const expected = ['run.start', 'step.start', 'compaction.start', 'text.delta', 'text.done', 'step.done', 'run.done'];
     const agent = createAgent({ provider: mockModel(['hi', 'hi']), hooks: [hook] });
     const events = await collect(agent.stream('hello'));
-    expect(events.map((e) => e.type)).toEqual([
-      'run.start',
-      'step.start',
-      'compaction.start',
-      'text.delta',
-      'text.done',
-      'step.done',
-      'run.done',
-    ]);
+    expect(events.map((e) => e.type)).toEqual(expected);
+    // No listener: `ctx.emit` is not set, and the run is unaffected.
     expect((await agent.send('hello')).text).toBe('hi');
+
+    // M9: send() with a listener sets it too.
+    const heard: AgentEvent[] = [];
+    const listening = createAgent({ provider: mockModel(['hi']), hooks: [hook], onEvent: (event) => heard.push(event) });
+    expect((await listening.send('hello')).text).toBe('hi');
+    expect(heard.map((e) => e.type)).toEqual(expected);
   });
 
   it('rejects a summarizer together with a strategy, and a threshold outside (0, 1]', () => {

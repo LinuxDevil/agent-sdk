@@ -258,9 +258,10 @@ export interface ExecuteOptions extends PermissionOptions {
   /**
    * LOU-D41: called with every {@link AgentEvent} of the run, synchronously
    * as it happens - the same events, in the same order, as `stream()`
-   * yields, on `execute()` too (which still generates each model step whole,
-   * so its text arrives as one `text.delta` per step). Sub-agents' events
-   * arrive tagged with `subagent`. See docs/streaming.md#listening-without-iterating.
+   * yields, on `execute()` too. M9: with a listener, `execute()` streams each
+   * model call when the provider can, so a step's text arrives as several
+   * `text.delta` events, as on `stream()` (see {@link ExecuteOptions.streamModelCalls}).
+   * Sub-agents' events arrive tagged with `subagent`. See docs/streaming.md#listening-without-iterating.
    *
    * @example
    * ```ts
@@ -274,6 +275,20 @@ export interface ExecuteOptions extends PermissionOptions {
    * (a one-time `console.warn` says so).
    */
   onEvent?: (event: ExecutionEvent) => void;
+  /**
+   * M9: whether a run with listeners (`onAgentEvent` / `onEvent`) streams its
+   * model calls through `provider.stream()` when the provider can, so each
+   * step's text reaches the listeners as several `text.delta` events.
+   * Default `true`; `false` generates each step whole (one `text.delta` per
+   * step). Ignored by `stream()`, which always streams, and by a run without
+   * listeners, which always generates.
+   *
+   * @example
+   * ```ts
+   * await AgentExecutor.execute({ agent, input: 'Hi', provider, onAgentEvent, streamModelCalls: false });
+   * ```
+   */
+  streamModelCalls?: boolean;
   approvalStore?: ApprovalStore;
   /**
    * Durable execution: with `checkpointStore`, the run is checkpointed under
@@ -624,7 +639,9 @@ export interface ExecutionResult<TObject = unknown> {
  */
 export class AgentExecutor {
   /**
-   * Execute agent without streaming
+   * Runs the agent to its result. With listeners (`onAgentEvent` /
+   * `onEvent`), its model calls are streamed to them (M9; see
+   * {@link ExecuteOptions.streamModelCalls}).
    */
   static async execute(options: ExecuteOptions): Promise<ExecutionResult> {
     // AgentExecutor is a static, instance-free API - there is no
@@ -991,15 +1008,17 @@ export class AgentExecutor {
 
   /**
    * LOU-X4: the step's text after the output guardrails (they check the final
-   * reply, and every step's text when streamed, before it is emitted), or the
-   * blocked run's result.
+   * reply, and every step's text when the run is iterated - a `stream()` -
+   * before it is emitted), or the blocked run's result. `send()` / `execute()`
+   * with listeners stream their model calls (M9) but are not iterated: only
+   * the final reply is checked, as without listeners.
    */
   private static async guardOutput(
     options: ExecuteOptions,
     state: AgentRunState,
     { text, toolCalls }: GenerateResult
   ): Promise<string | ExecutionResult> {
-    if (!text || (toolCalls?.length && !runEventsOf(options)?.streamed)) return text;
+    if (!text || (toolCalls?.length && !runEventsOf(options)?.iterated)) return text;
     const checked = await checkOutputGuardrails(options, text, state.messages);
     return 'tripped' in checked ? this.stopForGuardrail(options, state, checked.tripped) : checked.text;
   }

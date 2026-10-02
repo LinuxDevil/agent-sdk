@@ -58,8 +58,9 @@ strategy could not shrink anything, `tokensAfter` equals `tokensBefore`; when it
 failed (or the summarizer failed and the hook fell back to pruning), `error` is
 set and the run continues. `summary` is `true` when old turns were replaced by
 a summary (the text itself is not sent; use `onCompaction` for it). A
-non-streaming `send()` emits no events. Hooks add their own events with
-`ctx.emit?.(...)` on the `preGenerate` context, which exists only in streamed runs.
+`send()` without a listener emits no events. Hooks add their own events with
+`ctx.emit?.(...)` on the `preGenerate` context, which exists when the run has
+listeners (`createAgent({ onEvent })`, `onAgentEvent`) or is streamed.
 
 ## Compacting a run
 

@@ -163,7 +163,8 @@ export type HookEventPayload = Extract<AgentEventPayload, { type: 'compaction.st
 export interface GenerateHookContext extends HookContext {
   /**
    * Adds an event to the run's stream, inside the current step (LOU-W3.2).
-   * Set only when the run is streamed (`agent.stream()`, `session.stream()`,
+   * Set when the run has listeners or is streamed (`createAgent({ onEvent })`,
+   * `onAgentEvent`, `agent.stream()`, `session.stream()`,
    * `AgentExecutor.stream()`); `ctx.emit?.(...)` is a no-op otherwise. The run
    * fills in `runId`, `seq`, `timestamp` and `v`, and tags a sub-agent's events.
    */
