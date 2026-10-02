@@ -24,6 +24,9 @@ import { BackgroundTasks, subagentOptionsOf, withSubagentOptions, type SubagentO
 import { busy, taskNotFound, TaskSessions, type TaskMode, type TaskRecord } from './taskSessions';
 import { SDKError } from '../execution/errors';
 import { toolFailure } from '../tools/built-in/toolFailure';
+import { fromEventUsage, remoteModelKey, usageSince } from '../execution/runUsage';
+import type { RunUsage } from '../models/usage';
+import type { AgentEventUsage } from '../execution/agentEvents';
 
 /** Name of the tool the lead model delegates with. */
 const TASK_TOOL = 'task';
@@ -192,7 +195,7 @@ function taskResult(name: string, result: ExecutionResult, maxSteps: number, tas
 }
 
 type TaskArgs = { agent: string; prompt: string; description: string; background?: boolean; taskId?: string; mode?: TaskMode };
-type ToolOptions = { abortSignal?: AbortSignal } | undefined;
+type ToolOptions = { abortSignal?: AbortSignal; onDelegatedUsage?: (usage: RunUsage) => void } | undefined;
 
 /** The child conversation a `task` call runs in (LOU-Y6). */
 interface ChildTask {
@@ -251,10 +254,21 @@ async function runRemoteTask(remote: RemoteSubagent, args: TaskArgs, toolOptions
   await task.save({ messages: [], remoteSessionId: sessionId });
   const decision = paused && { approvalId: paused.snapshot.pendingToolCall.id, approved: paused.decision.approved, note: paused.decision.note };
   const pausable = scope?.runtime.approvalStore !== undefined;
+  // M10b: the remote run's usage rolls into the lead's totals, like a local child's (LOU-V5). A continuation reports
+  // the remote run's usage from its start: only what it spent since the pause (kept on the pause snapshot) is added.
+  const reportUsage = scope?.onDelegatedUsage ?? toolOptions?.onDelegatedUsage;
+  let reported: RunUsage | undefined;
+  const onUsage = (usage: AgentEventUsage) => {
+    reported = fromEventUsage(usage, remoteModelKey(args.agent));
+    reportUsage?.(usageSince(reported, paused ? paused.snapshot.usage : undefined));
+  };
   try {
-    return await remote.run(args.prompt, { name: args.agent, signal: toolOptions?.abortSignal, sessionId, taskId: task.taskId, pausable, decision });
+    return await remote.run(args.prompt, { name: args.agent, signal: toolOptions?.abortSignal, sessionId, taskId: task.taskId, pausable, decision, onUsage });
   } catch (error) {
-    if (error instanceof SubagentApprovalPause) error.resumeArgs = { taskId: task.taskId };
+    if (error instanceof SubagentApprovalPause) {
+      error.resumeArgs = { taskId: task.taskId };
+      error.snapshot.usage = reported;
+    }
     throw error;
   }
 }
