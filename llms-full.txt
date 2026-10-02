@@ -10310,7 +10310,10 @@ Where the conversations live:
   `withSubagentOptions(subagents, { sessions })`.
 - Otherwise (no session store, or a lead run without a `sessionId`) a task
   lives in memory for that one `execute()` / `send()` call: a run that pauses
-  for approval and is resumed starts with none.
+  for approval and is resumed starts with none. A sub-agent that the approval
+  itself resumes still answers the lead (as the `task` or `agent_await`
+  result), but it cannot be continued by `taskId` afterwards; use a session
+  store for that.
 
 Only tasks that finished (`stop`, `length` or `max-steps`) are saved, so a
 task that failed or was cancelled cannot be continued. Errors reach the lead
@@ -10409,15 +10412,56 @@ on `result` before your `onRunEnd` sees it.
 Limits:
 
 - A lead run that pauses for approval (`finishReason: 'awaiting-approval'`)
-  ends there: its background tasks are cancelled (or awaited) like at any
-  other end, and the resumed run starts with none. The resumed run is a
-  separate run with no link to the paused one's tasks (it may even run in
-  another process), so they cannot be kept alive across the pause.
+  ends there: its background tasks still queued or running are cancelled (or
+  awaited) like at any other end, and the resumed run starts with none. The
+  resumed run is a separate run with no link to the paused one's tasks (it
+  may even run in another process), so they cannot be kept alive across the
+  pause.
 - A background sub-agent that needs approval stops with
   `status: 'awaiting-approval'` (with the child's `approvalId` and
-  `toolName`); its call does not run, and it cannot be resumed through the
-  approval store. Run that task synchronously (`background: false`) when it
-  may need approval.
+  `toolName`); its call does not run yet. It continues only when the lead
+  waits for it with `agent_await` (the `task` and `agent_status` tool
+  descriptions tell the model so). Then the **lead pauses** on that approval,
+  like for a synchronous sub-agent: the lead's result has
+  `finishReason: 'awaiting-approval'`, the pending approval names the child's
+  call with `subagentPath: ['<agent>']`, and it is listed by
+  `agent.approvals.list()`. `approvals.resolve()` (or `resume()` after a
+  restart, with a durable store) runs or rejects the child's call, lets the
+  child finish, and the continued lead gets the child's answer as the
+  `agent_await` result (`status: 'done'` with `result`, or `'failed'`). The
+  child's usage is added to the lead's, and its conversation is saved under
+  its `taskId` like any task's, so `task({ taskId })` can continue it.
+- If the child pauses again, the lead pauses again with the next approval. If
+  one `agent_await` call waits on several tasks that are all paused, the lead
+  pauses on them one after another, then that call returns every answer at
+  once.
+- A task that is still `awaiting-approval` when the lead ends without having
+  awaited it is reported in `result.backgroundTasks` with that status and
+  cannot be resumed: the model chose not to wait for it.
+
+```ts
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+const shell = defineTool({
+  name: 'shell',
+  description: 'Runs a shell command',
+  input: z.object({ cmd: z.string() }),
+  needsApproval: true,
+  execute: async ({ cmd }) => `ran ${cmd}`,
+});
+const coder = createAgent({ provider, instructions: 'You code.', tools: [shell], description: 'Fixes code' });
+const lead = createAgent({ provider, instructions: 'You lead.', subagents: { coder } });
+
+// The lead starts `coder` with task({ background: true }), then calls agent_await on it.
+const paused = await lead.send('Fix the failing test in the background, then report.');
+if (paused.finishReason === 'awaiting-approval' && paused.approvalId) {
+  const [pending] = await lead.approvals.list(); // { toolName: 'shell', args: { cmd: ... }, subagentPath: ['coder'] }
+  console.log(pending?.toolName, pending?.args);
+  const result = await lead.approvals.resolve({ id: paused.approvalId, approved: true });
+  console.log(result.text); // agent_await returned the coder's answer to the lead
+}
+```
 
 ## Dynamic catalogs
 
@@ -10660,6 +10704,8 @@ Guarantees and limits:
 - Token usage keeps adding up across the pause: the sub-agent's usage before
   the pause is in the paused result, and what it spends after the resume is
   added to the resumed lead's `result.usage`.
+- A background sub-agent's approval pauses the lead when the lead awaits it
+  with `agent_await`; see [Background sub-agents](#when-the-lead-run-ends).
 
 #### Advanced: the executor API
 
