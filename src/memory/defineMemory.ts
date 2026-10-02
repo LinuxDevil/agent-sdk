@@ -17,6 +17,8 @@ export interface MemoryItem {
 
 /** Where a slot's items are kept, per scope key. `list()` returns the newest items first. */
 export interface MemoryProvider {
+  /** The order `list()` gives for a query: `'newest'` (default) or `'relevance'` (by meaning). Only changes how the `recall_<name>` tool is described. */
+  readonly ranking?: 'newest' | 'relevance';
   list(scopeKey: string, options?: { limit?: number; query?: string }): Promise<MemoryItem[]>;
   /** Stores `item` and returns it with its `id` and `createdAt`. */
   add(scopeKey: string, item: { text: string; metadata?: Record<string, unknown> }): Promise<MemoryItem>;
