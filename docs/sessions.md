@@ -40,7 +40,7 @@ while a turn is running or waiting to start:
 
 - `'wait'` (the default): it waits and runs as its own turn, as above.
 - `'queue'`: its input joins that turn, like
-  [`run.enqueue()`](./streaming.md#queued-input): it is added after the
+  [`run.enqueue()`](./queue-and-steer.md#queued-input): it is added after the
   current step's tool results and the turn's next model call sees it. The call
   resolves with that turn's result (its own `signal` does not apply to the
   turn), and the transcript saved when the turn ends holds the queued user
@@ -51,7 +51,7 @@ while a turn is running or waiting to start:
   all. If the turn fails, the call rejects with the same error; in a durable
   session the input stays in the turn's checkpoint and `resume()` applies it.
 - `'steer'`: like `'queue'`, but the input joins through
-  [`run.steer()`](./streaming.md#steering): if the turn's model call has not
+  [`run.steer()`](./queue-and-steer.md#steering): if the turn's model call has not
   emitted anything yet, it is aborted and made again with the new message, and
   tool calls of the turn that have not started are not run. Otherwise it waits
   for the next safe point, as with `'queue'`. The call resolves with the
@@ -263,19 +263,19 @@ generated Worker uses `KVCheckpointStore`, see [Deployment](deployment.md)).
 re-exported from the root entry, so importing the SDK never loads it):
 
 ```ts
-import { createAgent, AgentExecutor } from '@lousho/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
 
 const store = new SqliteStore('./.lousho/agent.db'); // or ':memory:'
 const agent = createAgent({ provider, store }); // transcripts, per-step checkpoints and approvals
 await agent.session({ id: 'user-42' }).send('Hello');
 
-// With AgentExecutor directly, pass the parts:
-// AgentExecutor.execute({ ..., sessionId, checkpointStore: store.checkpoints, approvalStore: store.approvals })
-
 store.prune({ olderThanMs: 7 * 24 * 60 * 60 * 1000 }); // { sessions, checkpoints, approvals } deleted
 store.close();
 ```
+
+With the executor directly, pass `store.checkpoints` as `checkpointStore` and
+`store.approvals` as `approvalStore`; see [the executor API](./executor-api.md).
 
 - The directory is created if missing. The schema is versioned with
   `PRAGMA user_version` and migrated on open; a database written by a newer

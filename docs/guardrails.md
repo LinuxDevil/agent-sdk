@@ -5,8 +5,7 @@ goes into and comes out of any run (and its tool arguments), **patch
 guardrails** are fail-closed checks over a proposed change before you act on
 it, and **sandboxed tools** run inside an isolated container instead of the
 host process. For per-call human decisions see [Approvals](./approvals.md); for
-hooks that inspect or veto each tool call see `HookRegistry` in the
-[API overview](./api-overview.md#flows-evals-observability-and-security).
+hooks that inspect or veto each tool call see [Hooks](./hooks.md).
 
 ## Input and output guardrails
 
@@ -129,7 +128,10 @@ process tree). Write your own as `{ name, check(action) }` returning
 
 A tool opts in with `requiresSandbox: true` and a `sandboxExecute(args, sandbox)`
 function. The executor then calls `sandboxExecute` with the run's
-`SandboxAdapter` instead of calling `execute`:
+`SandboxAdapter` instead of calling `execute`. `createAgent()` does not take
+`sandbox` yet, so this goes through the executor.
+
+#### Advanced: the executor API
 
 ```ts
 import { AgentExecutor, SubprocessSandbox } from '@lousho/build-ai-agent';

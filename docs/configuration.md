@@ -196,7 +196,7 @@ for await (const event of agent.stream('Hello!')) {
   every call starts with the primary model.
 - `stream()` and `session.stream()` report each retry as a `provider.retry`
   event and each switch as `provider.fallback` (see
-  [Streaming](./streaming.md#event-schema-version-1)). `send()` returns the
+  [Streaming](./stream-events.md#event-schema-version-1)). `send()` returns the
   final result as before.
 
 To build the same thing by hand, or for providers you construct yourself,
@@ -256,7 +256,7 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `description` | What the agent does, in a sentence. Required when it is used as a sub-agent. |
 | `maxSteps` | Passed through to `AgentExecutor.execute()`.                        |
 | `limits`   | Budgets of each run: `{ maxTokens?, maxInputTokens?, maxOutputTokens?, maxCostUsd?, maxDurationMs?, maxSteps?, onExceeded? }`. A tripped limit ends the run with `finishReason: 'budget-exceeded'`. See [Budgets](#budgets). |
-| `toolConcurrency` | How many tool calls of one model turn run at once: a positive integer or `'unbounded'` (default). See [Parallel tool calls](./api-overview.md#parallel-tool-calls). |
+| `toolConcurrency` | How many tool calls of one model turn run at once: a positive integer or `'unbounded'` (default). See [Parallel tool calls](./runs.md#parallel-tool-calls). |
 | `skills`   | Skills from `defineSkill()` / `loadSkills()`; see [Skills](./skills.md). |
 | `subagents`, `maxSubagentDepth` | Named sub-agents behind one `task` tool, and how deep they may nest (default 1); see [Sub-agents](./sub-agents.md). |
 | `store`    | An `AgentStore` (`SqliteStore`, `memoryStore()`, or `{ sessions?, checkpoints?, approvals? }`): the default stores of `agent.session()`, approvals, and `send(message, { sessionId })` runs; `agent.resume(id)` finishes an interrupted one. See [Durable sessions](./sessions.md#durable-sessions). |
@@ -266,7 +266,7 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `projectInstructions` | `true` or `{ cwd?, files? }`: append the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (off by default; see [Project instructions](#project-instructions)). |
 | `retry`    | `withRetry()` options for failed model calls, or `false`. Default `{ maxRetries: 2 }` for `model` strings; a `provider` instance is wrapped only when set. See [Provider retries and fallback](#provider-retries-and-fallback). |
 | `fallbackModels` | `provider/model` strings tried in order when the model still fails after its retries. |
-| `hooks`    | `AgentHook[]` run around every model call and tool call, in order, before the compaction hook (see `AgentHook` in the [API overview](./api-overview.md)). |
+| `hooks`    | `AgentHook[]` run around every model call and tool call, in order, before the compaction hook (see [Hooks](./hooks.md)). |
 | `compaction` | `true` (prune old tool results above 90% of the context window) or `{ strategy?, thresholdPercent?, contextWindow?, protectedTokens?, summarizer? }`; `summarizer` (`'provider/model'` or an `LLMProvider`) selects the two-phase strategy. `stream()` reports `compaction.start` / `compaction.done`. See [Context compaction](./compaction.md#compacting-an-agent). |
 
 With neither `model` nor `provider`, `createAgent()` resolves from the
@@ -292,7 +292,7 @@ agent) or on `AgentExecutor.execute()` / `stream()`:
 | `maxTokens`       | Prompt plus completion tokens of the run (`usage.totalTokens`). |
 | `maxInputTokens`  | Prompt tokens (`usage.inputTokens`). |
 | `maxOutputTokens` | Completion tokens (`usage.outputTokens`). |
-| `maxCostUsd`      | Estimated USD (`usage.costUsd`, from the [price table](./api-overview.md#models-tokens-and-cost)). Not checked while a model used has unknown pricing (`costUsd` is `undefined`). |
+| `maxCostUsd`      | Estimated USD (`usage.costUsd`, from the [price table](./models-and-cost.md#models-and-the-price-table)). Not checked while a model used has unknown pricing (`costUsd` is `undefined`). |
 | `maxDurationMs`   | Wall-clock time of the `execute()` / `stream()` call. |
 | `maxSteps`        | Model steps. An alias of the `maxSteps` option: when both are set the stricter wins (the option's tie reports `'max-steps'`); alone, it replaces the default of 10. |
 
@@ -381,27 +381,7 @@ use `loadProjectInstructions({ cwd, files, stopAt, maxChars })`, which returns
 
 ## `AgentExecutor.execute()` options
 
-`AgentExecutor` is static: call `AgentExecutor.execute(options)`. Only
-`agent`, `input` and `provider` are required. Commonly used options:
-
-| Option                                  | Description                                                     |
-| --------------------------------------- | --------------------------------------------------------------- |
-| `agent`                                 | An `AgentConfig`, usually built with `AgentBuilder`.            |
-| `input`                                 | A user message string, or a `Message[]` conversation.            |
-| `provider`                              | The `LLMProvider` to generate with.                             |
-| `toolRegistry`                          | A `ToolRegistry` holding the tools the agent config refers to.  |
-| `maxSteps`                              | Upper bound on LLM/tool steps.                                  |
-| `limits`                                | Token, cost, time and step budgets of the run; see [Budgets](#budgets). |
-| `temperature`, `maxTokens`              | Generation parameters.                                          |
-| `onAgentEvent`                          | Listener for the run's `AgentEvent`s (`run.start`, `tool.start`, `run.done`, ...); see [Streaming](./streaming.md#listening-without-iterating). |
-| `approvalStore`, `sessionId`            | Human-in-the-loop approvals (see `resumeAfterApproval()`).       |
-| `checkpointStore`                       | Persist/resume execution checkpoints.                           |
-| `exporter`                              | A `TraceExporter` for tracing spans (OpenTelemetry GenAI conventions, see [observability](observability.md)). |
-| `captureContent`, `redactContent`       | Record message/tool content on `gen_ai.*` span attributes (opt-in) / omit the deprecated content attributes. |
-| `onLLMRequest`, `onLLMResponse`, `onToolCall`, `onToolResult` | Observability hooks.                |
-
-It resolves to an `ExecutionResult`: `{ text, messages, toolCalls, usage,
-finishReason, steps, approvalId? }`.
+The options of `AgentExecutor.execute()`, the lower-level entry point, are listed on [the executor API page](./executor-api.md#options-of-agentexecutorexecute).
 
 ## CLI
 

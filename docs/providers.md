@@ -88,44 +88,64 @@ bytes as a `Uint8Array`) and `{ type: 'file', data, mimeType, filename? }`.
 `agent.send()`, `agent.stream()`, `session.send()` / `stream()`, `t.send()` in
 evals and the React hook's `send()` all take an `AgentInput`: a string, a list
 of parts (sent as one user message) or a `Message[]` (passed through as it is).
-`AgentExecutor.execute()` takes the same messages as its `input`:
+Parts sent through `createAgent()`:
 
 ```ts
 import { readFileSync } from 'node:fs';
-import { AgentBuilder, AgentExecutor, createAgent, resolveProvider, textOf, type Message } from '@lousho/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
-const agent = AgentBuilder.create().setName('vision').setPrompt('Describe images briefly.').build();
-const input: Message[] = [
+const agent = createAgent({ instructions: 'Describe images briefly.', model: 'openai/gpt-4o-mini' });
+
+// Parts become one user message.
+const answer = await agent.send([
+  { type: 'text', text: 'What is in these pictures?' },
+  { type: 'image', image: 'https://example.com/cat.png' },
+  { type: 'image', image: new Uint8Array(readFileSync('dog.png')), mimeType: 'image/png' },
+]);
+console.log(answer.text);
+```
+
+A `Message[]` is passed through as it is; `textOf()` returns the text parts of a message:
+
+```ts
+import { createAgent, textOf, type Message } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ instructions: 'Describe images briefly.', model: 'openai/gpt-4o-mini' });
+const messages: Message[] = [
   {
     role: 'user',
     content: [
-      { type: 'text', text: 'What is in these pictures?' },
+      { type: 'text', text: 'What is in this picture?' },
       { type: 'image', image: 'https://example.com/cat.png' },
-      { type: 'image', image: new Uint8Array(readFileSync('dog.png')), mimeType: 'image/png' },
     ],
   },
 ];
 
-const result = await AgentExecutor.execute({ agent, input, provider: resolveProvider('openai/gpt-4o-mini') });
-console.log(textOf(input[0]), '->', result.text); // textOf(): the text parts of a message
-
-// The same through the public API: parts become one user message.
-const answer = await createAgent({ prompt: 'Describe images briefly.', model: 'openai/gpt-4o-mini' }).send([
-  { type: 'text', text: 'What is in this picture?' },
-  { type: 'image', image: 'https://example.com/cat.png' },
-]);
-console.log(answer.text);
+const result = await agent.send(messages);
+console.log(textOf(messages[0]), '->', result.text);
 ```
 
 - **Images** go to the model on `user` messages with every built-in provider
   (an image URL is downloaded by the `ai` SDK first for Anthropic and Ollama).
   Pick a vision model: Ollama ignores images for a text-only model, and
   OpenRouter rejects them for one.
-- **Files** are not sent by the built-in providers, on any `ai` major: a file
-  part is sent as a text note (`[file report.pdf (application/pdf) not sent]`)
-  and the provider warns once. A provider subclass whose model takes files
-  sets `protected readonly acceptsFileParts = true` to send them as `ai` v4
-  file parts.
+- **Files** (`{ type: 'file', data, mimeType }`) are sent as `file` parts for
+  these media types, by provider and `ai` major:
+
+  | Provider | `ai` 4 | `ai` 6 / 7 |
+  | -------- | ------ | ---------- |
+  | `openai` | text note | `application/pdf` |
+  | `anthropic` | text note | `application/pdf`, `text/plain` |
+  | `openrouter` | text note | `application/pdf` |
+  | `ollama` | text note | text note |
+
+  Any other file part is sent as a text note
+  (`[file report.pdf (application/pdf) not sent]`), and the provider warns once
+  per media type, naming it and the `ai` major. On `ai` 4 the accepted
+  `@ai-sdk/*` range includes 0.0.x packages that have no file parts, so every
+  file becomes the note there. A provider subclass whose model takes more types
+  overrides `protected fileMediaTypes(): readonly string[]` to list them, or
+  sets `protected readonly acceptsFileParts = true` to send every type.
 - `system`, `assistant` and `tool` messages are sent as their text parts.
 - Everything that reads message text uses `textOf()`: `estimateTokens()`
   (each image or file part counts as a flat 1,000 tokens), compaction,
@@ -133,6 +153,28 @@ console.log(answer.text);
   image or file, or its URL) and `mockModel()`. `FileSessionStore` saves bytes
   as base64 (`{ "$bytes": "..." }`) and loads them back as `Uint8Array`s;
   `SqliteStore` (sessions and checkpoints) does the same.
+
+#### Advanced: the executor API
+
+`AgentExecutor.execute()` takes the same messages as its `input` (see [the executor API](./executor-api.md)):
+
+```ts
+import { AgentBuilder, AgentExecutor, resolveProvider, type Message } from '@lousho/build-ai-agent';
+
+const agent = AgentBuilder.create().setName('vision').setPrompt('Describe images briefly.').build();
+const input: Message[] = [
+  {
+    role: 'user',
+    content: [
+      { type: 'text', text: 'What is in this picture?' },
+      { type: 'image', image: 'https://example.com/cat.png' },
+    ],
+  },
+];
+
+const result = await AgentExecutor.execute({ agent, input, provider: resolveProvider('openai/gpt-4o-mini') });
+console.log(result.text);
+```
 
 ## Provider classes
 
@@ -217,9 +259,8 @@ or `StreamResult`:
 
 On v6/v7 the model must come from a provider package for that major (the
 table above); the `0.0.x`/`1.x` packages produce models `ai` v7 rejects. Image
-parts are sent as `image` parts, which `ai` v7 accepts with a deprecation
-warning per part (`globalThis.AI_SDK_LOG_WARNINGS = false` turns `ai`'s
-warnings off). `ai` v5 is not supported.
+parts are sent as `file` parts with an image media type (the shape `ai` v6/v7
+takes for images, so there is no deprecation warning). `ai` v5 is not supported.
 
 ## Where each provider runs
 

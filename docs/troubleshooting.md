@@ -56,7 +56,7 @@ environment (`LOUSHO_CONFIG_MISSING_PROVIDER`).
 - **Cause:** a run that stops early resolves; it does not throw. `result.finishReason` says why. These are the ones that leave `text` empty or partial:
 
   - `'awaiting-approval'`: a tool call needs a human. Resolve it (next entry). [Approvals](./approvals.md).
-  - `'max-steps'`: the `maxSteps` budget (default 10) ran out while the model still wanted to continue. Raise `maxSteps`, or simplify the task. [Finish reasons](./api-overview.md#finish-reasons).
+  - `'max-steps'`: the `maxSteps` budget (default 10) ran out while the model still wanted to continue. Raise `maxSteps`, or simplify the task. [Finish reasons](./runs.md#finish-reasons).
   - `'budget-exceeded'`: a `limits` budget such as `maxTokens` or `maxCostUsd` tripped; `result.budget` says which. Raise the limit. [Budgets](./configuration.md#budgets).
   - `'guardrail'`: an input, output or tool guardrail blocked the run; `result.guardrail` says which. [Guardrails](./guardrails.md#input-and-output-guardrails).
   - `'output-invalid'`: the reply did not match the `output` schema even after the repair step. [Structured output](./structured-output.md).

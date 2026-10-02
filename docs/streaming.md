@@ -52,9 +52,9 @@ interface AgentRun extends AsyncIterable<AgentEvent> {
   every event, in order. Iterating after the run finished still yields all of
   its events.
 - **`enqueue(input)`** adds user input to the run while it runs: it joins the
-  transcript before the next model call. See [Queued input](#queued-input).
+  transcript before the next model call. See [Queued input](./queue-and-steer.md#queued-input).
 - **`steer(input)`** redirects the run: a model call that has not produced
-  anything yet is aborted and made again with the input. See [Steering](#steering).
+  anything yet is aborted and made again with the input. See [Steering](./queue-and-steer.md#steering).
 - **One consumer.** An `AgentRun` can be iterated once; a second `for await`
   throws. To fan out, collect the events yourself.
 - Invalid options (no `provider`, `agent` or `input`, a bad `toolConcurrency`)
@@ -121,7 +121,7 @@ and it will be removed in a future major version. Replace it with
 `AgentEvent` also reports what `ExecutionEvent` never did: step boundaries,
 approval requests, permission decisions, budgets, guardrails, queued and
 steered input, compaction, reasoning, provider retries and agent drift (see the
-[schema](#event-schema-version-1)).
+[schema](./stream-events.md#event-schema-version-1)).
 
 ## Streaming a session turn
 
@@ -148,17 +148,33 @@ console.log((await again.result).text);
 ## Streaming after an approval
 
 A run that paused for an [approval](./approvals.md) can continue as a stream
-too. `streamResumeAfterApproval()` takes the arguments of
-`resumeAfterApproval()` and returns an `AgentRun` whose `result` is what
-`resumeAfterApproval()` returns. Its events are `run.start`, the decided
+too. `agent.approvals.streamResolve()` (or `streamAnswer()`) returns an
+`AgentRun` whose `result` is what `agent.approvals.resolve()` returns. Its events are `run.start`, the decided
 call's `tool.start` and `tool.done` (`tool.error` for a rejection), then the
 continuation's events exactly as in a fresh run, up to `run.done`; a further
 pause ends it with `approval.requested`. Cancellation, `enqueue()` and
 `steer()` work as on any run, and the approval can come from another
-process, since everything is read from the approval store. For
-`createAgent()` agents use `agent.approvals.streamResolve()` or
-`streamAnswer()`. A model chosen per run (`model` as a function) is the one
-the paused run used.
+process, since everything is read from the approval store. A model chosen per
+run (`model` as a function) is the one the paused run used.
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ provider /* , a tool with needsApproval */ });
+const paused = await agent.send('Delete the old reports.');
+// paused.finishReason === 'awaiting-approval'
+const run = agent.approvals.streamResolve({ id: paused.approvalId!, approved: true });
+for await (const event of run) {
+  if (event.type === 'tool.done') console.log(`${event.toolName} ran`);
+  if (event.type === 'text.delta') process.stdout.write(event.text);
+}
+```
+
+#### Advanced: the executor API
+
+With the executor directly, `streamResumeAfterApproval()` takes the arguments
+of `resumeAfterApproval()` (see [the executor API](./executor-api.md)) and
+returns the same `AgentRun`.
 
 ```ts
 import { AgentExecutor, streamResumeAfterApproval } from '@lousho/build-ai-agent';
@@ -171,133 +187,7 @@ for await (const event of run) {
 }
 ```
 
-## Event schema (version 1)
-
-Every event has these fields:
-
-| Field       | Type     | Meaning |
-| ----------- | -------- | ------- |
-| `type`      | string   | The event type (table below). Narrow on it in TypeScript. |
-| `runId`     | string   | Identifies the run. The same on every event of one `stream()` call. |
-| `seq`       | number   | `0` for the first event, then `+1` per event, with no gaps. |
-| `timestamp` | string   | When the event was emitted, ISO 8601 (`2026-10-01T09:30:00.000Z`). |
-| `v`         | `1`      | Schema version, exported as `AGENT_EVENT_SCHEMA_VERSION`. |
-| `subagent`  | object, optional | Only on events of a sub-agent's run - see [Sub-agents](#sub-agents). |
-
-The event types and their extra fields:
-
-| `type`               | Extra fields | Emitted |
-| -------------------- | ------------ | ------- |
-| `run.start`          | `agentName: string`, `agentId?: string` | First event of every run. |
-| `step.start`         | `step: number` | A model step begins: one model call plus the tool calls it asks for. `step` counts from 1 (a run resumed from a checkpoint continues the count). |
-| `text.delta`         | `text: string` | A chunk of model text, as it arrives. |
-| `text.done`          | `text: string` | The step's complete text: the concatenation of its `text.delta` events. Only for steps with text. |
-| `reasoning.start`    | (none) | The model starts reasoning in this step. Only with the [`reasoning` option](./reasoning.md) (or a model that always reasons). Its `reasoning.delta`s and `reasoning.done` follow, before the step's first `text.delta` or `tool.start`. |
-| `reasoning.delta`    | `text: string` | A chunk of reasoning text (or of its summary). Never part of `text.delta` / `run.done`'s `text`. |
-| `reasoning.done`     | `text: string`, `tokens?: number` | The reasoning ended: `text` is all of it; `tokens` when the provider reported reasoning tokens by then. |
-| `tool.start`         | `toolCallId: string`, `toolName: string`, `args: Record<string, unknown>` | A tool call starts. `args` are the model's arguments parsed from JSON (`{}` when they are not valid JSON). |
-| `tool.done`          | `toolCallId`, `toolName`, `result: unknown`, `durationMs: number` | A tool call returned. `result` is the value as it would be JSON-encoded (`undefined` becomes `null`, a `Date` becomes a string). `durationMs` counts from its `tool.start`. |
-| `tool.error`         | `toolCallId`, `toolName`, `error: { name: string, message: string }`, `durationMs: number` | A tool call failed: it threw, its arguments did not match its schema (`name: 'ToolArgumentsValidationError'`), or the tool does not exist. The model gets the error as the call's result and the run continues. |
-| `approval.requested` | `approvalId: string`, `toolCallId`, `toolName`, `args: Record<string, unknown>`, `kind?: 'question'`, `question?: { text, options?, allowFreeText? }` | A tool call needs a human decision. The run then stops; resume it with `agent.approvals.resolve()` or `resumeAfterApproval()` (see [Approvals](./approvals.md)), or stream the continuation (see [Streaming after an approval](#streaming-after-an-approval)). An `ask_question` call carries `kind: 'question'` and its `question`; answer it with `agent.approvals.answer()` (see [Asking the user a question](./approvals.md#asking-the-user-a-question)). |
-| `permission.decision` | `toolCallId`, `toolName`, `decision: 'allow' \| 'deny' \| 'ask' \| 'default'`, `rule?: { index: number, reason?: string }`, `args?: Record<string, unknown>`, `at: string` | How a tool call's [permission rules](./approvals.md#permission-policies) decided it: after its `tool.start`, before the call's own `tool.done` / `tool.error` / `approval.requested`. Only when the run sets `permissions` or `onPermissionDecision`; `args` is left out under `redactContent`. |
-| `step.done`          | `step: number`, `finishReason: string`, `usage?: { promptTokens, completionTokens, totalTokens }` | A step ends. `finishReason` is the model's (`'stop'`, `'tool_calls'`, `'length'`, ...), or `'awaiting-approval'`, `'aborted'`, `'steered'` (its model call was aborted by `run.steer()`, see [Steering](#steering)) or `'error'` when the step ended that way (a run that runs out of `maxSteps` still wanting to continue ends with `run.done` `'max-steps'`). `usage` is this step's model call, absent when the call produced no response. |
-| `error`              | `error: { name: string, message: string }` | An error. If it ends the run, `run.done` with `finishReason: 'error'` follows. A provider error retried under `surfaceRetryableProviderErrors` is followed by further steps instead. |
-| `provider.retry`     | `attempt: number`, `maxRetries: number`, `delayMs: number`, `error: { message: string, category?: string }`, `provider: string` | A model call failed and is retried after `delayMs` (`createAgent({ retry })` or any `withRetry()` provider). `attempt` is the attempt that failed (1 = first); `category` is `'rate-limit'`, `'timeout'`, ... and absent when unknown (a 5xx, for example). |
-| `provider.fallback`  | `from: string`, `to: string`, `error: { message: string }` | A model call still failed after its retries and the next provider takes over (`createAgent({ fallbackModels })` or any `withFallback()` provider). `from` and `to` are provider names. |
-| `compaction.start`   | `strategy: string`, `tokensBefore: number`, `contextWindow: number`, `thresholdTokens: number` | The compaction hook (`createAgent({ compaction })`) found the next model request above its threshold and starts compacting it. Exactly one `compaction.done` follows. See [Context compaction](./compaction.md). |
-| `compaction.done`    | `strategy: string`, `tokensBefore: number`, `tokensAfter: number`, `prunedToolCallIds: string[]`, `summary?: boolean`, `error?: { message: string }` | A compaction ended. `tokensAfter` equals `tokensBefore` when nothing could be compacted; `summary` is set when old turns were replaced by a summary; `error` is set when the strategy failed or fell back (the run continues). |
-| `context.cleared`    | `sessionId: string`, `messagesCleared: number` | `session.clear()` emptied a session's transcript. Delivered to `session.on()` listeners, not to a run's stream. `compaction.start` / `compaction.done` from `session.compact()` also reach `session.on()` and carry `trigger: 'manual'`. |
-| `budget.exceeded`    | `limit: string`, `value: number`, `max: number`, `scope: 'run' \| 'session'` | A [`limits` budget](./configuration.md#budgets) tripped: `limit` is `'maxTokens'`, `'maxInputTokens'`, `'maxOutputTokens'`, `'maxCostUsd'`, `'maxDurationMs'` or `'maxSteps'`, `value` what was spent, `max` the limit. `run.done` (`'budget-exceeded'`) follows; with `onExceeded: 'throw'`, `error` and `run.done` (`'error'`). |
-| `input.queued`       | `id: string`, `text: string` | `run.enqueue()` took an input (`id` is `EnqueueResult.id`, `text` its user text). Can come at any point of the run, also inside a step. See [Queued input](#queued-input). |
-| `input.steered`      | `id: string`, `text: string`, `mode: 'immediate' \| 'queued'` | `run.steer()` took an input (`id` is `SteerResult.id`). `mode: 'immediate'`: the in-flight model call was aborted for it, and its step ends with `step.done` `'steered'`; `'queued'`: it waits for the next safe point like `enqueue()`. See [Steering](#steering). |
-| `input.applied`      | `id: string`, `step: number` | The queued (or steered) input joined the transcript, right before the model call of `step`: the `step.start` of that step follows. |
-| `guardrail.tripped`  | `name: string`, `kind: 'input' \| 'output' \| 'tool'`, `reason: string`, `toolName?: string` | An [input, output or tool guardrail](./guardrails.md#input-and-output-guardrails) blocked: before the first model call (input), before the step's `text.done` (output) or after the call's `tool.start` (tool). `run.done` (`'guardrail'`) follows; with `onTripped: 'throw'`, `error` and `run.done` (`'error'`). |
-| `guardrail.rewrote`  | `name`, `kind`, `reason`, `toolName?` | A guardrail rewrote the input, the step's text (before its `text.done`, which carries the new text) or a tool call's arguments. The run continues. |
-| `run.done`           | `finishReason: string`, `text: string`, `usage?: { promptTokens, completionTokens, totalTokens }`, `object?: unknown` | Last event of every run, exactly once, including aborted, failed and awaiting-approval runs. `finishReason` and `text` match `run.result` (`'max-steps'` when the `maxSteps` budget ran out while the model still wanted to continue); a failed run has `finishReason: 'error'`, `text: ''` and no `usage`. `object` is `run.result`'s validated `object` for an agent with an `output` schema (see [Structured output](./structured-output.md)), absent otherwise. |
-
-Optional fields are left out when they have no value. They are never
-`undefined`, so `JSON.parse(JSON.stringify(event))` returns an equal object.
-
-### Ordering guarantees
-
-- `run.start` is first and `run.done` is last, each exactly once.
-- Each `step.start` is followed by exactly one `step.done` with the same
-  `step`, before the next `step.start`. Everything a step does happens between
-  the two.
-- Inside a step: `compaction.start` / `compaction.done` (if the request was
-  compacted, before the model call), `provider.retry` / `provider.fallback`
-  events (if the model call fails), then `text.delta` events, then `text.done`, then the tool events.
-- Tool calls of one step run in parallel (see `toolConcurrency`):
-  `tool.start` events come in the model's call order and `tool.done` /
-  `tool.error` events in completion order. Match them by `toolCallId`.
-- `input.queued` comes when `run.enqueue()` is called (after `run.start`, even
-  for input queued before the run got going), so it can fall inside a step.
-  Its `input.applied` comes between the `step.done` of the step that was
-  running and the next `step.start`, which carries the `step` it names.
-- `input.steered` comes when `run.steer()` is called. With `mode: 'immediate'`
-  the running step ends next with `step.done` (`'steered'`, no text events
-  from its aborted call), then `input.applied` and the next `step.start`.
-- When a call needs approval, the calls before it run and report, then
-  `approval.requested`, `step.done` (`'awaiting-approval'`) and `run.done`
-  (`'awaiting-approval'`) follow. Calls after it never start.
-- When a guardrail blocks, `guardrail.tripped` comes just before the end: for
-  an input guardrail right after `run.start` (no step starts); for an output or
-  tool guardrail inside the step, followed by `step.done` and `run.done`
-  (`'guardrail'`). A blocked output has no `text.done`; calls after a blocked
-  tool call never start.
-
-A text-only run:
-
-```
-run.start → step.start → text.delta × n → text.done → step.done → run.done
-```
-
-A run with one tool call:
-
-```
-run.start
-step.start(1) → tool.start → tool.done → step.done(1, 'tool_calls')
-step.start(2) → text.delta × n → text.done → step.done(2, 'stop')
-run.done('stop')
-```
-
-### TypeScript
-
-`AgentEvent` is a discriminated union: narrowing on `event.type` gives the
-payload. Each event type is exported too (`TextDeltaEvent`, `ToolDoneEvent`,
-`RunDoneEvent`, ...), and `AgentEventOf<'tool.done'>` picks one by name.
-
-```ts
-import { isAgentEvent, isToolEvent, type AgentEvent } from '@lousho/build-ai-agent';
-
-function render(event: AgentEvent): string {
-  switch (event.type) {
-    case 'text.delta':
-      return event.text;
-    case 'tool.start':
-      return `\n[${event.toolName}] ${JSON.stringify(event.args)}\n`;
-    case 'tool.error':
-      return `\n[${event.toolName} failed: ${event.error.message}]\n`;
-    case 'run.done':
-      return `\n(${event.finishReason})\n`;
-    default:
-      return '';
-  }
-}
-
-// isToolEvent / isTextEvent / isStepEvent narrow to an event family:
-const toolNames = (events: AgentEvent[]) => events.filter(isToolEvent).map((e) => e.toolName);
-
-// isAgentEvent validates an event received over the wire:
-const received: unknown = JSON.parse('{"type":"run.start","runId":"r","seq":0,"timestamp":"","v":1,"agentName":"a"}');
-if (isAgentEvent(received)) console.log(render(received), toolNames([received]));
-```
-
-### Versioning
-
-`v` changes only when an existing event changes incompatibly (a field
-removed, renamed or retyped). New event types and new optional fields can be
-added without changing `v`, so ignore event types you do not know.
+Every event has `type`, `runId`, `seq`, `timestamp` and `v`. The full list of event types, the ordering guarantees, the TypeScript helpers and the versioning rules are on [Stream events](./stream-events.md).
 
 ## Sub-agents
 
@@ -374,109 +264,7 @@ for await (const event of run) {
 console.log((await run.result).finishReason); // 'aborted'
 ```
 
-## Queued input
-
-`run.enqueue(input)` adds user input (a string, content parts or a
-`Message[]`) to a run that is still going, for example a follow-up the user
-types while the agent works. The run does not stop: the input joins the
-transcript at the next safe point - after the current step's tool results,
-never between a tool-call turn and its results - and the next model call sees
-it, as if the user had typed it. Input queued while the model writes its final
-reply gets one more step, so the model answers it in the same run.
-
-```ts
-import { createAgent } from '@lousho/build-ai-agent';
-
-const agent = createAgent({ model: 'openai/gpt-4o-mini' });
-const run = agent.stream('Plan a weekend in Rome.');
-
-const queued = run.enqueue('Keep it under 500 EUR.');
-for await (const event of run) {
-  if (event.type === 'input.applied') console.log(`applied before step ${event.step}`);
-}
-if (queued.applied === false || !(await queued.applied)) {
-  // The run ended without it: send it as a new turn (e.g. session.send()).
-}
-```
-
-`enqueue()` returns `{ id, applied }`. `id` is on the `input.queued` and
-`input.applied` events. `applied` is `false` when the run had already
-finished: the input was not taken, so send it yourself, as a new turn
-(`session.send()`). Otherwise it is a promise that resolves to `true` once the
-input is in the transcript, or to `false` when the run stopped before its next
-model call (aborted, paused for approval, out of `maxSteps` or budget, or
-failed); the input is then left to you too.
-
-- Several inputs queued before the same model call are applied together, in
-  the order they were queued.
-- With checkpointing (`sessionId` or a durable session), an input that is
-  still waiting is saved at the end of the run's checkpoint right away, the
-  same slot as input queued behind unanswered tool calls (see
-  [Durable execution](./durable-execution.md)). A crash, or a run that fails,
-  does not lose it: `agent.resume()` applies it (`applied` of a run that
-  failed in-process still resolves `false`). A run that finishes, pauses or is
-  aborted does not keep it.
-- Without a stream, pass an `InputQueue` as `ExecuteOptions.inputQueue` and
-  call its `push()`: the same queue that is behind `run.enqueue()`. One
-  queue serves one run.
-- In a session, `agent.session({ turnPolicy: 'queue' })` makes a `send()` or
-  `stream()` made while a turn runs (or waits to start) join that turn this way. See
-  [Sessions](./sessions.md#the-session-object).
-
-Queued input waits for the step that is running. To redirect the run at
-once, steer it (next section).
-
-```ts
-import { AgentExecutor, InputQueue } from '@lousho/build-ai-agent';
-
-const inputQueue = new InputQueue();
-const pending = AgentExecutor.execute({ agent, provider, input: 'Plan my trip.', inputQueue });
-inputQueue.push('Also book a hotel.');
-const result = await pending;
-```
-
-## Steering
-
-`run.steer(input)` redirects a running run to new user input, for example when
-the user changes their mind while the agent is still thinking:
-
-- If a model call is in flight and has not emitted text or tool calls yet, it
-  is aborted (with a signal of its own, not the run's: the run goes on), its
-  partial output is discarded, `input` is appended as a user message and the
-  model is called again. `applied` is `'immediate'`, and the aborted call's
-  step ends with `step.done` `'steered'`. A provider that ignores the abort
-  signal is not waited for; its late reply is dropped.
-- If the model has already emitted text (or tool calls), `input` waits for the
-  next safe point like [`enqueue()`](#queued-input): `applied` is `'queued'`.
-- Tool calls already running finish and their results are kept; calls of that
-  turn that have not started yet are not run and get the usual "cancelled
-  before it ran" result. Then the input is applied.
-- `applied` is `false` once the run has finished: send the input as a new turn.
-
-```ts
-import { createAgent } from '@lousho/build-ai-agent';
-
-const agent = createAgent({ model: 'openai/gpt-4o-mini' });
-const run = agent.stream('Plan a weekend in Rome.');
-
-const steered = run.steer('Actually, make it Paris.');
-console.log(steered.applied); // 'immediate', 'queued' or false
-for await (const event of run) {
-  if (event.type === 'input.steered') console.log(`steered (${event.mode})`);
-}
-console.log(await steered.joined); // true once the input is in the transcript
-```
-
-`steer()` returns `{ id, applied, joined }`: `id` is on the `input.steered` and
-`input.applied` events, and `joined` is a promise of whether the input made it
-into the transcript (as `enqueue()`'s `applied`). The aborted call counts as a
-step of `maxSteps`. With checkpointing, the input is saved at the end of the
-checkpoint as soon as it is taken and before the model is called again, so a
-crash during the redirect does not lose it; the discarded partial turn is never
-checkpointed. Without a stream, call `steer()` on the run's
-`ExecuteOptions.inputQueue`. In a session, `agent.session({ turnPolicy: 'steer' })`
-makes a `send()` or `stream()` made while a turn runs steer that turn (see
-[Sessions](./sessions.md#the-session-object)).
+To add input to a run that is still going, or to redirect it, see [Queued input and steering](./queue-and-steer.md): `run.enqueue(input)` waits for the next safe point, `run.steer(input)` interrupts the current model call.
 
 ## Example: terminal
 
@@ -554,9 +342,10 @@ with `{ sessionId, input }` streams `agent.session({ id }).stream(input)` as
 `data:` lines ending with `event: done`, and approvals are decided through
 `POST /chat/:sessionId/approvals/:id` (see [CLI](./cli.md#lousho-dev)).
 
-## Example: the full API
+## Advanced: the executor API
 
-`AgentExecutor.stream()` accepts every `execute()` option. Here a tool that
+`AgentExecutor.stream()` accepts every `execute()` option (see
+[the executor API](./executor-api.md)). Here a tool that
 needs approval ends the stream with `approval.requested`:
 
 ```ts

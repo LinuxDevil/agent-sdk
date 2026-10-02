@@ -46,7 +46,7 @@ compaction sees what they added. Hooks and compaction apply to `send()`,
 
 `agent.stream()`, `session.stream()` and `AgentExecutor.stream()` report each
 compaction as two events, inside the step and before the model call that
-triggered it (see [Streaming](./streaming.md#event-schema-version-1)):
+triggered it (see [Streaming](./stream-events.md#event-schema-version-1)):
 
 | `type` | Fields |
 | --- | --- |
@@ -63,32 +63,32 @@ non-streaming `send()` emits no events. Hooks add their own events with
 
 ## Compacting a run
 
-`createCompactionHook()` returns an `AgentHook` named `compaction`. Register it
-and pass the registry to `AgentExecutor.execute()`. The recommended setup is
-the two-phase strategy with a cheap summarizer model:
+`createCompactionHook()` returns an `AgentHook` named `compaction`. Pass it in
+`createAgent({ hooks })`. The recommended setup is the two-phase strategy with
+a cheap summarizer model:
 
 ```ts
-import { AgentExecutor, HookRegistry, createCompactionHook, twoPhaseStrategy } from '@lousho/build-ai-agent';
+import { createAgent, createCompactionHook, twoPhaseStrategy } from '@lousho/build-ai-agent';
 
-const hooks = new HookRegistry();
-hooks.register(
-  createCompactionHook({
-    strategy: twoPhaseStrategy({ model: 'openai/gpt-4o-mini' }), // prune, then summarize if still too big
-    thresholdPercent: 0.9, // compact above 90% of the context window (the default)
-    protectedTokens: 40_000, // never change the newest 40K tokens (the default)
-    onCompaction: ({ tokensBefore, tokensAfter, prunedToolCallIds, summary, error }) => {
-      console.log(`compacted ${tokensBefore} -> ${tokensAfter} tokens (${prunedToolCallIds.length} results pruned)`);
-      if (summary) console.log('summary:', summary);
-      if (error) console.warn('summarizer failed, kept the pruned conversation:', error.message);
-    },
-  })
-);
-
-const result = await AgentExecutor.execute({ agent, input, provider, toolRegistry, hooks });
+const agent = createAgent({
+  provider,
+  hooks: [
+    createCompactionHook({
+      strategy: twoPhaseStrategy({ model: 'openai/gpt-4o-mini' }), // prune, then summarize if still too big
+      thresholdPercent: 0.9, // compact above 90% of the context window (the default)
+      protectedTokens: 40_000, // never change the newest 40K tokens (the default)
+      onCompaction: ({ tokensBefore, tokensAfter, prunedToolCallIds, summary, error }) => {
+        console.log(`compacted ${tokensBefore} -> ${tokensAfter} tokens (${prunedToolCallIds.length} results pruned)`);
+        if (summary) console.log('summary:', summary);
+        if (error) console.warn('summarizer failed, kept the pruned conversation:', error.message);
+      },
+    }),
+  ],
+});
 ```
 
 Before every model call the hook estimates the request's size with
-`estimateTokens` (see [Models, tokens and cost](./api-overview.md#models-tokens-and-cost)).
+`estimateTokens` (see [Models, tokens and cost](./models-and-cost.md#models-and-the-price-table)).
 When it is above `thresholdPercent` of the context window, the hook runs its
 strategy (and waits for it, if it is async) and calls `onCompaction` with the
 token counts, the pruned `toolCallId`s, the summary if there is one and the
@@ -113,6 +113,26 @@ A pruned result or a summary therefore stays in later steps, in checkpoints
 `result.messages`, and it is not compacted again on the next step.
 Compaction is lossy: if the model needs a pruned result again, it has to call
 the tool again.
+
+#### Advanced: the executor API
+
+Registering the hook in a `HookRegistry` is for code that calls the executor
+directly (see [the executor API](./executor-api.md)):
+
+```ts
+import { AgentExecutor, HookRegistry, createCompactionHook, twoPhaseStrategy } from '@lousho/build-ai-agent';
+
+const hooks = new HookRegistry();
+hooks.register(
+  createCompactionHook({
+    strategy: twoPhaseStrategy({ model: 'openai/gpt-4o-mini' }),
+    thresholdPercent: 0.9,
+    protectedTokens: 40_000,
+  })
+);
+
+const result = await AgentExecutor.execute({ agent, input, provider, toolRegistry, hooks });
+```
 
 ## Strategies
 
