@@ -544,6 +544,22 @@ See [Registry](./registry.md#safety-rules).
 
 **Example:** `lousho add web-search` twice.
 
+### LOUSHO_REGISTRY_MANIFEST_MISMATCH
+
+**Means:** an item's code reaches for something its permission manifest does not
+declare: it imports `child_process` without `exec: true`, writes files without
+`filesystem: "write"`, calls `fetch()` or names a URL host that is not in `network`,
+reads an environment variable that is not in `env`, or uses `eval`, `new Function`,
+a computed `process.env[...]` or a dynamic `import()` / `require()`, which are never
+allowed. The message lists every finding as `<file>:<line>: <what> (<fix>)`. Nothing
+was written. `--dry-run` reports it too.
+
+**Fix:** do not install the item; tell whoever hosts the registry. Its author fixes
+the code or declares the permission. See [Registry](./registry.md#permission-manifest).
+
+**Example:** a tool item whose file imports `node:child_process` while its manifest
+leaves `exec` out.
+
 ## Sandbox
 
 ### LOUSHO_SANDBOX_EGRESS_UNSUPPORTED
