@@ -72,6 +72,7 @@ By participating in this project, you agree to maintain a respectful and inclusi
 - Ensure all existing tests pass
 - Aim for good test coverage
 - Tests are located alongside source files with `.test.ts` extension
+- `npm run pack-smoke` installs the tarball built from your checkout into a fresh project and exercises it. `npm run registry-smoke` does the same for what is published on npm: `npm create lousho-agent`, the generated project's tests and type check, `lousho doctor`, every export in ESM and CJS, and `lousho studio`. Run it right after a publish (`-- --version <semver|dist-tag>` picks the version; `-- --live` adds one real OpenRouter turn and needs `OPENROUTER_API_KEY`). A weekly CI job runs it on Node 22 and 26 and on Windows.
 
 ### Documentation
 
