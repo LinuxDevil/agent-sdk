@@ -10,7 +10,7 @@
 import type { FileContentPart, GenerateOptions, ImageContentPart, Message, ToolDefinition } from '../providers/llm';
 import { textOf } from '../providers/content';
 import type { CassetteRequest } from './cassette';
-import { isZod4Schema, schemaToJsonSchema } from '../utils/zodCompat';
+import { isZod4Schema } from '../utils/zodCompat';
 
 const MAX_DEPTH = 24;
 
@@ -77,6 +77,62 @@ function zodFingerprint(def: ZodDef, depth: number): Record<string, unknown> {
   return sortKeys(out);
 }
 
+/** Zod 4 check names mapped to the `kind` zod 3 gives the same check. */
+const ZOD4_CHECK_KINDS: Readonly<Record<string, string>> = {
+  min_length: 'min',
+  max_length: 'max',
+  length_equals: 'length',
+  greater_than: 'min',
+  less_than: 'max',
+  multiple_of: 'multipleOf',
+};
+
+interface Zod4Def {
+  type: string;
+  [key: string]: unknown;
+}
+
+function zod4Check(check: unknown): { kind: string; value?: unknown } {
+  const def = (check as { _zod: { def: Record<string, unknown> } })._zod.def;
+  const name = String(def.check);
+  if (name === 'number_format') return { kind: 'int' };
+  if (name === 'string_format') return { kind: String(def.format) };
+  const value = def.minimum ?? def.maximum ?? def.length ?? def.value;
+  return { kind: ZOD4_CHECK_KINDS[name] ?? name, value };
+}
+
+/** Zod 4 def keys copied into a fingerprint, with the name they get in it (zod 3's names, see `ZOD_KEYS`). */
+const ZOD4_KEYS: ReadonlyArray<readonly [string, string]> = [
+  ['shape', 'properties'],
+  ['innerType', 'inner'],
+  ['element', 'items'],
+  ['valueType', 'values'],
+  ['keyType', 'keys'],
+  ['options', 'options'],
+  ['items', 'items'],
+];
+
+/**
+ * A zod 4 schema in the same fingerprint a zod 3 schema gets, so a cassette recorded under one
+ * zod major replays under the other: the converters' JSON Schema differs (`$schema`,
+ * `required`, `additionalProperties`) but the schema the author wrote does not.
+ */
+function zod4Fingerprint(schema: object, depth: number): Record<string, unknown> {
+  const def = (schema as { _zod: { def: Zod4Def } })._zod.def;
+  const out: Record<string, unknown> = { type: def.type };
+  const description = (schema as { description?: string }).description;
+  if (description !== undefined) out.description = description;
+  for (const [from, to] of ZOD4_KEYS) {
+    if (def[from] !== undefined) out[to] = canonicalize(def[from], depth + 1);
+  }
+  if (def.type === 'enum') out.enum = Object.values(def.entries as Record<string, unknown>);
+  if (def.type === 'literal') out.const = (def.values as unknown[])[0];
+  if (def.type === 'string' || def.type === 'number') {
+    out.checks = ((def.checks as unknown[] | undefined) ?? []).map(zod4Check);
+  }
+  return sortKeys(out);
+}
+
 function sortKeys(record: Record<string, unknown>): Record<string, unknown> {
   const sorted: Record<string, unknown> = {};
   for (const key of Object.keys(record).sort()) {
@@ -97,8 +153,8 @@ function canonicalize(value: unknown, depth = 0): unknown {
   if (Array.isArray(value)) return value.map((item) => canonicalize(item, depth + 1) ?? null);
   const zodDef = zodDefOf(value);
   if (zodDef) return zodFingerprint(zodDef, depth);
-  // A zod 4 schema (LOU-D29): its JSON Schema.
-  if (isZod4Schema(value)) return canonicalize(schemaToJsonSchema(value), depth + 1);
+  // A zod 4 schema (LOU-D29): the same fingerprint as zod 3's, so cassettes replay under either major.
+  if (isZod4Schema(value)) return zod4Fingerprint(value, depth);
   const out: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value)) out[key] = canonicalize(child, depth + 1);
   return sortKeys(out);

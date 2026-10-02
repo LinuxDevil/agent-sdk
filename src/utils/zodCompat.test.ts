@@ -99,7 +99,7 @@ describe('zodCompat (LOU-D29)', () => {
     await expect(validateOutput(schema, '{}')).resolves.toMatchObject({ outputError: { issues: [{ path: 'city', message: 'Required' }] } });
   });
 
-  it('fingerprints a zod 4 schema by its JSON Schema', () => {
-    expect(stableStringify({ s: z4.object({ q: z4.string() }) })).toContain('"properties":{"q":{"type":"string"}}');
+  it('fingerprints a zod 4 schema like the zod 3 one (cassettes replay under either)', () => {
+    expect(stableStringify({ s: z4.object({ q: z4.string() }) })).toBe(stableStringify({ s: z3.object({ q: z3.string() }) }));
   });
 });
