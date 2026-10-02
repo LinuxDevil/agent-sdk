@@ -10,7 +10,7 @@ handler and runs every request the same way:
 POST <basePath>/<name>  ->  verify  ->  parse  ->  session turn  ->  reply (or onApproval)
 ```
 
-Channels are new. The [trigger adapters](api-overview.md#triggers)
+Channels are new. The [trigger adapters](triggers.md)
 still work: `WebhookTriggerAdapter` now uses `webhookChannel()` for its auth and
 parsing. Channels add what triggers lack: each conversation on the surface is
 a [session](sessions.md), and approvals and questions go back to the surface.
@@ -160,7 +160,7 @@ await channels.resolveApproval({ id: 'the-approval-id', approved: true });
 
 `webhookChannel({ secret })` checks an HMAC-SHA256 signature of the raw body in
 `x-signature-256: sha256=<hex>`; `auth` takes any
-[webhook auth](api-overview.md#webhook-authentication) (HMAC options with
+[webhook auth](triggers.md#webhook-authentication) (HMAC options with
 replay protection, bearer token, custom). The checks and the generic 401 are
 the ones `WebhookTriggerAdapter` uses.
 
@@ -334,5 +334,5 @@ session transcript.
 
 An [agent directory](./agent-directories.md)'s `channels/*.ts` files are loaded
 as channels too, and the node server mounts them. `SlackTriggerAdapter` and `verifySlackSignature()`
-(see [Triggers](api-overview.md#triggers)) still work for one-shot replies
+(see [Triggers](triggers.md)) still work for one-shot replies
 through an incoming webhook.
