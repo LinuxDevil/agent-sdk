@@ -159,6 +159,7 @@ await channels.resolveApproval({ id: 'the-approval-id', approved: true });
 | `discordChannel({ publicKey, applicationId, botToken?, name?, fetch?, approvers?, onError? })` | Discord slash-command and button interactions (see [Discord](#discord)) | Deferred ack at once; the reply edits the original response |
 | `telegramChannel({ botToken, secretToken, botUsername?, name?, fetch?, approvers?, onError? })` | Telegram bot webhook updates: messages and inline-keyboard taps (see [Telegram](#telegram)) | `200` at once; replies are sent with `sendMessage` as plain text |
 | `githubChannel({ webhookSecret, botName, token?, app?, name?, apiUrl?, fetch?, triggers?, approvers?, onError? })` | GitHub issue, pull-request and review comments that mention `@<botName>` (see [GitHub](#github)) | `200` at once; replies are posted as comments in the same thread |
+| `teamsChannel({ appId, appPassword, tenantId?, name?, fetch?, approvers?, onError? })` | Microsoft Teams messages and Adaptive Card button presses from an Azure Bot (see [Microsoft Teams](#microsoft-teams)) | `200` at once; replies are posted through the Bot Framework Connector as Markdown |
 
 `webhookChannel({ secret })` checks an HMAC-SHA256 signature of the raw body in
 `x-signature-256: sha256=<hex>`; `auth` takes any
@@ -565,3 +566,91 @@ command with an id that is no longer pending (decided already, expired) fails
 with the generic "Sorry, that request failed." comment instead of being ignored,
 and an id is no longer tied to the thread it was posted in. A continuation after
 a restart is posted but not appended to the session transcript.
+
+## Microsoft Teams
+
+`teamsChannel({ appId, appPassword, tenantId?, name?, fetch?, approvers?, onError? })`
+puts an agent behind an Azure Bot in Microsoft Teams: personal chats and
+channel mentions start or continue a session, replies go back through the Bot
+Framework Connector, and a tool approval is an Adaptive Card with Approve and
+Deny buttons. It uses `fetch` and Web Crypto only (no `node:*` import and no Bot
+Framework library), so it also runs on Workers.
+
+- Every request must carry a Bot Framework token in `Authorization: Bearer`. It
+  is verified before the body is parsed: an RS256 signature checked against
+  the key set that the fixed Bot Framework OpenID metadata
+  (`https://login.botframework.com/v1/.well-known/openidconfiguration`) points
+  to (cached, never taken from a URL inside the token), the issuer
+  `https://api.botframework.com`, the audience `appId` and a 5-minute clock
+  tolerance. The token's `serviceurl` claim must also equal the activity's
+  `serviceUrl`, so a valid token for one service URL cannot be replayed to make
+  the bot post somewhere else. Any failure answers 401. The channel has no
+  unauthenticated mode, and the Bot Framework emulator without authentication
+  is not supported.
+- The activity is acknowledged with `200` at once and the turn runs after.
+  Only `message` activities reach the agent; `conversationUpdate`, `typing`,
+  `invoke` and the bot's own messages are ignored.
+- A personal chat always starts or continues a session. In a group chat or a
+  channel only a message that `@mentions` the bot does; the mention is removed
+  from the text and every other message is ignored.
+- One session per conversation (`conversation.id`; in a Teams channel it
+  includes the thread's root message, so each thread is its own session). The
+  sender (`from.aadObjectId`, else `from.id`) is the run's `principal`
+  (`authenticator: 'teams'`, `issuer`: the tenant), as on the other channels.
+- Replies are Markdown posted to `{serviceUrl}/v3/conversations/{id}/activities/{replyToId}`,
+  with the `serviceUrl` the token vouched for (`https` only). Text over 25,000
+  characters is split at line breaks. The outbound access token comes from the
+  client-credentials flow with `appId` and `appPassword` and is cached until 5
+  minutes before it expires.
+- A tool approval is an Adaptive Card (version 1.4) with the tool, its arguments
+  (cut at 2,000 characters) and two `Action.Submit` buttons. Only `approvers`
+  (Teams user ids as in `from.id`, or a function) can use them; by default only
+  the user who started the turn. Anyone else gets "You are not allowed to
+  approve this request." and the approval stays pending. A press replaces the
+  card with "Approved by <name>." or "Denied by <name>." (no buttons) and the run
+  continues with a new message. A button carries the conversation it was posted
+  in, and a press whose conversation differs (a copied reference) decides
+  nothing; the approval id is the pending approval's, so an old card cannot
+  decide a later approval, and a card already used does nothing, also after a
+  restart.
+- An `ask_question` is posted as text and the next message in the conversation
+  is the answer. A pending question survives a restart given durable stores for
+  sessions, checkpoints and approvals, as on Slack and Discord.
+
+Set up the bot:
+
+1. Create an Azure Bot (single-tenant or multi-tenant) and note its Microsoft
+   App ID (`appId`). Under Configuration, set the messaging endpoint to
+   `https://<host>/channels/teams`.
+2. Under Manage Password, create a client secret (`appPassword`). For a
+   single-tenant bot also pass `tenantId` (the secret is then requested from
+   your tenant).
+3. Under Channels, enable Microsoft Teams.
+4. Create a Teams app manifest whose `bots` entry has `botId` set to the App ID
+   and the scopes you want (`personal`, `team`, `groupChat`), and install it.
+
+```ts
+import * as http from 'node:http';
+import { createAgent, mountChannels, teamsChannel } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ instructions: 'You help the team with questions.', provider });
+
+const channels = mountChannels(agent, [
+  teamsChannel({
+    appId: process.env.MICROSOFT_APP_ID ?? '',
+    appPassword: process.env.MICROSOFT_APP_PASSWORD ?? '',
+    tenantId: process.env.MICROSOFT_TENANT_ID,
+  }),
+]);
+
+http.createServer((req, res) => {
+  void channels(req, res).then((handled) => handled || res.writeHead(404).end());
+}).listen(3000);
+```
+
+The app password and the access token are never put in an error message or log
+line: a failed call is reported to `onError` with the call and the HTTP status
+only (`LOUSHO_CHANNEL_REQUEST_FAILED`). A press on a card works on a restarted
+process, because it names the conversation and the approval itself; the
+continuation after a restart is sent but not appended to the session
+transcript.

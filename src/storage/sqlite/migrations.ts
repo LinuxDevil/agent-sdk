@@ -56,6 +56,37 @@ export const MIGRATIONS: readonly string[] = [
     updated_at INTEGER NOT NULL
   );
   `,
+  // N9a: OAuth tokens and registered clients (`key` is tokenStoreKey() or
+  // `<provider>|client`) and pending sign-ins. Payloads are AES-256-GCM
+  // sealed records (`v1.<iv>.<ciphertext>`), never plaintext tokens.
+  `
+  CREATE TABLE oauth_tokens (
+    key TEXT PRIMARY KEY,
+    payload TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE TABLE oauth_pending (
+    state TEXT PRIMARY KEY,
+    payload TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+  `,
+  // N15: semantic memory. One row per item with its embedding (little-endian
+  // Float32Array bytes, unit length) and the id of the embedder that made it.
+  `
+  CREATE TABLE memory_vectors (
+    scope_key TEXT NOT NULL,
+    id TEXT NOT NULL,
+    text TEXT NOT NULL,
+    metadata TEXT,
+    created_at TEXT NOT NULL,
+    embedder TEXT NOT NULL,
+    dimensions INTEGER NOT NULL,
+    embedding BLOB NOT NULL,
+    PRIMARY KEY (scope_key, id)
+  );
+  CREATE INDEX memory_vectors_created ON memory_vectors (scope_key, created_at);
+  `,
 ];
 
 function readVersion(db: SqlDatabase): number {

@@ -24,3 +24,5 @@ export type {
   RecordReplayProvider,
   RecordReplaySource,
 } from './recordReplay';
+export { hashEmbedder } from './hashEmbedder';
+export type { HashEmbedderOptions } from './hashEmbedder';
