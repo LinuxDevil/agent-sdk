@@ -134,11 +134,6 @@ export interface ToolDescriptor {
   /** Where the tool came from, e.g. an MCP server's annotations (LOU-Z5). */
   metadata?: ToolMetadata;
   /**
-   * @deprecated LOU-D41: never called by the SDK (no supported path reaches
-   * it); it will be removed.
-   */
-  injectStreamingController?: (controller: ReadableStreamDefaultController<unknown>) => void;
-  /**
    * When true, AgentExecutor routes this tool's execution through the
    * configured SandboxAdapter (see ExecuteOptions.sandbox, LOU-F5) instead
    * of calling `tool.execute()` directly. Defaults to false/undefined,

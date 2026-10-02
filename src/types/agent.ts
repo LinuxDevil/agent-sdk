@@ -59,7 +59,6 @@ export interface AgentConfig {
  * Agent execution options
  */
 export interface AgentExecutionOptions {
-  streaming?: boolean;
   sessionId: string;
   messages: Message[];
   attachments?: unknown[];

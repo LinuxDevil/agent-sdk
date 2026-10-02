@@ -15,10 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Deprecated
 - `ExecuteOptions.onEvent`, `ExecutionEvent` and `ExecutionEventType` (LOU-D41). `onEvent` keeps working: the executor now emits only `AgentEvent`s, and an adapter derives the old events from them in the old order (`start`, `text-complete`, `tool-call`, `tool-result`, `error`, `abort`, `finish`, sub-agents' tagged with `subagent`), with a one-time `console.warn`. Differences: `finish` now comes after the run's checkpoint is written (it was just before), and a run that fails outside a step (an input guardrail that throws, `onRunEnd` throwing) now gets an `error` event too. Migration: replace `onEvent` with `onAgentEvent` (or `createAgent({ onEvent })`); `start` -> `run.start`, `text-complete` -> `text.done` (step usage on `step.done`), `tool-call` -> `tool.start`, `tool-result` -> `tool.done` / `tool.error`, `abort` / `finish` -> `run.done` (`finishReason`), `error` -> `error` (`{ name, message }`). The full table is in docs/streaming.md#migrating-from-onevent--executionevent.
-- `ToolDescriptor.injectStreamingController` (LOU-D41): never called by the SDK; it will be removed.
 
 ### Removed
 - `ExecuteOptions.streaming` (LOU-D41): it was never read. Use `AgentExecutor.stream()` / `agent.stream()` to stream a run. Passing it in an object literal is now a type error; remove the property.
+- `ToolDescriptor.injectStreamingController` and `defineTool({ injectStreamingController })` (LOU-D41.2, deprecated earlier in this release): no SDK path ever called it, so removing the property changes nothing at runtime. Passing it is now a type error; remove the property.
+- `AgentExecutionOptions.streaming` (LOU-D41.2): it was never read (`AgentExecutionOptions` is a legacy type no SDK API takes). Remove the property; stream a run with `agent.stream()` / `AgentExecutor.stream()`.
 
 ### Fixed
 - `loushy --help`, `-h` and `help` print the usage and exit 0 (they were "unknown command" with exit 1) (LOU-D49).
