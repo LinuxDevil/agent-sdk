@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { runTraces } from '../cli/traces';
 import { createAgent } from '../createAgent';
+import '../providers'; // registers the real providers (openrouter)
 import { defineTool } from '../tools/defineTool';
 import { fileTraceExporter } from './fileTraceExporter';
 import { listTraces } from './readTraces';

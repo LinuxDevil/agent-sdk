@@ -2,6 +2,8 @@
  * M5a: `lousho traces` against the fixture directory src/traces/__fixtures__/traces,
  * with a fixed clock and no colour.
  */
+import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { formatDuration, parseTracesArgs, runTraces } from './traces';
@@ -105,6 +107,30 @@ describe('lousho traces (M5a)', () => {
     expect((await run(['--nope'])).code).toBe(2);
     expect((await run(['--limit', '0'])).code).toBe(2);
     expect(() => parseTracesArgs(['a', 'b'])).toThrow(/unexpected argument 'b'/);
+  });
+
+  it('reads a trace recorded from a real model run (live-trace.jsonl): tokens, cost and the tool tree', async () => {
+    const source = path.join(fixtures, 'live-trace.jsonl');
+    const id = (JSON.parse(fs.readFileSync(source, 'utf-8').split('\n')[0]) as { traceId: string }).traceId;
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-live-fixture-'));
+    try {
+      fs.mkdirSync(path.join(dir, '2026-10-02'));
+      fs.copyFileSync(source, path.join(dir, '2026-10-02', `${id}.jsonl`));
+
+      const list = await run(['--dir', dir]);
+      expect(list.code).toBe(0);
+      expect(list.out).toContain('weather');
+      expect(list.out).toContain(id);
+      expect(list.out).toMatch(/\$0\.0000\d+/);
+
+      const tree = await run([id.slice(0, 8), '--dir', dir]);
+      expect(tree.code).toBe(0);
+      expect(tree.out).toContain('invoke_agent weather');
+      expect(tree.out).toContain('execute_tool get_weather');
+      expect(tree.out).toMatch(/chat openai\/gpt-4o-mini.*in \d+ out \d+/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('formats durations', () => {
