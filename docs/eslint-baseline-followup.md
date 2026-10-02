@@ -1,36 +1,29 @@
 # ESLint Baseline Follow-up
 
-The ESLint flat config (introduced in LOU-B1) originally surfaced 271 pre-existing violations. They have since been fixed or downgraded; `npm run lint` (`eslint src`) now reports **0 errors and 428 warnings**. Warnings are tolerated for now: do not add new ones, and burn these down incrementally.
+The ESLint flat config (introduced in LOU-B1) originally surfaced 271 pre-existing violations, which were downgraded to warnings and burned down over time (433 warnings at the start of the roadmap loop, 345 before LOU-D16).
 
-Last refreshed: LOU-U5. Regenerate with `npx eslint src -f json` and group by `ruleId` / directory.
+**LOU-D16 cleared the baseline.** `npm run lint` (`eslint src --max-warnings 0`) reports 0 errors and 0 warnings, and it fails on any new one:
 
-## By rule
+- `@typescript-eslint/no-explicit-any`, `@typescript-eslint/no-unused-vars` and `@typescript-eslint/ban-ts-comment` are `error`.
+- `--max-warnings 0` keeps any warn-level rule (including ones a future `typescript-eslint` release adds to `recommended`) from accumulating.
+- `no-unused-vars` ignores names that start with `_` (a parameter an interface requires but the implementation does not use).
+
+## When a real type is not possible
+
+Use a targeted `// eslint-disable-next-line <rule> -- <reason>` on the one line, never a file- or directory-wide disable, a rule turned off in the config or a new `ignores` entry. At LOU-D16 the source has one:
+
+| Where | Rule | Reason |
+| --- | --- | --- |
+| `src/execution/AgentExecutor.ts`, `ExecutionEvent.toolResult.result` | `no-explicit-any` | deprecated public type, kept for compatibility (LOU-D41) |
+
+In tests, a value of the wrong type passed on purpose (to check runtime validation) gets `// @ts-expect-error -- <reason>`; a partial mock is cast to the type it stands in for (`as Partial<T> as T` when it lacks a required member).
+
+## By rule, before LOU-D16
 
 | Rule | Warnings |
 | --- | ---: |
-| `@typescript-eslint/no-explicit-any` | 395 |
-| `@typescript-eslint/no-unused-vars` | 22 |
-| unused `eslint-disable` directives (no rule id) | 10 |
+| `@typescript-eslint/no-explicit-any` | 313 |
+| `@typescript-eslint/no-unused-vars` | 23 |
+| unused `eslint-disable` directives (no rule id) | 8 |
 | `@typescript-eslint/ban-ts-comment` | 1 |
-
-## By directory (under `src/`)
-
-| Directory | Warnings |
-| --- | ---: |
-| `execution` | 123 |
-| `flows` | 102 |
-| `tools/built-in` | 54 |
-| `data` | 28 |
-| `providers` | 20 |
-| `utils` | 19 |
-| `types` | 18 |
-| `templates` | 17 |
-| `cli` | 10 |
-| `tools/mcp` | 9 |
-| `storage` | 8 |
-| `core` | 6 |
-| `deploy` (+ `deploy/adapters`) | 6 |
-| `evals`, `security` | 3 each |
-| `agent-types`, root | 1 each |
-
-Most of the work is replacing `any` in `execution/` and `flows/` (mainly `FlowExecutor` node handling and the executor option plumbing) with real types.
+| **Total** | **345** |
