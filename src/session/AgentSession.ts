@@ -21,6 +21,7 @@ import { restoreRunUsage } from '../execution/runUsage';
 import { AGENT_EVENT_SCHEMA_VERSION, type AgentEvent, type AgentEventPayload } from '../execution/agentEvents';
 import { manualCompactionOptions, type AgentCompaction } from '../context/agentCompaction';
 import { compactTranscript, type SessionCompactOptions, type SessionCompactResult } from './sessionCompact';
+import type { Principal } from '../auth/types';
 
 /** Options for `agent.session()`. */
 export interface SessionOptions {
@@ -101,6 +102,8 @@ export type SessionTurnOptions = Partial<SessionTurnCheckpoint> & { sessionBudge
 export interface SessionTurnCall {
   input: AgentInput;
   metadata?: Record<string, unknown>;
+  /** The turn's caller (N10a). */
+  principal?: Principal;
 }
 
 /** Options of `session.send()` / `session.stream()`. */
@@ -108,6 +111,8 @@ interface SessionSendOptions {
   signal?: AbortSignal;
   /** Passed to the agent's `model` / `instructions` / `tools` functions and memory scopes (LOU-V15). */
   metadata?: Record<string, unknown>;
+  /** Who is calling (N10a, docs/auth.md); passed where `metadata` goes. Route auth does not check that this caller owns the session. */
+  principal?: Principal;
 }
 
 /**
@@ -253,7 +258,7 @@ export class AgentSession<TObject = unknown> {
    * ```
    */
   send(input: AgentInput, options: SessionSendOptions = {}): Promise<ExecutionResult<TObject>> {
-    return this.nextTurn(input, (inputs) => this.turn({ input, metadata: options.metadata }, inputs, options.signal)) as Promise<ExecutionResult<TObject>>;
+    return this.nextTurn(input, (inputs) => this.turn({ input, metadata: options.metadata, principal: options.principal }, inputs, options.signal)) as Promise<ExecutionResult<TObject>>;
   }
 
   /**
@@ -292,7 +297,7 @@ export class AgentSession<TObject = unknown> {
           input,
           async () => {
             await this.beforeTurn(signal);
-            const call = { input, metadata: options.metadata };
+            const call = { input, metadata: options.metadata, principal: options.principal };
             const run = streamRun([...this.history, ...toMessages(input)], signal, this.turnOptions(inputs), call);
             started(run);
             return this.record(await run.result);

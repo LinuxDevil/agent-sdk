@@ -20,6 +20,9 @@ import { assertSessionId } from '../session/sessionStore';
 import type { AgentSession } from '../session/AgentSession';
 import { SessionAwaitingApprovalError } from '../execution/errors';
 import { errorEvents } from '../cli/devEvents';
+import type { AuthFn, Principal } from '../auth/types';
+import { routeAuth } from '../auth/routeAuth';
+import { apiToken } from '../auth/basic';
 
 /** What the routes need from their host: the live agent and how sessions are opened on it. */
 export interface ChatRoutesContext {
@@ -115,19 +118,19 @@ function openSession(ctx: ChatRoutesContext, sessionId: string): AgentSession | 
   return ctx.session ? ctx.session(agent, sessionId) : agent.session({ id: sessionId });
 }
 
-type RouteHandler = (request: Request, ctx: ChatRoutesContext, params: string[]) => Promise<Response>;
+type RouteHandler = (request: Request, ctx: ChatRoutesContext, params: string[], principal: Principal | undefined) => Promise<Response>;
 
-const runChat: RouteHandler = async (request, ctx) => {
+const runChat: RouteHandler = async (request, ctx, _params, principal) => {
   const { sessionId, input, message } = await readJson(request);
   if (typeof sessionId === 'string' && (typeof input === 'string' ? input : Array.isArray(input))) {
     const session = openSession(ctx, sessionId);
-    return session instanceof Response ? session : sseResponse(request, (signal) => session.stream(input as AgentInput, { signal }));
+    return session instanceof Response ? session : sseResponse(request, (signal) => session.stream(input as AgentInput, { signal, principal }));
   }
   if (typeof message === 'string' && message) {
     if (sessionId !== undefined && typeof sessionId !== 'string') return jsonResponse(400, { error: "Request body's 'sessionId', if present, must be a string" });
     if (!warnedLegacy.has(ctx.name)) console.warn(`[${ctx.name}] POST /chat { message } is deprecated: send { sessionId, input } for a session and a streamed turn.`);
     warnedLegacy.add(ctx.name);
-    return jsonResponse(200, await ctx.agent().send(message, ctx.durableMessage && typeof sessionId === 'string' ? { sessionId } : undefined), { Deprecation: 'true' });
+    return jsonResponse(200, await ctx.agent().send(message, { ...(ctx.durableMessage && typeof sessionId === 'string' && { sessionId }), principal }), { Deprecation: 'true' });
   }
   return jsonResponse(400, { error: "Request body must be JSON with 'sessionId' and 'input' strings (or the deprecated 'message')" });
 };
@@ -182,15 +185,16 @@ const ROUTES: Array<[method: string, pattern: RegExp, handler: RouteHandler]> = 
 /**
  * Answers `request` when it is one of the `/chat` routes; resolves `undefined`
  * for any other request, so the host can serve its own routes. A failure before
- * streaming starts answers with a JSON error.
+ * streaming starts answers with a JSON error. `principal` (N10a) is the caller
+ * the host's auth accepted; a new turn runs with it.
  */
-export async function handleChatFetch(request: Request, ctx: ChatRoutesContext): Promise<Response | undefined> {
+export async function handleChatFetch(request: Request, ctx: ChatRoutesContext, principal?: Principal): Promise<Response | undefined> {
   const { pathname } = new URL(request.url);
   for (const [method, pattern, handler] of ROUTES) {
     const match = method === request.method ? pattern.exec(pathname) : null;
     if (!match) continue;
     try {
-      return await handler(request, ctx, match.slice(1).map(decodeURIComponent));
+      return await handler(request, ctx, match.slice(1).map(decodeURIComponent), principal);
     } catch (error) {
       return failureResponse(error);
     }
@@ -198,25 +202,21 @@ export async function handleChatFetch(request: Request, ctx: ChatRoutesContext):
   return undefined;
 }
 
-const digest = async (value: string): Promise<Uint8Array> => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)));
-
-/** Whether `header` is `Bearer <token>`; compared in constant time (both sides hashed to one length first). */
-export async function hasBearerToken(header: string | null, token: string): Promise<boolean> {
-  const presented = /^Bearer\s+(.+)$/i.exec(header ?? '')?.[1];
-  if (presented === undefined) return false;
-  const [a, b] = await Promise.all([digest(presented), digest(token)]);
-  return a.reduce((diff, byte, index) => diff | (byte ^ b[index]), 0) === 0;
-}
+/** What guards the deployed API: a bearer token (`LOUSHO_API_TOKEN`), or (N10a) an auth entry or ordered list (docs/auth.md). */
+export type ServeAuth = string | AuthFn | readonly AuthFn[];
 
 /**
- * The whole deployed API: `GET /health` (open), then, when `token` is set, 401
- * unless the request carries `Authorization: Bearer <token>`, then the `/chat`
- * routes, then 404.
+ * The whole deployed API: `GET /health` (open), then, when `auth` is set, the
+ * auth check (a token string is `apiToken(token)`; a 401 / 403 / 500 is
+ * answered here), then the `/chat` routes with the accepted principal, then 404.
  */
-export async function serveFetch(request: Request, ctx: ChatRoutesContext, token?: string): Promise<Response> {
+export async function serveFetch(request: Request, ctx: ChatRoutesContext, auth?: ServeAuth): Promise<Response> {
   if (request.method === 'GET' && new URL(request.url).pathname === '/health') return textResponse(200, 'ok');
-  if (token && !(await hasBearerToken(request.headers.get('authorization'), token))) {
-    return jsonResponse(401, { error: 'Unauthorized: send Authorization: Bearer <token>' }, { 'WWW-Authenticate': 'Bearer' });
+  let principal: Principal | undefined;
+  if (auth !== undefined && auth !== '') {
+    const outcome = await routeAuth(request, typeof auth === 'string' ? apiToken(auth) : auth);
+    if (!outcome.ok) return outcome.response;
+    principal = outcome.principal;
   }
-  return (await handleChatFetch(request, ctx)) ?? textResponse(404, 'not found');
+  return (await handleChatFetch(request, ctx, principal)) ?? textResponse(404, 'not found');
 }

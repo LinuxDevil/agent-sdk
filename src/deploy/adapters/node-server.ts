@@ -96,7 +96,8 @@ import { createAgent, createDeployedServer, resolveAgentDir, storeFromEnv } from
     boot: `const resolved = await resolveAgentDir(path.join(path.dirname(fileURLToPath(import.meta.url)), 'agent'));
   const agent = createAgent({ ...resolved.config, store: storeFromEnv() });
   await agent.ready();`,
-    options: `{ ...${JSON.stringify(options)}, schedules: resolved.schedules, channels: resolved.channels }`,
+    // An agent directory's auth.ts (N10a) replaces the baked token; LOUSHO_API_TOKEN is appended to it.
+    options: `{ ...${JSON.stringify(options)}, ...(resolved.auth ? { auth: resolved.auth } : {}), schedules: resolved.schedules, channels: resolved.channels }`,
     report: `console.log('lousho server: schedules: ' + (resolved.manifest.schedules.join(', ') || 'none') + '; channels: ' + (resolved.manifest.channels.join(', ') || 'none'));`,
   };
 }
@@ -113,7 +114,8 @@ function serverSource(variant: ServerVariant): string {
  *   POST /chat/:sessionId/approvals/:id     -> { approved, note? } or { answer }, streamed
  *
  * LOUSHO_API_TOKEN makes every route except /health require
- * 'Authorization: Bearer <token>'. LOUSHO_STORE ('memory', the default, or
+ * 'Authorization: Bearer <token>' (after the agent directory's auth.ts, if
+ * it has one: see docs/auth.md). LOUSHO_STORE ('memory', the default, or
  * 'sqlite:<path>') chooses where sessions live.
  *
  * Binds to 127.0.0.1 by default; pass --host=<h> (or HOST=<h>) to opt in to

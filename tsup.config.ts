@@ -40,6 +40,7 @@ export default defineConfig({
     'execution/otel': 'src/execution/otel.ts',
     'execution/hooks': 'src/execution/hooks.ts',
     'storage/sqlite/index': 'src/storage/sqlite/index.ts',
+    'auth/index': 'src/auth/index.ts',
     'deploy/kv': 'src/deploy/kv.ts',
     'traces/index': 'src/traces/index.ts',
     'triggers/index': 'src/triggers/index.ts',

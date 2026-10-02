@@ -17,6 +17,9 @@ import { SqliteStore } from '../storage/sqlite';
 import { parseEventStream } from '../ui/parseEventStream';
 import type { AgentEvent } from '../execution/agentEvents';
 import { createDeployedServer, storeFromEnv, type DeployedServerOptions } from './nodeServer';
+import { apiToken, basic, type Principal } from '../auth';
+import { defineChannel } from '../channels/defineChannel';
+import type { RunConfigContext } from '../createAgent';
 
 const ping = defineTool({ name: 'ping', description: 'Reply with pong', input: z.object({}), execute: () => 'pong', needsApproval: true });
 const pinged = { toolCalls: [{ name: 'ping' }] };
@@ -135,6 +138,67 @@ describe('deployed node server /chat API', () => {
       expect((await env.call('/chat/a', undefined, { Authorization: 'Bearer baked' })).status).toBe(401);
       expect((await env.call('/chat/a', undefined, { Authorization: 'Bearer from-env' })).status).toBe(200);
     });
+  });
+});
+
+describe('deployed node server auth list (N10a)', () => {
+  const basicHeader = (user: string, password: string) => ({ Authorization: `Basic ${btoa(`${user}:${password}`)}` });
+
+  async function serveWithPrincipal(options: DeployedServerOptions) {
+    const seen: Array<Principal | undefined> = [];
+    const replies: string[] = [];
+    agent = createAgent({
+      provider: mockModel(Array.from({ length: 5 }, () => 'ok')),
+      instructions: ({ principal }: RunConfigContext) => (seen.push(principal), 'x'),
+    });
+    const sms = defineChannel({
+      name: 'sms',
+      parse: async (req) => ({ sessionKey: 'c1', input: req.text, replyTo: 'c1' }),
+      reply: async ({ text }) => void replies.push(text),
+    });
+    const created = createDeployedServer(agent, { ...options, channels: [sms] });
+    server = created.server;
+    await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const chat = async (headers: Record<string, string>) => {
+      const res = await fetch(`${base}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ sessionId: 's', input: 'hi' }) });
+      await res.text();
+      return res;
+    };
+    return { base, chat, seen, replies, authenticated: created.authenticated };
+  }
+
+  it('checks the list, then LOUSHO_API_TOKEN appended after it, and the run sees who called', async () => {
+    const { chat, seen, authenticated } = await serveWithPrincipal({ auth: [basic({ users: { ops: 'pw' } })], env: { LOUSHO_API_TOKEN: 'env-token' } });
+    expect(authenticated).toBe(true);
+    expect((await chat(basicHeader('ops', 'pw'))).status).toBe(200);
+    expect((await chat({ Authorization: 'Bearer env-token' })).status).toBe(200);
+    const denied = await chat(basicHeader('ops', 'wrong'));
+    expect(denied.status).toBe(401);
+    expect(denied.headers.get('www-authenticate')).toBe('Basic realm="lousho", charset="UTF-8", Bearer');
+    expect(seen.map((p) => `${p?.authenticator}:${p?.id}`)).toEqual(['basic:ops', 'api-token:api-token']);
+  });
+
+  it('a single entry works without the env token, and an empty list closes the chat routes', async () => {
+    const one = await serveWithPrincipal({ auth: apiToken('t', { id: 'svc' }), env: {} });
+    expect((await one.chat({ Authorization: 'Bearer t' })).status).toBe(200);
+    expect((await one.chat({})).status).toBe(401);
+    expect(one.seen[0]).toEqual({ id: 'svc', type: 'service', authenticator: 'api-token' });
+    server?.closeAllConnections();
+    await new Promise((resolve) => server!.close(resolve));
+
+    const closed = await serveWithPrincipal({ auth: [], env: {} });
+    expect(closed.authenticated).toBe(true);
+    expect((await closed.chat({ Authorization: 'Bearer t' })).status).toBe(401);
+  });
+
+  it('channels are answered without the route auth (they verify themselves)', async () => {
+    const { base, replies } = await serveWithPrincipal({ auth: [basic({ users: { ops: 'pw' } })], env: {} });
+    const hook = await fetch(`${base}/channels/sms`, { method: 'POST', body: 'ping' });
+    expect(hook.status).toBe(200);
+    expect(replies).toEqual(['ok']);
+    expect((await fetch(`${base}/health`)).status).toBe(200);
+    expect((await fetch(`${base}/chat/s`)).status).toBe(401);
   });
 });
 

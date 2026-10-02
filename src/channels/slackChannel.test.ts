@@ -17,6 +17,7 @@ import type { Message } from '../providers';
 import { mountChannels, type ChannelsHandler } from './mountChannels';
 import { slackChannel } from './slackChannel';
 import { durableStores } from './__fixtures__/durableStores';
+import { defineMemory, inMemoryMemory, type MemoryScopeContext } from '../memory';
 
 const SECRET = 'slack-signing-secret';
 const BOT = 'UBOT';
@@ -123,6 +124,14 @@ describe('slackChannel (LOU-P5)', () => {
     expect((await t.send(event('hi'), { headers: { 'x-slack-signature': 'v0=zz' } })).status).toBe(401);
     expect(t.model.calls).toHaveLength(0);
     expect(() => slackChannel({ signingSecret: '', botToken: 'x' })).toThrow(/signingSecret/);
+  });
+
+  it('runs the turn with the sender as its principal, which a memory scope sees (N10a)', async () => {
+    const scopes: MemoryScopeContext[] = [];
+    const notes = defineMemory({ name: 'notes', scope: (ctx) => (scopes.push(ctx), ctx.principal && `slack:${ctx.principal.id}`), provider: inMemoryMemory() });
+    const t = setup(['Hi'], { memory: [notes] });
+    await t.send(event('hello'));
+    expect(scopes[0].principal).toEqual({ id: 'U1', type: 'user', authenticator: 'slack' });
   });
 
   it('acks first, then replies in the thread; follow-ups in the thread continue the same session', async () => {
