@@ -4,6 +4,7 @@
  * Transport-independent: it reads lines from `input` and hands each outgoing
  * line to `write`; `lousho acp` wires them to stdin and stdout.
  */
+import { awaitSignInGate } from '../oauth/signInPending';
 import type { SimpleAgent } from '../createAgent';
 import type { AgentEvent, AgentEventOf, AgentEventType } from '../execution/agentEvents';
 import type { AgentSession } from '../session/AgentSession';
@@ -165,6 +166,24 @@ export async function serveAcp(agent: SimpleAgent, options: ServeAcpOptions): Pr
     return { finishReason: 'stop' };
   }
 
+  /**
+   * N9b: a tool needs the user to sign in: shows the link, then asks for
+   * permission to continue (granting it means "I've signed in"; asked again
+   * while the user has not), or cancels the call when it is rejected.
+   */
+  async function signIn(sessionId: string, paused: Paused, signal: AbortSignal): Promise<Outcome> {
+    const name = paused.signIn?.displayName ?? paused.signIn?.provider ?? 'the provider';
+    update(sessionId, { sessionUpdate: 'agent_message_chunk', content: text(`Sign in to ${name} to continue: ${paused.signIn?.url ?? ''}`) });
+    for (;;) {
+      if (!(await permit(sessionId, { ...paused, toolName: `Sign in to ${name}` }, signal))) {
+        return relay(sessionId, agent.approvals.streamResolve({ id: paused.approvalId, approved: false }, { signal }));
+      }
+      const gate = await awaitSignInGate(agent.approvals.streamResolve({ id: paused.approvalId, approved: true }, { signal }));
+      if (!gate.pending) return relay(sessionId, gate.events);
+      update(sessionId, { sessionUpdate: 'agent_message_chunk', content: text('Not signed in yet: open the link first.') });
+    }
+  }
+
   async function turn(sessionId: string, session: AcpSession, input: string, signal: AbortSignal): Promise<Outcome> {
     const question = session.question;
     session.question = undefined;
@@ -173,6 +192,10 @@ export async function serveAcp(agent: SimpleAgent, options: ServeAcpOptions): Pr
     while (outcome.paused) {
       const { paused } = outcome;
       if (paused.kind === 'question') return ask(sessionId, session, paused);
+      if (paused.kind === 'sign-in') {
+        outcome = await signIn(sessionId, paused, signal);
+        continue;
+      }
       const approved = await permit(sessionId, paused, signal);
       // After a cancel the decision runs under the aborted signal: it settles the approval and stops at once.
       outcome = await relay(sessionId, agent.approvals.streamResolve({ id: paused.approvalId, approved }, { signal }));

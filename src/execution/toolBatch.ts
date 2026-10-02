@@ -47,7 +47,7 @@ export interface StartedToolCall {
 export interface ToolBatchCallbacks {
   /** Starts one call (emitting its `tool-call` event first). */
   start(toolCall: ToolCall): StartedToolCall;
-  /** A call finished (completion order); never called for the approval call. */
+  /** A call finished (completion order); never called for the approval call or a call paused for sign-in (N9b). */
   onComplete(outcome: ToolCallOutcome): void;
   /** Appends a result to the transcript; called in call order. */
   record(toolCall: ToolCall, outcome: ToolCallOutcome): void;
@@ -176,7 +176,8 @@ class ToolBatch {
     try {
       const outcome = await done;
       this.slots[index] = { status: 'completed', outcome };
-      if (!outcome.requiresApproval) {
+      // N9b: a call paused for sign-in has no result yet, like one awaiting approval.
+      if (!outcome.requiresApproval && !outcome.signIn) {
         this.callbacks.onComplete(outcome);
         await this.recordPrefix();
       }
@@ -226,7 +227,7 @@ class ToolBatch {
 function isRecordable(
   slot: Slot | undefined
 ): slot is { status: 'completed'; outcome: ToolCallOutcome } {
-  return slot?.status === 'completed' && !slot.outcome.requiresApproval;
+  return slot?.status === 'completed' && !slot.outcome.requiresApproval && !slot.outcome.signIn;
 }
 
 /** Runs one turn's tool calls - see {@link ToolBatch}. */

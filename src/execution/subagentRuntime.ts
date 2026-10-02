@@ -50,6 +50,8 @@ export type InheritedRuntime = Pick<
   | 'onAgentDrift'
   // N10b: an in-process sub-agent acts for the same caller (a remote one is not told).
   | 'principal'
+  // N9b: and reads that caller's OAuth tokens from the same store.
+  | 'tokens'
 >;
 
 /** What the executor knows about the tool call that is running. */

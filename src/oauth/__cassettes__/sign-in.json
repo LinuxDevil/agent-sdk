@@ -1,0 +1,111 @@
+{
+  "version": 1,
+  "sdkVersion": "1.0.0-alpha.8",
+  "recordedAt": "2026-10-02T22:07:45.492Z",
+  "provider": {
+    "name": "openrouter",
+    "defaultModel": "openai/gpt-4o-mini"
+  },
+  "entries": [
+    {
+      "kind": "generate",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You help with GitHub. Use the tools. Keep answers short."
+          },
+          {
+            "role": "user",
+            "content": "List my repositories."
+          }
+        ],
+        "tools": [
+          {
+            "name": "list_repos",
+            "description": "Lists the repositories of the signed-in GitHub user",
+            "parameters": {
+              "properties": {},
+              "type": "object"
+            }
+          }
+        ],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "",
+        "finishReason": "tool_calls",
+        "usage": {
+          "promptTokens": 61,
+          "completionTokens": 11,
+          "totalTokens": 72
+        },
+        "toolCalls": [
+          {
+            "id": "call_YasfNXcZXRxnsGbao2UZqpHx",
+            "type": "function",
+            "function": {
+              "name": "list_repos",
+              "arguments": "{}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "generate",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You help with GitHub. Use the tools. Keep answers short."
+          },
+          {
+            "role": "user",
+            "content": "List my repositories."
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "list_repos",
+                "arguments": "{}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "{\"repos\":[\"lousho-demo\",\"agent-sdk\"]}",
+            "name": "list_repos",
+            "toolName": "list_repos"
+          }
+        ],
+        "tools": [
+          {
+            "name": "list_repos",
+            "description": "Lists the repositories of the signed-in GitHub user",
+            "parameters": {
+              "properties": {},
+              "type": "object"
+            }
+          }
+        ],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "Your repositories are:\n\n1. lousho-demo\n2. agent-sdk",
+        "finishReason": "stop",
+        "usage": {
+          "promptTokens": 93,
+          "completionTokens": 16,
+          "totalTokens": 109
+        }
+      }
+    }
+  ]
+}

@@ -330,6 +330,10 @@ const scripted = createAgent({
 A permission rule that `allow`s `ask_question` skips the pause, so the call
 fails with "No answer"; leave the tool to its default.
 
+A tool that needs the user to sign in to an OAuth provider pauses the same way,
+with `kind: 'sign-in'` and the link in `signIn`; see
+[Tools that need sign-in](./oauth.md#tools-that-need-sign-in).
+
 ## Advanced: the executor API
 
 `createAgent()` agents use `agent.approvals` (see

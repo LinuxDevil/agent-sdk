@@ -194,6 +194,8 @@ function childOptions(
     onAgentDrift: runtime.onAgentDrift,
     // N10b: an in-process child acts for the lead's caller (a remote sub-agent is never told who it is).
     principal: runtime.principal,
+    // N9b: and reads that caller's OAuth tokens from the lead's store.
+    tokens: runtime.tokens,
     guardrails: inheritGuardrails(runtime.guardrails, spec.guardrails),
     reasoning: spec.reasoning,
     output: spec.output,

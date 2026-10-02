@@ -35,6 +35,11 @@ export interface PendingApproval {
   /** LOU-X9: the question to show, when `kind` is `'question'`. */
   question?: ApprovalQuestion;
   /**
+   * N9b: where to sign in, when `kind` is `'sign-in'`: the tool called
+   * `ctx.getToken()` for a provider the user has no token for yet.
+   */
+  signIn?: ApprovalSignIn;
+  /**
    * N10b: who the paused run acts for (docs/auth.md), so an `approve`
    * callback or a channel's `approvers` function can see whose call it is.
    * Absent for a run without a principal.
@@ -42,8 +47,23 @@ export interface PendingApproval {
   principal?: Principal;
 }
 
-/** LOU-X9: what a pending approval asks for. Absent on a record means `'tool'`. */
-export type ApprovalKind = 'tool' | 'question';
+/**
+ * LOU-X9: what a pending approval asks for. Absent on a record means `'tool'`.
+ * N9b: `'sign-in'` when a tool needs the user to sign in to an OAuth provider.
+ */
+export type ApprovalKind = 'tool' | 'question' | 'sign-in';
+
+/** N9b: the sign-in a `kind: 'sign-in'` pause waits on. */
+export interface ApprovalSignIn {
+  /** The provider's `name` (its token store key). */
+  provider: string;
+  /** The provider's `displayName`, e.g. `'GitHub'`. */
+  displayName?: string;
+  /** The authorization URL to open (it carries the `state` and the PKCE challenge, never a secret). */
+  url: string;
+  /** Set once the provider redirected back with an error (the user declined): approving then cancels the call. */
+  declined?: boolean;
+}
 
 /** LOU-X9: the question an `ask_question` call puts to the user. */
 export interface ApprovalQuestion {

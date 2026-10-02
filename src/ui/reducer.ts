@@ -8,7 +8,7 @@
 import type { AgentEvent, AgentEventError, AgentEventUsage } from '../execution/agentEvents';
 import { describeInput, type AgentInput } from '../providers/content';
 import type { Todo } from '../tools/built-in/todo';
-import type { ApprovalKind, ApprovalQuestion } from '../execution/ApprovalGate';
+import type { ApprovalKind, ApprovalQuestion, ApprovalSignIn } from '../execution/ApprovalGate';
 
 /** Where a tool call stands: running, paused for approval, or finished. */
 export type UIToolCallStatus = 'running' | 'awaiting-approval' | 'done' | 'error' | 'rejected';
@@ -50,6 +50,11 @@ export interface UIPendingApproval {
   kind?: ApprovalKind;
   /** LOU-X9: the question's text and options, when `kind` is `'question'`. */
   question?: ApprovalQuestion;
+  /**
+   * N9b: where to sign in, when `kind` is `'sign-in'`: show `signIn.url`, and
+   * call `approve()` once the user signed in ("I've signed in"), `reject()` to cancel.
+   */
+  signIn?: ApprovalSignIn;
 }
 
 /** How a run continued after an approval decision (built from `agent.approvals.resolve()`'s result). */
@@ -120,10 +125,10 @@ function patchTool(messages: UIMessage[], id: string, patch: Partial<UIToolCall>
   });
 }
 
-/** The paused call of an `approval.requested` event, with its question when it has one (LOU-X9). */
+/** The paused call of an `approval.requested` event, with its question (LOU-X9) or sign-in link (N9b) when it has one. */
 function pendingOf(event: Extract<AgentEvent, { type: 'approval.requested' }>): UIPendingApproval {
-  const { approvalId: id, toolCallId, toolName, args, kind, question } = event;
-  return { id, toolCallId, toolName, args, ...(kind && { kind }), ...(question && { question }) };
+  const { approvalId: id, toolCallId, toolName, args, kind, question, signIn } = event;
+  return { id, toolCallId, toolName, args, ...(kind && { kind }), ...(question && { question }), ...(signIn && { signIn }) };
 }
 
 function pause(state: AgentUIState, approval: UIPendingApproval): AgentUIState {

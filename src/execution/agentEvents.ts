@@ -11,7 +11,7 @@ import type { ExecutionFinishReason } from './AgentExecutor';
 import type { SubagentInfo } from './hooks';
 import type { CompactedProviderErrorCategory } from './errors';
 import type { PermissionDecisionEntry } from './permissions';
-import type { ApprovalKind, ApprovalQuestion } from './ApprovalGate';
+import type { ApprovalKind, ApprovalQuestion, ApprovalSignIn } from './ApprovalGate';
 import type { BudgetExceeded } from './budget';
 import type { GuardrailTrip } from './ioGuardrails';
 import type { AgentDrift } from './agentFingerprint';
@@ -179,10 +179,16 @@ export interface ApprovalRequestedEvent extends AgentEventBase<'approval.request
   toolCallId: string;
   toolName: string;
   args: Record<string, unknown>;
-  /** LOU-X9: `'question'` when an `ask_question` call waits for the user's answer; absent for a tool approval. */
+  /** LOU-X9: `'question'` when an `ask_question` call waits for the user's answer; N9b: `'sign-in'` when a tool waits for an OAuth sign-in; absent for a tool approval. */
   kind?: ApprovalKind;
   /** LOU-X9: the question's text and options, when `kind` is `'question'`. */
   question?: ApprovalQuestion;
+  /**
+   * N9b: where the user signs in, when `kind` is `'sign-in'`: a tool needs an
+   * OAuth token the user has not granted yet. Show `url`; once the provider
+   * redirected back, continue with `approved: true` ("I've signed in").
+   */
+  signIn?: ApprovalSignIn;
 }
 
 /**

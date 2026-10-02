@@ -11,6 +11,8 @@ import type { Message } from '../providers';
 import type { ToolExecutionContext } from '../types/tool';
 import { bindToolCallScope, type ToolCallScope } from './subagentRuntime';
 import { readonlyPrincipal } from './runPrincipal';
+import type { OAuthTokenStore } from '../oauth/types';
+import { getToken, requireAuth } from '../oauth/signIn';
 
 /**
  * @deprecated Use {@link ToolExecutionContext}, the one public execute-context
@@ -28,6 +30,10 @@ export interface ToolRunInput extends Pick<ToolRunContext, 'toolCallId' | 'sessi
   signal?: AbortSignal;
   /** LOU-Y1: lets a delegate/`task` tool's sub-agent inherit from this run. */
   scope?: ToolCallScope;
+  /** N9b: where `ctx.getToken()` reads OAuth tokens (the agent's `store.tokens`). */
+  tokens?: OAuthTokenStore;
+  /** N9b: collects the tokens `ctx.getToken()` handed out during this call (see redactHandedOutTokens()). */
+  handedOut?: Set<string>;
 }
 
 /**
@@ -51,7 +57,7 @@ function transcriptBefore(messages: readonly Message[], toolCallId: string): rea
 export function buildToolRunContext(input: ToolRunInput): ToolExecutionContext {
   const toolCallId = input.toolCallId ?? newId('call');
   const principal = readonlyPrincipal(input.principal);
-  const ctx: ToolExecutionContext = {
+  const ctx = {
     toolCallId,
     messages: transcriptBefore(input.messages ?? [], toolCallId),
     abortSignal: input.signal,
@@ -59,7 +65,13 @@ export function buildToolRunContext(input: ToolRunInput): ToolExecutionContext {
     ...(input.sessionId !== undefined && { sessionId: input.sessionId }),
     ...(principal && { principal }),
     ...(input.approval && { approval: approvalOf(input.approval) }),
-  };
+  } as ToolExecutionContext;
+  // N9b: methods, not data - kept out of the enumerable fields a tool may log or spread.
+  const access = { tokens: input.tokens, principal, handedOut: input.handedOut };
+  Object.defineProperties(ctx, {
+    getToken: { value: (provider: Parameters<ToolExecutionContext['getToken']>[0]) => getToken(provider, access) },
+    requireAuth: { value: (provider: Parameters<ToolExecutionContext['requireAuth']>[0]) => requireAuth(provider, access) },
+  });
   bindToolCallScope(ctx, input.scope);
   return ctx;
 }

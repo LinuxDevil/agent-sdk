@@ -399,6 +399,8 @@ class RunEvents {
           // LOU-X9: an `ask_question` call carries its question.
           ...(pending.kind && { kind: pending.kind }),
           ...(pending.question && { question: pending.question }),
+          // N9b: the link only (never the declined flag, which a later callback sets).
+          ...(pending.signIn && { signIn: { provider: pending.signIn.provider, ...(pending.signIn.displayName !== undefined && { displayName: pending.signIn.displayName }), url: pending.signIn.url } }),
         });
       },
       permissionDecision: (entry) =>

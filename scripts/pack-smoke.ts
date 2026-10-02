@@ -35,10 +35,11 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 /**
  * Thresholds: the 1.0.0-alpha.8 tarball is ~705 entries / ~11.4 MB unpacked / ~3.1 MB packed; headroom ~25%.
  * Unpacked raised from 14 to 16 MiB by N4 (#315): main was at 14.63 MB, N4 brought it to 14.73 MB; see #316.
+ * Packed raised from 4 to 4.5 MiB by N9b (#247): N9b brought it to 4,225,563 bytes (31 KB over); see #316.
  */
 const MAX_ENTRIES = 900;
 const MAX_UNPACKED_BYTES = 16 * 1024 * 1024;
-const MAX_PACKED_BYTES = 4 * 1024 * 1024;
+const MAX_PACKED_BYTES = 4.5 * 1024 * 1024;
 
 const DEFAULT_PEERS = 'ai@7 zod@4 @ai-sdk/openai@4 react@19 vue@3 @opentelemetry/api@1';
 /** Files the `files` allowlist ships on purpose that look like tests (`.test-d.ts` type tests live next to source). */

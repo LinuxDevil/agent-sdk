@@ -7,7 +7,7 @@
  */
 import type { SimpleAgent } from '../createAgent';
 import { newId } from '../utils/id';
-import { handleChatFetch } from './fetchRoutes';
+import { callbackPrincipal, handleChatFetch } from './fetchRoutes';
 import { AuthError, type AuthFn, type Principal } from '../auth/types';
 import { routeAuth } from '../auth/routeAuth';
 import { apiToken } from '../auth/basic';
@@ -104,7 +104,9 @@ async function hookRoute(request: Request, path: string): Promise<{ path: string
 
 /**
  * Serves `agent` (the session API of `lousho dev` and the deployed server:
- * `POST /chat`, `GET /chat/:id`, approvals, `GET /health`) under `basePath`;
+ * `POST /chat`, `GET /chat/:id`, approvals, `GET /health`, and - N9b - the
+ * OAuth sign-in callback `GET <basePath>/oauth/callback`, which is not behind
+ * `auth`) under `basePath`;
  * `POST <basePath>` and `POST <basePath>/approvals/:id` serve `useLoushoAgent`.
  *
  * @example
@@ -124,7 +126,10 @@ export function createRouteHandler(agent: SimpleAgent, options: RouteHandlerOpti
     if (path === undefined) return text(404, 'not found');
     if (request.method === 'GET' && path === '/health') return text(200, 'ok');
     let principal: Principal | undefined;
-    if (auth) {
+    if (request.method === 'GET' && path === '/oauth/callback') {
+      // N9b: the provider's redirect carries no API token; the single-use `state` protects it.
+      principal = await callbackPrincipal(request, auth);
+    } else if (auth) {
       const outcome = await routeAuth(request, auth);
       if (!outcome.ok) return outcome.response;
       principal = outcome.principal;

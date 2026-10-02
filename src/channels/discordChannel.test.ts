@@ -17,6 +17,8 @@ import type { Message } from '../providers';
 import { mountChannels, type ChannelsHandler } from './mountChannels';
 import { discordChannel } from './discordChannel';
 import { durableStores } from './__fixtures__/durableStores';
+import { memoryStore } from '../storage/agentStore';
+import { fakeOAuthServer, githubProvider, listReposTool } from '../oauth/__fixtures__/fakeOAuth';
 
 const APP = 'app1';
 const hex = (bytes: ArrayBuffer | Uint8Array) => Buffer.from(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)).toString('hex');
@@ -26,7 +28,7 @@ const publicKey = hex(await crypto.subtle.exportKey('raw', keys.publicKey));
 interface Call {
   method: string;
   url: string;
-  body: { content: string; components?: Array<{ components: Array<{ custom_id: string }> }> };
+  body: { content: string; components?: Array<{ components: Array<{ custom_id: string }> }>; flags?: number };
 }
 
 /** A fake Discord API that records each webhook call; `log` interleaves calls and HTTP responses. */
@@ -318,5 +320,32 @@ describe('discordChannel (LOU-P6)', () => {
       expect(execute).toHaveBeenCalledTimes(1);
       expect(second.calls.at(-1)).toMatchObject({ method: 'POST', url: 'tok-click', body: { content: 'Email sent.' } });
     });
+  });
+});
+
+describe('discordChannel sign-in (N9b)', () => {
+  it('sends the sign-in link as an ephemeral follow-up with no buttons, and continues after the callback', async () => {
+    const discord = fakeDiscord();
+    const { tool, executions } = listReposTool(githubProvider(fakeOAuthServer()));
+    const agent = createAgent({ provider: mockModel([{ toolCalls: [{ name: 'list_repos', id: 'call_1', args: {} }] }, 'You have lousho-demo.']), tools: [tool], store: memoryStore() });
+    const handler = mountChannels(agent, [discordChannel({ publicKey, applicationId: APP, fetch: discord.fetch })]);
+
+    await send(handler, discord.log, command('list my repos'));
+    // the original (public) response says a link was sent; the link itself only in the ephemeral follow-up
+    expect(discord.calls.map((c) => [c.method, c.url, c.body.flags])).toEqual([
+      ['PATCH', 'tok-list my repos/messages/@original', undefined],
+      ['POST', 'tok-list my repos', 64],
+    ]);
+    expect(discord.calls[0].body.content).not.toContain('https://');
+    expect(discord.calls.every((c) => c.body.components === undefined)).toBe(true);
+    const link = discord.calls[1].body.content;
+    expect(link).toMatch(/^Sign in to GitHub to continue: https:\/\/github\.example\.com\/login\/oauth\/authorize\?/);
+
+    const [pending] = await agent.approvals.list();
+    expect(pending).toMatchObject({ kind: 'sign-in', principal: { id: 'U1', authenticator: 'discord' } });
+    await agent.oauth.complete({ state: new URL(link.slice(link.indexOf('https://'))).searchParams.get('state') ?? '', code: 'code-u1' });
+    await handler.resolveApproval({ id: pending.id, approved: true });
+    expect(executions).toEqual(['gho_SECRET_u1_1']);
+    expect(discord.calls.at(-1)).toMatchObject({ method: 'POST', url: 'tok-list my repos', body: { content: 'You have lousho-demo.' } });
   });
 });

@@ -24,6 +24,7 @@ import * as http from 'node:http';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { handleChatRequest, sendJson, sendText, type ChatRoutesContext } from '../server/chatRoutes';
+import { continueChannelSignIn } from '../channels/mountChannels';
 import { parseCommand, portValue, stringValue, usageError, type CommandSpec } from './args';
 import { detectTarget, hasOwnStore, startReloader, type DevOptions, type DevState } from './devReload';
 
@@ -80,6 +81,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     agent: () => holder.agent,
     // The dev store keeps sessions across reloads, unless the agent brought its own.
     session: (agent, id) => agent.session(hasOwnStore(agent) ? { id } : { id, store: holder.store }),
+    // N9b: a channel turn paused on a sign-in continues on its surface after the callback.
+    afterSignIn: (result) => continueChannelSignIn(holder.channels, result),
   };
   if (!(await handleChatRequest(req, res, chat))) sendText(res, 404, 'not found');
 }

@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { memoryStore } from '../storage/agentStore';
+import { SignInRequired } from '../oauth/signIn';
+import { fakeOAuthServer, githubProvider } from '../oauth/__fixtures__/fakeOAuth';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -63,7 +66,37 @@ async function converse(lines: string[], turns: MockTurn[], extra: { askQuestion
   return { code, model, built, out: out.text(), err: err.text() };
 }
 
+
+/** N9b: a tool that needs a GitHub sign-in the user never completes (the chat surfaces run without a principal). */
+function signInTool() {
+  const github = githubProvider(fakeOAuthServer());
+  return defineTool({
+    name: 'list_repos',
+    description: 'Lists repositories',
+    input: z.object({}),
+    execute: () => {
+      throw new SignInRequired(github, { owner: 'user', principalId: 'local' });
+    },
+  });
+}
+
 describe('lousho chat REPL', () => {
+  it('shows a sign-in link, asks again while not signed in, and cancels on n (N9b)', async () => {
+    const out = sink();
+    const model = mockModel([{ toolCalls: [{ name: 'list_repos', args: {} }] }, 'Okay, no repositories then.']);
+    await runChatRepl({
+      input: scripted(['list my repos', '', 'n', '/quit']),
+      output: out.stream,
+      sessionId: 'test',
+      createAgent: async () => createAgent({ instructions: 'x', provider: model, tools: [signInTool()], store: memoryStore() }),
+    });
+    const text = out.text();
+    expect(text).toMatch(/Sign in to GitHub to continue: https:\/\/github\.example\.com\/login\/oauth\/authorize\?/);
+    expect(text).toContain('Not signed in yet: open the link first.');
+    expect(text).toContain('Okay, no repositories then.');
+    expect(JSON.stringify(model.calls[1].messages)).toContain('Sign-in to GitHub was cancelled.');
+  });
+
   it('streams a reply, shows tool calls as dim lines and prints usage', async () => {
     const { code, out, model } = await converse(
       ['look up cats', '/quit'],

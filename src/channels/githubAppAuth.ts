@@ -4,6 +4,7 @@
  * is exchanged for an installation access token. Not exported from the package
  * root; `githubChannel({ app })` uses it.
  */
+import { toBase64Url } from '../utils/base64url';
 import { ConfigurationError, SDKError } from '../execution/errors';
 
 /** Options of {@link createInstallationTokens}. */
@@ -22,12 +23,6 @@ const REFRESH_MARGIN_MS = 5 * 60 * 1000;
 const PEM = /-----BEGIN (RSA PRIVATE KEY|PRIVATE KEY)-----([\s\S]*?)-----END \1-----/;
 
 const encoder = new TextEncoder();
-
-function toBase64Url(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
 
 function fromBase64(text: string): Uint8Array {
   return Uint8Array.from(atob(text), (char) => char.charCodeAt(0));

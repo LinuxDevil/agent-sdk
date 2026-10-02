@@ -13,11 +13,11 @@
 import * as http from 'node:http';
 import type { SimpleAgent } from '../createAgent';
 import { relayFetch } from '../server/chatRoutes';
-import { serveFetch } from '../server/fetchRoutes';
+import { serveFetch, type ChatRoutesContext } from '../server/fetchRoutes';
 import { startSchedules, type StartSchedulesOptions } from '../schedules/startSchedules';
 import type { DefinedSchedule } from '../schedules/defineSchedule';
 import type { Channel } from '../channels/defineChannel';
-import { mountChannels } from '../channels/mountChannels';
+import { continueChannelSignIn, mountChannels } from '../channels/mountChannels';
 import { specToAgent } from '../spec/specToAgent';
 import type { AgentSpec } from '../spec/schema';
 import { memoryStore, type AgentStore } from '../storage/agentStore';
@@ -90,9 +90,10 @@ function serverAuth(options: DeployedServerOptions): readonly AuthFn[] | undefin
  */
 export function createDeployedServer(agent: SimpleAgent, options: DeployedServerOptions = {}): { server: http.Server; authenticated: boolean } {
   const auth = serverAuth(options);
-  const chat = { name: 'lousho server', agent: () => agent };
   // Channels authenticate themselves (their own verify), so they sit beside the bearer-protected chat routes.
   const channels = options.channels?.length ? mountChannels(agent, options.channels) : undefined;
+  // N9b: a channel turn paused on a sign-in continues on its surface once the callback stored the token.
+  const chat: ChatRoutesContext = { name: 'lousho server', agent: () => agent, afterSignIn: (result) => continueChannelSignIn(channels, result) };
   const handle = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
     if (await channels?.(req, res)) return;
     await relayFetch(req, res, (request) => serveFetch(request, chat, auth));

@@ -124,6 +124,19 @@ describe('reduceAgentEvents (LOU-D15)', () => {
     expect(paused.messages[1].toolCalls[0]).toMatchObject({ name: 'ask_question', status: 'awaiting-approval' });
   });
 
+  it("a sign-in pause exposes kind: 'sign-in' and the link (N9b)", () => {
+    const signIn = { provider: 'github', displayName: 'GitHub', url: 'https://github.example.com/login/oauth/authorize?state=s' };
+    const paused = reduce(
+      send,
+      ...events(
+        { type: 'approval.requested', approvalId: 's1', toolCallId: 'c1', toolName: 'list_repos', args: {}, kind: 'sign-in', signIn },
+        { type: 'run.done', finishReason: 'awaiting-approval', text: '' }
+      )
+    );
+    expect(paused.status).toBe('awaiting-approval');
+    expect(paused.pendingApproval).toEqual({ id: 's1', toolCallId: 'c1', toolName: 'list_repos', args: {}, kind: 'sign-in', signIn });
+  });
+
   it('a resumed run that pauses again exposes the next approval', () => {
     const next = { id: 'ap2', toolCallId: 'c2', toolName: 'pay', args: {} };
     const state = reduce(send, { type: 'ui.resumed', outcome: { text: '', finishReason: 'awaiting-approval', approval: next } });

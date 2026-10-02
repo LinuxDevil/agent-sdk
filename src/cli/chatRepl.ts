@@ -17,6 +17,7 @@ import { memoryStore, type AgentStore } from '../storage/agentStore';
 import { newId } from '../utils/id';
 import { hasOwnStore } from './devReload';
 import { SDKError } from '../execution/errors';
+import { awaitSignInGate } from '../oauth/signInPending';
 
 export interface ChatReplOptions {
   /** Lines to read (a readline interface, any async iterable of lines, or a raw stream, which is split into lines). */
@@ -142,9 +143,23 @@ export async function runChatRepl(options: ChatReplOptions): Promise<number> {
     return undefined;
   }
 
+  /** N9b: shows the sign-in link and continues once the user signed in (asks again while they have not), or cancels. */
+  async function signIn(request: PendingApproval): Promise<AsyncIterable<AgentEvent>> {
+    const { id, signIn: link } = request;
+    say(`Sign in to ${link?.displayName ?? link?.provider} to continue: ${link?.url}`);
+    for (;;) {
+      const reply = await ask('Press Enter once you have signed in (n cancels): ');
+      if (reply === undefined || /^n(o)?$/i.test(reply)) return agent.approvals.streamResolve({ id, approved: false });
+      const gate = await awaitSignInGate(agent.approvals.streamResolve({ id, approved: true }));
+      if (!gate.pending) return gate.events;
+      say('Not signed in yet: open the link first.');
+    }
+  }
+
   /** Asks the user about `request` and continues the turn; resolves to the continued turn's live events. */
   async function decide(request: PendingApproval): Promise<AsyncIterable<AgentEvent>> {
     const { id } = request;
+    if (request.kind === 'sign-in') return signIn(request);
     if (request.kind === 'question' && request.question) {
       const answer = await readAnswer(request.question);
       return answer === undefined ? agent.approvals.streamResolve({ id, approved: false }) : agent.approvals.streamAnswer({ id, answer });
