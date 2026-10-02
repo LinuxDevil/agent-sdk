@@ -14,6 +14,7 @@ import { serveFetch } from '../server/fetchRoutes';
 import type { KVBinding } from './kvCheckpointStore';
 import { KVStore } from './kvStore';
 import { handleWorkerRequest, workerStore } from './runtime.worker';
+import { generateTokenKey } from '../oauth';
 
 function fakeKV(): KVBinding & { data: Map<string, string> } {
   const data = new Map<string, string>();
@@ -161,5 +162,16 @@ describe('handleWorkerRequest', () => {
       expect((await (await call(env, `/chat/${id}`)).json()).messages).toHaveLength(2);
     }
     expect(workerStore({ AGENT_CHECKPOINTS: fakeKV() })).toBeInstanceOf(KVStore);
+  });
+
+  it('encrypts OAuth tokens with the LOUSHO_TOKEN_KEY secret of env (N9a)', async () => {
+    const kv = fakeKV();
+    const tokenKey = generateTokenKey();
+    await workerStore({ AGENT_CHECKPOINTS: kv, LOUSHO_TOKEN_KEY: tokenKey }).tokens!.set('github', { owner: 'app' }, { accessToken: 'worker-token-1234' });
+    expect(kv.data.get('oauth/tokens/github|app')).toMatch(/^v1\./);
+    expect(await new KVStore(kv, { tokenKey }).tokens.get('github', { owner: 'app' })).toEqual({ accessToken: 'worker-token-1234' });
+    await expect(workerStore({ AGENT_CHECKPOINTS: fakeKV() }).tokens!.set('github', { owner: 'app' }, { accessToken: 'x' })).rejects.toMatchObject({
+      code: 'LOUSHO_TOKEN_KEY_MISSING',
+    });
   });
 });

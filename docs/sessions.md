@@ -218,6 +218,11 @@ Session ids must match `^[A-Za-z0-9_-]{1,128}$` (they become file names, so
 `../x` and `a/b` are refused with an error that says so). Implement
 `SessionStore` yourself to keep transcripts in a database or Redis.
 
+An `AgentStore` has a fourth optional part next to `sessions`, `checkpoints`
+and `approvals`: `tokens`, the OAuth access and refresh tokens of tools and
+connections, kept encrypted by the file, SQLite and KV stores (see
+[OAuth](oauth.md#token-storage)).
+
 ## Choosing a store
 
 Sessions, durable-execution checkpoints and approvals each have a store
@@ -267,7 +272,7 @@ const store = new SqliteStore('./.lousho/agent.db'); // or ':memory:'
 const agent = createAgent({ provider, store }); // transcripts, per-step checkpoints and approvals
 await agent.session({ id: 'user-42' }).send('Hello');
 
-store.prune({ olderThanMs: 7 * 24 * 60 * 60 * 1000 }); // { sessions, checkpoints, approvals } deleted
+store.prune({ olderThanMs: 7 * 24 * 60 * 60 * 1000 }); // { sessions, checkpoints, approvals, oauthPending } deleted
 store.close();
 ```
 
@@ -282,7 +287,8 @@ With the executor directly, pass `store.checkpoints` as `checkpointStore` and
 - Checkpoints and approval snapshots are stored as opaque JSON, so new fields
   round-trip unchanged.
 - `prune()` removes sessions and checkpoints not updated within `olderThanMs`,
-  and approvals resolved that long ago; unresolved approvals are kept.
+  approvals resolved that long ago and expired pending OAuth sign-ins;
+  unresolved approvals and OAuth tokens are kept.
 - A file that is not a SQLite database fails with an error naming the path;
   using the store after `close()` throws a clear error.
 

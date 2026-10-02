@@ -6,6 +6,7 @@
  *   `<prefix>sessions/<id>`      a transcript as JSON
  *   `<prefix>checkpoints/<id>`   a Checkpoint (KVCheckpointStore, with its history)
  *   `<prefix>approvals/<id>`     a pending approval and its snapshot
+ *   `<prefix>oauth/...`          OAuth tokens and sign-ins, encrypted (kvTokenStore.ts)
  *
  * No Node builtins: only the structural `KVBinding` and Web APIs, so it bundles
  * into the Worker. KV is eventually consistent: a write can take up to ~60
@@ -19,6 +20,9 @@ import type { Message } from '../providers/llm';
 import { assertSessionId } from '../session/sessionId';
 import type { SessionStore } from '../session/sessionStore';
 import type { AgentStore } from '../storage/agentStore';
+import type { OAuthTokenStore } from '../oauth/types';
+import type { TokenKeyInput } from '../oauth/tokenCipher';
+import { kvTokenStore } from './kvTokenStore';
 import { DEFAULT_KV_KEY_PREFIX, KVCheckpointStore, type KVBinding } from './kvCheckpointStore';
 
 /** Options of {@link KVStore}. */
@@ -29,6 +33,13 @@ export interface KVStoreOptions {
   ttl?: { sessions?: number; checkpoints?: number; approvals?: number };
   /** Checkpoints kept per session in `checkpoints.history()` (default 50, `0` keeps none; LOU-D43.2). */
   historyLimit?: number;
+  /**
+   * Key of the OAuth tokens in `store.tokens`: 32 random bytes as base64
+   * (`generateTokenKey()`), or several, newest first, to read tokens written
+   * under an older key. Default: `LOUSHO_TOKEN_KEY` where `process.env`
+   * exists; on Workers pass `env.LOUSHO_TOKEN_KEY` (a secret) here.
+   */
+  tokenKey?: TokenKeyInput;
 }
 
 /** Bytes inside a transcript (image and file parts) as `{ "$bytes": "<base64>" }`, the encoding of `FileSessionStore`; `Buffer` does not exist on Workers. */
@@ -107,10 +118,14 @@ export class KVStore implements Required<AgentStore> {
   readonly sessions: SessionStore;
   readonly checkpoints: KVCheckpointStore;
   readonly approvals: ApprovalStore;
+  /** OAuth tokens, pending sign-ins and registered clients, encrypted with `tokenKey` (docs/oauth.md). */
+  readonly tokens: OAuthTokenStore;
 
-  constructor(kv: KVBinding, { prefix = '', ttl = {}, historyLimit }: KVStoreOptions = {}) {
+  /** @throws `ConfigurationError` when `tokenKey` (or `LOUSHO_TOKEN_KEY`) is set but is not 32 bytes of base64 */
+  constructor(kv: KVBinding, { prefix = '', ttl = {}, historyLimit, tokenKey }: KVStoreOptions = {}) {
     this.sessions = new KVSessionStore(kv, `${prefix}sessions/`, ttl.sessions);
     this.checkpoints = new KVCheckpointStore(kv, `${prefix}${DEFAULT_KV_KEY_PREFIX}`, ttl.checkpoints, { historyLimit });
     this.approvals = new KVApprovalStore(kv, `${prefix}approvals/`, ttl.approvals);
+    this.tokens = kvTokenStore(kv, prefix, { tokenKey });
   }
 }
