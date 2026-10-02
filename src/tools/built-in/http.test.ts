@@ -64,23 +64,57 @@ describe('makeHttpRequest', () => {
   });
 
   it('rejects near the configured timeout when the server never responds', async () => {
-    server = http.createServer(() => {
+    // #324: this used to compare a real elapsed time against the real 500 ms
+    // timeout (>= 450 and < 2000), which failed whenever a loaded machine
+    // delayed the event loop. The request timer is now driven by a fake clock
+    // (only setTimeout/clearTimeout are faked; the sockets stay real), so the
+    // test pins the exact boundary: still pending 1 ms before the timeout,
+    // aborted at the timeout, with the documented error.
+    let serverSawRequest!: () => void;
+    const requestArrived = new Promise<void>((resolve) => (serverSawRequest = resolve));
+    let clientHungUp!: () => void;
+    const connectionClosed = new Promise<void>((resolve) => (clientHungUp = resolve));
+    server = http.createServer((req) => {
       // Never respond
+      req.socket.once('close', clientHungUp);
+      serverSawRequest();
     });
     const baseUrl = await listen(server);
 
-    const start = Date.now();
-    await expect(
-      makeHttpRequest({
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let settled = false;
+      const request = makeHttpRequest({
         url: baseUrl,
         method: 'GET',
         options: { timeout: 500, ...LOCAL },
-      })
-    ).rejects.toThrow(/timed out/i);
-    const elapsed = Date.now() - start;
+      });
+      const outcome = request.then(
+        () => {
+          settled = true;
+        },
+        (error: unknown) => {
+          settled = true;
+          return error;
+        }
+      );
 
-    expect(elapsed).toBeGreaterThanOrEqual(450);
-    expect(elapsed).toBeLessThan(2000);
+      // The request is in flight (the server has it) and the 500 ms timer is armed.
+      await requestArrived;
+
+      await vi.advanceTimersByTimeAsync(499);
+      expect(settled).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      const error = await outcome;
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toMatch(/timed out after 500ms/i);
+
+      // The abort tore the connection down rather than leaving it dangling.
+      await connectionClosed;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('LOU-V1: the tool passes its abortSignal to fetch and rejects with an AbortError', async () => {
