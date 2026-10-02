@@ -3,6 +3,8 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { ToolDescriptor, EditorStep } from '../types';
+import type { FlowExecutionEvent } from './FlowExecutor';
 import { FlowExecutor, FlowExecutionContext } from './FlowExecutor';
 import { AgentFlow, AgentConfig } from '../types';
 import { MockLLMProvider } from '../providers/mock';
@@ -26,7 +28,7 @@ describe('FlowExecutor', () => {
       tool: {
         description: 'Test tool',
         parameters: {},
-        execute: async (args: any) => {
+        execute: async (args: unknown) => {
           return { success: true, input: args };
         },
       },
@@ -568,7 +570,7 @@ describe('FlowExecutor', () => {
         type: 'Test',
         requiresSandbox: true,
         sandboxExecute,
-      } as any);
+      } as Partial<ToolDescriptor> as ToolDescriptor);
 
       const spySandbox: SandboxAdapter = {
         name: 'spy',
@@ -618,7 +620,7 @@ describe('FlowExecutor', () => {
         type: 'Test',
         requiresSandbox: true,
         // no sandboxExecute implementation - this is the bug scenario
-      } as any);
+      } as Partial<ToolDescriptor> as ToolDescriptor);
 
       const spySandbox: SandboxAdapter = {
         name: 'spy',
@@ -732,12 +734,12 @@ describe('FlowExecutor', () => {
         },
       };
 
-      const builtinEvents: any[] = [];
+      const builtinEvents: FlowExecutionEvent[] = [];
       const builtinResult = await FlowExecutor.execute(builtinFlow, context, (event) =>
         builtinEvents.push(event)
       );
 
-      const delegateEvents: any[] = [];
+      const delegateEvents: FlowExecutionEvent[] = [];
       const delegateResult = await FlowExecutor.execute(delegateFlow, context, (event) =>
         delegateEvents.push(event)
       );
@@ -758,7 +760,7 @@ describe('FlowExecutor', () => {
 
   describe('Events', () => {
     it('should emit execution events', async () => {
-      const events: any[] = [];
+      const events: FlowExecutionEvent[] = [];
 
       const flow: AgentFlow = {
         code: 'test-flow',
@@ -825,7 +827,7 @@ describe('FlowExecutor', () => {
 
     it('should prevent infinite recursion', async () => {
       // Create a deeply nested flow that exceeds maxDepth
-      let deepFlow: any = { type: 'return', value: 'test' };
+      let deepFlow: EditorStep = { type: 'return', value: 'test' };
       
       // Create 15 levels of nesting (exceeds maxDepth of 10)
       for (let i = 0; i < 15; i++) {

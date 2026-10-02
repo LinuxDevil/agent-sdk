@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import type { Tool } from 'ai';
 import { exactMatch, toolCallOrder, budget, describeBudgetFailure } from './scorers';
 import { AgentExecutor, ExecutionResult } from '../execution/AgentExecutor';
 import { ToolCall, LLMProvider, GenerateOptions, GenerateResult } from '../providers/llm';
@@ -140,7 +141,7 @@ describe('toolCallOrder() against a genuine AgentExecutor.execute() result', () 
         description: 'Searches for something',
         parameters: {},
         execute: searchExecute,
-      } as any,
+      } as Tool,
     });
     toolRegistry.register('summarize', {
       displayName: 'Summarize',
@@ -148,7 +149,7 @@ describe('toolCallOrder() against a genuine AgentExecutor.execute() result', () 
         description: 'Summarizes something',
         parameters: {},
         execute: summarizeExecute,
-      } as any,
+      } as Tool,
     });
 
     const agent = AgentBuilder.create()

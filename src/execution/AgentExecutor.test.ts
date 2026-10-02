@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { Tool } from 'ai';
+import type { Message } from '../providers';
+import type { Checkpoint } from './checkpoint';
 import { APICallError } from 'ai';
 import { AgentExecutor, ExecutionEvent } from './AgentExecutor';
 import { CompactedLLMProviderError } from './errors';
@@ -201,11 +204,11 @@ describe('AgentExecutor', () => {
 
     it('should not invoke a tool flagged with needsApproval, evaluated with actual args', async () => {
       const execute = vi.fn().mockResolvedValue({ ok: true });
-      const needsApproval = vi.fn((args: any) => args.amount > 100);
+      const needsApproval = vi.fn((args: { amount: number }) => args.amount > 100);
 
       toolRegistry.register('chargeCard', {
         displayName: 'Charge Card',
-        tool: { execute } as any,
+        tool: { execute } as Partial<Tool> as Tool,
         needsApproval,
       });
 
@@ -222,7 +225,7 @@ describe('AgentExecutor', () => {
         },
       };
 
-      const result = await (AgentExecutor as any).executeToolCall(
+      const result = await AgentExecutor['executeToolCall'](
         toolCall,
         agent,
         toolRegistry
@@ -239,7 +242,7 @@ describe('AgentExecutor', () => {
 
       toolRegistry.register('chargeCard', {
         displayName: 'Charge Card',
-        tool: { execute } as any,
+        tool: { execute } as Partial<Tool> as Tool,
       });
 
       const agent = AgentBuilder.create()
@@ -255,7 +258,7 @@ describe('AgentExecutor', () => {
         },
       };
 
-      const result = await (AgentExecutor as any).executeToolCall(
+      const result = await AgentExecutor['executeToolCall'](
         toolCall,
         agent,
         toolRegistry
@@ -275,7 +278,7 @@ describe('AgentExecutor', () => {
           description: 'Charge a card',
           parameters: {},
           execute,
-        } as any,
+        } as Tool,
         needsApproval: true,
       });
 
@@ -311,7 +314,7 @@ describe('AgentExecutor', () => {
       expect(pendingArg.toolName).toBe('chargeCard');
       expect(pendingArg.args).toEqual({ input: 'mock input' });
       expect(snapshotArg.currentMessages).toEqual(result.messages);
-      expect(snapshotArg.currentMessages.some((m: any) => m.role === 'user')).toBe(true);
+      expect(snapshotArg.currentMessages.some((m: Message) => m.role === 'user')).toBe(true);
     });
 
     it('should throw a clear error when approval is needed but no approvalStore is provided', async () => {
@@ -323,7 +326,7 @@ describe('AgentExecutor', () => {
           description: 'Charge a card',
           parameters: {},
           execute,
-        } as any,
+        } as Tool,
         needsApproval: true,
       });
 
@@ -354,7 +357,7 @@ describe('AgentExecutor', () => {
       const execute = vi.fn().mockResolvedValue({ ok: true });
       toolRegistry.register('noop', {
         displayName: 'Noop',
-        tool: { description: 'noop', parameters: {}, execute } as any,
+        tool: { description: 'noop', parameters: {}, execute } as Tool,
       });
 
       const agent = AgentBuilder.create()
@@ -403,7 +406,7 @@ describe('AgentExecutor', () => {
       await AgentExecutor.execute({
         agent,
         input: 'go',
-        provider: scriptedProvider as any,
+        provider: scriptedProvider as LLMProvider,
         toolRegistry,
         sessionId: 'session-checkpoint-test',
         checkpointStore,
@@ -424,7 +427,7 @@ describe('AgentExecutor', () => {
       const execute = vi.fn().mockResolvedValue({ ok: true });
       toolRegistry.register('noop', {
         displayName: 'Noop',
-        tool: { description: 'noop', parameters: {}, execute } as any,
+        tool: { description: 'noop', parameters: {}, execute } as Tool,
       });
 
       const agent = AgentBuilder.create()
@@ -471,7 +474,7 @@ describe('AgentExecutor', () => {
       await AgentExecutor.execute({
         agent,
         input: 'go',
-        provider: scriptedProvider as any,
+        provider: scriptedProvider as LLMProvider,
         toolRegistry,
         sessionId: 'session-business-state',
         checkpointStore,
@@ -488,7 +491,7 @@ describe('AgentExecutor', () => {
       const execute = vi.fn().mockResolvedValue({ ok: true });
       toolRegistry.register('noop', {
         displayName: 'Noop',
-        tool: { description: 'noop', parameters: {}, execute } as any,
+        tool: { description: 'noop', parameters: {}, execute } as Tool,
       });
 
       const agent = AgentBuilder.create()
@@ -522,7 +525,7 @@ describe('AgentExecutor', () => {
         AgentExecutor.execute({
           agent,
           input: 'go',
-          provider: scriptedProvider as any,
+          provider: scriptedProvider as LLMProvider,
           toolRegistry,
           sessionId: 'session-no-business-state',
           checkpointStore,
@@ -538,7 +541,7 @@ describe('AgentExecutor', () => {
       const execute = vi.fn().mockResolvedValue({ ok: true });
       toolRegistry.register('noop', {
         displayName: 'Noop',
-        tool: { description: 'noop', parameters: {}, execute } as any,
+        tool: { description: 'noop', parameters: {}, execute } as Tool,
       });
 
       const agent = AgentBuilder.create()
@@ -547,9 +550,9 @@ describe('AgentExecutor', () => {
         .build();
 
       function makeCheckpointStore() {
-        const records = new Map<string, any>();
+        const records = new Map<string, Checkpoint>();
         return {
-          save: vi.fn(async (sessionId: string, checkpoint: any) => {
+          save: vi.fn(async (sessionId: string, checkpoint: Checkpoint) => {
             records.set(sessionId, checkpoint);
           }),
           load: vi.fn(async (sessionId: string) => records.get(sessionId) ?? null),
@@ -602,7 +605,7 @@ describe('AgentExecutor', () => {
       const baselineResult = await AgentExecutor.execute({
         agent,
         input: 'go',
-        provider: baselineProvider as any,
+        provider: baselineProvider as LLMProvider,
         toolRegistry,
         sessionId: 'baseline-session',
         checkpointStore: baselineStore,
@@ -632,7 +635,7 @@ describe('AgentExecutor', () => {
         AgentExecutor.execute({
           agent,
           input: 'go',
-          provider: crashingProvider as any,
+          provider: crashingProvider as LLMProvider,
           toolRegistry,
           sessionId: 'resume-session',
           checkpointStore: sharedStore,
@@ -659,7 +662,7 @@ describe('AgentExecutor', () => {
       const resumedResult = await AgentExecutor.execute({
         agent,
         input: 'go',
-        provider: resumeProvider as any,
+        provider: resumeProvider as LLMProvider,
         toolRegistry,
         sessionId: 'resume-session',
         checkpointStore: sharedStore,
@@ -673,7 +676,7 @@ describe('AgentExecutor', () => {
       const execute = vi.fn().mockResolvedValue({ ok: true });
       toolRegistry.register('noop', {
         displayName: 'Noop',
-        tool: { description: 'noop', parameters: {}, execute } as any,
+        tool: { description: 'noop', parameters: {}, execute } as Tool,
       });
 
       const agent = AgentBuilder.create()
@@ -682,9 +685,9 @@ describe('AgentExecutor', () => {
         .build();
 
       function makeCheckpointStore() {
-        const records = new Map<string, any>();
+        const records = new Map<string, Checkpoint>();
         return {
-          save: vi.fn(async (sessionId: string, checkpoint: any) => {
+          save: vi.fn(async (sessionId: string, checkpoint: Checkpoint) => {
             records.set(sessionId, checkpoint);
           }),
           load: vi.fn(async (sessionId: string) => records.get(sessionId) ?? null),
@@ -740,7 +743,7 @@ describe('AgentExecutor', () => {
         AgentExecutor.execute({
           agent,
           input: 'go',
-          provider: crashingProvider as any,
+          provider: crashingProvider as LLMProvider,
           toolRegistry,
           sessionId: 'resume-session-bs',
           checkpointStore: sharedStore,
@@ -752,7 +755,7 @@ describe('AgentExecutor', () => {
       // (proves the field survived the "crash" - i.e. was durably written -
       // rather than only ever living in in-memory options).
       const staleCheckpoint = await sharedStore.load('resume-session-bs');
-      expect(staleCheckpoint.businessState).toEqual({ ticketId: 'tix_9', stage: 'in-progress' });
+      expect(staleCheckpoint!.businessState).toEqual({ ticketId: 'tix_9', stage: 'in-progress' });
 
       // "Restart": a brand new execute() call, same sessionId/store, that
       // does NOT re-pass businessState - it must be rehydrated from the
@@ -775,7 +778,7 @@ describe('AgentExecutor', () => {
       await AgentExecutor.execute({
         agent,
         input: 'go',
-        provider: resumeProvider as any,
+        provider: resumeProvider as LLMProvider,
         toolRegistry,
         sessionId: 'resume-session-bs',
         checkpointStore: sharedStore,
@@ -824,7 +827,7 @@ describe('AgentExecutor', () => {
       const execute = vi.fn().mockResolvedValue({ ok: true });
       toolRegistry.register('noop', {
         displayName: 'Noop',
-        tool: { description: 'noop', parameters: {}, execute } as any,
+        tool: { description: 'noop', parameters: {}, execute } as Tool,
       });
 
       const agent = AgentBuilder.create()
@@ -866,9 +869,9 @@ describe('AgentExecutor', () => {
       };
 
       function makeCheckpointStore() {
-        const records = new Map<string, any>();
+        const records = new Map<string, Checkpoint>();
         return {
-          save: vi.fn(async (sessionId: string, checkpoint: any) => {
+          save: vi.fn(async (sessionId: string, checkpoint: Checkpoint) => {
             records.set(sessionId, checkpoint);
           }),
           load: vi.fn(async (sessionId: string) => records.get(sessionId) ?? null),
@@ -883,7 +886,7 @@ describe('AgentExecutor', () => {
       await AgentExecutor.execute({
         agent,
         input: 'go',
-        provider: scriptedProvider as any,
+        provider: scriptedProvider as LLMProvider,
         toolRegistry,
         sessionId: 'terminal-session',
         checkpointStore,
@@ -891,15 +894,15 @@ describe('AgentExecutor', () => {
 
       expect(checkpointStore.delete).not.toHaveBeenCalled();
       const finished = await checkpointStore.load('terminal-session');
-      expect(finished.status).toBe('finished');
-      expect(finished.messages.at(-1)).toEqual({ role: 'assistant', content: 'done' });
+      expect(finished!.status).toBe('finished');
+      expect(finished!.messages.at(-1)).toEqual({ role: 'assistant', content: 'done' });
     });
 
     it('should continue the conversation when execute() is called again with the same sessionId after completion (LOU-U8)', async () => {
       function makeCheckpointStore() {
-        const records = new Map<string, any>();
+        const records = new Map<string, Checkpoint>();
         return {
-          save: vi.fn(async (sessionId: string, checkpoint: any) => {
+          save: vi.fn(async (sessionId: string, checkpoint: Checkpoint) => {
             records.set(sessionId, checkpoint);
           }),
           load: vi.fn(async (sessionId: string) => records.get(sessionId) ?? null),
@@ -1042,7 +1045,7 @@ describe('AgentExecutor', () => {
       await AgentExecutor.execute({
         agent,
         input: 'please call slowTool',
-        provider: mockProvider as any,
+        provider: mockProvider as LLMProvider,
         toolRegistry,
         onLLMRequest,
         onLLMResponse,
@@ -1158,7 +1161,7 @@ describe('AgentExecutor', () => {
       const result = await AgentExecutor.execute({
         agent,
         input: 'please call failingTool',
-        provider: mockProvider as any,
+        provider: mockProvider as LLMProvider,
         toolRegistry,
         onToolResult,
       });
@@ -1248,7 +1251,7 @@ describe('AgentExecutor', () => {
       await AgentExecutor.execute({
         agent,
         input: 'please call echoTool',
-        provider: buildToolAgentAndProvider() as any,
+        provider: buildToolAgentAndProvider() as LLMProvider,
         toolRegistry,
         exporter,
       });
@@ -1297,7 +1300,7 @@ describe('AgentExecutor', () => {
       await AgentExecutor.execute({
         agent,
         input: 'please call echoTool',
-        provider: buildToolAgentAndProvider() as any,
+        provider: buildToolAgentAndProvider() as LLMProvider,
         toolRegistry,
         exporter,
       });
@@ -1340,7 +1343,7 @@ describe('AgentExecutor', () => {
       await AgentExecutor.execute({
         agent,
         input: 'please call echoTool',
-        provider: buildToolAgentAndProvider() as any,
+        provider: buildToolAgentAndProvider() as LLMProvider,
         toolRegistry,
         exporter,
         redactContent: true,
@@ -1385,7 +1388,7 @@ describe('AgentExecutor', () => {
         AgentExecutor.execute({
           agent,
           input: 'Hello',
-        } as any)
+        } as never)
       ).rejects.toThrow(/'provider' is required.*Example:/s);
       await expect(
         AgentExecutor.execute({ agent, input: 'Hello' } as never)
@@ -1397,7 +1400,7 @@ describe('AgentExecutor', () => {
         AgentExecutor.execute({
           input: 'Hello',
           provider,
-        } as any)
+        } as never)
       ).rejects.toThrow(/'agent' is required.*Example:/s);
       await expect(
         AgentExecutor.execute({ input: 'Hello', provider } as never)
@@ -1413,7 +1416,7 @@ describe('AgentExecutor', () => {
         AgentExecutor.execute({
           agent,
           provider,
-        } as any)
+        } as never)
       ).rejects.toThrow(/'input' is required.*Example:/s);
       await expect(
         AgentExecutor.execute({ agent, provider } as never)
@@ -1466,12 +1469,12 @@ describe('AgentExecutor', () => {
       await AgentExecutor.execute({
         agent,
         input: 'Hello',
-        provider: spiedProvider as any,
+        provider: spiedProvider as Partial<LLMProvider> as LLMProvider,
         hooks,
       });
 
       const sentMessages = generateSpy.mock.calls[0][0].messages;
-      expect(sentMessages.some((m: any) => m.content === 'injected-by-hook')).toBe(true);
+      expect(sentMessages.some((m: Message) => m.content === 'injected-by-hook')).toBe(true);
     });
 
     it('runs preToolCall and postToolCall around tool execution, in registration order', async () => {
@@ -1492,7 +1495,7 @@ describe('AgentExecutor', () => {
       const execute = vi.fn().mockResolvedValue({ ok: true });
       toolRegistry.register('noop', {
         displayName: 'Noop',
-        tool: { description: 'noop', parameters: {}, execute } as any,
+        tool: { description: 'noop', parameters: {}, execute } as Tool,
       });
 
       const agent = AgentBuilder.create()
@@ -1530,7 +1533,7 @@ describe('AgentExecutor', () => {
       await AgentExecutor.execute({
         agent,
         input: 'go',
-        provider: scriptedProvider as any,
+        provider: scriptedProvider as LLMProvider,
         toolRegistry,
         hooks,
       });
@@ -1551,7 +1554,7 @@ describe('AgentExecutor', () => {
       const execute = vi.fn().mockResolvedValue({ ok: true });
       toolRegistry.register('sendEmail', {
         displayName: 'Send Email',
-        tool: { description: 'send email', parameters: {}, execute } as any,
+        tool: { description: 'send email', parameters: {}, execute } as Tool,
       });
 
       const agent = AgentBuilder.create()
@@ -1565,7 +1568,7 @@ describe('AgentExecutor', () => {
         function: { name: 'sendEmail', arguments: JSON.stringify({ email: 'real@example.com' }) },
       };
 
-      await (AgentExecutor as any).executeToolCall(toolCall, agent, toolRegistry, undefined, undefined, undefined, hooks, undefined, []);
+      await AgentExecutor['executeToolCall'](toolCall, agent, toolRegistry, undefined, undefined, undefined, hooks, undefined, []);
 
       expect(execute).toHaveBeenCalledWith({ email: '[REDACTED]' }, expect.objectContaining({ toolCallId: 'call-1', messages: expect.any(Array) }));
     });
