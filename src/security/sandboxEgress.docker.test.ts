@@ -29,6 +29,11 @@ const IMAGE = 'curlimages/curl:8.10.1';
 const PREFIX = `lousho-m6-${randomBytes(3).toString('hex')}`;
 const CURL = ['-sS', '--connect-timeout', '5', '--max-time', '20'];
 
+/** For the CI log: how a refused request failed (curl exit code and message; never a secret). */
+function report(label: string, result: { exitCode: number; stderr: string }): void {
+  console.log(`${label}: curl exit ${result.exitCode}; ${result.stderr.trim().split('\n')[0]}`);
+}
+
 /** A host-side HTTP server on 127.0.0.1 (and ::1 when available) that records each request's path and Authorization header. */
 async function startEcho() {
   const hits: Array<{ path: string; authorization?: string }> = [];
@@ -107,6 +112,7 @@ describe.skipIf(!hasDocker)('SubprocessSandbox egress on a real Docker Engine', 
 
   it('2. a host not in allow is refused by the broker with 403', async () => {
     const result = await curl('-o', '/dev/null', 'https://example.org/');
+    report('case 2 (host not allowed)', result);
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toMatch(/403/);
   });
@@ -114,6 +120,7 @@ describe.skipIf(!hasDocker)('SubprocessSandbox egress on a real Docker Engine', 
   it('3. bypassing the proxy fails: the internal network has no route out', async () => {
     const [{ address }] = await lookup('example.com', { family: 4, all: true });
     const result = await curl('--noproxy', '*', '--resolve', `example.com:443:${address}`, '-o', '/dev/null', 'https://example.com/');
+    report('case 3 (proxy bypassed)', result);
     expect(result.exitCode).not.toBe(0);
     // 7: could not connect (network unreachable); 28: timed out.
     expect([7, 28]).toContain(result.exitCode);
@@ -121,14 +128,17 @@ describe.skipIf(!hasDocker)('SubprocessSandbox egress on a real Docker Engine', 
 
   it('4. a raw IP fails, directly and through the broker', async () => {
     const direct = await curl('--noproxy', '*', '-o', '/dev/null', 'https://1.1.1.1/');
+    report('case 4 (raw IP, direct)', direct);
     expect([7, 28]).toContain(direct.exitCode);
     const proxied = await curl('-o', '/dev/null', 'https://1.1.1.1/');
+    report('case 4 (raw IP, proxied)', proxied);
     expect(proxied.exitCode).not.toBe(0);
     expect(proxied.stderr).toMatch(/403/);
   });
 
   it('5. DNS inside the container does not resolve external names', async () => {
     const result = await curl('--noproxy', '*', '-o', '/dev/null', 'https://example.com/');
+    report('case 5 (DNS)', result);
     // 6: could not resolve host.
     expect(result.exitCode).toBe(6);
   });
@@ -152,6 +162,7 @@ describe.skipIf(!hasDocker)('SubprocessSandbox egress on a real Docker Engine', 
     const path = `/m6-outsider-${randomBytes(4).toString('hex')}`;
     const outsider = new SubprocessSandbox({ image: IMAGE, network: 'default' });
     const result = await outsider.run('curl', [...CURL, '-x', proxy, '-o', '/dev/null', `http://localhost:${echo.port}${path}`]);
+    report('case 7 (peer outside the subnet)', result);
     expect(result.exitCode).not.toBe(0);
     expect(echo.hits.some((h) => h.path === path)).toBe(false);
   });
