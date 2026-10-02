@@ -71,6 +71,22 @@ export const MIGRATIONS: readonly string[] = [
     expires_at INTEGER NOT NULL
   );
   `,
+  // N15: semantic memory. One row per item with its embedding (little-endian
+  // Float32Array bytes, unit length) and the id of the embedder that made it.
+  `
+  CREATE TABLE memory_vectors (
+    scope_key TEXT NOT NULL,
+    id TEXT NOT NULL,
+    text TEXT NOT NULL,
+    metadata TEXT,
+    created_at TEXT NOT NULL,
+    embedder TEXT NOT NULL,
+    dimensions INTEGER NOT NULL,
+    embedding BLOB NOT NULL,
+    PRIMARY KEY (scope_key, id)
+  );
+  CREATE INDEX memory_vectors_created ON memory_vectors (scope_key, created_at);
+  `,
 ];
 
 function readVersion(db: SqlDatabase): number {

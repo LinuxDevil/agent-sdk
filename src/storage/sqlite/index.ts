@@ -5,3 +5,4 @@
 export { SqliteStore } from './SqliteStore';
 export type { PruneOptions, PruneResult, SqliteStoreOptions } from './SqliteStore';
 export { sqliteMemory } from './sqliteMemory';
+export { sqliteVectorMemory } from './sqliteVectorMemory';

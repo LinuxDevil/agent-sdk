@@ -10,7 +10,7 @@ import { SDKError } from '../../execution/errors';
 export type SqlRow = Record<string, unknown>;
 
 /** A bind parameter. */
-export type SqlValue = string | number | null;
+export type SqlValue = string | number | Uint8Array | null;
 
 /** The subset of `StatementSync` used here. */
 export interface SqlStatement {
