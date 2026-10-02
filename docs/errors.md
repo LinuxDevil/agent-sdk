@@ -480,7 +480,7 @@ See [Schedules](./schedules.md).
 a channel (an object with `parse` and `reply`). The message names the file.
 
 **Fix:** default-export a channel made with `defineChannel()`, `httpChannel()`,
-`webhookChannel()` or `slackChannel()`. See [Channels](./channels.md).
+`webhookChannel()`, `slackChannel()`, `discordChannel()` or `telegramChannel()`. See [Channels](./channels.md).
 
 **Example:** `export default { cron: 'x' }` in `channels/sms.ts`.
 
@@ -635,12 +635,12 @@ unknown type, or a Slack trigger that cannot verify requests.
 
 ### LOUSHO_CHANNEL_REQUEST_FAILED
 
-**Means:** a call to a chat platform's API (Slack, Discord) failed; the message
+**Means:** a call to a chat platform's API (Slack, Discord, Telegram) failed; the message
 names the call and the HTTP status or the platform's error.
 
 **Fix:** check the bot token and its permissions, and the platform status. See [Channels](./channels.md).
 
-**Example:** Slack `chat.postMessage` answering `channel_not_found`.
+**Example:** Slack `chat.postMessage` answering `channel_not_found`, or Telegram `sendMessage` answering 400 for an unknown chat.
 
 ### LOUSHO_DEPLOY_FAILED
 
