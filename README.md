@@ -174,7 +174,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | Page | What it covers |
 | ---- | -------------- |
 | [Installation](docs/installation.md) | Requirements, peer and provider packages, installing from a local build, `lousho init`, `lousho doctor` |
-| [Quick Start](docs/quick-start.md) | Runnable, verified snippets: `createAgent()`, tools, `AgentBuilder` + `AgentExecutor`, spec files |
+| [Quick Start](docs/quick-start.md) | Runnable, verified snippets: `createAgent()`, tools, streaming, sessions, approvals, offline tests, spec files |
 | [Configuration](docs/configuration.md) | Spec fields, `mcpServers`, MCP client and server, provider env vars, retries and fallback, `createAgent()` and `execute()` options |
 | [Providers](docs/providers.md) | Model strings, `resolveProvider()`, which model runs, custom providers |
 | [CLI](docs/cli.md) | Every `lousho` command and its flags |
@@ -200,6 +200,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Schedules](docs/schedules.md) | `defineSchedule()` cron schedules, `schedules/` in an agent directory, `startSchedules()` |
 | [Flows](docs/flows.md) | Fixed multi-step workflows with `FlowBuilder` and `FlowExecutor` |
 | [Workspace tools](docs/workspace-tools.md) | File system and shell tools for coding agents, and their security model |
+| [Build a coding agent](docs/build-a-coding-agent.md) | A terminal coding agent step by step: workspace tools, approvals, streaming, a session, offline tests |
 | [Guardrails and sandboxing](docs/guardrails.md) | `runGuardrails()`, built-in guardrails, `requiresSandbox`, `SubprocessSandbox` |
 | [Testing](docs/testing.md) | Deterministic tests with `mockModel`; record and replay with `recordReplay` |
 | [Evals](docs/evals.md) | Trajectory evals with `defineEval()`, datasets, judges, `lousho eval` reports |
@@ -210,6 +211,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Errors](docs/errors.md) | Every error code (`LOUSHO_*`): what it means, how to fix it, an example |
 | [API Overview](docs/api-overview.md) | The main exports, triggers, tokens and cost; `npm run docs:build` generates the full TypeDoc reference |
 | [Utilities](docs/utilities.md) | Encryption, hashing and file storage |
+| [The executor API](docs/executor-api.md) | `AgentBuilder` and `AgentExecutor`: the lower-level options `createAgent()` does not take |
 
 The full guides are at [lousho.com](https://lousho.com), in English and Arabic.
 
