@@ -45,6 +45,10 @@ const MAX_DEPTH = 64;
  * refs) becomes permissive `z.any()` - this function does not throw for
  * schema content.
  *
+ * `root` is the document that local `$ref` pointers (`#/components/schemas/Pet`)
+ * resolve against; it defaults to `schema` itself. `openApiTools()` passes the
+ * whole OpenAPI document.
+ *
  * @example
  * const schema = jsonSchemaToZod({
  *   type: 'object',
@@ -52,8 +56,8 @@ const MAX_DEPTH = 64;
  * });
  * schema.parse({ labels: null }); // ok
  */
-export function jsonSchemaToZod(schema: unknown): ZodTypeAny {
-  return convert(schema, { root: schema, active: new Set(), depth: 0 });
+export function jsonSchemaToZod(schema: unknown, root: unknown = schema): ZodTypeAny {
+  return convert(schema, { root, active: new Set(), depth: 0 });
 }
 
 function isRecord(value: unknown): value is JsonSchema {
