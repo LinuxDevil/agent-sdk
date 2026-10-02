@@ -18,6 +18,8 @@ import {
 import type { ApprovalStore } from '../execution/ApprovalGate';
 import { InMemoryApprovalStore } from '../execution/InMemoryApprovalStore';
 import { MemorySessionStore, type SessionStore } from '../session/sessionStore';
+import { MemoryTokenStore } from '../oauth/memoryTokenStore';
+import type { OAuthTokenStore } from '../oauth/types';
 
 /**
  * Where an agent keeps session transcripts, durable-execution checkpoints
@@ -36,6 +38,12 @@ export interface AgentStore {
   checkpoints?: CheckpointStore;
   /** Pending approvals: the default `approvalStore`. */
   approvals?: ApprovalStore;
+  /**
+   * OAuth access and refresh tokens, sign-ins in progress and registered
+   * clients, keyed by provider and credential owner (see docs/oauth.md). The
+   * file, SQLite and KV stores encrypt them with the application's `tokenKey`.
+   */
+  tokens?: OAuthTokenStore;
 }
 
 /** Checkpoints and their bounded history in Maps, copied on save and load. */
@@ -78,9 +86,10 @@ export interface MemoryStoreOptions {
 }
 
 /**
- * An {@link AgentStore} that keeps sessions, checkpoints and approvals in
- * memory, for as long as the process (and this object) lives. For tests
- * and scripts; use a `SqliteStore` to survive a restart.
+ * An {@link AgentStore} that keeps sessions, checkpoints, approvals and OAuth
+ * tokens (unencrypted: nothing leaves the process) in memory, for as long as
+ * the process (and this object) lives. For tests and scripts; use a
+ * `SqliteStore` to survive a restart.
  *
  * @example
  * ```ts
@@ -93,5 +102,6 @@ export function memoryStore(options: MemoryStoreOptions = {}): Required<AgentSto
     sessions: new MemorySessionStore(),
     checkpoints: new MemoryCheckpointStore(options),
     approvals: new InMemoryApprovalStore(),
+    tokens: new MemoryTokenStore(),
   };
 }

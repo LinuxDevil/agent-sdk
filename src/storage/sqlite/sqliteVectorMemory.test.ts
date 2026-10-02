@@ -86,7 +86,7 @@ describe('sqliteVectorMemory', () => {
   it('adds the table to a database from before it, keeping sessions and memory_items', async () => {
     const file = tempFile();
     const raw = new (loadDatabaseSync())(file);
-    migrate(raw, MIGRATIONS.slice(0, 3));
+    migrate(raw, MIGRATIONS.slice(0, 4));
     raw.exec("INSERT INTO sessions (id, payload, created_at, updated_at) VALUES ('s1', '[]', 1, 1)");
     raw.close();
 

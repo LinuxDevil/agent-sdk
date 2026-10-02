@@ -34,7 +34,9 @@ describe('error codes (LOU-D2)', () => {
     const pattern = new RegExp(`\\bLOUSHO_(?:${areas.join('|')})_[A-Z0-9_]+\\b`, 'g');
     const used = new Set(sourceFiles(SRC).flatMap((file) => readFileSync(file, 'utf8').match(pattern) ?? []));
     expect(used.size).toBeGreaterThan(10);
-    expect([...used].filter((code) => !CODES.includes(code))).toEqual([]);
+    // Environment variables that share a registry area's prefix (LOUSHO_TOKEN_KEY, N9a) are not codes.
+    const envVars = ['LOUSHO_TOKEN_KEY'];
+    expect([...used].filter((code) => !CODES.includes(code) && !envVars.includes(code))).toEqual([]);
   });
 
   it('every registry code has a section in docs/errors.md, and every section a registry code', () => {

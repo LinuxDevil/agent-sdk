@@ -192,14 +192,14 @@ describe('SqliteStore.prune', () => {
     raw.prepare('UPDATE approvals SET updated_at = updated_at - ? WHERE id = ?').run(age, 'pending-old');
     raw.close();
 
-    expect(store.prune({ olderThanMs: 60 * 1000 })).toEqual({ sessions: 1, checkpoints: 1, approvals: 1 });
+    expect(store.prune({ olderThanMs: 60 * 1000 })).toEqual({ sessions: 1, checkpoints: 1, approvals: 1, oauthPending: 0 });
     expect(await store.sessions.load('old')).toBeUndefined();
     expect(await store.sessions.load('fresh')).toEqual([]);
     expect(await store.checkpoints.load('old')).toBeNull();
     expect(await store.checkpoints.load('fresh')).not.toBeNull();
     expect(await store.approvals.resolve('resolved-old')).toBeNull();
     expect(await store.approvals.resolve('pending-old')).not.toBeNull();
-    expect(store.prune({ olderThanMs: 60 * 1000 })).toEqual({ sessions: 0, checkpoints: 0, approvals: 0 });
+    expect(store.prune({ olderThanMs: 60 * 1000 })).toEqual({ sessions: 0, checkpoints: 0, approvals: 0, oauthPending: 0 });
   });
 
   it('rejects a negative or non-finite age', () => {
