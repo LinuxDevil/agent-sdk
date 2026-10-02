@@ -242,8 +242,10 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
   /**
    * LOU-D41: called with every {@link AgentEvent} of this agent's runs -
    * `send()`, `stream()`, session turns and runs resumed after an approval -
-   * synchronously, the same events in the same order as `stream()` yields
-   * (`send()` generates each model step whole: one `text.delta` per step).
+   * synchronously, the same events in the same order as `stream()` yields.
+   * M9: with a listener, `send()` streams each model call when the provider
+   * can, so a step's text arrives as several `text.delta` events, as on
+   * `stream()`; listen to `text.done` for each step's whole text.
    * See docs/streaming.md#listening-without-iterating.
    *
    * @example
