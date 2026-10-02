@@ -34,15 +34,21 @@ runs it and calls the model again; turn 2 produces the final answer. Tool-call
 ids are generated deterministically (`call_1`, `call_2`, ...) unless you pass
 `id`.
 
-```ts no-verify
+```ts no-run
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
 import { mockModel } from '@lousho/build-ai-agent/testing';
 
 describe('weather agent', () => {
   it('calls get_weather and reports the result', async () => {
     const execute = vi.fn(async ({ city }: { city: string }) => ({ city, tempC: 21 }));
+    const getWeather = defineTool({
+      name: 'get_weather',
+      description: 'Get the weather for a city',
+      input: z.object({ city: z.string() }),
+      execute,
+    });
     const model = mockModel([
       { toolCalls: [{ name: 'get_weather', args: { city: 'Paris' } }] }, // turn 1
       { text: 'It is 21°C in Paris.' },                                  // turn 2
@@ -50,16 +56,7 @@ describe('weather agent', () => {
     const agent = createAgent({
       prompt: 'You report the weather.',
       provider: model,
-      tools: {
-        get_weather: {
-          displayName: 'Get weather',
-          tool: {
-            description: 'Get the weather for a city',
-            parameters: z.object({ city: z.string() }),
-            execute,
-          },
-        },
-      },
+      tools: [getWeather],
     });
 
     const result = await agent.send('Weather in Paris?');
