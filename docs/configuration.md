@@ -460,7 +460,7 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `projectInstructions` | `true` or `{ cwd?, files? }`: append the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (off by default; see [Project instructions](#project-instructions)). |
 | `retry`    | `withRetry()` options for failed model calls, or `false`. Default `{ maxRetries: 2 }` for `model` strings; a `provider` instance is wrapped only when set. See [Provider retries and fallback](#provider-retries-and-fallback). |
 | `fallbackModels` | `provider/model` strings tried in order when the model still fails after its retries. |
-| `hooks`    | `AgentHook[]` run around every model call and tool call, in order, before the compaction hook (see `AgentHook` in the [API overview](./api-overview.md)). |
+| `hooks`    | `AgentHook[]` run around every model call and tool call, in order, before the compaction hook (see [Hooks](./hooks.md)). |
 | `compaction` | `true` (prune old tool results above 90% of the context window) or `{ strategy?, thresholdPercent?, contextWindow?, protectedTokens?, summarizer? }`; `summarizer` (`'provider/model'` or an `LLMProvider`) selects the two-phase strategy. `stream()` reports `compaction.start` / `compaction.done`. See [Context compaction](./compaction.md#compacting-an-agent). |
 
 With neither `model` nor `provider`, `createAgent()` resolves from the
