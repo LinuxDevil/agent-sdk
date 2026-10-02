@@ -20,6 +20,7 @@ import { setProviderInterceptor } from '../providers/interception';
 import type { LLMProvider } from '../providers/llm';
 import { recordReplay } from '../testing/recordReplay';
 import type { EvalResult } from './evalResult';
+import { SDKError } from '../execution/errors';
 
 /** `record`, `replay`, or `auto` (replay a case whose cassette exists, run the rest live). */
 export const CASSETTES_ENV = 'LOUSHY_EVAL_CASSETTES';
@@ -68,9 +69,10 @@ function wrapperFor(run: CaseRun, provider: LLMProvider): LLMProvider {
   const exists = fs.existsSync(cassette);
   if (run.mode === 'replay' && !exists) {
     const label = run.label ? `${run.name} [${run.label}]` : run.name;
-    throw new Error(
+    throw new SDKError(
       `loushy eval --replay: no cassette for "${label}" at ${path.relative(process.cwd(), cassette)}. ` +
-        `Record it with: npx loushy eval --record ${path.relative(process.cwd(), run.file)}`
+        `Record it with: npx loushy eval --record ${path.relative(process.cwd(), run.file)}`,
+      'LOUSHY_CASSETTE_INVALID'
     );
   }
   let wrapper = provider;

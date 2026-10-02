@@ -1,3 +1,4 @@
+import { SDKError } from '../execution/errors';
 /** Skill names are file/tool friendly: lowercase, digits, `-` and `_`, 1-64 characters. */
 const SKILL_NAME_PATTERN = /^[a-z0-9][a-z0-9-_]{0,63}$/;
 
@@ -24,7 +25,7 @@ export interface Skill {
 }
 
 function fail(problem: string, fix: string): never {
-  throw new Error(`defineSkill: ${problem}. ${fix}`);
+  throw new SDKError(`defineSkill: ${problem}. ${fix}`, 'LOUSHY_SKILL_INVALID');
 }
 
 function assertNonEmpty(name: string, field: 'description' | 'content', value: unknown): void {

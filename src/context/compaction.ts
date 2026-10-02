@@ -18,6 +18,7 @@ import { resolveProvider } from '../providers/resolveProvider';
 import type { AgentHook, GenerateHookContext } from '../execution/hooks';
 import { estimateTokens } from '../models/estimateTokens';
 import { getModelInfo } from '../models/registry';
+import { SDKError } from '../execution/errors';
 
 /** Counts the tokens of a message or a conversation. */
 export type CompactionTokenCounter = (input: Message | Message[]) => number;
@@ -228,7 +229,7 @@ export function summarizeStrategy(options: SummarizeStrategyOptions): Compaction
           signal,
         });
         const summary = text.trim();
-        if (!summary) throw new Error('the summarizer returned an empty summary');
+        if (!summary) throw new SDKError('the summarizer returned an empty summary', 'LOUSHY_AGENT_EXECUTION_FAILED');
         kept.splice(summaryAt, 0, { role: 'user', content: `${SUMMARY_HEADER}\n${summary}` });
         const compacted = [...kept, ...tail];
         return { messages: compacted, tokensBefore, tokensAfter: count(compacted), prunedToolCallIds: [], summary };

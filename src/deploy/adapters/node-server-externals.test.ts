@@ -9,6 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { NodeServerAdapter } from './node-server';
 import { bundleExternals, optionalPeers } from '../bundle';
+import { withBuildLock } from '../buildLock.testkit';
 
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'package.json'), 'utf8')) as {
   peerDependenciesMeta: Record<string, { optional?: boolean }>;
@@ -58,7 +59,7 @@ describe('optional peers stay external in bundled builds', () => {
     fs.writeFileSync(spec, JSON.stringify({ name: 'p83', prompt: 'p', provider: { type: 'mock', model: 'm' } }));
     const outDir = path.join(dir, 'out');
     await NodeServerAdapter.scaffold(spec, outDir);
-    await NodeServerAdapter.build(outDir);
+    await withBuildLock(() => NodeServerAdapter.build(outDir));
     const built = fs.readFileSync(path.join(outDir, 'dist', 'server.js'), 'utf8');
     expect(built).toMatch(/import\("@modelcontextprotocol\/sdk\/client\/index\.js"\)/);
     const { stop, port } = await startServer(outDir);
@@ -86,7 +87,7 @@ describe('spec cron triggers on the node server', () => {
     const outDir = path.join(dir, 'out');
     await NodeServerAdapter.scaffold(spec, outDir);
     expect(fs.readFileSync(path.join(outDir, 'server.ts'), 'utf8')).toContain('schedules })');
-    await NodeServerAdapter.build(outDir);
+    await withBuildLock(() => NodeServerAdapter.build(outDir));
     const { stop, stdout } = await startServer(outDir);
     stop();
     expect(stdout).toContain('schedules: weekly');

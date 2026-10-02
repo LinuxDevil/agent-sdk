@@ -1,4 +1,5 @@
 import type { SqlDatabase } from './driver';
+import { SDKError } from '../../execution/errors';
 
 /**
  * Forward-only schema migrations. `MIGRATIONS[n]` upgrades a database from
@@ -77,9 +78,10 @@ export function migrate(db: SqlDatabase, migrations: readonly string[] = MIGRATI
   try {
     const current = readVersion(db);
     if (current > target) {
-      throw new Error(
+      throw new SDKError(
         `Database schema version ${current} is newer than this library supports (${target}). ` +
-          'Upgrade @loushy/build-ai-agent.'
+          'Upgrade @loushy/build-ai-agent.',
+        'LOUSHY_STORAGE_FAILED'
       );
     }
     for (let version = current; version < target; version++) {

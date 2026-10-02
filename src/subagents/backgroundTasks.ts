@@ -7,6 +7,8 @@
 import { SubagentApprovalPause } from '../execution/subagentRuntime';
 import type { SessionStore } from '../session/sessionStore';
 import type { Subagents } from './types';
+import { SDKError } from '../execution/errors';
+import { toolFailure } from '../tools/built-in/toolFailure';
 
 /** State of a background sub-agent task. */
 export type BackgroundTaskStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled' | 'awaiting-approval';
@@ -75,7 +77,7 @@ const optionsBySubagents = new WeakMap<object, SubagentOptions>();
 export function withSubagentOptions<T extends Subagents>(subagents: T, options: SubagentOptions): T {
   const { maxConcurrent } = options;
   if (maxConcurrent !== undefined && !(Number.isInteger(maxConcurrent) && maxConcurrent >= 1)) {
-    throw new Error(`withSubagentOptions: 'maxConcurrent' must be a whole number >= 1, got ${String(maxConcurrent)}.`);
+    throw new SDKError(`withSubagentOptions: 'maxConcurrent' must be a whole number >= 1, got ${String(maxConcurrent)}.`, 'LOUSHY_CONFIG_INVALID');
   }
   optionsBySubagents.set(subagents, options);
   return subagents;
@@ -207,7 +209,7 @@ export class BackgroundTasks {
     const task = this.tasks.get(taskId);
     if (!task) {
       const known = [...this.tasks.keys()].join(', ') || 'none yet';
-      throw new Error(`Unknown background task '${taskId}'. Known tasks: ${known}.`);
+      throw toolFailure(`Unknown background task '${taskId}'. Known tasks: ${known}.`);
     }
     return task;
   }

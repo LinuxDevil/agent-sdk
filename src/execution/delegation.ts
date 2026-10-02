@@ -30,6 +30,7 @@ import { markPropagating } from './propagatingToolError';
 import { SubagentApprovalPause, subagentBudget, toolCallScopeOf, type ToolCallScope } from './subagentRuntime';
 import { RUN_EVENTS, runEventsOf, type StreamingExecuteOptions } from './agentRun';
 import type { ToolRunContext } from './sandboxGuard';
+import { SDKError } from './errors';
 
 /** Everything needed to run an agent as a child: its own configuration. */
 export interface SubagentSpec {
@@ -83,7 +84,7 @@ export async function runSubagent(
   const options = childOptions(spec, scope, info, capture.store, request.toolOptions?.abortSignal);
   const run = scope?.execute ?? execute;
   if (!run) {
-    throw new Error(`Sub-agent '${request.name}' can only be started by a tool call of an agent run.`);
+    throw new SDKError(`Sub-agent '${request.name}' can only be started by a tool call of an agent run.`, 'LOUSHY_CONFIG_INVALID');
   }
 
   const resume = scope?.resume;
