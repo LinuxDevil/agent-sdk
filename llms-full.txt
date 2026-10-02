@@ -299,7 +299,7 @@ Source: docs/installation.md
 
 ## Requirements
 
-- Node.js **22.19 or newer** (`engines.node` in `package.json`, set by the `undici@8` dependency; `undici` is loaded only for `http` tool requests with `validateSSL: false`, see [Optional peers](#optional-peers)).
+- Node.js **22.19 or newer** (`engines.node` in `package.json`, set by the `undici@8` dependency; `undici` is loaded only when the `http_request` or `web_fetch` tool makes a request, see [Optional peers](#optional-peers)).
 - TypeScript is optional but recommended - the SDK ships full type
   definitions.
 
@@ -404,9 +404,10 @@ when the agent spec uses a sandboxed tool).
 
 `undici` and `yaml` stay regular dependencies. `yaml` parses agent specs,
 `agent.yaml` files and skills, and Node has no built-in YAML parser. `undici`
-is only loaded by the `http` tool when a request sets `validateSSL: false`
-(a per-request TLS setting that the global `fetch` cannot express); every
-other request uses the runtime's global `fetch`.
+is loaded on the first request of the `http_request` or `web_fetch` tool:
+both connect through an undici `Agent` whose DNS lookup checks the address
+and pins the connection to it, and `http_request` also scopes
+`validateSSL: false` to that `Agent`. The global `fetch` can express neither.
 
 ## Entry points share code (ESM and CJS)
 
@@ -3537,6 +3538,7 @@ tools:
 | Name           | Tool                                                 |
 | -------------- | ---------------------------------------------------- |
 | `http`         | `httpTool` - HTTP requests                           |
+| `web-fetch`    | `webFetchTool` - read a public web page as text      |
 | `current-date` | `currentDateTool` - current date/time (ISO, UTC)     |
 | `day-name`     | `dayNameTool` - day of the week                      |
 
@@ -4050,15 +4052,18 @@ Workers have no Node.js builtins, so this target currently supports:
   to a local `http://localhost:11434` endpoint that a Worker can't reach,
   and `openrouter` hasn't had a Workers-compatibility audit; use
   `node-server` or `docker` for those;
-- tools: `current-date` and `day-name`. `http` is **not** supported: its
-  SSRF protection resolves the hostname via `node:dns` and checks *every*
-  resolved address against a denylist before connecting (closing a
-  DNS-rebinding gap), then, for `validateSSL: false`, pins that TLS setting
-  per request via a dedicated `undici` `Agent`. Workers' native `fetch()` has no equivalent hook to
-  resolve a hostname up front and pin the connection to the verified IP, so
-  a Workers version of this tool built on plain `fetch()` would silently
-  drop that protection rather than just losing convenience functionality -
-  it's left unsupported rather than shipped weaker under the same name.
+- tools: `current-date` and `day-name`. `http` and `web-fetch` are **not**
+  supported. On Node both refuse private destinations with a DNS lookup of
+  their own (`node:dns` inside an `undici` `Agent`) that checks every
+  address a host resolves to and connects to the address it checked, so DNS
+  rebinding cannot get past the check. A Worker has neither: its `fetch()`
+  resolves names inside Cloudflare's network and gives no hook to see or pin
+  the address. What a Worker can check is the URL (scheme, host name, an
+  IP-literal host); what it cannot guarantee is where a host name connects,
+  so a name that resolves to an internal address would not be caught. Rather
+  than ship a weaker tool under the same name, the Worker build has neither.
+  A tool of your own that calls `fetch()` in a Worker gets no SSRF
+  protection from the SDK.
 
 `lousho build` rejects a spec that uses anything else, with an error naming
 the unsupported provider or tool. Provider API keys are read from Worker
@@ -10840,7 +10845,8 @@ its kind by carrying a `toolErrorKind` property. An error extending
 
 | Export | Tool |
 | ------ | ---- |
-| `httpTool`, `createHttpTool(options)` | HTTP requests, with SSRF protection (every resolved address is checked before connecting). |
+| `httpTool`, `createHttpTool(options)` | `http_request`: HTTP requests (any method, headers, body), with SSRF protection: loopback, private and link-local destinations are refused on every hop, and the connection goes to the address that was checked. Node only. |
+| `webFetchTool`, `createWebFetchTool(options)` | `web_fetch`: `GET` one public web page and return it as text, with the same SSRF protection and caps on redirects, size and time. Node only; see below. |
 | `currentDateTool`, `dayNameTool` | Current date/time (ISO, UTC) and day of the week. |
 | `createTodoTools()` | `todo_write` / `todo_read` so an agent can plan multi-step work; see [Todo tools](#todo-tools). |
 | `askQuestionTool()`, `createAgent({ askQuestion: true })` | `ask_question`: the agent asks the user something and the run pauses until `agent.approvals.answer()`; see [Asking the user a question](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#asking-the-user-a-question). |
@@ -10852,8 +10858,55 @@ its kind by carrying a `toolErrorKind` property. An error extending
 
 Built-in descriptors are passed keyed by the name the agent uses:
 `createAgent({ tools: { current_date: currentDateTool } })`. Spec files refer to
-`http`, `current-date` and `day-name` by name (see
+`http`, `web-fetch`, `current-date` and `day-name` by name (see
 [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#tools-a-spec-can-reference)).
+
+How `http_request` and `web_fetch` refuse private destinations: an IP-literal
+host is checked before the request; a host name is resolved once, when the
+connection is opened, every address it resolves to is checked (loopback,
+RFC 1918, link-local including the cloud metadata address, CGNAT, multicast
+and reserved ranges, IPv4-mapped IPv6, NAT64 and 6to4), and the socket
+connects to the address that was checked. Redirects are followed by hand and
+each hop is checked the same way. A DNS-rebinding name, one that answers a
+public address first and a private one later, has no second lookup to answer.
+When `http_request` runs through a sandbox, the host is resolved and checked
+in the agent's process and the sandboxed process connects to that address.
+Both tools take `allowPrivate` (host patterns such as `intranet.example` or
+`*.corp.example`) for hosts that may resolve to private addresses.
+
+`web_fetch` takes `{ url }` (`http:` or `https:`, no `user:password@`) and
+returns `{ url, finalUrl, status, contentType, content, truncated }`. It only
+sends `GET`, with no body, cookies or caller-chosen headers. HTML becomes
+plain text (scripts, styles and similar removed, block elements on their own
+lines, link URLs in parentheses, entities decoded); JSON and `text/*` are
+returned as sent; other types (images, PDFs, binaries) return a note instead
+of content. A 4xx or 5xx response is returned with its body, not thrown, so
+the model can read an error page. Refusals, timeouts, too many redirects and
+bad URLs are tool errors that name the host. The page is untrusted input: the
+tool's description tells the model so, and `readOnlyHint` and `openWorldHint`
+are set. Options of `createWebFetchTool()`:
+
+```ts
+import { createAgent, createWebFetchTool } from '@lousho/build-ai-agent';
+
+const webFetch = createWebFetchTool({
+  timeoutMs: 30_000, // whole request: redirects and body included
+  maxRedirects: 10, // each hop is checked again
+  maxBytes: 2 * 1024 * 1024, // read from the network, then stop (truncated: true)
+  maxChars: 50_000, // characters of text returned to the model
+  allowedHosts: ['*.example.com'], // when set, any other host is refused before DNS
+  blockedHosts: ['private.example.com'], // always refused, before DNS
+  allowPrivate: [], // hosts allowed to resolve to private addresses
+  userAgent: 'lousho-web-fetch',
+});
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', tools: [webFetch] });
+```
+
+Each `createWebFetchTool()` has its own connection pool, kept for as long as
+the tool exists and released with it by garbage collection (there is no close
+method). Neither `http_request` nor `web_fetch` exists in the Cloudflare
+Worker build; see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#cloudflare-worker).
 
 ## Todo tools
 

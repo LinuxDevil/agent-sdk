@@ -10,6 +10,12 @@ import { NoopSandbox } from '../../security/sandboxCore';
 import type { SandboxAdapter } from '../../security/sandboxCore';
 import { executeToolWithSandboxGuard } from '../../execution/sandboxGuard';
 
+/** Lets the local test servers on 'localhost' through the SSRF check. */
+const LOCAL = { allowPrivate: ['localhost'] } as const;
+
+/** The unstubbed resolver (the spy below replaces the property it was read from). */
+const realLookup = dns.promises.lookup.bind(dns.promises) as (hostname: string, options: dns.LookupOptions) => Promise<unknown>;
+
 function listen(server: http.Server): Promise<string> {
   return new Promise((resolve) => {
     server.listen(0, 'localhost', () => {
@@ -33,27 +39,19 @@ describe('makeHttpRequest', () => {
   let dnsLookupSpy: ReturnType<typeof vi.spyOn> | undefined;
 
   beforeEach(() => {
-    // The behavioral tests below (timeout / redirects) spin up a real HTTP
-    // server bound to 'localhost' purely as test infrastructure - they are
-    // not exercising SSRF behavior. Since the hardened SSRF check now
-    // resolves domain names via DNS before connecting (to close the
-    // DNS-rebinding gap), and 'localhost' genuinely resolves to a loopback
-    // address that the denylist correctly blocks, we stub dns.lookup for
-    // this hostname to return a non-blocked address for the purposes of the
-    // SSRF pre-check only. The actual fetch() call still connects to the
-    // real local server via Node's own (unmocked) DNS resolution.
+    // The behavioral tests below (timeout / redirects / TLS) spin up a real
+    // HTTP server bound to 'localhost' purely as test infrastructure - they
+    // are not exercising SSRF behavior. 'localhost' resolves to a loopback
+    // address the SSRF check refuses, and since N13a the connection goes to
+    // exactly the address the check saw, so those tests opt in with
+    // `allowPrivate: ['localhost']` (LOCAL). The resolver is spied on (and
+    // passes through) so the SSRF tests can stub it.
     // Implemented through the plain MockInstance: lookup() is overloaded (one
     // address, or all of them with `all: true`), which one signature can't type.
     dnsLookupSpy = vi.spyOn(dns.promises, 'lookup');
     dnsLookupSpy?.mockImplementation(async (...args: unknown[]) => {
       const [hostname, opts] = args as [string, dns.LookupOptions | undefined];
-      if (hostname === 'localhost') {
-        const entry = { address: '203.0.113.10', family: 4 };
-        return opts && opts.all ? [entry] : entry;
-      }
-      return vi.importActual<typeof dns>('dns').then((actual) =>
-        actual.promises.lookup(hostname, opts as dns.LookupOptions)
-      );
+      return realLookup(hostname, opts as dns.LookupOptions);
     });
   });
 
@@ -76,7 +74,7 @@ describe('makeHttpRequest', () => {
       makeHttpRequest({
         url: baseUrl,
         method: 'GET',
-        options: { timeout: 500 },
+        options: { timeout: 500, ...LOCAL },
       })
     ).rejects.toThrow(/timed out/i);
     const elapsed = Date.now() - start;
@@ -95,7 +93,7 @@ describe('makeHttpRequest', () => {
 
     const start = Date.now();
     await expect(
-      createHttpTool({ timeout: 10_000 }).tool.execute!(
+      createHttpTool({ timeout: 10_000, ...LOCAL }).tool.execute!(
         { url: baseUrl, method: 'GET' },
         { toolCallId: 't', messages: [], abortSignal: controller.signal }
       )
@@ -117,7 +115,7 @@ describe('makeHttpRequest', () => {
       makeHttpRequest({
         url: `${baseUrl}/?hop=0`,
         method: 'GET',
-        options: { maxRedirects: 2 },
+        options: { maxRedirects: 2, ...LOCAL },
       })
     ).rejects.toThrow(/maxRedirects/);
   });
@@ -139,7 +137,7 @@ describe('makeHttpRequest', () => {
     const result = await makeHttpRequest({
       url: `${baseUrl}/?hop=0`,
       method: 'GET',
-      options: { maxRedirects: 5 },
+      options: { maxRedirects: 5, ...LOCAL },
     });
 
     expect(result).toBe('done');
@@ -194,6 +192,50 @@ describe('makeHttpRequest', () => {
 
       expect(fetchSpy).not.toHaveBeenCalled();
       fetchSpy.mockRestore();
+    });
+
+    it('N13a: connects to the address it checked, so a rebinding name cannot reach a private address', async () => {
+      // A rebinding DNS server: the first answer for the name is public, every
+      // later one is loopback. Both resolver entry points are stubbed (the
+      // promise API and the callback API sockets use by default), sharing one
+      // answer sequence, so a check-then-resolve-again implementation gets
+      // the public address for its check and 127.0.0.1 for its connection.
+      let hits = 0;
+      server = http.createServer((_req, res) => {
+        hits++;
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('internal');
+      });
+      const port = await new Promise<number>((resolve) => {
+        server!.listen(0, '127.0.0.1', () => resolve((server!.address() as AddressInfo).port));
+      });
+      let answers = 0;
+      const next = () => (answers++ === 0 ? { address: '203.0.113.10', family: 4 } : { address: '127.0.0.1', family: 4 });
+      dnsLookupSpy?.mockImplementation(async (...args: unknown[]) => {
+        const [hostname, opts] = args as [string, dns.LookupOptions | undefined];
+        if (hostname !== 'rebind.test') throw new Error(`unexpected lookup for ${hostname}`);
+        const entry = next();
+        return opts && opts.all ? [entry] : entry;
+      });
+      const actualLookup = dns.lookup;
+      const callbackSpy = vi.spyOn(dns, 'lookup').mockImplementation(((hostname: string, options: unknown, callback?: unknown) => {
+        const cb = (typeof options === 'function' ? options : callback) as (e: Error | null, a: unknown, f?: number) => void;
+        const opts = (typeof options === 'object' && options !== null ? options : {}) as dns.LookupOptions;
+        if (hostname !== 'rebind.test') return (actualLookup as (...a: unknown[]) => void)(hostname, options, callback);
+        const entry = next();
+        if (opts.all) cb(null, [entry]);
+        else cb(null, entry.address, entry.family);
+      }) as unknown as typeof dns.lookup);
+      try {
+        await expect(
+          makeHttpRequest({ url: `http://rebind.test:${port}/`, method: 'GET', options: { timeout: 1500 } })
+        ).rejects.toThrow();
+        expect(hits).toBe(0);
+        // One resolution: the one the pinned lookup checked and connected to.
+        expect(answers).toBe(1);
+      } finally {
+        callbackSpy.mockRestore();
+      }
     });
 
     it('rejects a bracketed IPv6 loopback literal ([::1])', async () => {
@@ -283,21 +325,14 @@ describe('makeHttpRequest', () => {
       }
     });
 
-    it('uses the global fetch and never loads undici while TLS verification is on (LOU-D40)', async () => {
-      server = http.createServer((_req, res) => {
-        res.writeHead(200, { 'Content-Type': 'text/plain' });
-        res.end('plain');
-      });
-      const baseUrl = await listen(server);
+    it('loads undici on the first request, not at import time (LOU-D19; N13a pins every request through it)', async () => {
       vi.resetModules();
       vi.doMock('undici', () => {
-        throw new Error('undici must not be loaded for a default request');
+        throw new Error('undici is loaded lazily');
       });
       try {
         const { makeHttpRequest: fresh } = await import('./http');
-        expect(await fresh({ url: baseUrl, method: 'GET' })).toBe('plain');
-        expect(await fresh({ url: baseUrl, method: 'GET', options: { validateSSL: true } })).toBe('plain');
-        await expect(fresh({ url: baseUrl, method: 'GET', options: { validateSSL: false } })).rejects.toThrow(/mocking a module|undici must not be loaded/);
+        await expect(fresh({ url: 'http://203.0.113.10/', method: 'GET' })).rejects.toThrow(/mocking a module|undici is loaded lazily/);
       } finally {
         vi.doUnmock('undici');
         vi.resetModules();
@@ -312,8 +347,8 @@ describe('makeHttpRequest', () => {
       const baseUrl = await listenHttps(httpsServer);
 
       await expect(
-        makeHttpRequest({ url: baseUrl, method: 'GET' })
-      ).rejects.toThrow();
+        makeHttpRequest({ url: baseUrl, method: 'GET', options: LOCAL })
+      ).rejects.toThrow(/certificate|fetch failed/i);
     });
 
     it('accepts a self-signed certificate when validateSSL is false', async () => {
@@ -326,7 +361,7 @@ describe('makeHttpRequest', () => {
       const result = await makeHttpRequest({
         url: baseUrl,
         method: 'GET',
-        options: { validateSSL: false },
+        options: { validateSSL: false, ...LOCAL },
       });
 
       expect(result).toBe('secure');
@@ -343,12 +378,12 @@ describe('makeHttpRequest', () => {
         makeHttpRequest({
           url: baseUrl,
           method: 'GET',
-          options: { validateSSL: false },
+          options: { validateSSL: false, ...LOCAL },
         }),
         makeHttpRequest({
           url: baseUrl,
           method: 'GET',
-          options: { validateSSL: true },
+          options: { validateSSL: true, ...LOCAL },
         }).then(
           () => 'unexpectedly-resolved',
           (error: unknown) => (error instanceof Error ? error.message : String(error))
@@ -374,7 +409,7 @@ describe('makeHttpRequest', () => {
       });
       const baseUrl = await listen(localServer);
       try {
-        const descriptor = createHttpTool();
+        const descriptor = createHttpTool(LOCAL);
 
         const direct = await descriptor.tool.execute!({ url: baseUrl, method: 'GET' }, {} as ToolExecutionOptions);
         const viaGuard = await executeToolWithSandboxGuard('http', descriptor, { url: baseUrl, method: 'GET' }, NoopSandbox);
@@ -415,6 +450,61 @@ describe('makeHttpRequest', () => {
 
       expect(runSpy).toHaveBeenCalledTimes(1);
       expect(result).toBe('from-custom-sandbox');
+    });
+
+    it('N13a: the sandboxed process connects to the address checked here, not its own resolution', async () => {
+      // 'pinned-target.invalid' cannot resolve anywhere (RFC 6761), so the
+      // request only reaches the local server if the child process uses the
+      // address this process resolved (stubbed to 127.0.0.1) and checked.
+      const localServer = http.createServer((req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end(`pinned host=${req.headers.host}`);
+      });
+      const port = await new Promise<number>((resolve) => {
+        localServer.listen(0, '127.0.0.1', () => resolve((localServer.address() as AddressInfo).port));
+      });
+      dnsLookupSpy?.mockImplementation(async (...args: unknown[]) => {
+        const [hostname, opts] = args as [string, dns.LookupOptions | undefined];
+        if (hostname !== 'pinned-target.invalid') throw new Error(`unexpected lookup for ${hostname}`);
+        const entry = { address: '127.0.0.1', family: 4 };
+        return opts && opts.all ? [entry] : entry;
+      });
+      try {
+        const url = `http://pinned-target.invalid:${port}/`;
+        await expect(
+          executeToolWithSandboxGuard('http', createHttpTool(), { url, method: 'GET' }, NoopSandbox)
+        ).rejects.toThrow(/blocked host pinned-target\.invalid/);
+        const result = await executeToolWithSandboxGuard(
+          'http',
+          createHttpTool({ allowPrivate: ['pinned-target.invalid'] }),
+          { url, method: 'GET' },
+          NoopSandbox
+        );
+        expect(result).toBe(`pinned host=pinned-target.invalid:${port}`);
+      } finally {
+        await new Promise<void>((resolve) => localServer.close(() => resolve()));
+      }
+    }, 15000);
+
+    it('N13a: hands the sandbox the checked address and refuses a private one without running it', async () => {
+      const runSpy = vi.fn(async (_cmd: string, _args: string[], opts?: { env?: Record<string, string> }) => {
+        const request = JSON.parse(Buffer.from(opts!.env!.SANDBOX_FETCH_REQUEST, 'base64').toString('utf-8'));
+        return { stdout: JSON.stringify({ status: 200, statusText: 'OK', headers: {}, body: `via ${request.pinnedAddress}` }), stderr: '', exitCode: 0 };
+      });
+      const customSandbox: SandboxAdapter = { name: 'recording-sandbox', run: runSpy, writeFile: vi.fn() };
+      dnsLookupSpy?.mockImplementation(async (...args: unknown[]) => {
+        const [hostname] = args as [string];
+        if (hostname === 'public.test') return [{ address: '203.0.113.10', family: 4 }];
+        if (hostname === 'internal.test') return [{ address: '10.0.0.7', family: 4 }];
+        throw new Error(`unexpected lookup for ${hostname}`);
+      });
+
+      const descriptor = createHttpTool();
+      expect(await executeToolWithSandboxGuard('http', descriptor, { url: 'http://public.test/', method: 'GET' }, customSandbox)).toBe('via 203.0.113.10');
+      await expect(
+        executeToolWithSandboxGuard('http', descriptor, { url: 'http://internal.test/', method: 'GET' }, customSandbox)
+      ).rejects.toThrow(/blocked host internal\.test/);
+      expect(runSpy).toHaveBeenCalledTimes(1);
     });
 
     it('(c) fails closed when requiresSandbox is true but sandboxExecute is missing', async () => {

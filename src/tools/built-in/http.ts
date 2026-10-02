@@ -1,9 +1,16 @@
 import { z } from 'zod';
 import { isIP } from 'net';
-import { promises as dnsPromises } from 'dns';
 import { lazyValue, loadOptionalPeer } from '../../providers/optionalPeer';
 import { ToolDescriptor, ToolExecutionContext } from '../../types';
 import { SandboxAdapter } from '../../security/sandboxCore';
+import { matchesHost } from '../../security/hostPattern';
+import {
+  findSsrfBlockedError,
+  isPrivateAddress,
+  pinnedLookup,
+  resolvePublicAddresses,
+  SsrfBlockedError,
+} from '../../security/privateAddress';
 import { sandboxHttpFetch } from './sandboxFetch';
 import { defineTool } from '../defineTool';
 import { toolFailure } from './toolFailure';
@@ -29,126 +36,49 @@ export interface HttpToolOptions {
    * @default true
    */
   validateSSL?: boolean;
+
+  /**
+   * Host patterns (`intranet.example`, `*.corp.example`, or an IP literal)
+   * allowed to be or resolve to loopback, link-local or private addresses,
+   * which are refused otherwise.
+   * @default []
+   */
+  allowPrivate?: readonly string[];
 }
 
 /**
- * Default SSRF denylist: loopback, RFC1918 private ranges, link-local
- * (including the cloud metadata endpoint at 169.254.169.254), and their
- * IPv6 equivalents. Active by default with no opt-in flag.
- *
- * Note: fc00::/7 (unique local addresses) spans fc00:: through
- * fdff:ffff:..., so the second hex nibble after "f" must match both "c"
- * and "d" (case-insensitively, since IPv6 literals may be upper/lower/mixed
- * case before normalization).
- */
-const BLOCKED_RANGES = [
-  /^127\./,
-  /^10\./,
-  /^192\.168\./,
-  /^172\.(1[6-9]|2\d|3[01])\./,
-  /^169\.254\./,
-  /^::1$/,
-  /^f[cd][0-9a-f]{2}:/i,
-  /^fe80:/i,
-];
-
-/**
- * Strip surrounding IPv6 brackets (`[::1]` -> `::1`) and lowercase, since
- * `new URL(...).hostname` keeps the brackets for IPv6 literals and may
- * preserve mixed case that our regexes assume is already lowercase.
- */
-function normalizeHostLiteral(hostname: string): string {
-  return hostname.replace(/^\[|\]$/g, '').toLowerCase();
-}
-
-/**
- * If `address` is an IPv4-mapped IPv6 address (`::ffff:a.b.c.d` or its
- * compressed hex form `::ffff:HHHH:HHHH`), extract and return the embedded
- * IPv4 address in dotted-decimal form. Returns null otherwise.
- */
-function extractMappedIPv4(address: string): string | null {
-  const dotted = address.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i);
-  if (dotted) {
-    return dotted[1];
-  }
-
-  const hex = address.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
-  if (hex) {
-    const hi = parseInt(hex[1], 16);
-    const lo = parseInt(hex[2], 16);
-    return [
-      (hi >> 8) & 0xff,
-      hi & 0xff,
-      (lo >> 8) & 0xff,
-      lo & 0xff,
-    ].join('.');
-  }
-
-  return null;
-}
-
-/**
- * Check a single resolved/literal IP address (v4 or v6, already stripped
- * of brackets) against the SSRF denylist, unwrapping IPv4-mapped IPv6
- * addresses first so `::ffff:127.0.0.1` (and its compressed hex form) is
- * caught the same way `127.0.0.1` is.
- */
-function isBlockedAddress(address: string): boolean {
-  const normalized = normalizeHostLiteral(address);
-
-  const mappedIPv4 = extractMappedIPv4(normalized);
-  if (mappedIPv4 && BLOCKED_RANGES.some((re) => re.test(mappedIPv4))) {
-    return true;
-  }
-
-  return BLOCKED_RANGES.some((re) => re.test(normalized));
-}
-
-/**
- * Determine whether a request to `hostname` should be blocked by the SSRF
- * denylist.
- *
- * - If `hostname` is already an IP literal (`net.isIP` != 0), it is checked
- *   directly.
- * - Otherwise `hostname` is a domain name. It is resolved via DNS *before*
- *   any connection is attempted, and EVERY resolved address is checked
- *   against the denylist. This closes the DNS-rebinding gap where an
- *   attacker-controlled domain resolves to a blocked internal/loopback IP.
- * - If DNS resolution itself fails, that is not treated as a block; the
- *   normal fetch error is left to surface from the caller's own connection
- *   attempt instead of being reported as an SSRF rejection.
+ * SSRF policy (N13a). IP-literal hosts are checked here, before any request:
+ * a socket never resolves a literal, so nothing else would see it. Names are
+ * checked by the transport at connection time with the shared pinned lookup
+ * (src/security/privateAddress.ts): the one resolution of the name is the one
+ * that is checked and the one the socket connects to, so a DNS-rebinding name
+ * that answers a public address first and a private one later has no second
+ * lookup to answer.
  *
  * Decimal/octal/hex IPv4 encodings (e.g. `2130706433`, `017700000001`,
- * `0x7f000001`) are not handled with bespoke parsing here: `new URL(...)`
- * already normalizes all three forms to dotted-decimal (`127.0.0.1`) before
- * `hostname` is ever read, which is verified by a regression test in
- * http.test.ts.
+ * `0x7f000001`) need no bespoke parsing: `new URL(...)` already normalizes
+ * all three forms to dotted-decimal (`127.0.0.1`) before `hostname` is read,
+ * which is verified by a regression test in http.test.ts.
  */
-async function isBlockedHost(hostname: string): Promise<boolean> {
-  const bare = normalizeHostLiteral(hostname);
-
-  if (isIP(bare)) {
-    return isBlockedAddress(bare);
+function assertLiteralAllowed(hostname: string, allowPrivate: readonly string[]): void {
+  const bare = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (isIP(bare) && !matchesHost(allowPrivate, bare) && isPrivateAddress(bare)) {
+    throw new SsrfBlockedError(bare);
   }
+}
 
-  try {
-    const resolved = await dnsPromises.lookup(bare, { all: true });
-    return resolved.some((entry) => isBlockedAddress(entry.address));
-  } catch {
-    // DNS resolution failed (e.g. NXDOMAIN). Don't swallow this as a
-    // block - let the subsequent fetch() attempt fail with its own,
-    // more informative network error.
-    return false;
-  }
+/** The error reported for a refused destination; it names the host, never the resolved addresses. */
+function ssrfFailure(host: string): Error {
+  return toolFailure(`Request to blocked host ${host} rejected by SSRF denylist`);
 }
 
 /**
  * A minimal fetch-response-shaped transport function that actually performs
  * the outbound request. `makeHttpRequest()` is transport-agnostic: the
- * default transport calls `fetch` directly (undici's, only for
- * `validateSSL: false`); `makeHttpRequestViaSandbox()` below supplies a
- * transport that routes the same request through a SandboxAdapter instead
- * (LOU-K2).
+ * default transport calls undici's `fetch` through a dispatcher whose
+ * connections use the pinned lookup; `makeHttpRequestViaSandbox()` below
+ * supplies a transport that routes the same request through a SandboxAdapter
+ * instead (LOU-K2), pinned to the address checked here.
  */
 type HttpTransport = (
   url: string,
@@ -162,22 +92,25 @@ type HttpTransport = (
 ) => Promise<Response>;
 
 /**
- * Default transport. With TLS verification on (the default) it is the
- * runtime's global `fetch`: nothing about the request needs `undici`, so the
- * package is not even loaded (LOU-D40). Only `validateSSL: false` needs a
- * per-request TLS setting, which is scoped to a dedicated undici Agent
- * (dispatcher) rather than the process-wide NODE_TLS_REJECT_UNAUTHORIZED env
- * var, since the env var is global mutable state and toggling it around an
- * await point would race under concurrent requests.
+ * Default transport: undici's `fetch` with a dedicated `Agent` (dispatcher)
+ * whose `connect.lookup` is the pinned lookup (N13a), so every connection,
+ * including each redirect target, resolves its host exactly once, refuses a
+ * private address and connects to the address it checked. The same Agent
+ * scopes `validateSSL: false` to this request rather than to the
+ * process-wide NODE_TLS_REJECT_UNAUTHORIZED env var, which is global mutable
+ * state and would race under concurrent requests.
  */
-function createDirectTransport(validateSSL: boolean): { transport: HttpTransport; close: () => Promise<void> } {
-  if (validateSSL) return { transport: (url, init) => fetch(url, init), close: async () => {} };
+function createDirectTransport(
+  validateSSL: boolean,
+  allowPrivate: readonly string[]
+): { transport: HttpTransport; close: () => Promise<void> } {
   // undici is loaded on first request, not at import time (LOU-D19).
   let started = false;
   const load = lazyValue(async () => {
     const { Agent, fetch } = await loadOptionalPeer('undici', () => import('undici'));
     started = true;
-    return { fetch, dispatcher: new Agent({ connect: { rejectUnauthorized: false } }) };
+    const dispatcher = new Agent({ connect: { rejectUnauthorized: validateSSL, lookup: pinnedLookup({ allowPrivate }) } });
+    return { fetch, dispatcher };
   });
   return {
     transport: async (url, init) => {
@@ -185,7 +118,8 @@ function createDirectTransport(validateSSL: boolean): { transport: HttpTransport
       return fetch(url, { ...init, dispatcher }) as unknown as Promise<Response>;
     },
     close: async () => {
-      if (started) await (await load()).dispatcher.close();
+      // destroy(), not close(): close() waits for a connection attempt the timeout already gave up on.
+      if (started) await (await load()).dispatcher.destroy();
     },
   };
 }
@@ -195,15 +129,24 @@ function createDirectTransport(validateSSL: boolean): { transport: HttpTransport
  * sandboxHttpFetch() rather than calling undici's fetch directly - the
  * actual outbound network call happens inside `sandbox.run()` (a Node
  * subprocess under NoopSandbox; a real isolated command under e.g.
- * SubprocessSandbox) instead of in this process.
+ * SubprocessSandbox) instead of in this process. The host is resolved and
+ * checked here, once per hop, and the sandboxed process connects to that
+ * checked address instead of resolving the name again (N13a).
  */
-function createSandboxTransport(sandbox: SandboxAdapter, validateSSL: boolean, timeoutMs: number): HttpTransport {
-  return (url, init) =>
-    sandboxHttpFetch(
+function createSandboxTransport(
+  sandbox: SandboxAdapter,
+  validateSSL: boolean,
+  timeoutMs: number,
+  allowPrivate: readonly string[]
+): HttpTransport {
+  return async (url, init) => {
+    const [pinned] = await resolvePublicAddresses(new URL(url).hostname, { allowPrivate });
+    return sandboxHttpFetch(
       sandbox,
-      { url, method: init.method, headers: init.headers, body: init.body, insecureTLS: !validateSSL },
+      { url, method: init.method, headers: init.headers, body: init.body, insecureTLS: !validateSSL, pinnedAddress: pinned.address },
       { timeoutMs, signal: init.signal }
     );
+  };
 }
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
@@ -222,11 +165,9 @@ interface HttpRequestArgs {
 const DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_MAX_REDIRECTS = 5;
 
-/** Reject `hostname` if it is on the SSRF denylist. */
-async function assertHostAllowed(hostname: string): Promise<void> {
-  if (await isBlockedHost(hostname)) {
-    throw toolFailure(`Request to blocked host ${hostname} rejected by SSRF denylist`);
-  }
+/** `options.allowPrivate`, lower-cased. */
+function allowPrivateOf(options: HttpToolOptions | undefined): string[] {
+  return (options?.allowPrivate ?? []).map((pattern) => pattern.toLowerCase());
 }
 
 /** The redirect target of a 3xx response, or null/'' when it is not a redirect. */
@@ -236,13 +177,15 @@ function redirectLocation(response: Response): string | null {
 
 /**
  * Issue the request and follow up to `maxRedirects` redirects by hand
- * (`redirect: 'manual'`), SSRF-checking every redirect target first.
+ * (`redirect: 'manual'`). Every hop goes through the transport, which
+ * applies the pinned SSRF check to its connection.
  */
 async function fetchFollowingRedirects(
   transport: HttpTransport,
   url: string,
   init: Parameters<HttpTransport>[1],
-  maxRedirects: number
+  maxRedirects: number,
+  allowPrivate: readonly string[]
 ): Promise<Response> {
   let currentUrl = url;
   let redirectCount = 0;
@@ -255,7 +198,7 @@ async function fetchFollowingRedirects(
       throw toolFailure(`Exceeded maxRedirects (${maxRedirects})`);
     }
     currentUrl = new URL(location, currentUrl).toString();
-    await assertHostAllowed(new URL(currentUrl).hostname);
+    assertLiteralAllowed(new URL(currentUrl).hostname, allowPrivate);
     response = await transport(currentUrl, init);
     location = redirectLocation(response);
   }
@@ -305,6 +248,10 @@ function toHttpRequestError(error: unknown, timeoutMs: number, callerSignal?: Ab
   if (callerSignal?.aborted) {
     return abortedRequestError();
   }
+  const blocked = findSsrfBlockedError(error);
+  if (blocked) {
+    return ssrfFailure(blocked.host);
+  }
   if (error instanceof Error && error.name === 'AbortError') {
     return new Error(`Request timed out after ${timeoutMs}ms`);
   }
@@ -331,7 +278,13 @@ async function performHttpRequest(
   transport: HttpTransport,
   getCleanup: () => (() => void | Promise<void>) | void
 ): Promise<string> {
-  await assertHostAllowed(new URL(url).hostname);
+  const allowPrivate = allowPrivateOf(options);
+  try {
+    assertLiteralAllowed(new URL(url).hostname, allowPrivate);
+  } catch (error) {
+    const blocked = findSsrfBlockedError(error);
+    throw blocked ? ssrfFailure(blocked.host) : error;
+  }
 
   const timeoutMs = options.timeout ?? DEFAULT_TIMEOUT_MS;
   const controller = new AbortController();
@@ -355,7 +308,8 @@ async function performHttpRequest(
       transport,
       url,
       fetchOptions,
-      options.maxRedirects ?? DEFAULT_MAX_REDIRECTS
+      options.maxRedirects ?? DEFAULT_MAX_REDIRECTS,
+      allowPrivate
     );
 
     clearTimeout(timeoutId);
@@ -371,31 +325,29 @@ async function performHttpRequest(
 }
 
 /**
- * Makes HTTP requests to external APIs. Unchanged, original behavior: goes
- * straight to undici's fetch (with the per-request TLS dispatcher), never
- * routed through any SandboxAdapter. This remains the implementation behind
- * the HTTP tool's plain `execute()` - see makeHttpRequestViaSandbox() below
- * for the sandboxed path used by `sandboxExecute()`.
+ * Makes HTTP requests to external APIs, in this process, through undici's
+ * fetch with the pinned-lookup dispatcher. Never routed through any
+ * SandboxAdapter. This is the implementation behind the HTTP tool's plain
+ * `execute()` - see makeHttpRequestViaSandbox() below for the sandboxed path
+ * used by `sandboxExecute()`.
  */
 export async function makeHttpRequest(args: HttpRequestArgs): Promise<string> {
-  const { transport, close } = createDirectTransport(args.options?.validateSSL !== false);
+  const { transport, close } = createDirectTransport(args.options?.validateSSL !== false, allowPrivateOf(args.options));
   return performHttpRequest(args, transport, () => close);
 }
-
-
 
 /**
  * Same request/redirect/SSRF logic as makeHttpRequest(), but the actual
  * outbound fetch is performed through `sandbox` (LOU-K2) via
  * sandboxHttpFetch() instead of calling undici's fetch directly in this
- * process.
+ * process. The sandboxed process connects to the address checked here.
  */
 export async function makeHttpRequestViaSandbox(
   args: HttpRequestArgs,
   sandbox: SandboxAdapter
 ): Promise<string> {
   const timeoutMs = args.options?.timeout ?? 30000;
-  const transport = createSandboxTransport(sandbox, args.options?.validateSSL !== false, timeoutMs + 5000);
+  const transport = createSandboxTransport(sandbox, args.options?.validateSSL !== false, timeoutMs + 5000, allowPrivateOf(args.options));
   return performHttpRequest(args, transport, () => undefined);
 }
 
