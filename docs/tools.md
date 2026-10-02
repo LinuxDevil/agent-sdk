@@ -134,10 +134,11 @@ Built-in descriptors are passed keyed by the name the agent uses:
 `http`, `current-date` and `day-name` by name (see
 [Configuration](./configuration.md#tools-a-spec-can-reference)).
 
-## `ToolRegistry`
+## Advanced: `ToolRegistry`
 
-`createAgent()` builds a registry for you. With `AgentBuilder` +
-`AgentExecutor.execute()`, or to share tools between agents, fill one yourself:
+`createAgent()` builds a registry for you; fill one yourself only with
+`AgentExecutor.execute()` (see [the executor API](./executor-api.md)) or to
+share tools between agents:
 `register(tool)` for a `defineTool()` result, `register(name, descriptor)` for a
 raw `ToolDescriptor` (a built-in tool, an MCP tool, or an existing `tool()` from
 the `ai` SDK), and `registerMany()` for a record of descriptors or an array of defined tools.
