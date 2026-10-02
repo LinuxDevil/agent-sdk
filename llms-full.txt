@@ -1912,6 +1912,7 @@ export function Chat() {
 | `tool.start` | `tool-input-start`, then `tool-input-available` with the arguments |
 | `tool.done` / `tool.error` | `tool-output-available` / `tool-output-error` |
 | `approval.requested` | `data-lousho-approval` (below) |
+| `todo.updated` | `data-lousho-todos`: a data part `{ todos, counts }` with the complete todo list, under the id `todos` so each update replaces the last (see [Todo tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#todo-tools)) |
 | `error` | `error` |
 | `run.done` | `finish` |
 
@@ -8230,6 +8231,7 @@ on the server.
 | `pendingApproval` | `{ id, toolCallId, toolName, args }` of the tool call the run paused on, else `null`. For an `ask_question` call it also has `kind: 'question'` and `question: { text, options?, allowFreeText? }`. |
 | `error` | `{ name, message }` of the last `error` event or a failed request, else `null`. |
 | `usage` | Token usage of the last finished run (from `run.done`), else `null`. |
+| `todos` | The agent's todo list (`{ id, content, status }[]`), set by each `todo.updated` event of the [todo tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#todo-tools); `[]` until the first one. It carries across turns; see [Todos](#todos). |
 | `lastEvent` | The last event received, for anything the projection does not cover. |
 | `send(input)` | Starts a turn. If a turn is still running, it is aborted first. `input` is a string, content parts or a `Message[]` (an `AgentInput`); the user bubble shows the text with an `[image]` / `[file]` marker per other part (remote mode POSTs it as `{ "input": ... }`). |
 | `stop()` | Aborts the turn in flight through its `AbortSignal`; `status` goes back to `'idle'`. |
@@ -8356,6 +8358,46 @@ console.log(state.status, state.messages.at(-1)?.text, state.usage?.totalTokens)
 `parseEventStream()` skips blank lines, SSE comments and `event:`/`id:`
 fields, and any line that is not a known event, so it reads both framings.
 Breaking out of its loop cancels the response body.
+
+## Todos
+
+An agent that has the [todo tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#todo-tools) emits a
+`todo.updated` event for every `todo_write`; the hook keeps the latest list in
+`todos`, and `useTodos(agent)` turns it into a view with counts, the item being
+worked on and the progress. It takes the hook's result, so one stream feeds the
+chat and the plan. The list carries across turns and is cleared by nothing but a
+new hook (it is not restored when the page reconnects to an existing session).
+
+```tsx
+import { useLoushoAgent, useTodos } from '@lousho/build-ai-agent/react';
+
+export function Plan() {
+  const agent = useLoushoAgent({ url: '/api/agent' });
+  const { todos, counts, current, progress } = useTodos(agent);
+
+  return (
+    <aside>
+      <p>
+        {counts.completed} of {counts.total} done ({Math.round(progress * 100)}%)
+        {current && <> - now: {current.content}</>}
+      </p>
+      <ul>
+        {todos.map((todo) => (
+          <li key={todo.id}>
+            {todo.status === 'completed' ? '[x]' : todo.status === 'in_progress' ? '[>]' : '[ ]'} {todo.content}
+          </li>
+        ))}
+      </ul>
+      <button onClick={() => agent.send('Migrate the repo to ESM')}>Start</button>
+    </aside>
+  );
+}
+```
+
+`current` is the `in_progress` item, else the first `pending` one, and `undefined`
+when nothing is left; `progress` is `completed / total` (0 for an empty list).
+The view is memoized on `agent.todos`. `todoView(todos)` computes the same view
+outside React.
 
 # Reasoning
 
@@ -9317,6 +9359,7 @@ The event types and their extra fields:
 | `reasoning.done`     | `text: string`, `tokens?: number` | The reasoning ended: `text` is all of it; `tokens` when the provider reported reasoning tokens by then. |
 | `tool.start`         | `toolCallId: string`, `toolName: string`, `args: Record<string, unknown>` | A tool call starts. `args` are the model's arguments parsed from JSON (`{}` when they are not valid JSON). |
 | `tool.done`          | `toolCallId`, `toolName`, `result: unknown`, `durationMs: number` | A tool call returned. `result` is the value as it would be JSON-encoded (`undefined` becomes `null`, a `Date` becomes a string). `durationMs` counts from its `tool.start`. |
+| `todo.updated`       | `todos: Todo[]`, `counts: { pending, in_progress, completed, total }`, `toolCallId: string` | A successful `todo_write` call of the [todo tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#todo-tools) replaced the list, right after that call's `tool.done`. `todos` is the complete new list (`{ id, content, status }`), `toolCallId` the `todo_write` call. A sub-agent's carries `subagent`. The [UI bindings](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md#todos) keep the list and show it live. |
 | `tool.error`         | `toolCallId`, `toolName`, `error: { name: string, message: string }`, `durationMs: number` | A tool call failed: it threw, its arguments did not match its schema (`name: 'ToolArgumentsValidationError'`), or the tool does not exist. The model gets the error as the call's result and the run continues. |
 | `approval.requested` | `approvalId: string`, `toolCallId`, `toolName`, `args: Record<string, unknown>`, `kind?: 'question'`, `question?: { text, options?, allowFreeText? }` | A tool call needs a human decision. The run then stops; resume it with `agent.approvals.resolve()` or `resumeAfterApproval()` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)), or stream the continuation (see [Streaming after an approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#streaming-after-an-approval)). An `ask_question` call carries `kind: 'question'` and its `question`; answer it with `agent.approvals.answer()` (see [Asking the user a question](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#asking-the-user-a-question)). |
 | `permission.decision` | `toolCallId`, `toolName`, `decision: 'allow' \| 'deny' \| 'ask' \| 'default'`, `rule?: { index: number, reason?: string }`, `args?: Record<string, unknown>`, `at: string` | How a tool call's [permission rules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies) decided it: after its `tool.start`, before the call's own `tool.done` / `tool.error` / `approval.requested`. Only when the run sets `permissions` or `onPermissionDecision`; `args` is left out under `redactContent`. |
@@ -10514,7 +10557,8 @@ snippets here):
 ## What differs from React
 
 - **State is the store value.** `$agent` is the React hook's state object:
-  `messages`, `status`, `pendingApproval`, `error`, `usage` and `lastEvent`.
+  `messages`, `status`, `pendingApproval`, `error`, `usage`, `todos` and
+  `lastEvent`.
   The commands (`send`, `stop`, `approve`, `reject`, `answer`) sit on the
   store itself with the React hook's signatures; they do not need a
   subscriber.
@@ -10531,6 +10575,30 @@ snippets here):
 The reducer and the stream parser are exported from this subpath too
 (`reduceAgentEvents`, `initialAgentUIState`, `parseEventStream`), the same
 ones as in `@lousho/build-ai-agent/react`.
+
+## Todos
+
+`loushoTodos(agent)` is a readable store derived from the `loushoAgent()` store:
+`$plan` is the todo view with `todos`, `counts`, `current` (the `in_progress`
+item, else the first `pending` one) and `progress` (`completed / total`). It
+shows the plan of an agent with the [todo tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#todo-tools) live, from
+the same stream as the chat, and notifies only when the list changes (see
+[React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md#todos)).
+
+```ts
+import { loushoAgent, loushoTodos } from '@lousho/build-ai-agent/svelte';
+
+export const agent = loushoAgent({ url: '/api/agent' });
+export const plan = loushoTodos(agent);
+```
+
+```html
+<p>{$plan.counts.completed} of {$plan.counts.total} done ({Math.round($plan.progress * 100)}%)</p>
+{#if $plan.current}<p>Now: {$plan.current.content}</p>{/if}
+<ul>
+  {#each $plan.todos as todo (todo.id)}<li>{todo.status}: {todo.content}</li>{/each}
+</ul>
+```
 
 # Testing agents
 
@@ -11026,7 +11094,11 @@ the list plus counts; `todo_read` returns it. Ids are assigned automatically and
 stay stable when a later write repeats an item's content. Invalid lists (for
 example two `in_progress`) reach the model as a structured tool error so it can
 retry. The list lives in memory per call; pass `store` (`{ get, set }`) to
-persist it, and `onChange` to update a UI.
+persist it, and `onChange` to update a UI. Every successful `todo_write` also
+emits a `todo.updated` stream event with the new list and its counts (see
+[Stream events](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/stream-events.md)), which the [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md#todos),
+[Vue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/vue.md#todos) and [Svelte](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/svelte.md#todos) bindings turn into
+`useTodos()` / `loushoTodos()`, so a UI shows the plan live without `onChange`.
 
 ```ts
 import { createAgent, createTodoTools, type TodoStore } from '@lousho/build-ai-agent';
@@ -11518,8 +11590,8 @@ and in the template:
 
 ## What differs from React
 
-- **State is refs.** `messages`, `status`, `pendingApproval`, `error`, `usage`
-  and `lastEvent` are read-only `ComputedRef`s: use `.value` in script,
+- **State is refs.** `messages`, `status`, `pendingApproval`, `error`, `usage`,
+  `todos` and `lastEvent` are read-only `ComputedRef`s: use `.value` in script,
   nothing in a template. The commands (`send`, `stop`, `approve`, `reject`,
   `answer`) are plain functions with the React hook's signatures.
 - **`reset()`** aborts the run in flight, forgets the in-process session
@@ -11535,6 +11607,32 @@ and in the template:
 The reducer and the stream parser are exported from this subpath too
 (`reduceAgentEvents`, `initialAgentUIState`, `parseEventStream`), the same
 ones as in `@lousho/build-ai-agent/react`.
+
+## Todos
+
+`useTodos(agent)` takes the composable's result and returns one read-only ref
+per field of the todo view: `todos`, `counts`, `current` (the `in_progress`
+item, else the first `pending` one) and `progress` (`completed / total`). It
+shows the plan of an agent with the [todo tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#todo-tools) live, from
+the same stream as the chat (see [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md#todos)).
+
+```ts
+import { useLoushoAgent, useTodos } from '@lousho/build-ai-agent/vue';
+
+// In <script setup>:
+const agent = useLoushoAgent({ url: '/api/agent' });
+const { todos, counts, current, progress } = useTodos(agent);
+
+export { agent, todos, counts, current, progress };
+```
+
+```html
+<p>{{ counts.completed }} of {{ counts.total }} done ({{ Math.round(progress * 100) }}%)</p>
+<p v-if="current">Now: {{ current.content }}</p>
+<ul>
+  <li v-for="todo in todos" :key="todo.id">{{ todo.status }}: {{ todo.content }}</li>
+</ul>
+```
 
 # Workspace tools
 

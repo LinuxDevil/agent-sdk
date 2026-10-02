@@ -2,6 +2,7 @@ import { describe, it, expectTypeOf } from 'vitest';
 import { createAgent } from '../createAgent';
 import { createMockProvider } from '../providers/mock';
 import type { ExecuteOptions, ExecutionEvent, ExecutionEventType, ExecutionResult } from './AgentExecutor';
+import type { Todo } from '../tools/built-in/todo';
 import type { AgentRun } from './agentRun';
 import type { CompactedProviderErrorCategory } from './errors';
 import {
@@ -112,6 +113,14 @@ describe('AgentEvent types', () => {
     }
   });
 
+  it('narrows todo.updated on event.type (N12)', () => {
+    if (event.type === 'todo.updated') {
+      expectTypeOf(event.todos).toEqualTypeOf<Todo[]>();
+      expectTypeOf(event.counts.total).toBeNumber();
+      expectTypeOf(event.toolCallId).toBeString();
+    }
+  });
+
   it('covers every event type', () => {
     expectTypeOf<AgentEventType>().toEqualTypeOf<
       | 'run.start'
@@ -123,6 +132,7 @@ describe('AgentEvent types', () => {
       | 'reasoning.done'
       | 'tool.start'
       | 'tool.done'
+      | 'todo.updated'
       | 'tool.error'
       | 'approval.requested'
       | 'permission.decision'

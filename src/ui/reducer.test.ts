@@ -156,4 +156,26 @@ describe('reduceAgentEvents (LOU-D15)', () => {
     const state = reduce(...events({ type: 'text.delta', text: 'Hi' }));
     expect(state.messages).toEqual([{ id: 'm0', role: 'assistant', text: 'Hi', toolCalls: [] }]);
   });
+
+  describe('todos (N12)', () => {
+    const todos = [{ id: 'todo_1', content: 'a', status: 'in_progress' as const }];
+    const counts = { pending: 0, in_progress: 1, completed: 0, total: 1 };
+    const updated: AgentEventPayload = { type: 'todo.updated', todos, counts, toolCallId: 'w1' };
+
+    it('starts empty and is set by todo.updated', () => {
+      expect(initialAgentUIState.todos).toEqual([]);
+      expect(reduce(...events(updated)).todos).toEqual(todos);
+    });
+
+    it('is kept across run.done and a new ui.send, and cleared by ui.reset', () => {
+      const state = reduce(send, ...events(updated, { type: 'run.done', finishReason: 'stop', text: '' }), { type: 'ui.send', input: 'More' });
+      expect(state.todos).toEqual(todos);
+      expect(reduce(...events(updated), { type: 'ui.reset' }).todos).toEqual([]);
+    });
+
+    it('ignores a sub-agent update', () => {
+      const [event] = events(updated);
+      expect(reduce({ ...event, subagent: { name: 'researcher', depth: 1, toolCallId: 'c1' } }).todos).toEqual([]);
+    });
+  });
 });

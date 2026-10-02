@@ -2,7 +2,8 @@
  * LOU-P2: the public types of `@lousho/build-ai-agent/vue`.
  */
 import { describe, it, expectTypeOf } from 'vitest';
-import type { ComputedRef } from 'vue';
+import type { ComputedRef, Ref } from 'vue';
+import type { Todo } from '../tools/built-in/todo';
 import { createAgent } from '../createAgent';
 import { createMockProvider } from '../providers/mock';
 import type { AgentInput } from '../providers/content';
@@ -11,6 +12,8 @@ import {
   initialAgentUIState,
   reduceAgentEvents,
   useLoushoAgent,
+  useTodos,
+  type TodoView,
   type AgentUIAction,
   type AgentUIState,
   type LoushoAgentSource,
@@ -42,5 +45,12 @@ describe('@lousho/build-ai-agent/vue types', () => {
   it('exposes the reducer framework-free', () => {
     expectTypeOf(initialAgentUIState).toEqualTypeOf<AgentUIState>();
     expectTypeOf(reduceAgentEvents).parameter(1).toEqualTypeOf<AgentEvent | AgentUIAction>();
+  });
+
+  it('useTodos takes the agent result (or any ref of todos) and returns one ref per TodoView field', () => {
+    expectTypeOf<UseLoushoAgentResult['todos']>().toEqualTypeOf<ComputedRef<readonly Todo[]>>();
+    expectTypeOf<{ todos: Ref<readonly Todo[]> }>().toMatchTypeOf<Parameters<typeof useTodos>[0]>();
+    expectTypeOf<UseLoushoAgentResult>().toMatchTypeOf<Parameters<typeof useTodos>[0]>();
+    expectTypeOf(useTodos).returns.toEqualTypeOf<{ [K in keyof TodoView]: ComputedRef<TodoView[K]> }>();
   });
 });

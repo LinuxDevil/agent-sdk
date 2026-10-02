@@ -64,4 +64,11 @@ describe('parseEventStream (LOU-D15)', () => {
     }
     expect(cancelled).toBe(true);
   });
+
+  it('keeps agent.drift and todo.updated events (N12)', async () => {
+    const drift = { ...base, seq: 1, type: 'agent.drift', model: { from: 'a', to: 'b' }, toolsAdded: [], toolsRemoved: [], instructions: false };
+    const todo = { ...base, seq: 2, type: 'todo.updated', todos: [], counts: { pending: 0, in_progress: 0, completed: 0, total: 0 }, toolCallId: 'w' };
+    const text = [drift, todo].map((e) => `data: ${JSON.stringify(e)}\n\n`).join('');
+    expect((await collect(chunked(text))).map((e) => e.type)).toEqual(['agent.drift', 'todo.updated']);
+  });
 });

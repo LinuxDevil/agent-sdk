@@ -213,7 +213,11 @@ the list plus counts; `todo_read` returns it. Ids are assigned automatically and
 stay stable when a later write repeats an item's content. Invalid lists (for
 example two `in_progress`) reach the model as a structured tool error so it can
 retry. The list lives in memory per call; pass `store` (`{ get, set }`) to
-persist it, and `onChange` to update a UI.
+persist it, and `onChange` to update a UI. Every successful `todo_write` also
+emits a `todo.updated` stream event with the new list and its counts (see
+[Stream events](./stream-events.md)), which the [React](./react.md#todos),
+[Vue](./vue.md#todos) and [Svelte](./svelte.md#todos) bindings turn into
+`useTodos()` / `loushoTodos()`, so a UI shows the plan live without `onChange`.
 
 ```ts
 import { createAgent, createTodoTools, type TodoStore } from '@lousho/build-ai-agent';

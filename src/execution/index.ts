@@ -56,6 +56,7 @@ export type {
   ReasoningDoneEvent,
   ToolStartEvent,
   ToolDoneEvent,
+  TodoUpdatedEvent,
   ToolErrorEvent,
   ApprovalRequestedEvent,
   PermissionDecisionEvent,
