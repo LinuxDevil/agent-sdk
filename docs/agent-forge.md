@@ -5,12 +5,11 @@ build an agent's graph on a canvas, run it, watch it execute in a live
 debug console, chat with it, and author sandboxed pre/post hooks - all
 reading and writing the exact same `AgentSpec` YAML that `lousho dev` and
 `lousho build` use. It's launched with one command, `lousho studio`, and
-ships as part of this SDK's npm package (LOU-S).
+ships as part of this SDK's npm package.
 
 This doc covers: installation, the `lousho studio` quickstart, a
 first-agent walkthrough, hook authoring, time travel (replaying a run from
-a past step), and how settings/secrets/deploy wiring works (and doesn't
-yet).
+a past step), and how settings/secrets/deploy wiring works.
 
 ## Installation
 
@@ -115,7 +114,7 @@ exists.
 
 ## Hooks
 
-Hooks (LOU-Q) are small, sandboxed functions that run immediately before or
+Hooks are small, sandboxed functions that run immediately before or
 after a tool call or an LLM `generate` - the same mechanism the SDK core
 exposes as `HookRegistry`/`AgentHook` (see
 [API Overview](./api-overview.md)), but authored visually and attached to a

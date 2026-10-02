@@ -1,28 +1,11 @@
 # Durable execution
 
-Pass a `sessionId` and a `checkpointStore` to `AgentExecutor.execute()` and
-the run survives a crash, a restart, an abort or a human approval that takes
+Give `createAgent()` a `store` and pass a `sessionId` to `send()`, and the
+run survives a crash, a restart, an abort or a human approval that takes
 days. Nothing here depends on a particular host: any `CheckpointStore`
-(`LocalStorageCheckpointStore` on Node, the Cloudflare KV store the
+(`memoryStore()`, `SqliteStore`, the Cloudflare KV store the
 `cloudflare-worker` build wires up, or your own three-method implementation)
 and any `ApprovalStore` work the same way.
-
-```ts
-import { AgentExecutor, LocalStorageCheckpointStore } from '@lousho/build-ai-agent';
-
-const checkpoints = new LocalStorageCheckpointStore(storage);
-
-// First message of a conversation.
-await AgentExecutor.execute({ agent, input: 'Book a table for 2 tonight', provider, sessionId: 'chat-42', checkpointStore: checkpoints });
-
-// Later - same process or another one - the next message of the same conversation.
-await AgentExecutor.execute({ agent, input: 'Make it 3 people', provider, sessionId: 'chat-42', checkpointStore: checkpoints });
-```
-
-With `createAgent()`, one `store` option does the wiring: pass a `sessionId` to
-`send()` (or `stream()`) and the run is checkpointed in `store.checkpoints`;
-after a crash, `agent.resume(sessionId)` finishes it (and returns `null` when
-nothing is pending). No `AgentExecutor` needed:
 
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
@@ -30,20 +13,34 @@ import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
 
 const agent = createAgent({ provider, store: new SqliteStore('./.lousho/jobs.db') });
 
-const finished = await agent.resume('job-1'); // the interrupted run, if any
-const next = await agent.send('Now write a summary', { sessionId: 'job-1' }); // continues the same run's conversation
+// First message of a conversation.
+await agent.send('Book a table for 2 tonight', { sessionId: 'chat-42' });
+
+// Later - same process or another one - the next message of the same conversation.
+await agent.send('Make it 3 people', { sessionId: 'chat-42' });
+
+// After a crash: finish the interrupted run, if there is one (`null` when nothing is pending).
+const finished = await agent.resume('chat-42');
 ```
 
-`store.approvals` holds approval pauses, and `agent.approvals.resolve()`
-keeps checkpointing the run under its `sessionId`. Sessions are checkpointed
+The `store` option does the wiring: `store.checkpoints` holds the run's
+checkpoints and `store.approvals` holds approval pauses, and
+`agent.approvals.resolve()` keeps checkpointing the run under its
+`sessionId`. `stream()` takes a `sessionId` too. Sessions are checkpointed
 too: `agent.session({ id })` checkpoints every turn and `agent.resume(id)` (or
 `session.resume()`) finishes an interrupted one - see
 [Durable sessions](./sessions.md#durable-sessions).
 
+Underneath, `createAgent()` runs `AgentExecutor.execute()` with a
+`sessionId` and a `checkpointStore`; the behavior described below is the
+executor's, and the [advanced section](#advanced-the-executor-api) shows the
+executor calls.
+
 ## What is checkpointed, and when
 
 A checkpoint is the run's whole transcript plus its step count, usage,
-`businessState` and a `status`. It is written under the `sessionId`:
+`businessState` and a `status`. `send()` (and `stream()`) write it under the
+`sessionId`:
 
 | Moment | `status` |
 | ------ | -------- |
@@ -57,17 +54,19 @@ A run that rejects (a provider error, a throwing hook, a
 `PropagatingToolError`, a process crash) keeps its last `'in-progress'`
 checkpoint.
 
-## What happens when you call `execute()` again with the same `sessionId`
+## What happens when you send again with the same `sessionId`
 
-It depends on the stored `status`:
+Calling `send()` again with the same `sessionId` (or `execute()`, on the
+executor) depends on the stored `status`:
 
 - **Unfinished run** (`'in-progress'`: it crashed, was aborted, or a store
-  write failed). The run resumes. If its last model turn has tool calls
+  write failed). The run resumes (`agent.resume(sessionId)` does the same
+  without new input). If its last model turn has tool calls
   without a result, exactly those calls run first, through the normal tool
   path (argument validation, hooks, `needsApproval`, `toolConcurrency`),
   **without calling the model again**. Then the loop continues, with the
   remaining `maxSteps` budget; `usage` continues from the checkpointed
-  totals (the same holds for `resumeAfterApproval()`, from the snapshot).
+  totals (the same holds after `agent.approvals.resolve()`, from the snapshot).
   - New `input` is appended as a user message after those tool results.
     It is never placed between a tool-call turn and its results, so the
     transcript stays valid for every provider. This is what lets a user
@@ -81,24 +80,26 @@ It depends on the stored `status`:
   new messages, the history is recognised and not duplicated. `steps`,
   `usage` and `toolCalls` on the result count from zero for the new run;
   `messages` is the whole conversation.
-- **Paused awaiting approval** (`'awaiting-approval'`). `execute()` throws
+- **Paused awaiting approval** (`'awaiting-approval'`). `send()` throws
   `SessionAwaitingApprovalError` (with `sessionId` and `approvalId`) and
   does not call the model or any tool: new input must not bypass a pending
-  decision. Resolve it with `resumeAfterApproval()` first, passing the same
-  `checkpointStore`, then send the new message.
+  decision. Resolve it with `agent.approvals.resolve()` first, then send the
+  new message.
 
 System messages in `input` are ignored when it is added to a stored
 session (the session already has its system prompt). To end a session and
-start over under the same id, call `checkpointStore.delete(sessionId)`.
+start over under the same id, call `store.checkpoints.delete(sessionId)`.
 
 ```ts
-import { AgentExecutor, SessionAwaitingApprovalError } from '@lousho/build-ai-agent';
+import { createAgent, memoryStore, SessionAwaitingApprovalError } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ provider, store: memoryStore() });
 
 try {
-  await AgentExecutor.execute({ agent, input: 'Are you done?', provider, sessionId: 'chat-42', checkpointStore });
+  await agent.send('Are you done?', { sessionId: 'chat-42' });
 } catch (error) {
   if (error instanceof SessionAwaitingApprovalError) {
-    console.log(`Waiting on approval ${error.approvalId} - resolve it with resumeAfterApproval() first.`);
+    console.log(`Waiting on approval ${error.approvalId} - resolve it with agent.approvals.resolve() first.`);
   }
 }
 ```
@@ -108,7 +109,7 @@ try {
 When one model turn asks for several tools and one of them needs approval,
 the calls before it run and are recorded, and the run pauses on it. The
 approval snapshot records the calls after it (`remainingToolCalls`).
-`resumeAfterApproval()` then:
+`agent.approvals.resolve()` (`resumeAfterApproval()` on the executor) then:
 
 1. records the paused call's result - the tool's result if approved, or a
    structured `{ error, note }` rejection result if rejected;
@@ -118,22 +119,15 @@ approval snapshot records the calls after it (`remainingToolCalls`).
 3. calls the model once every call of the turn has exactly one result.
 
 ```ts
-import { AgentExecutor, resumeAfterApproval } from '@lousho/build-ai-agent';
+import { createAgent, memoryStore } from '@lousho/build-ai-agent';
 
-const paused = await AgentExecutor.execute({
-  agent, input, provider, toolRegistry, approvalStore, sessionId: 'chat-42', checkpointStore,
-});
+const agent = createAgent({ provider, store: memoryStore() });
+
+const paused = await agent.send('Email the whole team', { sessionId: 'chat-42' });
 
 if (paused.finishReason === 'awaiting-approval') {
-  // ...a human decides, possibly days later, in another process...
-  const result = await resumeAfterApproval(
-    { id: paused.approvalId!, approved: true },
-    approvalStore,
-    toolRegistry,
-    provider,
-    {},
-    checkpointStore, // clears the 'awaiting-approval' mark and keeps checkpointing
-  );
+  // ...a human decides, possibly days later, in another process (same store)...
+  const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
   console.log(result.finishReason); // 'stop', or 'awaiting-approval' again for the next gated call
 }
 ```
@@ -254,47 +248,34 @@ await checkpoints.delete('chat-42', { keepHistory: true });
 
 ## Fork and replay
 
-`AgentExecutor.fork()` starts a new session from a step of another session's
-history: "what if the tool had returned something else at step 1?" It takes the
-newest history entry of `fromStep`, applies `patch`, saves the result as the
-`'in-progress'` checkpoint of the new session and returns
-`{ sessionId, step, checkpoint }`. Resume the fork like any unfinished run:
+`agent.fork(sessionId, { fromStep, patch? })` starts a new session from a step
+of another session's history: "what if the tool had returned something else
+at step 1?" It takes the newest history entry of `fromStep`, applies `patch`,
+saves the result as the `'in-progress'` checkpoint of the new session over
+`store.checkpoints` and returns `{ sessionId, step, checkpoint }`. Resume the
+fork like any unfinished run with `agent.resume(fork.sessionId)`:
 
 ```ts
-import { AgentExecutor, compareTrajectories, memoryStore } from '@lousho/build-ai-agent';
+import { createAgent, compareTrajectories, memoryStore } from '@lousho/build-ai-agent';
 
-const { checkpoints } = memoryStore();
-await AgentExecutor.execute({ agent, provider, toolRegistry, input: 'Plan my trip', sessionId: 'trip', checkpointStore: checkpoints });
+const store = memoryStore();
+const assistant = createAgent({ provider, store });
+await assistant.send('Plan my trip', { sessionId: 'trip' });
 
-const fork = await AgentExecutor.fork({
-  sessionId: 'trip',
-  fromStep: 1,
-  checkpointStore: checkpoints,
-  patch: { toolResult: { toolCallId: 'call_weather', result: { forecast: 'rain' } } },
-});
+const fork = await assistant.fork('trip', { fromStep: 1, patch: { appendInput: 'It will rain, plan for that.' } });
 // fork.sessionId is 'trip.fork-1'; the 'trip' checkpoint and history are unchanged.
-await AgentExecutor.execute({ agent, provider, toolRegistry, input: [], sessionId: fork.sessionId, checkpointStore: checkpoints });
+const result = await assistant.resume(fork.sessionId);
 
-const original = await checkpoints.load('trip');
-const replayed = await checkpoints.load(fork.sessionId);
+const original = await store.checkpoints?.load('trip');
+const replayed = await store.checkpoints?.load(fork.sessionId);
 if (original && replayed) {
   const { divergedAt, a, b, drift } = compareTrajectories(original, replayed);
   console.log(divergedAt, a.length, b.length, drift); // 1, then each run's steps and the tool-call diff
 }
 ```
 
-With `createAgent({ store })`, `agent.fork(sessionId, { fromStep, patch? })`
-does the same over `store.checkpoints`, and `agent.resume(fork.sessionId)`
-continues the fork:
-
-```ts
-import { createAgent, memoryStore } from '@lousho/build-ai-agent';
-
-const assistant = createAgent({ provider, store: memoryStore() });
-await assistant.send('Plan my trip', { sessionId: 'trip' });
-const fork = await assistant.fork('trip', { fromStep: 1, patch: { appendInput: 'It will rain, plan for that.' } });
-const result = await assistant.resume(fork.sessionId);
-```
+`AgentExecutor.fork()` is the same operation on the executor; see the
+[advanced section](#advanced-the-executor-api).
 
 - `patch` is applied in this order: `messages(messages)` rewrites the
   transcript; `businessState` replaces it; `toolResult: { toolCallId, result }`
@@ -375,6 +356,94 @@ Notes:
 - A run resumed after an approval continues with the instructions it started
   with (they are in its transcript), so its later checkpoints record those.
 
+## Advanced: the executor API
+
+`createAgent()` is built on `AgentExecutor`, which stays available when you
+want to own the wiring: the provider, the `ToolRegistry`, the stores and the
+resume calls are all explicit (see [The executor API](./executor-api.md)). Each snippet below says which `createAgent()`
+call it corresponds to.
+
+`AgentExecutor.execute()` with a `sessionId` and a `checkpointStore` is
+`agent.send(message, { sessionId })`:
+
+```ts
+import { AgentExecutor, LocalStorageCheckpointStore } from '@lousho/build-ai-agent';
+
+const checkpoints = new LocalStorageCheckpointStore(storage);
+
+// First message of a conversation.
+await AgentExecutor.execute({ agent, input: 'Book a table for 2 tonight', provider, sessionId: 'chat-42', checkpointStore: checkpoints });
+
+// Later - same process or another one - the next message of the same conversation.
+await AgentExecutor.execute({ agent, input: 'Make it 3 people', provider, sessionId: 'chat-42', checkpointStore: checkpoints });
+```
+
+It throws `SessionAwaitingApprovalError` on a paused session, as `send()` does:
+
+```ts
+import { AgentExecutor, SessionAwaitingApprovalError, memoryStore } from '@lousho/build-ai-agent';
+
+const { checkpoints } = memoryStore();
+
+try {
+  await AgentExecutor.execute({ agent, input: 'Are you done?', provider, sessionId: 'chat-42', checkpointStore: checkpoints });
+} catch (error) {
+  if (error instanceof SessionAwaitingApprovalError) {
+    console.log(`Waiting on approval ${error.approvalId} - resolve it with resumeAfterApproval() first.`);
+  }
+}
+```
+
+`resumeAfterApproval()` is `agent.approvals.resolve()`:
+
+```ts
+import { AgentExecutor, resumeAfterApproval } from '@lousho/build-ai-agent';
+
+const paused = await AgentExecutor.execute({
+  agent, input, provider, toolRegistry, approvalStore, sessionId: 'chat-42', checkpointStore,
+});
+
+if (paused.finishReason === 'awaiting-approval') {
+  // ...a human decides, possibly days later, in another process...
+  const result = await resumeAfterApproval(
+    { id: paused.approvalId!, approved: true },
+    approvalStore,
+    toolRegistry,
+    provider,
+    {},
+    checkpointStore, // clears the 'awaiting-approval' mark and keeps checkpointing
+  );
+  console.log(result.finishReason); // 'stop', or 'awaiting-approval' again for the next gated call
+}
+```
+
+`AgentExecutor.fork()` is `agent.fork()`; `execute()` with `input: []` on the
+fork's `sessionId` is `agent.resume(fork.sessionId)`:
+
+```ts
+import { AgentExecutor, compareTrajectories, memoryStore } from '@lousho/build-ai-agent';
+
+const { checkpoints } = memoryStore();
+await AgentExecutor.execute({ agent, provider, toolRegistry, input: 'Plan my trip', sessionId: 'trip', checkpointStore: checkpoints });
+
+const fork = await AgentExecutor.fork({
+  sessionId: 'trip',
+  fromStep: 1,
+  checkpointStore: checkpoints,
+  patch: { toolResult: { toolCallId: 'call_weather', result: { forecast: 'rain' } } },
+});
+// fork.sessionId is 'trip.fork-1'; the 'trip' checkpoint and history are unchanged.
+await AgentExecutor.execute({ agent, provider, toolRegistry, input: [], sessionId: fork.sessionId, checkpointStore: checkpoints });
+
+const original = await checkpoints.load('trip');
+const replayed = await checkpoints.load(fork.sessionId);
+if (original && replayed) {
+  const { divergedAt, a, b, drift } = compareTrajectories(original, replayed);
+  console.log(divergedAt, a.length, b.length, drift); // 1, then each run's steps and the tool-call diff
+}
+```
+
+
 ## Compatibility with stored data
 
 - Checkpoints written before `status` existed are treated as
@@ -389,10 +458,12 @@ Notes:
 ## Limits
 
 - A `sessionId` identifies one logical conversation; running two
-  `execute()` calls on the same id at the same time is not supported.
-- If you call `resumeAfterApproval()` without the `checkpointStore`, the
-  session keeps its `'awaiting-approval'` mark and later `execute()` calls
-  keep throwing `SessionAwaitingApprovalError`; pass the store (or delete
-  the checkpoint).
+  `send()` calls (or two `execute()` calls) on the same id at the same time
+  is not supported.
+- If you call `resumeAfterApproval()` (the executor behind
+  `agent.approvals.resolve()`) without the `checkpointStore`, the session
+  keeps its `'awaiting-approval'` mark and later `send()` (or `execute()`)
+  calls keep throwing `SessionAwaitingApprovalError`; pass the store (or
+  delete the checkpoint). `agent.approvals.resolve()` passes it for you.
 - Workers KV is eventually consistent across locations - see
   [Deployment](./deployment.md) for the caveat.

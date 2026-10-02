@@ -90,7 +90,7 @@ agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 - **Skills and AGENTS.md**: `loadSkills()` loads instructions on demand; `projectInstructions` appends your `AGENTS.md`. [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md), [Project instructions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#project-instructions)
 - **Agent directories**: `loadAgentDir('./my-agent')` builds an agent from `instructions.md`, `tools/` and `skills/`. [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md)
 - **Compaction**: `createAgent({ compaction })` prunes old tool results, then summarizes old turns, before the context window fills. [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md)
-- **MCP client and server**: `createAgent({ mcpServers })` (or `connectMcp()`) connects stdio and HTTP MCP servers from config; `serveMcp()` / `lousho mcp` exposes your agent. [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#connect-mcp-servers-mcpservers-connectmcp)
+- **MCP client and server**: `createAgent({ mcpServers })` (or `connectMcp()`) connects stdio and HTTP MCP servers from config; `serveMcp()` / `lousho mcp` exposes your agent. [MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md)
 - **Workspace tools**: file system and shell tools for coding agents, confined to a root, shell approval-gated. [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md)
 - **Hooks, guardrails, sandboxing**: veto tool calls, gate a patch on fail-closed checks, run tools in Docker. [Guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md)
 - **Channels, flows and triggers**: `defineChannel()` / `mountChannels()` map a surface's messages to sessions and send replies and approvals back; fixed multi-step workflows; webhook, Slack and cron adapters. [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md), [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md), [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#triggers)
@@ -172,7 +172,8 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | ---- | -------------- |
 | [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md) | Requirements, peer and provider packages, installing from a local build, `lousho init`, `lousho doctor` |
 | [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md) | Runnable, verified snippets: `createAgent()`, tools, streaming, sessions, approvals, offline tests, spec files |
-| [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md) | Spec fields, `mcpServers`, MCP client and server, provider env vars, retries and fallback, `createAgent()` and `execute()` options |
+| [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md) | Spec fields, the `mcpServers` field, provider env vars, retries and fallback, `createAgent()` and `execute()` options |
+| [MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md) | Use MCP servers as tools (`mcpServers`, `connectMcp()`, `loadMcpTools()`), approval for MCP tools, serve an agent with `serveMcp()` / `lousho mcp` |
 | [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md) | Model strings, `resolveProvider()`, which model runs, custom providers |
 | [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md) | Every `lousho` command and its flags |
 | [ACP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/acp.md) | `lousho acp` / `serveAcp()`: drive an agent from Zed and other Agent Client Protocol editors |
@@ -197,6 +198,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md) | `defineSchedule()` cron schedules, `schedules/` in an agent directory, `startSchedules()` |
 | [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md) | Fixed multi-step workflows with `FlowBuilder` and `FlowExecutor` |
 | [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md) | File system and shell tools for coding agents, and their security model |
+| [Build a coding agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/build-a-coding-agent.md) | A terminal coding agent step by step: workspace tools, approvals, streaming, a session, offline tests |
 | [Guardrails and sandboxing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md) | `runGuardrails()`, built-in guardrails, `requiresSandbox`, `SubprocessSandbox` |
 | [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md) | Deterministic tests with `mockModel`; record and replay with `recordReplay` |
 | [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md) | Trajectory evals with `defineEval()`, datasets, judges, `lousho eval` reports |
@@ -205,6 +207,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md) | `lousho add`: copy a tool, skill, channel, schedule or memory slot from a static JSON registry |
 | [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md) | The visual dashboard: quickstart, first-agent walkthrough, hooks |
 | [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md) | Every error code (`LOUSHO_*`): what it means, how to fix it, an example |
+| [Troubleshooting](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/troubleshooting.md) | Start from the symptom: setup, runs that end without an answer, tools, providers, sandbox and MCP; cause, fix, link |
 | [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md) | The main exports, triggers, tokens and cost; `npm run docs:build` generates the full TypeDoc reference |
 | [Utilities](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/utilities.md) | Encryption, hashing and file storage |
 | [The executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md) | `AgentBuilder` and `AgentExecutor`: the lower-level options `createAgent()` does not take |
@@ -286,7 +289,7 @@ Source: docs/installation.md
 
 ## Requirements
 
-- Node.js **22.19 or newer** (`engines.node` in `package.json`; the built-in `http` tool depends on `undici@8`, which needs it).
+- Node.js **22.19 or newer** (`engines.node` in `package.json`, set by the `undici@8` dependency; `undici` is loaded only for `http` tool requests with `validateSSL: false`, see [Optional peers](#optional-peers)).
 - TypeScript is optional but recommended - the SDK ships full type
   definitions.
 
@@ -513,6 +516,8 @@ What it checks:
 The exit code is `1` if any check fails and `0` otherwise (warnings do not
 fail), so it can gate CI. Add `--json` for machine-readable output. Colour is
 used only when stdout is a terminal and `NO_COLOR` is unset.
+
+For problems that are not about installing, see [Troubleshooting](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/troubleshooting.md).
 
 Next: [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md).
 
@@ -878,7 +883,7 @@ How the pieces fit:
 | `createAgent(config)`         | Zero-config `{ send(message) }` agent from a `model` string or provider (+ instructions, tools). |
 | `AgentBuilder`                | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). |
 | `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. |
-| `AgentType`                   | Deprecated, no runtime effect: agents need no type (removed next minor).    |
+| `AgentType`                   | Deprecated, no runtime effect: agents need no type.                        |
 | `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
 | `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md), [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). |
@@ -1184,7 +1189,7 @@ Exported from `@lousho/build-ai-agent/testing` (see [Testing agents](https://git
 | `createFsTools(fs, options?)`, `createShellTool(shell, options?)` | Workspace tools (`read_file`, `write_file`, `edit_file`, `list_dir`, `glob`, `grep`, `shell`) over an `FsProvider` / `ShellProvider`. See [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md). |
 | `NodeWorkspace`, `MemoryWorkspace`, `SandboxShell` | Workspace providers: a real directory (paths confined to `root`, minimal shell env), an in-memory tree with a scripted `exec` for tests, and a `ShellProvider` over a `SandboxAdapter` (Docker). |
 | `createTodoTools({ store?, onChange? })`     | `todo_write` / `todo_read` tools (plus `getTodos()`) so agents can plan and track multi-step work; see [Todo tools](#todo-tools). |
-| `connectMcp(servers, options?)`             | Connect MCP servers from config (stdio or HTTP) and load their tools; see [Connect MCP servers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#connect-mcp-servers-mcpservers-connectmcp). |
+| `connectMcp(servers, options?)`             | Connect MCP servers from config (stdio or HTTP) and load their tools; see [Share servers with `connectMcp()`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#share-servers-with-connectmcp). |
 | `loadMcpTools(client, connectionName)`       | Load a connected MCP server's tools as `ToolDescriptor`s. Available from the package root, `@lousho/build-ai-agent/tools`, and `@lousho/build-ai-agent/mcp`. |
 
 See [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md) for a guide to defining and registering tools.
@@ -2085,12 +2090,11 @@ build an agent's graph on a canvas, run it, watch it execute in a live
 debug console, chat with it, and author sandboxed pre/post hooks - all
 reading and writing the exact same `AgentSpec` YAML that `lousho dev` and
 `lousho build` use. It's launched with one command, `lousho studio`, and
-ships as part of this SDK's npm package (LOU-S).
+ships as part of this SDK's npm package.
 
 This doc covers: installation, the `lousho studio` quickstart, a
 first-agent walkthrough, hook authoring, time travel (replaying a run from
-a past step), and how settings/secrets/deploy wiring works (and doesn't
-yet).
+a past step), and how settings/secrets/deploy wiring works.
 
 ## Installation
 
@@ -2195,7 +2199,7 @@ exists.
 
 ## Hooks
 
-Hooks (LOU-Q) are small, sandboxed functions that run immediately before or
+Hooks are small, sandboxed functions that run immediately before or
 after a tool call or an LLM `generate` - the same mechanism the SDK core
 exposes as `HookRegistry`/`AgentHook` (see
 [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md)), but authored visually and attached to a
@@ -2554,7 +2558,7 @@ the calls after it run once it is decided (see
 MCP tools set `needsApproval` from the server's tool annotations: `readOnlyHint:
 true` runs, while `destructiveHint` true or absent (the MCP default) asks. Choose
 per server with `approval: 'annotations' | 'always' | 'never'` or a function; see
-[MCP tool approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#mcp-tool-approval-approval).
+[MCP tool approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#approval-for-mcp-tools).
 
 ## Permission policies
 
@@ -2867,9 +2871,287 @@ continued run as an `AgentRun` (see
 - **Workspace tools.** The shell tool is approval-gated by default. See
   [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md).
 - **MCP.** Approval-gated tools cannot be approved over MCP; see
-  [Serve an agent over MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#serve-an-agent-over-mcp).
+  [Serve an agent over MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#serve-an-agent-over-mcp).
 - **Agent Forge** shows pending approvals as inline cards in its chat; see
   [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md).
+
+# Build a coding agent
+
+Source: docs/build-a-coding-agent.md
+
+This page builds a terminal coding agent in the style of Claude Code: it reads
+and edits files in your project, runs commands, asks you before it writes a
+file or runs something risky, and keeps the conversation going for follow-up
+questions. You need Node 22, an API key in the environment variable your model
+provider expects (`OPENAI_API_KEY` for the model used here) and a project
+directory to run it in. The finished file is at the end of
+[step 5](#5-keep-the-conversation), and you run it as
+`npx tsx coding.ts "Fix the failing test"`.
+
+## 1. Give the agent a workspace
+
+A workspace is a directory the agent may work in. `NodeWorkspace` is both a
+file system and a shell for it, and `createFsTools()` and `createShellTool()`
+turn it into tools.
+
+```ts
+import { NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
+
+const workspace = new NodeWorkspace({ root: process.cwd() });
+const tools = [...createFsTools(workspace), createShellTool(workspace)];
+```
+
+The `root` matters: every path the model passes is confined to it, and `..`,
+absolute paths and drive letters are rejected (see the
+[security model](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md#security-model)). Run the program from
+the project directory and use `process.cwd()` as the root, so the file tools
+cannot reach anything outside the project.
+
+The model sees seven tools: `read_file`, `write_file`, `edit_file`,
+`list_dir`, `glob` and `grep` from `createFsTools()`, and `shell` from
+`createShellTool()`. Their arguments and options are in
+[Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md#the-tools).
+
+## 2. Decide what needs approval
+
+A tool with `needsApproval` pauses the run before it executes, so a human
+decides. Reading is harmless, so gate the file tools that change things with a
+per-tool map. For the shell, pass a predicate over the command string and gate
+only the commands you consider risky.
+
+```ts
+import { NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
+
+const DESTRUCTIVE = /\b(rm|mv|chmod|chown|git\s+(push|reset|clean|checkout))\b|>/;
+
+const workspace = new NodeWorkspace({ root: process.cwd() });
+const tools = [
+  ...createFsTools(workspace, { needsApproval: { write_file: true, edit_file: true } }),
+  createShellTool(workspace, { needsApproval: (command) => DESTRUCTIVE.test(command) }),
+];
+```
+
+The shell tool asks for approval by default (`needsApproval: true`); the
+predicate above lets everything else, such as `npm test` or `git status`, run
+without asking. The other way to skip the question is an `allow` list of the
+commands you trust, with `needsApproval: false`, as shown at the top of
+[Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md). The regular expression is a
+convenience, not a security boundary: a shell command can be written in many
+ways. For anything you do not control, keep the default and approve every
+command, or run the shell in a sandbox (see `SandboxShell` in
+[Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md#sandboxed-shell-sandboxshell)).
+
+## 3. Run it and stream the answer
+
+Create the agent with the tools, then call `agent.stream()`. It returns a run
+you iterate for typed events: `text.delta` carries the model's text as it is
+written and `tool.start` announces each tool call (see
+[Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)).
+
+```ts
+import { NodeWorkspace, createAgent, createFsTools, createShellTool } from '@lousho/build-ai-agent';
+
+const workspace = new NodeWorkspace({ root: process.cwd() });
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  instructions: 'You are a careful coding agent. Read before you edit; run the tests after every change.',
+  maxSteps: 30,
+  tools: [
+    ...createFsTools(workspace, { needsApproval: { write_file: true, edit_file: true } }),
+    createShellTool(workspace),
+  ],
+});
+
+const run = agent.stream('Fix the failing test');
+for await (const event of run) {
+  if (event.type === 'text.delta') process.stdout.write(event.text);
+  if (event.type === 'tool.start') console.log(`\n> ${event.toolName} ${JSON.stringify(event.args)}`);
+}
+```
+
+`maxSteps` bounds the model calls in one run, so a confused agent cannot loop
+forever. This program stops at the first gated call: the stream ends with an
+`approval.requested` event and the run finishes as `'awaiting-approval'`. The
+next step handles that.
+
+## 4. Handle the pause
+
+When the stream ends, `await run.result` gives the final result. If the run
+paused, `result.approvalId` names the pending call. Ask the user, then
+continue with `agent.approvals.streamResolve()`, which returns a new run for
+the rest of the work. That run can pause again, so loop until there is no
+`approvalId`.
+
+```ts
+import { createInterface } from 'node:readline/promises';
+import { createAgent, type AgentRun } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are a coding agent.' });
+const rl = createInterface({ input: process.stdin, output: process.stdout });
+
+async function drain(first: AgentRun): Promise<void> {
+  let run = first;
+  for (;;) {
+    for await (const event of run) {
+      if (event.type === 'text.delta') process.stdout.write(event.text);
+      if (event.type === 'tool.start') console.log(`\n> ${event.toolName} ${JSON.stringify(event.args)}`);
+    }
+    const { approvalId } = await run.result;
+    if (!approvalId) return;
+    const answer = await rl.question('\nApprove this call? [y/N] ');
+    run = agent.approvals.streamResolve({ id: approvalId, approved: answer.trim().toLowerCase() === 'y' });
+  }
+}
+
+try {
+  await drain(agent.stream('Fix the failing test'));
+} finally {
+  rl.close();
+}
+```
+
+Two details of the continued stream. The `tool.start` of the call you just
+approved arrives at its start, so the loop prints each call once. And a
+rejected call does not fail the run: the model gets a rejection result instead
+of the tool output and carries on. To tell it why, pass a `note`:
+`streamResolve({ id, approved: false, note: 'Do not touch the lockfile' })`.
+The `try` / `finally` closes the `readline` interface even when `run.result`
+rejects because the run failed.
+
+The `approval.requested` event also carries `toolName` and `args`, so you can
+print what the call will do before you ask. See [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)
+for the whole API.
+
+## 5. Keep the conversation
+
+So far each task starts from nothing. An `agent.session()` keeps the
+transcript, so a follow-up such as "now add a test for the empty case" sees the
+earlier turns. `session.stream(input)` is `agent.stream()` for a conversation
+and returns the same kind of run; a turn that pauses on a gated call continues
+in the same session when you resolve it through the same agent (see
+[Streaming a session turn](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#streaming-a-session-turn)). Turn the
+loop into a REPL: one `session.stream()` per line the user types, with the
+same pause handling.
+
+```ts
+// coding.ts
+// Run: OPENAI_API_KEY=... npx tsx coding.ts "Fix the failing test"
+import { createInterface } from 'node:readline/promises';
+import { NodeWorkspace, createAgent, createFsTools, createShellTool, type AgentRun } from '@lousho/build-ai-agent';
+
+const DESTRUCTIVE = /\b(rm|mv|chmod|chown|git\s+(push|reset|clean|checkout))\b|>/;
+
+const workspace = new NodeWorkspace({ root: process.cwd() });
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  instructions: 'You are a careful coding agent. Read before you edit; run the tests after every change.',
+  maxSteps: 30,
+  tools: [
+    ...createFsTools(workspace, { needsApproval: { write_file: true, edit_file: true } }),
+    createShellTool(workspace, { needsApproval: (command) => DESTRUCTIVE.test(command) }),
+  ],
+});
+const session = agent.session();
+const rl = createInterface({ input: process.stdin, output: process.stdout });
+
+async function drain(first: AgentRun): Promise<void> {
+  let run = first;
+  for (;;) {
+    for await (const event of run) {
+      if (event.type === 'text.delta') process.stdout.write(event.text);
+      if (event.type === 'tool.start') console.log(`\n> ${event.toolName} ${JSON.stringify(event.args)}`);
+    }
+    const { approvalId } = await run.result;
+    if (!approvalId) return;
+    const answer = await rl.question('\nApprove this call? [y/N] ');
+    run = agent.approvals.streamResolve({ id: approvalId, approved: answer.trim().toLowerCase() === 'y' });
+  }
+}
+
+try {
+  let line = process.argv[2] ?? (await rl.question('> '));
+  while (line.trim() && line.trim() !== 'exit') {
+    await drain(session.stream(line));
+    process.stdout.write('\n');
+    line = await rl.question('> ');
+  }
+} finally {
+  rl.close();
+}
+```
+
+The first task comes from the command line (or a prompt if there is none);
+after each answer the program asks for the next line, and an empty line or
+`exit` ends it. The session lives in memory, so it ends with the process; to
+keep a conversation across runs, give the agent a store (see
+[Choosing a store](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)).
+
+## 6. Test it without a model
+
+The agent needs no network to test. A `MemoryWorkspace` keeps the files in
+memory and takes a scripted `exec` for the shell, and `mockModel` plays the
+model. Assert on `workspace.snapshot()` and `workspace.commands`.
+
+```ts
+import { createAgent, createFsTools, createShellTool, MemoryWorkspace } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+
+const workspace = new MemoryWorkspace({
+  files: { 'math.js': 'exports.add = (a, b) => a - b;\n' },
+  exec: (command) => (command === 'node --test' ? { stdout: 'pass 1\n' } : { exitCode: 1, stderr: 'unknown command\n' }),
+});
+const agent = createAgent({
+  instructions: 'Fix bugs. Run the tests after every change.',
+  provider: mockModel([
+    { toolCalls: [{ name: 'edit_file', args: { path: 'math.js', old_string: 'a - b', new_string: 'a + b' } }] },
+    { toolCalls: [{ name: 'shell', args: { command: 'node --test' } }] },
+    'Fixed add(); the tests pass.',
+  ]),
+  tools: [...createFsTools(workspace), createShellTool(workspace, { needsApproval: false })],
+});
+
+await agent.send('add() is broken');
+console.log(workspace.snapshot()['math.js']); // 'exports.add = (a, b) => a + b;\n'
+console.log(workspace.commands.map((c) => c.command)); // ['node --test']
+```
+
+To test the approval path, gate `write_file` the way the real agent does.
+`send()` resolves with `finishReason: 'awaiting-approval'` and an
+`approvalId`, the file is still unchanged, and `agent.approvals.resolve()`
+runs the write and finishes the turn.
+
+```ts
+import { createAgent, createFsTools, MemoryWorkspace } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+
+const workspace = new MemoryWorkspace({ files: { 'notes.txt': 'old\n' } });
+const agent = createAgent({
+  instructions: 'Write notes.',
+  provider: mockModel([
+    { toolCalls: [{ name: 'write_file', args: { path: 'notes.txt', content: 'new\n' } }] },
+    'Wrote the file.',
+  ]),
+  tools: createFsTools(workspace, { needsApproval: { write_file: true } }),
+});
+
+const paused = await agent.send('Update the notes');
+console.log(paused.finishReason, workspace.snapshot()['notes.txt']); // 'awaiting-approval' 'old\n'
+
+const done = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+console.log(done.text, workspace.snapshot()['notes.txt']); // 'Wrote the file.' 'new\n'
+```
+
+To check the real prompt and tool schemas against a model once and replay the
+recording afterwards, see [Record and replay](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md#record-and-replay).
+
+## Next steps
+
+- [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md): the full tool reference, the security model, and `SandboxShell` to run commands in Docker.
+- [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md): durable approval stores, `approve` callbacks and deciding from another process.
+- [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md): every event type, cancelling a run, and the web stream formats.
+- [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md): stores, limits and durable sessions.
+- [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md): surviving a crash in the middle of a long run.
+- [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md): `projectInstructions: true` appends your `AGENTS.md` or `CLAUDE.md` to the instructions.
 
 # Channels
 
@@ -3229,7 +3511,7 @@ Run it with `npx lousho <command>` inside a project that has the SDK installed.
 | `lousho chat <path>` | Terminal REPL for a spec file, an agent directory or a TS agent: streams replies, shows tool calls, asks for approvals and questions. | [Below](#lousho-chat) |
 | `lousho acp <path>` | Serve a spec file, an agent directory or a TS agent to an editor (Zed and other ACP clients) over the Agent Client Protocol on stdio. | [ACP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/acp.md) |
 | `lousho add <name>` | Install a tool, skill, channel, schedule or memory slot from a JSON registry into an agent directory, after showing its permission manifest. | [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md) |
-| `lousho mcp <spec>` | Serve the agent as an MCP server (stdio, or HTTP with `--http`). | [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#serve-an-agent-over-mcp) |
+| `lousho mcp <spec>` | Serve the agent as an MCP server (stdio, or HTTP with `--http`). | [MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#serve-an-agent-over-mcp) |
 | `lousho eval [globs...]` | Run `*.eval.ts` files under vitest; print a summary and write JUnit/JSON reports. | [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md#lousho-eval) |
 | `lousho build --target=<t> --agent=<spec>` | Build a deployable Node server, Docker image or Cloudflare Worker. | [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md) |
 | `lousho studio` | Launch Agent Forge, the visual dashboard, on one local port. | [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md) |
@@ -3827,7 +4109,7 @@ Each entry sets exactly one of `command` / `url`; `args`/`env` apply only to
 stdio and `headers` only to HTTP. The field is validated by `loadSpec()`, and
 an invalid entry fails with the entry name in the message, e.g.
 `'mcpServers.files': AgentSpec validation failed: missing 'command' (stdio server) or 'url' (HTTP server)`.
-An optional `approval` (`annotations`, `always` or `never`) says which of the server's tools ask for approval; see [MCP tool approval](#mcp-tool-approval-approval).
+An optional `approval` (`annotations`, `always` or `never`) says which of the server's tools ask for approval; see [Approval for MCP tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#approval-for-mcp-tools).
 `lousho doctor` checks each stdio `command` is resolvable.
 
 ```yaml
@@ -3860,203 +4142,9 @@ console.log(Object.keys(agent.mcpServers)); // ['filesystem', 'docs']
 ```
 
 `specToAgent()` passes the servers to `createAgent({ mcpServers })`, described
-next, so `lousho dev` and `lousho mcp` agents get their tools.
+in [MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#use-mcp-servers-in-an-agent), so `lousho dev` and `lousho mcp` agents get their tools.
 
-### Connect MCP servers (`mcpServers`, `connectMcp()`)
-
-`createAgent({ mcpServers })` takes the same map. The servers connect on
-`await agent.ready()` or, automatically, on the first `send()` / `stream()`;
-each server's tools are added as `<server>__<tool>` (e.g. `docs__search`).
-A server that cannot connect fails that call, and the next call tries again.
-`agent.close()` disconnects them (stops stdio processes); a later tool call
-reconnects. Without `mcpServers`, `ready()` and `close()` do nothing.
-
-```ts no-run
-import { createAgent } from '@lousho/build-ai-agent';
-
-const agent = createAgent({
-  model: 'openai/gpt-4o-mini',
-  mcpServers: {
-    files: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'] },
-    docs: { url: 'https://example.com/mcp', headers: { Authorization: 'Bearer <token>' } },
-  },
-});
-const { text } = await agent.send('List the files here.');
-await agent.close();
-```
-
-To share servers between agents, or to choose how failures are handled, call
-`connectMcp(servers, options?)` and pass its `tools` yourself. It connects every
-server and lists its tools before it resolves, so tools are known up front.
-Options:
-
-- `onError`: `'throw'` (default) rejects when a server cannot connect, after
-  closing the others; `'skip'` leaves that server out and warns through `logger`.
-- `lazy` (default `true`): after `close()` or a dropped connection, the next
-  tool call reconnects. With `false` that call fails instead. Listing tools
-  needs a connection, so `lazy` never delays the first connect.
-- `logger`: receives skipped-server and skipped-tool warnings (default: none).
-
-It returns `{ tools, close(), status() }`; `status()` maps each server to
-`'idle'`, `'connected'` or `'failed'`.
-
-```ts no-run
-import { createAgent } from '@lousho/build-ai-agent';
-import { connectMcp } from '@lousho/build-ai-agent/mcp';
-
-const mcp = await connectMcp(
-  { files: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'] } },
-  { onError: 'skip', logger: console }
-);
-console.log(mcp.status()); // { files: 'connected' }
-const agent = createAgent({ model: 'openai/gpt-4o-mini', tools: mcp.tools });
-await agent.send('List the files here.');
-await mcp.close();
-```
-
-stdio servers are spawned with `command` and `args`; `env` is added to the
-default environment (`PATH` and the like), not a replacement for it. HTTP
-servers use the streamable HTTP transport with `headers` on every request.
-`@modelcontextprotocol/sdk` is an optional peer: install it to use MCP.
-
-### MCP tool approval (`approval`)
-
-MCP servers describe each tool with annotations (`readOnlyHint`,
-`destructiveHint`, `idempotentHint`, `openWorldHint` and a `title`). They are
-hints, but the SDK uses them as the default for [approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md):
-a tool with `readOnlyHint: true` runs; a tool with `destructiveHint: true`, or
-one that sends no `destructiveHint` (the MCP spec's default is destructive),
-pauses the run until a human approves; `destructiveHint: false` runs. A tool
-without annotations therefore asks. The raw annotations stay on
-`descriptor.metadata.mcp.annotations`, and `title` becomes the `displayName`.
-
-Set `approval` on a server entry (`mcpServers`, `createAgent`, `connectMcp()`) or
-in `loadMcpTools(client, name, { approval })`:
-
-- `'annotations'` (default): as above.
-- `'always'` / `'never'`: ask for every tool / none of them.
-- A function `({ name, annotations }) => boolean` decides per tool (`name` is
-  the bare tool name; `annotations` is `{}` when the server sent none). Only
-  in code; a spec file takes the three strings.
-
-[Permission rules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies) run first and can still
-`allow`, `deny` or `ask`.
-
-```ts no-run
-import { createAgent } from '@lousho/build-ai-agent';
-
-const agent = createAgent({
-  model: 'openai/gpt-4o-mini',
-  mcpServers: {
-    files: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'] },
-    // Ask before anything except tools whose name starts with `search`.
-    docs: { url: 'https://example.com/mcp', approval: ({ name }) => !name.startsWith('search') },
-    // A server you trust: never ask.
-    scratch: { command: 'node', args: ['./scratch-server.js'], approval: 'never' },
-  },
-});
-```
-
-### MCP (Model Context Protocol) tools
-
-Tools of a `Client` you connected yourself can also be loaded by hand - connect a `Client` from `@modelcontextprotocol/sdk` yourself and load
-its tools with `loadMcpTools()`, then pass the result to `createAgent()` (or
-register it on a `ToolRegistry`):
-
-```ts
-import { createAgent } from '@lousho/build-ai-agent';
-import { loadMcpTools } from '@lousho/build-ai-agent/mcp';
-
-const tools = await loadMcpTools(mcpClient, 'my-server');
-const agent = createAgent({ prompt: '...', provider, tools });
-```
-
-`loadMcpTools` is also available from the package root and from
-`@lousho/build-ai-agent/tools`.
-
-### Serve an agent over MCP
-
-`serveMcp()` is the reverse of `loadMcpTools()`: it exposes an agent (and,
-optionally, some of its tools) as an MCP server, so Claude Code, Cursor and
-other MCP clients can call it.
-
-```ts
-import { createAgent, defineTool } from '@lousho/build-ai-agent';
-import { serveMcp } from '@lousho/build-ai-agent/mcp';
-import { z } from 'zod';
-
-const searchDocs = defineTool({
-  name: 'search_docs',
-  description: 'Search the docs',
-  input: z.object({ query: z.string() }),
-  execute: ({ query }) => `results for ${query}`,
-});
-
-const supportAgent = createAgent({ prompt: 'You answer support questions.', provider, tools: [searchDocs] });
-
-const server = await serveMcp({
-  agent: supportAgent,            // exposed as ONE tool taking { message: string }
-  name: 'support-bot',            // server name; the tool name defaults to a sanitized version
-  description: 'Ask the support agent a question',
-  tools: [searchDocs],            // optional: also expose these tools directly
-  transport: { type: 'http', port: 3920, host: '127.0.0.1', path: '/mcp' }, // default: 'stdio'
-});
-await server.close();
-```
-
-- **Stateless.** Every call to the agent tool is a fresh conversation.
-- **Cancellation.** Cancelling the MCP request aborts the agent run
-  (`agent.send(message, { signal })`).
-- **Errors.** An agent failure comes back as an MCP result with `isError: true`.
-- **Approvals.** Approval-gated tools cannot be approved over MCP. A run that
-  pauses for approval returns `isError: true` with a message saying so. Tools
-  flagged `needsApproval` are not exposed directly unless you pass
-  `allowApprovalTools: true`; if you do, clients run them with **no human gate**.
-- **stdio.** Nothing but the MCP protocol is written to stdout; warnings go to stderr.
-- **HTTP.** Binds `127.0.0.1` by default. Add `auth: { type: 'bearer', token }`
-  to require an `Authorization: Bearer` header; binding a non-loopback host
-  without `auth` logs a warning.
-
-#### Annotations
-
-`tools/list` carries MCP annotations so clients can tell what a tool does. A tool
-that needs approval is advertised `readOnlyHint: false, destructiveHint: true`;
-state hints yourself with `annotations` (sent verbatim). A tool with no hints sends
-none, so a Lousho agent consuming this server keeps asking before it runs (see
-`approval` on `connectMcp()`); `readOnlyHint: true` runs without asking. A tool that
-needs approval is never advertised read-only. The built-in `read_file`, `list_dir`,
-`glob`, `grep`, `todo_read`, `current_date` and `day_name` tools are read-only.
-
-```ts
-import { defineTool } from '@lousho/build-ai-agent';
-import { z } from 'zod';
-
-const lookupOrder = defineTool({
-  name: 'lookup_order',
-  description: 'Look up an order',
-  input: z.object({ id: z.string() }),
-  annotations: { readOnlyHint: true, destructiveHint: false, title: 'Look up order' },
-  execute: ({ id }) => ({ id, status: 'shipped' }),
-});
-```
-
-From the command line, `lousho mcp` serves an agent spec file (stdio by default):
-
-```sh
-npx lousho mcp agent.yaml
-npx lousho mcp agent.yaml --http --port 3920 --host 127.0.0.1
-```
-
-To use it from an MCP client, add it to the client's MCP config (for example
-`.mcp.json` for Claude Code):
-
-```json
-{
-  "mcpServers": {
-    "support-bot": { "command": "npx", "args": ["lousho", "mcp", "agent.yaml"] }
-  }
-}
-```
+MCP clients, `connectMcp()`, tool approval and serving an agent over MCP are on their own page: [MCP (Model Context Protocol)](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md).
 
 ## Provider credentials
 
@@ -4315,7 +4403,7 @@ finishReason, steps, approvalId? }`.
 ## CLI
 
 `lousho dev`, `lousho build`, `lousho mcp` and the other commands, with their
-flags, are described in [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md).
+flags, are described in [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md); `lousho mcp` is also covered in [MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#from-the-command-line).
 
 # Deployment
 
@@ -4673,29 +4761,12 @@ package root.
 
 Source: docs/durable-execution.md
 
-Pass a `sessionId` and a `checkpointStore` to `AgentExecutor.execute()` and
-the run survives a crash, a restart, an abort or a human approval that takes
+Give `createAgent()` a `store` and pass a `sessionId` to `send()`, and the
+run survives a crash, a restart, an abort or a human approval that takes
 days. Nothing here depends on a particular host: any `CheckpointStore`
-(`LocalStorageCheckpointStore` on Node, the Cloudflare KV store the
+(`memoryStore()`, `SqliteStore`, the Cloudflare KV store the
 `cloudflare-worker` build wires up, or your own three-method implementation)
 and any `ApprovalStore` work the same way.
-
-```ts
-import { AgentExecutor, LocalStorageCheckpointStore } from '@lousho/build-ai-agent';
-
-const checkpoints = new LocalStorageCheckpointStore(storage);
-
-// First message of a conversation.
-await AgentExecutor.execute({ agent, input: 'Book a table for 2 tonight', provider, sessionId: 'chat-42', checkpointStore: checkpoints });
-
-// Later - same process or another one - the next message of the same conversation.
-await AgentExecutor.execute({ agent, input: 'Make it 3 people', provider, sessionId: 'chat-42', checkpointStore: checkpoints });
-```
-
-With `createAgent()`, one `store` option does the wiring: pass a `sessionId` to
-`send()` (or `stream()`) and the run is checkpointed in `store.checkpoints`;
-after a crash, `agent.resume(sessionId)` finishes it (and returns `null` when
-nothing is pending). No `AgentExecutor` needed:
 
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
@@ -4703,20 +4774,34 @@ import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
 
 const agent = createAgent({ provider, store: new SqliteStore('./.lousho/jobs.db') });
 
-const finished = await agent.resume('job-1'); // the interrupted run, if any
-const next = await agent.send('Now write a summary', { sessionId: 'job-1' }); // continues the same run's conversation
+// First message of a conversation.
+await agent.send('Book a table for 2 tonight', { sessionId: 'chat-42' });
+
+// Later - same process or another one - the next message of the same conversation.
+await agent.send('Make it 3 people', { sessionId: 'chat-42' });
+
+// After a crash: finish the interrupted run, if there is one (`null` when nothing is pending).
+const finished = await agent.resume('chat-42');
 ```
 
-`store.approvals` holds approval pauses, and `agent.approvals.resolve()`
-keeps checkpointing the run under its `sessionId`. Sessions are checkpointed
+The `store` option does the wiring: `store.checkpoints` holds the run's
+checkpoints and `store.approvals` holds approval pauses, and
+`agent.approvals.resolve()` keeps checkpointing the run under its
+`sessionId`. `stream()` takes a `sessionId` too. Sessions are checkpointed
 too: `agent.session({ id })` checkpoints every turn and `agent.resume(id)` (or
 `session.resume()`) finishes an interrupted one - see
 [Durable sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#durable-sessions).
 
+Underneath, `createAgent()` runs `AgentExecutor.execute()` with a
+`sessionId` and a `checkpointStore`; the behavior described below is the
+executor's, and the [advanced section](#advanced-the-executor-api) shows the
+executor calls.
+
 ## What is checkpointed, and when
 
 A checkpoint is the run's whole transcript plus its step count, usage,
-`businessState` and a `status`. It is written under the `sessionId`:
+`businessState` and a `status`. `send()` (and `stream()`) write it under the
+`sessionId`:
 
 | Moment | `status` |
 | ------ | -------- |
@@ -4730,17 +4815,19 @@ A run that rejects (a provider error, a throwing hook, a
 `PropagatingToolError`, a process crash) keeps its last `'in-progress'`
 checkpoint.
 
-## What happens when you call `execute()` again with the same `sessionId`
+## What happens when you send again with the same `sessionId`
 
-It depends on the stored `status`:
+Calling `send()` again with the same `sessionId` (or `execute()`, on the
+executor) depends on the stored `status`:
 
 - **Unfinished run** (`'in-progress'`: it crashed, was aborted, or a store
-  write failed). The run resumes. If its last model turn has tool calls
+  write failed). The run resumes (`agent.resume(sessionId)` does the same
+  without new input). If its last model turn has tool calls
   without a result, exactly those calls run first, through the normal tool
   path (argument validation, hooks, `needsApproval`, `toolConcurrency`),
   **without calling the model again**. Then the loop continues, with the
   remaining `maxSteps` budget; `usage` continues from the checkpointed
-  totals (the same holds for `resumeAfterApproval()`, from the snapshot).
+  totals (the same holds after `agent.approvals.resolve()`, from the snapshot).
   - New `input` is appended as a user message after those tool results.
     It is never placed between a tool-call turn and its results, so the
     transcript stays valid for every provider. This is what lets a user
@@ -4754,24 +4841,26 @@ It depends on the stored `status`:
   new messages, the history is recognised and not duplicated. `steps`,
   `usage` and `toolCalls` on the result count from zero for the new run;
   `messages` is the whole conversation.
-- **Paused awaiting approval** (`'awaiting-approval'`). `execute()` throws
+- **Paused awaiting approval** (`'awaiting-approval'`). `send()` throws
   `SessionAwaitingApprovalError` (with `sessionId` and `approvalId`) and
   does not call the model or any tool: new input must not bypass a pending
-  decision. Resolve it with `resumeAfterApproval()` first, passing the same
-  `checkpointStore`, then send the new message.
+  decision. Resolve it with `agent.approvals.resolve()` first, then send the
+  new message.
 
 System messages in `input` are ignored when it is added to a stored
 session (the session already has its system prompt). To end a session and
-start over under the same id, call `checkpointStore.delete(sessionId)`.
+start over under the same id, call `store.checkpoints.delete(sessionId)`.
 
 ```ts
-import { AgentExecutor, SessionAwaitingApprovalError } from '@lousho/build-ai-agent';
+import { createAgent, memoryStore, SessionAwaitingApprovalError } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ provider, store: memoryStore() });
 
 try {
-  await AgentExecutor.execute({ agent, input: 'Are you done?', provider, sessionId: 'chat-42', checkpointStore });
+  await agent.send('Are you done?', { sessionId: 'chat-42' });
 } catch (error) {
   if (error instanceof SessionAwaitingApprovalError) {
-    console.log(`Waiting on approval ${error.approvalId} - resolve it with resumeAfterApproval() first.`);
+    console.log(`Waiting on approval ${error.approvalId} - resolve it with agent.approvals.resolve() first.`);
   }
 }
 ```
@@ -4781,7 +4870,7 @@ try {
 When one model turn asks for several tools and one of them needs approval,
 the calls before it run and are recorded, and the run pauses on it. The
 approval snapshot records the calls after it (`remainingToolCalls`).
-`resumeAfterApproval()` then:
+`agent.approvals.resolve()` (`resumeAfterApproval()` on the executor) then:
 
 1. records the paused call's result - the tool's result if approved, or a
    structured `{ error, note }` rejection result if rejected;
@@ -4791,22 +4880,15 @@ approval snapshot records the calls after it (`remainingToolCalls`).
 3. calls the model once every call of the turn has exactly one result.
 
 ```ts
-import { AgentExecutor, resumeAfterApproval } from '@lousho/build-ai-agent';
+import { createAgent, memoryStore } from '@lousho/build-ai-agent';
 
-const paused = await AgentExecutor.execute({
-  agent, input, provider, toolRegistry, approvalStore, sessionId: 'chat-42', checkpointStore,
-});
+const agent = createAgent({ provider, store: memoryStore() });
+
+const paused = await agent.send('Email the whole team', { sessionId: 'chat-42' });
 
 if (paused.finishReason === 'awaiting-approval') {
-  // ...a human decides, possibly days later, in another process...
-  const result = await resumeAfterApproval(
-    { id: paused.approvalId!, approved: true },
-    approvalStore,
-    toolRegistry,
-    provider,
-    {},
-    checkpointStore, // clears the 'awaiting-approval' mark and keeps checkpointing
-  );
+  // ...a human decides, possibly days later, in another process (same store)...
+  const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
   console.log(result.finishReason); // 'stop', or 'awaiting-approval' again for the next gated call
 }
 ```
@@ -4927,47 +5009,34 @@ await checkpoints.delete('chat-42', { keepHistory: true });
 
 ## Fork and replay
 
-`AgentExecutor.fork()` starts a new session from a step of another session's
-history: "what if the tool had returned something else at step 1?" It takes the
-newest history entry of `fromStep`, applies `patch`, saves the result as the
-`'in-progress'` checkpoint of the new session and returns
-`{ sessionId, step, checkpoint }`. Resume the fork like any unfinished run:
+`agent.fork(sessionId, { fromStep, patch? })` starts a new session from a step
+of another session's history: "what if the tool had returned something else
+at step 1?" It takes the newest history entry of `fromStep`, applies `patch`,
+saves the result as the `'in-progress'` checkpoint of the new session over
+`store.checkpoints` and returns `{ sessionId, step, checkpoint }`. Resume the
+fork like any unfinished run with `agent.resume(fork.sessionId)`:
 
 ```ts
-import { AgentExecutor, compareTrajectories, memoryStore } from '@lousho/build-ai-agent';
+import { createAgent, compareTrajectories, memoryStore } from '@lousho/build-ai-agent';
 
-const { checkpoints } = memoryStore();
-await AgentExecutor.execute({ agent, provider, toolRegistry, input: 'Plan my trip', sessionId: 'trip', checkpointStore: checkpoints });
+const store = memoryStore();
+const assistant = createAgent({ provider, store });
+await assistant.send('Plan my trip', { sessionId: 'trip' });
 
-const fork = await AgentExecutor.fork({
-  sessionId: 'trip',
-  fromStep: 1,
-  checkpointStore: checkpoints,
-  patch: { toolResult: { toolCallId: 'call_weather', result: { forecast: 'rain' } } },
-});
+const fork = await assistant.fork('trip', { fromStep: 1, patch: { appendInput: 'It will rain, plan for that.' } });
 // fork.sessionId is 'trip.fork-1'; the 'trip' checkpoint and history are unchanged.
-await AgentExecutor.execute({ agent, provider, toolRegistry, input: [], sessionId: fork.sessionId, checkpointStore: checkpoints });
+const result = await assistant.resume(fork.sessionId);
 
-const original = await checkpoints.load('trip');
-const replayed = await checkpoints.load(fork.sessionId);
+const original = await store.checkpoints?.load('trip');
+const replayed = await store.checkpoints?.load(fork.sessionId);
 if (original && replayed) {
   const { divergedAt, a, b, drift } = compareTrajectories(original, replayed);
   console.log(divergedAt, a.length, b.length, drift); // 1, then each run's steps and the tool-call diff
 }
 ```
 
-With `createAgent({ store })`, `agent.fork(sessionId, { fromStep, patch? })`
-does the same over `store.checkpoints`, and `agent.resume(fork.sessionId)`
-continues the fork:
-
-```ts
-import { createAgent, memoryStore } from '@lousho/build-ai-agent';
-
-const assistant = createAgent({ provider, store: memoryStore() });
-await assistant.send('Plan my trip', { sessionId: 'trip' });
-const fork = await assistant.fork('trip', { fromStep: 1, patch: { appendInput: 'It will rain, plan for that.' } });
-const result = await assistant.resume(fork.sessionId);
-```
+`AgentExecutor.fork()` is the same operation on the executor; see the
+[advanced section](#advanced-the-executor-api).
 
 - `patch` is applied in this order: `messages(messages)` rewrites the
   transcript; `businessState` replaces it; `toolResult: { toolCallId, result }`
@@ -5048,6 +5117,93 @@ Notes:
 - A run resumed after an approval continues with the instructions it started
   with (they are in its transcript), so its later checkpoints record those.
 
+## Advanced: the executor API
+
+`createAgent()` is built on `AgentExecutor`, which stays available when you
+want to own the wiring: the provider, the `ToolRegistry`, the stores and the
+resume calls are all explicit (see [The executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md)). Each snippet below says which `createAgent()`
+call it corresponds to.
+
+`AgentExecutor.execute()` with a `sessionId` and a `checkpointStore` is
+`agent.send(message, { sessionId })`:
+
+```ts
+import { AgentExecutor, LocalStorageCheckpointStore } from '@lousho/build-ai-agent';
+
+const checkpoints = new LocalStorageCheckpointStore(storage);
+
+// First message of a conversation.
+await AgentExecutor.execute({ agent, input: 'Book a table for 2 tonight', provider, sessionId: 'chat-42', checkpointStore: checkpoints });
+
+// Later - same process or another one - the next message of the same conversation.
+await AgentExecutor.execute({ agent, input: 'Make it 3 people', provider, sessionId: 'chat-42', checkpointStore: checkpoints });
+```
+
+It throws `SessionAwaitingApprovalError` on a paused session, as `send()` does:
+
+```ts
+import { AgentExecutor, SessionAwaitingApprovalError, memoryStore } from '@lousho/build-ai-agent';
+
+const { checkpoints } = memoryStore();
+
+try {
+  await AgentExecutor.execute({ agent, input: 'Are you done?', provider, sessionId: 'chat-42', checkpointStore: checkpoints });
+} catch (error) {
+  if (error instanceof SessionAwaitingApprovalError) {
+    console.log(`Waiting on approval ${error.approvalId} - resolve it with resumeAfterApproval() first.`);
+  }
+}
+```
+
+`resumeAfterApproval()` is `agent.approvals.resolve()`:
+
+```ts
+import { AgentExecutor, resumeAfterApproval } from '@lousho/build-ai-agent';
+
+const paused = await AgentExecutor.execute({
+  agent, input, provider, toolRegistry, approvalStore, sessionId: 'chat-42', checkpointStore,
+});
+
+if (paused.finishReason === 'awaiting-approval') {
+  // ...a human decides, possibly days later, in another process...
+  const result = await resumeAfterApproval(
+    { id: paused.approvalId!, approved: true },
+    approvalStore,
+    toolRegistry,
+    provider,
+    {},
+    checkpointStore, // clears the 'awaiting-approval' mark and keeps checkpointing
+  );
+  console.log(result.finishReason); // 'stop', or 'awaiting-approval' again for the next gated call
+}
+```
+
+`AgentExecutor.fork()` is `agent.fork()`; `execute()` with `input: []` on the
+fork's `sessionId` is `agent.resume(fork.sessionId)`:
+
+```ts
+import { AgentExecutor, compareTrajectories, memoryStore } from '@lousho/build-ai-agent';
+
+const { checkpoints } = memoryStore();
+await AgentExecutor.execute({ agent, provider, toolRegistry, input: 'Plan my trip', sessionId: 'trip', checkpointStore: checkpoints });
+
+const fork = await AgentExecutor.fork({
+  sessionId: 'trip',
+  fromStep: 1,
+  checkpointStore: checkpoints,
+  patch: { toolResult: { toolCallId: 'call_weather', result: { forecast: 'rain' } } },
+});
+// fork.sessionId is 'trip.fork-1'; the 'trip' checkpoint and history are unchanged.
+await AgentExecutor.execute({ agent, provider, toolRegistry, input: [], sessionId: fork.sessionId, checkpointStore: checkpoints });
+
+const original = await checkpoints.load('trip');
+const replayed = await checkpoints.load(fork.sessionId);
+if (original && replayed) {
+  const { divergedAt, a, b, drift } = compareTrajectories(original, replayed);
+  console.log(divergedAt, a.length, b.length, drift); // 1, then each run's steps and the tool-call diff
+}
+```
+
 ## Compatibility with stored data
 
 - Checkpoints written before `status` existed are treated as
@@ -5062,11 +5218,13 @@ Notes:
 ## Limits
 
 - A `sessionId` identifies one logical conversation; running two
-  `execute()` calls on the same id at the same time is not supported.
-- If you call `resumeAfterApproval()` without the `checkpointStore`, the
-  session keeps its `'awaiting-approval'` mark and later `execute()` calls
-  keep throwing `SessionAwaitingApprovalError`; pass the store (or delete
-  the checkpoint).
+  `send()` calls (or two `execute()` calls) on the same id at the same time
+  is not supported.
+- If you call `resumeAfterApproval()` (the executor behind
+  `agent.approvals.resolve()`) without the `checkpointStore`, the session
+  keeps its `'awaiting-approval'` mark and later `send()` (or `execute()`)
+  calls keep throwing `SessionAwaitingApprovalError`; pass the store (or
+  delete the checkpoint). `agent.approvals.resolve()` passes it for you.
 - Workers KV is eventually consistent across locations - see
   [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md) for the caveat.
 
@@ -5113,6 +5271,8 @@ try {
 used in the source and the sections below in sync. A second test fails when new
 SDK code throws a plain `Error` instead of an `SDKError`; the few plain ones left
 are internal and listed in `src/utils/plainErrors.test.ts` with the reason for each.
+
+To start from a symptom instead of a code, see [Troubleshooting](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/troubleshooting.md).
 
 ## Configuration
 
@@ -6415,6 +6575,234 @@ await AgentExecutor.execute({ agent, input, provider, toolRegistry, sandbox: new
 
 For coding agents, `SandboxShell` puts the workspace shell tool behind the same
 adapter; see [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md#sandboxed-shell-sandboxshell).
+
+# MCP (Model Context Protocol)
+
+Source: docs/mcp.md
+
+MCP works in two directions. Your agent can call the tools of MCP servers, or
+your agent can be an MCP server that Claude Code, Cursor and other MCP clients
+call. Both live in the `@lousho/build-ai-agent/mcp` subpath, and
+`@modelcontextprotocol/sdk` is an optional peer: install it to use either
+direction.
+
+```sh
+npm install @modelcontextprotocol/sdk
+```
+
+`connectMcp`, `loadMcpTools` and `serveMcp` are exported from
+`@lousho/build-ai-agent/mcp`; the package root and `@lousho/build-ai-agent/tools`
+export them too. `createAgent({ mcpServers })` needs no import from the subpath.
+
+## Use MCP servers in an agent
+
+`createAgent({ mcpServers })` takes the same map. The servers connect on
+`await agent.ready()` or, automatically, on the first `send()` / `stream()`;
+each server's tools are added as `<server>__<tool>` (e.g. `docs__search`).
+A server that cannot connect fails that call, and the next call tries again.
+`agent.close()` disconnects them (stops stdio processes); a later tool call
+reconnects. Without `mcpServers`, `ready()` and `close()` do nothing.
+
+```ts no-run
+import { createAgent } from '@lousho/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  mcpServers: {
+    files: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'] },
+    docs: { url: 'https://example.com/mcp', headers: { Authorization: 'Bearer <token>' } },
+  },
+});
+const { text } = await agent.send('List the files here.');
+await agent.close();
+```
+
+stdio entries are spawned with `command` and `args`; `env` is added to the
+default environment (`PATH` and the like), not a replacement for it. HTTP
+entries use the streamable HTTP transport and send the static `headers` on every
+request. Static headers are the only authentication an HTTP entry supports
+today.
+
+The map is the same one a spec file declares; see
+[Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md) (the `mcpServers` section) for the YAML form.
+
+### Share servers with `connectMcp()`
+
+To share servers between agents, or to choose how failures are handled, call
+`connectMcp(servers, options?)` and pass its `tools` yourself. It connects every
+server and lists its tools before it resolves, so tools are known up front.
+Options:
+
+- `onError`: `'throw'` (default) rejects when a server cannot connect, after
+  closing the others; `'skip'` leaves that server out and warns through `logger`.
+- `lazy` (default `true`): after `close()` or a dropped connection, the next
+  tool call reconnects. With `false` that call fails instead. Listing tools
+  needs a connection, so `lazy` never delays the first connect.
+- `logger`: receives skipped-server and skipped-tool warnings (default: none).
+
+It returns `{ tools, close(), status() }`; `status()` maps each server to
+`'idle'`, `'connected'` or `'failed'`.
+
+```ts no-run
+import { createAgent } from '@lousho/build-ai-agent';
+import { connectMcp } from '@lousho/build-ai-agent/mcp';
+
+const mcp = await connectMcp(
+  { files: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'] } },
+  { onError: 'skip', logger: console }
+);
+console.log(mcp.status()); // { files: 'connected' }
+const agent = createAgent({ model: 'openai/gpt-4o-mini', tools: mcp.tools });
+await agent.send('List the files here.');
+await mcp.close();
+```
+
+### Approval for MCP tools
+
+MCP servers describe each tool with annotations (`readOnlyHint`,
+`destructiveHint`, `idempotentHint`, `openWorldHint` and a `title`). They are
+hints, but the SDK uses them as the default for [approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md):
+a tool with `readOnlyHint: true` runs; a tool with `destructiveHint: true`, or
+one that sends no `destructiveHint` (the MCP spec's default is destructive),
+pauses the run until a human approves; `destructiveHint: false` runs. A tool
+without annotations therefore asks. The raw annotations stay on
+`descriptor.metadata.mcp.annotations`, and `title` becomes the `displayName`.
+
+Set `approval` on a server entry (`mcpServers`, `createAgent`, `connectMcp()`) or
+in `loadMcpTools(client, name, { approval })`:
+
+- `'annotations'` (default): as above.
+- `'always'` / `'never'`: ask for every tool / none of them.
+- A function `({ name, annotations }) => boolean` decides per tool (`name` is
+  the bare tool name; `annotations` is `{}` when the server sent none). Only
+  in code; a spec file takes the three strings.
+
+[Permission rules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies) run first and can still
+`allow`, `deny` or `ask`.
+
+```ts no-run
+import { createAgent } from '@lousho/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  mcpServers: {
+    files: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'] },
+    // Ask before anything except tools whose name starts with `search`.
+    docs: { url: 'https://example.com/mcp', approval: ({ name }) => !name.startsWith('search') },
+    // A server you trust: never ask.
+    scratch: { command: 'node', args: ['./scratch-server.js'], approval: 'never' },
+  },
+});
+```
+
+### Tools from a client you connected yourself
+
+Connect a `Client` from `@modelcontextprotocol/sdk` yourself and load
+its tools with `loadMcpTools()`, then pass the result to `createAgent()` (or
+register it on a `ToolRegistry`):
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+import { loadMcpTools } from '@lousho/build-ai-agent/mcp';
+
+const tools = await loadMcpTools(mcpClient, 'my-server');
+const agent = createAgent({ prompt: '...', provider, tools });
+```
+
+`loadMcpTools` is also available from the package root and from
+`@lousho/build-ai-agent/tools`.
+
+## Serve an agent over MCP
+
+`serveMcp()` is the reverse of `loadMcpTools()`: it exposes an agent (and,
+optionally, some of its tools) as an MCP server, so Claude Code, Cursor and
+other MCP clients can call it.
+
+```ts
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { serveMcp } from '@lousho/build-ai-agent/mcp';
+import { z } from 'zod';
+
+const searchDocs = defineTool({
+  name: 'search_docs',
+  description: 'Search the docs',
+  input: z.object({ query: z.string() }),
+  execute: ({ query }) => `results for ${query}`,
+});
+
+const supportAgent = createAgent({ prompt: 'You answer support questions.', provider, tools: [searchDocs] });
+
+const server = await serveMcp({
+  agent: supportAgent,            // exposed as ONE tool taking { message: string }
+  name: 'support-bot',            // server name; the tool name defaults to a sanitized version
+  description: 'Ask the support agent a question',
+  tools: [searchDocs],            // optional: also expose these tools directly
+  transport: { type: 'http', port: 3920, host: '127.0.0.1', path: '/mcp' }, // default: 'stdio'
+});
+await server.close();
+```
+
+- **Stateless.** Every call to the agent tool is a fresh conversation.
+- **Cancellation.** Cancelling the MCP request aborts the agent run
+  (`agent.send(message, { signal })`).
+- **Errors.** An agent failure comes back as an MCP result with `isError: true`.
+- **Approvals.** Approval-gated tools cannot be approved over MCP. A run that
+  pauses for approval returns `isError: true` with a message saying so. Tools
+  flagged `needsApproval` are not exposed directly unless you pass
+  `allowApprovalTools: true`; if you do, clients run them with **no human gate**.
+- **stdio.** Nothing but the MCP protocol is written to stdout; warnings go to stderr.
+- **HTTP.** Binds `127.0.0.1` by default. Add `auth: { type: 'bearer', token }`
+  to require an `Authorization: Bearer` header; binding a non-loopback host
+  without `auth` logs a warning.
+
+### Annotations
+
+`tools/list` carries MCP annotations so clients can tell what a tool does. A tool
+that needs approval is advertised `readOnlyHint: false, destructiveHint: true`;
+state hints yourself with `annotations` (sent verbatim). A tool with no hints sends
+none, so a Lousho agent consuming this server keeps asking before it runs (see
+`approval` on `connectMcp()`); `readOnlyHint: true` runs without asking. A tool that
+needs approval is never advertised read-only. The built-in `read_file`, `list_dir`,
+`glob`, `grep`, `todo_read`, `current_date` and `day_name` tools are read-only.
+
+```ts
+import { defineTool } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+const lookupOrder = defineTool({
+  name: 'lookup_order',
+  description: 'Look up an order',
+  input: z.object({ id: z.string() }),
+  annotations: { readOnlyHint: true, destructiveHint: false, title: 'Look up order' },
+  execute: ({ id }) => ({ id, status: 'shipped' }),
+});
+```
+
+### From the command line
+
+`lousho mcp` serves an agent spec file (stdio by default):
+
+```sh
+npx lousho mcp agent.yaml
+npx lousho mcp agent.yaml --http --port 3920 --host 127.0.0.1
+```
+
+To use it from an MCP client, add it to the client's MCP config (for example
+`.mcp.json` for Claude Code):
+
+```json
+{
+  "mcpServers": {
+    "support-bot": { "command": "npx", "args": ["lousho", "mcp", "agent.yaml"] }
+  }
+}
+```
+
+## Limits
+
+- Approval-gated tools cannot be approved over MCP when you serve an agent: a run that pauses for approval returns `isError: true`, and tools flagged `needsApproval` are not exposed unless `allowApprovalTools` is set.
+- HTTP clients use static headers: `headers` is sent on every request, and there is no OAuth flow.
+- `serveMcp()` calls are stateless: each call to the agent tool is a fresh conversation, and the HTTP transport accepts `POST` only.
 
 # Memory
 
@@ -9819,8 +10207,8 @@ its kind by carrying a `toolErrorKind` property. An error extending
 | `askQuestionTool()`, `createAgent({ askQuestion: true })` | `ask_question`: the agent asks the user something and the run pauses until `agent.approvals.answer()`; see [Asking the user a question](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#asking-the-user-a-question). |
 | `createFsTools()`, `createShellTool()` | File system and shell tools for coding agents; see [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md). |
 | `createEmailTool()`, `createSlackTool()`, `createGitHubTools()`, `createJiraTools()` | Integrations that need credentials, so they are built with options. |
-| `createAgent({ mcpServers })`, `connectMcp(servers)` | Every tool of MCP servers given as config (stdio `command` or HTTP `url`), named `<server>__<tool>`; see [Connect MCP servers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#connect-mcp-servers-mcpservers-connectmcp). |
-| `loadMcpTools(client, name)` | Every tool of a connected MCP server; see [MCP tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#mcp-model-context-protocol-tools). |
+| `createAgent({ mcpServers })`, `connectMcp(servers)` | Every tool of MCP servers given as config (stdio `command` or HTTP `url`), named `<server>__<tool>`; see [Use MCP servers in an agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#use-mcp-servers-in-an-agent). |
+| `loadMcpTools(client, name)` | Every tool of a connected MCP server; see [MCP tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#tools-from-a-client-you-connected-yourself). |
 
 Built-in descriptors are passed keyed by the name the agent uses:
 `createAgent({ tools: { current_date: currentDateTool } })`. Spec files refer to
@@ -9853,6 +10241,155 @@ tools.register('current_date', currentDateTool);
 
 Pass it as `toolRegistry` to `AgentExecutor.execute()`; the agent config's
 `tools` map names the tools it may use.
+
+# Troubleshooting
+
+Source: docs/troubleshooting.md
+
+This page starts from what you see and points to the cause, the fix and the page
+that explains it. First run `npx lousho doctor` ([what it checks](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#troubleshooting-lousho-doctor)),
+then, if you have an error code (`LOUSHO_...`), look it up in [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md).
+
+## Setup
+
+### "No model configured"
+
+- **Cause:** `createAgent()` got no `model` or `provider` and found nothing in the
+environment (`LOUSHO_CONFIG_MISSING_PROVIDER`).
+- **Fix:** pass `model: 'openai/gpt-4o-mini'` (any `<provider>/<model>`), or set `LOUSHO_MODEL` or a provider key such as `OPENAI_API_KEY`.
+- **More:** [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md), [the error](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_config_missing_provider).
+
+### "The API key is not set"
+
+- **Cause:** the provider's key variable (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`) is not in the environment of the process that runs the agent (`LOUSHO_PROVIDER_MISSING_API_KEY`).
+- **Fix:** set it, or pass a configured provider instance. `npx lousho doctor` prints `set` or `not set` for each key, never the value.
+- **More:** [the error](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_provider_missing_api_key).
+
+### "Cannot find package `@ai-sdk/openai`" or "install the optional peer"
+
+- **Cause:** each provider is backed by an optional package that is loaded on first use, in the major that pairs with your `ai` major (`LOUSHO_PEER_MISSING`). The same error covers the other optional peers, such as `dockerode` and `@modelcontextprotocol/sdk`.
+- **Fix:** run the `npm install` command in the message (it is also on `error.installCommand`), or look up your `ai` major in the pairing table.
+- **More:** [Provider packages](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#provider-packages), [Optional peers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#optional-peers), [the error](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_peer_missing).
+
+### "`ai` 5 is installed"
+
+- **Cause:** `ai` 5 is not supported. The SDK takes `ai` `^4.3.19`, `^6.0.0` or `^7.0.0`.
+- **Fix:** install one of those majors together with the provider package row that pairs with it.
+- **More:** [Install the package](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#install-the-package).
+
+### "Top-level await is only available in ES modules"
+
+- **Cause:** the quick start uses top-level `await`, so the file must be an ES module.
+- **Fix:** name the file `.mts`, or set `"type": "module"` in `package.json`.
+- **More:** [Quickstart in the README](https://github.com/LinuxDevil/agent-sdk/blob/main/README.md#quickstart).
+
+### The Node version is too old
+
+- **Cause:** the SDK needs Node.js 22.19 or newer (`engines.node`).
+- **Fix:** upgrade Node. `npx lousho doctor` compares your version with the requirement.
+- **More:** [Requirements](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#requirements).
+
+### Ollama and zod versions disagree
+
+- **Cause:** `ollama-ai-provider-v2` (the Ollama package for `ai` 6 and 7) declares zod 4 as a peer. Zod 3 does not satisfy it.
+- **Fix:** use zod 4 with `ai` 6 or 7, or use `ai@^4.3.19` with `ollama-ai-provider@^1.2.0`.
+- **More:** [Provider packages](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#provider-packages).
+
+## Runs that end without an answer
+
+### `send()` returned but `text` is empty
+
+- **Cause:** a run that stops early resolves; it does not throw. `result.finishReason` says why. These are the ones that leave `text` empty or partial:
+
+  - `'awaiting-approval'`: a tool call needs a human. Resolve it (next entry). [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md).
+  - `'max-steps'`: the `maxSteps` budget (default 10) ran out while the model still wanted to continue. Raise `maxSteps`, or simplify the task. [Finish reasons](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#finish-reasons).
+  - `'budget-exceeded'`: a `limits` budget such as `maxTokens` or `maxCostUsd` tripped; `result.budget` says which. Raise the limit. [Budgets](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#budgets).
+  - `'guardrail'`: an input, output or tool guardrail blocked the run; `result.guardrail` says which. [Guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md#input-and-output-guardrails).
+  - `'output-invalid'`: the reply did not match the `output` schema even after the repair step. [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md).
+
+- **Fix:** check `result.finishReason` before reading `result.text`.
+
+### The run seems stuck on a tool
+
+- **Cause:** an approval is pending. A paused `send()` resolves with `finishReason: 'awaiting-approval'` and an `approvalId`; nothing runs until someone decides.
+- **Fix:** list the pending calls with `agent.approvals.list()`, then `agent.approvals.resolve({ id, approved })`.
+- **More:** [`createAgent()` agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#createagent-agents).
+
+### `LOUSHO_SESSION_AWAITING_APPROVAL` or `LOUSHO_SESSION_BUSY`
+
+- **Cause:** a session paused on an approval cannot take new input (`LOUSHO_SESSION_AWAITING_APPROVAL`); `session.compact()` or `session.clear()` was called while a turn was running or queued (`LOUSHO_SESSION_BUSY`).
+- **Fix:** resolve the approval, then send again; or await the turn's `send()` (or abort it), then call again.
+- **More:** [awaiting approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_session_awaiting_approval), [busy](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_session_busy).
+
+## Tools
+
+### The model never calls my tool
+
+- **Cause:** the model decides from the tool's `description` and input schema, so a vague description or unclear fields leave it nothing to go on. The `name` must match `^[a-zA-Z0-9_-]{1,64}$` (1-64 characters of letters, digits, `_` and `-`).
+- **Fix:** say in the `description` what the tool does and when to use it, and `.describe()` each input field.
+- **More:** [`defineTool()` options](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#definetool-options).
+
+### My tool throws and the run goes on
+
+- **Cause:** this is by design. A tool that throws gives the model an error result (`{ error, toolName, message, kind }`) and the run continues, so the model can react.
+- **Fix:** if an error must stop the run, throw an error that extends `PropagatingToolError`; that one rejects the run instead.
+- **More:** [Tool errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#errors).
+
+### `LOUSHO_TOOL_ARGS_INVALID`
+
+- **Cause:** the model sent arguments that do not match the tool's input schema. Inside a run it gets the issues back as a result and can retry, so a run seldom ends on it.
+- **Fix:** if the model keeps getting a field wrong, make its `.describe()` text clearer. If you called the tool yourself, fix the arguments named in the message.
+- **More:** [the error](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_tool_args_invalid).
+
+## Providers and models
+
+### Rate limits and flaky calls
+
+- **Cause:** the provider throttled the call (`LOUSHO_PROVIDER_RATE_LIMITED`) or failed transiently.
+- **Fix:** `createAgent()` already retries a failed call twice; raise it with `retry: { maxRetries: 3 }`, and set `fallbackModels` to move on to the next model when the call still fails.
+- **More:** [Retries and fallback models](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md#retries-and-fallback-models), [the error](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_provider_rate_limited).
+
+### The model does not read my files
+
+- **Cause:** the built-in providers do not send file parts, on any `ai` major. A file part is sent as a text note (`[file report.pdf (application/pdf) not sent]`) and the provider warns once. Images are sent.
+- **Fix:** put the file's text in the message, or use a provider subclass whose model takes files.
+- **More:** [Multimodal input](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md#multimodal-input).
+
+### I do not see the model's reasoning
+
+- **Cause:** reasoning is reported separately from the answer, as `reasoning.*` events in `agent.stream()` and as `result.reasoning`; it is not in `result.text`. Options are only sent to model families known to accept them, and `reasoning: 'none'` sends nothing.
+- **Fix:** read `result.reasoning` or the `reasoning.delta` events; for a model outside the known families, pass `{ effort, force: true }`.
+- **More:** [Reasoning](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/reasoning.md).
+
+## Sandbox, MCP and deployment
+
+### Docker sandbox: "egress is unsupported"
+
+- **Cause:** a `SubprocessSandbox` with `network: { allow }` and a `broker` needs the broker to be the container's only way out. Docker Desktop, rootless Docker, a daemon on another machine and an Engine older than 25.0.5 cannot do that, so no container starts (`LOUSHO_SANDBOX_EGRESS_UNSUPPORTED`). This is refused on purpose rather than granting open egress.
+- **Fix:** run the agent on the Linux host of a Docker Engine 25.0.5 or later, or use `network: 'none'`.
+- **More:** [Sandboxed shell](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md#sandboxed-shell-sandboxshell), [the error](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_sandbox_egress_unsupported).
+
+### An MCP server's tools do not appear
+
+- **Cause:** the servers connect on `await agent.ready()` or on the first `send()` / `stream()`, and a server that cannot connect fails that call. Each tool is named `<server>__<tool>` (for example `docs__search`), so look for that name, not the server's own.
+- **Fix:** `await agent.ready()` to see the connection error. With `connectMcp()`, check `status()`, which maps each server to `'idle'`, `'connected'` or `'failed'`; `onError: 'skip'` leaves a failing server out and warns through `logger`. MCP needs the optional peer `@modelcontextprotocol/sdk`.
+- **More:** [Connect MCP servers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#connect-mcp-servers-mcpservers-connectmcp).
+
+### My Worker build rejects the provider or tool
+
+- **Cause:** the `cloudflare-worker` target supports the `mock`, `openai` and `anthropic` providers, and the `current-date` and `day-name` tools. `ollama`, `openrouter` and the `http` tool are not supported there, and `lousho build` fails with an error naming the one it rejected.
+- **Fix:** use another provider or tool, or build for the `node-server` or `docker` target.
+- **More:** [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#cloudflare-worker).
+
+## Getting help
+
+Open an issue at <https://github.com/LinuxDevil/agent-sdk/issues>. Include:
+
+- the output of `npx lousho doctor --json`,
+- the error code (`LOUSHO_...`) and the full message,
+- the SDK version (`npm ls @lousho/build-ai-agent`) and your `ai` version.
+
+Never paste an API key.
 
 # Utilities
 
@@ -9973,25 +10510,31 @@ coding agents in the style of Claude Code. The tools never use `node:fs` or
 `FsProvider` and `ShellProvider`, so the same tools work against a local
 directory, an in-memory tree in tests, a Docker container, or a remote
 sandbox such as E2B, Daytona or Cloudflare.
+For a walkthrough, see [Build a coding agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/build-a-coding-agent.md).
 
 ```ts
-import { AgentExecutor, ToolRegistry, NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
+import { createAgent, NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
 
-const workspace = new NodeWorkspace({ root: '.' }); // every path is confined to this directory
-const registry = new ToolRegistry();
-registry.registerMany([...createFsTools(workspace), createShellTool(workspace)]);
+const workspace = new NodeWorkspace({ root: './project' }); // every path is confined to this directory
+const agent = createAgent({
+  instructions: 'You are a careful coding assistant. Run the tests after every change.',
+  provider,
+  tools: [...createFsTools(workspace), createShellTool(workspace)],
+});
 
 // The shell tool needs approval by default, so the run pauses before any command runs.
-const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistry: registry, approvalStore });
-// paused.finishReason === 'awaiting-approval' -> resumeAfterApproval(...) once a human approves
+const paused = await agent.send('Fix the failing test in src/math.test.ts');
+if (paused.finishReason === 'awaiting-approval') {
+  // A human decides, then the command runs (or is rejected) and the run continues.
+  const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+}
 ```
 
-A `createAgent()` agent pauses the same way: `send()` resolves with
-`finishReason: 'awaiting-approval'` and `agent.approvals.resolve()` runs (or
-rejects) the command and continues (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)). To let
-some commands run without asking, pass `needsApproval: false` together with an
-`allow` list, or a `needsApproval` predicate that returns `false` for the
-commands you trust.
+`send()` resolves with `finishReason: 'awaiting-approval'` and
+`agent.approvals.resolve()` runs (or rejects) the command and continues (see
+[Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)). To let some commands run without asking, pass
+`needsApproval: false` together with an `allow` list, or a `needsApproval`
+predicate that returns `false` for the commands you trust.
 
 ```ts
 import { createAgent, NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
@@ -10006,6 +10549,26 @@ const agent = createAgent({
   ],
 });
 const result = await agent.send('Fix the failing test in src/math.test.ts');
+```
+
+### Advanced: the executor API
+
+`createAgent()` runs `AgentExecutor` underneath (see
+[The executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md)). To own the wiring yourself,
+register the tools in a `ToolRegistry` and call the executor; the pause is
+the same, and `resumeAfterApproval(...)` is what `agent.approvals.resolve()`
+calls once a human approves:
+
+```ts
+import { AgentExecutor, ToolRegistry, NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
+
+const workspace = new NodeWorkspace({ root: '.' }); // every path is confined to this directory
+const registry = new ToolRegistry();
+registry.registerMany([...createFsTools(workspace), createShellTool(workspace)]);
+
+// The shell tool needs approval by default, so the run pauses before any command runs.
+const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistry: registry, approvalStore });
+// paused.finishReason === 'awaiting-approval' -> resumeAfterApproval(...) once a human approves
 ```
 
 ## The tools
