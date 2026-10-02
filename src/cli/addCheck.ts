@@ -200,11 +200,21 @@ function moduleBase(specifier: string): string {
   return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
 }
 
+/** Literals by the index of their opening quote or backtick (template segments resumed after `}` are left out). */
+function literalsByOpen(source: string, literals: Literal[]): Map<number, Literal> {
+  return new Map(literals.filter((literal) => source[literal.open] !== '}').map((literal) => [literal.open, literal]));
+}
+
+/** The offset at which each line starts. */
+function lineStartsOf(source: string): number[] {
+  return [0, ...[...source.matchAll(/\n/g)].map((match) => (match.index ?? 0) + 1)];
+}
+
 class FileCheck {
   readonly findings: ManifestFinding[] = [];
   private readonly scanned: Scanned;
-  private readonly literalAt = new Map<number, Literal>();
-  private readonly lineStarts: number[] = [0];
+  private readonly literalAt: Map<number, Literal>;
+  private readonly lineStarts: number[];
 
   constructor(
     private readonly file: string,
@@ -212,8 +222,8 @@ class FileCheck {
     private readonly permissions: RegistryItem['permissions']
   ) {
     this.scanned = scanSource(source);
-    for (const literal of this.scanned.literals) if (source[literal.open] !== '}') this.literalAt.set(literal.open, literal);
-    for (let k = 0; k < source.length; k++) if (source[k] === '\n') this.lineStarts.push(k + 1);
+    this.literalAt = literalsByOpen(source, this.scanned.literals);
+    this.lineStarts = lineStartsOf(source);
   }
 
   private lineOf(offset: number): number {
@@ -311,15 +321,21 @@ class FileCheck {
       if (!declared.has(name)) this.add(offset, `reads process.env.${name}`, `declare env: ["${name}"] in permissions`);
     };
     this.matchAll(/(?<![\w$.])process\s*\.\s*env(?![\w$])/g, (match) => {
-      const rest = match.index + match[0].length;
-      const dotted = /^\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)/.exec(this.scanned.bare.slice(rest, rest + 200));
-      if (dotted) return need(match.index, dotted[1]);
-      const bracket = /^\s*(?:\?\.)?\s*\[/.exec(this.scanned.bare.slice(rest, rest + 20));
-      if (!bracket) return this.never(match.index, 'process.env used as a whole object (read each variable as process.env.NAME)');
-      const literal = this.plainLiteralFrom(rest + bracket[0].length);
-      if (literal && ENV_NAME.test(literal.raw) && this.after(literal).startsWith(']')) return need(match.index, literal.raw);
-      this.never(match.index, 'a computed process.env[...] read');
+      const read = this.envRead(match.index + match[0].length);
+      if ('name' in read) need(match.index, read.name);
+      else this.never(match.index, read.problem);
     });
+  }
+
+  /** The variable a `process.env` ending at `rest` reads, or why it cannot be named. */
+  private envRead(rest: number): { name: string } | { problem: string } {
+    const dotted = /^\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)/.exec(this.scanned.bare.slice(rest, rest + 200));
+    if (dotted) return { name: dotted[1] };
+    const bracket = /^\s*(?:\?\.)?\s*\[/.exec(this.scanned.bare.slice(rest, rest + 20));
+    if (!bracket) return { problem: 'process.env used as a whole object (read each variable as process.env.NAME)' };
+    const literal = this.plainLiteralFrom(rest + bracket[0].length);
+    if (literal && ENV_NAME.test(literal.raw) && this.after(literal).startsWith(']')) return { name: literal.raw };
+    return { problem: 'a computed process.env[...] read' };
   }
 
   private checkUrls(): void {
