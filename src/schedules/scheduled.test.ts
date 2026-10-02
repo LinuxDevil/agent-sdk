@@ -38,14 +38,14 @@ describe('handleScheduled', () => {
     const ran: string[] = [];
     const agent = createAgent({ provider: mockModel(['ok']), prompt: 'x' });
     const schedules = [
-      defineSchedule({ name: 'bad', cron: '0 * * * *', run: async () => Promise.reject(new SDKError('boom', 'LOUSHY_TEST')) }),
+      defineSchedule({ name: 'bad', cron: '0 * * * *', run: async () => Promise.reject(new SDKError('boom', 'LOUSHO_TEST')) }),
       defineSchedule({ name: 'good', cron: '0 * * * *', run: async ({ name }) => void ran.push(name) }),
     ];
     await expect(handleScheduled(agent, schedules, { cron: '0 * * * *' }, ctx())).resolves.toBeUndefined();
     expect(ran).toEqual(['good']);
     expect(error).toHaveBeenCalledOnce();
     expect(String(error.mock.calls[0][0])).toContain("'bad'");
-    expect(String(error.mock.calls[0][0])).toContain('LOUSHY_TEST');
+    expect(String(error.mock.calls[0][0])).toContain('LOUSHO_TEST');
   });
 });
 

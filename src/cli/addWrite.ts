@@ -1,5 +1,5 @@
 /**
- * The safe part of `loushy add` (LOU-D50): checks every file a registry item
+ * The safe part of `lousho add` (LOU-D50): checks every file a registry item
  * wants to write and writes it. A path is rejected unless it is relative, free
  * of `..`, backslashes and drive letters, inside the folder its item type may
  * write to, and (after resolving symlinks) inside the agent directory.
@@ -20,7 +20,7 @@ export interface PlannedFile {
 }
 
 function unsafe(item: RegistryItem, file: string, reason: string): SDKError {
-  return new SDKError(`loushy add: '${item.name}' wants to write '${file}': ${reason}`, 'LOUSHY_REGISTRY_UNSAFE_PATH');
+  return new SDKError(`lousho add: '${item.name}' wants to write '${file}': ${reason}`, 'LOUSHO_REGISTRY_UNSAFE_PATH');
 }
 
 /** The folder (with a trailing slash) the item's files must live in. */
@@ -89,7 +89,7 @@ export async function checkTargets(item: RegistryItem, files: PlannedFile[], age
     if (!stats) continue;
     if (stats.isSymbolicLink()) throw unsafe(item, file.relative, 'the target is a symlink.');
     if (!overwrite) {
-      throw new SDKError(`loushy add: ${file.relative} already exists.`, 'LOUSHY_REGISTRY_FILE_EXISTS', {
+      throw new SDKError(`lousho add: ${file.relative} already exists.`, 'LOUSHO_REGISTRY_FILE_EXISTS', {
         hint: 'Pass --overwrite to replace it, or move your file away first.',
       });
     }

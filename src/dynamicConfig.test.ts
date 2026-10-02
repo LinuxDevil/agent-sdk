@@ -51,13 +51,13 @@ describe('createAgent dynamic config (LOU-V15)', () => {
     expect(toolNames(model, 2)).toEqual(['chat']);
   });
 
-  it('a resolver that throws fails the run with LOUSHY_CONFIG_RESOLVER_FAILED naming the option', async () => {
+  it('a resolver that throws fails the run with LOUSHO_CONFIG_RESOLVER_FAILED naming the option', async () => {
     const model = mockModel([]);
     const boom = new Error('no such tenant');
     const agent = createAgent({ provider: model, tools: () => { throw boom; } });
 
-    await expect(agent.send('hi')).rejects.toMatchObject({ code: 'LOUSHY_CONFIG_RESOLVER_FAILED', field: 'tools', cause: boom });
-    await expect(agent.stream('hi').result).rejects.toMatchObject({ code: 'LOUSHY_CONFIG_RESOLVER_FAILED' });
+    await expect(agent.send('hi')).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_RESOLVER_FAILED', field: 'tools', cause: boom });
+    await expect(agent.stream('hi').result).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_RESOLVER_FAILED' });
     const session = agent.session();
     await expect(session.send('hi')).rejects.toThrow(/'tools' function threw/);
     expect(session.messages).toEqual([]);

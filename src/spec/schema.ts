@@ -204,7 +204,7 @@ const mcpServerSchema = z
   // superRefine has verified exactly one of command/url and no cross-shape fields.
   .transform((server): McpServerSpec => server as McpServerSpec);
 
-/** Also accepts the pre-LOU-D20 list form `[{ name, command | url }]` that `loushy doctor` read. */
+/** Also accepts the pre-LOU-D20 list form `[{ name, command | url }]` that `lousho doctor` read. */
 const mcpServersSchema = z.preprocess(
   (value) =>
     Array.isArray(value)

@@ -1,5 +1,5 @@
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import type { AgentSpec } from '@loushy/build-ai-agent';
+import type { AgentSpec } from '@lousho/build-ai-agent';
 import type { AgentStore, AgentStoreEntry } from './AgentStore';
 
 const KEY_PREFIX = 'agent-forge:agents:';
@@ -13,7 +13,7 @@ interface StoredRecord {
  * Browser dev-experience implementation of `AgentStore`, backed by
  * `window.localStorage`. Values are stored as YAML text via the same
  * `yaml` package `loadSpec()` uses in the core SDK, so an entry saved here
- * is byte-for-byte the same format a `.loushy/agents/<id>.yaml` file would
+ * is byte-for-byte the same format a `.lousho/agents/<id>.yaml` file would
  * hold (see fsAgentStore.ts) - only the storage medium differs.
  *
  * This is explicitly a stand-in until LOU-N's runtime control server ships

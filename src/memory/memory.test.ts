@@ -165,14 +165,14 @@ describeMemoryProviderContract('inMemoryMemory', (options) => inMemoryMemory(opt
 const contractDirs: string[] = [];
 afterAll(() => Promise.all(contractDirs.map((dir) => rm(dir, { recursive: true, force: true }))));
 describeMemoryProviderContract('fileMemory', async (options) => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'loushy-memory-contract-'));
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lousho-memory-contract-'));
   contractDirs.push(dir);
   return fileMemory({ dir, ...options });
 });
 
 describe('memory providers', () => {
   it('fileMemory persists through JSON files, one per scope key', async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), 'loushy-memory-'));
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'lousho-memory-'));
     try {
       const first = fileMemory({ dir: path.join(dir, 'mem'), maxItems: 2 });
       expect(await first.list('session:a')).toEqual([]);

@@ -21,7 +21,7 @@ beforeAll(() => {
 describe('specToAgent', () => {
   it('produces behavior identical to an equivalent createAgent()-built agent for the same input', async () => {
     const filePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-spec-equiv-')),
+      fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-spec-equiv-')),
       'agent.yaml'
     );
     fs.writeFileSync(
@@ -60,7 +60,7 @@ provider:
     ).toThrow(/unknown tool 'not-a-real-tool'/);
     expect(() =>
       specToAgent({ name: 'x', prompt: 'x', provider: { type: 'mock', model: 'm' }, tools: ['nope'] })
-    ).toThrow(expect.objectContaining({ code: 'LOUSHY_TOOL_NOT_FOUND' }));
+    ).toThrow(expect.objectContaining({ code: 'LOUSHO_TOOL_NOT_FOUND' }));
   });
 
   it('throws a guiding error for a credentialed tool (github/jira) with no config field', () => {
@@ -74,7 +74,7 @@ provider:
     ).toThrow(/needs credentials/);
     expect(() =>
       specToAgent({ name: 'x', prompt: 'x', provider: { type: 'mock', model: 'm' }, tools: ['jira'] })
-    ).toThrow(expect.objectContaining({ code: 'LOUSHY_TOOL_NEEDS_CREDENTIALS' }));
+    ).toThrow(expect.objectContaining({ code: 'LOUSHO_TOOL_NEEDS_CREDENTIALS' }));
   });
 });
 

@@ -1,16 +1,16 @@
 /**
- * `@loushy/build-ai-agent/svelte` (LOU-P3): the `loushyAgent()` store, and the
+ * `@lousho/build-ai-agent/svelte` (LOU-P3): the `loushoAgent()` store, and the
  * framework-neutral reducer and stream parser it is built on.
  */
 
 export {
-  loushyAgent,
+  loushoAgent,
   type LocalAgentSource,
-  type LoushyAgentSource,
-  type LoushyAgentStore,
-  type LoushyAgentStoreOptions,
+  type LoushoAgentSource,
+  type LoushoAgentStore,
+  type LoushoAgentStoreOptions,
   type RemoteAgentSource,
-} from './loushyAgent';
+} from './loushoAgent';
 export {
   initialAgentUIState,
   reduceAgentEvents,

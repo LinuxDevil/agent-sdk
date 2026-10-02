@@ -1,5 +1,5 @@
 /**
- * LOU-P2: `useLoushyAgent()` for Vue 3, a composable over an agent's typed
+ * LOU-P2: `useLoushoAgent()` for Vue 3, a composable over an agent's typed
  * event stream. Same state and actions as the React hook; the state logic
  * lives in the framework-neutral reducer and run logic (src/ui), this file
  * only holds the state in a `shallowRef`.
@@ -12,17 +12,17 @@ import {
   reduceAgentEvents,
   type AgentCommands,
   type AgentUIState,
-  type LoushyAgentOptions,
-  type LoushyAgentSource,
+  type LoushoAgentOptions,
+  type LoushoAgentSource,
 } from '../ui';
 
-export type { LocalAgentSource, LoushyAgentSource, RemoteAgentSource } from '../ui';
-export type UseLoushyAgentOptions = LoushyAgentOptions;
+export type { LocalAgentSource, LoushoAgentSource, RemoteAgentSource } from '../ui';
+export type UseLoushoAgentOptions = LoushoAgentOptions;
 
 /** A value, or a ref to it (read when a turn starts, so a changed `url` or `agent` applies to the next turn). */
 type MaybeRef<T> = T | Ref<T>;
 
-export type UseLoushyAgentResult = {
+export type UseLoushoAgentResult = {
   /** Each field of the React hook's state, as a read-only ref. */
   [K in keyof AgentUIState]: ComputedRef<AgentUIState[K]>;
 } & AgentCommands & {
@@ -39,10 +39,10 @@ export type UseLoushyAgentResult = {
  *
  * @example
  * ```ts
- * const { messages, status, send } = useLoushyAgent({ url: '/api/agent' });
+ * const { messages, status, send } = useLoushoAgent({ url: '/api/agent' });
  * ```
  */
-export function useLoushyAgent(source: MaybeRef<LoushyAgentSource>, options: MaybeRef<UseLoushyAgentOptions> = {}): UseLoushyAgentResult {
+export function useLoushoAgent(source: MaybeRef<LoushoAgentSource>, options: MaybeRef<UseLoushoAgentOptions> = {}): UseLoushoAgentResult {
   const state = shallowRef<AgentUIState>(initialAgentUIState);
   const runner = createAgentRunner({
     source: () => unref(source),

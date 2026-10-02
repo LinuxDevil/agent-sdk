@@ -28,7 +28,7 @@ import {
   type CheckpointHistoryEntry,
   type ForkPatch,
   type TrajectoryComparison,
-} from '@loushy/build-ai-agent';
+} from '@lousho/build-ai-agent';
 import { buildAgentFromSpec, extractFlowFromSpec } from './buildAgent';
 import { withAbortSignal, RunAbortedError } from './abortableProvider';
 import { FileApprovalStore } from './approvalStore';
@@ -101,7 +101,7 @@ export interface RunManagerOptions {
   /**
    * Fallback spec loader used when run() is called without an explicit
    * `spec` (e.g. a restarted server resuming via /status polling) - backed
-   * by the app's AgentStore, fsAgentStore, reading `.loushy/agents/<id>.yaml`.
+   * by the app's AgentStore, fsAgentStore, reading `.lousho/agents/<id>.yaml`.
    */
   loadSpec: (agentId: string) => Promise<AgentSpec | undefined>;
   /** Persists a run's spec to disk (fsAgentStore.save) so it survives a server restart. */
@@ -590,12 +590,12 @@ export class RunManager extends EventEmitter {
    */
   private runFlow(
     agentId: string,
-    flow: import('@loushy/build-ai-agent').AgentFlow,
+    flow: import('@lousho/build-ai-agent').AgentFlow,
     deps: {
-      agent: import('@loushy/build-ai-agent').AgentConfig;
-      provider: import('@loushy/build-ai-agent').LLMProvider;
+      agent: import('@lousho/build-ai-agent').AgentConfig;
+      provider: import('@lousho/build-ai-agent').LLMProvider;
       toolRegistry?: ToolRegistry;
-      sandbox: import('@loushy/build-ai-agent').SandboxAdapter;
+      sandbox: import('@lousho/build-ai-agent').SandboxAdapter;
     }
   ): void {
     FlowExecutor.execute(

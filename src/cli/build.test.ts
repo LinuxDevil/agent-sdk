@@ -6,7 +6,7 @@ import path from 'node:path';
 import { runBuild, parseBuildArgs, stubAdapterCalls, BuildIO } from './build';
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
-const BIN = path.join(REPO_ROOT, 'bin', 'loushy.js');
+const BIN = path.join(REPO_ROOT, 'bin', 'lousho.js');
 
 function captureIO(): BuildIO & { out: string[]; err: string[] } {
   const out: string[] = [];
@@ -15,7 +15,7 @@ function captureIO(): BuildIO & { out: string[]; err: string[] } {
 }
 
 describe('parseBuildArgs', () => {
-  it('reads --flag=value and --flag value forms, like bin/loushy.js', () => {
+  it('reads --flag=value and --flag value forms, like bin/lousho.js', () => {
     expect(parseBuildArgs(['--target=stub', '--agent', 'a.yaml'])).toEqual({
       target: 'stub',
       agent: 'a.yaml',
@@ -60,10 +60,10 @@ describe('runBuild', () => {
   });
 });
 
-describe('bin/loushy.js build (subprocess smoke test)', () => {
+describe('bin/lousho.js build (subprocess smoke test)', () => {
   beforeAll(async () => {
-    // bin/loushy.js requires the compiled dist/cli/build.js (as it does
-    // dist/cli/dev.js for `loushy dev`), so compile just that entry the
+    // bin/lousho.js requires the compiled dist/cli/build.js (as it does
+    // dist/cli/dev.js for `lousho dev`), so compile just that entry the
     // same way tsup.config.ts does, without a full `npm run build`.
     const { build } = await import('tsup');
     await build({
@@ -91,20 +91,20 @@ describe('bin/loushy.js build (subprocess smoke test)', () => {
     }
   }
 
-  it.each(['--help', '-h', 'help'])('`loushy %s` prints the usage and exits 0', (flag) => {
+  it.each(['--help', '-h', 'help'])('`lousho %s` prints the usage and exits 0', (flag) => {
     const result = runBin([flag]);
     expect(result.code).toBe(0);
-    expect(result.stdout).toContain('loushy init');
+    expect(result.stdout).toContain('lousho init');
   });
 
-  it('dispatches `loushy build --target=stub` and runs scaffold, build, describe in order', () => {
+  it('dispatches `lousho build --target=stub` and runs scaffold, build, describe in order', () => {
     const result = runBin(['build', '--target=stub', '--agent=agent.yaml']);
     expect(result.code).toBe(0);
     expect(result.stdout).toContain('stub adapter calls: scaffold,build,describe');
   });
 
   it('builds a real node-server target end to end through the bundled CLI', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-build-cli-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-build-cli-'));
     const specPath = path.join(dir, 'agent.yaml');
     fs.writeFileSync(
       specPath,

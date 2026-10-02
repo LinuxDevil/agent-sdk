@@ -82,7 +82,7 @@ async function listSources(dir: string): Promise<SkillSource[]> {
     throw new SDKError(
       `loadSkills: cannot read skills directory '${dir}' (${(error as Error).message}). ` +
         `Check the path, or create it with a skill inside, e.g. ${path.join(dir, 'my-skill', 'SKILL.md')}.`,
-      'LOUSHY_SKILL_INVALID'
+      'LOUSHO_SKILL_INVALID'
     );
   }
   const sources = await Promise.all(entries.map((entry) => sourceOf(dir, entry)));
@@ -119,7 +119,7 @@ export async function loadSkills(dir: string): Promise<Skill[]> {
       throw new SDKError(
         `loadSkills: duplicate skill name '${skill.name}' in ${earlier.file} and ${source.file}. ` +
           `Rename one file/folder or set a different 'name' in its frontmatter.`,
-        'LOUSHY_SKILL_INVALID'
+        'LOUSHO_SKILL_INVALID'
       );
     }
     byName.set(skill.name, { skill, file: source.file });

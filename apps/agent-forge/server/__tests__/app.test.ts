@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import request from 'supertest';
-import type { AgentSpec } from '@loushy/build-ai-agent';
+import type { AgentSpec } from '@lousho/build-ai-agent';
 import { createApp } from '../app';
 import { RunManager } from '../runRegistry';
 import { FileCheckpointStore } from '../checkpointStore';
@@ -81,11 +81,11 @@ describe('LOU-N HTTP API', () => {
     expect(res.body.status).toBe('idle');
   });
 
-  it('rejects a path-traversal agent id instead of writing outside .loushy/agents', async () => {
+  it('rejects a path-traversal agent id instead of writing outside .lousho/agents', async () => {
     // Express URL-decodes `:id` before handing it to the route, so a
     // percent-encoded `..%2F..%2Fpwned` arrives as a plain string
     // containing `/` and `..` - without the isValidAgentId guard in app.ts,
-    // this would let PUT /agents/:id escape `.loushy/agents/` via
+    // this would let PUT /agents/:id escape `.lousho/agents/` via
     // fsAgentStore.ts's path.join(agentsDir, `${id}.yaml`).
     const traversalId = encodeURIComponent('../../pwned');
     const put = await request(app).put(`/agents/${traversalId}`).send(SPEC);
@@ -242,7 +242,7 @@ describe('LOU-R settings/secrets HTTP routes', () => {
     expect(res.body).toEqual({ provider: 'openai', hasKey: true, masked: '••••••••cret' });
     expect(JSON.stringify(res.body)).not.toContain('sk-super-secret');
 
-    const raw = fs.readFileSync(path.join(baseDir, '.loushy', 'secrets.json'), 'utf8');
+    const raw = fs.readFileSync(path.join(baseDir, '.lousho', 'secrets.json'), 'utf8');
     expect(raw).not.toContain('sk-super-secret');
   });
 
@@ -313,7 +313,7 @@ describe('LOU-R settings/secrets HTTP routes', () => {
     expect(res.status).toBe(400);
   });
 
-  it('POST /agents/:id/deploy shells out to `loushy build` and reports a non-zero exit when the SDK has not been built', async () => {
+  it('POST /agents/:id/deploy shells out to `lousho build` and reports a non-zero exit when the SDK has not been built', async () => {
     await request(app).put('/agents/deploy-me-2').send(SPEC);
     const res = await request(app).post('/agents/deploy-me-2/deploy').send({ adapter: 'node-server' });
     // This test environment may or may not have `dist/` built - either way

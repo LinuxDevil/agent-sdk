@@ -3,7 +3,7 @@
 Every error the SDK throws on purpose is an `SDKError` (or a subclass such as
 `ConfigurationError`, `ValidationError` or `MissingPeerDependencyError`) with:
 
-- `code`: a stable string, `LOUSHY_<AREA>_<NAME>`. Branch on it, not on the
+- `code`: a stable string, `LOUSHO_<AREA>_<NAME>`. Branch on it, not on the
   message text, which may get clearer over time.
 - `hint`: one sentence on how to fix it.
 - `docs`: a link to the code's section on this page.
@@ -13,7 +13,7 @@ error tells you what to do:
 
 ```text
 ConfigurationError: createAgent: no model configured. Do one of the following: (1) pass a model: ...
-[LOUSHY_CONFIG_MISSING_PROVIDER] Pass a model string such as createAgent({ model: 'openai/gpt-4o-mini' }), a provider instance, or set LOUSHY_MODEL or a provider API key. (https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#loushy_config_missing_provider)
+[LOUSHO_CONFIG_MISSING_PROVIDER] Pass a model string such as createAgent({ model: 'openai/gpt-4o-mini' }), a provider instance, or set LOUSHO_MODEL or a provider API key. (https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_config_missing_provider)
 ```
 
 `error.detail` is the message without that line. Tool and provider errors
@@ -22,12 +22,12 @@ keep their message as it was, because the model sees it as a tool result or a
 compacted provider error; their `toString()` still adds the line.
 
 ```ts
-import { createAgent, SDKError } from '@loushy/build-ai-agent';
+import { createAgent, SDKError } from '@lousho/build-ai-agent';
 
 try {
   await createAgent({ provider, instructions: 'Be brief.' }).send('hi');
 } catch (error) {
-  if (error instanceof SDKError && error.code === 'LOUSHY_SESSION_AWAITING_APPROVAL') {
+  if (error instanceof SDKError && error.code === 'LOUSHO_SESSION_AWAITING_APPROVAL') {
     console.log(error.hint, error.docs);
   } else {
     throw error;
@@ -42,7 +42,7 @@ are internal and listed in `src/utils/plainErrors.test.ts` with the reason for e
 
 ## Configuration
 
-### LOUSHY_CONFIG_INVALID
+### LOUSHO_CONFIG_INVALID
 
 **Means:** an option or argument has a value the SDK cannot use. This is the
 default code of `ConfigurationError`; `error.field` names the option when known.
@@ -52,21 +52,21 @@ default code of `ConfigurationError`; `error.field` names the option when known.
 **Example:** `withFallback([])` throws "withFallback() needs at least one provider".
 `new NodeWorkspace({ root })` with a missing or non-directory root, a duplicate tool
 name in a `ToolRegistry`, a bad `toolConcurrency`, `serveMcp()` without a `name`
-and `loushy studio` without Agent Forge's files are the same code.
+and `lousho studio` without Agent Forge's files are the same code.
 
-### LOUSHY_CONFIG_MISSING_PROVIDER
+### LOUSHO_CONFIG_MISSING_PROVIDER
 
 **Means:** there is no model to run: `createAgent()` got no `model` or
 `provider` and found nothing in the environment, or `AgentExecutor.execute()` /
 `stream()` got no `provider`.
 
 **Fix:** pass `model: 'openai/gpt-4o-mini'` (any `<provider>/<model>`), pass a
-`provider` instance, or set `LOUSHY_MODEL` or a provider key such as
+`provider` instance, or set `LOUSHO_MODEL` or a provider key such as
 `OPENAI_API_KEY`. See [Providers](./providers.md).
 
 **Example:** `createAgent({ instructions: 'x' })` with no provider env var set.
 
-### LOUSHY_CONFIG_MISSING_AGENT
+### LOUSHO_CONFIG_MISSING_AGENT
 
 **Means:** `AgentExecutor.execute()` / `stream()` was called without `agent`.
 
@@ -75,7 +75,7 @@ use `createAgent()`, which needs no separate agent object.
 
 **Example:** `AgentExecutor.execute({ input: 'hi', provider })`.
 
-### LOUSHY_CONFIG_MISSING_INPUT
+### LOUSHO_CONFIG_MISSING_INPUT
 
 **Means:** `AgentExecutor.execute()` / `stream()` was called without `input`.
 
@@ -83,7 +83,7 @@ use `createAgent()`, which needs no separate agent object.
 
 **Example:** `AgentExecutor.execute({ agent, provider })`.
 
-### LOUSHY_CONFIG_CONFLICTING_OPTIONS
+### LOUSHO_CONFIG_CONFLICTING_OPTIONS
 
 **Means:** two options that mean the same thing were both given.
 
@@ -92,7 +92,7 @@ keep `instructions`.
 
 **Example:** `createAgent({ provider, instructions: 'a', prompt: 'b' })`.
 
-### LOUSHY_CONFIG_MISSING_CHECKPOINT_STORE
+### LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE
 
 **Means:** `send()` or `stream()` got a `sessionId`, which makes the run
 durable, but the agent has no checkpoint store.
@@ -103,7 +103,7 @@ durable, but the agent has no checkpoint store.
 
 **Example:** `createAgent({ provider }).send('hi', { sessionId: 'job-1' })`.
 
-### LOUSHY_CONFIG_RESOLVER_FAILED
+### LOUSHO_CONFIG_RESOLVER_FAILED
 
 **Means:** a `createAgent()` option given as a function of the run (`model`,
 `instructions` / `prompt` or `tools`) threw while the run's config was being
@@ -118,7 +118,7 @@ names the option and `error.cause` is what the function threw.
 
 ## Providers and peers
 
-### LOUSHY_PROVIDER_SPEC_INVALID
+### LOUSHO_PROVIDER_SPEC_INVALID
 
 **Means:** a model string is not `<provider>/<model>`.
 
@@ -127,7 +127,7 @@ names the option and `error.cause` is what the function threw.
 
 **Example:** `resolveProvider('gpt-4o')`.
 
-### LOUSHY_PROVIDER_UNKNOWN
+### LOUSHO_PROVIDER_UNKNOWN
 
 **Means:** the provider prefix of a model string is not one the SDK knows. The
 message lists the supported prefixes and suggests the closest one.
@@ -137,7 +137,7 @@ or pass your own `provider` instance.
 
 **Example:** `createAgent({ model: 'opnai/gpt-4o' })` says "Did you mean 'openai/gpt-4o'?".
 
-### LOUSHY_PROVIDER_MISSING_API_KEY
+### LOUSHO_PROVIDER_MISSING_API_KEY
 
 **Means:** the provider's credential env var (`OPENAI_API_KEY`,
 `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`) is not set.
@@ -146,7 +146,7 @@ or pass your own `provider` instance.
 
 **Example:** `createAgent({ model: 'openai/gpt-4o-mini' })` without `OPENAI_API_KEY`.
 
-### LOUSHY_PROVIDER_REQUEST_FAILED
+### LOUSHO_PROVIDER_REQUEST_FAILED
 
 **Means:** a model call failed (`LLMProviderError`, and
 `CompactedLLMProviderError`, whose `compacted.category` says why:
@@ -159,7 +159,7 @@ transient failures, use `withRetry()` / `fallbackModels`
 
 **Example:** a 401 from the provider with a revoked key.
 
-### LOUSHY_PROVIDER_RATE_LIMITED
+### LOUSHO_PROVIDER_RATE_LIMITED
 
 **Means:** a `RateLimitError`: the provider throttled the caller.
 
@@ -168,7 +168,7 @@ send fewer requests.
 
 **Example:** a 429 response.
 
-### LOUSHY_PEER_MISSING
+### LOUSHO_PEER_MISSING
 
 **Means:** a feature needs an optional package that is not installed
 (`MissingPeerDependencyError`, or a provider's SDK such as `@ai-sdk/openai`).
@@ -181,7 +181,7 @@ send fewer requests.
 
 ## Agent spec files
 
-### LOUSHY_SPEC_INVALID
+### LOUSHO_SPEC_INVALID
 
 **Means:** `loadSpec()` found fields that fail validation. Each problem is
 listed as `'<path>': <problem>`, plus any top-level field that looks like a
@@ -195,7 +195,7 @@ typo, with a suggestion.
 loadSpec: 'agent.yaml' failed validation - 'prompt': AgentSpec validation failed: missing required field 'prompt'; unknown field 'promt' (did you mean 'prompt'?)
 ```
 
-### LOUSHY_SPEC_UNKNOWN_FIELD
+### LOUSHO_SPEC_UNKNOWN_FIELD
 
 **Means:** the spec is otherwise valid, but a top-level field is a likely typo
 of a spec field and would be ignored. Other unknown fields are still ignored.
@@ -204,7 +204,7 @@ of a spec field and would be ignored. Other unknown fields are still ignored.
 
 **Example:** `tool: [http]` gives "unknown field 'tool' (did you mean 'tools'?)".
 
-### LOUSHY_SPEC_UNSUPPORTED_FORMAT
+### LOUSHO_SPEC_UNSUPPORTED_FORMAT
 
 **Means:** the spec file's extension is not `.yaml`, `.yml` or `.json`.
 
@@ -214,7 +214,7 @@ of a spec field and would be ignored. Other unknown fields are still ignored.
 
 ## Tools
 
-### LOUSHY_TOOL_NOT_FOUND
+### LOUSHO_TOOL_NOT_FOUND
 
 **Means:** a spec's `tools` entry names a tool that is not a built-in tool.
 
@@ -223,7 +223,7 @@ of a spec field and would be ignored. Other unknown fields are still ignored.
 
 **Example:** `tools: [not-a-real-tool]` in a spec.
 
-### LOUSHY_TOOL_NEEDS_CREDENTIALS
+### LOUSHO_TOOL_NEEDS_CREDENTIALS
 
 **Means:** a spec names a tool (`github`, `jira`) that needs credentials an
 agent spec has no field for.
@@ -233,7 +233,7 @@ from `createGitHubTools(config)`.
 
 **Example:** `tools: [github]` in a spec.
 
-### LOUSHY_TOOL_EXECUTION_FAILED
+### LOUSHO_TOOL_EXECUTION_FAILED
 
 **Means:** a `ToolExecutionError` (or subclass, such as
 `ToolArgumentsValidationError`). Inside a run the model gets it as a tool
@@ -247,7 +247,7 @@ input it was given.
 a failed call; their message is the tool's result, so it carries no appended
 `[code] hint (docs)` line.
 
-### LOUSHY_TOOL_ARGS_INVALID
+### LOUSHO_TOOL_ARGS_INVALID
 
 **Means:** the model called a tool with arguments that do not match its input
 schema (a `ToolArgumentsValidationError`). Inside a run the model gets the
@@ -261,7 +261,7 @@ text clearer. `error.issues` lists each path and problem. See [Tools](./tools.md
 
 ## Approvals and sessions
 
-### LOUSHY_APPROVAL_STORE_MISSING
+### LOUSHO_APPROVAL_STORE_MISSING
 
 **Means:** a tool that `needsApproval` was called in an
 `AgentExecutor.execute()` run that has no `approvalStore` to pause in.
@@ -273,7 +273,7 @@ store), or use `createAgent()`, which has one by default. See
 **Example:** `AgentExecutor.execute({ agent, input, provider, toolRegistry })`
 with a `needsApproval` tool.
 
-### LOUSHY_APPROVAL_NOT_FOUND
+### LOUSHO_APPROVAL_NOT_FOUND
 
 **Means:** `resumeAfterApproval()` or `agent.approvals.resolve()` got an id that
 is not pending: unknown, or already resolved.
@@ -283,7 +283,7 @@ paused result); each approval resolves once.
 
 **Example:** calling `agent.approvals.resolve({ id, approved: true })` twice.
 
-### LOUSHY_SESSION_AWAITING_APPROVAL
+### LOUSHO_SESSION_AWAITING_APPROVAL
 
 **Means:** a `SessionAwaitingApprovalError`: the session or `sessionId` run is
 paused on an approval (`error.approvalId`), so it cannot take new input yet.
@@ -294,7 +294,7 @@ paused on an approval (`error.approvalId`), so it cannot take new input yet.
 
 **Example:** `session.send('next')` while the previous turn waits on an approval.
 
-### LOUSHY_SESSION_ID_INVALID
+### LOUSHO_SESSION_ID_INVALID
 
 **Means:** a session id is not 1-128 characters of letters, digits, `_` and
 `-` (ids become file names, so `../` and `/` are refused).
@@ -303,7 +303,7 @@ paused on an approval (`error.approvalId`), so it cannot take new input yet.
 
 **Example:** `agent.session({ id: '../etc' })`.
 
-### LOUSHY_SESSION_FILE_CORRUPT
+### LOUSHO_SESSION_FILE_CORRUPT
 
 **Means:** a `FileSessionStore` file is not a JSON array of messages.
 
@@ -311,14 +311,14 @@ paused on an approval (`error.approvalId`), so it cannot take new input yet.
 
 **Example:** `sessions/user-42.json` containing `{}`.
 
-### LOUSHY_SESSION_BUSY
+### LOUSHO_SESSION_BUSY
 
 **Means:** `session.compact()` or `session.clear()` was called while a turn of
 that session is running or queued.
 
 **Fix:** await the turn's `send()` (or abort it), then call again.
 
-### LOUSHY_SESSION_TURN_PENDING
+### LOUSHO_SESSION_TURN_PENDING
 
 **Means:** `session.compact()` was called while a durable session has an
 interrupted turn, whose checkpoint is keyed by the transcript length.
@@ -326,7 +326,7 @@ interrupted turn, whose checkpoint is keyed by the transcript length.
 **Fix:** finish it with `session.resume()` or drop it with
 `session.discardPending()`, then call again.
 
-### LOUSHY_SESSION_STREAM_UNSUPPORTED
+### LOUSHO_SESSION_STREAM_UNSUPPORTED
 
 **Means:** `stream()` was called on an `AgentSession` built by hand without a
 streaming runner.
@@ -336,22 +336,22 @@ streaming runner.
 
 **Example:** `new AgentSession(run).stream('hi')`.
 
-### LOUSHY_REMOTE_UNAUTHORIZED
+### LOUSHO_REMOTE_UNAUTHORIZED
 
-**Means:** `loushy eval --url`, `remoteTarget()` or a `remoteAgent()` sub-agent
+**Means:** `lousho eval --url`, `remoteTarget()` or a `remoteAgent()` sub-agent
 got `401` from the deployed agent: the bearer token is missing or wrong. An eval
 case fails (the run goes on); the lead model gets a structured tool error. The
 token is never part of the message.
 
-**Fix:** pass the deployment's `LOUSHY_API_TOKEN` with `--token` or the
-`LOUSHY_EVAL_TOKEN` environment variable. See
+**Fix:** pass the deployment's `LOUSHO_API_TOKEN` with `--token` or the
+`LOUSHO_EVAL_TOKEN` environment variable. See
 [Run evals against a deployment](./evals.md#run-evals-against-a-deployment).
 
-**Example:** `loushy eval --url https://agent.example.com` against a deployment with a token set.
+**Example:** `lousho eval --url https://agent.example.com` against a deployment with a token set.
 
-### LOUSHY_REMOTE_REQUEST_FAILED
+### LOUSHO_REMOTE_REQUEST_FAILED
 
-**Means:** a remote eval case (`loushy eval --url`, `remoteTarget()`) or a
+**Means:** a remote eval case (`lousho eval --url`, `remoteTarget()`) or a
 `remoteAgent()` task could not run: the deployment was unreachable, answered
 with a non-2xx status, was aborted, or its event stream broke or was truncated
 (no `run.done`). A `remoteAgent()` task whose remote run ends in an error also
@@ -362,9 +362,9 @@ of it.
 **Fix:** read the message (it names the url and, for a sub-agent, the remote
 session id); check the URL, `GET <url>/health` and the deployment's logs.
 
-**Example:** `loushy eval --url http://localhost:1` with nothing listening.
+**Example:** `lousho eval --url http://localhost:1` with nothing listening.
 
-### LOUSHY_SUBAGENT_TASK_NOT_FOUND
+### LOUSHO_SUBAGENT_TASK_NOT_FOUND
 
 **Means:** a `task` call asked to resume or fork a `taskId` that this lead
 session has no conversation for (never started, started in another lead
@@ -378,7 +378,7 @@ session, with the same `agent`; or omit `taskId` to start a new task. See
 **Example:** `task({ agent: 'researcher', taskId: 'task_7', prompt })` when the
 session has only `task_1`.
 
-### LOUSHY_SUBAGENT_TASK_BUSY
+### LOUSHO_SUBAGENT_TASK_BUSY
 
 **Means:** a `task` call asked to resume or fork a task whose sub-agent is
 still running, for example a background task that has not ended.
@@ -389,7 +389,7 @@ then continue it.
 **Example:** `task({ agent: 'researcher', taskId: 'task_1', prompt })` right
 after starting `task_1` with `background: true`.
 
-### LOUSHY_CHECKPOINT_NOT_FOUND
+### LOUSHO_CHECKPOINT_NOT_FOUND
 
 **Means:** `AgentExecutor.fork()` or `agent.fork()` was asked for a step the
 session's checkpoint history does not have: the session is unknown, the step
@@ -401,7 +401,7 @@ See [Durable execution](./durable-execution.md#fork-and-replay).
 
 **Example:** `agent.fork('job-1', { fromStep: 9 })` after a 3-step run.
 
-### LOUSHY_AGENT_DRIFT
+### LOUSHO_AGENT_DRIFT
 
 **Means:** a paused or interrupted run was resumed by an agent that differs
 from the one that saved it, and `onAgentDrift` is `'error'`. The message names
@@ -416,7 +416,7 @@ checkpoint (and, for an approval, the pending record) is left as it was.
 **Example:** `createAgent({ store, onAgentDrift: 'error' })` after a deploy that
 renamed a tool, then `agent.resume('job-1')`.
 
-### LOUSHY_RESUME_TOOL_MISSING
+### LOUSHO_RESUME_TOOL_MISSING
 
 **Means:** a resumed run is waiting on a tool call (an approved call, or a call
 of the model's last turn that has no result yet) whose tool the resuming agent
@@ -430,7 +430,7 @@ its checkpoint, reject its approval). See
 **Example:** a run paused on `charge_card`, then a deploy removes that tool and
 `agent.approvals.resolve({ id, approved: true })` is called.
 
-### LOUSHY_RUN_ALREADY_ITERATED
+### LOUSHO_RUN_ALREADY_ITERATED
 
 **Means:** an `AgentRun` from `session.stream()` was iterated a second time.
 
@@ -441,7 +441,7 @@ again for a new run. See [Streaming](./streaming.md).
 
 ## Schedules
 
-### LOUSHY_SCHEDULE_INVALID
+### LOUSHO_SCHEDULE_INVALID
 
 **Means:** `defineSchedule()` was given an invalid definition: a cron expression
 that does not parse (the message names the field), or not exactly one of
@@ -454,7 +454,7 @@ See [Schedules](./schedules.md).
 
 ## Channels
 
-### LOUSHY_CHANNEL_INVALID
+### LOUSHO_CHANNEL_INVALID
 
 **Means:** a file in an agent directory's `channels/` folder does not default-export
 a channel (an object with `parse` and `reply`). The message names the file.
@@ -464,7 +464,7 @@ a channel (an object with `parse` and `reply`). The message names the file.
 
 **Example:** `export default { cron: 'x' }` in `channels/sms.ts`.
 
-### LOUSHY_MEMORY_INVALID
+### LOUSHO_MEMORY_INVALID
 
 **Means:** a file in an agent directory's `memory/` folder does not default-export
 a memory slot (an object with a `scope` and a `provider`). The message names the file.
@@ -476,27 +476,27 @@ a memory slot (an object with a `scope` and a `provider`). The message names the
 
 ## Registry
 
-### LOUSHY_REGISTRY_UNREACHABLE
+### LOUSHO_REGISTRY_UNREACHABLE
 
-**Means:** `loushy add` could not read a registry document: the URL did not answer
+**Means:** `lousho add` could not read a registry document: the URL did not answer
 in time or returned an error, the local file is missing, the scheme is not `http(s)`
 or the document is larger than the cap.
 
-**Fix:** check the `--registry` value (or `LOUSHY_REGISTRY`) and your connection.
+**Fix:** check the `--registry` value (or `LOUSHO_REGISTRY`) and your connection.
 See [Registry](./registry.md).
 
-**Example:** `loushy add x --registry https://example.invalid/index.json`.
+**Example:** `lousho add x --registry https://example.invalid/index.json`.
 
-### LOUSHY_REGISTRY_ITEM_NOT_FOUND
+### LOUSHO_REGISTRY_ITEM_NOT_FOUND
 
 **Means:** the registry's index has no item with that name. The message suggests the
 closest name when there is one.
 
-**Fix:** run `loushy add --list` and use one of the names.
+**Fix:** run `lousho add --list` and use one of the names.
 
-**Example:** `loushy add web-serach` when the item is `web-search`.
+**Example:** `lousho add web-serach` when the item is `web-search`.
 
-### LOUSHY_REGISTRY_INVALID
+### LOUSHO_REGISTRY_INVALID
 
 **Means:** a registry index or item document is not valid JSON or does not match the
 format (a missing field, an unknown item type, an item whose document names another item).
@@ -505,7 +505,7 @@ format (a missing field, an unknown item type, an item whose document names anot
 
 **Example:** an item document without `files`.
 
-### LOUSHY_REGISTRY_UNSAFE_PATH
+### LOUSHO_REGISTRY_UNSAFE_PATH
 
 **Means:** an item asks to write a file that is absolute, has `..`, backslashes or a
 drive letter, is outside the folder its type may write to, resolves outside the agent
@@ -516,17 +516,17 @@ See [Registry](./registry.md#safety-rules).
 
 **Example:** a tool item with a file `../../.bashrc`.
 
-### LOUSHY_REGISTRY_FILE_EXISTS
+### LOUSHO_REGISTRY_FILE_EXISTS
 
 **Means:** a file the item would write already exists. Nothing was written.
 
 **Fix:** pass `--overwrite`, or move your file away first.
 
-**Example:** `loushy add web-search` twice.
+**Example:** `lousho add web-search` twice.
 
 ## Sandbox
 
-### LOUSHY_SANDBOX_EGRESS_UNSUPPORTED
+### LOUSHO_SANDBOX_EGRESS_UNSUPPORTED
 
 **Means:** a `SubprocessSandbox` with `network: { allow }` and a `broker` cannot make
 the credential broker the container's only route out on this Docker daemon, so it
@@ -543,9 +543,9 @@ than 25.0.5, which forwards DNS from internal networks.
 
 ## Agent directories, skills and flows
 
-### LOUSHY_AGENT_DIR_INVALID
+### LOUSHO_AGENT_DIR_INVALID
 
-**Means:** `loadAgentDir()` (or `loushy dev`, `loushy build`, which use it) could
+**Means:** `loadAgentDir()` (or `lousho dev`, `lousho build`, which use it) could
 not load a directory: it is missing or unreadable, a file is empty, a `tools/`
 file has no usable export, a config file does not parse, or a sub-agent folder is
 malformed. The message names the file.
@@ -554,7 +554,7 @@ malformed. The message names the file.
 
 **Example:** `loadAgentDir('./agents/support')` where `instructions.md` is empty.
 
-### LOUSHY_SKILL_INVALID
+### LOUSHO_SKILL_INVALID
 
 **Means:** a skill is malformed (`defineSkill()`, a `skills/` folder) or
 `withSkills()` was given duplicate names, or a skill name that collides with the
@@ -565,7 +565,7 @@ malformed. The message names the file.
 
 **Example:** `defineSkill({ name: 'x', description: '', content: '...' })`.
 
-### LOUSHY_FLOW_INVALID
+### LOUSHO_FLOW_INVALID
 
 **Means:** a flow definition is wrong: a missing or duplicate input name, a
 missing flow name or code, or a node of an unknown type.
@@ -576,7 +576,7 @@ missing flow name or code, or a node of an unknown type.
 
 ## Storage, deployment and integrations
 
-### LOUSHY_STORAGE_FAILED
+### LOUSHO_STORAGE_FAILED
 
 **Means:** storage failed: a SQLite database could not be opened (the `cause`
 has the driver's error), was used after `close()`, has a newer schema than this
@@ -587,7 +587,7 @@ file-based store), and create a new store after closing one.
 
 **Example:** `new SqliteStore('/read-only/agent.db')`.
 
-### LOUSHY_TRIGGER_INVALID
+### LOUSHO_TRIGGER_INVALID
 
 **Means:** a trigger adapter got invalid options: a cron adapter without exactly
 one of `intervalMs` / `cron`, a webhook `auth` block with an empty secret or an
@@ -597,7 +597,7 @@ unknown type, or a Slack trigger that cannot verify requests.
 
 **Example:** `webhookTrigger({ auth: { type: 'hmac', secret: '' } })`.
 
-### LOUSHY_CHANNEL_REQUEST_FAILED
+### LOUSHO_CHANNEL_REQUEST_FAILED
 
 **Means:** a call to a chat platform's API (Slack, Discord) failed; the message
 names the call and the HTTP status or the platform's error.
@@ -606,20 +606,20 @@ names the call and the HTTP status or the platform's error.
 
 **Example:** Slack `chat.postMessage` answering `channel_not_found`.
 
-### LOUSHY_DEPLOY_FAILED
+### LOUSHO_DEPLOY_FAILED
 
-**Means:** `loushy build` / `loushy dev` / the node-server runtime could not
+**Means:** `lousho build` / `lousho dev` / the node-server runtime could not
 bundle or start the agent: a missing `--agent`, an agent path that is not found
-or not an agent directory, a bad `LOUSHY_STORE` value, missing runtime sources, or a tool the
+or not an agent directory, a bad `LOUSHO_STORE` value, missing runtime sources, or a tool the
 Cloudflare Worker target does not have.
 
 **Fix:** follow the message. See [Deployment](./deployment.md).
 
-**Example:** `loushy build --target node-server` without `--agent`.
+**Example:** `lousho build --target node-server` without `--agent`.
 
 ## Tests and evals
 
-### LOUSHY_EVALS_INVALID
+### LOUSHO_EVALS_INVALID
 
 **Means:** an eval helper was used wrongly: `defineEval()` outside vitest,
 `t.judge()` before `t.send()` or without a judge, or `llmJudge()` outside the
@@ -629,7 +629,7 @@ judge runner.
 
 **Example:** calling `t.judge('polite')` before `t.send('hi')`.
 
-### LOUSHY_TEST_FAILED
+### LOUSHO_TEST_FAILED
 
 **Means:** a check a test helper makes did not hold: an eval did not pass, or a
 `mockModel()` script still had unused turns at the end.
@@ -638,19 +638,19 @@ judge runner.
 
 **Example:** `mockModel([...three turns])` where the agent stopped after two.
 
-### LOUSHY_CASSETTE_INVALID
+### LOUSHO_CASSETTE_INVALID
 
 **Means:** a record/replay cassette is missing, is not valid JSON or does not
 match the recorded request. The message names the file.
 
-**Fix:** record it again (`loushy eval --record <file>`, or `recordReplay()` with
+**Fix:** record it again (`lousho eval --record <file>`, or `recordReplay()` with
 `mode: 'record'`). See [Testing](./testing.md).
 
-**Example:** `loushy eval --replay` for an eval that was never recorded.
+**Example:** `lousho eval --replay` for an eval that was never recorded.
 
 ## General
 
-### LOUSHY_GENERIC_ERROR
+### LOUSHO_GENERIC_ERROR
 
 **Means:** an `SDKError` created without a code.
 
@@ -658,7 +658,7 @@ match the recorded request. The message names the file.
 
 **Example:** `new SDKError('Something failed')`.
 
-### LOUSHY_AGENT_EXECUTION_FAILED
+### LOUSHO_AGENT_EXECUTION_FAILED
 
 **Means:** an `AgentExecutionError`: running an agent failed.
 
@@ -666,7 +666,7 @@ match the recorded request. The message names the file.
 
 **Example:** `new AgentExecutionError('Agent failed', agentId, cause)`.
 
-### LOUSHY_FLOW_EXECUTION_FAILED
+### LOUSHO_FLOW_EXECUTION_FAILED
 
 **Means:** a `FlowExecutionError`: a flow step failed.
 
@@ -674,7 +674,7 @@ match the recorded request. The message names the file.
 
 **Example:** a flow step whose agent threw.
 
-### LOUSHY_VALIDATION_FAILED
+### LOUSHO_VALIDATION_FAILED
 
 **Means:** a `ValidationError`: input failed validation.
 
@@ -682,7 +682,7 @@ match the recorded request. The message names the file.
 
 **Example:** `new ValidationError('Validation failed', { email: ['Invalid email'] })`.
 
-### LOUSHY_OPERATION_TIMEOUT
+### LOUSHO_OPERATION_TIMEOUT
 
 **Means:** a `TimeoutError`: an operation (`error.operation`) did not finish
 within `error.timeoutMs`.
@@ -691,7 +691,7 @@ within `error.timeoutMs`.
 
 **Example:** `retryWithTimeout()` whose operation takes longer than its timeout.
 
-### LOUSHY_OUTPUT_INVALID
+### LOUSHO_OUTPUT_INVALID
 
 **Means:** reserved. An invalid structured-output reply is not thrown today: the
 run ends with `finishReason: 'output-invalid'` and `outputError`.
@@ -700,7 +700,7 @@ run ends with `finishReason: 'output-invalid'` and `outputError`.
 
 **Example:** a reply that does not match `output: zodSchema` after the repair step.
 
-### LOUSHY_BUDGET_EXCEEDED
+### LOUSHO_BUDGET_EXCEEDED
 
 **Means:** a run's or a session's `limits` budget (`maxTokens`, `maxCostUsd`,
 `maxDurationMs`, ...) tripped under `onExceeded: 'throw'`. `BudgetExceededError`
@@ -713,7 +713,7 @@ See [Budgets](./configuration.md#budgets).
 
 **Example:** `createAgent({ provider, limits: { maxCostUsd: 0.01, onExceeded: 'throw' } })` whose run costs more than a cent.
 
-### LOUSHY_GUARDRAIL_TRIPPED
+### LOUSHO_GUARDRAIL_TRIPPED
 
 **Means:** an input, output or tool guardrail blocked a run under
 `onTripped: 'throw'`. `GuardrailError` carries

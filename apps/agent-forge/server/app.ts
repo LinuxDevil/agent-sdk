@@ -30,8 +30,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
-import { ConfigurationError, SDKError, type AgentSpec, type ForkPatch } from '@loushy/build-ai-agent';
-import { TriggerRegistry } from '@loushy/build-ai-agent/triggers';
+import { ConfigurationError, SDKError, type AgentSpec, type ForkPatch } from '@lousho/build-ai-agent';
+import { TriggerRegistry } from '@lousho/build-ai-agent/triggers';
 import type { AgentStore } from '../src/persistence/AgentStore';
 import {
   RunManager,
@@ -50,7 +50,7 @@ import { DEPLOY_ADAPTERS, isDeployAdapter, runDeploy } from './deployRunner';
 export interface CreateAppOptions {
   agentStore: AgentStore;
   runManager: RunManager;
-  /** Directory `.loushy/**` lives under - same `baseDir` the server was started with. Required for R1/R2/R3's routes. */
+  /** Directory `.lousho/**` lives under - same `baseDir` the server was started with. Required for R1/R2/R3's routes. */
   baseDir: string;
   /** R1: defaults to `new SecretsStore(baseDir)` when omitted. */
   secretsStore?: SecretsStore;
@@ -60,7 +60,7 @@ export interface CreateAppOptions {
    * S1 (LOU-S): directory holding the pre-built Agent Forge client (the
    * output of `vite build`, normally `apps/agent-forge/dist`). When set and
    * it actually contains an `index.html`, this server serves it as static
-   * files plus a SPA fallback, so `loushy studio --prod` can serve the whole
+   * files plus a SPA fallback, so `lousho studio --prod` can serve the whole
    * app - API and UI - from this one Express server/port instead of needing
    * a separate Vite dev server process. Omitted (or pointing at a directory
    * without a build) in dev mode, where the real Vite dev server (with HMR)
@@ -262,7 +262,7 @@ function registerTimeTravelRoutes(app: Express, runManager: RunManager): void {
         respondWithMappedError(res, error, [
           [AgentNotFoundError, 404],
           [ConfigurationError, 400],
-          [SDKError, 404], // LOUSHY_CHECKPOINT_NOT_FOUND: no checkpoint at that step
+          [SDKError, 404], // LOUSHO_CHECKPOINT_NOT_FOUND: no checkpoint at that step
         ]);
       }
     })

@@ -1,8 +1,8 @@
-# Feature audit: @loushy/build-ai-agent (1.0.0-alpha.8)
+# Feature audit: @lousho/build-ai-agent (1.0.0-alpha.8)
 
 Read-only audit of the code at `E:\agent-sdk`, HEAD `1d733ae` (LOU-T5). Method: reading source, README/docs, and grep. One throwaway probe (an `ai` v4 `MockLanguageModelV1` run from a temp file, deleted afterwards) confirmed headline defect 2. No test suites were run. Status key: real = works end to end, partial = works with material holes, stub = exists but not wired or functional, missing = absent.
 
-Note on repo state: at audit time `git status` showed uncommitted edits to `package.json`, `package-lock.json`, `apps/agent-forge/package.json`, `bin/loushy.js`, `packages/create-loushy-agent/bin/cli.js`, and an untracked `.fallowrc.json`. These are not from this audit (it only wrote this file). Something else is editing the tree concurrently.
+Note on repo state: at audit time `git status` showed uncommitted edits to `package.json`, `package-lock.json`, `apps/agent-forge/package.json`, `bin/lousho.js`, `packages/create-lousho-agent/bin/cli.js`, and an untracked `.fallowrc.json`. These are not from this audit (it only wrote this file). Something else is editing the tree concurrently.
 
 Size: about 18.2k non-test lines in `src/`, 71 test files and about 807 `it`/`test` cases in `src/`, plus 24 test files in `apps/agent-forge`. Coverage floors are low (statements and lines 61%). The measured baseline in `vitest.config.ts` is 71% statements, 82% branches.
 
@@ -80,7 +80,7 @@ Tests: `ToolRegistry.test.ts`, `http.test.ts`, `github.test.ts`, `jira.test.ts`,
 
 Status: **partial (client tools only)**.
 
-Files: `McpToolLoader.ts` (`loadMcpTools(client, connectionName)`), `schema.ts` (`jsonSchemaToZod`), exported at `@loushy/build-ai-agent/mcp`.
+Files: `McpToolLoader.ts` (`loadMcpTools(client, connectionName)`), `schema.ts` (`jsonSchemaToZod`), exported at `@lousho/build-ai-agent/mcp`.
 ```ts
 const tools = await loadMcpTools(mcpClient, 'linear');   // Record<`${conn}__${tool}`, ToolDescriptor>
 registry.registerMany(tools);
@@ -90,7 +90,7 @@ registry.registerMany(tools);
 - The `callTool` result is returned raw: no `isError` handling, no content-block flattening (text, image, resource), no output-schema use.
 - No MCP resources or prompts, sampling, elicitation or auth. MCP tool annotations (`destructiveHint`, `readOnlyHint`) are ignored, so there is no approval default for destructive tools.
 - **No MCP server mode** (cannot expose an agent or its tools as an MCP server).
-- The README documents an import path (`@loushy/build-ai-agent/tools/mcp/McpToolLoader`) that is not in `package.json` `exports`. The working paths are `/mcp` or the root.
+- The README documents an import path (`@lousho/build-ai-agent/tools/mcp/McpToolLoader`) that is not in `package.json` `exports`. The working paths are `/mcp` or the root.
 
 Tests: `McpToolLoader.test.ts`, `loadMcpTools.test.ts`, `schema.test.ts` (mocked `Client`; no real-server integration test).
 
@@ -170,7 +170,7 @@ Guardrails (`src/execution/guardrails.ts`): **real but narrow and mis-scoped.** 
 Security and sandbox:
 - `SandboxAdapter` (`sandboxCore.ts`), `NoopSandbox` (zero isolation, the default), `SubprocessSandbox` (`sandbox.ts`; **it is actually Docker via `dockerode`**, so the name misleads). Fail-closed when `requiresSandbox` is set without `sandboxExecute`. Real and tested, but opt-in per tool, so nothing is sandboxed by default.
 - `EncryptionUtils`, `DTOEncryptionFilter`, `sha256` (`crypto.ts`): real (random salt after a breaking change). Only tangentially relevant to agents.
-- The `http` tool has an SSRF denylist. `loushy dev` caps request bodies at 1 MB.
+- The `http` tool has an SSRF denylist. `lousho dev` caps request bodies at 1 MB.
 - `WebhookTriggerAdapter` binds `0.0.0.0` by default with no auth or signature check (grep: no `secret|hmac|signature|token`). `SlackTriggerAdapter.handleEvent` does no Slack signing-secret verification; that is left to the caller.
 - No permission model (tool allow/deny lists, filesystem or network scopes) and no secret redaction in traces other than `redactContent`.
 - Heavy hard dependency: `dockerode` (with a native ssh2 subtree) is a regular dependency for every consumer.
@@ -191,9 +191,9 @@ Triggers (`src/triggers`, export `/triggers`): **real, shallow.** `TriggerAdapte
 - `CronTriggerAdapter` is **interval-only** (`intervalMs`): no cron expressions, no timezone, no schedule persistence.
 - `WebhookTriggerAdapter` uses node `http` with no auth (section 8).
 - `SlackTriggerAdapter` is a passthrough: it does not subscribe to Slack; the caller feeds `handleEvent()` and replies go via an incoming-webhook URL (no thread replies or Web API).
-- No email, GitHub, queue (SQS, Pub/Sub), file-watch or MCP-notification triggers. A Grafana/Datadog trigger exists only in `examples/ops-pipeline/monitor.ts`. Spec `triggers:` are not instantiated by `loushy dev` or `build`.
+- No email, GitHub, queue (SQS, Pub/Sub), file-watch or MCP-notification triggers. A Grafana/Datadog trigger exists only in `examples/ops-pipeline/monitor.ts`. Spec `triggers:` are not instantiated by `lousho dev` or `build`.
 
-Deploy (`src/deploy`, `loushy build --target=`): **real for 3 targets.**
+Deploy (`src/deploy`, `lousho build --target=`): **real for 3 targets.**
 - `node-server`, `docker` and `cloudflare-worker` adapters generate a bundled server (tsup required at build time; `tsup` is oddly listed as a peer dep of a runtime SDK). The node-server and dev server expose `POST /chat` and `/health` only: **single-turn, no history across requests, no streaming (SSE), no auth, no approval endpoints, no session routes.**
 - Cloudflare: providers `mock/openai/anthropic` only (Ollama and OpenRouter unsupported); tools only `current-date` and `day-name`; checkpointing via an optional KV binding; a bundle-size report against the 64 MB limit. The README roadmap line "currently mock-provider only" is stale (LOU-K3 shipped OpenAI and Anthropic).
 - No Vercel, AWS Lambda, Deno Deploy, Fly or Kubernetes adapters. `bundle.ts`, `runtime.ts`, `runtime.worker.ts` and `specExecution.ts` have no sibling tests (adapter tests cover them partly).
@@ -212,14 +212,14 @@ Observability:
 
 ## 12. CLI, scaffolder, Agent Forge, DX
 
-CLI (`bin/loushy.js` calls `dist/cli/*`): `loushy dev <spec>`, `loushy build --target= --agent= [--out]`, `loushy studio [--port --host --prod|--dev]`.
-- **No** `init`, `run` (one-shot), `chat` (terminal REPL), `eval`, `deploy`, `logs`, `doctor`, `add tool`, or `--help` beyond the usage string. Arg parsing in `bin/loushy.js` is hand-rolled (`rest.find(arg => arg.startsWith('--port'))`), which is fragile.
-- `loushy dev`: hot reload via `fs.watch` on a single file, a stateless `/chat` that calls `agent.send()` per message (**no conversation memory; each message is a new conversation**), no streaming, no tool-call visibility, no approval UI. The chat UI is one static HTML file.
+CLI (`bin/lousho.js` calls `dist/cli/*`): `lousho dev <spec>`, `lousho build --target= --agent= [--out]`, `lousho studio [--port --host --prod|--dev]`.
+- **No** `init`, `run` (one-shot), `chat` (terminal REPL), `eval`, `deploy`, `logs`, `doctor`, `add tool`, or `--help` beyond the usage string. Arg parsing in `bin/lousho.js` is hand-rolled (`rest.find(arg => arg.startsWith('--port'))`), which is fragile.
+- `lousho dev`: hot reload via `fs.watch` on a single file, a stateless `/chat` that calls `agent.send()` per message (**no conversation memory; each message is a new conversation**), no streaming, no tool-call visibility, no approval UI. The chat UI is one static HTML file.
 - A test-only `'stub'` deployment adapter is registered in the production CLI path (`src/cli/build.ts:69`).
 
-Scaffolder (`packages/create-loushy-agent`, v0.1.0): prompts (name, provider, tools), then writes package.json, tsconfig, `src/agent.ts` and `.env.example`. It only knows `openai | anthropic | ollama` (no openrouter) and tool `http` (`github` is left as a TODO comment). **It runs `npm pack` on the SDK from a sibling checkout (`findSdkRoot` = `../../..`) and installs a `file:` tarball**, so it cannot work from a published install. Its `package.json` `files` lists a `templates` directory that does not exist. The SDK is **not on npm** (`npm view @loushy/build-ai-agent` returns 404), yet the README shows an npm badge and `npm install @loushy/build-ai-agent`.
+Scaffolder (`packages/create-lousho-agent`, v0.1.0): prompts (name, provider, tools), then writes package.json, tsconfig, `src/agent.ts` and `.env.example`. It only knows `openai | anthropic | ollama` (no openrouter) and tool `http` (`github` is left as a TODO comment). **It runs `npm pack` on the SDK from a sibling checkout (`findSdkRoot` = `../../..`) and installs a `file:` tarball**, so it cannot work from a published install. Its `package.json` `files` lists a `templates` directory that does not exist. The SDK is **not on npm** (`npm view @lousho/build-ai-agent` returns 404), yet the README shows an npm badge and `npm install @lousho/build-ai-agent`.
 
-Agent Forge (`apps/agent-forge`, a private workspace shipped inside the SDK tarball via `files`): **real, and the most complete product surface.** It has a React Flow canvas (trigger / llm / tool / approval / output / router nodes), `graphToSpec` / `specToGraph` / `graphToFlow`, an Express and WebSocket runtime control server (run, stop, status, approve, debug step/continue), chat with persisted sessions and approval cards, settings (providers, profiles, secrets store, deploy runner), a hook editor with sandboxed hooks, a file-based agent store under `.loushy/`, and Playwright e2e (`e2e/studio.spec.ts`). Limits:
+Agent Forge (`apps/agent-forge`, a private workspace shipped inside the SDK tarball via `files`): **real, and the most complete product surface.** It has a React Flow canvas (trigger / llm / tool / approval / output / router nodes), `graphToSpec` / `specToGraph` / `graphToFlow`, an Express and WebSocket runtime control server (run, stop, status, approve, debug step/continue), chat with persisted sessions and approval cards, settings (providers, profiles, secrets store, deploy runner), a hook editor with sandboxed hooks, a file-based agent store under `.lousho/`, and Playwright e2e (`e2e/studio.spec.ts`). Limits:
 - Router nodes route through `FlowExecutor`, which lacks approvals, checkpoints, hooks and abort (documented in `runRegistry.ts`), so a graph with a router silently loses those features.
 - `runRegistry.ts` is 876 lines.
 - Local single-user only (no auth, multi-tenant or remote). The secrets store is file-based.
@@ -229,7 +229,7 @@ Agent Forge (`apps/agent-forge`, a private workspace shipped inside the SDK tarb
 DX:
 - **Hello-world** is 7 lines (README quickstart):
   ```ts
-  import { createAgent, resolveProvider } from '@loushy/build-ai-agent';
+  import { createAgent, resolveProvider } from '@lousho/build-ai-agent';
   const agent = createAgent({
     prompt: 'You are a helpful customer support assistant.',
     provider: resolveProvider('openai/gpt-4o-mini'),           // reads OPENAI_API_KEY
@@ -251,9 +251,9 @@ DX:
 
 ## 13. TODO / FIXME / placeholder / stub occurrences
 
-Grep over `src`, `apps/agent-forge`, `packages/create-loushy-agent/src`, `bin` and `scripts`: the codebase has almost no TODO or FIXME markers; most gaps are documented in prose. Real hits:
+Grep over `src`, `apps/agent-forge`, `packages/create-lousho-agent/src`, `bin` and `scripts`: the codebase has almost no TODO or FIXME markers; most gaps are documented in prose. Real hits:
 - `apps/agent-forge/src/persistence/fsAgentStore.ts:22`: `TODO(LOU-N): wire this up behind the runtime control server`.
-- `packages/create-loushy-agent/src/template.ts:56-57`: generated `// TODO: wire up the '<tool>' tool (needs credentials)`.
+- `packages/create-lousho-agent/src/template.ts:56-57`: generated `// TODO: wire up the '<tool>' tool (needs credentials)`.
 - `src/execution/guardrails.ts:111`: "Minimal placeholder shape" for `ProposedAction`.
 - `src/flows/FlowExecutor.ts:629`: "In production, use a safe expression evaluator" (above `eval`).
 - `src/templates/TemplateManager.ts:38`: "A very naive approach" (`if` conditions).
@@ -316,4 +316,4 @@ A 277-line tracker created by LOU-B1 that lists pre-existing lint violations int
 14. **Durable execution depth.** Checkpoint after LLM turns, append new input on resume, fix mid-batch approval, add locking and idempotency, and provide production stores beyond local file and Cloudflare KV.
 15. **Testing and eval ergonomics, and docs accuracy.** Add a scripted mock provider (with tool turns), real-provider contract tests, dataset-based evals and OTel GenAI conventions. Fix the README errors (resume arg order, `FlowBuilder`, MCP path). Clear the 421 lint warnings and restore `error` severity.
 
-Honorable mentions: SKILL.md-style skills, handoff and supervisor patterns, webhook auth and signature verification, cron expressions, a `loushy init|run|chat|eval` CLI, and a stateful `loushy dev` chat with streaming.
+Honorable mentions: SKILL.md-style skills, handoff and supervisor patterns, webhook auth and signature verification, cron expressions, a `lousho init|run|chat|eval` CLI, and a stateful `lousho dev` chat with streaming.

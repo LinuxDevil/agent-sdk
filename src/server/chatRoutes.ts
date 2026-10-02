@@ -1,5 +1,5 @@
 /**
- * The `/chat` HTTP API of `loushy dev` and of the deployed node server
+ * The `/chat` HTTP API of `lousho dev` and of the deployed node server
  * (LOU-D32, LOU-D14) on `node:http`. The routes themselves are Fetch-native
  * (fetchRoutes.ts, shared with the Cloudflare Worker, LOU-D51); this file
  * adapts an `IncomingMessage` / `ServerResponse` pair to a `Request` /

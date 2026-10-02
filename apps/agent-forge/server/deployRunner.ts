@@ -1,6 +1,6 @@
 /**
  * LOU-R2: "Deploy this agent" action - actually shells out to the existing
- * `loushy build` CLI command (src/cli/build.ts, invoked via `bin/loushy.js`)
+ * `lousho build` CLI command (src/cli/build.ts, invoked via `bin/lousho.js`)
  * against the currently-selected agent's saved `AgentSpec` file, rather than
  * reimplementing scaffold/build/describe against the `DeploymentAdapter`
  * registry a second time in this server.
@@ -21,9 +21,9 @@ import { agentSpecFilePath } from '../src/persistence/fsAgentStore';
  * (`node-server`, `cloudflare-worker`, `docker`) - hand-kept in sync rather
  * than imported, because that function (and the adapter registry it
  * populates) is an internal wiring helper the SDK's public
- * `@loushy/build-ai-agent` entrypoint doesn't re-export (only the
+ * `@lousho/build-ai-agent` entrypoint doesn't re-export (only the
  * `DeploymentAdapter`/`getAdapter`/`registerAdapter` TYPES are public, via
- * `src/deploy/types.ts`). `loushy build --target=<name>` is still the real
+ * `src/deploy/types.ts`). `lousho build --target=<name>` is still the real
  * source of truth for what's actually buildable - an unknown/stale name
  * here just surfaces as that command's own "unknown target" error in the
  * deploy log panel rather than silently succeeding.
@@ -36,19 +36,19 @@ export function isDeployAdapter(value: string): value is DeployAdapter {
 }
 
 /**
- * Runs `node <repoRoot>/bin/loushy.js build --target=<adapter> --agent=<agentId's saved spec> --out=<repoRoot>/.loushy/build/<adapter>/<agentId>`
+ * Runs `node <repoRoot>/bin/lousho.js build --target=<adapter> --agent=<agentId's saved spec> --out=<repoRoot>/.lousho/build/<adapter>/<agentId>`
  * and resolves once it exits (never rejects - a failing build is a normal,
  * displayable outcome, not an exceptional one, matching `runBuild()`'s own
  * "never throws" contract in src/cli/build.ts).
  *
  * Requires the SDK to have been built (`npm run build` at the repo root, so
- * `dist/cli/build.js` exists) - same prerequisite the `loushy` CLI itself
+ * `dist/cli/build.js` exists) - same prerequisite the `lousho` CLI itself
  * has outside this dev environment.
  */
 export function runDeploy(baseDir: string, agentId: string, adapter: string): Promise<DeployResult> {
-  const cliEntry = path.join(baseDir, 'bin', 'loushy.js');
+  const cliEntry = path.join(baseDir, 'bin', 'lousho.js');
   const agentPath = agentSpecFilePath(baseDir, agentId);
-  const outDir = path.join(baseDir, '.loushy', 'build', adapter, agentId);
+  const outDir = path.join(baseDir, '.lousho', 'build', adapter, agentId);
   const args = ['build', `--target=${adapter}`, `--agent=${agentPath}`, `--out=${outDir}`];
 
   return new Promise((resolve) => {

@@ -134,9 +134,9 @@ describe('handleWorkerRequest', () => {
       spec
     );
 
-  it('serves a session over the AGENT_CHECKPOINTS namespace, with LOUSHY_API_TOKEN from env', async () => {
+  it('serves a session over the AGENT_CHECKPOINTS namespace, with LOUSHO_API_TOKEN from env', async () => {
     const kv = fakeKV();
-    const env = { AGENT_CHECKPOINTS: kv, LOUSHY_API_TOKEN: 'tok' };
+    const env = { AGENT_CHECKPOINTS: kv, LOUSHO_API_TOKEN: 'tok' };
     expect(await (await call(env, '/health')).text()).toBe('ok');
     expect((await call(env, '/chat', { sessionId: 'w1', input: 'hi' })).status).toBe(401);
 

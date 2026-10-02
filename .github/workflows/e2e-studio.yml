@@ -6,7 +6,7 @@ on:
       - 'apps/agent-forge/**'
       - 'src/cli/studio.ts'
       - 'src/cli/studio.test.ts'
-      - 'bin/loushy.js'
+      - 'bin/lousho.js'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/e2e-studio.yml'
@@ -21,13 +21,13 @@ jobs:
           cache: 'npm'
       - run: npm ci
       # The bundled prod server (apps/agent-forge/dist-server/index.cjs)
-      # leaves `@loushy/build-ai-agent` external (see server/tsup.config.ts's
+      # leaves `@lousho/build-ai-agent` external (see server/tsup.config.ts's
       # doc comment) and resolves it at runtime via the workspace symlink -
       # which points at the ROOT package's `dist/` (package.json
       # main/exports), not its `src/`. Verified locally: without this build
       # step, `node dist-server/index.cjs` (what playwright.config.ts's
       # `webServer` runs) fails immediately with `Cannot find module
-      # '.../node_modules/@loushy/build-ai-agent/dist/index.js'`.
+      # '.../node_modules/@lousho/build-ai-agent/dist/index.js'`.
       - run: npm run build
       # Playwright's browser binaries aren't npm dependencies - install the
       # Chromium build (+ OS-level deps) the E2E spec drives separately.

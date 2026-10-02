@@ -3,12 +3,12 @@
 Evals are regression tests for agent *behaviour*: which tools the agent called,
 in what order, with which arguments, how many steps it took, and what it said.
 They are written with `defineEval()`, live in `*.eval.ts` files, run under
-[vitest](https://vitest.dev), and are best run in CI with `loushy eval`, which
+[vitest](https://vitest.dev), and are best run in CI with `lousho eval`, which
 prints a summary and writes JUnit and JSON reports.
 
 ```bash
 npm install --save-dev vitest
-npx loushy eval
+npx lousho eval
 ```
 
 ## Writing a trajectory eval
@@ -22,8 +22,8 @@ for the [judge evals](#judge-evals) below.
 ```ts
 // refund.eval.ts
 import { z } from 'zod';
-import { createAgent, defineEval, defineTool, includes } from '@loushy/build-ai-agent';
-import { mockModel } from '@loushy/build-ai-agent/testing';
+import { createAgent, defineEval, defineTool, includes } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
 
 const lookupOrder = defineTool({
   name: 'lookup_order',
@@ -58,7 +58,7 @@ defineEval({
 
 `defineEval()` also still accepts the original form
 (`{ name, agent, input, provider, score, threshold }`): it keeps working
-unchanged, and its result shows up in `loushy eval` as one `score` assertion.
+unchanged, and its result shows up in `lousho eval` as one `score` assertion.
 
 ### Assertions
 
@@ -101,8 +101,8 @@ any object; its `label` (or `name`, or its `input`) names it.
 
 ```ts
 import { z } from 'zod';
-import { createAgent, defineEval, defineTool } from '@loushy/build-ai-agent';
-import { mockModel } from '@loushy/build-ai-agent/testing';
+import { createAgent, defineEval, defineTool } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
 
 const lookupOrder = defineTool({
   name: 'lookup_order',
@@ -139,14 +139,14 @@ model runs out of turns on the second case.
 ## Judge evals
 
 `t.judge(rubric)` grades the latest reply with an LLM and returns a score from
-0 to 1. It needs a judge provider, and loushy never calls a real LLM unless you
+0 to 1. It needs a judge provider, and lousho never calls a real LLM unless you
 configured one: without `judge`, `t.judge()` throws an error saying how to fix
 it.
 
 ```ts
-// tone.judge.eval.ts: run with `loushy eval --judge`
-import { createAgent, defineEval, atLeast } from '@loushy/build-ai-agent';
-import { mockModel } from '@loushy/build-ai-agent/testing';
+// tone.judge.eval.ts: run with `lousho eval --judge`
+import { createAgent, defineEval, atLeast } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
 
 defineEval({
   name: 'tone',
@@ -161,13 +161,13 @@ defineEval({
 ```
 
 Files named `*.judge.eval.ts` are never picked up by a normal run (and
-`npm test`); only `loushy eval --judge` (or `npm run test:evals:judge` in this
+`npm test`); only `lousho eval --judge` (or `npm run test:evals:judge` in this
 repository) runs them.
 
-## `loushy eval`
+## `lousho eval`
 
 ```text
-loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]]
+lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]]
 ```
 
 | Option | Meaning |
@@ -178,7 +178,7 @@ loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judg
 | `--json path` | write the summary and every structured result as JSON |
 | `--strict` | soft failures fail the run |
 | `--judge` | run `*.judge.eval.ts` files instead of the normal ones |
-| `--url base` | run every case against the deployed agent at `base` instead of in-process; `--token` (or `LOUSHY_EVAL_TOKEN`) is the bearer token. See [Run evals against a deployment](#run-evals-against-a-deployment) |
+| `--url base` | run every case against the deployed agent at `base` instead of in-process; `--token` (or `LOUSHO_EVAL_TOKEN`) is the bearer token. See [Run evals against a deployment](#run-evals-against-a-deployment) |
 | `--config path` | use your own vitest config instead of the generated one |
 | `--record` | run against the real provider and write one cassette per case ([below](#record-replay-and-drift)) |
 | `--replay` | run every case from its cassette, with no network; a missing cassette fails the case |
@@ -194,7 +194,7 @@ vitest itself fails, for example a file that does not load), `2` when it cannot
 run at all (bad arguments, vitest missing), otherwise `0`.
 
 How results are collected: each case appends one JSON line to a file named by
-the `LOUSHY_EVAL_RESULTS` environment variable, which `loushy eval` sets and
+the `LOUSHO_EVAL_RESULTS` environment variable, which `lousho eval` sets and
 reads back. This is more robust than a custom vitest reporter: it works across
 vitest versions and worker pools, and needs no module loaded from your project.
 
@@ -219,7 +219,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci
-      - run: npx loushy eval --junit reports/evals.xml --json reports/evals.json
+      - run: npx lousho eval --junit reports/evals.xml --json reports/evals.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -237,15 +237,15 @@ Run `--tag smoke` on every pull request and the full set nightly; run
 ## Record, replay and drift
 
 An eval against a real model is slow, costs money and needs a key; the same
-eval on `mockModel` only tests the script you wrote. `loushy eval` sits in
+eval on `mockModel` only tests the script you wrote. `lousho eval` sits in
 between: it records each case once against the real provider through
 [`recordReplay`](testing.md#record-and-replay) and replays the recording in CI.
 Your eval files do not change.
 
 ```bash
-npx loushy eval --record        # real provider: writes the cassettes, commit them
-npx loushy eval --replay        # every case from its cassette, no network, no key
-npx loushy eval --drift         # re-record and diff each case's trajectory
+npx lousho eval --record        # real provider: writes the cassettes, commit them
+npx lousho eval --replay        # every case from its cassette, no network, no key
+npx lousho eval --drift         # re-record and diff each case's trajectory
 ```
 
 - **`--record`** runs every case with its agent's real provider and writes one
@@ -260,7 +260,7 @@ npx loushy eval --drift         # re-record and diff each case's trajectory
   `no cassette for "<eval> [<case>]" at ...` and the `--record` command to run;
   when the agent's requests changed, the replayed model call fails with a
   `CassetteMismatchError` naming the first difference. Plain
-  `loushy eval` with `CI` set replays every case that has a cassette and runs the
+  `lousho eval` with `CI` set replays every case that has a cassette and runs the
   rest live; without `CI` it runs live as before.
 - **`--drift`** re-records every case into a temp directory (the committed
   cassettes are not touched) and compares each with its committed cassette:
@@ -279,14 +279,14 @@ refund flow  polite  args   lookup_order {"orderId":"42"}  lookup_order {"orderI
 ```
 
 Run `--drift` nightly or before a model upgrade, and `--replay` (or plain
-`loushy eval` in CI) on every pull request. Judges are not recorded: grade with
+`lousho eval` in CI) on every pull request. Judges are not recorded: grade with
 a real judge only in `*.judge.eval.ts` files.
 
 How it works: the run loop sends every model call (`generate` or `stream`, from
 a plain run, a streamed run, a sub-agent or an approval resume) through one
 provider-interception seam, `setProviderInterceptor()` in
 `src/providers/interception.ts`. Nothing is installed by default, so the seam is
-free. While a case runs under one of these modes, `loushy eval` answers it with
+free. While a case runs under one of these modes, `lousho eval` answers it with
 the provider wrapped by `recordReplay()` for that case's cassette. You can use
 the seam yourself to put any wrapper at the model boundary: the interceptor gets
 the run's provider and returns the one to call (it must return the same wrapper
@@ -295,11 +295,11 @@ for the same provider, and leave a provider it already wrapped alone).
 ## Run evals against a deployment
 
 The same eval file that gates CI in-process can smoke-test a deployed agent (the
-[node server or Cloudflare Worker](./deployment.md#http-api)). Point `loushy eval` at its base
+[node server or Cloudflare Worker](./deployment.md#http-api)). Point `lousho eval` at its base
 URL and every case runs against the deployment instead of the in-process agent:
 
 ```bash
-npx loushy eval --url https://agent.example.com --token "$DEPLOY_TOKEN"   # or LOUSHY_EVAL_TOKEN
+npx lousho eval --url https://agent.example.com --token "$DEPLOY_TOKEN"   # or LOUSHO_EVAL_TOKEN
 ```
 
 Each case gets its own remote session (`POST /chat { sessionId, input }`, one
@@ -314,22 +314,22 @@ and tools the behaviour you want to check.
   example `maxTokens` when `run.done` has no usage); `maxCostUsd` is reported as
   skipped when there is no cost.
 - `--url` cannot be combined with `--record`, `--replay` or `--drift`
-  (`LOUSHY_CONFIG_CONFLICTING_OPTIONS`): cassettes record a provider in-process.
+  (`LOUSHO_CONFIG_CONFLICTING_OPTIONS`): cassettes record a provider in-process.
   Score/threshold evals (`score:` form) also need an in-process provider and fail
   with the same code; use trajectory evals.
 - An unreachable deployment, a non-2xx answer or a truncated stream fails that
-  case with `LOUSHY_REMOTE_REQUEST_FAILED`, and `401` with
-  `LOUSHY_REMOTE_UNAUTHORIZED`; the run goes on. The token is never printed or
+  case with `LOUSHO_REMOTE_REQUEST_FAILED`, and `401` with
+  `LOUSHO_REMOTE_UNAUTHORIZED`; the run goes on. The token is never printed or
   written to a report.
 
 In code, pass a `target` (this overrides `agent`; `--url` overrides both):
 
 ```ts
-import { defineEval, remoteTarget } from '@loushy/build-ai-agent';
+import { defineEval, remoteTarget } from '@lousho/build-ai-agent';
 
 defineEval({
   name: 'deployed refund flow',
-  target: remoteTarget({ url: 'https://agent.example.com', auth: process.env.LOUSHY_EVAL_TOKEN }),
+  target: remoteTarget({ url: 'https://agent.example.com', auth: process.env.LOUSHO_EVAL_TOKEN }),
   async test(t) {
     await t.send('Refund order 42');
     t.completed();

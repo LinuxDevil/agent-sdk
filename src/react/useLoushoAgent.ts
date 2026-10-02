@@ -1,5 +1,5 @@
 /**
- * LOU-D15: `useLoushyAgent()`, a React hook over an agent's typed event
+ * LOU-D15: `useLoushoAgent()`, a React hook over an agent's typed event
  * stream. The state logic lives in the framework-neutral reducer and run
  * logic (src/ui); this file only holds the state in `useReducer`.
  */
@@ -11,14 +11,14 @@ import {
   reduceAgentEvents,
   type AgentCommands,
   type AgentUIState,
-  type LoushyAgentOptions,
-  type LoushyAgentSource,
+  type LoushoAgentOptions,
+  type LoushoAgentSource,
 } from '../ui';
 
-export type { LocalAgentSource, LoushyAgentSource, RemoteAgentSource } from '../ui';
-export type UseLoushyAgentOptions = LoushyAgentOptions;
+export type { LocalAgentSource, LoushoAgentSource, RemoteAgentSource } from '../ui';
+export type UseLoushoAgentOptions = LoushoAgentOptions;
 
-export interface UseLoushyAgentResult extends AgentUIState, AgentCommands {}
+export interface UseLoushoAgentResult extends AgentUIState, AgentCommands {}
 
 /**
  * Chat UI state for an agent: `messages` stream in as the run's events
@@ -28,10 +28,10 @@ export interface UseLoushyAgentResult extends AgentUIState, AgentCommands {}
  *
  * @example
  * ```ts
- * const { messages, status, send } = useLoushyAgent({ url: '/api/agent' });
+ * const { messages, status, send } = useLoushoAgent({ url: '/api/agent' });
  * ```
  */
-export function useLoushyAgent(source: LoushyAgentSource, options: UseLoushyAgentOptions = {}): UseLoushyAgentResult {
+export function useLoushoAgent(source: LoushoAgentSource, options: UseLoushoAgentOptions = {}): UseLoushoAgentResult {
   const [state, dispatch] = useReducer(reduceAgentEvents, initialAgentUIState);
   const latest = useRef({ source, options, state });
   latest.current = { source, options, state };

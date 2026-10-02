@@ -75,7 +75,7 @@ function createWeatherAgent() {
   return AgentBuilder.create()
     .setName('Weather Agent')
     .setPrompt('You are a helpful weather assistant.')
-    // A priced model id, so spans carry `loushy.cost_usd` (the provider is still a mock).
+    // A priced model id, so spans carry `lousho.cost_usd` (the provider is still a mock).
     .setSettings({ model: 'gpt-4o-mini' })
     .addTool('getWeather', { tool: 'getWeather', options: {} })
     .build();

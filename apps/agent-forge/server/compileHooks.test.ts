@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AgentExecutor, NoopSandbox, ToolRegistry, AgentBuilder, createMockProvider } from '@loushy/build-ai-agent';
+import { AgentExecutor, NoopSandbox, ToolRegistry, AgentBuilder, createMockProvider } from '@lousho/build-ai-agent';
 import { compileHooksFromSpecPolicy, isSerializedHookList, type SerializedHook } from './compileHooks';
 
 describe('isSerializedHookList', () => {

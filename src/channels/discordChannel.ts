@@ -61,8 +61,8 @@ export interface DiscordTarget {
 }
 
 const API = 'https://discord.com/api/v10';
-const APPROVE = 'loushy_approve:';
-const DENY = 'loushy_deny:';
+const APPROVE = 'lousho_approve:';
+const DENY = 'lousho_deny:';
 const MAX_LENGTH = 2000;
 const NOT_ALLOWED = 'You are not allowed to approve this request.';
 const THREAD_TYPES = new Set([10, 11, 12]);
@@ -134,7 +134,7 @@ function button(label: string, customId: string, style: number) {
  *
  * @example
  * ```ts
- * import { discordChannel } from '@loushy/build-ai-agent';
+ * import { discordChannel } from '@lousho/build-ai-agent';
  *
  * const discord = discordChannel({
  *   publicKey: process.env.DISCORD_PUBLIC_KEY ?? '',
@@ -158,7 +158,7 @@ export function discordChannel(options: DiscordChannelOptions): Channel<DiscordI
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ content, allowed_mentions: { parse: [] }, ...(components ? { components } : {}) }),
     });
-    if (!res.ok) throw new SDKError(`discordChannel: ${method} ${path.split('/').slice(1).join('/')} failed: ${res.status}`, 'LOUSHY_CHANNEL_REQUEST_FAILED');
+    if (!res.ok) throw new SDKError(`discordChannel: ${method} ${path.split('/').slice(1).join('/')} failed: ${res.status}`, 'LOUSHO_CHANNEL_REQUEST_FAILED');
   }
 
   /** The first message edits the interaction's original response; the rest (and later replies) are follow-ups. */

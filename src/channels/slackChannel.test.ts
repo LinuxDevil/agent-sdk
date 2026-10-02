@@ -82,7 +82,7 @@ function event(text: string, extra: Record<string, unknown> = {}) {
 }
 
 /** A button click of `user` on the approval message of thread 100.1. */
-function click(value: string, user = 'U1', action = 'loushy_approve') {
+function click(value: string, user = 'U1', action = 'lousho_approve') {
   return {
     type: 'block_actions',
     user: { id: user, username: `name-${user}` },
@@ -166,7 +166,7 @@ describe('slackChannel (LOU-P5)', () => {
     const [prompt] = t.posts as Array<{ thread_ts: string; blocks: Array<{ elements?: Array<{ action_id: string; value: string }> }> }>;
     expect(prompt.thread_ts).toBe('100.1');
     const [approve, deny] = prompt.blocks[1].elements ?? [];
-    expect([approve.action_id, deny.action_id]).toEqual(['loushy_approve', 'loushy_deny']);
+    expect([approve.action_id, deny.action_id]).toEqual(['lousho_approve', 'lousho_deny']);
     expect(execute).not.toHaveBeenCalled();
 
     const approval = click(approve.value);
@@ -195,7 +195,7 @@ describe('slackChannel (LOU-P5)', () => {
 
     expect(execute).not.toHaveBeenCalled();
     expect(t.callbacks).toEqual([{ response_type: 'ephemeral', replace_original: false, text: 'You are not allowed to approve this request.' }]);
-    await t.send(click(value, 'U1', 'loushy_deny'), { form: true });
+    await t.send(click(value, 'U1', 'lousho_deny'), { form: true });
     expect(t.callbacks[1]).toMatchObject({ replace_original: true, text: 'Approve?\nDenied by <@U1>.' });
   });
 

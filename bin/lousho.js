@@ -5,16 +5,16 @@ const path = require('node:path');
 
 const USAGE = [
   'Usage:',
-  '  loushy init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force]',
-  '  loushy dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H]',
-  '  loushy chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>]',
-  '  loushy acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]',
-  '  loushy add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--overwrite] [--dry-run] | --list',
-  '  loushy build --target=<name> --agent=<path> [--out=<dir>]',
-  '  loushy studio [--port N] [--host H] [--prod|--dev]',
-  '  loushy mcp <agent.yaml|json> [--http --port N --host H]',
-  '  loushy doctor [agent.yaml|json] [--json]',
-  '  loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge]',
+  '  lousho init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force]',
+  '  lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H]',
+  '  lousho chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>]',
+  '  lousho acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]',
+  '  lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--overwrite] [--dry-run] | --list',
+  '  lousho build --target=<name> --agent=<path> [--out=<dir>]',
+  '  lousho studio [--port N] [--host H] [--prod|--dev]',
+  '  lousho mcp <agent.yaml|json> [--http --port N --host H]',
+  '  lousho doctor [agent.yaml|json] [--json]',
+  '  lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge]',
 ].join('\n');
 
 // Flag parsing for every command lives in src/cli/args.ts (node:util parseArgs, strict);
@@ -55,7 +55,7 @@ async function runStudioCommand(rest) {
   process.exitCode = await runStudio(rest);
 }
 
-// Scaffolds a new project (LOU-D3); see src/cli/init.ts. Also what `npm create loushy-agent` runs.
+// Scaffolds a new project (LOU-D3); see src/cli/init.ts. Also what `npm create lousho-agent` runs.
 async function runInitCommand(rest) {
   const { runInit } = require(path.join(__dirname, '..', 'dist', 'cli', 'init.js'));
   process.exitCode = await runInit(rest);
@@ -95,7 +95,7 @@ const COMMANDS = new Map([
   ['mcp', runMcp],
   ['doctor', runDoctorCommand],
   ['eval', runEvalCommand],
-  // `loushy --help` / `-h` / `help` print the usage and succeed (a bare `loushy` is still an error).
+  // `lousho --help` / `-h` / `help` print the usage and succeed (a bare `lousho` is still an error).
   ['--help', runHelp],
   ['-h', runHelp],
   ['help', runHelp],
@@ -105,7 +105,7 @@ async function main() {
   const [command, ...rest] = process.argv.slice(2);
   const run = COMMANDS.get(command);
   if (!run) {
-    console.error(`loushy: unknown command '${command || ''}'.\n${USAGE}`);
+    console.error(`lousho: unknown command '${command || ''}'.\n${USAGE}`);
     process.exitCode = 1;
     return;
   }

@@ -2,7 +2,7 @@
  * Cloudflare Worker runtime for generated workers (LOU-I3, LOU-K3).
  *
  * The worker.ts the cloudflare-worker adapter scaffolds imports
- * `@loushy/build-ai-agent/deploy-runtime-worker`, resolved at build time to
+ * `@lousho/build-ai-agent/deploy-runtime-worker`, resolved at build time to
  * this file. Everything reachable from here must run without Node builtins
  * (Workers have no node:fs/node:http/...): the adapter bundles with
  * platform 'browser' and swaps the one Node-dependent module on
@@ -41,7 +41,7 @@
  *    - the same "declare a binding, read it off `env`" pattern `providerEnvKey()`
  *    uses for provider API keys. See `workerStore()` below.
  *  - LOU-D51: the Worker serves the node server's `/chat` API (sessions, SSE,
- *    approvals, bearer auth from the `LOUSHY_API_TOKEN` binding) through the
+ *    approvals, bearer auth from the `LOUSHO_API_TOKEN` binding) through the
  *    Fetch-native src/server/fetchRoutes.ts. It runs the spec as a
  *    `createAgent()` agent, whose node-only imports (project instructions,
  *    file session store, MCP stdio) the adapter's build swaps for shims, see
@@ -92,8 +92,8 @@ function providerEnvKey(type: string): string {
 
 export type WorkerEnv = Record<string, unknown>;
 
-/** Env binding holding the bearer token of the API (`wrangler secret put LOUSHY_API_TOKEN`). */
-const API_TOKEN_BINDING = 'LOUSHY_API_TOKEN';
+/** Env binding holding the bearer token of the API (`wrangler secret put LOUSHO_API_TOKEN`). */
+const API_TOKEN_BINDING = 'LOUSHO_API_TOKEN';
 
 const KV_METHODS = ['get', 'put', 'delete'] as const;
 
@@ -133,7 +133,7 @@ function workerResolvers(env: WorkerEnv): SpecResolvers {
       if (!tool) {
         throw new SDKError(
           `tool '${name}' is not available on Cloudflare Workers. Available: ${Object.keys(WORKER_TOOLS).join(', ')}`,
-          'LOUSHY_TOOL_NOT_FOUND'
+          'LOUSHO_TOOL_NOT_FOUND'
         );
       }
       return tool;
@@ -161,14 +161,14 @@ function workerAgent(spec: AgentSpec, env: WorkerEnv): SimpleAgent {
 /**
  * Serves one request of the Worker's API: `GET /health` (open), sessions, SSE
  * streaming and approvals under `/chat`, and the deprecated `POST /chat
- * { message, sessionId? }`. With a `LOUSHY_API_TOKEN` binding every route but
+ * { message, sessionId? }`. With a `LOUSHO_API_TOKEN` binding every route but
  * `/health` needs `Authorization: Bearer <token>`.
  */
 export function handleWorkerRequest(request: Request, env: WorkerEnv, spec: AgentSpec): Promise<Response> {
   const token = env[API_TOKEN_BINDING];
   // One agent per request: an approval route needs the agent that opened the session.
   let agent: SimpleAgent | undefined;
-  const chat = { name: 'loushy worker', agent: () => (agent ??= workerAgent(spec, env)), durableMessage: true };
+  const chat = { name: 'lousho worker', agent: () => (agent ??= workerAgent(spec, env)), durableMessage: true };
   return serveFetch(request, chat, typeof token === 'string' && token ? token : undefined);
 }
 

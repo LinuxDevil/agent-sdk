@@ -80,8 +80,8 @@ export function migrate(db: SqlDatabase, migrations: readonly string[] = MIGRATI
     if (current > target) {
       throw new SDKError(
         `Database schema version ${current} is newer than this library supports (${target}). ` +
-          'Upgrade @loushy/build-ai-agent.',
-        'LOUSHY_STORAGE_FAILED'
+          'Upgrade @lousho/build-ai-agent.',
+        'LOUSHO_STORAGE_FAILED'
       );
     }
     for (let version = current; version < target; version++) {

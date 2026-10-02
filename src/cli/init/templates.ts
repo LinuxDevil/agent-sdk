@@ -13,14 +13,14 @@ export interface ProjectConfig {
   provider: string;
   template: Template;
   packageManager: PackageManager;
-  /** `dependencies["@loushy/build-ai-agent"]`: a range, or `file:./<tarball>`. */
+  /** `dependencies["@lousho/build-ai-agent"]`: a range, or `file:./<tarball>`. */
   sdkDependency: string;
   sdk: SdkManifest;
 }
 
 function providerInfo(provider: string) {
   const info = listProviders().find((candidate) => candidate.name === provider);
-  if (!info) throw new ConfigurationError(`loushy init: unknown provider '${provider}'.`, 'provider', 'LOUSHY_PROVIDER_UNKNOWN');
+  if (!info) throw new ConfigurationError(`lousho init: unknown provider '${provider}'.`, 'provider', 'LOUSHO_PROVIDER_UNKNOWN');
   return info;
 }
 
@@ -58,13 +58,13 @@ function packageJson(config: ProjectConfig): string {
     private: true,
     type: 'module',
     scripts: {
-      dev: yaml ? 'loushy dev agent.yaml' : 'tsx --env-file-if-exists=.env src/index.ts',
+      dev: yaml ? 'lousho dev agent.yaml' : 'tsx --env-file-if-exists=.env src/index.ts',
       test: 'vitest run',
       typecheck: 'tsc --noEmit',
-      doctor: yaml ? 'loushy doctor agent.yaml' : 'loushy doctor',
+      doctor: yaml ? 'lousho doctor agent.yaml' : 'lousho doctor',
     },
     dependencies: sortKeys({
-      '@loushy/build-ai-agent': config.sdkDependency,
+      '@lousho/build-ai-agent': config.sdkDependency,
       zod: zodRange(peers.zod, config.provider),
       ...aiPackages(config.provider),
     }),
@@ -133,7 +133,7 @@ function toolNames(template: Template): string[] {
 function agentSource(config: ProjectConfig): string {
   const info = providerInfo(config.provider);
   const extra = config.template === 'tools' ? EXTRA_TOOLS : '';
-  return `import { createAgent, defineTool, type LLMProvider } from '@loushy/build-ai-agent';
+  return `import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 ${TIME_TOOL}${extra}
@@ -171,7 +171,7 @@ for (;;) {
 
 function testSource(): string {
   return `import { describe, expect, it } from 'vitest';
-import { mockModel } from '@loushy/build-ai-agent/testing';
+import { mockModel } from '@lousho/build-ai-agent/testing';
 import { buildAgent } from './agent.js';
 
 // mockModel scripts the model turn by turn: no network and no API key needed.
@@ -204,7 +204,7 @@ describe('agent', () => {
 function yamlTestSource(config: ProjectConfig): string {
   return `import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { loadSpec } from '@loushy/build-ai-agent';
+import { loadSpec } from '@lousho/build-ai-agent';
 import { ConfigurationError } from '../../execution/errors';
 
 describe('agent.yaml', () => {
@@ -257,7 +257,7 @@ function readme(config: ProjectConfig): string {
     : '- `src/agent.ts` - the agent and an example tool\n- `src/agent.test.ts` - tests with a scripted model, offline\n- `src/index.ts` - a tiny terminal chat';
   return `# ${config.name}
 
-An agent built with [@loushy/build-ai-agent](https://github.com/LinuxDevil/agent-sdk).
+An agent built with [@lousho/build-ai-agent](https://github.com/LinuxDevil/agent-sdk).
 
 ## Next 3 commands
 

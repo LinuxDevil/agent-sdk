@@ -1,11 +1,11 @@
 /**
- * The one flag parser every `loushy` command uses (LOU-U21): `node:util`'s
+ * The one flag parser every `lousho` command uses (LOU-U21): `node:util`'s
  * `parseArgs` in strict mode, with errors in the CLI's coded style.
  *
  * - `--flag value` and `--flag=value` both work; a repeated flag keeps its last value
  *   (every value with `multiple: true`); `--` ends the flags.
  * - An unknown flag, a flag without its value (`--port --host`, `--port` last) and an
- *   extra positional are `LOUSHY_CONFIG_INVALID` with the command's usage line as the hint.
+ *   extra positional are `LOUSHO_CONFIG_INVALID` with the command's usage line as the hint.
  * - A value that starts with `-` must use the `=` form (`--model=-x`) or follow `--`.
  * - `-h` / `--help` is accepted everywhere: `help` is true and nothing else is validated.
  */
@@ -16,7 +16,7 @@ type Options = NonNullable<ParseArgsConfig['options']>;
 type Value = string | boolean | (string | boolean)[] | undefined;
 
 export interface CommandSpec {
-  /** The command name, for messages (`chat` gives `loushy chat: ...`). */
+  /** The command name, for messages (`chat` gives `lousho chat: ...`). */
   command: string;
   /** The command's usage line; the hint of every parse error and what `--help` prints. */
   usage: string;
@@ -34,7 +34,7 @@ export interface ParsedCommand {
 
 /** The coded usage error every command shares. */
 export function usageError(spec: Pick<CommandSpec, 'command' | 'usage'>, message: string): SDKError {
-  return new SDKError(`loushy ${spec.command}: ${message}`, 'LOUSHY_CONFIG_INVALID', { hint: spec.usage });
+  return new SDKError(`lousho ${spec.command}: ${message}`, 'LOUSHO_CONFIG_INVALID', { hint: spec.usage });
 }
 
 /** Node's error text, in the CLI's words (`unknown option '--x'.`, `--x needs a value.`). */

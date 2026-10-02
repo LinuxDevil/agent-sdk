@@ -8,7 +8,7 @@ import {
   fromUIMessages,
   toUIMessageStream,
   toUIMessageStreamResponse,
-  type LoushyUIMessageChunk,
+  type LoushoUIMessageChunk,
   type UIMessageLike,
 } from './uiMessageStream';
 
@@ -61,7 +61,7 @@ describe('toUIMessageStream (LOU-P1)', () => {
     expect(chunks.find((c) => c.type === 'tool-input-available')).toMatchObject({ toolCallId: 'call_1', toolName: 'get_weather', input: { city: 'Paris' } });
     expect(chunks.find((c) => c.type === 'tool-output-available')).toMatchObject({ output: { city: 'Paris', temp: 18 } });
     const finish = chunks.at(-1);
-    expect(finish).toMatchObject({ type: 'finish', finishReason: 'stop', messageMetadata: { loushyFinishReason: 'stop', usage: { totalTokens: expect.any(Number) } } });
+    expect(finish).toMatchObject({ type: 'finish', finishReason: 'stop', messageMetadata: { loushoFinishReason: 'stop', usage: { totalTokens: expect.any(Number) } } });
   });
 
   it('maps a failing tool and a failed run to error chunks', async () => {
@@ -75,17 +75,17 @@ describe('toUIMessageStream (LOU-P1)', () => {
     expect(chunks.at(-1)).toMatchObject({ type: 'finish', finishReason: 'error' });
   });
 
-  it('emits an approval pause as a data-loushy-approval part', async () => {
+  it('emits an approval pause as a data-lousho-approval part', async () => {
     const deploy = defineTool({ name: 'deploy', description: 'Deploys', input: z.object({ env: z.string() }), needsApproval: true, execute: () => 'done' });
     const run = createAgent({ provider: mockModel([{ toolCalls: [{ name: 'deploy', args: { env: 'prod' }, id: 'c1' }] }]), tools: [deploy] }).stream('deploy');
     const chunks = await collect(toUIMessageStream(run));
-    const approval = chunks.find((c) => c.type === 'data-loushy-approval');
+    const approval = chunks.find((c) => c.type === 'data-lousho-approval');
     expect(approval).toMatchObject({ data: { toolCallId: 'c1', toolName: 'deploy', input: { env: 'prod' } } });
-    expect(chunks.at(-1)).toMatchObject({ type: 'finish', finishReason: 'other', messageMetadata: { loushyFinishReason: 'awaiting-approval' } });
+    expect(chunks.at(-1)).toMatchObject({ type: 'finish', finishReason: 'other', messageMetadata: { loushoFinishReason: 'awaiting-approval' } });
   });
 
   it('is read by the real ai v7 UI message stream reader into a message with text and tool parts', async () => {
-    const stream = toUIMessageStream(toolRun()) as ReadableStream<LoushyUIMessageChunk> as unknown as ReadableStream<UIMessageChunk>;
+    const stream = toUIMessageStream(toolRun()) as ReadableStream<LoushoUIMessageChunk> as unknown as ReadableStream<UIMessageChunk>;
     let last: UIMessage | undefined;
     for await (const message of readUIMessageStream({ stream })) last = message;
     expect(last?.role).toBe('assistant');
@@ -107,7 +107,7 @@ describe('toUIMessageStreamResponse (LOU-P1)', () => {
     const body = await response.text();
     const frames = body.split('\n\n').filter(Boolean);
     expect(frames.at(-1)).toBe('data: [DONE]');
-    const parsed = frames.slice(0, -1).map((frame) => JSON.parse(frame.replace(/^data: /, '')) as LoushyUIMessageChunk);
+    const parsed = frames.slice(0, -1).map((frame) => JSON.parse(frame.replace(/^data: /, '')) as LoushoUIMessageChunk);
     expect(parsed[0].type).toBe('start');
     expect(parsed.at(-1)?.type).toBe('finish');
   });

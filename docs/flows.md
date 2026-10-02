@@ -6,7 +6,7 @@ Describe the graph with `FlowBuilder` and run it with the static
 `FlowExecutor.execute(flow, context, onEvent?)`.
 
 ```ts
-import { FlowBuilder, FlowExecutor, type EditorStep } from '@loushy/build-ai-agent';
+import { FlowBuilder, FlowExecutor, type EditorStep } from '@lousho/build-ai-agent';
 
 // FlowBuilder is a metadata builder: setCode/setName/setInputs/setFlow(...).build().
 // EditorStep covers every node type FlowExecutor runs ('sequence', 'llmCall',

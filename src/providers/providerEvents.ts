@@ -30,7 +30,7 @@ export interface ProviderEventListener {
   fallback(report: ProviderFallbackReport): void;
 }
 
-const PROVIDER_EVENTS: unique symbol = Symbol('loushy.providerEvents');
+const PROVIDER_EVENTS: unique symbol = Symbol('lousho.providerEvents');
 
 type ListenedCall = GenerateOptions & { [PROVIDER_EVENTS]?: ProviderEventListener };
 

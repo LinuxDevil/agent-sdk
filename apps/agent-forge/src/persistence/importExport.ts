@@ -1,8 +1,8 @@
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import type { AgentSpec } from '@loushy/build-ai-agent';
+import type { AgentSpec } from '@lousho/build-ai-agent';
 // NOTE (deviation, documented in the epic report): `agentSpecSchema` is a
 // VALUE import, not `import type`, so it ends up in this browser bundle.
-// The `@loushy/build-ai-agent` package only exposes one bundled entry
+// The `@lousho/build-ai-agent` package only exposes one bundled entry
 // point (its "." export) which eagerly imports Node-only/native deps
 // (dockerode, for the sandboxed tool executor) that break a Vite/browser
 // build. There's no narrower "./spec" export subpath to import just the

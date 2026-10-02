@@ -1,5 +1,5 @@
 /**
- * `loushy studio` - launches Agent Forge, the visual dashboard for building,
+ * `lousho studio` - launches Agent Forge, the visual dashboard for building,
  * running and debugging agents built with this SDK.
  *
  * Two modes (S1, LOU-S):
@@ -12,7 +12,7 @@
  *     `createApp`'s `staticDir` option in `apps/agent-forge/server/app.ts`.
  *     No Vite process, no TypeScript loader (`tsx`), no dev dependencies:
  *     this is what actually ships in the published npm package and what
- *     `loushy studio` runs by default once `apps/agent-forge` has been
+ *     `lousho studio` runs by default once `apps/agent-forge` has been
  *     built (`build:studio` - see the root `package.json`'s
  *     `prepublishOnly`, which always runs it before `npm publish`).
  *
@@ -26,12 +26,12 @@
  *     exactly why prod mode above exists.
  *
  * Mode selection: `--prod` / `--dev` force one or the other (and error
- * clearly if what they need isn't present); with neither flag, `loushy
+ * clearly if what they need isn't present); with neither flag, `lousho
  * studio` auto-detects by checking whether `apps/agent-forge/dist-server`
  * has already been built - present (the normal case for anyone who `npm
  * install`ed the published package) means prod, absent (the normal case
  * mid-development in this monorepo, before running `build:studio`) means
- * dev. This means the *same* `loushy studio` command is the right one to
+ * dev. This means the *same* `lousho studio` command is the right one to
  * document for both audiences; only what's on disk differs.
  *
  * Both modes are still started as child process(es) rather than imported
@@ -101,7 +101,7 @@ function resolveMode(appDir: string, requested: StudioMode): 'dev' | 'prod' {
  * TS source via `tsx`) alongside a sibling Vite dev server process. Both
  * inherit this process's stdio so their output (including each one's own
  * "listening on ..." line) shows up directly in the terminal that ran
- * `loushy studio`.
+ * `lousho studio`.
  */
 export function startStudio(options: StudioOptions = {}): StudioHandle {
   const { repoRoot = process.cwd(), apiPort = 4750, apiHost = '127.0.0.1', mode: requested = 'auto' } = options;
@@ -118,7 +118,7 @@ export function startStudio(options: StudioOptions = {}): StudioHandle {
 function assertAgentForgeApp(appDir: string, repoRoot: string): void {
   if (!fs.existsSync(path.join(appDir, 'package.json'))) {
     throw new ConfigurationError(
-      `loushy studio: could not find apps/agent-forge under '${repoRoot}'. ` +
+      `lousho studio: could not find apps/agent-forge under '${repoRoot}'. ` +
         'Run this from the root of a repo that includes the Agent Forge app ' +
         '(this SDK monorepo, or a project that vendors apps/agent-forge the same way).', 'studio');
   }
@@ -127,14 +127,14 @@ function assertAgentForgeApp(appDir: string, repoRoot: string): void {
 /** Logs a child process's non-zero exit (a null code means it was killed by a signal). */
 function reportUnexpectedExit(label: string, code: number | null): void {
   if (code !== 0 && code !== null) {
-    console.error(`[loushy studio] ${label} exited with code ${code}`);
+    console.error(`[lousho studio] ${label} exited with code ${code}`);
   }
 }
 
 function assertProdBuildPresent(appDir: string, entry: string): void {
   if (!fs.existsSync(entry)) {
     throw new ConfigurationError(
-      `loushy studio --prod: '${entry}' does not exist. Build Agent Forge first: ` +
+      `lousho studio --prod: '${entry}' does not exist. Build Agent Forge first: ` +
         "run 'npm run build:studio' from the repo root (this bundles both the client " +
         "'vite build' output into apps/agent-forge/dist and the server into " +
         'apps/agent-forge/dist-server).', 'studio');
@@ -142,7 +142,7 @@ function assertProdBuildPresent(appDir: string, entry: string): void {
   const clientIndex = path.join(appDir, 'dist', 'index.html');
   if (!fs.existsSync(clientIndex)) {
     console.error(
-      `[loushy studio] warning: '${clientIndex}' not found - the API will run, but no UI will ` +
+      `[lousho studio] warning: '${clientIndex}' not found - the API will run, but no UI will ` +
         "be served. Run 'npm run build:studio' from the repo root to build the client too."
     );
   }
@@ -152,7 +152,7 @@ function startProdStudio(appDir: string, repoRoot: string, apiPort: number, apiH
   const entry = distServerEntry(appDir);
   assertProdBuildPresent(appDir, entry);
 
-  console.log(`[loushy studio] starting production server (port ${apiPort})...`);
+  console.log(`[lousho studio] starting production server (port ${apiPort})...`);
 
   const apiProcess = spawn(process.execPath, [entry], {
     cwd: appDir,
@@ -166,7 +166,7 @@ function startProdStudio(appDir: string, repoRoot: string, apiPort: number, apiH
 
   apiProcess.on('exit', (code) => reportUnexpectedExit('server', code));
 
-  console.log(`[loushy studio] Agent Forge: http://${apiHost}:${apiPort}`);
+  console.log(`[lousho studio] Agent Forge: http://${apiHost}:${apiPort}`);
 
   return { apiProcess, mode: 'prod', stop };
 }
@@ -174,7 +174,7 @@ function startProdStudio(appDir: string, repoRoot: string, apiPort: number, apiH
 function assertDevSourcePresent(appDir: string): void {
   if (!fs.existsSync(path.join(appDir, 'server', 'index.ts'))) {
     throw new ConfigurationError(
-      `loushy studio --dev: '${path.join(appDir, 'server', 'index.ts')}' does not exist - dev mode ` +
+      `lousho studio --dev: '${path.join(appDir, 'server', 'index.ts')}' does not exist - dev mode ` +
         'needs the Agent Forge TypeScript source (this only works from inside the SDK monorepo, ' +
         "not from an installed npm package). Use the default/--prod mode instead, after running " +
         "'npm run build:studio'.", 'studio');
@@ -185,7 +185,7 @@ function startDevStudio(appDir: string, repoRoot: string, apiPort: number, apiHo
   assertDevSourcePresent(appDir);
   const npmCmd = resolveNpmCommand();
 
-  console.log(`[loushy studio] starting API server (port ${apiPort}) and Vite dev server...`);
+  console.log(`[lousho studio] starting API server (port ${apiPort}) and Vite dev server...`);
 
   const apiProcess = spawn(npmCmd, ['run', 'server:dev'], {
     cwd: appDir,
@@ -208,7 +208,7 @@ function startDevStudio(appDir: string, repoRoot: string, apiPort: number, apiHo
     // Tells vite.config.ts's dev-server proxy where the API server it just
     // spawned above is actually listening (apiHost/apiPort may differ from
     // the server's own defaults if the caller overrode them).
-    env: { ...process.env, LOUSHY_STUDIO_API_URL: `http://${apiHost}:${apiPort}` },
+    env: { ...process.env, LOUSHO_STUDIO_API_URL: `http://${apiHost}:${apiPort}` },
   });
 
   function stop(): void {
@@ -228,13 +228,13 @@ function startDevStudio(appDir: string, repoRoot: string, apiPort: number, apiHo
     apiProcess.kill();
   });
 
-  console.log(`[loushy studio] API server:  http://${apiHost}:${apiPort}`);
-  console.log('[loushy studio] Agent Forge UI: see the Vite dev server output above for its URL (default http://localhost:5173)');
+  console.log(`[lousho studio] API server:  http://${apiHost}:${apiPort}`);
+  console.log('[lousho studio] Agent Forge UI: see the Vite dev server output above for its URL (default http://localhost:5173)');
 
   return { apiProcess, viteProcess, mode: 'dev', stop };
 }
 
-const USAGE = 'Usage: loushy studio [--port N] [--host H] [--prod|--dev]';
+const USAGE = 'Usage: lousho studio [--port N] [--host H] [--prod|--dev]';
 
 const SPEC: CommandSpec = {
   command: 'studio',
@@ -242,7 +242,7 @@ const SPEC: CommandSpec = {
   options: { port: { type: 'string' }, host: { type: 'string' }, prod: { type: 'boolean' }, dev: { type: 'boolean' } },
 };
 
-/** Parses the arguments after `studio`; `--prod` with `--dev` is `LOUSHY_CONFIG_INVALID`. */
+/** Parses the arguments after `studio`; `--prod` with `--dev` is `LOUSHO_CONFIG_INVALID`. */
 export function parseStudioArgs(rest: string[]): StudioOptions & { help?: boolean } {
   const { values, help } = parseCommand(SPEC, rest);
   if (values.prod && values.dev) throw usageError(SPEC, '--prod and --dev cannot be combined.');
@@ -250,7 +250,7 @@ export function parseStudioArgs(rest: string[]): StudioOptions & { help?: boolea
   return { apiPort: portValue(SPEC, values.port, 4750), apiHost: stringValue(values.host) ?? '127.0.0.1', mode, help: help || undefined };
 }
 
-/** Runs `loushy studio` with the arguments after `studio`; resolves with the exit code (the children keep the process alive). */
+/** Runs `lousho studio` with the arguments after `studio`; resolves with the exit code (the children keep the process alive). */
 export async function runStudio(rest: string[]): Promise<number> {
   try {
     const { help, ...options } = parseStudioArgs(rest);

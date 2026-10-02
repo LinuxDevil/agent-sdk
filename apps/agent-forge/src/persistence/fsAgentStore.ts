@@ -1,12 +1,12 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
-import { loadSpec, type AgentSpec } from '@loushy/build-ai-agent';
+import { loadSpec, type AgentSpec } from '@lousho/build-ai-agent';
 import type { AgentStore, AgentStoreEntry } from './AgentStore';
 
 /**
  * Filesystem-backed `AgentStore`, saving/loading plain `AgentSpec` YAML
- * files under `<baseDir>/.loushy/agents/<id>.yaml`. Deliberately reuses the
+ * files under `<baseDir>/.lousho/agents/<id>.yaml`. Deliberately reuses the
  * core SDK's `loadSpec()` for reading (so files this store writes validate
  * and load exactly the way any other AgentSpec YAML file does) and the same
  * `yaml` package for writing - there is only one AgentSpec file format in
@@ -23,13 +23,13 @@ import type { AgentStore, AgentStoreEntry } from './AgentStore';
  * browser app can call it remotely instead of only using
  * `LocalStorageAgentStore`.
  */
-/** Where `createFsAgentStore(baseDir)` reads/writes agent `id`'s spec - exposed (LOU-R2) so the runtime server's deploy route can hand `loushy build --agent=<path>` the exact file this store manages, without duplicating the `.loushy/agents/<id>.yaml` convention. */
+/** Where `createFsAgentStore(baseDir)` reads/writes agent `id`'s spec - exposed (LOU-R2) so the runtime server's deploy route can hand `lousho build --agent=<path>` the exact file this store manages, without duplicating the `.lousho/agents/<id>.yaml` convention. */
 export function agentSpecFilePath(baseDir: string, id: string): string {
-  return path.join(baseDir, '.loushy', 'agents', `${id}.yaml`);
+  return path.join(baseDir, '.lousho', 'agents', `${id}.yaml`);
 }
 
 export function createFsAgentStore(baseDir: string): AgentStore {
-  const agentsDir = path.join(baseDir, '.loushy', 'agents');
+  const agentsDir = path.join(baseDir, '.lousho', 'agents');
 
   function filePath(id: string): string {
     return agentSpecFilePath(baseDir, id);

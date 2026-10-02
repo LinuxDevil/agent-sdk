@@ -208,10 +208,10 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    * paused or crashed the run (another model, tools with other names or
    * input schemas, other instructions): `'warn'` (default) emits an
    * `agent.drift` event and a `console.warn`, then continues; `'error'`
-   * rejects with `LOUSHY_AGENT_DRIFT` before any model call or tool runs and
+   * rejects with `LOUSHO_AGENT_DRIFT` before any model call or tool runs and
    * leaves the checkpoint and approval as they were; `'ignore'` does nothing.
    * A pending tool call whose tool no longer exists always rejects with
-   * `LOUSHY_RESUME_TOOL_MISSING`. See `ExecuteOptions.onAgentDrift`.
+   * `LOUSHO_RESUME_TOOL_MISSING`. See `ExecuteOptions.onAgentDrift`.
    *
    * @example
    * ```ts
@@ -270,7 +270,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    *
    * @example
    * ```ts
-   * const agent = createAgent({ model: 'openai/gpt-4o-mini', store: new SqliteStore('./.loushy/agent.db') });
+   * const agent = createAgent({ model: 'openai/gpt-4o-mini', store: new SqliteStore('./.lousho/agent.db') });
    * ```
    */
   store?: AgentStore;
@@ -377,7 +377,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    *
    * @example
    * ```ts
-   * const notes = defineMemory({ name: 'notes', scope: 'global', provider: fileMemory({ dir: './.loushy/memory' }) });
+   * const notes = defineMemory({ name: 'notes', scope: 'global', provider: fileMemory({ dir: './.lousho/memory' }) });
    * createAgent({ model: 'openai/gpt-4o-mini', memory: [notes] });
    * ```
    */
@@ -414,7 +414,7 @@ export type CreateAgentInstructions =
  *    You may also pass `model` here (a bare model id, e.g. `'gpt-4o'`): it
  *    becomes this agent's model setting, overriding the provider's default
  *    model.
- * 3. Neither - resolved from the environment: `LOUSHY_MODEL` (a
+ * 3. Neither - resolved from the environment: `LOUSHO_MODEL` (a
  *    `provider/model` string) if set, otherwise the first provider whose key
  *    is set, checked in the order OPENAI_API_KEY, ANTHROPIC_API_KEY,
  *    OPENROUTER_API_KEY, OLLAMA_BASE_URL. Throws, listing the fixes, when
@@ -678,7 +678,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
         `createAgent: a run with sessionId '${sessionId}' needs a checkpoint store - ` +
           'pass createAgent({ store }) with `checkpoints` (e.g. a SqliteStore or memoryStore()).',
         'store',
-        'LOUSHY_CONFIG_MISSING_CHECKPOINT_STORE'
+        'LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE'
       );
     }
     return { sessionId, checkpointStore: checkpoints };
@@ -758,7 +758,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
       if (checkpoint.status === 'finished') return null;
       return approvals.settle(await run([], { sessionId, input: [] }, signal, durable(sessionId)), signal) as Promise<ExecutionResult<Typed>>;
     },
-    // durable() throws LOUSHY_CONFIG_MISSING_CHECKPOINT_STORE without `store.checkpoints`.
+    // durable() throws LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE without `store.checkpoints`.
     fork: async (sessionId, options) => AgentExecutor.fork({ ...options, ...(durable(sessionId) as SessionTurnCheckpoint) }),
     approvals: approvals.approvals,
     ready: mcp.ready,
@@ -839,7 +839,7 @@ function isPerRun<T>(value: PerRun<T>): value is (ctx: RunConfigContext) => T | 
   return typeof value === 'function';
 }
 
-/** `value`, or what its function returns for `ctx`; a throw becomes LOUSHY_CONFIG_RESOLVER_FAILED naming `option`. */
+/** `value`, or what its function returns for `ctx`; a throw becomes LOUSHO_CONFIG_RESOLVER_FAILED naming `option`. */
 async function resolveOption<T>(option: string, value: PerRun<T>, ctx: RunConfigContext): Promise<T> {
   if (!isPerRun(value)) return value;
   try {
@@ -848,7 +848,7 @@ async function resolveOption<T>(option: string, value: PerRun<T>, ctx: RunConfig
     throw new ConfigurationError(
       `createAgent: the '${option}' function threw while resolving this run's config: ${error instanceof Error ? error.message : String(error)}`,
       option,
-      'LOUSHY_CONFIG_RESOLVER_FAILED',
+      'LOUSHO_CONFIG_RESOLVER_FAILED',
       { cause: error }
     );
   }
@@ -863,7 +863,7 @@ async function pausedRun(specs: AgentSpecs, store: ApprovalStore, id: string): P
   if (specs.static) return { spec: specs.static, store };
   const record = await store.resolve(id);
   if (!record) {
-    throw new SDKError(`No pending approval found for id '${id}' (unknown or already resolved)`, 'LOUSHY_APPROVAL_NOT_FOUND');
+    throw new SDKError(`No pending approval found for id '${id}' (unknown or already resolved)`, 'LOUSHO_APPROVAL_NOT_FOUND');
   }
   const pinned = record.snapshot.agent.metadata?.[RUN_CONFIG_KEY] as PinnedRunConfig | undefined;
   const spec = await specs.resolve(pinned?.ctx ?? { input: [] }, pinned);
@@ -910,7 +910,7 @@ function instructionsOption(config: CreateAgentConfig): PerRun<string> | undefin
       "createAgent: both 'instructions' and 'prompt' were given. They are the same option - " +
         "use 'instructions' (and drop 'prompt', its alias).",
       'prompt',
-      'LOUSHY_CONFIG_CONFLICTING_OPTIONS'
+      'LOUSHO_CONFIG_CONFLICTING_OPTIONS'
     );
   }
   return config.instructions ?? config.prompt;

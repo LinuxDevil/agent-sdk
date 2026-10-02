@@ -1,16 +1,16 @@
 /**
- * `@loushy/build-ai-agent/vue` (LOU-P2): the `useLoushyAgent()` composable,
+ * `@lousho/build-ai-agent/vue` (LOU-P2): the `useLoushoAgent()` composable,
  * and the framework-neutral reducer and stream parser it is built on.
  */
 
 export {
-  useLoushyAgent,
+  useLoushoAgent,
   type LocalAgentSource,
-  type LoushyAgentSource,
+  type LoushoAgentSource,
   type RemoteAgentSource,
-  type UseLoushyAgentOptions,
-  type UseLoushyAgentResult,
-} from './useLoushyAgent';
+  type UseLoushoAgentOptions,
+  type UseLoushoAgentResult,
+} from './useLoushoAgent';
 export {
   initialAgentUIState,
   reduceAgentEvents,

@@ -30,7 +30,7 @@ LLMProviderRegistry.register('openai', (config) => new OpenAIProvider(config as 
 LLMProviderRegistry.register('ollama', (config) => new OllamaProvider(config as OllamaProviderConfig));
 LLMProviderRegistry.register('openrouter', (config) => new OpenRouterProvider(config as OpenRouterProviderConfig));
 LLMProviderRegistry.register('anthropic', (config) => new AnthropicProvider(config as AnthropicProviderConfig));
-// Zero-config/dev-server support (LOU-H): registered centrally so `loushy dev`
+// Zero-config/dev-server support (LOU-H): registered centrally so `lousho dev`
 // and starter templates can resolve 'mock' outside of the test suite, where
 // individual test files previously registered it themselves. Registration
 // here is safe even though some tests also register 'mock' in beforeAll/

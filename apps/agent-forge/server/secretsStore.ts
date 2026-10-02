@@ -3,18 +3,18 @@
  *
  * Design and why:
  *  - Keys are NEVER written into an `AgentSpec` (the YAML this app's
- *    `fsAgentStore.ts` persists under `.loushy/agents/<id>.yaml`, which a
+ *    `fsAgentStore.ts` persists under `.lousho/agents/<id>.yaml`, which a
  *    user may reasonably commit to source control alongside the rest of
  *    their agent's definition). They live in a completely separate file,
- *    `.loushy/secrets.json`, that this app never writes an `AgentSpec` into.
- *  - `.loushy/` is already listed in the repo root `.gitignore` (added for
+ *    `.lousho/secrets.json`, that this app never writes an `AgentSpec` into.
+ *  - `.lousho/` is already listed in the repo root `.gitignore` (added for
  *    LOU-N's checkpoints/approvals/saved-agent-spec local state) - verified
  *    as part of this ticket rather than assumed, since an ungitignored
  *    secrets file would be the actual security bug this ticket is guarding
  *    against.
  *  - At rest, each key is encrypted with AES-256-GCM under a random 256-bit
  *    key generated on first use and stored alongside it, in
- *    `.loushy/secrets.key` (both files written with `0o600` permissions on
+ *    `.lousho/secrets.key` (both files written with `0o600` permissions on
  *    POSIX; best-effort on Windows, where POSIX mode bits are not
  *    meaningful - see the try/catch around chmod below).
  *
@@ -25,7 +25,7 @@
  *    other piece of local state this app already keeps unencrypted
  *    (checkpoints, approvals, chat transcripts). What it DOES protect
  *    against, which plaintext-in-`secrets.json` would not:
- *      1. `.loushy/secrets.json` "looking like a safe plaintext config file"
+ *      1. `.lousho/secrets.json` "looking like a safe plaintext config file"
  *         and accidentally being included by some OTHER tool that doesn't
  *         respect .gitignore - a backup script, a screen share of the repo
  *         tree, a support bundle, a `zip -r` of the project directory, etc.
@@ -72,7 +72,7 @@ export class SecretsStore {
   private readonly secretsFile: string;
 
   constructor(baseDir: string) {
-    this.dir = path.join(baseDir, '.loushy');
+    this.dir = path.join(baseDir, '.lousho');
     this.keyFile = path.join(this.dir, 'secrets.key');
     this.secretsFile = path.join(this.dir, 'secrets.json');
   }

@@ -35,9 +35,9 @@ describe('parseInitArgs', () => {
     });
   });
 
-  it('reads the SDK path from LOUSHY_SDK_PATH, with the flag taking precedence', () => {
-    expect(parseInitArgs([], { LOUSHY_SDK_PATH: '/env/sdk' }).sdkPath).toBe('/env/sdk');
-    expect(parseInitArgs(['--sdk-path=/flag/sdk'], { LOUSHY_SDK_PATH: '/env/sdk' }).sdkPath).toBe('/flag/sdk');
+  it('reads the SDK path from LOUSHO_SDK_PATH, with the flag taking precedence', () => {
+    expect(parseInitArgs([], { LOUSHO_SDK_PATH: '/env/sdk' }).sdkPath).toBe('/env/sdk');
+    expect(parseInitArgs(['--sdk-path=/flag/sdk'], { LOUSHO_SDK_PATH: '/env/sdk' }).sdkPath).toBe('/flag/sdk');
   });
 
   it('rejects unknown flags and more than one directory', () => {

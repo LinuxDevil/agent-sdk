@@ -6,7 +6,7 @@ Flag a tool `needsApproval` and the run pauses before calling it, until a human
 request or another process, and the run then continues where it stopped.
 
 ```ts
-import { createAgent, defineTool } from '@loushy/build-ai-agent';
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 const sendEmail = defineTool({
@@ -32,7 +32,7 @@ if (paused.finishReason === 'awaiting-approval') {
 arguments, typed from the tool's zod `input`:
 
 ```ts
-import { defineTool } from '@loushy/build-ai-agent';
+import { defineTool } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 const sendEmail = defineTool({
@@ -82,7 +82,7 @@ error. `allow(tools)`, `deny(tools, reason?)` and `ask(tools)` build the
 common rules.
 
 ```ts
-import { allow, ask, createAgent, defineTool, deny, type PermissionRule } from '@loushy/build-ai-agent';
+import { allow, ask, createAgent, defineTool, deny, type PermissionRule } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 const shell = defineTool({
@@ -153,7 +153,7 @@ session, each `send()` is its own transcript. Compacting away that message
 makes the tool ask again.
 
 ```ts
-import { createAgent, defineTool, once } from '@loushy/build-ai-agent';
+import { createAgent, defineTool, once } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 const askOnce = once();
@@ -203,10 +203,10 @@ restart, give the agent a durable store, such as the SQLite one (see
 [Choosing a store](./sessions.md#choosing-a-store)):
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
-import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
+import { createAgent } from '@lousho/build-ai-agent';
+import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
 
-const store = new SqliteStore('./.loushy/agent.db');
+const store = new SqliteStore('./.lousho/agent.db');
 const agent = createAgent({ provider, tools: [emailTool], store }); // or approvalStore: store.approvals
 ```
 
@@ -219,9 +219,9 @@ owns that session object.
 
 An approval snapshot carries the paused agent's fingerprint, and resolving it
 with an agent whose model, tools or instructions differ warns (`'warn'`, the
-default), rejects with `LOUSHY_AGENT_DRIFT` (`onAgentDrift: 'error'`, the
+default), rejects with `LOUSHO_AGENT_DRIFT` (`onAgentDrift: 'error'`, the
 approval stays pending) or carries on (`'ignore'`). An approved call whose tool
-no longer exists always rejects with `LOUSHY_RESUME_TOOL_MISSING`. See
+no longer exists always rejects with `LOUSHO_RESUME_TOOL_MISSING`. See
 [Resuming with a changed agent](./durable-execution.md#resuming-with-a-changed-agent).
 
 On a resumed approved call the pre-tool hooks run again, and the arguments they
@@ -237,7 +237,7 @@ runs the tool, `false` sends the model a rejection. It applies to `send()`,
 sessions and `agent.approvals.resolve()`; `stream()` still ends at the pause.
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const trusted = createAgent({
   provider,
@@ -260,7 +260,7 @@ is what `resolve()` resolves with. A continuation that pauses again ends with
 continues in that session, and `run.done` comes once the transcript is saved.
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ provider, tools: [emailTool] });
 const paused = await agent.send('Email Sam the report');
@@ -297,7 +297,7 @@ approval: in sessions, in durable stores and across a restart.
   in tests and scripted agents.
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ prompt: 'Plan the trip with the user.', provider, askQuestion: true });
 
@@ -328,7 +328,7 @@ tool. Resume later, after a real restart if you like, with
 `resumeAfterApproval()`:
 
 ```ts
-import { AgentExecutor, resumeAfterApproval, StorageServiceApprovalStore } from '@loushy/build-ai-agent';
+import { AgentExecutor, resumeAfterApproval, StorageServiceApprovalStore } from '@lousho/build-ai-agent';
 
 const approvalStore = new StorageServiceApprovalStore(storage);
 

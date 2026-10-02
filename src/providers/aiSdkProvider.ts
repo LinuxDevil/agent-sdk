@@ -126,7 +126,7 @@ function toUserPart(part: ContentPart, support: PartSupport): ContentPart {
   }
   if (!warnedFileParts.has(support.provider)) {
     warnedFileParts.add(support.provider);
-    console.warn(`[loushy] The ${support.provider} provider cannot send file parts; they are sent as a text note.`);
+    console.warn(`[lousho] The ${support.provider} provider cannot send file parts; they are sent as a text note.`);
   }
   return { type: 'text', text: `[file ${part.filename ?? 'attachment'} (${part.mimeType}) not sent]` };
 }

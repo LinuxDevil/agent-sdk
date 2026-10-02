@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const LOCK = path.join(os.tmpdir(), 'loushy-bundle-build.lock');
+const LOCK = path.join(os.tmpdir(), 'lousho-bundle-build.lock');
 const STALE_MS = 3 * 60_000;
 const POLL_MS = 50;
 

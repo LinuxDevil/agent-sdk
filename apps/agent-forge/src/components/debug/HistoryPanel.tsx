@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { TrajectoryStep } from '@loushy/build-ai-agent';
+import type { TrajectoryStep } from '@lousho/build-ai-agent';
 import { useAppState } from '../../state/AppState';
 import { runtimeClient } from '../../runtime/runtimeClient';
 import { errorMessage } from '../errorMessage';

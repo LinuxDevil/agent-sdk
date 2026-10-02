@@ -2,10 +2,10 @@
  * Shared bundling helpers for the built-in deployment adapters (LOU-I2+).
  *
  * Scaffolded entrypoints (server.ts / worker.ts) import the SDK through a
- * virtual specifier, `@loushy/build-ai-agent/deploy-runtime` (or
+ * virtual specifier, `@lousho/build-ai-agent/deploy-runtime` (or
  * `.../deploy-runtime-worker`). At build time sdkRuntimePlugin() resolves
  * that specifier to the runtime source file of the SDK copy that is
- * running `loushy build` - so the output is bundled against exactly the
+ * running `lousho build` - so the output is bundled against exactly the
  * SDK version that generated it, and building works from any outDir
  * (including a temp dir with no node_modules of its own).
  */
@@ -14,11 +14,11 @@ import * as path from 'node:path';
 import type { Plugin } from 'esbuild';
 import { SDKError } from '../execution/errors';
 
-export const RUNTIME_SPECIFIER = '@loushy/build-ai-agent/deploy-runtime';
-export const WORKER_RUNTIME_SPECIFIER = '@loushy/build-ai-agent/deploy-runtime-worker';
+export const RUNTIME_SPECIFIER = '@lousho/build-ai-agent/deploy-runtime';
+export const WORKER_RUNTIME_SPECIFIER = '@lousho/build-ai-agent/deploy-runtime-worker';
 
 /**
- * Walks up from this module's directory to the @loushy/build-ai-agent
+ * Walks up from this module's directory to the @lousho/build-ai-agent
  * package root. Works both from source (src/deploy/) and from the bundled
  * CLI (dist/cli/build.js), in a checkout or an installed node_modules copy.
  */
@@ -29,20 +29,20 @@ function findSdkRoot(startDir: string = __dirname): string {
     const parent = path.dirname(dir);
     if (parent === dir) {
       throw new SDKError(
-        `loushy build: could not locate the @loushy/build-ai-agent package root above ${startDir}`,
-        'LOUSHY_DEPLOY_FAILED'
+        `lousho build: could not locate the @lousho/build-ai-agent package root above ${startDir}`,
+        'LOUSHO_DEPLOY_FAILED'
       );
     }
     dir = parent;
   }
 }
 
-/** True when `dir` holds the readable package.json of @loushy/build-ai-agent. */
+/** True when `dir` holds the readable package.json of @lousho/build-ai-agent. */
 function isSdkPackageRoot(dir: string): boolean {
   const pkgPath = path.join(dir, 'package.json');
   if (!fs.existsSync(pkgPath)) return false;
   try {
-    return JSON.parse(fs.readFileSync(pkgPath, 'utf8')).name === '@loushy/build-ai-agent';
+    return JSON.parse(fs.readFileSync(pkgPath, 'utf8')).name === '@lousho/build-ai-agent';
   } catch {
     // not a readable package.json - keep walking up
     return false;
@@ -52,7 +52,7 @@ function isSdkPackageRoot(dir: string): boolean {
 function runtimeSourceFile(fileName: string): string {
   const file = path.join(findSdkRoot(), 'src', 'deploy', fileName);
   if (!fs.existsSync(file)) {
-    throw new SDKError(`loushy build: SDK deploy runtime source not found at ${file}`, 'LOUSHY_DEPLOY_FAILED');
+    throw new SDKError(`lousho build: SDK deploy runtime source not found at ${file}`, 'LOUSHO_DEPLOY_FAILED');
   }
   return file;
 }
@@ -60,16 +60,16 @@ function runtimeSourceFile(fileName: string): string {
 /** esbuild plugin mapping the virtual runtime specifiers to the SDK's runtime sources. */
 export function sdkRuntimePlugin(): Plugin {
   return {
-    name: 'loushy-deploy-runtime',
+    name: 'lousho-deploy-runtime',
     setup(build) {
-      build.onResolve({ filter: /^@loushy\/build-ai-agent\/deploy-runtime(-worker)?$/ }, (args) => ({
+      build.onResolve({ filter: /^@lousho\/build-ai-agent\/deploy-runtime(-worker)?$/ }, (args) => ({
         path: runtimeSourceFile(
           args.path === WORKER_RUNTIME_SPECIFIER ? 'runtime.worker.ts' : 'runtime.ts'
         ),
       }));
-      // An agent directory's own `import ... from '@loushy/build-ai-agent'` bundles this SDK copy
+      // An agent directory's own `import ... from '@lousho/build-ai-agent'` bundles this SDK copy
       // (the one the runtime above comes from), so tools, schedules and channels share its classes.
-      build.onResolve({ filter: /^@loushy\/build-ai-agent$/ }, () => ({
+      build.onResolve({ filter: /^@lousho\/build-ai-agent$/ }, () => ({
         path: path.join(findSdkRoot(), 'src', 'index.ts'),
       }));
     },
@@ -85,7 +85,7 @@ export function sdkRuntimePlugin(): Plugin {
 export function workerSandboxShimPlugin(): Plugin {
   const shim = path.join(findSdkRoot(), 'src', 'deploy', 'shims', 'sandboxCore.worker.ts');
   return {
-    name: 'loushy-worker-sandbox-shim',
+    name: 'lousho-worker-sandbox-shim',
     setup(build) {
       build.onResolve({ filter: /[\\/]security[\\/]sandboxCore$|^\.\/sandboxCore$/ }, (args) => {
         if (path.resolve(args.importer) === shim) return undefined;
@@ -111,7 +111,7 @@ export function workerNodeShimPlugin(): Plugin {
   const shim = path.join(findSdkRoot(), 'src', 'deploy', 'shims', 'node.worker.ts');
   const shimmed = (importer: string) => NODE_SHIMMED_IMPORTERS.some((name) => importer.replace(/\\/g, '/').endsWith(`/src/${name}.ts`));
   return {
-    name: 'loushy-worker-node-shim',
+    name: 'lousho-worker-node-shim',
     setup(build) {
       build.onResolve({ filter: /^node:|^@modelcontextprotocol\/sdk\/client\/stdio\.js$/ }, (args) => (shimmed(args.importer) ? { path: shim } : undefined));
     },
@@ -144,7 +144,7 @@ export function bundleExternals(): { noExternal: RegExp[]; external: string[] } 
 }
 
 /**
- * Loads tsup lazily: it is only needed by `loushy build`, so the SDK's
+ * Loads tsup lazily: it is only needed by `lousho build`, so the SDK's
  * normal runtime entrypoints never import it.
  */
 export async function loadTsup(): Promise<typeof import('tsup')> {
@@ -152,9 +152,9 @@ export async function loadTsup(): Promise<typeof import('tsup')> {
     return await import('tsup');
   } catch (error) {
     throw new SDKError(
-      `loushy build: the 'tsup' package is required to build deployment targets. ` +
+      `lousho build: the 'tsup' package is required to build deployment targets. ` +
         `Install it with \`npm install --save-dev tsup\`. (${(error as Error).message})`,
-      'LOUSHY_DEPLOY_FAILED'
+      'LOUSHO_DEPLOY_FAILED'
     );
   }
 }

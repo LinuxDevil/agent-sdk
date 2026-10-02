@@ -6,7 +6,7 @@ import { resolveSdkDependency } from './sdkDependency';
 
 const tempDirs: string[] = [];
 function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-sdkdep-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-sdkdep-'));
   tempDirs.push(dir);
   return dir;
 }

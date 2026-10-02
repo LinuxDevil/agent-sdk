@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { AgentSpec } from '@loushy/build-ai-agent';
+import type { AgentSpec } from '@lousho/build-ai-agent';
 import type { AgentStore, AgentStoreEntry } from '../persistence/AgentStore';
 import { graphToSpec } from '../graph/graphToSpec';
 import { specToGraph } from '../graph/specToGraph';

@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { loushyBin } from './index';
+import { loushoBin } from './index';
 
 const CLI = path.join(__dirname, '..', 'bin', 'cli.js');
 
@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'create-loushy-agent-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'create-lousho-agent-'));
   tempDirs.push(dir);
   return dir;
 }
@@ -22,14 +22,14 @@ function run(args: string[]): string {
   return execFileSync(process.execPath, [CLI, ...args], { encoding: 'utf8', stdio: 'pipe' });
 }
 
-describe('create-loushy-agent wraps loushy init', () => {
-  it('finds the loushy bin of the installed SDK', () => {
-    expect(fs.existsSync(loushyBin())).toBe(true);
-    expect(path.basename(loushyBin())).toBe('loushy.js');
+describe('create-lousho-agent wraps lousho init', () => {
+  it('finds the lousho bin of the installed SDK', () => {
+    expect(fs.existsSync(loushoBin())).toBe(true);
+    expect(path.basename(loushoBin())).toBe('lousho.js');
   });
 
-  it('forwards its arguments to loushy init (--help)', () => {
-    expect(run(['--help'])).toContain('Usage: loushy init');
+  it('forwards its arguments to lousho init (--help)', () => {
+    expect(run(['--help'])).toContain('Usage: lousho init');
   });
 
   it('scaffolds a project from the positional directory and flags', () => {
@@ -42,7 +42,7 @@ describe('create-loushy-agent wraps loushy init', () => {
 
     expect(output).toContain('Next steps:');
     expect(fs.readFileSync(path.join(dir, '.env.example'), 'utf8')).toContain('ANTHROPIC_API_KEY=');
-    expect(JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).dependencies['@loushy/build-ai-agent']).toBe(
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).dependencies['@lousho/build-ai-agent']).toBe(
       'file:./sdk-0.0.0.tgz'
     );
   });

@@ -35,7 +35,7 @@ or `{ ok: false, reason, action?, replacement? }`:
   sees the new text, and `stream()` emits `guardrail.rewrote`.
 
 With `onTripped: 'throw'` a block rejects with `GuardrailError`
-(`LOUSHY_GUARDRAIL_TRIPPED`, with the same `guardrail`) instead. A `check`
+(`LOUSHO_GUARDRAIL_TRIPPED`, with the same `guardrail`) instead. A `check`
 that throws fails the run. Sub-agents run their parent's guardrails, then their
 own. Agent spec files name built-in guardrails in `policy.guardrails` (see [Configuration](./configuration.md#policy-policy)).
 
@@ -48,7 +48,7 @@ import {
   maxLengthGuardrail,
   regexGuardrail,
   type IoGuardrail,
-} from '@loushy/build-ai-agent';
+} from '@lousho/build-ai-agent';
 
 const noProdWrites: IoGuardrail = {
   name: 'no-prod-writes',
@@ -95,7 +95,7 @@ proposed patch and rolls the results up into one verdict. The
 agent's patch before a pull request is opened:
 
 ```ts
-import { runGuardrails, secretScanGuardrail, createDiffSizeGuardrail, createCommandGuardrail } from '@loushy/build-ai-agent';
+import { runGuardrails, secretScanGuardrail, createDiffSizeGuardrail, createCommandGuardrail } from '@lousho/build-ai-agent';
 
 const verdict = await runGuardrails(
   { diff: patch },
@@ -132,7 +132,7 @@ function. The executor then calls `sandboxExecute` with the run's
 `SandboxAdapter` instead of calling `execute`:
 
 ```ts
-import { AgentExecutor, SubprocessSandbox } from '@loushy/build-ai-agent';
+import { AgentExecutor, SubprocessSandbox } from '@lousho/build-ai-agent';
 
 // Route a flagged tool (requiresSandbox + sandboxExecute) through a real,
 // Docker-backed sandbox instead of the in-process NoopSandbox default

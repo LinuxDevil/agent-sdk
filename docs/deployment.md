@@ -1,21 +1,21 @@
 # Deployment
 
-`loushy build` turns an agent spec file (see [Configuration](./configuration.md))
+`lousho build` turns an agent spec file (see [Configuration](./configuration.md))
 into a deployable artifact for one target platform:
 
 ```bash
-npx loushy build --target=<target> --agent=agent.yaml [--out=<dir>]
+npx lousho build --target=<target> --agent=agent.yaml [--out=<dir>]
 ```
 
 It runs the target's adapter through three steps - **scaffold** (write the
-entrypoint and platform files into `--out`, default `.loushy/build/<target>`),
+entrypoint and platform files into `--out`, default `.lousho/build/<target>`),
 **build** (bundle with `tsup`) and **describe** (print the command to run or
 deploy the result). `tsup` must be installed (`npm install --save-dev tsup`).
 
 | Target              | Output                                                   | Printed command                                                        |
 | ------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------- |
 | `node-server`       | `server.ts`, `agent.config.js`, `package.json`, `dist/server.js` | `node dist/server.js`                                                  |
-| `docker`            | everything `node-server` writes, plus `Dockerfile`       | `docker build -t loushy-agent . && docker run -p 3000:3000 loushy-agent` |
+| `docker`            | everything `node-server` writes, plus `Dockerfile`       | `docker build -t lousho-agent . && docker run -p 3000:3000 lousho-agent` |
 | `cloudflare-worker` | `worker.ts`, `agent.config.js`, `wrangler.toml`, `dist/worker.js` | `wrangler deploy`                                                      |
 
 Every target answers `GET /health` (`200 ok`) and serves the full
@@ -27,8 +27,8 @@ Every target answers `GET /health` (`200 ok`) and serves the full
 in place of a spec file (the path may be positional or `--agent`):
 
 ```bash
-npx loushy build ./my-agent --target=node-server
-node .loushy/build/node-server/dist/server.js
+npx lousho build ./my-agent --target=node-server
+node .lousho/build/node-server/dist/server.js
 ```
 
 The generated `server.ts` calls `resolveAgentDir()` on `dist/agent` and
@@ -38,7 +38,7 @@ directory's [schedules](./schedules.md) when it listens, mounts its
 routes keep the bearer token), and logs `schedules: ...; channels: ...`.
 The directory's code files are pre-bundled with the build's tsup step into
 `dist/agent/**.js` (one ESM build sharing one copy of the SDK, so a `from
-'@loushy/build-ai-agent'` import in a tool is the SDK the server runs), and the
+'@lousho/build-ai-agent'` import in a tool is the SDK the server runs), and the
 rest of the directory is copied; nothing needs a TypeScript loader at run time.
 `dist/` is then ESM (`dist/package.json` says so). The Docker image copies it as
 before. The optional `dockerode` sandbox is not bundled (it loads lazily), so a
@@ -47,8 +47,8 @@ Cloudflare Worker target still takes spec files only.
 
 ## HTTP API
 
-Every target serves the same `/chat` protocol as `loushy dev`
-([CLI](./cli.md#loushy-dev)), from the same code (the Fetch-native
+Every target serves the same `/chat` protocol as `lousho dev`
+([CLI](./cli.md#lousho-dev)), from the same code (the Fetch-native
 `src/server/fetchRoutes.ts`, which the Node server and the Worker both call), so
 a page or script written against the dev server works against the deployed one.
 
@@ -64,14 +64,14 @@ Bodies over 1MB get `413`, invalid JSON `400`.
 
 ```bash
 curl -N http://127.0.0.1:3000/chat \
-  -H 'Authorization: Bearer '"$LOUSHY_API_TOKEN" -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer '"$LOUSHO_API_TOKEN" -H 'Content-Type: application/json' \
   -d '{ "sessionId": "alice", "input": "Hello" }'
 ```
 
 ### Auth
 
-Set `LOUSHY_API_TOKEN` (on the Worker target, as a secret: `npx wrangler secret
-put LOUSHY_API_TOKEN`) and every route except `/health` requires
+Set `LOUSHO_API_TOKEN` (on the Worker target, as a secret: `npx wrangler secret
+put LOUSHO_API_TOKEN`) and every route except `/health` requires
 `Authorization: Bearer <token>`; anything else gets `401` with a JSON error
 (the token is compared in constant time). Without it the server is open: that
 is fine on `127.0.0.1`, but **treat the token as required for anything that is
@@ -79,17 +79,17 @@ not on localhost** (the server logs a warning when it listens on another
 interface without one, and the `docker` image listens on all interfaces).
 Terminate TLS in front of the server, since a bearer token travels in clear
 text over plain HTTP. Pass the token at run time (`docker run -e
-LOUSHY_API_TOKEN=...`).
+LOUSHO_API_TOKEN=...`).
 
 Programmatically, `adapter.scaffold(agentPath, outDir, { auth: { token } })`
 bakes a token into the built `node-server` or `docker` server for when the
 variable is not set. The variable wins, and a baked token is readable in
 `dist/server.js`, so prefer the variable. The Worker reads the token from its
-`LOUSHY_API_TOKEN` binding only.
+`LOUSHO_API_TOKEN` binding only.
 
 ### Sessions and the store
 
-`LOUSHY_STORE` chooses where sessions, checkpoints and approvals live:
+`LOUSHO_STORE` chooses where sessions, checkpoints and approvals live:
 
 | Value | Store |
 | ----- | ----- |
@@ -104,12 +104,12 @@ SQLite is one file on one disk, so run a single instance per database file.
 dependencies are included), so it runs without `npm install`:
 
 ```bash
-cd .loushy/build/node-server
+cd .lousho/build/node-server
 node dist/server.js                   # http://127.0.0.1:3000
 node dist/server.js --port=8080 --host=0.0.0.0
 ```
 
-Like `loushy dev`, it binds to `127.0.0.1` unless you opt in to another
+Like `lousho dev`, it binds to `127.0.0.1` unless you opt in to another
 interface with `--host=<h>` (or `HOST=<h>`); the port comes from `--port`,
 `PORT`, or defaults to `3000`. SIGINT/SIGTERM close the agent before exiting.
 Provider credentials are read from the same
@@ -124,9 +124,9 @@ listen on all interfaces for `docker run -p` to reach it. Pass provider
 credentials at run time:
 
 ```bash
-cd .loushy/build/docker
-docker build -t loushy-agent .
-docker run -p 3000:3000 -e OPENAI_API_KEY=... loushy-agent
+cd .lousho/build/docker
+docker build -t lousho-agent .
+docker run -p 3000:3000 -e OPENAI_API_KEY=... lousho-agent
 ```
 
 ## `cloudflare-worker`
@@ -140,7 +140,7 @@ runs with `ai` v4 (the default install) or `ai` v7 (with
 flag (no `nodejs_compat`):
 
 ```bash
-cd .loushy/build/cloudflare-worker
+cd .lousho/build/cloudflare-worker
 npx wrangler dev       # local workerd runtime
 npx wrangler deploy    # requires a Cloudflare account (`wrangler login`)
 ```
@@ -166,12 +166,12 @@ Workers have no Node.js builtins, so this target currently supports:
   drop that protection rather than just losing convenience functionality -
   it's left unsupported rather than shipped weaker under the same name.
 
-`loushy build` rejects a spec that uses anything else, with an error naming
+`lousho build` rejects a spec that uses anything else, with an error naming
 the unsupported provider or tool. Provider API keys are read from Worker
 bindings named `<TYPE>_API_KEY` (e.g. `wrangler secret put OPENAI_API_KEY`,
 `wrangler secret put ANTHROPIC_API_KEY`) - the `openai`/`anthropic`
 peer packages (`@ai-sdk/openai`/`@ai-sdk/anthropic`, `ai`) must be installed
-alongside `@loushy/build-ai-agent` for `loushy build` to bundle them.
+alongside `@lousho/build-ai-agent` for `lousho build` to bundle them.
 
 ### Bindings, sessions and the API on Workers
 
@@ -181,7 +181,7 @@ endpoint and the deprecated `{ "message" }` body. Its two bindings:
 
 | Binding | Kind | What it does |
 | ------- | ---- | ------------ |
-| `LOUSHY_API_TOKEN` | secret (`npx wrangler secret put LOUSHY_API_TOKEN`) | Makes every route except `/health` require `Authorization: Bearer <token>` (constant-time compare, `401` JSON otherwise). Without it the Worker is open to anyone who has its URL, so **set it before you deploy**. |
+| `LOUSHO_API_TOKEN` | secret (`npx wrangler secret put LOUSHO_API_TOKEN`) | Makes every route except `/health` require `Authorization: Bearer <token>` (constant-time compare, `401` JSON otherwise). Without it the Worker is open to anyone who has its URL, so **set it before you deploy**. |
 | `AGENT_CHECKPOINTS` | KV namespace | Holds sessions, checkpoints and paused approvals, in one namespace, as `KVStore` (below). Without it they live in the memory of one isolate, which Cloudflare recycles at will: fine for trying a deploy out, not for production. |
 
 `wrangler.toml` is scaffolded with the `[[kv_namespaces]]` block for
@@ -190,12 +190,12 @@ endpoint and the deprecated `{ "message" }` body. Its two bindings:
 variant) and where to paste the resulting ids. Uncomment it and fill in the ids.
 
 ```bash
-cd .loushy/build/cloudflare-worker
-npx wrangler secret put LOUSHY_API_TOKEN
+cd .lousho/build/cloudflare-worker
+npx wrangler secret put LOUSHO_API_TOKEN
 npx wrangler secret put OPENAI_API_KEY
 npx wrangler deploy
 curl -N https://<your-worker>.workers.dev/chat \
-  -H "Authorization: Bearer $LOUSHY_API_TOKEN" -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $LOUSHO_API_TOKEN" -H 'Content-Type: application/json' \
   -d '{ "sessionId": "alice", "input": "Hello" }'
 ```
 
@@ -241,17 +241,17 @@ exports a `scheduled()` handler that runs them as agent turns (session
 `schedule:<name>`, see [Schedules](schedules.md#on-cloudflare-workers)). Cloudflare
 evaluates the expressions in **UTC** with a granularity of one minute; the
 build rejects a `timezone`, a seconds field, an `@daily` shortcut or a numeric
-day-of-week (`LOUSHY_SCHEDULE_INVALID`).
+day-of-week (`LOUSHO_SCHEDULE_INVALID`).
 
 In a Worker you write yourself, wire an agent defined in code with
 `handleScheduled(agent, schedules, controller, ctx)` (also exported from
-`@loushy/build-ai-agent/deploy-runtime-worker`). It runs the schedules whose
+`@lousho/build-ai-agent/deploy-runtime-worker`). It runs the schedules whose
 `cron` equals `controller.cron` inside `ctx.waitUntil()` and never throws; list
 the same expressions under `[triggers] crons` yourself:
 
 ```ts
-import { createAgent, createMockProvider, defineSchedule, handleScheduled } from '@loushy/build-ai-agent';
-import type { ScheduledContext, ScheduledController } from '@loushy/build-ai-agent';
+import { createAgent, createMockProvider, defineSchedule, handleScheduled } from '@lousho/build-ai-agent';
+import type { ScheduledContext, ScheduledController } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ instructions: 'You write reports.', provider: createMockProvider() });
 const schedules = [defineSchedule({ name: 'weekly', cron: '0 9 * * MON', prompt: 'Summarise last week.' })];
@@ -309,7 +309,7 @@ dependency graph. The Worker runs the spec as a `createAgent()` agent, whose
 Node-only imports (project instructions, the file session store, guardrail
 patches, MCP over stdio) the build points at a shim that fails when used
 (`src/deploy/shims/node.worker.ts`). The built `dist/worker.js` bundle is then
-checked for `node:` and bare Node builtin specifiers as part of `loushy build`,
+checked for `node:` and bare Node builtin specifiers as part of `lousho build`,
 and fails the build if any are found. One exception: `ai` v7 and
 `@ai-sdk/provider-utils` v5 look up `node:module`, `node:dns`,
 `node:diagnostics_channel` and `node:async_hooks` at run time with
@@ -317,7 +317,7 @@ and fails the build if any are found. One exception: `ai` v7 and
 `fetch()` (or skip telemetry tracing) elsewhere. Those four ids are accepted as
 the argument of such a call and nowhere else. The bundle is larger than a single-turn
 Worker (about 1.7 MB raw, 340 KB gzip for a `mock` agent on `ai` v4; about 3.4 MB
-raw, 630 KB gzip on `ai` v7): `loushy build` reports
+raw, 630 KB gzip on `ai` v7): `lousho build` reports
 its size, and `describe()` compares it to Cloudflare's script size limit.
 
 ## Custom targets

@@ -76,7 +76,7 @@ export function startSchedules(
   const resolved: Required<StartSchedulesOptions> = {
     now: options.now ?? Date.now,
     setTimer: options.setTimer ?? defaultSetTimer,
-    onError: options.onError ?? ((error, { name }) => console.error(`[loushy schedule] '${name}':`, error)),
+    onError: options.onError ?? ((error, { name }) => console.error(`[lousho schedule] '${name}':`, error)),
   };
   const stops = schedules.map((s, i) => startOne(agent, s, scheduleName(s, i), resolved));
   return { stop: () => stops.forEach((stop) => stop()) };

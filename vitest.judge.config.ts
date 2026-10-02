@@ -20,6 +20,6 @@ export default defineConfig({
     // refuses to run unless this env var is set, so a misnamed/mis-globbed
     // judge-eval file picked up by the main config can't silently make a
     // real LLM call in default CI - see src/evals/llmJudge.ts.
-    env: { LOUSHY_ALLOW_LLM_JUDGE: '1' },
+    env: { LOUSHO_ALLOW_LLM_JUDGE: '1' },
   },
 });

@@ -21,7 +21,7 @@ a [session](sessions.md), and approvals and questions go back to the surface.
 
 ```ts
 import * as http from 'node:http';
-import { createAgent, createMockProvider, httpChannel, mountChannels } from '@loushy/build-ai-agent';
+import { createAgent, createMockProvider, httpChannel, mountChannels } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
 const channels = mountChannels(agent, [httpChannel()]);
@@ -40,7 +40,7 @@ curl -s localhost:3000/channels/http -d '{"sessionKey":"user-42","input":"Hi, I 
 ```
 
 The handler resolves `true` when it served the request and `false` (nothing
-written) for any other route, like the `/chat` routes of `loushy dev`, so you
+written) for any other route, like the `/chat` routes of `lousho dev`, so you
 can mount it next to your own routes.
 
 ## The contract
@@ -70,7 +70,7 @@ acknowledge the request. An error thrown by `parse` answers 400 for a
 `SyntaxError` (bad JSON) and 500 otherwise; a body over 1MB gets 413.
 
 ```ts
-import { createAgent, defineChannel, mountChannels } from '@loushy/build-ai-agent';
+import { createAgent, defineChannel, mountChannels } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ instructions: 'You answer text messages.', provider });
 
@@ -126,7 +126,7 @@ through the same channel's `reply` (or `onApproval` again, if it pauses again):
   pause on gets 404.
 
 ```ts
-import { createAgent, defineChannel, mountChannels } from '@loushy/build-ai-agent';
+import { createAgent, defineChannel, mountChannels } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ instructions: 'You are helpful.', provider, askQuestion: true });
 
@@ -165,7 +165,7 @@ replay protection, bearer token, custom). The checks and the generic 401 are
 the ones `WebhookTriggerAdapter` uses.
 
 ```ts
-import { createAgent, httpChannel, mountChannels, webhookChannel } from '@loushy/build-ai-agent';
+import { createAgent, httpChannel, mountChannels, webhookChannel } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ instructions: 'You are helpful.', provider });
 
@@ -244,7 +244,7 @@ Set up the app at [api.slack.com/apps](https://api.slack.com/apps):
 
 ```ts
 import * as http from 'node:http';
-import { createAgent, mountChannels, slackChannel } from '@loushy/build-ai-agent';
+import { createAgent, mountChannels, slackChannel } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ instructions: 'You are a helpful Slack bot.', provider });
 
@@ -311,7 +311,7 @@ curl -X POST "https://discord.com/api/v10/applications/$APP_ID/guilds/$GUILD_ID/
 
 ```ts
 import * as http from 'node:http';
-import { createAgent, discordChannel, mountChannels } from '@loushy/build-ai-agent';
+import { createAgent, discordChannel, mountChannels } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ instructions: 'You are a helpful Discord bot.', provider });
 

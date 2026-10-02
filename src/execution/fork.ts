@@ -50,7 +50,7 @@ export async function forkSession(options: ForkOptions): Promise<ForkResult> {
   const entry = history.find((e) => e.step === fromStep);
   if (!entry) {
     const kept = [...new Set(history.map((e) => e.step))].reverse().join(', ') || 'none';
-    throw new SDKError(`fork: session '${sessionId}' has no checkpoint at step ${fromStep} (steps kept: ${kept}).`, 'LOUSHY_CHECKPOINT_NOT_FOUND');
+    throw new SDKError(`fork: session '${sessionId}' has no checkpoint at step ${fromStep} (steps kept: ${kept}).`, 'LOUSHO_CHECKPOINT_NOT_FOUND');
   }
   const newSessionId = options.newSessionId ?? (await nextForkId(checkpointStore, sessionId));
   if (newSessionId === sessionId || (await checkpointStore.load(newSessionId))) {

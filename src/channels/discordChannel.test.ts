@@ -156,8 +156,8 @@ describe('discordChannel (LOU-P6)', () => {
     await t.send(command('Email Sam'));
 
     const [approve, deny] = t.calls[0].body.components?.[0].components ?? [];
-    expect(approve.custom_id).toMatch(/^loushy_approve:/);
-    expect(deny.custom_id).toMatch(/^loushy_deny:/);
+    expect(approve.custom_id).toMatch(/^lousho_approve:/);
+    expect(deny.custom_id).toMatch(/^lousho_deny:/);
     expect(execute).not.toHaveBeenCalled();
 
     const approval = click(approve.custom_id);

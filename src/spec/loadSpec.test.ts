@@ -5,7 +5,7 @@ import path from 'node:path';
 import { loadSpec } from './loadSpec';
 
 function tmpFile(name: string, content: string): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-spec-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-spec-'));
   const filePath = path.join(dir, name);
   fs.writeFileSync(filePath, content);
   return filePath;
@@ -61,7 +61,7 @@ tools:
     );
 
     expect(() => loadSpec(filePath)).toThrow(/'prompt'/);
-    expect(() => loadSpec(filePath)).toThrow(expect.objectContaining({ code: 'LOUSHY_SPEC_INVALID' }));
+    expect(() => loadSpec(filePath)).toThrow(expect.objectContaining({ code: 'LOUSHO_SPEC_INVALID' }));
   });
 
   it('suggests the spec field a top-level typo meant (LOU-D2)', () => {
@@ -71,7 +71,7 @@ tools:
     );
     expect(() => loadSpec(typo)).toThrow(
       expect.objectContaining({
-        code: 'LOUSHY_SPEC_UNKNOWN_FIELD',
+        code: 'LOUSHO_SPEC_UNKNOWN_FIELD',
         message: expect.stringContaining("unknown field 'tool' (did you mean 'tools'?)"),
       })
     );
@@ -79,7 +79,7 @@ tools:
     const missing = tmpFile('promt.yaml', 'name: a\npromt: hi\nprovider:\n  type: mock\n  model: m\n');
     expect(() => loadSpec(missing)).toThrow(
       expect.objectContaining({
-        code: 'LOUSHY_SPEC_INVALID',
+        code: 'LOUSHO_SPEC_INVALID',
         message: expect.stringMatching(/'prompt': .*; unknown field 'promt' \(did you mean 'prompt'\?\)/),
       })
     );
@@ -135,7 +135,7 @@ mcpServers:
   it('throws for an unsupported extension', () => {
     const filePath = tmpFile('agent.txt', 'not a spec');
     expect(() => loadSpec(filePath)).toThrow(/unsupported extension/);
-    expect(() => loadSpec(filePath)).toThrow(expect.objectContaining({ code: 'LOUSHY_SPEC_UNSUPPORTED_FORMAT' }));
+    expect(() => loadSpec(filePath)).toThrow(expect.objectContaining({ code: 'LOUSHO_SPEC_UNSUPPORTED_FORMAT' }));
   });
 
   it('loads a spec with a policy block (LOU-X5)', () => {
@@ -158,6 +158,6 @@ mcpServers:
     expect(() => loadSpec(filePath)).toThrow(
       /'policy\.guardrails\.0': AgentSpec validation failed: unknown guardrail 'secretscan' \(did you mean 'secret-scan'\?\)\. Available: max-length/
     );
-    expect(() => loadSpec(filePath)).toThrow(expect.objectContaining({ code: 'LOUSHY_SPEC_INVALID' }));
+    expect(() => loadSpec(filePath)).toThrow(expect.objectContaining({ code: 'LOUSHO_SPEC_INVALID' }));
   });
 });

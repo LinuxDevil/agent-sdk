@@ -114,7 +114,7 @@ describe('CloudflareWorkerAdapter', () => {
     expect(toml).toMatch(/^name = "cf-test-agent"$/m);
     expect(toml).toMatch(/^main = "dist\/worker\.js"$/m);
     expect(toml).toMatch(/^compatibility_date = "\d{4}-\d{2}-\d{2}"$/m);
-    expect(workerName({ ...SPEC, name: '***' })).toBe('loushy-agent');
+    expect(workerName({ ...SPEC, name: '***' })).toBe('lousho-agent');
     expect(workerName({ ...SPEC, name: 'x'.repeat(100) })).toHaveLength(63);
   });
 
@@ -140,7 +140,7 @@ describe('CloudflareWorkerAdapter', () => {
   });
 
   it('rejects tools and providers that cannot run on Workers', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-cf-bad-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-cf-bad-'));
     const out = path.join(dir, 'out');
     await expect(
       CloudflareWorkerAdapter.scaffold(writeSpec(dir, { ...SPEC, tools: ['http'] }), out)
@@ -185,7 +185,7 @@ describe('CloudflareWorkerAdapter', () => {
     let outDir: string;
 
     beforeAll(async () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-cf-'));
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-cf-'));
       outDir = path.join(dir, 'out');
       await CloudflareWorkerAdapter.scaffold(writeSpec(dir, SPEC), outDir);
       await withBuildLock(() => CloudflareWorkerAdapter.build(outDir));
@@ -257,7 +257,7 @@ describe('CloudflareWorkerAdapter', () => {
       // sized past the actual WORKER_SIZE_LIMIT_BYTES threshold, driven
       // through the adapter's real describe() - not a re-implementation of
       // its verdict logic - to prove the WARNING branch genuinely fires.
-      const scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-cf-oversized-'));
+      const scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-cf-oversized-'));
       const scratchOut = path.join(scratchDir, 'out');
       fs.mkdirSync(path.join(scratchOut, 'dist'), { recursive: true });
       const oversizedPath = path.join(scratchOut, 'dist', 'worker.js');
@@ -305,7 +305,7 @@ describe('CloudflareWorkerAdapter', () => {
     it("the built bundle serves sessions, SSE and bearer auth like the node server (LOU-D51)", async () => {
       const mod = await import(pathToFileURL(path.join(outDir, 'dist', 'worker.js')).href);
       const handler = mod.default as { fetch: (r: Request, env?: Record<string, unknown>) => Promise<Response> };
-      const env = { LOUSHY_API_TOKEN: 'tok' };
+      const env = { LOUSHO_API_TOKEN: 'tok' };
       const auth = { Authorization: 'Bearer tok' };
       const post = (body: unknown, headers: Record<string, string> = {}) =>
         handler.fetch(new Request('http://worker/chat', { method: 'POST', headers, body: JSON.stringify(body) }), env);
@@ -365,7 +365,7 @@ describe('CloudflareWorkerAdapter', () => {
         const port = await freePort();
         // The KV binding the generated wrangler.toml leaves commented out, and the token secret (a .dev.vars file).
         fs.appendFileSync(path.join(outDir, 'wrangler.toml'), `[[kv_namespaces]]\nbinding = "${CHECKPOINT_KV_BINDING}"\nid = "local-dev"\n`);
-        fs.writeFileSync(path.join(outDir, '.dev.vars'), 'LOUSHY_API_TOKEN=dev-token\n');
+        fs.writeFileSync(path.join(outDir, '.dev.vars'), 'LOUSHO_API_TOKEN=dev-token\n');
         const child = spawn(
           process.execPath,
           [wranglerBin!, 'dev', '--port', String(port), '--ip', '127.0.0.1'],
@@ -418,7 +418,7 @@ describe('CloudflareWorkerAdapter', () => {
     it.each(['openai', 'anthropic'] as const)(
       "scaffolds and builds a Worker bundle for provider '%s' with zero node: references",
       async (providerType) => {
-        const dir = fs.mkdtempSync(path.join(os.tmpdir(), `loushy-cf-${providerType}-`));
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), `lousho-cf-${providerType}-`));
         const outDir = path.join(dir, 'out');
         const model = providerType === 'openai' ? 'gpt-4o-mini' : 'claude-3-5-sonnet-latest';
 

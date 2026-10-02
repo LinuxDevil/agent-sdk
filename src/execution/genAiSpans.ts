@@ -170,7 +170,7 @@ function responseModel(generated: GenerateResult): string | undefined {
  * Records usage, finish reason, response model (and output content) on a `chat` span.
  * Usage is the same normalized `Usage` the run totals use: pass the executor's
  * `measured` figures (which may be estimates), else what the provider reported.
- * `loushy.cost_usd` is the step's cost when the price table knows the model.
+ * `lousho.cost_usd` is the step's cost when the price table knows the model.
  */
 export function recordLlmResult(
   span: Span,

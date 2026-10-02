@@ -1,21 +1,21 @@
 # Svelte
 
-`loushyAgent()` for Svelte is the [React hook](./react.md) as a store: the same
+`loushoAgent()` for Svelte is the [React hook](./react.md) as a store: the same
 sources, the same state and the same actions, over the same
 [typed event stream](./streaming.md). Read [React](./react.md) for what each
 field means, the two kinds of source, how approvals work and the server side;
 this page covers what differs.
 
-It lives in the `@loushy/build-ai-agent/svelte` subpath. The store implements
+It lives in the `@lousho/build-ai-agent/svelte` subpath. The store implements
 Svelte's store contract (`subscribe(run) => unsubscribe`) by hand, so it works
 with `$agent` in Svelte 4 and 5 and needs no `svelte` import: there is no peer
 dependency to install.
 
 ```ts
-import { loushyAgent } from '@loushy/build-ai-agent/svelte';
+import { loushoAgent } from '@lousho/build-ai-agent/svelte';
 
 // In a component's <script lang="ts">, or a module that several components share:
-export const agent = loushyAgent({ url: '/api/agent' }, { approvalsUrl: '/api/approvals' });
+export const agent = loushoAgent({ url: '/api/agent' }, { approvalsUrl: '/api/approvals' });
 
 export async function submit(text: string): Promise<void> {
   if (text.trim()) await agent.send(text);
@@ -64,4 +64,4 @@ snippets here):
 
 The reducer and the stream parser are exported from this subpath too
 (`reduceAgentEvents`, `initialAgentUIState`, `parseEventStream`), the same
-ones as in `@loushy/build-ai-agent/react`.
+ones as in `@lousho/build-ai-agent/react`.

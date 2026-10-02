@@ -7,7 +7,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { FileCheckpointStore } from '../checkpointStore';
-import type { Checkpoint } from '@loushy/build-ai-agent';
+import type { Checkpoint } from '@lousho/build-ai-agent';
 import { describeCheckpointHistoryContract } from '../../../../src/execution/__fixtures__/checkpointHistoryContract';
 
 const dirs: string[] = [];
@@ -36,7 +36,7 @@ describe('FileCheckpointStore history on disk (LOU-D43.2)', () => {
     dirs.push(dir);
     const store = new FileCheckpointStore(dir);
     await store.save('bot', checkpoint(1));
-    const historyFile = path.join(dir, '.loushy', 'agents', 'bot', 'checkpoint-history', 'bot.json');
+    const historyFile = path.join(dir, '.lousho', 'agents', 'bot', 'checkpoint-history', 'bot.json');
     fs.writeFileSync(historyFile, '[{"step":1,"savedAt":"2026-01-01T00:0');
 
     expect(await store.history('bot')).toEqual([]);

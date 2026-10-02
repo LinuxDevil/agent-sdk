@@ -3,27 +3,27 @@
 Agent Forge (`apps/agent-forge`) is this SDK's companion visual dashboard:
 build an agent's graph on a canvas, run it, watch it execute in a live
 debug console, chat with it, and author sandboxed pre/post hooks - all
-reading and writing the exact same `AgentSpec` YAML that `loushy dev` and
-`loushy build` use. It's launched with one command, `loushy studio`, and
+reading and writing the exact same `AgentSpec` YAML that `lousho dev` and
+`lousho build` use. It's launched with one command, `lousho studio`, and
 ships as part of this SDK's npm package (LOU-S).
 
-This doc covers: installation, the `loushy studio` quickstart, a
+This doc covers: installation, the `lousho studio` quickstart, a
 first-agent walkthrough, hook authoring, time travel (replaying a run from
 a past step), and how settings/secrets/deploy wiring works (and doesn't
 yet).
 
 ## Installation
 
-Agent Forge ships inside `@loushy/build-ai-agent` itself - there's no
+Agent Forge ships inside `@lousho/build-ai-agent` itself - there's no
 separate package to install. The package is not on npm yet (see
 [Installing before the first release](./installation.md#installing-before-the-first-release));
 once it is:
 
 ```bash
-npm install @loushy/build-ai-agent
+npm install @lousho/build-ai-agent
 ```
 
-That's it. `loushy studio` (below) runs a pre-built copy of the app; you
+That's it. `lousho studio` (below) runs a pre-built copy of the app; you
 don't need `apps/agent-forge`'s own source or its devDependencies (Vite,
 `tsx`, etc.) to use it.
 
@@ -33,7 +33,7 @@ Agent Forge itself), see [Dev mode](#dev-mode) below.
 ## Quickstart
 
 ```bash
-npx loushy studio
+npx lousho studio
 ```
 
 This starts one local server and prints its URL (default
@@ -44,20 +44,20 @@ the left rail (your saved agents + a node/hook palette), the Inspector
 Useful flags:
 
 ```bash
-npx loushy studio --port 5000       # pick a different port
-npx loushy studio --host 0.0.0.0    # bind to all interfaces
-npx loushy studio --prod            # force production mode (see below)
-npx loushy studio --dev             # force dev mode (monorepo only)
+npx lousho studio --port 5000       # pick a different port
+npx lousho studio --host 0.0.0.0    # bind to all interfaces
+npx lousho studio --prod            # force production mode (see below)
+npx lousho studio --dev             # force dev mode (monorepo only)
 ```
 
-Agent specs and run state are stored under `.loushy/` in the directory you
-ran `loushy studio` from (agent YAML files under `.loushy/agents/`,
-checkpoints and approvals alongside them) - the same `.loushy/` layout
-`loushy dev`/`loushy build` use.
+Agent specs and run state are stored under `.lousho/` in the directory you
+ran `lousho studio` from (agent YAML files under `.lousho/agents/`,
+checkpoints and approvals alongside them) - the same `.lousho/` layout
+`lousho dev`/`lousho build` use.
 
 ### Production vs. dev mode
 
-`loushy studio` has two modes, and picks the right one automatically:
+`lousho studio` has two modes, and picks the right one automatically:
 
 - **Production** (the default once Agent Forge has been built): a single
   Express server serves both the REST/WebSocket API *and* the pre-built
@@ -71,7 +71,7 @@ checkpoints and approvals alongside them) - the same `.loushy/` layout
   ports internally, one command.
 
 `--prod`/`--dev` force one or the other; run without either flag and
-`loushy studio` auto-detects based on whether `apps/agent-forge/dist-server`
+`lousho studio` auto-detects based on whether `apps/agent-forge/dist-server`
 exists.
 
 ## First-agent walkthrough
@@ -170,7 +170,7 @@ sandboxed tool uses.
 Agent Forge keeps every run's checkpoints, not just the latest: its file
 store (`server/checkpointStore.ts`) keeps the same bounded history as the
 SDK's `LocalStorageCheckpointStore` (the newest 50 saves per run, under
-`.loushy/agents/<id>/checkpoint-history/`; see
+`.lousho/agents/<id>/checkpoint-history/`; see
 [Checkpoint history](./durable-execution.md#checkpoint-history)). From
 that history you can fork a run at any step, change what happened there,
 and replay it next to the original, with
@@ -227,19 +227,19 @@ chat are unchanged.
 ## Settings, secrets and deploy wiring
 
 The bottom drawer has a **Settings** tab with three parts: provider API keys
-(OpenAI and Anthropic, stored encrypted under `.loushy/` and never shown
+(OpenAI and Anthropic, stored encrypted under `.lousho/` and never shown
 again), named settings profiles (provider, deploy adapter, hook timeout,
-OpenTelemetry toggle; kept in `.loushy/settings.json`, which holds no
+OpenTelemetry toggle; kept in `.lousho/settings.json`, which holds no
 secrets), and a **Deploy** section that picks an adapter (`node-server`,
-`docker` or `cloudflare-worker`) and runs `loushy build` for the selected
+`docker` or `cloudflare-worker`) and runs `lousho build` for the selected
 agent. Other providers still read their environment variables, the same way
-`loushy dev`/`loushy build` do (see [Configuration](./configuration.md)), and
+`lousho dev`/`lousho build` do (see [Configuration](./configuration.md)), and
 the `mock` provider needs no credentials.
 
 ## Dev mode
 
 If you're working inside this SDK's own monorepo (contributing to Agent
-Forge itself, not just using it), `loushy studio` falls back to dev mode
+Forge itself, not just using it), `lousho studio` falls back to dev mode
 automatically as long as `apps/agent-forge/dist-server` hasn't been built
 yet:
 
@@ -247,7 +247,7 @@ yet:
 git clone https://github.com/LinuxDevil/agent-sdk.git
 cd agent-sdk
 npm install
-npx loushy studio --dev   # or just `npx loushy studio` before building
+npx lousho studio --dev   # or just `npx lousho studio` before building
 ```
 
 This runs the API server straight from TypeScript (`tsx`) and a real Vite
@@ -258,7 +258,7 @@ sibling processes. To build the production bundle used by everyone else
 ```bash
 npm run build:studio   # builds apps/agent-forge/dist (client) and
                         # apps/agent-forge/dist-server (bundled server)
-npx loushy studio       # now runs in production mode
+npx lousho studio       # now runs in production mode
 ```
 
 `npm run build:studio` also runs automatically as part of the root
@@ -268,7 +268,7 @@ stale or unbuilt studio.
 ## E2E smoke test
 
 `apps/agent-forge/e2e/studio.spec.ts` is a headless Playwright test that
-drives the real, built `loushy studio` (the same `dist-server/index.cjs`
+drives the real, built `lousho studio` (the same `dist-server/index.cjs`
 production server, not a dev-mode Vite server) through a browser: it
 creates an agent from the "Support bot" template, retargets its tool node
 at a server-local `demo-approval` tool (always `needsApproval: true` -

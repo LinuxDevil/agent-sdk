@@ -129,14 +129,14 @@ describe.each(stores)('resuming with a changed agent: %s', (_name, makeStore) =>
     expect(model.calls).toHaveLength(1);
   });
 
-  it("'error' rejects with LOUSHY_AGENT_DRIFT before any model call or tool, leaving the checkpoint untouched", async () => {
+  it("'error' rejects with LOUSHO_AGENT_DRIFT before any model call or tool, leaving the checkpoint untouched", async () => {
     const { store, sessionId } = await crashedRun();
     const before = structuredClone(await store.checkpoints!.load(sessionId));
     const tools = toolsOf(['a', 'b']);
     const model = mockModel(['Resumed.'], { defaultModel: 'gpt-new' });
     const agent = createAgent({ provider: model, instructions: 'Changed.', tools: tools.list, store, onAgentDrift: 'error' });
 
-    await expect(agent.resume(sessionId)).rejects.toMatchObject({ code: 'LOUSHY_AGENT_DRIFT', detail: expect.stringMatching(/model gpt-old -> gpt-new.*instructions changed/) });
+    await expect(agent.resume(sessionId)).rejects.toMatchObject({ code: 'LOUSHO_AGENT_DRIFT', detail: expect.stringMatching(/model gpt-old -> gpt-new.*instructions changed/) });
 
     expect(model.calls).toHaveLength(0);
     expect(tools.runs).toEqual({ a: 0, b: 0 });
@@ -169,7 +169,7 @@ describe.each(stores)('resuming with a changed agent: %s', (_name, makeStore) =>
     await expect(resuming.resume(sessionId)).rejects.toMatchObject({ detail: expect.stringMatching(/tools added: c.*tools changed \(input schema\): a/) });
 
     const without = createAgent({ provider: mockModel(['x'], { defaultModel: 'gpt-old' }), instructions: 'Be brief.', tools: toolsOf(['a']).list, store, onAgentDrift: 'error' });
-    await expect(without.resume(sessionId)).rejects.toMatchObject({ code: 'LOUSHY_RESUME_TOOL_MISSING' });
+    await expect(without.resume(sessionId)).rejects.toMatchObject({ code: 'LOUSHO_RESUME_TOOL_MISSING' });
   });
 
   it('a checkpoint saved before the fingerprint existed resumes with no warning or error', async () => {
@@ -191,7 +191,7 @@ describe.each(stores)('resuming with a changed agent: %s', (_name, makeStore) =>
       const model = mockModel(['never']);
       const agent = createAgent({ provider: model, instructions: 'Be brief.', tools: toolsOf(['a']).list, store, onAgentDrift });
 
-      await expect(agent.resume(sessionId)).rejects.toMatchObject({ code: 'LOUSHY_RESUME_TOOL_MISSING', detail: expect.stringContaining("'b'") });
+      await expect(agent.resume(sessionId)).rejects.toMatchObject({ code: 'LOUSHO_RESUME_TOOL_MISSING', detail: expect.stringContaining("'b'") });
 
       expect(model.calls).toHaveLength(0);
       expect((await store.checkpoints!.load(sessionId))?.status).toBe('in-progress');
@@ -206,7 +206,7 @@ describe.each(stores)('resuming with a changed agent: %s', (_name, makeStore) =>
 
     const model = mockModel(['x'], { defaultModel: 'gpt-new' });
     const strict = createAgent({ provider: model, tools: toolsOf(['a', 'b']).list, store, onAgentDrift: 'error' });
-    await expect(strict.session({ id: 'chat' }).resume()).rejects.toMatchObject({ code: 'LOUSHY_AGENT_DRIFT' });
+    await expect(strict.session({ id: 'chat' }).resume()).rejects.toMatchObject({ code: 'LOUSHO_AGENT_DRIFT' });
     expect(model.calls).toHaveLength(0);
 
     const lenient = createAgent({ provider: mockModel(['Done.'], { defaultModel: 'gpt-new' }), tools: toolsOf(['a', 'b']).list, store });
@@ -249,7 +249,7 @@ describe.each(stores)('resuming with a changed agent: %s', (_name, makeStore) =>
       const { store, approvalId } = await pausedRun();
       const wrong = resumedBy(store, { onAgentDrift: 'error' });
 
-      await expect(wrong.make().approvals.resolve({ id: approvalId, approved: true })).rejects.toMatchObject({ code: 'LOUSHY_AGENT_DRIFT' });
+      await expect(wrong.make().approvals.resolve({ id: approvalId, approved: true })).rejects.toMatchObject({ code: 'LOUSHO_AGENT_DRIFT' });
       expect(wrong.tools.runs.send).toBe(0);
 
       const right = resumedBy(store, { onAgentDrift: 'error' });
@@ -263,7 +263,7 @@ describe.each(stores)('resuming with a changed agent: %s', (_name, makeStore) =>
       const model = mockModel(['never'], { defaultModel: 'gpt-old' });
       const agent = createAgent({ provider: model, instructions: 'Be brief.', tools: toolsOf(['lookup']).list, store, onAgentDrift: 'ignore' });
 
-      await expect(agent.approvals.resolve({ id: approvalId, approved: true })).rejects.toMatchObject({ code: 'LOUSHY_RESUME_TOOL_MISSING' });
+      await expect(agent.approvals.resolve({ id: approvalId, approved: true })).rejects.toMatchObject({ code: 'LOUSHO_RESUME_TOOL_MISSING' });
       expect(model.calls).toHaveLength(0);
 
       const rejected = await resumedBy(store, {}).make(mockModel(['Okay.'], { defaultModel: 'gpt-old' })).approvals.resolve({ id: approvalId, approved: false });

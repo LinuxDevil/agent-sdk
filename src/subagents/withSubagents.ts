@@ -62,7 +62,7 @@ function registrationOf(agent: unknown, name: string, caller: string): ResolvedS
     throw new SDKError(
       `${caller}: sub-agent '${name}' is not an agent created with createAgent(). ` +
         `Example: subagents: { ${name}: createAgent({ instructions, description, provider }) }`,
-      'LOUSHY_CONFIG_INVALID'
+      'LOUSHO_CONFIG_INVALID'
     );
   }
   return registration;
@@ -79,7 +79,7 @@ export function assertMaxSubagentDepth(value: unknown, caller: string): void {
   throw new SDKError(
     `${caller}: 'maxSubagentDepth' must be a whole number >= 0, got ${String(value)}. ` +
       'Use 1 (the default) to let only the lead agent delegate, 2 to let its sub-agents delegate too.',
-    'LOUSHY_CONFIG_INVALID'
+    'LOUSHO_CONFIG_INVALID'
   );
 }
 
@@ -96,7 +96,7 @@ export function assertSubagents(subagents: Subagents | undefined, caller: string
       throw new SDKError(
         `${caller}: sub-agent '${name}' has no description. The lead model picks a sub-agent by its description - ` +
           `add one: createAgent({ ..., description: 'Finds and summarizes sources' }).`,
-        'LOUSHY_CONFIG_INVALID'
+        'LOUSHO_CONFIG_INVALID'
       );
     }
   }
@@ -106,10 +106,10 @@ function assertSummaries(summaries: readonly SubagentSummary[]): void {
   const seen = new Set<string>();
   for (const { name, description } of summaries) {
     if (!name || seen.has(name)) {
-      throw new SDKError(`subagents: catalog list() returned ${name ? `the name '${name}' twice` : 'an empty name'}. Names must be unique and non-empty.`, 'LOUSHY_CONFIG_INVALID');
+      throw new SDKError(`subagents: catalog list() returned ${name ? `the name '${name}' twice` : 'an empty name'}. Names must be unique and non-empty.`, 'LOUSHO_CONFIG_INVALID');
     }
     if (!description?.trim()) {
-      throw new SDKError(`subagents: catalog list() returned sub-agent '${name}' without a description. Add one so the lead model can pick it.`, 'LOUSHY_CONFIG_INVALID');
+      throw new SDKError(`subagents: catalog list() returned sub-agent '${name}' without a description. Add one so the lead model can pick it.`, 'LOUSHO_CONFIG_INVALID');
     }
     seen.add(name);
   }
@@ -380,7 +380,7 @@ export function assertNoTaskTool(agent: AgentConfig, toolRegistry: ToolRegistry 
     throw new SDKError(
       `subagents: a tool named '${taken}' is already registered, but agents with sub-agents get one automatically. ` +
         `Rename your tool, or remove the 'subagents' option.`,
-      'LOUSHY_CONFIG_INVALID'
+      'LOUSHO_CONFIG_INVALID'
     );
   }
 }

@@ -206,7 +206,7 @@ class ScriptedMockModel implements MockModel {
       throw new SDKError(
         `mockModel: ${remaining} scripted turn(s) were never used (${this.index} of ${this.script.length} consumed). ` +
           'Remove the extra turns or check why the agent stopped calling the model early.',
-        'LOUSHY_TEST_FAILED'
+        'LOUSHO_TEST_FAILED'
       );
     }
   }
@@ -321,7 +321,7 @@ class ScriptedMockModel implements MockModel {
  *
  * @example
  * ```ts
- * import { mockModel } from '@loushy/build-ai-agent/testing';
+ * import { mockModel } from '@lousho/build-ai-agent/testing';
  *
  * const model = mockModel([
  *   { toolCalls: [{ name: 'get_weather', args: { city: 'Paris' } }] },

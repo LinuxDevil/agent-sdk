@@ -1,5 +1,5 @@
 /**
- * `loushy mcp <agent.yaml|json> [--http --port N --host H]` - serve an agent
+ * `lousho mcp <agent.yaml|json> [--http --port N --host H]` - serve an agent
  * spec over MCP (LOU-Z3). stdio by default; stdout carries only the MCP
  * protocol there, so every message from this command goes to stderr.
  */
@@ -9,9 +9,9 @@ import { specToAgent } from '../spec/specToAgent';
 import { parseCommand, portValue, stringValue, usageError, type CommandSpec } from './args';
 import { serveMcp, type ServeMcpHandle } from '../tools/mcp/server/serveMcp';
 
-const USAGE = 'Usage: loushy mcp <agent.yaml|json> [--http --port N --host H]';
+const USAGE = 'Usage: lousho mcp <agent.yaml|json> [--http --port N --host H]';
 
-/** Parsed `loushy mcp` arguments. */
+/** Parsed `lousho mcp` arguments. */
 export interface McpCliArgs {
   configPath: string;
   http: boolean;
@@ -28,7 +28,7 @@ const SPEC: CommandSpec = {
   options: { http: { type: 'boolean' }, port: { type: 'string' }, host: { type: 'string' } },
 };
 
-/** Parses `loushy mcp` arguments; throws `LOUSHY_CONFIG_INVALID` for a missing path, an unknown flag, a flag without its value or a bad port. */
+/** Parses `lousho mcp` arguments; throws `LOUSHO_CONFIG_INVALID` for a missing path, an unknown flag, a flag without its value or a bad port. */
 export function parseMcpArgs(rest: string[]): McpCliArgs {
   const { values, positionals, help } = parseCommand(SPEC, rest);
   if (help) return { configPath: '', http: false, port: 3920, host: '127.0.0.1', help };
@@ -57,7 +57,7 @@ export async function runMcp(rest: string[]): Promise<number> {
       return 0;
     }
     const server = await startMcpServer(args);
-    if (server.url) console.error(`loushy mcp: serving on ${server.url}`);
+    if (server.url) console.error(`lousho mcp: serving on ${server.url}`);
     return 0;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

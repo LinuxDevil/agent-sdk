@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { AgentSpec } from '@loushy/build-ai-agent';
+import type { AgentSpec } from '@lousho/build-ai-agent';
 import { createFsAgentStore } from '../fsAgentStore';
 
 const spec: AgentSpec = {
@@ -22,11 +22,11 @@ describe('createFsAgentStore', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('writes a spec to .loushy/agents/<id>.yaml and reads it back via loadSpec()', async () => {
+  it('writes a spec to .lousho/agents/<id>.yaml and reads it back via loadSpec()', async () => {
     const store = createFsAgentStore(tmpDir);
     await store.save('ops-pipeline', spec);
 
-    const filePath = path.join(tmpDir, '.loushy', 'agents', 'ops-pipeline.yaml');
+    const filePath = path.join(tmpDir, '.lousho', 'agents', 'ops-pipeline.yaml');
     expect(fs.existsSync(filePath)).toBe(true);
 
     const loaded = await store.load('ops-pipeline');

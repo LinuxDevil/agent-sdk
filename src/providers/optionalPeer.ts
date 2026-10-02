@@ -23,17 +23,17 @@ export interface FeaturePeer {
 
 /**
  * The optional peers behind SDK features (not providers; those live in
- * providerSpec.ts). Also what `loushy doctor` lists as "what it enables".
+ * providerSpec.ts). Also what `lousho doctor` lists as "what it enables".
  */
 export const FEATURE_PEERS: Readonly<Record<string, FeaturePeer>> = {
   dockerode: { range: '^5.0.1', feature: 'Docker sandboxing (SubprocessSandbox)' },
   '@modelcontextprotocol/sdk': {
     range: '^1.30.1',
-    feature: 'MCP (serveMcp, `loushy mcp` and MCP client connections)',
+    feature: 'MCP (serveMcp, `lousho mcp` and MCP client connections)',
   },
   prompts: {
     range: '^2.4.2',
-    feature: 'the interactive prompts of `loushy init` (pass --yes to skip them)',
+    feature: 'the interactive prompts of `lousho init` (pass --yes to skip them)',
   },
 };
 
@@ -68,7 +68,7 @@ export class MissingPeerDependencyError extends SDKError {
     super(
       `The optional package '${packageName}' is not installed, but ${options?.feature ?? 'this feature'} needs it. Run: ${installCommand}` +
         (options?.note ? ` (note: ${options.note})` : ''),
-      'LOUSHY_PEER_MISSING',
+      'LOUSHO_PEER_MISSING',
       { cause: options?.cause }
     );
     this.feature = options?.feature;

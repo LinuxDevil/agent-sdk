@@ -11,7 +11,7 @@ beforeAll(() => {
 });
 
 function writeSpec(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-mcp-test-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-mcp-test-'));
   const file = path.join(dir, 'agent.json');
   fs.writeFileSync(
     file,

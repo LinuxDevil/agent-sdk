@@ -1,6 +1,6 @@
 /**
- * Record/replay for `loushy eval` (LOU-D46). When the CLI sets
- * `LOUSHY_EVAL_CASSETTES`, every model call an eval case makes goes through
+ * Record/replay for `lousho eval` (LOU-D46). When the CLI sets
+ * `LOUSHO_EVAL_CASSETTES`, every model call an eval case makes goes through
  * `recordReplay()`, one cassette per case and provider, committed next to the
  * eval file at `__cassettes__/<eval>/<case>.json`.
  *
@@ -23,9 +23,9 @@ import type { EvalResult } from './evalResult';
 import { SDKError } from '../execution/errors';
 
 /** `record`, `replay`, or `auto` (replay a case whose cassette exists, run the rest live). */
-export const CASSETTES_ENV = 'LOUSHY_EVAL_CASSETTES';
+export const CASSETTES_ENV = 'LOUSHO_EVAL_CASSETTES';
 /** With `record`: write cassettes here (`--drift`) instead of next to the eval file. */
-export const DRIFT_DIR_ENV = 'LOUSHY_EVAL_DRIFT_DIR';
+export const DRIFT_DIR_ENV = 'LOUSHO_EVAL_DRIFT_DIR';
 
 type Mode = 'record' | 'replay' | 'auto';
 
@@ -70,9 +70,9 @@ function wrapperFor(run: CaseRun, provider: LLMProvider): LLMProvider {
   if (run.mode === 'replay' && !exists) {
     const label = run.label ? `${run.name} [${run.label}]` : run.name;
     throw new SDKError(
-      `loushy eval --replay: no cassette for "${label}" at ${path.relative(process.cwd(), cassette)}. ` +
-        `Record it with: npx loushy eval --record ${path.relative(process.cwd(), run.file)}`,
-      'LOUSHY_CASSETTE_INVALID'
+      `lousho eval --replay: no cassette for "${label}" at ${path.relative(process.cwd(), cassette)}. ` +
+        `Record it with: npx lousho eval --record ${path.relative(process.cwd(), run.file)}`,
+      'LOUSHO_CASSETTE_INVALID'
     );
   }
   let wrapper = provider;
@@ -100,7 +100,7 @@ function cassetteMode(): Mode | undefined {
 }
 
 /**
- * Runs one eval case under the cassette mode `loushy eval` asked for and
+ * Runs one eval case under the cassette mode `lousho eval` asked for and
  * notes the cassettes it used on the result. Without a mode (a plain
  * `vitest run`) it just runs `runCase`.
  */

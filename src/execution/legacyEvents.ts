@@ -28,7 +28,7 @@ export function warnLegacyOnEvent(): void {
   if (warned) return;
   warned = true;
   console.warn(
-    '[@loushy/build-ai-agent] ExecuteOptions.onEvent (ExecutionEvent) is deprecated and will be removed: ' +
+    '[@lousho/build-ai-agent] ExecuteOptions.onEvent (ExecutionEvent) is deprecated and will be removed: ' +
       'use onAgentEvent (AgentEvent), or createAgent({ onEvent }). See docs/streaming.md#listening-without-iterating.'
   );
 }

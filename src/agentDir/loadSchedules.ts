@@ -10,7 +10,7 @@ export function loadSchedules(dir: string): Promise<DefinedSchedule[]> {
   return loadDefaultExports(
     dir,
     'schedules',
-    'LOUSHY_SCHEDULE_INVALID',
+    'LOUSHO_SCHEDULE_INVALID',
     'a defineSchedule() schedule, for example ' +
       "export default defineSchedule({ cron: '0 9 * * *', prompt: 'Good morning' }).",
     isDefinedSchedule,

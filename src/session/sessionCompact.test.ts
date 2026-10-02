@@ -80,10 +80,10 @@ describe.each(stores())('session.compact() / clear() on the %s store', (_name, m
     expect(session.messages).toHaveLength(2);
   });
 
-  it('rejects with LOUSHY_SESSION_BUSY while a turn is in flight', async () => {
+  it('rejects with LOUSHO_SESSION_BUSY while a turn is in flight', async () => {
     const { session } = await seeded([]);
     const turn = session.send('go');
-    await expect(session.compact()).rejects.toMatchObject({ code: 'LOUSHY_SESSION_BUSY' });
+    await expect(session.compact()).rejects.toMatchObject({ code: 'LOUSHO_SESSION_BUSY' });
     await expect(session.clear()).rejects.toBeInstanceOf(SDKError);
     await turn;
     await expect(session.clear()).resolves.toBeUndefined();

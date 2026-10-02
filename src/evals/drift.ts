@@ -1,6 +1,6 @@
 /**
  * Trajectory drift (LOU-D46): what an eval case did, read from its cassette,
- * and how two such trajectories differ. Pure, so `loushy eval --drift` can
+ * and how two such trajectories differ. Pure, so `lousho eval --drift` can
  * compare a committed cassette with a fresh recording of the same case.
  */
 import type { Cassette } from '../testing/cassette';

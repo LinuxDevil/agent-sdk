@@ -90,7 +90,7 @@ function readDecision(id: string, text: string): ChannelApprovalDecision | undef
  * @example
  * ```ts
  * import * as http from 'node:http';
- * import { createAgent, createMockProvider, httpChannel, mountChannels } from '@loushy/build-ai-agent';
+ * import { createAgent, createMockProvider, httpChannel, mountChannels } from '@lousho/build-ai-agent';
  *
  * const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
  * const channels = mountChannels(agent, [httpChannel()]);
@@ -107,7 +107,7 @@ export function mountChannels(
   const basePath = (options.basePath ?? '/channels').replace(/\/+$/, '');
   const store = options.store ?? new MemorySessionStore();
   const byName = new Map(channels.map((channel) => [channel.name, channel]));
-  if (byName.size !== channels.length) throw new SDKError('mountChannels: channel names must be unique', 'LOUSHY_CHANNEL_INVALID');
+  if (byName.size !== channels.length) throw new SDKError('mountChannels: channel names must be unique', 'LOUSHO_CHANNEL_INVALID');
   const paused = new Map<string, PausedTurn>();
   const tails = new Map<string, Promise<void>>();
   const answered = new WeakSet<ChannelRespond>();
@@ -187,7 +187,7 @@ export function mountChannels(
 
   async function resolveApproval(decision: ChannelApprovalDecision, respond?: ChannelRespond): Promise<void> {
     const turn = paused.get(decision.id);
-    if (!turn) throw new SDKError(`No pending channel approval '${decision.id}'`, 'LOUSHY_APPROVAL_NOT_FOUND');
+    if (!turn) throw new SDKError(`No pending channel approval '${decision.id}'`, 'LOUSHO_APPROVAL_NOT_FOUND');
     await continueTurn(turn, decision, respond);
   }
 

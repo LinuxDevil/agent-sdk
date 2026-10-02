@@ -7,7 +7,7 @@ accepted (`createAgent({ tools: [...] })`, `ToolRegistry.register(tool)`,
 `AgentBuilder.addTool(tool)`).
 
 ```ts
-import { defineTool, createAgent, type ToolInput, type ToolOutput } from '@loushy/build-ai-agent';
+import { defineTool, createAgent, type ToolInput, type ToolOutput } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 const weather = defineTool({
@@ -143,7 +143,7 @@ raw `ToolDescriptor` (a built-in tool, an MCP tool, or an existing `tool()` from
 the `ai` SDK), and `registerMany()` for a record of descriptors or an array of defined tools.
 
 ```ts
-import { ToolRegistry, currentDateTool, defineTool } from '@loushy/build-ai-agent';
+import { ToolRegistry, currentDateTool, defineTool } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 const lookupOrder = defineTool({

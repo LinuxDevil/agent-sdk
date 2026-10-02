@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AgentSpec } from '@loushy/build-ai-agent';
+import type { AgentSpec } from '@lousho/build-ai-agent';
 import { downloadSpec, importSpecFile, parseSpecText, serializeSpec } from '../importExport';
 
 const spec: AgentSpec = {

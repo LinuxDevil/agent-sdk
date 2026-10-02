@@ -33,7 +33,7 @@ export function never(): false {
  *
  * @example
  * ```ts
- * import { defineTool, once } from '@loushy/build-ai-agent';
+ * import { defineTool, once } from '@lousho/build-ai-agent';
  * import { z } from 'zod';
  *
  * const deploy = defineTool({

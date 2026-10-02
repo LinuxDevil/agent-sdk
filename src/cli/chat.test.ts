@@ -63,7 +63,7 @@ async function converse(lines: string[], turns: MockTurn[], extra: { askQuestion
   return { code, model, built, out: out.text(), err: err.text() };
 }
 
-describe('loushy chat REPL', () => {
+describe('lousho chat REPL', () => {
   it('streams a reply, shows tool calls as dim lines and prints usage', async () => {
     const { code, out, model } = await converse(
       ['look up cats', '/quit'],
@@ -95,7 +95,7 @@ describe('loushy chat REPL', () => {
       createAgent: async () => createAgent({ instructions: 'x', provider: model }),
     });
     expect(model.calls[1].messages.map((m) => String(m.content))).toContain('Hi Ali.');
-    expect(out.text()).toContain('\x1b[2mloushy chat: session ');
+    expect(out.text()).toContain('\x1b[2mlousho chat: session ');
     expect(out.text()).toContain('You are Ali.\n');
   });
 
@@ -205,13 +205,13 @@ describe('loushy chat REPL', () => {
       model: 'mock/start',
       createAgent: async (model) => {
         built.push(model);
-        if (model === 'bad') throw new Error('unknown provider [LOUSHY_PROVIDER_UNKNOWN]');
+        if (model === 'bad') throw new Error('unknown provider [LOUSHO_PROVIDER_UNKNOWN]');
         return createAgent({ instructions: 'x', provider: mockModel(['ok']) });
       },
     });
     expect(built).toEqual(['mock/start', 'openai/gpt-4o', 'bad']);
     expect(out.text()).toContain('Model is now openai/gpt-4o.');
-    expect(err.text()).toContain('error: unknown provider [LOUSHY_PROVIDER_UNKNOWN]');
+    expect(err.text()).toContain('error: unknown provider [LOUSHO_PROVIDER_UNKNOWN]');
     expect(out.text()).toContain('ok\n');
   });
 
@@ -237,7 +237,7 @@ describe('loushy chat REPL', () => {
   });
 });
 
-describe('loushy chat command', () => {
+describe('lousho chat command', () => {
   const fixtures = path.join(__dirname, '__fixtures__');
   const run = async (
     args: string[],
@@ -257,26 +257,26 @@ describe('loushy chat command', () => {
     return { code, out: out.text(), err: err.text() };
   };
 
-  it('fails with LOUSHY_CONFIG_INVALID for a path that does not exist', async () => {
+  it('fails with LOUSHO_CONFIG_INVALID for a path that does not exist', async () => {
     const { code, err, out } = await run([path.join(fixtures, 'nope', 'agent.ts')], ['hi'], undefined);
     expect(code).toBe(1);
-    expect(err).toContain('LOUSHY_CONFIG_INVALID');
+    expect(err).toContain('LOUSHO_CONFIG_INVALID');
     expect(err).toContain('does not exist');
     expect(out).toBe('');
   });
 
-  it('fails with LOUSHY_SPEC_UNSUPPORTED_FORMAT for an unsupported file type', async () => {
-    const file = path.join(os.tmpdir(), `loushy-chat-${process.pid}.txt`);
+  it('fails with LOUSHO_SPEC_UNSUPPORTED_FORMAT for an unsupported file type', async () => {
+    const file = path.join(os.tmpdir(), `lousho-chat-${process.pid}.txt`);
     fs.writeFileSync(file, 'x');
     const { code, err } = await run([file], [], undefined);
     fs.rmSync(file);
     expect(code).toBe(1);
-    expect(err).toContain('LOUSHY_SPEC_UNSUPPORTED_FORMAT');
+    expect(err).toContain('LOUSHO_SPEC_UNSUPPORTED_FORMAT');
   });
 
-  it('fails with LOUSHY_CONFIG_INVALID and the usage for a missing path, an unknown flag or a bad --store', () => {
+  it('fails with LOUSHO_CONFIG_INVALID and the usage for a missing path, an unknown flag or a bad --store', () => {
     for (const args of [[], ['a.yaml', '--bogus'], ['a.yaml', '--store', 'redis:x']]) {
-      expect(() => parseChatArgs(args)).toThrow(/LOUSHY_CONFIG_INVALID/);
+      expect(() => parseChatArgs(args)).toThrow(/LOUSHO_CONFIG_INVALID/);
     }
     expect(parseChatArgs(['agent.yaml', '--model=openai/gpt-4o', '--session', 's1', '--store', 'sqlite:./c.db'])).toEqual({
       path: 'agent.yaml',
@@ -311,7 +311,7 @@ describe('loushy chat command', () => {
   });
 
   it('chats with a spec file, and rejects an invalid session id', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-chat-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-chat-'));
     const spec = path.join(dir, 'agent.json');
     fs.writeFileSync(
       spec,
@@ -321,15 +321,15 @@ describe('loushy chat command', () => {
         provider: { type: 'mock', model: 'mock-model-1' },
       })
     );
-    expect((await run([spec, '--session', 'not valid!'], [], undefined)).err).toContain('LOUSHY_SESSION_ID_INVALID');
+    expect((await run([spec, '--session', 'not valid!'], [], undefined)).err).toContain('LOUSHO_SESSION_ID_INVALID');
     const { code, out } = await run([spec], ['hi', '/quit'], undefined);
     fs.rmSync(dir, { recursive: true });
     expect(code).toBe(0);
-    expect(out).toContain('loushy chat: session chat-');
+    expect(out).toContain('lousho chat: session chat-');
   });
 
   it('keeps sessions in --store sqlite:<file> across runs', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-chat-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-chat-'));
     const db = path.join(dir, 'chat.db');
     const target = path.join(fixtures, 'dev-agent');
     const args = [target, '--session', 'keep', '--store', `sqlite:${db}`];

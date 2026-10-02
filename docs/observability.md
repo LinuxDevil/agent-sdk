@@ -17,7 +17,7 @@ mapping.
 ## Quick start
 
 ```ts
-import { AgentExecutor, type TraceExporter } from '@loushy/build-ai-agent';
+import { AgentExecutor, type TraceExporter } from '@lousho/build-ai-agent';
 
 const exporter: TraceExporter = {
   onSpanStart: (span) => console.log('[start]', span.kind, span.name),
@@ -28,7 +28,7 @@ await AgentExecutor.execute({ agent, input, provider, toolRegistry, exporter });
 ```
 
 For real OpenTelemetry spans, import `createOtelTraceExporter()` from
-`@loushy/build-ai-agent/otel` (needs the optional peer dependency
+`@lousho/build-ai-agent/otel` (needs the optional peer dependency
 `@opentelemetry/api` and a registered `TracerProvider`). It carries span kind
 and error status over to OpenTelemetry. See `examples/tracing`
 (`npm run example:tracing:console`, `npm run example:tracing:otel`, which also prints metrics).
@@ -68,8 +68,8 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `gen_ai.agent.id` | The agent's `id`, when set |
 | `gen_ai.provider.name` | The provider's `name` |
 | `gen_ai.conversation.id` | `sessionId`, when set |
-| `loushy.cost_usd` | Cumulative estimated USD of the run (every model call and delegated child run); absent when any model used has no known price |
-| `loushy.usage.estimated` | `true` when any of the run's tokens were estimated |
+| `lousho.cost_usd` | Cumulative estimated USD of the run (every model call and delegated child run); absent when any model used has no known price |
+| `lousho.usage.estimated` | `true` when any of the run's tokens were estimated |
 
 ### Model call: `chat {model}` (CLIENT)
 
@@ -82,8 +82,8 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `gen_ai.response.model` | When the provider reports it |
 | `gen_ai.response.finish_reasons` | e.g. `["stop"]`, `["tool_call"]` |
 | `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` | Token usage |
-| `loushy.cost_usd` | Estimated USD of this step, when the built-in price table (or `registerModel`) knows the model; absent otherwise |
-| `loushy.usage.estimated` | `true` when the provider reported no usage and the tokens were estimated |
+| `lousho.cost_usd` | Estimated USD of this step, when the built-in price table (or `registerModel`) knows the model; absent otherwise |
+| `lousho.usage.estimated` | `true` when the provider reported no usage and the tokens were estimated |
 
 ### Tool call: `execute_tool {tool}`
 
@@ -99,17 +99,17 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 ### Flows
 
 The GenAI spec defines no convention for flow nodes, so node spans use the
-`loushy.flow.*` namespace. The run span uses the spec's workflow convention.
+`lousho.flow.*` namespace. The run span uses the spec's workflow convention.
 
 | Span | Attribute | Value |
 | --- | --- | --- |
 | `invoke_workflow {name}` | `gen_ai.operation.name` | `invoke_workflow` |
 | | `gen_ai.workflow.name` | The flow's `name` |
-| | `loushy.flow.code` | The flow's `code` |
-| | `loushy.flow.outcome` | `success` or `error` |
-| `flow.node {type}` | `loushy.flow.node.id` | The node's id |
-| | `loushy.flow.node.type` | The node type (`sequence`, `llmCall`, ...) |
-| | `loushy.flow.outcome` | `success` or `error` |
+| | `lousho.flow.code` | The flow's `code` |
+| | `lousho.flow.outcome` | `success` or `error` |
+| `flow.node {type}` | `lousho.flow.node.id` | The node's id |
+| | `lousho.flow.node.type` | The node type (`sequence`, `llmCall`, ...) |
+| | `lousho.flow.outcome` | `success` or `error` |
 
 ### Errors
 
@@ -138,7 +138,7 @@ duration metric, only the model and tool calls inside them.
 ```ts
 import { metrics } from '@opentelemetry/api';
 import { ConsoleMetricExporter, MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { createOtelTraceExporter } from '@loushy/build-ai-agent/otel';
+import { createOtelTraceExporter } from '@lousho/build-ai-agent/otel';
 
 // Swap ConsoleMetricExporter for an OTLP exporter to reach any backend.
 metrics.setGlobalMeterProvider(
@@ -162,7 +162,7 @@ the `gen_ai.*` content attributes are **never recorded by default**. Opt in
 per run:
 
 ```ts
-import { AgentExecutor, type TraceExporter } from '@loushy/build-ai-agent';
+import { AgentExecutor, type TraceExporter } from '@lousho/build-ai-agent';
 
 declare const exporter: TraceExporter;
 

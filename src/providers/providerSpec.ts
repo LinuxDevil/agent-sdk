@@ -22,9 +22,9 @@ const AI_MAJORS: readonly AiMajor[] = [4, 6, 7];
 export interface PeerPairing {
   /** The npm package, e.g. `@ai-sdk/openai`. */
   name: string;
-  /** The range install hints and `loushy init` use. */
+  /** The range install hints and `lousho init` use. */
   range: string;
-  /** Every range that works with this `ai` major (what `loushy doctor` accepts). */
+  /** Every range that works with this `ai` major (what `lousho doctor` accepts). */
   accepts: string;
   /** Why installing it can still conflict, shown next to the install hint. */
   note?: string;
@@ -62,7 +62,7 @@ interface ProviderEntry {
   envDefaultModel: string;
 }
 
-/** What `loushy doctor` needs to know about one provider. */
+/** What `lousho doctor` needs to know about one provider. */
 export interface ProviderInfo {
   name: string;
   envKey: string;
@@ -87,8 +87,8 @@ export function listProviders(): ProviderInfo[] {
 
 /**
  * Name of the first provider (in env-detection order) whose env var is set in
- * `env`, or `undefined` when none is. `loushy init --yes` uses it to pick a
- * provider; `LOUSHY_MODEL` is deliberately not consulted.
+ * `env`, or `undefined` when none is. `lousho init --yes` uses it to pick a
+ * provider; `LOUSHO_MODEL` is deliberately not consulted.
  */
 export function detectProviderFromEnv(env: Record<string, string | undefined> = process.env): string | undefined {
   return Object.entries(PROVIDERS).find(([, entry]) => env[entry.envKey])?.[0];
@@ -151,8 +151,8 @@ const PROVIDERS: Record<string, ProviderEntry> = {
 
 const PROVIDER_NAMES = Object.keys(PROVIDERS);
 
-/** Env var that overrides the automatic provider choice, e.g. `LOUSHY_MODEL=anthropic/claude-3-5-sonnet-latest`. */
-const MODEL_ENV_VAR = 'LOUSHY_MODEL';
+/** Env var that overrides the automatic provider choice, e.g. `LOUSHO_MODEL=anthropic/claude-3-5-sonnet-latest`. */
+const MODEL_ENV_VAR = 'LOUSHO_MODEL';
 
 function unknownProviderError(caller: string, providerName: string, spec: string): Error {
   const suggestion = closestMatch(providerName, PROVIDER_NAMES);
@@ -161,7 +161,7 @@ function unknownProviderError(caller: string, providerName: string, spec: string
       `Supported prefixes: ${PROVIDER_NAMES.join(', ')}.` +
       (suggestion ? ` Did you mean '${suggestion}/${spec.slice(providerName.length + 1)}'?` : ''),
     'model',
-    'LOUSHY_PROVIDER_UNKNOWN'
+    'LOUSHO_PROVIDER_UNKNOWN'
   );
 }
 
@@ -170,7 +170,7 @@ function missingKeyError(caller: string, envKey: string): Error {
     `${caller}: ${envKey} is not set. Set it in your environment, ` +
       'or pass a provider instance: createAgent({ provider: ... })',
     envKey,
-    'LOUSHY_PROVIDER_MISSING_API_KEY'
+    'LOUSHO_PROVIDER_MISSING_API_KEY'
   );
 }
 
@@ -193,7 +193,7 @@ function createProvider(caller: string, providerName: string, entry: ProviderEnt
       `${caller}: the '${providerName}' provider needs an optional peer dependency that is not installed. ` +
         `Run: ${installHintPerMajor(entry.peers)}`,
       'model',
-      'LOUSHY_PEER_MISSING',
+      'LOUSHO_PEER_MISSING',
       { cause: error }
     );
   }
@@ -211,7 +211,7 @@ export function resolveProviderSpec(spec: string, caller: string, extra: LLMProv
       `${caller}: expected a "<provider>/<model>" spec, got '${spec}'. ` +
         `Example: 'openai/gpt-4o-mini'. Supported prefixes: ${PROVIDER_NAMES.join(', ')}.`,
       'model',
-      'LOUSHY_PROVIDER_SPEC_INVALID'
+      'LOUSHO_PROVIDER_SPEC_INVALID'
     );
   }
 
@@ -232,7 +232,7 @@ export function resolveProviderSpec(spec: string, caller: string, extra: LLMProv
 }
 
 /**
- * Pick a "<provider>/<model>" spec from the environment: `LOUSHY_MODEL` if
+ * Pick a "<provider>/<model>" spec from the environment: `LOUSHO_MODEL` if
  * set, otherwise the first provider (in the order openai, anthropic,
  * openrouter, ollama) whose env var is set. Throws, listing every fix, when
  * nothing is configured.
@@ -253,6 +253,6 @@ export function modelFromEnv(caller: string, env: Record<string, string | undefi
       `(3) set ${MODEL_ENV_VAR} (e.g. ${MODEL_ENV_VAR}=openai/gpt-4o-mini); ` +
       `(4) set one of ${envKeys.join(', ')} (checked in that order).`,
     'model',
-    'LOUSHY_CONFIG_MISSING_PROVIDER'
+    'LOUSHO_CONFIG_MISSING_PROVIDER'
   );
 }

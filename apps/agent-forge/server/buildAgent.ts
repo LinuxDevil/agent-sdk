@@ -28,7 +28,7 @@ import {
   type LLMProvider,
   type SandboxAdapter,
   type ToolDescriptor,
-} from '@loushy/build-ai-agent';
+} from '@lousho/build-ai-agent';
 import { compileHooksFromSpecPolicy } from './compileHooks';
 import { isSecretProvider, type SecretsStore } from './secretsStore';
 
@@ -87,7 +87,7 @@ export interface BuiltAgent {
    * (no stored key via `secretsStore`, no fallback env var either), so a
    * `mock` provider was substituted to keep the run usable - mirroring the
    * zero-config dev experience `src/spec/specToAgent.ts` already gives
-   * `loushy dev`. Callers (runRegistry.ts) surface this as a log line so
+   * `lousho dev`. Callers (runRegistry.ts) surface this as a log line so
    * it's visible rather than a silent swap.
    */
   usedMockProviderFallback: boolean;

@@ -1,18 +1,18 @@
 # React
 
-`useLoushyAgent()` puts an agent behind a chat UI. It runs a turn, reads the
+`useLoushoAgent()` puts an agent behind a chat UI. It runs a turn, reads the
 [typed event stream](./streaming.md) as it arrives and turns it into
 render-ready state: messages with their text and tool calls, a `status` for
 the composer, and the tool call waiting for approval, if any.
 
-It lives in the `@loushy/build-ai-agent/react` subpath. `react` (18 or 19) is
+It lives in the `@lousho/build-ai-agent/react` subpath. `react` (18 or 19) is
 an optional peer dependency: install it in the app that uses the hook.
 
 ```tsx
-import { useLoushyAgent } from '@loushy/build-ai-agent/react';
+import { useLoushoAgent } from '@lousho/build-ai-agent/react';
 
 export function Chat() {
-  const agent = useLoushyAgent({ url: '/api/agent' });
+  const agent = useLoushoAgent({ url: '/api/agent' });
 
   return (
     <form
@@ -112,8 +112,8 @@ A Node endpoint for the remote mode, with the approvals route:
 
 ```ts
 import { createServer, type IncomingMessage } from 'node:http';
-import { createAgent } from '@loushy/build-ai-agent';
-import type { ApprovalOutcome } from '@loushy/build-ai-agent/react';
+import { createAgent } from '@lousho/build-ai-agent';
+import type { ApprovalOutcome } from '@lousho/build-ai-agent/react';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 
@@ -149,7 +149,7 @@ createServer(async (req, res) => {
 ```
 
 The client then uses
-`useLoushyAgent({ url: '/api/agent' }, { approvalsUrl: '/api/approvals' })`.
+`useLoushoAgent({ url: '/api/agent' }, { approvalsUrl: '/api/approvals' })`.
 For a multi-turn chat, keep an `agent.session({ id })` per conversation on the
 server and call `session.stream()` instead of `agent.stream()`.
 
@@ -158,13 +158,13 @@ server and call `session.stream()` instead of `agent.stream()`.
 The hook takes the agent itself, too. Called from a custom hook:
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
-import { useLoushyAgent } from '@loushy/build-ai-agent/react';
+import { createAgent } from '@lousho/build-ai-agent';
+import { useLoushoAgent } from '@lousho/build-ai-agent/react';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 
 export function useSupportChat() {
-  const chat = useLoushyAgent({ agent, sessionId: 'support' });
+  const chat = useLoushoAgent({ agent, sessionId: 'support' });
   const lastReply = chat.messages.filter((m) => m.role === 'assistant').at(-1)?.text ?? '';
   return { ...chat, lastReply, busy: chat.status === 'streaming' };
 }
@@ -179,7 +179,7 @@ event)`, a pure reducer over `AgentEvent`s and a few local actions
 exported from the same subpath, for a custom binding or a non-React client:
 
 ```ts
-import { initialAgentUIState, parseEventStream, reduceAgentEvents } from '@loushy/build-ai-agent/react';
+import { initialAgentUIState, parseEventStream, reduceAgentEvents } from '@lousho/build-ai-agent/react';
 
 let state = reduceAgentEvents(initialAgentUIState, { type: 'ui.send', input: 'Weather in Paris?' });
 const response = await fetch('http://localhost:3000/api/agent', {

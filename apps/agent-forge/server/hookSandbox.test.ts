@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NoopSandbox } from '@loushy/build-ai-agent';
+import { NoopSandbox } from '@lousho/build-ai-agent';
 import { sandboxRunHook } from './hookSandbox';
 
 describe('sandboxRunHook (LOU-Q2)', () => {

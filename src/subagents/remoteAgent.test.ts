@@ -90,7 +90,7 @@ describe('remoteAgent (LOU-Y7)', () => {
     const result = await agent.send('go', { onEvent: (e) => events.push(JSON.stringify(e)) });
 
     expect(toolResult(result.messages)).toMatchObject({ toolName: 'task', kind: 'execution' });
-    expect(errorMessage(result.messages)).toContain('LOUSHY_REMOTE_UNAUTHORIZED');
+    expect(errorMessage(result.messages)).toContain('LOUSHO_REMOTE_UNAUTHORIZED');
     expect(errorMessage(result.messages)).toContain('401');
     expect(JSON.stringify(result.messages) + events.join('')).not.toContain(TOKEN);
   });
@@ -110,7 +110,7 @@ describe('remoteAgent (LOU-Y7)', () => {
     const server = deployed(createAgent({ provider: mockModel([{ error: new Error('model exploded') }]), instructions: 'remote' }));
     const { agent } = lead(remoteAgent({ url: 'https://remote.test', auth: TOKEN, fetch: server.fetch }));
     const message = errorMessage((await agent.send('go')).messages);
-    expect(message).toContain('LOUSHY_REMOTE_REQUEST_FAILED');
+    expect(message).toContain('LOUSHO_REMOTE_REQUEST_FAILED');
     expect(message).toContain('model exploded');
   });
 
@@ -128,7 +128,7 @@ describe('remoteAgent (LOU-Y7)', () => {
     const error = await remote.run('go', { name: 'remote', taskId: 'task_1' }).catch((e: unknown) => e as Error);
     expect(error.message).toContain('awaiting approval');
     expect(error.message).toMatch(/session 'task_[\w-]+'/);
-    expect(error).toMatchObject({ code: 'LOUSHY_SESSION_AWAITING_APPROVAL' });
+    expect(error).toMatchObject({ code: 'LOUSHO_SESSION_AWAITING_APPROVAL' });
     expect(error.message).toContain("then continue task 'task_1'");
   });
 
@@ -226,7 +226,7 @@ describe('remote sub-agent approvals through the lead run (LOU-Y7.3)', () => {
   });
 
   it('is decided from a fresh lead agent on the same SQLite store, without the token being stored', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'loushy-y73-'));
+    const dir = mkdtempSync(join(tmpdir(), 'lousho-y73-'));
     const file = join(dir, 'agent.db');
     const { server, runs } = approvingRemote([deployCall(), 'Deployed.']);
     const subagents = () => ({ remote: remoteAgent({ url: 'https://remote.test', auth: TOKEN, fetch: server.fetch }) });
@@ -263,7 +263,7 @@ describe('remote sub-agent approvals through the lead run (LOU-Y7.3)', () => {
     expect(runs).toEqual([]);
     expect(result.text).toBe('done');
     expect(toolResult(result.messages)).toMatchObject({ toolName: 'task' });
-    expect(errorMessage(result.messages)).toContain('LOUSHY_REMOTE_UNAUTHORIZED');
+    expect(errorMessage(result.messages)).toContain('LOUSHO_REMOTE_UNAUTHORIZED');
     expect(JSON.stringify(result.messages)).not.toContain('stale-token');
   });
 
@@ -278,7 +278,7 @@ describe('remote sub-agent approvals through the lead run (LOU-Y7.3)', () => {
     const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
 
     expect(result.text).toBe('done');
-    expect(errorMessage(result.messages)).toContain('LOUSHY_REMOTE_REQUEST_FAILED');
+    expect(errorMessage(result.messages)).toContain('LOUSHO_REMOTE_REQUEST_FAILED');
     expect(errorMessage(result.messages)).toContain('404');
   });
 

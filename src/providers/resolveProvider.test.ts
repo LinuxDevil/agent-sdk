@@ -83,14 +83,14 @@ describe('resolveProvider', () => {
     const createSpy = vi.spyOn(LLMProviderRegistry, 'create');
 
     expect(() => resolveProvider('nonexistent/foo')).toThrow(/unrecognized provider/i);
-    expect(() => resolveProvider('nonexistent/foo')).toThrow(withCode('LOUSHY_PROVIDER_UNKNOWN'));
+    expect(() => resolveProvider('nonexistent/foo')).toThrow(withCode('LOUSHO_PROVIDER_UNKNOWN'));
     expect(createSpy).not.toHaveBeenCalled();
   });
 
   it('throws for a spec that is not "provider/model" shaped', () => {
     expect(() => resolveProvider('openai')).toThrow();
     expect(() => resolveProvider('/gpt-4')).toThrow();
-    expect(() => resolveProvider('openai/')).toThrow(withCode('LOUSHY_PROVIDER_SPEC_INVALID'));
+    expect(() => resolveProvider('openai/')).toThrow(withCode('LOUSHO_PROVIDER_SPEC_INVALID'));
   });
 });
 
@@ -107,7 +107,7 @@ describe('resolveProvider errors (LOU-D1)', () => {
     expect(() => resolveProvider('openai/gpt-4o')).toThrow(
       'resolveProvider: OPENAI_API_KEY is not set. Set it in your environment, or pass a provider instance: createAgent({ provider: ... })'
     );
-    expect(() => resolveProvider('openai/gpt-4o')).toThrow(withCode('LOUSHY_PROVIDER_MISSING_API_KEY'));
+    expect(() => resolveProvider('openai/gpt-4o')).toThrow(withCode('LOUSHO_PROVIDER_MISSING_API_KEY'));
     expect(createSpy).not.toHaveBeenCalled();
   });
 
@@ -155,7 +155,7 @@ describe('resolveProvider errors (LOU-D1)', () => {
     });
 
     expect(() => resolveProvider(spec)).toThrow(`Run: ${hint}`);
-    expect(() => resolveProvider(spec)).toThrow(withCode('LOUSHY_PEER_MISSING'));
+    expect(() => resolveProvider(spec)).toThrow(withCode('LOUSHO_PEER_MISSING'));
   });
 
   it('rethrows unrelated registry errors unchanged', () => {

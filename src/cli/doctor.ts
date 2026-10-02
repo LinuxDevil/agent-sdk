@@ -1,5 +1,5 @@
 /**
- * `loushy doctor [agent.yaml|json] [--json]` - first-run diagnostic.
+ * `lousho doctor [agent.yaml|json] [--json]` - first-run diagnostic.
  *
  * Thin wrapper over the pure core in doctorCore.ts: builds the real
  * DoctorEnvironment (process, fs, module resolution, fetch, Docker),
@@ -25,11 +25,11 @@ export interface DoctorArgs {
   help?: boolean;
 }
 
-const USAGE = 'Usage: loushy doctor [agent.yaml|json] [--json]';
+const USAGE = 'Usage: lousho doctor [agent.yaml|json] [--json]';
 
 const SPEC: CommandSpec = { command: 'doctor', usage: USAGE, positionals: 1, options: { json: { type: 'boolean' } } };
 
-/** Parses `loushy doctor` arguments; throws `LOUSHY_CONFIG_INVALID` for an unknown flag or a second path. */
+/** Parses `lousho doctor` arguments; throws `LOUSHO_CONFIG_INVALID` for an unknown flag or a second path. */
 export function parseDoctorArgs(argv: string[]): DoctorArgs {
   const { values, positionals, help } = parseCommand(SPEC, argv);
   return { specPath: positionals[0], json: values.json === true, help: help || undefined };

@@ -19,13 +19,13 @@ For each slot, `createAgent({ memory })`:
 ## Memory in code
 
 ```ts no-run
-import { createAgent, defineMemory, fileMemory } from '@loushy/build-ai-agent';
+import { createAgent, defineMemory, fileMemory } from '@lousho/build-ai-agent';
 
 const preferences = defineMemory({
   name: 'preferences',
   description: "the user's preferences: language, tone, tools they like",
   scope: 'session',
-  provider: fileMemory({ dir: './.loushy/memory' }),
+  provider: fileMemory({ dir: './.lousho/memory' }),
 });
 
 const agent = createAgent({
@@ -62,8 +62,8 @@ A scope function sees the run's `sessionId` and the `metadata` passed to
 sessions:
 
 ```ts
-import { createAgent, defineMemory, inMemoryMemory } from '@loushy/build-ai-agent';
-import { mockModel } from '@loushy/build-ai-agent/testing';
+import { createAgent, defineMemory, inMemoryMemory } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
 
 const userFacts = defineMemory({
   name: 'user_facts',
@@ -117,10 +117,10 @@ checkpoints and memory share one database file. An existing file gains the
 table when it is opened. Keep the store open while the agent runs.
 
 ```ts no-run
-import { createAgent, defineMemory } from '@loushy/build-ai-agent';
-import { SqliteStore, sqliteMemory } from '@loushy/build-ai-agent/sqlite';
+import { createAgent, defineMemory } from '@lousho/build-ai-agent';
+import { SqliteStore, sqliteMemory } from '@lousho/build-ai-agent/sqlite';
 
-const store = new SqliteStore('./.loushy/agent.db');
+const store = new SqliteStore('./.lousho/agent.db');
 const notes = defineMemory({ name: 'notes', scope: 'global', provider: sqliteMemory(store) });
 const agent = createAgent({ model: 'openai/gpt-4o-mini', store, memory: [notes] });
 ```
@@ -128,7 +128,7 @@ const agent = createAgent({ model: 'openai/gpt-4o-mini', store, memory: [notes] 
 For semantic search or a hosted store, implement `MemoryProvider`:
 
 ```ts
-import type { MemoryItem, MemoryProvider } from '@loushy/build-ai-agent';
+import type { MemoryItem, MemoryProvider } from '@lousho/build-ai-agent';
 
 const items = new Map<string, MemoryItem[]>();
 const myProvider: MemoryProvider = {
@@ -153,8 +153,8 @@ With [`mockModel`](./testing.md), assert on the system prompt of the first
 request and drive the tools with scripted tool calls:
 
 ```ts
-import { createAgent, defineMemory, inMemoryMemory } from '@loushy/build-ai-agent';
-import { mockModel } from '@loushy/build-ai-agent/testing';
+import { createAgent, defineMemory, inMemoryMemory } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
 
 const store = inMemoryMemory();
 await store.add('global', { text: 'The user likes tea.' });

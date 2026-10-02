@@ -379,7 +379,7 @@ function DeploySection({ deployAdapter, onAdapterChange }: DeploySectionProps) {
  *    `ProviderKeyStatus`) and the current masked value shown as a hint.
  *  - Settings profile (R3): pick the active local/staging/prod profile,
  *    edit its provider type / deploy adapter / OTel toggle / hook timeout.
- *  - Deploy (R2): pick an adapter and run `loushy build` against this
+ *  - Deploy (R2): pick an adapter and run `lousho build` against this
  *    agent's saved spec, with a simple stdout/stderr log panel.
  */
 export function SettingsPanel() {

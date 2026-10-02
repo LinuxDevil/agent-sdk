@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * LOU-P2: the Vue useLoushyAgent() run inside an effectScope (no DOM needed),
+ * LOU-P2: the Vue useLoushoAgent() run inside an effectScope (no DOM needed),
  * in process with mockModel and remote with a scripted fetch.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
@@ -10,13 +10,13 @@ import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import { mockModel } from '../testing';
 import { AGENT_EVENT_SCHEMA_VERSION, type AgentEvent } from '../execution/agentEvents';
-import { useLoushyAgent, type LoushyAgentSource, type UseLoushyAgentOptions, type UseLoushyAgentResult } from './useLoushyAgent';
+import { useLoushoAgent, type LoushoAgentSource, type UseLoushoAgentOptions, type UseLoushoAgentResult } from './useLoushoAgent';
 
 let scope: EffectScope | undefined;
 
-function mount(source: LoushyAgentSource | Ref<LoushyAgentSource>, options?: UseLoushyAgentOptions): UseLoushyAgentResult {
+function mount(source: LoushoAgentSource | Ref<LoushoAgentSource>, options?: UseLoushoAgentOptions): UseLoushoAgentResult {
   scope = effectScope();
-  return scope.run(() => useLoushyAgent(source, options)) as UseLoushyAgentResult;
+  return scope.run(() => useLoushoAgent(source, options)) as UseLoushoAgentResult;
 }
 
 afterEach(() => {
@@ -53,7 +53,7 @@ function scriptedFetch(responses: { body: string; close?: boolean; status?: numb
   return { fetch: fetchMock as unknown as typeof fetch, fetchMock, signals };
 }
 
-describe('useLoushyAgent for Vue in process (LOU-P2)', () => {
+describe('useLoushoAgent for Vue in process (LOU-P2)', () => {
   it('send() streams the reply into messages and ends idle with usage', async () => {
     const chat = mount({ agent: createAgent({ provider: mockModel([{ text: 'Hello there!', usage: { inputTokens: 5, outputTokens: 3 } }]) }) });
     expect(chat.status.value).toBe('idle');
@@ -136,7 +136,7 @@ describe('useLoushyAgent for Vue in process (LOU-P2)', () => {
   });
 
   it('reads a ref source when a turn starts', async () => {
-    const source = ref<LoushyAgentSource>({ agent: createAgent({ provider: mockModel(['first']) }) });
+    const source = ref<LoushoAgentSource>({ agent: createAgent({ provider: mockModel(['first']) }) });
     const chat = mount(source);
     await chat.send('a');
     source.value = { agent: createAgent({ provider: mockModel(['second']) }) };
@@ -145,7 +145,7 @@ describe('useLoushyAgent for Vue in process (LOU-P2)', () => {
   });
 });
 
-describe('useLoushyAgent for Vue remote (LOU-P2)', () => {
+describe('useLoushoAgent for Vue remote (LOU-P2)', () => {
   it('POSTs { input } with headers, reads the stream and applies approval outcomes', async () => {
     const paused = sse([
       { ...base, seq: 0, type: 'approval.requested', approvalId: 'ap 1', toolCallId: 'c1', toolName: 'pay', args: {} },

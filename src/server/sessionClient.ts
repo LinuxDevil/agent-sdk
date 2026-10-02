@@ -92,7 +92,7 @@ interface SessionRequest {
   label: string;
 }
 
-/** POSTs the request; throws for a network error, an abort or a non-2xx answer (401 is `LOUSHY_REMOTE_UNAUTHORIZED`). */
+/** POSTs the request; throws for a network error, an abort or a non-2xx answer (401 is `LOUSHO_REMOTE_UNAUTHORIZED`). */
 async function post(options: SessionClientOptions, request: SessionRequest, token: string | undefined, fail: Fail): Promise<Response> {
   const url = `${options.url.replace(/\/+$/, '')}${request.path}`;
   const headers = { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...options.headers, ...(token ? { Authorization: `Bearer ${token}` } : {}) };
@@ -106,13 +106,13 @@ async function post(options: SessionClientOptions, request: SessionRequest, toke
   const unauthorized = response.status === 401;
   const where = `at ${url} ${unauthorized ? 'rejected the bearer token (401); check `auth`' : `answered ${response.status}`}`;
   const detail = await errorDetail(response);
-  throw fail(detail ? `${where}: ${detail}` : where, undefined, unauthorized ? 'LOUSHY_REMOTE_UNAUTHORIZED' : undefined);
+  throw fail(detail ? `${where}: ${detail}` : where, undefined, unauthorized ? 'LOUSHO_REMOTE_UNAUTHORIZED' : undefined);
 }
 
 /** Posts `request` and folds the streamed answer; the coded errors of {@link runRemoteTurn}, token scrubbed. */
 async function exchange(options: SessionClientOptions, request: SessionRequest): Promise<SessionTurnSummary> {
   const token = typeof options.auth === 'function' ? await options.auth() : options.auth;
-  const fail: Fail = (what, cause, code = 'LOUSHY_REMOTE_REQUEST_FAILED') => {
+  const fail: Fail = (what, cause, code = 'LOUSHO_REMOTE_REQUEST_FAILED') => {
     const message = `${request.label} ${what}`;
     return new SDKError(token ? message.split(token).join('[redacted]') : message, code, { cause });
   };
@@ -120,12 +120,12 @@ async function exchange(options: SessionClientOptions, request: SessionRequest):
   const summary = await fold(request.sessionId, parseEventStream(response)).catch((error: unknown) => {
     throw fail(`${request.signal?.aborted ? 'was aborted' : 'stream failed'}: ${reasonOf(error)}`, error);
   });
-  if (!summary) throw fail('closed the stream without a final event, i.e. without a run.done (truncated, or the url is not a loushy /chat API)');
+  if (!summary) throw fail('closed the stream without a final event, i.e. without a run.done (truncated, or the url is not a lousho /chat API)');
   return summary;
 }
 
 /**
- * Posts one turn and reads the stream to the end. Throws `SDKError` `LOUSHY_REMOTE_UNAUTHORIZED` (401) or `LOUSHY_REMOTE_REQUEST_FAILED`
+ * Posts one turn and reads the stream to the end. Throws `SDKError` `LOUSHO_REMOTE_UNAUTHORIZED` (401) or `LOUSHO_REMOTE_REQUEST_FAILED`
  * (unreachable, other non-2xx, aborted, broken or truncated stream), token scrubbed. A remote run that errors or pauses is reported in the summary.
  */
 export function runRemoteTurn(options: SessionClientOptions, turn: SessionTurn): Promise<SessionTurnSummary> {

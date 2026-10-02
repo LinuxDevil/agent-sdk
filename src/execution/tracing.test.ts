@@ -118,18 +118,18 @@ describe('withSpan cost rollup (LOU-D48)', () => {
     return ends[ends.length - 1].attributes;
   }
 
-  it('sums the loushy.cost_usd of finished child spans onto the parent', async () => {
-    const attrs = await parentAttributes([{ 'loushy.cost_usd': 0.25 }, { 'loushy.cost_usd': 0.5 }]);
-    expect(attrs['loushy.cost_usd']).toBe(0.75);
+  it('sums the lousho.cost_usd of finished child spans onto the parent', async () => {
+    const attrs = await parentAttributes([{ 'lousho.cost_usd': 0.25 }, { 'lousho.cost_usd': 0.5 }]);
+    expect(attrs['lousho.cost_usd']).toBe(0.75);
   });
 
   it('reports a zero cost for priced children that cost nothing', async () => {
-    expect((await parentAttributes([{ 'loushy.cost_usd': 0 }]))['loushy.cost_usd']).toBe(0);
+    expect((await parentAttributes([{ 'lousho.cost_usd': 0 }]))['lousho.cost_usd']).toBe(0);
   });
 
   it('omits the sum when a child with token usage has no price', async () => {
-    const attrs = await parentAttributes([{ 'loushy.cost_usd': 0.25 }, { 'gen_ai.usage.input_tokens': 5 }]);
-    expect(attrs).not.toHaveProperty('loushy.cost_usd');
+    const attrs = await parentAttributes([{ 'lousho.cost_usd': 0.25 }, { 'gen_ai.usage.input_tokens': 5 }]);
+    expect(attrs).not.toHaveProperty('lousho.cost_usd');
   });
 
   it('adds nothing for children without usage, and propagates through nested spans', async () => {
@@ -142,13 +142,13 @@ describe('withSpan cost rollup (LOU-D48)', () => {
         'sub-run',
         {},
         async (sub) => {
-          const chatAttrs = { 'loushy.cost_usd': 1, 'loushy.usage.estimated': true };
+          const chatAttrs = { 'lousho.cost_usd': 1, 'lousho.usage.estimated': true };
           await withSpan(exporter, 'chat', chatAttrs, async () => undefined, sub.id);
         },
         run.id
       );
     });
     const run = ends[ends.length - 1];
-    expect(run.attributes).toEqual({ 'loushy.cost_usd': 1, 'loushy.usage.estimated': true });
+    expect(run.attributes).toEqual({ 'lousho.cost_usd': 1, 'lousho.usage.estimated': true });
   });
 });

@@ -1,5 +1,5 @@
 /**
- * The `/chat` HTTP API of `loushy dev`, of the deployed node server and of the
+ * The `/chat` HTTP API of `lousho dev`, of the deployed node server and of the
  * Cloudflare Worker (LOU-D32, LOU-D14, LOU-D51), written once on the Fetch API:
  *
  *   GET  /health                         `ok`, never behind the bearer token
@@ -23,9 +23,9 @@ import { errorEvents } from '../cli/devEvents';
 
 /** What the routes need from their host: the live agent and how sessions are opened on it. */
 export interface ChatRoutesContext {
-  /** Prefix of log lines, e.g. `loushy dev`. */
+  /** Prefix of log lines, e.g. `lousho dev`. */
   name: string;
-  /** The live agent; read per request, so a host can swap it (`loushy dev` reloads). */
+  /** The live agent; read per request, so a host can swap it (`lousho dev` reloads). */
   agent: () => SimpleAgent;
   /** Opens session `id` on `agent`. Defaults to `agent.session({ id })`. */
   session?: (agent: SimpleAgent, id: string) => AgentSession;

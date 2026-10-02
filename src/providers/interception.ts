@@ -5,7 +5,7 @@
  * top-level run, a streamed run, a sub-agent or an approval resume - goes
  * through one step of the run loop, which asks this registry for the provider
  * to call. With no interceptor installed that is the run's own provider, so
- * the seam costs nothing. `loushy eval --record / --replay` installs one that
+ * the seam costs nothing. `lousho eval --record / --replay` installs one that
  * answers with a per-case record/replay wrapper (see `src/evals/cassettes.ts`).
  *
  * An interceptor receives the run's provider and returns the provider to call
@@ -20,7 +20,7 @@ import type { LLMProvider } from './llm';
 export type ProviderInterceptor = (provider: LLMProvider) => LLMProvider;
 
 // On globalThis so every bundle of the SDK (the CJS and ESM builds, a vitest worker) shares one slot.
-const SLOT = Symbol.for('loushy.providerInterceptor');
+const SLOT = Symbol.for('lousho.providerInterceptor');
 const slot = globalThis as { [SLOT]?: ProviderInterceptor };
 
 /**

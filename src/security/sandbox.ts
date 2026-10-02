@@ -72,11 +72,11 @@ export type SandboxNetwork = 'none' | 'default' | { allow: readonly string[] };
 function validateNetwork(network: SandboxNetwork = 'none'): SandboxNetwork {
   if (network === 'none' || network === 'default') return network;
   if (!Array.isArray(network?.allow)) {
-    throw new SDKError(`SubprocessSandbox: network must be 'none', 'default' or { allow: string[] }; got ${JSON.stringify(network)}.`, 'LOUSHY_CONFIG_INVALID');
+    throw new SDKError(`SubprocessSandbox: network must be 'none', 'default' or { allow: string[] }; got ${JSON.stringify(network)}.`, 'LOUSHO_CONFIG_INVALID');
   }
   const invalid = network.allow.filter((host) => !isHostPattern(host));
   if (invalid.length > 0) {
-    throw new SDKError(`SubprocessSandbox: network.allow takes host names such as 'api.github.com' or '*.npmjs.org'; got ${JSON.stringify(invalid)}.`, 'LOUSHY_CONFIG_INVALID');
+    throw new SDKError(`SubprocessSandbox: network.allow takes host names such as 'api.github.com' or '*.npmjs.org'; got ${JSON.stringify(invalid)}.`, 'LOUSHO_CONFIG_INVALID');
   }
   return { allow: Object.freeze(network.allow.map((host) => host.toLowerCase())) };
 }
@@ -204,7 +204,7 @@ export interface SubprocessSandboxOptions {
    * is the broker's rule hosts plus `allow`. Call {@link SubprocessSandbox.close} when done.
    */
   broker?: CredentialBroker;
-  /** Internal network to create, or reuse when it exists. Defaults to a fresh `loushy-egress-<random>` name. */
+  /** Internal network to create, or reuse when it exists. Defaults to a fresh `lousho-egress-<random>` name. */
   networkName?: string;
 }
 
@@ -233,7 +233,7 @@ export class SubprocessSandbox implements SandboxAdapter {
   constructor(options: SubprocessSandboxOptions = {}) {
     this.network = validateNetwork(options.network);
     this.broker = options.broker;
-    this.networkName = options.networkName ?? `loushy-egress-${randomBytes(4).toString('hex')}`;
+    this.networkName = options.networkName ?? `lousho-egress-${randomBytes(4).toString('hex')}`;
     this.getDocker = lazyValue(async () => {
       const { default: DockerClient } = await loadOptionalPeer('dockerode', () => import('dockerode'));
       return new DockerClient(options.dockerOptions);

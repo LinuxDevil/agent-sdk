@@ -189,7 +189,7 @@ describe('checkpointed sessions (LOU-W9)', () => {
     await session.send('Email Sam');
 
     await expect(session.clear()).rejects.toBeInstanceOf(SessionAwaitingApprovalError);
-    await expect(session.compact()).rejects.toMatchObject({ code: 'LOUSHY_SESSION_AWAITING_APPROVAL' });
+    await expect(session.compact()).rejects.toMatchObject({ code: 'LOUSHO_SESSION_AWAITING_APPROVAL' });
     expect(await session.pending()).toMatchObject({ status: 'awaiting-approval' });
     store.close();
   });

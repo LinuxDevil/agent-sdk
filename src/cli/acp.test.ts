@@ -24,18 +24,18 @@ async function run(args: string[], lines: string[], overrides?: Parameters<typeo
   return { code, out: out.text(), err: err.text() };
 }
 
-describe('loushy acp', () => {
+describe('lousho acp', () => {
   it('parses its path and --model, and rejects a missing path or an unknown flag with the usage', () => {
     expect(parseAcpArgs(['agent.yaml', '--model=openai/gpt-4o'])).toEqual({ path: 'agent.yaml', model: 'openai/gpt-4o' });
     expect(parseAcpArgs(['--help'])).toEqual({ path: '', help: true });
-    for (const args of [[], ['a.yaml', '--bogus']]) expect(() => parseAcpArgs(args)).toThrow(/LOUSHY_CONFIG_INVALID/);
+    for (const args of [[], ['a.yaml', '--bogus']]) expect(() => parseAcpArgs(args)).toThrow(/LOUSHO_CONFIG_INVALID/);
   });
 
   it('prints the usage for --help and fails on stderr for a bad path', async () => {
-    expect((await run(['--help'], [])).out).toContain('Usage: loushy acp');
+    expect((await run(['--help'], [])).out).toContain('Usage: lousho acp');
     const bad = await run([path.join(__dirname, '__fixtures__', 'nope', 'agent.ts')], []);
     expect(bad.code).toBe(1);
-    expect(bad.err).toContain('LOUSHY_CONFIG_INVALID');
+    expect(bad.err).toContain('LOUSHO_CONFIG_INVALID');
     expect(bad.out).toBe('');
   });
 

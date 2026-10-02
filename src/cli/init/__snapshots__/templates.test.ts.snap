@@ -1,7 +1,7 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`renderProject > snapshot: anthropic / minimal agent.ts 1`] = `
-"import { createAgent, defineTool, type LLMProvider } from '@loushy/build-ai-agent';
+"import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -30,7 +30,7 @@ export function buildAgent(provider?: LLMProvider) {
 `;
 
 exports[`renderProject > snapshot: anthropic / tools agent.ts 1`] = `
-"import { createAgent, defineTool, type LLMProvider } from '@loushy/build-ai-agent';
+"import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -84,11 +84,11 @@ exports[`renderProject > snapshot: minimal package.json 1`] = `
     "dev": "tsx --env-file-if-exists=.env src/index.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "doctor": "loushy doctor"
+    "doctor": "lousho doctor"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.0",
-    "@loushy/build-ai-agent": "^1.0.0-alpha.8",
+    "@lousho/build-ai-agent": "^1.0.0-alpha.8",
     "ai": "^7.0.0",
     "zod": "^3.25.76"
   },
@@ -106,7 +106,7 @@ exports[`renderProject > snapshot: minimal package.json 1`] = `
 `;
 
 exports[`renderProject > snapshot: ollama / minimal agent.ts 1`] = `
-"import { createAgent, defineTool, type LLMProvider } from '@loushy/build-ai-agent';
+"import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -135,7 +135,7 @@ export function buildAgent(provider?: LLMProvider) {
 `;
 
 exports[`renderProject > snapshot: ollama / tools agent.ts 1`] = `
-"import { createAgent, defineTool, type LLMProvider } from '@loushy/build-ai-agent';
+"import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -180,7 +180,7 @@ export function buildAgent(provider?: LLMProvider) {
 `;
 
 exports[`renderProject > snapshot: openai / minimal agent.ts 1`] = `
-"import { createAgent, defineTool, type LLMProvider } from '@loushy/build-ai-agent';
+"import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -209,7 +209,7 @@ export function buildAgent(provider?: LLMProvider) {
 `;
 
 exports[`renderProject > snapshot: openai / tools agent.ts 1`] = `
-"import { createAgent, defineTool, type LLMProvider } from '@loushy/build-ai-agent';
+"import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -254,7 +254,7 @@ export function buildAgent(provider?: LLMProvider) {
 `;
 
 exports[`renderProject > snapshot: openrouter / minimal agent.ts 1`] = `
-"import { createAgent, defineTool, type LLMProvider } from '@loushy/build-ai-agent';
+"import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -283,7 +283,7 @@ export function buildAgent(provider?: LLMProvider) {
 `;
 
 exports[`renderProject > snapshot: openrouter / tools agent.ts 1`] = `
-"import { createAgent, defineTool, type LLMProvider } from '@loushy/build-ai-agent';
+"import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -337,11 +337,11 @@ exports[`renderProject > snapshot: tools package.json 1`] = `
     "dev": "tsx --env-file-if-exists=.env src/index.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "doctor": "loushy doctor"
+    "doctor": "lousho doctor"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.0",
-    "@loushy/build-ai-agent": "^1.0.0-alpha.8",
+    "@lousho/build-ai-agent": "^1.0.0-alpha.8",
     "ai": "^7.0.0",
     "zod": "^3.25.76"
   },
@@ -365,14 +365,14 @@ exports[`renderProject > snapshot: yaml package.json 1`] = `
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "loushy dev agent.yaml",
+    "dev": "lousho dev agent.yaml",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "doctor": "loushy doctor agent.yaml"
+    "doctor": "lousho doctor agent.yaml"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.0",
-    "@loushy/build-ai-agent": "^1.0.0-alpha.8",
+    "@lousho/build-ai-agent": "^1.0.0-alpha.8",
     "ai": "^7.0.0",
     "zod": "^3.25.76"
   },

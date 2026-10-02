@@ -92,7 +92,7 @@ export type CassetteEntry = z.infer<typeof entrySchema>;
 export type Cassette = z.infer<typeof cassetteSchema>;
 
 export const RERECORD_HINT =
-  "If the change is intentional, re-record the cassette (run with LOUSHY_RECORD=1, or set mode: 'record').";
+  "If the change is intentional, re-record the cassette (run with LOUSHO_RECORD=1, or set mode: 'record').";
 
 /** Start a fresh cassette for a recording session. */
 export function newCassette(provider: Cassette['provider']): Cassette {
@@ -114,8 +114,8 @@ export function readCassette(file: string): Cassette {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       throw new SDKError(
         `recordReplay: cassette not found at ${file}. Record it first by running the test once ` +
-          "with a real provider in record mode (LOUSHY_RECORD=1 or mode: 'record'), then commit the file.",
-        'LOUSHY_CASSETTE_INVALID'
+          "with a real provider in record mode (LOUSHO_RECORD=1 or mode: 'record'), then commit the file.",
+        'LOUSHO_CASSETTE_INVALID'
       );
     }
     throw error;
@@ -128,14 +128,14 @@ function parseCassette(file: string, raw: string): Cassette {
   try {
     json = JSON.parse(raw);
   } catch {
-    throw new SDKError(`recordReplay: cassette ${file} is not valid JSON. Delete it and re-record.`, 'LOUSHY_CASSETTE_INVALID');
+    throw new SDKError(`recordReplay: cassette ${file} is not valid JSON. Delete it and re-record.`, 'LOUSHO_CASSETTE_INVALID');
   }
   const version = (json as { version?: unknown } | null)?.version;
   if (version !== CASSETTE_VERSION) {
     throw new SDKError(
       `recordReplay: cassette ${file} has format version ${String(version)}, but this SDK reads version ` +
         `${CASSETTE_VERSION}. Re-record it with this SDK version.`,
-      'LOUSHY_CASSETTE_INVALID'
+      'LOUSHO_CASSETTE_INVALID'
     );
   }
   const parsed = cassetteSchema.safeParse(json);
@@ -144,7 +144,7 @@ function parseCassette(file: string, raw: string): Cassette {
     throw new SDKError(
       `recordReplay: cassette ${file} is malformed at ${issue.path.join('.') || '(root)'}: ${issue.message}. ` +
         'Delete it and re-record.',
-      'LOUSHY_CASSETTE_INVALID'
+      'LOUSHO_CASSETTE_INVALID'
     );
   }
   return parsed.data;
@@ -175,7 +175,7 @@ function readSdkVersion(): string {
         name?: string;
         version?: string;
       };
-      if (manifest.name === '@loushy/build-ai-agent' && manifest.version) return manifest.version;
+      if (manifest.name === '@lousho/build-ai-agent' && manifest.version) return manifest.version;
     } catch {
       // keep walking up
     }

@@ -151,7 +151,7 @@ describe('createAgent({ store }) defaults and precedence (LOU-D30)', () => {
     await expect(agent.send('hi', { sessionId: 'job-1' })).rejects.toThrow(/needs a checkpoint store/);
     expect(() => agent.stream('hi', { sessionId: 'job-1' })).toThrow(/needs a checkpoint store/);
     await expect(agent.send('hi', { sessionId: 'job-1' })).rejects.toMatchObject({
-      code: 'LOUSHY_CONFIG_MISSING_CHECKPOINT_STORE',
+      code: 'LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE',
     });
     expect(await agent.resume('job-1')).toBeNull();
 

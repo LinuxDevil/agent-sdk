@@ -33,7 +33,7 @@ export interface PermissionContext {
  *
  * @example
  * ```ts
- * import type { PermissionRule } from '@loushy/build-ai-agent';
+ * import type { PermissionRule } from '@lousho/build-ai-agent';
  *
  * const rules: PermissionRule[] = [
  *   { tool: 'shell', when: (args) => String(args.command).startsWith('rm '), action: 'deny', reason: 'No deletes' },
@@ -85,7 +85,7 @@ export interface PermissionOptions {
    *
    * @example
    * ```ts
-   * import { allow, ask, deny } from '@loushy/build-ai-agent';
+   * import { allow, ask, deny } from '@lousho/build-ai-agent';
    *
    * const permissions = [deny('delete_file', 'Deleting is not allowed'), ask(['shell', 'write_file']), allow('*')];
    * ```

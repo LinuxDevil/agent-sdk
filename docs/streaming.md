@@ -7,7 +7,7 @@ plain JSON object, so you can forward it to a browser over Server-Sent Events
 or a WebSocket without converting it.
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 
@@ -61,7 +61,7 @@ interface AgentRun extends AsyncIterable<AgentEvent> {
   throw synchronously from `stream()`.
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 
@@ -83,7 +83,7 @@ as a single `text.delta` (as it does on `stream()` with a provider that cannot
 stream). Sub-agents' events arrive tagged with `subagent`.
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({
   model: 'openai/gpt-4o-mini',
@@ -133,7 +133,7 @@ save, so the transcript is complete when the loop ends. An aborted or failed
 run, or one you stop reading early, is not saved.
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 const session = agent.session({ id: 'user-42' });
@@ -161,7 +161,7 @@ process, since everything is read from the approval store. For
 the paused run used.
 
 ```ts
-import { AgentExecutor, streamResumeAfterApproval } from '@loushy/build-ai-agent';
+import { AgentExecutor, streamResumeAfterApproval } from '@lousho/build-ai-agent';
 
 const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistry, approvalStore });
 const run = streamResumeAfterApproval({ id: paused.approvalId!, approved: true }, approvalStore, toolRegistry, provider);
@@ -268,7 +268,7 @@ payload. Each event type is exported too (`TextDeltaEvent`, `ToolDoneEvent`,
 `RunDoneEvent`, ...), and `AgentEventOf<'tool.done'>` picks one by name.
 
 ```ts
-import { isAgentEvent, isToolEvent, type AgentEvent } from '@loushy/build-ai-agent';
+import { isAgentEvent, isToolEvent, type AgentEvent } from '@lousho/build-ai-agent';
 
 function render(event: AgentEvent): string {
   switch (event.type) {
@@ -321,7 +321,7 @@ for approval is reported once, by the top-level `approval.requested` (which
 carries the sub-agent's call).
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const researcher = createAgent({ provider, instructions: 'You research.', description: 'Finds sources' });
 const lead = createAgent({ provider, instructions: 'You coordinate.', subagents: { researcher } });
@@ -361,7 +361,7 @@ step was running) and `run.done` (`'aborted'`), and `result` resolves with
 `finishReason: 'aborted'`.
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 const run = agent.stream('Write a long story');
@@ -385,7 +385,7 @@ it, as if the user had typed it. Input queued while the model writes its final
 reply gets one more step, so the model answers it in the same run.
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 const run = agent.stream('Plan a weekend in Rome.');
@@ -427,7 +427,7 @@ Queued input waits for the step that is running. To redirect the run at
 once, steer it (next section).
 
 ```ts
-import { AgentExecutor, InputQueue } from '@loushy/build-ai-agent';
+import { AgentExecutor, InputQueue } from '@lousho/build-ai-agent';
 
 const inputQueue = new InputQueue();
 const pending = AgentExecutor.execute({ agent, provider, input: 'Plan my trip.', inputQueue });
@@ -454,7 +454,7 @@ the user changes their mind while the agent is still thinking:
 - `applied` is `false` once the run has finished: send the input as a new turn.
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 const run = agent.stream('Plan a weekend in Rome.');
@@ -481,7 +481,7 @@ makes a `send()` or `stream()` made while a turn runs steer that turn (see
 ## Example: terminal
 
 ```ts
-import { createAgent, defineTool } from '@loushy/build-ai-agent';
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 const getWeather = defineTool({
@@ -518,7 +518,7 @@ event. Abort the run when the client disconnects.
 
 ```ts
 import { createServer } from 'node:http';
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 
@@ -547,12 +547,12 @@ source.onmessage = (message) => {
 ```
 
 For a React chat UI over this kind of endpoint, see [React](./react.md):
-`useLoushyAgent()` POSTs the input and reads the same `data:` lines.
+`useLoushoAgent()` POSTs the input and reads the same `data:` lines.
 
-`loushy dev` serves this format for a session per browser tab: `POST /chat`
+`lousho dev` serves this format for a session per browser tab: `POST /chat`
 with `{ sessionId, input }` streams `agent.session({ id }).stream(input)` as
 `data:` lines ending with `event: done`, and approvals are decided through
-`POST /chat/:sessionId/approvals/:id` (see [CLI](./cli.md#loushy-dev)).
+`POST /chat/:sessionId/approvals/:id` (see [CLI](./cli.md#lousho-dev)).
 
 ## Example: the full API
 
@@ -560,7 +560,7 @@ with `{ sessionId, input }` streams `agent.session({ id }).stream(input)` as
 needs approval ends the stream with `approval.requested`:
 
 ```ts
-import { AgentExecutor } from '@loushy/build-ai-agent';
+import { AgentExecutor } from '@lousho/build-ai-agent';
 
 const run = AgentExecutor.stream({ agent, input, provider, toolRegistry, approvalStore });
 for await (const event of run) {

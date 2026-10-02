@@ -26,9 +26,9 @@ export interface RemoteAgentSource {
   fetch?: typeof fetch;
 }
 
-export type LoushyAgentSource = LocalAgentSource | RemoteAgentSource;
+export type LoushoAgentSource = LocalAgentSource | RemoteAgentSource;
 
-export interface LoushyAgentOptions {
+export interface LoushoAgentOptions {
   /**
    * Remote mode: `approve()`/`reject()` POST `{ approved, note }` to
    * `${approvalsUrl}/${approvalId}` and show the continuation live from the
@@ -51,8 +51,8 @@ export interface AgentCommands {
 
 /** What a binding hands the runner: its latest inputs and its way to update the state. */
 export interface AgentRunnerHost {
-  source(): LoushyAgentSource;
-  options(): LoushyAgentOptions;
+  source(): LoushoAgentSource;
+  options(): LoushoAgentOptions;
   state(): AgentUIState;
   dispatch(action: AgentEvent | AgentUIAction): void;
 }
@@ -69,7 +69,7 @@ async function post(source: RemoteAgentSource, url: string, body: unknown, signa
   const response = await (source.fetch ?? fetch)(url, { method: 'POST', headers, body: JSON.stringify(body), signal });
   if (!response.ok) {
     // The message stays as it was (the UI shows it); the code says what kind of failure it is.
-    throw new SDKError(`POST ${url} failed with ${response.status}`, 'LOUSHY_REMOTE_REQUEST_FAILED', { appendHelp: false });
+    throw new SDKError(`POST ${url} failed with ${response.status}`, 'LOUSHO_REMOTE_REQUEST_FAILED', { appendHelp: false });
   }
   return response;
 }
