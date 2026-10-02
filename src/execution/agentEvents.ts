@@ -4,7 +4,7 @@
  * instances, no functions, no `undefined` fields), so it can be sent over
  * SSE or a WebSocket unchanged and parsed back to the same object.
  *
- * See docs/streaming.md for the full table - this file is the public schema.
+ * See docs/stream-events.md for the full table - this file is the public schema.
  */
 
 import type { ExecutionFinishReason } from './AgentExecutor';

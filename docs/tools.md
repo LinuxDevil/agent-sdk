@@ -59,7 +59,7 @@ descriptors that set neither `inputSchema` nor `execute`.
 - **Parallel calls.** Several calls in one model turn run concurrently; cap
   them with `toolConcurrency` (`1` for strictly sequential). Results reach the
   transcript in the model's call order. See
-  [Parallel tool calls](./api-overview.md#parallel-tool-calls).
+  [Parallel tool calls](./runs.md#parallel-tool-calls).
 - **Cancellation.** A run's `AbortSignal` reaches each call as
   `ctx.abortSignal`, so long-running work can stop early.
 - **Retries after a crash.** With durable execution a tool can run more than
@@ -111,6 +111,27 @@ The transcript message carries `isError: true`; `tool-result` events, `onToolRes
 | `sandbox` | `SandboxRequiredError` | The tool has `requiresSandbox` but no `sandboxExecute`, so it was refused rather than run unsandboxed. |
 | `denied` | `ToolDeniedError` | A `deny` [permission rule](./approvals.md#permission-policies) refused the call; `execute` did not run. Adds `reason` when the rule has one. |
 
+**Argument validation.** The model's arguments are parsed with the tool's zod
+`inputSchema` (for a legacy descriptor, `tool.parameters`) before the tool runs, so pre-tool hooks, the
+`needsApproval` predicate and `execute` all receive the **parsed** value. Tools without a zod schema are
+passed through unchanged. If the arguments do not match, `execute` is not called and `preToolCall` hooks are
+skipped, because there is no valid call. The model gets a `validation` result it can retry from:
+
+```json
+{
+  "error": "ToolArgumentsValidationError",
+  "toolName": "sendEmail",
+  "message": "Invalid arguments for tool 'sendEmail': 2 issues (to: Required; count: Expected number, received string)",
+  "kind": "validation",
+  "issues": [
+    { "path": "to", "message": "Required" },
+    { "path": "count", "message": "Expected number, received string" }
+  ]
+}
+```
+
+`ToolArgumentsValidationError` (with a typed `issues` array) is exported from the package root.
+
 `toolErrorResult({ toolName, error, kind?, toolCallId?, details? })` builds this
 result; use it in your own tool wrappers so they match. A thrown error can pick
 its kind by carrying a `toolErrorKind` property. An error extending
@@ -122,7 +143,7 @@ its kind by carrying a `toolErrorKind` property. An error extending
 | ------ | ---- |
 | `httpTool`, `createHttpTool(options)` | HTTP requests, with SSRF protection (every resolved address is checked before connecting). |
 | `currentDateTool`, `dayNameTool` | Current date/time (ISO, UTC) and day of the week. |
-| `createTodoTools()` | `todo_write` / `todo_read` so an agent can plan multi-step work; see [Todo tools](./api-overview.md#todo-tools). |
+| `createTodoTools()` | `todo_write` / `todo_read` so an agent can plan multi-step work; see [Todo tools](#todo-tools). |
 | `askQuestionTool()`, `createAgent({ askQuestion: true })` | `ask_question`: the agent asks the user something and the run pauses until `agent.approvals.answer()`; see [Asking the user a question](./approvals.md#asking-the-user-a-question). |
 | `createFsTools()`, `createShellTool()` | File system and shell tools for coding agents; see [Workspace tools](./workspace-tools.md). |
 | `createEmailTool()`, `createSlackTool()`, `createGitHubTools()`, `createJiraTools()` | Integrations that need credentials, so they are built with options. |
@@ -133,6 +154,31 @@ Built-in descriptors are passed keyed by the name the agent uses:
 `createAgent({ tools: { current_date: currentDateTool } })`. Spec files refer to
 `http`, `current-date` and `day-name` by name (see
 [Configuration](./configuration.md#tools-a-spec-can-reference)).
+
+## Todo tools
+
+`createTodoTools(options?)` gives long-running agents a plan to track:
+`todo_write` replaces the whole list (`{ id?, content, status }` items, status
+`pending` | `in_progress` | `completed`, at most one `in_progress`) and returns
+the list plus counts; `todo_read` returns it. Ids are assigned automatically and
+stay stable when a later write repeats an item's content. Invalid lists (for
+example two `in_progress`) reach the model as a structured tool error so it can
+retry. The list lives in memory per call; pass `store` (`{ get, set }`) to
+persist it, and `onChange` to update a UI.
+
+```ts
+import { createAgent, createTodoTools, type TodoStore } from '@lousho/build-ai-agent';
+
+const todos = createTodoTools({ onChange: (list) => console.log(list.length, 'todos') });
+const planner = createAgent({ prompt: 'Plan multi-step work, then do it.', provider, tools: todos.tools });
+
+await planner.send('Migrate the repo to ESM');
+console.log(await todos.getTodos()); // [{ id: 'todo_1', content: '...', status: 'completed' }, ...]
+
+// Persist the list somewhere else:
+let saved: Awaited<ReturnType<TodoStore['get']>> = [];
+createTodoTools({ store: { get: () => saved, set: (next) => void (saved = next) } });
+```
 
 ## Advanced: `ToolRegistry`
 
