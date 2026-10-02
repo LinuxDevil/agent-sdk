@@ -215,6 +215,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [API Overview](docs/api-overview.md) | The main exports, triggers, tokens and cost; `npm run docs:build` generates the full TypeDoc reference |
 | [Utilities](docs/utilities.md) | Encryption, hashing and file storage |
 | [The executor API](docs/executor-api.md) | `AgentBuilder` and `AgentExecutor`: the lower-level options `createAgent()` does not take |
+| [Migrating to createAgent()](docs/migrating-to-create-agent.md) | From `AgentBuilder`, `AgentExecutor` and `resumeAfterApproval()` to `createAgent()`: before and after, a mapping table, what it does not take yet |
 
 The full guides are at [lousho.com](https://lousho.com), in English and Arabic.
 
