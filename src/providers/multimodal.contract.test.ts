@@ -8,6 +8,10 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LanguageModel } from 'ai';
+import * as aiV7 from 'ai-v7';
+import { MockLanguageModelV4 } from 'ai-v7/test';
+import type { AiSdkModule } from './aiSdkCompat';
+import { installedAiMajor } from './aiMajor.testkit';
 import { mockLanguageModel } from './aiShapes.testkit';
 import { OpenAIProvider } from './OpenAIProvider';
 import { AnthropicProvider } from './AnthropicProvider';
@@ -88,9 +92,11 @@ describe.each(providers)('%s provider: multimodal user content (LOU-V11)', (_nam
     });
   });
 
-  it('sends a file part as a text note, with one warning', async () => {
+  it('sends a file part as a text note on ai 4 and for Ollama, with one warning per media type', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const provider = make();
+    // The installed major decides: on ai 6/7 the OpenAI, Anthropic and OpenRouter providers send a PDF.
+    const sendsPdf = installedAiMajor >= 6 && provider.name !== 'ollama';
     const { prompts } = withMockModel(provider);
     const file: Message = {
       role: 'user',
@@ -100,12 +106,19 @@ describe.each(providers)('%s provider: multimodal user content (LOU-V11)', (_nam
     await provider.generate({ messages: [file] });
     await provider.generate({ messages: [file] });
 
+    if (sendsPdf) {
+      expect(prompts[0][0]).toMatchObject({ role: 'user', content: [{ type: 'file', mediaType: 'application/pdf' }] });
+      expect(warn).not.toHaveBeenCalled();
+      return;
+    }
     expect(prompts[0][0]).toMatchObject({
       role: 'user',
       content: [{ type: 'text', text: '[file report.pdf (application/pdf) not sent]' }],
     });
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(String(warn.mock.calls[0][0])).toContain(`The ${provider.name} provider cannot send file parts`);
+    expect(String(warn.mock.calls[0][0])).toContain(
+      `The ${provider.name} provider cannot send application/pdf file parts on ai ${installedAiMajor}; they are sent as a text note.`
+    );
   });
 
   it('sends the text parts of assistant and system messages', async () => {
@@ -181,5 +194,79 @@ describe('AgentExecutor with multimodal input messages (LOU-V11)', () => {
       role: 'user',
       content: [{ type: 'text', text: 'What is this?' }, { type: 'image', image: PNG, mimeType: 'image/png' }],
     });
+  });
+});
+
+/** A provider on `ai` 7 (the `ai-v7` alias) with a scripted `MockLanguageModelV4`, capturing the prompts it receives. */
+function onAi7(provider: LLMProvider) {
+  const prompts: unknown[] = [];
+  const model = new MockLanguageModelV4({
+    doGenerate: async (options) => {
+      prompts.push(options.prompt);
+      return {
+        content: [{ type: 'text', text: 'ok' }],
+        finishReason: { unified: 'stop', raw: 'stop' },
+        usage: {
+          inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: { total: 1, text: 1, reasoning: 0 },
+        },
+        warnings: [],
+      };
+    },
+  });
+  Object.assign(provider, { ai: aiV7 as unknown as AiSdkModule });
+  vi.spyOn(provider as unknown as { createModel: () => Promise<unknown> }, 'createModel').mockResolvedValue(model);
+  return prompts as Array<Array<{ role: string; content: Array<Record<string, unknown>> }>>;
+}
+
+const fileMessage = (mimeType: string, data: Uint8Array = PDF): Message => ({
+  role: 'user',
+  content: [{ type: 'file', data, mimeType, filename: 'doc' }],
+});
+
+describe.each([
+  ['openai', () => new OpenAIProvider({ name: 'openai', apiKey: 'k' }), false],
+  ['anthropic', () => new AnthropicProvider({ name: 'anthropic', apiKey: 'k' }), true],
+  ['openrouter', () => new OpenRouterProvider({ name: 'openrouter', apiKey: 'k' }), false],
+] as const)('%s provider on ai 7: file parts', (_name, make, sendsPlainText) => {
+  it('sends a PDF as a file part', async () => {
+    const provider = make();
+    const prompts = onAi7(provider);
+    await provider.generate({ messages: [fileMessage('application/pdf')] });
+    expect(prompts[0][0].content[0]).toMatchObject({ type: 'file', mediaType: 'application/pdf' });
+  });
+
+  it('sends an unsupported type as a text note, warning once per media type', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const provider = make();
+    const prompts = onAi7(provider);
+    const xls = fileMessage('application/vnd.ms-excel', new Uint8Array([1, 2, 3]));
+    await provider.generate({ messages: [xls] });
+    await provider.generate({ messages: [xls] });
+    expect(prompts[0][0].content[0]).toEqual({ type: 'text', text: '[file doc (application/vnd.ms-excel) not sent]' });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain(
+      `The ${provider.name} provider cannot send application/vnd.ms-excel file parts on ai 7; they are sent as a text note.`
+    );
+  });
+
+  it(`sends text/plain ${sendsPlainText ? 'as a file part' : 'as a text note'}`, async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const provider = make();
+    const prompts = onAi7(provider);
+    await provider.generate({ messages: [fileMessage('text/plain; charset=utf-8', new TextEncoder().encode('hello'))] });
+    const part = prompts[0][0].content[0];
+    if (sendsPlainText) expect(part).toMatchObject({ type: 'file' });
+    else expect(part).toMatchObject({ type: 'text' });
+  });
+});
+
+describe('ollama provider on ai 7: file parts', () => {
+  it('sends a PDF as a text note', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const provider = new OllamaProvider({ name: 'ollama' });
+    const prompts = onAi7(provider);
+    await provider.generate({ messages: [fileMessage('application/pdf')] });
+    expect(prompts[0][0].content[0]).toMatchObject({ type: 'text', text: '[file doc (application/pdf) not sent]' });
   });
 });

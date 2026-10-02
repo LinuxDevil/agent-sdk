@@ -1,6 +1,6 @@
 /**
  * LOU-D15: reads {@link AgentEvent}s back from an HTTP response body, as
- * written by the docs/streaming.md server: SSE (`data: {...}` lines) or
+ * written by the docs/stream-events.md server: SSE (`data: {...}` lines) or
  * newline-delimited JSON (one event per line).
  */
 

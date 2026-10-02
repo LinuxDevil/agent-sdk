@@ -33,8 +33,11 @@ const agent = createAgent({
 });
 ```
 
-Any object with `onSpanStart` and `onSpanEnd` is an exporter. With the
-executor, pass it to `AgentExecutor.execute()`:
+Any object with `onSpanStart` and `onSpanEnd` is an exporter.
+
+#### Advanced: the executor API
+
+With the executor, pass the exporter to `AgentExecutor.execute()`:
 
 ```ts
 import { AgentExecutor, type TraceExporter } from '@lousho/build-ai-agent';
@@ -179,7 +182,11 @@ The cost is an estimate from the price table (see `registerModel`), not a bill.
 
 Prompts, model output and tool arguments/results are sensitive and large, so
 the `gen_ai.*` content attributes are **never recorded by default**. Opt in
-per run:
+per agent with `createAgent({ exporter, captureContent: true })`.
+
+#### Advanced: the executor API
+
+With the executor, opt in per run:
 
 ```ts
 import { AgentExecutor, type TraceExporter } from '@lousho/build-ai-agent';

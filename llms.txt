@@ -26,21 +26,27 @@
 - [Hooks](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hooks.md): A hook is an object `{ name, preToolCall?, postToolCall?, preGenerate?, postGenerate?
 - [MCP (Model Context Protocol)](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md): MCP works in two directions.
 - [Memory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md): A session remembers one conversation.
+- [Migrating to createAgent()](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/migrating-to-create-agent.md): This page is for code that uses `AgentBuilder`, `AgentExecutor`, `ToolRegistry` and `resumeAfterApproval()`: the lower-level API the SDK started with.
+- [Models, tokens and cost](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/models-and-cost.md): Dependency-free helpers for budgeting and context decisions.
 - [Next.js and other Fetch-API frameworks](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md): `createRouteHandler(agent, options?)` serves an agent from a route file of any framework whose handlers take a Web `Request` and return a `Response`: the Next.js App Router, SvelteKit, Remix / React Router, Hono, Bun.serve.
 - [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md): `AgentExecutor.execute()` and `FlowExecutor.execute()` emit spans through a `TraceExporter`.
 - [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md): An `LLMProvider` is what an agent generates with.
+- [Queued input and steering](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/queue-and-steer.md): Add input to a run that is still going, or redirect it.
 - [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md): `useLoushoAgent()` puts an agent behind a chat UI.
 - [Reasoning](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/reasoning.md): Reasoning models think before they answer.
 - [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md): `lousho add` installs a tool, skill, channel, schedule or memory slot into an agent directory from a registry.
+- [Runs: finish reasons, cancellation and parallel tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/runs.md): How a run ends, how to stop one, and how tool calls of one model turn run in parallel.
 - [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md): A schedule runs the agent on a cron expression, with nobody asking: a morning summary, a nightly cleanup.
 - [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md): `agent.send(text)` is single-turn: every call starts from an empty history.
 - [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md): A skill is a named chunk of instructions (a markdown document) that the model loads only when it needs it.
+- [Stream events](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/stream-events.md): The events `agent.stream()` emits, their order and their versioning.
 - [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md): `agent.stream()` runs an agent exactly like `agent.send()` and reports the run as a stream of typed events: model text as it arrives, every tool call, step boundaries, approval requests, and a final `run.done`.
 - [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md): Give an agent a zod schema as `output` and its final reply becomes a typed, validated object: `result.object`.
 - [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md): A sub-agent is a separate agent - its own instructions, model, tools and skills - that a lead agent hands a self-contained task to.
 - [Svelte](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/svelte.md): `loushoAgent()` for Svelte is the React hook as a store: the same sources, the same state and the same actions, over the same typed event stream.
 - [Testing agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md): `@lousho/build-ai-agent/testing` ships `mockModel`: a scripted, deterministic `LLMProvider` for unit tests.
 - [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md): A tool is a typed function the model can call.
+- [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md): A trigger adapter turns one wake-up mechanism into an agent run: an inbound webhook, a clock, or a Slack event.
 - [Troubleshooting](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/troubleshooting.md): This page starts from what you see and points to the cause, the fix and the page that explains it.
 - [Utilities](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/utilities.md): Supporting helpers exported from the package root: encryption and hashing, and file storage for attachments.
 - [Vue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/vue.md): `useLoushoAgent()` for Vue 3 is the React hook as a composable: the same sources, the same state and the same actions, over the same typed event stream.
