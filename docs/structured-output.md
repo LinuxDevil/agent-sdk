@@ -70,8 +70,9 @@ retry or adapt.
 
 A sub-agent does **not** inherit the lead's `output`: each agent's output is its
 own, and a sub-agent without `output` returns text as before. A
-[`remoteAgent()`](./sub-agents.md#remote-sub-agents) returns its text only: the
-session client's turn summary does not carry the remote's `object`.
+[`remoteAgent()`](./sub-agents.md#remote-sub-agents) whose deployed agent has an
+`output` schema returns the remote object the same way (JSON, then its footer),
+read from the `object` of the remote stream's `run.done` event.
 
 ```ts
 import { z } from 'zod';
