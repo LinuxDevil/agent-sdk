@@ -174,7 +174,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | Page | What it covers |
 | ---- | -------------- |
 | [Installation](docs/installation.md) | Requirements, peer and provider packages, installing from a local build, `lousho init`, `lousho doctor` |
-| [Quick Start](docs/quick-start.md) | Runnable, verified snippets: `createAgent()`, tools, `AgentBuilder` + `AgentExecutor`, spec files |
+| [Quick Start](docs/quick-start.md) | Runnable, verified snippets: `createAgent()`, tools, streaming, sessions, approvals, offline tests, spec files |
 | [Configuration](docs/configuration.md) | Spec fields, `mcpServers`, MCP client and server, provider env vars, retries and fallback, `createAgent()` and `execute()` options |
 | [Providers](docs/providers.md) | Model strings, `resolveProvider()`, which model runs, custom providers |
 | [CLI](docs/cli.md) | Every `lousho` command and its flags |
@@ -211,6 +211,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Errors](docs/errors.md) | Every error code (`LOUSHO_*`): what it means, how to fix it, an example |
 | [API Overview](docs/api-overview.md) | The main exports, triggers, tokens and cost; `npm run docs:build` generates the full TypeDoc reference |
 | [Utilities](docs/utilities.md) | Encryption, hashing and file storage |
+| [The executor API](docs/executor-api.md) | `AgentBuilder` and `AgentExecutor`: the lower-level options `createAgent()` does not take |
 
 The full guides are at [lousho.com](https://lousho.com), in English and Arabic.
 

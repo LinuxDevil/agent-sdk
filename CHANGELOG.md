@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Docs
 - New guide, [Build a coding agent](docs/build-a-coding-agent.md): a terminal coding agent in six steps (workspace tools confined to the project, approval before writes and risky commands, a streamed UI that handles the approval pause, a session for follow-up questions, offline tests with `MemoryWorkspace` and `mockModel`), with an offline test of the same agent (`docs/buildACodingAgent.test.ts`; its replay of a recorded real-model run is skipped until the cassette `docs/__cassettes__/build-a-coding-agent.json` is recorded).
+- The Quick Start is rewritten around `createAgent()`: hello world, a tool, streaming, a session, an approval, an offline test with `mockModel`, a custom provider and spec files, each runnable with no API key (the first excepted). The `AgentBuilder` + `AgentExecutor` section moved to a new page, docs/executor-api.md (with the `ToolRegistry` note); the Quick Start no longer shows either API.
 - `create-lousho-agent` has a README (its npm page was empty) and `license`, `homepage` and `repository` fields; they appear on npm with its next release. `lousho init --help` no longer says `--sdk-path` is needed until the package is on npm.
 
 ### Renamed
