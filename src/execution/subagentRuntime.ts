@@ -19,6 +19,7 @@ import type {
   ExecutionSnapshot,
   PendingApproval,
   SubagentSuspension,
+  SuspendedBackgroundTasks,
 } from './ApprovalGate';
 import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
 import type { RunUsage } from '../models/usage';
@@ -108,6 +109,8 @@ export function subagentBudget(maxSubagentDepth: number | undefined): number {
 export class SubagentApprovalPause extends PropagatingToolError {
   /** Args the paused tool call is re-entered with on resume, over its own (LOU-Y6: the `task` call's taskId). */
   resumeArgs?: Record<string, unknown>;
+  /** M4: the background tasks an `agent_await` call pauses on, recorded on the suspension (never in its args). */
+  background?: SuspendedBackgroundTasks;
 
   constructor(
     readonly agentName: string,
@@ -148,6 +151,7 @@ export function toSuspension(
     args: pause.resumeArgs ? { ...call.args, ...pause.resumeArgs } : call.args,
     agentName: pause.agentName,
     snapshot: pause.snapshot,
+    ...(pause.background && { background: pause.background }),
   };
 }
 

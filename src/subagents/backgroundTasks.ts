@@ -60,6 +60,8 @@ interface BackgroundTask extends BackgroundTaskView {
   settle: () => void;
   /** Resolves once the child run itself has returned (after a cancel, once it has wound down). */
   stopped: Promise<void>;
+  /** M4: the child's pause (`awaiting-approval`), which `agent_await` turns into a pause of the lead. */
+  pause?: SubagentApprovalPause;
 }
 
 const DEFAULT_MAX_CONCURRENT = 3;
@@ -156,6 +158,11 @@ export class BackgroundTasks {
     return tasks.map((task) => (isActive(task) ? { ...this.view(task), status: 'timeout' } : this.view(task)));
   }
 
+  /** M4: the pause of a task that is `awaiting-approval`. */
+  pauseOf(taskId: string): SubagentApprovalPause | undefined {
+    return this.tasks.get(taskId)?.pause;
+  }
+
   /** Cancels a queued or running task; a task that already ended is left as is. */
   cancel(taskId: string): BackgroundTaskView {
     const task = this.get(taskId);
@@ -196,7 +203,7 @@ export class BackgroundTasks {
     }
   }
 
-  private end(task: BackgroundTask, outcome: Pick<BackgroundTask, 'status' | 'result' | 'error' | 'approvalId' | 'toolName'>): void {
+  private end(task: BackgroundTask, outcome: Pick<BackgroundTask, 'status' | 'result' | 'error' | 'approvalId' | 'toolName' | 'pause'>): void {
     this.running--;
     if (task.status === 'running') {
       Object.assign(task, outcome, { endedAt: Date.now() });
@@ -225,11 +232,11 @@ function isActive(task: BackgroundTask): boolean {
   return task.status === 'queued' || task.status === 'running';
 }
 
-/** How a child run that threw is reported: paused for approval, or failed. */
-function failure(error: unknown): Pick<BackgroundTask, 'status' | 'error' | 'approvalId' | 'toolName'> {
+/** How a child run that threw is reported: paused for approval (the pause is kept, M4), or failed. */
+function failure(error: unknown): Pick<BackgroundTask, 'status' | 'error' | 'approvalId' | 'toolName' | 'pause'> {
   if (error instanceof SubagentApprovalPause) {
     const pending = error.snapshot.pendingToolCall;
-    return { status: 'awaiting-approval', approvalId: pending.id, toolName: pending.toolName };
+    return { status: 'awaiting-approval', approvalId: pending.id, toolName: pending.toolName, pause: error };
   }
   return { status: 'failed', error: (error as Error | undefined)?.message ?? String(error) };
 }
