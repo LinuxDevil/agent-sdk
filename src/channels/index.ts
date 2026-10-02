@@ -8,3 +8,4 @@ export * from './httpChannel';
 export * from './webhookChannel';
 export * from './slackChannel';
 export * from './discordChannel';
+export * from './telegramChannel';
