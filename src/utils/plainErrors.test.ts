@@ -23,18 +23,8 @@ const ALLOWED: Array<{ file: string; message: string; reason: string }> = [
   },
   {
     file: 'flows/FlowExecutor.ts',
-    message: "this.interpolate((node as any).message || 'Flow error'",
+    message: "this.interpolate(node.message || 'Flow error'",
     reason: "the flow's own `throw` node: it surfaces the flow author's message verbatim, and a span's error.type stays 'Error'",
-  },
-  {
-    file: 'providers/OpenRouterProvider.ts',
-    message: '`Failed to fetch ${what}',
-    reason: 'a model-list lookup helper; src/providers/* is being changed by another ticket (convert with it)',
-  },
-  {
-    file: 'ui/agentRunner.ts',
-    message: '`POST ${url} failed with',
-    reason: 'browser-side UI transport; src/ui/* is being changed by another ticket (convert with it)',
   },
 ];
 

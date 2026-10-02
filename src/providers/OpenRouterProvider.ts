@@ -8,6 +8,7 @@ import { AiSdkProvider, AiSdkProviderConfig } from './aiSdkProvider';
 import { aiMajorOf } from './aiSdkCompat';
 import { lazyValue, loadOptionalPeer } from './optionalPeer';
 import { Logger, noopLogger } from '../execution/logger';
+import { SDKError } from '../execution/errors';
 import type { GenerateOptions } from './llm';
 import { openRouterReasoning } from './reasoning';
 
@@ -20,8 +21,8 @@ export interface OpenRouterProviderConfig extends AiSdkProviderConfig {
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1';
 
-/** One entry of OpenRouter's GET /models catalog (only the fields read here). */
-interface OpenRouterModel {
+/** One entry of OpenRouter's GET /models catalog: its `id`, plus the other fields as sent (pricing, context length, ...). */
+export interface OpenRouterModel {
   id: string;
   [key: string]: unknown;
 }
@@ -144,7 +145,8 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch ${what}: ${response.statusText}`);
+      // Callers catch this, log it and fall back; the message stays as it was.
+      throw new SDKError(`Failed to fetch ${what}: ${response.statusText}`, 'LOUSHY_PROVIDER_REQUEST_FAILED', { appendHelp: false });
     }
 
     const data = await response.json();
@@ -183,7 +185,7 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
   /**
    * Get model information including pricing
    */
-  async getModelInfo(modelId: string): Promise<any> {
+  async getModelInfo(modelId: string): Promise<OpenRouterModel | null | undefined> {
     try {
       const models = await this.fetchModelCatalog('model info');
       return models?.find((model) => model.id === modelId);

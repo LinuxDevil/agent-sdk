@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
+import type { Tool } from 'ai';
+import type { LLMProvider, GenerateOptions } from '../providers';
 import { z } from 'zod';
 import { AgentExecutor, ExecutionEvent } from './AgentExecutor';
 import { ToolArgumentsValidationError } from './index';
@@ -6,15 +8,21 @@ import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
 import { HookRegistry } from './hooks';
 
+/** A message as the provider saw it (a JSON copy; tool results are text in these tests). */
+type SeenMessage = { role: string; content: string; toolCallId?: string };
+
+/** A 'tool-result' event: it always carries `toolResult`. */
+type ToolResultEvent = ExecutionEvent & { toolResult: NonNullable<ExecutionEvent['toolResult']> };
+
 const usage = { promptTokens: 1, completionTokens: 1, totalTokens: 2 };
 
 /** Provider that emits one tool call per scripted entry, then a final answer. */
 function scriptedProvider(calls: Array<{ name: string; args: unknown }>) {
-  const seenMessages: any[][] = [];
+  const seenMessages: SeenMessage[][] = [];
   let step = 0;
   const provider = {
     name: 'mock',
-    async generate(options: any) {
+    async generate(options: GenerateOptions) {
       seenMessages.push(JSON.parse(JSON.stringify(options.messages)));
       const call = calls[step++];
       if (!call) {
@@ -42,7 +50,7 @@ function scriptedProvider(calls: Array<{ name: string; args: unknown }>) {
       return [];
     },
   };
-  return { provider: provider as any, seenMessages };
+  return { provider: provider as LLMProvider, seenMessages };
 }
 
 function setup(descriptor: Parameters<ToolRegistry['register']>[1]) {
@@ -67,7 +75,7 @@ describe('tool argument validation (LOU-U4)', () => {
     const execute = vi.fn().mockResolvedValue({ ok: true });
     const { toolRegistry, agent } = setup({
       displayName: 'Send',
-      tool: { parameters: schema, execute } as any,
+      tool: { parameters: schema, execute } as Tool,
     });
     const { provider, seenMessages } = scriptedProvider([
       { name: 'send', args: { count: 'three' } },
@@ -87,7 +95,7 @@ describe('tool argument validation (LOU-U4)', () => {
     expect(execute).toHaveBeenCalledTimes(1);
 
     const toolMessage = seenMessages[1].find(m => m.role === 'tool');
-    const payload = JSON.parse(toolMessage.content);
+    const payload = JSON.parse(toolMessage!.content);
     expect(payload.error).toBe('ToolArgumentsValidationError');
     expect(payload.toolName).toBe('send');
     expect(payload.message).toContain("Invalid arguments for tool 'send'");
@@ -98,7 +106,7 @@ describe('tool argument validation (LOU-U4)', () => {
       ])
     );
 
-    const toolResults = events.filter(e => e.type === 'tool-result') as any[];
+    const toolResults = events.filter(e => e.type === 'tool-result') as ToolResultEvent[];
     expect(toolResults[0].toolResult.error).toContain('Invalid arguments');
     expect(toolResults[1].toolResult.error).toBeUndefined();
   });
@@ -107,7 +115,7 @@ describe('tool argument validation (LOU-U4)', () => {
     const execute = vi.fn().mockResolvedValue('ok');
     const { toolRegistry, agent } = setup({
       displayName: 'Send',
-      tool: { parameters: schema, execute } as any,
+      tool: { parameters: schema, execute } as Tool,
     });
     const { provider } = scriptedProvider([
       { name: 'send', args: { to: 'a', count: 1, n: '42' } },
@@ -123,7 +131,7 @@ describe('tool argument validation (LOU-U4)', () => {
     const needsApproval = vi.fn().mockReturnValue(false);
     const { toolRegistry, agent } = setup({
       displayName: 'Send',
-      tool: { parameters: schema, execute } as any,
+      tool: { parameters: schema, execute } as Tool,
       needsApproval,
     });
     const pre = vi.fn();
@@ -148,10 +156,10 @@ describe('tool argument validation (LOU-U4)', () => {
 
   it('passes tools without a zod schema through unchanged', async () => {
     const execute = vi.fn().mockResolvedValue('ok');
-    const noParams = setup({ displayName: 'Send', tool: { execute } as any });
+    const noParams = setup({ displayName: 'Send', tool: { execute } as Partial<Tool> as Tool });
     const plainObject = setup({
       displayName: 'Send',
-      tool: { parameters: { type: 'object' }, execute } as any,
+      tool: { parameters: { type: 'object' }, execute } as Tool,
     });
 
     for (const { toolRegistry, agent } of [noParams, plainObject]) {

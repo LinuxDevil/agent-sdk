@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
+import type { Tool } from 'ai';
+import type { LLMProvider, GenerateOptions } from '../providers';
 import { z } from 'zod';
 import { AgentExecutor, ExecutionEvent } from './AgentExecutor';
 import { PropagatingToolError } from './propagatingToolError';
@@ -6,15 +8,21 @@ import { HookRegistry } from './hooks';
 import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
 
+/** A message as the provider saw it (a JSON copy; tool results are text in these tests). */
+type SeenMessage = { role: string; content: string; toolCallId?: string };
+
+/** A 'tool-result' event: it always carries `toolResult`. */
+type ToolResultEvent = ExecutionEvent & { toolResult: NonNullable<ExecutionEvent['toolResult']> };
+
 const usage = { promptTokens: 1, completionTokens: 1, totalTokens: 2 };
 
 /** Provider that calls `boom` for `steps` turns, then answers. */
 function scriptedProvider(steps: number) {
-  const seenMessages: any[][] = [];
+  const seenMessages: SeenMessage[][] = [];
   let step = 0;
   const provider = {
     name: 'mock',
-    async generate(options: any) {
+    async generate(options: GenerateOptions) {
       seenMessages.push(JSON.parse(JSON.stringify(options.messages)));
       if (step++ >= steps) {
         return { text: 'done', finishReason: 'stop' as const, usage };
@@ -41,14 +49,14 @@ function scriptedProvider(steps: number) {
       return [];
     },
   };
-  return { provider: provider as any, seenMessages };
+  return { provider: provider as LLMProvider, seenMessages };
 }
 
 function setup(execute: () => Promise<unknown>) {
   const toolRegistry = new ToolRegistry();
   toolRegistry.register('boom', {
     displayName: 'Boom',
-    tool: { parameters: z.object({}), execute } as any,
+    tool: { parameters: z.object({}), execute } as Tool,
   });
   const agent = AgentBuilder.create()
     .setName('Test Agent')
@@ -85,8 +93,8 @@ describe('thrown tool errors reach the model (LOU-U12)', () => {
 
     expect(result.text).toBe('done');
     const toolMessage = seenMessages[1].find(m => m.role === 'tool');
-    expect(toolMessage.toolCallId).toBe('call-1');
-    expect(JSON.parse(toolMessage.content)).toEqual({
+    expect(toolMessage!.toolCallId).toBe('call-1');
+    expect(JSON.parse(toolMessage!.content)).toEqual({
       error: 'TypeError',
       toolName: 'boom',
       message: 'query must not be empty',
@@ -97,7 +105,7 @@ describe('thrown tool errors reach the model (LOU-U12)', () => {
     expect(JSON.parse(secondTools[1].content)).toEqual({ ok: true });
 
     // Events and callbacks still see an error.
-    const toolResults = events.filter(e => e.type === 'tool-result') as any[];
+    const toolResults = events.filter(e => e.type === 'tool-result') as ToolResultEvent[];
     expect(toolResults[0].toolResult.error).toBe('query must not be empty');
     expect(onToolResult.mock.calls[0][1].error).toBe('query must not be empty');
     expect(postToolCall.mock.calls[0][1].error).toBe('query must not be empty');
@@ -111,7 +119,7 @@ describe('thrown tool errors reach the model (LOU-U12)', () => {
 
     await AgentExecutor.execute({ agent, input: 'go', provider, toolRegistry });
 
-    const payload = JSON.parse(seenMessages[1].find(m => m.role === 'tool').content);
+    const payload = JSON.parse(seenMessages[1].find(m => m.role === 'tool')!.content);
     expect(payload.message.length).toBe(2000 + '... (truncated)'.length);
     expect(payload.message.endsWith('... (truncated)')).toBe(true);
   });
@@ -124,7 +132,7 @@ describe('thrown tool errors reach the model (LOU-U12)', () => {
 
     await AgentExecutor.execute({ agent, input: 'go', provider, toolRegistry });
 
-    const payload = JSON.parse(seenMessages[1].find(m => m.role === 'tool').content);
+    const payload = JSON.parse(seenMessages[1].find(m => m.role === 'tool')!.content);
     expect(payload).toEqual({ error: 'Error', toolName: 'boom', message: 'plain string', kind: 'execution' });
   });
 

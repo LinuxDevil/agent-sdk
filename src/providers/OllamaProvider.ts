@@ -90,8 +90,8 @@ export class OllamaProvider extends AiSdkProvider<OllamaProviderConfig> {
   async getModels(): Promise<string[]> {
     try {
       const response = await fetch(`${normalizeOllamaBaseUrl(this.config.baseURL)}/tags`);
-      const data = await response.json();
-      return data.models?.map((m: any) => m.name) || [];
+      const data = (await response.json()) as { models?: Array<{ name: string }> };
+      return data.models?.map((m) => m.name) || [];
     } catch (error) {
       this.logger.warn('Failed to fetch Ollama models', { error: (error as Error).message });
       return ['llama3.1', 'llama2', 'mistral'];

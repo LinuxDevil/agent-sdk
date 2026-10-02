@@ -35,7 +35,7 @@ export function validateAgentConfig(config: Partial<AgentConfig>): { valid: bool
  *
  * @deprecated Has no runtime effect and will be removed in the next minor release.
  */
-export function validateAgentTools(tools: Record<string, any>): { valid: boolean; errors: string[] } {
+export function validateAgentTools(tools: Record<string, { tool?: unknown }>): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
   for (const [key, config] of Object.entries(tools)) {

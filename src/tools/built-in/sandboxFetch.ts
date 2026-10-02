@@ -19,7 +19,7 @@
  */
 
 import { SandboxAdapter } from '../../security/sandboxCore';
-import { ToolDescriptor } from '../../types';
+import { ToolDescriptor, ToolExecutionContext } from '../../types';
 import { getToolExecute } from '../toolContract';
 import { toolFailure } from './toolFailure';
 
@@ -243,5 +243,6 @@ export function routeFetchThroughSandbox(descriptor: ToolDescriptor): void {
   }
   descriptor.requiresSandbox = true;
   descriptor.sandboxExecute = (args: unknown, sandbox: SandboxAdapter) =>
-    withSandboxedFetch(sandbox, async () => originalExecute(args, {} as any));
+    // sandboxExecute gets no call context, so execute() sees an empty one (as it always has).
+    withSandboxedFetch(sandbox, async () => originalExecute(args, {} as ToolExecutionContext));
 }

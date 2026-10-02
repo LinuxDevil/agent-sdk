@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { Tool } from 'ai';
+import type { LLMProvider, Message } from '../providers';
+import type { ResumeExecuteOptions } from './resume';
 import { resumeAfterApproval } from './resume';
 import { ApprovalStore, PendingApproval, ExecutionSnapshot } from './ApprovalGate';
 import { AgentExecutor, PropagatingToolError } from './AgentExecutor';
@@ -52,7 +55,7 @@ describe('Execution - resumeAfterApproval', () => {
     const execute = vi.fn().mockResolvedValue({ charged: true });
     toolRegistry.register('chargeCard', {
       displayName: 'Charge Card',
-      tool: { description: 'Charge a card', parameters: {}, execute } as any,
+      tool: { description: 'Charge a card', parameters: {}, execute } as Tool,
       needsApproval: true,
     });
 
@@ -105,7 +108,7 @@ describe('Execution - resumeAfterApproval', () => {
     const execute = vi.fn().mockResolvedValue({ charged: true });
     toolRegistry.register('chargeCard', {
       displayName: 'Charge Card',
-      tool: { description: 'Charge a card', parameters: {}, execute } as any,
+      tool: { description: 'Charge a card', parameters: {}, execute } as Tool,
       needsApproval: true,
     });
 
@@ -148,7 +151,7 @@ describe('Execution - resumeAfterApproval', () => {
     const execute = vi.fn().mockResolvedValue({ charged: true });
     toolRegistry.register('chargeCard', {
       displayName: 'Charge Card',
-      tool: { description: 'Charge a card', parameters: {}, execute } as any,
+      tool: { description: 'Charge a card', parameters: {}, execute } as Tool,
       needsApproval: true,
     });
 
@@ -201,7 +204,7 @@ describe('Execution - resumeAfterApproval', () => {
     const execute = vi.fn().mockRejectedValue(new Error('payment gateway timeout'));
     toolRegistry.register('chargeCard', {
       displayName: 'Charge Card',
-      tool: { description: 'Charge a card', parameters: {}, execute } as any,
+      tool: { description: 'Charge a card', parameters: {}, execute } as Tool,
       needsApproval: true,
     });
 
@@ -257,7 +260,7 @@ describe('Execution - resumeAfterApproval', () => {
     const execute = vi.fn().mockRejectedValue(depthError);
     toolRegistry.register('delegate', {
       displayName: 'Delegate',
-      tool: { description: 'Delegate to a sub-agent', parameters: {}, execute } as any,
+      tool: { description: 'Delegate to a sub-agent', parameters: {}, execute } as Tool,
       needsApproval: true,
     });
 
@@ -298,7 +301,7 @@ describe('Execution - resumeAfterApproval', () => {
     const execute = vi.fn().mockResolvedValue({ ok: true });
     toolRegistry.register('chargeCard', {
       displayName: 'Charge Card',
-      tool: { description: 'Charge a card', parameters: {}, execute } as any,
+      tool: { description: 'Charge a card', parameters: {}, execute } as Tool,
       needsApproval: true,
     });
 
@@ -357,7 +360,7 @@ describe('Execution - resumeAfterApproval', () => {
     const firstStep = await AgentExecutor.execute({
       agent,
       input: 'go',
-      provider: scriptedProvider as any,
+      provider: scriptedProvider as LLMProvider,
       toolRegistry,
       approvalStore,
       maxSteps: 1,
@@ -367,13 +370,13 @@ describe('Execution - resumeAfterApproval', () => {
     const secondStep = await AgentExecutor.execute({
       agent,
       input: firstStep.messages,
-      provider: scriptedProvider as any,
+      provider: scriptedProvider as LLMProvider,
       toolRegistry,
       approvalStore,
       maxSteps: firstStep.steps + 1,
       skipSystemPromptInjection: true,
       initialSteps: firstStep.steps,
-    } as any);
+    });
     expect(secondStep.steps).toBe(2);
 
     // Third call actually triggers the approval-gated tool call, continuing
@@ -381,12 +384,12 @@ describe('Execution - resumeAfterApproval', () => {
     const paused = await AgentExecutor.execute({
       agent,
       input: secondStep.messages,
-      provider: scriptedProvider as any,
+      provider: scriptedProvider as LLMProvider,
       toolRegistry,
       approvalStore,
       skipSystemPromptInjection: true,
       initialSteps: secondStep.steps,
-    } as any);
+    });
     expect(paused.finishReason).toBe('awaiting-approval');
     expect(paused.steps).toBe(3);
 
@@ -394,7 +397,7 @@ describe('Execution - resumeAfterApproval', () => {
       { id: paused.approvalId!, approved: true },
       approvalStore,
       toolRegistry,
-      scriptedProvider as any
+      scriptedProvider as LLMProvider
     );
 
     // Continuation from step 3 (not reset to 0/1): one more generation
@@ -413,14 +416,14 @@ describe('Execution - resumeAfterApproval', () => {
     const chargeExecute = vi.fn().mockResolvedValue({ charged: true });
     toolRegistry.register('chargeCard', {
       displayName: 'Charge Card',
-      tool: { description: 'Charge a card', parameters: {}, execute: chargeExecute } as any,
+      tool: { description: 'Charge a card', parameters: {}, execute: chargeExecute } as Tool,
       needsApproval: true,
     });
 
     const lookupExecute = vi.fn().mockResolvedValue({ found: true });
     toolRegistry.register('lookup', {
       displayName: 'Lookup',
-      tool: { description: 'Look something up', parameters: {}, execute: lookupExecute } as any,
+      tool: { description: 'Look something up', parameters: {}, execute: lookupExecute } as Tool,
       needsApproval: false,
     });
 
@@ -487,7 +490,7 @@ describe('Execution - resumeAfterApproval', () => {
     const paused = await AgentExecutor.execute({
       agent,
       input: 'go',
-      provider: scriptedProvider as any,
+      provider: scriptedProvider as LLMProvider,
       toolRegistry,
       approvalStore,
       sessionId,
@@ -512,14 +515,14 @@ describe('Execution - resumeAfterApproval', () => {
 
     // The reviewer's repro: explicitly pass sessionId+checkpointStore
     // through resume's executeOptions (bypassing the ResumeExecuteOptions
-    // Omit via `as any`, exactly as a caller not using strict TS - or one
+    // Omit via a cast, exactly as a caller not using strict TS - or one
     // that force-casts - legally could at runtime).
     const resumed = await resumeAfterApproval(
       { id: paused.approvalId!, approved: true },
       approvalStore,
       toolRegistry,
-      scriptedProvider as any,
-      { sessionId, checkpointStore } as any,
+      scriptedProvider as LLMProvider,
+      { sessionId, checkpointStore } as ResumeExecuteOptions,
       checkpointStore
     );
 
@@ -573,14 +576,14 @@ describe('Execution - resumeAfterApproval', () => {
     const chargeExecute = vi.fn().mockResolvedValue({ charged: true });
     toolRegistry.register('chargeCard', {
       displayName: 'Charge Card',
-      tool: { description: 'Charge a card', parameters: {}, execute: chargeExecute } as any,
+      tool: { description: 'Charge a card', parameters: {}, execute: chargeExecute } as Tool,
       needsApproval: true,
     });
 
     const lookupExecute = vi.fn().mockResolvedValue({ found: true });
     toolRegistry.register('lookup', {
       displayName: 'Lookup',
-      tool: { description: 'Look something up', parameters: {}, execute: lookupExecute } as any,
+      tool: { description: 'Look something up', parameters: {}, execute: lookupExecute } as Tool,
       needsApproval: false,
     });
 
@@ -641,7 +644,7 @@ describe('Execution - resumeAfterApproval', () => {
     const paused = await AgentExecutor.execute({
       agent,
       input: 'go',
-      provider: scriptedProvider as any,
+      provider: scriptedProvider as LLMProvider,
       toolRegistry,
       approvalStore,
       sessionId,
@@ -656,7 +659,7 @@ describe('Execution - resumeAfterApproval', () => {
       { id: paused.approvalId!, approved: true },
       approvalStore,
       toolRegistry,
-      scriptedProvider as any,
+      scriptedProvider as LLMProvider,
       {},
       checkpointStore
     );
@@ -678,8 +681,8 @@ describe('Execution - resumeAfterApproval', () => {
     // lookup result (checkpointed by AgentExecutor's normal loop) - proof
     // this checkpoint reflects genuinely new, post-resume progress rather
     // than a rehydrated/duplicated stale snapshot.
-    expect(savedCheckpoint.messages.some((m: any) => m.toolName === 'chargeCard')).toBe(true);
-    expect(savedCheckpoint.messages.some((m: any) => m.toolName === 'lookup')).toBe(true);
+    expect(savedCheckpoint.messages.some((m: Message) => m.toolName === 'chargeCard')).toBe(true);
+    expect(savedCheckpoint.messages.some((m: Message) => m.toolName === 'lookup')).toBe(true);
 
     // The run reached a terminal state, so its checkpoint is kept, marked
     // 'finished', for session continuation (LOU-U8).
@@ -698,14 +701,14 @@ describe('Execution - resumeAfterApproval', () => {
     const lookupExecute = vi.fn().mockResolvedValue({ found: true });
     toolRegistry.register('lookup', {
       displayName: 'Lookup',
-      tool: { description: 'Look something up', parameters: {}, execute: lookupExecute } as any,
+      tool: { description: 'Look something up', parameters: {}, execute: lookupExecute } as Tool,
       needsApproval: false,
     });
 
     const chargeExecute = vi.fn().mockResolvedValue({ charged: true });
     toolRegistry.register('chargeCard', {
       displayName: 'Charge Card',
-      tool: { description: 'Charge a card', parameters: {}, execute: chargeExecute } as any,
+      tool: { description: 'Charge a card', parameters: {}, execute: chargeExecute } as Tool,
       needsApproval: true,
     });
 
@@ -775,7 +778,7 @@ describe('Execution - resumeAfterApproval', () => {
     const paused = await AgentExecutor.execute({
       agent,
       input: 'go',
-      provider: scriptedProvider as any,
+      provider: scriptedProvider as LLMProvider,
       toolRegistry,
       approvalStore,
       sessionId,
@@ -805,7 +808,7 @@ describe('Execution - resumeAfterApproval', () => {
       { id: paused.approvalId!, approved: true },
       approvalStore,
       toolRegistry,
-      scriptedProvider as any,
+      scriptedProvider as LLMProvider,
       {},
       checkpointStore
     );
@@ -819,7 +822,7 @@ describe('Execution - resumeAfterApproval', () => {
     // must have carried the businessState forward.
     expect(saveSpy).toHaveBeenCalled();
     for (const [, checkpoint] of saveSpy.mock.calls) {
-      expect((checkpoint as any).businessState).toEqual({
+      expect((checkpoint as Checkpoint).businessState).toEqual({
         orderId: 'ord_777',
         stage: 'awaiting-approval',
       });
@@ -831,14 +834,14 @@ describe('Execution - resumeAfterApproval', () => {
     const chargeExecute = vi.fn().mockResolvedValue({ charged: true });
     toolRegistry.register('chargeCard', {
       displayName: 'Charge Card',
-      tool: { description: 'Charge a card', parameters: {}, execute: chargeExecute } as any,
+      tool: { description: 'Charge a card', parameters: {}, execute: chargeExecute } as Tool,
       needsApproval: true,
     });
 
     const lookupExecute = vi.fn().mockResolvedValue({ found: true });
     toolRegistry.register('lookup', {
       displayName: 'Lookup',
-      tool: { description: 'Look something up', parameters: {}, execute: lookupExecute } as any,
+      tool: { description: 'Look something up', parameters: {}, execute: lookupExecute } as Tool,
       needsApproval: false,
     });
 
@@ -898,7 +901,7 @@ describe('Execution - resumeAfterApproval', () => {
     const paused = await AgentExecutor.execute({
       agent,
       input: 'go',
-      provider: scriptedProvider as any,
+      provider: scriptedProvider as LLMProvider,
       toolRegistry,
       approvalStore,
       sessionId,
@@ -913,7 +916,7 @@ describe('Execution - resumeAfterApproval', () => {
       { id: paused.approvalId!, approved: true },
       approvalStore,
       toolRegistry,
-      scriptedProvider as any,
+      scriptedProvider as LLMProvider,
       { businessState: { stage: 'explicitly-overridden' } },
       checkpointStore
     );
@@ -921,7 +924,7 @@ describe('Execution - resumeAfterApproval', () => {
     expect(resumed.finishReason).toBe('stop');
     expect(saveSpy).toHaveBeenCalled();
     for (const [, checkpoint] of saveSpy.mock.calls) {
-      expect((checkpoint as any).businessState).toEqual({ stage: 'explicitly-overridden' });
+      expect((checkpoint as Checkpoint).businessState).toEqual({ stage: 'explicitly-overridden' });
     }
   });
 
@@ -935,7 +938,7 @@ describe('Execution - resumeAfterApproval', () => {
     const execute = vi.fn().mockResolvedValue({ charged: true });
     toolRegistry.register('chargeCard', {
       displayName: 'Charge Card',
-      tool: { description: 'Charge a card', parameters: {}, execute } as any,
+      tool: { description: 'Charge a card', parameters: {}, execute } as Tool,
       needsApproval: true,
     });
 
@@ -997,7 +1000,7 @@ describe('Execution - resumeAfterApproval', () => {
       const execute = vi.fn().mockResolvedValue({ charged: true });
       toolRegistry.register('chargeCard', {
         displayName: 'Charge Card',
-        tool: { description: 'Charge a card', parameters: {}, execute } as any,
+        tool: { description: 'Charge a card', parameters: {}, execute } as Tool,
         needsApproval: true,
       });
 
@@ -1050,7 +1053,7 @@ describe('Execution - resumeAfterApproval', () => {
       const execute = vi.fn().mockResolvedValue({ sent: true });
       toolRegistry.register('sendEmail', {
         displayName: 'Send Email',
-        tool: { description: 'send email', parameters: {}, execute } as any,
+        tool: { description: 'send email', parameters: {}, execute } as Tool,
         needsApproval: true,
       });
 
@@ -1087,7 +1090,7 @@ describe('Execution - resumeAfterApproval', () => {
       const paused = await AgentExecutor.execute({
         agent,
         input: 'email real@example.com',
-        provider: scriptedProvider as any,
+        provider: scriptedProvider as LLMProvider,
         toolRegistry,
         approvalStore,
         hooks,
@@ -1194,7 +1197,7 @@ describe('Execution - resumeAfterApproval', () => {
       const execute = vi.fn().mockResolvedValue({ charged: true });
       toolRegistry.register('chargeCard', {
         displayName: 'Charge Card',
-        tool: { description: 'Charge a card', parameters: {}, execute } as any,
+        tool: { description: 'Charge a card', parameters: {}, execute } as Tool,
         needsApproval: true,
       });
 

@@ -10,6 +10,7 @@ import type { AgentInput } from '../providers/content';
 import type { AgentEvent, AgentEventError } from '../execution/agentEvents';
 import type { AgentSession } from '../session/AgentSession';
 import { parseEventStream } from './parseEventStream';
+import { SDKError } from '../utils/sdkError';
 import type { AgentUIAction, AgentUIState, ApprovalOutcome } from './reducer';
 
 /** Runs a `createAgent()` agent in this process; with `sessionId`, in one `agent.session()` that keeps the conversation. */
@@ -66,7 +67,10 @@ function toEventError(error: unknown): AgentEventError {
 async function post(source: RemoteAgentSource, url: string, body: unknown, signal: AbortSignal): Promise<Response> {
   const headers = { 'Content-Type': 'application/json', ...source.headers };
   const response = await (source.fetch ?? fetch)(url, { method: 'POST', headers, body: JSON.stringify(body), signal });
-  if (!response.ok) throw new Error(`POST ${url} failed with ${response.status}`);
+  if (!response.ok) {
+    // The message stays as it was (the UI shows it); the code says what kind of failure it is.
+    throw new SDKError(`POST ${url} failed with ${response.status}`, 'LOUSHY_REMOTE_REQUEST_FAILED', { appendHelp: false });
+  }
   return response;
 }
 

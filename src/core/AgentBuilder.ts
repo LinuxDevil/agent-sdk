@@ -1,4 +1,4 @@
-import { AgentConfig, AgentType, ToolConfiguration, AgentFlow } from '../types';
+import { AgentConfig, AgentSettings, AgentType, ToolConfiguration, AgentFlow } from '../types';
 import { validateAgentConfig, validateAgentTools } from '../agent-types';
 import { newId } from '../utils/id';
 import type { DefinedTool } from '../tools/defineTool';
@@ -111,7 +111,7 @@ export class AgentBuilder {
   /**
    * Set expected result schema
    */
-  public setExpectedResult(schema: any): this {
+  public setExpectedResult(schema: unknown): this {
     this.config.expectedResult = schema;
     return this;
   }
@@ -127,7 +127,7 @@ export class AgentBuilder {
   /**
    * Set events
    */
-  public setEvents(events: any[]): this {
+  public setEvents(events: unknown[]): this {
     this.config.events = events;
     return this;
   }
@@ -135,7 +135,7 @@ export class AgentBuilder {
   /**
    * Set settings
    */
-  public setSettings(settings: Record<string, any>): this {
+  public setSettings(settings: AgentSettings): this {
     this.config.settings = settings;
     return this;
   }
@@ -143,7 +143,7 @@ export class AgentBuilder {
   /**
    * Set metadata
    */
-  public setMetadata(metadata: Record<string, any>): this {
+  public setMetadata(metadata: Record<string, unknown>): this {
     this.config.metadata = metadata;
     return this;
   }

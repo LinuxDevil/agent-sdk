@@ -1,27 +1,30 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { StorageService } from './StorageService';
 
+// Mock fs module
+const makeMockFs = () => ({
+  existsSync: vi.fn(),
+  mkdirSync: vi.fn(),
+  writeFileSync: vi.fn(),
+  readFileSync: vi.fn(),
+  unlinkSync: vi.fn(),
+  rmSync: vi.fn(),
+});
+
+// Mock path module
+const makeMockPath = () => ({
+  join: vi.fn((...args: string[]) => args.join('/')),
+  resolve: vi.fn((...args: string[]) => args.join('/')),
+});
+
 describe('Storage - StorageService', () => {
-  let mockFs: any;
-  let mockPath: any;
+  let mockFs: ReturnType<typeof makeMockFs>;
+  let mockPath: ReturnType<typeof makeMockPath>;
   let storageService: StorageService;
 
   beforeEach(() => {
-    // Mock fs module
-    mockFs = {
-      existsSync: vi.fn(),
-      mkdirSync: vi.fn(),
-      writeFileSync: vi.fn(),
-      readFileSync: vi.fn(),
-      unlinkSync: vi.fn(),
-      rmSync: vi.fn(),
-    };
-
-    // Mock path module
-    mockPath = {
-      join: vi.fn((...args: string[]) => args.join('/')),
-      resolve: vi.fn((...args: string[]) => args.join('/')),
-    };
+    mockFs = makeMockFs();
+    mockPath = makeMockPath();
 
     storageService = new StorageService(
       'test-db-hash',

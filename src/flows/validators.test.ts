@@ -68,7 +68,8 @@ describe('Flow Validators', () => {
         code: 'test',
         name: 'Test',
         inputs: [
-          { name: 'test', type: undefined as any, required: true },
+          // @ts-expect-error -- deliberately no type, to check the validator rejects it
+        { name: 'test', type: undefined, required: true },
         ],
       });
 

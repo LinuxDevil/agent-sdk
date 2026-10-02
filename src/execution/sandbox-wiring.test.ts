@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import type { Tool } from 'ai';
 import { AgentExecutor } from './AgentExecutor';
 import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
@@ -27,7 +28,7 @@ describe('AgentExecutor sandbox wiring (LOU-F5 / LOU-F fix)', () => {
 
     toolRegistry.register('sandboxed', {
       displayName: 'Sandboxed tool',
-      tool: { description: 'sandboxed', parameters: {}, execute: toolExecute } as any,
+      tool: { description: 'sandboxed', parameters: {}, execute: toolExecute } as Tool,
       requiresSandbox: true,
       sandboxExecute,
     });
@@ -84,7 +85,7 @@ describe('AgentExecutor sandbox wiring (LOU-F5 / LOU-F fix)', () => {
     const toolRegistry = new ToolRegistry();
     toolRegistry.register('unsandboxable', {
       displayName: 'Unsandboxable tool',
-      tool: { description: 'unsandboxable', parameters: {}, execute: toolExecute } as any,
+      tool: { description: 'unsandboxable', parameters: {}, execute: toolExecute } as Tool,
       requiresSandbox: true,
       // no sandboxExecute implementation - this is the bug scenario
     });
@@ -139,7 +140,7 @@ describe('AgentExecutor sandbox wiring (LOU-F5 / LOU-F fix)', () => {
     const toolRegistry = new ToolRegistry();
     toolRegistry.register('plain', {
       displayName: 'Plain tool',
-      tool: { description: 'plain', parameters: {}, execute: toolExecute } as any,
+      tool: { description: 'plain', parameters: {}, execute: toolExecute } as Tool,
       // no requiresSandbox
     });
 
@@ -181,7 +182,7 @@ describe('AgentExecutor sandbox wiring (LOU-F5 / LOU-F fix)', () => {
 
     toolRegistry.register('sandboxed-noop', {
       displayName: 'Sandboxed tool (Noop)',
-      tool: { description: 'sandboxed', parameters: {}, execute: toolExecute } as any,
+      tool: { description: 'sandboxed', parameters: {}, execute: toolExecute } as Tool,
       requiresSandbox: true,
       sandboxExecute,
     });

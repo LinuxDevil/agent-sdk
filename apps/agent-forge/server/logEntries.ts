@@ -3,7 +3,7 @@
  * `LogEntry` rows the Logs tab renders (LOU-O1). Used by runRegistry.ts.
  */
 import { randomUUID } from 'node:crypto';
-import type { AgentEvent, AgentEventOf, AgentEventType, FlowExecutionEvent } from '@loushy/build-ai-agent';
+import type { AgentEvent, AgentEventOf, AgentEventType, FlowExecutionEvent, FlowExecutionEventOf } from '@loushy/build-ai-agent';
 import type { LogEntry } from '../shared/wireTypes';
 
 /** The event-specific part of a `LogEntry`; id/agentId/timestamp are added by the translators. */
@@ -79,7 +79,7 @@ export function toLogEntries(agentId: string, event: AgentEvent): LogEntry[] {
 }
 
 type FlowLogBuilders = {
-  [K in FlowExecutionEvent['type']]?: (event: FlowExecutionEvent) => LogBody;
+  [K in FlowExecutionEvent['type']]?: (event: FlowExecutionEventOf<K>) => LogBody;
 };
 
 const FLOW_LOG_BUILDERS: FlowLogBuilders = {
@@ -145,6 +145,6 @@ const FLOW_LOG_BUILDERS: FlowLogBuilders = {
  * writeup.
  */
 export function toFlowLogEntries(agentId: string, event: FlowExecutionEvent): LogEntry[] {
-  const build = FLOW_LOG_BUILDERS[event.type];
+  const build = FLOW_LOG_BUILDERS[event.type] as ((event: FlowExecutionEvent) => LogBody) | undefined;
   return build ? [toEntry(agentId, event.timestamp, build(event))] : [];
 }

@@ -121,7 +121,7 @@ export interface ToolDefinition {
   function: {
     name: string;
     description: string;
-    parameters: Record<string, any>;
+    parameters: Record<string, unknown>;
   };
 }
 
@@ -201,7 +201,7 @@ export interface GenerateResult {
   toolCalls?: ToolCall[];
   /** LOU-V13: the model's reasoning, in blocks, when it reported any. */
   reasoning?: ReasoningBlock[];
-  rawResponse?: any;
+  rawResponse?: unknown;
 }
 
 /**
@@ -228,7 +228,7 @@ export interface StreamChunk {
   toolCall?: ToolCall;
   toolResult?: {
     toolCallId: string;
-    result: any;
+    result: unknown;
   };
   finishReason?: string;
   /** Usage of the call, on the `finish` chunk; omit when the backend reports none (see GenerateResult.usage). */
@@ -303,7 +303,7 @@ export interface LLMProviderConfig {
   timeout?: number;
   maxRetries?: number;
   headers?: Record<string, string>;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { Tool, ToolExecutionOptions } from 'ai';
 import { GitHubTools, createGitHubTools } from './github';
 import { NoopSandbox } from '../../security/sandboxCore';
 import type { SandboxAdapter } from '../../security/sandboxCore';
@@ -46,7 +47,7 @@ describe('GitHubTools scope enforcement (LOU-E14)', () => {
     expect(descriptor).toBeDefined();
     expect(descriptor?.tool.execute).toBeDefined();
 
-    await expect(descriptor!.tool.execute!({}, {} as any)).rejects.toThrow(/out of scope/i);
+    await expect(descriptor!.tool.execute!({}, {} as ToolExecutionOptions)).rejects.toThrow(/out of scope/i);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -91,7 +92,7 @@ describe('GitHubTools scope enforcement (LOU-E14)', () => {
 
     const result = await descriptor!.tool.execute!(
       { title: 'My PR', body: 'body', head: 'feature', base: 'main' },
-      {} as any
+      {} as ToolExecutionOptions
     );
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -114,7 +115,7 @@ describe('GitHubTools scope enforcement (LOU-E14)', () => {
     });
 
     const descriptor = githubTools.get('github_get_pull_request');
-    const result = await descriptor!.tool.execute!({ prNumber: 5 }, {} as any);
+    const result = await descriptor!.tool.execute!({ prNumber: 5 }, {} as ToolExecutionOptions);
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const parsed = JSON.parse(result as string);
@@ -162,7 +163,7 @@ describe('GitHubTools sandbox seam (LOU-K2)', () => {
     });
     vi.stubGlobal('fetch', fetchSpy);
     try {
-      const result = await descriptor!.tool.execute!({ prNumber: 5 }, {} as any);
+      const result = await descriptor!.tool.execute!({ prNumber: 5 }, {} as ToolExecutionOptions);
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       expect(JSON.parse(result as string).number).toBe(5);
     } finally {
@@ -222,7 +223,7 @@ describe('GitHubTools github_update_pull_request execute()', () => {
   const run = (args: Record<string, unknown>) =>
     createGitHubTools({ token: 'test-token', owner: 'test-owner', repo: 'test-repo' })
       .get('github_update_pull_request')!
-      .tool.execute!(args as any, {} as any);
+      .tool.execute!(args, {} as ToolExecutionOptions);
 
   beforeEach(() => {
     fetchSpy = vi.fn();
@@ -285,15 +286,15 @@ describe('GitHubTools github_update_issue real implementation', () => {
   // name from the (private static) scope set while constructing the registry,
   // then restore it so no other test is affected.
   let fetchSpy: ReturnType<typeof vi.fn>;
-  let issueTool: { execute?: (args: any, ctx: any) => unknown };
+  let issueTool: Tool;
 
   beforeEach(() => {
-    const scopeSet = (GitHubTools as any).OUT_OF_SCOPE_TOOLS as Set<string>;
+    const scopeSet = GitHubTools['OUT_OF_SCOPE_TOOLS'] as Set<string>;
     scopeSet.delete('github_update_issue');
     try {
       issueTool = createGitHubTools({ token: 'test-token', owner: 'test-owner', repo: 'test-repo' }).get(
         'github_update_issue'
-      )!.tool as any;
+      )!.tool;
     } finally {
       scopeSet.add('github_update_issue');
     }
@@ -304,11 +305,11 @@ describe('GitHubTools github_update_issue real implementation', () => {
     vi.unstubAllGlobals();
   });
 
-  const run = (args: Record<string, unknown>) => issueTool.execute!(args, {} as any);
+  const run = (args: Record<string, unknown>) => issueTool.execute!(args, {} as ToolExecutionOptions);
 
   it('keeps the public registry gated (scope set restored)', async () => {
     const gated = createGitHubTools({ token: 't', owner: 'o', repo: 'r' }).get('github_update_issue')!;
-    await expect(gated.tool.execute!({ issueNumber: 1, title: 'x' } as any, {} as any)).rejects.toThrow(/out of scope/i);
+    await expect(gated.tool.execute!({ issueNumber: 1, title: 'x' }, {} as ToolExecutionOptions)).rejects.toThrow(/out of scope/i);
   });
 
   it('PATCHes title, body, state and labels and returns success', async () => {

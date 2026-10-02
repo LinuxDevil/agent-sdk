@@ -125,7 +125,7 @@ describe('HookRegistry', () => {
     registry.register(
       makeHook('audit-log', {
         postToolCall: (_ctx, result) => {
-          (result as any).result = { audited: true, original: result.result };
+          result.result = { audited: true, original: result.result };
         },
       })
     );

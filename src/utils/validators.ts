@@ -68,7 +68,7 @@ export function sanitizeString(str: string): string {
 /**
  * Validate that object has required keys
  */
-export function hasRequiredKeys<T extends Record<string, any>>(
+export function hasRequiredKeys<T extends object>(
   obj: T,
   requiredKeys: (keyof T)[]
 ): boolean {

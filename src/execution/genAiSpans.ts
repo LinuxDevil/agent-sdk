@@ -157,8 +157,11 @@ function genAiFinishReason(reason: GenerateResult['finishReason']): string {
   return reason === 'tool_calls' ? 'tool_call' : reason;
 }
 
+/** The fields of a provider's raw response that may name the model that answered. */
+type RawResponseModel = { response?: { modelId?: unknown }; modelId?: unknown; model?: unknown };
+
 function responseModel(generated: GenerateResult): string | undefined {
-  const raw = generated.rawResponse;
+  const raw = generated.rawResponse as RawResponseModel | null | undefined;
   const model = raw?.response?.modelId ?? raw?.modelId ?? raw?.model;
   return typeof model === 'string' ? model : undefined;
 }

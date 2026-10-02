@@ -157,6 +157,7 @@ export interface ExecutionEvent {
   toolResult?: {
     toolCallId: string;
     toolName: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- deprecated public type, kept for compatibility (LOU-D41)
     result: any;
     error?: string;
     /** LOU-X3: the hook whose `{ result }` outcome became this call's result. */

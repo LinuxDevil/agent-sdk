@@ -50,7 +50,7 @@ export interface JiraTicket {
   labels: string[];
   created: string;
   updated: string;
-  customFields?: Record<string, any>;
+  customFields?: Record<string, unknown>;
 }
 
 export interface JiraComment {
@@ -68,6 +68,69 @@ export interface JiraTransition {
     id: string;
     name: string;
   };
+}
+
+// The Jira REST API resources read below (only the fields used).
+
+/** An Atlassian Document Format node. */
+interface AdfNode {
+  type?: string;
+  version?: number;
+  text?: string;
+  content?: AdfNode[];
+}
+
+interface JiraUser {
+  displayName: string;
+}
+
+interface JiraIssueResource {
+  key: string;
+  fields: {
+    summary: string;
+    description?: AdfNode | string | null;
+    issuetype: { name: string };
+    priority?: { name?: string } | null;
+    status: { name: string };
+    assignee?: JiraUser | null;
+    reporter?: JiraUser | null;
+    project: { key: string };
+    components?: Array<{ name: string }>;
+    labels?: string[];
+    created: string;
+    updated: string;
+    [field: string]: unknown;
+  };
+}
+
+interface JiraCommentResource {
+  id: string;
+  author: JiraUser;
+  body?: AdfNode | string | null;
+  created: string;
+  updated: string;
+}
+
+interface JiraIssueTypeResource {
+  id: string;
+  name: string;
+  description?: string;
+  subtask?: boolean;
+}
+
+interface JiraProjectResource {
+  key: string;
+  name: string;
+  projectTypeKey?: string;
+  lead?: JiraUser;
+}
+
+interface JiraWorklogResource {
+  id: string;
+  author: JiraUser;
+  timeSpent: string;
+  started: string;
+  comment?: AdfNode | string | null;
 }
 
 /** A Jira user's display name, or `fallback` when there is no such user. */
@@ -192,7 +255,7 @@ export class JiraTools extends ToolRegistry {
           fields: z.array(z.string()).optional().describe('Specific fields to return'),
         }),
         execute: async ({ jql, maxResults = 50, startAt = 0, fields }) => {
-          const body: any = {
+          const body: Record<string, unknown> = {
             jql,
             maxResults,
             startAt,
@@ -208,7 +271,7 @@ export class JiraTools extends ToolRegistry {
 
           const data = await response.json();
           
-          const tickets = data.issues.map((issue: any) => ({
+          const tickets = data.issues.map((issue: JiraIssueResource) => ({
             key: issue.key,
             summary: issue.fields.summary,
             status: issue.fields.status.name,
@@ -245,7 +308,7 @@ export class JiraTools extends ToolRegistry {
           components: z.array(z.string()).optional().describe('Component names'),
         }),
         execute: async ({ projectKey, issueType, summary, description, priority, assignee, labels, components }) => {
-          const fields: any = {
+          const fields: Record<string, unknown> = {
             project: { key: projectKey },
             issuetype: { name: issueType },
             summary,
@@ -297,7 +360,7 @@ export class JiraTools extends ToolRegistry {
           labels: z.array(z.string()).optional().describe('Labels to set'),
         }),
         execute: async ({ ticketKey, summary, description, priority, labels }) => {
-          const fields: any = {};
+          const fields: Record<string, unknown> = {};
 
           if (summary) fields.summary = summary;
           if (description) fields.description = this.createADF(description);
@@ -374,7 +437,7 @@ export class JiraTools extends ToolRegistry {
           // First, get the project from parent
           const projectKey = parentKey.split('-')[0];
 
-          const fields: any = {
+          const fields: Record<string, unknown> = {
             project: { key: projectKey },
             parent: { key: parentKey },
             summary,
@@ -419,7 +482,7 @@ export class JiraTools extends ToolRegistry {
           comment: z.string().optional().describe('Optional comment for the link'),
         }),
         execute: async ({ inwardIssue, outwardIssue, linkType, comment }) => {
-          const body: any = {
+          const body: Record<string, unknown> = {
             type: { name: linkType },
             inwardIssue: { key: inwardIssue },
             outwardIssue: { key: outwardIssue },
@@ -524,7 +587,7 @@ export class JiraTools extends ToolRegistry {
 
           const data = await response.json();
           
-          const comments: JiraComment[] = data.comments.map((comment: any) => ({
+          const comments: JiraComment[] = data.comments.map((comment: JiraCommentResource) => ({
             id: comment.id,
             author: comment.author.displayName,
             body: this.extractTextFromADF(comment.body),
@@ -628,7 +691,7 @@ export class JiraTools extends ToolRegistry {
           comment: z.string().optional().describe('Optional comment for the transition'),
         }),
         execute: async ({ ticketKey, transitionId, comment }) => {
-          const body: any = {
+          const body: Record<string, unknown> = {
             transition: { id: transitionId },
           };
 
@@ -685,7 +748,7 @@ export class JiraTools extends ToolRegistry {
 
           const data = await response.json();
           
-          const transitions: JiraTransition[] = data.transitions.map((t: any) => ({
+          const transitions: JiraTransition[] = data.transitions.map((t: JiraTransition) => ({
             id: t.id,
             name: t.name,
             to: {
@@ -804,7 +867,7 @@ export class JiraTools extends ToolRegistry {
           const data = await response.json();
           const issueTypes = Array.isArray(data) ? data : [data];
           
-          const types = issueTypes.map((type: any) => ({
+          const types = issueTypes.map((type: JiraIssueTypeResource) => ({
             id: type.id,
             name: type.name,
             description: type.description,
@@ -841,7 +904,7 @@ export class JiraTools extends ToolRegistry {
 
           const data = await response.json();
           
-          const projects = data.map((project: any) => ({
+          const projects = data.map((project: JiraProjectResource) => ({
             key: project.key,
             name: project.name,
             projectTypeKey: project.projectTypeKey,
@@ -884,7 +947,7 @@ export class JiraTools extends ToolRegistry {
                 'Authorization': this.authHeader,
                 'X-Atlassian-Token': 'no-check',
               },
-              body: formData as any,
+              body: formData,
             }
           );
 
@@ -914,7 +977,7 @@ export class JiraTools extends ToolRegistry {
           started: z.string().optional().describe('When the work started (ISO 8601 format)'),
         }),
         execute: async ({ ticketKey, timeSpent, comment, started }) => {
-          const body: any = {
+          const body: Record<string, unknown> = {
             timeSpent,
           };
 
@@ -976,7 +1039,7 @@ export class JiraTools extends ToolRegistry {
 
           const data = await response.json();
           
-          const worklogs = data.worklogs.map((log: any) => ({
+          const worklogs = data.worklogs.map((log: JiraWorklogResource) => ({
             id: log.id,
             author: log.author.displayName,
             timeSpent: log.timeSpent,
@@ -1019,7 +1082,7 @@ export class JiraTools extends ToolRegistry {
   /**
    * Map a Jira issue resource to a JiraTicket
    */
-  private toJiraTicket(data: any): JiraTicket {
+  private toJiraTicket(data: JiraIssueResource): JiraTicket {
     return {
       key: data.key,
       summary: data.fields.summary,
@@ -1030,7 +1093,7 @@ export class JiraTools extends ToolRegistry {
       assignee: displayNameOr(data.fields.assignee, 'Unassigned'),
       reporter: displayNameOr(data.fields.reporter, 'Unknown'),
       project: data.fields.project.key,
-      components: data.fields.components?.map((c: any) => c.name) || [],
+      components: data.fields.components?.map((c) => c.name) || [],
       labels: data.fields.labels || [],
       created: data.fields.created,
       updated: data.fields.updated,
@@ -1041,7 +1104,7 @@ export class JiraTools extends ToolRegistry {
   /**
    * Convert text to Atlassian Document Format (ADF)
    */
-  private createADF(text: string): any {
+  private createADF(text: string): AdfNode {
     return {
       type: 'doc',
       version: 1,
@@ -1062,13 +1125,13 @@ export class JiraTools extends ToolRegistry {
   /**
    * Extract plain text from Atlassian Document Format (ADF)
    */
-  private extractTextFromADF(adf: any): string {
+  private extractTextFromADF(adf: AdfNode | string | null | undefined): string {
     if (!adf) return '';
     if (typeof adf === 'string') return adf;
     
     let text = '';
     
-    const extractContent = (node: any): void => {
+    const extractContent = (node: AdfNode): void => {
       if (node.type === 'text') {
         text += node.text;
       } else if (node.content) {
@@ -1085,8 +1148,8 @@ export class JiraTools extends ToolRegistry {
   /**
    * Extract custom fields from Jira fields object
    */
-  private extractCustomFields(fields: any): Record<string, any> {
-    const customFields: Record<string, any> = {};
+  private extractCustomFields(fields: Record<string, unknown>): Record<string, unknown> {
+    const customFields: Record<string, unknown> = {};
     
     for (const [key, value] of Object.entries(fields)) {
       if (key.startsWith('customfield_')) {
