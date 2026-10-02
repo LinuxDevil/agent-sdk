@@ -16,7 +16,7 @@
  */
 
 import { newId } from '../utils/id';
-import type { GenerateOptions, GenerateResult, LLMProvider, ToolCall } from '../providers';
+import type { GenerateOptions, GenerateResult, HostedToolCall, LLMProvider, ToolCall } from '../providers';
 import type { ExecuteOptions, ExecutionEvent, ExecutionResult } from './AgentExecutor';
 import { toExecutionEvents, warnLegacyOnEvent, type LegacyDetail } from './legacyEvents';
 import type { StepUsage } from '../models/usage';
@@ -42,6 +42,7 @@ import { InputQueue, type EnqueueResult, type QueuedInput, type SteerResult } fr
 import type { GuardrailTrip } from './ioGuardrails';
 import type { AgentDrift } from './agentFingerprint';
 import { isTodoListResult } from '../tools/built-in/todo';
+import { cappedHostedResult, settleHostedFinish } from './hostedToolCalls';
 
 /**
  * The handle returned by `agent.stream()` and `AgentExecutor.stream()`.
@@ -191,8 +192,9 @@ function toEventUsage(usage: {
   estimated: boolean;
   costUsd?: number;
   modelCalls?: number;
+  hostedToolCalls?: Partial<Record<string, number>>;
 }): AgentEventUsage {
-  const { inputTokens, outputTokens, totalTokens, estimated, costUsd, modelCalls } = usage;
+  const { inputTokens, outputTokens, totalTokens, estimated, costUsd, modelCalls, hostedToolCalls } = usage;
   return {
     promptTokens: inputTokens,
     completionTokens: outputTokens,
@@ -202,6 +204,7 @@ function toEventUsage(usage: {
     estimated,
     ...(costUsd !== undefined && { costUsd }),
     ...(modelCalls !== undefined && { modelCalls }),
+    ...(hostedToolCalls && Object.keys(hostedToolCalls).length > 0 && { hostedToolCalls: { ...hostedToolCalls } }),
   };
 }
 
@@ -319,6 +322,28 @@ class RunEvents {
     );
   }
 
+  /** N1a: a hosted call the provider started: `tool.start` with `executedBy: 'provider'`. */
+  private hostedStarted(call: HostedToolCall, subagent?: SubagentInfo): void {
+    this.toolStarts.set(toolStartKey(call.id, subagent), Date.now());
+    const args = toJsonValue(call.args);
+    const event = { type: 'tool.start', toolCallId: call.id, toolName: call.name, executedBy: 'provider' } as const;
+    this.emit({ ...event, args: (typeof args === 'object' && args !== null && !Array.isArray(args) ? args : {}) as Record<string, unknown> }, subagent);
+  }
+
+  /** N1a: a hosted call the provider finished: `tool.done` (result capped), or `tool.error` when it failed. */
+  private hostedSettled(call: HostedToolCall, subagent?: SubagentInfo): void {
+    const key = toolStartKey(call.id, subagent);
+    if (!this.toolStarts.has(key)) this.hostedStarted(call, subagent);
+    const durationMs = Date.now() - (this.toolStarts.get(key) ?? Date.now());
+    const base = { toolCallId: call.id, toolName: call.name, durationMs, executedBy: 'provider' } as const;
+    if (!call.isError) {
+      this.emit({ type: 'tool.done', ...base, result: cappedHostedResult(call.result) }, subagent);
+      return;
+    }
+    const message = typeof call.result === 'string' ? call.result : JSON.stringify(cappedHostedResult(call.result));
+    this.emit({ type: 'tool.error', ...base, error: { name: 'HostedToolError', message } }, subagent);
+  }
+
   /**
    * The sink for the top-level run, or (LOU-Y1) for a sub-agent's run, whose
    * events carry `subagent`. A sub-agent's approval request is reported by
@@ -390,7 +415,7 @@ class RunEvents {
       guardrail: (event) => this.emit(event, subagent),
       generate: async (provider, request, onOutput) => {
         const call = withProviderEvents(request, this.providerEvents(subagent));
-        const generated = await this.generateStep(provider, call, subagent, onOutput);
+        const generated = settleHostedFinish(await this.generateStep(provider, call, subagent, onOutput));
         const measured = measureUsage(request.model ?? provider.name, request.messages, generated);
         stepResult = { finishReason: generated.finishReason, ...measured, usage: measured.usage };
         return generated;
@@ -422,6 +447,8 @@ class RunEvents {
     const sink: StepSink = {
       onTextDelta: (text) => this.emit({ type: 'text.delta', text }, subagent),
       onReasoning: (event) => this.emit(event, subagent),
+      onHostedToolCall: (hosted) => this.hostedStarted(hosted, subagent),
+      onHostedToolResult: (hosted) => this.hostedSettled(hosted, subagent),
       onOutput,
     };
     if (this.mode.streamModelCalls && canStream(provider, request)) {
@@ -432,6 +459,8 @@ class RunEvents {
     request.signal?.throwIfAborted();
     onOutput?.();
     reportReasoning(generated, sink);
+    // N1a: the provider's calls, in call order, before the text that follows them.
+    for (const hosted of generated.hostedToolCalls ?? []) this.hostedSettled(hosted, subagent);
     if (generated.text) sink.onTextDelta(generated.text);
     return generated;
   }

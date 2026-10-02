@@ -21,6 +21,7 @@ import type { ToolCallOutcome } from './toolCallExecution';
 import type { UnrecordedToolCall } from './toolBatch';
 import type { RunBudget } from './budget';
 import { toolErrorResult } from './toolErrors';
+import { withHostedCalls } from './hostedToolCalls';
 
 export interface AgentRunState {
   messages: Message[];
@@ -162,7 +163,7 @@ export async function loadRunState(options: ExecuteOptions): Promise<AgentRunSta
     finalText: '',
     finishReason: 'stop',
     // LOU-W9.2: with checkpointing on, known before the first (synchronous) checkpoint write.
-    ...(sessionId && checkpointStore && { fingerprint: await fingerprintOf(baseAgentOf(options.agent), options.toolRegistry, options.provider) }),
+    ...(sessionId && checkpointStore && { fingerprint: await fingerprintOf(baseAgentOf(options.agent), options.toolRegistry, options.provider, options.hostedTools) }),
     ...(checkpoint && checkpoint.status !== 'finished' && { resumedFrom: { fingerprint: checkpoint.agentFingerprint } }),
   };
 }
@@ -172,7 +173,7 @@ export async function loadRunState(options: ExecuteOptions): Promise<AgentRunSta
  * is neither checkpointed, paused nor resumed takes no extra step to start.
  */
 export async function ensureFingerprint(options: ExecuteOptions, state: AgentRunState): Promise<AgentFingerprint> {
-  state.fingerprint ??= await fingerprintOf(baseAgentOf(options.agent), options.toolRegistry, options.provider);
+  state.fingerprint ??= await fingerprintOf(baseAgentOf(options.agent), options.toolRegistry, options.provider, options.hostedTools);
   return state.fingerprint;
 }
 
@@ -343,5 +344,7 @@ ${text}` : text;
  */
 export function assistantTurn(result: GenerateResult): Message {
   const replayed = (result.reasoning ?? []).filter((block) => block.signature || block.redactedData);
-  return { role: 'assistant', content: result.text || '', toolCalls: result.toolCalls, ...(replayed.length > 0 && { reasoning: replayed }) };
+  const turn: Message = { role: 'assistant', content: result.text || '', toolCalls: result.toolCalls, ...(replayed.length > 0 && { reasoning: replayed }) };
+  // N1a: the provider's own calls are kept on the turn, never sent back as calls.
+  return withHostedCalls(turn, result.hostedToolCalls);
 }

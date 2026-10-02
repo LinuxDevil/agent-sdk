@@ -9,6 +9,7 @@ import type { LLMProvider } from '../providers';
 import type { ToolRegistry } from '../tools';
 import { getToolInputSchema } from '../tools/toolContract';
 import type { AgentConfig } from '../types';
+import type { HostedTool } from '../tools/hosted';
 import { stableStringify } from '../testing/fingerprint';
 import { SDKError } from './errors';
 
@@ -56,13 +57,24 @@ async function shortHash(text: string): Promise<string> {
   return [...new Uint8Array(digest).slice(0, 8)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-/** The fingerprint of `agent` (as configured, before skills or sub-agents) running on `provider` with `toolRegistry`. */
-export async function fingerprintOf(agent: AgentConfig, toolRegistry: ToolRegistry | undefined, provider: LLMProvider): Promise<AgentFingerprint> {
+/**
+ * The fingerprint of `agent` (as configured, before skills or sub-agents) running on `provider` with `toolRegistry`.
+ * N1a: hosted tools count as tools, hashed by their type and options, so a resume with another set reports drift.
+ */
+export async function fingerprintOf(
+  agent: AgentConfig,
+  toolRegistry: ToolRegistry | undefined,
+  provider: LLMProvider,
+  hostedTools: readonly HostedTool[] = []
+): Promise<AgentFingerprint> {
   const model: string | undefined = agent.settings?.model || provider.defaultModel;
   const tools: Record<string, string> = {};
   for (const name of Object.keys(agent.tools ?? {}).sort()) {
     const descriptor = toolRegistry?.get(name);
     if (descriptor?.tool) tools[name] = await shortHash(stableStringify(getToolInputSchema(descriptor) ?? {}));
+  }
+  for (const tool of [...hostedTools].sort((a, b) => a.name.localeCompare(b.name))) {
+    tools[tool.name] = await shortHash(stableStringify({ hosted: tool.type, options: tool.options }));
   }
   const instructions = await shortHash(agent.prompt ?? '');
   const hash = await shortHash(stableStringify({ version: FINGERPRINT_VERSION, model, tools, instructions }));
