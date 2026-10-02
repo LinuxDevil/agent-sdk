@@ -3218,8 +3218,8 @@ Source: docs/cloudflare-workers.md
 | ------- | ----------------- | ------------------------ |
 | Agent spec files | yes | yes |
 | [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md) | no | yes |
-| Providers | `mock`, `openai`, `anthropic` | `mock`, `openai`, `anthropic`, `ollama`, `openrouter` |
-| Built-in tools | `current-date`, `day-name` | all, including `http` and `web-fetch` |
+| Providers | `mock`, `openai`, `anthropic`, `openrouter` | `mock`, `openai`, `anthropic`, `ollama`, `openrouter` |
+| Built-in tools | `current-date`, `day-name`, `http` (listed host names only, from the `LOUSHO_HTTP_ALLOW` binding) | all, including `http` and `web-fetch` |
 | Tools written in TypeScript | no (a spec file cannot hold code) | yes, in an agent directory |
 | Sandboxed tool execution | no (the build swaps the sandbox for a shim that fails when used) | yes |
 | MCP servers over stdio | no (the child process cannot start; the shim fails when used) | yes |
@@ -3234,26 +3234,42 @@ Source: docs/cloudflare-workers.md
 
 The reasons behind the provider and tool rows:
 
-- providers: `mock`, `openai` and `anthropic`. The `openai`/`anthropic`
+- providers: `mock`, `openai`, `anthropic` and `openrouter`. The real
   providers are built on the Vercel `ai` SDK's `generateText`/`streamText`
-  plus `@ai-sdk/openai`/`@ai-sdk/anthropic`, which are pure
-  `fetch()`/Web-standard implementations with no `node:*` imports anywhere
-  in their dependency graph, so they bundle and run on Workers cleanly.
-  `ollama` and `openrouter` are **not** supported here - `ollama` defaults
-  to a local `http://localhost:11434` endpoint that a Worker can't reach,
-  and `openrouter` hasn't had a Workers-compatibility audit; use
-  `node-server` or `docker` for those;
-- tools: `current-date` and `day-name`. `http` and `web-fetch` are **not**
-  supported. On Node both refuse private destinations with a DNS lookup of
-  their own (`node:dns` inside an `undici` `Agent`) that checks every
-  address a host resolves to and connects to the address it checked, so DNS
-  rebinding cannot get past the check. A Worker has neither: its `fetch()`
-  resolves names inside Cloudflare's network and gives no hook to see or pin
-  the address. What a Worker can check is the URL (scheme, host name, an
-  IP-literal host); what it cannot guarantee is where a host name connects,
-  so a name that resolves to an internal address would not be caught. Rather
-  than ship a weaker tool under the same name, the Worker build has neither.
-  A tool of your own that calls `fetch()` in a Worker gets no SSRF
+  plus `@ai-sdk/openai`/`@ai-sdk/anthropic` (`openrouter` is
+  `@ai-sdk/openai` pointed at `https://openrouter.ai/api/v1`), which are
+  pure `fetch()`/Web-standard implementations with no `node:*` imports, so
+  they bundle and run on Workers cleanly; the build's leak check verifies
+  every bundle. `ollama` is **not** supported here: it defaults to a local
+  `http://localhost:11434` endpoint that a Worker can't reach; use
+  `node-server` or `docker` for it;
+- tools: `current-date`, `day-name` and `http`. `web-fetch` is **not**
+  supported. On Node, `http` and `web-fetch` refuse private destinations
+  with a DNS lookup of their own (`node:dns` inside an `undici` `Agent`)
+  that checks every address a host resolves to and connects to the address
+  it checked, so DNS rebinding cannot get past the check. A Worker has
+  neither: its `fetch()` resolves names inside Cloudflare's network and
+  gives no hook to see or pin the address. What a Worker can check is the
+  URL (scheme, host name, an IP-literal host); what it cannot guarantee is
+  where a host name connects, so a name that resolves to an internal
+  address would not be caught. So the Worker's `http` (the same
+  `http_request` tool name and input as on Node) is a different tool: it
+  reaches only the host names you list. On the first URL and on every
+  redirect it refuses:
+  - any scheme but `http:` and `https:`;
+  - an IP-address host (`http://10.0.0.1/`, `http://[::1]/`), even a listed
+    one: there is no address check, so only names are allowed;
+  - a host that does not match the `LOUSHO_HTTP_ALLOW` binding, a
+    comma-separated list of host names (`api.github.com`) and `*.` wildcards
+    (`*.example.com`, which matches subdomains only, not `example.com`).
+    Unset or empty, every request is refused (fail closed); an entry that is
+    not a host name fails every request with an error naming it.
+
+  A model therefore cannot pick an arbitrary host, or a DNS-rebinding one,
+  because only the names you listed pass; a listed name is trusted wherever
+  it resolves, so list only hosts you control or trust. TLS is always
+  validated (there is no `validateSSL` option) and the tool runs without a
+  sandbox. A tool of your own that calls `fetch()` in a Worker gets no SSRF
   protection from the SDK.
 
 ## Build and deploy
@@ -3273,25 +3289,34 @@ npx wrangler deploy    # requires a Cloudflare account (`wrangler login`)
 ```
 
 Provider API keys are read from Worker bindings named `<TYPE>_API_KEY` (for example
-`wrangler secret put OPENAI_API_KEY` or `wrangler secret put ANTHROPIC_API_KEY`). The
-`openai` and `anthropic` peer packages (`@ai-sdk/openai` or `@ai-sdk/anthropic`, and `ai`)
-must be installed alongside `@lousho/build-ai-agent` for `lousho build` to bundle them.
+`wrangler secret put OPENAI_API_KEY`, `wrangler secret put ANTHROPIC_API_KEY` or
+`wrangler secret put OPENROUTER_API_KEY`). The peer packages (`@ai-sdk/openai` for
+`openai` and `openrouter`, `@ai-sdk/anthropic` for `anthropic`, and `ai`) must be
+installed alongside `@lousho/build-ai-agent` for `lousho build` to bundle them.
 
 ## Bindings
 
 The Worker serves the [HTTP API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#http-api): `GET /health`, `POST /chat`
 streamed as SSE (`ReadableStream`), `GET /chat/:sessionId`, the approvals
-endpoint and the deprecated `{ "message" }` body. Its two bindings:
+endpoint and the deprecated `{ "message" }` body. Its bindings:
 
 | Binding | Kind | What it does |
 | ------- | ---- | ------------ |
 | `LOUSHO_API_TOKEN` | secret (`npx wrangler secret put LOUSHO_API_TOKEN`) | Makes every route except `/health` require `Authorization: Bearer <token>` (constant-time compare, `401` JSON otherwise). Without it the Worker is open to anyone who has its URL, so **set it before you deploy**. |
 | `AGENT_CHECKPOINTS` | KV namespace | Holds sessions, checkpoints and paused approvals, in one namespace, as `KVStore` (below). Without it they live in the memory of one isolate, which Cloudflare recycles at will: fine for trying a deploy out, not for production. |
+| `LOUSHO_HTTP_ALLOW` | variable (`[vars]` in `wrangler.toml`) | The host names the `http` tool may reach, comma-separated: `api.github.com`, or `*.example.com` for subdomains only. Unset or empty, every `http` request is refused. See [Providers and tools](#providers-and-tools). |
 
 `wrangler.toml` is scaffolded with the `[[kv_namespaces]]` block for
 `AGENT_CHECKPOINTS` commented out, with the commands to create the namespace
 (`npx wrangler kv namespace create AGENT_CHECKPOINTS`, plus a `--preview`
 variant) and where to paste the resulting ids. Uncomment it and fill in the ids.
+When the spec lists `http`, it also has a commented `[vars]` block for
+`LOUSHO_HTTP_ALLOW`; uncomment it and list your hosts:
+
+```toml
+[vars]
+LOUSHO_HTTP_ALLOW = "api.github.com,*.example.com"
+```
 
 ```bash
 cd .lousho/build/cloudflare-worker
@@ -4279,7 +4304,8 @@ browser-platform ES module; the build fails if any `node:` import ends up in the
 `wrangler`, and it serves the [HTTP API](#http-api) above. It has the tightest limits of the three targets:
 
 - spec files only (no agent directories, no tools written in TypeScript, no sandboxed tools);
-- providers `mock`, `openai` and `anthropic`; built-in tools `current-date` and `day-name`;
+- providers `mock`, `openai`, `anthropic` and `openrouter`; built-in tools `current-date`, `day-name` and `http`
+  (`http` reaches only the host names listed in the `LOUSHO_HTTP_ALLOW` binding);
 - sessions, checkpoints and approvals in one KV namespace; cron triggers in UTC.
 
 [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md) has the table of limits, the build and deploy commands, the bindings, the KV stores, scheduled runs and the bundle checks.
@@ -7922,11 +7948,56 @@ console.log(result.text);
 | `createMockProvider()`, `MockLLMProvider` | Canned responses for demos; simulates a tool call when the message names a tool. |
 | `mockModel(script)` | Scripted, asserting provider for tests (from `/testing`); see [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md). |
 | `withRetry()`, `withFallback()` | Retry transient failures with backoff and fall back to the next provider; see [Provider retries and fallback](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#provider-retries-and-fallback). |
+| `fromAiSdk(model, options?)` | Any AI SDK `LanguageModel` (Google, Bedrock, Azure, Mistral, the Gateway, ...) as a provider; see [below](#any-ai-sdk-model-fromaisdk). |
 
-To use another backend, implement the `LLMProvider` interface (`name`,
-`generate()`, `stream()`, `supportsTools()`, `supportsStreaming()`,
-`getModels()`, optionally `defaultModel`) and pass the instance as `provider`,
-or register a factory with `LLMProviderRegistry.register(name, factory)`.
+To use another backend, first check whether it has an AI SDK provider package:
+then wrap its model with `fromAiSdk()` (below). Otherwise implement the
+`LLMProvider` interface (`name`, `generate()`, `stream()`, `supportsTools()`,
+`supportsStreaming()`, `getModels()`, optionally `defaultModel`) and pass the
+instance as `provider`, or register a factory with
+`LLMProviderRegistry.register(name, factory)`.
+
+### Any AI SDK model: fromAiSdk()
+
+`fromAiSdk(model)` turns a language model from any AI SDK provider package
+into an `LLMProvider`, so you do not write an adapter:
+
+```ts
+import { createOpenAI } from '@ai-sdk/openai';
+import { createAgent, fromAiSdk } from '@lousho/build-ai-agent';
+
+const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const agent = createAgent({
+  provider: fromAiSdk(openai.chat('gpt-4o-mini'), { fileMediaTypes: ['application/pdf'] }),
+  instructions: 'You are a helpful assistant.',
+});
+```
+
+The same works with `@ai-sdk/google` (`google('gemini-2.0-flash')`),
+`@ai-sdk/amazon-bedrock`, `@ai-sdk/azure`, `@ai-sdk/mistral` and the AI Gateway
+(`gateway('openai/gpt-4o')` from `ai` 7 or `@ai-sdk/gateway`). Calls go through
+your installed `ai`, so install the provider package major that pairs with it
+(see [Vercel AI SDK versions](#vercel-ai-sdk-versions)).
+
+| Option | Default | Description |
+| ------ | ------- | ----------- |
+| `name` | the model's `provider` field, else `'ai-sdk'` | Provider name in events, spans and warnings. |
+| `fileMediaTypes` | `[]` | Media types sent as `file` parts; other file parts become a text note. Images are always sent. |
+| `replaysReasoning` | `false` | Send signed reasoning blocks back on assistant turns (Anthropic models). |
+| `maxRetries` | `0` | The AI SDK's own retries per call; `createAgent()` retries through its `retry` option. |
+
+The provider serves the one model it wraps, with tools and streaming on, and
+leaves reasoning settings to the model you built (the `reasoning` option is not
+mapped). Each throws `LOUSHO_CONFIG_INVALID`:
+
+- a model id string (`fromAiSdk('openai/gpt-4o')`): pass the provider
+  function's model instead;
+- a model for another `ai` major than the installed one (a
+  `specificationVersion: 'v1'` model with `ai` 6 / 7, or a newer one with
+  `ai` 4);
+- a run with another `model` id than the wrapped one (inside a run it is the
+  cause of the `LOUSHO_PROVIDER_REQUEST_FAILED` error): wrap each model with
+  `fromAiSdk()` and combine them with `withFallback()`.
 
 ## Vercel AI SDK versions
 
@@ -8005,8 +8076,9 @@ takes for images, so there is no deprecation warning). `ai` v5 is not supported.
 ## Where each provider runs
 
 All providers run on Node. The `cloudflare-worker` deploy target supports
-`mock`, `openai` and `anthropic`; `ollama` and `openrouter` need the
-`node-server` or `docker` target (see [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md)).
+`mock`, `openai`, `anthropic` and `openrouter` (key from the
+`OPENROUTER_API_KEY` binding); `ollama` needs the `node-server` or `docker`
+target (see [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md)).
 
 # Queued input and steering
 
@@ -10981,8 +11053,10 @@ const agent = createAgent({ model: 'openai/gpt-4o-mini', tools: [webFetch] });
 
 Each `createWebFetchTool()` has its own connection pool, kept for as long as
 the tool exists and released with it by garbage collection (there is no close
-method). Neither `http_request` nor `web_fetch` exists in the Cloudflare
-Worker build; see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#cloudflare-worker).
+method). `web_fetch` does not exist in the Cloudflare Worker build, and the
+Worker's `http_request` is a different tool that reaches only the host names
+listed in its `LOUSHO_HTTP_ALLOW` binding; see
+[Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md#providers-and-tools).
 
 ## Todo tools
 
@@ -11380,9 +11454,9 @@ environment (`LOUSHO_CONFIG_MISSING_PROVIDER`).
 
 ### My Worker build rejects the provider or tool
 
-- **Cause:** the `cloudflare-worker` target supports the `mock`, `openai` and `anthropic` providers, and the `current-date` and `day-name` tools. `ollama`, `openrouter` and the `http` tool are not supported there, and `lousho build` fails with an error naming the one it rejected.
+- **Cause:** the `cloudflare-worker` target supports the `mock`, `openai`, `anthropic` and `openrouter` providers, and the `current-date`, `day-name` and `http` tools (`http` reaches only the hosts listed in the `LOUSHO_HTTP_ALLOW` binding). `ollama` and the `web-fetch` tool are not supported there, and `lousho build` fails with an error naming the one it rejected.
 - **Fix:** use another provider or tool, or build for the `node-server` or `docker` target.
-- **More:** [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#cloudflare-worker).
+- **More:** [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md#providers-and-tools).
 
 ## Getting help
 

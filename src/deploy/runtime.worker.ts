@@ -14,27 +14,28 @@
  * no-Node constraint:
  *  - Providers are created via LLMProviderRegistry with the API key read
  *    from the Worker's `env` bindings (Workers have no process.env), not
- *    via resolveProvider(). Registered providers: 'mock', 'openai' and
- *    'anthropic' (LOU-K3). Both real providers are implemented on top of
- *    the Vercel `ai` SDK's `generateText`/`streamText` plus
- *    `@ai-sdk/openai`/`@ai-sdk/anthropic` - verified (see LOU-K3 PR
- *    description) to be pure fetch()/Web-standard implementations with no
- *    `node:*` imports anywhere in their dependency graphs, so they bundle
- *    and run on Workers cleanly. 'ollama' and 'openrouter' are NOT
- *    registered here: ollama-ai-provider defaults to a local
- *    http://localhost:11434 endpoint unreachable from a Worker and isn't
- *    a realistic Workers target, and openrouter has had no Workers
- *    compatibility audit - both remain node-server/docker-only for now.
- *  - Only the built-in tools that need no Node builtins are available
- *    ('current-date', 'day-name'). 'http' and 'web-fetch' refuse private
- *    destinations through an undici Agent whose connect.lookup is the
- *    pinned lookup of src/security/privateAddress.ts (node:dns): it checks
- *    every address a host resolves to and the socket connects to the
- *    address it checked (N13a). Workers' fetch() resolves names inside
- *    Cloudflare's network with no hook to see or pin the address, so a
- *    Workers version could check the URL but not where a host name
- *    connects. Left unsupported here rather than shipping a weaker tool
- *    under the same name - see LOU-K3 PR description and docs/deployment.md.
+ *    via resolveProvider(). Registered providers: 'mock', 'openai',
+ *    'anthropic' (LOU-K3) and 'openrouter' (M3a). All three real providers
+ *    are implemented on top of the Vercel `ai` SDK's
+ *    `generateText`/`streamText` plus `@ai-sdk/openai`/`@ai-sdk/anthropic`
+ *    (OpenRouter is `@ai-sdk/openai` pointed at openrouter.ai): pure
+ *    fetch()/Web-standard implementations with no `node:*` imports, which the
+ *    adapter's build verifies on every bundle. 'ollama' is NOT registered
+ *    here: ollama-ai-provider defaults to a local http://localhost:11434
+ *    endpoint unreachable from a Worker, so it remains node-server/docker-only.
+ *  - Only the built-in tools that need no Node builtins are available:
+ *    'current-date', 'day-name' and 'http' (M3a). The Node 'http' tool and
+ *    'web-fetch' refuse private destinations through an undici Agent whose
+ *    connect.lookup is the pinned lookup of src/security/privateAddress.ts
+ *    (node:dns): it checks every address a host resolves to and the socket
+ *    connects to the address it checked (N13a). Workers' fetch() resolves
+ *    names inside Cloudflare's network with no hook to see or pin the
+ *    address, so the Worker 'http' is a different tool under the same name
+ *    and input (src/tools/built-in/workerHttp.ts): it checks only the URL,
+ *    refuses IP-literal hosts and reaches only the host names listed in the
+ *    `LOUSHO_HTTP_ALLOW` binding (none when unset: fail closed). It cannot
+ *    guarantee where a listed name connects; the deployer vouches for the
+ *    names they list. 'web-fetch' stays unsupported here.
  *  - LOU-T2, LOU-D51: sessions, durable execution (CheckpointStore-backed
  *    pause/resume, see src/execution/checkpoint.ts) and paused approvals live
  *    in a Workers KV namespace bound as `AGENT_CHECKPOINTS` (./checkpointBinding)
@@ -50,9 +51,11 @@
 import '../providers/mock';
 import { OpenAIProvider, OpenAIProviderConfig } from '../providers/OpenAIProvider';
 import { AnthropicProvider, AnthropicProviderConfig } from '../providers/AnthropicProvider';
+import { OpenRouterProvider, OpenRouterProviderConfig } from '../providers/OpenRouterProvider';
 import { LLMProvider, LLMProviderRegistry } from '../providers/llm';
 import { currentDateTool } from '../tools/built-in/currentDate';
 import { dayNameTool } from '../tools/built-in/dayName';
+import { createWorkerHttpTool, HTTP_ALLOW_BINDING, parseHostAllowList } from '../tools/built-in/workerHttp';
 import { ToolDescriptor } from '../types';
 import { AgentSpec } from '../spec/schema';
 import { createAgent, SimpleAgent } from '../createAgent';
@@ -74,15 +77,19 @@ import { SDKError } from '../execution/errors';
 export { agentSpecSchema } from '../spec/schema';
 
 // Registered directly here (rather than via the '../providers' barrel,
-// which also eagerly imports OllamaProvider/OpenRouterProvider and their
-// optional peer SDKs) so the Worker bundle only pulls in the two providers
-// actually supported on Workers - see the module doc comment above.
+// which also eagerly imports OllamaProvider and its optional peer SDK) so the
+// Worker bundle only pulls in the providers actually supported on Workers -
+// see the module doc comment above.
 LLMProviderRegistry.register('openai', (config) => new OpenAIProvider(config as OpenAIProviderConfig));
 LLMProviderRegistry.register('anthropic', (config) => new AnthropicProvider(config as AnthropicProviderConfig));
+LLMProviderRegistry.register('openrouter', (config) => new OpenRouterProvider(config as OpenRouterProviderConfig));
 
-const WORKER_TOOLS: Record<string, ToolDescriptor> = {
-  'current-date': currentDateTool,
-  'day-name': dayNameTool,
+/** The Worker's built-in tools by spec name, built per request from the Worker's `env`. */
+const WORKER_TOOLS: Record<string, (env: WorkerEnv) => ToolDescriptor> = {
+  'current-date': () => currentDateTool,
+  'day-name': () => dayNameTool,
+  // M3a: only the hosts listed in the LOUSHO_HTTP_ALLOW binding; none when it is unset.
+  http: (env) => createWorkerHttpTool({ allow: parseHostAllowList(env[HTTP_ALLOW_BINDING]) }),
 };
 
 /** Env binding each provider type reads its API key from, e.g. OPENAI_API_KEY. */
@@ -136,7 +143,7 @@ function workerResolvers(env: WorkerEnv): SpecResolvers {
           'LOUSHO_TOOL_NOT_FOUND'
         );
       }
-      return tool;
+      return tool(env);
     },
   };
 }

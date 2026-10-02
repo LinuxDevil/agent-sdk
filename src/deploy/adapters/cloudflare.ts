@@ -35,21 +35,26 @@ import {
   writeFile,
 } from '../bundle';
 import { CHECKPOINT_KV_BINDING } from '../checkpointBinding';
+import { HTTP_ALLOW_BINDING } from '../../tools/built-in/workerHttp';
 import { agentConfigModuleSource, loadAgentSpecForDeploy } from './node-server';
 
-/** Built-in tools that work without Node builtins (see runtime.worker.ts). */
-export const WORKER_SUPPORTED_TOOLS = ['current-date', 'day-name'];
+/**
+ * Built-in tools that work without Node builtins (see runtime.worker.ts).
+ * 'http' (M3a) is the Worker's own http_request: listed host names only, from
+ * the LOUSHO_HTTP_ALLOW binding (src/tools/built-in/workerHttp.ts).
+ */
+export const WORKER_SUPPORTED_TOOLS = ['current-date', 'day-name', 'http'];
 /**
  * Provider types registered in the Worker bundle (see runtime.worker.ts).
  *
- * 'openai' and 'anthropic' (LOU-K3) are real, network-calling providers -
- * both implemented on the Vercel `ai` SDK's fetch()-based
- * generateText/streamText plus @ai-sdk/openai / @ai-sdk/anthropic, which
- * have no `node:*` imports anywhere in their dependency graph and are
- * genuinely Workers-compatible. 'ollama' and 'openrouter' remain
+ * 'openai', 'anthropic' (LOU-K3) and 'openrouter' (M3a) are real,
+ * network-calling providers - implemented on the Vercel `ai` SDK's
+ * fetch()-based generateText/streamText plus @ai-sdk/openai /
+ * @ai-sdk/anthropic, which have no `node:*` imports in their dependency
+ * graph (the build's leak check verifies every bundle). 'ollama' remains
  * unsupported here (see runtime.worker.ts's doc comment for why).
  */
-export const WORKER_SUPPORTED_PROVIDERS = ['mock', 'openai', 'anthropic'];
+export const WORKER_SUPPORTED_PROVIDERS = ['mock', 'openai', 'anthropic', 'openrouter'];
 
 /** Pinned so a given SDK version always generates the same, reproducible config. */
 const COMPATIBILITY_DATE = '2024-09-23';
@@ -152,6 +157,20 @@ function cronProblem(schedule: DefinedSchedule, fields: string[]): string | unde
   return undefined;
 }
 
+/** The commented `[vars]` block for the `http` tool's allowlist (M3a), when the spec lists `http`. */
+function httpAllowVars(spec: AgentSpec): string[] {
+  if (!(spec.tools ?? []).includes('http')) return [];
+  return [
+    `# The http tool reaches only the host names listed in ${HTTP_ALLOW_BINDING}`,
+    '# (comma-separated; `*.example.com` matches subdomains only). Unset, every',
+    '# request is refused. IP-address hosts are always refused.',
+    '#',
+    '# [vars]',
+    `# ${HTTP_ALLOW_BINDING} = "api.example.com"`,
+    '',
+  ];
+}
+
 export function wranglerTomlSource(spec: AgentSpec): string {
   const crons = workerCrons(spec);
   const triggers =
@@ -173,6 +192,7 @@ export function wranglerTomlSource(spec: AgentSpec): string {
     'no_bundle = true',
     '',
     ...triggers,
+    ...httpAllowVars(spec),
     '# LOU-T2, LOU-D51: sessions (chat history), durable execution',
     '# (pause/resume, e.g. an approval-gated tool call) and paused approvals live',
     `# in one KV namespace bound under ${CHECKPOINT_KV_BINDING}. Uncomment and fill in the`,
