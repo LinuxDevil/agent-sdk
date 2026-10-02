@@ -4,6 +4,7 @@
 import type { z } from 'zod';
 import type { CreateAgentConfig } from '../createAgent';
 import { ValidationError } from '../execution/errors';
+import { moderationGuardrail, piiGuardrail, promptInjectionGuardrail, secretsGuardrail } from '../execution/guardrailStarterSet';
 import { ask } from '../execution/permissions';
 import {
   denyTopicsGuardrail,
@@ -31,6 +32,10 @@ const BUILDERS: { [N in SpecGuardrailName]: (options: GuardrailOptions<N>) => Io
   regex: ({ pattern, flags, ...options }) => regexGuardrail({ name: 'regex', pattern: new RegExp(pattern, flags), ...options }),
   'deny-topics': ({ topics }) => denyTopicsGuardrail({ topics }),
   'llm-judge': ({ model, instruction = DEFAULT_JUDGE_INSTRUCTION }) => llmJudgeGuardrail({ model, instruction }),
+  pii: (options) => piiGuardrail(options),
+  secrets: ({ extraPatterns, ...options }) => secretsGuardrail({ ...options, extraPatterns: extraPatterns?.map((pattern) => new RegExp(pattern)) }),
+  'prompt-injection': (options) => promptInjectionGuardrail(options),
+  moderation: (options) => moderationGuardrail(options),
 };
 
 type GuardrailTarget = 'input' | 'output' | 'tools';

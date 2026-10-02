@@ -93,6 +93,10 @@ Guardrail names (see [Input and output guardrails](./guardrails.md#input-and-out
 | `regex`        | `pattern` (required), `flags`, `action`, `replacement` | Blocks (or rewrites) texts matching `pattern`. |
 | `deny-topics`  | `topics` (required, a list) | Blocks texts that mention a topic (case-insensitive). |
 | `llm-judge`    | `model` (required, `"provider/model"`), `instruction` | Asks a model whether the text is acceptable; one call per check. |
+| `pii`          | `types` (a list of `email`, `phone`, `credit-card`, `iban`, `us-ssn`, `ip-address`; default all), `action` (default `block`) | Blocks (or rewrites to `[email]`, ...) personal data found by pattern. Heuristic. |
+| `secrets`      | `action` (default `rewrite`), `extraPatterns` (a list of regular expressions) | Rewrites (or blocks) API keys, tokens and private keys found by pattern. Heuristic. |
+| `prompt-injection` | `model` (optional, `"provider/model"`) | Blocks common prompt-injection phrasing and markers; with `model`, also asks the model. Heuristic. |
+| `moderation`   | `model` (required, `"provider/model"`), `categories` (default all) | Asks a model which harmful-content categories apply; one call per check. |
 
 Every guardrail also takes `on`: `input`, `output` or `tools` (a tool call's
 arguments), or a list of them. The default is `[input, output]`. An unknown name

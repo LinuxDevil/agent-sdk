@@ -49,8 +49,25 @@ describe('AgentSpec.policy schema (LOU-X5)', () => {
       { name: 'regex', pattern: '\\d{3}-\\d{2}-\\d{4}', flags: 'i', action: 'rewrite' },
       { name: 'deny-topics', topics: ['a'] },
       { name: 'llm-judge', model: 'openai/gpt-4o-mini', instruction: 'Be nice.' },
+      'pii',
+      { name: 'pii', types: ['email', 'us-ssn'], action: 'rewrite' },
+      'secrets',
+      { name: 'secrets', action: 'block', extraPatterns: ['INTERNAL-\\d{6}'] },
+      'prompt-injection',
+      { name: 'prompt-injection', model: 'openai/gpt-4o-mini' },
+      { name: 'moderation', model: 'openai/gpt-4o-mini', categories: ['violence', 'self-harm'] },
     ];
     expect(accepted({ guardrails })).toEqual({ guardrails });
+  });
+
+  it('rejects bad options of the starter-set guardrails (N5a)', () => {
+    expect(policyIssues({ guardrails: [{ name: 'pii', types: ['passport'] }] })[0]).toMatch(/guardrail 'pii' option 'types\.0'/);
+    expect(policyIssues({ guardrails: [{ name: 'pii', types: [] }] })[0]).toMatch(/guardrail 'pii' option 'types'/);
+    expect(policyIssues({ guardrails: [{ name: 'pii', replacement: 'x' }] })[0]).toMatch(/guardrail 'pii': Unrecognized key/);
+    expect(policyIssues({ guardrails: [{ name: 'secrets', extraPatterns: ['('] }] })[0]).toMatch(/extraPatterns has an invalid regular expression/);
+    expect(policyIssues({ guardrails: ['moderation'] })[0]).toMatch(/guardrail 'moderation' option 'model'/);
+    expect(policyIssues({ guardrails: [{ name: 'moderation', model: 'm', categories: ['spam'] }] })[0]).toMatch(/option 'categories\.0'/);
+    expect(policyIssues({ guardrails: [{ name: 'prompt-injection', model: '' }] })[0]).toMatch(/guardrail 'prompt-injection' option 'model'/);
   });
 
   it('rejects an unknown guardrail name with did-you-mean and the available names', () => {
@@ -111,12 +128,34 @@ describe('compilePolicy (LOU-X5)', () => {
         { name: 'deny-topics', topics: ['x'], on: ['tools'] },
         { name: 'regex', pattern: 'a+', flags: 'i' },
         { name: 'llm-judge', model: 'openai/gpt-4o-mini' },
+        { name: 'pii', on: 'input' },
+        { name: 'secrets', on: ['output', 'tools'] },
+        { name: 'prompt-injection', on: 'input' },
+        { name: 'moderation', model: 'openai/gpt-4o-mini', on: 'output' },
       ],
     });
     const names = (list?: readonly { name: string }[]) => list?.map((g) => g.name);
-    expect(names(guardrails?.input)).toEqual(['secret-scan', 'max-length', 'regex', 'llm-judge']);
-    expect(names(guardrails?.output)).toEqual(['secret-scan', 'regex', 'llm-judge']);
-    expect(names(guardrails?.tools)).toEqual(['deny-topics']);
+    expect(names(guardrails?.input)).toEqual(['secret-scan', 'max-length', 'regex', 'llm-judge', 'pii', 'prompt-injection']);
+    expect(names(guardrails?.output)).toEqual(['secret-scan', 'regex', 'llm-judge', 'secrets', 'moderation']);
+    expect(names(guardrails?.tools)).toEqual(['deny-topics', 'secrets']);
+  });
+
+  it('builds the starter-set guardrails with their spec options (N5a)', async () => {
+    const { guardrails } = compilePolicy({
+      guardrails: [
+        { name: 'pii', types: ['email'], action: 'rewrite', on: 'input' },
+        { name: 'secrets', action: 'block', extraPatterns: ['INTERNAL-\\d{6}'], on: 'output' },
+      ],
+    });
+    const ctx = (text: string) => ({ kind: 'input' as const, text, messages: [] });
+    expect(await guardrails?.input?.[0].check(ctx('call 555-123-4567 or a@b.io'))).toMatchObject({
+      action: 'rewrite',
+      replacement: 'call 555-123-4567 or [email]',
+    });
+    expect(await guardrails?.output?.[0].check(ctx('id INTERNAL-123456'))).toMatchObject({
+      action: 'block',
+      info: { category: 'secret', matches: [{ label: 'extra pattern 1' }] },
+    });
   });
 
   it('passes limits, askQuestion and compaction through', () => {
