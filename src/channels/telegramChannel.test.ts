@@ -17,6 +17,7 @@ import type { Message } from '../providers';
 import { mountChannels, type ChannelsHandler } from './mountChannels';
 import { telegramChannel, type TelegramMessage, type TelegramUpdate } from './telegramChannel';
 import { secretsEqual } from './channelSupport';
+import { defineMemory, inMemoryMemory, type MemoryScopeContext } from '../memory';
 import { durableStores } from './__fixtures__/durableStores';
 
 const TOKEN = '123456:SECRET-bot-token';
@@ -120,6 +121,14 @@ describe('telegramChannel (N11a)', () => {
     expect(t.calls).toHaveLength(0);
     expect(() => telegramChannel({ botToken: '', secretToken: SECRET })).toThrow(/botToken/);
     expect(() => telegramChannel({ botToken: TOKEN, secretToken: '' })).toThrow(/secretToken/);
+  });
+
+  it('runs the turn with the sender as its principal, which a memory scope sees (N10a)', async () => {
+    const scopes: MemoryScopeContext[] = [];
+    const notes = defineMemory({ name: 'notes', scope: (ctx) => (scopes.push(ctx), ctx.principal && `telegram:${ctx.principal.id}`), provider: inMemoryMemory() });
+    const t = setup(['Hi'], { memory: [notes] });
+    await t.send(message('hello'));
+    expect(scopes[0].principal).toEqual({ id: '7', type: 'user', authenticator: 'telegram' });
   });
 
   it('acknowledges with 200, runs a private message as a turn and replies as plain text to the chat', async () => {

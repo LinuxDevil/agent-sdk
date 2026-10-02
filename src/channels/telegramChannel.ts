@@ -4,7 +4,7 @@
  * import and no Telegram library.
  */
 import { ConfigurationError, SDKError } from '../execution/errors';
-import { decodeApprovalRef, encodeApprovalRef, mayApprove, reportChannelError, secretsEqual, type Approvers } from './channelSupport';
+import { decodeApprovalRef, encodeApprovalRef, mayApprove, reportChannelError, secretsEqual, type Approvers, splitText, answerPendingQuestion } from './channelSupport';
 import {
   defineChannel,
   type Channel,
@@ -86,19 +86,6 @@ const MAX_CALLBACK_BYTES = 64;
 const NOT_ALLOWED = 'You are not allowed to approve this request.';
 const COMMAND = '/ask';
 
-/** Splits `text` into chunks of at most Telegram's 4096-character limit, preferably at line breaks. */
-function chunk(text: string): string[] {
-  const parts: string[] = [];
-  let rest = text || '(no reply)';
-  while (rest.length > MAX_LENGTH) {
-    const cut = rest.lastIndexOf('\n', MAX_LENGTH);
-    const at = cut > MAX_LENGTH / 2 ? cut : MAX_LENGTH;
-    parts.push(rest.slice(0, at));
-    rest = rest.slice(at).replace(/^\n/, '');
-  }
-  return [...parts, rest];
-}
-
 const topicOf = (message: TelegramMessage): number | undefined => (message.is_topic_message ? message.message_thread_id : undefined);
 
 /** The conversation of a message: the chat, plus the topic in a forum. */
@@ -171,7 +158,7 @@ export function telegramChannel(options: TelegramChannelOptions): Channel<Telegr
   }
 
   async function post(target: TelegramTarget, text: string, replyMarkup?: unknown): Promise<void> {
-    for (const [i, part] of chunk(text).entries()) {
+    for (const [i, part] of splitText(text, MAX_LENGTH).entries()) {
       await call('sendMessage', {
         chat_id: target.chatId,
         ...(target.messageThreadId === undefined ? {} : { message_thread_id: target.messageThreadId }),
@@ -207,12 +194,9 @@ export function telegramChannel(options: TelegramChannelOptions): Channel<Telegr
     const input = addressed(message, message.text ?? message.caption ?? '');
     if (!input) return null;
     const key = sessionKey(message);
-    const inbound = { sessionKey: key, input, replyTo: targetOf(message), event: update, metadata: { user: String(message.from.id) } };
+    const inbound = { sessionKey: key, input, replyTo: targetOf(message), event: update, metadata: { user: String(message.from.id) }, principal: { id: String(message.from.id), type: 'user' as const, authenticator: 'telegram' } };
     // the next message in the chat answers a pending ask_question, also one asked before a restart
-    const question = questions.get(key) ?? (await ctx.pendingQuestion(key));
-    if (!question) return inbound;
-    questions.delete(key);
-    return { decision: { id: question, answer: input }, inbound };
+    return answerPendingQuestion(inbound, questions, ctx);
   }
 
   async function readClick(query: TelegramCallbackQuery, ctx: ChannelContext): Promise<ChannelDecision | null> {

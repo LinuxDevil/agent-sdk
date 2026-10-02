@@ -8,7 +8,7 @@
  * A comment is text written by anyone who can comment: it is untrusted input.
  */
 import { ConfigurationError, SDKError } from '../execution/errors';
-import { mayApprove, reportChannelError, type Approvers } from './channelSupport';
+import { mayApprove, reportChannelError, type Approvers, splitText } from './channelSupport';
 import { createInstallationTokens } from './githubAppAuth';
 import {
   defineChannel,
@@ -118,19 +118,6 @@ const DEFAULT_APPROVER_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR'
 /** Hidden in every comment the channel posts, so it never acts on its own comments, whoever it posts as. */
 const BOT_MARKER = '<!-- lousho:github-channel -->';
 const MAX_ARGS = 20_000;
-
-/** Splits `text` into chunks of at most `MAX_COMMENT` characters, preferably at line breaks. */
-function chunk(text: string): string[] {
-  const parts: string[] = [];
-  let rest = text || '(no reply)';
-  while (rest.length > MAX_COMMENT) {
-    const cut = rest.lastIndexOf('\n', MAX_COMMENT);
-    const at = cut > MAX_COMMENT / 2 ? cut : MAX_COMMENT;
-    parts.push(rest.slice(0, at));
-    rest = rest.slice(at).replace(/^\n/, '');
-  }
-  return [...parts, rest];
-}
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -274,7 +261,7 @@ export function githubChannel(options: GitHubChannelOptions): Channel<GitHubComm
   async function post(target: GitHubTarget, text: string): Promise<void> {
     const repo = `/repos/${target.owner}/${target.repo}`;
     const path = target.reviewCommentId === undefined ? `${repo}/issues/${target.number}/comments` : `${repo}/pulls/${target.number}/comments/${target.reviewCommentId}/replies`;
-    for (const part of chunk(text)) await postTo(path, target, `${part}\n\n${BOT_MARKER}`);
+    for (const part of splitText(text, MAX_COMMENT)) await postTo(path, target, `${part}\n\n${BOT_MARKER}`);
   }
 
   /** A failure posting a notice from `parse` goes to `onError`; it must not stop the decision. */
@@ -353,7 +340,7 @@ export function githubChannel(options: GitHubChannelOptions): Channel<GitHubComm
     const mentioned = new RegExp(mention.source, 'i').test(event.body);
     const input = event.body.replace(mention, ' ').trim();
     if (!input) return null;
-    const inbound: ChannelInbound<GitHubCommentEvent> = { sessionKey: key, input, replyTo: targetOf(event), event, metadata: { user: event.author, association: event.association } };
+    const inbound: ChannelInbound<GitHubCommentEvent> = { sessionKey: key, input, replyTo: targetOf(event), event, metadata: { user: event.author, association: event.association }, principal: { id: event.author, type: 'user', authenticator: 'github' } };
     // the next comment in the thread answers a pending ask_question, also one asked before a restart
     const question = questions.get(key) ?? (await ctx.pendingQuestion(key));
     if (question) {

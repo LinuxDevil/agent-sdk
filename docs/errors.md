@@ -481,7 +481,7 @@ See [Schedules](./schedules.md).
 a channel (an object with `parse` and `reply`). The message names the file.
 
 **Fix:** default-export a channel made with `defineChannel()`, `httpChannel()`,
-`webhookChannel()`, `slackChannel()`, `discordChannel()`, `telegramChannel()` or `githubChannel()`. See [Channels](./channels.md).
+`webhookChannel()`, `slackChannel()`, `discordChannel()`, `telegramChannel()`, `githubChannel()` or `teamsChannel()`. See [Channels](./channels.md).
 
 **Example:** `export default { cron: 'x' }` in `channels/sms.ts`.
 
