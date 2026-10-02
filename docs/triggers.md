@@ -1,6 +1,6 @@
 # Triggers
 
-A trigger adapter turns one wake-up mechanism into an agent run: an inbound webhook, a clock, or a Slack event. Import them from the `@lousho/build-ai-agent/triggers` subpath: `WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter` and `TriggerRegistry`. Wire any of them with `listen(agent, onEvent)`, where `onEvent` runs the agent, and call `stop()` on the returned handle to shut the adapter down.
+A trigger adapter turns one wake-up mechanism into an agent run: an inbound webhook, a clock, or a Slack event. **`WebhookTriggerAdapter`, `SlackTriggerAdapter` and `CronTriggerAdapter` are deprecated** and will be removed in a future major version: use `webhookChannel()`, `slackChannel()` and `defineSchedule()` instead (each section below has a migration snippet). `TriggerAdapter` and `TriggerRegistry` are the extension point and are not deprecated. Import them from the `@lousho/build-ai-agent/triggers` subpath: `WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter` and `TriggerRegistry`. Wire any of them with `listen(agent, onEvent)`, where `onEvent` runs the agent, and call `stop()` on the returned handle to shut the adapter down.
 
 ```ts
 import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
@@ -23,11 +23,11 @@ await handle.stop();
 
 | | Use it for | Entry points |
 |---|---|---|
-| Triggers | One-shot runs with no conversation: a webhook in and the result out, a cron job, a Slack mention. | `WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter` |
+| Triggers | The extension point for your own wake-up mechanism. The three built-in adapters are deprecated. | `TriggerAdapter`, `TriggerRegistry` (deprecated: `WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter`) |
 | [Channels](./channels.md) | A surface people talk to. Each conversation maps to a session, and approvals and questions the agent pauses on go back to the surface. | `defineChannel()`, `mountChannels()`, `httpChannel()`, `webhookChannel()` |
 | [Schedules](./schedules.md) | Cron for agent directories and the node server, with support on the deployed targets. | `defineSchedule()`, `startSchedules()` |
 
-Cron exists in both triggers and schedules today. New projects that use agent directories or `lousho build` should prefer `defineSchedule()`; this is guidance, and `CronTriggerAdapter` keeps working. `WebhookTriggerAdapter` uses `webhookChannel()` for its authentication.
+Each deprecated adapter has a replacement that is wired into sessions, approvals, agent directories and `lousho build`: Slack is `slackChannel()`, webhooks are `webhookChannel()` (both mounted with `mountChannels()`), and cron is `defineSchedule()` with `startSchedules()`. The deprecated adapters keep working until they are removed.
 
 ## The TriggerAdapter interface
 
@@ -71,6 +71,19 @@ handle.stop();
 ## Webhook
 
 ### Webhook authentication
+
+**Deprecated.** `WebhookTriggerAdapter` is replaced by `webhookChannel()` mounted with `mountChannels()` (see [Channels](./channels.md)), which takes the same `auth` option and adds sessions and approvals. The `WebhookAuth` shapes below stay and are the reference for `webhookChannel({ auth })`.
+
+```ts
+import { createAgent, createMockProvider, mountChannels, webhookChannel } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
+
+// POST /webhook, authenticated with an HMAC of the raw body; serve it from any node server.
+const handler = mountChannels(agent, [
+  webhookChannel({ auth: { type: 'hmac', secret: process.env.WEBHOOK_SECRET ?? '' } }),
+]);
+```
 
 `WebhookTriggerAdapter` starts an HTTP server. **Always set `auth` for a
 webhook that is reachable from outside your machine**: without it, anyone who
@@ -124,6 +137,21 @@ tokens and payloads are not sent in clear text.
 
 ### Slack request signatures
 
+**Deprecated.** `SlackTriggerAdapter` is replaced by `slackChannel()` mounted with `mountChannels()` (see [Slack in Channels](./channels.md#slack)): one session per Slack thread, approval buttons, and the signature check built in. `verifySlackSignature()` stays and is not deprecated.
+
+```ts
+import { createAgent, createMockProvider, mountChannels, slackChannel } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
+
+const handler = mountChannels(agent, [
+  slackChannel({
+    signingSecret: process.env.SLACK_SIGNING_SECRET ?? '',
+    botToken: process.env.SLACK_BOT_TOKEN ?? '',
+  }),
+]);
+```
+
 `SlackTriggerAdapter.handleRequest({ headers, rawBody })` handles a raw Slack
 Events API request and returns the `{ status, body }` to send back. **Set
 `signingSecret` for any endpoint reachable from outside your machine**: without
@@ -173,6 +201,23 @@ the background.
 ## Cron
 
 ### Cron schedules
+
+**Deprecated.** `CronTriggerAdapter` is replaced by `defineSchedule()` with `startSchedules()` (see [Schedules](./schedules.md)), which also works from an agent directory's `schedules/` and from a spec file's cron triggers. `parseCronExpression()` and `CronExpressionError` stay. Schedules have no `intervalMs`: write the equivalent cron expression (`*/5 * * * *` for every five minutes), or keep a `setInterval` that calls `agent.send()`.
+
+```ts
+import { createAgent, createMockProvider, defineSchedule, startSchedules } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
+
+const queue = defineSchedule({
+  cron: '*/15 9-17 * * MON-FRI',
+  timezone: 'Europe/Paris',
+  prompt: 'Check the support queue',
+});
+const running = startSchedules(agent, [queue]);
+// later, on shutdown:
+running.stop();
+```
 
 `CronTriggerAdapter` takes either a fixed `intervalMs` or a real cron
 expression:

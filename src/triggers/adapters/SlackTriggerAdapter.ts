@@ -35,6 +35,11 @@ export interface SlackMessageEvent {
   text: string;
 }
 
+/**
+ * Options for {@link SlackTriggerAdapter}.
+ *
+ * @deprecated Use slackChannel() with mountChannels(); see docs/channels.md. Will be removed in a future major version.
+ */
 export interface SlackTriggerAdapterOptions {
   /** Overrides SLACK_WEBHOOK_URL for testing/injection. */
   webhookUrl?: string;
@@ -94,6 +99,11 @@ function extractMessageEvent(payload: Record<string, unknown>): SlackMessageEven
   return { channel: event.channel, text: event.text };
 }
 
+/**
+ * Runs an agent once per Slack message and posts the reply to an incoming webhook.
+ *
+ * @deprecated Use slackChannel() with mountChannels(); see docs/channels.md. Will be removed in a future major version.
+ */
 export class SlackTriggerAdapter implements TriggerAdapter<string> {
   public readonly type = 'slack';
 
