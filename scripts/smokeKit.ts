@@ -1,3 +1,4 @@
+// fallow-ignore-file complexity
 /**
  * Helpers shared by `pack-smoke` (the tarball built from the checkout) and
  * `registry-smoke` (the packages as published on npm). Kept in one place so the
@@ -11,7 +12,7 @@ export const SDK_NAME = '@lousho/build-ai-agent';
 export const IS_WIN = process.platform === 'win32';
 
 /** Optional peers: a subpath whose load fails because one of these is absent is checked by file existence only. */
-export const OPTIONAL_PEERS = ['vue', 'react', 'svelte', '@opentelemetry/api', '@modelcontextprotocol/sdk', 'dockerode', 'prompts', 'tsup', 'better-sqlite3'];
+const OPTIONAL_PEERS = ['vue', 'react', 'svelte', '@opentelemetry/api', '@modelcontextprotocol/sdk', 'dockerode', 'prompts', 'tsup', 'better-sqlite3'];
 
 /** Collects failures and prints `[<prefix>]` lines. */
 export interface Reporter {
@@ -59,7 +60,7 @@ export function mustRun(rep: Reporter, label: string, cmd: string, argv: string[
 }
 
 /** All `exports` subpaths with their targets, from the installed package.json. */
-export function listExports(pkgDir: string): { subpath: string; spec: string; targets: string[] }[] {
+function listExports(pkgDir: string): { subpath: string; spec: string; targets: string[] }[] {
   const pkg = JSON.parse(fs.readFileSync(path.join(pkgDir, 'package.json'), 'utf8'));
   return Object.entries<Record<string, string>>(pkg.exports).map(([subpath, conds]) => ({
     subpath,
@@ -69,7 +70,7 @@ export function listExports(pkgDir: string): { subpath: string; spec: string; ta
 }
 
 /** Source of a probe script that loads every spec in one module format and prints JSON results. */
-export function probeSource(format: 'esm' | 'cjs', specs: string[]): string {
+function probeSource(format: 'esm' | 'cjs', specs: string[]): string {
   const load = format === 'esm' ? 'await import(spec)' : 'require(spec)';
   const body = `
 const specs = ${JSON.stringify(specs)};
@@ -89,7 +90,7 @@ console.log('RESULTS ' + JSON.stringify(results));
   return format === 'esm' ? body : `(async () => {${body}})().catch((e) => { console.error(e); process.exit(1); });`;
 }
 
-export function turnSource(format: 'esm' | 'cjs'): string {
+function turnSource(format: 'esm' | 'cjs'): string {
   const body = `
 const agent = createAgent({ provider: mockModel(['hello from the mock']), prompt: 'You are a test.' });
 const result = await agent.send('hi');
