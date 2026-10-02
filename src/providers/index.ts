@@ -14,6 +14,7 @@ export * from './OpenRouterProvider';
 export * from './AnthropicProvider';
 export * from './resolveProvider';
 export * from './resilience';
+export { fromAiSdk, type FromAiSdkOptions } from './fromAiSdk';
 export { MissingPeerDependencyError } from './optionalPeer';
 
 // Auto-register built-in providers. The factories only construct provider
