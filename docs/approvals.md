@@ -57,7 +57,7 @@ the calls after it run once it is decided (see
 MCP tools set `needsApproval` from the server's tool annotations: `readOnlyHint:
 true` runs, while `destructiveHint` true or absent (the MCP default) asks. Choose
 per server with `approval: 'annotations' | 'always' | 'never'` or a function; see
-[MCP tool approval](./configuration.md#mcp-tool-approval-approval).
+[MCP tool approval](./mcp.md#approval-for-mcp-tools).
 
 ## Permission policies
 
@@ -320,9 +320,11 @@ const scripted = createAgent({
 A permission rule that `allow`s `ask_question` skips the pause, so the call
 fails with "No answer"; leave the tool to its default.
 
-## `AgentExecutor` and `resumeAfterApproval()`
+## Advanced: the executor API
 
-With `AgentExecutor.execute()` directly, pass an `approvalStore`. On a gated
+`createAgent()` agents use `agent.approvals` (see
+[`createAgent()` agents](#createagent-agents)). With `AgentExecutor.execute()`
+directly (see [the executor API](./executor-api.md)), pass an `approvalStore`. On a gated
 call the executor persists an `ExecutionSnapshot` instead of invoking the
 tool. Resume later, after a real restart if you like, with
 `resumeAfterApproval()`:
@@ -370,6 +372,6 @@ continued run as an `AgentRun` (see
 - **Workspace tools.** The shell tool is approval-gated by default. See
   [Workspace tools](./workspace-tools.md).
 - **MCP.** Approval-gated tools cannot be approved over MCP; see
-  [Serve an agent over MCP](./configuration.md#serve-an-agent-over-mcp).
+  [Serve an agent over MCP](./mcp.md#serve-an-agent-over-mcp).
 - **Agent Forge** shows pending approvals as inline cards in its chat; see
   [Agent Forge](./agent-forge.md).

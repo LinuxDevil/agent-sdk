@@ -44,7 +44,7 @@ How the pieces fit:
 | `createAgent(config)`         | Zero-config `{ send(message) }` agent from a `model` string or provider (+ instructions, tools). |
 | `AgentBuilder`                | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). |
 | `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. |
-| `AgentType`                   | Deprecated, no runtime effect: agents need no type (removed next minor).    |
+| `AgentType`                   | Deprecated, no runtime effect: agents need no type.                        |
 | `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
 | `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](./approvals.md), [Durable execution](./durable-execution.md)). |
@@ -348,7 +348,7 @@ Exported from `@lousho/build-ai-agent/testing` (see [Testing agents](testing.md)
 | `createFsTools(fs, options?)`, `createShellTool(shell, options?)` | Workspace tools (`read_file`, `write_file`, `edit_file`, `list_dir`, `glob`, `grep`, `shell`) over an `FsProvider` / `ShellProvider`. See [Workspace tools](workspace-tools.md). |
 | `NodeWorkspace`, `MemoryWorkspace`, `SandboxShell` | Workspace providers: a real directory (paths confined to `root`, minimal shell env), an in-memory tree with a scripted `exec` for tests, and a `ShellProvider` over a `SandboxAdapter` (Docker). |
 | `createTodoTools({ store?, onChange? })`     | `todo_write` / `todo_read` tools (plus `getTodos()`) so agents can plan and track multi-step work; see [Todo tools](#todo-tools). |
-| `connectMcp(servers, options?)`             | Connect MCP servers from config (stdio or HTTP) and load their tools; see [Connect MCP servers](./configuration.md#connect-mcp-servers-mcpservers-connectmcp). |
+| `connectMcp(servers, options?)`             | Connect MCP servers from config (stdio or HTTP) and load their tools; see [Share servers with `connectMcp()`](./mcp.md#share-servers-with-connectmcp). |
 | `loadMcpTools(client, connectionName)`       | Load a connected MCP server's tools as `ToolDescriptor`s. Available from the package root, `@lousho/build-ai-agent/tools`, and `@lousho/build-ai-agent/mcp`. |
 
 See [Tools](./tools.md) for a guide to defining and registering tools.

@@ -9,23 +9,28 @@ sandbox such as E2B, Daytona or Cloudflare.
 For a walkthrough, see [Build a coding agent](./build-a-coding-agent.md).
 
 ```ts
-import { AgentExecutor, ToolRegistry, NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
+import { createAgent, NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
 
-const workspace = new NodeWorkspace({ root: '.' }); // every path is confined to this directory
-const registry = new ToolRegistry();
-registry.registerMany([...createFsTools(workspace), createShellTool(workspace)]);
+const workspace = new NodeWorkspace({ root: './project' }); // every path is confined to this directory
+const agent = createAgent({
+  instructions: 'You are a careful coding assistant. Run the tests after every change.',
+  provider,
+  tools: [...createFsTools(workspace), createShellTool(workspace)],
+});
 
 // The shell tool needs approval by default, so the run pauses before any command runs.
-const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistry: registry, approvalStore });
-// paused.finishReason === 'awaiting-approval' -> resumeAfterApproval(...) once a human approves
+const paused = await agent.send('Fix the failing test in src/math.test.ts');
+if (paused.finishReason === 'awaiting-approval') {
+  // A human decides, then the command runs (or is rejected) and the run continues.
+  const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+}
 ```
 
-A `createAgent()` agent pauses the same way: `send()` resolves with
-`finishReason: 'awaiting-approval'` and `agent.approvals.resolve()` runs (or
-rejects) the command and continues (see [Approvals](./approvals.md)). To let
-some commands run without asking, pass `needsApproval: false` together with an
-`allow` list, or a `needsApproval` predicate that returns `false` for the
-commands you trust.
+`send()` resolves with `finishReason: 'awaiting-approval'` and
+`agent.approvals.resolve()` runs (or rejects) the command and continues (see
+[Approvals](./approvals.md)). To let some commands run without asking, pass
+`needsApproval: false` together with an `allow` list, or a `needsApproval`
+predicate that returns `false` for the commands you trust.
 
 ```ts
 import { createAgent, NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
@@ -40,6 +45,26 @@ const agent = createAgent({
   ],
 });
 const result = await agent.send('Fix the failing test in src/math.test.ts');
+```
+
+### Advanced: the executor API
+
+`createAgent()` runs `AgentExecutor` underneath (see
+[The executor API](./executor-api.md)). To own the wiring yourself,
+register the tools in a `ToolRegistry` and call the executor; the pause is
+the same, and `resumeAfterApproval(...)` is what `agent.approvals.resolve()`
+calls once a human approves:
+
+```ts
+import { AgentExecutor, ToolRegistry, NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
+
+const workspace = new NodeWorkspace({ root: '.' }); // every path is confined to this directory
+const registry = new ToolRegistry();
+registry.registerMany([...createFsTools(workspace), createShellTool(workspace)]);
+
+// The shell tool needs approval by default, so the run pauses before any command runs.
+const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistry: registry, approvalStore });
+// paused.finishReason === 'awaiting-approval' -> resumeAfterApproval(...) once a human approves
 ```
 
 ## The tools

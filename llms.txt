@@ -17,12 +17,13 @@
 - [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md): Installing the package also installs the `lousho` command.
 - [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md): A long agent run fills its context window mostly with tool results: file contents, search hits, API responses the model read once and no longer needs in full.
 - [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md): A declarative agent is a YAML (`.yaml`/`.yml`) or JSON (`.json`) file, validated with zod by `loadSpec()` (`src/spec/schema.ts`).
-- [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md): Pass a `sessionId` and a `checkpointStore` to `AgentExecutor.execute()` and the run survives a crash, a restart, an abort or a human approval that takes days.
+- [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md): Give `createAgent()` a `store` and pass a `sessionId` to `send()`, and the run survives a crash, a restart, an abort or a human approval that takes days.
 - [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md): Every error the SDK throws on purpose is an `SDKError` (or a subclass such as `ConfigurationError`, `ValidationError` or `MissingPeerDependencyError`) with
 - [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md): Evals are regression tests for agent *behaviour*: which tools the agent called, in what order, with which arguments, how many steps it took, and what it said.
 - [The executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md): `createAgent()` is the recommended entry point (see the Quick Start).
 - [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md): A flow is a fixed, multi-step workflow run by one agent: the steps and their order are written down up front instead of being left to the model's judgment.
 - [Guardrails and sandboxing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md): Tools for running agents safely: input and output guardrails check what goes into and comes out of any run (and its tool arguments), patch guardrails are fail-closed checks over a proposed change before you act on it, and sandboxed tools run inside an isolated container instead of the host process.
+- [MCP (Model Context Protocol)](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md): MCP works in two directions.
 - [Memory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md): A session remembers one conversation.
 - [Next.js and other Fetch-API frameworks](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md): `createRouteHandler(agent, options?)` serves an agent from a route file of any framework whose handlers take a Web `Request` and return a `Response`: the Next.js App Router, SvelteKit, Remix / React Router, Hono, Bun.serve.
 - [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md): `AgentExecutor.execute()` and `FlowExecutor.execute()` emit spans through a `TraceExporter`.
@@ -39,6 +40,7 @@
 - [Svelte](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/svelte.md): `loushoAgent()` for Svelte is the React hook as a store: the same sources, the same state and the same actions, over the same typed event stream.
 - [Testing agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md): `@lousho/build-ai-agent/testing` ships `mockModel`: a scripted, deterministic `LLMProvider` for unit tests.
 - [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md): A tool is a typed function the model can call.
+- [Troubleshooting](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/troubleshooting.md): This page starts from what you see and points to the cause, the fix and the page that explains it.
 - [Utilities](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/utilities.md): Supporting helpers exported from the package root: encryption and hashing, and file storage for attachments.
 - [Vue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/vue.md): `useLoushoAgent()` for Vue 3 is the React hook as a composable: the same sources, the same state and the same actions, over the same typed event stream.
 - [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md): Workspace tools give an agent a file system and a shell, so you can build coding agents in the style of Claude Code.

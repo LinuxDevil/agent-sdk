@@ -40,6 +40,8 @@ used in the source and the sections below in sync. A second test fails when new
 SDK code throws a plain `Error` instead of an `SDKError`; the few plain ones left
 are internal and listed in `src/utils/plainErrors.test.ts` with the reason for each.
 
+To start from a symptom instead of a code, see [Troubleshooting](./troubleshooting.md).
+
 ## Configuration
 
 ### LOUSHO_CONFIG_INVALID
