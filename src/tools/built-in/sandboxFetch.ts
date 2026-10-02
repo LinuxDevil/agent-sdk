@@ -39,22 +39,87 @@ export interface SandboxFetchRequest {
    * http.ts). Left undefined/false, TLS is verified normally.
    */
   insecureTLS?: boolean;
+  /**
+   * The address the caller resolved and SSRF-checked for the URL's host
+   * (N13a). When set, the sandboxed process connects to exactly this address
+   * (with node:http/node:https and a fixed `lookup`; the URL's host still
+   * goes in the `Host` header and TLS SNI) instead of resolving the name
+   * again, so a DNS-rebinding name cannot swap in a private address between
+   * the check and the connection. Left unset, the process uses `fetch()`.
+   */
+  pinnedAddress?: string;
 }
 
 /**
  * Node one-liner run inside the sandbox. Reads the request from
- * SANDBOX_FETCH_REQUEST, performs the real fetch(), and writes exactly one
+ * SANDBOX_FETCH_REQUEST, performs the real request, and writes exactly one
  * JSON line to stdout - the only thing this module's caller parses.
- * `redirect: 'manual'` so any SSRF/redirect-chasing policy a caller
- * implements (see http.ts's per-hop isBlockedHost check) stays in control
- * of following redirects rather than this script silently doing it.
+ * Redirects are never followed here (`redirect: 'manual'`; node:http does
+ * not follow them), so any SSRF/redirect-chasing policy a caller implements
+ * (see http.ts, which checks every hop) stays in control of following them.
+ * With `pinnedAddress` the request goes out through node:http/node:https
+ * with a `lookup` that only ever answers that address (N13a).
  */
 const SANDBOX_FETCH_SCRIPT = `
 const req = JSON.parse(Buffer.from(process.env.SANDBOX_FETCH_REQUEST, 'base64').toString('utf-8'));
 if (req.insecureTLS) {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 }
-(async () => {
+const fail = (error) => {
+  process.stderr.write(String((error && error.stack) || error));
+  process.exitCode = 1;
+};
+const decode = (buffer, encoding) => {
+  const zlib = require('zlib');
+  if (encoding === 'gzip' || encoding === 'x-gzip') return zlib.gunzipSync(buffer);
+  if (encoding === 'deflate') return zlib.inflateSync(buffer);
+  if (encoding === 'br') return zlib.brotliDecompressSync(buffer);
+  return buffer;
+};
+const pinnedRequest = () => {
+  const url = new URL(req.url);
+  const client = url.protocol === 'https:' ? require('https') : require('http');
+  const address = req.pinnedAddress;
+  const family = address.includes(':') ? 6 : 4;
+  const lookup = (_host, options, callback) => {
+    const cb = typeof options === 'function' ? options : callback;
+    if (options && options.all) cb(null, [{ address, family }]);
+    else cb(null, address, family);
+  };
+  const headers = Object.assign({}, req.headers);
+  if (req.body !== undefined && !Object.keys(headers).some((name) => name.toLowerCase() === 'content-length')) {
+    headers['content-length'] = String(Buffer.byteLength(req.body));
+  }
+  const request = client.request(url, {
+    method: req.method,
+    headers,
+    lookup,
+    rejectUnauthorized: !req.insecureTLS,
+    agent: false,
+  }, (res) => {
+    const chunks = [];
+    res.on('data', (chunk) => chunks.push(chunk));
+    res.on('error', fail);
+    res.on('end', () => {
+      try {
+        const headers = {};
+        for (const [key, value] of Object.entries(res.headers)) {
+          headers[key] = Array.isArray(value) ? value.join(', ') : String(value);
+        }
+        const body = decode(Buffer.concat(chunks), String(res.headers['content-encoding'] || '').toLowerCase()).toString('utf-8');
+        process.stdout.write(JSON.stringify({ status: res.statusCode, statusText: res.statusMessage || '', headers, body }));
+      } catch (error) {
+        fail(error);
+      }
+    });
+  });
+  request.on('error', fail);
+  if (req.body !== undefined) request.write(req.body);
+  request.end();
+};
+if (req.pinnedAddress) {
+  pinnedRequest();
+} else (async () => {
   try {
     const res = await fetch(req.url, {
       method: req.method,
@@ -72,8 +137,7 @@ if (req.insecureTLS) {
       body: text,
     }));
   } catch (error) {
-    process.stderr.write(String((error && error.stack) || error));
-    process.exitCode = 1;
+    fail(error);
   }
 })();
 `;
