@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `@lousho/build-ai-agent` and `create-lousho-agent` are on npm. The README and the installation, quick start, CLI and Agent Forge docs no longer say the package is unpublished; "Installing before the first release" is now "Installing from a local build" (docs/installation.md#installing-from-a-local-build) and covers trying an unreleased commit. The hint printed after a failed `lousho init` install no longer mentions a 404; it points to `--sdk-path`. The docs site moved to https://lousho.com.
 
 ### Docs
+- `docs/durable-execution.md` and `docs/workspace-tools.md` lead with `createAgent()` (`send()` with a `sessionId`, `agent.resume()`, `agent.approvals.resolve()`, `agent.fork()`) instead of `AgentExecutor`. The executor snippets (`execute()` with a `checkpointStore`, `resumeAfterApproval()`, `AgentExecutor.fork()`, the `ToolRegistry` setup) moved under "Advanced: the executor API". In durable-execution the heading "What happens when you call `execute()` again with the same `sessionId`" is now "What happens when you send again with the same `sessionId`".
 - `create-lousho-agent` has a README (its npm page was empty) and `license`, `homepage` and `repository` fields; they appear on npm with its next release. `lousho init --help` no longer says `--sdk-path` is needed until the package is on npm.
 
 ### Renamed
