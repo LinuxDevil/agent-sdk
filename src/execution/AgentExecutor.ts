@@ -8,7 +8,7 @@ import { withSkills } from '../skills/withSkills';
 import type { Subagents } from '../subagents/types';
 import type { BackgroundTaskView } from '../subagents/backgroundTasks';
 import { assertMaxSubagentDepth, withSubagents } from '../subagents/withSubagents';
-import type { z } from 'zod';
+import type { StandardSchemaV1 } from '../utils/zodCompat';
 import { newId } from '../utils/id';
 import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult, ToolDefinition, type ReasoningOption } from '../providers';
 import { AgentConfig } from '../types';
@@ -557,7 +557,7 @@ export interface ExecuteOptions extends PermissionOptions {
    * const { object } = await AgentExecutor.execute({ agent, input: 'Weather in Paris?', provider, output: z.object({ tempC: z.number() }) });
    * ```
    */
-  output?: z.ZodTypeAny;
+  output?: StandardSchemaV1;
   /**
    * LOU-Y4.2: called exactly once when this run ends, however it ends: with
    * `{ result }` when it resolves (any `finishReason`, including `'aborted'`,

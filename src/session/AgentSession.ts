@@ -189,7 +189,7 @@ export function providerValidPrefix(messages: readonly Message[]): Message[] {
  * const { text } = await session.send('What is my name?');
  * ```
  */
-export class AgentSession {
+export class AgentSession<TObject = unknown> {
   readonly id: string;
   private readonly store: SessionStore;
   /** Set when every turn is checkpointed (LOU-W9). */
@@ -249,8 +249,8 @@ export class AgentSession {
    * const result = await session.send('And in Paris?', { signal: AbortSignal.timeout(10_000) });
    * ```
    */
-  send(input: AgentInput, options: SessionSendOptions = {}): Promise<ExecutionResult> {
-    return this.nextTurn(input, (inputs) => this.turn({ input, metadata: options.metadata }, inputs, options.signal));
+  send(input: AgentInput, options: SessionSendOptions = {}): Promise<ExecutionResult<TObject>> {
+    return this.nextTurn(input, (inputs) => this.turn({ input, metadata: options.metadata }, inputs, options.signal)) as Promise<ExecutionResult<TObject>>;
   }
 
   /**
@@ -275,7 +275,7 @@ export class AgentSession {
    * }
    * ```
    */
-  stream(input: AgentInput, options: SessionSendOptions = {}): AgentRun {
+  stream(input: AgentInput, options: SessionSendOptions = {}): AgentRun<TObject> {
     const streamRun = this.streamRun;
     if (!streamRun) {
       throw new SDKError(
@@ -298,7 +298,7 @@ export class AgentSession {
           (joined) => started(startAgentRun(() => joined))
         ),
       options.signal
-    );
+    ) as AgentRun<TObject>;
   }
 
   /**

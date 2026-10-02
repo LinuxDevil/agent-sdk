@@ -40,7 +40,7 @@ function aiSdkPeer(name: string): Record<AiMajor, PeerPairing> {
 }
 
 const ZOD4_NOTE =
-  'ollama-ai-provider-v2 needs zod 4, which this SDK does not support yet; for Ollama, use ai@^4.3.19 with ollama-ai-provider@^1.2.0';
+  'ollama-ai-provider-v2 needs zod 4 (npm install zod@^4.0.0); with zod 3, use ai@^4.3.19 with ollama-ai-provider@^1.2.0';
 
 /** Ollama: `ollama-ai-provider` on `ai` 4, `ollama-ai-provider-v2` on `ai` 6/7. */
 const OLLAMA_PEERS: Record<AiMajor, PeerPairing> = {
