@@ -124,6 +124,13 @@ describe('discordChannel (LOU-P6)', () => {
     expect(t.userTexts(2)).toEqual(['Who am I?']);
   });
 
+  it('runs the turn with the command sender as its principal (N10a)', async () => {
+    const seen: unknown[] = [];
+    const t = setup(['ok'], { instructions: ({ principal }) => (seen.push(principal), 'x') });
+    await t.send(command('hello'));
+    await vi.waitFor(() => expect(seen).toEqual([{ id: 'U1', type: 'user', authenticator: 'discord' }]));
+  });
+
   it('tells the user the command shape when there is no prompt', async () => {
     const t = setup(['never']);
 

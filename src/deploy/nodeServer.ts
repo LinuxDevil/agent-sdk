@@ -4,8 +4,9 @@
  * Serves the `/chat` API shared with `lousho dev` (src/server/chatRoutes.ts)
  * over a `node:http` server (the routes are Fetch-native, src/server/fetchRoutes.ts,
  * and shared with the Worker target): `GET /health`, sessions, SSE streaming,
- * approvals and the legacy `POST /chat { message }`. When a bearer token is configured,
- * every route except `/health` requires `Authorization: Bearer <token>`.
+ * approvals and the legacy `POST /chat { message }`. When auth is configured (a bearer
+ * token, or N10a's auth list from `@lousho/build-ai-agent/auth`), every route except
+ * `/health` and the channels requires it.
  *
  * Node-only (the Worker target has its own runtime, runtime.worker.ts).
  */
@@ -22,6 +23,8 @@ import type { AgentSpec } from '../spec/schema';
 import { memoryStore, type AgentStore } from '../storage/agentStore';
 import { SqliteStore } from '../storage/sqlite';
 import { SDKError } from '../execution/errors';
+import type { AuthFn } from '../auth/types';
+import { apiToken } from '../auth/basic';
 
 /** Environment variable holding the bearer token; wins over a token baked in at build time. */
 const API_TOKEN_ENV = 'LOUSHO_API_TOKEN';
@@ -29,8 +32,13 @@ const API_TOKEN_ENV = 'LOUSHO_API_TOKEN';
 const STORE_ENV = 'LOUSHO_STORE';
 
 export interface DeployedServerOptions {
-  /** `auth.token` of the build options: the bearer token when `LOUSHO_API_TOKEN` is not set. */
-  auth?: { token?: string };
+  /**
+   * `{ token }` (the build options' `auth.token`): the bearer token when
+   * `LOUSHO_API_TOKEN` is not set. Or (N10a) an auth entry or ordered list
+   * (`jwt()`, `oidc()`, `basic()`, ...; an agent directory's `auth.ts`):
+   * `apiToken(LOUSHO_API_TOKEN)` is appended to it when that variable is set.
+   */
+  auth?: { token?: string } | AuthFn | readonly AuthFn[];
   /** Defaults to `process.env`. */
   env?: NodeJS.ProcessEnv;
   /** Schedules of the served agent directory (`resolveAgentDir()`'s `schedules`): started when the server listens, stopped when it closes. */
@@ -63,18 +71,31 @@ function replyUnhandled(res: http.ServerResponse, error: unknown): void {
   res.end();
 }
 
+/** The auth list of the server: the configured entries, then the env token; `undefined` when nothing is configured. */
+function serverAuth(options: DeployedServerOptions): readonly AuthFn[] | undefined {
+  const envToken = (options.env ?? process.env)[API_TOKEN_ENV] || undefined;
+  const { auth } = options;
+  if (auth === undefined || (typeof auth === 'object' && !Array.isArray(auth))) {
+    const token = envToken ?? ((auth as { token?: string } | undefined)?.token || undefined);
+    return token === undefined ? undefined : [apiToken(token)];
+  }
+  const entries: readonly AuthFn[] = Array.isArray(auth) ? auth : [auth as AuthFn];
+  return envToken === undefined ? entries : [...entries, apiToken(envToken)];
+}
+
 /**
- * An (unlistening) http server for `agent`. `authenticated` tells whether a
- * bearer token is required, so the caller can warn when it listens publicly without one.
+ * An (unlistening) http server for `agent`. `authenticated` tells whether
+ * requests are checked (a token or an auth list), so the caller can warn when
+ * it listens publicly without.
  */
 export function createDeployedServer(agent: SimpleAgent, options: DeployedServerOptions = {}): { server: http.Server; authenticated: boolean } {
-  const token = (options.env ?? process.env)[API_TOKEN_ENV] || options.auth?.token || undefined;
+  const auth = serverAuth(options);
   const chat = { name: 'lousho server', agent: () => agent };
   // Channels authenticate themselves (their own verify), so they sit beside the bearer-protected chat routes.
   const channels = options.channels?.length ? mountChannels(agent, options.channels) : undefined;
   const handle = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
     if (await channels?.(req, res)) return;
-    await relayFetch(req, res, (request) => serveFetch(request, chat, token));
+    await relayFetch(req, res, (request) => serveFetch(request, chat, auth));
   };
   const server = http.createServer((req, res) => void handle(req, res).catch((error) => replyUnhandled(res, error)));
   if (options.schedules?.length) {
@@ -82,5 +103,5 @@ export function createDeployedServer(agent: SimpleAgent, options: DeployedServer
     server.on('listening', () => (running = startSchedules(agent, options.schedules ?? [], options.scheduler)));
     server.on('close', () => running?.stop());
   }
-  return { server, authenticated: token !== undefined };
+  return { server, authenticated: auth !== undefined };
 }

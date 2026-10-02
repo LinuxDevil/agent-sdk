@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { readUIMessageStream, type UIMessage, type UIMessageChunk } from 'ai-v7';
 import { createAgent } from '../createAgent';
@@ -8,6 +8,10 @@ import { memoryStore } from '../storage/agentStore';
 import { createAgentRunner } from '../ui/agentRunner';
 import { initialAgentUIState, reduceAgentEvents, type AgentUIState } from '../ui/reducer';
 import { createRouteHandler, type RouteHandlerOptions } from './routeHandler';
+import { defineMemory, inMemoryMemory, type MemoryScopeContext } from '../memory';
+import type { RunConfigContext } from '../createAgent';
+import { AuthError, apiToken, basic, jwt, type Principal } from '../auth';
+import { SECRET, hmacKey, signToken } from '../auth/__fixtures__/tokens';
 
 const deploy = defineTool({ name: 'deploy', description: 'Deploys', input: z.object({}), needsApproval: true, execute: () => 'shipped' });
 
@@ -71,6 +75,92 @@ describe('createRouteHandler (LOU-P4)', () => {
     expect((await handler(post('/api/agent/chat', body))).status).toBe(401);
     expect((await handler(post('/api/agent/chat', body, { 'x-user': 'ada' }))).status).toBe(200);
     expect(seen).toEqual(['POST', 'POST']);
+  });
+
+  it('keeps a boolean authorizer meaning what it did: true runs with the custom anonymous principal', async () => {
+    const seen: Array<Principal | undefined> = [];
+    const agent = createAgent({
+      provider: mockModel(['ok']),
+      instructions: ({ principal }: RunConfigContext) => (seen.push(principal), 'be brief'),
+    });
+    const { handler } = createRouteHandler(agent, { auth: () => true });
+    const response = await handler(post('/api/agent/chat', { sessionId: 'b1', input: 'hi' }));
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(seen).toEqual([{ id: 'anonymous', type: 'user', authenticator: 'custom' }]);
+  });
+
+  describe('auth lists (N10a)', () => {
+    const scopes: MemoryScopeContext[] = [];
+    const seen: Array<Principal | undefined> = [];
+    const agentWithPrincipal = (replies: string[]) =>
+      createAgent({
+        provider: mockModel(replies),
+        store: memoryStore(),
+        instructions: ({ principal }: RunConfigContext) => (seen.push(principal), `You serve ${principal?.id ?? 'nobody'}.`),
+        memory: [defineMemory({ name: 'notes', scope: (ctx) => (scopes.push(ctx), ctx.principal && `user:${ctx.principal.issuer ?? ''}:${ctx.principal.id}`), provider: inMemoryMemory() })],
+      });
+
+    it('runs the list in order and hands the accepted principal to instructions and memory scopes', async () => {
+      seen.length = 0;
+      scopes.length = 0;
+      const hs = await hmacKey();
+      const { handler } = createRouteHandler(agentWithPrincipal(['one', 'two']), {
+        auth: [jwt({ secret: SECRET, issuer: 'https://iss.test', audience: 'agent' }), apiToken('ci-token', { id: 'ci' })],
+      });
+      const token = await signToken(hs, { sub: 'ada', iss: 'https://iss.test', aud: 'agent' });
+      for (const [sessionId, authorization] of [['p1', `Bearer ${token}`], ['p2', 'Bearer ci-token']]) {
+        const response = await handler(post('/api/agent/chat', { sessionId, input: 'hi' }, { authorization }));
+        expect(response.status).toBe(200);
+        await response.text();
+      }
+      expect(seen.map((p) => [p?.authenticator, p?.id, p?.issuer])).toEqual([
+        ['jwt', 'ada', 'https://iss.test'],
+        ['api-token', 'ci', undefined],
+      ]);
+      expect(scopes.map((ctx) => ctx.principal?.id)).toEqual(['ada', 'ci']);
+      expect(scopes[0]).toMatchObject({ sessionId: 'p1', principal: { claims: expect.objectContaining({ aud: 'agent' }) } });
+    });
+
+    it('answers 401 with every challenge when nothing matches, 403 for AuthError(403), and leaves /health open', async () => {
+      const forbidden = () => {
+        throw new AuthError(403);
+      };
+      const { handler } = createRouteHandler(agentWithPrincipal(['x']), { auth: [apiToken('t'), basic({ users: { a: 'b' } })] });
+      const denied = await handler(post('/api/agent/chat', { sessionId: 'p3', input: 'hi' }));
+      expect(denied.status).toBe(401);
+      expect(denied.headers.get('www-authenticate')).toBe('Bearer, Basic realm="lousho", charset="UTF-8"');
+      expect(await denied.json()).toEqual({ error: 'Unauthorized' });
+      expect(await (await handler(get('/api/agent/health'))).text()).toBe('ok');
+      const { handler: closed } = createRouteHandler(agentWithPrincipal(['x']), { auth: [forbidden] });
+      expect((await closed(get('/api/agent/chat/p3'))).status).toBe(403);
+      expect(await (await closed(get('/api/agent/health'))).text()).toBe('ok');
+    });
+
+    it('the useChat endpoint and the useLoushoAgent route run with the principal too', async () => {
+      seen.length = 0;
+      const { handler } = createRouteHandler(agentWithPrincipal(['a', 'b']), { auth: apiToken('t', { id: 'web' }), uiMessageStream: true });
+      const headers = { authorization: 'Bearer t' };
+      await (await handler(post('/api/agent/ui', { id: 'u1', messages: [{ id: 'm1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }, headers))).text();
+      await (await handler(post('/api/agent', { input: 'hi' }, headers))).text();
+      expect(seen.map((p) => p?.id)).toEqual(['web', 'web']);
+    });
+
+    it('warns once in production when a route has no auth', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const previous = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      try {
+        routes(['x']);
+        routes(['x']);
+        routes(['x'], { auth: 't' });
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain('no `auth`');
+      } finally {
+        process.env.NODE_ENV = previous;
+        warn.mockRestore();
+      }
+    });
   });
 
   it('strips the base path, accepts a trailing slash, and 404s outside it', async () => {

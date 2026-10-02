@@ -761,3 +761,20 @@ See [Budgets](./configuration.md#budgets).
 `onTripped: 'throw'`. See [Input and output guardrails](./guardrails.md#input-and-output-guardrails).
 
 **Example:** `createAgent({ provider, guardrails: { input: [maxLengthGuardrail({ maxChars: 10 })], onTripped: 'throw' } })` sent a longer message.
+
+## Auth
+
+### LOUSHO_AUTH_CONFIG_INVALID
+
+**Means:** a route auth helper from `@lousho/build-ai-agent/auth` (`jwt()`,
+`oidc()`, `basic()`, `apiToken()`) got options it cannot verify with, and
+refused them when it was created, not at the first request. The message names
+the option: no key source or two of them, an HMAC `secret` shorter than 32
+bytes, an algorithm that does not fit the key (`secret` with `RS256`, a public
+key with `HS256`), no `audience` (and no `allowAnyAudience: true`), a
+`clockToleranceSec` above 300, a key-set or issuer URL that is not https, an
+empty user list or token.
+
+**Fix:** change the option the message names. See [Route auth and principals](./auth.md).
+
+**Example:** `jwt({ secret: process.env.JWT_SECRET! })` without `audience`.

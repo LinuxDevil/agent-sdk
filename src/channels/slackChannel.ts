@@ -185,7 +185,8 @@ export function slackChannel(options: SlackChannelOptions): Channel<SlackChannel
     if (!read || !(read.dm || read.mentioned || read.event.thread_ts)) return null;
     if (read.event.type === 'message' && read.mentioned && !read.dm) return null; // the app_mention event runs it
     const thread: SlackThread = { channel: read.event.channel, ...(read.dm ? {} : { thread_ts: read.event.thread_ts ?? read.event.ts }) };
-    const inbound = { sessionKey: read.key, input: read.text, replyTo: thread, event: read.event, metadata: { user: read.event.user } };
+    const { user } = read.event;
+    const inbound = { sessionKey: read.key, input: read.text, replyTo: thread, event: read.event, metadata: { user }, ...(user && { principal: { id: user, type: 'user' as const, authenticator: 'slack' } }) };
     // the next message in the thread answers a pending ask_question, also one asked before a restart
     const question = questions.get(read.key) ?? (await ctx.pendingQuestion(read.key));
     questions.delete(read.key);
