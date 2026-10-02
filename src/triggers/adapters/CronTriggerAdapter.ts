@@ -16,6 +16,7 @@ import type { ExecutionResult } from '../../execution/AgentExecutor';
 import { RunnableAgent, TriggerAdapter, TriggerContext, TriggerHandle } from '../types';
 
 import { CronSchedule, parseCronExpression } from '../cronExpression';
+import { SDKError } from '../../execution/errors';
 
 interface CronTriggerAdapterBaseOptions {
   /** The input to run the agent with on each tick. */
@@ -70,14 +71,14 @@ type Schedule = { kind: 'interval'; intervalMs: number } | { kind: 'cron'; sched
 function resolveSchedule(options: CronTriggerAdapterOptions): Schedule {
   const hasInterval = options.intervalMs !== undefined;
   if (hasInterval === (options.cron !== undefined)) {
-    throw new Error("CronTriggerAdapter: pass exactly one of options.intervalMs or options.cron (e.g. { cron: '*/5 * * * *' }).");
+    throw new SDKError("CronTriggerAdapter: pass exactly one of options.intervalMs or options.cron (e.g. { cron: '*/5 * * * *' }).", 'LOUSHY_TRIGGER_INVALID');
   }
   if (options.cron !== undefined) {
     return { kind: 'cron', schedule: parseCronExpression(options.cron, options.timezone) };
   }
   const intervalMs = options.intervalMs as number;
   if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
-    throw new Error('CronTriggerAdapter: options.intervalMs must be a positive number');
+    throw new SDKError('CronTriggerAdapter: options.intervalMs must be a positive number', 'LOUSHY_TRIGGER_INVALID');
   }
   return { kind: 'interval', intervalMs };
 }

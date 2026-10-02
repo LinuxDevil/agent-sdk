@@ -28,6 +28,7 @@ import {
   type ChannelRespond,
 } from './defineChannel';
 import { reportChannelError } from './channelSupport';
+import { SDKError } from '../execution/errors';
 
 /** Options of {@link mountChannels}. */
 export interface MountChannelsOptions {
@@ -106,7 +107,7 @@ export function mountChannels(
   const basePath = (options.basePath ?? '/channels').replace(/\/+$/, '');
   const store = options.store ?? new MemorySessionStore();
   const byName = new Map(channels.map((channel) => [channel.name, channel]));
-  if (byName.size !== channels.length) throw new Error('mountChannels: channel names must be unique');
+  if (byName.size !== channels.length) throw new SDKError('mountChannels: channel names must be unique', 'LOUSHY_CHANNEL_INVALID');
   const paused = new Map<string, PausedTurn>();
   const tails = new Map<string, Promise<void>>();
   const answered = new WeakSet<ChannelRespond>();
@@ -186,7 +187,7 @@ export function mountChannels(
 
   async function resolveApproval(decision: ChannelApprovalDecision, respond?: ChannelRespond): Promise<void> {
     const turn = paused.get(decision.id);
-    if (!turn) throw new Error(`No pending channel approval '${decision.id}'`);
+    if (!turn) throw new SDKError(`No pending channel approval '${decision.id}'`, 'LOUSHY_APPROVAL_NOT_FOUND');
     await continueTurn(turn, decision, respond);
   }
 

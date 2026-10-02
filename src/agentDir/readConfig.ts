@@ -5,6 +5,7 @@ import { assertToolConcurrency, type ToolConcurrency } from '../execution/toolBa
 import { closest } from './closest';
 import { isFile, readText } from './fsUtil';
 import { importModule } from './importModule';
+import { SDKError } from '../execution/errors';
 
 /**
  * The options an agent directory's config file (`agent.ts` / `.js` / `.json`
@@ -60,7 +61,7 @@ const CONFIG_FILES = [
 ] as const;
 
 function fail(file: string, message: string): never {
-  throw new Error(`loadAgentDir: ${file}: ${message}`);
+  throw new SDKError(`loadAgentDir: ${file}: ${message}`, 'LOUSHY_AGENT_DIR_INVALID');
 }
 
 function describeValue(value: unknown): string {
@@ -153,8 +154,9 @@ async function findConfigFile(dir: string): Promise<string | undefined> {
     if (await isFile(file)) found.push(file);
   }
   if (found.length > 1) {
-    throw new Error(
-      `loadAgentDir: ${dir} has more than one config file (${found.map((f) => path.basename(f)).join(', ')}). Keep exactly one.`
+    throw new SDKError(
+      `loadAgentDir: ${dir} has more than one config file (${found.map((f) => path.basename(f)).join(', ')}). Keep exactly one.`,
+      'LOUSHY_AGENT_DIR_INVALID'
     );
   }
   return found[0];

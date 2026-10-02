@@ -2,6 +2,7 @@ import type { ApprovalCheckContext, ApprovalOutcome, McpToolAnnotations, ToolDes
 import type { SandboxAdapter } from '../security/sandboxCore';
 import { legacyAiTool } from './toolContract';
 import { isModelSchema, type InferSchemaOutput, type StandardSchemaV1 } from '../utils/zodCompat';
+import { SDKError } from '../execution/errors';
 
 /** Tool names must satisfy the constraint LLM providers impose on function names. */
 const TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
@@ -80,7 +81,7 @@ export function isDefinedTool(value: unknown): value is DefinedTool {
 }
 
 function fail(problem: string, fix: string): never {
-  throw new Error(`defineTool: ${problem}. ${fix}`);
+  throw new SDKError(`defineTool: ${problem}. ${fix}`, 'LOUSHY_CONFIG_INVALID');
 }
 
 function assertValidOptions(opts: { name?: unknown; description?: unknown; input?: unknown; execute?: unknown }): void {

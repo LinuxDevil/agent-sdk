@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { loadDatabaseSync, type SqlDatabase } from './driver';
 import { migrate } from './migrations';
+import { SDKError } from '../../execution/errors';
 
 /** Milliseconds a writer waits for another process's lock before failing. */
 const BUSY_TIMEOUT_MS = 5000;
@@ -29,7 +30,7 @@ export class Connection {
       migrate(database);
     } catch (error) {
       database.close();
-      throw new Error(`Could not open SQLite database at ${location}: ${(error as Error).message}`, {
+      throw new SDKError(`Could not open SQLite database at ${location}: ${(error as Error).message}`, 'LOUSHY_STORAGE_FAILED', {
         cause: error,
       });
     }
@@ -39,7 +40,7 @@ export class Connection {
   /** The open database; throws once {@link close} has been called. */
   get db(): SqlDatabase {
     if (!this.database) {
-      throw new Error(`SqliteStore for ${this.path} is closed. Create a new SqliteStore to keep using it.`);
+      throw new SDKError(`SqliteStore for ${this.path} is closed. Create a new SqliteStore to keep using it.`, 'LOUSHY_STORAGE_FAILED');
     }
     return this.database;
   }

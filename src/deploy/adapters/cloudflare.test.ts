@@ -41,6 +41,7 @@ import { CHECKPOINT_KV_BINDING } from '../checkpointBinding';
 import { getAdapter, registerBuiltInAdapters } from '../index';
 import { LLMProviderRegistry } from '../../providers/llm';
 import { prepareWorkerSpec } from '../runtime.worker';
+import { withBuildLock } from '../buildLock.testkit';
 
 let wranglerBin: string | undefined;
 try {
@@ -187,7 +188,7 @@ describe('CloudflareWorkerAdapter', () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-cf-'));
       outDir = path.join(dir, 'out');
       await CloudflareWorkerAdapter.scaffold(writeSpec(dir, SPEC), outDir);
-      await CloudflareWorkerAdapter.build(outDir);
+      await withBuildLock(() => CloudflareWorkerAdapter.build(outDir));
     }, 120_000);
 
     it('scaffolds worker.ts (fetch handler, no Node builtins), agent.config.js and wrangler.toml', () => {
@@ -425,7 +426,7 @@ describe('CloudflareWorkerAdapter', () => {
           writeSpec(dir, { ...SPEC, provider: { type: providerType, model } }),
           outDir
         );
-        await CloudflareWorkerAdapter.build(outDir);
+        await withBuildLock(() => CloudflareWorkerAdapter.build(outDir));
 
         const bundlePath = path.join(outDir, 'dist', 'worker.js');
         const bundle = fs.readFileSync(bundlePath, 'utf8');

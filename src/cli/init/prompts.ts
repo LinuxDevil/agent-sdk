@@ -1,6 +1,7 @@
 import type { PromptObject } from 'prompts';
 import { loadOptionalPeer } from '../../providers/optionalPeer';
 import { PROVIDER_NAMES, TEMPLATES } from './options';
+import { SDKError } from '../../execution/errors';
 
 /** The answers `loushy init` can ask for; a key is only asked when it is missing. */
 export interface InitAnswers {
@@ -61,6 +62,6 @@ export async function askMissing(input: AskInput): Promise<InitAnswers> {
       return false;
     },
   });
-  if (cancelled) throw new Error('loushy init: cancelled.');
+  if (cancelled) throw new SDKError('loushy init: cancelled.', 'LOUSHY_GENERIC_ERROR', { appendHelp: false });
   return { ...input.defaults, ...input.known, ...response };
 }

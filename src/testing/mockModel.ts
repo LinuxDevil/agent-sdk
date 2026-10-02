@@ -15,6 +15,7 @@ import type {
   ToolCall,
 } from '../providers/llm';
 import { textOf } from '../providers/content';
+import { SDKError } from '../execution/errors';
 
 /** Recursively read-only version of `T` (used for recorded requests). */
 export type DeepReadonly<T> = T extends (...args: never[]) => unknown
@@ -202,9 +203,10 @@ class ScriptedMockModel implements MockModel {
   assertExhausted(): void {
     const remaining = this.script.length - this.index;
     if (remaining > 0) {
-      throw new Error(
+      throw new SDKError(
         `mockModel: ${remaining} scripted turn(s) were never used (${this.index} of ${this.script.length} consumed). ` +
-          'Remove the extra turns or check why the agent stopped calling the model early.'
+          'Remove the extra turns or check why the agent stopped calling the model early.',
+        'LOUSHY_TEST_FAILED'
       );
     }
   }

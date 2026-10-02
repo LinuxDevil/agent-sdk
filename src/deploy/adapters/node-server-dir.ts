@@ -14,6 +14,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { listSorted } from '../../agentDir/fsUtil';
 import { writeFile } from '../bundle';
+import { SDKError } from '../../execution/errors';
 
 /** Records where the directory lives, so `build(outDir)` can bundle it (`build` only receives `outDir`). */
 const AGENT_DIR_POINTER = 'agent-dir.json';
@@ -32,7 +33,7 @@ export function writeAgentDirPointer(outDir: string, agentPath: string | undefin
   const pointer = path.join(outDir, AGENT_DIR_POINTER);
   if (agentPath === undefined) return fs.rmSync(pointer, { force: true });
   const looksLikeAgent = fs.readdirSync(agentPath).some((f) => f === 'instructions.md' || /^agent\./.test(f));
-  if (!looksLikeAgent) throw new Error(`'${agentPath}' is not an agent directory: it has no instructions.md or agent.* config file.`);
+  if (!looksLikeAgent) throw new SDKError(`'${agentPath}' is not an agent directory: it has no instructions.md or agent.* config file.`, 'LOUSHY_DEPLOY_FAILED');
   writeFile(pointer, JSON.stringify({ source: agentPath }) + '\n');
 }
 

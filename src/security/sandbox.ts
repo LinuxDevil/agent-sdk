@@ -35,6 +35,7 @@ import { isHostPattern } from './hostPattern';
 import { commandEnv } from './commandEnv';
 import type { CredentialBroker } from './credentialBroker';
 import { Egress, ignoreFailure, startEgress } from './sandboxEgress';
+import { SDKError } from '../execution/errors';
 
 export * from './sandboxCore';
 
@@ -71,11 +72,11 @@ export type SandboxNetwork = 'none' | 'default' | { allow: readonly string[] };
 function validateNetwork(network: SandboxNetwork = 'none'): SandboxNetwork {
   if (network === 'none' || network === 'default') return network;
   if (!Array.isArray(network?.allow)) {
-    throw new Error(`SubprocessSandbox: network must be 'none', 'default' or { allow: string[] }; got ${JSON.stringify(network)}.`);
+    throw new SDKError(`SubprocessSandbox: network must be 'none', 'default' or { allow: string[] }; got ${JSON.stringify(network)}.`, 'LOUSHY_CONFIG_INVALID');
   }
   const invalid = network.allow.filter((host) => !isHostPattern(host));
   if (invalid.length > 0) {
-    throw new Error(`SubprocessSandbox: network.allow takes host names such as 'api.github.com' or '*.npmjs.org'; got ${JSON.stringify(invalid)}.`);
+    throw new SDKError(`SubprocessSandbox: network.allow takes host names such as 'api.github.com' or '*.npmjs.org'; got ${JSON.stringify(invalid)}.`, 'LOUSHY_CONFIG_INVALID');
   }
   return { allow: Object.freeze(network.allow.map((host) => host.toLowerCase())) };
 }

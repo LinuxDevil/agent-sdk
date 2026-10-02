@@ -1,3 +1,4 @@
+import { SDKError } from '../../execution/errors';
 /**
  * Minimal structural types for the parts of `node:sqlite` this package uses,
  * plus the lazy loader. `@types/node` older than 22.5 has no `node:sqlite`
@@ -44,10 +45,11 @@ export function loadDatabaseSync(): SqlDatabaseConstructor {
     loaded = undefined;
   }
   if (!loaded?.DatabaseSync) {
-    throw new Error(
+    throw new SDKError(
       `SqliteStore needs the built-in 'node:sqlite' module (Node >= ${REQUIRED_NODE}), ` +
         `but this runtime (Node ${process.versions.node}) does not provide it. ` +
-        'Upgrade Node, or use FileSessionStore / LocalStorageCheckpointStore instead.'
+        'Upgrade Node, or use FileSessionStore / LocalStorageCheckpointStore instead.',
+      'LOUSHY_STORAGE_FAILED'
     );
   }
   return loaded.DatabaseSync;
