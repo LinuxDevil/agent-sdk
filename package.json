@@ -116,6 +116,7 @@
     "test:coverage": "vitest run --coverage --config vitest.coverage.config.ts",
     "test:live": "vitest run --config vitest.live.config.ts",
     "test:evals:judge": "vitest run --config vitest.judge.config.ts",
+    "test:docker": "vitest run --config vitest.docker.config.ts",
     "lint": "eslint src --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "test:types": "tsc -p tsconfig.test-d.json && vitest run --typecheck.only",
