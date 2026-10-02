@@ -14,7 +14,7 @@ Three things set it apart:
 
 - **Durable sessions and approvals on any host.** Sessions, checkpoints and
   approval pauses live in pluggable stores (memory, files, one SQLite file, or
-  Cloudflare KV for checkpoints on Workers), so a paused or interrupted run
+  Cloudflare KV on Workers), so a paused or interrupted run
   resumes from another request or another process.
 - **Record/replay and trajectory evals.** `mockModel` scripts the model,
   `recordReplay` cassettes replay real runs offline, and `defineEval()` asserts
@@ -38,12 +38,22 @@ cd my-agent && cp .env.example .env                  # then put your API key in 
 npm run dev                                          # chat in the terminal; `npm test` runs offline
 ```
 
-To add it to an existing project: `npm install @lousho/build-ai-agent ai zod` plus
-the provider package you use (`@ai-sdk/openai`, `@ai-sdk/anthropic` or
-`ollama-ai-provider`). `npx lousho doctor` checks Node, peers and API keys and
+To add it to an existing project, install the SDK with the current `ai` major
+and the provider packages that pair with it:
+
+```bash
+npm install @lousho/build-ai-agent ai@^7.0.0 zod
+npm install @ai-sdk/openai@^4.0.0 @ai-sdk/anthropic@^4.0.0
+```
+
+For Ollama, use `ai@^4.3.19` with `ollama-ai-provider@^1.2.0` (`ollama-ai-provider`
+only pairs with `ai` 4); [Installation](docs/installation.md#provider-packages)
+lists every pairing. `npx lousho doctor` checks Node, peers and API keys and
 prints a fix for anything missing.
 
 ## Quickstart
+
+The snippet uses top-level `await`, so the file must be an ES module (`.mts`, or `"type": "module"` in `package.json`).
 
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
@@ -74,20 +84,20 @@ agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 - **UI bindings**: `useLoushoAgent()` from `@lousho/build-ai-agent/react` (and `/vue`; `loushoAgent()` store from `/svelte`) turns the event stream into chat state, with approvals. [React](docs/react.md), [Vue](docs/vue.md), [Svelte](docs/svelte.md)
 - **AI SDK UI**: `toUIMessageStreamResponse(agent.stream(...))` renders a run with the Vercel AI SDK's `useChat`. [AI SDK UI](docs/ai-sdk-ui.md)
 - **Next.js and Fetch frameworks**: `createRouteHandler(agent)` serves the session API from an App Router, SvelteKit, Hono or Bun route. [Next.js](docs/nextjs.md)
-- **Durable execution**: `sessionId` + `checkpointStore` resume a crashed or paused run without redoing finished tools. [Durable execution](docs/durable-execution.md)
+- **Durable execution**: `createAgent({ store })` checkpoints every step, and `agent.resume()` finishes a crashed or paused run without redoing finished tools. [Durable execution](docs/durable-execution.md)
 - **Cancellation, usage and cost**: pass an `AbortSignal`; every result carries token usage and USD cost for priced models. [API overview](docs/api-overview.md#cancellation)
 - **Providers**: OpenAI, Anthropic, OpenRouter, Ollama or a mock, with `withRetry()` and `withFallback()`. [Providers](docs/providers.md)
 - **Sub-agents**: `subagents: { researcher, writer }` gives the lead one `task` tool; sub-agents run in parallel. [Sub-agents](docs/sub-agents.md)
 - **Skills and AGENTS.md**: `loadSkills()` loads instructions on demand; `projectInstructions` appends your `AGENTS.md`. [Skills](docs/skills.md), [Project instructions](docs/configuration.md#project-instructions)
 - **Agent directories**: `loadAgentDir('./my-agent')` builds an agent from `instructions.md`, `tools/` and `skills/`. [Agent directories](docs/agent-directories.md)
-- **Compaction**: `createCompactionHook()` prunes old tool results before the context window fills. [Context compaction](docs/compaction.md)
+- **Compaction**: `createAgent({ compaction })` prunes old tool results, then summarizes old turns, before the context window fills. [Context compaction](docs/compaction.md)
 - **MCP client and server**: `createAgent({ mcpServers })` (or `connectMcp()`) connects stdio and HTTP MCP servers from config; `serveMcp()` / `lousho mcp` exposes your agent. [Configuration](docs/configuration.md#connect-mcp-servers-mcpservers-connectmcp)
 - **Workspace tools**: file system and shell tools for coding agents, confined to a root, shell approval-gated. [Workspace tools](docs/workspace-tools.md)
 - **Hooks, guardrails, sandboxing**: veto tool calls, gate a patch on fail-closed checks, run tools in Docker. [Guardrails](docs/guardrails.md)
 - **Channels, flows and triggers**: `defineChannel()` / `mountChannels()` map a surface's messages to sessions and send replies and approvals back; fixed multi-step workflows; webhook, Slack and cron adapters. [Channels](docs/channels.md), [Flows](docs/flows.md), [Triggers](docs/api-overview.md#triggers)
 - **Tracing**: OpenTelemetry GenAI spans (`invoke_agent`, `chat`, `execute_tool`); content capture is opt-in. [Observability](docs/observability.md)
 - **Testing and evals**: `mockModel`, `recordReplay` cassettes, `defineEval()` trajectory assertions, `lousho eval` with `--record` / `--replay` cassettes and `--drift` trajectory diffs. [Testing](docs/testing.md), [Evals](docs/evals.md)
-- **CLI**: `init`, `doctor`, `dev`, `mcp`, `eval`, `build` and `studio`. [CLI](docs/cli.md)
+- **CLI**: `init`, `doctor`, `dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `build` and `studio`. [CLI](docs/cli.md)
 - **Editors (ACP)**: `lousho acp ./my-agent` serves your agent to Zed and other Agent Client Protocol editors, with tool calls and permission prompts. [ACP](docs/acp.md)
 - **Registry**: `lousho add <name> --registry <url-or-path>` copies a tool, skill, channel, schedule or memory slot into your agent directory from a static JSON registry, after showing its permissions. [Registry](docs/registry.md)
 - **Agent Forge**: `lousho studio` opens a visual canvas, run debugger and chat with approval cards. [Agent Forge](docs/agent-forge.md)
@@ -177,11 +187,13 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [AI SDK UI](docs/ai-sdk-ui.md) | `useChat` on a Lousho run: `toUIMessageStreamResponse()`, `fromUIMessages()`, approvals |
 | [Next.js](docs/nextjs.md) | `createRouteHandler(agent)`: the session API as a Fetch route (App Router, SvelteKit, Hono), auth, `useChat` endpoint |
 | [React](docs/react.md) | `useLoushoAgent()`: chat state from the event stream, in process or over HTTP; `reduceAgentEvents()`, `parseEventStream()` |
+| [Vue](docs/vue.md) | `useLoushoAgent()` from `@lousho/build-ai-agent/vue`: the React hook as a Vue 3 composable |
+| [Svelte](docs/svelte.md) | `loushoAgent()` from `@lousho/build-ai-agent/svelte`: the React hook as a Svelte store |
 | [Durable execution](docs/durable-execution.md) | Checkpoints, crash resume, approvals mid-batch, at-least-once tools |
 | [Sub-agents](docs/sub-agents.md) | The `subagents` option and its `task` tool, inheritance, approvals in sub-agents |
 | [Skills](docs/skills.md) | On-demand instructions: `defineSkill()`, `loadSkills()` |
 | [Agent directories](docs/agent-directories.md) | An agent as a folder: layout, mapping to `createAgent()`, security |
-| [Context compaction](docs/compaction.md) | Prune old tool results with `createCompactionHook()` |
+| [Context compaction](docs/compaction.md) | `createAgent({ compaction })`: prune old tool results, then summarize old turns |
 | [Channels](docs/channels.md) | `defineChannel()`, `mountChannels()`, `httpChannel()`, `webhookChannel()`, `slackChannel()`: surfaces mapped to sessions, replies and approvals sent back |
 | [Schedules](docs/schedules.md) | `defineSchedule()` cron schedules, `schedules/` in an agent directory, `startSchedules()` |
 | [Flows](docs/flows.md) | Fixed multi-step workflows with `FlowBuilder` and `FlowExecutor` |
@@ -191,10 +203,11 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Evals](docs/evals.md) | Trajectory evals with `defineEval()`, datasets, judges, `lousho eval` reports |
 | [Tracing and observability](docs/observability.md) | OpenTelemetry GenAI spans, attribute table, content opt-in |
 | [Deployment](docs/deployment.md) | `lousho build` targets: Node server, Docker, Cloudflare Workers (with KV checkpoints) |
+| [Registry](docs/registry.md) | `lousho add`: copy a tool, skill, channel, schedule or memory slot from a static JSON registry |
 | [Agent Forge](docs/agent-forge.md) | The visual dashboard: quickstart, first-agent walkthrough, hooks |
 | [Errors](docs/errors.md) | Every error code (`LOUSHO_*`): what it means, how to fix it, an example |
 | [API Overview](docs/api-overview.md) | The main exports, triggers, tokens and cost; `npm run docs:build` generates the full TypeDoc reference |
-| [Utilities](docs/utilities.md) | Encryption, file storage and templates |
+| [Utilities](docs/utilities.md) | Encryption, hashing and file storage |
 
 The full guides site is at [lousho.mintlify.app](https://lousho.mintlify.app).
 
@@ -229,6 +242,8 @@ Most examples run offline with a mock provider; see the
 | `lousho doctor [spec]` | Check Node, peers, API keys and a spec file; print fixes |
 | `lousho dev <spec>` | Local chat UI and `POST /chat` with hot reload |
 | `lousho chat <path>` | Terminal REPL: streamed replies, tool calls, approvals and questions |
+| `lousho acp <path>` | Serve the agent to Zed and other Agent Client Protocol editors |
+| `lousho add <name> --registry <url-or-path>` | Copy a tool, skill, channel, schedule or memory slot from a registry into an agent directory |
 | `lousho mcp <spec>` | Serve the agent as an MCP server (stdio or HTTP) |
 | `lousho eval [globs]` | Run `*.eval.ts` files; JUnit and JSON reports |
 | `lousho build --target=<t> --agent=<spec>` | Build a Node server, Docker image or Cloudflare Worker |
@@ -244,18 +259,23 @@ writes a self-contained artifact and prints the command to run or deploy it
 
 Alpha (`1.0.0-alpha`, pre-1.0): APIs can still change between releases, and
 breaking changes are listed in the [CHANGELOG](CHANGELOG.md) with migration
-notes. Known gaps include killing
-the whole process group of a timed-out guardrail command on POSIX (only the
-direct child is signalled today) and interactive, in-browser Quick Start
-snippets; planned work is in the [ticket catalogue](docs/plan/tickets.md).
+notes. Known gaps:
+
+- There is no trace viewer. Spans go to the OpenTelemetry exporter you configure.
+- Docker sandbox egress (`network: { allow }`) and the credential broker need
+  Docker Engine on Linux; Docker Desktop is refused
+  ([Workspace tools](docs/workspace-tools.md)).
+- The built-in providers do not send file (non-image) parts; a file part is
+  replaced by a text note ([Providers](docs/providers.md)).
+- The Cloudflare Worker target takes spec files only, with a limited provider
+  and tool set ([Deployment](docs/deployment.md)).
 
 ## Contributing
 
 Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) for setup and
 the checks a pull request must pass (`npm run typecheck`, `npm run lint`,
-`npm test`, `npm run test:coverage && npm run fallow`). Maintainer notes:
-[ESLint baseline follow-up](docs/eslint-baseline-followup.md).
+`npm test`, `npm run test:coverage && npm run fallow`).
 
 ## License
 
-MIT © [Build AI Agent](LICENSE)
+MIT © [Lousho Team](LICENSE)

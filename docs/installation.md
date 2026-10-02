@@ -46,7 +46,7 @@ npm install @lousho/build-ai-agent ai@^7.0.0 zod @ai-sdk/openai@^4.0.0
 ```
 
 **Ollama on `ai` 6/7 needs zod 4.** `ollama-ai-provider-v2` (the Ollama package
-for `ai` 6 and 7) declares `zod ^4` as a peer. The SDK accepts zod 4 (LOU-D29),
+for `ai` 6 and 7) declares `zod ^4` as a peer. The SDK accepts zod 4,
 so install it with zod 4, for example
 `npm install ai@^7.0.0 ollama-ai-provider-v2@^4.0.0 zod@^4.0.0`. With zod 3,
 use `ai@^4.3.19` with `ollama-ai-provider@^1.2.0` (what
@@ -78,13 +78,18 @@ try {
 
 ### Optional peers
 
-Three heavier packages are optional peers too. A project that never uses
-Docker sandboxing, MCP or the `lousho init` questions installs none of them:
+These packages are optional peers too. A project that never uses Docker
+sandboxing, MCP, OpenTelemetry tracing, the React or Vue bindings, `lousho build`
+or the `lousho init` questions installs none of them:
 
 | Package                     | Range     | Enables                                                                                       | Install                                          |
 | --------------------------- | --------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | `dockerode`                 | `^5.0.1`  | Docker sandboxing: `SubprocessSandbox` (and `lousho doctor`'s Docker ping)                    | `npm install dockerode@^5.0.1`                   |
-| `@modelcontextprotocol/sdk` | `^1.30.1` | MCP: `serveMcp()`, `lousho mcp`, and the `Client` you connect before `loadMcpTools()`         | `npm install @modelcontextprotocol/sdk@^1.30.1`  |
+| `@modelcontextprotocol/sdk` | `^1.30.1` | MCP: `createAgent({ mcpServers })` / `connectMcp()`, `serveMcp()` and `lousho mcp`            | `npm install @modelcontextprotocol/sdk@^1.30.1`  |
+| `@opentelemetry/api`        | `^1.9.1`  | OpenTelemetry tracing: `createOtelTraceExporter()` from `@lousho/build-ai-agent/otel`         | `npm install @opentelemetry/api@^1.9.1`          |
+| `react`                     | `^18`, `^19` | The React bindings (`@lousho/build-ai-agent/react`)                                      | `npm install react`                              |
+| `vue`                       | `^3`      | The Vue bindings (`@lousho/build-ai-agent/vue`)                                               | `npm install vue@^3`                             |
+| `tsup`                      | `^8.0.0`  | `lousho build`, which bundles the agent for each target                                       | `npm install --save-dev tsup@^8.0.0`             |
 | `prompts`                   | `^2.4.2`  | The interactive questions of `lousho init` (`lousho init --yes` and flags need nothing)       | `npm install prompts@^2.4.2`                     |
 
 Like the provider packages, each is loaded on first use, never at import
@@ -172,9 +177,9 @@ runs `lousho init` with the same arguments.
 ## The `lousho` CLI
 
 Installing the package also installs the `lousho` command: `init`, `doctor`,
-`dev`, `mcp`, `eval`, `build` and `studio`. See [CLI](./cli.md) for what each
-one does and its flags. Building requires `tsup`
-(`npm install --save-dev tsup`).
+`dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `build` and `studio`. See
+[CLI](./cli.md) for what each one does and its flags. Building needs `tsup`,
+an optional peer (see the table above): `npm install --save-dev tsup`.
 
 ## Troubleshooting: lousho doctor
 
@@ -186,12 +191,12 @@ not ok, the command to run or the setting to change:
 lousho doctor
 
 [ ok ] Node.js: v22.19.0 satisfies >=22.19.0
-[ ok ] Required peer ai: 4.3.19 satisfies ^4.3.19
+[ ok ] Required peer ai: 7.0.0 satisfies ^7.0.0
 [FAIL] Required peer zod: not installed
        fix: npm install zod@^4.0.0
-[ ok ] Provider package @ai-sdk/openai: 0.0.42 installed
+[ ok ] Provider package @ai-sdk/openai: 4.0.0 installed
 [warn] Provider package @ai-sdk/anthropic: not installed (optional)
-       fix: npm install @ai-sdk/anthropic@^0.0.42
+       fix: npm install @ai-sdk/anthropic@^4.0.0
 [warn] openai (OPENAI_API_KEY): not set
        fix: Set OPENAI_API_KEY in your environment, e.g. export OPENAI_API_KEY=<your key>
 [warn] Default provider for createAgent(): none configured (createAgent() needs a model, a provider instance, or an env var)

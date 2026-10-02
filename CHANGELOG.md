@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to @lousho/build-ai-agent/sdk will be documented in this file.
+All notable changes to @lousho/build-ai-agent will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AgentExecutionOptions.streaming` (LOU-D41.2): it was never read (`AgentExecutionOptions` is a legacy type no SDK API takes). Remove the property; stream a run with `agent.stream()` / `AgentExecutor.stream()`.
 
 ### Fixed
+- Documentation corrections: install commands, CLI command lists, optional peers, durable execution and compaction descriptions, the Status section, reasoning and file-part notes in the providers guide, and the `KVStore` note in the deployment guide now match the code. Ticket ids are gone from user-facing prose.
 - `lousho --help`, `-h` and `help` print the usage and exit 0 (they were "unknown command" with exit 1) (LOU-D49).
 - Install truth (LOU-U20): the README, installation, CLI, quick start and Agent Forge docs, `lousho init --help` and the message after a failed `lousho init` install now say the package is not on npm yet and point to one section, "Installing before the first release" (docs/installation.md); `npm install github:LinuxDevil/agent-sdk` is documented as not working. Stale "planned / not yet" statements about agent-directory channels, `toolCallId` in sandboxed tools and the Agent Forge Settings tab are corrected.
 
