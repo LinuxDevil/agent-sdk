@@ -21,6 +21,8 @@ import type { ToolCallOutcome } from './toolCallExecution';
 import type { UnrecordedToolCall } from './toolBatch';
 import type { RunBudget } from './budget';
 import { toolErrorResult } from './toolErrors';
+import type { Principal } from '../auth/types';
+import { readonlyPrincipal, resumedRunPrincipal } from './runPrincipal';
 import { withHostedCalls } from './hostedToolCalls';
 
 export interface AgentRunState {
@@ -69,6 +71,8 @@ export interface AgentRunState {
   fingerprint?: AgentFingerprint;
   /** LOU-W9.2: set when an unfinished checkpoint is resumed: the fingerprint it was saved with, if any. */
   resumedFrom?: { fingerprint?: AgentFingerprint };
+  /** N10b: who the run acts for (frozen): an unfinished checkpoint's, else `ExecuteOptions.principal`. */
+  principal?: Readonly<Principal>;
 }
 
 /**
@@ -154,6 +158,10 @@ export async function loadRunState(options: ExecuteOptions): Promise<AgentRunSta
 
   const initial = checkpoint ? stateFromCheckpoint(checkpoint, options) : freshState(options);
   const turn = splitPendingTurn(initial.messages);
+  // N10b: an unfinished run goes on as the caller it was saved with; a finished one starts a new run.
+  const principal = readonlyPrincipal(
+    sessionId && checkpoint && checkpoint.status !== 'finished' ? resumedRunPrincipal(checkpoint.principal, options.principal, sessionId) : options.principal
+  );
 
   return {
     ...initial,
@@ -165,6 +173,7 @@ export async function loadRunState(options: ExecuteOptions): Promise<AgentRunSta
     // LOU-W9.2: with checkpointing on, known before the first (synchronous) checkpoint write.
     ...(sessionId && checkpointStore && { fingerprint: await fingerprintOf(baseAgentOf(options.agent), options.toolRegistry, options.provider, options.hostedTools) }),
     ...(checkpoint && checkpoint.status !== 'finished' && { resumedFrom: { fingerprint: checkpoint.agentFingerprint } }),
+    ...(principal && { principal }),
   };
 }
 
@@ -236,6 +245,8 @@ export async function saveStepCheckpoint(
     ...(approvalKind !== undefined && { approvalKind }),
     ...(state.fingerprint && { agentFingerprint: state.fingerprint }),
     ...(agent.metadata?.[RUN_CONFIG_KEY] !== undefined && { runConfig: agent.metadata[RUN_CONFIG_KEY] }),
+    // N10b: so a crash resume acts for the same caller.
+    ...(options.principal && { principal: options.principal }),
   };
   const save = () => checkpointStore.save(sessionId, checkpoint);
   const saved = state.saving ? state.saving.then(save) : save();

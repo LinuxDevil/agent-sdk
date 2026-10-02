@@ -24,6 +24,7 @@ import type {
 import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
 import type { RunUsage } from '../models/usage';
 import type { AgentFingerprint } from './agentFingerprint';
+import type { Principal } from '../auth/types';
 import type { ResumeExecuteOptions } from './resume';
 import { PropagatingToolError } from './propagatingToolError';
 import { toolErrorResult } from './toolErrors';
@@ -47,6 +48,8 @@ export type InheritedRuntime = Pick<
   | 'sessionId'
   // M10c: a paused sub-agent's resume uses the top-level run's drift mode.
   | 'onAgentDrift'
+  // N10b: an in-process sub-agent acts for the same caller (a remote one is not told).
+  | 'principal'
 >;
 
 /** What the executor knows about the tool call that is running. */
@@ -63,8 +66,11 @@ export interface ToolCallScope {
   onDelegatedUsage?: (usage: RunUsage) => void;
   /** Runs a child agent (`AgentExecutor.execute`). */
   execute: (options: ExecuteOptions) => Promise<ExecutionResult>;
-  /** Set by resumeAfterApproval() when this call re-enters a paused sub-agent. */
-  resume?: { decision: ApprovalDecision; suspension: SubagentSuspension; run: ResumeRun };
+  /**
+   * Set by resumeAfterApproval() when this call re-enters a paused sub-agent;
+   * `approver` (N10b) is who decided, for the sub-agent's approved call.
+   */
+  resume?: { decision: ApprovalDecision; suspension: SubagentSuspension; run: ResumeRun; approver?: Principal };
 }
 
 /** `resumeAfterApproval()`, handed to the delegation core to resume a child. */
@@ -161,18 +167,22 @@ export function toSuspension(
  * own pending call (so a reviewer sees what actually needs approving), with
  * the chain of sub-agent names it runs inside.
  */
-function pendingForSuspension(suspension: SubagentSuspension): PendingApproval {
+function pendingForSuspension(suspension: SubagentSuspension, principal: Principal | undefined): PendingApproval {
   const child = leafPending(suspension.snapshot);
-  return { ...child, subagentPath: [suspension.agentName, ...(child.subagentPath ?? [])] };
+  const pending: PendingApproval = { ...child, subagentPath: [suspension.agentName, ...(child.subagentPath ?? [])] };
+  // N10b: the lead's principal (a remote sub-agent's pause has none of its own).
+  if (principal) pending.principal = principal;
+  else delete pending.principal;
+  return pending;
 }
 
 /** The approval record that pauses a parent run on a suspended sub-agent. */
 export function suspensionRecord(
-  run: { agent: AgentConfig; sessionId?: string },
+  run: { agent: AgentConfig; sessionId?: string; principal?: Principal },
   state: { messages: Message[]; steps: number; usage: RunUsage; queuedInput?: Message[]; fingerprint?: AgentFingerprint },
   suspension: SubagentSuspension
 ): { pending: PendingApproval; snapshot: ExecutionSnapshot } {
-  const pending = pendingForSuspension(suspension);
+  const pending = pendingForSuspension(suspension, run.principal);
   return {
     pending,
     snapshot: {
@@ -185,6 +195,7 @@ export function suspensionRecord(
       usage: structuredClone(state.usage),
       subagent: suspension,
       agentFingerprint: state.fingerprint,
+      ...(run.principal && { principal: run.principal }),
     },
   };
 }

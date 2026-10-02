@@ -13,6 +13,7 @@ import { runEventsOf } from './agentRun';
 import type { ToolDescriptor } from '../types';
 import type { HostedTool } from '../tools/hosted';
 import { SDKError } from '../utils/sdkError';
+import type { Principal } from '../auth/types';
 
 /** What a matching {@link PermissionRule} does with a tool call. */
 export type PermissionAction = 'allow' | 'deny' | 'ask';
@@ -28,6 +29,17 @@ export interface PermissionContext {
   toolName: string;
   toolCallId: string;
   sessionId?: string;
+  /** N10b: who the run acts for (docs/auth.md), frozen; absent for a run without one. */
+  principal?: Readonly<Principal>;
+}
+
+/**
+ * N10b: the second argument of `onPermissionDecision`: who the run acts for.
+ * Kept out of the entry, which is also streamed as the `permission.decision`
+ * event, so events and traces carry no caller identity.
+ */
+export interface PermissionAuditContext {
+  principal?: Readonly<Principal>;
 }
 
 /**
@@ -117,8 +129,11 @@ export interface PermissionOptions {
    * ```
    */
   permissions?: readonly PermissionRule[];
-  /** Called with an audit entry for every tool call's permission decision (LOU-X2). */
-  onPermissionDecision?: (entry: PermissionDecisionEntry) => void;
+  /**
+   * Called with an audit entry for every tool call's permission decision
+   * (LOU-X2); N10b: and, as the second argument, who the run acts for.
+   */
+  onPermissionDecision?: (entry: PermissionDecisionEntry, context: PermissionAuditContext) => void;
   /**
    * N4: named preset over `permissions` and `needsApproval`. Default 'default'.
    * A function is read at every tool call, so a mode switched mid-run applies
@@ -259,7 +274,7 @@ function matchesTool(matcher: PermissionToolMatcher, toolName: string): boolean 
 }
 
 /** The run options a permission check reads. */
-export type PermissionRuntime = Pick<ExecuteOptions, 'permissions' | 'onPermissionDecision' | 'redactContent' | 'permissionMode'>;
+export type PermissionRuntime = Pick<ExecuteOptions, 'permissions' | 'onPermissionDecision' | 'redactContent' | 'permissionMode' | 'principal'>;
 
 /** Whether the run keeps an audit log: it sets `permissions` or `onPermissionDecision`, or (N4) a mode other than `'default'`. */
 function audited(runtime: PermissionRuntime, mode: PermissionMode): boolean {
@@ -338,6 +353,6 @@ export function planModeRefusal(
 
 /** Reports `entry` to `onPermissionDecision` and, for a streaming run, as a `permission.decision` event. */
 export function reportPermission(runtime: PermissionRuntime, entry: PermissionDecisionEntry): void {
-  runtime.onPermissionDecision?.(entry);
+  runtime.onPermissionDecision?.(entry, { ...(runtime.principal && { principal: runtime.principal }) });
   runEventsOf(runtime as ExecuteOptions)?.permissionDecision(entry);
 }

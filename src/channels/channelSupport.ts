@@ -4,12 +4,15 @@
  */
 import { SDKError } from '../execution/errors';
 import type { ChannelContext, ChannelDecision, ChannelErrorContext, ChannelErrorHandler, ChannelInbound, ChannelUser } from './defineChannel';
+import type { Principal } from '../auth/types';
 
 /** The tool call an approver is asked about. */
 export interface ApproverRequest {
   toolName: string;
   input: Record<string, unknown>;
   sessionId: string;
+  /** N10b: who the paused run acts for (the turn's sender), when it has a principal. */
+  principal?: Readonly<Principal>;
 }
 
 /**
@@ -40,7 +43,9 @@ export async function mayApprove(approvers: Approvers | undefined, user: Channel
   if (approvers === undefined) return ref.starter === user.id;
   if (typeof approvers !== 'function') return approvers.includes(user.id);
   const pending = await ctx.approval(ref.id);
-  return pending ? Boolean(await approvers(user, { toolName: pending.toolName, input: pending.args, sessionId: ctx.sessionId(sessionKey) })) : false;
+  if (!pending) return false;
+  const request: ApproverRequest = { toolName: pending.toolName, input: pending.args, sessionId: ctx.sessionId(sessionKey), ...(pending.principal && { principal: pending.principal }) };
+  return Boolean(await approvers(user, request));
 }
 
 async function sha256(text: string): Promise<Uint8Array> {

@@ -10,6 +10,7 @@ import type { CheckpointUsage } from './runUsage';
 import type { AgentFingerprint } from './agentFingerprint';
 import { ConfigurationError } from './errors';
 import type { ApprovalKind } from './ApprovalGate';
+import type { Principal } from '../auth/types';
 
 /** Key of `AgentConfig.metadata` holding a dynamic run's `ctx` and model (LOU-V15): saved in approval snapshots and checkpoints. */
 export const RUN_CONFIG_KEY = 'loushoRunConfig';
@@ -110,6 +111,13 @@ export interface Checkpoint {
    * agent the same way the run started. Opaque; absent for static agents.
    */
   runConfig?: unknown;
+  /**
+   * N10b: who the run acts for (`ExecuteOptions.principal`, docs/auth.md), so a
+   * resumed unfinished run acts for the same caller. It may hold personal data
+   * from the token's claims, like the transcript. Absent for a run without
+   * one and on older checkpoints (they resume with no principal).
+   */
+  principal?: Principal;
 }
 
 /**

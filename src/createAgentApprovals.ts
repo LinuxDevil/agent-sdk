@@ -15,15 +15,31 @@ import type { InputQueue } from './execution/inputQueue';
 import { streamSessionTurn } from './session/sessionStream';
 import { AgentSession, type SessionOptions, type SessionRunner, type SessionSpawner, type SessionStreamRunner } from './session/AgentSession';
 import type { PermissionOptions } from './execution/permissions';
+import type { Principal } from './auth/types';
 
 /** N4: the mode a continued run uses: the paused session's (a getter), or undefined for the agent's. */
 type ResumeMode = PermissionOptions['permissionMode'];
+
+/**
+ * Options of `agent.approvals.resolve()` / `answer()` / `streamResolve()` /
+ * `streamAnswer()`.
+ */
+export interface ResolveApprovalOptions {
+  signal?: AbortSignal;
+  /**
+   * N10b: who decides (route auth's principal, a channel's clicking user).
+   * The approved tool sees it as `ctx.approval.by`; the run itself goes on
+   * as the principal it paused with, never as this one (docs/auth.md).
+   */
+  principal?: Principal;
+}
 
 /**
  * Decides a tool call that needs approval without pausing the run: `true`
  * runs the tool, `false` gives the model a rejection as the tool's result.
  * A string approves with that string as the note - for an `ask_question`
  * call (`request.kind === 'question'`), it is the answer (LOU-X9).
+ * `request.principal` (N10b) is who the paused run acts for.
  *
  * @example
  * ```ts
@@ -49,7 +65,7 @@ export interface AgentApprovals {
    * const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
    * ```
    */
-  resolve(decision: ApprovalDecision, options?: { signal?: AbortSignal }): Promise<ExecutionResult>;
+  resolve(decision: ApprovalDecision, options?: ResolveApprovalOptions): Promise<ExecutionResult>;
   /**
    * Answers a paused `ask_question` call (LOU-X9): the same as
    * `resolve({ id, approved: true, note: answer })`. The model gets
@@ -60,7 +76,7 @@ export interface AgentApprovals {
    * const result = await agent.approvals.answer({ id: paused.approvalId!, answer: 'Lisbon' });
    * ```
    */
-  answer(reply: { id: string; answer: string }, options?: { signal?: AbortSignal }): Promise<ExecutionResult>;
+  answer(reply: { id: string; answer: string }, options?: ResolveApprovalOptions): Promise<ExecutionResult>;
   /**
    * LOU-V14: like `resolve()`, but streams the continued run as the
    * `AgentRun` that `agent.stream()` returns (see docs/streaming.md). Its
@@ -74,22 +90,23 @@ export interface AgentApprovals {
    * }
    * ```
    */
-  streamResolve(decision: ApprovalDecision, options?: { signal?: AbortSignal }): AgentRun;
+  streamResolve(decision: ApprovalDecision, options?: ResolveApprovalOptions): AgentRun;
   /** LOU-V14: `answer()`, streamed like `streamResolve()`. */
-  streamAnswer(reply: { id: string; answer: string }, options?: { signal?: AbortSignal }): AgentRun;
+  streamAnswer(reply: { id: string; answer: string }, options?: ResolveApprovalOptions): AgentRun;
 }
 
 /**
  * resumeAfterApproval() bound to an agent's registry, provider and options;
  * `checkpointStore` is the paused session's, when its turns are checkpointed,
- * and `permissionMode` (N4) the session's mode.
+ * `permissionMode` (N4) the session's mode and `approver` (N10b) who decided.
  */
 type ResumeRun = (
   store: ApprovalStore,
   decision: ApprovalDecision,
   signal?: AbortSignal,
   checkpointStore?: CheckpointStore,
-  permissionMode?: ResumeMode
+  permissionMode?: ResumeMode,
+  approver?: Principal
 ) => Promise<ExecutionResult>;
 
 /** {@link ResumeRun}, streamed (LOU-V14); `inputQueue` is what `run.enqueue()` pushes to. */
@@ -99,7 +116,8 @@ type StreamResumeRun = (
   signal?: AbortSignal,
   checkpointStore?: CheckpointStore,
   inputQueue?: InputQueue,
-  permissionMode?: ResumeMode
+  permissionMode?: ResumeMode,
+  approver?: Principal
 ) => AgentRun;
 
 /** A session whose paused turn can be continued by `agent.approvals.resolve()`. */
@@ -189,21 +207,22 @@ export function createAgentApprovals(options: {
     };
   }
 
-  function resolve(decision: ApprovalDecision, { signal }: { signal?: AbortSignal } = {}): Promise<ExecutionResult> {
+  // N10b: `principal` is the approver of this decision only; the `approve` callback's later decisions have none.
+  function resolve(decision: ApprovalDecision, { signal, principal }: ResolveApprovalOptions = {}): Promise<ExecutionResult> {
     const session = sessions.get(decision.id);
     sessions.delete(decision.id);
     const next = async (checkpointStore?: CheckpointStore, permissionMode?: ResumeMode) =>
-      inSession(session, await settle(await resume(store, decision, signal, checkpointStore, permissionMode), signal, checkpointStore, permissionMode));
+      inSession(session, await settle(await resume(store, decision, signal, checkpointStore, permissionMode, principal), signal, checkpointStore, permissionMode));
     return session ? session.resolveWith(next) : next();
   }
 
-  function streamResolve(decision: ApprovalDecision, { signal }: { signal?: AbortSignal } = {}): AgentRun {
+  function streamResolve(decision: ApprovalDecision, { signal, principal }: ResolveApprovalOptions = {}): AgentRun {
     const session = sessions.get(decision.id);
     sessions.delete(decision.id);
-    if (!session) return streamResume(store, decision, signal);
+    if (!session) return streamResume(store, decision, signal, undefined, undefined, undefined, principal);
     return session.streamResolveWith(
       (checkpointStore, runSignal, inputs, permissionMode) =>
-        inSessionRun(session, streamResume(store, decision, runSignal, checkpointStore, inputs, permissionMode)),
+        inSessionRun(session, streamResume(store, decision, runSignal, checkpointStore, inputs, permissionMode, principal)),
       signal
     );
   }

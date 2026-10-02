@@ -17,6 +17,7 @@ import type { RunUsage } from '../models/usage';
 import { mergeDelegatedUsage } from './runUsage';
 import { runEventsOf } from './agentRun';
 import type { ResumeExecuteOptions } from './resume';
+import type { Principal } from '../auth/types';
 import {
   SubagentApprovalPause,
   suspensionRecord,
@@ -38,6 +39,8 @@ export interface ResumeContext {
   /** `AgentExecutor.execute` and `resumeAfterApproval`, for the sub-agent. */
   execute: (options: ExecuteOptions) => Promise<ExecutionResult>;
   resumeRun: ResumeRun;
+  /** N10b: who decided (`ResumeExecuteOptions.approver`), frozen. */
+  approver?: Readonly<Principal>;
 }
 
 /** Runs an approved tool call of the paused run and returns its `tool` message. */
@@ -70,7 +73,7 @@ export async function resumeSubagentCall(
     toolCallId: suspension.toolCallId,
     onDelegatedUsage: (child) => mergeDelegatedUsage(ctx.usage, child),
     execute: ctx.execute,
-    resume: { decision: ctx.decision, suspension, run: ctx.resumeRun },
+    resume: { decision: ctx.decision, suspension, run: ctx.resumeRun, ...(ctx.approver && { approver: ctx.approver }) },
   };
   try {
     return { message: await runApproved(parentCall, toolRegistry ?? ctx.toolRegistry, scope) };
