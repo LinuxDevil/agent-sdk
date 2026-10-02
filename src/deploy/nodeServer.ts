@@ -21,6 +21,7 @@ import { specToAgent } from '../spec/specToAgent';
 import type { AgentSpec } from '../spec/schema';
 import { memoryStore, type AgentStore } from '../storage/agentStore';
 import { SqliteStore } from '../storage/sqlite';
+import { SDKError } from '../execution/errors';
 
 /** Environment variable holding the bearer token; wins over a token baked in at build time. */
 const API_TOKEN_ENV = 'LOUSHY_API_TOKEN';
@@ -45,7 +46,7 @@ export function storeFromEnv(env: NodeJS.ProcessEnv = process.env): AgentStore {
   const value = env[STORE_ENV]?.trim() || 'memory';
   if (value === 'memory') return memoryStore();
   if (value.startsWith('sqlite:') && value.length > 'sqlite:'.length) return new SqliteStore(value.slice('sqlite:'.length));
-  throw new Error(`${STORE_ENV} must be 'memory' or 'sqlite:<path>' (got '${value}')`);
+  throw new SDKError(`${STORE_ENV} must be 'memory' or 'sqlite:<path>' (got '${value}')`, 'LOUSHY_DEPLOY_FAILED');
 }
 
 /** Builds the spec's agent over the store from the environment and connects its MCP servers. */

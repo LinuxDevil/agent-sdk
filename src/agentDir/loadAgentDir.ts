@@ -22,6 +22,7 @@ import { loadSchedules } from './loadSchedules';
 import { loadTools, type LoadedTool } from './loadTools';
 import { readConfig, type AgentDirConfig } from './readConfig';
 import { delegateTool, listSubagentDirs, requireDescription, type LoadedSubagent } from './subagents';
+import { SDKError } from '../execution/errors';
 
 export type { AgentDirConfig } from './readConfig';
 
@@ -84,7 +85,7 @@ async function readInstructions(dir: string): Promise<{ file: string; text: stri
   if (!(await isFile(file))) return undefined;
   const text = (await readText(file)).trim();
   if (text === '') {
-    throw new Error(`loadAgentDir: ${file} is empty. Write the agent's system prompt in it.`);
+    throw new SDKError(`loadAgentDir: ${file} is empty. Write the agent's system prompt in it.`, 'LOUSHY_AGENT_DIR_INVALID');
   }
   return { file, text };
 }
@@ -99,16 +100,18 @@ function chooseInstructions(
   const override = overrides.instructions ?? overrides.prompt;
   if (override !== undefined) return override;
   if (fromFile && config.instructions !== undefined) {
-    throw new Error(
+    throw new SDKError(
       `loadAgentDir: ${fromFile.file}: instructions are given twice - here and as 'instructions' in the config file. ` +
-        'Keep one of them.'
+        'Keep one of them.',
+      'LOUSHY_AGENT_DIR_INVALID'
     );
   }
   const text = fromFile?.text ?? config.instructions;
   if (text === undefined) {
-    throw new Error(
+    throw new SDKError(
       `loadAgentDir: ${dir} has no instructions. Create ${path.join(dir, 'instructions.md')} with the ` +
-        "agent's system prompt, or set 'instructions' in agent.ts / agent.json / agent.yaml."
+        "agent's system prompt, or set 'instructions' in agent.ts / agent.json / agent.yaml.",
+      'LOUSHY_AGENT_DIR_INVALID'
     );
   }
   return text;
@@ -163,7 +166,7 @@ async function resolveWith(
 ): Promise<ResolvedAgentDir> {
   const dir = path.resolve(rawDir);
   if (!(await isDirectory(dir))) {
-    throw new Error(`loadAgentDir: '${dir}' is not a directory. Pass the path of an agent directory.`);
+    throw new SDKError(`loadAgentDir: '${dir}' is not a directory. Pass the path of an agent directory.`, 'LOUSHY_AGENT_DIR_INVALID');
   }
   const { file: configFile, config } = await readConfig(dir);
   const fromFile = await readInstructions(dir);

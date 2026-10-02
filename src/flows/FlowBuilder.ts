@@ -1,15 +1,16 @@
 import { newId } from '../utils/id';
 import { EditorStep, AgentFlow, FlowInputVariable } from '../types';
+import { SDKError } from '../execution/errors';
 
 /** Throw on the first input variable with a missing or duplicate name. */
 function assertUniqueInputNames(inputs: FlowInputVariable[]): void {
   const names = new Set<string>();
   for (const input of inputs) {
     if (!input.name) {
-      throw new Error('Input variable name is required');
+      throw new SDKError('Input variable name is required', 'LOUSHY_FLOW_INVALID');
     }
     if (names.has(input.name)) {
-      throw new Error(`Duplicate input variable name: ${input.name}`);
+      throw new SDKError(`Duplicate input variable name: ${input.name}`, 'LOUSHY_FLOW_INVALID');
     }
     names.add(input.name);
   }
@@ -122,10 +123,10 @@ export class FlowBuilder {
    */
   private validate(): void {
     if (!this.flow.code) {
-      throw new Error('Flow code is required');
+      throw new SDKError('Flow code is required', 'LOUSHY_FLOW_INVALID');
     }
     if (!this.flow.name) {
-      throw new Error('Flow name is required');
+      throw new SDKError('Flow name is required', 'LOUSHY_FLOW_INVALID');
     }
 
     // Validate input variables

@@ -5006,9 +5006,9 @@ try {
 ```
 
 `ERROR_CODES` (exported) maps every code to its hint. A test keeps it, the codes
-used in the source and the sections below in sync. Errors that are not on this
-page yet (some runtime errors still throw a plain `Error`) will get a code in a
-later release.
+used in the source and the sections below in sync. A second test fails when new
+SDK code throws a plain `Error` instead of an `SDKError`; the few plain ones left
+are internal and listed in `src/utils/plainErrors.test.ts` with the reason for each.
 
 ## Configuration
 
@@ -5216,6 +5216,18 @@ input it was given.
 `github`, `jira`, `slack`, `ask_question`) throw an `SDKError` with this code for
 a failed call; their message is the tool's result, so it carries no appended
 `[code] hint (docs)` line.
+
+### LOUSHY_TOOL_ARGS_INVALID
+
+**Means:** the model called a tool with arguments that do not match its input
+schema (a `ToolArgumentsValidationError`). Inside a run the model gets the
+issues as a tool result and can retry, so a run seldom ends on it.
+
+**Fix:** if you called the tool yourself, fix the arguments named in the message;
+if the model keeps getting them wrong, make the field `.describe()`
+text clearer. `error.issues` lists each path and problem. See [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md).
+
+**Example:** the model sends `{ to: 42 }` to a tool whose `to` is a string.
 
 ## Approvals and sessions
 
@@ -5498,6 +5510,113 @@ than 25.0.5, which forwards DNS from internal networks.
 `network: 'none'`. See [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md#sandboxed-shell-sandboxshell).
 
 **Example:** `new SubprocessSandbox({ network: { allow: ['api.github.com'] }, broker })` with Docker Desktop.
+
+## Agent directories, skills and flows
+
+### LOUSHY_AGENT_DIR_INVALID
+
+**Means:** `loadAgentDir()` (or `loushy dev`, `loushy build`, which use it) could
+not load a directory: it is missing or unreadable, a file is empty, a `tools/`
+file has no usable export, a config file does not parse, or a sub-agent folder is
+malformed. The message names the file.
+
+**Fix:** correct the file the message names. See [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md).
+
+**Example:** `loadAgentDir('./agents/support')` where `instructions.md` is empty.
+
+### LOUSHY_SKILL_INVALID
+
+**Means:** a skill is malformed (`defineSkill()`, a `skills/` folder) or
+`withSkills()` was given duplicate names, or a skill name that collides with the
+`load_skill` tool.
+
+**Fix:** give each skill a unique name, a description and content; rename a tool called
+`load_skill`. See [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md).
+
+**Example:** `defineSkill({ name: 'x', description: '', content: '...' })`.
+
+### LOUSHY_FLOW_INVALID
+
+**Means:** a flow definition is wrong: a missing or duplicate input name, a
+missing flow name or code, or a node of an unknown type.
+
+**Fix:** fix the part of the flow the message names. See [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md).
+
+**Example:** two `.input('city')` calls on one `FlowBuilder`.
+
+## Storage, deployment and integrations
+
+### LOUSHY_STORAGE_FAILED
+
+**Means:** storage failed: a SQLite database could not be opened (the `cause`
+has the driver's error), was used after `close()`, has a newer schema than this
+SDK knows, or `node:sqlite` is missing; or a file exceeded the storage size limit.
+
+**Fix:** check the path and permissions, use Node >= 22.5 for `SqliteStore` (or a
+file-based store), and create a new store after closing one.
+
+**Example:** `new SqliteStore('/read-only/agent.db')`.
+
+### LOUSHY_TRIGGER_INVALID
+
+**Means:** a trigger adapter got invalid options: a cron adapter without exactly
+one of `intervalMs` / `cron`, a webhook `auth` block with an empty secret or an
+unknown type, or a Slack trigger that cannot verify requests.
+
+**Fix:** use the example in the message. See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) and [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md).
+
+**Example:** `webhookTrigger({ auth: { type: 'hmac', secret: '' } })`.
+
+### LOUSHY_CHANNEL_REQUEST_FAILED
+
+**Means:** a call to a chat platform's API (Slack, Discord) failed; the message
+names the call and the HTTP status or the platform's error.
+
+**Fix:** check the bot token and its permissions, and the platform status. See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md).
+
+**Example:** Slack `chat.postMessage` answering `channel_not_found`.
+
+### LOUSHY_DEPLOY_FAILED
+
+**Means:** `loushy build` / `loushy dev` / the node-server runtime could not
+bundle or start the agent: a missing `--agent`, an agent path that is not found
+or not an agent directory, a bad `LOUSHY_STORE` value, missing runtime sources, or a tool the
+Cloudflare Worker target does not have.
+
+**Fix:** follow the message. See [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md).
+
+**Example:** `loushy build --target node-server` without `--agent`.
+
+## Tests and evals
+
+### LOUSHY_EVALS_INVALID
+
+**Means:** an eval helper was used wrongly: `defineEval()` outside vitest,
+`t.judge()` before `t.send()` or without a judge, or `llmJudge()` outside the
+judge runner.
+
+**Fix:** follow the message. See [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md).
+
+**Example:** calling `t.judge('polite')` before `t.send('hi')`.
+
+### LOUSHY_TEST_FAILED
+
+**Means:** a check a test helper makes did not hold: an eval did not pass, or a
+`mockModel()` script still had unused turns at the end.
+
+**Fix:** read the message; fix the agent or remove the extra scripted turns. See [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md).
+
+**Example:** `mockModel([...three turns])` where the agent stopped after two.
+
+### LOUSHY_CASSETTE_INVALID
+
+**Means:** a record/replay cassette is missing, is not valid JSON or does not
+match the recorded request. The message names the file.
+
+**Fix:** record it again (`loushy eval --record <file>`, or `recordReplay()` with
+`mode: 'record'`). See [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md).
+
+**Example:** `loushy eval --replay` for an eval that was never recorded.
 
 ## General
 
@@ -8492,8 +8611,9 @@ retry or adapt.
 
 A sub-agent does **not** inherit the lead's `output`: each agent's output is its
 own, and a sub-agent without `output` returns text as before. A
-[`remoteAgent()`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md#remote-sub-agents) returns its text only: the
-session client's turn summary does not carry the remote's `object`.
+[`remoteAgent()`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md#remote-sub-agents) whose deployed agent has an
+`output` schema returns the remote object the same way (JSON, then its footer),
+read from the `object` of the remote stream's `run.done` event.
 
 ```ts
 import { z } from 'zod';
@@ -8850,8 +8970,9 @@ const lead = createAgent({
 Each task opens a new session on the remote agent (`POST <url>/chat` with
 `{ sessionId, input }`, read as the SSE event stream, see
 [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#http-api)), sends the task prompt and returns the
-remote agent's final text, followed by a footer naming the session and the
-`taskId`. A `task` call that resumes that `taskId` posts to the same remote
+remote agent's final text (its object as JSON when the deployed agent has an
+`output` schema, see [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)), followed by
+a footer naming the session and the `taskId`. A `task` call that resumes that `taskId` posts to the same remote
 session, so the remote agent continues with its own history (keep it in a
 store on the remote side); a remote task cannot be forked. The remote
 agent sees only that prompt, and runs with its own model, tools and limits, so
@@ -8863,11 +8984,43 @@ lead run's abort signal aborts the request. Options: `url`, `auth`, `name`,
 Failures (the agent is unreachable, a 401 or other non-2xx answer, a malformed
 stream, or a remote run that ends in an error) reach the lead as the
 structured tool error with the code `LOUSHY_REMOTE_REQUEST_FAILED` (`LOUSHY_REMOTE_UNAUTHORIZED` for a 401); the token is
-never part of an error or an event. If the remote run pauses for an approval,
-the task fails with `LOUSHY_SESSION_AWAITING_APPROVAL`, naming the remote
-session and approval id: approvals are not proxied to the lead yet, so decide
-it on the remote agent (the lead can then continue the task by its `taskId`)
-or leave tools that need approval off it.
+never part of an error or an event.
+
+### Remote approvals
+
+If the remote run pauses for an approval, the lead run pauses on it exactly as
+for a local sub-agent: `result.finishReason` is `'awaiting-approval'`, and the
+pending approval in `agent.approvals.list()` (and in channel buttons, the dev
+chat and ACP permission requests) has the remote tool's name and input, with
+`subagentPath: ['researcher']`. A remote `ask_question` call arrives as a
+question (`kind: 'question'`) that `agent.approvals.answer()` answers.
+Deciding it on the lead (`resolve`, `streamResolve`, `answer`) posts the
+decision to the remote agent's approvals route
+(`POST <url>/chat/<session>/approvals/<id>`), reads the continuation, and its
+final answer becomes the `task` result; a continuation that pauses again pauses
+the lead again.
+
+```ts
+import type { SimpleAgent } from '@loushy/build-ai-agent';
+declare const lead: SimpleAgent; // the lead agent above
+
+const paused = await lead.send('Deploy the docs site');
+if (paused.finishReason === 'awaiting-approval') {
+  const [pending] = await lead.approvals.list(); // e.g. { toolName: 'deploy', args: {...}, subagentPath: ['researcher'] }
+  const result = await lead.approvals.resolve({ id: pending.id, approved: true });
+  console.log(result.text);
+}
+```
+
+The lead's approval snapshot keeps only the remote session id, the remote
+approval id, the `taskId` and the sub-agent's name, so a fresh lead process on
+the same store can decide it; the bearer token is never stored (it is read from
+the `remoteAgent()` options again). A failure while deciding (a 401, any other
+non-2xx answer such as the remote's 404 for an approval no longer pending, a
+network error) is the structured tool error of that `task` call with the codes
+above, and the lead run continues. Only a run without an approval store (a bare
+`AgentExecutor`) still fails the task with `LOUSHY_SESSION_AWAITING_APPROVAL`,
+naming the remote session and approval id to decide on the remote agent.
 
 ## Depth
 

@@ -41,6 +41,7 @@ import { pathToFileURL } from 'node:url';
 import { CloudflareWorkerAdapter, findNodeBuiltinReferences } from './cloudflare';
 import { CHECKPOINT_KV_BINDING } from '../checkpointBinding';
 import type { Checkpoint } from '../../execution/checkpoint';
+import { withBuildLock } from '../buildLock.testkit';
 
 function writeSpec(dir: string, spec: Record<string, unknown>): string {
   const specPath = path.join(dir, 'agent.json');
@@ -82,7 +83,7 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-cf-checkpoint-'));
     outDir = path.join(dir, 'out');
     await CloudflareWorkerAdapter.scaffold(writeSpec(dir, SPEC), outDir);
-    await CloudflareWorkerAdapter.build(outDir);
+    await withBuildLock(() => CloudflareWorkerAdapter.build(outDir));
 
     const bundlePath = path.join(outDir, 'dist', 'worker.js');
     // Same LOU-I3/LOU-K3 bar this whole adapter is held to: the checkpoint

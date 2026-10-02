@@ -12,6 +12,7 @@ import { HookRegistry, type AgentHook } from '../execution/hooks';
 import type { Message } from '../providers/llm';
 import { textOf } from '../providers/content';
 import type { MemoryItem, MemoryScopeContext, MemorySlot } from './defineMemory';
+import { SDKError } from '../execution/errors';
 
 /** A slot bound to a run's scope key. */
 type BoundSlot = readonly [slot: MemorySlot, key: string];
@@ -119,14 +120,14 @@ export function agentMemory(slots: readonly MemorySlot[] | undefined): AgentMemo
   if (!slots || slots.length === 0) return undefined;
   const names = new Set<string>();
   for (const { name } of slots) {
-    if (names.has(name)) throw new Error(`createAgent: two memory slots are named '${name}'. Rename one.`);
+    if (names.has(name)) throw new SDKError(`createAgent: two memory slots are named '${name}'. Rename one.`, 'LOUSHY_MEMORY_INVALID');
     names.add(name);
   }
   return {
     addTools(toolsConfig) {
       for (const tool of slots.flatMap(toolNames)) {
         if (toolsConfig[tool]) {
-          throw new Error(`createAgent: a tool named '${tool}' is already registered, but a memory slot adds one. Rename one.`);
+          throw new SDKError(`createAgent: a tool named '${tool}' is already registered, but a memory slot adds one. Rename one.`, 'LOUSHY_MEMORY_INVALID');
         }
         toolsConfig[tool] = { tool };
       }

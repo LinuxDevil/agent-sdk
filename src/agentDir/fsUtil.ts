@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { SDKError } from '../execution/errors';
 
 /** Names directly inside `dir` that satisfy `keep`, sorted; empty when `dir` does not exist. */
 export async function listSorted(
@@ -10,7 +11,7 @@ export async function listSorted(
     entries = await fs.readdir(dir, { withFileTypes: true });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
-    throw new Error(`loadAgentDir: cannot read directory '${dir}' (${(error as Error).message}).`);
+    throw new SDKError(`loadAgentDir: cannot read directory '${dir}' (${(error as Error).message}).`, 'LOUSHY_AGENT_DIR_INVALID');
   }
   return entries
     .filter((e) => keep({ name: e.name, isFile: e.isFile(), isDirectory: e.isDirectory() }))
@@ -39,6 +40,6 @@ export async function readText(file: string): Promise<string> {
   try {
     return await fs.readFile(file, 'utf8');
   } catch (error) {
-    throw new Error(`loadAgentDir: cannot read ${file} (${(error as Error).message}).`);
+    throw new SDKError(`loadAgentDir: cannot read ${file} (${(error as Error).message}).`, 'LOUSHY_AGENT_DIR_INVALID');
   }
 }

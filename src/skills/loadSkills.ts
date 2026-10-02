@@ -2,6 +2,7 @@ import { promises as fs, type Dirent } from 'node:fs';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { defineSkill, type Skill } from './defineSkill';
+import { SDKError } from '../execution/errors';
 
 const FRONTMATTER = /^﻿?---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
 
@@ -78,9 +79,10 @@ async function listSources(dir: string): Promise<SkillSource[]> {
   try {
     entries = await fs.readdir(dir, { withFileTypes: true });
   } catch (error) {
-    throw new Error(
+    throw new SDKError(
       `loadSkills: cannot read skills directory '${dir}' (${(error as Error).message}). ` +
-        `Check the path, or create it with a skill inside, e.g. ${path.join(dir, 'my-skill', 'SKILL.md')}.`
+        `Check the path, or create it with a skill inside, e.g. ${path.join(dir, 'my-skill', 'SKILL.md')}.`,
+      'LOUSHY_SKILL_INVALID'
     );
   }
   const sources = await Promise.all(entries.map((entry) => sourceOf(dir, entry)));
@@ -114,9 +116,10 @@ export async function loadSkills(dir: string): Promise<Skill[]> {
     const skill = await readSkill(source);
     const earlier = byName.get(skill.name);
     if (earlier) {
-      throw new Error(
+      throw new SDKError(
         `loadSkills: duplicate skill name '${skill.name}' in ${earlier.file} and ${source.file}. ` +
-          `Rename one file/folder or set a different 'name' in its frontmatter.`
+          `Rename one file/folder or set a different 'name' in its frontmatter.`,
+        'LOUSHY_SKILL_INVALID'
       );
     }
     byName.set(skill.name, { skill, file: source.file });

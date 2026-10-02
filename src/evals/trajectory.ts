@@ -15,6 +15,7 @@ import type { AssertionKind, AssertionResult, EvalResult, EvalToolCall } from '.
 import { gateFailures } from './evalResult';
 import { describeCalled, diffArgs, isSubsequence, parseToolCalls } from './toolMatch';
 import type { EvalTarget, RemoteExecutionResult } from './remoteTarget';
+import { SDKError } from '../execution/errors';
 
 /** The judge provider a trajectory eval grades with, set via `defineEval({ judge })`. */
 export interface EvalJudgeConfig {
@@ -209,8 +210,8 @@ class TrajectoryContext implements EvalTestContext {
   }
 
   async judge(rubric: string): Promise<number> {
-    if (!this.judgeConfig) throw new Error(NO_JUDGE_MESSAGE);
-    if (!this.result) throw new Error('t.judge() grades the latest reply - call t.send() first.');
+    if (!this.judgeConfig) throw new SDKError(NO_JUDGE_MESSAGE, 'LOUSHY_EVALS_INVALID');
+    if (!this.result) throw new SDKError('t.judge() grades the latest reply - call t.send() first.', 'LOUSHY_EVALS_INVALID', { appendHelp: false });
     const grade = llmJudge({ ...this.judgeConfig, rubric, allowOutsideJudgeRunner: true });
     return grade(this.result);
   }

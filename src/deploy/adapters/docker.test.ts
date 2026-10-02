@@ -20,6 +20,7 @@ import Docker from 'dockerode';
 import { DockerAdapter, DOCKERFILE } from './docker';
 import { NodeServerAdapter } from './node-server';
 import { getAdapter, registerBuiltInAdapters } from '../index';
+import { withBuildLock } from '../buildLock.testkit';
 
 let dockerAvailable = false;
 try {
@@ -105,7 +106,7 @@ describe('DockerAdapter', () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-docker-int-'));
       const outDir = path.join(dir, 'out');
       await DockerAdapter.scaffold(writeSpec(dir), outDir);
-      await DockerAdapter.build(outDir);
+      await withBuildLock(() => DockerAdapter.build(outDir));
 
       const tag = `loushy-agent-test-${Date.now()}`;
       execFileSync('docker', ['build', '-t', tag, '.'], { cwd: outDir, stdio: 'ignore' });

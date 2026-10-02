@@ -16,6 +16,7 @@ import {
   type ChannelRequest,
   type ChannelUser,
 } from './defineChannel';
+import { SDKError } from '../execution/errors';
 
 /** Options of {@link slackChannel}. */
 export interface SlackChannelOptions {
@@ -145,14 +146,14 @@ export function slackChannel(options: SlackChannelOptions): Channel<SlackChannel
       body: JSON.stringify({ ...(thread as SlackThread), ...message }),
     });
     const body = (await res.json()) as { ok?: boolean; error?: string };
-    if (!body.ok) throw new Error(`slackChannel: chat.postMessage failed: ${body.error ?? res.status}`);
+    if (!body.ok) throw new SDKError(`slackChannel: chat.postMessage failed: ${body.error ?? res.status}`, 'LOUSHY_CHANNEL_REQUEST_FAILED');
   }
 
   /** Answers a click through its `response_url` (an ephemeral note, or the clicked message replaced); a failure goes to `onError`. */
   async function respondTo(url: string | undefined, body: Record<string, unknown>): Promise<void> {
     try {
       const res = url ? await doFetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }) : undefined;
-      if (res && !res.ok) throw new Error(`slackChannel: response_url failed: ${res.status}`);
+      if (res && !res.ok) throw new SDKError(`slackChannel: response_url failed: ${res.status}`, 'LOUSHY_CHANNEL_REQUEST_FAILED');
     } catch (error) {
       await reportChannelError(options.onError, error, { channel: name, stage: 'reply' });
     }

@@ -281,8 +281,9 @@ const lead = createAgent({
 Each task opens a new session on the remote agent (`POST <url>/chat` with
 `{ sessionId, input }`, read as the SSE event stream, see
 [Deployment](./deployment.md#http-api)), sends the task prompt and returns the
-remote agent's final text, followed by a footer naming the session and the
-`taskId`. A `task` call that resumes that `taskId` posts to the same remote
+remote agent's final text (its object as JSON when the deployed agent has an
+`output` schema, see [Structured output](./structured-output.md)), followed by
+a footer naming the session and the `taskId`. A `task` call that resumes that `taskId` posts to the same remote
 session, so the remote agent continues with its own history (keep it in a
 store on the remote side); a remote task cannot be forked. The remote
 agent sees only that prompt, and runs with its own model, tools and limits, so
@@ -294,11 +295,43 @@ lead run's abort signal aborts the request. Options: `url`, `auth`, `name`,
 Failures (the agent is unreachable, a 401 or other non-2xx answer, a malformed
 stream, or a remote run that ends in an error) reach the lead as the
 structured tool error with the code `LOUSHY_REMOTE_REQUEST_FAILED` (`LOUSHY_REMOTE_UNAUTHORIZED` for a 401); the token is
-never part of an error or an event. If the remote run pauses for an approval,
-the task fails with `LOUSHY_SESSION_AWAITING_APPROVAL`, naming the remote
-session and approval id: approvals are not proxied to the lead yet, so decide
-it on the remote agent (the lead can then continue the task by its `taskId`)
-or leave tools that need approval off it.
+never part of an error or an event.
+
+### Remote approvals
+
+If the remote run pauses for an approval, the lead run pauses on it exactly as
+for a local sub-agent: `result.finishReason` is `'awaiting-approval'`, and the
+pending approval in `agent.approvals.list()` (and in channel buttons, the dev
+chat and ACP permission requests) has the remote tool's name and input, with
+`subagentPath: ['researcher']`. A remote `ask_question` call arrives as a
+question (`kind: 'question'`) that `agent.approvals.answer()` answers.
+Deciding it on the lead (`resolve`, `streamResolve`, `answer`) posts the
+decision to the remote agent's approvals route
+(`POST <url>/chat/<session>/approvals/<id>`), reads the continuation, and its
+final answer becomes the `task` result; a continuation that pauses again pauses
+the lead again.
+
+```ts
+import type { SimpleAgent } from '@loushy/build-ai-agent';
+declare const lead: SimpleAgent; // the lead agent above
+
+const paused = await lead.send('Deploy the docs site');
+if (paused.finishReason === 'awaiting-approval') {
+  const [pending] = await lead.approvals.list(); // e.g. { toolName: 'deploy', args: {...}, subagentPath: ['researcher'] }
+  const result = await lead.approvals.resolve({ id: pending.id, approved: true });
+  console.log(result.text);
+}
+```
+
+The lead's approval snapshot keeps only the remote session id, the remote
+approval id, the `taskId` and the sub-agent's name, so a fresh lead process on
+the same store can decide it; the bearer token is never stored (it is read from
+the `remoteAgent()` options again). A failure while deciding (a 401, any other
+non-2xx answer such as the remote's 404 for an approval no longer pending, a
+network error) is the structured tool error of that `task` call with the codes
+above, and the lead run continues. Only a run without an approval store (a bare
+`AgentExecutor`) still fails the task with `LOUSHY_SESSION_AWAITING_APPROVAL`,
+naming the remote session and approval id to decide on the remote agent.
 
 ## Depth
 

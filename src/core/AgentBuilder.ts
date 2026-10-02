@@ -2,6 +2,7 @@ import { AgentConfig, AgentType, ToolConfiguration, AgentFlow } from '../types';
 import { validateAgentConfig, validateAgentTools } from '../agent-types';
 import { newId } from '../utils/id';
 import type { DefinedTool } from '../tools/defineTool';
+import { SDKError } from '../execution/errors';
 
 /**
  * Fluent API for building agents
@@ -57,9 +58,10 @@ export class AgentBuilder {
     }
     if (typeof keyOrTool === 'string') {
       if (!config) {
-        throw new Error(
+        throw new SDKError(
           `AgentBuilder.addTool('${keyOrTool}'): a configuration is required. ` +
-            `Example: addTool('${keyOrTool}', { tool: '${keyOrTool}' }), or pass a defineTool() result.`
+            `Example: addTool('${keyOrTool}', { tool: '${keyOrTool}' }), or pass a defineTool() result.`,
+          'LOUSHY_CONFIG_INVALID'
         );
       }
       this.config.tools[keyOrTool] = config;
@@ -173,13 +175,13 @@ export class AgentBuilder {
   private validate(): void {
     const validation = validateAgentConfig(this.config);
     if (!validation.valid) {
-      throw new Error(`Agent configuration validation failed: ${validation.errors.join(', ')}`);
+      throw new SDKError(`Agent configuration validation failed: ${validation.errors.join(', ')}`, 'LOUSHY_VALIDATION_FAILED');
     }
 
     if (this.config.tools) {
       const toolsValidation = validateAgentTools(this.config.tools);
       if (!toolsValidation.valid) {
-        throw new Error(`Agent tools validation failed: ${toolsValidation.errors.join(', ')}`);
+        throw new SDKError(`Agent tools validation failed: ${toolsValidation.errors.join(', ')}`, 'LOUSHY_VALIDATION_FAILED');
       }
     }
   }

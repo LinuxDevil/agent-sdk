@@ -22,6 +22,8 @@ import { isRemoteSubagent } from './remoteAgent';
 import { anyError } from '../utils/zodCompat';
 import { BackgroundTasks, subagentOptionsOf, withSubagentOptions, type SubagentOptions } from './backgroundTasks';
 import { busy, taskNotFound, TaskSessions, type TaskMode, type TaskRecord } from './taskSessions';
+import { SDKError } from '../execution/errors';
+import { toolFailure } from '../tools/built-in/toolFailure';
 
 /** Name of the tool the lead model delegates with. */
 const TASK_TOOL = 'task';
@@ -57,9 +59,10 @@ function registrationOf(agent: unknown, name: string, caller: string): ResolvedS
   if (isRemoteSubagent(agent)) return { remote: agent, description: agent.description };
   const registration = typeof agent === 'object' && agent !== null ? registeredSubagents.get(agent) : undefined;
   if (!registration) {
-    throw new Error(
+    throw new SDKError(
       `${caller}: sub-agent '${name}' is not an agent created with createAgent(). ` +
-        `Example: subagents: { ${name}: createAgent({ instructions, description, provider }) }`
+        `Example: subagents: { ${name}: createAgent({ instructions, description, provider }) }`,
+      'LOUSHY_CONFIG_INVALID'
     );
   }
   return registration;
@@ -73,9 +76,10 @@ export function assertMaxSubagentDepth(value: unknown, caller: string): void {
   if (value === undefined || (typeof value === 'number' && Number.isInteger(value) && value >= 0)) {
     return;
   }
-  throw new Error(
+  throw new SDKError(
     `${caller}: 'maxSubagentDepth' must be a whole number >= 0, got ${String(value)}. ` +
-      'Use 1 (the default) to let only the lead agent delegate, 2 to let its sub-agents delegate too.'
+      'Use 1 (the default) to let only the lead agent delegate, 2 to let its sub-agents delegate too.',
+    'LOUSHY_CONFIG_INVALID'
   );
 }
 
@@ -89,9 +93,10 @@ export function assertSubagents(subagents: Subagents | undefined, caller: string
   }
   for (const [name, agent] of Object.entries(subagents)) {
     if (!registrationOf(agent, name, caller).description?.trim()) {
-      throw new Error(
+      throw new SDKError(
         `${caller}: sub-agent '${name}' has no description. The lead model picks a sub-agent by its description - ` +
-          `add one: createAgent({ ..., description: 'Finds and summarizes sources' }).`
+          `add one: createAgent({ ..., description: 'Finds and summarizes sources' }).`,
+        'LOUSHY_CONFIG_INVALID'
       );
     }
   }
@@ -101,10 +106,10 @@ function assertSummaries(summaries: readonly SubagentSummary[]): void {
   const seen = new Set<string>();
   for (const { name, description } of summaries) {
     if (!name || seen.has(name)) {
-      throw new Error(`subagents: catalog list() returned ${name ? `the name '${name}' twice` : 'an empty name'}. Names must be unique and non-empty.`);
+      throw new SDKError(`subagents: catalog list() returned ${name ? `the name '${name}' twice` : 'an empty name'}. Names must be unique and non-empty.`, 'LOUSHY_CONFIG_INVALID');
     }
     if (!description?.trim()) {
-      throw new Error(`subagents: catalog list() returned sub-agent '${name}' without a description. Add one so the lead model can pick it.`);
+      throw new SDKError(`subagents: catalog list() returned sub-agent '${name}' without a description. Add one so the lead model can pick it.`, 'LOUSHY_CONFIG_INVALID');
     }
     seen.add(name);
   }
@@ -143,7 +148,7 @@ async function resolveSubagent(subagents: Subagents, name: string, names: readon
       ? await subagents.resolve(name)
       : subagents[name];
   if (!agent) {
-    throw new Error(`Unknown sub-agent '${name}'. Valid sub-agents: ${names.join(', ')}.`);
+    throw toolFailure(`Unknown sub-agent '${name}'. Valid sub-agents: ${names.join(', ')}.`);
   }
   return registrationOf(agent, name, 'task');
 }
@@ -179,7 +184,7 @@ function failureReason(name: string, result: ExecutionResult, maxSteps: number):
  */
 function taskResult(name: string, result: ExecutionResult, maxSteps: number, taskId: string): string {
   if (result.finishReason !== 'stop' && result.finishReason !== 'length') {
-    throw new Error(failureReason(name, result, maxSteps));
+    throw toolFailure(failureReason(name, result, maxSteps));
   }
   const footer = `[sub-agent '${name}': ${result.steps} step(s), finish reason '${result.finishReason}', taskId '${taskId}']`;
   const body = result.object === undefined ? result.text : JSON.stringify(result.object);
@@ -219,7 +224,7 @@ async function runTask(registered: RegisteredSubagent['spec'], args: TaskArgs, t
     // A paused child: on resume this call is re-entered with the taskId it saves under.
     if (error instanceof SubagentApprovalPause) error.resumeArgs = { taskId: task.taskId };
     if (isPropagatingToolError(error)) throw error;
-    throw new Error(`Sub-agent '${args.agent}' failed: ${(error as Error | undefined)?.message ?? String(error)}`);
+    throw toolFailure(`Sub-agent '${args.agent}' failed: ${(error as Error | undefined)?.message ?? String(error)}`);
   }
   const messages = transcriptOf(result);
   if (messages) await task.save({ messages });
@@ -236,12 +241,22 @@ function withAbortSignal(toolOptions: ToolOptions, abortSignal: AbortSignal): { 
 /**
  * A deployed sub-agent's task: its final text, or a thrown coded error (never wrapped, so the code stays visible).
  * A resumed task continues in its remote session (LOU-Y7.2), saved up front so a task whose remote run paused for
- * approval can be continued once that approval was decided on the remote agent.
+ * approval can be continued. LOU-Y7.3: with an approval store, a remote pause pauses the lead; re-entered on resume,
+ * the call decides the remote approval its suspension recorded (remote session id, approval id) with the lead's decision.
  */
 async function runRemoteTask(remote: RemoteSubagent, args: TaskArgs, toolOptions: ToolOptions, task: ChildTask): Promise<string> {
-  const sessionId = task.remoteSessionId ?? newId('task');
+  const scope = toolCallScopeOf(toolOptions);
+  const paused = scope?.resume && { snapshot: scope.resume.suspension.snapshot, decision: scope.resume.decision };
+  const sessionId = paused?.snapshot.sessionId ?? task.remoteSessionId ?? newId('task');
   await task.save({ messages: [], remoteSessionId: sessionId });
-  return remote.run(args.prompt, { name: args.agent, signal: toolOptions?.abortSignal, sessionId, taskId: task.taskId });
+  const decision = paused && { approvalId: paused.snapshot.pendingToolCall.id, approved: paused.decision.approved, note: paused.decision.note };
+  const pausable = scope?.runtime.approvalStore !== undefined;
+  try {
+    return await remote.run(args.prompt, { name: args.agent, signal: toolOptions?.abortSignal, sessionId, taskId: task.taskId, pausable, decision });
+  } catch (error) {
+    if (error instanceof SubagentApprovalPause) error.resumeArgs = { taskId: task.taskId };
+    throw error;
+  }
 }
 
 /** What the `task` tool of one run works with. */
@@ -271,7 +286,7 @@ async function openTask(ctx: TaskContext, args: TaskArgs, reentered: boolean): P
   if (ctx.background.isActive(args.taskId)) throw busy(args.taskId);
   const record = await ctx.sessions.load(args.taskId, args.agent);
   if (mode === 'resume') return child(args.taskId, record);
-  if (record.remoteSessionId) throw new Error(`Task '${args.taskId}' ran on a remote agent, whose session cannot be copied: use mode 'resume' or 'new'.`);
+  if (record.remoteSessionId) throw toolFailure(`Task '${args.taskId}' ran on a remote agent, whose session cannot be copied: use mode 'resume' or 'new'.`);
   return child(await ctx.sessions.allocate(), record);
 }
 
@@ -344,7 +359,7 @@ function createBackgroundTools(background: BackgroundTasks): DefinedTool[] {
       }),
       execute: async (args, ctx) => {
         const ids = args.taskIds ?? (args.taskId === undefined ? [] : [args.taskId]);
-        if (ids.length === 0) throw new Error('agent_await: pass taskId or taskIds.');
+        if (ids.length === 0) throw toolFailure('agent_await: pass taskId or taskIds.');
         const views = await background.wait(ids, args.timeoutMs, ctx.abortSignal);
         return args.taskIds ? { tasks: views } : views[0];
       },
@@ -362,9 +377,10 @@ function createBackgroundTools(background: BackgroundTasks): DefinedTool[] {
 export function assertNoTaskTool(agent: AgentConfig, toolRegistry: ToolRegistry | undefined): void {
   const taken = [TASK_TOOL, ...BACKGROUND_TOOLS].find((name) => toolRegistry?.has(name) || agent.tools?.[name]);
   if (taken) {
-    throw new Error(
+    throw new SDKError(
       `subagents: a tool named '${taken}' is already registered, but agents with sub-agents get one automatically. ` +
-        `Rename your tool, or remove the 'subagents' option.`
+        `Rename your tool, or remove the 'subagents' option.`,
+      'LOUSHY_CONFIG_INVALID'
     );
   }
 }

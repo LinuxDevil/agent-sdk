@@ -53,8 +53,24 @@ export interface RemoteSubagent {
    * Runs one task and resolves with the remote agent's final text: in a fresh
    * remote session, or (LOU-Y6) in `sessionId` to continue that one. `taskId`
    * is the lead's id for the task, shown in the result footer.
+   *
+   * LOU-Y7.3: with `pausable`, a remote run that pauses for approval throws a
+   * `SubagentApprovalPause` (the lead run pauses on it) instead of a coded error;
+   * with `decision`, the pending approval `decision.approvalId` of session
+   * `sessionId` is decided on the remote agent instead of sending `prompt`, and
+   * the continuation's answer is returned.
    */
-  run(prompt: string, options?: { name?: string; signal?: AbortSignal; sessionId?: string; taskId?: string }): Promise<string>;
+  run(prompt: string, options?: RemoteRunOptions): Promise<string>;
+}
+
+/** Options of {@link RemoteSubagent.run}. */
+export interface RemoteRunOptions {
+  name?: string;
+  signal?: AbortSignal;
+  sessionId?: string;
+  taskId?: string;
+  pausable?: boolean;
+  decision?: { approvalId: string; approved: boolean; note?: string };
 }
 
 /**

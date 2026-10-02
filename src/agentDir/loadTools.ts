@@ -2,6 +2,7 @@ import path from 'node:path';
 import { isDefinedTool, type DefinedTool } from '../tools/defineTool';
 import { listSorted } from './fsUtil';
 import { importModule } from './importModule';
+import { SDKError } from '../execution/errors';
 
 const TOOL_FILE = /\.[cm]?[jt]s$/;
 const NOT_A_TOOL_FILE = /\.d\.[cm]?ts$|\.(?:test|spec)\./;
@@ -43,7 +44,7 @@ async function loadToolFile(file: string): Promise<DefinedTool[]> {
   const exported = [mod.default, ...Object.entries(mod).filter(([k]) => k !== 'default').map(([, v]) => v)];
   const unique = [...new Set(exported.flatMap((v) => toolsIn(v)))];
   if (unique.length === 0) {
-    throw new Error(`loadAgentDir: ${file}: ${describeExports(mod)}. ${EXAMPLE}`);
+    throw new SDKError(`loadAgentDir: ${file}: ${describeExports(mod)}. ${EXAMPLE}`, 'LOUSHY_AGENT_DIR_INVALID');
   }
   return unique;
 }
@@ -62,9 +63,10 @@ export async function loadTools(dir: string): Promise<LoadedTool[]> {
     for (const tool of await loadToolFile(file)) {
       const earlier = byName.get(tool.name);
       if (earlier) {
-        throw new Error(
+        throw new SDKError(
           `loadAgentDir: duplicate tool name '${tool.name}' in ${earlier.file} and ${file}. ` +
-            'Rename one of the tools - the model addresses tools by name.'
+            'Rename one of the tools - the model addresses tools by name.',
+          'LOUSHY_AGENT_DIR_INVALID'
         );
       }
       byName.set(tool.name, { tool, file });

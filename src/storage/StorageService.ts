@@ -6,6 +6,7 @@
  */
 
 import { IStorageService } from './types';
+import { SDKError } from '../execution/errors';
 
 // Type-safe way to access Buffer and process without Node.js type dependencies
 declare const Buffer: any;
@@ -109,8 +110,9 @@ export class StorageService implements IStorageService {
     while (this.fs.existsSync(lockFilePath)) {
       attempts++;
       if (attempts > maxAttempts) {
-        throw new Error(
-          `Could not acquire lock for "${storageKey}" after ${maxAttempts} attempts`
+        throw new SDKError(
+          `Could not acquire lock for "${storageKey}" after ${maxAttempts} attempts`,
+          'LOUSHY_STORAGE_FAILED'
         );
       }
       await this.delay(attemptDelayMs);
@@ -226,7 +228,7 @@ export class StorageService implements IStorageService {
       : jsonString.length;
 
     if (size > maxFileSizeMB * 1024 * 1024) {
-      throw new Error(`File size limit of ${maxFileSizeMB}MB exceeded for ${storageKey}.`);
+      throw new SDKError(`File size limit of ${maxFileSizeMB}MB exceeded for ${storageKey}.`, 'LOUSHY_STORAGE_FAILED');
     }
 
     this.fs.writeFileSync(this.getFilePath(storageKey), jsonString, 'utf8');
