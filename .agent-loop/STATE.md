@@ -3,7 +3,7 @@
 Mission: make `@loushy/build-ai-agent` the best TypeScript AI agent SDK (capabilities and DX) against
 Vercel eve and MaxGfeller/open-harness. This file is the loop's memory: read it first, update it last.
 
-- Loop started: 2026-10-01. Iterations completed: 16. Since iteration 12 the loop runs on the owner's Windows checkout (Node 26); see BRIEF.md and BASELINE.md.
+- Loop started: 2026-10-01. Iterations completed: 17. Since iteration 12 the loop runs on the owner's Windows checkout (Node 26); see BRIEF.md and BASELINE.md.
 - Audit: `.agent-loop/AUDIT.md`, refreshed 2026-10-01 at main `a03b1a3` (eve 0.69.0 @682c7a6, open-harness 0.7.0 @026e8d9).
   Reference agents (3 agents x 3 SDKs, measured): `.agent-loop/reference-agents/`. Older material: `docs/research/*.md`, `docs/plan/tickets.md`.
   Audit is stale when: a competitor ships a new major, or more than ~25 PRs land after `a03b1a3` (re-run the DX measurement then).
@@ -38,7 +38,7 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Compaction | ✅ flipped (W2 prune #80, W3 summarize/two-phase/pinned #84) | ✅ | ✅ | W3.2 (`compaction.*` events, `createAgent({ compaction })`) |
 | Subagents | ✅ | ✅ | ✅ | - |
 | Background / resumable subagents | ✅ flipped (Y4 #91, Y4.2 #92, Y6 #170 resume and fork by taskId) | ✅ | ✅ | - |
-| Remote subagents | ✅ flipped (Y7 #132, D53 #146, session reuse #170) | ✅ | ❌ | Y7.3 (proxy remote approvals) |
+| Remote subagents | ✅ flipped (Y7 #132, D53 #146, Y6 session reuse #170, Y7.3 #179 approval proxying) | ✅ | ❌ | - |
 | Approvals / HITL | ✅ flipped (D21 #75; X8 #153 policies; V14 #148 + D32.2 #152 streamed continuations) | ✅ | ⚠️ | - |
 | Agent asks the user a question | ✅ flipped (X9 #111: `ask_question`, durable pause, `approvals.answer`, hook `answer()`) | ✅ | ❌ | - |
 | Steering (mid-run input) | ✅ flipped (V9 #122 enqueue + V10 #128 `run.steer()`, `turnPolicy: 'steer'`, `input.steered`) | ✅ | ❌ | - |
@@ -52,17 +52,17 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Test utils (mock model, record/replay) | ✅ | ⚠️ | ❌ | - |
 | Tracing / OTel GenAI | ✅ | ✅ | ❌ | - |
 | Metrics / trace viewer | ⚠️ (D48 #95 metrics + cost; no trace viewer) | ✅ | ❌ | - (viewer not ticketed) |
-| Multi-provider | ✅ flipped (OpenAI, Anthropic and OpenRouter on `ai` 4/6/7; Ollama on `ai` 4, and on 6/7 with zod 4, the latter untested) | ✅ | ✅ | D29b |
+| Multi-provider | ✅ flipped (OpenAI, Anthropic and OpenRouter on `ai` 4/6/7; Ollama on `ai` 4, and on 6/7 with zod 4, the latter untested) | ✅ | ✅ | - |
 | Fallbacks / retry policy | ✅ (V7.1 #74, V7.2 agent-level + events #86) | ⚠️ | ⚠️ | - |
-| Structured output | ✅ flipped (V4 #90: `output` schema, repair step, `output-invalid`) | ✅ | ❌ | - |
+| Structured output | ✅ flipped (V4 #90; V4.2 #177 sessions, sub-agents, either zod major) | ✅ | ❌ | - |
 | Multimodal input | ✅ flipped (V11 #106 + V12 #109: `AgentInput` on send/stream/session/evals/hook, SQLite bytes) | ✅ | ✅ | - (files degrade to text on the pinned `ai` v4 peers; D26+) |
-| Reasoning control / events | ❌ | ✅ | ⚠️ | V13 |
+| Reasoning control / events | ✅ flipped (V13 #176: `reasoning` option, `reasoning.*` events; OpenRouter text not returned) | ✅ | ⚠️ | - |
 | MCP client | ✅ flipped (Z4 #100 `connectMcp()`; Z5 #115 annotations drive approval) | ✅ | ✅ | - |
 | MCP server | ✅ (Z5.2 #142: `serveMcp` advertises annotations) | ✅ | ❌ | - |
-| Typed event stream | ✅ | ✅ | ✅ | - |
+| Typed event stream | ✅ (one event system since D41 #180) | ✅ | ✅ | - |
 | UI bindings React/Vue/Svelte | ✅ flipped (React #85, Vue #138, Svelte #141 over one `src/ui` core) | ✅ | ⚠️ | - |
 | AI SDK UI stream | ✅ flipped (P1 #154; route helper P4 #155) | ⚠️ | ✅ | - |
-| CLI scaffolding | ⚠️ (unpublished) | ✅ | ❌ | D49, U20 |
+| CLI scaffolding | ⚠️ (unpublished; pack-and-install smoke test in CI, D49 #175) | ✅ | ❌ | owner publishes |
 | Dev TUI / REPL | ✅ flipped (D31 dev + D32 streaming web chat + D33 #120 `loushy chat` terminal REPL) | ✅ | ⚠️ | - |
 | Visual studio / debugger | ✅ | ❌ | ❌ | - |
 | Channels | ✅ flipped (P7, Slack P5, Discord P6, agent-dir channels P7.2, hardening P5.2 #173) | ✅ | ❌ | - |
@@ -80,10 +80,10 @@ Legend: ✅ parity or better, ⚠️ partial, ❌ missing. "flipped" = changed b
 | Code-first authoring | ✅ | ⚠️ | ✅ | - |
 | Directory authoring | ✅ | ✅ | ❌ | - |
 | Agent-readable docs | ✅ | ✅ | ✅ | - |
-| Published on npm | ❌ (owner action) | ✅ | ✅ | D49 |
+| Published on npm | ❌ (owner action; publish readiness D49 #175) | ✅ | ✅ | owner publishes |
 | Current `ai` major | ✅ flipped (D28a-f; zod 4 accepted, D29 #174) | ✅ | ✅ | - |
 
-Score (us): 47 ✅ / 2 ⚠️ / 2 ❌ of 51 after iteration 16 (iteration 15: 45/4/2; iteration 14: 39/6/6; iteration 13: 38/6/7; iteration 12: 36/7/8; iteration 11: 34/7/10 with the Metrics row counted as ❌, now ⚠️ since D48 shipped; iteration 10: 33/8/10; iteration 9: 30/10/11; iteration 8: 28/11/12; iteration 7: 25/13/13; iteration 6: 24/13/14; iteration 5: 23/14/14; iteration 4: 22/15/14; iteration 3: 20/15/16 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
+Score (us): 48 ✅ / 2 ⚠️ / 1 ❌ of 51 after iteration 17 (iteration 16: 47/2/2; iteration 15: 45/4/2; iteration 14: 39/6/6; iteration 13: 38/6/7; iteration 12: 36/7/8; iteration 11: 34/7/10 with the Metrics row counted as ❌, now ⚠️ since D48 shipped; iteration 10: 33/8/10; iteration 9: 30/10/11; iteration 8: 28/11/12; iteration 7: 25/13/13; iteration 6: 24/13/14; iteration 5: 23/14/14; iteration 4: 22/15/14; iteration 3: 20/15/16 (iteration 2: 19/15/17; iteration 1: 18/15/18; at `a03b1a3`: 16/15/20).
 
 Differentiators shipped (target: 3): 8 of 8 (iteration 15 added #4 reach: ACP Z6 #157; #5 both authoring modes: deployable agent directories P8.2 #156). Earlier count: 6 of 8 (#1 host-agnostic durable sessions: W9 #89 + D30 #94; #2 record/replay evals: D46 #96; #3 Forge time-travel: D43-D45; #6 OTel GenAI metrics + cost: D48 #95; #7 trajectory evals that run anywhere: D46 + D47 #131; #8 edge-native agents: D51 #125). Open: #4 reach (ACP, Z6); #5 both authoring modes with hot reload is done in practice (D31-D33). Original candidate list (candidates in AUDIT section 7: host-agnostic durable sessions D30; record/replay evals D46; Forge time-travel D43-D45; MCP+ACP+HTTP reach Z6/D14; both authoring modes with hot reload D31-D33; OTel metrics D48; trajectory evals remote D47; edge-native agents D51/P9).
 
@@ -102,7 +102,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | U15 | Tool execute context real at runtime (`buildToolRunContext`, sandbox path, `messages`) | ✅ #99 | |
 | U17 | Sandboxed HTTP honors cancellation | ✅ #72 | |
 | U19 | Explicit `maxSteps` exhaustion (`finishReason: 'max-steps'`) | ✅ #83 | |
-| U20 | Install and roadmap truth (no `npx loushy` of an unpublished package) | ⬜ | |
+| U20 | Install and roadmap truth (no `npx loushy` of an unpublished package) | ✅ #175 | |
 | U21 | Robust CLI flag parsing (`parseArgs`) (shared strict `parseArgs` helper in `src/cli/args.ts`; unknown flags now fail) | ✅ #137 | |
 | U22 | Resumed sub-agent that pauses again keeps the session awaiting approval | ✅ #77 | |
 | U23 | `SubprocessSandbox` (Docker) honors `signal` (follow-up of U17) (container killed and removed on abort or timeout; U14.2 done in the same PR) | ✅ #163 | |
@@ -112,7 +112,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 |---|---|---|---|
 | V1 cancellation, V2 typed stream, V3 parallel tools, V5 usage/cost | | ✅ | |
 | V4 | Structured output (`output: zodSchema`, `result.object`, one repair step, `'output-invalid'`) | ✅ #90 | |
-| V4.2 | Sub-agents inherit `output`; typed `session.send()` object | ⬜ | V4 |
+| V4.2 | Sub-agents inherit `output`; typed `session.send()` object (typed `session.send()` object; sub-agent `output` returned as JSON; includes D29b) | ✅ #177 | V4 |
 | V6 | Budgets (`limits` on run and session, `budget.exceeded` event) | ✅ #118 | |
 | V7.1 | Provider retry + fallback wrappers | ✅ #74 | |
 | V7.2 | `createAgent({ retry, fallbackModels })` + `provider.retry`/`provider.fallback` events; retries no longer stack | ✅ #86 | |
@@ -122,7 +122,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | V11 | Multimodal message parts (`textOf()`, provider conversion, store round-trip) | ✅ #106 | |
 | V11.2 | `SqliteStore` sessions/checkpoints encode `Uint8Array` parts | ✅ (in #109) | |
 | V12 | Multimodal through the public API (`AgentInput`) | ✅ #109 | |
-| V13 | Reasoning effort + events | ⬜ | D26 |
+| V13 | Reasoning effort + events (`reasoning` option per provider, `reasoning.*` events, `result.reasoning`, Anthropic thinking replay; includes D23.2 and file parts for images on ai 5+) | ✅ #176 | D26 |
 | V14 | Streaming resume after approval (`approve` callback on `stream()` too) (standalone `streamResumeAfterApproval()`; `agent.approvals.streamResolve()` / `streamAnswer()`; consumers wired by D32.2) | ✅ #148 | D21 |
 | V15 | Per-run dynamic config (`model` / `instructions` / `tools` as functions of `{ sessionId, input, metadata }`; `LOUSHY_CONFIG_RESOLVER_FAILED`) | ✅ #139 | |
 | V15.2 | Crash resume keeps the dynamic config: save `{ ctx, model }` on the checkpoint (today a crash resume re-resolves with empty input and no metadata) | ✅ #165 | V15 |
@@ -166,7 +166,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | Y6 | Resumable sub-agent sessions (`taskId`, `mode: new | resume | fork`, `taskSessions.ts`; remote session reuse) | ✅ #170 | Y4 |
 | Y7 | Remote sub-agent (`remoteAgent()`, SSE over `/chat`, `LOUSHY_REMOTE_AGENT_FAILED`) | ✅ #132 | |
 | Y7.2 | Reuse the remote session across tasks | ✅ #170 | |
-| Y7.3 | Proxy a remote approval pause to the lead run as an approval of the `task` call | ⬜ | Y6 |
+| Y7.3 | Proxy a remote approval pause to the lead run as an approval of the `task` call (`resolveRemoteApproval()`; remote pauses use `SubagentApprovalPause`; remote object pass-through) | ✅ #179 | Y6 |
 
 ### Epic Z — MCP
 | ID | Title | Status | Deps |
@@ -183,7 +183,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D1, D3-D10, D12, D13, D17, D19 | | ✅ | |
 | D2 | Error codes with fixes (`LOUSHY_*` registry, hint, docs/errors.md, spec did-you-mean) | ✅ #101 | |
 | D2.2 | Remaining plain `Error`s get codes: agentRun, src/tools, src/cli, NodeWorkspace, toolCallExecution/toolArgsValidation (own code for `ToolArgumentsValidationError`) (plain Error sites 160 -> 117) | ✅ #172 | D2 |
-| D2.3 | The rest of the plain Errors get codes, with a guard test; vitest startup-crash investigation | ⬜ | D2.2 |
+| D2.3 | The rest of the plain Errors get codes, with a guard test; vitest startup-crash investigation (plain sites 110 -> 5 with an allowlist guard test; build lock for the vitest native crash) | ✅ #178 | D2.2 |
 | D11 | Upgrade `ai` peer range | superseded by D22-D29 | |
 | D14 | Deployed node server: sessions, SSE, bearer auth (shared `src/server/chatRoutes.ts`) | ✅ #119 | |
 | D15 | React hook `useLoushyAgent` (`./react` subpath, reducer + SSE/NDJSON parser) | ✅ #85 | |
@@ -192,7 +192,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D21 | Approvals for `createAgent()` | ✅ #75 | |
 | D22 | Own the tool contract (`inputSchema` + `execute`, no `ai.tool()`) | ✅ #79 | |
 | D23 | Own the execute-context type (`ToolExecutionContext`) | ✅ #103 | |
-| D23.2 | Executor sets `sessionId` on the execute context | ⬜ | D23 |
+| D23.2 | Executor sets `sessionId` on the execute context | ✅ #176 | D23 |
 | D24 | Small built-ins to `defineTool` (+ `toolDescriptorFromSchema` for MCP) | ✅ #108 | |
 | D25 | github and jira to `defineTool` (48 tools; `src/tools` has no `ai` import) | ✅ #114 | |
 | D26 | `ai` v6/v7 adapter: generate (`aiSdkCompat.ts`, tests on real `ai@7` via dev alias) | ✅ #123 | |
@@ -205,7 +205,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D28e | Port the v4-only contract tests (`toolCallTurns.contract`, `multimodal.contract`, part of `aiSdkProvider.test`) to a v7 mock model so the contracts are tested on both majors | ✅ #167 | D28b |
 | D28f | OpenRouter on `ai` 6/7 (chat-completions factory), Ollama base URL `/api`, and D28e done inside it (OpenRouter uses `provider.chat()`; Ollama `/api` base URL; 50 contract tests on both majors) | ✅ #167 | D28d |
 | D29 | zod 4 / Standard Schema (peer `zod ^3.25.76 || ^4`; `zodCompat.ts`; CI job `typecheck-zod4`) | ✅ #174 | D22 |
-| D29b | Ollama missing-peer note mentions zod 4; structured `output` typed for either zod major; optional Ollama scaffold on `ai` 7 | ⬜ | D29 |
+| D29b | Ollama missing-peer note mentions zod 4; structured `output` typed for either zod major; optional Ollama scaffold on `ai` 7 | ✅ #177 | D29 |
 | D30 | One `store` option (`AgentStore`, `memoryStore()`, `send({ sessionId })`, `agent.resume(id)`) | ✅ #94 | |
 | D31 | `loushy dev` for dirs and TS, hot reload (`devReload.ts`, `/dev/status`) | ✅ #110 | |
 | D32 | Stateful streaming dev chat (session per tab, SSE, approval/question buttons) | ✅ #116 | |
@@ -218,7 +218,8 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D38 | Remove unwired memory/context/retry modules (with D39 and D37: `MemoryManager`, `ContextBuilder`, `retry()`, `data`, `templates` deleted; `/testing` test utilities only) | ✅ #169 | V7.1, W6 |
 | D39 | Clean `/testing`; deprecate `data/` | ✅ #169 | |
 | D40 | Heavy deps to optional peers (dockerode, MCP SDK, prompts; undici/yaml stay) | ✅ #88 | |
-| D41 | One event system | ⬜ | |
+| D41 | One event system (executor emits only `AgentEvent`; `createAgent({ onEvent })`; legacy adapter in `legacyEvents.ts`; `streaming` option deleted) | ✅ #180 | |
+| D41.2 | Delete `injectStreamingController` and `AgentExecutionOptions.streaming` (done inside D16) | ⬜ | D41 |
 | D42 | Shared chunks across entries (tsup `splitting: true` for ESM and CJS; `Symbol.for` brands on `SDKError` and `HookRegistry`; dist 25.2 MB -> 8.8 MB) | ✅ #171 | |
 | D43 | Checkpoint history (memory, SQLite migration 2, local storage; `historyLimit`) | ✅ #98 | |
 | D43.2 | `KVCheckpointStore` history (list key per session) and Forge `FileCheckpointStore` history (KV history index + entries; Forge file store tolerant of partial writes) | ✅ #159 | D43 |
@@ -229,7 +230,7 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | D47 | Remote eval target (`loushy eval --url`, `remoteTarget()`, `LOUSHY_REMOTE_*` codes) | ✅ #131 | |
 | D53 | One session-API client shared by `remoteAgent` (Y7) and `remoteTarget` (D47); one set of remote error codes (`src/server/sessionClient.ts` `runRemoteTurn`; `LOUSHY_REMOTE_AGENT_FAILED` removed) | ✅ #146 | Y7, D47 |
 | D48 | OTel GenAI metrics (`gen_ai.client.token.usage`, `operation.duration`) + `loushy.cost_usd` | ✅ #95 | |
-| D49 | Publish readiness | ⬜ | U20 |
+| D49 | Publish readiness (`npm run pack-smoke` and CI job; `loushy --help`; includes U20 install truth) | ✅ #175 | U20 |
 | D50 | `loushy add` (`loushy add`, `--list`, permission manifest, path-safety checks, `LOUSHY_REGISTRY_*` codes) | ✅ #161 | |
 | D51 | Worker parity: `KVStore`, Fetch-native `fetchRoutes.ts`, auth from env, node shim plugin | ✅ #125 | |
 | D52 | README revamp (owner request): 805 -> 257 lines, 7 new docs pages | ✅ #81 | |
@@ -361,6 +362,12 @@ Status: ✅ merged (PR) · 🔄 open PR · ⬜ todo · ⛔ blocked on deps. One 
 | #172 | D46.2, D2.2 | merged (squash) | eval cassette interception; error codes |
 | #173 | P5.2 | merged (squash) | channel hardening (default approver changed, CHANGELOG'd) |
 | #174 | D29 | merged (squash) | zod 3 or 4 (withSubagents.ts conflict with #170 combined by hand) |
+| #175 | D49, U20 | merged (squash) | publish readiness (duplicate --help branch removed by the orchestrator to pass fallow) |
+| #176 | V13, D23.2 | merged (squash) | reasoning |
+| #177 | V4.2, D29b | merged (squash) | structured output typing |
+| #178 | D2.3 | merged (squash) | error-code sweep; vitest crash cause and lock |
+| #179 | Y7.3 | merged (squash) | remote approval proxying |
+| #180 | D41 | merged (squash) | one event system |
 
 ## Main health
 
@@ -471,14 +478,21 @@ CI runs only on `pull_request`, so "main is green" means the last PR's CI run pa
 - New tickets: D2.3 (in flight), D29b, Y7.3.
 - D42 changes the build output, so that PR was built and checked with the Forge suites and a CLI smoke run before merging; every other PR got tsc plus targeted tests.
 
+### Iteration 17 (2026-10-02)
+- Merged: #175 (D49 + U20), #176 (V13 + D23.2), #177 (V4.2 + D29b), #178 (D2.3), #179 (Y7.3), #180 (D41).
+- Health run on main at 907f341: tsc, lint 0 errors / 345 warnings, test:types, builds, 171 snippets, llms, all four Forge checks green. Coverage failed once on the credential-broker end-to-end test (passes alone 3/3) and once with the native vitest crash (exit 127); the third run passed with 2955 passed / 4 skipped, fallow 0 above threshold.
+- Matrix flips: Reasoning control ❌->✅. Only "Published on npm" is ❌ (owner action).
+- Vitest crash explained (D2.3): a native crash of the vitest process on Node 26 / Windows when two workers bundle with esbuild at once; a build lock in the deploy tests avoids it. It can still hit a coverage run occasionally.
+- Owner actions listed by D49 (not changed): `files` ships `src/dynamicConfig.test-d.ts`; npm 11 needs an explicit `--tag` for a prerelease; publish the SDK before `create-loushy-agent`; installing from GitHub would need a `prepare` script.
+- Open decision for the owner (D41): with a listener set, `send()` delivers one `text.delta` per step, not chunks; switching to the streaming path is small but changed Agent Forge results.
+- In flight: D16 (ESLint ratchet, alone), which also carries D41.2 and the last two plain errors.
+
 ## Plan to the end (owner: run every batch, no check-ins)
 
 One hub ticket per batch (AgentExecutor / resume / toolCallExecution), one package.json ticket per batch.
 
-Done through 16. Order from here (slots refilled as tickets merge):
-17. In flight: V13 + D23.2 (opus, hub), D49 + U20 (sonnet), D2.3 (sonnet).
-18. D41 (opus, hub), V4.2 (sonnet), D29b (sonnet), Y7.3 (opus).
-19. D16 ESLint ratchet alone (quiet batch).
+Done through 17. Order from here (slots refilled as tickets merge):
+18. In flight: D16 ESLint ratchet alone (with D41.2 and the last two plain errors).
 Then: final health run, AUDIT refresh note, scorecard artifact brought up to date.
 ## Subagent brief (canonical copy)
 

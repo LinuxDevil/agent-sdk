@@ -1,10 +1,10 @@
 {
  "date": "2026-10-02",
- "iterations": 16,
- "prsMerged": 104,
+ "iterations": 17,
+ "prsMerged": 110,
  "differentiatorsShipped": 8,
  "lintWarnings": 345,
- "tests": "2,907",
+ "tests": "2,955",
  "matrix": [
   [
    "Durability / resume",
@@ -60,7 +60,7 @@
    "ok",
    "ok",
    "bad",
-   "Y7.3 approval proxying"
+   ""
   ],
   [
    "Approvals / HITL",
@@ -151,14 +151,14 @@
    "warn",
    "ok",
    "bad",
-   "metrics shipped (D48); viewer not ticketed"
+   "metrics shipped (D48); a trace viewer is not ticketed"
   ],
   [
    "Multi-provider",
    "ok",
    "ok",
    "ok",
-   "D29b Ollama wording"
+   ""
   ],
   [
    "Fallbacks / retry policy",
@@ -183,11 +183,10 @@
   ],
   [
    "Reasoning control / events",
-   "bad",
+   "ok",
    "ok",
    "warn",
-   "V13",
-   "pend"
+   ""
   ],
   [
    "MCP client",
@@ -229,8 +228,7 @@
    "warn",
    "ok",
    "bad",
-   "D49 (publish is an owner action)",
-   "pend"
+   "owner publishes to npm"
   ],
   [
    "Dev TUI / REPL",
@@ -356,8 +354,7 @@
    "bad",
    "ok",
    "ok",
-   "owner action; D49 prepares it",
-   "pend"
+   "owner action; smoke-tested tarball ready (D49)"
   ],
   [
    "Current ai major",
@@ -527,6 +524,16 @@
     "V14",
     "The continuation after an approval or answer streams (streamResolve, streamAnswer)",
     148
+   ],
+   [
+    "V13",
+    "reasoning option and reasoning events; sessionId on the tool execute context",
+    176
+   ],
+   [
+    "V4.2",
+    "Structured output: typed session.send() object, sub-agent output schemas, either zod major",
+    177
    ]
   ],
   "W · Context and memory": [
@@ -648,6 +655,11 @@
     "Y6",
     "The task tool can continue a sub-agent: new, resume and fork modes",
     170
+   ],
+   [
+    "Y7.3",
+    "Remote sub-agent approvals pause the lead run; remote output objects pass through",
+    179
    ]
   ],
   "Z · MCP": [
@@ -882,6 +894,21 @@
     "D29",
     "zod 3 or zod 4 for tool schemas, structured output and spec validation",
     174
+   ],
+   [
+    "D49",
+    "Publish readiness: pack-and-install smoke test in CI; docs say how to install today",
+    175
+   ],
+   [
+    "D2.3",
+    "Remaining user-reachable plain Errors carry SDK error codes; vitest crash explained",
+    178
+   ],
+   [
+    "D41",
+    "One event system: AgentEvent listeners; the old onEvent API is a deprecated adapter",
+    180
    ]
   ],
   "P · UI bindings, channels, schedules": [
@@ -954,88 +981,37 @@
  },
  "inFlight": [
   [
-   "V13",
-   "reasoning option mapped to each provider, and reasoning events in the stream; also sets sessionId on the tool context."
-  ],
-  [
-   "D49",
-   "Pack-and-install smoke test in CI and truthful install docs. Does not publish and does not change release config."
-  ],
-  [
-   "D2.3",
-   "Remaining plain Errors get SDK error codes, with a test that stops new ones; investigates the vitest startup crash."
+   "D16",
+   "ESLint ratchet, alone on the repo: fix the 345 warnings with no behavior change, then make the warn rules errors. Also deletes the last dead streaming hook and converts the last two plain errors."
   ]
  ],
- "inFlightNote": "After these: D41 (one event system), V4.2, D29b, Y7.3, then the ESLint ratchet (D16) alone.",
+ "inFlightNote": "This is the last ticket. After it: a final full health run and a last refresh of this page.",
  "remaining": {
   "U · Correctness": [],
-  "V · Run loop": [
-   [
-    "V4.2",
-    "Sub-agents inherit output schema; typed session.send() object",
-    "V4",
-    18
-   ],
-   [
-    "V13",
-    "Reasoning effort option and reasoning events; sessionId on the tool execute context",
-    "D26",
-    17
-   ]
-  ],
+  "V · Run loop": [],
   "W · Context and memory": [],
   "X · Tools, permissions, hooks": [],
-  "Y · Sub-agents": [
-   [
-    "Y7.3",
-    "Proxy a remote approval pause to the lead run",
-    "Y6",
-    18
-   ]
-  ],
+  "Y · Sub-agents": [],
   "Z · MCP": [],
   "D · DX, CLI, packaging": [
    [
     "D16",
-    "ESLint ratchet: 399 warnings to 0, error severity",
-    "quiet batch",
-    19
-   ],
-   [
-    "D41",
-    "One event system (retire onEvent/ExecutionEvent)",
+    "ESLint ratchet: 345 warnings to 0, then the warn rules become errors",
     "",
-    18
-   ],
-   [
-    "D2.3",
-    "The rest of the plain Errors get codes, with a guard test; vitest startup-crash investigation",
-    "D2.2",
-    17
-   ],
-   [
-    "D49",
-    "Publish readiness and install truth: pack-and-install smoke test in CI; docs say how to install today",
-    "",
-    17
-   ],
-   [
-    "D29b",
-    "Ollama note mentions zod 4; structured output typed for either zod major",
-    "D29",
     18
    ]
   ],
   "P · UI bindings, channels, schedules": []
  },
  "notes": [
-  "<strong>All eight differentiators are shipped</strong> and 47 of 51 matrix rows are at parity or better. Missing: reasoning control (V13, in flight) and npm publication (owner action). Partial: no trace viewer; the CLI scaffold cannot be used from npm until the package is published.",
-  "<strong>Main passes the full local suite</strong> after every group of merges (Windows, Node 26): typecheck, lint, 2,907 tests with coverage, fallow, 165 docs snippets and the four Agent Forge checks. The test count fell from 2,947 because the surface cleanup deleted unused modules together with their tests.",
-  "<strong>ai v7 and zod 4:</strong> peers accept ai 4, 6 and 7 and zod 3 or 4. OpenAI, Anthropic and OpenRouter projects are scaffolded on ai 7. Ollama stays on ai 4 in the scaffold; on ai 6/7 it needs zod 4 and has not been tested.",
-  "<strong>What was verified how:</strong> every PR got typecheck and targeted tests after syncing with main, then a full run per group. The Docker sandbox features (container cleanup on cancel, egress through the broker) were tested against a Docker fake only: there is no Docker daemon on the machine.",
-  "<strong>Breaking or model-visible changes shipped pre-1.0</strong> (all in CHANGELOG with migration notes): removed <code>MemoryManager</code>, <code>ContextBuilder</code>, <code>retry()</code>, <code>data</code> and <code>templates</code>; default channel approver is the user who started the turn; sandboxed commands no longer inherit the host environment; CLI commands reject unknown flags; a tool's own deny beats a permissions allow rule; cancelled tool results use the shared error shape.",
-  "<strong>Limits left in shipped features:</strong> a remote sub-agent that pauses for approval must be approved on the remote agent, then continued by task id (Y7.3). Without tickets: the registry's permission manifest is shown but not enforced; ACP has no file or terminal methods; a pending <code>ask_question</code> in Slack or Discord is lost on restart; sub-agent fingerprints are stored but not compared on resume.",
-  "<strong>Open problem:</strong> the deploy test folder intermittently makes vitest exit at startup when run right after another deploy run; it passes on retry. D2.3 is investigating.",
+  "<strong>All eight differentiators are shipped</strong> and 48 of 51 matrix rows are at parity or better. The one missing row is npm publication, which is the owner's action. Partial: no trace viewer (not ticketed); the CLI scaffold cannot be used from npm until the package is published.",
+  "<strong>Main passes the full local suite</strong> (Windows, Node 26): typecheck, lint, 2,955 tests with coverage, fallow, 171 docs snippets and the four Agent Forge checks. The last run needed two retries of the coverage step: one flaky end-to-end test (passes alone) and one native vitest crash (see below).",
+  "<strong>Owner actions before publishing</strong> (found by the pack-and-install smoke test, nothing was changed): <code>files</code> ships one type-test file from <code>src/</code>; npm 11 needs an explicit <code>--tag</code> for a prerelease; publish the SDK before <code>create-loushy-agent</code>; installing straight from GitHub would need a <code>prepare</code> script.",
+  "<strong>Open decision:</strong> with an event listener set, <code>send()</code> delivers text as one delta per step, not in chunks. Making it identical to <code>stream()</code> is a small change but altered Agent Forge results when tried.",
+  "<strong>What was verified how:</strong> every PR got typecheck and targeted tests after syncing with main, then a full run per group. Docker sandbox features were tested against a Docker fake only (no daemon on the machine). Reasoning option names were checked against the installed provider packages, not against live APIs; ai v6 provider packages were not installed.",
+  "<strong>Vitest crash explained:</strong> a native crash of the vitest process on Node 26 / Windows when two test workers bundle with esbuild at once. A lock in the deploy tests avoids it there; it can still hit a coverage run occasionally and passes on retry.",
+  "<strong>Breaking or model-visible changes shipped pre-1.0</strong> are all in the CHANGELOG with migration notes; the largest are the removal of unwired donor-era modules, secret-free sandbox environments, strict CLI flags, the default channel approver, and the deprecation of the old <code>onEvent</code> / <code>ExecutionEvent</code> API.",
+  "<strong>Limits without tickets:</strong> the registry's permission manifest is shown but not enforced; ACP has no file or terminal methods; a pending <code>ask_question</code> in Slack or Discord is lost on restart; sub-agent fingerprints are stored but not compared on resume; OpenRouter does not return reasoning text; a remote sub-agent's token usage is not added to the lead's totals.",
   "<strong>Owner instructions in force:</strong> branches are never deleted; CI is not awaited (it pins Node 22, the local runs use Node 26); npm publish and release config are the owner's."
  ]
 }
