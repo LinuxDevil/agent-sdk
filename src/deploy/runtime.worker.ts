@@ -113,7 +113,8 @@ function isKVBinding(value: unknown): value is KVBinding {
 let isolateStore: Required<AgentStore> | undefined;
 
 /**
- * The store of the Worker's agent: sessions, checkpoints and approvals in the
+ * The store of the Worker's agent: sessions, checkpoints, approvals and
+ * OAuth tokens (encrypted with the `LOUSHO_TOKEN_KEY` secret) in the
  * KV namespace bound as `env[bindingName]`, or, when it isn't declared/bound,
  * in memory of this isolate (state is then lost whenever the isolate is - fine
  * for trying a deploy out, not for production). A bound value that doesn't look
@@ -123,7 +124,10 @@ let isolateStore: Required<AgentStore> | undefined;
  */
 export function workerStore(env: WorkerEnv, bindingName: string = CHECKPOINT_KV_BINDING): AgentStore {
   const binding = env[bindingName];
-  return isKVBinding(binding) ? new KVStore(binding) : (isolateStore ??= memoryStore());
+  const tokenKey = env.LOUSHO_TOKEN_KEY; // a Worker secret: Workers have no process.env
+  return isKVBinding(binding)
+    ? new KVStore(binding, typeof tokenKey === 'string' && tokenKey !== '' ? { tokenKey: tokenKey.split(',') } : {})
+    : (isolateStore ??= memoryStore());
 }
 
 function workerResolvers(env: WorkerEnv): SpecResolvers {

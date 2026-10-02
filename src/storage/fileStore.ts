@@ -7,6 +7,8 @@
  *   `<dir>/checkpoints/<id>.json`          the latest checkpoint of a run
  *   `<dir>/checkpoint-history/<id>.json`   its bounded history, oldest first
  *   `<dir>/approvals/<id>.json`            a pending approval and its snapshot
+ *   `<dir>/oauth/tokens/<sha256>.json`     an OAuth token or client, encrypted (`{ key, payload }`)
+ *   `<dir>/oauth/pending/<state>.json`     a pending sign-in, encrypted (`{ expiresAt, payload }`)
  *
  * Every write goes to a temp file and is renamed into place, so a crash never
  * leaves half a file. No lock files: a crashed writer cannot block anyone.
@@ -15,9 +17,9 @@
  * safe across processes (see `FileApprovalStore`).
  */
 
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { ApprovalStore, ExecutionSnapshot, PendingApproval, ResolvedApproval } from '../execution/ApprovalGate';
 import {
   appendToRing,
@@ -33,11 +35,19 @@ import {
 import { ConfigurationError } from '../execution/errors';
 import { decodeBytes, encodeBytes, FileSessionStore } from '../session/sessionStore';
 import type { AgentStore } from './agentStore';
+import { SealedTokenStore, type SealedRecordBackend } from '../oauth/sealedTokenStore';
+import type { TokenKeyInput } from '../oauth/tokenCipher';
 
 /** Options of {@link fileStore}. */
 export interface FileStoreOptions {
   /** Checkpoints kept per session in `checkpoints.history()` (default 50, `0` keeps none). */
   historyLimit?: number;
+  /**
+   * Key of the OAuth tokens in `store.tokens`: 32 random bytes as base64
+   * (`generateTokenKey()`), or several, newest first, to read tokens written
+   * under an older key. Default: the `LOUSHO_TOKEN_KEY` environment variable.
+   */
+  tokenKey?: TokenKeyInput;
 }
 
 /**
@@ -86,6 +96,30 @@ async function writeAtomic(file: string, value: unknown): Promise<void> {
   } catch (error) {
     await rm(temp, { force: true });
     throw error;
+  }
+}
+
+/**
+ * Claim `file` with an exclusive create of `<file>.claim` (atomic on POSIX and
+ * NTFS), read it, delete it and release the claim: of two callers, in one
+ * process or two, exactly one gets the content. `undefined` when another
+ * caller holds the claim or there is no file.
+ */
+async function takeFile(file: string): Promise<string | undefined> {
+  const claim = `${file}.claim`;
+  try {
+    await writeFile(claim, String(process.pid), { flag: 'wx' });
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'EEXIST' || code === 'ENOENT') return undefined; // another caller has it, or nothing was ever saved
+    throw error;
+  }
+  try {
+    const raw = await readText(file);
+    if (raw !== undefined) await rm(file, { force: true });
+    return raw;
+  } finally {
+    await rm(claim, { force: true });
   }
 }
 
@@ -165,29 +199,104 @@ class FileApprovalStore implements ApprovalStore {
   }
 
   async resolve(id: string): Promise<ResolvedApproval | null> {
-    const file = this.fileFor(id);
-    const claim = `${file}.claim`;
-    try {
-      await writeFile(claim, String(process.pid), { flag: 'wx' });
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code === 'EEXIST' || code === 'ENOENT') return null; // another caller has it, or nothing was ever saved
-      throw error;
+    const raw = await takeFile(this.fileFor(id));
+    return raw === undefined ? null : (JSON.parse(raw, decodeBytes) as ResolvedApproval);
+  }
+}
+
+/** The JSON files' names in `dir`, without `.json`; `[]` when `dir` does not exist. */
+async function jsonFiles(dir: string): Promise<string[]> {
+  try {
+    return (await readdir(dir)).filter((name) => name.endsWith('.json')).map((name) => name.slice(0, -5));
+  } catch (error) {
+    if (isMissing(error)) return [];
+    throw error;
+  }
+}
+
+/** `undefined` for text that is not JSON (a half-written file). */
+function parseJson<T>(raw: string): T | undefined {
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Parse a JSON file written by this store; `undefined` when it is missing or half-written. */
+async function readJson<T>(file: string): Promise<T | undefined> {
+  const raw = await readText(file);
+  return raw === undefined ? undefined : parseJson<T>(raw);
+}
+
+/**
+ * Sealed OAuth records as files (`SealedTokenStore` encrypts them). Token
+ * files are named by the SHA-256 of their key (a key holds characters a file
+ * name cannot, and can be long); pending sign-ins by their validated state.
+ * Taking a pending sign-in claims it like `FileApprovalStore.resolve`.
+ */
+class FileTokenBackend implements SealedRecordBackend {
+  constructor(
+    private readonly tokensDir: string,
+    private readonly pendingDir: string
+  ) {}
+
+  private tokenFile(key: string): string {
+    return join(this.tokensDir, `${createHash('sha256').update(key).digest('hex')}.json`);
+  }
+
+  async get(key: string): Promise<string | undefined> {
+    const record = await readJson<{ key: string; payload: string }>(this.tokenFile(key));
+    return record?.key === key ? record.payload : undefined;
+  }
+
+  async put(key: string, sealed: string): Promise<void> {
+    await writeAtomic(this.tokenFile(key), { key, payload: sealed });
+  }
+
+  async delete(key: string): Promise<void> {
+    await rm(this.tokenFile(key), { force: true });
+  }
+
+  async list(prefix: string): Promise<Array<{ key: string; sealed: string }>> {
+    const rows: Array<{ key: string; sealed: string }> = [];
+    for (const name of await jsonFiles(this.tokensDir)) {
+      const record = await readJson<{ key: unknown; payload: unknown }>(join(this.tokensDir, `${name}.json`));
+      if (typeof record?.key === 'string' && typeof record.payload === 'string' && record.key.startsWith(prefix)) {
+        rows.push({ key: record.key, sealed: record.payload });
+      }
     }
-    try {
-      const raw = await readText(file);
-      if (raw === undefined) return null;
-      await rm(file, { force: true });
-      return JSON.parse(raw, decodeBytes) as ResolvedApproval;
-    } finally {
-      await rm(claim, { force: true });
+    return rows;
+  }
+
+  async putPending(state: string, sealed: string, expiresAt: number): Promise<void> {
+    await this.removeExpiredPending();
+    const file = join(this.pendingDir, `${state}.json`);
+    await writeAtomic(file, { expiresAt, payload: sealed });
+    await rm(`${file}.claim`, { force: true });
+  }
+
+  /** Sign-ins nobody completed would otherwise stay forever: drop the expired ones on each new one. */
+  private async removeExpiredPending(): Promise<void> {
+    const now = Date.now();
+    for (const name of await jsonFiles(this.pendingDir)) {
+      const file = join(this.pendingDir, `${name}.json`);
+      const record = await readJson<{ expiresAt?: unknown }>(file);
+      if (typeof record?.expiresAt === 'number' && record.expiresAt <= now) await rm(file, { force: true });
     }
+  }
+
+  async takePending(state: string): Promise<string | undefined> {
+    const raw = await takeFile(join(this.pendingDir, `${state}.json`));
+    const payload = raw === undefined ? undefined : parseJson<{ payload?: unknown }>(raw)?.payload;
+    return typeof payload === 'string' ? payload : undefined;
   }
 }
 
 /**
  * An {@link AgentStore} of plain, inspectable JSON files under `dir`
- * (`sessions/`, `checkpoints/`, `checkpoint-history/`, `approvals/`), for
+ * (`sessions/`, `checkpoints/`, `checkpoint-history/`, `approvals/`, and
+ * `oauth/` with the OAuth tokens encrypted under `tokenKey`), for
  * `createAgent({ store })` in a Node process. Directories are created on
  * first write.
  *
@@ -203,5 +312,8 @@ export function fileStore(dir: string, options: FileStoreOptions = {}): Required
     sessions: new FileSessionStore(join(root, 'sessions')),
     checkpoints: new FileCheckpointStore(join(root, 'checkpoints'), join(root, 'checkpoint-history'), options),
     approvals: new FileApprovalStore(join(root, 'approvals')),
+    tokens: new SealedTokenStore(new FileTokenBackend(join(root, 'oauth', 'tokens'), join(root, 'oauth', 'pending')), 'fileStore', {
+      tokenKey: options.tokenKey,
+    }),
   };
 }

@@ -4,6 +4,9 @@ import type { SessionStore } from '../../session/sessionStore';
 import { Connection } from './connection';
 import { SqliteApprovalStore, SqliteCheckpointStore, SqliteSessionStore, Statements } from './stores';
 import { SDKError } from '../../execution/errors';
+import type { OAuthTokenStore } from '../../oauth/types';
+import type { TokenKeyInput } from '../../oauth/tokenCipher';
+import { sqliteTokenStore } from './tokenStore';
 
 /** Options for {@link SqliteStore.prune}. */
 export interface PruneOptions {
@@ -15,6 +18,13 @@ export interface PruneOptions {
 export interface SqliteStoreOptions {
   /** Checkpoints kept per session in `checkpoints.history()` (default 50, `0` keeps none). */
   historyLimit?: number;
+  /**
+   * Key of the OAuth tokens in `store.tokens`: 32 random bytes as base64
+   * (`generateTokenKey()`), or several, newest first, to read tokens written
+   * under an older key. Default: the `LOUSHO_TOKEN_KEY` environment variable.
+   * Only needed once something stores a token.
+   */
+  tokenKey?: TokenKeyInput;
 }
 
 /** How many rows {@link SqliteStore.prune} deleted, per kind. */
@@ -22,6 +32,8 @@ export interface PruneResult {
   sessions: number;
   checkpoints: number;
   approvals: number;
+  /** Expired pending OAuth sign-ins (deleted whatever `olderThanMs` is). */
+  oauthPending: number;
 }
 
 /**
@@ -52,14 +64,16 @@ export class SqliteStore {
   readonly checkpoints: CheckpointStore;
   /** Pending tool approvals, for `approvalStore`. */
   readonly approvals: ApprovalStore;
+  /** OAuth tokens, pending sign-ins and registered clients, encrypted with `tokenKey` (docs/oauth.md). */
+  readonly tokens: OAuthTokenStore;
   /** @internal The open database, shared with `sqliteMemory()`. */
   readonly connection: Connection;
   private readonly sql: Statements;
 
   /**
    * @param path database file (its directory is created if missing) or `':memory:'`
-   * @param options `historyLimit`: checkpoints kept per session in `checkpoints.history()`
-   * @throws if `node:sqlite` is unavailable, or `path` is not a SQLite database
+   * @param options `historyLimit`: checkpoints kept per session in `checkpoints.history()`; `tokenKey`: the key of `tokens`
+   * @throws if `node:sqlite` is unavailable, `path` is not a SQLite database, or `tokenKey` is not 32 bytes of base64
    */
   constructor(path: string, options: SqliteStoreOptions = {}) {
     this.connection = Connection.open(path);
@@ -67,6 +81,12 @@ export class SqliteStore {
     this.sessions = new SqliteSessionStore(this.connection);
     this.checkpoints = new SqliteCheckpointStore(this.connection, options);
     this.approvals = new SqliteApprovalStore(this.connection);
+    try {
+      this.tokens = sqliteTokenStore(this.connection, { tokenKey: options.tokenKey });
+    } catch (error) {
+      this.connection.close(); // a malformed tokenKey: leave no open handle behind
+      throw error;
+    }
   }
 
   /** Absolute path of the database file (or `':memory:'`). */
@@ -75,13 +95,14 @@ export class SqliteStore {
   }
 
   /**
-   * Delete stale sessions and checkpoints (by last update) and approvals that
-   * were resolved more than `olderThanMs` ago. Unresolved approvals are kept.
+   * Delete stale sessions and checkpoints (by last update), approvals that
+   * were resolved more than `olderThanMs` ago, and expired pending OAuth
+   * sign-ins. Unresolved approvals and OAuth tokens are kept.
    *
    * @example
    * ```ts
    * const removed = store.prune({ olderThanMs: 7 * 24 * 60 * 60 * 1000 });
-   * console.log(removed); // { sessions: 3, checkpoints: 1, approvals: 0 }
+   * console.log(removed); // { sessions: 3, checkpoints: 1, approvals: 0, oauthPending: 0 }
    * ```
    */
   prune({ olderThanMs }: PruneOptions): PruneResult {
@@ -97,6 +118,7 @@ export class SqliteStore {
         sessions: run('DELETE FROM sessions WHERE updated_at < ?'),
         checkpoints: run('DELETE FROM checkpoints WHERE updated_at < ?'),
         approvals: run('DELETE FROM approvals WHERE resolved_at IS NOT NULL AND resolved_at < ?'),
+        oauthPending: Number(this.sql.get('DELETE FROM oauth_pending WHERE expires_at <= ?').run(Date.now()).changes),
       };
     });
   }

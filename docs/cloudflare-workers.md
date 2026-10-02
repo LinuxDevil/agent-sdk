@@ -122,7 +122,7 @@ curl -N https://<your-worker>.workers.dev/chat \
 
 ## Sessions, checkpoints and approvals
 
-`KVStore(kvBinding, { prefix?, ttl?, historyLimit? })` is the `AgentStore` the
+`KVStore(kvBinding, { prefix?, ttl?, historyLimit?, tokenKey? })` is the `AgentStore` the
 generated Worker builds from the binding. A hand-written Worker imports it from
 the `/kv` subpath, which has no `node:*` import anywhere in its graph, with the
 binding typed as `KVBinding` (the `get`/`put`/`delete` part of Cloudflare's
@@ -155,6 +155,7 @@ Worker reads). `KVStore`'s keys, with an optional `prefix` before each:
 | `sessions/<id>` | The transcript as JSON (image and file bytes as `{ "$bytes": "<base64>" }`, like `FileSessionStore`). |
 | `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, with its history under `checkpoints/<id>#history`). |
 | `approvals/<id>` | A paused approval and the snapshot that resumes it (deleted when it is decided). |
+| `oauth/tokens/<key>`, `oauth/pending/<state>` | OAuth tokens and pending sign-ins, encrypted with `tokenKey` (the `LOUSHO_TOKEN_KEY` secret in the generated Worker); see [OAuth](oauth.md#token-storage). |
 
 `ttl: { sessions?, checkpoints?, approvals? }` (seconds, KV accepts 60 or more)
 makes each kind of record expire that long after its last write; by default
