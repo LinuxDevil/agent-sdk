@@ -188,6 +188,9 @@ describe('web_fetch tool', () => {
     await expect(fetchWith({ ...LOCAL, blockedHosts: ['*.example.com'] }, 'http://evil.example.com/')).rejects.toThrow(
       /evil\.example\.com is on the blocked host list/
     );
+    await expect(fetchWith({ ...LOCAL, blockedHosts: ['evil.example.com'] }, 'http://EVIL.example.com./')).rejects.toThrow(
+      /evil\.example\.com is on the blocked host list/
+    );
     expect(spy).not.toHaveBeenCalled();
     const allowed = await fetchWith({ ...LOCAL, allowedHosts: ['localhost'] }, `http://localhost:${port}/json`);
     expect(allowed.status).toBe(200);

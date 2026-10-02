@@ -135,7 +135,8 @@ function parseUrl(raw: string, base?: string): URL {
 
 /** Host-list checks (before DNS) and the IP-literal check (literals are never resolved, so the pinned lookup cannot see them). */
 function checkHost(policy: Policy, url: URL): void {
-  const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  // `example.com.` is `example.com`: drop the root dot so it cannot slip past blockedHosts.
+  const host = url.hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase();
   if (matchesHost(policy.blockedHosts, host)) throw toolFailure(`web_fetch: ${host} is on the blocked host list`);
   if (policy.allowedHosts && !matchesHost(policy.allowedHosts, host)) throw toolFailure(`web_fetch: ${host} is not on the allowed host list`);
   if (isIP(host) && !matchesHost(policy.allowPrivate, host) && isPrivateAddress(host)) throw blockedFailure(host);
