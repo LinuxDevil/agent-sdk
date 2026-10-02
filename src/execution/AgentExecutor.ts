@@ -507,7 +507,7 @@ export interface ExecuteOptions extends PermissionOptions {
    * step's tool results, before the next model call - and a run whose model
    * just gave its final reply takes another step for it. With checkpointing,
    * an input still waiting rides at the end of every checkpoint, so a crash
-   * does not lose it. One queue serves one run. See docs/streaming.md.
+   * does not lose it. One queue serves one run. See docs/queue-and-steer.md.
    */
   inputQueue?: InputQueue;
   /**
@@ -698,7 +698,7 @@ export class AgentExecutor {
    * the events, or await `run.result`; breaking out of the `for await`
    * early aborts the run (`result` then resolves with
    * `finishReason: 'aborted'`). Invalid options throw synchronously.
-   * See docs/streaming.md for the event schema.
+   * See docs/stream-events.md for the event schema.
    *
    * @example
    * ```ts

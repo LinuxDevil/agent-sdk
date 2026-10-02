@@ -32,7 +32,7 @@ import {
 import { reasoningProviderOptions } from './reasoning';
 import { textOf } from './content';
 import { schemaToJsonSchema } from '../utils/zodCompat';
-import { type AiSdkMessage, type AiSdkModule, compatGenerateText, streamCompat } from './aiSdkCompat';
+import { type AiSdkMessage, type AiSdkModule, aiMajorOf, compatGenerateText, streamCompat } from './aiSdkCompat';
 
 // The `ai` v4 request shapes built here, as our own structural types (LOU-D28a):
 // `ai` v6/v7 do not export the v4 ones, and aiSdkCompat maps these to v6/v7.
@@ -106,13 +106,15 @@ function toToolResultMessage(msg: Message, toolNames: Map<string, string>): AiSd
 /** How a provider sends multimodal parts (LOU-V11). */
 interface PartSupport {
   provider: string;
-  /** `false`: file parts become a text note, with a one-time warning. */
-  files: boolean;
+  /** Whether a file part of this media type is sent; `false`: it becomes a text note, with a one-time warning. */
+  files: (mimeType: string) => boolean;
+  /** The `ai` major in use, named in the warning. */
+  aiMajor: number;
   /** LOU-V13: send an assistant turn's `reasoning` blocks back (Anthropic). */
   reasoning?: boolean;
 }
 
-/** Providers already warned that they turned file parts into text. */
+/** `provider:mimeType` pairs already warned about turning a file part into text. */
 const warnedFileParts = new Set<string>();
 
 /** A user content part as the 'ai' v4 `TextPart` / `ImagePart` / `FilePart`. */
@@ -121,12 +123,15 @@ function toUserPart(part: ContentPart, support: PartSupport): ContentPart {
   if (part.type === 'image') {
     return { type: 'image', image: part.image, ...(part.mimeType ? { mimeType: part.mimeType } : {}) };
   }
-  if (support.files) {
+  if (support.files(part.mimeType)) {
     return { type: 'file', data: part.data, mimeType: part.mimeType, ...(part.filename ? { filename: part.filename } : {}) };
   }
-  if (!warnedFileParts.has(support.provider)) {
-    warnedFileParts.add(support.provider);
-    console.warn(`[lousho] The ${support.provider} provider cannot send file parts; they are sent as a text note.`);
+  const warnKey = `${support.provider}:${part.mimeType}`;
+  if (!warnedFileParts.has(warnKey)) {
+    warnedFileParts.add(warnKey);
+    console.warn(
+      `[lousho] The ${support.provider} provider cannot send ${part.mimeType} file parts on ai ${support.aiMajor}; they are sent as a text note.`
+    );
   }
   return { type: 'text', text: `[file ${part.filename ?? 'attachment'} (${part.mimeType}) not sent]` };
 }
@@ -245,8 +250,14 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
    * Whether this provider's 'ai' SDK model takes `file` parts (LOU-V11). The
    * built-in providers' pinned peers (`@ai-sdk/*` 0.0.x, `ollama-ai-provider`)
    * do not, so their file parts become a text note; image parts are sent.
+   * `true` sends every file type; `fileMediaTypes()` opts in single types.
    */
   protected readonly acceptsFileParts: boolean = false;
+
+  /** The file media types sent as `file` parts (others become a text note). None by default. */
+  protected fileMediaTypes(): readonly string[] {
+    return [];
+  }
 
   /** LOU-V13: whether assistant turns send their signed `reasoning` blocks back (Anthropic requires it with tools). */
   protected readonly replaysReasoning: boolean = false;
@@ -262,7 +273,13 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
    * own `Message[]`.
    */
   protected convertMessages(messages: Message[]): AiSdkMessage[] {
-    return toCoreMessages(messages, { provider: this.name, files: this.acceptsFileParts, reasoning: this.replaysReasoning });
+    const sendable = this.fileMediaTypes();
+    return toCoreMessages(messages, {
+      provider: this.name,
+      files: (mimeType) => this.acceptsFileParts || sendable.includes(mimeType.split(';')[0].trim().toLowerCase()),
+      aiMajor: aiMajorOf(this.ai),
+      reasoning: this.replaysReasoning,
+    });
   }
 
   /** LOU-V13: the `providerOptions` that carry the call's `reasoning` for this provider's model. */

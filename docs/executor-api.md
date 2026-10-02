@@ -44,3 +44,27 @@ console.log(events); // includes 'run.start' and 'run.done'
 `registry.register(name, descriptor)` for a descriptor. Pass the registry as
 `toolRegistry` to `AgentExecutor.execute()`. See
 [Tools](./tools.md#toolregistry) for a full example.
+
+## Options of `AgentExecutor.execute()`
+
+`AgentExecutor` is static: call `AgentExecutor.execute(options)`. Only
+`agent`, `input` and `provider` are required. Commonly used options:
+
+| Option                                  | Description                                                     |
+| --------------------------------------- | --------------------------------------------------------------- |
+| `agent`                                 | An `AgentConfig`, usually built with `AgentBuilder`.            |
+| `input`                                 | A user message string, or a `Message[]` conversation.            |
+| `provider`                              | The `LLMProvider` to generate with.                             |
+| `toolRegistry`                          | A `ToolRegistry` holding the tools the agent config refers to.  |
+| `maxSteps`                              | Upper bound on LLM/tool steps.                                  |
+| `limits`                                | Token, cost, time and step budgets of the run; see [Budgets](./configuration.md#budgets). |
+| `temperature`, `maxTokens`              | Generation parameters.                                          |
+| `onAgentEvent`                          | Listener for the run's `AgentEvent`s (`run.start`, `tool.start`, `run.done`, ...); see [Streaming](./streaming.md#listening-without-iterating). |
+| `approvalStore`, `sessionId`            | Human-in-the-loop approvals (see `resumeAfterApproval()`).       |
+| `checkpointStore`                       | Persist/resume execution checkpoints.                           |
+| `exporter`                              | A `TraceExporter` for tracing spans (OpenTelemetry GenAI conventions, see [observability](observability.md)). |
+| `captureContent`, `redactContent`       | Record message/tool content on `gen_ai.*` span attributes (opt-in) / omit the deprecated content attributes. |
+| `onLLMRequest`, `onLLMResponse`, `onToolCall`, `onToolResult` | Observability hooks.                |
+
+It resolves to an `ExecutionResult`: `{ text, messages, toolCalls, usage,
+finishReason, steps, approvalId? }`.
