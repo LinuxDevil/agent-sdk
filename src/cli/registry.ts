@@ -7,6 +7,7 @@ import { readFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import { z } from 'zod';
 import { SDKError } from '../execution/errors';
+import { isHostPattern } from '../security/hostPattern';
 import { closestMatch } from '../utils/closestMatch';
 import { issueMessage, issuePath, type SafeParser } from '../utils/zodCompat';
 
@@ -14,6 +15,7 @@ const FETCH_TIMEOUT_MS = 15_000;
 /** The most a registry document may be, in characters; each file and each item have their own caps in addWrite.ts. */
 const MAX_DOCUMENT_CHARS = 2_000_000;
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const ENV_VAR = /^[A-Z_][A-Z0-9_]*$/;
 
 const itemName = z.string().regex(NAME, 'a name is letters, digits, ".", "_" and "-"');
 const itemType = z.enum(['tool', 'skill', 'channel', 'schedule', 'memory']);
@@ -39,8 +41,8 @@ const ItemSchema = z.object({
   files: z.array(z.object({ path: z.string(), content: z.string() })).min(1),
   permissions: z
     .object({
-      network: z.array(z.string()).optional(),
-      env: z.array(z.string()).optional(),
+      network: z.array(z.string().refine(isHostPattern, 'a network entry is a host name or a `*.` wildcard (no scheme, port or path)')).optional(),
+      env: z.array(z.string().regex(ENV_VAR, 'an env entry is an environment variable name (A-Z, 0-9 and _)')).optional(),
       filesystem: z.enum(['none', 'read', 'write']).optional(),
       exec: z.boolean().optional(),
       needsApproval: z.boolean().optional(),
