@@ -1,29 +1,15 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import Docker from 'dockerode';
+import type Docker from 'dockerode';
 import { SubprocessSandbox, SandboxAdapter } from './sandbox';
+import { dockerAvailable } from './docker.testkit';
 
 /**
- * SubprocessSandbox needs a live Docker daemon. This environment's `docker`
- * CLI is installed but Docker Desktop's daemon is not running (verified
- * via `docker version`, which exits non-zero here), so the integration
- * tests below are skipped at runtime rather than either failing the suite
- * or silently vanishing without explanation - see the LOU-F6 ticket's own
- * guidance and the final report for details.
- *
- * This check runs as a top-level await (vitest collects test files as
- * ESM modules, so this executes - and resolves - before `describe.skipIf`
- * below is evaluated) rather than inside a `beforeAll`, since
- * `describe.skipIf`'s condition is evaluated synchronously during test
- * collection, before any `beforeAll` hook has had a chance to run.
+ * The integration block at the bottom needs a live Docker daemon and skips
+ * without one (shared check: docker.testkit.ts, a top-level await so it
+ * resolves before `describe.skipIf` is evaluated). The real-daemon egress and
+ * broker cases live in sandboxEgress.docker.test.ts (`npm run test:docker`).
  */
-let dockerAvailable = false;
-try {
-  const docker = new Docker();
-  await docker.ping();
-  dockerAvailable = true;
-} catch {
-  dockerAvailable = false;
-}
+const hasDocker = await dockerAvailable();
 
 describe('SubprocessSandbox', () => {
   it('module compiles and exports a SubprocessSandbox class', () => {
@@ -200,7 +186,7 @@ describe('SubprocessSandbox', () => {
     });
   });
 
-  describe.skipIf(!dockerAvailable)('integration (requires a running Docker daemon)', () => {
+  describe.skipIf(!hasDocker)('integration (requires a running Docker daemon)', () => {
     it('run() executes a command in a container and returns matching stdout/exitCode', async () => {
       const sandbox = new SubprocessSandbox({ image: 'node:20-alpine' });
       const result = await sandbox.run('node', ['-e', 'console.log("hello")']);

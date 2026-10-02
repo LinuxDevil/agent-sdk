@@ -26,6 +26,11 @@ const ALLOWED: Array<{ file: string; message: string; reason: string }> = [
     message: "this.interpolate(node.message || 'Flow error'",
     reason: "the flow's own `throw` node: it surfaces the flow author's message verbatim, and a span's error.type stays 'Error'",
   },
+  {
+    file: 'security/docker.testkit.ts',
+    message: "'LOUSHO_DOCKER_TESTS=1 is set",
+    reason: 'a test helper (never bundled or exported): it fails the Docker CI suite when no daemon answers',
+  },
 ];
 
 function sourceFiles(dir: string): string[] {
