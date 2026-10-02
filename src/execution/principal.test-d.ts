@@ -74,9 +74,9 @@ describe('Principal types in tools and approvals (N10b)', () => {
     const approve: ApproveToolCall = (request) => request.principal?.claims?.admin === true;
     const agent = createAgent({ provider: createMockProvider(), approve });
     const approver: Principal = { id: 'ops', type: 'user', authenticator: 'jwt' };
-    void agent.approvals.resolve({ id: 'a1', approved: true }, { principal: approver });
-    void agent.approvals.answer({ id: 'a1', answer: 'yes' }, { principal: approver });
-    void agent.approvals.streamResolve({ id: 'a1', approved: true }, { principal: approver });
-    void agent.approvals.streamAnswer({ id: 'a1', answer: 'yes' }, { principal: approver });
+    expectTypeOf(agent.approvals.resolve).toBeCallableWith({ id: 'a1', approved: true }, { principal: approver });
+    expectTypeOf(agent.approvals.answer).toBeCallableWith({ id: 'a1', answer: 'yes' }, { principal: approver });
+    expectTypeOf(agent.approvals.streamResolve).toBeCallableWith({ id: 'a1', approved: true }, { principal: approver });
+    expectTypeOf(agent.approvals.streamAnswer).toBeCallableWith({ id: 'a1', answer: 'yes' }, { principal: approver });
   });
 });
