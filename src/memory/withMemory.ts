@@ -38,7 +38,7 @@ function memoryTools([slot, key]: BoundSlot): DefinedTool[] {
   });
   const recall = defineTool({
     name: `recall_${slot.name}`,
-    description: `Search the "${slot.name}" memory, newest items first.${about}`,
+    description: `Search the "${slot.name}" memory${slot.provider.ranking === 'relevance' ? ' by meaning, most relevant first' : ', newest items first'}.${about}`,
     input: z.object({ query: z.string().optional(), limit: z.number().int().positive().optional() }),
     execute: async ({ query, limit = slot.recall.maxItems }) => ({
       items: (await slot.provider.list(key, { query, limit })).map(({ id, text, createdAt }) => ({ id, text, createdAt })),

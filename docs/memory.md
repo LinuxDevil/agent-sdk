@@ -109,16 +109,20 @@ fill it from code with `provider.add(scopeKey, { text })`.
 | `inMemoryMemory({ maxItems? })` | This process; lost on restart. For tests and demos. |
 | `fileMemory({ dir, maxItems? })` | One JSON file per scope key in `dir` (key URI-encoded), written atomically. |
 | `sqliteMemory(store, { maxItems? })` (from `/sqlite`) | A `memory_items` table in the agent's `SqliteStore` file, one JSON array per scope key. |
+| `inMemoryVectorMemory({ embedder, maxItems?, minScore? })` | This process; recalls by meaning. See [Semantic recall](#semantic-recall). |
+| `sqliteVectorMemory(store, { embedder, maxItems?, minScore? })` (from `/sqlite`) | A `memory_vectors` table in the agent's `SqliteStore` file; recalls by meaning. |
 
-All keep at most `maxItems` items per scope key (default 1000; adding one
-more drops the oldest) and match a `query` by keyword: an item matches when it
+The first three keep at most `maxItems` items per scope key (default 1000;
+adding one more drops the oldest) and match a `query` by keyword: an item matches when it
 contains one of the query's words of three or more letters, ignoring case.
 
 ### SQLite
 
 Pass the same `SqliteStore` to the agent and to the provider, and sessions,
 checkpoints and memory share one database file. An existing file gains the
-table when it is opened. Keep the store open while the agent runs.
+table when it is opened. Keep the store open while the agent runs. To recall
+by meaning instead of by keyword, use `sqliteVectorMemory()`: see
+[Semantic recall](#semantic-recall).
 
 ```ts no-run
 import { createAgent, defineMemory } from '@lousho/build-ai-agent';
@@ -129,7 +133,7 @@ const notes = defineMemory({ name: 'notes', scope: 'global', provider: sqliteMem
 const agent = createAgent({ model: 'openai/gpt-4o-mini', store, memory: [notes] });
 ```
 
-For semantic search or a hosted store, implement `MemoryProvider`:
+For a hosted store or your own ranking, implement `MemoryProvider`:
 
 ```ts
 import type { MemoryItem, MemoryProvider } from '@lousho/build-ai-agent';
@@ -179,3 +183,90 @@ console.log((await store.list('global')).map((item) => item.text)); // ['Lives i
   are not offered for the rest of that run.
 - An agent directory's `memory/` folder is part of the agent: see
   [Agent directories](./agent-directories.md#memory).
+
+## Semantic recall
+
+The keyword providers above find an item only when it shares a word with the
+query. A vector provider finds it by meaning: it turns every item and every
+query into a vector with an embedding model and ranks the items by cosine
+similarity, so "what does the user like to eat?" finds "Sam is vegetarian".
+
+An **embedder** (`EmbeddingProvider`) turns texts into vectors.
+`aiSdkEmbedder(model)` wraps any AI SDK embedding model, through `embedMany`
+from the installed `ai` package (4, 6 or 7; build the model with the provider
+package that pairs with your `ai` major, as for language models). It adds no
+dependency: `ai` is already a peer, and the provider package is yours.
+
+```ts no-run
+import { createAgent, defineMemory, aiSdkEmbedder, inMemoryVectorMemory } from '@lousho/build-ai-agent';
+import { createOpenAI } from '@ai-sdk/openai';
+
+const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+const facts = defineMemory({
+  name: 'facts',
+  scope: 'global',
+  provider: inMemoryVectorMemory({
+    embedder: aiSdkEmbedder(openai.embedding('text-embedding-3-small')),
+    minScore: 0.3,
+  }),
+  recall: { query: 'last-input' },
+});
+const agent = createAgent({ model: 'openai/gpt-4o-mini', memory: [facts] });
+```
+
+Two providers rank by meaning, with the same options:
+
+- `inMemoryVectorMemory({ embedder, maxItems?, minScore? })` keeps items in this
+  process.
+- `sqliteVectorMemory(store, { embedder, maxItems?, minScore? })` (from
+  `@lousho/build-ai-agent/sqlite`) keeps them in the agent's SQLite file, in a
+  `memory_vectors` table that an existing file gains when it is opened. Vectors
+  survive restarts.
+
+With a query, `list()` embeds it, scores the items of that scope key, drops
+those under `minScore` (cosine similarity, default `0.2`), sorts by score
+(newer first on a tie) and returns `limit` of them. Each returned item has its
+score in `metadata.score`. Without a query, or a blank one, it lists the newest
+items first, like every provider. The `recall_<name>` tool then reads "Search
+the memory by meaning, most relevant first."
+
+To recall by meaning at the start of a run, set `recall: { query: 'last-input' }`
+on the slot: the run's last user message is the query, so the `<memory>` block
+holds the items closest to it instead of the newest ones. Without it, the block
+holds the newest `maxItems` items and only the `recall_<name>` tool ranks.
+
+Items are only ever compared within their own scope key, and only when the same
+embedder (its `id`) made them. The id is stored with each vector: after you
+change the model or the id, old items are skipped when ranking (they still show
+in listings without a query) until you call `await provider.reindex()`, which
+re-embeds them in batches and returns how many it changed. `reindex(scopeKey)`
+does one scope key only.
+
+`hashEmbedder()` from `@lousho/build-ai-agent/testing` is a deterministic
+offline embedder for tests: a hashed bag of word stems, so texts that share
+words are close. It is not a semantic model and does not know that "vegetarian"
+and "eat" are related.
+
+```ts
+import { inMemoryVectorMemory } from '@lousho/build-ai-agent';
+import { hashEmbedder } from '@lousho/build-ai-agent/testing';
+
+const memory = inMemoryVectorMemory({ embedder: hashEmbedder() });
+await memory.add('global', { text: 'Sam is vegetarian' });
+await memory.add('global', { text: 'The office is in Oslo' });
+
+const [best] = await memory.list('global', { query: 'vegetarian food' });
+console.log(best.text, best.metadata?.score); // Sam is vegetarian, a score of about 0.5
+```
+
+Costs and limits:
+
+- Every `add` makes one embedding call and every query makes one, so memory
+  writes and recall cost model calls and add latency. A failed embedding call
+  stores nothing; the `remember_<name>` tool reports the error to the model.
+- Scoring is brute force in JavaScript over one scope key's items, with no vector
+  index. Keep `maxItems` (default 5000 per scope key; adding one more drops the
+  oldest) in mind: thousands of items per key are fine, hundreds of thousands are not.
+- `fileMemory()`, `sqliteMemory()` and the Cloudflare KV store have no vector
+  support. Write your own `MemoryProvider` for a vector database.
