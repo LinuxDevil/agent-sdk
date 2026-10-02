@@ -2816,9 +2816,11 @@ const scripted = createAgent({
 A permission rule that `allow`s `ask_question` skips the pause, so the call
 fails with "No answer"; leave the tool to its default.
 
-## `AgentExecutor` and `resumeAfterApproval()`
+## Advanced: the executor API
 
-With `AgentExecutor.execute()` directly, pass an `approvalStore`. On a gated
+`createAgent()` agents use `agent.approvals` (see
+[`createAgent()` agents](#createagent-agents)). With `AgentExecutor.execute()`
+directly (see [the executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md)), pass an `approvalStore`. On a gated
 call the executor persists an `ExecutionSnapshot` instead of invoking the
 tool. Resume later, after a real restart if you like, with
 `resumeAfterApproval()`:
@@ -3770,28 +3772,28 @@ non-streaming `send()` emits no events. Hooks add their own events with
 
 ## Compacting a run
 
-`createCompactionHook()` returns an `AgentHook` named `compaction`. Register it
-and pass the registry to `AgentExecutor.execute()`. The recommended setup is
-the two-phase strategy with a cheap summarizer model:
+`createCompactionHook()` returns an `AgentHook` named `compaction`. Pass it in
+`createAgent({ hooks })`. The recommended setup is the two-phase strategy with
+a cheap summarizer model:
 
 ```ts
-import { AgentExecutor, HookRegistry, createCompactionHook, twoPhaseStrategy } from '@lousho/build-ai-agent';
+import { createAgent, createCompactionHook, twoPhaseStrategy } from '@lousho/build-ai-agent';
 
-const hooks = new HookRegistry();
-hooks.register(
-  createCompactionHook({
-    strategy: twoPhaseStrategy({ model: 'openai/gpt-4o-mini' }), // prune, then summarize if still too big
-    thresholdPercent: 0.9, // compact above 90% of the context window (the default)
-    protectedTokens: 40_000, // never change the newest 40K tokens (the default)
-    onCompaction: ({ tokensBefore, tokensAfter, prunedToolCallIds, summary, error }) => {
-      console.log(`compacted ${tokensBefore} -> ${tokensAfter} tokens (${prunedToolCallIds.length} results pruned)`);
-      if (summary) console.log('summary:', summary);
-      if (error) console.warn('summarizer failed, kept the pruned conversation:', error.message);
-    },
-  })
-);
-
-const result = await AgentExecutor.execute({ agent, input, provider, toolRegistry, hooks });
+const agent = createAgent({
+  provider,
+  hooks: [
+    createCompactionHook({
+      strategy: twoPhaseStrategy({ model: 'openai/gpt-4o-mini' }), // prune, then summarize if still too big
+      thresholdPercent: 0.9, // compact above 90% of the context window (the default)
+      protectedTokens: 40_000, // never change the newest 40K tokens (the default)
+      onCompaction: ({ tokensBefore, tokensAfter, prunedToolCallIds, summary, error }) => {
+        console.log(`compacted ${tokensBefore} -> ${tokensAfter} tokens (${prunedToolCallIds.length} results pruned)`);
+        if (summary) console.log('summary:', summary);
+        if (error) console.warn('summarizer failed, kept the pruned conversation:', error.message);
+      },
+    }),
+  ],
+});
 ```
 
 Before every model call the hook estimates the request's size with
@@ -3820,6 +3822,26 @@ A pruned result or a summary therefore stays in later steps, in checkpoints
 `result.messages`, and it is not compacted again on the next step.
 Compaction is lossy: if the model needs a pruned result again, it has to call
 the tool again.
+
+#### Advanced: the executor API
+
+Registering the hook in a `HookRegistry` is for code that calls the executor
+directly (see [the executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md)):
+
+```ts
+import { AgentExecutor, HookRegistry, createCompactionHook, twoPhaseStrategy } from '@lousho/build-ai-agent';
+
+const hooks = new HookRegistry();
+hooks.register(
+  createCompactionHook({
+    strategy: twoPhaseStrategy({ model: 'openai/gpt-4o-mini' }),
+    thresholdPercent: 0.9,
+    protectedTokens: 40_000,
+  })
+);
+
+const result = await AgentExecutor.execute({ agent, input, provider, toolRegistry, hooks });
+```
 
 ## Strategies
 
@@ -8227,19 +8249,19 @@ generated Worker uses `KVCheckpointStore`, see [Deployment](https://github.com/L
 re-exported from the root entry, so importing the SDK never loads it):
 
 ```ts
-import { createAgent, AgentExecutor } from '@lousho/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
 
 const store = new SqliteStore('./.lousho/agent.db'); // or ':memory:'
 const agent = createAgent({ provider, store }); // transcripts, per-step checkpoints and approvals
 await agent.session({ id: 'user-42' }).send('Hello');
 
-// With AgentExecutor directly, pass the parts:
-// AgentExecutor.execute({ ..., sessionId, checkpointStore: store.checkpoints, approvalStore: store.approvals })
-
 store.prune({ olderThanMs: 7 * 24 * 60 * 60 * 1000 }); // { sessions, checkpoints, approvals } deleted
 store.close();
 ```
+
+With the executor directly, pass `store.checkpoints` as `checkpointStore` and
+`store.approvals` as `approvalStore`; see [the executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md).
 
 - The directory is created if missing. The schema is versioned with
   `PRAGMA user_version` and migrated on open; a database written by a newer
@@ -8304,18 +8326,8 @@ const agent = createAgent({
 match `^[a-z0-9][a-z0-9-_]{0,63}$`; `description` and `content` must be
 non-empty. Errors say what is wrong and how to fix it.
 
-The full executor API takes the same option:
-
-```ts
-import { AgentExecutor, defineSkill } from '@lousho/build-ai-agent';
-
-const result = await AgentExecutor.execute({
-  agent,
-  input: 'Write the changelog for 1.2.0',
-  provider,
-  skills: [defineSkill({ name: 'changelog', description: 'Changelog style', content: '...' })],
-});
-```
+`AgentExecutor.execute()` takes the same `skills` option; see
+[the executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md).
 
 If you already registered a tool named `load_skill`, passing `skills` throws:
 rename your tool or drop the option.
@@ -8520,17 +8532,33 @@ console.log((await again.result).text);
 ## Streaming after an approval
 
 A run that paused for an [approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md) can continue as a stream
-too. `streamResumeAfterApproval()` takes the arguments of
-`resumeAfterApproval()` and returns an `AgentRun` whose `result` is what
-`resumeAfterApproval()` returns. Its events are `run.start`, the decided
+too. `agent.approvals.streamResolve()` (or `streamAnswer()`) returns an
+`AgentRun` whose `result` is what `agent.approvals.resolve()` returns. Its events are `run.start`, the decided
 call's `tool.start` and `tool.done` (`tool.error` for a rejection), then the
 continuation's events exactly as in a fresh run, up to `run.done`; a further
 pause ends it with `approval.requested`. Cancellation, `enqueue()` and
 `steer()` work as on any run, and the approval can come from another
-process, since everything is read from the approval store. For
-`createAgent()` agents use `agent.approvals.streamResolve()` or
-`streamAnswer()`. A model chosen per run (`model` as a function) is the one
-the paused run used.
+process, since everything is read from the approval store. A model chosen per
+run (`model` as a function) is the one the paused run used.
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ provider /* , a tool with needsApproval */ });
+const paused = await agent.send('Delete the old reports.');
+// paused.finishReason === 'awaiting-approval'
+const run = agent.approvals.streamResolve({ id: paused.approvalId!, approved: true });
+for await (const event of run) {
+  if (event.type === 'tool.done') console.log(`${event.toolName} ran`);
+  if (event.type === 'text.delta') process.stdout.write(event.text);
+}
+```
+
+#### Advanced: the executor API
+
+With the executor directly, `streamResumeAfterApproval()` takes the arguments
+of `resumeAfterApproval()` (see [the executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md)) and
+returns the same `AgentRun`.
 
 ```ts
 import { AgentExecutor, streamResumeAfterApproval } from '@lousho/build-ai-agent';
@@ -8798,6 +8826,11 @@ failed); the input is then left to you too.
 Queued input waits for the step that is running. To redirect the run at
 once, steer it (next section).
 
+#### Advanced: the executor API
+
+Without a stream, pass an `InputQueue` to `AgentExecutor.execute()` (see
+[the executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md)):
+
 ```ts
 import { AgentExecutor, InputQueue } from '@lousho/build-ai-agent';
 
@@ -8926,9 +8959,10 @@ with `{ sessionId, input }` streams `agent.session({ id }).stream(input)` as
 `data:` lines ending with `event: done`, and approvals are decided through
 `POST /chat/:sessionId/approvals/:id` (see [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md#lousho-dev)).
 
-## Example: the full API
+## Advanced: the executor API
 
-`AgentExecutor.stream()` accepts every `execute()` option. Here a tool that
+`AgentExecutor.stream()` accepts every `execute()` option (see
+[the executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md)). Here a tool that
 needs approval ends the stream with `approval.requested`:
 
 ```ts
@@ -9498,11 +9532,63 @@ the same events, sub-agents' included, as they happen. See
 ## Approvals inside a sub-agent
 
 When a sub-agent calls a tool that `needsApproval`, the **whole run pauses**:
-the lead's `execute()` resolves with `finishReason: 'awaiting-approval'` and
+the lead's `send()` resolves with `finishReason: 'awaiting-approval'` and
 an `approvalId`, and the approval store holds ONE record whose pending call is
 the sub-agent's call (`toolName`, `args`) with `subagentPath` naming the
 sub-agents it runs inside (e.g. `['researcher']`). Approve or reject it with
-`resumeAfterApproval()`, passing the same `subagents` option as the paused run:
+`lead.approvals.resolve({ id, approved })` (the lead already knows its
+`subagents`; the in-memory approval store is the default, so no `approvalStore`
+is needed):
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+
+const lead = createAgent({
+  provider,
+  instructions: 'You lead.',
+  subagents: { researcher: createAgent({ provider, instructions: 'You research.', description: 'Researches' }) },
+});
+
+const paused = await lead.send('Go');
+if (paused.finishReason === 'awaiting-approval' && paused.approvalId) {
+  const result = await lead.approvals.resolve({ id: paused.approvalId, approved: true });
+  console.log(result.text);
+}
+```
+
+Resuming runs (or rejects) the sub-agent's pending call, lets the sub-agent
+finish, returns its final answer to the lead as the `task` result, and then
+continues the lead. If the sub-agent needs another approval, the run pauses
+again with a new `approvalId`. This works at any depth and for
+`createDelegateTool()` children (pass the registry that holds the delegate
+tool).
+
+The lead's `approve` option decides its sub-agents' calls too.
+
+Guarantees and limits:
+
+- No call runs twice and none is lost: the sub-agent's paused state is stored
+  inside the lead's approval record (plain JSON, so any `ApprovalStore`
+  works), and the approved call runs exactly once, on resume.
+- Other tool calls of the same lead turn that finished keep their results and
+  are not run again.
+- One approval is pending per run. If two sub-agents pause in the same turn,
+  the run pauses on the first (in call order); the second sub-agent stops and
+  the lead gets an error result for that `task` call saying its call was not
+  run, so it can ask again after the approval.
+- A `task` call's pre/post tool hooks fire again on resume, like the hooks of
+  any approved tool.
+- Token usage keeps adding up across the pause: the sub-agent's usage before
+  the pause is in the paused result, and what it spends after the resume is
+  added to the resumed lead's `result.usage`.
+
+#### Advanced: the executor API
+
+With `AgentExecutor.execute()` as the lead (see
+[the executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md)), the run needs an `approvalStore`;
+without one, the sub-agent's call becomes an error result and nothing runs.
+Resume with `resumeAfterApproval()`, passing the same `subagents` option as the
+paused run:
 
 ```ts
 import { AgentExecutor, resumeAfterApproval, ToolRegistry, createAgent } from '@lousho/build-ai-agent';
@@ -9522,38 +9608,10 @@ if (paused.finishReason === 'awaiting-approval' && paused.approvalId) {
 }
 ```
 
-Resuming runs (or rejects) the sub-agent's pending call, lets the sub-agent
-finish, returns its final answer to the lead as the `task` result, and then
-continues the lead. If the sub-agent needs another approval, the run pauses
-again with a new `approvalId`. This works at any depth and for
-`createDelegateTool()` children (pass the registry that holds the delegate
-tool).
-
-With a `createAgent()` lead, `lead.send()` pauses the same way and
-`lead.approvals.resolve({ id, approved })` resumes it (the lead already knows
-its `subagents`); the lead's `approve` option decides its sub-agents' calls too.
-
-Guarantees and limits:
-
-- No call runs twice and none is lost: the sub-agent's paused state is stored
-  inside the lead's approval record (plain JSON, so any `ApprovalStore`
-  works), and the approved call runs exactly once, on resume.
-- Other tool calls of the same lead turn that finished keep their results and
-  are not run again.
-- One approval is pending per run. If two sub-agents pause in the same turn,
-  the run pauses on the first (in call order); the second sub-agent stops and
-  the lead gets an error result for that `task` call saying its call was not
-  run, so it can ask again after the approval.
-- A `task` call's pre/post tool hooks fire again on resume, like the hooks of
-  any approved tool.
-- Approvals need an `approvalStore` on the lead run, which `createAgent()`
-  does not take yet; use `AgentExecutor.execute()` for the lead. Without one,
-  the sub-agent's call becomes an error result and nothing runs.
-- Token usage keeps adding up across the pause: the sub-agent's usage before
-  the pause is in the paused result, and what it spends after the resume is
-  added to the resumed lead's `result.usage`.
-
 ## `createDelegateTool()`
+
+`createDelegateTool()` is superseded by `subagents`; it exists for code that
+builds a `ToolRegistry` by hand.
 
 `createDelegateTool({ agent, provider, toolRegistry })` wraps one child agent as
 a tool you name and register yourself, with its own `maxDepth` guard. It runs
