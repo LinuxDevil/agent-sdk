@@ -53,6 +53,7 @@ By participating in this project, you agree to maintain a respectful and inclusi
    npm test           # Tests
    npm run build      # Build
    ```
+   Changes to the Docker sandbox, its network egress, the credential broker or the docker deploy adapter also have real-daemon tests, `npm run test:docker` (`*.docker.test.ts`, not part of `npm test`). They skip without a Docker daemon (the egress cases also skip on Docker Desktop and rootless Docker, where egress is refused by design), so they run in the "Docker Engine" CI workflow on Linux; set `LOUSHO_DOCKER_TESTS=1` to make a missing daemon fail the run instead.
 
 4. Commit your changes with a descriptive commit message
 
