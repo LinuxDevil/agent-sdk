@@ -8,6 +8,7 @@ import { AiSdkProvider, AiSdkProviderConfig } from './aiSdkProvider';
 import { aiMajorOf } from './aiSdkCompat';
 import { lazyValue, loadOptionalPeer } from './optionalPeer';
 import { Logger, noopLogger } from '../execution/logger';
+import { SDKError } from '../execution/errors';
 import type { GenerateOptions } from './llm';
 import { openRouterReasoning } from './reasoning';
 
@@ -144,7 +145,8 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch ${what}: ${response.statusText}`);
+      // Callers catch this, log it and fall back; the message stays as it was.
+      throw new SDKError(`Failed to fetch ${what}: ${response.statusText}`, 'LOUSHY_PROVIDER_REQUEST_FAILED', { appendHelp: false });
     }
 
     const data = await response.json();
