@@ -3,10 +3,13 @@
  * Worker, which has no shim for Node builtins. This guards the barrel's
  * import graph: no module it reaches may import a `node:` path.
  */
-import { describe, expect, it } from 'vitest';
-import { build } from 'esbuild';
+import { afterAll, describe, expect, it } from 'vitest';
+import { build, stop } from 'esbuild';
 import { join } from 'node:path';
 import * as kv from './kv';
+
+// esbuild keeps a service process alive after build(); end it so it does not outlive this file.
+afterAll(() => stop());
 
 describe('@lousho/build-ai-agent/kv (R2)', () => {
   it('bundles for the browser platform with no node: import in its graph', async () => {

@@ -118,9 +118,19 @@ describe('command guardrails (LOU-E11)', () => {
     fs.cpSync(fixtureRepo, scratchDir, { recursive: true });
   });
 
-  afterEach(() => {
-    fs.rmSync(scratchDir, { recursive: true, force: true });
-  });
+  afterEach(async () => {
+    // The timeout test's child is killed by a taskkill nobody waits for; on
+    // Windows its working directory stays locked (EPERM) until it exits.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        fs.rmSync(scratchDir, { recursive: true, force: true });
+        return;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EPERM' || attempt >= 50) throw error;
+        await new Promise((done) => setTimeout(done, 200));
+      }
+    }
+  }, 15_000);
 
   it('createTestRunGuardrail passes against the unmutated fixture repo', async () => {
     const guardrail = createTestRunGuardrail(scratchDir);
