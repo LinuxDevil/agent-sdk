@@ -7,6 +7,7 @@
 
 import type { AgentEvent, AgentEventError, AgentEventUsage } from '../execution/agentEvents';
 import { describeInput, type AgentInput } from '../providers/content';
+import type { Todo } from '../tools/built-in/todo';
 import type { ApprovalKind, ApprovalQuestion } from '../execution/ApprovalGate';
 
 /** Where a tool call stands: running, paused for approval, or finished. */
@@ -68,6 +69,8 @@ export interface AgentUIState {
   error: AgentEventError | null;
   /** Token usage of the last finished run (`run.done`). */
   usage: AgentEventUsage | null;
+  /** The agent's todo list, from the last top-level `todo.updated`; carries across turns and is cleared by `reset()`. */
+  todos: readonly Todo[];
   lastEvent: AgentEvent | null;
 }
 
@@ -88,6 +91,7 @@ export const initialAgentUIState: AgentUIState = {
   pendingApproval: null,
   error: null,
   usage: null,
+  todos: [],
   lastEvent: null,
 };
 
@@ -196,6 +200,8 @@ export function reduceAgentEvents(state: AgentUIState, event: AgentEvent | Agent
     case 'tool.error':
       // A reviewer's rejection (streamed continuation, LOU-D32.2) is `rejected`, not a failure.
       return { ...next, messages: patchTool(state.messages, event.toolCallId, event.error.name === 'ToolRejectedError' ? { status: 'rejected' } : { status: 'error', error: event.error }) };
+    case 'todo.updated':
+      return { ...next, todos: event.todos };
     case 'approval.requested':
       return pause(next, pendingOf(event));
     case 'error':

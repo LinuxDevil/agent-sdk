@@ -48,7 +48,8 @@ snippets here):
 ## What differs from React
 
 - **State is the store value.** `$agent` is the React hook's state object:
-  `messages`, `status`, `pendingApproval`, `error`, `usage` and `lastEvent`.
+  `messages`, `status`, `pendingApproval`, `error`, `usage`, `todos` and
+  `lastEvent`.
   The commands (`send`, `stop`, `approve`, `reject`, `answer`) sit on the
   store itself with the React hook's signatures; they do not need a
   subscriber.
@@ -65,3 +66,27 @@ snippets here):
 The reducer and the stream parser are exported from this subpath too
 (`reduceAgentEvents`, `initialAgentUIState`, `parseEventStream`), the same
 ones as in `@lousho/build-ai-agent/react`.
+
+## Todos
+
+`loushoTodos(agent)` is a readable store derived from the `loushoAgent()` store:
+`$plan` is the todo view with `todos`, `counts`, `current` (the `in_progress`
+item, else the first `pending` one) and `progress` (`completed / total`). It
+shows the plan of an agent with the [todo tools](./tools.md#todo-tools) live, from
+the same stream as the chat, and notifies only when the list changes (see
+[React](./react.md#todos)).
+
+```ts
+import { loushoAgent, loushoTodos } from '@lousho/build-ai-agent/svelte';
+
+export const agent = loushoAgent({ url: '/api/agent' });
+export const plan = loushoTodos(agent);
+```
+
+```html
+<p>{$plan.counts.completed} of {$plan.counts.total} done ({Math.round($plan.progress * 100)}%)</p>
+{#if $plan.current}<p>Now: {$plan.current.content}</p>{/if}
+<ul>
+  {#each $plan.todos as todo (todo.id)}<li>{todo.status}: {todo.content}</li>{/each}
+</ul>
+```

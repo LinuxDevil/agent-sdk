@@ -4,6 +4,7 @@ import { readUIMessageStream, type UIMessage, type UIMessageChunk } from 'ai-v7'
 import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import { mockModel } from '../testing';
+import { createTodoTools } from '../tools/built-in/todo';
 import {
   fromUIMessages,
   toUIMessageStream,
@@ -82,6 +83,25 @@ describe('toUIMessageStream (LOU-P1)', () => {
     const approval = chunks.find((c) => c.type === 'data-lousho-approval');
     expect(approval).toMatchObject({ data: { toolCallId: 'c1', toolName: 'deploy', input: { env: 'prod' } } });
     expect(chunks.at(-1)).toMatchObject({ type: 'finish', finishReason: 'other', messageMetadata: { loushoFinishReason: 'awaiting-approval' } });
+  });
+
+  it('emits a todo.updated event as a data-lousho-todos part (N12)', async () => {
+    const write = { name: 'todo_write', args: { todos: [{ content: 'a', status: 'in_progress' }, { content: 'b', status: 'pending' }] } };
+    const run = createAgent({ provider: mockModel([{ toolCalls: [write] }, 'ok']), tools: createTodoTools().tools }).stream('go');
+    const chunks = await collect(toUIMessageStream(run));
+    expect(chunks.filter((c) => c.type === 'data-lousho-todos')).toEqual([
+      {
+        type: 'data-lousho-todos',
+        id: 'todos',
+        data: {
+          todos: [
+            { id: 'todo_1', content: 'a', status: 'in_progress' },
+            { id: 'todo_2', content: 'b', status: 'pending' },
+          ],
+          counts: { pending: 1, in_progress: 1, completed: 0, total: 2 },
+        },
+      },
+    ]);
   });
 
   it('is read by the real ai v7 UI message stream reader into a message with text and tool parts', async () => {

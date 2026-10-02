@@ -2,6 +2,13 @@ import { describe, it, expect, vi } from 'vitest';
 import { createTodoTools, type Todo, type TodoStore } from './todo';
 import { createAgent } from '../../createAgent';
 import { mockModel } from '../../testing';
+import type { AgentEvent } from '../../execution/agentEvents';
+
+async function collect(run: AsyncIterable<AgentEvent>): Promise<AgentEvent[]> {
+  const events: AgentEvent[] = [];
+  for await (const event of run) events.push(event);
+  return events;
+}
 
 /** The JSON the model received as the result of tool call `n` (0-based), read from the last recorded request. */
 function toolResults(model: ReturnType<typeof mockModel>): Array<Record<string, unknown>> {
@@ -151,5 +158,51 @@ describe('createTodoTools', () => {
     const { todoWrite, todoRead } = createTodoTools();
     expect(todoWrite.description).toMatch(/multi-step|three or more steps/);
     expect(todoRead.name).toBe('todo_read');
+  });
+
+  describe('todo.updated event (N12)', () => {
+    const write = { name: 'todo_write', id: 'w1', args: { todos: [{ content: 'a', status: 'in_progress' }, { content: 'b', status: 'pending' }] } };
+
+    it('follows the tool.done of a todo_write with the list and counts; todo_read emits none', async () => {
+      const todos = createTodoTools();
+      const model = mockModel([{ toolCalls: [write] }, { toolCalls: [{ name: 'todo_read', id: 'r1' }] }, 'ok']);
+      const events = await collect(createAgent({ prompt: 'p', provider: model, tools: todos.tools }).stream('go'));
+
+      const done = events.findIndex((e) => e.type === 'tool.done' && e.toolCallId === 'w1');
+      expect(events[done + 1]).toMatchObject({
+        type: 'todo.updated',
+        toolCallId: 'w1',
+        todos: [
+          { id: 'todo_1', content: 'a', status: 'in_progress' },
+          { id: 'todo_2', content: 'b', status: 'pending' },
+        ],
+        counts: { pending: 1, in_progress: 1, completed: 0, total: 2 },
+      });
+      expect(events.filter((e) => e.type === 'todo.updated')).toHaveLength(1);
+      expect(events[done]).toMatchObject({ result: { counts: { total: 2 } } });
+      expect(JSON.parse(JSON.stringify(events[done + 1]))).toEqual(events[done + 1]);
+    });
+
+    it('emits nothing for a failed todo_write', async () => {
+      const bad = { name: 'todo_write', args: { todos: [{ content: 'a', status: 'in_progress' }, { content: 'b', status: 'in_progress' }] } };
+      const events = await collect(createAgent({ prompt: 'p', provider: mockModel([{ toolCalls: [bad] }, 'ok']), tools: createTodoTools().tools }).stream('go'));
+      expect(events.some((e) => e.type === 'todo.updated')).toBe(false);
+    });
+
+    it("carries a sub-agent's todo_write with its subagent field", async () => {
+      const researcher = createAgent({
+        name: 'researcher',
+        description: 'Researches',
+        provider: mockModel([{ toolCalls: [write] }, 'planned']),
+        tools: createTodoTools().tools,
+      });
+      const lead = createAgent({
+        provider: mockModel([{ toolCalls: [{ name: 'task', args: { agent: 'researcher', prompt: 'plan', description: 'plan' } }] }, 'done']),
+        subagents: { researcher },
+      });
+      const updated = (await collect(lead.stream('go'))).filter((e) => e.type === 'todo.updated');
+      expect(updated).toHaveLength(1);
+      expect(updated[0].subagent).toMatchObject({ name: 'researcher' });
+    });
   });
 });

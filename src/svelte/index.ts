@@ -11,10 +11,13 @@ export {
   type LoushoAgentStoreOptions,
   type RemoteAgentSource,
 } from './loushoAgent';
+export { loushoTodos } from './loushoTodos';
 export {
   initialAgentUIState,
   reduceAgentEvents,
   parseEventStream,
+  todoView,
+  type TodoView,
   type AgentUIAction,
   type AgentUIState,
   type AgentUIStatus,
