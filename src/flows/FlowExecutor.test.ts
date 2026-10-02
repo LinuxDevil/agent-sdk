@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { FlowExecutor, FlowExecutionContext, FlowExecutionResult } from './FlowExecutor';
+import { FlowExecutor, FlowExecutionContext } from './FlowExecutor';
 import { AgentFlow, AgentConfig } from '../types';
 import { MockLLMProvider } from '../providers/mock';
 import { ToolRegistry } from '../tools';
@@ -153,8 +153,6 @@ describe('FlowExecutor', () => {
 
   describe('Sequence Execution', () => {
     it('should execute steps in sequence', async () => {
-      const events: string[] = [];
-
       const flow: AgentFlow = {
         code: 'test-flow',
         name: 'Test Flow',

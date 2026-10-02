@@ -4,7 +4,6 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { OpenAIProvider } from './OpenAIProvider';
-import { GenerateOptions } from './llm';
 
 describe('OpenAIProvider', () => {
   let provider: OpenAIProvider;

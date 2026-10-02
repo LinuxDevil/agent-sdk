@@ -15,7 +15,12 @@ export default tseslint.config(
       // baseline tracked in docs/eslint-baseline-followup.md. Ratchet these
       // back to 'error' once that baseline is cleared.
       '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-unused-vars': 'warn',
+      // A leading underscore marks a parameter/variable kept on purpose (an
+      // interface method that ignores an argument, a type-test stub).
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
       '@typescript-eslint/ban-ts-comment': 'warn',
     },
   }

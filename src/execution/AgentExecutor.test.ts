@@ -996,7 +996,7 @@ describe('AgentExecutor', () => {
       let callCount = 0;
       const mockProvider = {
         name: 'mock',
-        async generate(options: any) {
+        async generate() {
           callCount++;
           if (callCount === 1) {
             return {
