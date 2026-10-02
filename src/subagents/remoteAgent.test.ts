@@ -226,6 +226,27 @@ describe('remote sub-agent approvals through the lead run (LOU-Y7.3)', () => {
     expect(taskResult(result.messages)).toMatch(/^Both deployed\./);
   });
 
+  it('a background remote task that pauses pauses the lead at agent_await, and approving it returns the answer there (M4)', async () => {
+    const { server, runs } = approvingRemote([deployCall(), 'Deployed in the background.']);
+    const start = { name: 'task', args: { agent: 'remote', prompt: 'deploy', description: 'd', background: true } };
+    const { agent } = lead(remoteAgent({ url: 'https://remote.test', auth: TOKEN, fetch: server.fetch }), [
+      { toolCalls: [start] },
+      { toolCalls: [{ name: 'agent_await', args: { taskId: 'task_1' } }] },
+      'done',
+    ]);
+
+    const paused = await agent.send('go');
+    expect(paused.finishReason).toBe('awaiting-approval');
+    expect(await agent.approvals.list()).toEqual([expect.objectContaining({ id: paused.approvalId, toolName: 'deploy', subagentPath: ['remote'] })]);
+
+    const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+
+    expect(runs).toEqual(['prod']);
+    expect(result.text).toBe('done');
+    const awaited = JSON.parse(result.messages.filter((m) => m.role === 'tool').at(-1)?.content as string) as { status: string; result: string };
+    expect(awaited).toMatchObject({ status: 'done', result: expect.stringMatching(/^Deployed in the background\./) });
+  });
+
   it('is decided from a fresh lead agent on the same SQLite store, without the token being stored', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'lousho-y73-'));
     const file = join(dir, 'agent.db');
