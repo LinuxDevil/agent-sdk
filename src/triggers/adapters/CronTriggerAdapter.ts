@@ -27,7 +27,11 @@ interface CronTriggerAdapterBaseOptions {
   fireImmediately?: boolean;
 }
 
-/** Fire every `intervalMs` milliseconds. */
+/**
+ * Fire every `intervalMs` milliseconds.
+ *
+ * @deprecated Use defineSchedule() with startSchedules(); see docs/schedules.md. Will be removed in a future major version. For an interval, use the equivalent cron expression (a step of 5 in the minute field runs every five minutes).
+ */
 export interface CronIntervalOptions extends CronTriggerAdapterBaseOptions {
   /** How often to fire, in milliseconds. Must be a positive number. */
   intervalMs: number;
@@ -35,7 +39,11 @@ export interface CronIntervalOptions extends CronTriggerAdapterBaseOptions {
   timezone?: never;
 }
 
-/** Fire on a cron expression. */
+/**
+ * Fire on a cron expression.
+ *
+ * @deprecated Use defineSchedule() with startSchedules(); see docs/schedules.md. Will be removed in a future major version.
+ */
 export interface CronExpressionOptions extends CronTriggerAdapterBaseOptions {
   /**
    * Standard 5-field cron expression (`minute hour day-of-month month day-of-week`)
@@ -50,6 +58,8 @@ export interface CronExpressionOptions extends CronTriggerAdapterBaseOptions {
 
 /**
  * Options for {@link CronTriggerAdapter}: pass either `intervalMs` or `cron`.
+ *
+ * @deprecated Use defineSchedule() with startSchedules(); see docs/schedules.md. Will be removed in a future major version.
  *
  * @example
  * ```ts
@@ -88,6 +98,11 @@ function unref(timer: NodeJS.Timeout): void {
   if (typeof timer.unref === 'function') timer.unref();
 }
 
+/**
+ * Runs an agent on a fixed interval or a cron expression.
+ *
+ * @deprecated Use defineSchedule() with startSchedules(); see docs/schedules.md. Will be removed in a future major version.
+ */
 export class CronTriggerAdapter implements TriggerAdapter {
   public readonly type = 'cron';
 
