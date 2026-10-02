@@ -98,6 +98,26 @@ exists.
    message array" there to inspect the in-flight message list. **Output**
    shows the full `ExecutionResult` (messages, tool calls, usage, steps) as
    a collapsible JSON tree once the run finishes or pauses.
+
+   **Trace history.** Every run is also saved as a trace file, so the
+   **Trace** tab keeps the runs of the agent after the page is reloaded or the
+   server restarted. A list on the left shows the agent's past runs, newest
+   first (start time, duration, model calls, tokens in/out, cost, status),
+   with a **Live** entry on top while a run is active; choose one to open its
+   spans in the same waterfall, with each span's kind (`internal` or
+   `client`) and failed spans in the error colour. The list refreshes when
+   a run ends. The files are the ones `lousho traces` reads, in
+   `.lousho/agents/<agent id>/traces/<day>/<trace id>.jsonl` under the
+   directory `lousho studio` was started in (see
+   [Local traces](observability.md#local-traces)):
+   `npx lousho traces --dir .lousho/agents/<agent id>/traces` shows the same
+   runs in the terminal, and deleting the agent's folder deletes its traces.
+   The tab shows what the spans hold: model and tool names, token counts,
+   cost, durations and error messages, and with the span's tooltip the
+   attributes, which carry prompt and tool content. The server reads traces
+   only from that folder (an id with a path separator is a 400) and never
+   sends the file path to the browser. Keep `.lousho/` out of version
+   control.
 5. **Chat with it.** The **Chat** tab is a separate conversational
    transport (`POST /agents/:id/message`, streamed back over the same
    WebSocket as everything else) - send it a message and it replies in the
@@ -196,12 +216,15 @@ and replay it next to the original, with
 
 A run id is the run's checkpoint session id: the agent id for the agent's
 own runs, `<id>.fork-<n>` for a fork of run `<id>`. The runtime control
-server has three routes for it (the History tab uses them):
+server has three routes for it (the History tab uses them), and two more for
+an agent's saved traces (the Trace tab uses them):
 
 | Route | What it does |
 | --- | --- |
 | `GET /runs/:id/history` | `{ runId, steps }`: one entry per step of the run's latest execution (the newest checkpoint saved at that step), oldest first, with `status`, `savedAt`, `finishReason`, `toolCalls` (`{ id, name, args, result? }`), and `tokens` / `costUsd` of the step's model call when known. 404 when the run has no checkpoints. |
 | `POST /runs/:id/fork` | Body `{ fromStep, patch? }`, where `patch` is `{ toolResult?: { toolCallId, result }, appendInput?, businessState? }`. Forks the run at `fromStep`, then starts the fork through the run registry with the original run's spec. Returns 202 `{ runId, fromStep, status }`; the fork streams on `WS /agents/<runId>/stream` and reports on `GET /agents/<runId>/status` like any run. 400 for a bad body or an unknown `toolCallId`, 404 for an unknown run or a step with no checkpoint. |
+| `GET /agents/:id/traces?limit=N` | `{ traces }`: the agent's saved runs from `.lousho/agents/<id>/traces`, newest first (`limit` defaults to 20, at most 200), each with `traceId`, `name`, `startTime`, `durationMs`, `status`, `modelCalls`, `toolCalls`, `inputTokens`, `outputTokens` and `costUsd` when known. An agent with no runs gives an empty list; 404 for an unknown agent. |
+| `GET /agents/:id/traces/:traceId` | `{ traceId, spans }`: the spans of one saved run by start time, each with `id`, `parentId`, `name`, `kind`, `status`, `startTime`, `endTime` and `attributes`. `traceId` may be a unique prefix. 400 for an id that is not letters, digits and dashes or a prefix that matches several runs, 404 for an unknown agent or trace. |
 | `GET /runs/compare?a=&b=` | `compareTrajectories(a, b)` of two runs' latest checkpoints: each run's model turns, `divergedAt` (the first turn that differs) and the `drift` entries. 404 when either run has no checkpoint. |
 
 The flow, for an agent `weather` that has run once:

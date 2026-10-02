@@ -25,7 +25,7 @@ import { NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
 import { HookRegistry } from './hooks';
 import { runPreToolHooks, type ToolCallOutcome } from './toolCallExecution';
-import { toolErrorMessage } from './propagatingToolError';
+import { markPropagating, toolErrorMessage } from './propagatingToolError';
 import { SDKError } from './errors';
 import { toolErrorResult, type ToolErrorResult } from './toolErrors';
 import { splitPendingTurn } from './transcript';
@@ -148,7 +148,8 @@ async function resumeObserved(
   const messages: Message[] = [...snapshot.currentMessages];
   const drift = await checkApprovalDrift(record, decision, { approvalStore, toolRegistry, provider, executeOptions });
 
-  const staleBusinessState = await clearStaleCheckpoint(snapshot.sessionId, checkpointStore);
+  const staleCheckpoint = await clearStaleCheckpoint(snapshot.sessionId, checkpointStore);
+  const staleBusinessState = staleCheckpoint?.businessState;
 
   const ctx: ResumeContext = {
     decision,
@@ -161,7 +162,14 @@ async function resumeObserved(
     execute: (options) => AgentExecutor.execute(options),
     resumeRun: resumeAfterApproval,
   };
-  const step = await streamedDecision(ctx, pending, drift);
+  let step: Awaited<ReturnType<typeof decidedToolMessage>>;
+  try {
+    step = await streamedDecision(ctx, pending, drift);
+  } catch (error) {
+    // M10c: a paused sub-agent refused the resume before anything ran, so this run stays paused too.
+    if (refusedResumes.has(error as object)) await restorePause({ pending, snapshot }, approvalStore, staleCheckpoint, checkpointStore);
+    throw error;
+  }
   if ('paused' in step) {
     // LOU-U8: the sub-agent paused again, so the session still awaits an approval.
     const businessState = executeOptions.businessState !== undefined ? executeOptions.businessState : staleBusinessState;
@@ -231,11 +239,32 @@ export function resumeRequest(request: ResumeRequest): Promise<ExecutionResult> 
   return resumeAfterApproval(decision, approvalStore, toolRegistry, provider, executeOptions, checkpointStore);
 }
 
+/** M10c: drift errors of a resume check, which ran before anything of the paused run did. */
+const refusedResumes = new WeakSet<object>();
+
+/**
+ * M10c: puts a paused run back as it was (its approval record, and the
+ * session's 'awaiting-approval' checkpoint) after a paused sub-agent refused
+ * the resume, so fixing the sub-agent and deciding again works.
+ */
+async function restorePause(
+  { pending, snapshot }: ResolvedApproval,
+  approvalStore: ApprovalStore,
+  checkpoint: Checkpoint | null | undefined,
+  checkpointStore: CheckpointStore | undefined
+): Promise<void> {
+  await approvalStore.save(pending, snapshot);
+  if (checkpoint && snapshot.sessionId && checkpointStore) await checkpointStore.save(snapshot.sessionId, checkpoint);
+}
+
 /**
  * LOU-W9.2: compares the agent resuming a paused run with the one that paused
  * it (`onAgentDrift`) before anything runs: an approved call, or a call still
  * to run, whose tool is gone is always an error. On an error the approval
  * record, already taken from the store, is put back so the run stays paused.
+ * M10c: a sub-agent's check (its own resume, nested in the lead's) throws an
+ * error that propagates out of the sub-agent tool, so each enclosing run puts
+ * its own record back too.
  */
 async function checkApprovalDrift(
   { pending, snapshot }: ResolvedApproval,
@@ -254,6 +283,8 @@ async function checkApprovalDrift(
     return checkAgentDrift({ saved, current, mode: executeOptions.onAgentDrift, missingTools });
   } catch (error) {
     await run.approvalStore.save(pending, snapshot);
+    if (typeof error === 'object' && error !== null) refusedResumes.add(error);
+    markPropagating(error);
     throw error;
   }
 }
@@ -369,23 +400,24 @@ async function decidedToolMessage(
  * existing caller-responsibility invariant (a sessionId identifies a single
  * logical run) rather than adding cross-process locking to CheckpointStore.
  *
- * LOU-T1: reads the pre-pause checkpoint's businessState off before
- * deleting it (and returns it), so it can be carried forward into the
+ * LOU-T1: reads the pre-pause checkpoint off before deleting it (and
+ * returns it), so its businessState can be carried forward into the
  * resumed run's own checkpoint-writes (see `businessState:` in
- * continueResumedRun()). This load is purely a data read - it does not
- * touch, and has no bearing on, the rehydration-safety delete immediately
- * after it.
+ * continueResumedRun()), and - M10c - so it can be put back when a paused
+ * sub-agent refuses the resume. This load is purely a data read - it does
+ * not touch, and has no bearing on, the rehydration-safety delete
+ * immediately after it.
  */
 async function clearStaleCheckpoint(
   sessionId: string | undefined,
   checkpointStore: CheckpointStore | undefined
-): Promise<unknown> {
+): Promise<Checkpoint | null | undefined> {
   if (!sessionId || !checkpointStore) {
     return undefined;
   }
   const staleCheckpoint: Checkpoint | null = await checkpointStore.load(sessionId);
   await checkpointStore.delete(sessionId);
-  return staleCheckpoint?.businessState;
+  return staleCheckpoint;
 }
 
 /**
