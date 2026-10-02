@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Published
 - `@lousho/build-ai-agent` and `create-lousho-agent` are on npm. The README and the installation, quick start, CLI and Agent Forge docs no longer say the package is unpublished; "Installing before the first release" is now "Installing from a local build" (docs/installation.md#installing-from-a-local-build) and covers trying an unreleased commit. The hint printed after a failed `lousho init` install no longer mentions a 404; it points to `--sdk-path`. The docs site moved to https://lousho.com.
 
+### Docs
+- `create-lousho-agent` has a README (its npm page was empty) and `license`, `homepage` and `repository` fields; they appear on npm with its next release. `lousho init --help` no longer says `--sdk-path` is needed until the package is on npm.
+
 ### Renamed
 - The project is now **lousho** (it was `loushy`), before the first npm release, so nothing was ever published under the old name. Everything that carried the name changed with it, and this changelog uses the new names throughout, including in older entries: the package `@lousho/build-ai-agent` (was `@loushy/build-ai-agent`), the `lousho` CLI (was `loushy`), `create-lousho-agent` (was `create-loushy-agent`), the exports `useLoushoAgent`, `loushoAgent`, `LoushoAgentSource`, `LoushoUIMessageChunk` and the other `Lousho*` types, every `LOUSHO_*` error code and environment variable (`LOUSHO_MODEL`, `LOUSHO_API_TOKEN`, `LOUSHO_STORE`, ...), the `.lousho/` directory, the `lousho.*` span attributes and the `data-lousho-approval` stream part. Migration for a checkout that used the old name: replace `loushy` with `lousho` (keeping the case) in imports, scripts, environment variables and config, and rename an existing `.loushy/` directory to `.lousho/`.
 
