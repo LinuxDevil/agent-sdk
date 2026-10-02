@@ -26,8 +26,10 @@ import {
   type ChannelInbound,
   type ChannelRequest,
   type ChannelRespond,
+  type ChannelUser,
 } from './defineChannel';
 import { reportChannelError } from './channelSupport';
+import type { Principal } from '../auth/types';
 import { SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 
 /** Options of {@link mountChannels}. */
@@ -78,6 +80,16 @@ function readDecision(id: string, text: string): ChannelApprovalDecision | undef
   if (typeof answer === 'string') return { id, answer };
   if (typeof approved === 'boolean') return { id, approved, note: typeof note === 'string' ? note : undefined };
   return undefined;
+}
+
+/**
+ * N10b: who decided a pause on a surface: the clicking user as a principal of the channel
+ * (`{ id, type: 'user', authenticator: <channel name> }`), else - an answer sent as a message - the
+ * message's verified sender. `undefined` for a decision posted to the approvals route, which names nobody.
+ */
+function approverPrincipal(channel: Channel, approver: ChannelUser | undefined, inbound: ChannelInbound | undefined): Principal | undefined {
+  if (approver) return { id: approver.id, type: 'user', authenticator: channel.name };
+  return inbound?.principal;
 }
 
 /**
@@ -206,14 +218,20 @@ export function mountChannels(
     });
   }
 
-  /** Decides the pause `turn` stopped on and delivers the continuation, as the session's next turn. */
-  function continueTurn(turn: PausedTurn, decision: ChannelApprovalDecision, respond?: ChannelRespond): Promise<void> {
+  /**
+   * Decides the pause `turn` stopped on and delivers the continuation, as the session's next turn.
+   * N10b: `approver` is recorded as who decided (`ctx.approval.by`); the run keeps its own principal.
+   */
+  function continueTurn(turn: PausedTurn, decision: ChannelApprovalDecision, respond?: ChannelRespond, approver?: Principal): Promise<void> {
     paused.delete(decision.id);
     const { id, approved, note, answer } = decision;
+    const decided = { ...(approver && { principal: approver }) };
     const run = () =>
       guard(turn, 'approval', respond, async () => {
         const result =
-          typeof answer === 'string' ? await agent.approvals.answer({ id, answer }) : await agent.approvals.resolve({ id, approved: approved === true, note });
+          typeof answer === 'string'
+            ? await agent.approvals.answer({ id, answer }, decided)
+            : await agent.approvals.resolve({ id, approved: approved === true, note }, decided);
         await finish(turn, result, undefined, respond);
       });
     return serialized(turn.sessionId, run).finally(() => claimed.delete(id));
@@ -247,7 +265,7 @@ export function mountChannels(
     const turn = inbound ? { channel, inbound, sessionId: channelSessionId(channel, inbound) } : known?.channel === channel ? known : undefined;
     if (!turn) return respond(404, { error: `No pending approval '${decision.id}' on channel '${channel.name}'` });
     if (approver) await options.onDecision?.({ decision, approver, sessionId: turn.sessionId, channel: channel.name });
-    await continueTurn(turn, decision, respond);
+    await continueTurn(turn, decision, respond, approverPrincipal(channel, approver, inbound));
   }
 
   const handler = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> => {

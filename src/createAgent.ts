@@ -698,7 +698,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     decision: ApprovalDecision,
     signal?: AbortSignal,
     checkpointStore?: CheckpointStore,
-    permissionMode?: PermissionOptions['permissionMode']
+    permissionMode?: PermissionOptions['permissionMode'],
+    approver?: Principal
   ): Promise<ResumeRequest> => {
     const paused = await pausedRun(specs, approvalStore, decision.id);
     return {
@@ -718,6 +719,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
         hostedTools: paused.spec.hostedTools,
         onAgentEvent: config.onEvent,
         ...tracing,
+        // N10b: who decides; the run itself goes on as the principal it paused with (its snapshot's).
+        ...(approver && { approver }),
       },
       // A run paused under a `sessionId` keeps checkpointing after the decision.
       checkpointStore: checkpointStore ?? checkpoints,
@@ -728,9 +731,9 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     approve: config.approve,
     resume: async (...args) => resumeRequest(await resumeRequestFor(...args)),
     // LOU-V14: the streamed run's own signal and event sink are wired into the request.
-    streamResume: (approvalStore, decision, signal, checkpointStore, inputQueue, permissionMode) =>
+    streamResume: (approvalStore, decision, signal, checkpointStore, inputQueue, permissionMode, approver) =>
       streamResumed(async (wire) => {
-        const request = await resumeRequestFor(approvalStore, decision, undefined, checkpointStore, permissionMode);
+        const request = await resumeRequestFor(approvalStore, decision, undefined, checkpointStore, permissionMode, approver);
         return resumeRequest({ ...request, executeOptions: wire(request.executeOptions ?? {}) });
       }, signal, inputQueue),
   });
@@ -768,6 +771,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     ...tracing,
     // LOU-D23.2: a session's turn runs under its id (tools see it), unless the turn is checkpointed under its own.
     ...(ctx.sessionId !== undefined && { sessionId: ctx.sessionId }),
+    // N10b: tools, approval policies, permission rules and sub-agents act for this caller.
+    ...(ctx.principal && { principal: ctx.principal }),
     ...turn,
     // LOU-W6: memory tools and recall bound to this run's scope keys.
     ...memory?.forRun({ sessionId: ctx.sessionId, metadata: ctx.metadata, principal: ctx.principal }, spec.toolRegistry, hooks),
@@ -780,7 +785,9 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     await mcp.ready();
     if (staticSpec) return executeOptions(staticSpec, input, ctx, signal, turn);
     const pinned = await checkpointedRunConfig(turn);
-    return executeOptions(await specs.resolve(pinned?.ctx ?? ctx, pinned), input, pinned?.ctx ?? ctx, signal, turn);
+    const options = executeOptions(await specs.resolve(pinned?.ctx ?? ctx, pinned), input, pinned?.ctx ?? ctx, signal, turn);
+    // N10b: the call's own principal, so the executor refuses another caller's; without one, the run keeps its saved principal.
+    return pinned ? { ...options, principal: ctx.principal } : options;
   };
   const run = async (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: RunTurn) =>
     AgentExecutor.execute(await prepare(input, ctx, signal, turn));

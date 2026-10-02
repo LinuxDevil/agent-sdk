@@ -216,7 +216,7 @@ describe('discordChannel (LOU-P6)', () => {
     expect((await t.send(click(id, 'U3', { member: { user: { id: 'U3' }, roles: ['ADMIN'] } }))).json).toMatchObject({ type: 7 });
 
     expect(execute).toHaveBeenCalledTimes(1);
-    expect(approvers).toHaveBeenLastCalledWith({ id: 'U3', name: undefined, roles: ['ADMIN'] }, { toolName: 'send_email', input: { to: 'sam@example.com' }, sessionId: expect.stringMatching(/^discord_G1_C1-/) });
+    expect(approvers).toHaveBeenLastCalledWith({ id: 'U3', name: undefined, roles: ['ADMIN'] }, { toolName: 'send_email', input: { to: 'sam@example.com' }, sessionId: expect.stringMatching(/^discord_G1_C1-/), principal: expect.objectContaining({ type: 'user', authenticator: 'discord' }) });
     expect(onDecision).toHaveBeenCalledWith(expect.objectContaining({ approver: expect.objectContaining({ id: 'U3' }), channel: 'discord' }));
   });
 

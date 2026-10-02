@@ -150,7 +150,7 @@ async function recoverApproval(session: AgentSession, id: string): Promise<boole
   return true;
 }
 
-const runApproval: RouteHandler = async (request, ctx, [sessionId, id]) => {
+const runApproval: RouteHandler = async (request, ctx, [sessionId, id], principal) => {
   const session = openSession(ctx, sessionId);
   if (session instanceof Response) return session;
   const { approved, note, answer } = await readJson(request);
@@ -163,10 +163,11 @@ const runApproval: RouteHandler = async (request, ctx, [sessionId, id]) => {
     return jsonResponse(404, { error: `No pending approval '${id}' (it was decided already, or the agent was reloaded)` });
   }
   // LOU-D32.2: the continuation streams live (decided call, text deltas, a further pause, run.done).
+  // N10b: the caller route auth accepted is the approver (`ctx.approval.by`); the run keeps its own principal.
   return sseResponse(request, (signal) =>
     typeof answer === 'string'
-      ? agent.approvals.streamAnswer({ id, answer }, { signal })
-      : agent.approvals.streamResolve({ id, approved: approved === true, note: typeof note === 'string' ? note : undefined }, { signal })
+      ? agent.approvals.streamAnswer({ id, answer }, { signal, principal })
+      : agent.approvals.streamResolve({ id, approved: approved === true, note: typeof note === 'string' ? note : undefined }, { signal, principal })
   );
 };
 
@@ -186,7 +187,8 @@ const ROUTES: Array<[method: string, pattern: RegExp, handler: RouteHandler]> = 
  * Answers `request` when it is one of the `/chat` routes; resolves `undefined`
  * for any other request, so the host can serve its own routes. A failure before
  * streaming starts answers with a JSON error. `principal` (N10a) is the caller
- * the host's auth accepted; a new turn runs with it.
+ * the host's auth accepted; a new turn runs with it, and (N10b) a decision on
+ * an approval records it as the approver.
  */
 export async function handleChatFetch(request: Request, ctx: ChatRoutesContext, principal?: Principal): Promise<Response | undefined> {
   const { pathname } = new URL(request.url);

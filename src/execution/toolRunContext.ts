@@ -10,6 +10,7 @@ import { newId } from '../utils/id';
 import type { Message } from '../providers';
 import type { ToolExecutionContext } from '../types/tool';
 import { bindToolCallScope, type ToolCallScope } from './subagentRuntime';
+import { readonlyPrincipal } from './runPrincipal';
 
 /**
  * @deprecated Use {@link ToolExecutionContext}, the one public execute-context
@@ -20,7 +21,7 @@ import { bindToolCallScope, type ToolCallScope } from './subagentRuntime';
 export type ToolRunContext = Partial<Omit<ToolExecutionContext, 'messages'>>;
 
 /** What {@link buildToolRunContext} builds the context from. */
-export interface ToolRunInput extends Pick<ToolRunContext, 'toolCallId' | 'sessionId' | 'onDelegatedUsage' | 'approval'> {
+export interface ToolRunInput extends Pick<ToolRunContext, 'toolCallId' | 'sessionId' | 'onDelegatedUsage' | 'approval' | 'principal'> {
   /** The run's transcript. The tool gets the part before the model turn that made this call. */
   messages?: readonly Message[];
   /** The run's cancellation signal; the tool gets it as `abortSignal`. */
@@ -44,18 +45,27 @@ function transcriptBefore(messages: readonly Message[], toolCallId: string): rea
 /**
  * The context for one tool call: `{ toolCallId, messages, abortSignal }`
  * plus the optional `sessionId` and `onDelegatedUsage`. `toolCallId` falls back
- * to a generated id for callers with no model turn behind the call.
+ * to a generated id for callers with no model turn behind the call. N10b: the
+ * run's `principal` and the approver (`approval.by`) are frozen here.
  */
 export function buildToolRunContext(input: ToolRunInput): ToolExecutionContext {
   const toolCallId = input.toolCallId ?? newId('call');
+  const principal = readonlyPrincipal(input.principal);
   const ctx: ToolExecutionContext = {
     toolCallId,
     messages: transcriptBefore(input.messages ?? [], toolCallId),
     abortSignal: input.signal,
     onDelegatedUsage: input.onDelegatedUsage,
     ...(input.sessionId !== undefined && { sessionId: input.sessionId }),
-    ...(input.approval && { approval: input.approval }),
+    ...(principal && { principal }),
+    ...(input.approval && { approval: approvalOf(input.approval) }),
   };
   bindToolCallScope(ctx, input.scope);
   return ctx;
+}
+
+/** The decision a tool sees, with its approver frozen (N10b). */
+function approvalOf({ note, by }: NonNullable<ToolExecutionContext['approval']>): NonNullable<ToolExecutionContext['approval']> {
+  const approver = readonlyPrincipal(by);
+  return Object.freeze({ ...(note !== undefined && { note }), ...(approver && { by: approver }) });
 }
