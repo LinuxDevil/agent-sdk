@@ -286,7 +286,7 @@ Source: docs/installation.md
 
 ## Requirements
 
-- Node.js **22.19 or newer** (`engines.node` in `package.json`; the built-in `http` tool depends on `undici@8`, which needs it).
+- Node.js **22.19 or newer** (`engines.node` in `package.json`, set by the `undici@8` dependency; `undici` is loaded only for `http` tool requests with `validateSSL: false`, see [Optional peers](#optional-peers)).
 - TypeScript is optional but recommended - the SDK ships full type
   definitions.
 
@@ -878,7 +878,7 @@ How the pieces fit:
 | `createAgent(config)`         | Zero-config `{ send(message) }` agent from a `model` string or provider (+ instructions, tools). |
 | `AgentBuilder`                | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). |
 | `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. |
-| `AgentType`                   | Deprecated, no runtime effect: agents need no type (removed next minor).    |
+| `AgentType`                   | Deprecated, no runtime effect: agents need no type.                        |
 | `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
 | `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md), [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). |
@@ -2083,12 +2083,11 @@ build an agent's graph on a canvas, run it, watch it execute in a live
 debug console, chat with it, and author sandboxed pre/post hooks - all
 reading and writing the exact same `AgentSpec` YAML that `lousho dev` and
 `lousho build` use. It's launched with one command, `lousho studio`, and
-ships as part of this SDK's npm package (LOU-S).
+ships as part of this SDK's npm package.
 
 This doc covers: installation, the `lousho studio` quickstart, a
 first-agent walkthrough, hook authoring, time travel (replaying a run from
-a past step), and how settings/secrets/deploy wiring works (and doesn't
-yet).
+a past step), and how settings/secrets/deploy wiring works.
 
 ## Installation
 
@@ -2193,7 +2192,7 @@ exists.
 
 ## Hooks
 
-Hooks (LOU-Q) are small, sandboxed functions that run immediately before or
+Hooks are small, sandboxed functions that run immediately before or
 after a tool call or an LLM `generate` - the same mechanism the SDK core
 exposes as `HookRegistry`/`AgentHook` (see
 [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md)), but authored visually and attached to a
