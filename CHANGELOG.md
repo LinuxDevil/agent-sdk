@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `@lousho/build-ai-agent` and `create-lousho-agent` are on npm. The README and the installation, quick start, CLI and Agent Forge docs no longer say the package is unpublished; "Installing before the first release" is now "Installing from a local build" (docs/installation.md#installing-from-a-local-build) and covers trying an unreleased commit. The hint printed after a failed `lousho init` install no longer mentions a 404; it points to `--sdk-path`. The docs site moved to https://lousho.com.
 
 ### Docs
+- The Quick Start is rewritten around `createAgent()`: hello world, a tool, streaming, a session, an approval, an offline test with `mockModel`, a custom provider and spec files, each runnable with no API key (the first excepted). The `AgentBuilder` + `AgentExecutor` section moved to a new page, docs/executor-api.md (with the `ToolRegistry` note); the Quick Start no longer shows either API.
 - `create-lousho-agent` has a README (its npm page was empty) and `license`, `homepage` and `repository` fields; they appear on npm with its next release. `lousho init --help` no longer says `--sdk-path` is needed until the package is on npm.
 
 ### Renamed
@@ -32,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AgentExecutionOptions.streaming` (LOU-D41.2): it was never read (`AgentExecutionOptions` is a legacy type no SDK API takes). Remove the property; stream a run with `agent.stream()` / `AgentExecutor.stream()`.
 
 ### Fixed
+- `lousho studio` finds the Agent Forge build that ships inside the installed package when it is run from a project that does not have `apps/agent-forge` (it used to fail with "could not find apps/agent-forge" everywhere except the SDK repo). A project's own `apps/agent-forge` still wins, and `.lousho/` is still created in the directory you ran it from. `--dev` from an installed package still needs the TypeScript source and says so.
 - Documentation corrections: install commands, CLI command lists, optional peers, durable execution and compaction descriptions, the Status section, reasoning and file-part notes in the providers guide, and the `KVStore` note in the deployment guide now match the code. Ticket ids are gone from user-facing prose.
 - `lousho --help`, `-h` and `help` print the usage and exit 0 (they were "unknown command" with exit 1) (LOU-D49).
 - Install truth (LOU-U20): the README, installation, CLI, quick start and Agent Forge docs, `lousho init --help` and the message after a failed `lousho init` install now say the package is not on npm yet and point to one section, "Installing before the first release" (docs/installation.md); `npm install github:LinuxDevil/agent-sdk` is documented as not working. Stale "planned / not yet" statements about agent-directory channels, `toolCallId` in sandboxed tools and the Agent Forge Settings tab are corrected.
