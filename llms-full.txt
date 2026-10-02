@@ -7844,11 +7844,56 @@ console.log(answer.text);
 | `createMockProvider()`, `MockLLMProvider` | Canned responses for demos; simulates a tool call when the message names a tool. |
 | `mockModel(script)` | Scripted, asserting provider for tests (from `/testing`); see [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md). |
 | `withRetry()`, `withFallback()` | Retry transient failures with backoff and fall back to the next provider; see [Provider retries and fallback](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#provider-retries-and-fallback). |
+| `fromAiSdk(model, options?)` | Any AI SDK `LanguageModel` (Google, Bedrock, Azure, Mistral, the Gateway, ...) as a provider; see [below](#any-ai-sdk-model-fromaisdk). |
 
-To use another backend, implement the `LLMProvider` interface (`name`,
-`generate()`, `stream()`, `supportsTools()`, `supportsStreaming()`,
-`getModels()`, optionally `defaultModel`) and pass the instance as `provider`,
-or register a factory with `LLMProviderRegistry.register(name, factory)`.
+To use another backend, first check whether it has an AI SDK provider package:
+then wrap its model with `fromAiSdk()` (below). Otherwise implement the
+`LLMProvider` interface (`name`, `generate()`, `stream()`, `supportsTools()`,
+`supportsStreaming()`, `getModels()`, optionally `defaultModel`) and pass the
+instance as `provider`, or register a factory with
+`LLMProviderRegistry.register(name, factory)`.
+
+### Any AI SDK model: fromAiSdk()
+
+`fromAiSdk(model)` turns a language model from any AI SDK provider package
+into an `LLMProvider`, so you do not write an adapter:
+
+```ts
+import { createOpenAI } from '@ai-sdk/openai';
+import { createAgent, fromAiSdk } from '@lousho/build-ai-agent';
+
+const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const agent = createAgent({
+  provider: fromAiSdk(openai.chat('gpt-4o-mini'), { fileMediaTypes: ['application/pdf'] }),
+  instructions: 'You are a helpful assistant.',
+});
+```
+
+The same works with `@ai-sdk/google` (`google('gemini-2.0-flash')`),
+`@ai-sdk/amazon-bedrock`, `@ai-sdk/azure`, `@ai-sdk/mistral` and the AI Gateway
+(`gateway('openai/gpt-4o')` from `ai` 7 or `@ai-sdk/gateway`). Calls go through
+your installed `ai`, so install the provider package major that pairs with it
+(see [Vercel AI SDK versions](#vercel-ai-sdk-versions)).
+
+| Option | Default | Description |
+| ------ | ------- | ----------- |
+| `name` | the model's `provider` field, else `'ai-sdk'` | Provider name in events, spans and warnings. |
+| `fileMediaTypes` | `[]` | Media types sent as `file` parts; other file parts become a text note. Images are always sent. |
+| `replaysReasoning` | `false` | Send signed reasoning blocks back on assistant turns (Anthropic models). |
+| `maxRetries` | `0` | The AI SDK's own retries per call; `createAgent()` retries through its `retry` option. |
+
+The provider serves the one model it wraps, with tools and streaming on, and
+leaves reasoning settings to the model you built (the `reasoning` option is not
+mapped). Each throws `LOUSHO_CONFIG_INVALID`:
+
+- a model id string (`fromAiSdk('openai/gpt-4o')`): pass the provider
+  function's model instead;
+- a model for another `ai` major than the installed one (a
+  `specificationVersion: 'v1'` model with `ai` 6 / 7, or a newer one with
+  `ai` 4);
+- a run with another `model` id than the wrapped one (inside a run it is the
+  cause of the `LOUSHO_PROVIDER_REQUEST_FAILED` error): wrap each model with
+  `fromAiSdk()` and combine them with `withFallback()`.
 
 ## Vercel AI SDK versions
 
