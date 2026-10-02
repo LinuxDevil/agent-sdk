@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createAgent } from '../createAgent';
+import '../providers'; // registers the real providers (openrouter)
 import type { AgentEventUsage } from '../execution/agentEvents';
 import { serveFetch } from '../server/fetchRoutes';
 import { mockModel } from '../testing';

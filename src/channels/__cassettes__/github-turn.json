@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "sdkVersion": "1.0.0-alpha.8",
+  "recordedAt": "2026-10-02T20:45:00.230Z",
+  "provider": {
+    "name": "openrouter",
+    "defaultModel": "openai/gpt-4o-mini"
+  },
+  "entries": [
+    {
+      "kind": "stream",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are a helpful assistant."
+          },
+          {
+            "role": "user",
+            "content": "reply with one short sentence"
+          }
+        ],
+        "tools": [],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "Sure! How can I assist you today?",
+        "finishReason": "stop",
+        "usage": {
+          "promptTokens": 22,
+          "completionTokens": 9,
+          "totalTokens": 31
+        },
+        "chunks": [
+          {
+            "delayMs": 847,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "Sure"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "!"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " How"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " can"
+            }
+          },
+          {
+            "delayMs": 29,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " I"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " assist"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " you"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " today"
+            }
+          },
+          {
+            "delayMs": 25,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "?"
+            }
+          },
+          {
+            "delayMs": 25,
+            "chunk": {
+              "type": "finish",
+              "finishReason": "stop",
+              "usage": {
+                "promptTokens": 22,
+                "completionTokens": 9,
+                "totalTokens": 31
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
