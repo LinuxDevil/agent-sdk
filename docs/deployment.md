@@ -202,10 +202,33 @@ curl -N https://<your-worker>.workers.dev/chat \
   -d '{ "sessionId": "alice", "input": "Hello" }'
 ```
 
-`KVStore(kvBinding, { prefix?, ttl? })` (`src/deploy/kvStore.ts`) is the
-`AgentStore` the generated Worker builds from the binding. It is not exported
-from any entry point of the package, so importing it in a hand-written Worker
-is not supported yet. Its keys, with an optional `prefix` before each:
+`KVStore(kvBinding, { prefix?, ttl?, historyLimit? })` is the `AgentStore` the
+generated Worker builds from the binding. A hand-written Worker imports it from
+the `/kv` subpath, which has no `node:*` import anywhere in its graph, with the
+binding typed as `KVBinding` (the `get`/`put`/`delete` part of Cloudflare's
+`KVNamespace`, so `@cloudflare/workers-types` is not needed):
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+import { KVStore, type KVBinding } from '@lousho/build-ai-agent/kv';
+
+interface Env {
+  AGENT_KV: KVBinding;
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const agent = createAgent({ provider, store: new KVStore(env.AGENT_KV) });
+    const { sessionId, input } = (await request.json()) as { sessionId: string; input: string };
+    const { text } = await agent.session({ id: sessionId }).send(input);
+    return Response.json({ text });
+  },
+};
+```
+
+`/kv` also exports `KVCheckpointStore` (checkpoints only) and
+`CHECKPOINT_KV_BINDING` (`'AGENT_CHECKPOINTS'`, the binding name the generated
+Worker reads). `KVStore`'s keys, with an optional `prefix` before each:
 
 | Key | Value |
 | --- | ----- |
@@ -306,9 +329,8 @@ one session at the same moment can overwrite each other's turn, since a KV
 read-modify-write is not atomic.
 
 The KV-backed stores (`KVStore`, `KVCheckpointStore` and `CHECKPOINT_KV_BINDING`,
-in `src/deploy/kvStore.ts`, `src/deploy/kvCheckpointStore.ts` and
-`src/deploy/checkpointBinding.ts`) have no `node:*` references anywhere in their
-dependency graph. The Worker runs the spec as a `createAgent()` agent, whose
+exported from `@lousho/build-ai-agent/kv`) have no `node:*` references anywhere
+in their dependency graph. The Worker runs the spec as a `createAgent()` agent, whose
 Node-only imports (project instructions, the file session store, guardrail
 patches, MCP over stdio) the build points at a shim that fails when used
 (`src/deploy/shims/node.worker.ts`). The built `dist/worker.js` bundle is then
