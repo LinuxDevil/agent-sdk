@@ -25,7 +25,7 @@ export interface IAgentRepository extends IRepository<AgentConfig> {
 export interface SessionData {
   id: string;
   agentId: string;
-  data?: Record<string, any>;
+  data?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }
@@ -46,7 +46,7 @@ export interface ResultData {
   id?: string;
   sessionId: string;
   agentId: string;
-  result: any;
+  result: unknown;
   success: boolean;
   error?: string;
   tokensUsed?: number;

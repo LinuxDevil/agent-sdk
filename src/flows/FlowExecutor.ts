@@ -3,9 +3,24 @@
  * Executes flow-based agents with full LLM and tool integration
  */
 
-import { LLMProvider, Message } from '../providers';
+import { LLMProvider, Message, ProviderUsage } from '../providers';
 import { ToolRegistry } from '../tools';
-import { AgentFlow, EditorStep } from '../types';
+import {
+  AgentFlow,
+  EditorStep,
+  EndNode,
+  ExpressionEvaluatorNode,
+  ForEachItemsNode,
+  LLMCallNode,
+  OneOfOption,
+  OneOfOptionsNode,
+  ParallelNode,
+  ReturnNode,
+  SequenceNode,
+  SetVariableNode,
+  ThrowNode,
+  ToolCallNode,
+} from '../types';
 import { AgentConfig } from '../types';
 import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from '../execution/sandboxGuard';
@@ -27,11 +42,11 @@ import { SDKError } from '../execution/errors';
  */
 export interface FlowExecutionContext {
   agent: AgentConfig;
-  session?: any;
-  variables: Record<string, any>;
+  session?: unknown;
+  variables: Record<string, unknown>;
   provider: LLMProvider;
   toolRegistry?: ToolRegistry;
-  memory?: any[];
+  memory?: unknown[];
   maxDepth?: number;
   currentDepth?: number;
   /**
@@ -85,25 +100,50 @@ export type FlowExecutionEventType =
   | 'loop-iteration';
 
 /**
- * Flow execution event
+ * The `data` each flow event type carries. `step-complete` carries the node's
+ * result, which can be any value; the step and error events carry none.
  */
-export interface FlowExecutionEvent {
-  type: FlowExecutionEventType;
+export interface FlowExecutionEventDataMap {
+  'flow-start': { flowCode: string; flowName: string };
+  'flow-complete': { output: unknown; steps: number };
+  'flow-error': undefined;
+  'step-start': undefined;
+  'step-complete': unknown;
+  'step-error': undefined;
+  'variable-set': { variable: string; value: unknown };
+  'llm-call': { model: string | undefined; prompt: string };
+  'llm-response': { text: string; usage: ProviderUsage | undefined };
+  'tool-call': { tool: string; arguments: Record<string, unknown> };
+  'tool-result': { tool: string; result: unknown };
+  'condition-evaluated': { condition: string; result: boolean };
+  'loop-iteration': { item: unknown; index: number };
+}
+
+/** A flow event of one type; narrow a {@link FlowExecutionEvent} on `type` to get its `data`. */
+export interface FlowExecutionEventOf<T extends FlowExecutionEventType> {
+  type: T;
   timestamp: Date;
   stepId?: string;
   stepType?: string;
-  data?: any;
-  variables?: Record<string, any>;
+  data?: FlowExecutionEventDataMap[T];
+  variables?: Record<string, unknown>;
   error?: Error;
 }
+
+/**
+ * Flow execution event, discriminated on `type`.
+ */
+export type FlowExecutionEvent = {
+  [T in FlowExecutionEventType]: FlowExecutionEventOf<T>;
+}[FlowExecutionEventType];
 
 /**
  * Flow execution result
  */
 export interface FlowExecutionResult {
   success: boolean;
-  output: any;
-  variables: Record<string, any>;
+  output: unknown;
+  variables: Record<string, unknown>;
   steps: number;
   events: FlowExecutionEvent[];
   error?: Error;
@@ -123,12 +163,29 @@ function isObjectLike(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object';
 }
 
-type NodeHandler = (
-  node: any,
+/** The node shapes FlowExecutor runs (the executor-side `oneOf` / `forEach` / `evaluator`). */
+type ExecutableNode =
+  | SequenceNode
+  | ParallelNode
+  | OneOfOptionsNode
+  | ForEachItemsNode
+  | ExpressionEvaluatorNode
+  | LLMCallNode
+  | ToolCallNode
+  | SetVariableNode
+  | ReturnNode
+  | EndNode
+  | ThrowNode;
+
+type NodeHandler<N extends ExecutableNode = ExecutableNode> = (
+  node: N,
   context: FlowExecutionContext,
   events: FlowExecutionEvent[],
   onEvent?: (event: FlowExecutionEvent) => void
-) => any;
+) => unknown;
+
+/** One handler per node type, each typed with its own node shape. */
+type NodeHandlers = { [T in ExecutableNode['type']]: NodeHandler<Extract<ExecutableNode, { type: T }>> };
 
 /**
  * Flow Executor
@@ -185,8 +242,9 @@ export class FlowExecutor {
 
     try {
       // Execute the flow
+      // A flow without a root node fails in executeNode with a TypeError, reported as a flow-error.
       const output = await this.executeNode(
-        flow.flow,
+        flow.flow as EditorStep,
         { ...context, variables, currentDepth: 0 },
         events,
         onEvent
@@ -231,44 +289,50 @@ export class FlowExecutor {
     return events.filter(e => e.type === 'step-complete').length;
   }
 
+  /** Handler per node type, each typed with its node shape. */
+  private static readonly handlersByType: NodeHandlers = {
+    sequence: (node, context, events, onEvent) => this.executeSequence(node, context, events, onEvent),
+    parallel: (node, context, events, onEvent) => this.executeParallel(node, context, events, onEvent),
+    oneOf: (node, context, events, onEvent) => this.executeOneOf(node, context, events, onEvent),
+    forEach: (node, context, events, onEvent) => this.executeForEach(node, context, events, onEvent),
+    evaluator: (node, context) => this.executeEvaluator(node, context),
+    llmCall: (node, context, events, onEvent) => this.executeLLMCall(node, context, events, onEvent),
+    toolCall: (node, context, events, onEvent) => this.executeToolCall(node, context, events, onEvent),
+    setVariable: (node, context, events, onEvent) => this.executeSetVariable(node, context, events, onEvent),
+    return: (node, context) => this.executeReturn(node, context),
+    end: (node, context) => this.executeEnd(node, context),
+    throw: (node, context) => {
+      throw new Error(this.interpolate(node.message || 'Flow error', context.variables));
+    },
+  };
+
   /**
-   * Handler per node type. Handlers are looked up at call time so each one
-   * dispatches through the class. Synchronous handlers return their value
-   * directly (not a promise) so executeNode() doesn't add an extra await.
+   * Handler per node type, looked up by the node's `type` (a Map, so a type
+   * such as 'constructor' finds nothing). Handlers dispatch through the class.
+   * Synchronous handlers return their value directly (not a promise) so
+   * executeNode() doesn't add an extra await. A handler takes the node shape
+   * of its own type; the map erases that pairing, which dispatchNode() restores
+   * by looking the handler up by the node's own `type`.
    */
-  private static readonly nodeHandlers: ReadonlyMap<string, NodeHandler> = new Map<string, NodeHandler>([
-    ['sequence', (node, context, events, onEvent) => this.executeSequence(node, context, events, onEvent)],
-    ['parallel', (node, context, events, onEvent) => this.executeParallel(node, context, events, onEvent)],
-    ['oneOf', (node, context, events, onEvent) => this.executeOneOf(node, context, events, onEvent)],
-    ['forEach', (node, context, events, onEvent) => this.executeForEach(node, context, events, onEvent)],
-    ['evaluator', (node, context, events, onEvent) => this.executeEvaluator(node, context, events, onEvent)],
-    ['llmCall', (node, context, events, onEvent) => this.executeLLMCall(node, context, events, onEvent)],
-    ['toolCall', (node, context, events, onEvent) => this.executeToolCall(node, context, events, onEvent)],
-    ['setVariable', (node, context, events, onEvent) => this.executeSetVariable(node, context, events, onEvent)],
-    ['return', (node, context) => this.executeReturn(node, context)],
-    ['end', (node, context) => this.executeEnd(node, context)],
-    [
-      'throw',
-      (node, context) => {
-        throw new Error(this.interpolate((node as any).message || 'Flow error', context.variables));
-      },
-    ],
-  ]);
+  private static readonly nodeHandlers: ReadonlyMap<string, NodeHandler> = new Map(
+    Object.entries(this.handlersByType) as Array<[string, NodeHandler]>
+  );
 
   /**
    * Run the handler for a node's type; unknown types are rejected.
    */
   private static dispatchNode(
-    node: any,
+    node: EditorStep,
     context: FlowExecutionContext,
     events: FlowExecutionEvent[],
     onEvent?: (event: FlowExecutionEvent) => void
-  ): any {
+  ): unknown {
     const handler = this.nodeHandlers.get(node.type);
     if (!handler) {
-      throw new SDKError(`Unknown node type: ${(node as any).type}`, 'LOUSHY_FLOW_INVALID');
+      throw new SDKError(`Unknown node type: ${node.type}`, 'LOUSHY_FLOW_INVALID');
     }
-    return handler(node, context, events, onEvent);
+    // The handler was found by `node.type`, so `node` has that handler's shape.
+    return handler(node as ExecutableNode, context, events, onEvent);
   }
 
   /**
@@ -287,14 +351,15 @@ export class FlowExecutor {
    * Execute a single flow node
    */
   private static async executeNode(
-    node: EditorStep | any,
+    node: EditorStep,
     context: FlowExecutionContext,
     events: FlowExecutionEvent[],
     onEvent?: (event: FlowExecutionEvent) => void
-  ): Promise<any> {
+  ): Promise<unknown> {
     this.assertWithinDepthLimit(context);
 
-    const stepId = (node as any).id || `step-${Date.now()}`;
+    // Editor-side shapes have no `id`; the executor-side ones may.
+    const stepId = (node as { id?: string }).id || `step-${Date.now()}`;
 
     return withSpan(
       context.exporter,
@@ -317,7 +382,7 @@ export class FlowExecutor {
 
   /** The step-start/step-complete/step-error event bracket around a node's handler. */
   private static async runNode(
-    node: { type: string },
+    node: EditorStep,
     stepId: string,
     context: FlowExecutionContext,
     events: FlowExecutionEvent[],
@@ -367,17 +432,18 @@ export class FlowExecutor {
     return { ...context, currentDepth: (context.currentDepth || 0) + 1 };
   }
 
+
   /**
    * Execute sequence node
    */
   private static async executeSequence(
-    node: any,
+    node: SequenceNode,
     context: FlowExecutionContext,
     events: FlowExecutionEvent[],
     onEvent?: (event: FlowExecutionEvent) => void
-  ): Promise<any> {
+  ): Promise<unknown> {
     const steps = node.steps || [];
-    let lastResult: any = null;
+    let lastResult: unknown = null;
 
     for (const step of steps) {
       lastResult = await this.executeNode(step, this.childContext(context), events, onEvent);
@@ -390,15 +456,15 @@ export class FlowExecutor {
    * Execute parallel node
    */
   private static async executeParallel(
-    node: any,
+    node: ParallelNode,
     context: FlowExecutionContext,
     events: FlowExecutionEvent[],
     onEvent?: (event: FlowExecutionEvent) => void
-  ): Promise<any[]> {
+  ): Promise<unknown[]> {
     const steps = node.steps || [];
 
     const results = await Promise.all(
-      steps.map((step: any) =>
+      steps.map((step) =>
         this.executeNode(step, this.childContext(context), events, onEvent)
       )
     );
@@ -410,30 +476,30 @@ export class FlowExecutor {
    * Whether a oneOf option should run. An option with no condition is the default option.
    */
   private static optionApplies(
-    option: any,
+    option: OneOfOption,
     context: FlowExecutionContext,
     events: FlowExecutionEvent[],
     onEvent?: (event: FlowExecutionEvent) => void
   ): boolean {
-    return !option.condition || this.checkOptionCondition(option, context, events, onEvent);
+    return !option.condition || this.checkOptionCondition(option.condition, context, events, onEvent);
   }
 
   /**
    * Evaluate a oneOf option's condition and emit the condition-evaluated event
    */
   private static checkOptionCondition(
-    option: any,
+    condition: string,
     context: FlowExecutionContext,
     events: FlowExecutionEvent[],
     onEvent?: (event: FlowExecutionEvent) => void
   ): boolean {
-    const conditionMet = this.evaluateCondition(option.condition, context.variables);
+    const conditionMet = this.evaluateCondition(condition, context.variables);
 
     // Emit condition evaluated event
     emitEvent(events, onEvent, {
       type: 'condition-evaluated',
       timestamp: new Date(),
-      data: { condition: option.condition, result: conditionMet },
+      data: { condition, result: conditionMet },
     });
 
     return conditionMet;
@@ -443,11 +509,11 @@ export class FlowExecutor {
    * Execute oneOf (conditional) node
    */
   private static async executeOneOf(
-    node: any,
+    node: OneOfOptionsNode,
     context: FlowExecutionContext,
     events: FlowExecutionEvent[],
     onEvent?: (event: FlowExecutionEvent) => void
-  ): Promise<any> {
+  ): Promise<unknown> {
     const option = this.selectOption(node, context, events, onEvent);
 
     return option ? await this.executeNode(option.step, this.childContext(context), events, onEvent) : null;
@@ -457,11 +523,11 @@ export class FlowExecutor {
    * First option whose condition holds (or that has none), if any
    */
   private static selectOption(
-    node: any,
+    node: OneOfOptionsNode,
     context: FlowExecutionContext,
     events: FlowExecutionEvent[],
     onEvent?: (event: FlowExecutionEvent) => void
-  ): any | undefined {
+  ): OneOfOption | undefined {
     const options = node.options || [];
 
     for (const option of options) {
@@ -477,14 +543,16 @@ export class FlowExecutor {
    * Execute forEach loop node
    */
   private static async executeForEach(
-    node: any,
+    node: ForEachItemsNode,
     context: FlowExecutionContext,
     events: FlowExecutionEvent[],
     onEvent?: (event: FlowExecutionEvent) => void
-  ): Promise<any[]> {
-    const items = this.resolveValue(node.items, context.variables) || [];
+  ): Promise<unknown[]> {
+    // `items` resolves to an array, or to whatever a `$variable` holds; the
+    // loop reads `length` and indexes, as for any array-like value.
+    const items = (this.resolveValue(node.items, context.variables) || []) as ArrayLike<unknown>;
     const { itemVar, indexVar } = this.loopVariableNames(node);
-    const results: any[] = [];
+    const results: unknown[] = [];
 
     for (let i = 0; i < items.length; i++) {
       // Set loop variables in the current context
@@ -508,7 +576,7 @@ export class FlowExecutor {
     return results;
   }
 
-  private static loopVariableNames(node: any): { itemVar: string; indexVar: string } {
+  private static loopVariableNames(node: ForEachItemsNode): { itemVar: string; indexVar: string } {
     return {
       itemVar: node.itemVariable || 'item',
       indexVar: node.indexVariable || 'index',
@@ -519,11 +587,9 @@ export class FlowExecutor {
    * Execute evaluator node
    */
   private static async executeEvaluator(
-    node: any,
-    context: FlowExecutionContext,
-    _events: FlowExecutionEvent[],
-    _onEvent?: (event: FlowExecutionEvent) => void
-  ): Promise<any> {
+    node: ExpressionEvaluatorNode,
+    context: FlowExecutionContext
+  ): Promise<unknown> {
     const expression = node.expression || '';
     return this.evaluateExpression(expression, context.variables);
   }
@@ -532,8 +598,8 @@ export class FlowExecutor {
    * Store a node's result in its outputVariable, if it has one, and emit variable-set
    */
   private static storeOutputVariable(
-    node: any,
-    value: any,
+    node: { outputVariable?: string },
+    value: unknown,
     context: FlowExecutionContext,
     events: FlowExecutionEvent[],
     onEvent?: (event: FlowExecutionEvent) => void
@@ -575,7 +641,7 @@ export class FlowExecutor {
   }
 
   private static resolveLLMModel(
-    node: any,
+    node: LLMCallNode,
     context: FlowExecutionContext
   ): string | undefined {
     return node.model || context.agent.settings?.model || context.provider.defaultModel;
@@ -585,7 +651,7 @@ export class FlowExecutor {
    * Execute LLM call node
    */
   private static async executeLLMCall(
-    node: any,
+    node: LLMCallNode,
     context: FlowExecutionContext,
     events: FlowExecutionEvent[],
     onEvent?: (event: FlowExecutionEvent) => void
@@ -645,7 +711,7 @@ export class FlowExecutor {
    * Resolve the tool a toolCall node refers to, failing if it isn't available
    */
   private static lookupTool(
-    node: any,
+    node: ToolCallNode,
     context: FlowExecutionContext
   ): { toolName: string; toolDesc: NonNullable<ReturnType<ToolRegistry['get']>> } {
     const toolRegistry = this.requireToolRegistry(context);
@@ -700,15 +766,15 @@ export class FlowExecutor {
    * Execute tool call node
    */
   private static async executeToolCall(
-    node: any,
+    node: ToolCallNode,
     context: FlowExecutionContext,
     events: FlowExecutionEvent[],
     onEvent?: (event: FlowExecutionEvent) => void
-  ): Promise<any> {
+  ): Promise<unknown> {
     const { toolName, toolDesc } = this.lookupTool(node, context);
 
-    // Interpolate arguments
-    const args = this.interpolateObject(node.arguments || {}, context.variables);
+    // Interpolate arguments (an object, so interpolation returns an object)
+    const args = this.interpolateObject(node.arguments || {}, context.variables) as Record<string, unknown>;
 
     // Emit tool call event
     emitEvent(events, onEvent, {
@@ -743,11 +809,11 @@ export class FlowExecutor {
    * Execute setVariable node
    */
   private static async executeSetVariable(
-    node: any,
+    node: SetVariableNode,
     context: FlowExecutionContext,
     events: FlowExecutionEvent[],
     onEvent?: (event: FlowExecutionEvent) => void
-  ): Promise<any> {
+  ): Promise<unknown> {
     const variableName = node.variable || '';
     const value = this.resolveValue(node.value, context.variables);
 
@@ -766,9 +832,9 @@ export class FlowExecutor {
    * Execute return node
    */
   private static executeReturn(
-    node: any,
+    node: ReturnNode,
     context: FlowExecutionContext
-  ): any {
+  ): unknown {
     return this.resolveValue(node.value, context.variables);
   }
 
@@ -776,25 +842,27 @@ export class FlowExecutor {
    * Execute end node
    */
   private static executeEnd(
-    node: any,
+    node: EndNode,
     context: FlowExecutionContext
-  ): any {
+  ): unknown {
     return this.resolveValue(node.value, context.variables);
   }
 
   /**
    * Interpolate string with variables
    */
-  private static interpolate(template: string, variables: Record<string, any>): string {
-    return template.replace(/\{\{(\w+)\}\}/g, (_, key) => {
-      return variables[key]?.toString() || '';
+  private static interpolate(template: string, variables: Record<string, unknown>): string {
+    return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
+      // Every value but null/undefined has toString() (or throws, as before, for a null-prototype object).
+      const value = variables[key] as { toString(): string } | null | undefined;
+      return value?.toString() || '';
     });
   }
 
   /**
    * Interpolate object with variables
    */
-  private static interpolateObject(obj: any, variables: Record<string, any>): any {
+  private static interpolateObject(obj: unknown, variables: Record<string, unknown>): unknown {
     if (typeof obj === 'string') {
       return this.interpolate(obj, variables);
     }
@@ -807,8 +875,8 @@ export class FlowExecutor {
     return obj;
   }
 
-  private static interpolateRecord(obj: Record<string, unknown>, variables: Record<string, any>): any {
-    const result: any = {};
+  private static interpolateRecord(obj: Record<string, unknown>, variables: Record<string, unknown>): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(obj)) {
       result[key] = this.interpolateObject(value, variables);
     }
@@ -818,7 +886,7 @@ export class FlowExecutor {
   /**
    * Resolve a value (can be literal or variable reference)
    */
-  private static resolveValue(value: any, variables: Record<string, any>): any {
+  private static resolveValue(value: unknown, variables: Record<string, unknown>): unknown {
     if (typeof value === 'string' && value.startsWith('$')) {
       const varName = value.substring(1);
       return variables[varName];
@@ -829,7 +897,7 @@ export class FlowExecutor {
   /**
    * Evaluate a condition
    */
-  private static evaluateCondition(condition: string, variables: Record<string, any>): boolean {
+  private static evaluateCondition(condition: string, variables: Record<string, unknown>): boolean {
     try {
       // Evaluate with the safe expression evaluator (./safeExpression), which
       // binds {{vars}} as values. Invalid/unsupported syntax is a failed
@@ -843,7 +911,7 @@ export class FlowExecutor {
   /**
    * Evaluate an expression
    */
-  private static evaluateExpression(expression: string, variables: Record<string, any>): any {
+  private static evaluateExpression(expression: string, variables: Record<string, unknown>): unknown {
     try {
       return evaluateSafeExpression(expression, variables, { bindPlaceholders: true });
     } catch (error) {

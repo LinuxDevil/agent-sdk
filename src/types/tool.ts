@@ -29,7 +29,7 @@ export interface ToolParameters {
 export interface ToolConfiguration {
   tool: string;
   description?: string;
-  options?: Record<string, any>;
+  options?: Record<string, unknown>;
 }
 
 /**
@@ -101,6 +101,16 @@ export interface ApprovalCheckContext {
   messages: readonly Message[];
 }
 
+/**
+ * A `needsApproval` predicate over the tool's arguments. Written as a method
+ * signature so a predicate typed for one tool's own arguments is accepted
+ * (method parameters are checked bivariantly); the SDK passes the validated
+ * arguments.
+ */
+type ApprovalPredicate = {
+  check(args: unknown, ctx: ApprovalCheckContext): ApprovalOutcome | Promise<ApprovalOutcome>;
+}['check'];
+
 export interface ToolDescriptor {
   displayName: string;
   /**
@@ -120,7 +130,7 @@ export interface ToolDescriptor {
    * kept for compatibility this release. Prefer `inputSchema` and `execute`.
    */
   tool: AITool;
-  needsApproval?: boolean | ((args: any, ctx: ApprovalCheckContext) => ApprovalOutcome | Promise<ApprovalOutcome>);
+  needsApproval?: boolean | ApprovalPredicate;
   /** Where the tool came from, e.g. an MCP server's annotations (LOU-Z5). */
   metadata?: ToolMetadata;
   /**

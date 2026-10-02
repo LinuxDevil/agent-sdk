@@ -54,7 +54,8 @@ export function buildTools(
           name: toolName,
           // `ai` v6/v7 also allow a description function; only a string is sent.
           description: legacyDescription(toolDesc.tool.description) || toolConfig.description || '',
-          parameters: getToolInputSchema(toolDesc) || {},
+          // A zod / Standard Schema or JSON Schema object; each provider converts it.
+          parameters: (getToolInputSchema(toolDesc) || {}) as Record<string, unknown>,
         },
       });
     }

@@ -29,6 +29,15 @@ export interface AgentTypeDescriptor {
 }
 
 /**
+ * Agent settings. `model` is the model id the agent calls (it wins over the
+ * provider's default); other keys are kept for the caller.
+ */
+export interface AgentSettings {
+  model?: string;
+  [key: string]: unknown;
+}
+
+/**
  * Agent configuration
  */
 export interface AgentConfig {
@@ -38,12 +47,12 @@ export interface AgentConfig {
   agentType?: AgentType;
   locale?: string;
   prompt?: string;
-  expectedResult?: any;
+  expectedResult?: unknown;
   tools?: Record<string, ToolConfiguration>;
   flows?: AgentFlow[];
-  events?: any[];
-  settings?: Record<string, any>;
-  metadata?: Record<string, any>;
+  events?: unknown[];
+  settings?: AgentSettings;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -53,7 +62,7 @@ export interface AgentExecutionOptions {
   streaming?: boolean;
   sessionId: string;
   messages: Message[];
-  attachments?: any[];
+  attachments?: unknown[];
   locale?: string;
   timezone?: string;
   currentDateTime?: string;
@@ -64,7 +73,7 @@ export interface AgentExecutionOptions {
  */
 export interface AgentExecutionResult {
   success: boolean;
-  result?: any;
+  result?: unknown;
   error?: string;
   sessionId: string;
   tokensUsed?: number;
@@ -87,5 +96,5 @@ export interface AgentDefinition {
  */
 export interface ToolSetting {
   name: string;
-  options: any;
+  options: unknown;
 }

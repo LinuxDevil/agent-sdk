@@ -1,5 +1,5 @@
 import { newId } from '../utils/id';
-import { EditorStep, AgentFlow, FlowInputVariable } from '../types';
+import { EditorStep, AgentFlow, FlowAgentDefinition, FlowInputVariable } from '../types';
 import { SDKError } from '../execution/errors';
 
 /** Throw on the first input variable with a missing or duplicate name. */
@@ -85,7 +85,7 @@ export class FlowBuilder {
   /**
    * Add an agent definition
    */
-  public addAgent(agent: any): this {
+  public addAgent(agent: FlowAgentDefinition): this {
     if (!this.flow.agents) {
       this.flow.agents = [];
     }
@@ -96,7 +96,7 @@ export class FlowBuilder {
   /**
    * Set all agents
    */
-  public setAgents(agents: any[]): this {
+  public setAgents(agents: FlowAgentDefinition[]): this {
     this.flow.agents = agents;
     return this;
   }

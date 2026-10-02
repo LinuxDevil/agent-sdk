@@ -17,6 +17,13 @@ import { commandEnv } from './commandEnv';
 
 const execFileAsync = promisify(execFile);
 
+/** What execFile rejects with: the exit code (a number) or a spawn errno (a string), and the output so far. */
+type ExecFileFailure = {
+  code?: number | string;
+  stdout?: { toString(): string } | null;
+  stderr?: { toString(): string } | null;
+};
+
 /**
  * The outcome of running a command through a SandboxAdapter.
  */
@@ -92,17 +99,18 @@ export const NoopSandbox: SandboxAdapter = {
         signal: opts.signal,
       });
       return { stdout: stdout.toString(), stderr: stderr.toString(), exitCode: 0 };
-    } catch (error: any) {
+    } catch (error) {
       // execFile rejects on non-zero exit code (error.code is then the
       // numeric exit code); surface that as a result per the interface
       // contract rather than a rejection. A spawn failure (e.g. ENOENT -
       // the binary doesn't exist) has a string errno `.code` instead, and
       // is a genuine failure to run the command, so it's rethrown.
-      if (typeof error.code === 'number') {
+      const failure = error as ExecFileFailure;
+      if (typeof failure.code === 'number') {
         return {
-          stdout: (error.stdout ?? '').toString(),
-          stderr: (error.stderr ?? '').toString(),
-          exitCode: error.code,
+          stdout: (failure.stdout ?? '').toString(),
+          stderr: (failure.stderr ?? '').toString(),
+          exitCode: failure.code,
         };
       }
       throw error;

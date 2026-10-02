@@ -183,7 +183,7 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
   /**
    * Get model information including pricing
    */
-  async getModelInfo(modelId: string): Promise<any> {
+  async getModelInfo(modelId: string): Promise<OpenRouterModel | null | undefined> {
     try {
       const models = await this.fetchModelCatalog('model info');
       return models?.find((model) => model.id === modelId);

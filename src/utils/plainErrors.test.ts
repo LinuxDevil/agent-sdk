@@ -23,7 +23,7 @@ const ALLOWED: Array<{ file: string; message: string; reason: string }> = [
   },
   {
     file: 'flows/FlowExecutor.ts',
-    message: "this.interpolate((node as any).message || 'Flow error'",
+    message: "this.interpolate(node.message || 'Flow error'",
     reason: "the flow's own `throw` node: it surfaces the flow author's message verbatim, and a span's error.type stays 'Error'",
   },
   {

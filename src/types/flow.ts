@@ -25,12 +25,12 @@ export interface FlowChunkEvent {
   duration?: number;
   name?: string;
   timestamp?: Date;
-  issues?: any[];
+  issues?: unknown[];
   result?: string | string[];
   message?: string;
-  input?: any;
+  input?: unknown;
   toolResults?: Array<{
-    args?: any;
+    args?: unknown;
     result?: string;
   }>;
   messages?: Array<{
@@ -39,7 +39,7 @@ export interface FlowChunkEvent {
     id?: string;
   }>;
   component?: string;
-  componentProps?: any;
+  componentProps?: Record<string, unknown>;
   replaceFlowNodeId?: string;
   deleteFlowNodeId?: string;
 }
@@ -70,7 +70,7 @@ export interface FlowInputVariable {
  */
 export interface FlowToolSetting {
   name: string;
-  options: any;
+  options: unknown;
 }
 
 /**
@@ -206,13 +206,13 @@ export interface BestOfAllNode {
 export interface ToolNode {
   type: 'tool';
   toolName: string;
-  toolOptions: Record<string, any>;
+  toolOptions: Record<string, unknown>;
 }
 
 export interface UIComponentNode {
   type: 'uiComponent';
   componentName: string;
-  componentProps: Record<string, any>;
+  componentProps: Record<string, unknown>;
 }
 
 export interface ConditionNode {
