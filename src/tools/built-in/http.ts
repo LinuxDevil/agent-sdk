@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import { isIP } from 'net';
 import { lazyValue, loadOptionalPeer } from '../../providers/optionalPeer';
 import { ToolDescriptor, ToolExecutionContext } from '../../types';
@@ -14,6 +13,16 @@ import {
 import { sandboxHttpFetch } from './sandboxFetch';
 import { defineTool } from '../defineTool';
 import { toolFailure } from './toolFailure';
+import {
+  abortedRequestError,
+  DEFAULT_MAX_REDIRECTS,
+  DEFAULT_TIMEOUT_MS,
+  HTTP_TOOL_DESCRIPTION,
+  httpRequestInput,
+  runHttpRequest,
+  type HttpMethod,
+  type HttpTransport,
+} from './httpCore';
 
 /**
  * HTTP Tool Configuration Options
@@ -73,25 +82,6 @@ function ssrfFailure(host: string): Error {
 }
 
 /**
- * A minimal fetch-response-shaped transport function that actually performs
- * the outbound request. `makeHttpRequest()` is transport-agnostic: the
- * default transport calls undici's `fetch` through a dispatcher whose
- * connections use the pinned lookup; `makeHttpRequestViaSandbox()` below
- * supplies a transport that routes the same request through a SandboxAdapter
- * instead (LOU-K2), pinned to the address checked here.
- */
-type HttpTransport = (
-  url: string,
-  init: {
-    method: string;
-    headers: Record<string, string>;
-    body?: string;
-    signal: AbortSignal;
-    redirect: 'manual';
-  }
-) => Promise<Response>;
-
-/**
  * Default transport: undici's `fetch` with a dedicated `Agent` (dispatcher)
  * whose `connect.lookup` is the pinned lookup (N13a), so every connection,
  * including each redirect target, resolves its host exactly once, refuses a
@@ -149,8 +139,6 @@ function createSandboxTransport(
   };
 }
 
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-
 /** One outbound request, as makeHttpRequest()/makeHttpRequestViaSandbox() take it. */
 interface HttpRequestArgs {
   url: string;
@@ -162,85 +150,9 @@ interface HttpRequestArgs {
   signal?: AbortSignal;
 }
 
-const DEFAULT_TIMEOUT_MS = 30000;
-const DEFAULT_MAX_REDIRECTS = 5;
-
 /** `options.allowPrivate`, lower-cased. */
 function allowPrivateOf(options: HttpToolOptions | undefined): string[] {
   return (options?.allowPrivate ?? []).map((pattern) => pattern.toLowerCase());
-}
-
-/** The redirect target of a 3xx response, or null/'' when it is not a redirect. */
-function redirectLocation(response: Response): string | null {
-  return response.status >= 300 && response.status < 400 ? response.headers.get('location') : null;
-}
-
-/**
- * Issue the request and follow up to `maxRedirects` redirects by hand
- * (`redirect: 'manual'`). Every hop goes through the transport, which
- * applies the pinned SSRF check to its connection.
- */
-async function fetchFollowingRedirects(
-  transport: HttpTransport,
-  url: string,
-  init: Parameters<HttpTransport>[1],
-  maxRedirects: number,
-  allowPrivate: readonly string[]
-): Promise<Response> {
-  let currentUrl = url;
-  let redirectCount = 0;
-  let response = await transport(currentUrl, init);
-  let location = redirectLocation(response);
-
-  while (location) {
-    redirectCount++;
-    if (redirectCount > maxRedirects) {
-      throw toolFailure(`Exceeded maxRedirects (${maxRedirects})`);
-    }
-    currentUrl = new URL(location, currentUrl).toString();
-    assertLiteralAllowed(new URL(currentUrl).hostname, allowPrivate);
-    response = await transport(currentUrl, init);
-    location = redirectLocation(response);
-  }
-  return response;
-}
-
-/** Throw on a non-2xx response; otherwise return the body (JSON re-serialized). */
-async function readResponseBody(response: Response): Promise<string> {
-  if (!response.ok) {
-    throw toolFailure(`HTTP ${response.status}: ${response.statusText}`);
-  }
-
-  const contentType = response.headers.get('content-type');
-  if (contentType?.includes('application/json')) {
-    const data = await response.json();
-    return JSON.stringify(data);
-  }
-  return await response.text();
-}
-
-/**
- * Aborts `controller` when the caller's `signal` aborts (LOU-V1), so the
- * run's cancellation reaches the in-flight fetch. Returns the unlink
- * function to call once the request settles.
- */
-function linkCallerSignal(controller: AbortController, signal: AbortSignal | undefined): () => void {
-  if (!signal) {
-    return () => undefined;
-  }
-  const onAbort = () => controller.abort(signal.reason);
-  if (signal.aborted) {
-    onAbort();
-  }
-  signal.addEventListener('abort', onAbort, { once: true });
-  return () => signal.removeEventListener('abort', onAbort);
-}
-
-/** The error reported when the caller cancelled the request. */
-function abortedRequestError(): Error {
-  const error = new Error('HTTP request was aborted');
-  error.name = 'AbortError';
-  return error;
 }
 
 /** Map whatever a request threw to the error performHttpRequest() reports. */
@@ -262,9 +174,10 @@ function toHttpRequestError(error: unknown, timeoutMs: number, callerSignal?: Ab
 }
 
 /**
- * Core request/redirect/SSRF logic, parameterized by `transport` so it can
- * be shared between the direct (unsandboxed) and sandboxed code paths
- * without duplicating the SSRF-checking/redirect-following logic.
+ * The request/redirect logic of ./httpCore.ts with the Node SSRF policy:
+ * IP-literal hosts checked here on every hop, names checked by `transport`
+ * at connection time. Parameterized by `transport` so it is shared between
+ * the direct (unsandboxed) and sandboxed code paths.
  */
 async function performHttpRequest(
   {
@@ -287,41 +200,17 @@ async function performHttpRequest(
   }
 
   const timeoutMs = options.timeout ?? DEFAULT_TIMEOUT_MS;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  const unlinkSignal = linkCallerSignal(controller, signal);
-  const cleanup = getCleanup();
-
-  try {
-    const fetchOptions = {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
-      body: body && method !== 'GET' ? body : undefined,
-      signal: controller.signal,
-      redirect: 'manual' as const,
-    };
-
-    const response = await fetchFollowingRedirects(
+  return runHttpRequest(
+    { url, method, headers, body, signal, timeoutMs, maxRedirects: options.maxRedirects ?? DEFAULT_MAX_REDIRECTS },
+    {
       transport,
-      url,
-      fetchOptions,
-      options.maxRedirects ?? DEFAULT_MAX_REDIRECTS,
-      allowPrivate
-    );
-
-    clearTimeout(timeoutId);
-    return await readResponseBody(response);
-  } catch (error) {
-    clearTimeout(timeoutId);
-    throw toHttpRequestError(error, timeoutMs, signal);
-  } finally {
-    clearTimeout(timeoutId);
-    unlinkSignal();
-    await cleanup?.();
-  }
+      checkHop: (hop) => assertLiteralAllowed(hop.hostname, allowPrivate),
+      mapError: (error) => toHttpRequestError(error, timeoutMs, signal),
+      tooManyRedirects: (max) => toolFailure(`Exceeded maxRedirects (${max})`),
+      httpError: (response) => toolFailure(`HTTP ${response.status}: ${response.statusText}`),
+      cleanup: getCleanup() ?? undefined,
+    }
+  );
 }
 
 /**
@@ -346,7 +235,7 @@ export async function makeHttpRequestViaSandbox(
   args: HttpRequestArgs,
   sandbox: SandboxAdapter
 ): Promise<string> {
-  const timeoutMs = args.options?.timeout ?? 30000;
+  const timeoutMs = args.options?.timeout ?? DEFAULT_TIMEOUT_MS;
   const transport = createSandboxTransport(sandbox, args.options?.validateSSL !== false, timeoutMs + 5000, allowPrivateOf(args.options));
   return performHttpRequest(args, transport, () => undefined);
 }
@@ -359,13 +248,8 @@ export function createHttpTool(options: HttpToolOptions = {}): ToolDescriptor {
   return defineTool({
     name: 'http_request',
     displayName: 'Make HTTP request',
-    description: 'Makes HTTP requests to specified URLs with configurable method, headers, and body. Supports GET, POST, PUT, DELETE, and PATCH methods.',
-    input: z.object({
-      url: z.string().describe('The URL to make the request to (must be a valid HTTP/HTTPS URL)'),
-      method: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']).describe('The HTTP method to use'),
-      headers: z.record(z.string(), z.string()).optional().describe('Optional headers to include in the request as key-value pairs'),
-      body: z.string().optional().describe('The body of the request. For POST/PUT/PATCH, this should be a JSON string. Not used for GET/DELETE.'),
-    }),
+    description: HTTP_TOOL_DESCRIPTION,
+    input: httpRequestInput,
     execute: async ({ url, method, headers, body }, ctx) => {
       // `?.`: direct callers have historically passed no context object.
       const signal = ctx?.abortSignal;
