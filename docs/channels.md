@@ -10,9 +10,9 @@ handler and runs every request the same way:
 POST <basePath>/<name>  ->  verify  ->  parse  ->  session turn  ->  reply (or onApproval)
 ```
 
-Channels are new. The [trigger adapters](triggers.md)
-still work: `WebhookTriggerAdapter` now uses `webhookChannel()` for its auth and
-parsing. Channels add what triggers lack: each conversation on the surface is
+Channels replace the [trigger adapters](triggers.md), which are deprecated
+(`WebhookTriggerAdapter` uses `webhookChannel()` for its auth and parsing).
+Channels add what triggers lack: each conversation on the surface is
 a [session](sessions.md), and approvals and questions go back to the surface.
 
 ## Quick start
@@ -344,9 +344,8 @@ click's continuation after a restart is posted but not appended to the session
 transcript.
 
 An [agent directory](./agent-directories.md)'s `channels/*.ts` files are loaded
-as channels too, and the node server mounts them. `SlackTriggerAdapter` and `verifySlackSignature()`
-(see [Triggers](triggers.md)) still work for one-shot replies
-through an incoming webhook.
+as channels too, and the node server mounts them. `SlackTriggerAdapter` (see [Triggers](triggers.md)), which replies
+through an incoming webhook, is deprecated: use `slackChannel()`. `verifySlackSignature()` is not deprecated.
 
 ## Telegram
 
