@@ -6,30 +6,16 @@
  * its logic.
  *
  * The real `docker build` + `docker run` integration test needs a running
- * Docker daemon. It uses the exact guard LOU-F6 established in
- * src/security/SubprocessSandbox.test.ts (a top-level-await dockerode
- * ping feeding describe.skipIf), so it is skipped - not failed - when no
- * daemon is reachable.
+ * Docker daemon; it lives in docker.docker.test.ts and runs in the Linux
+ * Docker CI job (`npm run test:docker`, LOU-M6).
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import Docker from 'dockerode';
 import { DockerAdapter, DOCKERFILE } from './docker';
 import { NodeServerAdapter } from './node-server';
 import { getAdapter, registerBuiltInAdapters } from '../index';
-import { withBuildLock } from '../buildLock.testkit';
-
-let dockerAvailable = false;
-try {
-  const docker = new Docker();
-  await docker.ping();
-  dockerAvailable = true;
-} catch {
-  dockerAvailable = false;
-}
 
 function writeSpec(dir: string): string {
   const specPath = path.join(dir, 'agent.yaml');
@@ -87,57 +73,5 @@ describe('DockerAdapter', () => {
     await DockerAdapter.build('/some/out');
     expect(spy).toHaveBeenCalledTimes(1);
     expect(spy).toHaveBeenCalledWith('/some/out');
-  });
-
-  describe.skipIf(!dockerAvailable)('integration (requires a running Docker daemon)', () => {
-    // KNOWN PRE-EXISTING ISSUE (unrelated to LOU-L, not fixed here): this
-    // test's health-check loop never observes a successful `fetch()` in
-    // GitHub Actions' Docker-in-Docker environment (health stays
-    // `undefined` for the full retry budget), even though `docker run` and
-    // `docker port` both succeed. Root cause needs `docker logs
-    // <containerId>` from an actual failing CI run to diagnose properly
-    // (container crash on start? a networking quirk specific to that
-    // runner's Docker daemon/bridge?) - couldn't be reproduced locally (no
-    // Docker daemon available in this environment either). Skipped in CI
-    // only, pending that follow-up; still runs normally against a local
-    // Docker daemon (`npm test`, not just `npm run test:coverage`) so a
-    // real regression here stays visible during local development.
-    it.skipIf(!!process.env.CI)('the built image serves /health and /chat', async () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-docker-int-'));
-      const outDir = path.join(dir, 'out');
-      await DockerAdapter.scaffold(writeSpec(dir), outDir);
-      await withBuildLock(() => DockerAdapter.build(outDir));
-
-      const tag = `lousho-agent-test-${Date.now()}`;
-      execFileSync('docker', ['build', '-t', tag, '.'], { cwd: outDir, stdio: 'ignore' });
-      const containerId = execFileSync('docker', ['run', '-d', '-p', '127.0.0.1::3000', tag], {
-        encoding: 'utf8',
-      }).trim();
-      try {
-        const mapping = execFileSync('docker', ['port', containerId, '3000'], { encoding: 'utf8' });
-        const port = Number(mapping.trim().split('\n')[0].split(':').pop());
-        const base = `http://127.0.0.1:${port}`;
-
-        let health: Response | undefined;
-        for (let i = 0; i < 30 && !health; i++) {
-          try {
-            health = await fetch(`${base}/health`);
-          } catch {
-            await new Promise((r) => setTimeout(r, 1000));
-          }
-        }
-        expect(health?.status).toBe(200);
-
-        const chat = await fetch(`${base}/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: 'hello container' }),
-        });
-        expect((await chat.json()).text).toBe('This is a mock response.');
-      } finally {
-        execFileSync('docker', ['rm', '-f', containerId], { stdio: 'ignore' });
-        execFileSync('docker', ['rmi', '-f', tag], { stdio: 'ignore' });
-      }
-    }, 300_000);
   });
 });

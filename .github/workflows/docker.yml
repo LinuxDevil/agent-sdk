@@ -1,0 +1,49 @@
+name: Docker Engine
+# LOU-M6: the sandbox's network egress and credential broker, and the docker
+# deploy image, against a real Docker Engine (GitHub's ubuntu-latest runner,
+# rootful). A separate workflow so ci.yml stays fast; it runs on pull requests
+# that touch the code under test, on demand, and weekly (Engine updates on the
+# runner image are caught even when nothing here changes).
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/security/**'
+      - 'src/tools/workspace/**'
+      - 'src/deploy/adapters/docker*'
+      - 'vitest.docker.config.ts'
+      - '.github/workflows/docker.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '17 4 * * 1'
+jobs:
+  docker-engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Fail instead of skipping when no daemon answers (src/security/docker.testkit.ts).
+      LOUSHO_DOCKER_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+          cache: 'npm'
+      - run: npm ci
+      # For the log: Engine version, and rootless or not (egress needs rootful Engine 25.0.5+).
+      - run: docker version
+      - run: docker info
+      # Pre-pulled so the first test does not spend its timeout on a pull.
+      - run: docker pull curlimages/curl:8.10.1
+      - run: docker pull node:20-alpine
+      - run: docker pull node:22-slim
+      - run: npm run build
+      - run: npm run test:docker
+      - name: Diagnostics (on failure)
+        if: failure()
+        run: |
+          sudo iptables -S INPUT || true
+          sudo iptables -S FORWARD || true
+          sudo iptables -S DOCKER-USER || true
+          docker network ls
+          docker ps -a
