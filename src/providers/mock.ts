@@ -74,6 +74,12 @@ export class MockLLMProvider implements LLMProvider {
     };
   }
 
+  /**
+   * Streams the same step `generate()` would return - the same text (in
+   * word-sized `text-delta` chunks whose concatenation is that text), the
+   * same tool calls, finish reason and usage - so a run gets the same result
+   * whether it generates or streams its model calls (M9).
+   */
   async stream(options: GenerateOptions): Promise<StreamResult> {
     options.signal?.throwIfAborted();
     if (this.simulateError) {
@@ -81,53 +87,38 @@ export class MockLLMProvider implements LLMProvider {
     }
 
     const text = this.getNextResponse();
-    const words = text.split(' ');
-    const chunks: StreamChunk[] = [];
+    const toolCalls = this.extractToolCalls(options);
+    const finishReason: GenerateResult['finishReason'] = toolCalls.length > 0 ? 'tool_calls' : 'stop';
+    const promptTokens = this.countTokens(options.messages);
+    const completionTokens = this.countTokens([{ role: 'assistant', content: text }]);
+    const usage = { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens };
+    // Word-sized chunks ("This ", "is ", ..., "response.") that add up to `text`.
+    const deltas = text.match(/\S+\s*|\s+/g) ?? [];
 
-    const fullStreamGenerator = async function* (
-      this: MockLLMProvider
-    ): AsyncGenerator<StreamChunk> {
-      for (const word of words) {
+    const fullStreamGenerator = async function* (this: MockLLMProvider): AsyncGenerator<StreamChunk> {
+      for (const textDelta of deltas) {
         if (this.delay > 0) {
           await abortableDelay(this.delay, options.signal);
         }
-
-        const chunk: StreamChunk = {
-          type: 'text-delta',
-          textDelta: word + ' ',
-        };
-        chunks.push(chunk);
-        yield chunk;
+        yield { type: 'text-delta', textDelta };
       }
-
-      yield {
-        type: 'finish',
-        finishReason: 'stop',
-        usage: {
-          promptTokens: this.countTokens(options.messages),
-          completionTokens: words.length,
-          totalTokens: this.countTokens(options.messages) + words.length,
-        },
-      };
+      for (const toolCall of toolCalls) {
+        yield { type: 'tool-call', toolCall };
+      }
+      yield { type: 'finish', finishReason, usage };
     }.bind(this);
 
     const textStreamGenerator = async function* (): AsyncGenerator<string> {
-      for (const word of words) {
-        yield word + ' ';
-      }
+      yield* deltas;
     };
 
     return {
       fullStream: fullStreamGenerator(),
       textStream: textStreamGenerator(),
       text: Promise.resolve(text),
-      usage: Promise.resolve({
-        promptTokens: this.countTokens(options.messages),
-        completionTokens: words.length,
-        totalTokens: this.countTokens(options.messages) + words.length,
-      }),
-      finishReason: Promise.resolve('stop'),
-      toolCalls: Promise.resolve([]),
+      usage: Promise.resolve(usage),
+      finishReason: Promise.resolve(finishReason),
+      toolCalls: Promise.resolve(toolCalls),
     };
   }
 

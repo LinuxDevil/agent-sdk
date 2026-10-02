@@ -3,7 +3,7 @@
  * default error report, and the approval reference carried in a button.
  */
 import { SDKError } from '../execution/errors';
-import type { ChannelContext, ChannelErrorContext, ChannelErrorHandler, ChannelUser } from './defineChannel';
+import type { ChannelContext, ChannelDecision, ChannelErrorContext, ChannelErrorHandler, ChannelInbound, ChannelUser } from './defineChannel';
 
 /** The tool call an approver is asked about. */
 export interface ApproverRequest {
@@ -63,4 +63,32 @@ export async function reportChannelError(onError: ChannelErrorHandler | undefine
   } catch {
     // a failing error handler must not take the request down
   }
+}
+
+/** Splits `text` into chunks of at most `max` characters, preferably at line breaks (empty text becomes `(no reply)`). */
+export function splitText(text: string, max: number): string[] {
+  const parts: string[] = [];
+  let rest = text || '(no reply)';
+  while (rest.length > max) {
+    const cut = rest.lastIndexOf('\n', max);
+    const at = cut > max / 2 ? cut : max;
+    parts.push(rest.slice(0, at));
+    rest = rest.slice(at).replace(/^\n/, '');
+  }
+  return [...parts, rest];
+}
+
+/**
+ * The message `inbound` as the answer to this conversation's pending `ask_question`, if one is waiting
+ * (asked in this process, or before a restart given durable stores); else `inbound` itself.
+ */
+export async function answerPendingQuestion<TEvent>(
+  inbound: ChannelInbound<TEvent>,
+  questions: Map<string, string>,
+  ctx: ChannelContext
+): Promise<ChannelInbound<TEvent> | ChannelDecision> {
+  const question = questions.get(inbound.sessionKey) ?? (await ctx.pendingQuestion(inbound.sessionKey));
+  if (!question) return inbound;
+  questions.delete(inbound.sessionKey);
+  return { decision: { id: question, answer: typeof inbound.input === 'string' ? inbound.input : '' }, inbound };
 }

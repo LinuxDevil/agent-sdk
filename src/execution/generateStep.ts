@@ -174,8 +174,8 @@ export function generateInSpan(
     init.attributes,
     async (llmSpan) => {
       const llmStart = Date.now();
-      // LOU-V2: a streaming run obtains the step through its sink (streamed
-      // when the provider can); everything around it is the same.
+      // LOU-V2: a run with a sink (a stream, or M9: listeners) obtains the
+      // step through it (streamed when the provider can); everything around it is the same.
       const runEvents = runEventsOf(options);
       const onOutput = () => options.inputQueue?.callOutput();
       const generated = await abortable(

@@ -418,7 +418,7 @@ describe('CloudflareWorkerAdapter', () => {
           expect(streamed.status).toBe(200);
           expect(streamed.headers.get('content-type')).toContain('text/event-stream');
           const raw = await streamed.text();
-          expect(raw).toContain('"text":"This is a mock response. "');
+          expect(raw).toContain('"text":"This is a mock response."');
           expect(raw.endsWith('event: done\ndata: {}\n\n')).toBe(true);
 
           const transcript = await fetch(`${base}/chat/workerd-1`, { headers: { Authorization: 'Bearer dev-token' } });

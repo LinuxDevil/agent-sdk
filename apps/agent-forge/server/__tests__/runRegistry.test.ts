@@ -2,8 +2,12 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import * as http from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { WebSocket } from 'ws';
 import type { AgentSpec } from '@lousho/build-ai-agent';
 import { RunManager } from '../runRegistry';
+import { attachWebSocketServer } from '../wsServer';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { graphToSpec } from '../../src/graph/graphToSpec';
@@ -118,6 +122,49 @@ describe('RunManager', () => {
     expect(afterResume?.status).toBe('finished');
     expect(afterResume?.messages.map((m) => m.content)).toContain('please use current-date');
     expect(afterResume?.messages.map((m) => m.content)).toContain('a follow-up appended on resume');
+  });
+
+  it('streams each model step over the WebSocket: several text.delta, one text.done per step (M9)', async () => {
+    const server = http.createServer();
+    const wss = attachWebSocketServer(server, runManager);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address() as AddressInfo;
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/agents/agent-ws/stream`);
+    const events: any[] = [];
+    try {
+      ws.on('message', (data) => {
+        const message = JSON.parse(String(data));
+        if (message.type === 'event') events.push(message.payload);
+      });
+      await new Promise((resolve, reject) => {
+        ws.once('open', resolve);
+        ws.once('error', reject);
+      });
+
+      // A tool call, then the final reply: two model steps, each streamed by the mock provider.
+      await runManager.run('agent-ws', 'please use current-date', SPEC);
+      const final = await waitForStatus(runManager, 'agent-ws', (s) => s.status === 'stopped');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(final.resultText).toBe('This is a mock response.');
+      const steps: { deltas: string[]; done: string[] }[] = [];
+      for (const event of events) {
+        if (event.type === 'step.start') steps.push({ deltas: [], done: [] });
+        if (event.type === 'text.delta') steps.at(-1)!.deltas.push(event.text);
+        if (event.type === 'text.done') steps.at(-1)!.done.push(event.text);
+      }
+      expect(steps).toHaveLength(2);
+      for (const step of steps) {
+        expect(step.deltas.length).toBeGreaterThan(1);
+        expect(step.done).toEqual(['This is a mock response.']);
+        expect(step.deltas.join('')).toBe(step.done[0]);
+      }
+      expect(events.filter((e) => e.type === 'tool.done').map((e) => e.toolName)).toEqual(['current-date']);
+    } finally {
+      ws.close();
+      wss.close();
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 
   it('emits structured log entries derived from the AgentEvent stream (O1)', async () => {
