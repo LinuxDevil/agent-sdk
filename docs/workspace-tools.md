@@ -48,7 +48,8 @@ const result = await agent.send('Fix the failing test in src/math.test.ts');
 
 ### Advanced: the executor API
 
-`createAgent()` runs `AgentExecutor` underneath. To own the wiring yourself,
+`createAgent()` runs `AgentExecutor` underneath (see
+[The executor API](./executor-api.md)). To own the wiring yourself,
 register the tools in a `ToolRegistry` and call the executor; the pause is
 the same, and `resumeAfterApproval(...)` is what `agent.approvals.resolve()`
 calls once a human approves:

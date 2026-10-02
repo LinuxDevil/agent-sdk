@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Docs
 - `docs/durable-execution.md` and `docs/workspace-tools.md` lead with `createAgent()` (`send()` with a `sessionId`, `agent.resume()`, `agent.approvals.resolve()`, `agent.fork()`) instead of `AgentExecutor`. The executor snippets (`execute()` with a `checkpointStore`, `resumeAfterApproval()`, `AgentExecutor.fork()`, the `ToolRegistry` setup) moved under "Advanced: the executor API". In durable-execution the heading "What happens when you call `execute()` again with the same `sessionId`" is now "What happens when you send again with the same `sessionId`".
+- The Quick Start is rewritten around `createAgent()`: hello world, a tool, streaming, a session, an approval, an offline test with `mockModel`, a custom provider and spec files, each runnable with no API key (the first excepted). The `AgentBuilder` + `AgentExecutor` section moved to a new page, docs/executor-api.md (with the `ToolRegistry` note); the Quick Start no longer shows either API.
 - `create-lousho-agent` has a README (its npm page was empty) and `license`, `homepage` and `repository` fields; they appear on npm with its next release. `lousho init --help` no longer says `--sdk-path` is needed until the package is on npm.
 
 ### Renamed

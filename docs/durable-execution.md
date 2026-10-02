@@ -359,7 +359,7 @@ Notes:
 
 `createAgent()` is built on `AgentExecutor`, which stays available when you
 want to own the wiring: the provider, the `ToolRegistry`, the stores and the
-resume calls are all explicit. Each snippet below says which `createAgent()`
+resume calls are all explicit (see [The executor API](./executor-api.md)). Each snippet below says which `createAgent()`
 call it corresponds to.
 
 `AgentExecutor.execute()` with a `sessionId` and a `checkpointStore` is
