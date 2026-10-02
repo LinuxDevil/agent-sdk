@@ -15,7 +15,16 @@ import { HookRegistry, ToolCallHookContext, type PreToolCallDecision } from './h
 import { toolErrorMessage } from './propagatingToolError';
 import { toolErrorResult, type ToolErrorKind } from './toolErrors';
 import { ToolArgumentsValidationError, parseToolArguments, validateToolArguments } from './toolArgsValidation';
-import { checkPermission, reportHookDenial, reportPermission, type PermissionDecisionEntry, type PermissionRuntime } from './permissions';
+import {
+  checkPermission,
+  permissionModeOf,
+  permissionModeVerdict,
+  reportHookDenial,
+  reportPermission,
+  type PermissionDecisionEntry,
+  type PermissionMode,
+  type PermissionRuntime,
+} from './permissions';
 import { checkToolGuardrails } from './ioGuardrails';
 import type { ExecuteOptions } from './AgentExecutor';
 import { stableStringify } from '../testing/fingerprint';
@@ -154,8 +163,10 @@ async function prepareToolCall(toolCall: ToolCall, ctx: ToolCallContext): Promis
 
 /** Permission rules, tool guardrails and `needsApproval`, on the hook-processed args. */
 async function gateToolCall(toolCall: ToolCall, ctx: ToolCallContext, hookedArgs: Record<string, unknown>): Promise<PreparedToolCall> {
+  // N4: the mode is read once per call, so a switch applies from the next call.
+  const mode = ctx.scope ? permissionModeOf(ctx.scope.runtime) : 'default';
   // LOU-X2: a matching permission rule decides before `needsApproval` does.
-  const { entry, gate: ruled } = await checkPermissionRules(toolCall, ctx, hookedArgs);
+  const { entry, gate: ruled } = await checkPermissionRules(toolCall, ctx, hookedArgs, mode);
   let audit = entry;
   try {
     if (ruled?.rejection) {
@@ -170,10 +181,33 @@ async function gateToolCall(toolCall: ToolCall, ctx: ToolCallContext, hookedArgs
     const { denied, ...gate } = own.rejection ? own : (ruled ?? own);
     // LOU-X8: the tool's own deny is audited like a rule's.
     if (denied && audit) audit = { ...audit, decision: 'deny', ...(denied.reason !== undefined && { reason: denied.reason }) };
-    return { toolCall, args, ...gate };
+    // N4: the permission mode applies last, to a call nothing above denied: it never turns a deny into a run.
+    const moded = gate.rejection ? undefined : applyPermissionMode(mode, toolCall, ctx, gate.requiresApproval);
+    if (moded && audit) audit = { ...audit, ...moded.audit };
+    return { toolCall, args, ...(moded?.gate ?? gate) };
   } finally {
     if (audit && ctx.scope) reportPermission(ctx.scope.runtime, audit);
   }
+}
+
+/**
+ * N4: what the run's permission mode does with a call that was not denied
+ * (see `permissionModeVerdict()`): the new gate and the audit fields, or
+ * undefined when the mode does not change the outcome.
+ */
+function applyPermissionMode(
+  mode: PermissionMode,
+  toolCall: ToolCall,
+  ctx: ToolCallContext,
+  requiresApproval: boolean
+): { gate: ToolGate; audit: Pick<PermissionDecisionEntry, 'decision' | 'reason' | 'mode'> } | undefined {
+  if (mode === 'default') return undefined;
+  const tool = ctx.toolRegistry && findExecutableTool(ctx.toolRegistry, toolCall.function.name);
+  const verdict = permissionModeVerdict(mode, tool, requiresApproval);
+  if (!verdict) return undefined;
+  if ('approve' in verdict) return { gate: { requiresApproval: false }, audit: { decision: 'allow', mode } };
+  const { rejection } = deniedGate(toolCall, `${mode} mode`, verdict.deny);
+  return { gate: { requiresApproval: false, rejection }, audit: { decision: 'deny', reason: verdict.deny, mode } };
 }
 
 /** The pre-tool hooks' verdict (LOU-X3): the final args, or the outcome that settles the call without running it. */
@@ -243,14 +277,15 @@ type ToolGate = Pick<PreparedToolCall, 'rejection' | 'requiresApproval'> & { den
 async function checkPermissionRules(
   toolCall: ToolCall,
   ctx: ToolCallContext,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  mode: PermissionMode
 ): Promise<{ entry?: PermissionDecisionEntry; gate?: ToolGate }> {
   if (!ctx.scope) {
     return {};
   }
   const toolName = toolCall.function.name;
   try {
-    const entry = await checkPermission(ctx.scope.runtime, { toolName, toolCallId: toolCall.id, sessionId: ctx.sessionId, args });
+    const entry = await checkPermission(ctx.scope.runtime, { toolName, toolCallId: toolCall.id, sessionId: ctx.sessionId, args }, mode);
     if (entry?.decision === 'deny') {
       return { entry, gate: deniedGate(toolCall, 'a permission rule', entry.rule?.reason) };
     }

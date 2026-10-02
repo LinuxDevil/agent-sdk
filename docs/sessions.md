@@ -31,6 +31,8 @@ console.log(session.id, session.messages.length);
 | `pending()` | In a [durable session](#durable-sessions), the turn that has not finished (`{ status, approvalId?, approvalKind? }`; `approvalKind` is `'question'` when the turn waits on an `ask_question`), or `null`. |
 | `resume({ signal })` | In a durable session, finishes an interrupted turn and resolves with its result, or `null` when none is pending. |
 | `discardPending()` | In a durable session, drops an unfinished turn without running it. |
+| `history()` | The steps of the transcript (one per model response, with its tool calls and results) - see [Forking a session](#forking-a-session). |
+| `fork({ fromStep, id?, patch? })` | A new session that starts from this one's transcript up to a step; this session is not changed - see [Forking a session](#forking-a-session). |
 
 Concurrent `send()` calls on one session are queued and run one after another in
 call order, so the transcript never interleaves.
@@ -297,3 +299,93 @@ With the executor directly, pass `store.checkpoints` as `checkpointStore` and
 Not part of sessions, but often wanted together: see "Project instructions" in
 [Configuration](configuration.md) to give an agent your repository's
 `AGENTS.md`.
+
+## Forking a session
+
+`session.history()` lists the steps of a session, and `session.fork({ fromStep })`
+starts a new session from any of them, so you can try another direction
+without losing the original conversation:
+
+```ts
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+import { z } from 'zod';
+
+const searchFlights = defineTool({
+  name: 'search_flights',
+  description: 'Find flights to a city',
+  input: z.object({ to: z.string() }),
+  execute: async ({ to }) => `2 flights to ${to}`,
+});
+const agent = createAgent({
+  tools: [searchFlights],
+  provider: mockModel([
+    { toolCalls: [{ name: 'search_flights', args: { to: 'Lisbon' } }] },
+    'Two flights to Lisbon on Friday.',
+    'Porto has a direct flight at 9:00.',
+  ]),
+});
+const session = agent.session({ id: 'trip' });
+await session.send('Find me a flight to Lisbon on Friday.');
+
+for (const { step, turn, text, toolCalls } of await session.history()) {
+  console.log(step, turn, text, toolCalls.map((call) => `${call.name} -> ${call.result}`));
+}
+
+// Keep everything up to and including step 1, then go another way.
+const fork = await session.fork({ fromStep: 1 }); // saved in the same store
+const reply = await fork.send('Look at Porto instead.');
+console.log(fork.id, reply.text); // 'trip-fork-1', 'Porto has a direct flight at 9:00.'
+```
+
+- A **step** is one model response in the transcript: an assistant message,
+  plus the tool messages answering its tool calls. `history()` returns
+  `{ step, turn, messageIndex, text, toolCalls }` for each, oldest first:
+  `step` is numbered from 1 across the whole session (not per turn), `turn`
+  from 0, `messageIndex` is the assistant message's index in
+  `session.messages`, and each tool call has its `id`, `name`, parsed `args`
+  (the raw string when it is not JSON) and `result` (the tool message's
+  content as text, JSON-encoded as the model saw it). The steps are copies.
+- A **turn** starts at every user message, so a step's `turn` is the 0-based
+  index of the user message it answers, the same numbering as workspace
+  rewind uses. Input queued or steered into a running turn
+  (`turnPolicy: 'queue'` or `'steer'`) is a user message too, so it starts a
+  new turn in `history()`.
+- `history()` is the history of the current transcript: after
+  `session.compact()` the steps are renumbered from the compacted transcript.
+  A durable turn that has not finished is not in the transcript yet, so it is
+  not listed.
+- `fork({ fromStep })` keeps the transcript up to and including the step's
+  last tool message; `fromStep: 0` keeps nothing. A step outside
+  `0..history().length` is refused with
+  [`LOUSHO_SESSION_STEP_NOT_FOUND`](./errors.md#lousho_session_step_not_found),
+  whose message lists the valid range.
+- `patch: { toolResult: { toolCallId, result } }` replaces the result of one
+  tool call in the kept transcript ("what if the search had found nothing?"),
+  the same way as `agent.fork()`'s patch.
+- The fork is saved in the session's own store and is a session of the same
+  agent with the same options (`store`, checkpoints, `limits`, `turnPolicy`,
+  `compaction`, and the [permission mode](./permission-modes.md) the session
+  has when it forks), so streaming, approvals and checkpointed turns work as on any
+  `agent.session()`, and `agent.session({ id: fork.id, store })` continues it
+  later, in another process too. Its id is `id` when you pass one, else
+  `<id>-fork-<n>` for the first `n` from 1 that has no transcript. An `id` that
+  already has a transcript (or the session's own id) is refused with
+  [`LOUSHO_SESSION_EXISTS`](./errors.md#lousho_session_exists).
+- The original session's transcript and checkpoints are not changed.
+- Budgets: the spend recorded for `limits` stays on the kept messages, so a
+  fork's `limits` start from what the session had spent at the end of the last
+  turn it keeps (a turn records its spend on its last message).
+- `fork()` waits for queued calls, and rejects with `LOUSHO_SESSION_BUSY` while
+  a turn is running.
+- A paused session can be forked. The paused turn, its approval or
+  `ask_question` and a durable session's interrupted turn stay with the source
+  session: the fork has no pending turn, and `agent.approvals.resolve()`
+  continues the source only, once.
+- Only the conversation is forked. Files the agent wrote and other side
+  effects of the steps after the fork point are not undone; to restore
+  workspace files, see the rewind part of [Workspace tools](./workspace-tools.md).
+
+To fork a single run started with `agent.send(message, { sessionId })`, from
+its checkpoint history, use `agent.fork()` instead (see
+[Fork and replay](./durable-execution.md#fork-and-replay)).

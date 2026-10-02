@@ -181,6 +181,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [ACP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/acp.md) | `lousho acp` / `serveAcp()`: drive an agent from Zed and other Agent Client Protocol editors |
 | [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md) | `defineTool()`, validation and errors, built-in tools, `ToolRegistry` |
 | [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md) | `needsApproval`, `agent.approvals`, the `approve` callback, `resumeAfterApproval()`, stores |
+| [Permission modes](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md) | `permissionMode: 'plan' \| 'acceptEdits' \| 'dontAsk'`, `session.setPermissionMode()`, the `editsFiles` marker |
 | [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md) | Multi-turn conversations, `session.stream()`, session stores, `SqliteStore` |
 | [Memory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md) | Long-term memory across sessions: `defineMemory()`, scopes, `inMemoryMemory()`, `fileMemory()` |
 | [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md) | `output: zodSchema`: typed `result.object`, the repair step, `'output-invalid'` |
@@ -2140,7 +2141,12 @@ matching rule's action or `'default'` when none matched, `rule` is that rule's
 `{ index, reason? }`, `at` is an ISO timestamp, and `args` is left out when the
 run sets `redactContent`. Streams get the same entry as a `permission.decision`
 event (see [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)). Both are only produced when the agent
-sets `permissions` or `onPermissionDecision`.
+sets `permissions` or `onPermissionDecision`, or a permission mode other than
+`'default'`.
+
+For a named preset over these rules - `plan` (look, do not touch),
+`acceptEdits` or `dontAsk`, switchable in the middle of a session - see
+[Permission modes](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md).
 
 Both options also exist on `AgentExecutor.execute()` / `stream()` and
 `resumeAfterApproval()`. Sub-agents inherit the lead agent's rules, checked
@@ -5296,6 +5302,12 @@ if (original && replayed) {
 `AgentExecutor.fork()` is the same operation on the executor; see the
 [advanced section](#advanced-the-executor-api).
 
+`agent.fork()` forks one run by its checkpoint history. To branch a
+multi-turn `agent.session()` conversation, use `session.history()` and
+`session.fork({ fromStep })`, which work from the session's saved transcript
+with any store (finished turns keep no checkpoint history); see
+[Forking a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#forking-a-session).
+
 - `patch` is applied in this order: `messages(messages)` rewrites the
   transcript; `businessState` replaces it; `toolResult: { toolCallId, result }`
   replaces that call's result in place (same position, call id and tool name,
@@ -5546,7 +5558,7 @@ Find a code by area:
 | [Providers and peers](#providers-and-peers) | [`LOUSHO_PROVIDER_SPEC_INVALID`](#lousho_provider_spec_invalid), [`LOUSHO_PROVIDER_UNKNOWN`](#lousho_provider_unknown), [`LOUSHO_PROVIDER_MISSING_API_KEY`](#lousho_provider_missing_api_key), [`LOUSHO_PROVIDER_REQUEST_FAILED`](#lousho_provider_request_failed), [`LOUSHO_PROVIDER_RATE_LIMITED`](#lousho_provider_rate_limited), [`LOUSHO_PEER_MISSING`](#lousho_peer_missing), [`LOUSHO_HOSTED_TOOL_UNSUPPORTED`](#lousho_hosted_tool_unsupported) | Resolving a model string, a missing API key or peer package, a failed or rate-limited model request, a hosted tool the provider cannot run. |
 | [Agent spec files](#agent-spec-files) | [`LOUSHO_SPEC_INVALID`](#lousho_spec_invalid), [`LOUSHO_SPEC_UNKNOWN_FIELD`](#lousho_spec_unknown_field), [`LOUSHO_SPEC_UNSUPPORTED_FORMAT`](#lousho_spec_unsupported_format) | Loading an `AgentSpec` file with `loadSpec()` or `specToAgent()`. |
 | [Tools](#tools) | [`LOUSHO_TOOL_NOT_FOUND`](#lousho_tool_not_found), [`LOUSHO_TOOL_NEEDS_CREDENTIALS`](#lousho_tool_needs_credentials), [`LOUSHO_TOOL_EXECUTION_FAILED`](#lousho_tool_execution_failed), [`LOUSHO_TOOL_ARGS_INVALID`](#lousho_tool_args_invalid) | A tool the model called is unknown, needs credentials, threw, or got invalid arguments. |
-| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
+| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
 | [Schedules](#schedules) | [`LOUSHO_SCHEDULE_INVALID`](#lousho_schedule_invalid) | Defining or loading a schedule. |
 | [Channels](#channels) | [`LOUSHO_CHANNEL_INVALID`](#lousho_channel_invalid), [`LOUSHO_MEMORY_INVALID`](#lousho_memory_invalid) | Defining a channel or a memory slot. |
 | [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists) | `lousho add` fetching or copying from a registry. |
@@ -5846,7 +5858,7 @@ paused on an approval (`error.approvalId`), so it cannot take new input yet.
 
 ### LOUSHO_SESSION_BUSY
 
-**Means:** `session.compact()` or `session.clear()` was called while a turn of
+**Means:** `session.compact()`, `session.clear()` or `session.fork()` was called while a turn of
 that session is running or queued.
 
 **Fix:** await the turn's `send()` (or abort it), then call again.
@@ -5868,6 +5880,35 @@ streaming runner.
 `send()`.
 
 **Example:** `new AgentSession(run).stream('hi')`.
+
+### LOUSHO_SESSION_STEP_NOT_FOUND
+
+**Means:** `session.fork({ fromStep })` was given a step that is not an integer
+from 0 to the number of steps in `session.history()`. The error is a
+`ConfigurationError` (`field: 'fromStep'`) whose message lists the valid range.
+
+**Fix:** pick a step from `session.history()`, or `0` to keep nothing.
+
+**Example:** `session.fork({ fromStep: 9 })` on a session with three steps.
+
+### LOUSHO_SESSION_EXISTS
+
+**Means:** `session.fork({ id })` was given an id that already has a transcript
+in the session's store (or a checkpointed turn the fork would pick up), or the
+session's own id. The error is a `ConfigurationError` (`field: 'id'`).
+
+**Fix:** pick an unused id, or leave `id` out to get `<id>-fork-<n>`.
+
+**Example:** `session.fork({ fromStep: 1, id: session.id })`.
+
+### LOUSHO_SESSION_FORK_UNSUPPORTED
+
+**Means:** `fork()` was called on an `AgentSession` built by hand without the
+function that creates sibling sessions.
+
+**Fix:** get the session from `agent.session()`, which can fork.
+
+**Example:** `new AgentSession(run).fork({ fromStep: 0 })`.
 
 ### LOUSHO_REMOTE_UNAUTHORIZED
 
@@ -9005,6 +9046,198 @@ const tools = await openApiTools(spec, { include: (op) => op.tags.includes('orde
   credentials.
 - Response bodies are read as text, and responses are not streamed.
 
+# Permission modes
+
+Source: docs/permission-modes.md
+
+A permission mode puts an agent in a named state instead of writing rules: look
+but do not touch (`plan`), edit files without asking (`acceptEdits`), or never
+pause (`dontAsk`). Switch it in the middle of a session, the way you would work
+with a coding agent: plan first, then let it edit.
+
+```ts
+import { createAgent, createFsTools, MemoryWorkspace } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+
+const workspace = new MemoryWorkspace({ files: { 'notes.md': '# Notes\n' } });
+const agent = createAgent({
+  provider: mockModel(['I would add a "Todo" section to notes.md.', 'Done.']),
+  instructions: 'You are a coding agent.',
+  tools: createFsTools(workspace, { needsApproval: { write_file: true, edit_file: true } }),
+});
+
+const session = agent.session({ permissionMode: 'plan' });
+await session.send('Plan how to add a todo list to notes.md.'); // reads only; writes are refused
+session.setPermissionMode('acceptEdits');
+await session.send('Apply the plan.'); // write_file and edit_file run without asking
+```
+
+The modes are presets over the [permission rules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies)
+and `needsApproval`, not a second system: they apply last, to what the rules,
+guardrails and the tool's own `needsApproval` decided.
+
+## The modes
+
+| Mode | Read-only tools | File edits | Other tools that ask | Other tools that do not ask |
+| --- | --- | --- | --- | --- |
+| `'default'` | Normal gate | Normal gate | Pause for approval | Run |
+| `'plan'` | Normal gate (they may still ask) | Denied | Denied | Denied |
+| `'acceptEdits'` | Normal gate | Run without asking | Pause for approval | Run |
+| `'dontAsk'` | Normal gate, but a call that would ask is denied | Denied when they would ask | Denied | Run |
+
+- **`plan`**: a call to a tool that is not read-only is refused with
+  `kind: 'denied'` and the reason `The agent is in plan mode: it may read but
+  not change anything. Describe the change instead.` - also when an `allow`
+  rule matched it. A run that starts in plan mode also gets one paragraph in its
+  system prompt telling the model so. A call to an unknown tool still gets the
+  normal not-found error, so the model sees the real problem.
+- **`acceptEdits`**: a call that would pause for approval runs without asking
+  when its tool is a file edit (`editsFiles`, below). Everything else is
+  unchanged.
+- **`dontAsk`**: a call that would pause for approval - an `ask` rule,
+  `needsApproval`, or `ask_question` - is refused with the reason `The agent is
+  in dontAsk mode: calls that need approval are refused.` Calls an `allow` rule
+  approved and calls that need no approval run. Nothing pauses, so an `approve`
+  callback is never called.
+
+### Which tools are read-only
+
+Plan mode lets a tool run only when it says it changes nothing. A tool that
+says nothing is treated as one with side effects and is refused.
+
+- A tool with `annotations: { readOnlyHint: true }`. Built in: `read_file`,
+  `list_dir`, `glob`, `grep`, `todo_read`, `current_date`, `day_name`,
+  `web_fetch`, `load_skill`, every `recall_<name>` memory tool, and
+  `agent_status` / `agent_await` (they watch background sub-agents). An
+  [OpenAPI tool](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/openapi-tools.md) for a `GET` operation has it too, and an
+  [MCP tool](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md) keeps the hint its server sent: it is the server's word,
+  not a guarantee, so only connect servers you trust.
+- The built-in `ask_question` (it only asks; the call still pauses for the
+  answer) and `task` (its sub-agent inherits plan mode, see below).
+
+Declare a custom read-only tool like this:
+
+```ts
+import { defineTool } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+const lookUpOrder = defineTool({
+  name: 'look_up_order',
+  description: 'Read an order by id',
+  input: z.object({ id: z.string() }),
+  annotations: { readOnlyHint: true },
+  execute: async ({ id }) => ({ id, status: 'shipped' }),
+});
+```
+
+The hint is a promise you make about your tool: plan mode trusts it.
+
+### File edits: the `editsFiles` marker
+
+`acceptEdits` approves only tools marked as file edits: `write_file` and
+`edit_file` from `createFsTools()`, and any tool defined with `editsFiles: true`
+(stored as `metadata.editsFiles`). A tool is never a file edit by its name
+alone, so a tool of your own named `write_file` is not approved silently.
+
+```ts
+import { defineTool } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+const appendLine = defineTool({
+  name: 'append_line',
+  description: 'Append a line to a file in the project',
+  input: z.object({ path: z.string(), line: z.string() }),
+  needsApproval: true,
+  editsFiles: true,
+  execute: async ({ path, line }) => `appended to ${path}: ${line}`,
+});
+```
+
+## Order of evaluation
+
+For each tool call, in this order:
+
+1. Argument validation, then `preToolCall` [hooks](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hooks.md). A hook deny ends here.
+2. Permission rules (`permissions`). A `deny` rule ends here.
+3. Tool [guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md). A block ends the run.
+4. The tool's own `needsApproval`. A deny ends here; an `allow` or `ask` rule replaces its ask.
+5. The permission mode, on what is left.
+
+So no mode turns a deny into a run: a hook deny, a `deny` rule and a
+`needsApproval` deny still deny in every mode, and `acceptEdits` never approves
+a call a guardrail blocked.
+
+## Setting and switching the mode
+
+- `createAgent({ permissionMode })`: the agent's mode. A function is read at
+  every tool call, so a mode you switch while a run is going applies to its
+  next call.
+- `agent.send(message, { permissionMode })` / `agent.stream(...)`: the mode for
+  that run only.
+- `agent.session({ permissionMode })`, then `session.setPermissionMode(mode)`
+  and the `session.permissionMode` getter. The session reads its mode at every
+  tool call of a turn, so `setPermissionMode()` during a turn (from a
+  `tool.start` listener, say) applies from the next tool call of that turn. A
+  session defaults to the agent's mode.
+
+Switching is always an explicit call to `setPermissionMode()`. Each switch is
+reported to `onPermissionModeChange` with `{ sessionId, from, to, at }`:
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+
+const agent = createAgent({
+  provider,
+  instructions: 'You are a coding agent.',
+  onPermissionDecision: (entry) => console.log(entry.toolName, entry.decision, entry.mode),
+  onPermissionModeChange: ({ sessionId, from, to, at }) => console.log(at, sessionId, `${from} -> ${to}`),
+});
+```
+
+The system prompt is set when a run starts: only a run (or session turn) that
+starts in plan mode is told about it. A switch during a run is enforced by the
+tool-call gate alone, which is enough because the denied call's reason tells
+the model.
+
+## The audit log
+
+While a mode other than `'default'` is set, every tool call's decision is
+audited, even when the agent sets neither `permissions` nor
+`onPermissionDecision`: it goes to `onPermissionDecision` (when set) and is
+streamed as a `permission.decision` event. The entry's `mode` field is set when
+the mode changed the call's outcome: `'plan'` or `'dontAsk'` with
+`decision: 'deny'` and the mode's `reason`, `'acceptEdits'` with
+`decision: 'allow'`. When the mode denied a call an `allow` rule matched, the
+entry keeps that rule's `rule.index`. Mode switches go to
+`onPermissionModeChange`.
+
+## Sub-agents
+
+A sub-agent (the `task` tool, a background task, `createDelegateTool()`) runs
+under the lead's mode while the lead's mode is not `'default'`, and under its
+own `permissionMode` otherwise. A sub-agent created with
+`permissionMode: 'plan'` stays in plan mode whatever the lead's mode is. The mode is read at each of the sub-agent's tool
+calls, so switching the lead's session mode applies to a sub-agent that is
+running. That is what makes `task` safe in plan mode: the sub-agent cannot
+change anything either.
+
+A [remote sub-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md) (`remoteAgent()`) runs on another server
+under that server's own permissions, so it cannot be held to the lead's mode: in
+plan mode a `task` call to it is refused without contacting it, and in
+`dontAsk` mode a remote approval fails the task instead of pausing the lead.
+
+## Resuming after an approval
+
+The mode is not saved in checkpoints or approval snapshots. A run continued by
+`agent.approvals.resolve()` uses the paused session's current mode when the
+paused run belonged to a session, else the agent's mode (not the mode a
+`send()` call passed). So a turn paused in `'default'` and resolved after
+`session.setPermissionMode('dontAsk')` runs the approved call and then refuses
+the calls after it that would ask. In plan mode the approved call itself is
+refused too when its tool is not read-only.
+
+A resume in another process uses the mode the resuming agent or session has.
+
 # Providers
 
 Source: docs/providers.md
@@ -10252,6 +10485,8 @@ console.log(session.id, session.messages.length);
 | `pending()` | In a [durable session](#durable-sessions), the turn that has not finished (`{ status, approvalId?, approvalKind? }`; `approvalKind` is `'question'` when the turn waits on an `ask_question`), or `null`. |
 | `resume({ signal })` | In a durable session, finishes an interrupted turn and resolves with its result, or `null` when none is pending. |
 | `discardPending()` | In a durable session, drops an unfinished turn without running it. |
+| `history()` | The steps of the transcript (one per model response, with its tool calls and results) - see [Forking a session](#forking-a-session). |
+| `fork({ fromStep, id?, patch? })` | A new session that starts from this one's transcript up to a step; this session is not changed - see [Forking a session](#forking-a-session). |
 
 Concurrent `send()` calls on one session are queued and run one after another in
 call order, so the transcript never interleaves.
@@ -10519,6 +10754,96 @@ Not part of sessions, but often wanted together: see "Project instructions" in
 [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md) to give an agent your repository's
 `AGENTS.md`.
 
+## Forking a session
+
+`session.history()` lists the steps of a session, and `session.fork({ fromStep })`
+starts a new session from any of them, so you can try another direction
+without losing the original conversation:
+
+```ts
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+import { z } from 'zod';
+
+const searchFlights = defineTool({
+  name: 'search_flights',
+  description: 'Find flights to a city',
+  input: z.object({ to: z.string() }),
+  execute: async ({ to }) => `2 flights to ${to}`,
+});
+const agent = createAgent({
+  tools: [searchFlights],
+  provider: mockModel([
+    { toolCalls: [{ name: 'search_flights', args: { to: 'Lisbon' } }] },
+    'Two flights to Lisbon on Friday.',
+    'Porto has a direct flight at 9:00.',
+  ]),
+});
+const session = agent.session({ id: 'trip' });
+await session.send('Find me a flight to Lisbon on Friday.');
+
+for (const { step, turn, text, toolCalls } of await session.history()) {
+  console.log(step, turn, text, toolCalls.map((call) => `${call.name} -> ${call.result}`));
+}
+
+// Keep everything up to and including step 1, then go another way.
+const fork = await session.fork({ fromStep: 1 }); // saved in the same store
+const reply = await fork.send('Look at Porto instead.');
+console.log(fork.id, reply.text); // 'trip-fork-1', 'Porto has a direct flight at 9:00.'
+```
+
+- A **step** is one model response in the transcript: an assistant message,
+  plus the tool messages answering its tool calls. `history()` returns
+  `{ step, turn, messageIndex, text, toolCalls }` for each, oldest first:
+  `step` is numbered from 1 across the whole session (not per turn), `turn`
+  from 0, `messageIndex` is the assistant message's index in
+  `session.messages`, and each tool call has its `id`, `name`, parsed `args`
+  (the raw string when it is not JSON) and `result` (the tool message's
+  content as text, JSON-encoded as the model saw it). The steps are copies.
+- A **turn** starts at every user message, so a step's `turn` is the 0-based
+  index of the user message it answers, the same numbering as workspace
+  rewind uses. Input queued or steered into a running turn
+  (`turnPolicy: 'queue'` or `'steer'`) is a user message too, so it starts a
+  new turn in `history()`.
+- `history()` is the history of the current transcript: after
+  `session.compact()` the steps are renumbered from the compacted transcript.
+  A durable turn that has not finished is not in the transcript yet, so it is
+  not listed.
+- `fork({ fromStep })` keeps the transcript up to and including the step's
+  last tool message; `fromStep: 0` keeps nothing. A step outside
+  `0..history().length` is refused with
+  [`LOUSHO_SESSION_STEP_NOT_FOUND`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_session_step_not_found),
+  whose message lists the valid range.
+- `patch: { toolResult: { toolCallId, result } }` replaces the result of one
+  tool call in the kept transcript ("what if the search had found nothing?"),
+  the same way as `agent.fork()`'s patch.
+- The fork is saved in the session's own store and is a session of the same
+  agent with the same options (`store`, checkpoints, `limits`, `turnPolicy`,
+  `compaction`, and the [permission mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md) the session
+  has when it forks), so streaming, approvals and checkpointed turns work as on any
+  `agent.session()`, and `agent.session({ id: fork.id, store })` continues it
+  later, in another process too. Its id is `id` when you pass one, else
+  `<id>-fork-<n>` for the first `n` from 1 that has no transcript. An `id` that
+  already has a transcript (or the session's own id) is refused with
+  [`LOUSHO_SESSION_EXISTS`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_session_exists).
+- The original session's transcript and checkpoints are not changed.
+- Budgets: the spend recorded for `limits` stays on the kept messages, so a
+  fork's `limits` start from what the session had spent at the end of the last
+  turn it keeps (a turn records its spend on its last message).
+- `fork()` waits for queued calls, and rejects with `LOUSHO_SESSION_BUSY` while
+  a turn is running.
+- A paused session can be forked. The paused turn, its approval or
+  `ask_question` and a durable session's interrupted turn stay with the source
+  session: the fork has no pending turn, and `agent.approvals.resolve()`
+  continues the source only, once.
+- Only the conversation is forked. Files the agent wrote and other side
+  effects of the steps after the fork point are not undone; to restore
+  workspace files, see the rewind part of [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md).
+
+To fork a single run started with `agent.send(message, { sessionId })`, from
+its checkpoint history, use `agent.fork()` instead (see
+[Fork and replay](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#fork-and-replay)).
+
 # Skills
 
 Source: docs/skills.md
@@ -10653,7 +10978,7 @@ The event types and their extra fields:
 | `todo.updated`       | `todos: Todo[]`, `counts: { pending, in_progress, completed, total }`, `toolCallId: string` | A successful `todo_write` call of the [todo tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#todo-tools) replaced the list, right after that call's `tool.done`. `todos` is the complete new list (`{ id, content, status }`), `toolCallId` the `todo_write` call. A sub-agent's carries `subagent`. The [UI bindings](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md#todos) keep the list and show it live. |
 | `tool.error`         | `toolCallId`, `toolName`, `error: { name: string, message: string }`, `durationMs: number` | A tool call failed: it threw, its arguments did not match its schema (`name: 'ToolArgumentsValidationError'`), or the tool does not exist. The model gets the error as the call's result and the run continues. |
 | `approval.requested` | `approvalId: string`, `toolCallId`, `toolName`, `args: Record<string, unknown>`, `kind?: 'question'`, `question?: { text, options?, allowFreeText? }` | A tool call needs a human decision. The run then stops; resume it with `agent.approvals.resolve()` or `resumeAfterApproval()` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)), or stream the continuation (see [Streaming after an approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#streaming-after-an-approval)). An `ask_question` call carries `kind: 'question'` and its `question`; answer it with `agent.approvals.answer()` (see [Asking the user a question](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#asking-the-user-a-question)). |
-| `permission.decision` | `toolCallId`, `toolName`, `decision: 'allow' \| 'deny' \| 'ask' \| 'default'`, `rule?: { index: number, reason?: string }`, `args?: Record<string, unknown>`, `at: string` | How a tool call's [permission rules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies) decided it: after its `tool.start`, before the call's own `tool.done` / `tool.error` / `approval.requested`. Only when the run sets `permissions` or `onPermissionDecision`; `args` is left out under `redactContent`. |
+| `permission.decision` | `toolCallId`, `toolName`, `decision: 'allow' \| 'deny' \| 'ask' \| 'default'`, `rule?: { index: number, reason?: string }`, `reason?: string`, `mode?: 'plan' \| 'acceptEdits' \| 'dontAsk'`, `args?: Record<string, unknown>`, `at: string` | How a tool call's [permission rules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies) decided it: after its `tool.start`, before the call's own `tool.done` / `tool.error` / `approval.requested`. Only when the run sets `permissions` or `onPermissionDecision`, or a [permission mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md) other than `'default'` (`mode` is set when the mode changed the outcome); `args` is left out under `redactContent`. |
 | `step.done`          | `step: number`, `finishReason: string`, `usage?: { promptTokens, completionTokens, totalTokens }` | A step ends. `finishReason` is the model's (`'stop'`, `'tool_calls'`, `'length'`, ...), or `'awaiting-approval'`, `'aborted'`, `'steered'` (its model call was aborted by `run.steer()`, see [Steering](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/queue-and-steer.md#steering)) or `'error'` when the step ended that way (a run that runs out of `maxSteps` still wanting to continue ends with `run.done` `'max-steps'`). `usage` is this step's model call, absent when the call produced no response. |
 | `error`              | `error: { name: string, message: string }` | An error. If it ends the run, `run.done` with `finishReason: 'error'` follows. A provider error retried under `surfaceRetryableProviderErrors` is followed by further steps instead. |
 | `provider.retry`     | `attempt: number`, `maxRetries: number`, `delayMs: number`, `error: { message: string, category?: string }`, `provider: string` | A model call failed and is retried after `delayMs` (`createAgent({ retry })` or any `withRetry()` provider). `attempt` is the attempt that failed (1 = first); `category` is `'rate-limit'`, `'timeout'`, ... and absent when unknown (a 5xx, for example). |
@@ -11691,6 +12016,7 @@ inherits:
 | `sandbox` | Yes | |
 | Token usage | Rolls up | Added to the lead's `result.usage` (totals, `byModel`, and `usage.delegated`); a remote sub-agent's under `byModel['remote:<name>']`. |
 | `maxSubagentDepth` | The remaining budget | See [Depth](#depth). |
+| `permissionMode` | Yes, unless the lead's is `'default'` | The sub-agent runs under the lead's [permission mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md#sub-agents), read at each of its tool calls; while the lead's is `'default'`, under its own (a sub-agent whose own mode is `'plan'` always stays in plan mode). A remote sub-agent does not inherit it: plan mode refuses a `task` call to one. |
 | `onLLMRequest`, `onToolCall` and the other single-run callbacks | No | They describe one run; use hooks or an event listener to observe sub-agents. |
 | `sessionId` / `checkpointStore` | No | A sub-agent is not checkpointed on its own. If the process dies while a sub-agent runs, the resumed lead runs that `task` call again. |
 | `output` schema | No | A sub-agent's output is its own: with one, `task` returns its validated object as JSON (see [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md#sub-agents)); without, text. |
@@ -12278,6 +12604,8 @@ Tools the model provider runs itself (web search, code interpreter, file search)
 | `execute(args, ctx)` | yes | Runs the tool. `ctx` carries the call's `toolCallId` and `abortSignal`. The return type is kept on the tool (`ToolOutput`). |
 | `displayName` | no | Label for UIs. Defaults to `name`. |
 | `needsApproval` | no | `true`, or a predicate typed from `input`, to pause for a human decision before the call runs. See [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md). |
+| `annotations` | no | MCP hints (`readOnlyHint`, `destructiveHint`, ...), stored as `metadata.mcp.annotations`. `readOnlyHint: true` lets the tool run in [plan mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md#which-tools-are-read-only). |
+| `editsFiles` | no | The tool edits files: [`permissionMode: 'acceptEdits'`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md#file-edits-the-editsfiles-marker) runs its calls without asking. Stored as `metadata.editsFiles`. |
 | `requiresSandbox` | no | Run the tool through the configured `SandboxAdapter` instead of in-process (needs `sandboxExecute`). See [Guardrails and sandboxing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md#sandboxed-tools). |
 | `sandboxExecute(args, sandbox)` | no | The sandboxed execution path used when `requiresSandbox` is true. |
 
@@ -13176,7 +13504,10 @@ the root, symlinks included. A real rewind then forgets the backups of the
 rewound turns, skipped files' included, so a second rewind does nothing:
 look at the dry run first. Directories the agent created stay (empty) after
 their files are deleted. The conversation is not rewound; to branch it as
-well, fork the run (see [Fork and replay](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#fork-and-replay)).
+well, fork the session with `session.fork({ fromStep })` (see
+[Forking a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#forking-a-session); a step's `turn` in
+`session.history()` is the turn number used here), or a single run with
+`agent.fork()` (see [Fork and replay](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#fork-and-replay)).
 
 What is not tracked: changes made by the `shell` tool, files written by a
 sub-agent with its own file tools (unless it gets the same

@@ -38,6 +38,8 @@ export type {
   PermissionContext,
   PermissionDecision,
   PermissionDecisionEntry,
+  PermissionMode,
+  PermissionModeChange,
   PermissionOptions,
   PermissionRule,
   PermissionToolMatcher,

@@ -25,6 +25,8 @@ function createLoadSkillTool(skills: readonly Skill[]) {
   const byName = new Map(skills.map((s) => [s.name, s]));
   return defineTool({
     name: LOAD_SKILL_TOOL,
+    // N4: reading a skill changes nothing, so plan mode can use it.
+    annotations: { readOnlyHint: true, destructiveHint: false },
     description:
       'Load the full instructions of a skill listed under "Available skills". Call this before doing a task the skill covers.',
     input: z.object({ name: z.string().describe('The skill name, exactly as listed') }),

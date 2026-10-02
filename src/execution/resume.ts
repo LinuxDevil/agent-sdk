@@ -32,6 +32,7 @@ import { splitPendingTurn } from './transcript';
 import { replaceToolResult, type ToolCallScope } from './subagentRuntime';
 import type { RunUsage } from '../models/usage';
 import { emptyRunUsage, mergeDelegatedUsage, restoreRunUsage } from './runUsage';
+import { planModeRefusal } from './permissions';
 import { resumeSubagentCall, type ResumeContext } from './resumeSubagent';
 
 /**
@@ -361,6 +362,13 @@ async function decidedToolMessage(
         true
       ),
     };
+  }
+  // N4: a call approved before a switch to plan mode does not run in plan mode.
+  const { toolName, toolCallId, args } = pending;
+  const planned = planModeRefusal(executeOptions, ctx.toolRegistry.get(toolName), { toolName, toolCallId, sessionId: ctx.snapshot.sessionId, args });
+  if (planned) {
+    const error = `Tool '${toolName}' was denied by plan mode: ${planned}`;
+    return { message: toolResultMessage(pending, toolErrorResult({ toolName, error, kind: 'denied', details: { reason: planned } }), true) };
   }
   // A sub-agent the approved tool starts inherits this resumed run's runtime.
   const scope: ToolCallScope = {

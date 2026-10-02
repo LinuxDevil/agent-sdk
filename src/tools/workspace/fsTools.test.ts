@@ -4,6 +4,7 @@ import { mockModel } from '../../testing';
 import type { DefinedTool } from '../defineTool';
 import { createFsTools, type FsToolsOptions } from './fsTools';
 import { MemoryWorkspace } from './MemoryWorkspace';
+import { WorkspaceCheckpoints } from './checkpoints';
 import type { FsProvider } from './types';
 
 function toolsByName(fs: FsProvider, options?: FsToolsOptions): Record<string, DefinedTool> {
@@ -20,6 +21,20 @@ describe('createFsTools on MemoryWorkspace (LOU-X6)', () => {
     const ws = new MemoryWorkspace();
     expect(createFsTools(ws).map((t) => t.name)).toEqual(['read_file', 'write_file', 'edit_file', 'list_dir', 'glob', 'grep']);
     expect(createFsTools(ws, { readOnly: true }).map((t) => t.name)).toEqual(['read_file', 'list_dir', 'glob', 'grep']);
+  });
+
+  it('marks write_file and edit_file, and only them, as file edits (N4); the four readers stay read-only', () => {
+    const ws = new MemoryWorkspace();
+    // #309: with rewind checkpoints the same two tools are the edits.
+    for (const options of [{}, { checkpoints: new WorkspaceCheckpoints(ws) }] as FsToolsOptions[]) {
+      const marked = createFsTools(ws, options).filter((t) => t.metadata?.editsFiles === true).map((t) => t.name);
+      expect(marked).toEqual(['write_file', 'edit_file']);
+    }
+    const tools = toolsByName(new MemoryWorkspace());
+    for (const name of ['read_file', 'list_dir', 'glob', 'grep']) {
+      expect(tools[name].metadata).toEqual({ mcp: { annotations: { readOnlyHint: true, destructiveHint: false } } });
+    }
+    expect(tools.write_file.metadata).toEqual({ editsFiles: true });
   });
 
   it('needs no approval by default; per-tool overrides apply', async () => {

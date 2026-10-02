@@ -5,6 +5,7 @@ import { createAgent, type SimpleAgent } from '../createAgent';
 import { mockModel } from '../testing';
 import type { StandardSchemaV1 } from '../utils/zodCompat';
 import type { AgentSession } from './AgentSession';
+import type { SessionForkOptions, SessionHistoryStep } from '../index';
 
 describe('output schemas of either zod major and sessions (LOU-V4.2)', () => {
   it('infers result.object from a zod 4 schema (zod/v4) and a Standard Schema', () => {
@@ -28,5 +29,12 @@ describe('output schemas of either zod major and sessions (LOU-V4.2)', () => {
     expectTypeOf(session.send).returns.resolves.toHaveProperty('object').toEqualTypeOf<{ city: string } | undefined>();
     expectTypeOf(session.stream).returns.toHaveProperty('result');
     expectTypeOf(createAgent({ provider: mockModel([]) }).session()).toEqualTypeOf<AgentSession>();
+  });
+
+  it('types session.fork() as a session of the same output, and session.history() steps (N3a)', () => {
+    const session = createAgent({ provider: mockModel([]), output: z.object({ city: z.string() }) }).session();
+    expectTypeOf(session.fork).returns.resolves.toEqualTypeOf<AgentSession<{ city: string }>>();
+    expectTypeOf(session.fork).parameter(0).toEqualTypeOf<SessionForkOptions>();
+    expectTypeOf(session.history).returns.resolves.toEqualTypeOf<SessionHistoryStep[]>();
   });
 });

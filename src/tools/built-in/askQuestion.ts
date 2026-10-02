@@ -13,6 +13,7 @@ import { defineTool, type DefinedTool } from '../defineTool';
 import { ASK_QUESTION_TOOL_NAME } from '../../execution/ApprovalGate';
 import type { ToolDescriptor } from '../../types';
 import { toolFailure } from './toolFailure';
+import { allowInPlanMode } from '../../execution/permissions';
 
 const askQuestionInput = z.object({
   question: z.string().trim().min(1).describe('The question to ask, in one or two sentences.'),
@@ -49,7 +50,8 @@ export interface AskQuestionResult {
  * ```
  */
 export function askQuestionTool(): DefinedTool<typeof askQuestionInput, AskQuestionResult> {
-  return defineTool({
+  // N4: asking changes nothing, so plan mode lets it through (it still pauses for the answer).
+  return allowInPlanMode(defineTool({
     name: ASK_QUESTION_TOOL_NAME,
     description:
       'Ask the user a question and wait for the answer. Use it only for information or a decision that only the user ' +
@@ -68,7 +70,7 @@ export function askQuestionTool(): DefinedTool<typeof askQuestionInput, AskQuest
       }
       return { answer };
     },
-  });
+  }));
 }
 
 type AgentTools = readonly DefinedTool[] | Record<string, ToolDescriptor>;

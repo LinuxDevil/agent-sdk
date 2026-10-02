@@ -23,7 +23,7 @@ import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
 import type { ResumeExecuteOptions } from './resume';
 import type { ApprovalStore, ExecutionSnapshot } from './ApprovalGate';
 import type { ToolConcurrency } from './toolBatch';
-import type { PermissionRule } from './permissions';
+import { inheritPermissionMode, type PermissionOptions, type PermissionRule } from './permissions';
 import { inheritGuardrails, type AgentGuardrails } from './ioGuardrails';
 import { HookRegistry, type AgentHook, type HookContext, type SubagentInfo } from './hooks';
 import { markPropagating } from './propagatingToolError';
@@ -45,6 +45,8 @@ export interface SubagentSpec {
   toolConcurrency?: ToolConcurrency;
   /** LOU-X2: the sub-agent's own permission rules, checked after the ones it inherits. */
   permissions?: readonly PermissionRule[];
+  /** N4: the sub-agent's own mode, used while the lead's is `'default'`. */
+  permissionMode?: PermissionOptions['permissionMode'];
   /** LOU-X4: the sub-agent's own guardrails, run after the ones it inherits. */
   guardrails?: AgentGuardrails;
   /** LOU-V13: the sub-agent's own `reasoning` (not inherited: it may run another model). */
@@ -184,6 +186,8 @@ function childOptions(
         ? [...runtime.permissions, ...spec.permissions]
         : (runtime.permissions ?? spec.permissions),
     onPermissionDecision: runtime.onPermissionDecision,
+    // N4: the lead's mode while it is not 'default', else the sub-agent's own; read at each of the child's tool calls.
+    permissionMode: inheritPermissionMode(runtime.permissionMode, spec.permissionMode),
     // M10c: a paused child (and its own children) resumes under the top-level run's drift mode.
     onAgentDrift: runtime.onAgentDrift,
     guardrails: inheritGuardrails(runtime.guardrails, spec.guardrails),

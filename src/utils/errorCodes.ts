@@ -63,6 +63,9 @@ export const ERROR_CODES = {
   LOUSHO_SESSION_TURN_PENDING: 'Finish the interrupted turn with session.resume(), or drop it with session.discardPending(), then call again.',
   LOUSHO_SESSION_FILE_CORRUPT: 'Restore or delete the session file named in the message.',
   LOUSHO_SESSION_STREAM_UNSUPPORTED: 'Create the session with agent.session(), which can stream, or call send() instead.',
+  LOUSHO_SESSION_STEP_NOT_FOUND: 'Pass a fromStep in the range the message lists (see session.history()); 0 keeps nothing.',
+  LOUSHO_SESSION_EXISTS: 'Pick a session id that has no transcript in the store yet, or leave `id` out for <id>-fork-<n>.',
+  LOUSHO_SESSION_FORK_UNSUPPORTED: 'Create the session with agent.session(), which can fork.',
   LOUSHO_REMOTE_UNAUTHORIZED: "Pass the deployment's bearer token (its LOUSHO_API_TOKEN): `auth` of remoteAgent()/remoteTarget(), or --token / LOUSHO_EVAL_TOKEN for `lousho eval`.",
   LOUSHO_REMOTE_REQUEST_FAILED: "Read the message: it names the remote agent's url and what failed. Check the url, that the deployment is up (GET /health), and its logs.",
   LOUSHO_SUBAGENT_TASK_NOT_FOUND:
