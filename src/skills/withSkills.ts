@@ -4,6 +4,8 @@ import { defineTool, type DefinedTool } from '../tools/defineTool';
 import { ToolRegistry } from '../tools/ToolRegistry';
 import type { Skill } from './defineSkill';
 import { extendAgent } from '../execution/subagentRuntime';
+import { SDKError } from '../execution/errors';
+import { toolFailure } from '../tools/built-in/toolFailure';
 
 /** Name of the tool the model uses to load a skill's full content. */
 const LOAD_SKILL_TOOL = 'load_skill';
@@ -29,7 +31,7 @@ function createLoadSkillTool(skills: readonly Skill[]) {
     execute: ({ name }) => {
       const skill = byName.get(name);
       if (!skill) {
-        throw new Error(`Unknown skill '${name}'. Valid skills: ${[...byName.keys()].join(', ')}.`);
+        throw toolFailure(`Unknown skill '${name}'. Valid skills: ${[...byName.keys()].join(', ')}.`);
       }
       return skill.content;
     },
@@ -38,15 +40,16 @@ function createLoadSkillTool(skills: readonly Skill[]) {
 
 function assertUsable(skills: readonly Skill[], agent: AgentConfig, registry?: ToolRegistry): void {
   if (registry?.has(LOAD_SKILL_TOOL) || agent.tools?.[LOAD_SKILL_TOOL]) {
-    throw new Error(
+    throw new SDKError(
       `skills: a tool named '${LOAD_SKILL_TOOL}' is already registered, but agents with skills get one automatically. ` +
-        `Rename your tool, or remove the 'skills' option.`
+        `Rename your tool, or remove the 'skills' option.`,
+      'LOUSHY_SKILL_INVALID'
     );
   }
   const seen = new Set<string>();
   for (const { name } of skills) {
     if (seen.has(name)) {
-      throw new Error(`skills: duplicate skill name '${name}'. Skill names must be unique; rename one.`);
+      throw new SDKError(`skills: duplicate skill name '${name}'. Skill names must be unique; rename one.`, 'LOUSHY_SKILL_INVALID');
     }
     seen.add(name);
   }

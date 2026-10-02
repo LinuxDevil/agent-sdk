@@ -38,11 +38,11 @@ export type InheritedRuntime = Pick<
   | 'toolConcurrency'
   | 'sandbox'
   | 'signal'
-  | 'onEvent'
   | 'maxSubagentDepth'
   | 'permissions'
   | 'onPermissionDecision'
   | 'guardrails'
+  | 'sessionId'
 >;
 
 /** What the executor knows about the tool call that is running. */

@@ -95,6 +95,13 @@ export async function runChatRepl(options: ChatReplOptions): Promise<number> {
       lineOpen = event.text !== '' && !event.text.endsWith('\n');
     },
     'text.done': endLine,
+    // LOU-V13: reasoning, dimmed, before the reply.
+    'reasoning.delta': (event) => {
+      if (event.subagent) return;
+      output.write(dim(event.text));
+      lineOpen = true;
+    },
+    'reasoning.done': endLine,
     'tool.start': (event) => {
       endLine();
       say(dim(`[${event.toolName}] ${show(event.args)}`));

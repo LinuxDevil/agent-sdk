@@ -11,6 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { NodeServerAdapter, loadAgentSpecForDeploy } from './node-server';
 import { getAdapter, registerBuiltInAdapters } from '../index';
+import { withBuildLock } from '../buildLock.testkit';
 
 function writeSpec(dir: string, spec: Record<string, unknown>, file = 'agent.json'): string {
   const specPath = path.join(dir, file);
@@ -83,7 +84,7 @@ describe('NodeServerAdapter', () => {
       const specPath = writeSpec(dir, SPEC);
       outDir = path.join(dir, 'out');
       await NodeServerAdapter.scaffold(specPath, outDir);
-      await NodeServerAdapter.build(outDir);
+      await withBuildLock(() => NodeServerAdapter.build(outDir));
     }, 120_000);
 
     it('scaffolds server.ts, agent.config.js and package.json, and builds dist/server.js', () => {

@@ -8,9 +8,9 @@ import { withSkills } from '../skills/withSkills';
 import type { Subagents } from '../subagents/types';
 import type { BackgroundTaskView } from '../subagents/backgroundTasks';
 import { assertMaxSubagentDepth, withSubagents } from '../subagents/withSubagents';
-import type { z } from 'zod';
+import type { StandardSchemaV1 } from '../utils/zodCompat';
 import { newId } from '../utils/id';
-import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult, ToolDefinition } from '../providers';
+import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult, ToolDefinition, type ReasoningOption } from '../providers';
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
 import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
@@ -61,16 +61,19 @@ import {
 } from './generateStep';
 import {
   AgentRunState,
+  assistantTurn,
   checkResumedAgent,
   ensureFingerprint,
   loadRunState,
   pushAbortedBatchResults,
+  noteReasoning,
   pushToolResult,
   recordStep,
   saveStepCheckpoint,
   toExecutionResult,
 } from './agentRunState';
-import { AgentRun, RUN_EVENTS, StreamingExecuteOptions, runEventsOf, startAgentRun } from './agentRun';
+import { AgentRun, RUN_EVENTS, StreamingExecuteOptions, observeRun, runEventsOf, startAgentRun } from './agentRun';
+import type { AgentEvent } from './agentEvents';
 import { withSteerSignal, type InputQueue } from './inputQueue';
 import { OutputError, outputInstruction, outputRepairMessage, validateOutput } from './structuredOutput';
 import type { PermissionOptions } from './permissions';
@@ -89,7 +92,11 @@ import { GuardrailError, checkInputGuardrails, checkOutputGuardrails, type Agent
 export { PropagatingToolError } from './propagatingToolError';
 
 /**
- * Execution event types
+ * Execution event types.
+ *
+ * @deprecated LOU-D41: the old event names. Listen to {@link AgentEvent}s
+ * instead (`onAgentEvent`, `createAgent({ onEvent })`, `stream()`); see the
+ * migration table in docs/streaming.md#listening-without-iterating.
  */
 export type ExecutionEventType =
   | 'start'
@@ -133,7 +140,11 @@ export type ExecutionFinishReason =
   | (string & {});
 
 /**
- * Execution event
+ * Execution event, as the deprecated `onEvent` listener receives it.
+ *
+ * @deprecated LOU-D41: derived from the run's {@link AgentEvent}s for old
+ * listeners. Use `onAgentEvent` / `createAgent({ onEvent })` with
+ * `AgentEvent` instead; see docs/streaming.md#listening-without-iterating.
  */
 export interface ExecutionEvent {
   type: ExecutionEventType;
@@ -197,7 +208,7 @@ export interface ExecuteOptions extends PermissionOptions {
    * Registers ONE `task` tool (`{ agent, prompt, description }`) and lists the
    * sub-agents in the system prompt. A sub-agent sees only the `prompt`, and
    * inherits this run's signal, hooks, tracing, approval store,
-   * `toolConcurrency` and `onEvent` listener (see docs/sub-agents.md). Throws
+   * `toolConcurrency` and event listeners (see docs/sub-agents.md). Throws
    * if a tool named `task` is already registered.
    *
    * @example
@@ -218,7 +229,6 @@ export interface ExecuteOptions extends PermissionOptions {
    * own trace.
    */
   parentSpanId?: string;
-  streaming?: boolean;
   maxSteps?: number;
   /**
    * LOU-V6: token, cost, time and step budgets of this run, checked before
@@ -244,6 +254,24 @@ export interface ExecuteOptions extends PermissionOptions {
   sessionBudget?: SessionBudget;
   temperature?: number;
   maxTokens?: number;
+  /**
+   * LOU-D41: called with every {@link AgentEvent} of the run, synchronously
+   * as it happens - the same events, in the same order, as `stream()`
+   * yields, on `execute()` too (which still generates each model step whole,
+   * so its text arrives as one `text.delta` per step). Sub-agents' events
+   * arrive tagged with `subagent`. See docs/streaming.md#listening-without-iterating.
+   *
+   * @example
+   * ```ts
+   * await AgentExecutor.execute({ agent, input: 'Hi', provider, onAgentEvent: (event) => console.log(event.type) });
+   * ```
+   */
+  onAgentEvent?: (event: AgentEvent) => void;
+  /**
+   * @deprecated LOU-D41: use {@link ExecuteOptions.onAgentEvent}. Still
+   * called, with {@link ExecutionEvent}s derived from the run's AgentEvents
+   * (a one-time `console.warn` says so).
+   */
   onEvent?: (event: ExecutionEvent) => void;
   approvalStore?: ApprovalStore;
   /**
@@ -529,7 +557,7 @@ export interface ExecuteOptions extends PermissionOptions {
    * const { object } = await AgentExecutor.execute({ agent, input: 'Weather in Paris?', provider, output: z.object({ tempC: z.number() }) });
    * ```
    */
-  output?: z.ZodTypeAny;
+  output?: StandardSchemaV1;
   /**
    * LOU-Y4.2: called exactly once when this run ends, however it ends: with
    * `{ result }` when it resolves (any `finishReason`, including `'aborted'`,
@@ -551,6 +579,11 @@ export interface ExecuteOptions extends PermissionOptions {
    * See docs/durable-execution.md#resuming-with-a-changed-agent.
    */
   onAgentDrift?: AgentDriftMode;
+  /**
+   * LOU-V13: how much the model reasons, sent on every model call of the run
+   * (`GenerateOptions.reasoning`). See docs/reasoning.md.
+   */
+  reasoning?: ReasoningOption;
 }
 
 /**
@@ -559,6 +592,8 @@ export interface ExecuteOptions extends PermissionOptions {
  */
 export interface ExecutionResult<TObject = unknown> {
   text: string;
+  /** LOU-V13: the model's reasoning text over the run's steps, when it reported any (never part of `text` or `messages` content). */
+  reasoning?: string;
   messages: Message[];
   toolCalls: ToolCall[];
   /**
@@ -599,28 +634,22 @@ export class AgentExecutor {
     // throwing because `provider` was never checked).
     this.validateExecuteOptions(options);
 
-    const { input, exporter } = options;
-
-    // The entire run is wrapped in a top-level 'agent.run' span (LOU-E5).
-    // AgentExecutor is a static-function API (no `this` instance to hang a
-    // span/exporter off of), so the original execute() body below just
-    // moves, unchanged in behavior, into this withSpan() callback; the
-    // callback receives its own span (`agentSpan`) whose generated `id` is
-    // then threaded as `parentId` into the nested 'llm.generate' and
-    // 'tool.call' withSpan() calls, giving the 3-level span tree its
-    // parent/child relationships without any instance state.
-    const init = agentRunSpanInit(
-      { ...options, input },
-      resolveCaptureContent(options.captureContent)
-    );
-    return withSpan(
-      exporter,
-      init.name,
-      init.attributes,
-      async (agentSpan) => this.runWithEnd(options, agentSpan.id),
-      options.parentSpanId,
-      init.kind
-    );
+    // LOU-D41: the run reports to its listeners through its event sink.
+    return observeRun(options, (observed) => {
+      // The entire run is wrapped in a top-level 'agent.run' span (LOU-E5),
+      // whose `id` is threaded as `parentId` into the nested 'llm.generate'
+      // and 'tool.call' spans, giving the 3-level span tree its parent/child
+      // relationships without any instance state.
+      const init = agentRunSpanInit(observed, resolveCaptureContent(observed.captureContent));
+      return withSpan(
+        observed.exporter,
+        init.name,
+        init.attributes,
+        async (agentSpan) => this.runWithEnd(observed, agentSpan.id),
+        observed.parentSpanId,
+        init.kind
+      );
+    });
   }
 
   /** runAgentLoop() with `skills`/`subagents` applied, then `onRunEnd` once, however the run ends (LOU-Y4.2). */
@@ -662,7 +691,7 @@ export class AgentExecutor {
    * `AgentEvent`s (LOU-V2). Model output is streamed through
    * `provider.stream()` when the provider has it (one `text.delta` per
    * chunk); otherwise each step uses `generate()` and emits its text as a
-   * single `text.delta`. `onEvent` and the other callbacks still fire.
+   * single `text.delta`. `onAgentEvent` gets the same events; the other callbacks still fire.
    *
    * The run starts immediately. Iterate the returned {@link AgentRun} for
    * the events, or await `run.result`; breaking out of the `for await`
@@ -681,17 +710,8 @@ export class AgentExecutor {
    */
   static stream(options: ExecuteOptions): AgentRun {
     this.validateExecuteOptions(options, 'AgentExecutor.stream');
-    return startAgentRun(({ signal, onEvent, sink, inputQueue }) => {
-      const streaming: StreamingExecuteOptions = {
-        ...options,
-        signal,
-        inputQueue,
-        onEvent: (event) => {
-          options.onEvent?.(event);
-          onEvent(event);
-        },
-        [RUN_EVENTS]: sink,
-      };
+    return startAgentRun(({ signal, sink, inputQueue }) => {
+      const streaming: StreamingExecuteOptions = { ...options, signal, inputQueue, [RUN_EVENTS]: sink };
       return this.execute(streaming);
     }, options.signal, options.inputQueue);
   }
@@ -725,15 +745,8 @@ export class AgentExecutor {
     agentSpanId: string,
     budget?: RunBudget
   ): Promise<ExecutionResult> {
-    const { agent, toolRegistry, onEvent } = options;
-
-    // Emit start event
-    this.emitEvent(onEvent, {
-      type: 'start',
-      timestamp: new Date(),
-      agentId: agent.id,
-      agentName: agent.name,
-    });
+    const { agent, toolRegistry } = options;
+    runEventsOf(options)?.runStart(agent);
 
     // Build tools
     const tools = buildTools(agent, toolRegistry);
@@ -894,11 +907,7 @@ export class AgentExecutor {
         runEvents?.stepDone(state.steps, 'aborted');
         return this.abortRun(options, state);
       }
-      this.emitEvent(options.onEvent, {
-        type: 'error',
-        timestamp: new Date(),
-        error: error as Error,
-      });
+      runEvents?.error(error);
       runEvents?.stepDone(state.steps, 'error');
       throw error;
     }
@@ -932,16 +941,12 @@ export class AgentExecutor {
     const text = await this.guardOutput(options, state, generated);
     if (typeof text !== 'string') return text;
     const result = { ...generated, text };
+    noteReasoning(state, result.reasoning);
 
     // Handle text response
     if (result.text) {
       state.finalText = result.text;
-      this.emitEvent(options.onEvent, {
-        type: 'text-complete',
-        timestamp: new Date(),
-        text: result.text,
-        stepUsage,
-      });
+      runEventsOf(options)?.textDone(result.text, stepUsage);
     }
 
     // Handle tool calls
@@ -950,11 +955,11 @@ export class AgentExecutor {
       const exceeded = state.budget?.check(state.usage, state.steps, true);
       if (exceeded) {
         state.toolCalls.push(...result.toolCalls);
-        state.messages.push({ role: 'assistant', content: result.text || '', toolCalls: result.toolCalls });
+        state.messages.push(assistantTurn(result));
         pushAbortedBatchResults(state, result.toolCalls.map((toolCall) => ({ toolCall })), 'the run reached a budget limit');
         return this.stopForBudget(options, state, exceeded);
       }
-      const paused = await this.runToolCalls(options, state, result.text, result.toolCalls, agentSpanId);
+      const paused = await this.runToolCalls(options, state, assistantTurn(result), result.toolCalls, agentSpanId);
       if (paused) {
         return paused;
       }
@@ -993,7 +998,7 @@ export class AgentExecutor {
     state: AgentRunState,
     { text, toolCalls }: GenerateResult
   ): Promise<string | ExecutionResult> {
-    if (!text || (toolCalls?.length && !runEventsOf(options))) return text;
+    if (!text || (toolCalls?.length && !runEventsOf(options)?.streamed)) return text;
     const checked = await checkOutputGuardrails(options, text, state.messages);
     return 'tripped' in checked ? this.stopForGuardrail(options, state, checked.tripped) : checked.text;
   }
@@ -1048,11 +1053,7 @@ export class AgentExecutor {
       // See providerErrorMessage() for why this is a tagged `user` message.
       state.messages.push(providerErrorMessage(compacted));
 
-      this.emitEvent(options.onEvent, {
-        type: 'error',
-        timestamp: new Date(),
-        error: compactedError,
-      });
+      runEventsOf(options)?.error(compactedError);
 
       state.lastSurfacedProviderError = compactedError;
       return undefined;
@@ -1071,18 +1072,14 @@ export class AgentExecutor {
   private static async runToolCalls(
     options: ExecuteOptions,
     state: AgentRunState,
-    assistantText: string | undefined,
+    turn: Message,
     toolCalls: ToolCall[],
     agentSpanId: string
   ): Promise<ExecutionResult | undefined> {
     state.toolCalls.push(...toolCalls);
 
-    // Add assistant message with tool calls
-    state.messages.push({
-      role: 'assistant',
-      content: assistantText || '',
-      toolCalls,
-    });
+    // Add assistant message with tool calls (and LOU-V13: its signed reasoning)
+    state.messages.push(turn);
 
     // LOU-U9: checkpoint the model's turn before any tool runs, so a crash
     // from here on resumes by running the calls - never by asking the
@@ -1124,7 +1121,7 @@ export class AgentExecutor {
     toolCalls: ToolCall[],
     agentSpanId: string
   ): Promise<ExecutionResult | undefined> {
-    const { onEvent } = options;
+    const runEvents = runEventsOf(options);
     // LOU-Y1: tool calls whose sub-agent paused for approval, in call order.
     const suspensions: SubagentSuspension[] = [];
     const batch = await runToolBatch(
@@ -1132,11 +1129,10 @@ export class AgentExecutor {
       options.toolConcurrency ?? 'unbounded',
       {
         start: (toolCall) => {
-          this.emitEvent(onEvent, { type: 'tool-call', timestamp: new Date(), toolCall });
+          runEvents?.toolStart(toolCall);
           return this.startToolCall(options, state, toolCall, agentSpanId);
         },
-        onComplete: (toolResult) =>
-          this.emitEvent(onEvent, { type: 'tool-result', timestamp: new Date(), toolResult }),
+        onComplete: (toolResult) => runEvents?.toolSettled(toolResult),
         record: (toolCall, outcome) => {
           pushToolResult(state, toolCall, outcome);
           if (outcome.subagent) suspensions.push(outcome.subagent);
@@ -1341,7 +1337,7 @@ export class AgentExecutor {
     state: AgentRunState,
     { pending, snapshot }: { pending: PendingApproval; snapshot: ExecutionSnapshot }
   ): Promise<ExecutionResult> {
-    const { approvalStore, onEvent } = options;
+    const { approvalStore } = options;
     // Approval first: a crash between the two writes then leaves a
     // resumable 'in-progress' checkpoint, never one naming a lost approval.
     if (approvalStore) {
@@ -1351,13 +1347,6 @@ export class AgentExecutor {
     await saveStepCheckpoint(options, state, 'awaiting-approval', pending.id);
     runEventsOf(options)?.approvalRequested(pending);
 
-    this.emitEvent(onEvent, {
-      type: 'finish',
-      timestamp: new Date(),
-      finishReason: 'awaiting-approval',
-      usage: state.usage,
-    });
-
     return {
       ...toExecutionResult(state, '', 'awaiting-approval'),
       approvalId: pending.id,
@@ -1366,32 +1355,18 @@ export class AgentExecutor {
 
   /**
    * Ends a run whose signal was aborted (LOU-V1): checkpoints the state so
-   * far (when checkpointing is on, so the session can be resumed later),
-   * emits `abort` then `finish`, and resolves with finishReason 'aborted'.
+   * far (when checkpointing is on, so the session can be resumed later)
+   * and resolves with finishReason 'aborted'.
    */
   private static async abortRun(
     options: ExecuteOptions,
     state: AgentRunState
   ): Promise<ExecutionResult> {
-    const { onEvent, signal } = options;
-    const timedOut = budgetOfAbort(signal);
+    const timedOut = budgetOfAbort(options.signal);
     if (timedOut) return this.stopForBudget(options, state, timedOut);
     state.finishReason = 'aborted';
     options.inputQueue?.close();
     await saveStepCheckpoint(options, state);
-
-    this.emitEvent(onEvent, {
-      type: 'abort',
-      timestamp: new Date(),
-      abortReason: signal?.reason,
-      usage: state.usage,
-    });
-    this.emitEvent(onEvent, {
-      type: 'finish',
-      timestamp: new Date(),
-      finishReason: 'aborted',
-      usage: state.usage,
-    });
 
     return toExecutionResult(state, state.finalText, 'aborted');
   }
@@ -1440,8 +1415,6 @@ export class AgentExecutor {
     state: AgentRunState,
     output?: Pick<ExecutionResult, 'object' | 'outputError'>
   ): Promise<ExecutionResult> {
-    const { onEvent } = options;
-
     // LOU-T4: `maxSteps` was exhausted, but the very last thing that
     // happened was a surfaced-to-the-model provider failure (not a genuine
     // model stop/tool-calls turn) - every retry the model got a chance to
@@ -1450,21 +1423,9 @@ export class AgentExecutor {
     // (finishReason would otherwise read as a stale value from before the
     // failures started, misrepresenting what actually happened).
     if (state.lastSurfacedProviderError) {
-      this.emitEvent(onEvent, {
-        type: 'error',
-        timestamp: new Date(),
-        error: state.lastSurfacedProviderError,
-      });
+      runEventsOf(options)?.error(state.lastSurfacedProviderError);
       throw state.lastSurfacedProviderError;
     }
-
-    // Emit finish event
-    this.emitEvent(onEvent, {
-      type: 'finish',
-      timestamp: new Date(),
-      finishReason: state.finishReason,
-      usage: state.usage,
-    });
 
     // The run has reached a terminal state (either the model stopped
     // requesting tools, or maxSteps was exhausted). LOU-U8: keep the
@@ -1552,17 +1513,5 @@ export class AgentExecutor {
     }
     assertToolConcurrency(options.toolConcurrency, caller);
     assertMaxSubagentDepth(options.maxSubagentDepth, caller);
-  }
-
-  /**
-   * Emit event to callback
-   */
-  private static emitEvent(
-    callback: ((event: ExecutionEvent) => void) | undefined,
-    event: ExecutionEvent
-  ): void {
-    if (callback) {
-      callback(event);
-    }
   }
 }

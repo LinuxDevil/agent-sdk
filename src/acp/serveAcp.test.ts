@@ -4,6 +4,7 @@ import { createAgent, type CreateAgentConfig } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import { mockModel, type MockTurn } from '../testing';
 import { serveAcp } from './serveAcp';
+import type { GenerateOptions } from '../providers/llm';
 
 /** A parsed JSON value, read loosely in assertions. */
 type Loose = { [key: string]: Loose };
@@ -84,6 +85,20 @@ describe('serveAcp', () => {
       agentCapabilities: { loadSession: false, promptCapabilities: { image: false, audio: false, embeddedContext: false } },
       authMethods: [],
     });
+    await c.end();
+  });
+
+  it("sends the model's reasoning as agent_thought_chunk updates, before its message (LOU-V13)", async () => {
+    const model = mockModel(['Hello there.']);
+    const thinker = { ...model, generate: async (options: GenerateOptions) => ({ ...(await model.generate(options)), reasoning: [{ text: 'Be polite.' }] }) };
+    const c = client([], { provider: thinker });
+    const sessionId = await c.newSession();
+    await c.prompt(sessionId, 'hi');
+    const kinds = c.updates(sessionId).map((u) => [u.sessionUpdate, u.content.text]);
+    expect(kinds.slice(0, 2)).toEqual([
+      ['agent_thought_chunk', 'Be polite.'],
+      ['agent_message_chunk', 'Hello there.'],
+    ]);
     await c.end();
   });
 

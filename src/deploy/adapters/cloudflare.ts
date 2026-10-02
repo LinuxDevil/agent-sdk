@@ -262,9 +262,10 @@ export function findNodeBuiltinReferences(source: string): string[] {
 
 function assertProviderSupported(spec: AgentSpec): void {
   if (!WORKER_SUPPORTED_PROVIDERS.includes(spec.provider.type.toLowerCase())) {
-    throw new Error(
+    throw new SDKError(
       `provider '${spec.provider.type}' is not supported by the cloudflare-worker target yet ` +
-        `(supported: ${WORKER_SUPPORTED_PROVIDERS.join(', ')}). Use --target=node-server or --target=docker.`
+        `(supported: ${WORKER_SUPPORTED_PROVIDERS.join(', ')}). Use --target=node-server or --target=docker.`,
+      'LOUSHY_DEPLOY_FAILED'
     );
   }
 }
@@ -272,9 +273,10 @@ function assertProviderSupported(spec: AgentSpec): void {
 function assertToolsSupported(spec: AgentSpec): void {
   for (const tool of spec.tools || []) {
     if (!WORKER_SUPPORTED_TOOLS.includes(tool)) {
-      throw new Error(
+      throw new SDKError(
         `tool '${tool}' is not available on Cloudflare Workers ` +
-          `(available: ${WORKER_SUPPORTED_TOOLS.join(', ')}). Use --target=node-server or --target=docker.`
+          `(available: ${WORKER_SUPPORTED_TOOLS.join(', ')}). Use --target=node-server or --target=docker.`,
+        'LOUSHY_DEPLOY_FAILED'
       );
     }
   }
@@ -317,8 +319,9 @@ export const CloudflareWorkerAdapter: DeploymentAdapter = {
     const bundlePath = path.join(outDir, 'dist', 'worker.js');
     const leaked = findNodeBuiltinReferences(fs.readFileSync(bundlePath, 'utf8'));
     if (leaked.length > 0) {
-      throw new Error(
-        `cloudflare-worker build: Node builtins leaked into ${bundlePath}: ${leaked.join(', ')}`
+      throw new SDKError(
+        `cloudflare-worker build: Node builtins leaked into ${bundlePath}: ${leaked.join(', ')}`,
+        'LOUSHY_DEPLOY_FAILED'
       );
     }
 

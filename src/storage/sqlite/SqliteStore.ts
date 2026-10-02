@@ -3,6 +3,7 @@ import type { ApprovalStore } from '../../execution/ApprovalGate';
 import type { SessionStore } from '../../session/sessionStore';
 import { Connection } from './connection';
 import { SqliteApprovalStore, SqliteCheckpointStore, SqliteSessionStore, Statements } from './stores';
+import { SDKError } from '../../execution/errors';
 
 /** Options for {@link SqliteStore.prune}. */
 export interface PruneOptions {
@@ -85,7 +86,7 @@ export class SqliteStore {
    */
   prune({ olderThanMs }: PruneOptions): PruneResult {
     if (!Number.isFinite(olderThanMs) || olderThanMs < 0) {
-      throw new Error(`prune: olderThanMs must be a non-negative number of milliseconds, got ${olderThanMs}.`);
+      throw new SDKError(`prune: olderThanMs must be a non-negative number of milliseconds, got ${olderThanMs}.`, 'LOUSHY_CONFIG_INVALID');
     }
     const cutoff = Date.now() - olderThanMs;
     return this.connection.transaction(() => {

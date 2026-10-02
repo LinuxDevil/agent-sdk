@@ -69,6 +69,7 @@ import { CHECKPOINT_KV_BINDING } from './checkpointBinding';
 import { KVBinding } from './kvCheckpointStore';
 import { KVStore } from './kvStore';
 import { prepareSpecExecution, PreparedExecution, SpecResolvers } from './specExecution';
+import { SDKError } from '../execution/errors';
 
 export { agentSpecSchema } from '../spec/schema';
 
@@ -130,8 +131,9 @@ function workerResolvers(env: WorkerEnv): SpecResolvers {
     resolveTool: (name: string): ToolDescriptor => {
       const tool = WORKER_TOOLS[name];
       if (!tool) {
-        throw new Error(
-          `tool '${name}' is not available on Cloudflare Workers. Available: ${Object.keys(WORKER_TOOLS).join(', ')}`
+        throw new SDKError(
+          `tool '${name}' is not available on Cloudflare Workers. Available: ${Object.keys(WORKER_TOOLS).join(', ')}`,
+          'LOUSHY_TOOL_NOT_FOUND'
         );
       }
       return tool;

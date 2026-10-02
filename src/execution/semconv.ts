@@ -102,6 +102,8 @@ export const SdkAttr = {
    * when the price table does not know a contributing model.
    */
   COST_USD: 'loushy.cost_usd',
+  /** Reasoning (thinking) tokens of a `chat` span's call, when the provider reports them (LOU-V13). */
+  USAGE_REASONING_TOKENS: 'loushy.usage.reasoning_tokens',
 } as const;
 
 /**

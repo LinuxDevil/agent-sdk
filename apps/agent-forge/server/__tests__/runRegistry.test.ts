@@ -86,11 +86,11 @@ describe('RunManager', () => {
     // Abort the run right after the first tool result is recorded (and its
     // checkpoint written), but before the loop's next provider.generate()
     // call - deterministic because this handler runs synchronously within
-    // the same event-loop turn AgentExecutor's onEvent callback fires in,
+    // the same event-loop turn AgentExecutor's onAgentEvent listener fires in,
     // before the `continue` to the next step's generate() call is reached.
     let stopped = false;
     runManager.on('event', (id: string, event: any) => {
-      if (id === agentId && event.type === 'tool-result' && !stopped) {
+      if (id === agentId && event.type === 'tool.done' && !stopped) {
         stopped = true;
         runManager.stop(agentId);
       }
@@ -120,7 +120,7 @@ describe('RunManager', () => {
     expect(afterResume?.messages.map((m) => m.content)).toContain('a follow-up appended on resume');
   });
 
-  it('emits structured log entries derived from the ExecutionEvent stream (O1)', async () => {
+  it('emits structured log entries derived from the AgentEvent stream (O1)', async () => {
     const logs: any[] = [];
     runManager.on('log', (agentId: string, entry: any) => {
       if (agentId === 'agent-logs') logs.push(entry);

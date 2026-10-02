@@ -12,6 +12,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { Plugin } from 'esbuild';
+import { SDKError } from '../execution/errors';
 
 export const RUNTIME_SPECIFIER = '@loushy/build-ai-agent/deploy-runtime';
 export const WORKER_RUNTIME_SPECIFIER = '@loushy/build-ai-agent/deploy-runtime-worker';
@@ -27,8 +28,9 @@ function findSdkRoot(startDir: string = __dirname): string {
     if (isSdkPackageRoot(dir)) return dir;
     const parent = path.dirname(dir);
     if (parent === dir) {
-      throw new Error(
-        `loushy build: could not locate the @loushy/build-ai-agent package root above ${startDir}`
+      throw new SDKError(
+        `loushy build: could not locate the @loushy/build-ai-agent package root above ${startDir}`,
+        'LOUSHY_DEPLOY_FAILED'
       );
     }
     dir = parent;
@@ -50,7 +52,7 @@ function isSdkPackageRoot(dir: string): boolean {
 function runtimeSourceFile(fileName: string): string {
   const file = path.join(findSdkRoot(), 'src', 'deploy', fileName);
   if (!fs.existsSync(file)) {
-    throw new Error(`loushy build: SDK deploy runtime source not found at ${file}`);
+    throw new SDKError(`loushy build: SDK deploy runtime source not found at ${file}`, 'LOUSHY_DEPLOY_FAILED');
   }
   return file;
 }
@@ -149,9 +151,10 @@ export async function loadTsup(): Promise<typeof import('tsup')> {
   try {
     return await import('tsup');
   } catch (error) {
-    throw new Error(
+    throw new SDKError(
       `loushy build: the 'tsup' package is required to build deployment targets. ` +
-        `Install it with \`npm install --save-dev tsup\`. (${(error as Error).message})`
+        `Install it with \`npm install --save-dev tsup\`. (${(error as Error).message})`,
+      'LOUSHY_DEPLOY_FAILED'
     );
   }
 }

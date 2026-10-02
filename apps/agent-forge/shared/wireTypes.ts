@@ -68,8 +68,8 @@ export type LogLevel = 'info' | 'warn' | 'error' | 'tool';
 /**
  * O1: which part of the run a log line came from - reuses the same
  * taxonomy the mockup's log rows are tagged with. Derived from
- * `ExecutionEvent.type` (see runRegistry.ts's `toLogEntries()`), extended
- * with 'sandbox'/'checkpoint'/'debug' for events the raw ExecutionEvent
+ * `AgentEvent.type` (see logEntries.ts's `toLogEntries()`), extended
+ * with 'sandbox'/'checkpoint'/'debug' for events the AgentEvent
  * stream doesn't carry a dedicated type for.
  */
 export type LogPhase = 'trigger' | 'llm' | 'tool' | 'sandbox' | 'checkpoint' | 'approval' | 'debug';
@@ -161,8 +161,8 @@ export interface ChatSessionRecord extends ChatSessionMeta {
  * A single WS message pushed to `WS /agents/:id/stream` subscribers.
  * `type: 'status'` carries the full AgentRunStatusPayload (sent on every
  * status transition, and once immediately on connect). `type: 'event'`
- * forwards a raw AgentExecutor ExecutionEvent (start/text-complete/tool-call/
- * tool-result/finish/error) for lightweight visibility into an in-progress
+ * forwards one of the run's `AgentEvent`s (run.start/text.done/tool.start/
+ * tool.done/run.done/...) for lightweight visibility into an in-progress
  * run. `type: 'log'`/`'span'`/`'debug'` are LOU-O's structured log stream
  * (O1), span waterfall (O2) and step-debugger state (O3), all derived from
  * the same run rather than a second parallel event system. `type: 'chat'`

@@ -25,6 +25,7 @@ import {
   type CassetteResponse,
 } from './cassette';
 import { createSanitizer, firstDifference, stableStringify, type Sanitizer } from './fingerprint';
+import { SDKError } from '../execution/errors';
 
 /** Whether a {@link recordReplay} provider records or replays. */
 export type RecordReplayMode = 'record' | 'replay' | 'auto';
@@ -115,6 +116,7 @@ function serializeChunk(chunk: StreamChunk): StoredChunk {
   return {
     type: chunk.type,
     ...(chunk.textDelta !== undefined ? { textDelta: chunk.textDelta } : {}),
+    ...(chunk.reasoning ? { reasoning: chunk.reasoning } : {}),
     ...(chunk.toolCall ? { toolCall: chunk.toolCall } : {}),
     ...(chunk.toolResult ? { toolResult: chunk.toolResult } : {}),
     ...(chunk.finishReason !== undefined ? { finishReason: chunk.finishReason } : {}),
@@ -450,8 +452,9 @@ export function recordReplay(provider: RecordReplaySource, options: RecordReplay
   if (resolveMode(options) === 'replay') return new Player(typeof provider === 'function' ? undefined : provider, options);
   const real = typeof provider === 'function' ? provider() : provider;
   if (!real) {
-    throw new Error(
-      "recordReplay: record mode needs a provider to record from, but none was given. Pass the real provider (or a () => provider factory) as the first argument, or use mode: 'replay'."
+    throw new SDKError(
+      "recordReplay: record mode needs a provider to record from, but none was given. Pass the real provider (or a () => provider factory) as the first argument, or use mode: 'replay'.",
+      'LOUSHY_CONFIG_INVALID'
     );
   }
   return new Recorder(real, options);

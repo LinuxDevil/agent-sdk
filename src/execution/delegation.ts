@@ -9,16 +9,17 @@
  * own: the abort signal, the trace exporter and span parent, the hooks
  * (tagged with `ctx.subagent`), the approval store (a paused child pauses the
  * parent), `toolConcurrency`, the sandbox and content-capture settings, and
- * the `onEvent` listener (events tagged with `event.subagent`). Its token
+ * the run's event listeners (events tagged with `event.subagent`). Its token
  * usage is added to the parent's.
  */
 
-import type { LLMProvider, Message } from '../providers';
+import type { LLMProvider, Message, ReasoningOption } from '../providers';
 import type { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools/ToolRegistry';
 import type { Skill } from '../skills/defineSkill';
 import type { Subagents } from '../subagents/types';
-import type { ExecuteOptions, ExecutionEvent, ExecutionResult } from './AgentExecutor';
+import type { StandardSchemaV1 } from '../utils/zodCompat';
+import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
 import type { ResumeExecuteOptions } from './resume';
 import type { ApprovalStore, ExecutionSnapshot } from './ApprovalGate';
 import type { ToolConcurrency } from './toolBatch';
@@ -29,6 +30,7 @@ import { markPropagating } from './propagatingToolError';
 import { SubagentApprovalPause, subagentBudget, toolCallScopeOf, type ToolCallScope } from './subagentRuntime';
 import { RUN_EVENTS, runEventsOf, type StreamingExecuteOptions } from './agentRun';
 import type { ToolRunContext } from './sandboxGuard';
+import { SDKError } from './errors';
 
 /** Everything needed to run an agent as a child: its own configuration. */
 export interface SubagentSpec {
@@ -44,6 +46,10 @@ export interface SubagentSpec {
   permissions?: readonly PermissionRule[];
   /** LOU-X4: the sub-agent's own guardrails, run after the ones it inherits. */
   guardrails?: AgentGuardrails;
+  /** LOU-V13: the sub-agent's own `reasoning` (not inherited: it may run another model). */
+  reasoning?: ReasoningOption;
+  /** LOU-V4.2: the sub-agent's own `output` schema (never the lead's); its validated object is the `task` result. */
+  output?: StandardSchemaV1;
 }
 
 /** One child run requested by a parent tool call. */
@@ -78,7 +84,7 @@ export async function runSubagent(
   const options = childOptions(spec, scope, info, capture.store, request.toolOptions?.abortSignal);
   const run = scope?.execute ?? execute;
   if (!run) {
-    throw new Error(`Sub-agent '${request.name}' can only be started by a tool call of an agent run.`);
+    throw new SDKError(`Sub-agent '${request.name}' can only be started by a tool call of an agent run.`, 'LOUSHY_CONFIG_INVALID');
   }
 
   const resume = scope?.resume;
@@ -91,6 +97,8 @@ export async function runSubagent(
           input: request.input,
           provider: spec.provider,
           toolRegistry: spec.toolRegistry,
+          // LOU-D23.2: its own id under the parent's session, for its tools and hooks (not checkpointed).
+          ...(scope?.runtime.sessionId && { sessionId: `${scope.runtime.sessionId}/${info.toolCallId}` }),
         });
 
   // LOU-V5: the child's usage rolls up into the parent run's totals.
@@ -170,6 +178,8 @@ function childOptions(
         : (runtime.permissions ?? spec.permissions),
     onPermissionDecision: runtime.onPermissionDecision,
     guardrails: inheritGuardrails(runtime.guardrails, spec.guardrails),
+    reasoning: spec.reasoning,
+    output: spec.output,
   };
 }
 
@@ -179,7 +189,7 @@ function inheritedObservability(
   info: SubagentInfo
 ): ResumeExecuteOptions & Pick<StreamingExecuteOptions, typeof RUN_EVENTS> {
   const runtime = scope?.runtime ?? {};
-  // A streaming parent (agent.stream()) gets the child's steps and text deltas too.
+  // The child reports to the parent run's listeners (a streamed or listened-to parent).
   const sink = runEventsOf(runtime as StreamingExecuteOptions)?.forSubagent(info);
   return {
     ...(sink && { [RUN_EVENTS]: sink }),
@@ -188,7 +198,6 @@ function inheritedObservability(
     captureContent: runtime.captureContent,
     redactContent: runtime.redactContent,
     hooks: runtime.hooks && hooksForSubagent(runtime.hooks, info),
-    onEvent: runtime.onEvent && forwardEvents(runtime.onEvent, info),
   };
 }
 
@@ -198,14 +207,6 @@ function inheritedObservability(
  */
 function nestSubagent(inner: SubagentInfo | undefined, outer: SubagentInfo): SubagentInfo {
   return inner ? { ...inner, depth: inner.depth + 1, parent: nestSubagent(inner.parent, outer) } : outer;
-}
-
-/** The child's `onEvent`: the parent's listener, with each event tagged with `subagent`. */
-function forwardEvents(
-  onEvent: (event: ExecutionEvent) => void,
-  info: SubagentInfo
-): (event: ExecutionEvent) => void {
-  return (event) => onEvent({ ...event, subagent: nestSubagent(event.subagent, info) });
 }
 
 type HookMethod = 'preToolCall' | 'postToolCall' | 'preGenerate' | 'postGenerate';

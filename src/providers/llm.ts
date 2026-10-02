@@ -1,7 +1,10 @@
+import { SDKError } from '../execution/errors';
 /**
  * LLM Provider Abstraction
  * Framework-agnostic interface for LLM providers
  */
+
+import type { ReasoningOption } from './reasoning';
 
 /**
  * Message role types
@@ -73,11 +76,29 @@ export interface Message {
    */
   isError?: boolean;
   /**
+   * LOU-V13: for an `assistant` tool-call turn, the model's signed reasoning
+   * blocks (Anthropic thinking), which the Anthropic provider sends back
+   * unchanged with this turn, as its API requires. Never sent as text; other
+   * providers ignore it.
+   */
+  reasoning?: ReasoningBlock[];
+  /**
    * Application data attached to the message. Providers never send it to
    * the model. The compaction strategies read `metadata.pinned` (set it with
    * `pinMessage()`): a pinned message is never pruned or summarized.
    */
   metadata?: Record<string, unknown>;
+}
+
+/**
+ * One block of model reasoning (LOU-V13): its text, plus what the provider
+ * needs to accept it back - Anthropic's `signature`, or the encrypted data
+ * of a redacted thinking block (whose `text` is empty).
+ */
+export interface ReasoningBlock {
+  text: string;
+  signature?: string;
+  redactedData?: string;
 }
 
 /**
@@ -133,6 +154,12 @@ export interface GenerateOptions {
    */
   responseFormat?: { type: 'json'; schema?: Record<string, unknown> };
   /**
+   * LOU-V13: how much the model should reason before it answers. The
+   * built-in providers send it only to model families known to accept it
+   * (or with `force: true`); `'none'` sends nothing. See docs/reasoning.md.
+   */
+  reasoning?: ReasoningOption;
+  /**
    * Cancels the request. Providers must reject promptly (with the signal's
    * `reason`, normally an `AbortError`) once it is aborted. AgentExecutor
    * sets this from `ExecuteOptions.signal`.
@@ -172,14 +199,19 @@ export interface GenerateResult {
    */
   usage?: ProviderUsage;
   toolCalls?: ToolCall[];
+  /** LOU-V13: the model's reasoning, in blocks, when it reported any. */
+  reasoning?: ReasoningBlock[];
   rawResponse?: any;
 }
 
 /**
- * Stream chunk types
+ * Stream chunk types. LOU-V13: `reasoning-delta` carries reasoning text in
+ * `textDelta`; `reasoning-end` closes a block, with its `reasoning` data.
  */
-export type StreamChunkType = 
+export type StreamChunkType =
   | 'text-delta'
+  | 'reasoning-delta'
+  | 'reasoning-end'
   | 'tool-call'
   | 'tool-result'
   | 'finish'
@@ -191,6 +223,8 @@ export type StreamChunkType =
 export interface StreamChunk {
   type: StreamChunkType;
   textDelta?: string;
+  /** On `reasoning-end`: the block's signature or redacted data (its text came in the deltas). */
+  reasoning?: Omit<ReasoningBlock, 'text'>;
   toolCall?: ToolCall;
   toolResult?: {
     toolCallId: string;
@@ -296,7 +330,7 @@ export class LLMProviderRegistry {
   static create(name: string, config: LLMProviderConfig): LLMProvider {
     const factory = this.providers.get(name.toLowerCase());
     if (!factory) {
-      throw new Error(`Provider '${name}' not found. Available: ${Array.from(this.providers.keys()).join(', ')}`);
+      throw new SDKError(`Provider '${name}' not found. Available: ${Array.from(this.providers.keys()).join(', ')}`, 'LOUSHY_PROVIDER_UNKNOWN');
     }
     return factory(config);
   }

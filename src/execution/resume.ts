@@ -16,8 +16,8 @@ import {
   PendingApproval,
   ResolvedApproval,
 } from './ApprovalGate';
-import { AgentExecutor, ExecuteOptions, ExecutionEvent, ExecutionResult } from './AgentExecutor';
-import { runEventsOf, streamResumed, type AgentRun } from './agentRun';
+import { AgentExecutor, ExecuteOptions, ExecutionResult } from './AgentExecutor';
+import { observeRun, runEventsOf, streamResumed, type AgentRun, type ToolSettled } from './agentRun';
 import { Checkpoint, CheckpointStore, RUN_CONFIG_KEY } from './checkpoint';
 import { checkAgentDrift, fingerprintOf, type AgentDrift } from './agentFingerprint';
 import type { AgentConfig } from '../types';
@@ -119,12 +119,24 @@ export type ResumeExecuteOptions = Omit<
  * aborted, e.g. `resumeAfterApproval(decision, approvals, tools, provider,
  * { signal: controller.signal })`.
  */
-export async function resumeAfterApproval(
+export function resumeAfterApproval(
   decision: ApprovalDecision,
   approvalStore: ApprovalStore,
   toolRegistry: ToolRegistry,
   provider: LLMProvider,
   executeOptions: ResumeExecuteOptions = {},
+  checkpointStore?: CheckpointStore
+): Promise<ExecutionResult> {
+  // LOU-D41: the decided call and the continuation report to the run's listeners.
+  return observeRun(executeOptions, (observed) => resumeObserved(decision, approvalStore, toolRegistry, provider, observed, checkpointStore));
+}
+
+async function resumeObserved(
+  decision: ApprovalDecision,
+  approvalStore: ApprovalStore,
+  toolRegistry: ToolRegistry,
+  provider: LLMProvider,
+  executeOptions: ResumeExecuteOptions,
   checkpointStore?: CheckpointStore
 ): Promise<ExecutionResult> {
   const record = await approvalStore.resolve(decision.id);
@@ -252,25 +264,24 @@ async function checkApprovalDrift(
  */
 async function streamedDecision(ctx: ResumeContext, pending: PendingApproval, drift?: AgentDrift): ReturnType<typeof decidedToolMessage> {
   const sink = runEventsOf(ctx.executeOptions as ExecuteOptions);
-  const emit = sink ? ctx.executeOptions.onEvent : undefined;
-  if (!emit) return decidedToolMessage(ctx, pending);
+  if (!sink) return decidedToolMessage(ctx, pending);
   const { agent, subagent } = ctx.snapshot;
   const call = subagent ?? pending;
-  emit({ type: 'start', timestamp: new Date(), agentId: agent.id, agentName: agent.name });
-  if (drift) sink?.agentDrift(drift);
+  sink.runStart(agent);
+  if (drift) sink.agentDrift(drift);
   const toolCall: ToolCall = {
     id: call.toolCallId,
     type: 'function',
     function: { name: call.toolName, arguments: JSON.stringify(call.args) },
   };
-  emit({ type: 'tool-call', timestamp: new Date(), toolCall });
+  sink.toolStart(toolCall);
   const step = await decidedToolMessage(ctx, pending);
-  if ('message' in step) emit({ type: 'tool-result', timestamp: new Date(), toolResult: toolResultOf(step.message) });
+  if ('message' in step) sink.toolSettled(toolResultOf(step.message));
   return step;
 }
 
-/** The `tool-result` event payload of a decided call's `tool` message. */
-function toolResultOf(message: Message): NonNullable<ExecutionEvent['toolResult']> {
+/** The outcome of a decided call's `tool` message, as `tool.done` / `tool.error` report it. */
+function toolResultOf(message: Message): ToolSettled {
   const result: unknown = typeof message.content === 'string' ? JSON.parse(message.content) : message.content;
   const error = message.isError ? String((result as { message?: unknown } | null)?.message ?? '') : undefined;
   const replacedByHook = message.metadata?.replacedByHook;
@@ -516,7 +527,7 @@ async function runApprovedToolCall(
     : { args: hookArgs };
   const settled: SettledCall = verdict.outcome
     ? settledByHook(verdict.outcome)
-    : await executeApprovedTool(pending, toolDesc, verdict.args, executeOptions, { messages, approval }, scope);
+    : await executeApprovedTool(pending, toolDesc, verdict.args, executeOptions, { messages, approval, sessionId: snapshot.sessionId }, scope);
   const { result, toolError, errorResult } = settled;
 
   // Fires (with the settled result/error) regardless of how the tool
@@ -569,7 +580,7 @@ async function executeApprovedTool(
   toolDesc: ToolDescriptor,
   args: Record<string, unknown>,
   executeOptions: ResumeExecuteOptions,
-  { messages, approval }: { messages: Message[]; approval?: ToolExecutionContext['approval'] },
+  { messages, approval, sessionId }: { messages: Message[]; approval?: ToolExecutionContext['approval']; sessionId?: string },
   scope?: ToolCallScope
 ): Promise<SettledCall> {
   try {
@@ -586,7 +597,7 @@ async function executeApprovedTool(
         args,
         sandbox,
         executeOptions.signal,
-        { toolCallId: pending.toolCallId, messages, approval },
+        { toolCallId: pending.toolCallId, messages, approval, sessionId },
         scope
       ),
     };

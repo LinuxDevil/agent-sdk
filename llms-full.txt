@@ -29,8 +29,10 @@ Three things set it apart:
 
 ## Installation
 
-Requires Node.js 22.19 or newer. The package is not on npm yet (it is pre-1.0),
-so build it from a checkout and scaffold a project that depends on the build:
+Requires Node.js 22.19 or newer. **Not on npm yet:** `npm install
+@loushy/build-ai-agent`, `npx loushy ...` and `npm create loushy-agent` fail
+until it is published. Today, build it from a checkout and scaffold a project
+that depends on the build:
 
 ```bash
 git clone https://github.com/LinuxDevil/agent-sdk.git
@@ -41,8 +43,8 @@ npm run dev                                          # chat in the terminal; `np
 ```
 
 To add it to an existing project, install the packed tarball instead
-([Installing from a local build](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#installing-from-a-local-build)).
-Once published, it will be `npm install @loushy/build-ai-agent ai zod` plus
+([Installing before the first release](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#installing-before-the-first-release)).
+Once published: `npm install @loushy/build-ai-agent ai zod` plus
 the provider package you use (`@ai-sdk/openai`, `@ai-sdk/anthropic` or
 `ollama-ai-provider`). `npx loushy doctor` checks Node, peers and API keys and
 prints a fix for anything missing.
@@ -176,6 +178,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md) | Multi-turn conversations, `session.stream()`, session stores, `SqliteStore` |
 | [Memory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md) | Long-term memory across sessions: `defineMemory()`, scopes, `inMemoryMemory()`, `fileMemory()` |
 | [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md) | `output: zodSchema`: typed `result.object`, the repair step, `'output-invalid'` |
+| [Reasoning](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/reasoning.md) | The `reasoning` option per provider, `reasoning.*` events, `result.reasoning` |
 | [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md) | `agent.stream()`: the typed event schema, terminal and SSE examples |
 | [AI SDK UI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/ai-sdk-ui.md) | `useChat` on a Loushy run: `toUIMessageStreamResponse()`, `fromUIMessages()`, approvals |
 | [Next.js](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md) | `createRouteHandler(agent)`: the session API as a Fetch route (App Router, SvelteKit, Hono), auth, `useChat` endpoint |
@@ -275,8 +278,12 @@ Source: docs/installation.md
 
 ## Install the package
 
-> **Not on npm yet.** The package is not published to the npm registry yet;
-> until it is, use [Installing from a local build](#installing-from-a-local-build).
+> **Not on npm yet.** `@loushy/build-ai-agent` is not published, so the
+> commands below (and `npx loushy ...`, `npm create loushy-agent`) fail with a
+> 404 until it is. Today, install from a checkout or a packed tarball:
+> [Installing before the first release](#installing-before-the-first-release).
+
+When it is published:
 
 ```bash
 npm install @loushy/build-ai-agent ai zod
@@ -387,11 +394,13 @@ hazard), so a class from one is not `===` the other. `instanceof SDKError` and
 `instanceof HookRegistry` are safe across the two copies (they check a
 `Symbol.for` brand); for other classes, use one module format per process.
 
-## Installing from a local build
+## Installing before the first release
 
-To try an unreleased version, build and pack the SDK from a checkout of this
+Until the package is on npm, build and pack the SDK from a checkout of this
 repository, then install the tarball into your project - the same approach
-`loushy init --sdk-path` uses for the projects it generates:
+`loushy init --sdk-path` uses for the projects it generates. This is verified
+in CI by `npm run pack-smoke`, which installs the packed tarball into a fresh
+project and loads every entry point, in ESM and CJS:
 
 ```bash
 # in the SDK checkout
@@ -399,9 +408,16 @@ npm install
 npm run build
 npm pack --pack-destination /path/to/your-project
 
-# in your project
+# in your project (peers come from the registry)
 npm install ./loushy-build-ai-agent-<version>.tgz ai zod
 ```
+
+To scaffold a new project the same way, from the checkout:
+`node bin/loushy.js init ../my-agent --sdk-path .`.
+
+`npm install github:LinuxDevil/agent-sdk` does **not** work: `dist/` is not in
+git and the repository has no `prepare` build step, so the install has no
+entry points.
 
 ## Scaffolding a new project
 
@@ -411,6 +427,9 @@ on this SDK by version range), a strict `tsconfig.json`, `src/agent.ts` calling
 offline `src/agent.test.ts` using `mockModel`, a `.env.example` naming your
 provider's key variable, `.gitignore` and a README. It then installs the
 dependencies and runs `git init`.
+
+Not on npm yet: until it is, run it from a built checkout with `--sdk-path`
+(see [Installing before the first release](#installing-before-the-first-release)).
 
 ```bash
 npx loushy init my-agent                 # or: npm create loushy-agent my-agent
@@ -501,12 +520,11 @@ and is therefore only type-checked.
 
 ## Start a new project
 
-> **Not on npm yet.** `@loushy/build-ai-agent` is not published to the npm
-> registry, so the `npx`/`npm install` commands on this page do not work until
-> it is. Meanwhile, in a checkout of this repository run `npm install && npm run build`,
-> then `node bin/loushy.js init my-agent --sdk-path .`, or install the packed
-> tarball as described in
-> [Installing from a local build](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#installing-from-a-local-build).
+> **Not on npm yet.** `@loushy/build-ai-agent` is not published, so the
+> `npx`/`npm install`/`npm create` commands on this page fail with a 404 until
+> it is. Today, install from a checkout or a packed tarball:
+> [Installing before the first release](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#installing-before-the-first-release)
+> (for example `node bin/loushy.js init my-agent --sdk-path .` from a built checkout).
 
 The fastest way in is one command, which creates a runnable project (an
 agent, an example tool, an offline test, a `.env.example` for your provider),
@@ -649,7 +667,7 @@ you pass keyed by name: `tools: { current_date: currentDateTool }`.
 
 `createAgent()` is a thin wrapper over `AgentBuilder` and the static
 `AgentExecutor.execute()`. Use them directly when you need the full set of
-execution options (`maxSteps`, `temperature`, `onEvent`, approvals,
+execution options (`maxSteps`, `temperature`, `onAgentEvent`, approvals,
 checkpoints, tracing, ...). `AgentExecutor` is a static API - there is no
 `new AgentExecutor()`.
 
@@ -671,12 +689,12 @@ const result = await AgentExecutor.execute({
   input: 'My order arrived damaged.',
   provider: createMockProvider({ responses: ["I'm sorry to hear that - what's your order number?"] }),
   maxSteps: 5,
-  onEvent: (event) => events.push(event.type),
+  onAgentEvent: (event) => events.push(event.type),
 });
 
 console.log(result.text);
 console.log(result.usage.totalTokens, result.finishReason, result.steps);
-console.log(events); // includes 'start' and 'finish'
+console.log(events); // includes 'run.start' and 'run.done'
 ```
 
 ## 5. Declarative agents: spec files
@@ -846,7 +864,7 @@ Pass `subagents: { researcher, writer }` (agents from `createAgent()` with a
 `description`, or a `{ list, resolve }` catalog) to `createAgent()` or
 `AgentExecutor.execute()`: the lead gets one `task` tool and a prompt listing,
 each sub-agent runs on the task prompt alone, and it inherits the lead run's
-signal, hooks (`ctx.subagent`), tracing, approval store and `onEvent`
+signal, hooks (`ctx.subagent`), tracing, approval store and event listeners
 (`event.subagent`). `maxSubagentDepth` (default 1) bounds nesting. See
 [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md).
 
@@ -940,8 +958,7 @@ How it behaves:
   caused by the abort, such as an `AbortError`, is not treated as a failure:
   it is not retried by the provider retry and fallback wrappers and is not
   compacted into a provider error.
-- `onEvent` receives an `abort` event (its `abortReason` is the signal's
-  `reason`), then `finish` with `finishReason: 'aborted'`.
+- The run's events end with `run.done` with `finishReason: 'aborted'`.
 - With `sessionId` + `checkpointStore`, the state is checkpointed. Calling
   `execute()` again with the same `sessionId` resumes where the run stopped;
   new `input` is appended as the next user message (see
@@ -1669,6 +1686,7 @@ Protocol version 1. The agent answers:
 While a turn runs the agent sends `session/update` notifications:
 
 - `agent_message_chunk` with a `text` content block for each piece of text the model writes;
+- `agent_thought_chunk` with a `text` content block for each piece of the model's [reasoning](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/reasoning.md);
 - `tool_call` (`status: 'in_progress'`, `kind: 'other'`, the tool's name as `title`, its arguments as `rawInput`) when a tool call starts;
 - `tool_call_update` with `status: 'completed'` (the result as text content and as `rawOutput`) or `'failed'` (the error) when it ends.
 
@@ -1708,7 +1726,7 @@ example `LOUSHY_PROVIDER_RATE_LIMITED`) in `error.data.code`.
   commands with its own tools ([Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md)), not
   through the editor.
 - Image, audio and embedded-resource prompt blocks (text prompts only).
-- `plan` and `agent_thought_chunk` updates, and `allow_always` /
+- `plan` updates, and `allow_always` /
   `reject_always` permission options.
 - Authentication (`authMethods` is empty): provider keys come from the environment.
 
@@ -1990,7 +2008,9 @@ yet).
 ## Installation
 
 Agent Forge ships inside `@loushy/build-ai-agent` itself - there's no
-separate package to install:
+separate package to install. The package is not on npm yet (see
+[Installing before the first release](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#installing-before-the-first-release));
+once it is:
 
 ```bash
 npm install @loushy/build-ai-agent
@@ -2199,13 +2219,15 @@ chat are unchanged.
 
 ## Settings, secrets and deploy wiring
 
-The bottom drawer has a **Settings** tab, but provider API keys, secrets and
-deploy-target wiring are a separate, later piece of work (tracked as
-LOU-R) and aren't implemented in the UI yet as of this doc - the tab
-currently just says so. Until then, configure providers the same way
-`loushy dev`/`loushy build` do: via environment variables (see
-[Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md)), or by using the `mock` provider for
-anything you just want to try out inside Agent Forge without credentials.
+The bottom drawer has a **Settings** tab with three parts: provider API keys
+(OpenAI and Anthropic, stored encrypted under `.loushy/` and never shown
+again), named settings profiles (provider, deploy adapter, hook timeout,
+OpenTelemetry toggle; kept in `.loushy/settings.json`, which holds no
+secrets), and a **Deploy** section that picks an adapter (`node-server`,
+`docker` or `cloudflare-worker`) and runs `loushy build` for the selected
+agent. Other providers still read their environment variables, the same way
+`loushy dev`/`loushy build` do (see [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md)), and
+the `mock` provider needs no credentials.
 
 ## Dev mode
 
@@ -2318,6 +2340,7 @@ export function Chat() {
 | `run.start` | `start` (`messageId` is the run id) |
 | `step.start` / `step.done` | `start-step` / `finish-step` |
 | `text.delta`, `text.done` | `text-start` (once per text part), `text-delta`, `text-end` |
+| `reasoning.start`, `reasoning.delta`, `reasoning.done` | `reasoning-start`, `reasoning-delta`, `reasoning-end` (see [Reasoning](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/reasoning.md)) |
 | `tool.start` | `tool-input-start`, then `tool-input-available` with the arguments |
 | `tool.done` / `tool.error` | `tool-output-available` / `tool-output-error` |
 | `approval.requested` | `data-loushy-approval` (below) |
@@ -2737,7 +2760,7 @@ const result = await resumeAfterApproval(
 
 `resumeAfterApproval(decision, store, registry, provider, options?, checkpointStore?)`
 takes most of the execution options of `execute()` (for example `signal`,
-`onEvent`, `exporter`). With `sessionId` + `checkpointStore`, the pause is also
+`onAgentEvent`, `exporter`). With `sessionId` + `checkpointStore`, the pause is also
 checkpointed, and `execute()` with that `sessionId` throws
 `SessionAwaitingApprovalError` until the approval is decided, so a pending
 approval cannot be bypassed (see [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)).
@@ -3099,8 +3122,8 @@ it); pending approvals are resolved from the button click and the approval
 store. As on Slack, a continuation after a restart is not appended to the
 session transcript.
 
-Channels loaded from an agent directory's `channels/*.ts` are planned
-(LOU-P7.2). `SlackTriggerAdapter` and `verifySlackSignature()`
+An [agent directory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md)'s `channels/*.ts` files are loaded
+as channels too, and the node server mounts them. `SlackTriggerAdapter` and `verifySlackSignature()`
 (see [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#triggers)) still work for one-shot replies
 through an incoming webhook.
 
@@ -3111,7 +3134,9 @@ Source: docs/cli.md
 Installing the package also installs the `loushy` command. It scaffolds
 projects, checks your setup, runs an agent locally, serves it over MCP, runs
 evals, builds a deployable artifact and launches the Agent Forge dashboard.
-Run it with `npx loushy <command>` inside a project that has the SDK installed.
+Run it with `npx loushy <command>` inside a project that has the SDK installed
+(the package is not on npm yet: see
+[Installing before the first release](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#installing-before-the-first-release)).
 
 | Command | What it does | Details |
 | ------- | ------------ | ------- |
@@ -3153,9 +3178,10 @@ never takes the next flag as its value) or an extra argument fails with
 the `=` form: `--model=-x`.
 
 `npm create loushy-agent my-agent` runs `loushy init` with the same arguments.
-While the package is not on npm, scaffold from a checkout of this repository
-with `node bin/loushy.js init my-agent --sdk-path .` (see
-[Installing from a local build](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#installing-from-a-local-build)).
+**Not on npm yet:** `npm create loushy-agent` and `npx loushy ...` fail until
+the package is published; today, scaffold from a built checkout of this
+repository with `node bin/loushy.js init my-agent --sdk-path .` (see
+[Installing before the first release](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#installing-before-the-first-release)).
 
 ## `loushy dev`
 
@@ -4195,7 +4221,7 @@ use `loadProjectInstructions({ cwd, files, stopAt, maxChars })`, which returns
 | `maxSteps`                              | Upper bound on LLM/tool steps.                                  |
 | `limits`                                | Token, cost, time and step budgets of the run; see [Budgets](#budgets). |
 | `temperature`, `maxTokens`              | Generation parameters.                                          |
-| `onEvent`                               | Callback for execution events (`start`, `tool-call`, `finish`, ...). |
+| `onAgentEvent`                          | Listener for the run's `AgentEvent`s (`run.start`, `tool.start`, `run.done`, ...); see [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#listening-without-iterating). |
 | `approvalStore`, `sessionId`            | Human-in-the-loop approvals (see `resumeAfterApproval()`).       |
 | `checkpointStore`                       | Persist/resume execution checkpoints.                           |
 | `exporter`                              | A `TraceExporter` for tracing spans (OpenTelemetry GenAI conventions, see [observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md)). |
@@ -4725,8 +4751,7 @@ const chargeCard = defineTool({
 });
 ```
 
-(`toolCallId` is set for tools run by `AgentExecutor` and by
-`resumeAfterApproval()`, but not yet for tools that route through
+(`toolCallId` is set for every tool run, including tools that route through
 `sandboxExecute`.)
 
 ## Checkpoint history
@@ -4981,9 +5006,9 @@ try {
 ```
 
 `ERROR_CODES` (exported) maps every code to its hint. A test keeps it, the codes
-used in the source and the sections below in sync. Errors that are not on this
-page yet (some runtime errors still throw a plain `Error`) will get a code in a
-later release.
+used in the source and the sections below in sync. A second test fails when new
+SDK code throws a plain `Error` instead of an `SDKError`; the few plain ones left
+are internal and listed in `src/utils/plainErrors.test.ts` with the reason for each.
 
 ## Configuration
 
@@ -5191,6 +5216,18 @@ input it was given.
 `github`, `jira`, `slack`, `ask_question`) throw an `SDKError` with this code for
 a failed call; their message is the tool's result, so it carries no appended
 `[code] hint (docs)` line.
+
+### LOUSHY_TOOL_ARGS_INVALID
+
+**Means:** the model called a tool with arguments that do not match its input
+schema (a `ToolArgumentsValidationError`). Inside a run the model gets the
+issues as a tool result and can retry, so a run seldom ends on it.
+
+**Fix:** if you called the tool yourself, fix the arguments named in the message;
+if the model keeps getting them wrong, make the field `.describe()`
+text clearer. `error.issues` lists each path and problem. See [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md).
+
+**Example:** the model sends `{ to: 42 }` to a tool whose `to` is a string.
 
 ## Approvals and sessions
 
@@ -5473,6 +5510,113 @@ than 25.0.5, which forwards DNS from internal networks.
 `network: 'none'`. See [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md#sandboxed-shell-sandboxshell).
 
 **Example:** `new SubprocessSandbox({ network: { allow: ['api.github.com'] }, broker })` with Docker Desktop.
+
+## Agent directories, skills and flows
+
+### LOUSHY_AGENT_DIR_INVALID
+
+**Means:** `loadAgentDir()` (or `loushy dev`, `loushy build`, which use it) could
+not load a directory: it is missing or unreadable, a file is empty, a `tools/`
+file has no usable export, a config file does not parse, or a sub-agent folder is
+malformed. The message names the file.
+
+**Fix:** correct the file the message names. See [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md).
+
+**Example:** `loadAgentDir('./agents/support')` where `instructions.md` is empty.
+
+### LOUSHY_SKILL_INVALID
+
+**Means:** a skill is malformed (`defineSkill()`, a `skills/` folder) or
+`withSkills()` was given duplicate names, or a skill name that collides with the
+`load_skill` tool.
+
+**Fix:** give each skill a unique name, a description and content; rename a tool called
+`load_skill`. See [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md).
+
+**Example:** `defineSkill({ name: 'x', description: '', content: '...' })`.
+
+### LOUSHY_FLOW_INVALID
+
+**Means:** a flow definition is wrong: a missing or duplicate input name, a
+missing flow name or code, or a node of an unknown type.
+
+**Fix:** fix the part of the flow the message names. See [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md).
+
+**Example:** two `.input('city')` calls on one `FlowBuilder`.
+
+## Storage, deployment and integrations
+
+### LOUSHY_STORAGE_FAILED
+
+**Means:** storage failed: a SQLite database could not be opened (the `cause`
+has the driver's error), was used after `close()`, has a newer schema than this
+SDK knows, or `node:sqlite` is missing; or a file exceeded the storage size limit.
+
+**Fix:** check the path and permissions, use Node >= 22.5 for `SqliteStore` (or a
+file-based store), and create a new store after closing one.
+
+**Example:** `new SqliteStore('/read-only/agent.db')`.
+
+### LOUSHY_TRIGGER_INVALID
+
+**Means:** a trigger adapter got invalid options: a cron adapter without exactly
+one of `intervalMs` / `cron`, a webhook `auth` block with an empty secret or an
+unknown type, or a Slack trigger that cannot verify requests.
+
+**Fix:** use the example in the message. See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) and [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md).
+
+**Example:** `webhookTrigger({ auth: { type: 'hmac', secret: '' } })`.
+
+### LOUSHY_CHANNEL_REQUEST_FAILED
+
+**Means:** a call to a chat platform's API (Slack, Discord) failed; the message
+names the call and the HTTP status or the platform's error.
+
+**Fix:** check the bot token and its permissions, and the platform status. See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md).
+
+**Example:** Slack `chat.postMessage` answering `channel_not_found`.
+
+### LOUSHY_DEPLOY_FAILED
+
+**Means:** `loushy build` / `loushy dev` / the node-server runtime could not
+bundle or start the agent: a missing `--agent`, an agent path that is not found
+or not an agent directory, a bad `LOUSHY_STORE` value, missing runtime sources, or a tool the
+Cloudflare Worker target does not have.
+
+**Fix:** follow the message. See [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md).
+
+**Example:** `loushy build --target node-server` without `--agent`.
+
+## Tests and evals
+
+### LOUSHY_EVALS_INVALID
+
+**Means:** an eval helper was used wrongly: `defineEval()` outside vitest,
+`t.judge()` before `t.send()` or without a judge, or `llmJudge()` outside the
+judge runner.
+
+**Fix:** follow the message. See [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md).
+
+**Example:** calling `t.judge('polite')` before `t.send('hi')`.
+
+### LOUSHY_TEST_FAILED
+
+**Means:** a check a test helper makes did not hold: an eval did not pass, or a
+`mockModel()` script still had unused turns at the end.
+
+**Fix:** read the message; fix the agent or remove the extra scripted turns. See [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md).
+
+**Example:** `mockModel([...three turns])` where the agent stopped after two.
+
+### LOUSHY_CASSETTE_INVALID
+
+**Means:** a record/replay cassette is missing, is not valid JSON or does not
+match the recorded request. The message names the file.
+
+**Fix:** record it again (`loushy eval --record <file>`, or `recordReplay()` with
+`mode: 'record'`). See [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md).
+
+**Example:** `loushy eval --replay` for an eval that was never recorded.
 
 ## General
 
@@ -7056,6 +7200,118 @@ console.log(state.status, state.messages.at(-1)?.text, state.usage?.totalTokens)
 fields, and any line that is not a known event, so it reads both framings.
 Breaking out of its loop cancels the response body.
 
+# Reasoning
+
+Source: docs/reasoning.md
+
+Reasoning models think before they answer. The `reasoning` option sets how
+much, and the run reports what the model thought separately from its answer:
+as `reasoning.*` events in `agent.stream()`, and as `result.reasoning`.
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({
+  model: 'anthropic/claude-sonnet-4-5',
+  instructions: 'You solve puzzles.',
+  reasoning: 'medium',
+});
+
+for await (const event of agent.stream('Which weighs more, a kilo of feathers or a kilo of lead?')) {
+  if (event.type === 'reasoning.delta') process.stdout.write(`\x1b[2m${event.text}\x1b[22m`);
+  if (event.type === 'reasoning.done') console.log(`\n(${event.tokens ?? '?'} reasoning tokens)`);
+  if (event.type === 'text.delta') process.stdout.write(event.text);
+}
+
+// One call can think harder; the object form takes a budget and a summary request.
+const result = await agent.send('Prove it.', { reasoning: { effort: 'high', budgetTokens: 16_000 } });
+console.log(result.reasoning, result.usage.reasoningTokens);
+```
+
+## The option
+
+`reasoning` is an effort, `'none' | 'minimal' | 'low' | 'medium' | 'high'`,
+or an object:
+
+| Field | Meaning |
+| --- | --- |
+| `effort` | As above. Default `'medium'`. |
+| `budgetTokens` | A token budget, for providers that take one (Anthropic, OpenRouter). Others use `effort`. |
+| `summary` | `'auto'` asks OpenAI's Responses API for a reasoning summary (that is what OpenAI streams as reasoning). |
+| `force` | Send the options even when the model is not in the known reasoning families (see below). |
+
+Set it on `createAgent({ reasoning })` for every run, or per call with
+`send(input, { reasoning })` / `stream(input, { reasoning })`. A sub-agent
+uses its own `reasoning`, not its parent's. `AgentExecutor.execute()` takes
+it as `ExecuteOptions.reasoning`, and a custom provider receives it as
+`GenerateOptions.reasoning`.
+
+`'none'` sends nothing: the model runs with its provider's default (OpenAI
+reasoning models still reason at their default effort).
+
+## Provider mapping
+
+| Provider | Sent as | Effort mapping |
+| --- | --- | --- |
+| OpenAI | `providerOptions.openai.reasoningEffort` (and `reasoningSummary: 'auto'` with `summary: 'auto'`) | The effort as it is (`'minimal'` is for GPT-5 models). |
+| Anthropic | `providerOptions.anthropic.thinking: { type: 'enabled', budgetTokens }` | `minimal` 1024, `low` 2048, `medium` 8192, `high` 24576 tokens; `budgetTokens` overrides (at least 1024, Anthropic's minimum). |
+| OpenRouter | The request body's unified `reasoning` field | `{ max_tokens: budgetTokens }` when a budget is given, else `{ effort }`. |
+| Ollama | `providerOptions.ollama.think: true` (`ollama-ai-provider-v2`, `ai` 6/7) | On/off only. With `ai` 4 (`ollama-ai-provider`) the option is ignored, with one warning. |
+
+Constraints the provider packages apply for you: `@ai-sdk/anthropic` adds the
+thinking budget to `max_tokens` (so the budget always stays below it) and
+drops `temperature` and `topP`, which Anthropic does not allow with thinking;
+`@ai-sdk/openai` drops `temperature` for reasoning models. Both log a warning
+when they drop a setting.
+
+### Which models get it
+
+Options are only sent to model families known to accept them, so a model
+that does not reason never gets an unknown-option error:
+
+| Provider | Model ids |
+| --- | --- |
+| OpenAI | `o1` and later o-series (not `o1-mini` / `o1-preview`), `gpt-5` and later (not the `-chat` models) |
+| Anthropic | `claude-3-7-*`, `claude-sonnet-4*`, `claude-opus-4*`, `claude-haiku-4*` and later |
+| OpenRouter | `*/o1`..., `*/gpt-5`..., Claude 3.7 / 4+, `deepseek-r1`, `gemini-2.5`+, `grok-3`+, `qwen3`, `:thinking` variants |
+| Ollama | `deepseek-r1`, `qwen3`, `gpt-oss`, `magistral` |
+
+For any other model id (a fine-tune, a new family) pass `{ effort, force: true }`.
+
+## Events and results
+
+`agent.stream()` emits `reasoning.start`, then `reasoning.delta` (`text`) as
+the model thinks, then `reasoning.done` (`text`: all of it; `tokens` when the
+provider has reported reasoning tokens by then). They come inside the step,
+before the step's first `text.delta` or `tool.start`. A provider that cannot
+stream reports a step's reasoning as one start/delta/done before its text.
+
+`result.reasoning` is the reasoning text of the run's steps, joined with a
+blank line. `result.usage.reasoningTokens` (and each `stepUsage` entry) counts
+reasoning tokens when the provider reports them; the `chat` span carries them
+as `loushy.usage.reasoning_tokens`.
+
+The consumers show it too: `reduceAgentEvents()` keeps it as the assistant
+message's `reasoning`, `toUIMessageStream()` emits `reasoning-start` /
+`reasoning-delta` / `reasoning-end` parts for `useChat`, `loushy acp` sends
+`agent_thought_chunk` updates, and `loushy chat` prints it dimmed.
+
+## What is kept in the transcript
+
+Reasoning is never written into the transcript as text and never sent back
+to the model as content, with one exception the provider requires: Anthropic
+needs a turn's thinking blocks, unmodified and with their signatures, when it
+continues after that turn's tool calls. So:
+
+- An assistant message that made tool calls keeps its signed (or redacted)
+  thinking blocks in `message.reasoning`; the Anthropic provider sends them
+  back first in that turn. They survive the next step, a checkpoint, a crash
+  resume and an approval pause, since they are part of the saved messages.
+- Unsigned reasoning (OpenAI, Ollama, OpenRouter) and the reasoning of a
+  final reply are not kept in `messages`. OpenAI's encrypted reasoning items
+  are not carried between steps.
+- Other providers ignore `message.reasoning`.
+
 # Registry
 
 Source: docs/registry.md
@@ -7730,6 +7986,10 @@ The full API has the same method: `AgentExecutor.stream(options)` takes the
 same options as `AgentExecutor.execute()` (approval store, checkpoints, hooks,
 tracing, `toolConcurrency`, ...).
 
+These events, the `AgentEvent` union, are the SDK's one event system: the
+stream, the [listener options](#listening-without-iterating), `session.on()`,
+the UI hooks, the server routes, ACP and channels all carry them.
+
 ## The `AgentRun` handle
 
 `stream()` returns an `AgentRun`:
@@ -7775,6 +8035,59 @@ const run = agent.stream('Summarize the report', { signal: AbortSignal.timeout(3
 const result = await run.result; // no iteration needed
 console.log(result.finishReason, result.text);
 ```
+
+## Listening without iterating
+
+To observe every run without iterating one, give the agent a listener:
+`createAgent({ onEvent })`, or `onAgentEvent` in the `AgentExecutor.execute()`
+/ `stream()` / `resumeAfterApproval()` options. It is called synchronously
+with each `AgentEvent` as it happens, on `send()` as on `stream()`, for
+session turns and for runs resumed after an approval. It gets the same events,
+in the same order, as iterating the stream would, with one difference:
+`send()` / `execute()` generate each model step whole, so a step's text comes
+as a single `text.delta` (as it does on `stream()` with a provider that cannot
+stream). Sub-agents' events arrive tagged with `subagent`.
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  onEvent: (event) => {
+    if (event.type === 'tool.start') console.log('calling', event.toolName, event.args);
+    if (event.type === 'run.done') console.log('done:', event.finishReason, event.usage?.totalTokens);
+  },
+});
+
+await agent.send('Weather in Paris?');
+```
+
+### Migrating from `onEvent` / `ExecutionEvent`
+
+`ExecuteOptions.onEvent` with `ExecutionEvent` is the SDK's older event
+callback. It is deprecated: it still works (it logs a one-time
+`console.warn`), with its events now derived from the run's `AgentEvent`s,
+and it will be removed in a future major version. Replace it with
+`onAgentEvent` (or `createAgent({ onEvent })`, which already takes
+`AgentEvent`s):
+
+| `ExecutionEvent` (`onEvent`) | `AgentEvent` (`onAgentEvent`) |
+| --- | --- |
+| `start` (`agentId`, `agentName`) | `run.start` (`agentId`, `agentName`) |
+| `text-delta` (never emitted) | `text.delta` (`text`) |
+| `text-complete` (`text`, `stepUsage`) | `text.done` (`text`); the step's usage is on `step.done` (`usage`) |
+| `tool-call` (`toolCall`) | `tool.start` (`toolCallId`, `toolName`, parsed `args`) |
+| `tool-result` (`toolResult`) | `tool.done` (`result`, `durationMs`, `replacedByHook`), or `tool.error` (`error.name`, `error.message`) |
+| `error` (`error: Error`) | `error` (`error: { name, message }`) |
+| `abort` (`abortReason`, `usage`) | `run.done` with `finishReason: 'aborted'` (the reason is your signal's `reason`) |
+| `finish` (`finishReason`, `usage: RunUsage`) | `run.done` (`finishReason`, `text`, `usage`, `object`); the full `RunUsage` is on `result.usage` |
+| a sub-agent's `start` / `finish` (with `subagent`) | the lead's `tool.start` / `tool.done` of the call that started it |
+| `timestamp: Date` | `timestamp`: an ISO-8601 string; plus `runId`, `seq` and `v` |
+
+`AgentEvent` also reports what `ExecutionEvent` never did: step boundaries,
+approval requests, permission decisions, budgets, guardrails, queued and
+steered input, compaction, reasoning, provider retries and agent drift (see the
+[schema](#event-schema-version-1)).
 
 ## Streaming a session turn
 
@@ -7845,6 +8158,9 @@ The event types and their extra fields:
 | `step.start`         | `step: number` | A model step begins: one model call plus the tool calls it asks for. `step` counts from 1 (a run resumed from a checkpoint continues the count). |
 | `text.delta`         | `text: string` | A chunk of model text, as it arrives. |
 | `text.done`          | `text: string` | The step's complete text: the concatenation of its `text.delta` events. Only for steps with text. |
+| `reasoning.start`    | (none) | The model starts reasoning in this step. Only with the [`reasoning` option](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/reasoning.md) (or a model that always reasons). Its `reasoning.delta`s and `reasoning.done` follow, before the step's first `text.delta` or `tool.start`. |
+| `reasoning.delta`    | `text: string` | A chunk of reasoning text (or of its summary). Never part of `text.delta` / `run.done`'s `text`. |
+| `reasoning.done`     | `text: string`, `tokens?: number` | The reasoning ended: `text` is all of it; `tokens` when the provider reported reasoning tokens by then. |
 | `tool.start`         | `toolCallId: string`, `toolName: string`, `args: Record<string, unknown>` | A tool call starts. `args` are the model's arguments parsed from JSON (`{}` when they are not valid JSON). |
 | `tool.done`          | `toolCallId`, `toolName`, `result: unknown`, `durationMs: number` | A tool call returned. `result` is the value as it would be JSON-encoded (`undefined` becomes `null`, a `Date` becomes a string). `durationMs` counts from its `tool.start`. |
 | `tool.error`         | `toolCallId`, `toolName`, `error: { name: string, message: string }`, `durationMs: number` | A tool call failed: it threw, its arguments did not match its schema (`name: 'ToolArgumentsValidationError'`), or the tool does not exist. The model gets the error as the call's result and the run continues. |
@@ -8252,9 +8568,66 @@ transforms apply. `result.text` keeps the raw JSON text the model wrote.
 
 The schema can come from zod 3 or zod 4: it is rendered with `z.toJSONSchema`
 for zod 4 and with the `ai` SDK's converter for zod 3, and validated with the
-schema's own `safeParse` either way. The `output` option is typed with the
-installed `zod`'s `ZodType`, so a schema from the other major (`zod/v4` on zod
-3.25, `zod/v3` on zod 4) runs but needs a cast until that type is widened.
+schema's own `safeParse` either way. `output` is typed as a Standard Schema,
+the same as `defineTool({ input })`, so `result.object` is inferred without a
+cast from a zod 3 schema, a zod 4 schema (`zod/v4` on zod 3.25, or zod 4
+itself) or any other Standard Schema that can produce JSON Schema:
+
+```ts
+import { z } from 'zod/v4';
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', output: z.object({ city: z.string() }) });
+const { object } = await agent.send('Where is the Eiffel Tower?');
+console.log(object?.city); // typed: string
+```
+
+## Sessions
+
+`agent.session()` on an agent with `output` returns a session whose
+`send()` result (and `stream()`'s `result`) carries the typed `object` of each
+turn. There is no per-call `output` override: the schema is the agent's.
+
+```ts
+import { z } from 'zod';
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', output: z.object({ city: z.string(), tempC: z.number() }) });
+const session = agent.session();
+const { object } = await session.send('Weather in Paris?');
+console.log(object?.tempC); // typed: number
+```
+
+## Sub-agents
+
+A sub-agent created with its own `output` schema answers the lead with its
+validated object. The `task` tool result (and `agent_await`'s `result` for a
+background task) is the object as JSON, then a blank line and the usual
+`[sub-agent '<name>': ... taskId '<id>']` footer, so the lead model sees the
+object rather than a prose rendering. If the sub-agent's reply is still invalid
+after its repair step, the `task` call fails with the structured tool error
+(`kind: 'execution'`, a message naming the schema issues) and the lead can
+retry or adapt.
+
+A sub-agent does **not** inherit the lead's `output`: each agent's output is its
+own, and a sub-agent without `output` returns text as before. A
+[`remoteAgent()`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md#remote-sub-agents) whose deployed agent has an
+`output` schema returns the remote object the same way (JSON, then its footer),
+read from the `object` of the remote stream's `run.done` event.
+
+```ts
+import { z } from 'zod';
+import { createAgent } from '@loushy/build-ai-agent';
+
+const reporter = createAgent({
+  model: 'openai/gpt-4o-mini',
+  description: 'Reports the weather as { city, tempC }',
+  output: z.object({ city: z.string(), tempC: z.number() }),
+});
+const lead = createAgent({ model: 'openai/gpt-4o-mini', subagents: { reporter } });
+const result = await lead.send('What is the weather in Paris?');
+console.log(result.text);
+```
 
 ## How it works
 
@@ -8497,7 +8870,7 @@ value with `withSubagentOptions(subagents, options)`, which returns it. On
 `createAgent()`, `subagentOptions` override options attached that way.
 
 A background sub-agent inherits from the lead run like a synchronous one
-(hooks, tracing, `onEvent`, usage roll-up), and `maxSubagentDepth` applies the
+(hooks, tracing, event listeners, usage roll-up), and `maxSubagentDepth` applies the
 same way. Aborting the lead's signal cancels its background sub-agents, queued
 or running.
 
@@ -8509,8 +8882,8 @@ When that run ends, however it ends, the tasks still queued or running are
 `awaitBackgroundOnFinish: true` the run instead waits for them to finish
 before it resolves (an aborted or failed lead run still cancels them). Either
 way the run resolves only once their runs have stopped, so no sub-agent event
-reaches `onEvent` after it; with `awaitBackgroundOnFinish` their events arrive
-after the lead's own `finish` event.
+reaches the run's listeners after it; with `awaitBackgroundOnFinish` their
+events arrive before the lead's `run.done`.
 
 The result lists every background task of the run with its final status:
 
@@ -8597,8 +8970,9 @@ const lead = createAgent({
 Each task opens a new session on the remote agent (`POST <url>/chat` with
 `{ sessionId, input }`, read as the SSE event stream, see
 [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#http-api)), sends the task prompt and returns the
-remote agent's final text, followed by a footer naming the session and the
-`taskId`. A `task` call that resumes that `taskId` posts to the same remote
+remote agent's final text (its object as JSON when the deployed agent has an
+`output` schema, see [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)), followed by
+a footer naming the session and the `taskId`. A `task` call that resumes that `taskId` posts to the same remote
 session, so the remote agent continues with its own history (keep it in a
 store on the remote side); a remote task cannot be forked. The remote
 agent sees only that prompt, and runs with its own model, tools and limits, so
@@ -8610,11 +8984,43 @@ lead run's abort signal aborts the request. Options: `url`, `auth`, `name`,
 Failures (the agent is unreachable, a 401 or other non-2xx answer, a malformed
 stream, or a remote run that ends in an error) reach the lead as the
 structured tool error with the code `LOUSHY_REMOTE_REQUEST_FAILED` (`LOUSHY_REMOTE_UNAUTHORIZED` for a 401); the token is
-never part of an error or an event. If the remote run pauses for an approval,
-the task fails with `LOUSHY_SESSION_AWAITING_APPROVAL`, naming the remote
-session and approval id: approvals are not proxied to the lead yet, so decide
-it on the remote agent (the lead can then continue the task by its `taskId`)
-or leave tools that need approval off it.
+never part of an error or an event.
+
+### Remote approvals
+
+If the remote run pauses for an approval, the lead run pauses on it exactly as
+for a local sub-agent: `result.finishReason` is `'awaiting-approval'`, and the
+pending approval in `agent.approvals.list()` (and in channel buttons, the dev
+chat and ACP permission requests) has the remote tool's name and input, with
+`subagentPath: ['researcher']`. A remote `ask_question` call arrives as a
+question (`kind: 'question'`) that `agent.approvals.answer()` answers.
+Deciding it on the lead (`resolve`, `streamResolve`, `answer`) posts the
+decision to the remote agent's approvals route
+(`POST <url>/chat/<session>/approvals/<id>`), reads the continuation, and its
+final answer becomes the `task` result; a continuation that pauses again pauses
+the lead again.
+
+```ts
+import type { SimpleAgent } from '@loushy/build-ai-agent';
+declare const lead: SimpleAgent; // the lead agent above
+
+const paused = await lead.send('Deploy the docs site');
+if (paused.finishReason === 'awaiting-approval') {
+  const [pending] = await lead.approvals.list(); // e.g. { toolName: 'deploy', args: {...}, subagentPath: ['researcher'] }
+  const result = await lead.approvals.resolve({ id: pending.id, approved: true });
+  console.log(result.text);
+}
+```
+
+The lead's approval snapshot keeps only the remote session id, the remote
+approval id, the `taskId` and the sub-agent's name, so a fresh lead process on
+the same store can decide it; the bearer token is never stored (it is read from
+the `remoteAgent()` options again). A failure while deciding (a 401, any other
+non-2xx answer such as the remote's 404 for an approval no longer pending, a
+network error) is the structured tool error of that `task` call with the codes
+above, and the lead run continues. Only a run without an approval store (a bare
+`AgentExecutor`) still fails the task with `LOUSHY_SESSION_AWAITING_APPROVAL`,
+naming the remote session and approval id to decide on the remote agent.
 
 ## Depth
 
@@ -8638,13 +9044,14 @@ inherits:
 | Tracing (`exporter`) | Yes | The sub-agent's `invoke_agent` span is a child of the lead's `execute_tool task` span. `captureContent` and `redactContent` are inherited too. |
 | Hooks (`hooks`) | Yes | They run on the sub-agent's model calls and tool calls, with `ctx.subagent` set (see below). A hook that throws inside a sub-agent halts the whole run. |
 | Approval store (`approvalStore`) | Yes | See [Approvals](#approvals-inside-a-sub-agent). |
-| `onEvent` and `stream()` | Yes | The sub-agent's events are forwarded with a `subagent` field. |
+| Event listeners (`onAgentEvent`, `createAgent({ onEvent })`) and `stream()` | Yes | The sub-agent's events are forwarded with a `subagent` field. |
 | `toolConcurrency` | Yes, unless the sub-agent sets its own | |
 | `sandbox` | Yes | |
 | Token usage | Rolls up | Added to the lead's `result.usage` (totals, `byModel`, and `usage.delegated`). |
 | `maxSubagentDepth` | The remaining budget | See [Depth](#depth). |
-| `onLLMRequest`, `onToolCall` and the other single-run callbacks | No | They describe one run; use hooks or `onEvent` to observe sub-agents. |
+| `onLLMRequest`, `onToolCall` and the other single-run callbacks | No | They describe one run; use hooks or an event listener to observe sub-agents. |
 | `sessionId` / `checkpointStore` | No | A sub-agent is not checkpointed on its own. If the process dies while a sub-agent runs, the resumed lead runs that `task` call again. |
+| `output` schema | No | A sub-agent's output is its own: with one, `task` returns its validated object as JSON (see [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md#sub-agents)); without, text. |
 | Conversation history | No | The sub-agent sees only the task prompt (plus its own earlier turns when the lead [resumes the task](#continuing-a-task)). |
 
 `createDelegateTool()` children inherit the same way.
@@ -8678,10 +9085,9 @@ errors - with a `subagent` field on every one of its events, so a UI can nest
 sub-agent activity under the lead's `task` call (`subagent.toolCallId`). See
 [Streaming: sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#sub-agents).
 
-With `onEvent` on the lead, every event a sub-agent emits (`start`,
-`tool-call`, `tool-result`, `text-complete`, `finish`, ...) reaches the same
-listener with `event.subagent` set. The lead's own events have no `subagent`
-field.
+A listener on the lead (`createAgent({ onEvent })` or `onAgentEvent`) gets
+the same events, sub-agents' included, as they happen. See
+[Listening without iterating](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#listening-without-iterating).
 
 ## Approvals inside a sub-agent
 

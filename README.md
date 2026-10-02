@@ -30,8 +30,10 @@ Three things set it apart:
 
 ## Installation
 
-Requires Node.js 22.19 or newer. The package is not on npm yet (it is pre-1.0),
-so build it from a checkout and scaffold a project that depends on the build:
+Requires Node.js 22.19 or newer. **Not on npm yet:** `npm install
+@loushy/build-ai-agent`, `npx loushy ...` and `npm create loushy-agent` fail
+until it is published. Today, build it from a checkout and scaffold a project
+that depends on the build:
 
 ```bash
 git clone https://github.com/LinuxDevil/agent-sdk.git
@@ -42,8 +44,8 @@ npm run dev                                          # chat in the terminal; `np
 ```
 
 To add it to an existing project, install the packed tarball instead
-([Installing from a local build](docs/installation.md#installing-from-a-local-build)).
-Once published, it will be `npm install @loushy/build-ai-agent ai zod` plus
+([Installing before the first release](docs/installation.md#installing-before-the-first-release)).
+Once published: `npm install @loushy/build-ai-agent ai zod` plus
 the provider package you use (`@ai-sdk/openai`, `@ai-sdk/anthropic` or
 `ollama-ai-provider`). `npx loushy doctor` checks Node, peers and API keys and
 prints a fix for anything missing.
@@ -177,6 +179,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Sessions](docs/sessions.md) | Multi-turn conversations, `session.stream()`, session stores, `SqliteStore` |
 | [Memory](docs/memory.md) | Long-term memory across sessions: `defineMemory()`, scopes, `inMemoryMemory()`, `fileMemory()` |
 | [Structured output](docs/structured-output.md) | `output: zodSchema`: typed `result.object`, the repair step, `'output-invalid'` |
+| [Reasoning](docs/reasoning.md) | The `reasoning` option per provider, `reasoning.*` events, `result.reasoning` |
 | [Streaming](docs/streaming.md) | `agent.stream()`: the typed event schema, terminal and SSE examples |
 | [AI SDK UI](docs/ai-sdk-ui.md) | `useChat` on a Loushy run: `toUIMessageStreamResponse()`, `fromUIMessages()`, approvals |
 | [Next.js](docs/nextjs.md) | `createRouteHandler(agent)`: the session API as a Fetch route (App Router, SvelteKit, Hono), auth, `useChat` endpoint |

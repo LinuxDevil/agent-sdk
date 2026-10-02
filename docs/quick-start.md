@@ -9,12 +9,11 @@ and is therefore only type-checked.
 
 ## Start a new project
 
-> **Not on npm yet.** `@loushy/build-ai-agent` is not published to the npm
-> registry, so the `npx`/`npm install` commands on this page do not work until
-> it is. Meanwhile, in a checkout of this repository run `npm install && npm run build`,
-> then `node bin/loushy.js init my-agent --sdk-path .`, or install the packed
-> tarball as described in
-> [Installing from a local build](./installation.md#installing-from-a-local-build).
+> **Not on npm yet.** `@loushy/build-ai-agent` is not published, so the
+> `npx`/`npm install`/`npm create` commands on this page fail with a 404 until
+> it is. Today, install from a checkout or a packed tarball:
+> [Installing before the first release](./installation.md#installing-before-the-first-release)
+> (for example `node bin/loushy.js init my-agent --sdk-path .` from a built checkout).
 
 The fastest way in is one command, which creates a runnable project (an
 agent, an example tool, an offline test, a `.env.example` for your provider),
@@ -157,7 +156,7 @@ you pass keyed by name: `tools: { current_date: currentDateTool }`.
 
 `createAgent()` is a thin wrapper over `AgentBuilder` and the static
 `AgentExecutor.execute()`. Use them directly when you need the full set of
-execution options (`maxSteps`, `temperature`, `onEvent`, approvals,
+execution options (`maxSteps`, `temperature`, `onAgentEvent`, approvals,
 checkpoints, tracing, ...). `AgentExecutor` is a static API - there is no
 `new AgentExecutor()`.
 
@@ -179,12 +178,12 @@ const result = await AgentExecutor.execute({
   input: 'My order arrived damaged.',
   provider: createMockProvider({ responses: ["I'm sorry to hear that - what's your order number?"] }),
   maxSteps: 5,
-  onEvent: (event) => events.push(event.type),
+  onAgentEvent: (event) => events.push(event.type),
 });
 
 console.log(result.text);
 console.log(result.usage.totalTokens, result.finishReason, result.steps);
-console.log(events); // includes 'start' and 'finish'
+console.log(events); // includes 'run.start' and 'run.done'
 ```
 
 ## 5. Declarative agents: spec files

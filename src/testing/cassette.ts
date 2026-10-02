@@ -7,6 +7,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
+import { SDKError } from '../execution/errors';
 
 /** The cassette format version this SDK reads and writes. */
 const CASSETTE_VERSION = 1;
@@ -26,8 +27,9 @@ const toolCallSchema = z.object({
 const errorSchema = z.object({ name: z.string(), message: z.string() });
 
 const chunkSchema = z.object({
-  type: z.enum(['text-delta', 'tool-call', 'tool-result', 'finish', 'error']),
+  type: z.enum(['text-delta', 'reasoning-delta', 'reasoning-end', 'tool-call', 'tool-result', 'finish', 'error']),
   textDelta: z.string().optional(),
+  reasoning: z.object({ signature: z.string().optional(), redactedData: z.string().optional() }).optional(),
   toolCall: toolCallSchema.optional(),
   toolResult: z.object({ toolCallId: z.string(), result: z.unknown() }).optional(),
   finishReason: z.string().optional(),
@@ -110,9 +112,10 @@ export function readCassette(file: string): Cassette {
     raw = fs.readFileSync(file, 'utf8');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new Error(
+      throw new SDKError(
         `recordReplay: cassette not found at ${file}. Record it first by running the test once ` +
-          "with a real provider in record mode (LOUSHY_RECORD=1 or mode: 'record'), then commit the file."
+          "with a real provider in record mode (LOUSHY_RECORD=1 or mode: 'record'), then commit the file.",
+        'LOUSHY_CASSETTE_INVALID'
       );
     }
     throw error;
@@ -125,21 +128,23 @@ function parseCassette(file: string, raw: string): Cassette {
   try {
     json = JSON.parse(raw);
   } catch {
-    throw new Error(`recordReplay: cassette ${file} is not valid JSON. Delete it and re-record.`);
+    throw new SDKError(`recordReplay: cassette ${file} is not valid JSON. Delete it and re-record.`, 'LOUSHY_CASSETTE_INVALID');
   }
   const version = (json as { version?: unknown } | null)?.version;
   if (version !== CASSETTE_VERSION) {
-    throw new Error(
+    throw new SDKError(
       `recordReplay: cassette ${file} has format version ${String(version)}, but this SDK reads version ` +
-        `${CASSETTE_VERSION}. Re-record it with this SDK version.`
+        `${CASSETTE_VERSION}. Re-record it with this SDK version.`,
+      'LOUSHY_CASSETTE_INVALID'
     );
   }
   const parsed = cassetteSchema.safeParse(json);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
-    throw new Error(
+    throw new SDKError(
       `recordReplay: cassette ${file} is malformed at ${issue.path.join('.') || '(root)'}: ${issue.message}. ` +
-        'Delete it and re-record.'
+        'Delete it and re-record.',
+      'LOUSHY_CASSETTE_INVALID'
     );
   }
   return parsed.data;

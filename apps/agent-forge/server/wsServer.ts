@@ -3,8 +3,8 @@
  * (types.ts) to subscribers of one agent's run: a `status` message on every
  * RunManager status transition (immediately on connect, too, so a client
  * that connects mid-run sees the current state without waiting for the
- * next transition) plus best-effort `event` messages forwarding raw
- * AgentExecutor ExecutionEvents for lightweight in-progress visibility.
+ * next transition) plus best-effort `event` messages forwarding the run's
+ * `AgentEvent`s for lightweight in-progress visibility.
  *
  * Attached to the same underlying `http.Server` the Express app listens on
  * (see index.ts) via a manual `upgrade` handler, since matching a path

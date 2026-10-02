@@ -15,6 +15,7 @@ import {
 } from './llm';
 import { abortableDelay } from './abortableDelay';
 import { textOf } from './content';
+import { LLMProviderError } from '../execution/errors';
 
 /**
  * Mock response configuration
@@ -50,7 +51,7 @@ export class MockLLMProvider implements LLMProvider {
   async generate(options: GenerateOptions): Promise<GenerateResult> {
     options.signal?.throwIfAborted();
     if (this.simulateError) {
-      throw new Error(this.errorMessage);
+      throw new LLMProviderError(this.errorMessage, 'mock');
     }
 
     if (this.delay > 0) {
@@ -75,7 +76,7 @@ export class MockLLMProvider implements LLMProvider {
   async stream(options: GenerateOptions): Promise<StreamResult> {
     options.signal?.throwIfAborted();
     if (this.simulateError) {
-      throw new Error(this.errorMessage);
+      throw new LLMProviderError(this.errorMessage, 'mock');
     }
 
     const text = this.getNextResponse();

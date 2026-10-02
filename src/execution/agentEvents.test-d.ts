@@ -1,7 +1,7 @@
 import { describe, it, expectTypeOf } from 'vitest';
 import { createAgent } from '../createAgent';
 import { createMockProvider } from '../providers/mock';
-import type { ExecutionResult } from './AgentExecutor';
+import type { ExecuteOptions, ExecutionEvent, ExecutionEventType, ExecutionResult } from './AgentExecutor';
 import type { AgentRun } from './agentRun';
 import type { CompactedProviderErrorCategory } from './errors';
 import {
@@ -118,6 +118,9 @@ describe('AgentEvent types', () => {
       | 'step.start'
       | 'text.delta'
       | 'text.done'
+      | 'reasoning.start'
+      | 'reasoning.delta'
+      | 'reasoning.done'
       | 'tool.start'
       | 'tool.done'
       | 'tool.error'
@@ -162,5 +165,36 @@ describe('AgentEvent types', () => {
     expectTypeOf(run).toEqualTypeOf<AgentRun>();
     expectTypeOf(run).toMatchTypeOf<AsyncIterable<AgentEvent>>();
     expectTypeOf(run.result).toEqualTypeOf<Promise<ExecutionResult>>();
+  });
+
+  it('LOU-V13: narrows reasoning events; the reasoning option takes an effort or settings', () => {
+    if (event.type === 'reasoning.delta') expectTypeOf(event.text).toBeString();
+    if (event.type === 'reasoning.done') expectTypeOf(event.tokens).toEqualTypeOf<number | undefined>();
+    if (event.type === 'reasoning.start') {
+      // @ts-expect-error - reasoning.start carries no text
+      void event.text;
+    }
+    expectTypeOf<ExecutionResult['reasoning']>().toEqualTypeOf<string | undefined>();
+
+    const agent = createAgent({ provider: createMockProvider(), reasoning: 'high' });
+    void agent.send('hi', { reasoning: { effort: 'low', budgetTokens: 2048, summary: 'auto', force: true } });
+    // @ts-expect-error - not an effort
+    createAgent({ provider: createMockProvider(), reasoning: 'max' });
+    // @ts-expect-error - summary is 'auto' or 'none'
+    void agent.send('hi', { reasoning: { summary: 'detailed' } });
+  });
+});
+
+describe('event listener options (LOU-D41)', () => {
+  it('types createAgent({ onEvent }) and ExecuteOptions.onAgentEvent with AgentEvent', () => {
+    createAgent({ provider: createMockProvider(), onEvent: (e) => expectTypeOf(e).toEqualTypeOf<AgentEvent>() });
+    expectTypeOf<NonNullable<ExecuteOptions['onAgentEvent']>>().parameter(0).toEqualTypeOf<AgentEvent>();
+    // @ts-expect-error - createAgent's listener gets AgentEvents, not the deprecated ExecutionEvents
+    createAgent({ provider: createMockProvider(), onEvent: (e: ExecutionEvent) => void e.toolCall });
+  });
+
+  it('keeps the deprecated ExecuteOptions.onEvent typed with ExecutionEvent', () => {
+    expectTypeOf<NonNullable<ExecuteOptions['onEvent']>>().parameter(0).toEqualTypeOf<ExecutionEvent>();
+    expectTypeOf<ExecutionEvent['type']>().toEqualTypeOf<ExecutionEventType>();
   });
 });

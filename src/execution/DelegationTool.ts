@@ -95,7 +95,7 @@ export interface DelegateAgentResult {
  * LOU-Y1: the child inherits the calling run's runtime - abort signal,
  * hooks (with `ctx.subagent` set), trace parent, approval store (a child
  * call that needs approval pauses the whole run; `resumeAfterApproval()`
- * finishes it), `toolConcurrency`, `onEvent` (events tagged with
+ * finishes it), `toolConcurrency`, event listeners (events tagged with
  * `subagent`) - and its token usage is added to the parent run's. See
  * docs/sub-agents.md; for named sub-agents prefer the `subagents` option.
  */

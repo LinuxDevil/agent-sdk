@@ -61,6 +61,7 @@ Protocol version 1. The agent answers:
 While a turn runs the agent sends `session/update` notifications:
 
 - `agent_message_chunk` with a `text` content block for each piece of text the model writes;
+- `agent_thought_chunk` with a `text` content block for each piece of the model's [reasoning](./reasoning.md);
 - `tool_call` (`status: 'in_progress'`, `kind: 'other'`, the tool's name as `title`, its arguments as `rawInput`) when a tool call starts;
 - `tool_call_update` with `status: 'completed'` (the result as text content and as `rawOutput`) or `'failed'` (the error) when it ends.
 
@@ -100,7 +101,7 @@ example `LOUSHY_PROVIDER_RATE_LIMITED`) in `error.data.code`.
   commands with its own tools ([Workspace tools](./workspace-tools.md)), not
   through the editor.
 - Image, audio and embedded-resource prompt blocks (text prompts only).
-- `plan` and `agent_thought_chunk` updates, and `allow_always` /
+- `plan` updates, and `allow_always` /
   `reject_always` permission options.
 - Authentication (`authMethods` is empty): provider keys come from the environment.
 

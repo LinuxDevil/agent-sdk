@@ -90,3 +90,17 @@ jobs:
       - run: npm run build
       - run: npm run build --workspace=packages/create-loushy-agent
       - run: npx vitest run
+  # LOU-D49: what `npm pack` produces must install and work in a fresh project. The script
+  # builds, packs the SDK and create-loushy-agent, runs `npm publish --dry-run` (never a real
+  # publish), installs the tarballs plus peers from the registry, and loads every export in
+  # ESM and CJS, runs a mock-model turn, the loushy bin and tsc (bundler and node16).
+  pack-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run pack-smoke

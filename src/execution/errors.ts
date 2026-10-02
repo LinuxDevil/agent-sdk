@@ -101,9 +101,10 @@ export class ToolExecutionError extends SDKError {
   constructor(
     message: string,
     public readonly toolName?: string,
-    public readonly cause?: Error
+    public readonly cause?: Error,
+    code: ErrorCode = 'LOUSHY_TOOL_EXECUTION_FAILED'
   ) {
-    super(message, 'LOUSHY_TOOL_EXECUTION_FAILED', { appendHelp: false });
+    super(message, code, { appendHelp: false });
     this.name = 'ToolExecutionError';
   }
 }

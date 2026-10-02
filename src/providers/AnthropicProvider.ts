@@ -28,6 +28,8 @@ const TOOL_CAPABLE_PREFIXES = ['claude-3', 'claude-4', 'claude-sonnet', 'claude-
 export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
   readonly name = 'anthropic';
   protected readonly fallbackModel = 'claude-3-5-sonnet-latest';
+  /** LOU-V13: thinking blocks go back unmodified with their tool-call turn. */
+  protected readonly replaysReasoning = true;
   /** Loads `@ai-sdk/anthropic` on first use (it is an optional peer). */
   private readonly loadProvider = lazyValue(async () => {
     const { createAnthropic } = await loadOptionalPeer(

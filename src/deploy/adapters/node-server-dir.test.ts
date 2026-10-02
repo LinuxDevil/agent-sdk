@@ -12,6 +12,7 @@ import path from 'node:path';
 import { NodeServerAdapter } from './node-server';
 import { DockerAdapter } from './docker';
 import { parseBuildArgs } from '../../cli/build';
+import { withBuildLock } from '../buildLock.testkit';
 
 const FILES: Record<string, string> = {
   'instructions.md': 'You are a deployed agent directory.\n',
@@ -66,7 +67,7 @@ describe('NodeServerAdapter with an agent directory', () => {
     agentDir = writeAgentDir();
     outDir = path.join(path.dirname(agentDir), 'out');
     await NodeServerAdapter.scaffold(agentDir, outDir);
-    await NodeServerAdapter.build(outDir);
+    await withBuildLock(() => NodeServerAdapter.build(outDir));
   }, 120_000);
 
   it('generates an entry that resolves the directory and passes its schedules and channels to the server', () => {

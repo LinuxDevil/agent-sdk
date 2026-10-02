@@ -67,7 +67,7 @@ function unreachable(source: string, reason: string, cause?: unknown): SDKError 
 
 async function fetchText(source: string, options: RegistryOptions): Promise<string> {
   const response = await (options.fetch ?? fetch)(source, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  if (!response.ok) throw new SDKError(`HTTP ${response.status}`, 'LOUSHY_REGISTRY_UNREACHABLE');
   return response.text();
 }
 

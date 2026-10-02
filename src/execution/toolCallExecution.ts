@@ -485,7 +485,8 @@ async function doExecuteToolCall(
       ctx.signal,
       // LOU-U9: `toolCallId` is the tool's idempotency key on a re-run.
       // LOU-U15: `messages` is the run's transcript (the guard copies it).
-      { onDelegatedUsage: ctx.onDelegatedUsage, toolCallId: toolCall.id, messages: ctx.messages },
+      // LOU-D23.2: and the run's `sessionId`, when it has one.
+      { onDelegatedUsage: ctx.onDelegatedUsage, toolCallId: toolCall.id, messages: ctx.messages, sessionId: ctx.sessionId },
       ctx.scope
     );
 

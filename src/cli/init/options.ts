@@ -26,7 +26,8 @@ Options:
   --no-git                  Do not run git init
   --force                   Write into a directory even if it is not empty
   --sdk-path <dir|tarball>  Local development: depend on a checkout or packed .tgz of the SDK
-                            instead of the published version (env: LOUSHY_SDK_PATH)
+                            instead of the published version (env: LOUSHY_SDK_PATH).
+                            Needed until the package is on npm; see docs/installation.md
   --help, -h                Show this help`;
 
 export interface InitOptions {

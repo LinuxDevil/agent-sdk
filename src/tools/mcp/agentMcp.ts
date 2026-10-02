@@ -61,18 +61,9 @@ export function streamPrepared(
   runSignal?: AbortSignal,
   runInputQueue?: ExecuteOptions['inputQueue']
 ): AgentRun {
-  return startAgentRun(async ({ signal, onEvent, sink, inputQueue }) => {
+  return startAgentRun(async ({ signal, sink, inputQueue }) => {
     const options = await prepare();
-    const streaming: StreamingExecuteOptions = {
-      ...options,
-      signal,
-      inputQueue,
-      onEvent: (event) => {
-        options.onEvent?.(event);
-        onEvent(event);
-      },
-      [RUN_EVENTS]: sink,
-    };
+    const streaming: StreamingExecuteOptions = { ...options, signal, inputQueue, [RUN_EVENTS]: sink };
     return AgentExecutor.execute(streaming);
   }, runSignal, runInputQueue);
 }

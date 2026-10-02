@@ -8,6 +8,7 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { isFresh, precheckSlackSignature } from './slackSignature';
+import { SDKError } from '../execution/errors';
 
 /**
  * Verify a signature computed with a shared secret over the RAW request
@@ -78,17 +79,17 @@ const DEFAULT_TOLERANCE_SECONDS = 300;
 export function assertValidWebhookAuth(auth: WebhookAuth): void {
   if (auth.type === 'hmac') {
     if (!auth.secret) {
-      throw new Error("WebhookTriggerAdapter: auth.secret must be a non-empty string (e.g. { type: 'hmac', secret: process.env.WEBHOOK_SECRET }).");
+      throw new SDKError("WebhookTriggerAdapter: auth.secret must be a non-empty string (e.g. { type: 'hmac', secret: process.env.WEBHOOK_SECRET }).", 'LOUSHY_TRIGGER_INVALID');
     }
     if (auth.toleranceSeconds !== undefined && !auth.timestampHeader) {
-      throw new Error('WebhookTriggerAdapter: auth.toleranceSeconds has no effect without auth.timestampHeader. Set timestampHeader (e.g. "x-timestamp") or remove toleranceSeconds.');
+      throw new SDKError('WebhookTriggerAdapter: auth.toleranceSeconds has no effect without auth.timestampHeader. Set timestampHeader (e.g. "x-timestamp") or remove toleranceSeconds.', 'LOUSHY_TRIGGER_INVALID');
     }
   } else if (auth.type === 'bearer') {
     if (!auth.token) {
-      throw new Error("WebhookTriggerAdapter: auth.token must be a non-empty string (e.g. { type: 'bearer', token: process.env.WEBHOOK_TOKEN }).");
+      throw new SDKError("WebhookTriggerAdapter: auth.token must be a non-empty string (e.g. { type: 'bearer', token: process.env.WEBHOOK_TOKEN }).", 'LOUSHY_TRIGGER_INVALID');
     }
   } else if (auth.type !== 'custom' || typeof auth.verify !== 'function') {
-    throw new Error("WebhookTriggerAdapter: auth.type must be 'hmac', 'bearer' or 'custom' (custom needs a verify(req, rawBody) function).");
+    throw new SDKError("WebhookTriggerAdapter: auth.type must be 'hmac', 'bearer' or 'custom' (custom needs a verify(req, rawBody) function).", 'LOUSHY_TRIGGER_INVALID');
   }
 }
 
