@@ -26,6 +26,7 @@ import { ToolDescriptor } from './types';
 import { modelFromEnv, resolveProviderSpec } from './providers/providerSpec';
 import { withFallback, withRetry, type WithRetryOptions } from './providers/resilience';
 import type { DefinedTool } from './tools/defineTool';
+import { assertHostedToolNames, isHostedTool, type HostedTool } from './tools/hosted';
 import { withAskQuestion } from './tools/built-in/askQuestion';
 import { ToolConcurrency, assertToolConcurrency } from './execution/toolBatch';
 import type { Skill } from './skills/defineSkill';
@@ -93,8 +94,8 @@ export interface RunConfigContext {
  */
 export type PerRun<T> = T | ((ctx: RunConfigContext) => T | Promise<T>);
 
-/** The `tools` option's static form. */
-type AgentToolsOption = readonly DefinedTool[] | Record<string, ToolDescriptor>;
+/** The `tools` option's static form; N1a: hosted tools (`webSearch()`, ...) go in it too. */
+type AgentToolsOption = ReadonlyArray<DefinedTool | HostedTool> | Record<string, ToolDescriptor | HostedTool>;
 
 /**
  * Options for createAgent() that do not depend on how the instructions and
@@ -107,6 +108,9 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    * Optional tools: an array of `defineTool()` results (named by the tool),
    * or a record of descriptors keyed by the name the agent should call them by.
    * A function of the run picks them per run (LOU-V15, see `PerRun`).
+   * N1a: hosted provider tools (`webSearch()`, `codeInterpreter()`,
+   * `fileSearch()`, `hostedTool()`) go here too; the provider runs them (see
+   * docs/hosted-tools.md). In the record form a hosted tool's key must be its name.
    *
    * @example
    * createAgent({ prompt: '...', provider, tools: [sendEmail] });
@@ -644,9 +648,12 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   const memory = agentMemory(config.memory);
   const mcpTools: Record<string, ToolDescriptor> = {};
   const toolsFor = (tools: AgentToolsOption | undefined): RunTools => {
-    const runTools = registerTools(withAskQuestion(tools, config.askQuestion) ?? {}, hasMcp);
+    // N1a: hosted tools are sent to the provider, never registered.
+    const { local, hosted } = splitHostedTools(tools);
+    const runTools = { ...registerTools(withAskQuestion(local, config.askQuestion) ?? {}, hasMcp), hostedTools: hosted };
     memory?.addTools(runTools.toolsConfig);
     addMcpTools(runTools, mcpTools);
+    assertHostedToolNames(hosted, Object.keys(runTools.toolsConfig));
     return runTools;
   };
 
@@ -709,6 +716,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
         approvalStore: paused.store,
         signal,
         currentAgent: paused.spec.agent,
+        hostedTools: paused.spec.hostedTools,
         onAgentEvent: config.onEvent,
         ...tracing,
         // N10b: who decides; the run itself goes on as the principal it paused with (its snapshot's).
@@ -852,8 +860,38 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   return simpleAgent;
 }
 
-/** A run's tool registry and the matching `AgentConfig.tools`. */
-type RunTools = ReturnType<typeof registerTools>;
+/** A run's tool registry, the matching `AgentConfig.tools`, and (N1a) its hosted tools. */
+type RunTools = ReturnType<typeof registerTools> & { hostedTools: HostedTool[] };
+
+/**
+ * N1a: the `tools` option split into the local tools to register and the
+ * hosted tools for the provider. In the record form a hosted tool's key must
+ * be its name (the provider maps the tool by it).
+ */
+function splitHostedTools(tools: AgentToolsOption | undefined): { local: readonly DefinedTool[] | Record<string, ToolDescriptor> | undefined; hosted: HostedTool[] } {
+  if (tools === undefined) return { local: undefined, hosted: [] };
+  if (Array.isArray(tools)) {
+    const list = tools as ReadonlyArray<DefinedTool | HostedTool>;
+    return { local: list.filter((tool): tool is DefinedTool => !isHostedTool(tool)), hosted: list.filter(isHostedTool) };
+  }
+  const local: Record<string, ToolDescriptor> = {};
+  const hosted: HostedTool[] = [];
+  for (const [key, tool] of Object.entries(tools as Record<string, ToolDescriptor | HostedTool>)) {
+    if (!isHostedTool(tool)) {
+      local[key] = tool;
+      continue;
+    }
+    if (key !== tool.name) {
+      throw new ConfigurationError(
+        `createAgent: hosted tool '${tool.name}' is under the key '${key}' in \`tools\`; use '${tool.name}' as its key ` +
+          `(or create it with hostedTool('${key}', ...)).`,
+        'tools'
+      );
+    }
+    hosted.push(tool);
+  }
+  return { local, hosted };
+}
 
 /** Adds connected MCP tools (LOU-Z4) to a run's tools. */
 function addMcpTools(target: RunTools, tools: Record<string, ToolDescriptor>): void {
@@ -900,7 +938,13 @@ function agentSpecs(config: CreateAgentConfig, toolsFor: (tools: AgentToolsOptio
       .setTools(tools.toolsConfig);
     // With an explicit provider, `model` is a per-agent model setting.
     if (config.provider && model) builder.setSettings({ model });
-    return { agent: builder.build(), provider: runProvider, toolRegistry: tools.toolRegistry, ...runOptions };
+    return {
+      agent: builder.build(),
+      provider: runProvider,
+      toolRegistry: tools.toolRegistry,
+      ...(tools.hostedTools.length > 0 && { hostedTools: tools.hostedTools }),
+      ...runOptions,
+    };
   };
   const resolve = async (ctx: RunConfigContext, pinned?: PinnedRunConfig): Promise<SubagentSpec> => {
     const model = pinned ? pinned.model : await resolveOption('model', config.model, ctx);

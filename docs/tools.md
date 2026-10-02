@@ -23,6 +23,8 @@ type WeatherResult = ToolOutput<typeof weather>; // { temperature: number; condi
 const agent = createAgent({ prompt: '...', provider, tools: [weather] });
 ```
 
+Tools the model provider runs itself (web search, code interpreter, file search) go in the same `tools` list; see [Hosted provider tools](./hosted-tools.md).
+
 ## `defineTool()` options
 
 | Option | Required | Description |

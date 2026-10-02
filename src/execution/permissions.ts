@@ -11,6 +11,7 @@
 import type { ExecuteOptions } from './AgentExecutor';
 import { runEventsOf } from './agentRun';
 import type { ToolDescriptor } from '../types';
+import type { HostedTool } from '../tools/hosted';
 import { SDKError } from '../utils/sdkError';
 import type { Principal } from '../auth/types';
 
@@ -215,6 +216,21 @@ export function permissionModeVerdict(
   if (mode === 'dontAsk') return { deny: DONT_ASK_REASON };
   if (mode === 'acceptEdits' && tool?.metadata?.editsFiles === true) return { approve: true };
   return undefined;
+}
+
+/** N1a x N4: the hosted tool types that only read (`codeInterpreter()` runs code; `hostedTool()` is unknown). */
+const READ_ONLY_HOSTED_TYPES: ReadonlySet<HostedTool['type']> = new Set<HostedTool['type']>(['web_search', 'file_search']);
+
+/**
+ * N1a x N4: the hosted tools a model call may send under `mode`. The provider
+ * runs a hosted tool inside the request, so no per-call check can stop it:
+ * plan mode leaves out every hosted tool that is not read-only (`webSearch()`
+ * and `fileSearch()` stay). The other modes send them all (a hosted call never
+ * asks, so `dontAsk` has nothing to refuse).
+ */
+export function hostedToolsInMode(hostedTools: readonly HostedTool[] | undefined, mode: PermissionMode): readonly HostedTool[] | undefined {
+  if (mode !== 'plan' || !hostedTools) return hostedTools;
+  return hostedTools.filter((tool) => READ_ONLY_HOSTED_TYPES.has(tool.type));
 }
 
 /**

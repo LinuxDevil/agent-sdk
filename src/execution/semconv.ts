@@ -104,6 +104,12 @@ export const SdkAttr = {
   COST_USD: 'lousho.cost_usd',
   /** Reasoning (thinking) tokens of a `chat` span's call, when the provider reports them (LOU-V13). */
   USAGE_REASONING_TOKENS: 'lousho.usage.reasoning_tokens',
+  /**
+   * N1a: on a `chat` span, the names of the hosted tools the provider ran
+   * inside that call (e.g. `['web_search']`). They get no `execute_tool`
+   * span: the SDK did not run them.
+   */
+  HOSTED_TOOL_CALLS: 'lousho.hosted_tool_calls',
 } as const;
 
 /**

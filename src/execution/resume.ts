@@ -293,7 +293,7 @@ async function checkApprovalDrift(
   const calls = [...decided, ...(snapshot.remainingToolCalls ?? []).map((call) => call.function.name)];
   const missingTools = [...new Set(calls)].filter((name) => name in configured && !toolRegistry.get(name)?.tool);
   try {
-    const current = await fingerprintOf(executeOptions.currentAgent ?? snapshot.agent, toolRegistry, run.provider);
+    const current = await fingerprintOf(executeOptions.currentAgent ?? snapshot.agent, toolRegistry, run.provider, executeOptions.hostedTools);
     return checkAgentDrift({ saved, current, mode: executeOptions.onAgentDrift, missingTools });
   } catch (error) {
     await run.approvalStore.save(pending, snapshot);

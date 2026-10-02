@@ -25,6 +25,8 @@ import type { ExecuteOptions } from './AgentExecutor';
 import { runEventsOf } from './agentRun';
 import { outputResponseFormat } from './structuredOutput';
 import { withSteerSignal } from './inputQueue';
+import { settleHostedFinish } from './hostedToolCalls';
+import { hostedToolsInMode, permissionModeOf } from './permissions';
 
 /** A legacy `.tool`'s description when it is a string (always, on `ai` v4). */
 function legacyDescription(description: unknown): string | undefined {
@@ -102,6 +104,8 @@ export async function prepareGenerateRequest(
   const { temperature, maxTokens, onLLMRequest, hooks } = options;
   // LOU-V10: a steer aborts this call alone (`callSignal`), the run's signal all of them.
   const signal = withSteerSignal(options.signal, callSignal);
+  // N1a x N4: read the mode at every call, so a switch to plan mode drops non-read-only hosted tools from the next one.
+  const hostedTools = hostedToolsInMode(options.hostedTools, permissionModeOf(options));
 
   const generateRequest: GenerateOptions = {
     // agent.settings.model > the model the provider was configured with >
@@ -111,6 +115,8 @@ export async function prepareGenerateRequest(
     temperature,
     maxTokens,
     tools: tools.length > 0 ? tools : undefined,
+    // N1a: the provider's own tools, sent with every call of the run (plan mode: read-only ones only).
+    ...(hostedTools?.length && { hostedTools }),
     // LOU-V4: a JSON-mode hint for runs with an `output` schema.
     ...(options.output ? { responseFormat: outputResponseFormat(options.output) } : {}),
     // LOU-V13: the providers send it only to models that accept it.
@@ -178,9 +184,8 @@ export function generateInSpan(
       // step through it (streamed when the provider can); everything around it is the same.
       const runEvents = runEventsOf(options);
       const onOutput = () => options.inputQueue?.callOutput();
-      const generated = await abortable(
-        runEvents ? runEvents.generate(provider, generateRequest, onOutput) : provider.generate(generateRequest),
-        callSignal
+      const generated = settleHostedFinish(
+        await abortable(runEvents ? runEvents.generate(provider, generateRequest, onOutput) : provider.generate(generateRequest), callSignal)
       );
       const llmLatencyMs = Date.now() - llmStart;
 

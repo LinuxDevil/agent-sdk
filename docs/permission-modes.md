@@ -64,6 +64,10 @@ says nothing is treated as one with side effects and is refused.
   not a guarantee, so only connect servers you trust.
 - The built-in `ask_question` (it only asks; the call still pauses for the
   answer) and `task` (its sub-agent inherits plan mode, see below).
+- [Hosted provider tools](./hosted-tools.md) run inside the provider's request,
+  so no call can be refused. Plan mode sends `webSearch()` and `fileSearch()`
+  (they read) and leaves `codeInterpreter()` and every `hostedTool()` out of
+  the model request; the other modes send them all.
 
 Declare a custom read-only tool like this:
 

@@ -53,10 +53,10 @@ export type LoushoUIMessageChunk =
   | { type: 'text-delta'; id: string; delta: string }
   | { type: 'reasoning-start' | 'reasoning-end'; id: string }
   | { type: 'reasoning-delta'; id: string; delta: string }
-  | { type: 'tool-input-start'; toolCallId: string; toolName: string }
-  | { type: 'tool-input-available'; toolCallId: string; toolName: string; input: unknown }
-  | { type: 'tool-output-available'; toolCallId: string; output: unknown }
-  | { type: 'tool-output-error'; toolCallId: string; errorText: string }
+  | { type: 'tool-input-start'; toolCallId: string; toolName: string; providerExecuted?: boolean }
+  | { type: 'tool-input-available'; toolCallId: string; toolName: string; input: unknown; providerExecuted?: boolean }
+  | { type: 'tool-output-available'; toolCallId: string; output: unknown; providerExecuted?: boolean }
+  | { type: 'tool-output-error'; toolCallId: string; errorText: string; providerExecuted?: boolean }
   | { type: 'data-lousho-approval'; id: string; data: LoushoApprovalData }
   | { type: 'data-lousho-todos'; id: string; data: LoushoTodosData }
   | { type: 'error'; errorText: string }
@@ -138,13 +138,13 @@ function chunksFor(event: AgentEvent, state: MapState): LoushoUIMessageChunk[] {
     case 'tool.start':
       return [
         ...closeText(state),
-        { type: 'tool-input-start', toolCallId: event.toolCallId, toolName: event.toolName },
-        { type: 'tool-input-available', toolCallId: event.toolCallId, toolName: event.toolName, input: event.args },
+        { type: 'tool-input-start', toolCallId: event.toolCallId, toolName: event.toolName, ...byProvider(event) },
+        { type: 'tool-input-available', toolCallId: event.toolCallId, toolName: event.toolName, input: event.args, ...byProvider(event) },
       ];
     case 'tool.done':
-      return [{ type: 'tool-output-available', toolCallId: event.toolCallId, output: event.result }];
+      return [{ type: 'tool-output-available', toolCallId: event.toolCallId, output: event.result, ...byProvider(event) }];
     case 'tool.error':
-      return [{ type: 'tool-output-error', toolCallId: event.toolCallId, errorText: event.error.message }];
+      return [{ type: 'tool-output-error', toolCallId: event.toolCallId, errorText: event.error.message, ...byProvider(event) }];
     case 'approval.requested':
       return [approvalChunk(event)];
     case 'todo.updated':
@@ -274,4 +274,9 @@ export function fromUIMessages(messages: readonly UIMessageLike[], options: { la
   if (!options.lastUserOnly) return converted;
   const last = [...converted].reverse().find((message) => message.role === 'user');
   return last ? last.content : '';
+}
+
+/** N1a: the AI SDK UI flag for a hosted tool the provider ran (`executedBy: 'provider'`). */
+function byProvider(event: { executedBy?: 'provider' }): { providerExecuted?: true } {
+  return event.executedBy === 'provider' ? { providerExecuted: true } : {};
 }
