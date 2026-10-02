@@ -231,6 +231,8 @@ describe('makeHttpRequest', () => {
           makeHttpRequest({ url: `http://rebind.test:${port}/`, method: 'GET', options: { timeout: 1500 } })
         ).rejects.toThrow();
         expect(hits).toBe(0);
+        // One resolution: the one the pinned lookup checked and connected to.
+        expect(answers).toBe(1);
       } finally {
         callbackSpy.mockRestore();
       }
