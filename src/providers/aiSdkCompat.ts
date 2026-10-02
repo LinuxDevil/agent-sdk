@@ -15,6 +15,7 @@ import type { LanguageModel } from 'ai';
 import type {
   GenerateOptions,
   GenerateResult,
+  HostedToolCall,
   ProviderUsage,
   ReasoningBlock,
   StreamChunk,
@@ -53,6 +54,8 @@ export interface AiSdkCallSettings {
   abortSignal?: AbortSignal;
   /** LOU-V13: the reasoning options (`ai` 4.3 and 6/7 take the same field). */
   providerOptions?: Record<string, unknown>;
+  /** N1a: the hosted tools' AI SDK tool objects by name (`ai` 6/7 only), merged into `tools` as they are. */
+  hostedTools?: Record<string, unknown>;
 }
 
 /** Whether `ai` is v5 or later (the v6/v7 call shape). */
@@ -76,6 +79,20 @@ interface AiSdkToolCall {
   toolName: string;
   args?: unknown;
   input?: unknown;
+  /** v5+: the provider ran the call (a hosted tool, N1a); it is never ours to run. */
+  providerExecuted?: boolean;
+}
+
+/** A v5+ content part (`generateText()` result `content`) or `fullStream` part, as far as hosted calls read it. */
+interface AiSdkContentPart extends Partial<AiSdkToolCall> {
+  type: string;
+  /** `tool-result`: the output; `tool-error` (and a stream `error` part): the error. */
+  output?: unknown;
+  error?: unknown;
+  /** `source`: v5+ `sourceType: 'url'` with `url` and `title`. */
+  sourceType?: string;
+  url?: string;
+  title?: string;
 }
 
 /** The subset of either major's `generateText()` result read here. */
@@ -84,15 +101,17 @@ interface AiSdkGenerateResult {
   finishReason: string;
   usage?: Record<string, unknown>;
   toolCalls?: AiSdkToolCall[];
+  /** v5+: the step's parts in order (N1a reads the provider-executed calls, their results and sources). */
+  content?: AiSdkContentPart[];
   providerMetadata?: Record<string, unknown>;
   /** v4: `reasoningDetails`; v6/v7: `reasoning` parts. */
   reasoningDetails?: Array<{ type: string; text?: string; signature?: string; data?: string }>;
   reasoning?: unknown;
 }
 
-/** Convert tool calls from 'ai' SDK format to our format. */
+/** Convert tool calls from 'ai' SDK format to our format; a provider-executed call (N1a) is left out. */
 function convertToolCalls(calls: AiSdkToolCall[]): ToolCall[] {
-  return calls.map((tc) => ({
+  return calls.filter((tc) => !tc.providerExecuted).map((tc) => ({
     id: tc.toolCallId,
     type: 'function' as const,
     function: { name: tc.toolName, arguments: JSON.stringify(tc.input ?? tc.args) },
@@ -226,6 +245,13 @@ function toModernTools(ai: AiSdkModule, toolDefs: ToolDefinition[] | undefined) 
   return tools;
 }
 
+/** N1a: the function tools plus the hosted tools' provider tool objects, passed exactly as the provider package made them. */
+function modernToolSet(ai: AiSdkModule, toolDefs: ToolDefinition[] | undefined, hostedTools: Record<string, unknown> | undefined) {
+  const tools = toModernTools(ai, toolDefs);
+  if (!hostedTools || Object.keys(hostedTools).length === 0) return tools;
+  return { ...tools, ...hostedTools };
+}
+
 /**
  * LOU-V4 on v6/v7: JSON mode with the schema, leaving the prompt and the
  * reply text alone (AgentExecutor instructs the model and validates).
@@ -254,7 +280,7 @@ function toModernRequest(ai: AiSdkModule, settings: AiSdkCallSettings, options: 
     frequencyPenalty: settings.frequencyPenalty,
     presencePenalty: settings.presencePenalty,
     seed: settings.seed,
-    tools: toModernTools(ai, options.tools),
+    tools: modernToolSet(ai, options.tools, settings.hostedTools),
     stopWhen: ai.stepCountIs?.(1), // Single step - tool execution happens in AgentExecutor
     providerOptions: settings.providerOptions,
     maxRetries: settings.maxRetries,
@@ -292,6 +318,61 @@ function reasoningOf(result: AiSdkGenerateResult, modern: boolean): ReasoningBlo
   return parts.filter((p) => p.type === 'reasoning').map((p) => ({ text: p.text ?? '', ...blockData(p.providerMetadata) }));
 }
 
+/** N1a: a provider-executed `tool-call` part as our hosted call (no result yet). */
+function hostedCallOf(part: AiSdkContentPart): HostedToolCall {
+  return { id: part.toolCallId ?? '', name: part.toolName ?? '', args: part.input ?? part.args ?? {} };
+}
+
+/** N1a: a provider-executed `tool-result` / `tool-error` part's result, set on `call`. */
+function settleHostedCall(call: HostedToolCall, part: AiSdkContentPart): void {
+  if (part.type === 'tool-error') {
+    call.result = part.error instanceof Error ? part.error.message : part.error;
+    call.isError = true;
+  } else {
+    call.result = part.output;
+  }
+}
+
+/** N1a: adds a url `source` part to `call`'s sources (other source types are not kept). */
+function addSource(call: HostedToolCall | undefined, part: AiSdkContentPart): void {
+  if (!call || typeof part.url !== 'string' || (part.sourceType !== undefined && part.sourceType !== 'url')) return;
+  (call.sources ??= []).push({ url: part.url, ...(typeof part.title === 'string' && part.title !== '' && { title: part.title }) });
+}
+
+/** N1a: a `tool-result` / `tool-error` part of a provider-executed call. */
+function isHostedResult(part: AiSdkContentPart): boolean {
+  return (part.type === 'tool-result' || part.type === 'tool-error') && part.providerExecuted === true;
+}
+
+/**
+ * N1a: the provider-executed calls of a v5+ result's ordered `content`, with
+ * their results; a `source` part attaches to the call it follows (the last
+ * hosted call before it). Sources before any hosted call are not kept.
+ */
+function hostedCallsOf(content: AiSdkContentPart[] | undefined): HostedToolCall[] {
+  const calls = new Map<string, HostedToolCall>();
+  let last: HostedToolCall | undefined;
+  for (const part of content ?? []) {
+    if (part.type === 'tool-call' && part.providerExecuted) {
+      last = hostedCallOf(part);
+      calls.set(last.id, last);
+    } else if (isHostedResult(part)) {
+      last = calls.get(part.toolCallId ?? '') ?? hostedCallOf(part);
+      calls.set(last.id, last);
+      settleHostedCall(last, part);
+    } else if (part.type === 'source') {
+      addSource(last, part);
+    }
+  }
+  return [...calls.values()];
+}
+
+/** `settings` without the hosted tools, for `ai` v4 (which cannot send them). */
+function v4Settings(settings: AiSdkCallSettings): Omit<AiSdkCallSettings, 'hostedTools'> {
+  const { hostedTools: _hosted, ...rest } = settings;
+  return rest;
+}
+
 /** Call `generateText()` on `ai` (v4 or v6/v7) and normalize its result. */
 export async function compatGenerateText(
   ai: AiSdkModule,
@@ -299,21 +380,23 @@ export async function compatGenerateText(
   options: GenerateOptions
 ): Promise<GenerateResult> {
   const modern = isModernAi(ai);
-  const request = modern ? toModernRequest(ai, settings, options) : settings;
+  const request = modern ? toModernRequest(ai, settings, options) : v4Settings(settings);
   const result = (await ai.generateText(request as never)) as AiSdkGenerateResult;
   const reasoning = reasoningOf(result, modern);
+  const hostedToolCalls = modern ? hostedCallsOf(result.content) : [];
   return {
     text: result.text,
     finishReason: mapFinishReason(result.finishReason),
     usage: usageOf(modern, result.usage, result.providerMetadata),
     toolCalls: result.toolCalls && convertToolCalls(result.toolCalls),
+    ...(hostedToolCalls.length > 0 && { hostedToolCalls }),
     ...(reasoning.length > 0 && { reasoning }),
     rawResponse: result,
   };
 }
 
 /** A `fullStream` part of either major: the fields read here. */
-interface AiSdkStreamPart extends Partial<AiSdkToolCall> {
+interface AiSdkStreamPart extends AiSdkContentPart {
   type: string;
   /** `text-delta`: v6/v7 `text`, v4 `textDelta`. */
   text?: string;
@@ -329,7 +412,6 @@ interface AiSdkStreamPart extends Partial<AiSdkToolCall> {
   usage?: Record<string, unknown>;
   totalUsage?: Record<string, unknown>;
   providerMetadata?: Record<string, unknown>;
-  error?: unknown;
 }
 
 /** The subset of either major's `streamText()` result read here (v6/v7 `usage` is the total). */
@@ -350,6 +432,10 @@ interface ChunkState {
   inputs: Map<string, { toolName: string; input: string }>;
   /** LOU-V13: the open v6/v7 reasoning block's `providerMetadata` (Anthropic sends the signature on a delta). */
   reasoningMetadata?: unknown;
+  /** N1a: provider-executed calls by id, the last one seen, and a settled one whose result chunk waits for the sources after it. */
+  hosted: Map<string, HostedToolCall>;
+  lastHosted?: HostedToolCall;
+  settledHosted?: HostedToolCall;
 }
 
 /** LOU-V13: a reasoning text delta (v4 `reasoning`, v6/v7 `reasoning-delta`), noting a v6/v7 block's metadata. */
@@ -380,11 +466,37 @@ function finishChunks(part: AiSdkStreamPart, { modern, inputs }: ChunkState): St
 }
 
 /**
+ * N1a: a provider-executed call's result. Its `hosted-tool-result` chunk is
+ * held (see toChunks) until a part other than a `source` arrives, so the
+ * sources that follow the result travel with it. Other results (v4's
+ * placeholder `execute`) carry nothing.
+ */
+function hostedResult(part: AiSdkStreamPart, state: ChunkState): StreamChunk[] {
+  if (!isHostedResult(part)) return [];
+  const call = state.hosted.get(part.toolCallId ?? '') ?? hostedCallOf(part);
+  state.hosted.set(call.id, call);
+  settleHostedCall(call, part);
+  state.lastHosted = call;
+  state.settledHosted = call;
+  return [];
+}
+
+/** N1a: the held `hosted-tool-result` chunk, if any. */
+function flushHosted(state: ChunkState): StreamChunk[] {
+  const call = state.settledHosted;
+  state.settledHosted = undefined;
+  return call ? [{ type: 'hosted-tool-result', hostedToolCall: call }] : [];
+}
+
+/**
  * The chunks each `fullStream` part type becomes, on either major. An `error`
  * part rejects the stream with its error, an `abort` part with the signal's
  * reason. Reasoning (LOU-V13) becomes `reasoning-delta` / `reasoning-end`
- * chunks. Unlisted parts are dropped: steps, sources, files, `raw` and v4's
- * results of the placeholder `execute` carry nothing a chunk reports.
+ * chunks. N1a: a provider-executed call and its result become
+ * `hosted-tool-call` / `hosted-tool-result` chunks (never a `tool-call`), and
+ * url `source` parts attach to the hosted call they follow. Unlisted parts
+ * are dropped: steps, files, `raw` and v4's results of the placeholder
+ * `execute` carry nothing a chunk reports.
  */
 const PART_CHUNKS = new Map<string, (part: AiSdkStreamPart, state: ChunkState) => StreamChunk[]>([
   ['text-delta', (part) => {
@@ -402,7 +514,8 @@ const PART_CHUNKS = new Map<string, (part: AiSdkStreamPart, state: ChunkState) =
   ['reasoning-signature', (part) => reasoningEnd({ signature: part.signature })],
   ['redacted-reasoning', (part) => reasoningEnd({ redactedData: part.data })],
   ['tool-input-start', (part, { inputs }) => {
-    inputs.set(part.id ?? '', { toolName: part.toolName ?? '', input: '' });
+    // N1a: a provider-executed call's input is never completed into a call of ours by finishChunks().
+    if (!part.providerExecuted) inputs.set(part.id ?? '', { toolName: part.toolName ?? '', input: '' });
     return [];
   }],
   ['tool-input-delta', (part, { inputs }) => {
@@ -410,9 +523,19 @@ const PART_CHUNKS = new Map<string, (part: AiSdkStreamPart, state: ChunkState) =
     if (pending) pending.input += part.delta ?? '';
     return [];
   }],
-  ['tool-call', (part, { inputs }) => {
-    inputs.delete(part.toolCallId ?? '');
-    return [{ type: 'tool-call', toolCall: convertToolCalls([part as AiSdkToolCall])[0] }];
+  ['tool-call', (part, state) => {
+    state.inputs.delete(part.toolCallId ?? '');
+    if (!part.providerExecuted) return [{ type: 'tool-call', toolCall: convertToolCalls([part as AiSdkToolCall])[0] }];
+    const hostedToolCall = hostedCallOf(part);
+    state.hosted.set(hostedToolCall.id, hostedToolCall);
+    state.lastHosted = hostedToolCall;
+    return [{ type: 'hosted-tool-call', hostedToolCall }];
+  }],
+  ['tool-result', hostedResult],
+  ['tool-error', hostedResult],
+  ['source', (part, state) => {
+    addSource(state.settledHosted ?? state.lastHosted, part);
+    return [];
   }],
   ['finish', finishChunks],
   ['error', (part) => {
@@ -425,10 +548,12 @@ const PART_CHUNKS = new Map<string, (part: AiSdkStreamPart, state: ChunkState) =
 
 /** Either major's `fullStream` as our chunks (see PART_CHUNKS). */
 async function* toChunks(result: AiSdkStreamResult, modern: boolean, signal?: AbortSignal): AsyncGenerator<StreamChunk> {
-  const state: ChunkState = { modern, signal, inputs: new Map() };
+  const state: ChunkState = { modern, signal, inputs: new Map(), hosted: new Map() };
   for await (const part of result.fullStream ?? []) {
+    if (part.type !== 'source') yield* flushHosted(state);
     yield* PART_CHUNKS.get(part.type)?.(part, state) ?? [];
   }
+  yield* flushHosted(state);
 }
 
 /** The final usage of either major's stream. */
@@ -457,7 +582,7 @@ export async function streamCompat(
   options: GenerateOptions
 ): Promise<StreamResult> {
   const modern = isModernAi(ai);
-  const request = modern ? toModernRequest(ai, settings, options) : settings;
+  const request = modern ? toModernRequest(ai, settings, options) : v4Settings(settings);
   // Errors reject the stream (toChunks); the SDK's default onError would also log them.
   const result = (await ai.streamText({ ...request, onError: () => undefined } as never)) as AiSdkStreamResult;
   const chunks = () => ('fullStream' in result ? toChunks(result, modern, settings.abortSignal) : textStreamChunks(result));

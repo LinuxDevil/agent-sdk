@@ -5,6 +5,7 @@ import { SDKError } from '../execution/errors';
  */
 
 import type { ReasoningOption } from './reasoning';
+import type { HostedTool, HostedToolType } from '../tools/hosted';
 
 /**
  * Message role types
@@ -114,6 +115,26 @@ export interface ToolCall {
 }
 
 /**
+ * N1a: a tool call the provider ran inside the request (a hosted tool such as
+ * web search), with its result. The SDK never runs these calls; they are
+ * reported in events (`executedBy: 'provider'`) and in the step's assistant
+ * message `metadata.hostedToolCalls`.
+ */
+export interface HostedToolCall {
+  id: string;
+  /** The hosted tool's name (e.g. `web_search`). */
+  name: string;
+  /** The input the model gave the tool. */
+  args: unknown;
+  /** The provider's result, when it reported one. */
+  result?: unknown;
+  /** `true` when the provider reported the call as failed (`result` holds the error). */
+  isError?: boolean;
+  /** URL sources the provider cited after this call (web search). */
+  sources?: Array<{ url: string; title?: string }>;
+}
+
+/**
  * Tool definition
  */
 export interface ToolDefinition {
@@ -144,6 +165,12 @@ export interface GenerateOptions {
   presencePenalty?: number;
   stop?: string[];
   tools?: ToolDefinition[];
+  /**
+   * N1a: tools the provider runs itself (`webSearch()`, ...), sent with the
+   * function tools. A provider that cannot send one rejects the call with
+   * `LOUSHO_HOSTED_TOOL_UNSUPPORTED`. AgentExecutor sets it on every call.
+   */
+  hostedTools?: readonly HostedTool[];
   toolChoice?: 'auto' | 'required' | 'none' | { type: 'function'; function: { name: string } };
   seed?: number;
   /**
@@ -198,7 +225,10 @@ export interface GenerateResult {
    * and flags the run's usage as `estimated`.
    */
   usage?: ProviderUsage;
+  /** Calls of local tools for AgentExecutor to run (never a provider-executed call). */
   toolCalls?: ToolCall[];
+  /** N1a: the hosted tool calls the provider ran during this call, in call order. */
+  hostedToolCalls?: HostedToolCall[];
   /** LOU-V13: the model's reasoning, in blocks, when it reported any. */
   reasoning?: ReasoningBlock[];
   rawResponse?: unknown;
@@ -207,12 +237,16 @@ export interface GenerateResult {
 /**
  * Stream chunk types. LOU-V13: `reasoning-delta` carries reasoning text in
  * `textDelta`; `reasoning-end` closes a block, with its `reasoning` data.
+ * N1a: `hosted-tool-call` / `hosted-tool-result` carry a provider-executed
+ * call in `hostedToolCall` (without, then with, its result and sources).
  */
 export type StreamChunkType =
   | 'text-delta'
   | 'reasoning-delta'
   | 'reasoning-end'
   | 'tool-call'
+  | 'hosted-tool-call'
+  | 'hosted-tool-result'
   | 'tool-result'
   | 'finish'
   | 'error';
@@ -226,6 +260,8 @@ export interface StreamChunk {
   /** On `reasoning-end`: the block's signature or redacted data (its text came in the deltas). */
   reasoning?: Omit<ReasoningBlock, 'text'>;
   toolCall?: ToolCall;
+  /** N1a: on `hosted-tool-call` / `hosted-tool-result`. */
+  hostedToolCall?: HostedToolCall;
   toolResult?: {
     toolCallId: string;
     result: unknown;
@@ -290,6 +326,13 @@ export interface LLMProvider {
    * Get available models
    */
   getModels(): Promise<string[]>;
+
+  /**
+   * N1a: whether this provider can send a hosted tool of `type` (`'custom'`:
+   * a `hostedTool()` pass-through). AgentExecutor asks before a run with
+   * hosted tools; a provider without this method supports none.
+   */
+  supportsHostedTool?(type: HostedToolType | 'custom'): boolean;
 }
 
 /**

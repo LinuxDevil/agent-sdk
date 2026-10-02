@@ -25,6 +25,7 @@ import type { ExecuteOptions } from './AgentExecutor';
 import { runEventsOf } from './agentRun';
 import { outputResponseFormat } from './structuredOutput';
 import { withSteerSignal } from './inputQueue';
+import { settleHostedFinish } from './hostedToolCalls';
 
 /** A legacy `.tool`'s description when it is a string (always, on `ai` v4). */
 function legacyDescription(description: unknown): string | undefined {
@@ -111,6 +112,8 @@ export async function prepareGenerateRequest(
     temperature,
     maxTokens,
     tools: tools.length > 0 ? tools : undefined,
+    // N1a: the provider's own tools, sent with every call of the run.
+    ...(options.hostedTools?.length && { hostedTools: options.hostedTools }),
     // LOU-V4: a JSON-mode hint for runs with an `output` schema.
     ...(options.output ? { responseFormat: outputResponseFormat(options.output) } : {}),
     // LOU-V13: the providers send it only to models that accept it.
@@ -178,9 +181,8 @@ export function generateInSpan(
       // step through it (streamed when the provider can); everything around it is the same.
       const runEvents = runEventsOf(options);
       const onOutput = () => options.inputQueue?.callOutput();
-      const generated = await abortable(
-        runEvents ? runEvents.generate(provider, generateRequest, onOutput) : provider.generate(generateRequest),
-        callSignal
+      const generated = settleHostedFinish(
+        await abortable(runEvents ? runEvents.generate(provider, generateRequest, onOutput) : provider.generate(generateRequest), callSignal)
       );
       const llmLatencyMs = Date.now() - llmStart;
 

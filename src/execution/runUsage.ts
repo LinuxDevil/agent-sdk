@@ -9,6 +9,7 @@ import { estimateCost, estimateTokens } from '../models';
 import { normalizeUsage } from '../models/usage';
 import type { CallUsage, DelegatedUsage, RunUsage, Usage } from '../models/usage';
 import type { AgentEventUsage } from './agentEvents';
+import { addHostedCounts } from './hostedToolCalls';
 
 /** Model id that pre-LOU-V5 checkpoint tokens are attributed to. */
 const UNKNOWN_MODEL = 'unknown';
@@ -139,6 +140,7 @@ export function mergeDelegatedUsage(run: RunUsage, child: RunUsage): void {
   addOptional(run, 'cachedInputTokens', child.cachedInputTokens);
   addOptional(run, 'reasoningTokens', child.reasoningTokens);
   for (const [model, entry] of Object.entries(child.byModel)) addToModel(run, model, entry, entry.calls);
+  addHostedCounts(run, child.hostedToolCalls);
   run.delegated = delegatedTotals(run.delegated, child);
   refreshDerived(run);
 }
@@ -159,9 +161,18 @@ export function fromEventUsage(usage: AgentEventUsage, modelKey: string): RunUsa
     modelCalls: calls,
     estimated,
     byModel: { [modelKey]: { inputTokens, outputTokens, calls, costUsd } },
+    ...(usage.hostedToolCalls && { hostedToolCalls: { ...usage.hostedToolCalls } }),
     promptTokens: inputTokens,
     completionTokens: outputTokens,
   };
+}
+
+/** N1a: the per-tool hosted call counts of `now` after `before`; absent when none remain. */
+function hostedSince(now: RunUsage['hostedToolCalls'], before: RunUsage['hostedToolCalls']): Pick<RunUsage, 'hostedToolCalls'> {
+  const counts = Object.entries(now ?? {})
+    .map(([name, count]) => [name, since(count ?? 0, before?.[name])] as const)
+    .filter(([, count]) => count > 0);
+  return counts.length > 0 ? { hostedToolCalls: Object.fromEntries(counts) } : {};
 }
 
 const since = (now: number, before: number | undefined): number => Math.max(0, now - (before ?? 0));
@@ -189,6 +200,7 @@ export function usageSince(now: RunUsage, before: RunUsage | undefined): RunUsag
     modelCalls: since(now.modelCalls, before.modelCalls),
     estimated: now.estimated,
     byModel,
+    ...hostedSince(now.hostedToolCalls, before.hostedToolCalls),
     promptTokens: inputTokens,
     completionTokens: outputTokens,
   };

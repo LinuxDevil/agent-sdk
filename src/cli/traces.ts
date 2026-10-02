@@ -151,6 +151,12 @@ function attr(span: Span, key: string): unknown {
   return span.attributes[key];
 }
 
+/** N1a: the hosted tools the provider ran inside a `chat` span's call (they have no `execute_tool` span). */
+function hostedDetail(span: Span): string[] {
+  const hosted = attr(span, 'lousho.hosted_tool_calls');
+  return Array.isArray(hosted) && hosted.length > 0 ? [`provider ran ${hosted.join(', ')}`] : [];
+}
+
 /** Model, tokens and cost of a `chat` span; tool name of an `execute_tool` span. */
 function details(span: Span): string {
   const op = attr(span, 'gen_ai.operation.name');
@@ -161,6 +167,7 @@ function details(span: Span): string {
     const input = attr(span, 'gen_ai.usage.input_tokens');
     const output = attr(span, 'gen_ai.usage.output_tokens');
     if (typeof input === 'number' || typeof output === 'number') parts.push(`in ${input ?? 0} out ${output ?? 0}`);
+    parts.push(...hostedDetail(span));
   } else if (op === 'execute_tool') {
     const tool = attr(span, 'gen_ai.tool.name');
     if (typeof tool === 'string') parts.push(`tool ${tool}`);

@@ -36,6 +36,8 @@ import {
   type ToolCallScope,
 } from './subagentRuntime';
 import { ConfigurationError, isAbortError } from './errors';
+import type { HostedTool } from '../tools/hosted';
+import { assertHostedToolsSupported, countHostedCalls, withHostedCalls } from './hostedToolCalls';
 import {
   PreparedToolCall,
   ToolCallContext,
@@ -192,6 +194,15 @@ export interface ExecuteOptions extends PermissionOptions {
   input: string | Message[];
   provider: LLMProvider;
   toolRegistry?: ToolRegistry;
+  /**
+   * N1a: tools the provider runs itself (`webSearch()`, `codeInterpreter()`,
+   * `fileSearch()`, `hostedTool()`), sent with every model call of the run.
+   * The run rejects with `LOUSHO_HOSTED_TOOL_UNSUPPORTED` when the provider
+   * cannot send one (`provider.supportsHostedTool`). Their calls pass no
+   * permission rule, guardrail, approval or hook: the provider runs them
+   * inside the request. `createAgent()` sets this from `tools`.
+   */
+  hostedTools?: readonly HostedTool[];
   /**
    * Skills (LOU-Y2): instructions the model loads on demand. Their names and
    * descriptions are appended to the system prompt and a `load_skill` tool is
@@ -768,6 +779,8 @@ export class AgentExecutor {
 
     // Build tools
     const tools = buildTools(agent, toolRegistry);
+    // N1a: the provider must be able to send every hosted tool.
+    assertHostedToolsSupported(options.hostedTools, agent, options.provider);
 
     const state = await loadRunState(options);
     await checkResumedAgent(options, state, tools);
@@ -955,6 +968,8 @@ export class AgentExecutor {
 
     // Update usage (LOU-V5)
     const stepUsage = recordStep(state, measured);
+    // N1a: the provider already ran its hosted calls; they are counted, never run here.
+    countHostedCalls(state.usage, generated.hostedToolCalls);
 
     const text = await this.guardOutput(options, state, generated);
     if (typeof text !== 'string') return text;
@@ -997,10 +1012,7 @@ export class AgentExecutor {
     // silently lost the agent's own last reply whenever a turn ended
     // without a tool call - the common case for a plain chat exchange.
     if (result.text) {
-      state.messages.push({
-        role: 'assistant',
-        content: result.text,
-      });
+      state.messages.push(withHostedCalls({ role: 'assistant', content: result.text }, result.hostedToolCalls));
     }
     state.finishReason = result.finishReason;
     return 'stop';

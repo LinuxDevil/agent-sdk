@@ -26,6 +26,8 @@ import {
 } from './cassette';
 import { createSanitizer, firstDifference, stableStringify, type Sanitizer } from './fingerprint';
 import { SDKError } from '../execution/errors';
+import type { HostedToolType } from '../tools/hosted';
+import type { HostedToolCall } from '../providers/llm';
 
 /** Whether a {@link recordReplay} provider records or replays. */
 export type RecordReplayMode = 'record' | 'replay' | 'auto';
@@ -118,6 +120,7 @@ function serializeChunk(chunk: StreamChunk): StoredChunk {
     ...(chunk.textDelta !== undefined ? { textDelta: chunk.textDelta } : {}),
     ...(chunk.reasoning ? { reasoning: chunk.reasoning } : {}),
     ...(chunk.toolCall ? { toolCall: chunk.toolCall } : {}),
+    ...(chunk.hostedToolCall ? { hostedToolCall: clone(chunk.hostedToolCall) } : {}),
     ...(chunk.toolResult ? { toolResult: chunk.toolResult } : {}),
     ...(chunk.finishReason !== undefined ? { finishReason: chunk.finishReason } : {}),
     ...(chunk.usage ? { usage: chunk.usage } : {}),
@@ -126,9 +129,11 @@ function serializeChunk(chunk: StreamChunk): StoredChunk {
 }
 
 function deserializeChunk(stored: StoredChunk): StreamChunk {
-  const { error, toolResult, ...rest } = stored;
+  const { error, toolResult, hostedToolCall, ...rest } = stored;
   return {
     ...rest,
+    // A stored hosted call always has `args` (JSON), which the schema types as optional.
+    ...(hostedToolCall ? { hostedToolCall: hostedToolCall as HostedToolCall } : {}),
     ...(toolResult ? { toolResult: { toolCallId: toolResult.toolCallId, result: toolResult.result } } : {}),
     ...(error ? { error: fromCassetteError(error) } : {}),
   };
@@ -179,6 +184,7 @@ function toGenerateResult(response: CassetteResponse): GenerateResult {
     finishReason: response.finishReason as GenerateResult['finishReason'],
     ...(response.usage ? { usage: clone(response.usage) } : {}),
     ...(response.toolCalls?.length ? { toolCalls: clone(response.toolCalls) } : {}),
+    ...(response.hostedToolCalls?.length ? { hostedToolCalls: clone(response.hostedToolCalls) as HostedToolCall[] } : {}),
   };
 }
 
@@ -230,6 +236,11 @@ class Recorder implements RecordReplayProvider {
     return this.provider.supportsStreaming(model);
   }
 
+  /** N1a: the recorded provider's answer. */
+  supportsHostedTool(type: HostedToolType | 'custom'): boolean {
+    return this.provider.supportsHostedTool?.(type) ?? false;
+  }
+
   getModels(): Promise<string[]> {
     return this.provider.getModels();
   }
@@ -269,6 +280,7 @@ class Recorder implements RecordReplayProvider {
       finishReason: result.finishReason,
       ...recordedUsage(result.usage),
       ...(result.toolCalls?.length ? { toolCalls: result.toolCalls } : {}),
+      ...(result.hostedToolCalls?.length ? { hostedToolCalls: clone(result.hostedToolCalls) } : {}),
     });
   }
 
@@ -333,6 +345,11 @@ class Player implements RecordReplayProvider {
   }
 
   supportsStreaming(): boolean {
+    return true;
+  }
+
+  /** N1a: a replay answers with whatever was recorded. */
+  supportsHostedTool(): boolean {
     return true;
   }
 

@@ -39,6 +39,8 @@ export interface AgentEventUsage {
   costUsd?: number;
   /** On `run.done`: model calls of the whole run. */
   modelCalls?: number;
+  /** N1a, on `run.done`: hosted tool calls the provider ran, per tool name; absent when none. Their fees are not in `costUsd`. */
+  hostedToolCalls?: Partial<Record<string, number>>;
 }
 
 /** A JSON-safe error: the `name` and `message` of the original error. */
@@ -118,6 +120,12 @@ export interface ToolStartEvent extends AgentEventBase<'tool.start'> {
   toolName: string;
   /** The arguments the model sent, parsed from JSON (`{}` when they are not valid JSON). */
   args: Record<string, unknown>;
+  /**
+   * N1a: `'provider'` for a hosted tool (`webSearch()`, ...) the provider ran
+   * inside the model call; absent for a tool the SDK ran. A provider-run call
+   * passed no permission rule, guardrail, approval or hook.
+   */
+  executedBy?: 'provider';
 }
 
 /** A tool call returned. Emitted in completion order. */
@@ -130,6 +138,8 @@ export interface ToolDoneEvent extends AgentEventBase<'tool.done'> {
   durationMs: number;
   /** LOU-X3: the hook whose `{ result }` outcome replaced (or stood in for) the tool's result. */
   replacedByHook?: string;
+  /** N1a: `'provider'` for a hosted tool's call (see `tool.start`); `result` is capped at 20,000 characters of JSON. */
+  executedBy?: 'provider';
 }
 
 /**
@@ -155,6 +165,8 @@ export interface ToolErrorEvent extends AgentEventBase<'tool.error'> {
   error: AgentEventError;
   /** Milliseconds since this call's `tool.start`. */
   durationMs: number;
+  /** N1a: `'provider'` for a hosted tool's call the provider reported as failed (see `tool.start`). */
+  executedBy?: 'provider';
 }
 
 /**

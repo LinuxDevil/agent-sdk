@@ -198,6 +198,7 @@ export function recordLlmResult(
       [SdkAttr.USAGE_ESTIMATED]: measured?.estimated ? true : undefined,
       [SdkAttr.COST_USD]: costUsd,
       [SdkAttr.USAGE_REASONING_TOKENS]: usage?.reasoningTokens,
+      [SdkAttr.HOSTED_TOOL_CALLS]: generated.hostedToolCalls?.length ? generated.hostedToolCalls.map((call) => call.name) : undefined,
       [LegacyAttr.FINISH_REASON]: generated.finishReason,
       [GenAiAttr.OUTPUT_MESSAGES]: captureContent
         ? JSON.stringify([{ role: 'assistant', parts }])

@@ -31,6 +31,7 @@ import { SubagentApprovalPause, subagentBudget, toolCallScopeOf, type ToolCallSc
 import { RUN_EVENTS, runEventsOf, type StreamingExecuteOptions } from './agentRun';
 import type { ToolRunContext } from './sandboxGuard';
 import { SDKError } from './errors';
+import type { HostedTool } from '../tools/hosted';
 
 /** Everything needed to run an agent as a child: its own configuration. */
 export interface SubagentSpec {
@@ -50,6 +51,8 @@ export interface SubagentSpec {
   reasoning?: ReasoningOption;
   /** LOU-V4.2: the sub-agent's own `output` schema (never the lead's); its validated object is the `task` result. */
   output?: StandardSchemaV1;
+  /** N1a: the sub-agent's own hosted tools (never the lead's). */
+  hostedTools?: readonly HostedTool[];
 }
 
 /** One child run requested by a parent tool call. */
@@ -186,6 +189,7 @@ function childOptions(
     guardrails: inheritGuardrails(runtime.guardrails, spec.guardrails),
     reasoning: spec.reasoning,
     output: spec.output,
+    hostedTools: spec.hostedTools,
   };
 }
 

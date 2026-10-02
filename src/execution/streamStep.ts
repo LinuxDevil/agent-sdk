@@ -4,7 +4,7 @@
  * the same GenerateResult the rest of the AgentExecutor loop works with.
  */
 
-import type { GenerateOptions, GenerateResult, LLMProvider, ReasoningBlock, StreamChunk, StreamResult, ToolCall } from '../providers';
+import type { GenerateOptions, GenerateResult, HostedToolCall, LLMProvider, ReasoningBlock, StreamChunk, StreamResult, ToolCall } from '../providers';
 import type { AgentEventPayload } from './agentEvents';
 
 const FINISH_REASONS: ReadonlySet<string> = new Set<GenerateResult['finishReason']>([
@@ -41,11 +41,17 @@ export interface StepSink {
   onReasoning(event: ReasoningEventPayload): void;
   /** Called before the first text delta or tool call is applied (LOU-V10). */
   onOutput?: () => void;
+  /** N1a: a provider-executed call started, and finished (with its result), as the chunks arrive. */
+  onHostedToolCall?(call: HostedToolCall): void;
+  onHostedToolResult?(call: HostedToolCall): void;
 }
 
 interface StreamedParts {
   text: string;
   toolCalls: ToolCall[];
+  /** N1a: provider-executed calls by id, in call order, and the ids already reported finished. */
+  hosted: Map<string, HostedToolCall>;
+  hostedDone: Set<string>;
   finish?: StreamChunk;
   /** LOU-V13: finished reasoning blocks, the open block's text, and the text of the reasoning reported since `reasoning.start`. */
   reasoning: ReasoningBlock[];
@@ -86,6 +92,21 @@ const CHUNK_HANDLERS: Partial<Record<StreamChunk['type'], ChunkHandler>> = {
     closeReasoning(parts, sink);
     sink.onOutput?.();
     parts.toolCalls.push(toolCall);
+  },
+  'hosted-tool-call': (parts, { hostedToolCall }, sink) => {
+    if (!hostedToolCall) return;
+    closeReasoning(parts, sink);
+    sink.onOutput?.();
+    parts.hosted.set(hostedToolCall.id, hostedToolCall);
+    sink.onHostedToolCall?.(hostedToolCall);
+  },
+  'hosted-tool-result': (parts, { hostedToolCall }, sink) => {
+    if (!hostedToolCall) return;
+    closeReasoning(parts, sink);
+    sink.onOutput?.();
+    parts.hosted.set(hostedToolCall.id, hostedToolCall);
+    parts.hostedDone.add(hostedToolCall.id);
+    sink.onHostedToolResult?.(hostedToolCall);
   },
   finish: (parts, chunk, sink) => {
     closeReasoning(parts, sink, chunk.usage?.reasoningTokens);
@@ -128,13 +149,16 @@ function silenceFinalValues(streamed: StreamResult): void {
 export async function generateViaStream(provider: LLMProvider, request: GenerateOptions, sink: StepSink): Promise<GenerateResult> {
   const streamed = await provider.stream(request);
   silenceFinalValues(streamed);
-  const parts: StreamedParts = { text: '', toolCalls: [], reasoning: [], block: '', thought: '' };
+  const parts: StreamedParts = { text: '', toolCalls: [], hosted: new Map(), hostedDone: new Set(), reasoning: [], block: '', thought: '' };
   for await (const chunk of streamed.fullStream) {
     request.signal?.throwIfAborted();
     CHUNK_HANDLERS[chunk.type]?.(parts, chunk, sink);
   }
   request.signal?.throwIfAborted();
   closeReasoning(parts, sink);
+  // N1a: a call whose result never came (the provider reported none) still ends with `tool.done`.
+  for (const call of parts.hosted.values()) if (!parts.hostedDone.has(call.id)) sink.onHostedToolResult?.(call);
+  const hostedToolCalls = [...parts.hosted.values()];
 
   const toolCalls = parts.toolCalls.length > 0 ? parts.toolCalls : ((await streamed.toolCalls) ?? []);
   return {
@@ -142,6 +166,7 @@ export async function generateViaStream(provider: LLMProvider, request: Generate
     finishReason: toFinishReason(parts.finish?.finishReason ?? (await streamed.finishReason)),
     usage: parts.finish?.usage ?? (await streamed.usage),
     ...(toolCalls.length > 0 ? { toolCalls } : {}),
+    ...(hostedToolCalls.length > 0 && { hostedToolCalls }),
     ...(parts.reasoning.length > 0 && { reasoning: parts.reasoning }),
   };
 }
