@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "sdkVersion": "1.0.0-alpha.8",
+  "recordedAt": "2026-10-02T20:49:52.339Z",
+  "provider": {
+    "name": "openrouter",
+    "defaultModel": "openai/gpt-3.5-turbo"
+  },
+  "entries": [
+    {
+      "kind": "generate",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are a helpful assistant."
+          },
+          {
+            "role": "user",
+            "content": "Reply with the code word in the document only.",
+            "attachments": [
+              "file application/pdf code.pdf fnv1a:188916f3"
+            ]
+          }
+        ],
+        "tools": [],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "LOUSHO-PDF-7",
+        "finishReason": "stop",
+        "usage": {
+          "promptTokens": 46,
+          "completionTokens": 7,
+          "totalTokens": 53
+        }
+      }
+    },
+    {
+      "kind": "generate",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are a helpful assistant."
+          },
+          {
+            "role": "user",
+            "content": "Reply with the colour only.",
+            "attachments": [
+              "image image/png fnv1a:8ca18284"
+            ]
+          }
+        ],
+        "tools": [],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "Red",
+        "finishReason": "stop",
+        "usage": {
+          "promptTokens": 8523,
+          "completionTokens": 1,
+          "totalTokens": 8524
+        }
+      }
+    }
+  ]
+}
