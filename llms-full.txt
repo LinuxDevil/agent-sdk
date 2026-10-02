@@ -885,17 +885,17 @@ How the pieces fit:
 | Export                        | Description                                                                 |
 | ----------------------------- | --------------------------------------------------------------------------- |
 | `createAgent(config)`         | Zero-config `{ send(message) }` agent from a `model` string or provider (+ instructions, tools). |
-| `AgentBuilder`                | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). |
-| `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. |
+| `AgentBuilder`                | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). Advanced: see [the executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md). |
+| `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. Advanced: see [the executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md). |
 | `AgentType`                   | Deprecated, no runtime effect: agents need no type.                        |
-| `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
+| `resumeAfterApproval()`       | Resume an execution paused for human approval. Advanced: see [the executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md). |
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
 | `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md), [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). |
 | `SqliteStore` (from `/sqlite`) | Sessions, checkpoints and approvals in one SQLite file (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
 | `AgentStore`, `memoryStore()` | The `createAgent({ store })` option: `{ sessions?, checkpoints?, approvals? }`, and an in-memory one (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
 | `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). |
 | `SDKError`, `ERROR_CODES`    | Base class of the SDK's errors: a stable `code`, a `hint` and a `docs` link (see [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md)). |
-| `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
+| `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation. Superseded by `subagents`. |
 
 ### Dynamic config
 
@@ -1379,9 +1379,9 @@ The built-in context windows and prices are a dated snapshot (see the retrieval 
 Every `ExecutionResult` (and `agent.send()` result) carries `usage`, the running total of the whole run:
 
 ```ts
-import { AgentExecutor, formatUsage } from '@lousho/build-ai-agent';
+import { createAgent, formatUsage } from '@lousho/build-ai-agent';
 
-const result = await AgentExecutor.execute({ agent, input: 'Compare 3 cities', provider });
+const result = await createAgent({ provider, instructions: 'You compare cities.' }).send('Compare 3 cities');
 
 result.usage.inputTokens; // all model calls of the run, delegated children included
 result.usage.costUsd; // number, or undefined if any model used has no known price
@@ -6346,7 +6346,10 @@ process tree). Write your own as `{ name, check(action) }` returning
 
 A tool opts in with `requiresSandbox: true` and a `sandboxExecute(args, sandbox)`
 function. The executor then calls `sandboxExecute` with the run's
-`SandboxAdapter` instead of calling `execute`:
+`SandboxAdapter` instead of calling `execute`. `createAgent()` does not take
+`sandbox` yet, so this goes through the executor.
+
+#### Advanced: the executor API
 
 ```ts
 import { AgentExecutor, SubprocessSandbox } from '@lousho/build-ai-agent';
@@ -7347,6 +7350,10 @@ mapping.
 
 ## Quick start
 
+`createAgent()` does not take `exporter` yet, so tracing goes through the executor.
+
+#### Advanced: the executor API
+
 ```ts
 import { AgentExecutor, type TraceExporter } from '@lousho/build-ai-agent';
 
@@ -7490,7 +7497,9 @@ The cost is an estimate from the price table (see `registerModel`), not a bill.
 
 Prompts, model output and tool arguments/results are sensitive and large, so
 the `gen_ai.*` content attributes are **never recorded by default**. Opt in
-per run:
+per run. `createAgent()` does not take `captureContent` yet, so this goes through the executor too.
+
+#### Advanced: the executor API
 
 ```ts
 import { AgentExecutor, type TraceExporter } from '@lousho/build-ai-agent';
@@ -7643,33 +7652,41 @@ bytes as a `Uint8Array`) and `{ type: 'file', data, mimeType, filename? }`.
 `agent.send()`, `agent.stream()`, `session.send()` / `stream()`, `t.send()` in
 evals and the React hook's `send()` all take an `AgentInput`: a string, a list
 of parts (sent as one user message) or a `Message[]` (passed through as it is).
-`AgentExecutor.execute()` takes the same messages as its `input`:
+Parts sent through `createAgent()`:
 
 ```ts
 import { readFileSync } from 'node:fs';
-import { AgentBuilder, AgentExecutor, createAgent, resolveProvider, textOf, type Message } from '@lousho/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
-const agent = AgentBuilder.create().setName('vision').setPrompt('Describe images briefly.').build();
-const input: Message[] = [
+const agent = createAgent({ instructions: 'Describe images briefly.', model: 'openai/gpt-4o-mini' });
+
+// Parts become one user message.
+const answer = await agent.send([
+  { type: 'text', text: 'What is in these pictures?' },
+  { type: 'image', image: 'https://example.com/cat.png' },
+  { type: 'image', image: new Uint8Array(readFileSync('dog.png')), mimeType: 'image/png' },
+]);
+console.log(answer.text);
+```
+
+A `Message[]` is passed through as it is; `textOf()` returns the text parts of a message:
+
+```ts
+import { createAgent, textOf, type Message } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ instructions: 'Describe images briefly.', model: 'openai/gpt-4o-mini' });
+const messages: Message[] = [
   {
     role: 'user',
     content: [
-      { type: 'text', text: 'What is in these pictures?' },
+      { type: 'text', text: 'What is in this picture?' },
       { type: 'image', image: 'https://example.com/cat.png' },
-      { type: 'image', image: new Uint8Array(readFileSync('dog.png')), mimeType: 'image/png' },
     ],
   },
 ];
 
-const result = await AgentExecutor.execute({ agent, input, provider: resolveProvider('openai/gpt-4o-mini') });
-console.log(textOf(input[0]), '->', result.text); // textOf(): the text parts of a message
-
-// The same through the public API: parts become one user message.
-const answer = await createAgent({ prompt: 'Describe images briefly.', model: 'openai/gpt-4o-mini' }).send([
-  { type: 'text', text: 'What is in this picture?' },
-  { type: 'image', image: 'https://example.com/cat.png' },
-]);
-console.log(answer.text);
+const result = await agent.send(messages);
+console.log(textOf(messages[0]), '->', result.text);
 ```
 
 - **Images** go to the model on `user` messages with every built-in provider
@@ -7700,6 +7717,28 @@ console.log(answer.text);
   image or file, or its URL) and `mockModel()`. `FileSessionStore` saves bytes
   as base64 (`{ "$bytes": "..." }`) and loads them back as `Uint8Array`s;
   `SqliteStore` (sessions and checkpoints) does the same.
+
+#### Advanced: the executor API
+
+`AgentExecutor.execute()` takes the same messages as its `input` (see [the executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md)):
+
+```ts
+import { AgentBuilder, AgentExecutor, resolveProvider, type Message } from '@lousho/build-ai-agent';
+
+const agent = AgentBuilder.create().setName('vision').setPrompt('Describe images briefly.').build();
+const input: Message[] = [
+  {
+    role: 'user',
+    content: [
+      { type: 'text', text: 'What is in this picture?' },
+      { type: 'image', image: 'https://example.com/cat.png' },
+    ],
+  },
+];
+
+const result = await AgentExecutor.execute({ agent, input, provider: resolveProvider('openai/gpt-4o-mini') });
+console.log(result.text);
+```
 
 ## Provider classes
 
@@ -9461,7 +9500,7 @@ and the final `run.done` event carries `object` (JSON-encoded) when the
 reply was valid. The repair step shows up as one more
 `step.start` / `step.done` pair. See [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md).
 
-## Without createAgent()
+## Advanced: the executor API
 
 `AgentExecutor.execute()` and `AgentExecutor.stream()` take the same
 `output` option. There `result.object` is `unknown`; parse it again with your
@@ -10130,15 +10169,21 @@ runs it and calls the model again; turn 2 produces the final answer. Tool-call
 ids are generated deterministically (`call_1`, `call_2`, ...) unless you pass
 `id`.
 
-```ts no-verify
+```ts no-run
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
 import { mockModel } from '@lousho/build-ai-agent/testing';
 
 describe('weather agent', () => {
   it('calls get_weather and reports the result', async () => {
     const execute = vi.fn(async ({ city }: { city: string }) => ({ city, tempC: 21 }));
+    const getWeather = defineTool({
+      name: 'get_weather',
+      description: 'Get the weather for a city',
+      input: z.object({ city: z.string() }),
+      execute,
+    });
     const model = mockModel([
       { toolCalls: [{ name: 'get_weather', args: { city: 'Paris' } }] }, // turn 1
       { text: 'It is 21°C in Paris.' },                                  // turn 2
@@ -10146,16 +10191,7 @@ describe('weather agent', () => {
     const agent = createAgent({
       prompt: 'You report the weather.',
       provider: model,
-      tools: {
-        get_weather: {
-          displayName: 'Get weather',
-          tool: {
-            description: 'Get the weather for a city',
-            parameters: z.object({ city: z.string() }),
-            execute,
-          },
-        },
-      },
+      tools: [getWeather],
     });
 
     const result = await agent.send('Weather in Paris?');
@@ -10558,10 +10594,11 @@ the tool exists and released with it by garbage collection (there is no close
 method). Neither `http_request` nor `web_fetch` exists in the Cloudflare
 Worker build; see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#cloudflare-worker).
 
-## `ToolRegistry`
+## Advanced: `ToolRegistry`
 
-`createAgent()` builds a registry for you. With `AgentBuilder` +
-`AgentExecutor.execute()`, or to share tools between agents, fill one yourself:
+`createAgent()` builds a registry for you; fill one yourself only with
+`AgentExecutor.execute()` (see [the executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md)) or to
+share tools between agents:
 `register(tool)` for a `defineTool()` result, `register(name, descriptor)` for a
 raw `ToolDescriptor` (a built-in tool, an MCP tool, or an existing `tool()` from
 the `ai` SDK), and `registerMany()` for a record of descriptors or an array of defined tools.

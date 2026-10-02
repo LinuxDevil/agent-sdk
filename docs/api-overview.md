@@ -42,17 +42,17 @@ How the pieces fit:
 | Export                        | Description                                                                 |
 | ----------------------------- | --------------------------------------------------------------------------- |
 | `createAgent(config)`         | Zero-config `{ send(message) }` agent from a `model` string or provider (+ instructions, tools). |
-| `AgentBuilder`                | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). |
-| `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. |
+| `AgentBuilder`                | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). Advanced: see [the executor API](./executor-api.md). |
+| `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. Advanced: see [the executor API](./executor-api.md). |
 | `AgentType`                   | Deprecated, no runtime effect: agents need no type.                        |
-| `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
+| `resumeAfterApproval()`       | Resume an execution paused for human approval. Advanced: see [the executor API](./executor-api.md). |
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
 | `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](./approvals.md), [Durable execution](./durable-execution.md)). |
 | `SqliteStore` (from `/sqlite`) | Sessions, checkpoints and approvals in one SQLite file (see [Sessions](./sessions.md#choosing-a-store)). |
 | `AgentStore`, `memoryStore()` | The `createAgent({ store })` option: `{ sessions?, checkpoints?, approvals? }`, and an in-memory one (see [Sessions](./sessions.md#choosing-a-store)). |
 | `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](./durable-execution.md)). |
 | `SDKError`, `ERROR_CODES`    | Base class of the SDK's errors: a stable `code`, a `hint` and a `docs` link (see [Errors](./errors.md)). |
-| `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
+| `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation. Superseded by `subagents`. |
 
 ### Dynamic config
 
@@ -536,9 +536,9 @@ The built-in context windows and prices are a dated snapshot (see the retrieval 
 Every `ExecutionResult` (and `agent.send()` result) carries `usage`, the running total of the whole run:
 
 ```ts
-import { AgentExecutor, formatUsage } from '@lousho/build-ai-agent';
+import { createAgent, formatUsage } from '@lousho/build-ai-agent';
 
-const result = await AgentExecutor.execute({ agent, input: 'Compare 3 cities', provider });
+const result = await createAgent({ provider, instructions: 'You compare cities.' }).send('Compare 3 cities');
 
 result.usage.inputTokens; // all model calls of the run, delegated children included
 result.usage.costUsd; // number, or undefined if any model used has no known price
