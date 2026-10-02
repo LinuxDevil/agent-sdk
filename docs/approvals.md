@@ -174,7 +174,7 @@ denies, whatever rule matched. An `allow` rule replaces the tool's ask (so it
 skips `'ask'`, `true` and `once()`), and an `ask` rule pauses even when the
 tool would approve. With no matching rule, the tool's `needsApproval` outcome
 applies. A `preToolCall` hook runs before all of these and can deny the call
-first (see [Hook outcomes](./api-overview.md#hook-outcomes)). MCP
+first (see [Hook outcomes](./hooks.md#hook-outcomes)). MCP
 tools keep their annotation-derived `needsApproval` (a boolean). Sub-agents
 evaluate their tools' `needsApproval` the same way, and a `once()` approval
 given through the lead agent is remembered for the rest of that sub-agent's

@@ -369,6 +369,8 @@ inherits:
 
 ### Hooks inside sub-agents
 
+See [Hooks](./hooks.md) for the hook points and outcomes.
+
 A parent's hooks apply to its sub-agents by default. `ctx.subagent` tells a
 hook it is running inside one - the sub-agent's `name`, its `depth` (1 for a
 sub-agent of the top-level run), the lead's `toolCallId` that started it, and
