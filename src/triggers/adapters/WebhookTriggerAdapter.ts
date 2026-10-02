@@ -26,6 +26,11 @@ import type { WebhookAuth } from '../webhookAuth';
 import { toChannelRequest } from '../../channels/defineChannel';
 import { webhookChannel, type WebhookChannel } from '../../channels/webhookChannel';
 
+/**
+ * Options for {@link WebhookTriggerAdapter}.
+ *
+ * @deprecated Use webhookChannel() with mountChannels(); see docs/channels.md. Will be removed in a future major version.
+ */
 export interface WebhookTriggerAdapterOptions {
   /** Port to listen on. Defaults to 0 (OS-assigned ephemeral port - inspect `handle.port` after `listen()`). */
   port?: number;
@@ -50,6 +55,11 @@ export interface WebhookTriggerAdapterOptions {
   logger?: Logger;
 }
 
+/**
+ * The handle {@link WebhookTriggerAdapter} returns from `listen()`.
+ *
+ * @deprecated Use webhookChannel() with mountChannels(); see docs/channels.md. Will be removed in a future major version.
+ */
 export interface WebhookTriggerHandle extends TriggerHandle {
   /** The actual port the server bound to (useful when `options.port` was 0/omitted). */
   readonly port: number;
@@ -117,6 +127,11 @@ function isLoopbackHost(host: string): boolean {
   return host === 'localhost' || host === '::1' || host === '[::1]' || /^127\./.test(host);
 }
 
+/**
+ * Runs an agent on each HTTP request to its own server and answers with the result.
+ *
+ * @deprecated Use webhookChannel() with mountChannels(); see docs/channels.md. Will be removed in a future major version.
+ */
 export class WebhookTriggerAdapter implements TriggerAdapter<http.ServerResponse> {
   public readonly type = 'webhook';
 
