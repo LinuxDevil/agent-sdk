@@ -314,6 +314,9 @@ Token estimates, the model price table, and the usage and cost of a run: see [Mo
 - `WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter` and `TriggerRegistry`
   (`@lousho/build-ai-agent/triggers`) - wake an agent from a webhook, a Slack
   message or a schedule; see [Triggers](./triggers.md).
+- `jwt()`, `oidc()`, `basic()`, `apiToken()`, `anonymous()` and `routeAuth()`
+  (`@lousho/build-ai-agent/auth`) - route auth as an ordered list; the caller
+  it accepts reaches the run as `principal`; see [Route auth and principals](./auth.md).
 - `defineEval()`, scorers such as `exactMatch`, `toolCallOrder` and `budget`, checks such
   as `includes` and `atLeast`, and `llmJudge()` - agent evals run under vitest
   or `lousho eval`; see [Evals](evals.md).

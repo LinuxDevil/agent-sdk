@@ -6,7 +6,9 @@ import { z } from 'zod';
 import { createAgent, type SimpleAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import { mockModel, type MockTurn } from '../testing';
-import { serveFetch } from '../server/fetchRoutes';
+import { serveFetch, type ServeAuth } from '../server/fetchRoutes';
+import { apiToken, basic, jwt, type Principal } from '../auth';
+import type { RunConfigContext } from '../createAgent';
 import type { Message } from '../providers';
 import type { AgentEventUsage } from '../execution/agentEvents';
 import { memoryStore } from '../storage/agentStore';
@@ -17,7 +19,7 @@ const TOKEN = 'secret-token-123';
 type Fetch = typeof fetch;
 
 /** An in-process deployed agent: the real `/chat` routes (with bearer auth) in front of `agent`. */
-function deployed(agent: SimpleAgent, token = TOKEN): { fetch: Fetch; requests: Request[] } {
+function deployed(agent: SimpleAgent, token: ServeAuth = TOKEN): { fetch: Fetch; requests: Request[] } {
   const requests: Request[] = [];
   const handler: Fetch = async (input, init) => {
     const request = new Request(input as string, init);
@@ -162,7 +164,7 @@ describe('remoteAgent (LOU-Y7)', () => {
 
 describe('remote sub-agent approvals through the lead run (LOU-Y7.3)', () => {
   /** A deployed agent with a `deploy` tool that needs approval; `turns` are its model's. */
-  function approvingRemote(turns: MockTurn[]) {
+  function approvingRemote(turns: MockTurn[], auth: ServeAuth = TOKEN) {
     const runs: string[] = [];
     const deploy = defineTool({
       name: 'deploy',
@@ -172,7 +174,7 @@ describe('remote sub-agent approvals through the lead run (LOU-Y7.3)', () => {
       execute: ({ env }) => (runs.push(env), `deployed to ${env}`),
     });
     const model = mockModel(turns);
-    const server = deployed(createAgent({ provider: model, instructions: 'remote', tools: [deploy] }));
+    const server = deployed(createAgent({ provider: model, instructions: 'remote', tools: [deploy] }), auth);
     return { model, runs, server };
   }
   const deployCall = (env = 'prod'): MockTurn => ({ toolCalls: [{ name: 'deploy', args: { env } }] });
@@ -197,6 +199,21 @@ describe('remote sub-agent approvals through the lead run (LOU-Y7.3)', () => {
     expect(approval.url).toMatch(new RegExp(`/chat/task_[\\w-]+/approvals/${paused.approvalId}$`));
     expect(approval.headers.get('authorization')).toBe(`Bearer ${TOKEN}`);
     expect(await approval.json()).toEqual({ approved: true });
+  });
+
+  it('works against a server whose auth is a list (N10a): the bearer token is its apiToken() entry, approvals included', async () => {
+    const authList = [basic({ users: { ops: 'pw' } }), jwt({ secret: 'a-jwt-secret-that-is-at-least-32-bytes', audience: 'agent' }), apiToken(TOKEN)];
+    const { server, runs } = approvingRemote([deployCall(), 'Deployed to prod.'], authList);
+    const { agent } = lead(remoteAgent({ url: 'https://remote.test', auth: TOKEN, fetch: server.fetch }));
+
+    const paused = await agent.send('go');
+    expect(paused.finishReason).toBe('awaiting-approval');
+    const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+    expect(runs).toEqual(['prod']);
+    expect(taskResult(result.messages)).toMatch(/^Deployed to prod\./);
+
+    const { agent: refused } = lead(remoteAgent({ url: 'https://remote.test', auth: 'wrong-token', fetch: server.fetch }));
+    expect(errorMessage((await refused.send('go')).messages)).toContain('401');
   });
 
   it('rejecting on the lead rejects the remote call', async () => {
@@ -343,6 +360,21 @@ describe('remote sub-agent approvals through the lead run (LOU-Y7.3)', () => {
 });
 
 describe("remote sub-agent usage in the lead's totals (M10b)", () => {
+  it("adds the remote run's tokens behind an auth list too, and the remote run sees the api-token principal (N10a)", async () => {
+    const seen: Array<Principal | undefined> = [];
+    const remoteAgentServer = createAgent({
+      provider: mockModel([{ text: 'The answer is 42.', ...used(100, 50) }]),
+      instructions: ({ principal }: RunConfigContext) => (seen.push(principal), 'remote'),
+    });
+    const server = deployed(remoteAgentServer, [basic({ users: { ops: 'pw' } }), apiToken(TOKEN, { id: 'lead' })]);
+    const { agent } = lead(remoteAgent({ url: 'https://remote.test', auth: TOKEN, fetch: server.fetch }), leadTurns());
+
+    const { usage } = await agent.send('go');
+
+    expect(usage.byModel['remote:remote']).toEqual({ inputTokens: 100, outputTokens: 50, calls: 1, costUsd: undefined });
+    expect(seen).toEqual([{ id: 'lead', type: 'service', authenticator: 'api-token' }]);
+  });
+
   /** The lead delegates once; its own two model calls spend 10/1 and 20/2 tokens. */
   const leadTurns = (): MockTurn[] => [{ ...delegate(), usage: { inputTokens: 10, outputTokens: 1 } }, { text: 'done', usage: { inputTokens: 20, outputTokens: 2 } }];
   const used = (inputTokens: number, outputTokens: number) => ({ usage: { inputTokens, outputTokens } });

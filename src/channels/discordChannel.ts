@@ -182,7 +182,8 @@ export function discordChannel(options: DiscordChannelOptions): Channel<DiscordI
     const target: DiscordTarget = { token: interaction.token, edited: false };
     // the next /ask in the channel answers a pending ask_question, also one asked before a restart
     const question = questions.get(key) ?? (await ctx.pendingQuestion(key));
-    const inbound = { sessionKey: key, input, replyTo: target, event: interaction, metadata: { user: interaction.member?.user?.id ?? interaction.user?.id } };
+    const user = interaction.member?.user?.id ?? interaction.user?.id;
+    const inbound = { sessionKey: key, input, replyTo: target, event: interaction, metadata: { user }, ...(user && { principal: { id: user, type: 'user' as const, authenticator: 'discord' } }) };
     if (!question) return inbound;
     questions.delete(key);
     return { decision: { id: question, answer: input }, inbound }; // the answer's own "thinking" message is the one to edit
