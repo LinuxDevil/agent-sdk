@@ -286,8 +286,9 @@ notes. Known gaps:
   ([Workspace tools](docs/workspace-tools.md)).
 - The built-in providers do not send file (non-image) parts; a file part is
   replaced by a text note ([Providers](docs/providers.md)).
-- The Cloudflare Worker target takes spec files only, with a limited provider
-  and tool set ([Deployment](docs/deployment.md)).
+- The Cloudflare Worker target has a limited provider and tool set, and builds
+  agent directories without sub-agents, schedules, channels or memory slots
+  ([Cloudflare Workers](docs/cloudflare-workers.md)).
 
 ## Contributing
 

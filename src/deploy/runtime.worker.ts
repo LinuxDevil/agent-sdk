@@ -47,6 +47,9 @@
  *    `createAgent()` agent, whose node-only imports (project instructions,
  *    file session store, MCP stdio) the adapter's build swaps for shims, see
  *    ./shims/node.worker.ts.
+ *  - M3b: an agent directory is served by handleWorkerAgentDirRequest() from
+ *    the WorkerAgentDir the build generated (./workerAgentDir.ts): its tools
+ *    and an agent.ts config are bundled modules, the rest is embedded data.
  */
 import '../providers/mock';
 import { OpenAIProvider, OpenAIProviderConfig } from '../providers/OpenAIProvider';
@@ -73,8 +76,10 @@ import { KVBinding } from './kvCheckpointStore';
 import { KVStore } from './kvStore';
 import { prepareSpecExecution, PreparedExecution, SpecResolvers } from './specExecution';
 import { SDKError } from '../execution/errors';
+import { resolveWorkerAgentDir, type ResolvedWorkerAgentDir, type WorkerAgentDir } from './workerAgentDir';
 
 export { agentSpecSchema } from '../spec/schema';
+export type { WorkerAgentDir } from './workerAgentDir';
 
 // Registered directly here (rather than via the '../providers' barrel,
 // which also eagerly imports OllamaProvider and its optional peer SDK) so the
@@ -169,6 +174,15 @@ function workerAgent(spec: AgentSpec, env: WorkerEnv): SimpleAgent {
   });
 }
 
+/** Serves one request with `makeAgent`'s agent: the routes and bearer auth of {@link handleWorkerRequest}. */
+function serveWorker(request: Request, env: WorkerEnv, makeAgent: () => SimpleAgent): Promise<Response> {
+  const token = env[API_TOKEN_BINDING];
+  // One agent per request: an approval route needs the agent that opened the session.
+  let agent: SimpleAgent | undefined;
+  const chat = { name: 'lousho worker', agent: () => (agent ??= makeAgent()), durableMessage: true };
+  return serveFetch(request, chat, typeof token === 'string' && token ? token : undefined);
+}
+
 /**
  * Serves one request of the Worker's API: `GET /health` (open), sessions, SSE
  * streaming and approvals under `/chat`, and the deprecated `POST /chat
@@ -176,11 +190,52 @@ function workerAgent(spec: AgentSpec, env: WorkerEnv): SimpleAgent {
  * `/health` needs `Authorization: Bearer <token>`.
  */
 export function handleWorkerRequest(request: Request, env: WorkerEnv, spec: AgentSpec): Promise<Response> {
-  const token = env[API_TOKEN_BINDING];
-  // One agent per request: an approval route needs the agent that opened the session.
-  let agent: SimpleAgent | undefined;
-  const chat = { name: 'lousho worker', agent: () => (agent ??= workerAgent(spec, env)), durableMessage: true };
-  return serveFetch(request, chat, typeof token === 'string' && token ? token : undefined);
+  return serveWorker(request, env, () => workerAgent(spec, env));
+}
+
+const resolvedDirs = new WeakMap<WorkerAgentDir, ResolvedWorkerAgentDir>();
+
+/**
+ * Validates an agent directory bundled by `lousho build --target=cloudflare-worker`
+ * (M3b) and returns its `createAgent()` options; cached per directory. The
+ * generated worker.ts calls it at module load, so a bad config or tool file
+ * fails the Worker's startup instead of its first request.
+ */
+export function prepareWorkerAgentDir(dir: WorkerAgentDir): ResolvedWorkerAgentDir {
+  let resolved = resolvedDirs.get(dir);
+  if (!resolved) {
+    resolved = resolveWorkerAgentDir(dir);
+    resolvedDirs.set(dir, resolved);
+  }
+  return resolved;
+}
+
+/**
+ * The agent of a bundled agent directory over the Worker's store: its tools,
+ * skills and settings, and a `provider/model` config resolved with the API
+ * key binding of that provider (e.g. `OPENAI_API_KEY`).
+ */
+export function workerAgentFromDir(dir: WorkerAgentDir, env: WorkerEnv): SimpleAgent {
+  const { name, instructions, model, tools, skills, maxSteps, toolConcurrency } = prepareWorkerAgentDir(dir);
+  const source =
+    'provider' in model
+      ? model
+      : { provider: workerResolvers(env).resolveProvider(model.providerType, model.model) };
+  return createAgent({
+    name,
+    instructions,
+    ...source,
+    ...(tools.length > 0 ? { tools } : {}),
+    ...(skills.length > 0 ? { skills } : {}),
+    ...(maxSteps === undefined ? {} : { maxSteps }),
+    ...(toolConcurrency === undefined ? {} : { toolConcurrency }),
+    store: workerStore(env),
+  });
+}
+
+/** {@link handleWorkerRequest} for an agent directory (M3b): same routes and bearer auth, the directory's agent. */
+export function handleWorkerAgentDirRequest(request: Request, env: WorkerEnv, dir: WorkerAgentDir): Promise<Response> {
+  return serveWorker(request, env, () => workerAgentFromDir(dir, env));
 }
 
 export { handleScheduled } from '../schedules/scheduled';

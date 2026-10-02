@@ -1,0 +1,5 @@
+{
+  "model": "mock/test",
+  "description": "Echoes text back from a Cloudflare Worker",
+  "maxSteps": 4
+}
