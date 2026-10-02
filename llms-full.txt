@@ -2987,7 +2987,7 @@ Run it with `npx lousho <command>` inside a project that has the SDK installed.
 | `lousho dev <path>` | Local dev server for a spec file, an agent directory or a TS agent: chat UI with a session per tab and streamed events, hot reload on save. | [Below](#lousho-dev) |
 | `lousho chat <path>` | Terminal REPL for a spec file, an agent directory or a TS agent: streams replies, shows tool calls, asks for approvals and questions. | [Below](#lousho-chat) |
 | `lousho acp <path>` | Serve a spec file, an agent directory or a TS agent to an editor (Zed and other ACP clients) over the Agent Client Protocol on stdio. | [ACP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/acp.md) |
-| `lousho add <name>` | Install a tool, skill, channel, schedule or memory slot from a JSON registry into an agent directory, after showing its permission manifest. | [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md) |
+| `lousho add <name>` | Install a tool, skill, channel, schedule or memory slot from a JSON registry into an agent directory, after showing its permission manifest and checking the code against it. | [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md) |
 | `lousho mcp <spec>` | Serve the agent as an MCP server (stdio, or HTTP with `--http`). | [MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#serve-an-agent-over-mcp) |
 | `lousho eval [globs...]` | Run `*.eval.ts` files under vitest; print a summary and write JUnit/JSON reports. | [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md#lousho-eval) |
 | `lousho traces [id]` | List the recent runs saved by `fileTraceExporter()` (duration, model and tool calls, tokens, cost), or print one run as a span tree. | [Observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md#local-traces) |
@@ -3004,7 +3004,7 @@ lousho init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git
 lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--no-schedules]
 lousho chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>]
 lousho acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]
-lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--overwrite] [--dry-run]    (or --list)
+lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--allow <list>] [--overwrite] [--dry-run]    (or --list)
 lousho build <agent-dir|spec> --target=<name> [--out=<dir>]    (or --agent=<path>)
 lousho studio [--port N] [--host H] [--prod|--dev]
 lousho mcp <agent.yaml|json> [--http --port N --host H]
@@ -5231,6 +5231,22 @@ See [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.m
 **Fix:** pass `--overwrite`, or move your file away first.
 
 **Example:** `lousho add web-search` twice.
+
+### LOUSHO_REGISTRY_MANIFEST_MISMATCH
+
+**Means:** an item's code reaches for something its permission manifest does not
+declare: it imports `child_process` without `exec: true`, writes files without
+`filesystem: "write"`, calls `fetch()` or names a URL host that is not in `network`,
+reads an environment variable that is not in `env`, or uses `eval`, `new Function`,
+a computed `process.env[...]` or a dynamic `import()` / `require()`, which are never
+allowed. The message lists every finding as `<file>:<line>: <what> (<fix>)`. Nothing
+was written. `--dry-run` reports it too.
+
+**Fix:** do not install the item; tell whoever hosts the registry. Its author fixes
+the code or declares the permission. See [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md#permission-manifest).
+
+**Example:** a tool item whose file imports `node:child_process` while its manifest
+leaves `exec` out.
 
 ## Sandbox
 
@@ -8355,13 +8371,15 @@ LOUSHO_REGISTRY=./registry/index.json lousho add web-search --dry-run
 | ---- | ------- |
 | `--registry <url-or-path>` | The index: an `http(s)` URL or a local path (`LOUSHO_REGISTRY` when absent). |
 | `--dir <agent-dir>` | The agent directory to write into (default: the current directory; it must exist). |
-| `--yes`, `-y` | Do not ask for confirmation. Required when stdin is not a terminal. |
+| `--yes`, `-y` | Do not ask for confirmation. Required when stdin is not a terminal. Does not grant elevated permissions on its own (see `--allow`). |
+| `--allow <list>` | With `--yes`, the elevated permissions you grant, comma-separated: `exec`, `fs-write`, `network`, `env`. An item that asks for one you did not name is refused. |
 | `--overwrite` | Replace files that already exist (without it an existing file is `LOUSHO_REGISTRY_FILE_EXISTS`). |
 | `--dry-run` | Print the manifest and the files, write nothing, exit 0. |
 | `--list` | Print the registry's items and exit. |
 
 Before it writes anything, `lousho add` prints the permission manifest and the
-files it will write, then asks `[y/N]`.
+files it will write, checks the item's code against the manifest, then asks
+`[y/N]`. After writing, it records the item in `lousho-registry.json`.
 
 ## Format
 
@@ -8379,7 +8397,7 @@ Each item document is:
   "files": [
     {
       "path": "tools/web-search.ts",
-      "content": "import { defineTool } from '@lousho/build-ai-agent';\nimport { z } from 'zod';\n\nexport default defineTool({\n  name: 'web-search',\n  description: 'Search the web',\n  inputSchema: z.object({ query: z.string() }),\n  needsApproval: true,\n  execute: async ({ query }) => {\n    const response = await fetch(`https://api.example.com/search?q=${encodeURIComponent(query)}`, {\n      headers: { authorization: `Bearer ${process.env.SEARCH_KEY}` },\n    });\n    return response.json();\n  },\n});\n"
+      "content": "import { defineTool } from '@lousho/build-ai-agent';\nimport { z } from 'zod';\n\nexport default defineTool({\n  name: 'web-search',\n  description: 'Search the web',\n  input: z.object({ query: z.string() }),\n  needsApproval: true,\n  execute: async ({ query }) => {\n    const response = await fetch(`https://api.example.com/search?q=${encodeURIComponent(query)}`, {\n      headers: { authorization: `Bearer ${process.env.SEARCH_KEY}` },\n    });\n    return response.json();\n  },\n});\n"
     }
   ],
   "permissions": {
@@ -8421,9 +8439,50 @@ install it. All of it is optional; what is missing is shown as "none" / "no".
 | `exec` | `true` when it runs commands. |
 | `needsApproval` | `true` when its tools ask for [approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md) before they run. |
 
-The manifest is what the author says the code does. It is not enforced by the
-SDK and not a sandbox: read the files it lists (`--dry-run` shows them) the way
-you would read any dependency before running it.
+What `lousho add` enforces, before it writes anything:
+
+- **The code matches the manifest.** Every JavaScript and TypeScript file of the
+  item is scanned, with comments stripped, for what it visibly reaches for:
+  - `exec: true` for an import of `child_process` (with or without `node:`),
+    `execa` or `shelljs`, or a use of the SDK's `createShellTool` or `SubprocessSandbox`;
+  - `filesystem: "read"` (or `"write"`) for an import of `fs`, `fs/promises` or the
+    SDK's `createFsTools`, and `"write"` for a call to `writeFile`, `appendFile`,
+    `createWriteStream`, `mkdir`, `rm`, `rmdir`, `unlink`, `rename`, `copyFile` or
+    `cp` (and their `Sync` forms);
+  - a non-empty `network` for `fetch(` or an import of `http`, `https`, `net`,
+    `tls`, `undici`, `axios`, `node-fetch` or `ws`, and every `http(s)://host` in a
+    string must match a `network` entry (a host built at run time, such as
+    `` `https://${host}/` ``, needs a non-empty `network` and is printed as a note,
+    since it cannot be checked);
+  - every `process.env.NAME` and `process.env['NAME']` must be listed in `env`.
+
+  `eval(`, `new Function(`, a computed `process.env[name]`, `process.env` used as
+  a whole, and an `import()` or `require()` of anything but a string literal are
+  always refused. A mismatch is `LOUSHO_REGISTRY_MANIFEST_MISMATCH` with every
+  finding as `<file>:<line>: <what> (<fix>)`; `--dry-run` reports it too. Markdown
+  and other files that are not code (a skill's `SKILL.md`) are not scanned.
+  `network` entries must be host names or `*.` wildcards (`api.example.com`,
+  `*.example.com`) and `env` entries variable names (`SEARCH_KEY`); anything else
+  is `LOUSHO_REGISTRY_INVALID`.
+- **Consent covers the elevated permissions.** `exec: true`, `filesystem: "write"`,
+  a non-empty `network` and a non-empty `env` are marked `[elevated: ...]` in the
+  printed manifest. The interactive prompt lists them before `[y/N]`. With `--yes`
+  each one must be named in `--allow` (`--allow network,env` for the example
+  above), because `--yes` is how scripts and agents run `lousho add` and should not
+  grant command execution silently.
+- **A receipt of what was installed.** After writing, `lousho add` updates
+  `lousho-registry.json` at the root of the agent directory (next to
+  `instructions.md`; the agent loader ignores it). Each item's entry has its
+  `type`, the `registry` it came from, `installedAt`, the `permissions` and every
+  file's `path` and `sha256`, so you can tell later whether a file was edited.
+  `--overwrite` replaces the entry; `--dry-run` writes nothing. A receipt that is
+  not valid JSON stops the install before any file is written.
+
+What it does not do: the check reads the code as written. It is not a sandbox and
+nothing is enforced when the agent runs; code that hides what it does (string
+escapes, aliasing, encoded payloads, a dependency that does the work) can get past
+it. Read the files it lists (`--dry-run` shows them) the way you would read any
+dependency before running it.
 
 ## Safety rules
 

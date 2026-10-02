@@ -9,7 +9,7 @@ const USAGE = [
   '  lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H]',
   '  lousho chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>]',
   '  lousho acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]',
-  '  lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--overwrite] [--dry-run] | --list',
+  '  lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--allow <list>] [--overwrite] [--dry-run] | --list',
   '  lousho build --target=<name> --agent=<path> [--out=<dir>]',
   '  lousho studio [--port N] [--host H] [--prod|--dev]',
   '  lousho mcp <agent.yaml|json> [--http --port N --host H]',
