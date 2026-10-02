@@ -3,7 +3,7 @@
  * `LogEntry` rows the Logs tab renders (LOU-O1). Used by runRegistry.ts.
  */
 import { randomUUID } from 'node:crypto';
-import type { ExecutionEvent, FlowExecutionEvent } from '@loushy/build-ai-agent';
+import type { AgentEvent, AgentEventOf, AgentEventType, FlowExecutionEvent } from '@loushy/build-ai-agent';
 import type { LogEntry } from '../shared/wireTypes';
 
 /** The event-specific part of a `LogEntry`; id/agentId/timestamp are added by the translators. */
@@ -19,64 +19,63 @@ function toEntry(agentId: string, timestampSource: Date, body: LogBody): LogEntr
   return { id: randomUUID(), agentId, timestamp, ...body };
 }
 
-type ExecutionLogBuilders = {
-  [K in ExecutionEvent['type']]?: (event: ExecutionEvent, agentId: string) => LogBody;
+type AgentLogBuilders = {
+  [K in AgentEventType]?: (event: AgentEventOf<K>, agentId: string) => LogBody;
 };
 
-function toolResultLog(event: ExecutionEvent): LogBody {
-  const isError = !!event.toolResult?.error;
-  return {
-    level: isError ? 'error' : 'tool',
-    phase: 'tool',
-    toolName: event.toolResult?.toolName,
-    message: isError
-      ? `Tool '${event.toolResult?.toolName}' failed: ${event.toolResult?.error}`
-      : `Tool '${event.toolResult?.toolName}' result: ${truncate(JSON.stringify(event.toolResult?.result))}`,
-    detail: event.toolResult,
-  };
-}
-
-const EXECUTION_LOG_BUILDERS: ExecutionLogBuilders = {
-  start: (event, agentId) => ({
+const AGENT_LOG_BUILDERS: AgentLogBuilders = {
+  'run.start': (event, agentId) => ({
     level: 'info',
     phase: 'trigger',
-    message: `Run started for agent '${event.agentName ?? agentId}'`,
+    message: `Run started for agent '${event.agentName || agentId}'`,
   }),
-  'text-complete': (event) => ({
+  'text.done': (event) => ({
     level: 'info',
     phase: 'llm',
     message: event.text ? `LLM response: ${truncate(event.text)}` : 'LLM response received',
   }),
-  'tool-call': (event) => ({
+  'tool.start': (event) => ({
     level: 'tool',
     phase: 'tool',
-    toolName: event.toolCall?.function?.name,
-    message: `Tool call: ${event.toolCall?.function?.name ?? 'unknown'}`,
-    detail: event.toolCall,
+    toolName: event.toolName,
+    message: `Tool call: ${event.toolName}`,
+    detail: event,
   }),
-  'tool-result': toolResultLog,
-  finish: (event) => ({
+  'tool.done': (event) => ({
+    level: 'tool',
+    phase: 'tool',
+    toolName: event.toolName,
+    message: `Tool '${event.toolName}' result: ${truncate(JSON.stringify(event.result))}`,
+    detail: event,
+  }),
+  'tool.error': (event) => ({
+    level: 'error',
+    phase: 'tool',
+    toolName: event.toolName,
+    message: `Tool '${event.toolName}' failed: ${event.error.message}`,
+    detail: event,
+  }),
+  'run.done': (event) => ({
     level: 'info',
     phase: event.finishReason === 'awaiting-approval' ? 'approval' : 'trigger',
     message: `Run finished (${event.finishReason})`,
   }),
-  error: (event) => ({ level: 'error', phase: 'trigger', message: event.error?.message ?? 'Run failed' }),
+  error: (event) => ({ level: 'error', phase: 'trigger', message: event.error.message || 'Run failed' }),
 };
 
 /**
- * O1: translates one `ExecutionEvent` (the SDK's own execution-phase
- * taxonomy - start/text-delta/text-complete/tool-call/tool-result/finish/
- * error, see AgentExecutor.ts) into zero or more structured `LogEntry`
- * rows. This reuses that taxonomy rather than inventing a second, parallel
- * logging vocabulary - `LogPhase` is a coarser regrouping of the same
- * events (e.g. both 'start' and 'finish' map to phase 'trigger', since
- * those are this pipeline's entry/exit points) plus 'sandbox'/'checkpoint'/
- * 'approval'/'debug' phases used by emitters elsewhere in this file for
- * things ExecutionEvent has no dedicated type for.
+ * O1 (LOU-D41: from the SDK's `AgentEvent`s): translates one run event into
+ * zero or more structured `LogEntry` rows. `LogPhase` is a coarser regrouping
+ * of the same events (e.g. both `run.start` and `run.done` map to phase
+ * 'trigger', since those are this pipeline's entry/exit points) plus
+ * 'sandbox'/'checkpoint'/'approval'/'debug' phases used by emitters
+ * elsewhere for things with no dedicated event. A failed run's `run.done`
+ * follows its `error`, so it is not logged again.
  */
-export function toLogEntries(agentId: string, event: ExecutionEvent): LogEntry[] {
-  const build = EXECUTION_LOG_BUILDERS[event.type];
-  return build ? [toEntry(agentId, event.timestamp, build(event, agentId))] : [];
+export function toLogEntries(agentId: string, event: AgentEvent): LogEntry[] {
+  if (event.type === 'run.done' && event.finishReason === 'error') return [];
+  const build = AGENT_LOG_BUILDERS[event.type] as ((event: AgentEvent, agentId: string) => LogBody) | undefined;
+  return build ? [toEntry(agentId, new Date(event.timestamp), build(event, agentId))] : [];
 }
 
 type FlowLogBuilders = {
@@ -131,7 +130,7 @@ const FLOW_LOG_BUILDERS: FlowLogBuilders = {
  * own, unrelated event taxonomy - flow-start/step-start/llm-call/
  * llm-response/tool-call/tool-result/condition-evaluated/loop-iteration/
  * step-complete/flow-complete/flow-error, NOT `AgentExecutor`'s
- * `ExecutionEvent`) into `LogEntry` rows, the same way `toLogEntries()`
+ * `AgentEvent`) into `LogEntry` rows, the same way `toLogEntries()`
  * does for a normal run. This is the extent of debug-console observability
  * for a `FlowExecutor` run today: these land in the Logs tab, but NOT the
  * structured Trace tab (`emitSpan`/`makeTraceExporter` needs a real

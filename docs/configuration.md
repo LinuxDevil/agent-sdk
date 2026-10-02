@@ -587,7 +587,7 @@ use `loadProjectInstructions({ cwd, files, stopAt, maxChars })`, which returns
 | `maxSteps`                              | Upper bound on LLM/tool steps.                                  |
 | `limits`                                | Token, cost, time and step budgets of the run; see [Budgets](#budgets). |
 | `temperature`, `maxTokens`              | Generation parameters.                                          |
-| `onEvent`                               | Callback for execution events (`start`, `tool-call`, `finish`, ...). |
+| `onAgentEvent`                          | Listener for the run's `AgentEvent`s (`run.start`, `tool.start`, `run.done`, ...); see [Streaming](./streaming.md#listening-without-iterating). |
 | `approvalStore`, `sessionId`            | Human-in-the-loop approvals (see `resumeAfterApproval()`).       |
 | `checkpointStore`                       | Persist/resume execution checkpoints.                           |
 | `exporter`                              | A `TraceExporter` for tracing spans (OpenTelemetry GenAI conventions, see [observability](observability.md)). |

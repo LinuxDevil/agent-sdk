@@ -18,6 +18,7 @@
 import { AgentBuilder } from './core/AgentBuilder';
 import { AgentExecutor, ExecuteOptions, ExecutionResult } from './execution/AgentExecutor';
 import { streamResumed, type AgentRun } from './execution/agentRun';
+import type { AgentEvent } from './execution/agentEvents';
 import { LLMProvider } from './providers/llm';
 import { ToolRegistry } from './tools/ToolRegistry';
 import { ToolDescriptor } from './types';
@@ -231,6 +232,19 @@ export interface CreateAgentBase<TOutput extends z.ZodTypeAny = z.ZodTypeAny> ex
    * ```
    */
   reasoning?: ReasoningOption;
+  /**
+   * LOU-D41: called with every {@link AgentEvent} of this agent's runs -
+   * `send()`, `stream()`, session turns and runs resumed after an approval -
+   * synchronously, the same events in the same order as `stream()` yields
+   * (`send()` generates each model step whole: one `text.delta` per step).
+   * See docs/streaming.md#listening-without-iterating.
+   *
+   * @example
+   * ```ts
+   * createAgent({ model: 'openai/gpt-4o-mini', onEvent: (event) => console.log(event.type) });
+   * ```
+   */
+  onEvent?: (event: AgentEvent) => void;
   /**
    * Opt in to appending the nearest `AGENTS.md` / `CLAUDE.md` (found by
    * walking up from `cwd`, see `loadProjectInstructions()`) to the agent's
@@ -632,7 +646,15 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
       approvalStore: paused.store,
       toolRegistry: paused.spec.toolRegistry ?? new ToolRegistry(),
       provider: paused.spec.provider,
-      executeOptions: { ...runOptions, output: config.output, hooks, approvalStore: paused.store, signal, currentAgent: paused.spec.agent },
+      executeOptions: {
+        ...runOptions,
+        output: config.output,
+        hooks,
+        approvalStore: paused.store,
+        signal,
+        currentAgent: paused.spec.agent,
+        onAgentEvent: config.onEvent,
+      },
       // A run paused under a `sessionId` keeps checkpointing after the decision.
       checkpointStore: checkpointStore ?? checkpoints,
     };
@@ -675,6 +697,7 @@ export function createAgent<TOutput extends z.ZodTypeAny = z.ZodUnknown>(
     approvalStore: approvals.store,
     input,
     signal,
+    onAgentEvent: config.onEvent,
     // LOU-D23.2: a session's turn runs under its id (tools see it), unless the turn is checkpointed under its own.
     ...(ctx.sessionId !== undefined && { sessionId: ctx.sessionId }),
     ...turn,

@@ -7,7 +7,7 @@
  * but it returns a `SimpleAgent` (`{send(message)}`) that hides the
  * AgentConfig/provider/toolRegistry inside a closure and calls
  * `AgentExecutor.execute()` with no `sessionId`/`checkpointStore`/
- * `approvalStore`/`onEvent`/abortable-provider hooks - exactly the things
+ * `approvalStore`/`onAgentEvent`/abortable-provider hooks - exactly the things
  * this server needs to wire up N2/N3. So this file composes the same
  * public building blocks `specToAgent()` uses
  * (`resolveSpecProvider`/`resolveSpecTool`/`AgentBuilder`/`ToolRegistry`,

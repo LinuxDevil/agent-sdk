@@ -348,7 +348,7 @@ const result = await resumeAfterApproval(
 
 `resumeAfterApproval(decision, store, registry, provider, options?, checkpointStore?)`
 takes most of the execution options of `execute()` (for example `signal`,
-`onEvent`, `exporter`). With `sessionId` + `checkpointStore`, the pause is also
+`onAgentEvent`, `exporter`). With `sessionId` + `checkpointStore`, the pause is also
 checkpointed, and `execute()` with that `sessionId` throws
 `SessionAwaitingApprovalError` until the approval is decided, so a pending
 approval cannot be bypassed (see [Durable execution](./durable-execution.md)).

@@ -9,7 +9,7 @@
  * own: the abort signal, the trace exporter and span parent, the hooks
  * (tagged with `ctx.subagent`), the approval store (a paused child pauses the
  * parent), `toolConcurrency`, the sandbox and content-capture settings, and
- * the `onEvent` listener (events tagged with `event.subagent`). Its token
+ * the run's event listeners (events tagged with `event.subagent`). Its token
  * usage is added to the parent's.
  */
 
@@ -18,7 +18,7 @@ import type { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools/ToolRegistry';
 import type { Skill } from '../skills/defineSkill';
 import type { Subagents } from '../subagents/types';
-import type { ExecuteOptions, ExecutionEvent, ExecutionResult } from './AgentExecutor';
+import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
 import type { ResumeExecuteOptions } from './resume';
 import type { ApprovalStore, ExecutionSnapshot } from './ApprovalGate';
 import type { ToolConcurrency } from './toolBatch';
@@ -184,7 +184,7 @@ function inheritedObservability(
   info: SubagentInfo
 ): ResumeExecuteOptions & Pick<StreamingExecuteOptions, typeof RUN_EVENTS> {
   const runtime = scope?.runtime ?? {};
-  // A streaming parent (agent.stream()) gets the child's steps and text deltas too.
+  // The child reports to the parent run's listeners (a streamed or listened-to parent).
   const sink = runEventsOf(runtime as StreamingExecuteOptions)?.forSubagent(info);
   return {
     ...(sink && { [RUN_EVENTS]: sink }),
@@ -193,7 +193,6 @@ function inheritedObservability(
     captureContent: runtime.captureContent,
     redactContent: runtime.redactContent,
     hooks: runtime.hooks && hooksForSubagent(runtime.hooks, info),
-    onEvent: runtime.onEvent && forwardEvents(runtime.onEvent, info),
   };
 }
 
@@ -203,14 +202,6 @@ function inheritedObservability(
  */
 function nestSubagent(inner: SubagentInfo | undefined, outer: SubagentInfo): SubagentInfo {
   return inner ? { ...inner, depth: inner.depth + 1, parent: nestSubagent(inner.parent, outer) } : outer;
-}
-
-/** The child's `onEvent`: the parent's listener, with each event tagged with `subagent`. */
-function forwardEvents(
-  onEvent: (event: ExecutionEvent) => void,
-  info: SubagentInfo
-): (event: ExecutionEvent) => void {
-  return (event) => onEvent({ ...event, subagent: nestSubagent(event.subagent, info) });
 }
 
 type HookMethod = 'preToolCall' | 'postToolCall' | 'preGenerate' | 'postGenerate';

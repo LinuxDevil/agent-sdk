@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Publish readiness (LOU-D49): `npm run pack-smoke` (scripts/pack-smoke.ts, a CI job) packs the SDK and `create-loushy-agent`, checks the tarball (no `.env`, tests or secret-looking strings; entry count and size caps), runs `npm publish --dry-run` for both (nothing is published), installs the tarballs plus peers from the registry into a fresh project and verifies ESM and CJS loads of every `exports` entry, a mock-model agent turn, the `loushy` bin (`--help`, `doctor`) and `tsc` with `moduleResolution` bundler and node16.
+- One event system (LOU-D41): `AgentEvent` listeners for callers who do not iterate a run. `createAgent({ onEvent: (event: AgentEvent) => void })` and the new `ExecuteOptions.onAgentEvent` (also taken by `AgentExecutor.stream()` and `resumeAfterApproval()`) are called synchronously with every `AgentEvent` of the run, on `send()` / `execute()` as on `stream()`, sub-agents' events included: the same events in the same order as the stream yields (a non-streamed run generates each model step whole, so its text is one `text.delta` per step). A run with a listener also reports hook events, permission decisions, budgets and guardrails to it when it is not streamed. A non-streamed `resumeAfterApproval()` with a listener now reports the decided call (`run.start`, `tool.start`, `tool.done`) like a streamed one. See docs/streaming.md#listening-without-iterating.
+
+### Deprecated
+- `ExecuteOptions.onEvent`, `ExecutionEvent` and `ExecutionEventType` (LOU-D41). `onEvent` keeps working: the executor now emits only `AgentEvent`s, and an adapter derives the old events from them in the old order (`start`, `text-complete`, `tool-call`, `tool-result`, `error`, `abort`, `finish`, sub-agents' tagged with `subagent`), with a one-time `console.warn`. Differences: `finish` now comes after the run's checkpoint is written (it was just before), and a run that fails outside a step (an input guardrail that throws, `onRunEnd` throwing) now gets an `error` event too. Migration: replace `onEvent` with `onAgentEvent` (or `createAgent({ onEvent })`); `start` -> `run.start`, `text-complete` -> `text.done` (step usage on `step.done`), `tool-call` -> `tool.start`, `tool-result` -> `tool.done` / `tool.error`, `abort` / `finish` -> `run.done` (`finishReason`), `error` -> `error` (`{ name, message }`). The full table is in docs/streaming.md#migrating-from-onevent--executionevent.
+- `ToolDescriptor.injectStreamingController` (LOU-D41): never called by the SDK; it will be removed.
+
+### Removed
+- `ExecuteOptions.streaming` (LOU-D41): it was never read. Use `AgentExecutor.stream()` / `agent.stream()` to stream a run. Passing it in an object literal is now a type error; remove the property.
 
 ### Fixed
 - `loushy --help`, `-h` and `help` print the usage and exit 0 (they were "unknown command" with exit 1) (LOU-D49).

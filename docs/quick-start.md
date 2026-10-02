@@ -156,7 +156,7 @@ you pass keyed by name: `tools: { current_date: currentDateTool }`.
 
 `createAgent()` is a thin wrapper over `AgentBuilder` and the static
 `AgentExecutor.execute()`. Use them directly when you need the full set of
-execution options (`maxSteps`, `temperature`, `onEvent`, approvals,
+execution options (`maxSteps`, `temperature`, `onAgentEvent`, approvals,
 checkpoints, tracing, ...). `AgentExecutor` is a static API - there is no
 `new AgentExecutor()`.
 
@@ -178,12 +178,12 @@ const result = await AgentExecutor.execute({
   input: 'My order arrived damaged.',
   provider: createMockProvider({ responses: ["I'm sorry to hear that - what's your order number?"] }),
   maxSteps: 5,
-  onEvent: (event) => events.push(event.type),
+  onAgentEvent: (event) => events.push(event.type),
 });
 
 console.log(result.text);
 console.log(result.usage.totalTokens, result.finishReason, result.steps);
-console.log(events); // includes 'start' and 'finish'
+console.log(events); // includes 'run.start' and 'run.done'
 ```
 
 ## 5. Declarative agents: spec files

@@ -123,6 +123,10 @@ export interface ToolDescriptor {
   needsApproval?: boolean | ((args: any, ctx: ApprovalCheckContext) => ApprovalOutcome | Promise<ApprovalOutcome>);
   /** Where the tool came from, e.g. an MCP server's annotations (LOU-Z5). */
   metadata?: ToolMetadata;
+  /**
+   * @deprecated LOU-D41: never called by the SDK (no supported path reaches
+   * it); it will be removed.
+   */
   injectStreamingController?: (controller: ReadableStreamDefaultController<unknown>) => void;
   /**
    * When true, AgentExecutor routes this tool's execution through the

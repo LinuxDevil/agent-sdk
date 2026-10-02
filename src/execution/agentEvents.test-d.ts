@@ -1,7 +1,7 @@
 import { describe, it, expectTypeOf } from 'vitest';
 import { createAgent } from '../createAgent';
 import { createMockProvider } from '../providers/mock';
-import type { ExecutionResult } from './AgentExecutor';
+import type { ExecuteOptions, ExecutionEvent, ExecutionEventType, ExecutionResult } from './AgentExecutor';
 import type { AgentRun } from './agentRun';
 import type { CompactedProviderErrorCategory } from './errors';
 import {
@@ -182,5 +182,19 @@ describe('AgentEvent types', () => {
     createAgent({ provider: createMockProvider(), reasoning: 'max' });
     // @ts-expect-error - summary is 'auto' or 'none'
     void agent.send('hi', { reasoning: { summary: 'detailed' } });
+  });
+});
+
+describe('event listener options (LOU-D41)', () => {
+  it('types createAgent({ onEvent }) and ExecuteOptions.onAgentEvent with AgentEvent', () => {
+    createAgent({ provider: createMockProvider(), onEvent: (e) => expectTypeOf(e).toEqualTypeOf<AgentEvent>() });
+    expectTypeOf<NonNullable<ExecuteOptions['onAgentEvent']>>().parameter(0).toEqualTypeOf<AgentEvent>();
+    // @ts-expect-error - createAgent's listener gets AgentEvents, not the deprecated ExecutionEvents
+    createAgent({ provider: createMockProvider(), onEvent: (e: ExecutionEvent) => void e.toolCall });
+  });
+
+  it('keeps the deprecated ExecuteOptions.onEvent typed with ExecutionEvent', () => {
+    expectTypeOf<NonNullable<ExecuteOptions['onEvent']>>().parameter(0).toEqualTypeOf<ExecutionEvent>();
+    expectTypeOf<ExecutionEvent['type']>().toEqualTypeOf<ExecutionEventType>();
   });
 });

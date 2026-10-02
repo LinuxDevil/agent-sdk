@@ -115,7 +115,7 @@ Pass `subagents: { researcher, writer }` (agents from `createAgent()` with a
 `description`, or a `{ list, resolve }` catalog) to `createAgent()` or
 `AgentExecutor.execute()`: the lead gets one `task` tool and a prompt listing,
 each sub-agent runs on the task prompt alone, and it inherits the lead run's
-signal, hooks (`ctx.subagent`), tracing, approval store and `onEvent`
+signal, hooks (`ctx.subagent`), tracing, approval store and event listeners
 (`event.subagent`). `maxSubagentDepth` (default 1) bounds nesting. See
 [Sub-agents](./sub-agents.md).
 
@@ -209,8 +209,7 @@ How it behaves:
   caused by the abort, such as an `AbortError`, is not treated as a failure:
   it is not retried by the provider retry and fallback wrappers and is not
   compacted into a provider error.
-- `onEvent` receives an `abort` event (its `abortReason` is the signal's
-  `reason`), then `finish` with `finishReason: 'aborted'`.
+- The run's events end with `run.done` with `finishReason: 'aborted'`.
 - With `sessionId` + `checkpointStore`, the state is checkpointed. Calling
   `execute()` again with the same `sessionId` resumes where the run stopped;
   new `input` is appended as the next user message (see

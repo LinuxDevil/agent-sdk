@@ -667,7 +667,7 @@ you pass keyed by name: `tools: { current_date: currentDateTool }`.
 
 `createAgent()` is a thin wrapper over `AgentBuilder` and the static
 `AgentExecutor.execute()`. Use them directly when you need the full set of
-execution options (`maxSteps`, `temperature`, `onEvent`, approvals,
+execution options (`maxSteps`, `temperature`, `onAgentEvent`, approvals,
 checkpoints, tracing, ...). `AgentExecutor` is a static API - there is no
 `new AgentExecutor()`.
 
@@ -689,12 +689,12 @@ const result = await AgentExecutor.execute({
   input: 'My order arrived damaged.',
   provider: createMockProvider({ responses: ["I'm sorry to hear that - what's your order number?"] }),
   maxSteps: 5,
-  onEvent: (event) => events.push(event.type),
+  onAgentEvent: (event) => events.push(event.type),
 });
 
 console.log(result.text);
 console.log(result.usage.totalTokens, result.finishReason, result.steps);
-console.log(events); // includes 'start' and 'finish'
+console.log(events); // includes 'run.start' and 'run.done'
 ```
 
 ## 5. Declarative agents: spec files
@@ -864,7 +864,7 @@ Pass `subagents: { researcher, writer }` (agents from `createAgent()` with a
 `description`, or a `{ list, resolve }` catalog) to `createAgent()` or
 `AgentExecutor.execute()`: the lead gets one `task` tool and a prompt listing,
 each sub-agent runs on the task prompt alone, and it inherits the lead run's
-signal, hooks (`ctx.subagent`), tracing, approval store and `onEvent`
+signal, hooks (`ctx.subagent`), tracing, approval store and event listeners
 (`event.subagent`). `maxSubagentDepth` (default 1) bounds nesting. See
 [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md).
 
@@ -958,8 +958,7 @@ How it behaves:
   caused by the abort, such as an `AbortError`, is not treated as a failure:
   it is not retried by the provider retry and fallback wrappers and is not
   compacted into a provider error.
-- `onEvent` receives an `abort` event (its `abortReason` is the signal's
-  `reason`), then `finish` with `finishReason: 'aborted'`.
+- The run's events end with `run.done` with `finishReason: 'aborted'`.
 - With `sessionId` + `checkpointStore`, the state is checkpointed. Calling
   `execute()` again with the same `sessionId` resumes where the run stopped;
   new `input` is appended as the next user message (see
@@ -2761,7 +2760,7 @@ const result = await resumeAfterApproval(
 
 `resumeAfterApproval(decision, store, registry, provider, options?, checkpointStore?)`
 takes most of the execution options of `execute()` (for example `signal`,
-`onEvent`, `exporter`). With `sessionId` + `checkpointStore`, the pause is also
+`onAgentEvent`, `exporter`). With `sessionId` + `checkpointStore`, the pause is also
 checkpointed, and `execute()` with that `sessionId` throws
 `SessionAwaitingApprovalError` until the approval is decided, so a pending
 approval cannot be bypassed (see [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)).
@@ -4222,7 +4221,7 @@ use `loadProjectInstructions({ cwd, files, stopAt, maxChars })`, which returns
 | `maxSteps`                              | Upper bound on LLM/tool steps.                                  |
 | `limits`                                | Token, cost, time and step budgets of the run; see [Budgets](#budgets). |
 | `temperature`, `maxTokens`              | Generation parameters.                                          |
-| `onEvent`                               | Callback for execution events (`start`, `tool-call`, `finish`, ...). |
+| `onAgentEvent`                          | Listener for the run's `AgentEvent`s (`run.start`, `tool.start`, `run.done`, ...); see [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#listening-without-iterating). |
 | `approvalStore`, `sessionId`            | Human-in-the-loop approvals (see `resumeAfterApproval()`).       |
 | `checkpointStore`                       | Persist/resume execution checkpoints.                           |
 | `exporter`                              | A `TraceExporter` for tracing spans (OpenTelemetry GenAI conventions, see [observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md)). |
@@ -7868,6 +7867,10 @@ The full API has the same method: `AgentExecutor.stream(options)` takes the
 same options as `AgentExecutor.execute()` (approval store, checkpoints, hooks,
 tracing, `toolConcurrency`, ...).
 
+These events, the `AgentEvent` union, are the SDK's one event system: the
+stream, the [listener options](#listening-without-iterating), `session.on()`,
+the UI hooks, the server routes, ACP and channels all carry them.
+
 ## The `AgentRun` handle
 
 `stream()` returns an `AgentRun`:
@@ -7913,6 +7916,59 @@ const run = agent.stream('Summarize the report', { signal: AbortSignal.timeout(3
 const result = await run.result; // no iteration needed
 console.log(result.finishReason, result.text);
 ```
+
+## Listening without iterating
+
+To observe every run without iterating one, give the agent a listener:
+`createAgent({ onEvent })`, or `onAgentEvent` in the `AgentExecutor.execute()`
+/ `stream()` / `resumeAfterApproval()` options. It is called synchronously
+with each `AgentEvent` as it happens, on `send()` as on `stream()`, for
+session turns and for runs resumed after an approval. It gets the same events,
+in the same order, as iterating the stream would, with one difference:
+`send()` / `execute()` generate each model step whole, so a step's text comes
+as a single `text.delta` (as it does on `stream()` with a provider that cannot
+stream). Sub-agents' events arrive tagged with `subagent`.
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  onEvent: (event) => {
+    if (event.type === 'tool.start') console.log('calling', event.toolName, event.args);
+    if (event.type === 'run.done') console.log('done:', event.finishReason, event.usage?.totalTokens);
+  },
+});
+
+await agent.send('Weather in Paris?');
+```
+
+### Migrating from `onEvent` / `ExecutionEvent`
+
+`ExecuteOptions.onEvent` with `ExecutionEvent` is the SDK's older event
+callback. It is deprecated: it still works (it logs a one-time
+`console.warn`), with its events now derived from the run's `AgentEvent`s,
+and it will be removed in a future major version. Replace it with
+`onAgentEvent` (or `createAgent({ onEvent })`, which already takes
+`AgentEvent`s):
+
+| `ExecutionEvent` (`onEvent`) | `AgentEvent` (`onAgentEvent`) |
+| --- | --- |
+| `start` (`agentId`, `agentName`) | `run.start` (`agentId`, `agentName`) |
+| `text-delta` (never emitted) | `text.delta` (`text`) |
+| `text-complete` (`text`, `stepUsage`) | `text.done` (`text`); the step's usage is on `step.done` (`usage`) |
+| `tool-call` (`toolCall`) | `tool.start` (`toolCallId`, `toolName`, parsed `args`) |
+| `tool-result` (`toolResult`) | `tool.done` (`result`, `durationMs`, `replacedByHook`), or `tool.error` (`error.name`, `error.message`) |
+| `error` (`error: Error`) | `error` (`error: { name, message }`) |
+| `abort` (`abortReason`, `usage`) | `run.done` with `finishReason: 'aborted'` (the reason is your signal's `reason`) |
+| `finish` (`finishReason`, `usage: RunUsage`) | `run.done` (`finishReason`, `text`, `usage`, `object`); the full `RunUsage` is on `result.usage` |
+| a sub-agent's `start` / `finish` (with `subagent`) | the lead's `tool.start` / `tool.done` of the call that started it |
+| `timestamp: Date` | `timestamp`: an ISO-8601 string; plus `runId`, `seq` and `v` |
+
+`AgentEvent` also reports what `ExecutionEvent` never did: step boundaries,
+approval requests, permission decisions, budgets, guardrails, queued and
+steered input, compaction, reasoning, provider retries and agent drift (see the
+[schema](#event-schema-version-1)).
 
 ## Streaming a session turn
 
@@ -8638,7 +8694,7 @@ value with `withSubagentOptions(subagents, options)`, which returns it. On
 `createAgent()`, `subagentOptions` override options attached that way.
 
 A background sub-agent inherits from the lead run like a synchronous one
-(hooks, tracing, `onEvent`, usage roll-up), and `maxSubagentDepth` applies the
+(hooks, tracing, event listeners, usage roll-up), and `maxSubagentDepth` applies the
 same way. Aborting the lead's signal cancels its background sub-agents, queued
 or running.
 
@@ -8650,8 +8706,8 @@ When that run ends, however it ends, the tasks still queued or running are
 `awaitBackgroundOnFinish: true` the run instead waits for them to finish
 before it resolves (an aborted or failed lead run still cancels them). Either
 way the run resolves only once their runs have stopped, so no sub-agent event
-reaches `onEvent` after it; with `awaitBackgroundOnFinish` their events arrive
-after the lead's own `finish` event.
+reaches the run's listeners after it; with `awaitBackgroundOnFinish` their
+events arrive before the lead's `run.done`.
 
 The result lists every background task of the run with its final status:
 
@@ -8779,12 +8835,12 @@ inherits:
 | Tracing (`exporter`) | Yes | The sub-agent's `invoke_agent` span is a child of the lead's `execute_tool task` span. `captureContent` and `redactContent` are inherited too. |
 | Hooks (`hooks`) | Yes | They run on the sub-agent's model calls and tool calls, with `ctx.subagent` set (see below). A hook that throws inside a sub-agent halts the whole run. |
 | Approval store (`approvalStore`) | Yes | See [Approvals](#approvals-inside-a-sub-agent). |
-| `onEvent` and `stream()` | Yes | The sub-agent's events are forwarded with a `subagent` field. |
+| Event listeners (`onAgentEvent`, `createAgent({ onEvent })`) and `stream()` | Yes | The sub-agent's events are forwarded with a `subagent` field. |
 | `toolConcurrency` | Yes, unless the sub-agent sets its own | |
 | `sandbox` | Yes | |
 | Token usage | Rolls up | Added to the lead's `result.usage` (totals, `byModel`, and `usage.delegated`). |
 | `maxSubagentDepth` | The remaining budget | See [Depth](#depth). |
-| `onLLMRequest`, `onToolCall` and the other single-run callbacks | No | They describe one run; use hooks or `onEvent` to observe sub-agents. |
+| `onLLMRequest`, `onToolCall` and the other single-run callbacks | No | They describe one run; use hooks or an event listener to observe sub-agents. |
 | `sessionId` / `checkpointStore` | No | A sub-agent is not checkpointed on its own. If the process dies while a sub-agent runs, the resumed lead runs that `task` call again. |
 | Conversation history | No | The sub-agent sees only the task prompt (plus its own earlier turns when the lead [resumes the task](#continuing-a-task)). |
 
@@ -8819,10 +8875,9 @@ errors - with a `subagent` field on every one of its events, so a UI can nest
 sub-agent activity under the lead's `task` call (`subagent.toolCallId`). See
 [Streaming: sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#sub-agents).
 
-With `onEvent` on the lead, every event a sub-agent emits (`start`,
-`tool-call`, `tool-result`, `text-complete`, `finish`, ...) reaches the same
-listener with `event.subagent` set. The lead's own events have no `subagent`
-field.
+A listener on the lead (`createAgent({ onEvent })` or `onAgentEvent`) gets
+the same events, sub-agents' included, as they happen. See
+[Listening without iterating](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#listening-without-iterating).
 
 ## Approvals inside a sub-agent
 

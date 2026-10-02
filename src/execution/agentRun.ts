@@ -2,21 +2,23 @@
  * LOU-V2: `AgentRun`, the handle `agent.stream()` / `AgentExecutor.stream()`
  * return - an async iterable of {@link AgentEvent}s plus a `result` promise.
  *
- * The run itself is the ordinary AgentExecutor loop. This module only
- * (1) translates the loop's existing `onEvent` callbacks into AgentEvents,
- * (2) hands the loop a {@link RunEventSink} (under the {@link RUN_EVENTS}
- * key of its options) for what those callbacks do not cover - step
- * boundaries, approval requests and how one model step is obtained
- * (streamed, with `text.delta` per chunk) - and (3) buffers the events
- * for the consumer.
+ * LOU-D41: this module is the run's one event system. The AgentExecutor loop
+ * reports everything through a {@link RunEventSink} (under the
+ * {@link RUN_EVENTS} key of its options), including how one model step is
+ * obtained (streamed, with `text.delta` per chunk). The sink turns it into
+ * AgentEvents for the run's listeners: an AgentRun's buffer, `onAgentEvent`,
+ * and the deprecated `onEvent` (through legacyEvents.ts). A non-streamed run
+ * with listeners gets a sink too (see {@link observeRun}).
  *
  * Backpressure: none. The run never waits for the consumer; events are
  * buffered without loss until they are read.
  */
 
 import { newId } from '../utils/id';
-import type { GenerateOptions, GenerateResult, LLMProvider } from '../providers';
+import type { GenerateOptions, GenerateResult, LLMProvider, ToolCall } from '../providers';
 import type { ExecuteOptions, ExecutionEvent, ExecutionResult } from './AgentExecutor';
+import { toExecutionEvents, warnLegacyOnEvent, type LegacyDetail } from './legacyEvents';
+import type { StepUsage } from '../models/usage';
 import { describeApproval, type PendingApproval } from './ApprovalGate';
 import type { HookEventPayload, SubagentInfo } from './hooks';
 import {
@@ -100,11 +102,31 @@ export interface AgentRun<TObject = unknown> extends AsyncIterable<AgentEvent> {
   steer(input: AgentInput): SteerResult;
 }
 
+/** A tool call's outcome, as the loop reports it. */
+export type ToolSettled = NonNullable<ExecutionEvent['toolResult']>;
+
+/** The listeners a run's options can carry (LOU-D41). */
+export type RunListeners = Pick<ExecuteOptions, 'onAgentEvent' | 'onEvent'>;
+
 /**
- * The parts of a run AgentExecutor reports to an AgentRun directly, beyond
- * its `onEvent` callbacks. Internal: reached through `options[RUN_EVENTS]`.
+ * Everything AgentExecutor reports about a run, as AgentEvents. Internal:
+ * reached through `options[RUN_EVENTS]`.
  */
 export interface RunEventSink {
+  /** Whether model steps are streamed (a `stream()` run; `execute()` generates each step whole). */
+  readonly streamed: boolean;
+  /** Adds `options`' listeners to the run's (each listener once). */
+  listen(options: RunListeners): void;
+  /** A top-level run reports one `run.start`, however often it is (re)started. */
+  runStart(agent: { id?: string; name: string }): void;
+  textDone(text: string, stepUsage?: StepUsage): void;
+  toolStart(toolCall: ToolCall): void;
+  toolSettled(outcome: ToolSettled): void;
+  error(error: unknown): void;
+  /** `run.done` (a sub-agent's reaches the deprecated `onEvent` only). */
+  runDone(result: ExecutionResult, abortReason?: unknown): void;
+  /** `error` (unless just reported) then `run.done` with `finishReason: 'error'`. */
+  runFailed(error: unknown): void;
   stepStart(step: number): void;
   /** `finishReason` overrides the step's own (the model's) finish reason. */
   stepDone(step: number, finishReason?: string): void;
@@ -135,14 +157,13 @@ export const RUN_EVENTS: unique symbol = Symbol('loushy.agentRunEvents');
 export type StreamingExecuteOptions = ExecuteOptions & { [RUN_EVENTS]?: RunEventSink };
 
 /** The run's event sink, when `options` belong to a streaming run. */
-export function runEventsOf(options: ExecuteOptions): RunEventSink | undefined {
+export function runEventsOf(options: object): RunEventSink | undefined {
   return (options as StreamingExecuteOptions)[RUN_EVENTS];
 }
 
-/** Starts the run with the composed signal, `onEvent`, sink and the queue behind `run.enqueue()`. */
+/** Starts the run with the composed signal, sink and the queue behind `run.enqueue()`. */
 export type RunStarter = (wiring: {
   signal: AbortSignal;
-  onEvent: (event: ExecutionEvent) => void;
   sink: RunEventSink;
   inputQueue: InputQueue;
 }) => Promise<ExecutionResult>;
@@ -190,144 +211,60 @@ function toJsonValue(value: unknown): unknown {
 /** A finished model step's finish reason and measured usage (LOU-V5). */
 type MeasuredStep = { finishReason: GenerateResult['finishReason']; usage: Usage; estimated: boolean; costUsd?: number };
 
-class AgentRunImpl implements AgentRun {
+/** `run.done` of a finished run. */
+function runDonePayload(result: ExecutionResult): AgentEventPayload {
+  return {
+    type: 'run.done',
+    finishReason: result.finishReason,
+    text: result.text,
+    usage: toEventUsage(result.usage),
+    ...(result.object !== undefined && { object: toJsonValue(result.object) }),
+  };
+}
+
+/** A run's events and listeners; `sink()` is what the loop reports to. */
+class RunEvents {
   readonly runId = newId();
-  readonly result: Promise<ExecutionResult>;
-  private readonly controller = new AbortController();
-  private readonly queue: AgentEvent[] = [];
-  private readonly toolStarts = new Map<string, number>();
+  closed = false;
   private seq = 0;
-  private closed = false;
-  private iterated = false;
-  private wake: (() => void) | undefined;
-  private lastError: unknown;
+  private started = false;
+  private readonly listeners = new Set<(event: AgentEvent) => void>();
+  private readonly legacy = new Set<(event: ExecutionEvent) => void>();
+  private readonly toolStarts = new Map<string, number>();
 
-  constructor(start: RunStarter, signal: AbortSignal | undefined, private readonly inputs: InputQueue) {
-    const runSignal = signal ? AbortSignal.any([signal, this.controller.signal]) : this.controller.signal;
-    this.result = start({
-      signal: runSignal,
-      onEvent: (event) => this.translate(event),
-      sink: this.sink(),
-      inputQueue: inputs,
-    }).then(
-      (result) => this.finish(result),
-      (error: unknown) => this.fail(error)
-    );
-    this.result.catch(() => undefined);
-    // A run that ended before its loop took the queue over (e.g. setup failed) takes no input either.
-    inputs.closeAfter(this.result);
-  }
+  constructor(private readonly streamed: boolean) {}
 
-  async *[Symbol.asyncIterator](): AsyncIterator<AgentEvent> {
-    if (this.iterated) {
-      throw new SDKError(
-        'AgentRun can only be iterated once. Collect the events in the first for-await loop, ' +
-          'or call agent.stream() again for a new run.',
-        'LOUSHY_RUN_ALREADY_ITERATED'
-      );
-    }
-    this.iterated = true;
-    try {
-      yield* this.drain();
-    } finally {
-      if (!this.closed) {
-        this.controller.abort(new DOMException('The AgentRun was not iterated to the end (the for-await loop exited early)', 'AbortError'));
-      }
+  listen({ onAgentEvent, onEvent }: RunListeners): void {
+    if (onAgentEvent) this.listeners.add(onAgentEvent);
+    if (onEvent) {
+      warnLegacyOnEvent();
+      this.legacy.add(onEvent);
     }
   }
 
-  enqueue(input: AgentInput): EnqueueResult {
-    return this.inputs.push(input);
-  }
-
-  steer(input: AgentInput): SteerResult {
-    return this.inputs.steer(input);
-  }
-
-  private async *drain(): AsyncGenerator<AgentEvent> {
-    for (;;) {
-      const next = this.queue.shift();
-      if (next) {
-        yield next;
-      } else if (this.closed) {
-        return;
-      } else {
-        await new Promise<void>((resolve) => (this.wake = resolve));
-      }
-    }
-  }
-
-  /** Queues an event; `subagent` tags one forwarded from a sub-agent's run (LOU-Y1). */
-  private emit(payload: AgentEventPayload, subagent?: SubagentInfo): void {
-    if (this.closed) return;
+  /**
+   * Sends an event to the listeners; `subagent` tags one of a sub-agent's run
+   * (LOU-Y1). A sub-agent's `run.start`/`run.done` reach the deprecated
+   * `onEvent` only: as AgentEvents they mark the top-level run.
+   */
+  private emit(payload: AgentEventPayload, subagent?: SubagentInfo, detail?: LegacyDetail): void {
+    if (this.closed || (payload.type === 'run.start' && !subagent && this.started)) return;
+    const internal = subagent !== undefined && (payload.type === 'run.start' || payload.type === 'run.done');
     const event = {
       ...payload,
       ...(subagent && { subagent }),
       runId: this.runId,
-      seq: this.seq++,
+      seq: internal ? this.seq : this.seq++,
       timestamp: new Date().toISOString(),
       v: AGENT_EVENT_SCHEMA_VERSION,
     } as AgentEvent;
-    this.queue.push(event);
-    if (payload.type === 'run.done') this.closed = true;
-    this.wake?.();
-    this.wake = undefined;
+    if (!subagent) this.started ||= payload.type === 'run.start';
+    if (!subagent) this.closed = payload.type === 'run.done';
+    if (!internal) for (const listener of this.listeners) listener(event);
+    for (const listener of this.legacy) for (const old of toExecutionEvents(event, detail)) listener(old);
   }
 
-  private finish(result: ExecutionResult): ExecutionResult {
-    this.emit({
-      type: 'run.done',
-      finishReason: result.finishReason,
-      text: result.text,
-      usage: toEventUsage(result.usage),
-      ...(result.object !== undefined && { object: toJsonValue(result.object) }),
-    });
-    return result;
-  }
-
-  private fail(error: unknown): never {
-    if (error !== this.lastError) {
-      this.emit({ type: 'error', error: toEventError(error) });
-    }
-    this.emit({ type: 'run.done', finishReason: 'error', text: '' });
-    throw error;
-  }
-
-  /**
-   * Maps the loop's `onEvent` callbacks to AgentEvents (`abort`/`finish` are
-   * covered by `run.done`). Events forwarded from a sub-agent (LOU-Y1) keep
-   * their `subagent` tag; its `start`/`finish` are left out, since
-   * `run.start`/`run.done` mark the top-level run only (the sub-agent's run
-   * spans the parent's `tool.start`/`tool.done` of the calling tool).
-   */
-  private translate(event: ExecutionEvent): void {
-    const { subagent } = event;
-    switch (event.type) {
-      case 'start':
-        if (subagent) break;
-        this.emit({
-          type: 'run.start',
-          agentName: event.agentName ?? '',
-          ...(event.agentId !== undefined && { agentId: event.agentId }),
-        });
-        break;
-      case 'text-complete':
-        this.emit({ type: 'text.done', text: event.text ?? '' }, subagent);
-        break;
-      case 'tool-call':
-        if (event.toolCall) this.toolStarted(event.toolCall, subagent);
-        break;
-      case 'tool-result':
-        if (event.toolResult) this.toolSettled(event.toolResult, subagent);
-        break;
-      case 'error':
-        if (!subagent) this.lastError = event.error;
-        this.emit({ type: 'error', error: toEventError(event.error) }, subagent);
-        break;
-    }
-  }
-
-  private toolStarted(toolCall: NonNullable<ExecutionEvent['toolCall']>, subagent?: SubagentInfo): void {
+  private toolStarted(toolCall: ToolCall, subagent?: SubagentInfo): void {
     this.toolStarts.set(toolStartKey(toolCall.id, subagent), Date.now());
     const args = parseToolArguments(toolCall, {});
     this.emit(
@@ -337,16 +274,17 @@ class AgentRunImpl implements AgentRun {
         toolName: toolCall.function.name,
         args: (typeof args === 'object' && args !== null ? args : {}) as Record<string, unknown>,
       },
-      subagent
+      subagent,
+      { toolCall }
     );
   }
 
-  private toolSettled(outcome: NonNullable<ExecutionEvent['toolResult']>, subagent?: SubagentInfo): void {
+  private toolSettled(outcome: ToolSettled, subagent?: SubagentInfo): void {
     const { toolCallId, toolName } = outcome;
     const durationMs = Date.now() - (this.toolStarts.get(toolStartKey(toolCallId, subagent)) ?? Date.now());
     if (outcome.error === undefined) {
       const replaced = outcome.replacedByHook !== undefined && { replacedByHook: outcome.replacedByHook };
-      this.emit({ type: 'tool.done', toolCallId, toolName, result: toJsonValue(outcome.result), durationMs, ...replaced }, subagent);
+      this.emit({ type: 'tool.done', toolCallId, toolName, result: toJsonValue(outcome.result), durationMs, ...replaced }, subagent, { toolResult: outcome });
       return;
     }
     const name = (outcome.result as { error?: unknown } | null)?.error;
@@ -358,7 +296,8 @@ class AgentRunImpl implements AgentRun {
         error: { name: typeof name === 'string' ? name : 'Error', message: outcome.error },
         durationMs,
       },
-      subagent
+      subagent,
+      { toolResult: outcome }
     );
   }
 
@@ -367,9 +306,26 @@ class AgentRunImpl implements AgentRun {
    * events carry `subagent`. A sub-agent's approval request is reported by
    * the top-level run it pauses, so its own sink does not emit one.
    */
-  private sink(subagent?: SubagentInfo): RunEventSink {
+  sink(subagent?: SubagentInfo): RunEventSink {
     let stepResult: MeasuredStep | undefined;
+    let lastError: unknown;
+    const reportError = (error: unknown) => {
+      lastError = error;
+      this.emit({ type: 'error', error: toEventError(error) }, subagent, { error });
+    };
     return {
+      streamed: this.streamed,
+      listen: (options) => this.listen(options),
+      runStart: ({ id, name }) => this.emit({ type: 'run.start', agentName: name ?? '', ...(id !== undefined && { agentId: id }) }, subagent),
+      textDone: (text, stepUsage) => this.emit({ type: 'text.done', text }, subagent, { stepUsage }),
+      toolStart: (toolCall) => this.toolStarted(toolCall, subagent),
+      toolSettled: (outcome) => this.toolSettled(outcome, subagent),
+      error: reportError,
+      runDone: (result, abortReason) => this.emit(runDonePayload(result), subagent, { usage: result.usage, abortReason }),
+      runFailed: (error) => {
+        if (error !== lastError) reportError(error);
+        this.emit({ type: 'run.done', finishReason: 'error', text: '' }, subagent);
+      },
       stepStart: (step) => {
         stepResult = undefined;
         this.emit({ type: 'step.start', step }, subagent);
@@ -450,7 +406,7 @@ class AgentRunImpl implements AgentRun {
       onReasoning: (event) => this.emit(event, subagent),
       onOutput,
     };
-    if (canStream(provider, request)) {
+    if (this.streamed && canStream(provider, request)) {
       return generateViaStream(provider, request, sink);
     }
     const generated = await provider.generate(request);
@@ -473,38 +429,126 @@ function toolStartKey(toolCallId: string, subagent: SubagentInfo | undefined): s
   return subagent ? `${subagentKey(subagent)}:${toolCallId}` : toolCallId;
 }
 
-/** Options a streamed run is wired through: its signal, input queue and `onEvent`. */
-type WiredOptions = Pick<ExecuteOptions, 'signal' | 'inputQueue' | 'onEvent'>;
+/** Options a streamed run is wired through: its signal and input queue. */
+type WiredOptions = Pick<ExecuteOptions, 'signal' | 'inputQueue'>;
 
 /**
  * LOU-V14: streams a resume after an approval. `resume` runs it with the
  * options `wire()` returns, which carry the run's signal, input queue and
- * event sink. The resume reports its own `start` before the decided call, so
- * the continuation's top-level `start` is dropped.
+ * event sink. The resume reports its own `run.start` before the decided
+ * call; the continuation's is dropped (one per top-level run).
  */
 export function streamResumed(
   resume: (wire: <T extends WiredOptions>(options: T) => T) => Promise<ExecutionResult>,
   signal?: AbortSignal,
   inputQueue?: InputQueue
 ): AgentRun {
-  return startAgentRun(({ signal: runSignal, onEvent, sink, inputQueue: queue }) => {
-    let started = false;
-    const wire = <T extends WiredOptions>(options: T): T => ({
-      ...options,
-      signal: runSignal,
-      inputQueue: queue,
-      onEvent: (event: ExecutionEvent) => {
-        if (event.type === 'start' && !event.subagent) {
-          if (started) return;
-          started = true;
-        }
-        options.onEvent?.(event);
-        onEvent(event);
-      },
-      [RUN_EVENTS]: sink,
-    });
+  return startAgentRun(({ signal: runSignal, sink, inputQueue: queue }) => {
+    const wire = <T extends WiredOptions>(options: T): T => ({ ...options, signal: runSignal, inputQueue: queue, [RUN_EVENTS]: sink });
     return resume(wire);
   }, signal, inputQueue);
+}
+
+/**
+ * LOU-D41: runs `run` with the run's event sink in its options - the
+ * stream's, or a new one when `options` has listeners - after adding
+ * `options`' listeners to it, then reports how it ended (`run.done`, or
+ * `error` and `run.done`). Without a sink or listeners, just runs it.
+ */
+export async function observeRun<T extends RunListeners & WiredOptions>(
+  options: T,
+  run: (options: T) => Promise<ExecutionResult>
+): Promise<ExecutionResult> {
+  const { onAgentEvent, onEvent } = options;
+  const sink = runEventsOf(options) ?? (onAgentEvent || onEvent ? new RunEvents(false).sink() : undefined);
+  if (!sink) return run(options);
+  sink.listen(options);
+  try {
+    const result = await run({ ...options, [RUN_EVENTS]: sink });
+    sink.runDone(result, result.finishReason === 'aborted' ? options.signal?.reason : undefined);
+    return result;
+  } catch (error) {
+    sink.runFailed(error);
+    throw error;
+  }
+}
+
+class AgentRunImpl implements AgentRun {
+  readonly result: Promise<ExecutionResult>;
+  private readonly events = new RunEvents(true);
+  private readonly controller = new AbortController();
+  private readonly queue: AgentEvent[] = [];
+  private iterated = false;
+  private wake: (() => void) | undefined;
+
+  constructor(start: RunStarter, signal: AbortSignal | undefined, private readonly inputs: InputQueue) {
+    this.events.listen({ onAgentEvent: (event) => this.push(event) });
+    const runSignal = signal ? AbortSignal.any([signal, this.controller.signal]) : this.controller.signal;
+    const sink = this.events.sink();
+    // `run.done` was sent already unless the run ended outside the loop (e.g. its setup failed).
+    this.result = start({ signal: runSignal, sink, inputQueue: inputs }).then(
+      (result) => {
+        sink.runDone(result);
+        return result;
+      },
+      (error: unknown) => {
+        sink.runFailed(error);
+        throw error;
+      }
+    );
+    this.result.catch(() => undefined);
+    // A run that ended before its loop took the queue over (e.g. setup failed) takes no input either.
+    inputs.closeAfter(this.result);
+  }
+
+  get runId(): string {
+    return this.events.runId;
+  }
+
+  async *[Symbol.asyncIterator](): AsyncIterator<AgentEvent> {
+    if (this.iterated) {
+      throw new SDKError(
+        'AgentRun can only be iterated once. Collect the events in the first for-await loop, ' +
+          'or call agent.stream() again for a new run.',
+        'LOUSHY_RUN_ALREADY_ITERATED'
+      );
+    }
+    this.iterated = true;
+    try {
+      yield* this.drain();
+    } finally {
+      if (!this.events.closed) {
+        this.controller.abort(new DOMException('The AgentRun was not iterated to the end (the for-await loop exited early)', 'AbortError'));
+      }
+    }
+  }
+
+  enqueue(input: AgentInput): EnqueueResult {
+    return this.inputs.push(input);
+  }
+
+  steer(input: AgentInput): SteerResult {
+    return this.inputs.steer(input);
+  }
+
+  private push(event: AgentEvent): void {
+    this.queue.push(event);
+    this.wake?.();
+    this.wake = undefined;
+  }
+
+  private async *drain(): AsyncGenerator<AgentEvent> {
+    for (;;) {
+      const next = this.queue.shift();
+      if (next) {
+        yield next;
+      } else if (this.events.closed) {
+        return;
+      } else {
+        await new Promise<void>((resolve) => (this.wake = resolve));
+      }
+    }
+  }
 }
 
 /**
