@@ -108,11 +108,10 @@ function killProcessTree(child: ChildProcess): void {
 }
 
 /**
- * A proposed action for guardrails to vet. Minimal placeholder shape -
- * LOU-J (not yet landed) is expected to define the real ProposedAction
- * (and richer action types) that this SDK's PR-authoring flow produces;
- * this stands in for it so guardrails.ts has something concrete to type
- * against in the meantime.
+ * A proposed action for guardrails to vet. It is a minimal shape: `diff` is
+ * the unified diff the action would apply, which the guardrails measure
+ * (line count), scan (secret patterns) or apply to a scratch checkout before
+ * running a command (test runner).
  */
 export interface ProposedAction {
   diff: string;
