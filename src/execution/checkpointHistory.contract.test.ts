@@ -35,7 +35,7 @@ afterAll(() => {
   for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
 });
 
-const implementations:Array<[string, CheckpointHistoryStoreFactory]> = [
+const implementations: Array<[string, CheckpointHistoryStoreFactory]> = [
   ['memoryStore()', (options) => memoryStore(options).checkpoints],
   [
     'SqliteStore',
