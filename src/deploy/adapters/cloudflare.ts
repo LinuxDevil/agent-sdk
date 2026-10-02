@@ -1,7 +1,10 @@
 /**
  * cloudflare-worker deployment adapter (LOU-I3).
  *
- * scaffold(): loads + validates the AgentSpec (same loader as node-server),
+ * scaffold(): for an agent directory (M3b), see ./cloudflare-dir.ts: writes
+ *   agent.module.ts (the directory as static imports and JSON), a worker.ts
+ *   serving it, and wrangler.toml. For a spec file:
+ *   loads + validates the AgentSpec (same loader as node-server),
  *   checks every tool/provider is usable on Workers, then writes:
  *     - agent.config.js  the validated spec as an ES module default export
  *     - worker.ts        a module Worker whose fetch(request, env) serves the
@@ -30,6 +33,7 @@ import {
   WORKER_RUNTIME_SPECIFIER,
   loadTsup,
   sdkRuntimePlugin,
+  workerBuiltinImportersPlugin,
   workerNodeShimPlugin,
   workerSandboxShimPlugin,
   writeFile,
@@ -37,24 +41,11 @@ import {
 import { CHECKPOINT_KV_BINDING } from '../checkpointBinding';
 import { HTTP_ALLOW_BINDING } from '../../tools/built-in/workerHttp';
 import { agentConfigModuleSource, loadAgentSpecForDeploy } from './node-server';
+import { WORKER_SUPPORTED_PROVIDERS, WORKER_SUPPORTED_TOOLS } from '../workerSupport';
+import { isAgentDir } from './node-server-dir';
+import { scaffoldWorkerAgentDir } from './cloudflare-dir';
 
-/**
- * Built-in tools that work without Node builtins (see runtime.worker.ts).
- * 'http' (M3a) is the Worker's own http_request: listed host names only, from
- * the LOUSHO_HTTP_ALLOW binding (src/tools/built-in/workerHttp.ts).
- */
-export const WORKER_SUPPORTED_TOOLS = ['current-date', 'day-name', 'http'];
-/**
- * Provider types registered in the Worker bundle (see runtime.worker.ts).
- *
- * 'openai', 'anthropic' (LOU-K3) and 'openrouter' (M3a) are real,
- * network-calling providers - implemented on the Vercel `ai` SDK's
- * fetch()-based generateText/streamText plus @ai-sdk/openai /
- * @ai-sdk/anthropic, which have no `node:*` imports in their dependency
- * graph (the build's leak check verifies every bundle). 'ollama' remains
- * unsupported here (see runtime.worker.ts's doc comment for why).
- */
-export const WORKER_SUPPORTED_PROVIDERS = ['mock', 'openai', 'anthropic', 'openrouter'];
+export { WORKER_SUPPORTED_PROVIDERS, WORKER_SUPPORTED_TOOLS } from '../workerSupport';
 
 /** Pinned so a given SDK version always generates the same, reproducible config. */
 const COMPATIBILITY_DATE = '2024-09-23';
@@ -115,7 +106,7 @@ export function measureBundleSize(
   return { path: bundlePath, bytes, gzipBytes, limitBytes, overLimit: bytes > limitBytes };
 }
 
-export function workerName(spec: AgentSpec): string {
+export function workerName(spec: Pick<AgentSpec, 'name'>): string {
   const name = spec.name
     .toLowerCase()
     .replace(/[^a-z0-9-]+/g, '-')
@@ -138,7 +129,7 @@ function invalidCron(name: string, problem: string): never {
  * not fire: a timezone (crons are UTC), `@daily`-style shortcuts, anything but
  * five fields, a numeric day-of-week (Cloudflare counts 1 as Sunday).
  */
-export function workerCrons(spec: AgentSpec): string[] {
+export function workerCrons(spec: Pick<AgentSpec, 'triggers'>): string[] {
   return [...new Set(specSchedules(spec.triggers).map(workerCron))];
 }
 
@@ -158,7 +149,7 @@ function cronProblem(schedule: DefinedSchedule, fields: string[]): string | unde
 }
 
 /** The commented `[vars]` block for the `http` tool's allowlist (M3a), when the spec lists `http`. */
-function httpAllowVars(spec: AgentSpec): string[] {
+function httpAllowVars(spec: Pick<AgentSpec, 'tools'>): string[] {
   if (!(spec.tools ?? []).includes('http')) return [];
   return [
     `# The http tool reaches only the host names listed in ${HTTP_ALLOW_BINDING}`,
@@ -171,7 +162,8 @@ function httpAllowVars(spec: AgentSpec): string[] {
   ];
 }
 
-export function wranglerTomlSource(spec: AgentSpec): string {
+/** wrangler.toml for the Worker of `spec` (an agent directory passes only its `name`: no crons, no built-in tools). */
+export function wranglerTomlSource(spec: Pick<AgentSpec, 'name' | 'tools' | 'triggers'>): string {
   const crons = workerCrons(spec);
   const triggers =
     crons.length === 0
@@ -302,8 +294,72 @@ function assertToolsSupported(spec: AgentSpec): void {
   }
 }
 
+/** A path for messages: relative to the working directory when inside it. */
+function displayPath(file: string): string {
+  const relative = path.relative(process.cwd(), file);
+  return relative && !relative.startsWith('..') && !path.isAbsolute(relative) ? relative.replace(/\\/g, '/') : file;
+}
+
+/**
+ * Who imported the leaked builtins (M3b), from what workerBuiltinImportersPlugin
+ * recorded: e.g. ` ("node:fs" imported by my-agent/tools/files.ts). Workers ...`.
+ * Empty when nothing was recorded (a builtin named in a string, not imported).
+ */
+function importedBy(leaked: string[], importers: Map<string, Set<string>>): string {
+  const named = leaked.flatMap((quoted) => {
+    const files = importers.get(quoted.slice(1, -1));
+    return files ? [`${quoted} imported by ${[...files].map(displayPath).join(', ')}`] : [];
+  });
+  if (named.length === 0) return '';
+  return ` (${named.join('; ')}). Workers have no Node builtins: remove the import, or use --target=node-server or --target=docker.`;
+}
+
+/**
+ * The names an agent directory's files may import from '@lousho/build-ai-agent'
+ * in a Worker build: the exports of src/deploy/workerSdk.ts (a test keeps the
+ * two equal).
+ */
+export const WORKER_SDK_EXPORTS = [
+  'AnthropicProvider',
+  'ConfigurationError',
+  'LLMProviderRegistry',
+  'MockLLMProvider',
+  'OpenAIProvider',
+  'OpenRouterProvider',
+  'SDKError',
+  'ToolExecutionError',
+  'ValidationError',
+  'always',
+  'createMockProvider',
+  'defineSkill',
+  'defineTool',
+  'fromAiSdk',
+  'isDefinedTool',
+  'never',
+  'once',
+  'textOf',
+];
+
+/** Adds what to do to esbuild's "No matching export" for an SDK name a Worker bundle does not offer (exported for tests). */
+export function explainWorkerBuildError(error: unknown): unknown {
+  const message = error instanceof Error ? error.message : String(error);
+  if (!/No matching export in "[^"]*workerSdk\.ts"/.test(message)) return error;
+  return new SDKError(
+    `cloudflare-worker build: ${message}
+In a Cloudflare Worker, the files of an agent directory can import only these ` +
+      `from '@lousho/build-ai-agent': ${WORKER_SDK_EXPORTS.join(', ')}. Use --target=node-server or --target=docker for the rest.`,
+    'LOUSHO_DEPLOY_FAILED',
+    { cause: error }
+  );
+}
+
 export const CloudflareWorkerAdapter: DeploymentAdapter = {
   async scaffold(agentPath: string, outDir: string): Promise<void> {
+    if (isAgentDir(agentPath)) {
+      const name = await scaffoldWorkerAgentDir(agentPath, outDir);
+      writeFile(path.join(outDir, 'wrangler.toml'), wranglerTomlSource({ name }));
+      return;
+    }
     const spec = loadAgentSpecForDeploy(agentPath);
 
     assertProviderSupported(spec);
@@ -316,6 +372,7 @@ export const CloudflareWorkerAdapter: DeploymentAdapter = {
 
   async build(outDir: string): Promise<void> {
     const { build } = await loadTsup();
+    const builtinImporters = new Map<string, Set<string>>();
     await build({
       config: false,
       entry: { worker: path.join(outDir, 'worker.ts') },
@@ -325,7 +382,13 @@ export const CloudflareWorkerAdapter: DeploymentAdapter = {
       target: 'es2022',
       outExtension: () => ({ js: '.js' }),
       noExternal: [/.*/],
-      esbuildPlugins: [workerSandboxShimPlugin(), workerNodeShimPlugin(), sdkRuntimePlugin()],
+      // Last: a Node builtin nothing else resolves stays external so the leak check below names its importer.
+      esbuildPlugins: [
+        workerSandboxShimPlugin(),
+        workerNodeShimPlugin(),
+        sdkRuntimePlugin({ sdkEntry: 'worker' }),
+        workerBuiltinImportersPlugin(builtinImporters),
+      ],
       // Keep `node:` prefixes: the shim plugin matches them (and the leak check below reports any left).
       removeNodeProtocol: false,
       clean: true,
@@ -334,13 +397,15 @@ export const CloudflareWorkerAdapter: DeploymentAdapter = {
       dts: false,
       // Set LOUSHO_BUILD_VERBOSE=1 to see tsup's own build log (and full bundling errors).
       silent: !process.env.LOUSHO_BUILD_VERBOSE,
+    }).catch((error: unknown) => {
+      throw explainWorkerBuildError(error);
     });
 
     const bundlePath = path.join(outDir, 'dist', 'worker.js');
     const leaked = findNodeBuiltinReferences(fs.readFileSync(bundlePath, 'utf8'));
     if (leaked.length > 0) {
       throw new SDKError(
-        `cloudflare-worker build: Node builtins leaked into ${bundlePath}: ${leaked.join(', ')}`,
+        `cloudflare-worker build: Node builtins leaked into ${bundlePath}: ${leaked.join(', ')}${importedBy(leaked, builtinImporters)}`,
         'LOUSHO_DEPLOY_FAILED'
       );
     }
