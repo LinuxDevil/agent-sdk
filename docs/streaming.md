@@ -77,10 +77,13 @@ To observe every run without iterating one, give the agent a listener:
 / `stream()` / `resumeAfterApproval()` options. It is called synchronously
 with each `AgentEvent` as it happens, on `send()` as on `stream()`, for
 session turns and for runs resumed after an approval. It gets the same events,
-in the same order, as iterating the stream would, with one difference:
-`send()` / `execute()` generate each model step whole, so a step's text comes
-as a single `text.delta` (as it does on `stream()` with a provider that cannot
-stream). Sub-agents' events arrive tagged with `subagent`.
+in the same order, as iterating the stream would: with a listener, `send()` /
+`execute()` stream each model call too, so a step's text arrives as several
+`text.delta` events (one `text.delta` per step when the provider cannot
+stream). Concatenate them, or use `text.done` for each step's whole text;
+`AgentExecutor.execute({ streamModelCalls: false })` generates whole steps.
+Output guardrails still check only the final reply of a `send()`, as without
+a listener. Sub-agents' events arrive tagged with `subagent`.
 
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
@@ -234,7 +237,8 @@ provider has no `stream()`, or its `supportsStreaming(model)` returns
 Streaming changes only how one model step is obtained. Hooks, argument
 validation, approvals, parallel tool calls, checkpoints, cancellation,
 tracing spans and the other `execute()` callbacks behave exactly as in
-`send()`. `send()` and `execute()` themselves still use `generate()`.
+`send()`. `send()` and `execute()` stream the same way when they have a
+listener (`onEvent` / `onAgentEvent`); without one they use `generate()`.
 
 A custom provider's `stream()` should yield `text-delta` chunks and a final
 `finish` chunk with `finishReason` and `usage`. Tool calls can be yielded as

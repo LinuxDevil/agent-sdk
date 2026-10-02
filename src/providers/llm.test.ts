@@ -121,7 +121,8 @@ describe('LLM Providers', () => {
       }
 
       expect(chunks.length).toBeGreaterThan(0);
-      expect(chunks.join('')).toBe('Hello, world! ');
+      // M9: the chunks add up to exactly the text generate() returns (no trailing space).
+      expect(chunks.join('')).toBe('Hello, world!');
     });
 
     it('should stream with full chunks', async () => {
@@ -138,6 +139,27 @@ describe('LLM Providers', () => {
       expect(chunks.length).toBeGreaterThan(0);
       expect(chunks[0].type).toBe('text-delta');
       expect(chunks[chunks.length - 1].type).toBe('finish');
+    });
+
+    it('streams the step generate() would return: text, tool calls, finish reason and usage (M9)', async () => {
+      const request = {
+        model: 'mock-model',
+        messages: [{ role: 'user' as const, content: 'please use current-date' }],
+        tools: [{ type: 'function' as const, function: { name: 'current-date', description: 'd', parameters: {} } }],
+      };
+      const generated = await new MockLLMProvider({ name: 'mock' }).generate(request);
+      const streamed = await new MockLLMProvider({ name: 'mock' }).stream(request);
+      const chunks = [];
+      for await (const chunk of streamed.fullStream) chunks.push(chunk);
+
+      const deltas = chunks.filter((c) => c.type === 'text-delta').map((c) => c.textDelta);
+      expect(deltas.length).toBeGreaterThan(1);
+      expect(deltas.join('')).toBe(generated.text);
+      expect(chunks.filter((c) => c.type === 'tool-call').map((c) => c.toolCall?.function)).toEqual(
+        generated.toolCalls?.map((call) => call.function)
+      );
+      expect(chunks.at(-1)).toEqual({ type: 'finish', finishReason: 'tool_calls', usage: generated.usage });
+      expect(await streamed.finishReason).toBe(generated.finishReason);
     });
 
     it('should resolve text promise', async () => {

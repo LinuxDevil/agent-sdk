@@ -3639,8 +3639,9 @@ strategy could not shrink anything, `tokensAfter` equals `tokensBefore`; when it
 failed (or the summarizer failed and the hook fell back to pruning), `error` is
 set and the run continues. `summary` is `true` when old turns were replaced by
 a summary (the text itself is not sent; use `onCompaction` for it). A
-non-streaming `send()` emits no events. Hooks add their own events with
-`ctx.emit?.(...)` on the `preGenerate` context, which exists only in streamed runs.
+`send()` without a listener emits no events. Hooks add their own events with
+`ctx.emit?.(...)` on the `preGenerate` context, which exists when the run has
+listeners (`createAgent({ onEvent })`, `onAgentEvent`) or is streamed.
 
 ## Compacting a run
 
@@ -6092,6 +6093,7 @@ console.log(events); // includes 'run.start' and 'run.done'
 | `limits`                                | Token, cost, time and step budgets of the run; see [Budgets](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#budgets). |
 | `temperature`, `maxTokens`              | Generation parameters.                                          |
 | `onAgentEvent`                          | Listener for the run's `AgentEvent`s (`run.start`, `tool.start`, `run.done`, ...); see [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#listening-without-iterating). |
+| `streamModelCalls`                      | With a listener, stream each model call so text arrives as several `text.delta` events (default `true`); `false` generates whole steps, one `text.delta` each. Ignored by `stream()`. |
 | `approvalStore`, `sessionId`            | Human-in-the-loop approvals (see `resumeAfterApproval()`).       |
 | `checkpointStore`                       | Persist/resume execution checkpoints.                           |
 | `exporter`                              | A `TraceExporter` for tracing spans (OpenTelemetry GenAI conventions, see [observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md)). |
@@ -6227,7 +6229,7 @@ three points, each list in order:
 | List | Runs on | When |
 | ---- | ------- | ---- |
 | `input` | Each new user message (the user messages that end the transcript) | Before the first model call. A block makes no model call. |
-| `output` | The final assistant text; in a streamed run, every step's text | Before it is emitted: before its `text.done`, and before `run.done`. |
+| `output` | The final assistant text; in a `stream()` run (one you iterate), every step's text. `send()` with a listener checks the final text only. | Before it is emitted: before its `text.done`, and before `run.done`. |
 | `tools` | A tool call's arguments (`text` is them as JSON, `args` the object) | After the [permission rules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies) (skipped when a rule denies the call) and before `needsApproval`. |
 
 A guardrail is `{ name, check(ctx) }`. `ctx` has `kind` (`'input'`, `'output'`
@@ -6471,7 +6473,7 @@ Every method is optional: implement only the points you need. A hook that return
 | `preGenerate(ctx)` | Before each model call. | `GenerateHookContext`: `request` (the live `GenerateOptions` about to be sent) and `emit?`, plus the common fields. | Nothing; mutate `ctx.messages` or `ctx.request`, or throw. |
 | `postGenerate(ctx, result)` | After each model call resolves, with its `GenerateResult`. | `GenerateHookContext`. | Nothing; or throw. |
 
-The common fields on every context are `agentId`, `agentName`, `sessionId`, `messages` (the live conversation history), `metadata` (a free-form bag) and `subagent` (set inside a sub-agent). `ctx.emit` exists only in streamed runs and adds `compaction.start` / `compaction.done` events to the stream.
+The common fields on every context are `agentId`, `agentName`, `sessionId`, `messages` (the live conversation history), `metadata` (a free-form bag) and `subagent` (set inside a sub-agent). `ctx.emit` exists when the run has listeners (`createAgent({ onEvent })`, `onAgentEvent`) or is streamed, and adds `compaction.start` / `compaction.done` events to the run's events.
 
 ## Hook outcomes
 
@@ -9749,10 +9751,13 @@ To observe every run without iterating one, give the agent a listener:
 / `stream()` / `resumeAfterApproval()` options. It is called synchronously
 with each `AgentEvent` as it happens, on `send()` as on `stream()`, for
 session turns and for runs resumed after an approval. It gets the same events,
-in the same order, as iterating the stream would, with one difference:
-`send()` / `execute()` generate each model step whole, so a step's text comes
-as a single `text.delta` (as it does on `stream()` with a provider that cannot
-stream). Sub-agents' events arrive tagged with `subagent`.
+in the same order, as iterating the stream would: with a listener, `send()` /
+`execute()` stream each model call too, so a step's text arrives as several
+`text.delta` events (one `text.delta` per step when the provider cannot
+stream). Concatenate them, or use `text.done` for each step's whole text;
+`AgentExecutor.execute({ streamModelCalls: false })` generates whole steps.
+Output guardrails still check only the final reply of a `send()`, as without
+a listener. Sub-agents' events arrive tagged with `subagent`.
 
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
@@ -9906,7 +9911,8 @@ provider has no `stream()`, or its `supportsStreaming(model)` returns
 Streaming changes only how one model step is obtained. Hooks, argument
 validation, approvals, parallel tool calls, checkpoints, cancellation,
 tracing spans and the other `execute()` callbacks behave exactly as in
-`send()`. `send()` and `execute()` themselves still use `generate()`.
+`send()`. `send()` and `execute()` stream the same way when they have a
+listener (`onEvent` / `onAgentEvent`); without one they use `generate()`.
 
 A custom provider's `stream()` should yield `text-delta` chunks and a final
 `finish` chunk with `finishReason` and `usage`. Tool calls can be yielded as
