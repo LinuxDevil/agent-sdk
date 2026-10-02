@@ -40,6 +40,7 @@ import type { AgentInput } from '../providers/content';
 import { InputQueue, type EnqueueResult, type QueuedInput, type SteerResult } from './inputQueue';
 import type { GuardrailTrip } from './ioGuardrails';
 import type { AgentDrift } from './agentFingerprint';
+import { isTodoListResult } from '../tools/built-in/todo';
 
 /**
  * The handle returned by `agent.stream()` and `AgentExecutor.stream()`.
@@ -285,6 +286,11 @@ class RunEvents {
     if (outcome.error === undefined) {
       const replaced = outcome.replacedByHook !== undefined && { replacedByHook: outcome.replacedByHook };
       this.emit({ type: 'tool.done', toolCallId, toolName, result: toJsonValue(outcome.result), durationMs, ...replaced }, subagent, { toolResult: outcome });
+      // The brand is checked on the raw result, before `toJsonValue` drops it.
+      if (isTodoListResult(outcome.result)) {
+        const { todos, counts } = outcome.result;
+        this.emit({ type: 'todo.updated', todos: toJsonValue(todos) as typeof todos, counts: { ...counts }, toolCallId }, subagent);
+      }
       return;
     }
     const name = (outcome.result as { error?: unknown } | null)?.error;

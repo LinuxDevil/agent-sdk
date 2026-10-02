@@ -62,6 +62,7 @@ export function Chat() {
 | `tool.start` | `tool-input-start`, then `tool-input-available` with the arguments |
 | `tool.done` / `tool.error` | `tool-output-available` / `tool-output-error` |
 | `approval.requested` | `data-lousho-approval` (below) |
+| `todo.updated` | `data-lousho-todos`: a data part `{ todos, counts }` with the complete todo list, under the id `todos` so each update replaces the last (see [Todo tools](./tools.md#todo-tools)) |
 | `error` | `error` |
 | `run.done` | `finish` |
 

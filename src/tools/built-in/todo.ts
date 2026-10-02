@@ -48,6 +48,23 @@ export interface TodoListResult {
   counts: Record<TodoStatus, number> & { total: number };
 }
 
+const TODO_LIST_BRAND = Symbol.for('lousho.todoList');
+
+/** `todo_write` marks its result with a non-enumerable brand, so a run can emit `todo.updated` (docs/stream-events.md). */
+function brand(result: TodoListResult): TodoListResult {
+  Object.defineProperty(result, TODO_LIST_BRAND, { value: true, enumerable: false });
+  return result;
+}
+
+/**
+ * Whether `value` is what a successful `todo_write` returned (the run checks
+ * it to emit `todo.updated`). Survives a renamed or wrapped tool as long as
+ * it returns the branded object; `todo_read` results are not branded.
+ */
+export function isTodoListResult(value: unknown): value is TodoListResult {
+  return typeof value === 'object' && value !== null && (value as Record<symbol, unknown>)[TODO_LIST_BRAND] === true;
+}
+
 /** The tools and host accessor returned by {@link createTodoTools}. */
 export interface TodoTools {
   /** `[todo_write, todo_read]`, ready for `createAgent({ tools })`. */
@@ -140,7 +157,7 @@ function buildWriteTool(store: TodoStore, onChange: TodoToolsOptions['onChange']
       const next = assignIds(todos, await store.get());
       await store.set(next);
       await onChange?.(next);
-      return summarize(next);
+      return brand(summarize(next));
     },
   });
 }

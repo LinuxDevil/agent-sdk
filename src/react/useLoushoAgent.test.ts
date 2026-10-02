@@ -10,7 +10,9 @@ import { z } from 'zod';
 import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import { mockModel } from '../testing';
+import { createTodoTools } from '../tools/built-in/todo';
 import { AGENT_EVENT_SCHEMA_VERSION, type AgentEvent } from '../execution/agentEvents';
+import { useTodos } from './useTodos';
 import { useLoushoAgent, type LoushoAgentSource, type UseLoushoAgentOptions, type UseLoushoAgentResult } from './useLoushoAgent';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -19,8 +21,13 @@ let hook: UseLoushoAgentResult;
 let renderer: ReactTestRenderer | undefined;
 const statuses: string[] = [];
 
+let todoView: ReturnType<typeof useTodos>;
+const todoViews: unknown[] = [];
+
 function Probe({ source, options }: { source: LoushoAgentSource; options?: UseLoushoAgentOptions }) {
   hook = useLoushoAgent(source, options);
+  todoView = useTodos(hook);
+  todoViews.push(todoView);
   statuses.push(hook.status);
   return null;
 }
@@ -249,5 +256,43 @@ describe('useLoushoAgent remote (LOU-D15)', () => {
     act(() => renderer?.unmount());
     renderer = undefined;
     expect(remote.signals[1].aborted).toBe(true);
+  });
+
+});
+
+describe('useTodos (N12)', () => {
+  const todoWrite = { name: 'todo_write', args: { todos: [{ content: 'Plan', status: 'completed' }, { content: 'Build', status: 'in_progress' }, { content: 'Ship', status: 'pending' }] } };
+
+  it('follows the todo list of an in-process run, with counts, the current item and progress', async () => {
+    const todos = createTodoTools();
+    mount({ agent: createAgent({ provider: mockModel([{ toolCalls: [todoWrite] }, 'done']), tools: todos.tools }) });
+    expect(todoView.todos).toEqual([]);
+    expect(todoView.progress).toBe(0);
+
+    await act(() => hook.send('Go'));
+
+    expect(todoView.counts).toEqual({ pending: 1, in_progress: 1, completed: 1, total: 3 });
+    expect(todoView.current?.content).toBe('Build');
+    expect(todoView.progress).toBeCloseTo(1 / 3);
+    expect(hook.todos).toBe(todoView.todos);
+    // memoized: an unrelated state change keeps the same view object
+    const before = todoView;
+    act(() => hook.stop());
+    expect(todoView).toBe(before);
+  });
+
+  it('follows a remote run, which now also receives agent.drift', async () => {
+    const remote = scriptedFetch([{ body: sse([
+  { ...base, seq: 0, type: 'run.start', agentName: 'a' },
+  { ...base, seq: 1, type: 'agent.drift', model: { from: 'a', to: 'b' }, toolsAdded: [], toolsRemoved: [], instructions: false },
+  { ...base, seq: 2, type: 'todo.updated', toolCallId: 'w1', todos: [{ id: 'todo_1', content: 'Plan', status: 'completed' }, { id: 'todo_2', content: 'Build', status: 'pending' }], counts: { pending: 1, in_progress: 0, completed: 1, total: 2 } },
+  { ...base, seq: 3, type: 'run.done', finishReason: 'stop', text: '' },
+]) }]);
+    mount({ url: '/api/agent', fetch: remote.fetch });
+
+    await act(() => hook.send('Go'));
+
+    expect(todoView.counts).toEqual({ pending: 1, in_progress: 0, completed: 1, total: 2 });
+    expect(todoView.current?.content).toBe('Build');
   });
 });

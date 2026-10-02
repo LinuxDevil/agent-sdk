@@ -394,4 +394,9 @@ describe('agent.stream()', () => {
     expect(isAgentEvent({ type: 'text.delta', v: 2, seq: 0 })).toBe(false);
     expect(isAgentEvent('text.delta')).toBe(false);
   });
+
+  it('isAgentEvent accepts every event type, including agent.drift and todo.updated (N12)', () => {
+    for (const type of ['agent.drift', 'todo.updated', 'run.start', 'run.done']) expect(isAgentEvent({ type, v: 1, seq: 0 })).toBe(true);
+    expect(isAgentEvent({ type: 'todo.removed', v: 1, seq: 0 })).toBe(false);
+  });
 });
