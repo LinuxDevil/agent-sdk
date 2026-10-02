@@ -241,12 +241,22 @@ function withAbortSignal(toolOptions: ToolOptions, abortSignal: AbortSignal): { 
 /**
  * A deployed sub-agent's task: its final text, or a thrown coded error (never wrapped, so the code stays visible).
  * A resumed task continues in its remote session (LOU-Y7.2), saved up front so a task whose remote run paused for
- * approval can be continued once that approval was decided on the remote agent.
+ * approval can be continued. LOU-Y7.3: with an approval store, a remote pause pauses the lead; re-entered on resume,
+ * the call decides the remote approval its suspension recorded (remote session id, approval id) with the lead's decision.
  */
 async function runRemoteTask(remote: RemoteSubagent, args: TaskArgs, toolOptions: ToolOptions, task: ChildTask): Promise<string> {
-  const sessionId = task.remoteSessionId ?? newId('task');
+  const scope = toolCallScopeOf(toolOptions);
+  const paused = scope?.resume && { snapshot: scope.resume.suspension.snapshot, decision: scope.resume.decision };
+  const sessionId = paused?.snapshot.sessionId ?? task.remoteSessionId ?? newId('task');
   await task.save({ messages: [], remoteSessionId: sessionId });
-  return remote.run(args.prompt, { name: args.agent, signal: toolOptions?.abortSignal, sessionId, taskId: task.taskId });
+  const decision = paused && { approvalId: paused.snapshot.pendingToolCall.id, approved: paused.decision.approved, note: paused.decision.note };
+  const pausable = scope?.runtime.approvalStore !== undefined;
+  try {
+    return await remote.run(args.prompt, { name: args.agent, signal: toolOptions?.abortSignal, sessionId, taskId: task.taskId, pausable, decision });
+  } catch (error) {
+    if (error instanceof SubagentApprovalPause) error.resumeArgs = { taskId: task.taskId };
+    throw error;
+  }
 }
 
 /** What the `task` tool of one run works with. */

@@ -1,9 +1,10 @@
 /** LOU-Y7: `remoteAgent()`, a deployed agent used as a sub-agent. Built on the shared session client (LOU-D53); Worker-safe. */
 
 import { SDKError } from '../execution/errors';
-import { runRemoteTurn, type SessionTurnSummary } from '../server/sessionClient';
+import { SubagentApprovalPause } from '../execution/subagentRuntime';
+import { resolveRemoteApproval, runRemoteTurn, type PendingApproval, type SessionTurnSummary } from '../server/sessionClient';
 import { newId } from '../utils/id';
-import type { RemoteAgentOptions, RemoteSubagent } from './types';
+import type { RemoteAgentOptions, RemoteRunOptions, RemoteSubagent } from './types';
 
 /** The agents {@link remoteAgent} made, so `withSubagents()` can tell them from `createAgent()` agents. */
 const remoteSubagents = new WeakSet<object>();
@@ -13,16 +14,31 @@ export function isRemoteSubagent(value: unknown): value is RemoteSubagent {
   return typeof value === 'object' && value !== null && remoteSubagents.has(value);
 }
 
-/** The text of a finished remote run (with a footer), or the error that says why there is none. */
-function outcome(label: string, name: string, summary: SessionTurnSummary, taskId?: string): string {
-  const { finishReason, text, sessionId, approval } = summary;
+/**
+ * LOU-Y7.3: a paused remote run as a sub-agent pause, which the lead run pauses on. Its snapshot holds no transcript:
+ * `sessionId` is the remote session and the pending call's `id` the remote approval id, all a resume needs (no token).
+ */
+function remotePause(name: string, sessionId: string, approval: PendingApproval): SubagentApprovalPause {
+  const { approvalId: id, toolCallId, toolName, args } = approval;
+  const pendingToolCall = { id, toolCallId, toolName, args, createdAt: new Date().toISOString() };
+  return new SubagentApprovalPause(name, { agent: { name }, currentMessages: [], pendingToolCall, steps: 0, sessionId });
+}
+
+/** A remote pause the lead cannot pause on (it has no approval store). */
+function awaitingApproval(name: string, { sessionId, approval }: SessionTurnSummary, taskId?: string): SDKError {
+  const then = taskId ? ` and then continue task '${taskId}'` : '';
+  return new SDKError(
+    `Remote agent '${name}' is awaiting approval${approval ? ` '${approval.approvalId}'` : ''} in its session '${sessionId}'. ` +
+      `The lead run has no approval store to pause on: decide it on the remote agent (POST /chat/<session>/approvals/<id>)${then}, or give the remote agent no tools that need approval.`,
+    'LOUSHY_SESSION_AWAITING_APPROVAL'
+  );
+}
+
+/** The answer of a finished remote run (its `output` object as JSON, else its text) with a footer, or the error that says why there is none. */
+function outcome(label: string, name: string, summary: SessionTurnSummary, { taskId, pausable }: RemoteRunOptions): string {
+  const { finishReason, text, sessionId, approval, object } = summary;
   if (finishReason === 'awaiting-approval') {
-    const then = taskId ? ` and then continue task '${taskId}'` : '';
-    throw new SDKError(
-      `Remote agent '${name}' is awaiting approval${approval ? ` '${approval.approvalId}'` : ''} in its session '${sessionId}'. ` +
-        `Approvals of remote sub-agents are not proxied: decide it on the remote agent (POST /chat/<session>/approvals/<id>)${then}, or give the remote agent no tools that need approval.`,
-      'LOUSHY_SESSION_AWAITING_APPROVAL'
-    );
+    throw pausable && approval ? remotePause(name, sessionId, approval) : awaitingApproval(name, summary, taskId);
   }
   if (finishReason === 'error') {
     throw new SDKError(`${label} failed: the remote run ended in an error: ${summary.error ?? 'unknown error'}`, 'LOUSHY_REMOTE_REQUEST_FAILED');
@@ -31,7 +47,8 @@ function outcome(label: string, name: string, summary: SessionTurnSummary, taskI
     throw new SDKError(`${label} ended with finish reason '${finishReason}' without a final answer.`, 'LOUSHY_REMOTE_REQUEST_FAILED');
   }
   const footer = `[remote sub-agent '${name}': session '${sessionId}', finish reason '${finishReason}'${taskId ? `, taskId '${taskId}'` : ''}]`;
-  return text ? `${text}\n\n${footer}` : footer;
+  const body = object === undefined ? text : JSON.stringify(object);
+  return body ? `${body}\n\n${footer}` : footer;
 }
 
 /**
@@ -40,11 +57,13 @@ function outcome(label: string, name: string, summary: SessionTurnSummary, taskI
  * next to local ones. Each delegated task opens a fresh session on the remote
  * agent over `POST <url>/chat` (a `task` call that resumes a task reuses its
  * session, LOU-Y6), sends the task prompt, reads the streamed run
- * to its end and returns the remote agent's final text. The lead run's abort
+ * to its end and returns the remote agent's final text (its `output` object as
+ * JSON when it has an `output` schema). The lead run's abort
  * signal aborts the request. Failures reach the lead as the usual structured
  * tool error with a `LOUSHY_REMOTE_REQUEST_FAILED` (or, for a 401,
- * `LOUSHY_REMOTE_UNAUTHORIZED`) code; a remote run that pauses for approval
- * fails with `LOUSHY_SESSION_AWAITING_APPROVAL` (approvals are not proxied).
+ * `LOUSHY_REMOTE_UNAUTHORIZED`) code. A remote run that pauses for approval
+ * pauses the lead run (LOU-Y7.3): deciding it on the lead decides it on the
+ * remote agent, and the continuation's answer is the task result.
  *
  * @example
  * ```ts
@@ -67,9 +86,13 @@ export function remoteAgent(options: RemoteAgentOptions): RemoteSubagent {
   const agent: RemoteSubagent = {
     name: options.name,
     description: options.description ?? `Remote agent at ${options.url}`,
-    async run(prompt, { name = options.name ?? 'remote-agent', signal, sessionId = newId('task'), taskId } = {}) {
+    async run(prompt, run = {}) {
+      const { name = options.name ?? 'remote-agent', signal, sessionId = newId('task'), decision } = run;
       const label = `Remote agent '${name}' (session '${sessionId}')`;
-      return outcome(label, name, await runRemoteTurn(options, { sessionId, input: prompt, signal, label }), taskId);
+      const summary = decision
+        ? await resolveRemoteApproval(options, { ...decision, sessionId, signal, label })
+        : await runRemoteTurn(options, { sessionId, input: prompt, signal, label });
+      return outcome(label, name, summary, run);
     },
   };
   remoteSubagents.add(agent);
