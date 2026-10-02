@@ -100,10 +100,10 @@ async function resolveChoices(options: InitOptions, environment: InitEnvironment
   };
 }
 
-/** Printed after a failed install: until the first npm release the SDK dependency cannot resolve (E404). */
-const PRE_PUBLISH_HINT =
-  'If the error is a 404 for @lousho/build-ai-agent: the package is not on npm yet. Re-run with `--sdk-path <SDK checkout or packed .tgz>` ' +
-  '(see docs/installation.md#installing-before-the-first-release).\n';
+/** Printed after a failed install: the usual causes, and how to install against a local build of the SDK. */
+const INSTALL_FAILED_HINT =
+  'Check your network and registry settings, then run the install again in the new directory. To use a local build of the SDK instead, ' +
+  're-run with `--sdk-path <SDK checkout or packed .tgz>` (see docs/installation.md#installing-from-a-local-build).\n';
 
 function nextSteps(dir: string, cwd: string, pm: PackageManager, envKey: string, installed: boolean): string {
   const relative = path.relative(cwd, dir) || '.';
@@ -122,7 +122,7 @@ async function finish(options: InitOptions, choices: Choices, dir: string, envir
   const code = await environment.exec(choices.packageManager, ['install'], dir);
   if (code !== 0) {
     environment.writeError(`lousho init: \`${choices.packageManager} install\` failed (exit ${code}). Run it yourself in ${dir}.\n`);
-    environment.writeError(PRE_PUBLISH_HINT);
+    environment.writeError(INSTALL_FAILED_HINT);
   }
   return code === 0;
 }

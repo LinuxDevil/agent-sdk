@@ -3,9 +3,7 @@
 Installing the package also installs the `lousho` command. It scaffolds
 projects, checks your setup, runs an agent locally, serves it over MCP, runs
 evals, builds a deployable artifact and launches the Agent Forge dashboard.
-Run it with `npx lousho <command>` inside a project that has the SDK installed
-(the package is not on npm yet: see
-[Installing before the first release](./installation.md#installing-before-the-first-release)).
+Run it with `npx lousho <command>` inside a project that has the SDK installed.
 
 | Command | What it does | Details |
 | ------- | ------------ | ------- |
@@ -47,10 +45,8 @@ never takes the next flag as its value) or an extra argument fails with
 the `=` form: `--model=-x`.
 
 `npm create lousho-agent my-agent` runs `lousho init` with the same arguments.
-**Not on npm yet:** `npm create lousho-agent` and `npx lousho ...` fail until
-the package is published; today, scaffold from a built checkout of this
-repository with `node bin/lousho.js init my-agent --sdk-path .` (see
-[Installing before the first release](./installation.md#installing-before-the-first-release)).
+To scaffold against an unreleased build of the SDK, pass `--sdk-path` (see
+[Installing from a local build](./installation.md#installing-from-a-local-build)).
 
 ## `lousho dev`
 
