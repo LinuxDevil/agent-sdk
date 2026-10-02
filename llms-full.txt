@@ -7416,23 +7416,52 @@ In the record form of `tools` a hosted tool's key must be its name
 (`tools: { web_search: webSearch(), lookup }`). A hosted tool with the name of
 another tool is a `LOUSHO_CONFIG_INVALID` error when the agent is created.
 
-A provider uses the options it supports. OpenAI takes `searchContextSize`,
-`userLocation` and `allowedDomains`; it has no `maxUses` or `blockedDomains`,
-so those are dropped with one `console.warn`.
+A provider uses the options it supports and drops the rest with one
+`console.warn`. OpenAI takes `searchContextSize`, `userLocation` and
+`allowedDomains` (no `maxUses`, no `blockedDomains`). Anthropic takes
+`maxUses`, `allowedDomains`, `blockedDomains` and `userLocation` (no
+`searchContextSize`; its code execution has no `container`). OpenRouter takes
+`maxUses`, `allowedDomains`, `blockedDomains` (sent as its `excluded_domains`)
+and `searchContextSize` (no `userLocation`).
 
 ## Which provider runs which
 
 | Tool | OpenAI | Anthropic | OpenRouter | Ollama | `fromAiSdk()` / other AI SDK providers |
 | --- | --- | --- | --- | --- | --- |
-| `webSearch()` | ✅ `ai` 6 + `@ai-sdk/openai` 3, `ai` 7 + `@ai-sdk/openai` 4 | see N1b | see N1b | ❌ | ❌ (use `hostedTool()`) |
-| `codeInterpreter()` | ✅ same pairings | see N1b | see N1b | ❌ | ❌ (use `hostedTool()`) |
-| `fileSearch()` | ✅ same pairings | see N1b | see N1b | ❌ | ❌ (use `hostedTool()`) |
+| `webSearch()` | ✅ `ai` 6 + `@ai-sdk/openai` 3, `ai` 7 + `@ai-sdk/openai` 4 | ✅ `ai` 6 + `@ai-sdk/anthropic` 3, `ai` 7 + `@ai-sdk/anthropic` 4 | ✅ every `openrouter/...` model, any `ai` | ❌ | ❌ (use `hostedTool()`) |
+| `codeInterpreter()` | ✅ same pairings | ✅ same pairings (Anthropic's code execution) | ❌ | ❌ | ❌ (use `hostedTool()`) |
+| `fileSearch()` | ✅ same pairings | ❌ (Anthropic has no hosted file search) | ❌ | ❌ | ❌ (use `hostedTool()`) |
 | `hostedTool()` | ✅ `ai` 6 or 7 | ✅ `ai` 6 or 7 | ✅ `ai` 6 or 7 | ✅ `ai` 6 or 7 | ✅ `ai` 6 or 7 |
 
-Hosted tools need `ai` 6 or 7. With `ai` 4 (and its `@ai-sdk/openai` 0.0.x
-or 1.x) every hosted tool is refused. On OpenAI the model is the Responses API
-model, which `@ai-sdk/openai` gives from version 2 on. An unsupported
-pairing rejects the run before the first model call with
+Hosted tools need `ai` 6 or 7, except OpenRouter's web search, which works on
+`ai` 4 too. With `ai` 4 (and its `@ai-sdk/openai` 0.0.x or 1.x) every other
+hosted tool is refused. On OpenAI the model is the Responses API
+model, which `@ai-sdk/openai` gives from version 2 on.
+
+On Anthropic the helpers use the newest dated server tool the installed
+`@ai-sdk/anthropic` exports: `webSearch()` the newest `tools.webSearch_*()`,
+`codeInterpreter()` the newest `tools.codeExecution_*()` (Anthropic calls it
+`code_execution`; the SDK keeps the name `code_interpreter` in events and in
+`usage.hostedToolCalls`, on every provider). A package that has neither is
+refused with the pairing that would work. For other Anthropic server tools
+(web fetch, for one) use `hostedTool('web_fetch', anthropic.tools.webFetch_20260318())`.
+
+On OpenRouter, `webSearch()` adds OpenRouter's `openrouter:web_search` server
+tool to the request, so the search runs on OpenRouter's side for any model.
+OpenRouter picks the search engine (the model's own search where it has one,
+else Exa) and bills each search on top of the tokens, at the rates on
+[OpenRouter's pricing page](https://openrouter.ai/pricing); see its
+[web search guide](https://openrouter.ai/docs/guides/features/server-tools/web-search)
+for the engines. Because the server runs the search inside the request, the
+model reports no tool call. The SDK reports one hosted call per model step
+that searched, read from OpenRouter's response: `name: 'web_search'`, empty
+`args`, the cited urls from its `url_citation` annotations as `sources`, and
+`result: { requests }` when OpenRouter reports
+`usage.server_tool_use.web_search_requests` (otherwise `result` is `{}`; the
+live test did not receive a count). The query the model searched for is not
+reported.
+
+An unsupported pairing rejects the run before the first model call with
 [`LOUSHO_HOSTED_TOOL_UNSUPPORTED`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_hosted_tool_unsupported),
 naming the provider, the tool and what would work.
 
