@@ -56,6 +56,35 @@ describe('SubprocessSandbox', () => {
       expect(created[0].HostConfig).toEqual({ NetworkMode: 'none', AutoRemove: true, Binds: ['/work:/work'] });
     });
 
+    it('waits for the exit before starting: an auto-removed container that exits at once is gone by a later wait (#326)', async () => {
+      const calls: string[] = [];
+      let started = false;
+      class FakeDocker {
+        modem = { demuxStream: () => {} };
+        async createContainer() {
+          return {
+            attach: async () => ({}),
+            start: async () => {
+              started = true;
+              calls.push('start');
+            },
+            wait: async (options?: { condition?: string }) => {
+              calls.push(`wait:${options?.condition}`);
+              // Docker answers 404 once AutoRemove has taken the container.
+              if (started) throw Object.assign(new Error('(HTTP code 404) no such container'), { statusCode: 404 });
+              return { StatusCode: 0 };
+            },
+            kill: async () => {},
+          };
+        }
+      }
+      vi.resetModules();
+      vi.doMock('dockerode', () => ({ default: FakeDocker }));
+      const { SubprocessSandbox: Sandbox } = await import('./sandbox');
+      await expect(new Sandbox().run('true', [])).resolves.toMatchObject({ exitCode: 0 });
+      expect(calls).toEqual(['wait:next-exit', 'start']);
+    });
+
     it('maps the network policy, failing closed for { allow } without an egress proxy (LOU-X11)', async () => {
       const { created, Sandbox } = await withFakeDocker();
       await new Sandbox({ network: 'default' }).run('ls', []);
