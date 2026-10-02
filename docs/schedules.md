@@ -119,4 +119,4 @@ fields (no seconds, no `@daily`), and the day-of-week must be `*` or names
 granularity is one minute, and Cloudflare may start a run a few seconds late.
 
 To wire your own Worker entry, see
-[Cloudflare Worker](deployment.md#cron-triggers-and-handlescheduled).
+[Cloudflare Workers](cloudflare-workers.md#scheduled-runs).

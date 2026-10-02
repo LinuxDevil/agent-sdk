@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { loadSpec } from './loadSpec';
-import { specToAgent } from './specToAgent';
+import { specToAgent, resolveSpecTool } from './specToAgent';
+import { webFetchTool } from '../tools/built-in/webFetch';
 import { createAgent } from '../createAgent';
 import { LLMProviderRegistry } from '../providers/llm';
 import { createMockProvider, MockLLMProvider } from '../providers/mock';
@@ -47,6 +48,12 @@ provider:
     expect(specResult.text).toBe(directResult.text);
     expect(specResult.finishReason).toBe(directResult.finishReason);
     expect(specResult.toolCalls).toEqual(directResult.toolCalls);
+  });
+
+  it("resolves 'web-fetch' to the web_fetch built-in (N13a)", () => {
+    expect(resolveSpecTool('web-fetch')).toBe(webFetchTool);
+    const agent = specToAgent({ name: 'x', prompt: 'x', provider: { type: 'mock', model: 'm' }, tools: ['web-fetch'] });
+    expect(agent).toBeDefined();
   });
 
   it('throws naming an unrecognized tool', () => {

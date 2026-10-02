@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Node.js **22.19 or newer** (`engines.node` in `package.json`, set by the `undici@8` dependency; `undici` is loaded only for `http` tool requests with `validateSSL: false`, see [Optional peers](#optional-peers)).
+- Node.js **22.19 or newer** (`engines.node` in `package.json`, set by the `undici@8` dependency; `undici` is loaded only when the `http_request` or `web_fetch` tool makes a request, see [Optional peers](#optional-peers)).
 - TypeScript is optional but recommended - the SDK ships full type
   definitions.
 
@@ -115,9 +115,10 @@ when the agent spec uses a sandboxed tool).
 
 `undici` and `yaml` stay regular dependencies. `yaml` parses agent specs,
 `agent.yaml` files and skills, and Node has no built-in YAML parser. `undici`
-is only loaded by the `http` tool when a request sets `validateSSL: false`
-(a per-request TLS setting that the global `fetch` cannot express); every
-other request uses the runtime's global `fetch`.
+is loaded on the first request of the `http_request` or `web_fetch` tool:
+both connect through an undici `Agent` whose DNS lookup checks the address
+and pins the connection to it, and `http_request` also scopes
+`validateSSL: false` to that `Agent`. The global `fetch` can express neither.
 
 ## Entry points share code (ESM and CJS)
 

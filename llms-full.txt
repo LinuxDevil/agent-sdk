@@ -212,6 +212,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md) | Trajectory evals with `defineEval()`, datasets, judges, `lousho eval` reports |
 | [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md) | OpenTelemetry GenAI spans, attribute table, content opt-in, local traces and `lousho traces` |
 | [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md) | `lousho build` targets: Node server, Docker, Cloudflare Workers (with KV checkpoints) |
+| [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md) | What the Worker target supports and what it does not, bindings, KV stores, cron triggers |
 | [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md) | `lousho add`: copy a tool, skill, channel, schedule or memory slot from a static JSON registry |
 | [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md) | The visual dashboard: quickstart, first-agent walkthrough, hooks |
 | [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md) | Every error code (`LOUSHO_*`): what it means, how to fix it, an example |
@@ -299,7 +300,7 @@ Source: docs/installation.md
 
 ## Requirements
 
-- Node.js **22.19 or newer** (`engines.node` in `package.json`, set by the `undici@8` dependency; `undici` is loaded only for `http` tool requests with `validateSSL: false`, see [Optional peers](#optional-peers)).
+- Node.js **22.19 or newer** (`engines.node` in `package.json`, set by the `undici@8` dependency; `undici` is loaded only when the `http_request` or `web_fetch` tool makes a request, see [Optional peers](#optional-peers)).
 - TypeScript is optional but recommended - the SDK ships full type
   definitions.
 
@@ -412,9 +413,10 @@ when the agent spec uses a sandboxed tool).
 
 `undici` and `yaml` stay regular dependencies. `yaml` parses agent specs,
 `agent.yaml` files and skills, and Node has no built-in YAML parser. `undici`
-is only loaded by the `http` tool when a request sets `validateSSL: false`
-(a per-request TLS setting that the global `fetch` cannot express); every
-other request uses the runtime's global `fetch`.
+is loaded on the first request of the `http_request` or `web_fetch` tool:
+both connect through an undici `Agent` whose DNS lookup checks the address
+and pins the connection to it, and `http_request` also scopes
+`validateSSL: false` to that `Agent`. The global `fetch` can express neither.
 
 ## Entry points share code (ESM and CJS)
 
@@ -906,6 +908,8 @@ How the pieces fit:
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
 | `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md), [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). |
 | `SqliteStore` (from `/sqlite`) | Sessions, checkpoints and approvals in one SQLite file (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
+| `fileStore(dir)`              | Sessions, checkpoints and approvals as plain JSON files under `dir` (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
+| `KVStore`, `KVCheckpointStore` (from `/kv`) | Stores on a Cloudflare Workers KV binding, for a hand-written Worker (see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)). |
 | `AgentStore`, `memoryStore()` | The `createAgent({ store })` option: `{ sessions?, checkpoints?, approvals? }`, and an in-memory one (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
 | `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). |
 | `SDKError`, `ERROR_CODES`    | Base class of the SDK's errors: a stable `code`, a `hint` and a `docs` link (see [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md)). |
@@ -2346,6 +2350,7 @@ continued run as an `AgentRun` (see
 | ----- | --------------------- |
 | `InMemoryApprovalStore` | This process only; the default for `createAgent()`. |
 | `StorageServiceApprovalStore(storage)` | JSON files through a `StorageService`. |
+| `fileStore(dir)` | One JSON file per pause, `<dir>/approvals/<id>.json`, on one machine; an approval can be resolved by only one process (see [Choosing a store](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
 | `SqliteStore.approvals` | One SQLite file, shared safely by several processes; an approval can be resolved by only one of them. |
 
 ## Elsewhere
@@ -3201,6 +3206,241 @@ Starts one local server for the Agent Forge API and UI. Agents and run state
 are stored under `.lousho/` in the current directory. See
 [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md) for the walkthrough.
 
+# Cloudflare Workers
+
+Source: docs/cloudflare-workers.md
+
+`npx lousho build --target=cloudflare-worker --agent=agent.yaml` generates a module Worker (`worker.ts`), a `wrangler.toml` and a bundle, `dist/worker.js`, that the build checks for `node:` imports. It needs `tsup` and `wrangler` installed, and it takes an [agent spec file](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md). The Worker serves the same [HTTP API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#http-api) as the other targets. This target has the tightest limits of the three, so they come first.
+
+## What works and what does not
+
+| Feature | Cloudflare Worker | `node-server` / `docker` |
+| ------- | ----------------- | ------------------------ |
+| Agent spec files | yes | yes |
+| [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md) | no | yes |
+| Providers | `mock`, `openai`, `anthropic` | `mock`, `openai`, `anthropic`, `ollama`, `openrouter` |
+| Built-in tools | `current-date`, `day-name` | all, including `http` and `web-fetch` |
+| Tools written in TypeScript | no (a spec file cannot hold code) | yes, in an agent directory |
+| Sandboxed tool execution | no (the build swaps the sandbox for a shim that fails when used) | yes |
+| MCP servers over stdio | no (the child process cannot start; the shim fails when used) | yes |
+| MCP servers over HTTP | not verified | yes |
+| Sessions, checkpoints, approvals | one KV namespace, `AGENT_CHECKPOINTS` (eventually consistent) | memory, files, SQLite |
+| Schedules | cron triggers only, in UTC, five fields, one-minute granularity | full cron expressions, with a time zone |
+| Bundle | `lousho build` checks for Node builtins and reports its size | not checked |
+
+`lousho build` rejects a spec whose provider or tool is not in the Worker column, with a `LOUSHO_DEPLOY_FAILED` error that names it and suggests `--target=node-server` or `--target=docker`.
+
+### Providers and tools
+
+The reasons behind the provider and tool rows:
+
+- providers: `mock`, `openai` and `anthropic`. The `openai`/`anthropic`
+  providers are built on the Vercel `ai` SDK's `generateText`/`streamText`
+  plus `@ai-sdk/openai`/`@ai-sdk/anthropic`, which are pure
+  `fetch()`/Web-standard implementations with no `node:*` imports anywhere
+  in their dependency graph, so they bundle and run on Workers cleanly.
+  `ollama` and `openrouter` are **not** supported here - `ollama` defaults
+  to a local `http://localhost:11434` endpoint that a Worker can't reach,
+  and `openrouter` hasn't had a Workers-compatibility audit; use
+  `node-server` or `docker` for those;
+- tools: `current-date` and `day-name`. `http` and `web-fetch` are **not**
+  supported. On Node both refuse private destinations with a DNS lookup of
+  their own (`node:dns` inside an `undici` `Agent`) that checks every
+  address a host resolves to and connects to the address it checked, so DNS
+  rebinding cannot get past the check. A Worker has neither: its `fetch()`
+  resolves names inside Cloudflare's network and gives no hook to see or pin
+  the address. What a Worker can check is the URL (scheme, host name, an
+  IP-literal host); what it cannot guarantee is where a host name connects,
+  so a name that resolves to an internal address would not be caught. Rather
+  than ship a weaker tool under the same name, the Worker build has neither.
+  A tool of your own that calls `fetch()` in a Worker gets no SSRF
+  protection from the SDK.
+
+## Build and deploy
+
+The build generates a module Worker (`export default { fetch }`) and bundles it as a
+browser-platform ES module; the build fails if any `node:` import ends up in
+`dist/worker.js`. `wrangler.toml` points `main` at `dist/worker.js` with
+`no_bundle = true`, so exactly the verified bundle is uploaded. It builds and
+runs with `ai` v4 (the default install) or `ai` v7 (with
+`@ai-sdk/openai`/`@ai-sdk/anthropic` v4) installed, with no compatibility
+flag (no `nodejs_compat`):
+
+```bash
+cd .lousho/build/cloudflare-worker
+npx wrangler dev       # local workerd runtime
+npx wrangler deploy    # requires a Cloudflare account (`wrangler login`)
+```
+
+Provider API keys are read from Worker bindings named `<TYPE>_API_KEY` (for example
+`wrangler secret put OPENAI_API_KEY` or `wrangler secret put ANTHROPIC_API_KEY`). The
+`openai` and `anthropic` peer packages (`@ai-sdk/openai` or `@ai-sdk/anthropic`, and `ai`)
+must be installed alongside `@lousho/build-ai-agent` for `lousho build` to bundle them.
+
+## Bindings
+
+The Worker serves the [HTTP API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#http-api): `GET /health`, `POST /chat`
+streamed as SSE (`ReadableStream`), `GET /chat/:sessionId`, the approvals
+endpoint and the deprecated `{ "message" }` body. Its two bindings:
+
+| Binding | Kind | What it does |
+| ------- | ---- | ------------ |
+| `LOUSHO_API_TOKEN` | secret (`npx wrangler secret put LOUSHO_API_TOKEN`) | Makes every route except `/health` require `Authorization: Bearer <token>` (constant-time compare, `401` JSON otherwise). Without it the Worker is open to anyone who has its URL, so **set it before you deploy**. |
+| `AGENT_CHECKPOINTS` | KV namespace | Holds sessions, checkpoints and paused approvals, in one namespace, as `KVStore` (below). Without it they live in the memory of one isolate, which Cloudflare recycles at will: fine for trying a deploy out, not for production. |
+
+`wrangler.toml` is scaffolded with the `[[kv_namespaces]]` block for
+`AGENT_CHECKPOINTS` commented out, with the commands to create the namespace
+(`npx wrangler kv namespace create AGENT_CHECKPOINTS`, plus a `--preview`
+variant) and where to paste the resulting ids. Uncomment it and fill in the ids.
+
+```bash
+cd .lousho/build/cloudflare-worker
+npx wrangler secret put LOUSHO_API_TOKEN
+npx wrangler secret put OPENAI_API_KEY
+npx wrangler deploy
+curl -N https://<your-worker>.workers.dev/chat \
+  -H "Authorization: Bearer $LOUSHO_API_TOKEN" -H 'Content-Type: application/json' \
+  -d '{ "sessionId": "alice", "input": "Hello" }'
+```
+
+## Sessions, checkpoints and approvals
+
+`KVStore(kvBinding, { prefix?, ttl?, historyLimit? })` is the `AgentStore` the
+generated Worker builds from the binding. A hand-written Worker imports it from
+the `/kv` subpath, which has no `node:*` import anywhere in its graph, with the
+binding typed as `KVBinding` (the `get`/`put`/`delete` part of Cloudflare's
+`KVNamespace`, so `@cloudflare/workers-types` is not needed):
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+import { KVStore, type KVBinding } from '@lousho/build-ai-agent/kv';
+
+interface Env {
+  AGENT_KV: KVBinding;
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const agent = createAgent({ provider, store: new KVStore(env.AGENT_KV) });
+    const { sessionId, input } = (await request.json()) as { sessionId: string; input: string };
+    const { text } = await agent.session({ id: sessionId }).send(input);
+    return Response.json({ text });
+  },
+};
+```
+
+`/kv` also exports `KVCheckpointStore` (checkpoints only) and
+`CHECKPOINT_KV_BINDING` (`'AGENT_CHECKPOINTS'`, the binding name the generated
+Worker reads). `KVStore`'s keys, with an optional `prefix` before each:
+
+| Key | Value |
+| --- | ----- |
+| `sessions/<id>` | The transcript as JSON (image and file bytes as `{ "$bytes": "<base64>" }`, like `FileSessionStore`). |
+| `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, with its history under `checkpoints/<id>#history`). |
+| `approvals/<id>` | A paused approval and the snapshot that resumes it (deleted when it is decided). |
+
+`ttl: { sessions?, checkpoints?, approvals? }` (seconds, KV accepts 60 or more)
+makes each kind of record expire that long after its last write; by default
+records are kept until deleted.
+
+An approval that pauses a turn on one request can be decided by a later request
+on another isolate: the checkpointed session names its pending approval, and the
+approvals endpoint continues it from KV. That continuation's events skip the
+decided tool call's `tool.done`; its `run.done` carries the final text.
+
+The deprecated `POST /chat { "message", "sessionId"? }` keeps its earlier
+behaviour on Workers: with a `sessionId` the run is checkpointed to
+`checkpoints/<sessionId>` after each tool result and rehydrated by a later
+request that reuses the `sessionId` (after a crash or a recycled isolate).
+
+## Scheduled runs
+
+Cron triggers in the spec (`triggers: [{ type: 'cron', cron: '0 9 * * MON', input: '...' }]`)
+become `[triggers] crons = [...]` in `wrangler.toml`, and the generated Worker
+exports a `scheduled()` handler that runs them as agent turns (session
+`schedule:<name>`, see [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md#on-cloudflare-workers)). Cloudflare
+evaluates the expressions in **UTC** with a granularity of one minute; the
+build rejects a `timezone`, a seconds field, an `@daily` shortcut or a numeric
+day-of-week (`LOUSHO_SCHEDULE_INVALID`).
+
+In a Worker you write yourself, wire an agent defined in code with
+`handleScheduled(agent, schedules, controller, ctx)` (also exported from
+`@lousho/build-ai-agent/deploy-runtime-worker`). It runs the schedules whose
+`cron` equals `controller.cron` inside `ctx.waitUntil()` and never throws; list
+the same expressions under `[triggers] crons` yourself:
+
+```ts
+import { createAgent, createMockProvider, defineSchedule, handleScheduled } from '@lousho/build-ai-agent';
+import type { ScheduledContext, ScheduledController } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ instructions: 'You write reports.', provider: createMockProvider() });
+const schedules = [defineSchedule({ name: 'weekly', cron: '0 9 * * MON', prompt: 'Summarise last week.' })];
+
+export default {
+  scheduled: (controller: ScheduledController, _env: unknown, ctx: ScheduledContext) =>
+    handleScheduled(agent, schedules, controller, ctx),
+};
+```
+
+## Consistency
+
+A Worker's request lifetime is too short-lived for an in-memory or
+filesystem-backed `CheckpointStore` (see
+[Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md) / `src/execution/checkpoint.ts` for
+what `CheckpointStore` is and why a run needs one to survive a crash or an
+approval-gate pause). `AGENT_CHECKPOINTS` is that store, backed by KV
+(`KVCheckpointStore`), and the one binding above is all it takes to opt in.
+
+**Why KV, not D1 or Durable Objects:** a `Checkpoint` is one JSON blob keyed
+by `sessionId`, read and written whole - exactly the shape Workers KV is
+built for, with zero extra infrastructure beyond a namespace binding. D1
+would buy relational query power this store never needs; a Durable Object
+would buy strict per-session consistency at the cost of provisioning a DO
+class/migration and paying for a stateful object per session. If your
+workload genuinely needs strict read-after-write consistency across edge
+locations (see the caveat below), a Durable-Object-backed `CheckpointStore`
+is the natural upgrade path - implementing the same `CheckpointStore`
+interface (`save`/`load`/`delete`) against a Durable Object namespace
+instead of a KV namespace.
+
+**Eventual consistency - read this before relying on it for approval
+workflows:** Workers KV is an *eventually consistent* store. A `put()` is
+immediately visible to the edge location that wrote it, but can take up to
+~60 seconds to propagate to other Cloudflare edge locations globally. In
+practice this means: if a session's checkpoint is written on one edge
+location and a follow-up request for the *same* `sessionId` lands on a
+*different* edge location shortly after, that request could still observe
+stale data (an older checkpoint, or a miss) rather than what was just
+written. This matters most for approval-gated pauses, where the pause and
+the human's later approval-triggered resume are naturally two separate
+requests that may hit different locations. This SDK does not - and, given
+KV's guarantees, cannot - promise strict read-after-write consistency here.
+If your approval workflow can't tolerate that window, route a given
+session's requests to a single Cloudflare location yourself (e.g. via
+Durable Object-based request routing) or use a strongly-consistent store
+instead of `AGENT_CHECKPOINTS`/KV. The same holds for sessions: two requests of
+one session at the same moment can overwrite each other's turn, since a KV
+read-modify-write is not atomic.
+
+## Bundle size and Node builtins
+
+The KV-backed stores (`KVStore`, `KVCheckpointStore` and `CHECKPOINT_KV_BINDING`,
+exported from `@lousho/build-ai-agent/kv`) have no `node:*` references anywhere
+in their dependency graph. The Worker runs the spec as a `createAgent()` agent, whose
+Node-only imports (project instructions, the file session store, guardrail
+patches, MCP over stdio) the build points at a shim that fails when used
+(`src/deploy/shims/node.worker.ts`). The built `dist/worker.js` bundle is then
+checked for `node:` and bare Node builtin specifiers as part of `lousho build`,
+and fails the build if any are found. One exception: `ai` v7 and
+`@ai-sdk/provider-utils` v5 look up `node:module`, `node:dns`,
+`node:diagnostics_channel` and `node:async_hooks` at run time with
+`process.getBuiltinModule()`, only when they detect Node, and fall back to
+`fetch()` (or skip telemetry tracing) elsewhere. Those four ids are accepted as
+the argument of such a call and nowhere else. The bundle is larger than a single-turn
+Worker (about 1.7 MB raw, 340 KB gzip for a `mock` agent on `ai` v4; about 3.4 MB
+raw, 630 KB gzip on `ai` v7): `lousho build` reports
+its size, and `describe()` compares it to Cloudflare's script size limit.
+
 # Context compaction
 
 Source: docs/compaction.md
@@ -3545,6 +3785,7 @@ tools:
 | Name           | Tool                                                 |
 | -------------- | ---------------------------------------------------- |
 | `http`         | `httpTool` - HTTP requests                           |
+| `web-fetch`    | `webFetchTool` - read a public web page as text      |
 | `current-date` | `currentDateTool` - current date/time (ISO, UTC)     |
 | `day-name`     | `dayNameTool` - day of the week                      |
 
@@ -4033,98 +4274,15 @@ docker run -p 3000:3000 -e OPENAI_API_KEY=... lousho-agent
 
 ## `cloudflare-worker`
 
-Generates a module Worker (`export default { fetch }`) and bundles it as a
-browser-platform ES module; the build fails if any `node:` import ends up in
-`dist/worker.js`. `wrangler.toml` points `main` at `dist/worker.js` with
-`no_bundle = true`, so exactly the verified bundle is uploaded. It builds and
-runs with `ai` v4 (the default install) or `ai` v7 (with
-`@ai-sdk/openai`/`@ai-sdk/anthropic` v4) installed, with no compatibility
-flag (no `nodejs_compat`):
+Generates a module Worker (`export default { fetch }`), a `wrangler.toml` and `dist/worker.js`, bundled as a
+browser-platform ES module; the build fails if any `node:` import ends up in the bundle. It needs `tsup` and
+`wrangler`, and it serves the [HTTP API](#http-api) above. It has the tightest limits of the three targets:
 
-```bash
-cd .lousho/build/cloudflare-worker
-npx wrangler dev       # local workerd runtime
-npx wrangler deploy    # requires a Cloudflare account (`wrangler login`)
-```
+- spec files only (no agent directories, no tools written in TypeScript, no sandboxed tools);
+- providers `mock`, `openai` and `anthropic`; built-in tools `current-date` and `day-name`;
+- sessions, checkpoints and approvals in one KV namespace; cron triggers in UTC.
 
-Workers have no Node.js builtins, so this target currently supports:
-
-- providers: `mock`, `openai` and `anthropic`. The `openai`/`anthropic`
-  providers are built on the Vercel `ai` SDK's `generateText`/`streamText`
-  plus `@ai-sdk/openai`/`@ai-sdk/anthropic`, which are pure
-  `fetch()`/Web-standard implementations with no `node:*` imports anywhere
-  in their dependency graph, so they bundle and run on Workers cleanly.
-  `ollama` and `openrouter` are **not** supported here - `ollama` defaults
-  to a local `http://localhost:11434` endpoint that a Worker can't reach,
-  and `openrouter` hasn't had a Workers-compatibility audit; use
-  `node-server` or `docker` for those;
-- tools: `current-date` and `day-name`. `http` is **not** supported: its
-  SSRF protection resolves the hostname via `node:dns` and checks *every*
-  resolved address against a denylist before connecting (closing a
-  DNS-rebinding gap), then, for `validateSSL: false`, pins that TLS setting
-  per request via a dedicated `undici` `Agent`. Workers' native `fetch()` has no equivalent hook to
-  resolve a hostname up front and pin the connection to the verified IP, so
-  a Workers version of this tool built on plain `fetch()` would silently
-  drop that protection rather than just losing convenience functionality -
-  it's left unsupported rather than shipped weaker under the same name.
-
-`lousho build` rejects a spec that uses anything else, with an error naming
-the unsupported provider or tool. Provider API keys are read from Worker
-bindings named `<TYPE>_API_KEY` (e.g. `wrangler secret put OPENAI_API_KEY`,
-`wrangler secret put ANTHROPIC_API_KEY`) - the `openai`/`anthropic`
-peer packages (`@ai-sdk/openai`/`@ai-sdk/anthropic`, `ai`) must be installed
-alongside `@lousho/build-ai-agent` for `lousho build` to bundle them.
-
-### Bindings, sessions and the API on Workers
-
-The Worker serves the [HTTP API](#http-api) above: `GET /health`, `POST /chat`
-streamed as SSE (`ReadableStream`), `GET /chat/:sessionId`, the approvals
-endpoint and the deprecated `{ "message" }` body. Its two bindings:
-
-| Binding | Kind | What it does |
-| ------- | ---- | ------------ |
-| `LOUSHO_API_TOKEN` | secret (`npx wrangler secret put LOUSHO_API_TOKEN`) | Makes every route except `/health` require `Authorization: Bearer <token>` (constant-time compare, `401` JSON otherwise). Without it the Worker is open to anyone who has its URL, so **set it before you deploy**. |
-| `AGENT_CHECKPOINTS` | KV namespace | Holds sessions, checkpoints and paused approvals, in one namespace, as `KVStore` (below). Without it they live in the memory of one isolate, which Cloudflare recycles at will: fine for trying a deploy out, not for production. |
-
-`wrangler.toml` is scaffolded with the `[[kv_namespaces]]` block for
-`AGENT_CHECKPOINTS` commented out, with the commands to create the namespace
-(`npx wrangler kv namespace create AGENT_CHECKPOINTS`, plus a `--preview`
-variant) and where to paste the resulting ids. Uncomment it and fill in the ids.
-
-```bash
-cd .lousho/build/cloudflare-worker
-npx wrangler secret put LOUSHO_API_TOKEN
-npx wrangler secret put OPENAI_API_KEY
-npx wrangler deploy
-curl -N https://<your-worker>.workers.dev/chat \
-  -H "Authorization: Bearer $LOUSHO_API_TOKEN" -H 'Content-Type: application/json' \
-  -d '{ "sessionId": "alice", "input": "Hello" }'
-```
-
-`KVStore(kvBinding, { prefix?, ttl? })` (`src/deploy/kvStore.ts`) is the
-`AgentStore` the generated Worker builds from the binding. It is not exported
-from any entry point of the package, so importing it in a hand-written Worker
-is not supported yet. Its keys, with an optional `prefix` before each:
-
-| Key | Value |
-| --- | ----- |
-| `sessions/<id>` | The transcript as JSON (image and file bytes as `{ "$bytes": "<base64>" }`, like `FileSessionStore`). |
-| `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, with its history under `checkpoints/<id>#history`). |
-| `approvals/<id>` | A paused approval and the snapshot that resumes it (deleted when it is decided). |
-
-`ttl: { sessions?, checkpoints?, approvals? }` (seconds, KV accepts 60 or more)
-makes each kind of record expire that long after its last write; by default
-records are kept until deleted.
-
-An approval that pauses a turn on one request can be decided by a later request
-on another isolate: the checkpointed session names its pending approval, and the
-approvals endpoint continues it from KV. That continuation's events skip the
-decided tool call's `tool.done`; its `run.done` carries the final text.
-
-The deprecated `POST /chat { "message", "sessionId"? }` keeps its earlier
-behaviour on Workers: with a `sessionId` the run is checkpointed to
-`checkpoints/<sessionId>` after each tool result and rehydrated by a later
-request that reuses the `sessionId` (after a crash or a recycled isolate).
+[Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md) has the table of limits, the build and deploy commands, the bindings, the KV stores, scheduled runs and the bundle checks.
 
 ### Optional peers in node and docker builds
 
@@ -4134,93 +4292,6 @@ never needs one you do not use. Install, where the server runs, only the peers i
 `@ai-sdk/openai` for an OpenAI agent); a code path that needs one that is missing raises the SDK's coded
 missing-peer error. A spec's cron triggers run on the node-server and docker targets as well as on Workers
 ([Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md#on-the-node-server)).
-
-### Cron triggers and `handleScheduled`
-
-Cron triggers in the spec (`triggers: [{ type: 'cron', cron: '0 9 * * MON', input: '...' }]`)
-become `[triggers] crons = [...]` in `wrangler.toml`, and the generated Worker
-exports a `scheduled()` handler that runs them as agent turns (session
-`schedule:<name>`, see [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md#on-cloudflare-workers)). Cloudflare
-evaluates the expressions in **UTC** with a granularity of one minute; the
-build rejects a `timezone`, a seconds field, an `@daily` shortcut or a numeric
-day-of-week (`LOUSHO_SCHEDULE_INVALID`).
-
-In a Worker you write yourself, wire an agent defined in code with
-`handleScheduled(agent, schedules, controller, ctx)` (also exported from
-`@lousho/build-ai-agent/deploy-runtime-worker`). It runs the schedules whose
-`cron` equals `controller.cron` inside `ctx.waitUntil()` and never throws; list
-the same expressions under `[triggers] crons` yourself:
-
-```ts
-import { createAgent, createMockProvider, defineSchedule, handleScheduled } from '@lousho/build-ai-agent';
-import type { ScheduledContext, ScheduledController } from '@lousho/build-ai-agent';
-
-const agent = createAgent({ instructions: 'You write reports.', provider: createMockProvider() });
-const schedules = [defineSchedule({ name: 'weekly', cron: '0 9 * * MON', prompt: 'Summarise last week.' })];
-
-export default {
-  scheduled: (controller: ScheduledController, _env: unknown, ctx: ScheduledContext) =>
-    handleScheduled(agent, schedules, controller, ctx),
-};
-```
-
-### Durable execution (pause/resume) on Workers
-
-A Worker's request lifetime is too short-lived for an in-memory or
-filesystem-backed `CheckpointStore` (see
-[Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md) / `src/execution/checkpoint.ts` for
-what `CheckpointStore` is and why a run needs one to survive a crash or an
-approval-gate pause). `AGENT_CHECKPOINTS` is that store, backed by KV
-(`KVCheckpointStore`), and the one binding above is all it takes to opt in.
-
-**Why KV, not D1 or Durable Objects:** a `Checkpoint` is one JSON blob keyed
-by `sessionId`, read and written whole - exactly the shape Workers KV is
-built for, with zero extra infrastructure beyond a namespace binding. D1
-would buy relational query power this store never needs; a Durable Object
-would buy strict per-session consistency at the cost of provisioning a DO
-class/migration and paying for a stateful object per session. If your
-workload genuinely needs strict read-after-write consistency across edge
-locations (see the caveat below), a Durable-Object-backed `CheckpointStore`
-is the natural upgrade path - implementing the same `CheckpointStore`
-interface (`save`/`load`/`delete`) against a Durable Object namespace
-instead of a KV namespace.
-
-**Eventual consistency - read this before relying on it for approval
-workflows:** Workers KV is an *eventually consistent* store. A `put()` is
-immediately visible to the edge location that wrote it, but can take up to
-~60 seconds to propagate to other Cloudflare edge locations globally. In
-practice this means: if a session's checkpoint is written on one edge
-location and a follow-up request for the *same* `sessionId` lands on a
-*different* edge location shortly after, that request could still observe
-stale data (an older checkpoint, or a miss) rather than what was just
-written. This matters most for approval-gated pauses, where the pause and
-the human's later approval-triggered resume are naturally two separate
-requests that may hit different locations. This SDK does not - and, given
-KV's guarantees, cannot - promise strict read-after-write consistency here.
-If your approval workflow can't tolerate that window, route a given
-session's requests to a single Cloudflare location yourself (e.g. via
-Durable Object-based request routing) or use a strongly-consistent store
-instead of `AGENT_CHECKPOINTS`/KV. The same holds for sessions: two requests of
-one session at the same moment can overwrite each other's turn, since a KV
-read-modify-write is not atomic.
-
-The KV-backed stores (`KVStore`, `KVCheckpointStore` and `CHECKPOINT_KV_BINDING`,
-in `src/deploy/kvStore.ts`, `src/deploy/kvCheckpointStore.ts` and
-`src/deploy/checkpointBinding.ts`) have no `node:*` references anywhere in their
-dependency graph. The Worker runs the spec as a `createAgent()` agent, whose
-Node-only imports (project instructions, the file session store, guardrail
-patches, MCP over stdio) the build points at a shim that fails when used
-(`src/deploy/shims/node.worker.ts`). The built `dist/worker.js` bundle is then
-checked for `node:` and bare Node builtin specifiers as part of `lousho build`,
-and fails the build if any are found. One exception: `ai` v7 and
-`@ai-sdk/provider-utils` v5 look up `node:module`, `node:dns`,
-`node:diagnostics_channel` and `node:async_hooks` at run time with
-`process.getBuiltinModule()`, only when they detect Node, and fall back to
-`fetch()` (or skip telemetry tracing) elsewhere. Those four ids are accepted as
-the argument of such a call and nowhere else. The bundle is larger than a single-turn
-Worker (about 1.7 MB raw, 340 KB gzip for a `mock` agent on `ai` v4; about 3.4 MB
-raw, 630 KB gzip on `ai` v7): `lousho build` reports
-its size, and `describe()` compares it to Cloudflare's script size limit.
 
 ## Custom targets
 
@@ -4425,7 +4496,8 @@ Which stores keep one:
 | `memoryStore()` | yes | `memoryStore({ historyLimit })` |
 | `SqliteStore` | yes (`checkpoint_history` table) | `new SqliteStore(path, { historyLimit })` |
 | `LocalStorageCheckpointStore` | yes | `new LocalStorageCheckpointStore(storage, { historyLimit })` |
-| `KVCheckpointStore` / `KVStore` (Cloudflare Workers KV) | yes (see below) | `new KVStore(kv, { historyLimit })` |
+| `fileStore(dir)` (JSON files) | yes (`checkpoint-history/<id>.json`) | `fileStore(dir, { historyLimit })` |
+| `KVCheckpointStore` / `KVStore` (Cloudflare Workers KV, from `@lousho/build-ai-agent/kv`) | yes (see below) | `new KVStore(kv, { historyLimit })` |
 | Agent Forge's `FileCheckpointStore` | yes | `new FileCheckpointStore(dir, { historyLimit })` |
 | a custom `CheckpointStore` | only if it implements `history()` | - |
 
@@ -5856,7 +5928,7 @@ console.log(events); // includes 'run.start' and 'run.done'
 `ToolDescriptor`s, use `registry.register(tool)` for a defined tool or
 `registry.register(name, descriptor)` for a descriptor. Pass the registry as
 `toolRegistry` to `AgentExecutor.execute()`. See
-[Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#toolregistry) for a full example.
+[Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#advanced-toolregistry) for a full example.
 
 ## Options of `AgentExecutor.execute()`
 
@@ -7934,7 +8006,7 @@ takes for images, so there is no deprecation warning). `ai` v5 is not supported.
 
 All providers run on Node. The `cloudflare-worker` deploy target supports
 `mock`, `openai` and `anthropic`; `ollama` and `openrouter` need the
-`node-server` or `docker` target (see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#cloudflare-worker)).
+`node-server` or `docker` target (see [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md)).
 
 # Queued input and steering
 
@@ -8783,7 +8855,7 @@ fields (no seconds, no `@daily`), and the day-of-week must be `*` or names
 granularity is one minute, and Cloudflare may start a run a few seconds late.
 
 To wire your own Worker entry, see
-[Cloudflare Worker](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#cron-triggers-and-handlescheduled).
+[Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md#scheduled-runs).
 
 # Sessions
 
@@ -9016,32 +9088,29 @@ implementation by where the process runs:
 | Store | Sessions | Checkpoints | Approvals | Use it when |
 | --- | --- | --- | --- | --- |
 | In memory (`memoryStore()`) | `MemorySessionStore` | in memory | `InMemoryApprovalStore` | Tests, scripts, one process that never restarts |
-| Files | `FileSessionStore(dir)` | `LocalStorageCheckpointStore` | `StorageServiceApprovalStore` | One machine, you want plain inspectable files |
+| Files (`fileStore(dir)`) | `<dir>/sessions/<id>.json` | `<dir>/checkpoints/`, `<dir>/checkpoint-history/` | `<dir>/approvals/<id>.json` | One machine, you want plain inspectable files |
 | SQLite | `store.sessions` | `store.checkpoints` | `store.approvals` | A Node server: one durable, transactional file, shared safely by several processes |
-| Cloudflare KV | - | `KVCheckpointStore` | - | Workers deployments (see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)) |
+| Cloudflare KV (`KVStore` from `@lousho/build-ai-agent/kv`) | `store.sessions` | `store.checkpoints` | `store.approvals` | Workers deployments (see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)) |
 
 Each one is an `AgentStore` part: pass them together as
-`createAgent({ store: { sessions, checkpoints, approvals } })`. `memoryStore()`
-and `SqliteStore` are ready-made `AgentStore`s; for plain files, combine the
-file stores:
+`createAgent({ store: { sessions, checkpoints, approvals } })`. `memoryStore()`,
+`fileStore(dir)`, `SqliteStore` and `KVStore` are ready-made `AgentStore`s. For
+plain files, `fileStore(dir)` writes one JSON file per session, checkpoint and
+pending approval under `dir`, each written to a temp file and renamed into
+place, with no lock files:
 
 ```ts
-import {
-  createAgent,
-  FileSessionStore,
-  LocalStorageCheckpointStore,
-  StorageServiceApprovalStore,
-  type AgentStore,
-} from '@lousho/build-ai-agent';
+import { createAgent, fileStore } from '@lousho/build-ai-agent';
 
-// `storage` is a StorageService rooted where the files should go.
-const store: AgentStore = {
-  sessions: new FileSessionStore('./.lousho/sessions'),
-  checkpoints: new LocalStorageCheckpointStore(storage),
-  approvals: new StorageServiceApprovalStore(storage),
-};
-const agent = createAgent({ provider, store });
+const agent = createAgent({ provider, store: fileStore('./.lousho') });
+// ./.lousho/sessions/user-42.json, ./.lousho/checkpoints/..., ./.lousho/approvals/...
+await agent.session({ id: 'user-42' }).send('Hello');
 ```
+
+Resolving an approval from `fileStore` is safe across processes (only one
+caller gets the record); two processes writing one session at the same moment
+are not coordinated, so the last write wins. For several processes sharing a
+store, use `SqliteStore`.
 
 Any object with the three methods of a part works there too: a Redis
 `SessionStore`, or a KV-backed `CheckpointStore` on Cloudflare Workers (the
@@ -10852,7 +10921,8 @@ its kind by carrying a `toolErrorKind` property. An error extending
 
 | Export | Tool |
 | ------ | ---- |
-| `httpTool`, `createHttpTool(options)` | HTTP requests, with SSRF protection (every resolved address is checked before connecting). |
+| `httpTool`, `createHttpTool(options)` | `http_request`: HTTP requests (any method, headers, body), with SSRF protection: loopback, private and link-local destinations are refused on every hop, and the connection goes to the address that was checked. Node only. |
+| `webFetchTool`, `createWebFetchTool(options)` | `web_fetch`: `GET` one public web page and return it as text, with the same SSRF protection and caps on redirects, size and time. Node only; see below. |
 | `currentDateTool`, `dayNameTool` | Current date/time (ISO, UTC) and day of the week. |
 | `createTodoTools()` | `todo_write` / `todo_read` so an agent can plan multi-step work; see [Todo tools](#todo-tools). |
 | `askQuestionTool()`, `createAgent({ askQuestion: true })` | `ask_question`: the agent asks the user something and the run pauses until `agent.approvals.answer()`; see [Asking the user a question](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#asking-the-user-a-question). |
@@ -10864,8 +10934,55 @@ its kind by carrying a `toolErrorKind` property. An error extending
 
 Built-in descriptors are passed keyed by the name the agent uses:
 `createAgent({ tools: { current_date: currentDateTool } })`. Spec files refer to
-`http`, `current-date` and `day-name` by name (see
+`http`, `web-fetch`, `current-date` and `day-name` by name (see
 [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#tools-a-spec-can-reference)).
+
+How `http_request` and `web_fetch` refuse private destinations: an IP-literal
+host is checked before the request; a host name is resolved once, when the
+connection is opened, every address it resolves to is checked (loopback,
+RFC 1918, link-local including the cloud metadata address, CGNAT, multicast
+and reserved ranges, IPv4-mapped IPv6, NAT64 and 6to4), and the socket
+connects to the address that was checked. Redirects are followed by hand and
+each hop is checked the same way. A DNS-rebinding name, one that answers a
+public address first and a private one later, has no second lookup to answer.
+When `http_request` runs through a sandbox, the host is resolved and checked
+in the agent's process and the sandboxed process connects to that address.
+Both tools take `allowPrivate` (host patterns such as `intranet.example` or
+`*.corp.example`) for hosts that may resolve to private addresses.
+
+`web_fetch` takes `{ url }` (`http:` or `https:`, no `user:password@`) and
+returns `{ url, finalUrl, status, contentType, content, truncated }`. It only
+sends `GET`, with no body, cookies or caller-chosen headers. HTML becomes
+plain text (scripts, styles and similar removed, block elements on their own
+lines, link URLs in parentheses, entities decoded); JSON and `text/*` are
+returned as sent; other types (images, PDFs, binaries) return a note instead
+of content. A 4xx or 5xx response is returned with its body, not thrown, so
+the model can read an error page. Refusals, timeouts, too many redirects and
+bad URLs are tool errors that name the host. The page is untrusted input: the
+tool's description tells the model so, and `readOnlyHint` and `openWorldHint`
+are set. Options of `createWebFetchTool()`:
+
+```ts
+import { createAgent, createWebFetchTool } from '@lousho/build-ai-agent';
+
+const webFetch = createWebFetchTool({
+  timeoutMs: 30_000, // whole request: redirects and body included
+  maxRedirects: 10, // each hop is checked again
+  maxBytes: 2 * 1024 * 1024, // read from the network, then stop (truncated: true)
+  maxChars: 50_000, // characters of text returned to the model
+  allowedHosts: ['*.example.com'], // when set, any other host is refused before DNS
+  blockedHosts: ['private.example.com'], // always refused, before DNS
+  allowPrivate: [], // hosts allowed to resolve to private addresses
+  userAgent: 'lousho-web-fetch',
+});
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', tools: [webFetch] });
+```
+
+Each `createWebFetchTool()` has its own connection pool, kept for as long as
+the tool exists and released with it by garbage collection (there is no close
+method). Neither `http_request` nor `web_fetch` exists in the Cloudflare
+Worker build; see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#cloudflare-worker).
 
 ## Todo tools
 
@@ -11259,7 +11376,7 @@ environment (`LOUSHO_CONFIG_MISSING_PROVIDER`).
 
 - **Cause:** the servers connect on `await agent.ready()` or on the first `send()` / `stream()`, and a server that cannot connect fails that call. Each tool is named `<server>__<tool>` (for example `docs__search`), so look for that name, not the server's own.
 - **Fix:** `await agent.ready()` to see the connection error. With `connectMcp()`, check `status()`, which maps each server to `'idle'`, `'connected'` or `'failed'`; `onError: 'skip'` leaves a failing server out and warns through `logger`. MCP needs the optional peer `@modelcontextprotocol/sdk`.
-- **More:** [Connect MCP servers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#connect-mcp-servers-mcpservers-connectmcp).
+- **More:** [Use MCP servers in an agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#use-mcp-servers-in-an-agent).
 
 ### My Worker build rejects the provider or tool
 
