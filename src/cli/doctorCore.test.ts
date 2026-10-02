@@ -358,7 +358,7 @@ describe('spec policy checks (LOU-X5)', () => {
     const result = await check(withPolicy({ guardrails: ['deny-topic', 'secret-scan'] }), 'spec.policy.guardrails');
     expect(result.status).toBe('fail');
     expect(result.finding).toContain("unknown guardrail 'deny-topic' (did you mean 'deny-topics'?)");
-    expect(result.finding).toContain('Available: max-length, secret-scan, regex, deny-topics, llm-judge');
+    expect(result.finding).toContain('Available: max-length, secret-scan, regex, deny-topics, llm-judge, pii, secrets, prompt-injection, moderation');
     expect(result.fix).toContain('policy.guardrails');
   });
 });
