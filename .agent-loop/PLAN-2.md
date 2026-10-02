@@ -13,7 +13,7 @@ Goal of the round: make every ✅ in the matrix true without an asterisk, make t
 | R3 | Stale-lock fix in `buildLock.testkit.ts`: detect a dead owner by PID, not by a 3-minute age | One native vitest crash currently turns the next run red |
 | R4 | Tarball diet: exclude the 15 test-only files; decide on shipping `src/` and source maps (47% of 11.7 MB) | **Owner** (`files` is publish config) |
 | R5 | Sync automation: a workflow in `agent-sdk-docs` that runs `npm run sync` when the SDK's `docs/` change and opens a pull request; `check-translations` in CI flags stale Arabic pages | The site is generated; today the sync is a manual command |
-| R6 | README truth pass: install commands that agree with `docs/installation.md`, the full CLI list, `createAgent({ store })` and `compaction` in the feature list, a Status section with the real limits, no links to files that do not ship | |
+| R6 | **Done (#184, #185).** README truth pass: install commands that agree with `docs/installation.md`, the full CLI list, `createAgent({ store })` and `compaction` in the feature list, a Status section with the real limits, no links to files that do not ship | |
 
 ## Wave 1: the first hour (docs and surface)
 
@@ -82,10 +82,32 @@ Goal of the round: make every ✅ in the matrix true without an asterisk, make t
 
 What would move the scorecard: wave 0 flips "Published on npm" and "CLI scaffolding" (with the owner's publish) and "Durable stores"; wave 2 flips the other seven strict-rule ⚠️ rows and the trace viewer; wave 3 covers the 14 new rows.
 
+## Live testing and budget
+
+Audit 2 could not call a real model. For round 2 the owner provided an OpenRouter key with a hard limit of **10 USD for the whole round** (the limit is set on the key; usage was 0.00 on 2026-10-02). The key is **not in this repository**, which is public: it is in `E:agent-sdk.claudeound2.env` (git-ignored) as `OPENROUTER_API_KEY`, and the owner removes it after each phase. The rules for using it are in [BRIEF-2.md](BRIEF-2.md), "Tests and live calls": offline by default, live calls only where a ticket has a "Live test" section, cheapest model, spend measured with the key's own counter and reported in the pull request, cassettes recorded so CI replays for free.
+
+| Phase | Tickets with live tests | Budget (USD) |
+|---|---|---|
+| Wave 0 | R1 (registry smoke test: one real turn) | 0.25 |
+| Wave 1 | G1, G3 (run the new quick start and coding-agent page once against a real model) | 0.50 |
+| Wave 2 | M1 (file input), M2 (other providers through OpenRouter), M5, M8, M9, M10 | 3.00 |
+| Wave 3 | N1, N2, N4, N5, N6, N13, N14, N15 and one live pass per channel or auth ticket where possible | 4.50 |
+| Wave 4 | A7 (release-candidate smoke run) | 0.50 |
+| Reserve | re-runs after review, flaky provider responses | 1.25 |
+
+A ticket without a line here spends nothing. Default cap per ticket: 0.10 USD unless its issue says otherwise.
+
+Docker: no daemon runs on the owner's machine, and the egress features are refused on Docker Desktop by design. Real-daemon coverage comes from the Linux CI job in M6.
+
+## Tickets
+
+Each ticket is a GitHub issue in LinuxDevil/agent-sdk labelled `round-2`, with a wave label, `model:sonnet` or `model:opus`, and where it applies `hub`, `breaking`, `owner-decision` or `live-test`. Every issue is self-contained: goal, evidence with file paths, scope, acceptance criteria, verification, live-test budget, dependencies. An agent needs only the issue and [BRIEF-2.md](BRIEF-2.md).
+
 ## Owner decisions needed before starting
 
 1. Start round 2 at all, and which waves.
 2. R4: drop `src/` and source maps from the tarball?
 3. M7: where the default registry is hosted.
 4. Wave 4: whether pre-1.0 breaking moves are acceptable now that the package is public.
-5. Docs domain: `lousho.mintlify.app` or `docs.lousho.com` (`mint add-domain`).
+5. Docs domain: decided, https://lousho.com.
+6. Rename the GitHub repositories to `lousho` and `lousho-docs`.
