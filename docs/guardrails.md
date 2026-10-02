@@ -128,7 +128,10 @@ process tree). Write your own as `{ name, check(action) }` returning
 
 A tool opts in with `requiresSandbox: true` and a `sandboxExecute(args, sandbox)`
 function. The executor then calls `sandboxExecute` with the run's
-`SandboxAdapter` instead of calling `execute`:
+`SandboxAdapter` instead of calling `execute`. `createAgent()` does not take
+`sandbox` yet, so this goes through the executor.
+
+#### Advanced: the executor API
 
 ```ts
 import { AgentExecutor, SubprocessSandbox } from '@lousho/build-ai-agent';

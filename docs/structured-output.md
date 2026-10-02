@@ -114,7 +114,7 @@ and the final `run.done` event carries `object` (JSON-encoded) when the
 reply was valid. The repair step shows up as one more
 `step.start` / `step.done` pair. See [Streaming](./streaming.md).
 
-## Without createAgent()
+## Advanced: the executor API
 
 `AgentExecutor.execute()` and `AgentExecutor.stream()` take the same
 `output` option. There `result.object` is `unknown`; parse it again with your

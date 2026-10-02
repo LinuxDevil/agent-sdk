@@ -1,6 +1,6 @@
 # The executor API
 
-`createAgent()` is the recommended entry point (see the [Quick Start](./quick-start.md)). This page is for code that needs the lower-level options it does not take.
+`createAgent()` is the recommended entry point (see the [Quick Start](./quick-start.md)). This page is for code that needs the lower-level options it does not take. To move existing executor code over to `createAgent()`, see [Migrating to createAgent()](./migrating-to-create-agent.md).
 
 ## `AgentBuilder` and `AgentExecutor`
 

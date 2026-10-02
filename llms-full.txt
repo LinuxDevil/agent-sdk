@@ -93,7 +93,7 @@ agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 - **MCP client and server**: `createAgent({ mcpServers })` (or `connectMcp()`) connects stdio and HTTP MCP servers from config; `serveMcp()` / `lousho mcp` exposes your agent. [MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md)
 - **Workspace tools**: file system and shell tools for coding agents, confined to a root, shell approval-gated. [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md)
 - **Hooks, guardrails, sandboxing**: veto tool calls, gate a patch on fail-closed checks, run tools in Docker. [Guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md)
-- **Channels, flows and triggers**: `defineChannel()` / `mountChannels()` map a surface's messages to sessions and send replies and approvals back; fixed multi-step workflows; webhook, Slack and cron adapters. [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md), [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md), [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#triggers)
+- **Channels, flows and triggers**: `defineChannel()` / `mountChannels()` map a surface's messages to sessions and send replies and approvals back; fixed multi-step workflows; webhook, Slack and cron adapters. [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md), [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md), [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md)
 - **Tracing**: OpenTelemetry GenAI spans (`invoke_agent`, `chat`, `execute_tool`); content capture is opt-in. [Observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md)
 - **Testing and evals**: `mockModel`, `recordReplay` cassettes, `defineEval()` trajectory assertions, `lousho eval` with `--record` / `--replay` cassettes and `--drift` trajectory diffs. [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md), [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md)
 - **CLI**: `init`, `doctor`, `dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `build` and `studio`. [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md)
@@ -196,6 +196,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md) | `createAgent({ compaction })`: prune old tool results, then summarize old turns |
 | [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) | `defineChannel()`, `mountChannels()`, `httpChannel()`, `webhookChannel()`, `slackChannel()`: surfaces mapped to sessions, replies and approvals sent back |
 | [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md) | `defineSchedule()` cron schedules, `schedules/` in an agent directory, `startSchedules()` |
+| [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md) | `@lousho/build-ai-agent/triggers`: webhook, Slack and cron adapters, `TriggerAdapter`, `TriggerRegistry`; triggers vs channels vs schedules |
 | [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md) | Fixed multi-step workflows with `FlowBuilder` and `FlowExecutor` |
 | [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md) | File system and shell tools for coding agents, and their security model |
 | [Build a coding agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/build-a-coding-agent.md) | A terminal coding agent step by step: workspace tools, approvals, streaming, a session, offline tests |
@@ -209,9 +210,10 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md) | The visual dashboard: quickstart, first-agent walkthrough, hooks |
 | [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md) | Every error code (`LOUSHO_*`): what it means, how to fix it, an example |
 | [Troubleshooting](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/troubleshooting.md) | Start from the symptom: setup, runs that end without an answer, tools, providers, sandbox and MCP; cause, fix, link |
-| [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md) | The main exports, triggers, tokens and cost; `npm run docs:build` generates the full TypeDoc reference |
+| [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md) | The main exports, tokens and cost; `npm run docs:build` generates the full TypeDoc reference |
 | [Utilities](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/utilities.md) | Encryption, hashing and file storage |
 | [The executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md) | `AgentBuilder` and `AgentExecutor`: the lower-level options `createAgent()` does not take |
+| [Migrating to createAgent()](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/migrating-to-create-agent.md) | From `AgentBuilder`, `AgentExecutor` and `resumeAfterApproval()` to `createAgent()`: before and after, a mapping table, what it does not take yet |
 
 The full guides are at [lousho.com](https://lousho.com), in English and Arabic.
 
@@ -882,10 +884,10 @@ How the pieces fit:
 | Export                        | Description                                                                 |
 | ----------------------------- | --------------------------------------------------------------------------- |
 | `createAgent(config)`         | Zero-config `{ send(message) }` agent from a `model` string or provider (+ instructions, tools). |
-| `AgentBuilder`                | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). |
-| `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. |
+| `AgentBuilder`                | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). Advanced: see [the executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md). |
+| `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. Advanced: see [the executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md). |
 | `AgentType`                   | Deprecated, no runtime effect: agents need no type.                        |
-| `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
+| `resumeAfterApproval()`       | Resume an execution paused for human approval. Advanced: see [the executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md). |
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
 | `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md), [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). |
 | `SqliteStore` (from `/sqlite`) | Sessions, checkpoints and approvals in one SQLite file (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
@@ -894,7 +896,7 @@ How the pieces fit:
 | `AgentStore`, `memoryStore()` | The `createAgent({ store })` option: `{ sessions?, checkpoints?, approvals? }`, and an in-memory one (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
 | `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). |
 | `SDKError`, `ERROR_CODES`    | Base class of the SDK's errors: a stable `code`, a `hint` and a `docs` link (see [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md)). |
-| `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
+| `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation. Superseded by `subagents`. |
 
 ### Dynamic config
 
@@ -1378,9 +1380,9 @@ The built-in context windows and prices are a dated snapshot (see the retrieval 
 Every `ExecutionResult` (and `agent.send()` result) carries `usage`, the running total of the whole run:
 
 ```ts
-import { AgentExecutor, formatUsage } from '@lousho/build-ai-agent';
+import { createAgent, formatUsage } from '@lousho/build-ai-agent';
 
-const result = await AgentExecutor.execute({ agent, input: 'Compare 3 cities', provider });
+const result = await createAgent({ provider, instructions: 'You compare cities.' }).send('Compare 3 cities');
 
 result.usage.inputTokens; // all model calls of the run, delegated children included
 result.usage.costUsd; // number, or undefined if any model used has no known price
@@ -1432,6 +1434,9 @@ See [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/
 ## Flows, evals, observability and security
 
 - `FlowBuilder` / `FlowExecutor` - multi-step workflow graphs; see [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md).
+- `WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter` and `TriggerRegistry`
+  (`@lousho/build-ai-agent/triggers`) - wake an agent from a webhook, a Slack
+  message or a schedule; see [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md).
 - `defineEval()`, scorers such as `exactMatch`, `toolCallOrder` and `budget`, checks such
   as `includes` and `atLeast`, and `llmJudge()` - agent evals run under vitest
   or `lousho eval`; see [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md).
@@ -1495,148 +1500,6 @@ Failure behaviour is unchanged: a `oneOf` condition that cannot be evaluated
 counts as not matched (`false`), and an `evaluator` expression that cannot be
 evaluated fails the flow with `Failed to evaluate expression: ...`, including
 the `ExpressionError` detail.
-
-## Triggers
-
-Trigger adapters (`@lousho/build-ai-agent/triggers`) wake an agent up from an
-inbound webhook, a schedule or a Slack message. Wire any of them with
-`listen(agent, onEvent)`, where `onEvent` runs the agent.
-
-For a surface people talk to, use a [channel](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) instead:
-`defineChannel()` and `mountChannels()` (package root) map each conversation
-on the surface to a session and send the reply, and any approval or question
-the agent pauses on, back to it. `httpChannel()` and `webhookChannel()` are
-built in; `WebhookTriggerAdapter` uses `webhookChannel()` for its auth.
-
-### Webhook authentication
-
-`WebhookTriggerAdapter` starts an HTTP server. **Always set `auth` for a
-webhook that is reachable from outside your machine**: without it, anyone who
-can reach the port can run your agent (and spend your tokens). If you listen
-on a non-loopback host with no `auth`, the adapter logs a one-time warning
-through `options.logger`.
-
-```ts
-import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
-import { WebhookTriggerAdapter } from '@lousho/build-ai-agent/triggers';
-
-const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
-
-// HMAC of the RAW request body (GitHub / Shopify style): header `x-signature-256: sha256=<hex>`.
-new WebhookTriggerAdapter({
-  port: 8787,
-  auth: { type: 'hmac', secret: process.env.WEBHOOK_SECRET ?? '' },
-}).listen(agent, (input) => agent.send(input));
-
-// Replay protection: the signed payload becomes `${timestamp}.${body}` and
-// requests more than `toleranceSeconds` (default 300) old are rejected.
-new WebhookTriggerAdapter({
-  auth: {
-    type: 'hmac',
-    secret: process.env.WEBHOOK_SECRET ?? '',
-    header: 'x-signature',
-    timestampHeader: 'x-timestamp',
-    toleranceSeconds: 120,
-  },
-});
-
-// A shared bearer token (`Authorization: Bearer <token>`).
-new WebhookTriggerAdapter({ auth: { type: 'bearer', token: process.env.WEBHOOK_TOKEN ?? '' } });
-
-// Anything else: return true to accept. `rawBody` is a Buffer of the exact bytes received.
-new WebhookTriggerAdapter({
-  auth: { type: 'custom', verify: (req) => req.headers['x-api-key'] === process.env.API_KEY },
-});
-```
-
-HMAC options: `header` (default `x-signature-256`), `algorithm` (`sha256` or
-`sha1`, default `sha256`), `prefix` (default `sha256=`; `''` for a bare
-digest), `timestampHeader` and `toleranceSeconds`. Signatures and bearer
-tokens are compared in constant time. A request that fails authentication gets
-a generic `401 {"error":"Unauthorized"}` - the response never says which check
-failed - and the reason (never a secret or signature) is logged at `warn`
-level. Serve webhooks over HTTPS (terminate TLS in front of the adapter) so
-tokens and payloads are not sent in clear text.
-
-### Slack request signatures
-
-`SlackTriggerAdapter.handleRequest({ headers, rawBody })` handles a raw Slack
-Events API request and returns the `{ status, body }` to send back. **Set
-`signingSecret` for any endpoint reachable from outside your machine**: without
-it, anyone who can reach the endpoint can run your agent, and `listen()` logs a
-one-time warning through `options.logger`. With it, every request is verified
-as [Slack documents](https://docs.slack.dev/authentication/verifying-requests-from-slack)
-before the body is parsed: HMAC-SHA256 over `v0:{X-Slack-Request-Timestamp}:{raw body}`,
-compared in constant time with `X-Slack-Signature` (`v0=<hex>`), and requests
-more than five minutes old are rejected. Failures get a generic
-`401 {"error":"Unauthorized"}`; the reason (never a secret or signature) is
-logged at `warn` level. The signed `url_verification` handshake is answered
-after verification.
-
-```ts
-import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
-import { SlackTriggerAdapter, verifySlackSignature } from '@lousho/build-ai-agent/triggers';
-import * as http from 'node:http';
-
-const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
-const slack = new SlackTriggerAdapter({ signingSecret: process.env.SLACK_SIGNING_SECRET });
-slack.listen(agent, (input) => agent.send(input));
-
-http
-  .createServer((req, res) => {
-    const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => chunks.push(chunk));
-    req.on('end', async () => {
-      const { status, body } = await slack.handleRequest({ headers: req.headers, rawBody: Buffer.concat(chunks) });
-      res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
-    });
-  })
-  .listen(3000);
-
-// Your own handler (slash commands, interactivity)? Verify the RAW body yourself:
-const authentic = verifySlackSignature({
-  signingSecret: process.env.SLACK_SIGNING_SECRET ?? '',
-  timestamp: '1700000000', // the X-Slack-Request-Timestamp header
-  signature: 'v0=...', // the X-Slack-Signature header
-  rawBody: '{"type":"url_verification"}',
-});
-```
-
-`handleRequest` answers Slack after the agent finishes; Slack expects a reply
-within three seconds, so for slow agents acknowledge first and run the agent in
-the background.
-
-### Cron schedules
-
-`CronTriggerAdapter` takes either a fixed `intervalMs` or a real cron
-expression:
-
-```ts
-import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
-import { CronTriggerAdapter } from '@lousho/build-ai-agent/triggers';
-
-const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
-
-new CronTriggerAdapter({
-  cron: '*/15 9-17 * * MON-FRI', // minute hour day-of-month month day-of-week
-  timezone: 'Europe/Paris', // IANA name; defaults to the machine's local zone
-  input: 'Check the support queue',
-  onResult: (result, error) => console.log(error ?? result?.text),
-}).listen(agent, (input) => agent.send(input));
-```
-
-Supported syntax: `*`, lists (`1,15`), ranges (`1-5`), steps (`*/15`,
-`10-40/10`), month names (`JAN`) and weekday names (`MON`), with `0` and `7`
-both meaning Sunday, plus `@hourly`, `@daily`, `@weekly` and `@monthly`. As in
-classic cron, when both day-of-month and day-of-week are restricted a day
-matches if either does. An invalid expression throws a `CronExpressionError`
-naming the field and showing a valid example. `parseCronExpression(expr,
-timezone).nextRun(after)` is exported if you need the next fire time.
-
-Around daylight-saving changes, a time that does not exist (spring forward) is
-skipped for that day, and a time that happens twice (fall back) fires once;
-an every-hour schedule keeps firing hourly. The timer is re-armed after each
-run from the scheduled time (no drift, no double fire), and `stop()` clears it.
 
 ## Deployment
 
@@ -3099,7 +2962,7 @@ handler and runs every request the same way:
 POST <basePath>/<name>  ->  verify  ->  parse  ->  session turn  ->  reply (or onApproval)
 ```
 
-Channels are new. The [trigger adapters](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#triggers)
+Channels are new. The [trigger adapters](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md)
 still work: `WebhookTriggerAdapter` now uses `webhookChannel()` for its auth and
 parsing. Channels add what triggers lack: each conversation on the surface is
 a [session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md), and approvals and questions go back to the surface.
@@ -3249,7 +3112,7 @@ await channels.resolveApproval({ id: 'the-approval-id', approved: true });
 
 `webhookChannel({ secret })` checks an HMAC-SHA256 signature of the raw body in
 `x-signature-256: sha256=<hex>`; `auth` takes any
-[webhook auth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#webhook-authentication) (HMAC options with
+[webhook auth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md#webhook-authentication) (HMAC options with
 replay protection, bearer token, custom). The checks and the generic 401 are
 the ones `WebhookTriggerAdapter` uses.
 
@@ -3423,7 +3286,7 @@ session transcript.
 
 An [agent directory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md)'s `channels/*.ts` files are loaded
 as channels too, and the node server mounts them. `SlackTriggerAdapter` and `verifySlackSignature()`
-(see [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#triggers)) still work for one-shot replies
+(see [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md)) still work for one-shot replies
 through an incoming webhook.
 
 # CLI
@@ -6261,7 +6124,7 @@ the SDK's own tests run the real routes in-process without a socket.
 
 Source: docs/executor-api.md
 
-`createAgent()` is the recommended entry point (see the [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md)). This page is for code that needs the lower-level options it does not take.
+`createAgent()` is the recommended entry point (see the [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md)). This page is for code that needs the lower-level options it does not take. To move existing executor code over to `createAgent()`, see [Migrating to createAgent()](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/migrating-to-create-agent.md).
 
 ## `AgentBuilder` and `AgentExecutor`
 
@@ -6503,7 +6366,10 @@ process tree). Write your own as `{ name, check(action) }` returning
 
 A tool opts in with `requiresSandbox: true` and a `sandboxExecute(args, sandbox)`
 function. The executor then calls `sandboxExecute` with the run's
-`SandboxAdapter` instead of calling `execute`:
+`SandboxAdapter` instead of calling `execute`. `createAgent()` does not take
+`sandbox` yet, so this goes through the executor.
+
+#### Advanced: the executor API
 
 ```ts
 import { AgentExecutor, SubprocessSandbox } from '@lousho/build-ai-agent';
@@ -7204,6 +7070,186 @@ console.log((await store.list('global')).map((item) => item.text)); // ['Lives i
 - An agent directory's `memory/` folder is part of the agent: see
   [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md#memory).
 
+# Migrating to createAgent()
+
+Source: docs/migrating-to-create-agent.md
+
+This page is for code that uses `AgentBuilder`, `AgentExecutor`, `ToolRegistry` and
+`resumeAfterApproval()`: the lower-level API the SDK started with. Those exports keep
+working and this page does not remove them; if you stay on them, see
+[The executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md). The reason to move is that one
+`createAgent()` call wires tools, stores, approvals, sessions, retries and
+compaction, where the executor makes you assemble each of them and pass them to every
+call.
+
+`createAgent()` does not take every option the executor takes yet; see
+[What createAgent() does not take yet](#what-createagent-does-not-take-yet) before you
+start.
+
+## Before and after
+
+One agent with a tool that needs approval, first with the executor API, then with
+`createAgent()`. Both use a scripted model, so they run offline and end with the same
+text, `Sent the report to Sam.`, after the same pause.
+
+```ts
+import {
+  AgentBuilder,
+  AgentExecutor,
+  InMemoryApprovalStore,
+  ToolRegistry,
+  defineTool,
+  resumeAfterApproval,
+} from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+import { z } from 'zod';
+
+const sendEmail = defineTool({
+  name: 'send_email',
+  description: 'Send an email',
+  input: z.object({ to: z.string() }),
+  needsApproval: true,
+  execute: async ({ to }) => `sent to ${to}`,
+});
+
+const provider = mockModel([
+  { toolCalls: [{ name: 'send_email', args: { to: 'sam@example.com' } }] },
+  'Sent the report to Sam.',
+]);
+
+// Before: the agent, the tool registry, the approval store and the provider are
+// separate objects, and the resume call needs all of them again.
+const agent = AgentBuilder.create().setName('Mailer').setPrompt('You send emails.').addTool(sendEmail).build();
+const toolRegistry = new ToolRegistry();
+toolRegistry.register(sendEmail);
+const approvalStore = new InMemoryApprovalStore();
+
+const paused = await AgentExecutor.execute({
+  agent,
+  input: 'Email the report to Sam',
+  provider,
+  toolRegistry,
+  approvalStore,
+});
+console.log(paused.finishReason); // 'awaiting-approval'
+
+const result = await resumeAfterApproval(
+  { id: paused.approvalId!, approved: true },
+  approvalStore,
+  toolRegistry,
+  provider,
+);
+console.log(result.text); // 'Sent the report to Sam.'
+```
+
+```ts
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+import { z } from 'zod';
+
+const sendEmail = defineTool({
+  name: 'send_email',
+  description: 'Send an email',
+  input: z.object({ to: z.string() }),
+  needsApproval: true,
+  execute: async ({ to }) => `sent to ${to}`,
+});
+
+// After: the same scripted model gives the same result as the snippet above.
+const mailer = createAgent({
+  provider: mockModel([
+    { toolCalls: [{ name: 'send_email', args: { to: 'sam@example.com' } }] },
+    'Sent the report to Sam.',
+  ]),
+  instructions: 'You send emails.',
+  tools: [sendEmail],
+});
+
+const paused = await mailer.send('Email the report to Sam');
+console.log(paused.finishReason); // 'awaiting-approval'
+
+const result = await mailer.approvals.resolve({ id: paused.approvalId!, approved: true });
+console.log(result.text); // 'Sent the report to Sam.'
+```
+
+The tool is the same `defineTool()` result in both. The agent keeps its own registry,
+approval store and provider, so deciding the pause needs only the approval id.
+
+## Mapping
+
+| Legacy | `createAgent()` |
+| ------ | --------------- |
+| `AgentBuilder.create().setName(n).setPrompt(p).build()` | `createAgent({ name, instructions })` (`prompt` is an alias of `instructions`). |
+| `addTool(key, config)` on the builder, plus `ToolRegistry.register(tool)` | `tools: [defineTool(...)]`. There is no registry to build; see [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md). |
+| `AgentExecutor.execute({ agent, input, provider })` | `agent.send(message)`. The model is `model` (a `provider/model` string) or `provider`. |
+| `AgentExecutor.stream(...)` | `agent.stream(message)`; see [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md). |
+| `onAgentEvent` | `onEvent` on `createAgent()`; `stream()` gives the same events. |
+| `onEvent` with `ExecutionEvent` (deprecated) | `AgentEvent` listeners; see [Migrating from `onEvent` / `ExecutionEvent`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#migrating-from-onevent--executionevent). |
+| `sessionId` + `checkpointStore` | `store` on `createAgent()` and `agent.send(message, { sessionId })`; finish an interrupted run with `agent.resume(sessionId)`. See [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md). |
+| `approvalStore` | `approvalStore`, or `store` with `approvals`. Without either, a per-agent `InMemoryApprovalStore`. |
+| `resumeAfterApproval(decision, store, registry, provider)` | `agent.approvals.resolve({ id, approved, note? })`; `agent.approvals.answer()` for a question. See [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md). |
+| `streamResumeAfterApproval(...)` | `agent.approvals.streamResolve(...)` and `streamAnswer(...)`. |
+| `AgentExecutor.fork(...)` | `agent.fork(sessionId, { fromStep, patch })`. |
+| `hooks: HookRegistry` | `hooks: AgentHook[]`. |
+| `signal` | `agent.send(message, { signal })`. |
+| `maxSteps`, `limits`, `guardrails`, `toolConcurrency`, `onAgentDrift`, `reasoning`, `output` | The same names on `createAgent()`; `reasoning` can also be set per `send()`. |
+| `skills`, `subagents` | The same names on `createAgent()`, which also takes `mcpServers` and `memory`. |
+| `inputQueue` | `run.enqueue()` on a streamed run, or `agent.session({ turnPolicy })`; see [Queued input](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#queued-input). |
+| `sessionBudget` | `agent.session({ id, limits })`; see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md). |
+| `createDelegateTool()` | `subagents`; see [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md). |
+| `AgentType`, `setType()` | Nothing to move: the type has no effect. |
+
+## What createAgent() does not take yet
+
+These `ExecuteOptions` have no `createAgent()` option. Where there is a supported
+alternative it is named; otherwise keep that call on `AgentExecutor.execute()`.
+
+| Executor option | Alternative |
+| --------------- | ----------- |
+| `temperature`, `maxTokens` | None: stay on the executor. (`limits.maxTokens` is a budget for the run, not a generation setting.) |
+| `exporter`, `captureContent`, `redactContent` | None: tracing with a `TraceExporter` needs the executor. |
+| `sandbox` | None: stay on the executor. |
+| `onLLMRequest`, `onLLMResponse` | A `preGenerate` / `postGenerate` hook in `hooks`, or an `onEvent` listener. |
+| `onToolCall`, `onToolResult` | A `preToolCall` / `postToolCall` hook in `hooks`, or an `onEvent` listener. |
+| `onRunEnd` | An `onEvent` listener for `run.done`, or the result of `send()`. |
+| `businessState` | None: stay on the executor. |
+
+A run uses one API or the other: an agent that needs one of the "None" rows keeps that
+call on the executor, and can use `createAgent()` for the rest of the code.
+
+## Behavior differences
+
+- `send()` is one turn. A conversation is a separate object, `agent.session()`, which
+  keeps the transcript and sends it with each turn; see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md). Code
+  that built a message history by hand moves to a session.
+- A paused run resolves. A `send()` that reaches a `needsApproval` tool resolves with
+  `finishReason: 'awaiting-approval'` and an `approvalId`; it does not throw. The pause
+  stays with the agent, so `agent.approvals.list()` shows it and `resolve()` continues
+  it without the registry or provider.
+- The default approval store is per agent and in memory. A pause survives a restart only
+  with a durable `store` or `approvalStore`; see
+  [Choosing a store](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store).
+- Retries are on by default for a `model` string: two retries of a failed model call. A
+  `provider` instance you pass is not wrapped unless you set `retry`. See
+  [Provider retries and fallback](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#provider-retries-and-fallback).
+
+## Migrating step by step
+
+1. Tools first. Keep the `defineTool()` tools; drop the `ToolRegistry` and any
+   `addTool(key, config)` call, and list the tools in `tools`.
+2. Replace `AgentBuilder` with `createAgent({ name, instructions, tools })`, and pass
+   `model` or the `provider` you already pass to `execute()`.
+3. Replace each `AgentExecutor.execute()` with `agent.send()` and each `stream()` with
+   `agent.stream()`. Move `maxSteps`, `limits` and the other shared options to
+   `createAgent()`. Keep a call on the executor if it needs an option from the "does
+   not take yet" list.
+4. Replace `resumeAfterApproval()` with `agent.approvals.resolve()`. If approvals must
+   outlive the process, pass the store you used as `approvalStore`.
+5. Move `checkpointStore` and its `sessionId` to `store`, and pass `sessionId` to
+   `send()`. Use `agent.session()` where you kept a history yourself.
+6. Replace `onEvent` with `ExecutionEvent` by an `AgentEvent` listener, then move
+   `HookRegistry` hooks into `hooks`.
+
 # Next.js and other Fetch-API frameworks
 
 Source: docs/nextjs.md
@@ -7323,6 +7369,10 @@ mapping.
 > on these names.
 
 ## Quick start
+
+`createAgent()` does not take `exporter` yet, so tracing goes through the executor.
+
+#### Advanced: the executor API
 
 ```ts
 import { AgentExecutor, type TraceExporter } from '@lousho/build-ai-agent';
@@ -7467,7 +7517,9 @@ The cost is an estimate from the price table (see `registerModel`), not a bill.
 
 Prompts, model output and tool arguments/results are sensitive and large, so
 the `gen_ai.*` content attributes are **never recorded by default**. Opt in
-per run:
+per run. `createAgent()` does not take `captureContent` yet, so this goes through the executor too.
+
+#### Advanced: the executor API
 
 ```ts
 import { AgentExecutor, type TraceExporter } from '@lousho/build-ai-agent';
@@ -7620,44 +7672,64 @@ bytes as a `Uint8Array`) and `{ type: 'file', data, mimeType, filename? }`.
 `agent.send()`, `agent.stream()`, `session.send()` / `stream()`, `t.send()` in
 evals and the React hook's `send()` all take an `AgentInput`: a string, a list
 of parts (sent as one user message) or a `Message[]` (passed through as it is).
-`AgentExecutor.execute()` takes the same messages as its `input`:
+Parts sent through `createAgent()`:
 
 ```ts
 import { readFileSync } from 'node:fs';
-import { AgentBuilder, AgentExecutor, createAgent, resolveProvider, textOf, type Message } from '@lousho/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
-const agent = AgentBuilder.create().setName('vision').setPrompt('Describe images briefly.').build();
-const input: Message[] = [
+const agent = createAgent({ instructions: 'Describe images briefly.', model: 'openai/gpt-4o-mini' });
+
+// Parts become one user message.
+const answer = await agent.send([
+  { type: 'text', text: 'What is in these pictures?' },
+  { type: 'image', image: 'https://example.com/cat.png' },
+  { type: 'image', image: new Uint8Array(readFileSync('dog.png')), mimeType: 'image/png' },
+]);
+console.log(answer.text);
+```
+
+A `Message[]` is passed through as it is; `textOf()` returns the text parts of a message:
+
+```ts
+import { createAgent, textOf, type Message } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ instructions: 'Describe images briefly.', model: 'openai/gpt-4o-mini' });
+const messages: Message[] = [
   {
     role: 'user',
     content: [
-      { type: 'text', text: 'What is in these pictures?' },
+      { type: 'text', text: 'What is in this picture?' },
       { type: 'image', image: 'https://example.com/cat.png' },
-      { type: 'image', image: new Uint8Array(readFileSync('dog.png')), mimeType: 'image/png' },
     ],
   },
 ];
 
-const result = await AgentExecutor.execute({ agent, input, provider: resolveProvider('openai/gpt-4o-mini') });
-console.log(textOf(input[0]), '->', result.text); // textOf(): the text parts of a message
-
-// The same through the public API: parts become one user message.
-const answer = await createAgent({ prompt: 'Describe images briefly.', model: 'openai/gpt-4o-mini' }).send([
-  { type: 'text', text: 'What is in this picture?' },
-  { type: 'image', image: 'https://example.com/cat.png' },
-]);
-console.log(answer.text);
+const result = await agent.send(messages);
+console.log(textOf(messages[0]), '->', result.text);
 ```
 
 - **Images** go to the model on `user` messages with every built-in provider
   (an image URL is downloaded by the `ai` SDK first for Anthropic and Ollama).
   Pick a vision model: Ollama ignores images for a text-only model, and
   OpenRouter rejects them for one.
-- **Files** are not sent by the built-in providers, on any `ai` major: a file
-  part is sent as a text note (`[file report.pdf (application/pdf) not sent]`)
-  and the provider warns once. A provider subclass whose model takes files
-  sets `protected readonly acceptsFileParts = true` to send them as `ai` v4
-  file parts.
+- **Files** (`{ type: 'file', data, mimeType }`) are sent as `file` parts for
+  these media types, by provider and `ai` major:
+
+  | Provider | `ai` 4 | `ai` 6 / 7 |
+  | -------- | ------ | ---------- |
+  | `openai` | text note | `application/pdf` |
+  | `anthropic` | text note | `application/pdf`, `text/plain` |
+  | `openrouter` | text note | `application/pdf` |
+  | `ollama` | text note | text note |
+
+  Any other file part is sent as a text note
+  (`[file report.pdf (application/pdf) not sent]`), and the provider warns once
+  per media type, naming it and the `ai` major. On `ai` 4 the accepted
+  `@ai-sdk/*` range includes 0.0.x packages that have no file parts, so every
+  file becomes the note there. A provider subclass whose model takes more types
+  overrides `protected fileMediaTypes(): readonly string[]` to list them, or
+  sets `protected readonly acceptsFileParts = true` to send every type.
 - `system`, `assistant` and `tool` messages are sent as their text parts.
 - Everything that reads message text uses `textOf()`: `estimateTokens()`
   (each image or file part counts as a flat 1,000 tokens), compaction,
@@ -7665,6 +7737,28 @@ console.log(answer.text);
   image or file, or its URL) and `mockModel()`. `FileSessionStore` saves bytes
   as base64 (`{ "$bytes": "..." }`) and loads them back as `Uint8Array`s;
   `SqliteStore` (sessions and checkpoints) does the same.
+
+#### Advanced: the executor API
+
+`AgentExecutor.execute()` takes the same messages as its `input` (see [the executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md)):
+
+```ts
+import { AgentBuilder, AgentExecutor, resolveProvider, type Message } from '@lousho/build-ai-agent';
+
+const agent = AgentBuilder.create().setName('vision').setPrompt('Describe images briefly.').build();
+const input: Message[] = [
+  {
+    role: 'user',
+    content: [
+      { type: 'text', text: 'What is in this picture?' },
+      { type: 'image', image: 'https://example.com/cat.png' },
+    ],
+  },
+];
+
+const result = await AgentExecutor.execute({ agent, input, provider: resolveProvider('openai/gpt-4o-mini') });
+console.log(result.text);
+```
 
 ## Provider classes
 
@@ -7749,9 +7843,8 @@ or `StreamResult`:
 
 On v6/v7 the model must come from a provider package for that major (the
 table above); the `0.0.x`/`1.x` packages produce models `ai` v7 rejects. Image
-parts are sent as `image` parts, which `ai` v7 accepts with a deprecation
-warning per part (`globalThis.AI_SDK_LOG_WARNINGS = false` turns `ai`'s
-warnings off). `ai` v5 is not supported.
+parts are sent as `file` parts with an image media type (the shape `ai` v6/v7
+takes for images, so there is no deprecation warning). `ai` v5 is not supported.
 
 ## Where each provider runs
 
@@ -9424,7 +9517,7 @@ and the final `run.done` event carries `object` (JSON-encoded) when the
 reply was valid. The repair step shows up as one more
 `step.start` / `step.done` pair. See [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md).
 
-## Without createAgent()
+## Advanced: the executor API
 
 `AgentExecutor.execute()` and `AgentExecutor.stream()` take the same
 `output` option. There `result.object` is `unknown`; parse it again with your
@@ -10093,15 +10186,21 @@ runs it and calls the model again; turn 2 produces the final answer. Tool-call
 ids are generated deterministically (`call_1`, `call_2`, ...) unless you pass
 `id`.
 
-```ts no-verify
+```ts no-run
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
 import { mockModel } from '@lousho/build-ai-agent/testing';
 
 describe('weather agent', () => {
   it('calls get_weather and reports the result', async () => {
     const execute = vi.fn(async ({ city }: { city: string }) => ({ city, tempC: 21 }));
+    const getWeather = defineTool({
+      name: 'get_weather',
+      description: 'Get the weather for a city',
+      input: z.object({ city: z.string() }),
+      execute,
+    });
     const model = mockModel([
       { toolCalls: [{ name: 'get_weather', args: { city: 'Paris' } }] }, // turn 1
       { text: 'It is 21°C in Paris.' },                                  // turn 2
@@ -10109,16 +10208,7 @@ describe('weather agent', () => {
     const agent = createAgent({
       prompt: 'You report the weather.',
       provider: model,
-      tools: {
-        get_weather: {
-          displayName: 'Get weather',
-          tool: {
-            description: 'Get the weather for a city',
-            parameters: z.object({ city: z.string() }),
-            execute,
-          },
-        },
-      },
+      tools: [getWeather],
     });
 
     const result = await agent.send('Weather in Paris?');
@@ -10473,10 +10563,11 @@ Built-in descriptors are passed keyed by the name the agent uses:
 `http`, `current-date` and `day-name` by name (see
 [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#tools-a-spec-can-reference)).
 
-## `ToolRegistry`
+## Advanced: `ToolRegistry`
 
-`createAgent()` builds a registry for you. With `AgentBuilder` +
-`AgentExecutor.execute()`, or to share tools between agents, fill one yourself:
+`createAgent()` builds a registry for you; fill one yourself only with
+`AgentExecutor.execute()` (see [the executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md)) or to
+share tools between agents:
 `register(tool)` for a `defineTool()` result, `register(name, descriptor)` for a
 raw `ToolDescriptor` (a built-in tool, an MCP tool, or an existing `tool()` from
 the `ai` SDK), and `registerMany()` for a record of descriptors or an array of defined tools.
@@ -10499,6 +10590,214 @@ tools.register('current_date', currentDateTool);
 
 Pass it as `toolRegistry` to `AgentExecutor.execute()`; the agent config's
 `tools` map names the tools it may use.
+
+# Triggers
+
+Source: docs/triggers.md
+
+A trigger adapter turns one wake-up mechanism into an agent run: an inbound webhook, a clock, or a Slack event. Import them from the `@lousho/build-ai-agent/triggers` subpath: `WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter` and `TriggerRegistry`. Wire any of them with `listen(agent, onEvent)`, where `onEvent` runs the agent, and call `stop()` on the returned handle to shut the adapter down.
+
+```ts
+import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
+import { CronTriggerAdapter } from '@lousho/build-ai-agent/triggers';
+
+const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
+
+const cron = new CronTriggerAdapter({
+  intervalMs: 60_000,
+  input: 'Check the queue',
+  onResult: (result, error) => console.log(error ?? result?.text),
+});
+const handle = cron.listen(agent, (input) => agent.send(input));
+
+// Later, on shutdown: clear the timer (a webhook adapter closes its HTTP listener).
+await handle.stop();
+```
+
+## Choosing between triggers, channels and schedules
+
+| | Use it for | Entry points |
+|---|---|---|
+| Triggers | One-shot runs with no conversation: a webhook in and the result out, a cron job, a Slack mention. | `WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter` |
+| [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) | A surface people talk to. Each conversation maps to a session, and approvals and questions the agent pauses on go back to the surface. | `defineChannel()`, `mountChannels()`, `httpChannel()`, `webhookChannel()` |
+| [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md) | Cron for agent directories and the node server, with support on the deployed targets. | `defineSchedule()`, `startSchedules()` |
+
+Cron exists in both triggers and schedules today. New projects that use agent directories or `lousho build` should prefer `defineSchedule()`; this is guidance, and `CronTriggerAdapter` keeps working. `WebhookTriggerAdapter` uses `webhookChannel()` for its authentication.
+
+## The TriggerAdapter interface
+
+```text
+interface TriggerAdapter<TChannel = unknown> {
+  type: string;
+  listen(
+    agent: RunnableAgent, // { send(message: string): Promise<ExecutionResult> }
+    onEvent: (input: string, context: TriggerContext) => Promise<ExecutionResult>
+  ): TriggerHandle; // { stop(): Promise<void> | void }
+  reply?(channel: TChannel, message: string): Promise<void>;
+}
+```
+
+`listen` takes both `agent` and `onEvent` on purpose. `agent` is the plain "prompt in, text out" surface, and `onEvent` is the entry point the adapter calls when its trigger fires: a simple caller passes `(input) => agent.send(input)`, while a caller with checkpointing, approval gates or abort control passes an `onEvent` that wraps all of that.
+
+Reply semantics differ per adapter. A webhook writes the result you return as the HTTP response, so it has no `reply()`. A cron has no caller waiting, so it hands the result to its `onResult` option. Slack posts the answer back through `reply()`.
+
+Write your own adapter by returning a handle from `listen`:
+
+```ts
+import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
+import type { TriggerAdapter } from '@lousho/build-ai-agent/triggers';
+
+const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
+
+const everyTenSeconds: TriggerAdapter = {
+  type: 'ten-seconds',
+  listen(_agent, onEvent) {
+    const timer = setInterval(() => void onEvent('tick', { firedAt: new Date() }), 10_000);
+    return { stop: () => clearInterval(timer) };
+  },
+};
+
+const handle = everyTenSeconds.listen(agent, (input) => agent.send(input));
+handle.stop();
+```
+
+`TriggerRegistry` keeps adapters by name: `register(name, adapter)`, `registerMany()`, `get()`, `has()`, `list()`, `getAll()`, `unregister()`, `clear()` and `size()`. `globalTriggerRegistry` is a shared instance.
+
+## Webhook
+
+### Webhook authentication
+
+`WebhookTriggerAdapter` starts an HTTP server. **Always set `auth` for a
+webhook that is reachable from outside your machine**: without it, anyone who
+can reach the port can run your agent (and spend your tokens). If you listen
+on a non-loopback host with no `auth`, the adapter logs a one-time warning
+through `options.logger`.
+
+```ts
+import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
+import { WebhookTriggerAdapter } from '@lousho/build-ai-agent/triggers';
+
+const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
+
+// HMAC of the RAW request body (GitHub / Shopify style): header `x-signature-256: sha256=<hex>`.
+new WebhookTriggerAdapter({
+  port: 8787,
+  auth: { type: 'hmac', secret: process.env.WEBHOOK_SECRET ?? '' },
+}).listen(agent, (input) => agent.send(input));
+
+// Replay protection: the signed payload becomes `${timestamp}.${body}` and
+// requests more than `toleranceSeconds` (default 300) old are rejected.
+new WebhookTriggerAdapter({
+  auth: {
+    type: 'hmac',
+    secret: process.env.WEBHOOK_SECRET ?? '',
+    header: 'x-signature',
+    timestampHeader: 'x-timestamp',
+    toleranceSeconds: 120,
+  },
+});
+
+// A shared bearer token (`Authorization: Bearer <token>`).
+new WebhookTriggerAdapter({ auth: { type: 'bearer', token: process.env.WEBHOOK_TOKEN ?? '' } });
+
+// Anything else: return true to accept. `rawBody` is a Buffer of the exact bytes received.
+new WebhookTriggerAdapter({
+  auth: { type: 'custom', verify: (req) => req.headers['x-api-key'] === process.env.API_KEY },
+});
+```
+
+HMAC options: `header` (default `x-signature-256`), `algorithm` (`sha256` or
+`sha1`, default `sha256`), `prefix` (default `sha256=`; `''` for a bare
+digest), `timestampHeader` and `toleranceSeconds`. Signatures and bearer
+tokens are compared in constant time. A request that fails authentication gets
+a generic `401 {"error":"Unauthorized"}` - the response never says which check
+failed - and the reason (never a secret or signature) is logged at `warn`
+level. Serve webhooks over HTTPS (terminate TLS in front of the adapter) so
+tokens and payloads are not sent in clear text.
+
+## Slack
+
+### Slack request signatures
+
+`SlackTriggerAdapter.handleRequest({ headers, rawBody })` handles a raw Slack
+Events API request and returns the `{ status, body }` to send back. **Set
+`signingSecret` for any endpoint reachable from outside your machine**: without
+it, anyone who can reach the endpoint can run your agent, and `listen()` logs a
+one-time warning through `options.logger`. With it, every request is verified
+as [Slack documents](https://docs.slack.dev/authentication/verifying-requests-from-slack)
+before the body is parsed: HMAC-SHA256 over `v0:{X-Slack-Request-Timestamp}:{raw body}`,
+compared in constant time with `X-Slack-Signature` (`v0=<hex>`), and requests
+more than five minutes old are rejected. Failures get a generic
+`401 {"error":"Unauthorized"}`; the reason (never a secret or signature) is
+logged at `warn` level. The signed `url_verification` handshake is answered
+after verification.
+
+```ts
+import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
+import { SlackTriggerAdapter, verifySlackSignature } from '@lousho/build-ai-agent/triggers';
+import * as http from 'node:http';
+
+const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
+const slack = new SlackTriggerAdapter({ signingSecret: process.env.SLACK_SIGNING_SECRET });
+slack.listen(agent, (input) => agent.send(input));
+
+http
+  .createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    req.on('end', async () => {
+      const { status, body } = await slack.handleRequest({ headers: req.headers, rawBody: Buffer.concat(chunks) });
+      res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
+    });
+  })
+  .listen(3000);
+
+// Your own handler (slash commands, interactivity)? Verify the RAW body yourself:
+const authentic = verifySlackSignature({
+  signingSecret: process.env.SLACK_SIGNING_SECRET ?? '',
+  timestamp: '1700000000', // the X-Slack-Request-Timestamp header
+  signature: 'v0=...', // the X-Slack-Signature header
+  rawBody: '{"type":"url_verification"}',
+});
+```
+
+`handleRequest` answers Slack after the agent finishes; Slack expects a reply
+within three seconds, so for slow agents acknowledge first and run the agent in
+the background.
+
+## Cron
+
+### Cron schedules
+
+`CronTriggerAdapter` takes either a fixed `intervalMs` or a real cron
+expression:
+
+```ts
+import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
+import { CronTriggerAdapter } from '@lousho/build-ai-agent/triggers';
+
+const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
+
+new CronTriggerAdapter({
+  cron: '*/15 9-17 * * MON-FRI', // minute hour day-of-month month day-of-week
+  timezone: 'Europe/Paris', // IANA name; defaults to the machine's local zone
+  input: 'Check the support queue',
+  onResult: (result, error) => console.log(error ?? result?.text),
+}).listen(agent, (input) => agent.send(input));
+```
+
+Supported syntax: `*`, lists (`1,15`), ranges (`1-5`), steps (`*/15`,
+`10-40/10`), month names (`JAN`) and weekday names (`MON`), with `0` and `7`
+both meaning Sunday, plus `@hourly`, `@daily`, `@weekly` and `@monthly`. As in
+classic cron, when both day-of-month and day-of-week are restricted a day
+matches if either does. An invalid expression throws a `CronExpressionError`
+naming the field and showing a valid example. `parseCronExpression(expr,
+timezone).nextRun(after)` is exported if you need the next fire time.
+
+Around daylight-saving changes, a time that does not exist (spring forward) is
+skipped for that day, and a time that happens twice (fall back) fires once;
+an every-hour schedule keeps firing hourly. The timer is re-armed after each
+run from the scheduled time (no drift, no double fire), and `stop()` clears it.
 
 # Troubleshooting
 
