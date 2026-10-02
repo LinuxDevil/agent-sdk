@@ -16,6 +16,7 @@ import { MemorySessionStore } from '../session/sessionStore';
 import type { Message } from '../providers';
 import { mountChannels, type ChannelsHandler } from './mountChannels';
 import { slackChannel } from './slackChannel';
+import { durableStores } from './__fixtures__/durableStores';
 
 const SECRET = 'slack-signing-secret';
 const BOT = 'UBOT';
@@ -319,5 +320,60 @@ describe('slackChannel (LOU-P5)', () => {
 
     expect(t.posts[1]).toEqual({ channel: 'C1', thread_ts: '100.1', text: 'Booked Lisbon.' });
     expect(JSON.stringify(t.model.calls[1].messages)).toContain('Lisbon');
+  });
+
+  describe('after a restart: a second channel over the same durable stores (M10a)', () => {
+    const ask = { toolCalls: [{ name: 'ask_question', args: { question: 'Which city?' }, id: 'call_q' }] };
+    const threadMessage = (text: string, ts: string) => event('x', { type: 'message', text, thread_ts: '100.1', ts });
+
+    it('a pending ask_question survives a restart', async () => {
+      const stores = durableStores();
+      const agentOptions = { askQuestion: true, approvalStore: stores.approvalStore };
+      const first = setup([ask], agentOptions, { mount: { store: stores.store } });
+      await first.send(event('Book a trip'));
+      expect(first.posts).toEqual([{ channel: 'C1', thread_ts: '100.1', text: expect.stringContaining('Which city?') }]);
+
+      const second = setup(['Booked Lisbon.', 'You are welcome.'], agentOptions, { mount: { store: stores.store } });
+      await second.send(threadMessage('Lisbon', '100.2'));
+
+      expect(second.posts).toEqual([{ channel: 'C1', thread_ts: '100.1', text: 'Booked Lisbon.' }]);
+      expect(second.model.calls).toHaveLength(1);
+      expect(JSON.stringify(second.model.calls[0].messages)).toContain('Lisbon');
+      const transcript = await stores.transcript();
+      for (const text of ['Book a trip', 'Which city?', 'Lisbon', 'Booked Lisbon.']) expect(transcript).toContain(text);
+
+      // answered: the next message in the thread is a new turn of the same session
+      await second.send(threadMessage('Thanks', '100.3'));
+      expect(second.posts[1]).toEqual({ channel: 'C1', thread_ts: '100.1', text: 'You are welcome.' });
+      expect(second.userTexts(1)).toEqual(['Book a trip', 'Thanks']);
+    });
+
+    it('a thread with no pending question still starts a normal turn', async () => {
+      const stores = durableStores();
+      const first = setup(['Hello.'], { approvalStore: stores.approvalStore }, { mount: { store: stores.store } });
+      await first.send(event('hi'));
+
+      const second = setup(['Still here.'], { approvalStore: stores.approvalStore }, { mount: { store: stores.store } });
+      await second.send(threadMessage('again', '100.2'));
+
+      expect(second.posts).toEqual([{ channel: 'C1', thread_ts: '100.1', text: 'Still here.' }]);
+      expect(second.userTexts(0)).toEqual(['hi', 'again']);
+    });
+
+    it('a plain message does not answer a pending tool approval; the click still does', async () => {
+      const stores = durableStores();
+      const execute = vi.fn(async ({ to }: { to: string }) => `sent to ${to}`);
+      const agentOptions = { tools: [emailTool(execute)], approvalStore: stores.approvalStore };
+      const value = await pause(setup([emailCall], agentOptions, { mount: { store: stores.store } }));
+
+      const second = setup(['Email sent.'], agentOptions, { mount: { store: stores.store } });
+      await second.send(threadMessage('yes', '100.2'));
+      expect(second.model.calls).toHaveLength(0);
+      expect(execute).not.toHaveBeenCalled();
+
+      await second.send(click(value), { form: true });
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(second.posts.at(-1)).toEqual({ channel: 'C1', thread_ts: '100.1', text: 'Email sent.' });
+    });
   });
 });

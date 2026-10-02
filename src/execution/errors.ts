@@ -5,6 +5,7 @@
 
 import { APICallError, LoadAPIKeyError, RetryError } from 'ai';
 import type { ErrorCode } from '../utils/errorCodes';
+import type { ApprovalKind } from './ApprovalGate';
 import { SDKError, type SDKErrorOptions } from '../utils/sdkError';
 
 // SDKError is defined in src/utils/sdkError.ts (no `ai` import, so browser code can use it).
@@ -73,7 +74,9 @@ export class LLMProviderError extends SDKError {
 export class SessionAwaitingApprovalError extends SDKError {
   constructor(
     public readonly sessionId: string,
-    public readonly approvalId: string | undefined
+    public readonly approvalId: string | undefined,
+    /** M10a: `'question'` when the pending approval is an `ask_question` call; absent for a tool approval or when unknown. */
+    public readonly approvalKind?: ApprovalKind
   ) {
     super(
       `Session '${sessionId}' is paused awaiting approval${approvalId ? ` '${approvalId}'` : ''}, so execute() ` +

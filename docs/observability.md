@@ -16,9 +16,28 @@ mapping.
 
 ## Quick start
 
-`createAgent()` does not take `exporter` yet, so tracing goes through the executor.
+Pass an `exporter` to `createAgent()`; every run of the agent (`send()`,
+`stream()`, session turns, `resume()` and runs continued by
+`agent.approvals.resolve()`) is traced, sub-agents included. To keep traces
+on disk and browse them with `npx lousho traces`, use `fileTraceExporter()`
+(see [Local traces](#local-traces)):
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+import { fileTraceExporter } from '@lousho/build-ai-agent/traces';
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  instructions: 'You are a helpful assistant.',
+  exporter: fileTraceExporter(), // writes .lousho/traces/<day>/<traceId>.jsonl
+});
+```
+
+Any object with `onSpanStart` and `onSpanEnd` is an exporter.
 
 #### Advanced: the executor API
+
+With the executor, pass the exporter to `AgentExecutor.execute()`:
 
 ```ts
 import { AgentExecutor, type TraceExporter } from '@lousho/build-ai-agent';
@@ -163,9 +182,11 @@ The cost is an estimate from the price table (see `registerModel`), not a bill.
 
 Prompts, model output and tool arguments/results are sensitive and large, so
 the `gen_ai.*` content attributes are **never recorded by default**. Opt in
-per run. `createAgent()` does not take `captureContent` yet, so this goes through the executor too.
+per agent with `createAgent({ exporter, captureContent: true })`.
 
 #### Advanced: the executor API
+
+With the executor, opt in per run:
 
 ```ts
 import { AgentExecutor, type TraceExporter } from '@lousho/build-ai-agent';
@@ -217,6 +238,79 @@ The deprecated content attributes (`input`, `prompt`, `args`, `result`) keep
 their old behavior: they are recorded unless `redactContent: true`. Set
 `redactContent: true` if you want no content on spans unless you opt in with
 `captureContent`.
+
+## Local traces
+
+`fileTraceExporter()` from `@lousho/build-ai-agent/traces` writes each run to a
+file, and `lousho traces` shows the files in the terminal. No OpenTelemetry
+backend, no extra package.
+
+```ts
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { fileTraceExporter } from '@lousho/build-ai-agent/traces';
+import { z } from 'zod';
+
+const getWeather = defineTool({
+  name: 'get_weather',
+  description: 'Current weather for a city',
+  input: z.object({ city: z.string() }),
+  execute: async ({ city }) => `Sunny in ${city}`,
+});
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  tools: [getWeather],
+  exporter: fileTraceExporter({ dir: '.lousho/traces' }), // the default dir
+});
+```
+
+Then, from the project directory:
+
+```bash
+npx lousho traces                 # the 20 most recent runs, newest first
+npx lousho traces --limit 50 --json
+npx lousho traces 3f2a            # one run as a tree; a unique id prefix is enough
+npx lousho traces 3f2a --content  # also the captured messages and tool arguments
+```
+
+```
+TIME    AGENT    DURATION  MODEL  TOOLS  TOKENS IN/OUT  COST       STATUS  ID
+2h ago  weather  1.65s     2      1      159/32         $0.000043  ok      3f2a9c1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f
+
+Trace 3f2a9c1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f  4 spans, 1.65s
+invoke_agent weather         |████████████████████████|     1.65s  $0.000043
+├─ chat gpt-4o-mini          |█████████████           |     900ms  openai/gpt-4o-mini  in 62 out 18  $0.000020
+├─ execute_tool get_weather  |             █          |      22ms  tool get_weather
+└─ chat gpt-4o-mini          |             ██████████ |     705ms  openai/gpt-4o-mini  in 97 out 14  $0.000023
+```
+
+Options: `--dir D` reads another directory (default `.lousho/traces`),
+`--limit N` lists N runs (default 20), `--json` prints the summaries or the
+spans as JSON. An id prefix that matches several runs lists them and exits 1.
+Colour is off when `NO_COLOR` is set or the output is not a terminal. The
+token counts are the run's `chat` spans, sub-agents' included; the cost is the
+run's rolled-up `lousho.cost_usd`, blank (`-`) when a model's price is unknown.
+
+**Files.** One file per run at `<dir>/<YYYY-MM-DD>/<traceId>.jsonl` (the run's
+local start date; the trace id is the id of its `invoke_agent` span), so old
+traces can be deleted by day. Each line is one finished span, written as it
+ends:
+
+```json
+{"v":1,"traceId":"3f2a…","id":"a100…","parentId":"3f2a…","name":"chat gpt-4o-mini","kind":"client","startTime":1790848800005,"endTime":1790848800905,"attributes":{"gen_ai.usage.input_tokens":62,"…":"…"}}
+```
+
+`startTime` and `endTime` are milliseconds since the epoch; `attributes` are
+the span attributes above, unshortened. A span that never ended (the process
+died) is not in the file. If the directory cannot be written, the exporter
+warns once and the run goes on. `listTraces({ dir, limit })` and
+`readTrace(idOrPrefix, { dir })` read the files from code.
+
+The files hold what the spans hold: the deprecated `input`, `prompt`, `args`
+and `result` attributes carry message and tool content (see
+[Deprecated attribute names](#deprecated-attribute-names)), and
+`captureContent: true` adds the `gen_ai.*` content. Keep `.lousho/` out of
+version control; projects made by `lousho init` ignore it.
 
 ## Backends
 

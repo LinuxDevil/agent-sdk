@@ -242,6 +242,7 @@ dist
 .env.*
 !.env.example
 *.log
+.lousho/
 `;
 
 function run(pm: PackageManager, script: string): string {

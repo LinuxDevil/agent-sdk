@@ -12,6 +12,7 @@ import type { ExecutionResult } from '../execution/AgentExecutor';
 import { startAgentRun, type AgentRun } from '../execution/agentRun';
 import { InputQueue } from '../execution/inputQueue';
 import type { Checkpoint, CheckpointStore } from '../execution/checkpoint';
+import type { ApprovalKind } from '../execution/ApprovalGate';
 import { SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 import { streamSessionTurn } from './sessionStream';
 import { MemorySessionStore, assertSessionId, type SessionStore } from './sessionStore';
@@ -82,6 +83,8 @@ export interface PendingTurn {
   /** `'in-progress'`: interrupted, `resume()` continues it. `'awaiting-approval'`: decide `approvalId` first. */
   status: 'in-progress' | 'awaiting-approval';
   approvalId?: string;
+  /** M10a: `'question'` when the turn waits on an `ask_question` call; absent for a tool approval (or a turn paused before this field existed). */
+  approvalKind?: ApprovalKind;
 }
 
 /** Where a checkpointed session's turn is checkpointed: pass both to `AgentExecutor.execute()`. */
@@ -310,7 +313,8 @@ export class AgentSession<TObject = unknown> {
       const checkpoint = await this.pendingCheckpoint();
       if (!checkpoint) return null;
       const status = checkpoint.status === 'awaiting-approval' ? 'awaiting-approval' : 'in-progress';
-      return { status, approvalId: checkpoint.approvalId };
+      const { approvalId, approvalKind } = checkpoint;
+      return { status, approvalId, ...(status === 'awaiting-approval' && approvalKind && { approvalKind }) };
     });
   }
 
@@ -392,7 +396,7 @@ export class AgentSession<TObject = unknown> {
     return this.idle(async () => {
       await this.ensureLoaded();
       const pending = this.checkpointStore ? await this.pendingCheckpoint() : null;
-      if (pending?.status === 'awaiting-approval') throw this.awaitingApproval(pending.approvalId);
+      if (pending?.status === 'awaiting-approval') throw this.awaitingApproval(pending);
       await this.deleteCheckpoint();
       await this.store.delete(this.id);
       const messagesCleared = this.history.length;
@@ -411,14 +415,14 @@ export class AgentSession<TObject = unknown> {
     return this.enqueue(task);
   }
 
-  private awaitingApproval(approvalId: string | undefined): SessionAwaitingApprovalError {
-    return new SessionAwaitingApprovalError(this.turnCheckpoint()?.sessionId ?? this.id, approvalId);
+  private awaitingApproval({ approvalId, approvalKind }: Checkpoint): SessionAwaitingApprovalError {
+    return new SessionAwaitingApprovalError(this.turnCheckpoint()?.sessionId ?? this.id, approvalId, approvalKind);
   }
 
   private async assertNoPendingTurn(): Promise<void> {
     const pending = await this.pendingCheckpoint();
     if (!pending) return;
-    if (pending.status === 'awaiting-approval') throw this.awaitingApproval(pending.approvalId);
+    if (pending.status === 'awaiting-approval') throw this.awaitingApproval(pending);
     throw new SDKError(`Session '${this.id}' has an interrupted turn; resume() or discardPending() it first.`, 'LOUSHO_SESSION_TURN_PENDING');
   }
 

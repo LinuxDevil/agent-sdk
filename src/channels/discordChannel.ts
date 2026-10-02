@@ -171,7 +171,7 @@ export function discordChannel(options: DiscordChannelOptions): Channel<DiscordI
     }
   }
 
-  function readCommand(interaction: DiscordInteraction, respond: ChannelRespond): ChannelInbound<DiscordInteraction> | ChannelDecision | null {
+  async function readCommand(interaction: DiscordInteraction, respond: ChannelRespond, ctx: ChannelContext): Promise<ChannelInbound<DiscordInteraction> | ChannelDecision | null> {
     const input = readPrompt(interaction);
     if (!input || !interaction.token) {
       respond(200, { type: 4, data: { content: 'Usage: /ask prompt:<text>', flags: 64 } });
@@ -180,7 +180,8 @@ export function discordChannel(options: DiscordChannelOptions): Channel<DiscordI
     respond(200, { type: 5 });
     const key = sessionKey(interaction);
     const target: DiscordTarget = { token: interaction.token, edited: false };
-    const question = questions.get(key);
+    // the next /ask in the channel answers a pending ask_question, also one asked before a restart
+    const question = questions.get(key) ?? (await ctx.pendingQuestion(key));
     const inbound = { sessionKey: key, input, replyTo: target, event: interaction, metadata: { user: interaction.member?.user?.id ?? interaction.user?.id } };
     if (!question) return inbound;
     questions.delete(key);
@@ -213,7 +214,7 @@ export function discordChannel(options: DiscordChannelOptions): Channel<DiscordI
     async parse(req, respond, ctx) {
       const interaction = JSON.parse(req.text || '{}') as DiscordInteraction;
       if (interaction.type === 1) return respond(200, { type: 1 }), null;
-      if (interaction.type === 2) return readCommand(interaction, respond);
+      if (interaction.type === 2) return readCommand(interaction, respond, ctx);
       if (interaction.type === 3) return readClick(interaction, respond, ctx);
       return respond(200, { type: 6 }), null;
     },

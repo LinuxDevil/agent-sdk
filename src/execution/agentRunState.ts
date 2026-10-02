@@ -8,6 +8,7 @@
 import { GenerateResult, Message, ReasoningBlock, ToolCall, ToolDefinition } from '../providers';
 import { AgentConfig } from '../types';
 import { Checkpoint, CheckpointStatus, RUN_CONFIG_KEY } from './checkpoint';
+import type { ApprovalKind } from './ApprovalGate';
 import { checkAgentDrift, fingerprintOf, type AgentFingerprint } from './agentFingerprint';
 import { runEventsOf } from './agentRun';
 import { baseAgentOf } from './subagentRuntime';
@@ -147,7 +148,7 @@ export async function loadRunState(options: ExecuteOptions): Promise<AgentRunSta
     checkpoint = await checkpointStore.load(sessionId);
   }
   if (sessionId && checkpoint?.status === 'awaiting-approval') {
-    throw new SessionAwaitingApprovalError(sessionId, checkpoint.approvalId);
+    throw new SessionAwaitingApprovalError(sessionId, checkpoint.approvalId, checkpoint.approvalKind);
   }
 
   const initial = checkpoint ? stateFromCheckpoint(checkpoint, options) : freshState(options);
@@ -209,7 +210,8 @@ export async function saveStepCheckpoint(
   options: ExecuteOptions,
   state: AgentRunState,
   status: CheckpointStatus = 'in-progress',
-  approvalId?: string
+  approvalId?: string,
+  approvalKind?: ApprovalKind
 ): Promise<void> {
   const { agent, sessionId, checkpointStore, inputQueue } = options;
   // LOU-V9: a run that stops here takes no more queued input, and keeps none it did not apply.
@@ -230,6 +232,7 @@ export async function saveStepCheckpoint(
     businessState: state.businessState,
     status,
     ...(approvalId !== undefined && { approvalId }),
+    ...(approvalKind !== undefined && { approvalKind }),
     ...(state.fingerprint && { agentFingerprint: state.fingerprint }),
     ...(agent.metadata?.[RUN_CONFIG_KEY] !== undefined && { runConfig: agent.metadata[RUN_CONFIG_KEY] }),
   };
