@@ -35,6 +35,7 @@ tools:
 | Name           | Tool                                                 |
 | -------------- | ---------------------------------------------------- |
 | `http`         | `httpTool` - HTTP requests                           |
+| `web-fetch`    | `webFetchTool` - read a public web page as text      |
 | `current-date` | `currentDateTool` - current date/time (ISO, UTC)     |
 | `day-name`     | `dayNameTool` - day of the week                      |
 

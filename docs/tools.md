@@ -120,7 +120,8 @@ its kind by carrying a `toolErrorKind` property. An error extending
 
 | Export | Tool |
 | ------ | ---- |
-| `httpTool`, `createHttpTool(options)` | HTTP requests, with SSRF protection (every resolved address is checked before connecting). |
+| `httpTool`, `createHttpTool(options)` | `http_request`: HTTP requests (any method, headers, body), with SSRF protection: loopback, private and link-local destinations are refused on every hop, and the connection goes to the address that was checked. Node only. |
+| `webFetchTool`, `createWebFetchTool(options)` | `web_fetch`: `GET` one public web page and return it as text, with the same SSRF protection and caps on redirects, size and time. Node only; see below. |
 | `currentDateTool`, `dayNameTool` | Current date/time (ISO, UTC) and day of the week. |
 | `createTodoTools()` | `todo_write` / `todo_read` so an agent can plan multi-step work; see [Todo tools](./api-overview.md#todo-tools). |
 | `askQuestionTool()`, `createAgent({ askQuestion: true })` | `ask_question`: the agent asks the user something and the run pauses until `agent.approvals.answer()`; see [Asking the user a question](./approvals.md#asking-the-user-a-question). |
@@ -131,8 +132,55 @@ its kind by carrying a `toolErrorKind` property. An error extending
 
 Built-in descriptors are passed keyed by the name the agent uses:
 `createAgent({ tools: { current_date: currentDateTool } })`. Spec files refer to
-`http`, `current-date` and `day-name` by name (see
+`http`, `web-fetch`, `current-date` and `day-name` by name (see
 [Configuration](./configuration.md#tools-a-spec-can-reference)).
+
+How `http_request` and `web_fetch` refuse private destinations: an IP-literal
+host is checked before the request; a host name is resolved once, when the
+connection is opened, every address it resolves to is checked (loopback,
+RFC 1918, link-local including the cloud metadata address, CGNAT, multicast
+and reserved ranges, IPv4-mapped IPv6, NAT64 and 6to4), and the socket
+connects to the address that was checked. Redirects are followed by hand and
+each hop is checked the same way. A DNS-rebinding name, one that answers a
+public address first and a private one later, has no second lookup to answer.
+When `http_request` runs through a sandbox, the host is resolved and checked
+in the agent's process and the sandboxed process connects to that address.
+Both tools take `allowPrivate` (host patterns such as `intranet.example` or
+`*.corp.example`) for hosts that may resolve to private addresses.
+
+`web_fetch` takes `{ url }` (`http:` or `https:`, no `user:password@`) and
+returns `{ url, finalUrl, status, contentType, content, truncated }`. It only
+sends `GET`, with no body, cookies or caller-chosen headers. HTML becomes
+plain text (scripts, styles and similar removed, block elements on their own
+lines, link URLs in parentheses, entities decoded); JSON and `text/*` are
+returned as sent; other types (images, PDFs, binaries) return a note instead
+of content. A 4xx or 5xx response is returned with its body, not thrown, so
+the model can read an error page. Refusals, timeouts, too many redirects and
+bad URLs are tool errors that name the host. The page is untrusted input: the
+tool's description tells the model so, and `readOnlyHint` and `openWorldHint`
+are set. Options of `createWebFetchTool()`:
+
+```ts
+import { createAgent, createWebFetchTool } from '@lousho/build-ai-agent';
+
+const webFetch = createWebFetchTool({
+  timeoutMs: 30_000, // whole request: redirects and body included
+  maxRedirects: 10, // each hop is checked again
+  maxBytes: 2 * 1024 * 1024, // read from the network, then stop (truncated: true)
+  maxChars: 50_000, // characters of text returned to the model
+  allowedHosts: ['*.example.com'], // when set, any other host is refused before DNS
+  blockedHosts: ['private.example.com'], // always refused, before DNS
+  allowPrivate: [], // hosts allowed to resolve to private addresses
+  userAgent: 'lousho-web-fetch',
+});
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', tools: [webFetch] });
+```
+
+Each `createWebFetchTool()` has its own connection pool, kept for as long as
+the tool exists and released with it by garbage collection (there is no close
+method). Neither `http_request` nor `web_fetch` exists in the Cloudflare
+Worker build; see [Deployment](./deployment.md#cloudflare-worker).
 
 ## `ToolRegistry`
 

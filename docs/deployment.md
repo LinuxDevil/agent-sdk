@@ -156,15 +156,18 @@ Workers have no Node.js builtins, so this target currently supports:
   to a local `http://localhost:11434` endpoint that a Worker can't reach,
   and `openrouter` hasn't had a Workers-compatibility audit; use
   `node-server` or `docker` for those;
-- tools: `current-date` and `day-name`. `http` is **not** supported: its
-  SSRF protection resolves the hostname via `node:dns` and checks *every*
-  resolved address against a denylist before connecting (closing a
-  DNS-rebinding gap), then, for `validateSSL: false`, pins that TLS setting
-  per request via a dedicated `undici` `Agent`. Workers' native `fetch()` has no equivalent hook to
-  resolve a hostname up front and pin the connection to the verified IP, so
-  a Workers version of this tool built on plain `fetch()` would silently
-  drop that protection rather than just losing convenience functionality -
-  it's left unsupported rather than shipped weaker under the same name.
+- tools: `current-date` and `day-name`. `http` and `web-fetch` are **not**
+  supported. On Node both refuse private destinations with a DNS lookup of
+  their own (`node:dns` inside an `undici` `Agent`) that checks every
+  address a host resolves to and connects to the address it checked, so DNS
+  rebinding cannot get past the check. A Worker has neither: its `fetch()`
+  resolves names inside Cloudflare's network and gives no hook to see or pin
+  the address. What a Worker can check is the URL (scheme, host name, an
+  IP-literal host); what it cannot guarantee is where a host name connects,
+  so a name that resolves to an internal address would not be caught. Rather
+  than ship a weaker tool under the same name, the Worker build has neither.
+  A tool of your own that calls `fetch()` in a Worker gets no SSRF
+  protection from the SDK.
 
 `lousho build` rejects a spec that uses anything else, with an error naming
 the unsupported provider or tool. Provider API keys are read from Worker
