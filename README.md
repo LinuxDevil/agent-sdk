@@ -195,6 +195,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Models and cost](docs/models-and-cost.md) | Token estimates, the model price table, usage and USD cost of a run |
 | [AI SDK UI](docs/ai-sdk-ui.md) | `useChat` on a Lousho run: `toUIMessageStreamResponse()`, `fromUIMessages()`, approvals |
 | [Next.js](docs/nextjs.md) | `createRouteHandler(agent)`: the session API as a Fetch route (App Router, SvelteKit, Hono), auth, `useChat` endpoint |
+| [Route auth](docs/auth.md) | `@lousho/build-ai-agent/auth`: `jwt()`, `oidc()`, `basic()`, `apiToken()` as an ordered list; the caller as `principal` in the run |
 | [React](docs/react.md) | `useLoushoAgent()`: chat state from the event stream, in process or over HTTP; `reduceAgentEvents()`, `parseEventStream()` |
 | [Vue](docs/vue.md) | `useLoushoAgent()` from `@lousho/build-ai-agent/vue`: the React hook as a Vue 3 composable |
 | [Svelte](docs/svelte.md) | `loushoAgent()` from `@lousho/build-ai-agent/svelte`: the React hook as a Svelte store |

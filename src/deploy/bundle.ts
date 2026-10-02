@@ -78,6 +78,10 @@ export function sdkRuntimePlugin({ sdkEntry = 'main' }: { sdkEntry?: 'main' | 'w
       build.onResolve({ filter: /^@lousho\/build-ai-agent$/ }, () => ({
         path: sdkEntry === 'worker' ? runtimeSourceFile('workerSdk.ts') : path.join(findSdkRoot(), 'src', 'index.ts'),
       }));
+      // N10a: an agent directory's auth.ts imports its helpers from the auth subpath.
+      build.onResolve({ filter: /^@lousho\/build-ai-agent\/auth$/ }, () => ({
+        path: path.join(findSdkRoot(), 'src', 'auth', 'index.ts'),
+      }));
     },
   };
 }

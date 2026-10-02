@@ -1,4 +1,5 @@
 import { SDKError } from '../execution/errors';
+import type { Principal } from '../auth/types';
 /**
  * Memory slots (LOU-W6): named, scoped long-term memory an agent recalls at
  * the start of a run and reads / writes with `remember_<name>` and
@@ -22,10 +23,15 @@ export interface MemoryProvider {
   remove(scopeKey: string, id: string): Promise<void>;
 }
 
-/** What a scope function gets: the run's session id and `send()` metadata. */
+/** What a scope function gets: the run's session id, `send()` metadata and (N10a) the verified caller. */
 export interface MemoryScopeContext {
   sessionId?: string;
   metadata?: Record<string, unknown>;
+  /**
+   * The caller a route's auth accepted, or a channel's sender (docs/auth.md).
+   * Key per-user memory on `issuer` and `id` together: ids from different issuers can collide.
+   */
+  principal?: Principal;
 }
 
 /**

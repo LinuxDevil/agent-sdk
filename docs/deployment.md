@@ -97,6 +97,11 @@ variable is not set. The variable wins, and a baked token is readable in
 `dist/server.js`, so prefer the variable. The Worker reads the token from its
 `LOUSHO_API_TOKEN` binding only.
 
+For JWT, OpenID Connect or Basic auth, and to know who is calling, the
+`node-server` and `docker` targets take an ordered auth list from an agent
+directory's `auth.ts`, with `LOUSHO_API_TOKEN` appended to it: see
+[Route auth and principals](./auth.md).
+
 ### Sessions and the store
 
 `LOUSHO_STORE` chooses where sessions, checkpoints and approvals live:
