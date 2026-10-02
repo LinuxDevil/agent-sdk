@@ -136,7 +136,8 @@ browser-platform ES module; the build fails if any `node:` import ends up in the
 `wrangler`, and it serves the [HTTP API](#http-api) above. It has the tightest limits of the three targets:
 
 - spec files only (no agent directories, no tools written in TypeScript, no sandboxed tools);
-- providers `mock`, `openai` and `anthropic`; built-in tools `current-date` and `day-name`;
+- providers `mock`, `openai`, `anthropic` and `openrouter`; built-in tools `current-date`, `day-name` and `http`
+  (`http` reaches only the host names listed in the `LOUSHO_HTTP_ALLOW` binding);
 - sessions, checkpoints and approvals in one KV namespace; cron triggers in UTC.
 
 [Cloudflare Workers](./cloudflare-workers.md) has the table of limits, the build and deploy commands, the bindings, the KV stores, scheduled runs and the bundle checks.
