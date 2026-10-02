@@ -26,11 +26,22 @@ const toolCallSchema = z.object({
 
 const errorSchema = z.object({ name: z.string(), message: z.string() });
 
+/** N1a: a call the provider ran (a hosted tool), as `GenerateResult.hostedToolCalls` holds it. */
+const hostedToolCallSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  args: z.unknown(),
+  result: z.unknown().optional(),
+  isError: z.boolean().optional(),
+  sources: z.array(z.object({ url: z.string(), title: z.string().optional() })).optional(),
+});
+
 const chunkSchema = z.object({
-  type: z.enum(['text-delta', 'reasoning-delta', 'reasoning-end', 'tool-call', 'tool-result', 'finish', 'error']),
+  type: z.enum(['text-delta', 'reasoning-delta', 'reasoning-end', 'tool-call', 'hosted-tool-call', 'hosted-tool-result', 'tool-result', 'finish', 'error']),
   textDelta: z.string().optional(),
   reasoning: z.object({ signature: z.string().optional(), redactedData: z.string().optional() }).optional(),
   toolCall: toolCallSchema.optional(),
+  hostedToolCall: hostedToolCallSchema.optional(),
   toolResult: z.object({ toolCallId: z.string(), result: z.unknown() }).optional(),
   finishReason: z.string().optional(),
   usage: usageSchema.optional(),
@@ -61,6 +72,7 @@ const responseSchema = z.object({
   /** Absent when the provider reported no usage for the call. */
   usage: usageSchema.optional(),
   toolCalls: z.array(toolCallSchema).optional(),
+  hostedToolCalls: z.array(hostedToolCallSchema).optional(),
   /** Present for `stream()` entries: the chunks and the delay before each. */
   chunks: z.array(z.object({ delayMs: z.number(), chunk: chunkSchema })).optional(),
 });

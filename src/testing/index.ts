@@ -13,6 +13,7 @@ export type {
   MockRequest,
   MockStaticTurn,
   MockToolCall,
+  MockHostedToolCall,
   MockTurn,
   MockTurnObject,
 } from './mockModel';
