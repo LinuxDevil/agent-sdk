@@ -1,7 +1,7 @@
 /**
  * Trigger adapters module (LOU-T5)
  *
- * Public surface for `@loushy/build-ai-agent/triggers`: the TriggerAdapter
+ * Public surface for `@lousho/build-ai-agent/triggers`: the TriggerAdapter
  * interface, TriggerRegistry, and the three built-in adapters
  * (webhook/cron/slack). See types.ts for the full design rationale.
  */

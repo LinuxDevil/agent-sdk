@@ -39,7 +39,7 @@ function compileGuardrails(entries: NonNullable<AgentSpecPolicy['guardrails']>):
   const lists: Record<GuardrailTarget, IoGuardrail[]> = { input: [], output: [], tools: [] };
   for (const entry of entries) {
     const { name, options } = guardrailParts(entry);
-    if (!isSpecGuardrailName(name)) throw new ValidationError(`specToAgent: ${unknownGuardrailMessage(name)}`, undefined, 'LOUSHY_SPEC_INVALID');
+    if (!isSpecGuardrailName(name)) throw new ValidationError(`specToAgent: ${unknownGuardrailMessage(name)}`, undefined, 'LOUSHO_SPEC_INVALID');
     const { on = ['input', 'output'], ...rest } = GUARDRAIL_OPTIONS[name].parse(options) as { on?: GuardrailTarget | GuardrailTarget[] };
     const guardrail = (BUILDERS[name] as (options: unknown) => IoGuardrail)(rest);
     for (const target of typeof on === 'string' ? [on] : on) lists[target].push(guardrail);
@@ -60,7 +60,7 @@ export function compilePolicy(policy: AgentSpecPolicy | undefined): CompiledPoli
   const parsed = agentSpecPolicySchema.safeParse(policy);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((issue) => `'policy.${(issue.path ?? []).join('.')}': ${issue.message}`);
-    throw new ValidationError(`specToAgent: invalid policy - ${issues.join('; ')}`, undefined, 'LOUSHY_SPEC_INVALID');
+    throw new ValidationError(`specToAgent: invalid policy - ${issues.join('; ')}`, undefined, 'LOUSHO_SPEC_INVALID');
   }
   const { requiresApproval, guardrails, limits, askQuestion, compaction } = parsed.data as AgentSpecPolicy;
   const approval = requiresApproval === true ? '*' : requiresApproval;
@@ -73,7 +73,7 @@ export function compilePolicy(policy: AgentSpecPolicy | undefined): CompiledPoli
   };
 }
 
-/** One block of a policy for `loushy doctor`: what it compiles to, and guardrail names that do not exist. */
+/** One block of a policy for `lousho doctor`: what it compiles to, and guardrail names that do not exist. */
 export interface PolicyLine {
   block: 'approval' | 'guardrails' | 'limits' | 'askQuestion' | 'compaction';
   text: string;

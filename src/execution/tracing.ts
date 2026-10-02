@@ -66,7 +66,7 @@ interface UsageRollup {
 const rollups = new Map<string, UsageRollup>();
 
 /**
- * Adds a finished span's usage to its parent's rollup: its `loushy.cost_usd`
+ * Adds a finished span's usage to its parent's rollup: its `lousho.cost_usd`
  * (or, with tokens but no price, marks the parent as unpriced), and whether
  * any of it was estimated.
  */
@@ -122,9 +122,9 @@ export interface TraceExporter {
  * - `fn` receives the span so callers can read its generated `id` (e.g.
  *   to pass as the `parentId` of a further-nested withSpan() call).
  * - `kind` is the OpenTelemetry span kind (default `internal`).
- * - Before `onSpanEnd`, a span whose child spans carried `loushy.cost_usd`
- *   gets the sum as its own (cumulative) `loushy.cost_usd`, absent when a
- *   child with token usage had no known price, and `loushy.usage.estimated`
+ * - Before `onSpanEnd`, a span whose child spans carried `lousho.cost_usd`
+ *   gets the sum as its own (cumulative) `lousho.cost_usd`, absent when a
+ *   child with token usage had no known price, and `lousho.usage.estimated`
  *   when any child's tokens were estimated (LOU-D48).
  */
 export async function withSpan<T>(

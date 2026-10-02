@@ -5,7 +5,7 @@ much, and the run reports what the model thought separately from its answer:
 as `reasoning.*` events in `agent.stream()`, and as `result.reasoning`.
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({
   model: 'anthropic/claude-sonnet-4-5',
@@ -85,12 +85,12 @@ stream reports a step's reasoning as one start/delta/done before its text.
 `result.reasoning` is the reasoning text of the run's steps, joined with a
 blank line. `result.usage.reasoningTokens` (and each `stepUsage` entry) counts
 reasoning tokens when the provider reports them; the `chat` span carries them
-as `loushy.usage.reasoning_tokens`.
+as `lousho.usage.reasoning_tokens`.
 
 The consumers show it too: `reduceAgentEvents()` keeps it as the assistant
 message's `reasoning`, `toUIMessageStream()` emits `reasoning-start` /
-`reasoning-delta` / `reasoning-end` parts for `useChat`, `loushy acp` sends
-`agent_thought_chunk` updates, and `loushy chat` prints it dimmed.
+`reasoning-delta` / `reasoning-end` parts for `useChat`, `lousho acp` sends
+`agent_thought_chunk` updates, and `lousho chat` prints it dimmed.
 
 ## What is kept in the transcript
 

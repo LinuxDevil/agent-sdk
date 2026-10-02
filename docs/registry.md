@@ -1,32 +1,32 @@
 # Registry
 
-`loushy add` installs a tool, skill, channel, schedule or memory slot into an
+`lousho add` installs a tool, skill, channel, schedule or memory slot into an
 [agent directory](./agent-directories.md) from a registry. A registry is plain
 static JSON: an index plus one document per item that carries the file contents.
 The files are copied into your project as source you own and can edit. There is
 no runtime plugin loader, and nothing from a registry is executed or imported
 while adding it.
 
-There is no hosted registry yet. Point `loushy add` at one with `--registry` or
-the `LOUSHY_REGISTRY` environment variable; without either it fails with
-`LOUSHY_CONFIG_INVALID` and says how to pass one.
+There is no hosted registry yet. Point `lousho add` at one with `--registry` or
+the `LOUSHO_REGISTRY` environment variable; without either it fails with
+`LOUSHO_CONFIG_INVALID` and says how to pass one.
 
 ```bash
-loushy add --list --registry ./registry/index.json
-loushy add web-search --registry https://example.com/registry/index.json --dir ./my-agent
-LOUSHY_REGISTRY=./registry/index.json loushy add web-search --dry-run
+lousho add --list --registry ./registry/index.json
+lousho add web-search --registry https://example.com/registry/index.json --dir ./my-agent
+LOUSHO_REGISTRY=./registry/index.json lousho add web-search --dry-run
 ```
 
 | Flag | Meaning |
 | ---- | ------- |
-| `--registry <url-or-path>` | The index: an `http(s)` URL or a local path (`LOUSHY_REGISTRY` when absent). |
+| `--registry <url-or-path>` | The index: an `http(s)` URL or a local path (`LOUSHO_REGISTRY` when absent). |
 | `--dir <agent-dir>` | The agent directory to write into (default: the current directory; it must exist). |
 | `--yes`, `-y` | Do not ask for confirmation. Required when stdin is not a terminal. |
-| `--overwrite` | Replace files that already exist (without it an existing file is `LOUSHY_REGISTRY_FILE_EXISTS`). |
+| `--overwrite` | Replace files that already exist (without it an existing file is `LOUSHO_REGISTRY_FILE_EXISTS`). |
 | `--dry-run` | Print the manifest and the files, write nothing, exit 0. |
 | `--list` | Print the registry's items and exit. |
 
-Before it writes anything, `loushy add` prints the permission manifest and the
+Before it writes anything, `lousho add` prints the permission manifest and the
 files it will write, then asks `[y/N]`.
 
 ## Format
@@ -45,7 +45,7 @@ Each item document is:
   "files": [
     {
       "path": "tools/web-search.ts",
-      "content": "import { defineTool } from '@loushy/build-ai-agent';\nimport { z } from 'zod';\n\nexport default defineTool({\n  name: 'web-search',\n  description: 'Search the web',\n  inputSchema: z.object({ query: z.string() }),\n  needsApproval: true,\n  execute: async ({ query }) => {\n    const response = await fetch(`https://api.example.com/search?q=${encodeURIComponent(query)}`, {\n      headers: { authorization: `Bearer ${process.env.SEARCH_KEY}` },\n    });\n    return response.json();\n  },\n});\n"
+      "content": "import { defineTool } from '@lousho/build-ai-agent';\nimport { z } from 'zod';\n\nexport default defineTool({\n  name: 'web-search',\n  description: 'Search the web',\n  inputSchema: z.object({ query: z.string() }),\n  needsApproval: true,\n  execute: async ({ query }) => {\n    const response = await fetch(`https://api.example.com/search?q=${encodeURIComponent(query)}`, {\n      headers: { authorization: `Bearer ${process.env.SEARCH_KEY}` },\n    });\n    return response.json();\n  },\n});\n"
     }
   ],
   "permissions": {
@@ -72,7 +72,7 @@ and its entry in `index.json`:
 Host both as static files anywhere (a folder in a repository, an object store, a
 web server). The document's `name` and `type` must match its index entry, and a
 name is letters, digits, `.`, `_` and `-`. A document that does not match the
-format is `LOUSHY_REGISTRY_INVALID`, with the fields named.
+format is `LOUSHO_REGISTRY_INVALID`, with the fields named.
 
 ## Permission manifest
 
@@ -102,11 +102,11 @@ you would read any dependency before running it.
   `schedules/`, `memory` in `memory/`.
 - Existing files are not overwritten without `--overwrite`. All files are checked
   before any is written, so a bad item writes nothing. Each of these failures is
-  `LOUSHY_REGISTRY_UNSAFE_PATH` or `LOUSHY_REGISTRY_FILE_EXISTS`.
+  `LOUSHO_REGISTRY_UNSAFE_PATH` or `LOUSHO_REGISTRY_FILE_EXISTS`.
 - A file is at most 256 KiB and an item at most 1 MiB; a registry document at
   most 2 million characters.
 - Only `http(s)` URLs and local paths are read, with a 15 second timeout per fetch
-  (`LOUSHY_REGISTRY_UNREACHABLE` otherwise).
+  (`LOUSHO_REGISTRY_UNREACHABLE` otherwise).
 - `dependencies` are printed as an `npm install ...` line for you to run. The
   command never installs packages.
 

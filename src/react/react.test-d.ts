@@ -1,5 +1,5 @@
 /**
- * LOU-D15: the public types of `@loushy/build-ai-agent/react`.
+ * LOU-D15: the public types of `@lousho/build-ai-agent/react`.
  */
 import { describe, it, expectTypeOf } from 'vitest';
 import { createAgent } from '../createAgent';
@@ -10,39 +10,39 @@ import {
   initialAgentUIState,
   parseEventStream,
   reduceAgentEvents,
-  useLoushyAgent,
+  useLoushoAgent,
   type AgentUIAction,
   type AgentUIState,
   type AgentUIStatus,
-  type LoushyAgentSource,
+  type LoushoAgentSource,
   type UIMessage,
   type UIPendingApproval,
   type UIToolCallStatus,
-  type UseLoushyAgentResult,
+  type UseLoushoAgentResult,
 } from './index';
 
-describe('@loushy/build-ai-agent/react types', () => {
+describe('@lousho/build-ai-agent/react types', () => {
   it('accepts an in-process agent or a URL as the source', () => {
     const agent = createAgent({ provider: createMockProvider() });
-    expectTypeOf({ agent }).toMatchTypeOf<LoushyAgentSource>();
-    expectTypeOf({ agent, sessionId: 'chat-1' }).toMatchTypeOf<LoushyAgentSource>();
-    expectTypeOf({ url: '/api/agent', headers: { Authorization: 'Bearer t' } }).toMatchTypeOf<LoushyAgentSource>();
-    expectTypeOf({ sessionId: 'x' }).not.toMatchTypeOf<LoushyAgentSource>();
-    expectTypeOf(useLoushyAgent).parameter(1).toEqualTypeOf<{ approvalsUrl?: string } | undefined>();
+    expectTypeOf({ agent }).toMatchTypeOf<LoushoAgentSource>();
+    expectTypeOf({ agent, sessionId: 'chat-1' }).toMatchTypeOf<LoushoAgentSource>();
+    expectTypeOf({ url: '/api/agent', headers: { Authorization: 'Bearer t' } }).toMatchTypeOf<LoushoAgentSource>();
+    expectTypeOf({ sessionId: 'x' }).not.toMatchTypeOf<LoushoAgentSource>();
+    expectTypeOf(useLoushoAgent).parameter(1).toEqualTypeOf<{ approvalsUrl?: string } | undefined>();
   });
 
   it('returns typed state and commands', () => {
-    expectTypeOf(useLoushyAgent).returns.toEqualTypeOf<UseLoushyAgentResult>();
-    expectTypeOf<UseLoushyAgentResult['messages']>().toEqualTypeOf<UIMessage[]>();
-    expectTypeOf<UseLoushyAgentResult['status']>().toEqualTypeOf<'idle' | 'streaming' | 'awaiting-approval' | 'error'>();
-    expectTypeOf<AgentUIStatus>().toEqualTypeOf<UseLoushyAgentResult['status']>();
-    expectTypeOf<UseLoushyAgentResult['pendingApproval']>().toEqualTypeOf<UIPendingApproval | null>();
-    expectTypeOf<UseLoushyAgentResult['error']>().toEqualTypeOf<AgentEventError | null>();
-    expectTypeOf<UseLoushyAgentResult['usage']>().toEqualTypeOf<AgentEventUsage | null>();
-    expectTypeOf<UseLoushyAgentResult['lastEvent']>().toEqualTypeOf<AgentEvent | null>();
-    expectTypeOf<UseLoushyAgentResult['send']>().toEqualTypeOf<(input: AgentInput) => Promise<void>>();
-    expectTypeOf<UseLoushyAgentResult['approve']>().toEqualTypeOf<(note?: string) => Promise<void>>();
-    expectTypeOf<UseLoushyAgentResult['stop']>().toEqualTypeOf<() => void>();
+    expectTypeOf(useLoushoAgent).returns.toEqualTypeOf<UseLoushoAgentResult>();
+    expectTypeOf<UseLoushoAgentResult['messages']>().toEqualTypeOf<UIMessage[]>();
+    expectTypeOf<UseLoushoAgentResult['status']>().toEqualTypeOf<'idle' | 'streaming' | 'awaiting-approval' | 'error'>();
+    expectTypeOf<AgentUIStatus>().toEqualTypeOf<UseLoushoAgentResult['status']>();
+    expectTypeOf<UseLoushoAgentResult['pendingApproval']>().toEqualTypeOf<UIPendingApproval | null>();
+    expectTypeOf<UseLoushoAgentResult['error']>().toEqualTypeOf<AgentEventError | null>();
+    expectTypeOf<UseLoushoAgentResult['usage']>().toEqualTypeOf<AgentEventUsage | null>();
+    expectTypeOf<UseLoushoAgentResult['lastEvent']>().toEqualTypeOf<AgentEvent | null>();
+    expectTypeOf<UseLoushoAgentResult['send']>().toEqualTypeOf<(input: AgentInput) => Promise<void>>();
+    expectTypeOf<UseLoushoAgentResult['approve']>().toEqualTypeOf<(note?: string) => Promise<void>>();
+    expectTypeOf<UseLoushoAgentResult['stop']>().toEqualTypeOf<() => void>();
     expectTypeOf<UIMessage['role']>().toEqualTypeOf<'user' | 'assistant'>();
     expectTypeOf<UIMessage['toolCalls'][number]['status']>().toEqualTypeOf<UIToolCallStatus>();
   });

@@ -280,7 +280,7 @@ export class AgentSession<TObject = unknown> {
     if (!streamRun) {
       throw new SDKError(
         'This AgentSession was created without a streaming runner, so it cannot stream().',
-        'LOUSHY_SESSION_STREAM_UNSUPPORTED'
+        'LOUSHO_SESSION_STREAM_UNSUPPORTED'
       );
     }
     return streamSessionTurn(
@@ -356,8 +356,8 @@ export class AgentSession<TObject = unknown> {
    * `compaction.start` / `compaction.done` with `trigger: 'manual'` to `on()`
    * listeners, and resolves with the before/after sizes. Pinned messages are
    * kept. An empty session resolves with zeros and emits nothing. Rejects with
-   * `LOUSHY_SESSION_BUSY` while a turn is running and `LOUSHY_SESSION_TURN_PENDING`
-   * (or `LOUSHY_SESSION_AWAITING_APPROVAL`) while a checkpointed turn is unfinished.
+   * `LOUSHO_SESSION_BUSY` while a turn is running and `LOUSHO_SESSION_TURN_PENDING`
+   * (or `LOUSHO_SESSION_AWAITING_APPROVAL`) while a checkpointed turn is unfinished.
    *
    * @example
    * ```ts
@@ -385,8 +385,8 @@ export class AgentSession<TObject = unknown> {
    * the transcript, an interrupted turn's checkpoint and the spend recorded in
    * the transcript for `limits` are gone. Memory slots are cross-session and
    * untouched. Emits `context.cleared` to `on()` listeners. Rejects with
-   * `LOUSHY_SESSION_BUSY` while a turn is running and
-   * `LOUSHY_SESSION_AWAITING_APPROVAL` while a checkpointed turn waits on an approval.
+   * `LOUSHO_SESSION_BUSY` while a turn is running and
+   * `LOUSHO_SESSION_AWAITING_APPROVAL` while a checkpointed turn waits on an approval.
    */
   clear(): Promise<void> {
     return this.idle(async () => {
@@ -403,10 +403,10 @@ export class AgentSession<TObject = unknown> {
     });
   }
 
-  /** Runs `task` after queued calls, unless a turn is running or queued now (`LOUSHY_SESSION_BUSY`). */
+  /** Runs `task` after queued calls, unless a turn is running or queued now (`LOUSHO_SESSION_BUSY`). */
   private idle<T>(task: () => Promise<T>): Promise<T> {
     if (this.running) {
-      return Promise.reject(new SDKError(`Session '${this.id}' has a turn in flight; wait for it to finish first.`, 'LOUSHY_SESSION_BUSY'));
+      return Promise.reject(new SDKError(`Session '${this.id}' has a turn in flight; wait for it to finish first.`, 'LOUSHO_SESSION_BUSY'));
     }
     return this.enqueue(task);
   }
@@ -419,7 +419,7 @@ export class AgentSession<TObject = unknown> {
     const pending = await this.pendingCheckpoint();
     if (!pending) return;
     if (pending.status === 'awaiting-approval') throw this.awaitingApproval(pending.approvalId);
-    throw new SDKError(`Session '${this.id}' has an interrupted turn; resume() or discardPending() it first.`, 'LOUSHY_SESSION_TURN_PENDING');
+    throw new SDKError(`Session '${this.id}' has an interrupted turn; resume() or discardPending() it first.`, 'LOUSHO_SESSION_TURN_PENDING');
   }
 
   /** Sends events to the `on()` listeners (a throwing listener is ignored), numbered like one run's. */

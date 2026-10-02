@@ -158,21 +158,21 @@ Legend: Y yes, N not found, P partial. "N" for open-harness means not found in R
 
 ## 5. Ideas to adopt or beat
 
-1. **Zero-config hello world and `init`.** eve: two files; open-harness: ~10 lines. Better: `npm create` scaffold plus a documented 5-line in-code agent (default provider from env), runnable via `loushy dev` with no extra file. Publish "lines/seconds to first reply".
+1. **Zero-config hello world and `init`.** eve: two files; open-harness: ~10 lines. Better: `npm create` scaffold plus a documented 5-line in-code agent (default provider from env), runnable via `lousho dev` with no extra file. Publish "lines/seconds to first reply".
 2. **Support both authoring modes.** eve is directory-only; open-harness is code-only. Better: a typed code API as the source of truth, plus an optional filesystem loader (agents/, tools/, skills/) compiling to the same objects.
-3. **Dev loop.** `loushy dev` with hot reload plus terminal/Studio UI showing steps, tool calls, approvals, token cost, checkpoints. Beat eve by making Agent Forge the same UI with time-travel from checkpoints and "edit prompt and replay from step N".
+3. **Dev loop.** `lousho dev` with hot reload plus terminal/Studio UI showing steps, tool calls, approvals, token cost, checkpoints. Beat eve by making Agent Forge the same UI with time-travel from checkpoints and "edit prompt and replay from step N".
 4. **Input-aware approvals that pause durably** (eve `needsApproval(input)`), with open-harness's simple `approve` callback as the minimal form. Better: declarative policies (allow/deny/ask by tool, arg glob, cost estimate), an audit log, and approval via any trigger (Slack, HTTP, CLI).
 5. **First-class budgets.** eve `limits` covers tokens, USD, wall time. Better: per-agent, per-tool and per-flow budgets, a typed `BudgetExceeded` event, graceful degrade to a cheaper model.
-6. **Built-in eval framework with mock model.** eve has it; open-harness lacks it. Better: `loushy eval` with trajectory assertions, LLM judge, tool-trace snapshots, record/replay of provider calls for deterministic CI, JUnit output, remote-target runs. Ship a testing package (mock provider, fake clock, in-memory checkpoint store).
+6. **Built-in eval framework with mock model.** eve has it; open-harness lacks it. Better: `lousho eval` with trajectory assertions, LLM judge, tool-trace snapshots, record/replay of provider calls for deterministic CI, JUnit output, remote-target runs. Ship a testing package (mock provider, fake clock, in-memory checkpoint store).
 7. **Observable, pluggable compaction.** open-harness: prune then summarize with events; eve: threshold only. Better: pluggable strategies, before/after token counts in events, pinned messages, dry-run preview in the dev UI. Extend your Factor 9 work.
 8. **Scoped memory slots.** eve's provider/scope split is the best pattern seen. Better: file, SQLite and vector providers in core behind one interface, plus a memory inspector in Agent Forge.
 9. **Sandbox and credential brokering.** Model never sees tokens in eve. Better: a `Sandbox` interface with local (Docker/just-bash) and Cloudflare adapters, egress allowlist, secret-injection proxy, documented as a security guarantee.
 10. **Host-agnostic durable resume.** eve's durability is Vercel/Workflow-centric (non-Vercel is `experimental`). Your checkpoint stores (Node, Cloudflare Worker) are a differentiator: make resume a documented one-liner on Node, Workers and Postgres, and let in-flight runs finish on the version they started.
 11. **Typed event stream plus UI hooks.** Both ship React/Vue; eve adds Svelte and framework plugins. Better: one versioned, documented event schema, hooks for React/Vue/Svelte, and an AI SDK UI-stream adapter to avoid lock-in.
 12. **Docs as product, agent-readable.** open-harness ships llms.txt/llms-full.txt; eve bundles docs in the npm package. Do both, auto-load AGENTS.md/CLAUDE.md, and CI-check one runnable example per docs page.
-13. **Error messages and type inference.** Neither documents this strongly (UNVERIFIED for both). Infer tool input types from the schema in `execute`, validate config with "did you mean" messages plus a doc URL per error code, add `loushy doctor`.
-14. **Registry/extensions.** eve has `eve add` and extension packages. Better: `loushy add <tool|skill|trigger>` from a registry that shows permission manifests before install.
-15. **Interop protocols.** eve exposes ACP. Add ACP and MCP-server export (agent as an MCP tool) so Loushy agents are reachable from editors and other agents.
+13. **Error messages and type inference.** Neither documents this strongly (UNVERIFIED for both). Infer tool input types from the schema in `execute`, validate config with "did you mean" messages plus a doc URL per error code, add `lousho doctor`.
+14. **Registry/extensions.** eve has `eve add` and extension packages. Better: `lousho add <tool|skill|trigger>` from a registry that shows permission manifests before install.
+15. **Interop protocols.** eve exposes ACP. Add ACP and MCP-server export (agent as an MCP tool) so Lousho agents are reachable from editors and other agents.
 
 ## 6. Verified vs inferred
 - Verified from sources: identities, licenses, star counts at fetch time, eve file layout/APIs/CLI/evals/memory/limits, open-harness APIs, middleware, compaction, subagents, MCP, events, packages.

@@ -5,7 +5,7 @@
 to the model on every `send()`.
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const chat = createAgent({ instructions: 'Be brief.', provider });
 
@@ -26,7 +26,7 @@ console.log(session.id, session.messages.length);
 | `messages` | A read-only snapshot of the transcript (user, assistant and tool messages; no system prompt). Editing the snapshot does not change the session. |
 | `load()` | Reads the saved transcript from the store. `send()` does this for you; call it to show history before the first `send()` of a resumed session. |
 | `compact(options?)` | Compacts the transcript now - see [Compacting a session](./compaction.md#compacting-a-session). |
-| `clear()` | Empties the transcript and saves it empty (the store holds no messages for the id). Keeps the session id, store and options; deletes an interrupted turn's checkpoint; memory slots are cross-session and untouched. Emits `context.cleared` to `on()` listeners. Rejects with `LOUSHY_SESSION_BUSY` while a turn is running, and with `LOUSHY_SESSION_AWAITING_APPROVAL` while a durable turn waits on an approval. |
+| `clear()` | Empties the transcript and saves it empty (the store holds no messages for the id). Keeps the session id, store and options; deletes an interrupted turn's checkpoint; memory slots are cross-session and untouched. Emits `context.cleared` to `on()` listeners. Rejects with `LOUSHO_SESSION_BUSY` while a turn is running, and with `LOUSHO_SESSION_AWAITING_APPROVAL` while a durable turn waits on an approval. |
 | `on(listener)` | Listens for `compact()` / `clear()` events (`compaction.start`, `compaction.done`, `context.cleared`); returns a function that removes the listener. |
 | `pending()` | In a [durable session](#durable-sessions), the turn that has not finished (`{ status, approvalId? }`), or `null`. |
 | `resume({ signal })` | In a durable session, finishes an interrupted turn and resolves with its result, or `null` when none is pending. |
@@ -58,7 +58,7 @@ while a turn is running or waiting to start:
   turn's result, and the same fallbacks apply.
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 const session = agent.session({ id: 'user-42', turnPolicy: 'queue' });
@@ -95,7 +95,7 @@ returns the same `AgentRun` (typed events plus a `result` promise, see
 it.
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const chat = createAgent({ instructions: 'Be brief.', provider });
 const session = chat.session();
@@ -138,10 +138,10 @@ crash, a failed checkpoint write or a `PropagatingToolError` can then be
 finished later, in another process:
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
-import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
+import { createAgent } from '@lousho/build-ai-agent';
+import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
 
-const agent = createAgent({ provider, store: new SqliteStore('./.loushy/agent.db') });
+const agent = createAgent({ provider, store: new SqliteStore('./.lousho/agent.db') });
 
 // After a restart: finish the turn that was running, if any.
 const finished = await agent.resume('user-42'); // ExecutionResult, or null when nothing was pending
@@ -186,7 +186,7 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
 A `SessionStore` keeps transcripts between calls:
 
 ```ts
-import type { Message } from '@loushy/build-ai-agent';
+import type { Message } from '@lousho/build-ai-agent';
 
 interface SessionStore {
   load(id: string): Promise<Message[] | undefined>;
@@ -201,10 +201,10 @@ interface SessionStore {
   atomically (temp file, then rename), creating `dir` on first save.
 
 ```ts
-import { createAgent, FileSessionStore } from '@loushy/build-ai-agent';
+import { createAgent, FileSessionStore } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ provider });
-const store = new FileSessionStore('./.loushy/sessions');
+const store = new FileSessionStore('./.lousho/sessions');
 
 const first = agent.session({ id: 'user-42', store });
 await first.send('My name is Ali.');
@@ -243,11 +243,11 @@ import {
   LocalStorageCheckpointStore,
   StorageServiceApprovalStore,
   type AgentStore,
-} from '@loushy/build-ai-agent';
+} from '@lousho/build-ai-agent';
 
 // `storage` is a StorageService rooted where the files should go.
 const store: AgentStore = {
-  sessions: new FileSessionStore('./.loushy/sessions'),
+  sessions: new FileSessionStore('./.lousho/sessions'),
   checkpoints: new LocalStorageCheckpointStore(storage),
   approvals: new StorageServiceApprovalStore(storage),
 };
@@ -263,10 +263,10 @@ generated Worker uses `KVCheckpointStore`, see [Deployment](deployment.md)).
 re-exported from the root entry, so importing the SDK never loads it):
 
 ```ts
-import { createAgent, AgentExecutor } from '@loushy/build-ai-agent';
-import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
+import { createAgent, AgentExecutor } from '@lousho/build-ai-agent';
+import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
 
-const store = new SqliteStore('./.loushy/agent.db'); // or ':memory:'
+const store = new SqliteStore('./.lousho/agent.db'); // or ':memory:'
 const agent = createAgent({ provider, store }); // transcripts, per-step checkpoints and approvals
 await agent.session({ id: 'user-42' }).send('Hello');
 

@@ -1,6 +1,6 @@
 /**
- * `loushy chat <path> [--model provider/model] [--session id] [--store sqlite:<file>]`
- * - a terminal REPL for an agent (LOU-D33). The path is what `loushy dev`
+ * `lousho chat <path> [--model provider/model] [--session id] [--store sqlite:<file>]`
+ * - a terminal REPL for an agent (LOU-D33). The path is what `lousho dev`
  * takes (spec file, agent directory or TS module); the loop itself lives in
  * chatRepl.ts. Returns the exit code.
  */
@@ -14,7 +14,7 @@ import { parseCommand, stringValue, usageError, type CommandSpec } from './args'
 import { runChatRepl } from './chatRepl';
 import { detectTarget, loadTarget } from './devReload';
 
-const USAGE = 'Usage: loushy chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>]';
+const USAGE = 'Usage: lousho chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>]';
 
 export interface ChatArgs {
   path: string;
@@ -33,7 +33,7 @@ const SPEC: CommandSpec = {
   options: { model: { type: 'string' }, session: { type: 'string' }, store: { type: 'string' } },
 };
 
-/** Parses the arguments after `chat`; throws `LOUSHY_CONFIG_INVALID` for a missing path, an unknown flag, a flag without its value or a bad `--store`. */
+/** Parses the arguments after `chat`; throws `LOUSHO_CONFIG_INVALID` for a missing path, an unknown flag, a flag without its value or a bad `--store`. */
 export function parseChatArgs(args: string[]): ChatArgs {
   const { values, positionals, help } = parseCommand(SPEC, args);
   if (help) return { path: '', help };
@@ -52,7 +52,7 @@ export interface ChatIo {
   overrides?: CreateAgentConfig;
 }
 
-/** Builds the target's agent; `model` (`provider/model`) replaces the one it names. Shared with `loushy acp`. */
+/** Builds the target's agent; `model` (`provider/model`) replaces the one it names. Shared with `lousho acp`. */
 export async function buildAgent(path: string, io: Pick<ChatIo, 'overrides'>, model?: string): Promise<SimpleAgent> {
   const target = detectTarget(path);
   if (target.kind === 'spec' && model) {
@@ -67,7 +67,7 @@ export async function buildAgent(path: string, io: Pick<ChatIo, 'overrides'>, mo
   return loadTarget(target, { overrides });
 }
 
-/** Runs `loushy chat` with the arguments after `chat`. */
+/** Runs `lousho chat` with the arguments after `chat`. */
 export async function runChat(
   args: string[],
   io: ChatIo = {

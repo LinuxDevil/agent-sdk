@@ -6,7 +6,7 @@ the final answer has to match the schema.
 
 ```ts
 import { z } from 'zod';
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({
   model: 'openai/gpt-4o-mini',
@@ -34,7 +34,7 @@ itself) or any other Standard Schema that can produce JSON Schema:
 
 ```ts
 import { z } from 'zod/v4';
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', output: z.object({ city: z.string() }) });
 const { object } = await agent.send('Where is the Eiffel Tower?');
@@ -49,7 +49,7 @@ turn. There is no per-call `output` override: the schema is the agent's.
 
 ```ts
 import { z } from 'zod';
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', output: z.object({ city: z.string(), tempC: z.number() }) });
 const session = agent.session();
@@ -76,7 +76,7 @@ read from the `object` of the remote stream's `run.done` event.
 
 ```ts
 import { z } from 'zod';
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const reporter = createAgent({
   model: 'openai/gpt-4o-mini',
@@ -122,7 +122,7 @@ schema, or use `createAgent()` for the inferred type.
 
 ```ts
 import { z } from 'zod';
-import { AgentBuilder, AgentExecutor, createMockProvider } from '@loushy/build-ai-agent';
+import { AgentBuilder, AgentExecutor, createMockProvider } from '@lousho/build-ai-agent';
 
 const Ticket = z.object({ title: z.string(), priority: z.enum(['low', 'high']) });
 const agent = AgentBuilder.create().setName('triage').setPrompt('You triage bug reports.').build();
@@ -136,8 +136,8 @@ With `mockModel`, script the JSON text the model would write:
 
 ```ts
 import { z } from 'zod';
-import { createAgent } from '@loushy/build-ai-agent';
-import { mockModel } from '@loushy/build-ai-agent/testing';
+import { createAgent } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
 
 const agent = createAgent({ provider: mockModel(['{"city":"Paris","tempC":21}']), output: z.object({ city: z.string(), tempC: z.number() }) });
 const { object } = await agent.send('Weather in Paris?');

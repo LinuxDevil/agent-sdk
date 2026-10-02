@@ -1,5 +1,5 @@
 /**
- * LOU-P1: render a Loushy run with the Vercel AI SDK's UI hooks (`useChat`).
+ * LOU-P1: render a Lousho run with the Vercel AI SDK's UI hooks (`useChat`).
  * `toUIMessageStream()` maps a run's typed events (docs/streaming.md) to the
  * AI SDK's "UI message stream" chunks, `toUIMessageStreamResponse()` frames
  * them as the protocol's Server-Sent Events, and `fromUIMessages()` turns the
@@ -16,8 +16,8 @@ import type { ContentPart, Message } from '../providers/llm';
 /** The AI SDK's finish reasons, as the `finish` chunk carries them. */
 export type UIFinishReason = 'stop' | 'length' | 'content-filter' | 'tool-calls' | 'error' | 'other';
 
-/** Payload of the `data-loushy-approval` part: a tool call waiting for a decision, or an `ask_question` waiting for an answer. */
-export interface LoushyApprovalData {
+/** Payload of the `data-lousho-approval` part: a tool call waiting for a decision, or an `ask_question` waiting for an answer. */
+export interface LoushoApprovalData {
   approvalId: string;
   toolCallId: string;
   toolName: string;
@@ -29,16 +29,16 @@ export interface LoushyApprovalData {
 }
 
 /** `messageMetadata` of the `finish` chunk. */
-export interface LoushyFinishMetadata {
+export interface LoushoFinishMetadata {
   runId: string;
   /** The run's own finish reason (`'awaiting-approval'`, `'max-steps'`, ...). */
-  loushyFinishReason: string;
+  loushoFinishReason: string;
   /** Tokens and, when known, USD cost of the run (`AgentEventUsage`). */
   usage?: unknown;
 }
 
 /** The subset of the AI SDK's `UIMessageChunk` this adapter emits. */
-export type LoushyUIMessageChunk =
+export type LoushoUIMessageChunk =
   | { type: 'start'; messageId?: string }
   | { type: 'start-step' }
   | { type: 'finish-step' }
@@ -50,9 +50,9 @@ export type LoushyUIMessageChunk =
   | { type: 'tool-input-available'; toolCallId: string; toolName: string; input: unknown }
   | { type: 'tool-output-available'; toolCallId: string; output: unknown }
   | { type: 'tool-output-error'; toolCallId: string; errorText: string }
-  | { type: 'data-loushy-approval'; id: string; data: LoushyApprovalData }
+  | { type: 'data-lousho-approval'; id: string; data: LoushoApprovalData }
   | { type: 'error'; errorText: string }
-  | { type: 'finish'; finishReason: UIFinishReason; messageMetadata: LoushyFinishMetadata };
+  | { type: 'finish'; finishReason: UIFinishReason; messageMetadata: LoushoFinishMetadata };
 
 const FINISH_REASONS: Record<string, UIFinishReason> = {
   stop: 'stop',
@@ -71,14 +71,14 @@ interface MapState {
   reasoning: string;
 }
 
-function closeText(state: MapState): LoushyUIMessageChunk[] {
+function closeText(state: MapState): LoushoUIMessageChunk[] {
   const id = state.openText;
   state.openText = null;
   return id === null ? [] : [{ type: 'text-end', id }];
 }
 
-function textDelta(state: MapState, delta: string): LoushyUIMessageChunk[] {
-  const opened: LoushyUIMessageChunk[] = [];
+function textDelta(state: MapState, delta: string): LoushoUIMessageChunk[] {
+  const opened: LoushoUIMessageChunk[] = [];
   if (state.openText === null) {
     state.openText = `text-${++state.textCount}`;
     opened.push({ type: 'text-start', id: state.openText });
@@ -87,13 +87,13 @@ function textDelta(state: MapState, delta: string): LoushyUIMessageChunk[] {
 }
 
 /** LOU-V13: a `reasoning-delta`, or the `reasoning-end` of the part the last `reasoning.start` opened. */
-function reasoningChunk(event: Extract<AgentEvent, { type: 'reasoning.delta' | 'reasoning.done' }>, state: MapState): LoushyUIMessageChunk {
+function reasoningChunk(event: Extract<AgentEvent, { type: 'reasoning.delta' | 'reasoning.done' }>, state: MapState): LoushoUIMessageChunk {
   if (event.type === 'reasoning.done') return { type: 'reasoning-end', id: state.reasoning };
   return { type: 'reasoning-delta', id: state.reasoning, delta: event.text };
 }
 
 /** The chunks one event produces. Sub-agent events and events with no UI counterpart produce none. */
-function chunksFor(event: AgentEvent, state: MapState): LoushyUIMessageChunk[] {
+function chunksFor(event: AgentEvent, state: MapState): LoushoUIMessageChunk[] {
   if (event.subagent) return [];
   switch (event.type) {
     case 'run.start':
@@ -124,7 +124,7 @@ function chunksFor(event: AgentEvent, state: MapState): LoushyUIMessageChunk[] {
     case 'approval.requested':
       return [
         {
-          type: 'data-loushy-approval',
+          type: 'data-lousho-approval',
           id: event.approvalId,
           data: {
             approvalId: event.approvalId,
@@ -146,7 +146,7 @@ function chunksFor(event: AgentEvent, state: MapState): LoushyUIMessageChunk[] {
         {
           type: 'finish',
           finishReason: FINISH_REASONS[event.finishReason] ?? 'other',
-          messageMetadata: { runId: event.runId, loushyFinishReason: event.finishReason, ...(event.usage && { usage: event.usage }) },
+          messageMetadata: { runId: event.runId, loushoFinishReason: event.finishReason, ...(event.usage && { usage: event.usage }) },
         },
       ];
     default:
@@ -165,11 +165,11 @@ function chunksFor(event: AgentEvent, state: MapState): LoushyUIMessageChunk[] {
  * const chunks = toUIMessageStream(agent.stream('Hello'));
  * ```
  */
-export function toUIMessageStream(run: AsyncIterable<AgentEvent>): ReadableStream<LoushyUIMessageChunk> {
+export function toUIMessageStream(run: AsyncIterable<AgentEvent>): ReadableStream<LoushoUIMessageChunk> {
   const iterator = run[Symbol.asyncIterator]();
   const state: MapState = { openText: null, textCount: 0, reasoning: '' };
-  const pending: LoushyUIMessageChunk[] = [];
-  return new ReadableStream<LoushyUIMessageChunk>({
+  const pending: LoushoUIMessageChunk[] = [];
+  return new ReadableStream<LoushoUIMessageChunk>({
     async pull(controller) {
       try {
         while (pending.length === 0) {
@@ -177,7 +177,7 @@ export function toUIMessageStream(run: AsyncIterable<AgentEvent>): ReadableStrea
           if (next.done) return controller.close();
           pending.push(...chunksFor(next.value, state));
         }
-        controller.enqueue(pending.shift() as LoushyUIMessageChunk);
+        controller.enqueue(pending.shift() as LoushoUIMessageChunk);
       } catch (error) {
         controller.enqueue({ type: 'error', errorText: error instanceof Error ? error.message : String(error) });
         controller.close();
@@ -205,7 +205,7 @@ export function toUIMessageStream(run: AsyncIterable<AgentEvent>): ReadableStrea
 export function toUIMessageStreamResponse(run: AsyncIterable<AgentEvent>, init: ResponseInit = {}): Response {
   const encoder = new TextEncoder();
   const frames = toUIMessageStream(run).pipeThrough(
-    new TransformStream<LoushyUIMessageChunk, Uint8Array>({
+    new TransformStream<LoushoUIMessageChunk, Uint8Array>({
       transform: (chunk, controller) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`)),
       flush: (controller) => controller.enqueue(encoder.encode('data: [DONE]\n\n')),
     })

@@ -2,7 +2,7 @@
   "name": "support-bot-example",
   "private": true,
   "version": "0.0.0",
-  "description": "Minimal customer-support agent built with @loushy/build-ai-agent's createAgent()",
+  "description": "Minimal customer-support agent built with @lousho/build-ai-agent's createAgent()",
   "scripts": {
     "start": "tsx index.ts"
   }

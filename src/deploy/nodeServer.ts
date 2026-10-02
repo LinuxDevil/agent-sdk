@@ -1,7 +1,7 @@
 /**
  * The HTTP server of the node-server and docker targets (LOU-I2, LOU-D14).
  *
- * Serves the `/chat` API shared with `loushy dev` (src/server/chatRoutes.ts)
+ * Serves the `/chat` API shared with `lousho dev` (src/server/chatRoutes.ts)
  * over a `node:http` server (the routes are Fetch-native, src/server/fetchRoutes.ts,
  * and shared with the Worker target): `GET /health`, sessions, SSE streaming,
  * approvals and the legacy `POST /chat { message }`. When a bearer token is configured,
@@ -24,12 +24,12 @@ import { SqliteStore } from '../storage/sqlite';
 import { SDKError } from '../execution/errors';
 
 /** Environment variable holding the bearer token; wins over a token baked in at build time. */
-const API_TOKEN_ENV = 'LOUSHY_API_TOKEN';
+const API_TOKEN_ENV = 'LOUSHO_API_TOKEN';
 /** Environment variable choosing where sessions live: `memory` (default) or `sqlite:<path>`. */
-const STORE_ENV = 'LOUSHY_STORE';
+const STORE_ENV = 'LOUSHO_STORE';
 
 export interface DeployedServerOptions {
-  /** `auth.token` of the build options: the bearer token when `LOUSHY_API_TOKEN` is not set. */
+  /** `auth.token` of the build options: the bearer token when `LOUSHO_API_TOKEN` is not set. */
   auth?: { token?: string };
   /** Defaults to `process.env`. */
   env?: NodeJS.ProcessEnv;
@@ -41,12 +41,12 @@ export interface DeployedServerOptions {
   channels?: readonly Channel[];
 }
 
-/** The store `LOUSHY_STORE` names: `memory` (the default, lost on restart) or `sqlite:<path>` (Node >= 22). */
+/** The store `LOUSHO_STORE` names: `memory` (the default, lost on restart) or `sqlite:<path>` (Node >= 22). */
 export function storeFromEnv(env: NodeJS.ProcessEnv = process.env): AgentStore {
   const value = env[STORE_ENV]?.trim() || 'memory';
   if (value === 'memory') return memoryStore();
   if (value.startsWith('sqlite:') && value.length > 'sqlite:'.length) return new SqliteStore(value.slice('sqlite:'.length));
-  throw new SDKError(`${STORE_ENV} must be 'memory' or 'sqlite:<path>' (got '${value}')`, 'LOUSHY_DEPLOY_FAILED');
+  throw new SDKError(`${STORE_ENV} must be 'memory' or 'sqlite:<path>' (got '${value}')`, 'LOUSHO_DEPLOY_FAILED');
 }
 
 /** Builds the spec's agent over the store from the environment and connects its MCP servers. */
@@ -58,7 +58,7 @@ export async function createDeployedAgent(spec: AgentSpec, env: NodeJS.ProcessEn
 
 /** Answers 500 for a request that failed outside the routes' own error handling. */
 function replyUnhandled(res: http.ServerResponse, error: unknown): void {
-  console.error('[loushy server] unhandled request error:', error);
+  console.error('[lousho server] unhandled request error:', error);
   if (!res.headersSent) res.writeHead(500);
   res.end();
 }
@@ -69,7 +69,7 @@ function replyUnhandled(res: http.ServerResponse, error: unknown): void {
  */
 export function createDeployedServer(agent: SimpleAgent, options: DeployedServerOptions = {}): { server: http.Server; authenticated: boolean } {
   const token = (options.env ?? process.env)[API_TOKEN_ENV] || options.auth?.token || undefined;
-  const chat = { name: 'loushy server', agent: () => agent };
+  const chat = { name: 'lousho server', agent: () => agent };
   // Channels authenticate themselves (their own verify), so they sit beside the bearer-protected chat routes.
   const channels = options.channels?.length ? mountChannels(agent, options.channels) : undefined;
   const handle = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {

@@ -1,17 +1,17 @@
 /**
- * `@loushy/build-ai-agent/react` (LOU-D15): the `useLoushyAgent()` hook, and
+ * `@lousho/build-ai-agent/react` (LOU-D15): the `useLoushoAgent()` hook, and
  * the framework-neutral reducer and stream parser it is built on (now in
  * src/ui, shared with the Vue binding, LOU-P2).
  */
 
 export {
-  useLoushyAgent,
+  useLoushoAgent,
   type LocalAgentSource,
-  type LoushyAgentSource,
+  type LoushoAgentSource,
   type RemoteAgentSource,
-  type UseLoushyAgentOptions,
-  type UseLoushyAgentResult,
-} from './useLoushyAgent';
+  type UseLoushoAgentOptions,
+  type UseLoushoAgentResult,
+} from './useLoushoAgent';
 export {
   initialAgentUIState,
   reduceAgentEvents,

@@ -3,7 +3,7 @@
  *
  * A DeploymentAdapter turns an agent config into a deployable artifact for
  * one target platform (a plain Node http server, a Cloudflare Worker, a
- * Docker image, ...). `loushy build --target=<name> --agent=<path>` looks the
+ * Docker image, ...). `lousho build --target=<name> --agent=<path>` looks the
  * adapter up by name in the registry below and drives it through a fixed
  * lifecycle: scaffold() -> build() -> describe().
  */
@@ -12,7 +12,7 @@
 export interface DeployOptions {
   /**
    * Bearer auth of the node-server and docker targets: `token` is baked into
-   * the built server and used when `LOUSHY_API_TOKEN` is not set at run time.
+   * the built server and used when `LOUSHO_API_TOKEN` is not set at run time.
    * Prefer the environment variable: a baked token is readable in `dist/server.js`.
    */
   auth?: { token?: string };

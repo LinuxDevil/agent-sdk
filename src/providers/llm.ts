@@ -330,7 +330,7 @@ export class LLMProviderRegistry {
   static create(name: string, config: LLMProviderConfig): LLMProvider {
     const factory = this.providers.get(name.toLowerCase());
     if (!factory) {
-      throw new SDKError(`Provider '${name}' not found. Available: ${Array.from(this.providers.keys()).join(', ')}`, 'LOUSHY_PROVIDER_UNKNOWN');
+      throw new SDKError(`Provider '${name}' not found. Available: ${Array.from(this.providers.keys()).join(', ')}`, 'LOUSHO_PROVIDER_UNKNOWN');
     }
     return factory(config);
   }

@@ -1,6 +1,6 @@
 # Examples
 
-Runnable examples of `@loushy/build-ai-agent` in use. Each directory below
+Runnable examples of `@lousho/build-ai-agent` in use. Each directory below
 is runnable directly (see its own README for exact instructions); most use
 `tsx` and a free mock provider by default, so nothing here needs an API key
 to try.

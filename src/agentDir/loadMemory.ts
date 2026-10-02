@@ -19,7 +19,7 @@ export function loadMemory(dir: string): Promise<MemorySlot[]> {
   return loadDefaultExports(
     dir,
     'memory',
-    'LOUSHY_MEMORY_INVALID',
+    'LOUSHO_MEMORY_INVALID',
     'a memory slot from defineMemory(), or an object with a scope and a provider.',
     isMemoryLike,
     (slot, stem) => defineMemory({ ...slot, name: slot.name ?? stem })

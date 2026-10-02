@@ -8,19 +8,19 @@
 
 ## Install the package
 
-> **Not on npm yet.** `@loushy/build-ai-agent` is not published, so the
-> commands below (and `npx loushy ...`, `npm create loushy-agent`) fail with a
+> **Not on npm yet.** `@lousho/build-ai-agent` is not published, so the
+> commands below (and `npx lousho ...`, `npm create lousho-agent`) fail with a
 > 404 until it is. Today, install from a checkout or a packed tarball:
 > [Installing before the first release](#installing-before-the-first-release).
 
 When it is published:
 
 ```bash
-npm install @loushy/build-ai-agent ai zod
+npm install @lousho/build-ai-agent ai zod
 # or
-pnpm add @loushy/build-ai-agent ai zod
+pnpm add @lousho/build-ai-agent ai zod
 # or
-yarn add @loushy/build-ai-agent ai zod
+yarn add @lousho/build-ai-agent ai zod
 ```
 
 `ai` (the Vercel AI SDK: `^4.3.19`, `^6.0.0` or `^7.0.0`) and `zod`
@@ -49,7 +49,7 @@ that pairs with your `ai` major. Install the pair from one row:
 For example, on the current `ai` major:
 
 ```bash
-npm install @loushy/build-ai-agent ai@^7.0.0 zod @ai-sdk/openai@^4.0.0
+npm install @lousho/build-ai-agent ai@^7.0.0 zod @ai-sdk/openai@^4.0.0
 ```
 
 **Ollama on `ai` 6/7 needs zod 4.** `ollama-ai-provider-v2` (the Ollama package
@@ -57,9 +57,9 @@ for `ai` 6 and 7) declares `zod ^4` as a peer. The SDK accepts zod 4 (LOU-D29),
 so install it with zod 4, for example
 `npm install ai@^7.0.0 ollama-ai-provider-v2@^4.0.0 zod@^4.0.0`. With zod 3,
 use `ai@^4.3.19` with `ollama-ai-provider@^1.2.0` (what
-`loushy init --provider ollama` scaffolds).
+`lousho init --provider ollama` scaffolds).
 
-Peers are loaded on demand: importing `@loushy/build-ai-agent` (or any of
+Peers are loaded on demand: importing `@lousho/build-ai-agent` (or any of
 its sub-entries) never loads a provider package, so you only need to install
 the ones you use. Each provider package is loaded the first time that
 provider makes a call; if it is missing, that call fails with a
@@ -71,7 +71,7 @@ npm install @ai-sdk/openai@^0.0.42
 ```
 
 ```ts no-run
-import { MissingPeerDependencyError, resolveProvider } from '@loushy/build-ai-agent';
+import { MissingPeerDependencyError, resolveProvider } from '@lousho/build-ai-agent';
 
 const provider = resolveProvider('openai/gpt-4o-mini'); // needs OPENAI_API_KEY; does not load the peer
 try {
@@ -86,13 +86,13 @@ try {
 ### Optional peers
 
 Three heavier packages are optional peers too. A project that never uses
-Docker sandboxing, MCP or the `loushy init` questions installs none of them:
+Docker sandboxing, MCP or the `lousho init` questions installs none of them:
 
 | Package                     | Range     | Enables                                                                                       | Install                                          |
 | --------------------------- | --------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| `dockerode`                 | `^5.0.1`  | Docker sandboxing: `SubprocessSandbox` (and `loushy doctor`'s Docker ping)                    | `npm install dockerode@^5.0.1`                   |
-| `@modelcontextprotocol/sdk` | `^1.30.1` | MCP: `serveMcp()`, `loushy mcp`, and the `Client` you connect before `loadMcpTools()`         | `npm install @modelcontextprotocol/sdk@^1.30.1`  |
-| `prompts`                   | `^2.4.2`  | The interactive questions of `loushy init` (`loushy init --yes` and flags need nothing)       | `npm install prompts@^2.4.2`                     |
+| `dockerode`                 | `^5.0.1`  | Docker sandboxing: `SubprocessSandbox` (and `lousho doctor`'s Docker ping)                    | `npm install dockerode@^5.0.1`                   |
+| `@modelcontextprotocol/sdk` | `^1.30.1` | MCP: `serveMcp()`, `lousho mcp`, and the `Client` you connect before `loadMcpTools()`         | `npm install @modelcontextprotocol/sdk@^1.30.1`  |
+| `prompts`                   | `^2.4.2`  | The interactive questions of `lousho init` (`lousho init --yes` and flags need nothing)       | `npm install prompts@^2.4.2`                     |
 
 Like the provider packages, each is loaded on first use, never at import
 time, and a missing one fails that call with a `MissingPeerDependencyError`
@@ -102,8 +102,8 @@ that names the feature and the exact command, for example:
 The optional package 'dockerode' is not installed, but Docker sandboxing (SubprocessSandbox) needs it. Run: npm install dockerode@^5.0.1
 ```
 
-`npm create loushy-agent` installs `prompts` itself, so scaffolding with it
-needs nothing extra. `loushy doctor` lists every optional peer, what it
+`npm create lousho-agent` installs `prompts` itself, so scaffolding with it
+needs nothing extra. `lousho doctor` lists every optional peer, what it
 enables and whether it is installed (a missing `dockerode` is an error only
 when the agent spec uses a sandboxed tool).
 
@@ -131,7 +131,7 @@ hazard), so a class from one is not `===` the other. `instanceof SDKError` and
 
 Until the package is on npm, build and pack the SDK from a checkout of this
 repository, then install the tarball into your project - the same approach
-`loushy init --sdk-path` uses for the projects it generates. This is verified
+`lousho init --sdk-path` uses for the projects it generates. This is verified
 in CI by `npm run pack-smoke`, which installs the packed tarball into a fresh
 project and loads every entry point, in ESM and CJS:
 
@@ -142,11 +142,11 @@ npm run build
 npm pack --pack-destination /path/to/your-project
 
 # in your project (peers come from the registry)
-npm install ./loushy-build-ai-agent-<version>.tgz ai zod
+npm install ./lousho-build-ai-agent-<version>.tgz ai zod
 ```
 
 To scaffold a new project the same way, from the checkout:
-`node bin/loushy.js init ../my-agent --sdk-path .`.
+`node bin/lousho.js init ../my-agent --sdk-path .`.
 
 `npm install github:LinuxDevil/agent-sdk` does **not** work: `dist/` is not in
 git and the repository has no `prepare` build step, so the install has no
@@ -154,7 +154,7 @@ entry points.
 
 ## Scaffolding a new project
 
-`loushy init` creates a ready-to-run project: `package.json` (ESM, depending
+`lousho init` creates a ready-to-run project: `package.json` (ESM, depending
 on this SDK by version range), a strict `tsconfig.json`, `src/agent.ts` calling
 `createAgent({ model, instructions })` with an example `defineTool()` tool, an
 offline `src/agent.test.ts` using `mockModel`, a `.env.example` naming your
@@ -165,38 +165,38 @@ Not on npm yet: until it is, run it from a built checkout with `--sdk-path`
 (see [Installing before the first release](#installing-before-the-first-release)).
 
 ```bash
-npx loushy init my-agent                 # or: npm create loushy-agent my-agent
-npx loushy init my-agent --yes --provider anthropic --template tools --no-install
+npx lousho init my-agent                 # or: npm create lousho-agent my-agent
+npx lousho init my-agent --yes --provider anthropic --template tools --no-install
 ```
 
 | Flag | Meaning |
 | ---- | ------- |
 | `--provider openai\|anthropic\|openrouter\|ollama` | Default: the provider whose API key variable is set, else `openai`. |
-| `--template minimal\|tools\|yaml` | `minimal` (one tool), `tools` (three tools) or `yaml` (an `agent.yaml` spec run by `loushy dev`). Default `minimal`. |
+| `--template minimal\|tools\|yaml` | `minimal` (one tool), `tools` (three tools) or `yaml` (an `agent.yaml` spec run by `lousho dev`). Default `minimal`. |
 | `--package-manager npm\|pnpm\|yarn\|bun` | Default: the one that launched the command (`npm_config_user_agent`), else `npm`. |
 | `--yes`, `-y` | Never prompt; use defaults for anything not given. Prompts only appear on a terminal. |
 | `--no-install`, `--no-git` | Skip installing dependencies / `git init`. |
 | `--force` | Write into a directory that is not empty (otherwise `init` refuses). |
-| `--sdk-path <dir\|tarball>` | For SDK development: depend on a checkout (it is `npm pack`ed) or a packed `.tgz` instead of the published version. Also read from `LOUSHY_SDK_PATH`. |
+| `--sdk-path <dir\|tarball>` | For SDK development: depend on a checkout (it is `npm pack`ed) or a packed `.tgz` instead of the published version. Also read from `LOUSHO_SDK_PATH`. |
 
-`create-loushy-agent` (`packages/create-loushy-agent`) is a thin wrapper that
-runs `loushy init` with the same arguments.
+`create-lousho-agent` (`packages/create-lousho-agent`) is a thin wrapper that
+runs `lousho init` with the same arguments.
 
-## The `loushy` CLI
+## The `lousho` CLI
 
-Installing the package also installs the `loushy` command: `init`, `doctor`,
+Installing the package also installs the `lousho` command: `init`, `doctor`,
 `dev`, `mcp`, `eval`, `build` and `studio`. See [CLI](./cli.md) for what each
 one does and its flags. Building requires `tsup`
 (`npm install --save-dev tsup`).
 
-## Troubleshooting: loushy doctor
+## Troubleshooting: lousho doctor
 
-Run `npx loushy doctor` right after installing. It prints one line per check
+Run `npx lousho doctor` right after installing. It prints one line per check
 with a status (`ok`, `warn`, `FAIL`), what it found, and, for anything that is
 not ok, the command to run or the setting to change:
 
 ```text
-loushy doctor
+lousho doctor
 
 [ ok ] Node.js: v22.19.0 satisfies >=22.19.0
 [ ok ] Required peer ai: 4.3.19 satisfies ^4.3.19
@@ -208,7 +208,7 @@ loushy doctor
 [warn] openai (OPENAI_API_KEY): not set
        fix: Set OPENAI_API_KEY in your environment, e.g. export OPENAI_API_KEY=<your key>
 [warn] Default provider for createAgent(): none configured (createAgent() needs a model, a provider instance, or an env var)
-       fix: Set LOUSHY_MODEL (e.g. openai/gpt-4o-mini) or one of the API key variables above.
+       fix: Set LOUSHO_MODEL (e.g. openai/gpt-4o-mini) or one of the API key variables above.
 [ ok ] Docker: daemon not reachable (only needed for sandboxed tools; none configured)
 
 4 ok, 3 warnings, 1 failure
@@ -227,7 +227,7 @@ What it checks:
 4. Whether each provider's API key variable is set. Only the variable name and
    `set` / `not set` are printed, never the value. It also shows which
    provider `createAgent()` would pick by default with your environment.
-5. With a spec path (`loushy doctor agent.yaml`): the spec is validated with
+5. With a spec path (`lousho doctor agent.yaml`): the spec is validated with
    field paths for every error, its provider package and key are checked
    (missing ones become failures), its `tools` must be built-in tools, and any
    `mcpServers` command must be resolvable.

@@ -123,7 +123,7 @@ describe('recordReplay mismatches', () => {
     expect(error.message).toContain('First difference at request.messages[0].content');
     expect(error.message).toContain('order 1234');
     expect(error.message).toContain('order 9999');
-    expect(error.message).toContain('LOUSHY_RECORD=1');
+    expect(error.message).toContain('LOUSHO_RECORD=1');
   });
 
   it('detects changed tools, schemas, temperature and a missing message', async () => {
@@ -159,7 +159,7 @@ describe('recordReplay mismatches', () => {
   });
 
   it('rejects a missing, corrupt or wrong-version cassette with a fix', () => {
-    expect(() => recordReplay(undefined, { cassette: file, mode: 'replay' })).toThrow(/not found.*LOUSHY_RECORD=1/s);
+    expect(() => recordReplay(undefined, { cassette: file, mode: 'replay' })).toThrow(/not found.*LOUSHO_RECORD=1/s);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, '{nope');
     expect(() => recordReplay(undefined, { cassette: file, mode: 'replay' })).toThrow(/not valid JSON/);

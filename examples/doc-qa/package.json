@@ -2,7 +2,7 @@
   "name": "doc-qa-example",
   "private": true,
   "version": "0.0.0",
-  "description": "Document-scoped question-answering agent built with @loushy/build-ai-agent's createAgent()",
+  "description": "Document-scoped question-answering agent built with @lousho/build-ai-agent's createAgent()",
   "scripts": {
     "start": "tsx index.ts"
   }

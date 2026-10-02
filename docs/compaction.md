@@ -16,7 +16,7 @@ model's window); an object configures it, and `summarizer` selects
 `LLMProvider`):
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const simple = createAgent({ model: 'openai/gpt-4o', compaction: true });
 
@@ -68,7 +68,7 @@ and pass the registry to `AgentExecutor.execute()`. The recommended setup is
 the two-phase strategy with a cheap summarizer model:
 
 ```ts
-import { AgentExecutor, HookRegistry, createCompactionHook, twoPhaseStrategy } from '@loushy/build-ai-agent';
+import { AgentExecutor, HookRegistry, createCompactionHook, twoPhaseStrategy } from '@lousho/build-ai-agent';
 
 const hooks = new HookRegistry();
 hooks.register(
@@ -182,7 +182,7 @@ message; a pinned tool result keeps its whole assistant turn. Pin what the
 agent must always see in full, such as the task statement or a key document:
 
 ```ts
-import { pinMessage, isPinned, type Message } from '@loushy/build-ai-agent';
+import { pinMessage, isPinned, type Message } from '@lousho/build-ai-agent';
 
 const messages: Message[] = [
   { role: 'system', content: 'You are a research assistant.' },
@@ -200,7 +200,7 @@ of the conversation, and resolves to a new array (its input is not modified).
 Use it to shrink a stored transcript before you continue it:
 
 ```ts
-import { compactMessages, summarizeStrategy, type Message } from '@loushy/build-ai-agent';
+import { compactMessages, summarizeStrategy, type Message } from '@lousho/build-ai-agent';
 
 declare const history: Message[];
 
@@ -226,15 +226,15 @@ It runs `options.strategy`, else the strategy of `agent.session({ compaction })`
 (the same value as `createAgent({ compaction })`, and the agent's own
 `compaction` when the session does not set one), else prunes old tool results.
 Pinned messages stay. A session with no messages resolves without doing
-anything. It rejects with `LOUSHY_SESSION_BUSY` while a turn is running, and
-with `LOUSHY_SESSION_TURN_PENDING` / `LOUSHY_SESSION_AWAITING_APPROVAL` while a
+anything. It rejects with `LOUSHO_SESSION_BUSY` while a turn is running, and
+with `LOUSHO_SESSION_TURN_PENDING` / `LOUSHO_SESSION_AWAITING_APPROVAL` while a
 durable turn is unfinished. Listeners added with `session.on()` get
 `compaction.start` and `compaction.done` with `trigger: 'manual'`.
 `session.clear()` empties the transcript instead and emits `context.cleared`.
 
 ```ts
-import { createAgent, twoPhaseStrategy } from '@loushy/build-ai-agent';
-import { mockModel } from '@loushy/build-ai-agent/testing';
+import { createAgent, twoPhaseStrategy } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
 
 const agent = createAgent({ provider: mockModel(['ok']) });
 const session = agent.session({ compaction: { strategy: twoPhaseStrategy({ model: 'openai/gpt-4o-mini' }) } });
@@ -259,7 +259,7 @@ unchanged when there is nothing to do: the hook then leaves the run alone and
 does not call `onCompaction`.
 
 ```ts
-import { createCompactionHook, isPinned, type CompactionStrategy } from '@loushy/build-ai-agent';
+import { createCompactionHook, isPinned, type CompactionStrategy } from '@lousho/build-ai-agent';
 
 // Keep the system prompt, pinned messages and the last 20 messages.
 const keepRecent: CompactionStrategy = {

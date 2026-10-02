@@ -30,7 +30,7 @@ function awaitingApproval(name: string, { sessionId, approval }: SessionTurnSumm
   return new SDKError(
     `Remote agent '${name}' is awaiting approval${approval ? ` '${approval.approvalId}'` : ''} in its session '${sessionId}'. ` +
       `The lead run has no approval store to pause on: decide it on the remote agent (POST /chat/<session>/approvals/<id>)${then}, or give the remote agent no tools that need approval.`,
-    'LOUSHY_SESSION_AWAITING_APPROVAL'
+    'LOUSHO_SESSION_AWAITING_APPROVAL'
   );
 }
 
@@ -41,10 +41,10 @@ function outcome(label: string, name: string, summary: SessionTurnSummary, { tas
     throw pausable && approval ? remotePause(name, sessionId, approval) : awaitingApproval(name, summary, taskId);
   }
   if (finishReason === 'error') {
-    throw new SDKError(`${label} failed: the remote run ended in an error: ${summary.error ?? 'unknown error'}`, 'LOUSHY_REMOTE_REQUEST_FAILED');
+    throw new SDKError(`${label} failed: the remote run ended in an error: ${summary.error ?? 'unknown error'}`, 'LOUSHO_REMOTE_REQUEST_FAILED');
   }
   if (finishReason !== 'stop' && finishReason !== 'length') {
-    throw new SDKError(`${label} ended with finish reason '${finishReason}' without a final answer.`, 'LOUSHY_REMOTE_REQUEST_FAILED');
+    throw new SDKError(`${label} ended with finish reason '${finishReason}' without a final answer.`, 'LOUSHO_REMOTE_REQUEST_FAILED');
   }
   const footer = `[remote sub-agent '${name}': session '${sessionId}', finish reason '${finishReason}'${taskId ? `, taskId '${taskId}'` : ''}]`;
   const body = object === undefined ? text : JSON.stringify(object);
@@ -52,7 +52,7 @@ function outcome(label: string, name: string, summary: SessionTurnSummary, { tas
 }
 
 /**
- * Uses an agent deployed with `loushy deploy` (node server, Docker or
+ * Uses an agent deployed with `lousho deploy` (node server, Docker or
  * Cloudflare Worker) as a sub-agent: put it in `createAgent({ subagents })`
  * next to local ones. Each delegated task opens a fresh session on the remote
  * agent over `POST <url>/chat` (a `task` call that resumes a task reuses its
@@ -60,8 +60,8 @@ function outcome(label: string, name: string, summary: SessionTurnSummary, { tas
  * to its end and returns the remote agent's final text (its `output` object as
  * JSON when it has an `output` schema). The lead run's abort
  * signal aborts the request. Failures reach the lead as the usual structured
- * tool error with a `LOUSHY_REMOTE_REQUEST_FAILED` (or, for a 401,
- * `LOUSHY_REMOTE_UNAUTHORIZED`) code. A remote run that pauses for approval
+ * tool error with a `LOUSHO_REMOTE_REQUEST_FAILED` (or, for a 401,
+ * `LOUSHO_REMOTE_UNAUTHORIZED`) code. A remote run that pauses for approval
  * pauses the lead run (LOU-Y7.3): deciding it on the lead decides it on the
  * remote agent, and the continuation's answer is the task result.
  *
@@ -81,7 +81,7 @@ function outcome(label: string, name: string, summary: SessionTurnSummary, { tas
  */
 export function remoteAgent(options: RemoteAgentOptions): RemoteSubagent {
   if (!options.url) {
-    throw new SDKError("remoteAgent: 'url' is required, e.g. remoteAgent({ url: 'https://my-agent.example.com' }).", 'LOUSHY_CONFIG_INVALID');
+    throw new SDKError("remoteAgent: 'url' is required, e.g. remoteAgent({ url: 'https://my-agent.example.com' }).", 'LOUSHO_CONFIG_INVALID');
   }
   const agent: RemoteSubagent = {
     name: options.name,

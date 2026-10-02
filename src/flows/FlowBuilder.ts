@@ -7,10 +7,10 @@ function assertUniqueInputNames(inputs: FlowInputVariable[]): void {
   const names = new Set<string>();
   for (const input of inputs) {
     if (!input.name) {
-      throw new SDKError('Input variable name is required', 'LOUSHY_FLOW_INVALID');
+      throw new SDKError('Input variable name is required', 'LOUSHO_FLOW_INVALID');
     }
     if (names.has(input.name)) {
-      throw new SDKError(`Duplicate input variable name: ${input.name}`, 'LOUSHY_FLOW_INVALID');
+      throw new SDKError(`Duplicate input variable name: ${input.name}`, 'LOUSHO_FLOW_INVALID');
     }
     names.add(input.name);
   }
@@ -123,10 +123,10 @@ export class FlowBuilder {
    */
   private validate(): void {
     if (!this.flow.code) {
-      throw new SDKError('Flow code is required', 'LOUSHY_FLOW_INVALID');
+      throw new SDKError('Flow code is required', 'LOUSHO_FLOW_INVALID');
     }
     if (!this.flow.name) {
-      throw new SDKError('Flow name is required', 'LOUSHY_FLOW_INVALID');
+      throw new SDKError('Flow name is required', 'LOUSHO_FLOW_INVALID');
     }
 
     // Validate input variables

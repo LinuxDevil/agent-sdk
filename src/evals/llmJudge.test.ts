@@ -35,17 +35,17 @@ describe('parseJudgeScore', () => {
 });
 
 describe('llmJudge() structural isolation guard', () => {
-  const originalEnv = process.env.LOUSHY_ALLOW_LLM_JUDGE;
+  const originalEnv = process.env.LOUSHO_ALLOW_LLM_JUDGE;
 
   beforeEach(() => {
-    delete process.env.LOUSHY_ALLOW_LLM_JUDGE;
+    delete process.env.LOUSHO_ALLOW_LLM_JUDGE;
   });
 
   afterEach(() => {
     if (originalEnv === undefined) {
-      delete process.env.LOUSHY_ALLOW_LLM_JUDGE;
+      delete process.env.LOUSHO_ALLOW_LLM_JUDGE;
     } else {
-      process.env.LOUSHY_ALLOW_LLM_JUDGE = originalEnv;
+      process.env.LOUSHO_ALLOW_LLM_JUDGE = originalEnv;
     }
   });
 
@@ -53,15 +53,15 @@ describe('llmJudge() structural isolation guard', () => {
     generate: async () => ({ text: '0.9' }) as never,
   } as never;
 
-  it('refuses to run outside the judge-eval runner (LOUSHY_ALLOW_LLM_JUDGE unset)', async () => {
+  it('refuses to run outside the judge-eval runner (LOUSHO_ALLOW_LLM_JUDGE unset)', async () => {
     const scorer = llmJudge({ provider: mockProvider, model: 'test-model', rubric: 'be good' });
     await expect(scorer({ text: 'hello' } as never)).rejects.toThrow(
       /llmJudge\(\) was invoked outside the judge-eval runner/
     );
   });
 
-  it('runs normally when LOUSHY_ALLOW_LLM_JUDGE=1 (set by vitest.judge.config.ts)', async () => {
-    process.env.LOUSHY_ALLOW_LLM_JUDGE = '1';
+  it('runs normally when LOUSHO_ALLOW_LLM_JUDGE=1 (set by vitest.judge.config.ts)', async () => {
+    process.env.LOUSHO_ALLOW_LLM_JUDGE = '1';
     const scorer = llmJudge({ provider: mockProvider, model: 'test-model', rubric: 'be good' });
     await expect(scorer({ text: 'hello' } as never)).resolves.toBe(0.9);
   });

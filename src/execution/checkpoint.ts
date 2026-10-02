@@ -11,7 +11,7 @@ import type { AgentFingerprint } from './agentFingerprint';
 import { ConfigurationError } from './errors';
 
 /** Key of `AgentConfig.metadata` holding a dynamic run's `ctx` and model (LOU-V15): saved in approval snapshots and checkpoints. */
-export const RUN_CONFIG_KEY = 'loushyRunConfig';
+export const RUN_CONFIG_KEY = 'loushoRunConfig';
 
 /**
  * Where the run recorded in a {@link Checkpoint} stands (LOU-U8):

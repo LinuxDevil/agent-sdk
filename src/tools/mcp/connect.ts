@@ -90,7 +90,7 @@ class ServerConnection {
   private async open(): Promise<Client> {
     try {
       const { Client } = await loadOptionalPeer(PEER, () => import('@modelcontextprotocol/sdk/client/index.js'));
-      const client = new Client({ name: `loushy-${this.name}`, version: '1.0.0' });
+      const client = new Client({ name: `lousho-${this.name}`, version: '1.0.0' });
       await client.connect(await openTransport(this.server));
       const current = this.client;
       // A dropped connection (e.g. the process exited) counts as closed.

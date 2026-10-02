@@ -52,7 +52,7 @@ async function waitFor(check: () => boolean, timeoutMs = 10_000): Promise<boolea
 }
 
 beforeAll(() => {
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-ws-')));
+  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-ws-')));
   rootDir = path.join(tmp, 'root');
   outsideDir = path.join(tmp, 'outside');
   fs.mkdirSync(path.join(rootDir, 'src'), { recursive: true });
@@ -225,15 +225,15 @@ describe('NodeWorkspace shell (LOU-X6)', () => {
   });
 
   it('does not leak host environment variables (API keys) to commands', async () => {
-    process.env.LOUSHY_TEST_SECRET = 'sk-test-should-not-leak';
+    process.env.LOUSHO_TEST_SECRET = 'sk-test-should-not-leak';
     try {
-      const script = "process.stdout.write([process.env.LOUSHY_TEST_SECRET||'absent',process.env.GIVEN||'none',process.env.PATH?'path':'nopath'].join(','))";
+      const script = "process.stdout.write([process.env.LOUSHO_TEST_SECRET||'absent',process.env.GIVEN||'none',process.env.PATH?'path':'nopath'].join(','))";
       expect((await new NodeWorkspace({ root: rootDir }).exec(node(script))).stdout).toBe('absent,none,path');
-      const configured = new NodeWorkspace({ root: rootDir, env: { GIVEN: 'yes' }, inheritEnv: ['LOUSHY_TEST_SECRET'] });
+      const configured = new NodeWorkspace({ root: rootDir, env: { GIVEN: 'yes' }, inheritEnv: ['LOUSHO_TEST_SECRET'] });
       expect((await configured.exec(node(script))).stdout).toBe('sk-test-should-not-leak,yes,path');
       expect((await ws.exec(node(script), { env: { GIVEN: 'per-call' } })).stdout).toBe('absent,per-call,path');
     } finally {
-      delete process.env.LOUSHY_TEST_SECRET;
+      delete process.env.LOUSHO_TEST_SECRET;
     }
   });
 

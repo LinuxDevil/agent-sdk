@@ -77,7 +77,7 @@ describe.each(CASES)('$label with its peer not installed', ({ packageName, insta
 
     // vi.resetModules() gave the provider a fresh copy of the class, so load the same one.
     expect(error).toBeInstanceOf((await import('./optionalPeer')).MissingPeerDependencyError);
-    expect(error).toMatchObject({ packageName, installCommand, code: 'LOUSHY_PEER_MISSING' });
+    expect(error).toMatchObject({ packageName, installCommand, code: 'LOUSHO_PEER_MISSING' });
     expect((error as Error).message).toContain(`Run: ${installCommand}`);
   });
 
@@ -123,7 +123,7 @@ describe('feature peers (LOU-D40)', () => {
   it.each([
     ['dockerode', 'Docker sandboxing', 'npm install dockerode@^5.0.1'],
     ['@modelcontextprotocol/sdk', 'MCP', 'npm install @modelcontextprotocol/sdk@^1.30.1'],
-    ['prompts', '`loushy init`', 'npm install prompts@^2.4.2'],
+    ['prompts', '`lousho init`', 'npm install prompts@^2.4.2'],
   ])('the error for %s names the feature and the exact install command', async (name, feature, command) => {
     const error = await loadOptionalPeer(name, () => Promise.reject(moduleNotFound(name))).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(MissingPeerDependencyError);

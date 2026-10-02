@@ -9,39 +9,39 @@ and is therefore only type-checked.
 
 ## Start a new project
 
-> **Not on npm yet.** `@loushy/build-ai-agent` is not published, so the
+> **Not on npm yet.** `@lousho/build-ai-agent` is not published, so the
 > `npx`/`npm install`/`npm create` commands on this page fail with a 404 until
 > it is. Today, install from a checkout or a packed tarball:
 > [Installing before the first release](./installation.md#installing-before-the-first-release)
-> (for example `node bin/loushy.js init my-agent --sdk-path .` from a built checkout).
+> (for example `node bin/lousho.js init my-agent --sdk-path .` from a built checkout).
 
 The fastest way in is one command, which creates a runnable project (an
 agent, an example tool, an offline test, a `.env.example` for your provider),
 installs its dependencies and runs `git init`:
 
 ```bash
-npx loushy init my-agent
+npx lousho init my-agent
 cd my-agent
 cp .env.example .env     # put your API key in .env
 npm run dev              # chat with your agent in the terminal
 npm test                 # offline tests: no API key needed
 ```
 
-`npm create loushy-agent my-agent` is equivalent, and so is
-`npx @loushy/build-ai-agent init my-agent` when the SDK is not installed yet
-(a bare `npx loushy` only finds the `loushy` command once the SDK is in your
+`npm create lousho-agent my-agent` is equivalent, and so is
+`npx @lousho/build-ai-agent init my-agent` when the SDK is not installed yet
+(a bare `npx lousho` only finds the `lousho` command once the SDK is in your
 `node_modules`). Without arguments, `init` asks for the directory, provider and
 template; for scripts pass `--yes` (defaults: the `minimal` template and the
 provider whose API key variable is set, else OpenAI). Useful flags:
 `--provider openai|anthropic|openrouter|ollama`, `--template minimal|tools|yaml`,
 `--package-manager npm|pnpm|yarn|bun`, `--no-install`, `--no-git`, `--force`
-(write into a non-empty directory). `loushy init --help` lists them all.
+(write into a non-empty directory). `lousho init --help` lists them all.
 
 Prefer to add the SDK to an existing project? Install it by hand (see
 [Installation](./installation.md)):
 
 ```bash
-npm install @loushy/build-ai-agent ai@^7.0.0 zod
+npm install @lousho/build-ai-agent ai@^7.0.0 zod
 npm install @ai-sdk/openai@^4.0.0 @ai-sdk/anthropic@^4.0.0
 ```
 
@@ -57,14 +57,14 @@ provider's conventional environment variable (`OPENAI_API_KEY` here;
 providers).
 
 ```ts no-run
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are a helpful assistant.' });
 const { text } = await agent.send('Hello!');
 console.log(text);
 ```
 
-Leave `model` out to let the environment decide: `LOUSHY_MODEL` (a
+Leave `model` out to let the environment decide: `LOUSHO_MODEL` (a
 `provider/model` string) if set, otherwise the first of `OPENAI_API_KEY`,
 `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `OLLAMA_BASE_URL` that is present.
 If a key is missing or the prefix is misspelled, the error tells you exactly
@@ -78,7 +78,7 @@ Pass a provider instance instead of `model` when you have your own
 config. This one needs no API key:
 
 ```ts
-import { createAgent, createMockProvider } from '@loushy/build-ai-agent';
+import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
 
 const agent = createAgent({
   instructions: 'You are a helpful assistant.',
@@ -96,7 +96,7 @@ mock provider otherwise - the same pattern the runnable
 [examples](../examples/README.md) use.
 
 ```ts
-import { createAgent, createMockProvider, resolveProvider } from '@loushy/build-ai-agent';
+import { createAgent, createMockProvider, resolveProvider } from '@lousho/build-ai-agent';
 
 const provider = process.env.OPENAI_API_KEY
   ? resolveProvider('openai/gpt-4o-mini')
@@ -121,7 +121,7 @@ whenever the user message mentions a tool's name, so this snippet exercises a
 real tool round trip without an LLM.
 
 ```ts
-import { createAgent, createMockProvider, defineTool } from '@loushy/build-ai-agent';
+import { createAgent, createMockProvider, defineTool } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 const currentDate = defineTool({
@@ -165,7 +165,7 @@ import {
   AgentBuilder,
   AgentExecutor,
   createMockProvider,
-} from '@loushy/build-ai-agent';
+} from '@lousho/build-ai-agent';
 
 const agent = AgentBuilder.create()
   .setName('Customer Support Agent')
@@ -193,7 +193,7 @@ into a live agent with `specToAgent()`. The same shape can be written as a
 YAML or JSON file and loaded with `loadSpec()`.
 
 ```ts
-import { specToAgent, agentSpecSchema } from '@loushy/build-ai-agent';
+import { specToAgent, agentSpecSchema } from '@lousho/build-ai-agent';
 
 const spec = agentSpecSchema.parse({
   name: 'support-bot',
@@ -223,13 +223,13 @@ the same spec runs in the local dev server (chat UI at `/`, `POST /chat`,
 hot reload on save) and builds into a deployable server:
 
 ```bash
-npx loushy dev agent.yaml
-npx loushy build --target=node-server --agent=agent.yaml
+npx lousho dev agent.yaml
+npx lousho build --target=node-server --agent=agent.yaml
 ```
 
 ## Next steps
 
 - [Configuration](./configuration.md) - every spec field, provider env var and CLI flag.
-- [Deployment](./deployment.md) - `loushy build` targets (Node server, Docker, Cloudflare Workers).
+- [Deployment](./deployment.md) - `lousho build` targets (Node server, Docker, Cloudflare Workers).
 - [API Overview](./api-overview.md) - the main exports and where to find full API reference.
 - [Examples](../examples/README.md) - runnable example agents.

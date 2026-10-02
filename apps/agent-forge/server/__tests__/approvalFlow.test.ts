@@ -25,7 +25,7 @@ import {
   createMockProvider,
   resumeAfterApproval,
   type ToolDescriptor,
-} from '@loushy/build-ai-agent';
+} from '@lousho/build-ai-agent';
 import { FileApprovalStore } from '../approvalStore';
 import { FileCheckpointStore } from '../checkpointStore';
 

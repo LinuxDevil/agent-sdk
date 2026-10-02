@@ -84,7 +84,7 @@ export async function runSubagent(
   const options = childOptions(spec, scope, info, capture.store, request.toolOptions?.abortSignal);
   const run = scope?.execute ?? execute;
   if (!run) {
-    throw new SDKError(`Sub-agent '${request.name}' can only be started by a tool call of an agent run.`, 'LOUSHY_CONFIG_INVALID');
+    throw new SDKError(`Sub-agent '${request.name}' can only be started by a tool call of an agent run.`, 'LOUSHO_CONFIG_INVALID');
   }
 
   const resume = scope?.resume;

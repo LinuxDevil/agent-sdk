@@ -2,7 +2,7 @@
 
 If your front end already uses the Vercel AI SDK's UI hooks (`useChat` from
 `@ai-sdk/react`, and the Vue, Svelte and Angular equivalents), you can keep
-them and run a Loushy agent behind the route. Three functions, exported from
+them and run a Lousho agent behind the route. Three functions, exported from
 the package root, do the translation. They import nothing from `ai`, use no
 `node:*` module, and work on Node, Workers and any Fetch-based runtime.
 
@@ -15,7 +15,7 @@ the package root, do the translation. They import nothing from `ai`, use no
 ## Route handler
 
 ```ts
-import { createAgent, fromUIMessages, toUIMessageStreamResponse, type UIMessageLike } from '@loushy/build-ai-agent';
+import { createAgent, fromUIMessages, toUIMessageStreamResponse, type UIMessageLike } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are helpful.' });
 
@@ -53,7 +53,7 @@ export function Chat() {
 
 ## Event mapping
 
-| Loushy event | UI message chunk |
+| Lousho event | UI message chunk |
 | --- | --- |
 | `run.start` | `start` (`messageId` is the run id) |
 | `step.start` / `step.done` | `start-step` / `finish-step` |
@@ -61,7 +61,7 @@ export function Chat() {
 | `reasoning.start`, `reasoning.delta`, `reasoning.done` | `reasoning-start`, `reasoning-delta`, `reasoning-end` (see [Reasoning](./reasoning.md)) |
 | `tool.start` | `tool-input-start`, then `tool-input-available` with the arguments |
 | `tool.done` / `tool.error` | `tool-output-available` / `tool-output-error` |
-| `approval.requested` | `data-loushy-approval` (below) |
+| `approval.requested` | `data-lousho-approval` (below) |
 | `error` | `error` |
 | `run.done` | `finish` |
 
@@ -77,22 +77,22 @@ Usage goes in the `finish` chunk's `messageMetadata`, so `message.metadata` on
 the finished assistant message has it:
 
 ```json
-{ "runId": "run_1", "loushyFinishReason": "stop", "usage": { "totalTokens": 120, "costUsd": 0.0004 } }
+{ "runId": "run_1", "loushoFinishReason": "stop", "usage": { "totalTokens": 120, "costUsd": 0.0004 } }
 ```
 
 `usage` is the run's `AgentEventUsage` (absent when the run failed);
-`loushyFinishReason` is the run's own finish reason, unmapped.
+`loushoFinishReason` is the run's own finish reason, unmapped.
 
 ## Approvals and `ask_question`
 
 A tool that needs approval, or an `ask_question` call, pauses the run: the
-stream ends (`finish` with `loushyFinishReason: "awaiting-approval"`) after a
+stream ends (`finish` with `loushoFinishReason: "awaiting-approval"`) after a
 custom data part, which `useChat` shows as a part of type
-`data-loushy-approval`:
+`data-lousho-approval`:
 
 ```json
 {
-  "type": "data-loushy-approval",
+  "type": "data-lousho-approval",
   "id": "appr_1",
   "data": {
     "approvalId": "appr_1",
@@ -123,5 +123,5 @@ parts and other file parts to file parts (the part's `url`, a `data:` or
 `http(s)` URL, becomes the data). Tool, reasoning, data, source and unknown
 parts are ignored, and messages that end up empty are dropped.
 
-A dedicated `@loushy/build-ai-agent/ai-sdk-ui` subpath may follow; for now the
+A dedicated `@lousho/build-ai-agent/ai-sdk-ui` subpath may follow; for now the
 functions come from the package root.

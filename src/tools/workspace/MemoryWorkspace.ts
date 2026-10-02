@@ -45,7 +45,7 @@ function byteLength(text: string): number {
  *
  * @example
  * ```ts
- * import { MemoryWorkspace } from '@loushy/build-ai-agent';
+ * import { MemoryWorkspace } from '@lousho/build-ai-agent';
  * const ws = new MemoryWorkspace({
  *   files: { 'src/a.ts': 'export const a = 1;\n' },
  *   exec: (command) => (command === 'npm test' ? { stdout: 'ok\n' } : { exitCode: 1, stderr: 'unknown\n' }),

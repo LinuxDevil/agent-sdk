@@ -1,4 +1,4 @@
-# Contributing to @loushy/build-ai-agent
+# Contributing to @lousho/build-ai-agent
 
 Thank you for your interest in contributing to the Build AI Agent SDK! This document provides guidelines and instructions for contributing.
 

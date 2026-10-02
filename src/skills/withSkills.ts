@@ -43,13 +43,13 @@ function assertUsable(skills: readonly Skill[], agent: AgentConfig, registry?: T
     throw new SDKError(
       `skills: a tool named '${LOAD_SKILL_TOOL}' is already registered, but agents with skills get one automatically. ` +
         `Rename your tool, or remove the 'skills' option.`,
-      'LOUSHY_SKILL_INVALID'
+      'LOUSHO_SKILL_INVALID'
     );
   }
   const seen = new Set<string>();
   for (const { name } of skills) {
     if (seen.has(name)) {
-      throw new SDKError(`skills: duplicate skill name '${name}'. Skill names must be unique; rename one.`, 'LOUSHY_SKILL_INVALID');
+      throw new SDKError(`skills: duplicate skill name '${name}'. Skill names must be unique; rename one.`, 'LOUSHO_SKILL_INVALID');
     }
     seen.add(name);
   }

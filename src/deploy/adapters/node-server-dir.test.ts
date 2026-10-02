@@ -16,13 +16,13 @@ import { withBuildLock } from '../buildLock.testkit';
 
 const FILES: Record<string, string> = {
   'instructions.md': 'You are a deployed agent directory.\n',
-  'agent.ts': `import { createMockProvider } from '@loushy/build-ai-agent';
+  'agent.ts': `import { createMockProvider } from '@lousho/build-ai-agent';
 export default { provider: createMockProvider({ name: 'mock', responses: ['pong'] }) };
 `,
-  'schedules/daily.ts': `import { defineSchedule } from '@loushy/build-ai-agent';
+  'schedules/daily.ts': `import { defineSchedule } from '@lousho/build-ai-agent';
 export default defineSchedule({ cron: '0 9 * * *', prompt: 'Good morning' });
 `,
-  'channels/echo.ts': `import { defineChannel } from '@loushy/build-ai-agent';
+  'channels/echo.ts': `import { defineChannel } from '@lousho/build-ai-agent';
 export default defineChannel({
   name: 'echo',
   async parse(req) { return { sessionKey: 'k', input: req.text, replyTo: null }; },
@@ -32,7 +32,7 @@ export default defineChannel({
 };
 
 function writeAgentDir(): string {
-  const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-agent-dir-')), 'my-agent');
+  const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-agent-dir-')), 'my-agent');
   for (const [name, content] of Object.entries(FILES)) {
     fs.mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });
     fs.writeFileSync(path.join(dir, name), content);
@@ -49,7 +49,7 @@ function startServer(outDir: string): Promise<{ stop: () => void; port: number; 
     const timer = setTimeout(() => reject(new Error(`server did not start: ${stdout} ${stderr}`)), 15_000);
     child.stdout.on('data', (chunk) => {
       stdout += chunk;
-      const match = /listening on http:\/\/[^:]+:(\d+)\s+loushy server: schedules/.exec(stdout);
+      const match = /listening on http:\/\/[^:]+:(\d+)\s+lousho server: schedules/.exec(stdout);
       if (!match) return;
       clearTimeout(timer);
       resolve({ stop: () => child.kill(), port: Number(match[1]), stdout });
@@ -112,12 +112,12 @@ describe('NodeServerAdapter with an agent directory', () => {
   });
 
   it('rejects a directory that is not an agent directory', async () => {
-    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-not-agent-'));
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-not-agent-'));
     await expect(NodeServerAdapter.scaffold(empty, path.join(empty, 'out'))).rejects.toThrow(/not an agent directory/);
   });
 });
 
-describe('loushy build <path>', () => {
+describe('lousho build <path>', () => {
   it('takes the agent as a positional argument', () => {
     expect(parseBuildArgs(['./my-agent', '--target', 'node-server'])).toMatchObject({ agent: './my-agent', target: 'node-server' });
     expect(parseBuildArgs(['--agent=./a', '--target=docker'])).toMatchObject({ agent: './a' });

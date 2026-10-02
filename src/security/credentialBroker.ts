@@ -119,7 +119,7 @@ function subnet(cidr: string): net.BlockList {
   const [prefix, bits, extra] = cidr.split('/');
   const family = net.isIP(prefix);
   if (family === 0 || extra !== undefined || !/^\d+$/.test(bits ?? '') || Number(bits) > (family === 6 ? 128 : 32)) {
-    throw new SDKError(`createCredentialBroker: listen() clients must be a subnet such as '172.18.0.0/16'; got ${JSON.stringify(cidr)}.`, 'LOUSHY_CONFIG_INVALID');
+    throw new SDKError(`createCredentialBroker: listen() clients must be a subnet such as '172.18.0.0/16'; got ${JSON.stringify(cidr)}.`, 'LOUSHO_CONFIG_INVALID');
   }
   const list = new net.BlockList();
   list.addSubnet(prefix, Number(bits), family === 6 ? 'ipv6' : 'ipv4');
@@ -133,7 +133,7 @@ function buildPolicy(options: CredentialBrokerOptions): Policy {
   const allowPrivate = (options.allowPrivate ?? []).map(lower);
   const invalid = [...allow, ...allowPrivate].filter((host) => !isHostPattern(host));
   if (invalid.length > 0) {
-    throw new SDKError(`createCredentialBroker: hosts must be names such as 'api.github.com' or '*.npmjs.org'; got ${JSON.stringify(invalid)}.`, 'LOUSHY_CONFIG_INVALID');
+    throw new SDKError(`createCredentialBroker: hosts must be names such as 'api.github.com' or '*.npmjs.org'; got ${JSON.stringify(invalid)}.`, 'LOUSHO_CONFIG_INVALID');
   }
   return { rules, allow, allowPrivate, scheme: options.pathFormScheme ?? 'https' };
 }

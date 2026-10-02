@@ -63,7 +63,7 @@ export interface GuardrailTrip {
 /** Thrown when a guardrail blocks under `onTripped: 'throw'`; `guardrail` says which. */
 export class GuardrailError extends SDKError {
   constructor(readonly guardrail: GuardrailTrip) {
-    super(`Guardrail '${guardrail.name}' blocked the ${guardrail.kind}: ${guardrail.reason}`, 'LOUSHY_GUARDRAIL_TRIPPED');
+    super(`Guardrail '${guardrail.name}' blocked the ${guardrail.kind}: ${guardrail.reason}`, 'LOUSHO_GUARDRAIL_TRIPPED');
     this.name = 'GuardrailError';
   }
 }
@@ -153,7 +153,7 @@ export function maxLengthGuardrail({ maxChars }: { maxChars: number }): IoGuardr
  *
  * @example
  * ```ts
- * import { regexGuardrail } from '@loushy/build-ai-agent';
+ * import { regexGuardrail } from '@lousho/build-ai-agent';
  *
  * const ssn = regexGuardrail({ name: 'ssn', pattern: /\b\d{3}-\d{2}-\d{4}\b/, action: 'rewrite' });
  * ```

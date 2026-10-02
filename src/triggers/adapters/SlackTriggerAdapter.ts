@@ -186,7 +186,7 @@ export class SlackTriggerAdapter implements TriggerAdapter<string> {
     if (!webhookUrl) {
       throw new SDKError(
         `SlackTriggerAdapter: no webhook URL configured. Set ${SLACK_WEBHOOK_URL_ENV_KEY} or pass options.webhookUrl.`,
-        'LOUSHY_TRIGGER_INVALID'
+        'LOUSHO_TRIGGER_INVALID'
       );
     }
     return webhookUrl;
@@ -204,7 +204,7 @@ export class SlackTriggerAdapter implements TriggerAdapter<string> {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new SDKError(`SlackTriggerAdapter: reply post failed: ${response.statusText} - ${errorText}`, 'LOUSHY_CHANNEL_REQUEST_FAILED');
+      throw new SDKError(`SlackTriggerAdapter: reply post failed: ${response.statusText} - ${errorText}`, 'LOUSHO_CHANNEL_REQUEST_FAILED');
     }
   }
 }

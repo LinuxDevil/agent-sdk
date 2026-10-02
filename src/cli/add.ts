@@ -1,10 +1,10 @@
 /**
- * `loushy add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--overwrite] [--dry-run]`
+ * `lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--overwrite] [--dry-run]`
  * installs a tool, skill, channel, schedule or memory slot from a JSON registry
  * into an agent directory as source you own (LOU-D50). It prints the item's
  * permission manifest and the files first, then asks. Nothing from the registry
  * is executed, and dependencies are only printed as an `npm install` line.
- * `loushy add --list` prints the registry's index. See docs/registry.md.
+ * `lousho add --list` prints the registry's index. See docs/registry.md.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -15,7 +15,7 @@ import { checkTargets, planFiles, writeFiles, type PlannedFile } from './addWrit
 import { parseCommand, stringValue, usageError, type CommandSpec } from './args';
 import { loadIndex, loadItem, registrySource, type RegistryIndex, type RegistryItem, type RegistryOptions } from './registry';
 
-const USAGE = 'Usage: loushy add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--overwrite] [--dry-run]\n       loushy add --list [--registry <url-or-path>]';
+const USAGE = 'Usage: lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--overwrite] [--dry-run]\n       lousho add --list [--registry <url-or-path>]';
 
 const SPEC: CommandSpec = {
   command: 'add',
@@ -50,7 +50,7 @@ interface AddArgs {
   help: boolean;
 }
 
-/** Parses the arguments after `add`; throws `LOUSHY_CONFIG_INVALID` for a bad flag or when neither a name nor `--list` is given. */
+/** Parses the arguments after `add`; throws `LOUSHO_CONFIG_INVALID` for a bad flag or when neither a name nor `--list` is given. */
 export function parseAddArgs(args: string[]): AddArgs {
   const { values, positionals, help } = parseCommand(SPEC, args);
   const parsed: AddArgs = {
@@ -106,7 +106,7 @@ async function confirm(io: AddIo, question: string): Promise<boolean> {
 async function install(args: AddArgs, item: RegistryItem, io: AddIo): Promise<number> {
   const agentDir = path.resolve(io.cwd ?? process.cwd(), args.dir);
   if (!fs.existsSync(agentDir) || !fs.statSync(agentDir).isDirectory()) {
-    throw new SDKError(`loushy add: the agent directory ${agentDir} does not exist.`, 'LOUSHY_CONFIG_INVALID', { hint: 'Create it, or pass --dir <agent-dir>.' });
+    throw new SDKError(`lousho add: the agent directory ${agentDir} does not exist.`, 'LOUSHO_CONFIG_INVALID', { hint: 'Create it, or pass --dir <agent-dir>.' });
   }
   const files = planFiles(item, agentDir);
   await checkTargets(item, files, agentDir, args.overwrite);
@@ -139,7 +139,7 @@ async function runParsed(args: AddArgs, io: AddIo): Promise<number> {
   return install(args, await loadItem(registry, index, args.name, io), io);
 }
 
-/** Runs `loushy add` with the arguments after `add`; resolves with the exit code. */
+/** Runs `lousho add` with the arguments after `add`; resolves with the exit code. */
 export async function runAdd(args: string[], io: AddIo = { stdin: process.stdin, stdout: process.stdout, stderr: process.stderr }): Promise<number> {
   try {
     const parsed = parseAddArgs(args);

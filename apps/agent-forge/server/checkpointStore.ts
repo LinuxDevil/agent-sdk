@@ -1,11 +1,11 @@
 /**
  * File-backed `CheckpointStore` (src/execution/checkpoint.ts, public SDK
  * API) for the LOU-N runtime control server, persisting under
- * `<baseDir>/.loushy/agents/<agentId>/checkpoints/<sessionId>.json`.
+ * `<baseDir>/.lousho/agents/<agentId>/checkpoints/<sessionId>.json`.
  *
  * This is exactly the seam LOU-L's `createFsAgentStore()` TODO pointed at
  * ("wire this up behind the runtime control server"): a sibling store next
- * to it, following the same `.loushy/agents/<id>/...` layout, rather than
+ * to it, following the same `.lousho/agents/<id>/...` layout, rather than
  * extending fsAgentStore.ts itself (agent specs and run checkpoints are
  * different lifecycles/read-write patterns, so separate files/stores).
  *
@@ -19,7 +19,7 @@
  *
  * LOU-D45: also keeps the bounded per-session `history()` ring the SDK's
  * `LocalStorageCheckpointStore` keeps (same helpers, same semantics), under
- * `.loushy/agents/<agentId>/checkpoint-history/<sessionId>.json`, so the
+ * `.lousho/agents/<agentId>/checkpoint-history/<sessionId>.json`, so the
  * time-travel panel can list a run's steps and `AgentExecutor.fork()` can
  * fork from any of them.
  */
@@ -35,7 +35,7 @@ import {
   type CheckpointHistoryEntry,
   type CheckpointHistoryOptions,
   type CheckpointStore,
-} from '@loushy/build-ai-agent';
+} from '@lousho/build-ai-agent';
 
 /** Write to a temp file and rename it over `file`, so a crash never leaves half a file there. */
 function writeFileAtomic(file: string, content: string): void {
@@ -56,7 +56,7 @@ export class FileCheckpointStore implements CheckpointStore {
   }
 
   private dir(agentId: string, kind = 'checkpoints'): string {
-    return path.join(this.baseDir, '.loushy', 'agents', agentId, kind);
+    return path.join(this.baseDir, '.lousho', 'agents', agentId, kind);
   }
 
   private filePath(agentId: string, sessionId: string, kind?: string): string {
@@ -80,7 +80,7 @@ export class FileCheckpointStore implements CheckpointStore {
   /**
    * `CheckpointStore.save/load/delete` are keyed by `sessionId` alone (see
    * src/execution/checkpoint.ts), but this store's on-disk layout is
-   * per-agent (`.loushy/agents/<agentId>/checkpoints/`). Sessions in this
+   * per-agent (`.lousho/agents/<agentId>/checkpoints/`). Sessions in this
    * server are always created as `${agentId}:${runNumber}` (see
    * runRegistry.ts), so the agentId is recovered by splitting on the first
    * `:` - this keeps the public `CheckpointStore` interface unchanged while

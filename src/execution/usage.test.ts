@@ -310,7 +310,7 @@ describe('run usage (LOU-V5)', () => {
     const chat = tracer.spans().find((s) => s.name.startsWith('chat'));
     expect(chat?.attributes['gen_ai.usage.input_tokens']).toBe(7);
     expect(chat?.attributes['gen_ai.usage.output_tokens']).toBe(3);
-    expect(chat?.attributes['loushy.usage.estimated']).toBeUndefined();
+    expect(chat?.attributes['lousho.usage.estimated']).toBeUndefined();
   });
 
   it('marks the chat span estimated when usage was estimated', async () => {
@@ -318,7 +318,7 @@ describe('run usage (LOU-V5)', () => {
     await AgentExecutor.execute({ agent: agent(), input: 'go', provider: mockModel(['hi']), exporter: tracer.exporter });
 
     const chat = tracer.spans().find((s) => s.name.startsWith('chat'));
-    expect(chat?.attributes['loushy.usage.estimated']).toBe(true);
+    expect(chat?.attributes['lousho.usage.estimated']).toBe(true);
     expect(chat?.attributes['gen_ai.usage.input_tokens']).toBeGreaterThan(0);
   });
 });

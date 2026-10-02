@@ -7,7 +7,7 @@ deterministic mock for tests. Name one with a `provider/model` string, or pass
 a provider instance.
 
 ```ts
-import { resolveProvider, LLMProviderRegistry } from '@loushy/build-ai-agent';
+import { resolveProvider, LLMProviderRegistry } from '@lousho/build-ai-agent';
 
 // The convenient way — reads the credential from the environment
 const openai = resolveProvider('openai/gpt-4o-mini');       // OPENAI_API_KEY
@@ -32,13 +32,13 @@ const custom = LLMProviderRegistry.create('openai', {
 2. **`provider: <LLMProvider>`** - your own provider, a configured built-in
    one, or a mock. You may also pass `model` (a bare id such as `'gpt-4o'`): it
    becomes this agent's model, overriding the provider's default.
-3. **Neither** - resolved from the environment: `LOUSHY_MODEL` (a
+3. **Neither** - resolved from the environment: `LOUSHO_MODEL` (a
    `provider/model` string) if set, otherwise the first of `OPENAI_API_KEY`,
    `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `OLLAMA_BASE_URL` that is
    present. With none set it throws an error listing the fixes.
 
 ```ts
-import { createAgent, createMockProvider, resolveProvider } from '@loushy/build-ai-agent';
+import { createAgent, createMockProvider, resolveProvider } from '@lousho/build-ai-agent';
 
 const fromString = createAgent({ model: 'anthropic/claude-sonnet-5' });
 const fromInstance = createAgent({ provider: resolveProvider('openai/gpt-4o-mini'), model: 'gpt-4o' });
@@ -56,7 +56,7 @@ error, 5xx) twice by default, and with `fallbackModels` moves on to the next
 model when the call still fails:
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({
   model: 'openai/gpt-4o-mini',
@@ -92,7 +92,7 @@ of parts (sent as one user message) or a `Message[]` (passed through as it is).
 
 ```ts
 import { readFileSync } from 'node:fs';
-import { AgentBuilder, AgentExecutor, createAgent, resolveProvider, textOf, type Message } from '@loushy/build-ai-agent';
+import { AgentBuilder, AgentExecutor, createAgent, resolveProvider, textOf, type Message } from '@lousho/build-ai-agent';
 
 const agent = AgentBuilder.create().setName('vision').setPrompt('Describe images briefly.').build();
 const input: Message[] = [
@@ -170,12 +170,12 @@ provider packages:
 | `^6.0.0` | `^3.0.0` | `ollama-ai-provider-v2@^3.0.0` |
 | `^7.0.0` | `^4.0.0` | `ollama-ai-provider-v2@^4.0.0` |
 
-The install hint of a missing provider package and `loushy doctor` name the
-version for the `ai` you have installed, and `loushy doctor` flags a mismatched
+The install hint of a missing provider package and `lousho doctor` name the
+version for the `ai` you have installed, and `lousho doctor` flags a mismatched
 pair (for example `ai` 7 with `@ai-sdk/openai` 1.x). `OllamaProvider` loads
 `ollama-ai-provider` on `ai` 4 and `ollama-ai-provider-v2` on `ai` 6/7; the v2
 package peers on zod 4, which the SDK accepts since LOU-D29, so install zod 4
-with it (zod 3 projects use Ollama with `ai` 4). `loushy init` scaffolds `ai@^7.0.0` with `@ai-sdk/*@^4.0.0` for
+with it (zod 3 projects use Ollama with `ai` 4). `lousho init` scaffolds `ai@^7.0.0` with `@ai-sdk/*@^4.0.0` for
 OpenAI, Anthropic and OpenRouter, and `ai@^4.3.19` for Ollama.
 
 OpenRouter uses `@ai-sdk/openai` against OpenRouter's base URL. From

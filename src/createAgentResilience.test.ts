@@ -10,7 +10,7 @@ import { LLMProviderRegistry, type LLMProvider, type LLMProviderConfig } from '.
 import { mockModel, type MockModel } from './testing';
 import type { AgentEvent, AgentRun } from './execution';
 
-const ENV_VARS = ['LOUSHY_MODEL', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'OLLAMA_BASE_URL'];
+const ENV_VARS = ['LOUSHO_MODEL', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'OLLAMA_BASE_URL'];
 
 function apiError(statusCode: number, headers?: Record<string, string>): APICallError {
   return new APICallError({

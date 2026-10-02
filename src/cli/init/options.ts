@@ -1,5 +1,5 @@
 /**
- * Flag parsing and value validation for `loushy init`.
+ * Flag parsing and value validation for `lousho init`.
  */
 import { parseArgs } from 'node:util';
 import { listProviders } from '../../providers/providerSpec';
@@ -13,9 +13,9 @@ export type PackageManager = (typeof PACKAGE_MANAGERS)[number];
 /** Provider names `--provider` accepts (openai, anthropic, openrouter, ollama). */
 export const PROVIDER_NAMES: readonly string[] = listProviders().map((info) => info.name);
 
-export const INIT_USAGE = `Usage: loushy init [dir] [options]
+export const INIT_USAGE = `Usage: lousho init [dir] [options]
 
-Scaffold a runnable @loushy/build-ai-agent project in one command.
+Scaffold a runnable @lousho/build-ai-agent project in one command.
 
 Options:
   --provider <name>         ${PROVIDER_NAMES.join(' | ')}  (default: detected from your API key env var, else openai)
@@ -26,7 +26,7 @@ Options:
   --no-git                  Do not run git init
   --force                   Write into a directory even if it is not empty
   --sdk-path <dir|tarball>  Local development: depend on a checkout or packed .tgz of the SDK
-                            instead of the published version (env: LOUSHY_SDK_PATH).
+                            instead of the published version (env: LOUSHO_SDK_PATH).
                             Needed until the package is on npm; see docs/installation.md
   --help, -h                Show this help`;
 
@@ -46,7 +46,7 @@ export interface InitOptions {
 /** Thrown for any bad flag or value; the message is printed as-is. */
 export class InitUsageError extends Error {}
 
-/** Parses `loushy init` argv. Unknown flags and extra positionals are errors. */
+/** Parses `lousho init` argv. Unknown flags and extra positionals are errors. */
 export function parseInitArgs(argv: readonly string[], env: NodeJS.ProcessEnv = process.env): InitOptions {
   let parsed: ReturnType<typeof parseArgs>;
   try {
@@ -67,11 +67,11 @@ export function parseInitArgs(argv: readonly string[], env: NodeJS.ProcessEnv = 
       },
     });
   } catch (error) {
-    throw new InitUsageError(`loushy init: ${error instanceof Error ? error.message : String(error)}`);
+    throw new InitUsageError(`lousho init: ${error instanceof Error ? error.message : String(error)}`);
   }
   const { values, positionals } = parsed;
   if (positionals.length > 1) {
-    throw new InitUsageError(`loushy init: expected at most one directory, got ${positionals.length}: ${positionals.join(' ')}`);
+    throw new InitUsageError(`lousho init: expected at most one directory, got ${positionals.length}: ${positionals.join(' ')}`);
   }
   return {
     help: values.help === true,
@@ -83,14 +83,14 @@ export function parseInitArgs(argv: readonly string[], env: NodeJS.ProcessEnv = 
     install: values['no-install'] !== true,
     git: values['no-git'] !== true,
     force: values.force === true,
-    sdkPath: (values['sdk-path'] as string | undefined) ?? (env.LOUSHY_SDK_PATH || undefined),
+    sdkPath: (values['sdk-path'] as string | undefined) ?? (env.LOUSHO_SDK_PATH || undefined),
   };
 }
 
 /** Returns `value` if it is one of `allowed`, otherwise throws naming the flag and the allowed set. */
 export function expectOneOf<T extends string>(flag: string, value: string, allowed: readonly T[]): T {
   if ((allowed as readonly string[]).includes(value)) return value as T;
-  throw new InitUsageError(`loushy init: invalid ${flag} '${value}'. Allowed values: ${allowed.join(', ')}.`);
+  throw new InitUsageError(`lousho init: invalid ${flag} '${value}'. Allowed values: ${allowed.join(', ')}.`);
 }
 
 /**

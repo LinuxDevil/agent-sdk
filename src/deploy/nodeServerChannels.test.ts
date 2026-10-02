@@ -20,7 +20,7 @@ describe('node server channels', () => {
         sent.push(`${String(inbound.replyTo)}:${text}`);
       },
     });
-    const { server } = createDeployedServer(agent, { env: { LOUSHY_API_TOKEN: 'secret' }, channels: [sms] });
+    const { server } = createDeployedServer(agent, { env: { LOUSHO_API_TOKEN: 'secret' }, channels: [sms] });
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 

@@ -82,7 +82,7 @@ describe('createRouteHandler (LOU-P4)', () => {
     expect((await handler(get('/v1/bot/nope'))).status).toBe(404);
   });
 
-  it('serves the remote createAgentRunner behind useLoushyAgent({ url, approvalsUrl }) unchanged, approvals included', async () => {
+  it('serves the remote createAgentRunner behind useLoushoAgent({ url, approvalsUrl }) unchanged, approvals included', async () => {
     const { handler } = routes([{ toolCalls: [{ name: 'deploy', id: 'c1' }] }, 'Deployed.']);
     let state: AgentUIState = initialAgentUIState;
     const fetchImpl = ((input: RequestInfo | URL, init?: RequestInit) => handler(new Request(`http://app.test${String(input)}`, init))) as typeof fetch;

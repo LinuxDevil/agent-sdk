@@ -11,7 +11,7 @@ code at any time without a rewrite.
 > implied; the files run with your process's full permissions.
 
 ```ts
-import { loadAgentDir } from '@loushy/build-ai-agent';
+import { loadAgentDir } from '@lousho/build-ai-agent';
 
 const agent = await loadAgentDir('./my-agent');
 const { text } = await agent.send('Hello!');
@@ -70,7 +70,7 @@ that exports no tool at all is an error, as are two tools with the same name
 ```ts no-verify
 // tools/send_email.ts
 import { z } from 'zod';
-import { defineTool } from '@loushy/build-ai-agent';
+import { defineTool } from '@lousho/build-ai-agent';
 
 export default defineTool({
   name: 'send_email',
@@ -100,7 +100,7 @@ all of them.
 Each file in `channels/` default-exports a [channel](./channels.md) made with
 `defineChannel()` or a built-in factory (`webhookChannel()`, `httpChannel()`,
 `slackChannel()`). The channel's name is the one it sets, else the file name.
-A file that does not export a channel fails with `LOUSHY_CHANNEL_INVALID`
+A file that does not export a channel fails with `LOUSHO_CHANNEL_INVALID`
 naming the file. `resolveAgentDir()` returns them as `channels` (and their names
 as `manifest.channels`); `loadAgentDir()` does not mount them. The node server
 (`createDeployedServer(agent, { channels })`) mounts them under `/channels`
@@ -108,7 +108,7 @@ next to the chat routes; with your own server, use `mountChannels()`:
 
 ```ts
 import { createServer } from 'node:http';
-import { createAgent, mountChannels, resolveAgentDir } from '@loushy/build-ai-agent';
+import { createAgent, mountChannels, resolveAgentDir } from '@lousho/build-ai-agent';
 
 // channels/support.ts: export default webhookChannel({ secret: process.env.HOOK_SECRET ?? '' })
 const { config, channels } = await resolveAgentDir('./my-agent');
@@ -116,7 +116,7 @@ const handler = mountChannels(createAgent(config), channels);
 createServer((req, res) => void handler(req, res).then((handled) => handled || res.writeHead(404).end())).listen(3000);
 ```
 
-`loushy dev` mounts them too, and `loushy build` deploys them (see below).
+`lousho dev` mounts them too, and `lousho build` deploys them (see below).
 
 ### Memory
 
@@ -126,16 +126,16 @@ file name is the slot name. Unlike schedules and channels, slots are part of the
 agent: `loadAgentDir()` passes them to `createAgent({ memory })`, so the
 `remember_<name>` / `recall_<name>` tools and recall into the prompt work with no
 extra code, and `manifest.memory` lists their names. Each slot uses its own
-`provider`. A file that does not export a slot fails with `LOUSHY_MEMORY_INVALID`
+`provider`. A file that does not export a slot fails with `LOUSHO_MEMORY_INVALID`
 naming the file. A `memory` override passed to `loadAgentDir(dir, { overrides })`
 is merged with the directory's slots by name: the override wins a name clash.
 
 ```ts
-import { defineMemory, fileMemory, resolveAgentDir } from '@loushy/build-ai-agent';
+import { defineMemory, fileMemory, resolveAgentDir } from '@lousho/build-ai-agent';
 
-// memory/notes.ts: export default { scope: 'global', provider: fileMemory({ dir: './.loushy/memory' }) }
+// memory/notes.ts: export default { scope: 'global', provider: fileMemory({ dir: './.lousho/memory' }) }
 const { manifest } = await resolveAgentDir('./my-agent', {
-  memory: [defineMemory({ name: 'notes', scope: 'global', provider: fileMemory({ dir: './.loushy/memory' }) })],
+  memory: [defineMemory({ name: 'notes', scope: 'global', provider: fileMemory({ dir: './.lousho/memory' }) })],
 });
 console.log(manifest.memory); // names found in memory/
 ```
@@ -154,7 +154,7 @@ console.log(manifest.memory); // names found in memory/
 handy for tests and tooling:
 
 ```ts
-import { resolveAgentDir, createAgent } from '@loushy/build-ai-agent';
+import { resolveAgentDir, createAgent } from '@lousho/build-ai-agent';
 
 const { config, manifest } = await resolveAgentDir('./my-agent');
 console.log(manifest.tools, manifest.skills, manifest.subagents);
@@ -167,8 +167,8 @@ The second argument takes the same options as `createAgent()` and wins over the
 files. Use it to swap the model in tests:
 
 ```ts
-import { loadAgentDir } from '@loushy/build-ai-agent';
-import { mockModel } from '@loushy/build-ai-agent/testing';
+import { loadAgentDir } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
 
 const agent = await loadAgentDir('./my-agent', { provider: mockModel(['Hi there.']) });
 ```
@@ -194,15 +194,15 @@ says so. Compile the directory first, or use `.js`/`.mjs` tools with an
 `import` syntax needs `"type": "module"` in the nearest `package.json` (or the
 `.mjs` extension).
 
-## Run it with `loushy dev`
+## Run it with `lousho dev`
 
 ```bash
-npx loushy dev ./my-agent
+npx lousho dev ./my-agent
 ```
 
 Serves the chat UI and `POST /chat` for the directory and reloads it when
 `instructions.md`, the config file, `tools/`, `skills/` or `subagents/` change
-(see [`loushy dev`](cli.md#loushy-dev) for the details). A tool file is
+(see [`lousho dev`](cli.md#lousho-dev) for the details). A tool file is
 imported afresh on each reload, so an edit to `tools/*.ts` takes effect on the
 next message. A failed reload (a syntax error, an empty `instructions.md`) is
 logged and shown in the chat page, and the previous agent keeps answering.
@@ -211,12 +211,12 @@ The directory's `channels/` are mounted under `/channels` and its `schedules/`
 are started, and a reload swaps both: the old schedules are stopped before the
 new ones start, so no timer or route outlives its file. Pass `--no-schedules` to
 mount the channels but not fire the crons (see [Schedules in
-dev](schedules.md#in-loushy-dev)).
+dev](schedules.md#in-lousho-dev)).
 
-## Deploy it with `loushy build`
+## Deploy it with `lousho build`
 
 ```bash
-npx loushy build ./my-agent --target=node-server    # or docker
+npx lousho build ./my-agent --target=node-server    # or docker
 ```
 
 The agent directory is the unit of deployment: the built server loads it with
@@ -230,5 +230,5 @@ The Cloudflare Worker target takes spec files only.
 
 ## What is not covered
 
-`loushy mcp` still takes an agent spec file ([Configuration](configuration.md)),
+`lousho mcp` still takes an agent spec file ([Configuration](configuration.md)),
 not a directory.

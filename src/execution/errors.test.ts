@@ -33,25 +33,25 @@ describe('Error Classes', () => {
     });
 
     it('appends [code] hint (docs) from the registry to message and toString() (LOU-D2)', () => {
-      const error = new SDKError('Boom', 'LOUSHY_CONFIG_INVALID');
+      const error = new SDKError('Boom', 'LOUSHO_CONFIG_INVALID');
       const help =
-        '[LOUSHY_CONFIG_INVALID] Fix the option named in the message. ' +
-        '(https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#loushy_config_invalid)';
+        '[LOUSHO_CONFIG_INVALID] Fix the option named in the message. ' +
+        '(https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_config_invalid)';
       expect(error.hint).toBe('Fix the option named in the message.');
-      expect(error.docs).toBe('https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#loushy_config_invalid');
+      expect(error.docs).toBe('https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_config_invalid');
       expect(error.message).toBe(`Boom\n${help}`);
       expect(error.toString()).toBe(`SDKError: Boom\n${help}`);
-      expect(new SDKError('x').code).toBe('LOUSHY_GENERIC_ERROR');
+      expect(new SDKError('x').code).toBe('LOUSHO_GENERIC_ERROR');
     });
 
     it('keeps a model-facing message as given but still formats toString() (LOU-D2)', () => {
       const error = new ToolExecutionError('Tool error', 'http');
       expect(error.message).toBe('Tool error');
-      expect(error.code).toBe('LOUSHY_TOOL_EXECUTION_FAILED');
-      expect(error.toString()).toMatch(/^ToolExecutionError: Tool error\n\[LOUSHY_TOOL_EXECUTION_FAILED\] .+ \(https:\/\/.+#loushy_tool_execution_failed\)$/);
-      expect(new LLMProviderError('x').code).toBe('LOUSHY_PROVIDER_REQUEST_FAILED');
-      expect(new TimeoutError('x').code).toBe('LOUSHY_OPERATION_TIMEOUT');
-      expect(new RateLimitError('x').code).toBe('LOUSHY_PROVIDER_RATE_LIMITED');
+      expect(error.code).toBe('LOUSHO_TOOL_EXECUTION_FAILED');
+      expect(error.toString()).toMatch(/^ToolExecutionError: Tool error\n\[LOUSHO_TOOL_EXECUTION_FAILED\] .+ \(https:\/\/.+#lousho_tool_execution_failed\)$/);
+      expect(new LLMProviderError('x').code).toBe('LOUSHO_PROVIDER_REQUEST_FAILED');
+      expect(new TimeoutError('x').code).toBe('LOUSHO_OPERATION_TIMEOUT');
+      expect(new RateLimitError('x').code).toBe('LOUSHO_PROVIDER_RATE_LIMITED');
     });
   });
 
@@ -63,7 +63,7 @@ describe('Error Classes', () => {
       expect(error.detail).toBe('Agent failed');
       expect(error.agentId).toBe('agent-1');
       expect(error.cause).toBe(cause);
-      expect(error.code).toBe('LOUSHY_AGENT_EXECUTION_FAILED');
+      expect(error.code).toBe('LOUSHO_AGENT_EXECUTION_FAILED');
     });
   });
 
@@ -106,7 +106,7 @@ describe('Error Classes', () => {
       );
 
       expect(error.detail).toBe('Flow failed');
-      expect(error.code).toBe('LOUSHY_FLOW_EXECUTION_FAILED');
+      expect(error.code).toBe('LOUSHO_FLOW_EXECUTION_FAILED');
       expect(error.flowCode).toBe('my-flow');
       expect(error.step).toBe('step-1');
       expect(error.cause).toBe(cause);
@@ -118,7 +118,7 @@ describe('Error Classes', () => {
       const error = new ConfigurationError('Invalid config', 'apiKey');
 
       expect(error.detail).toBe('Invalid config');
-      expect(error.code).toBe('LOUSHY_CONFIG_INVALID');
+      expect(error.code).toBe('LOUSHO_CONFIG_INVALID');
       expect(error.field).toBe('apiKey');
     });
   });
@@ -132,7 +132,7 @@ describe('Error Classes', () => {
       const error = new ValidationError('Validation failed', errors);
 
       expect(error.detail).toBe('Validation failed');
-      expect(error.code).toBe('LOUSHY_VALIDATION_FAILED');
+      expect(error.code).toBe('LOUSHO_VALIDATION_FAILED');
       expect(error.errors).toEqual(errors);
     });
   });

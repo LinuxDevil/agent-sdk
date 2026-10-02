@@ -25,7 +25,7 @@ export interface Skill {
 }
 
 function fail(problem: string, fix: string): never {
-  throw new SDKError(`defineSkill: ${problem}. ${fix}`, 'LOUSHY_SKILL_INVALID');
+  throw new SDKError(`defineSkill: ${problem}. ${fix}`, 'LOUSHO_SKILL_INVALID');
 }
 
 function assertNonEmpty(name: string, field: 'description' | 'content', value: unknown): void {

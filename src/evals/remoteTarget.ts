@@ -1,6 +1,6 @@
 /**
  * Remote eval target (LOU-D47): runs an eval case against a deployed agent
- * (`loushy deploy` node server or Cloudflare Worker) over its session API,
+ * (`lousho deploy` node server or Cloudflare Worker) over its session API,
  * `POST /chat { sessionId, input }` streamed as SSE, and turns the streamed
  * events into the `ExecutionResult` the in-process path produces, so checks,
  * scorers, the judge and the reporters work unchanged.
@@ -15,15 +15,15 @@ export interface EvalTarget {
   send(input: AgentInput): Promise<ExecutionResult>;
 }
 
-/** Environment variables `loushy eval --url` / `--token` hand to the vitest worker. */
-export const REMOTE_URL_ENV = 'LOUSHY_EVAL_URL';
-export const REMOTE_TOKEN_ENV = 'LOUSHY_EVAL_TOKEN';
+/** Environment variables `lousho eval --url` / `--token` hand to the vitest worker. */
+export const REMOTE_URL_ENV = 'LOUSHO_EVAL_URL';
+export const REMOTE_TOKEN_ENV = 'LOUSHO_EVAL_TOKEN';
 
 /** Options of {@link remoteTarget}. */
 export interface RemoteTargetOptions {
   /** Base URL of the deployed agent, e.g. `https://agent.example.com` (the `/chat` routes live under it). */
   url: string;
-  /** Bearer token (`LOUSHY_API_TOKEN` of the deployment). Never printed or put in a report. */
+  /** Bearer token (`LOUSHO_API_TOKEN` of the deployment). Never printed or put in a report. */
   auth?: string;
   /** `fetch` to use; defaults to the global one. Tests pass an in-process handler. */
   fetch?: typeof fetch;
@@ -35,7 +35,7 @@ export interface RemoteExecutionResult extends ExecutionResult {
   missing: Array<'usage' | 'steps'>;
 }
 
-const LABEL = 'loushy eval --url: the deployment';
+const LABEL = 'lousho eval --url: the deployment';
 
 function toResult(summary: SessionTurnSummary): RemoteExecutionResult {
   const { usage: u, steps, toolCalls } = summary;
@@ -53,14 +53,14 @@ function toResult(summary: SessionTurnSummary): RemoteExecutionResult {
  * `POST /chat` and the SSE stream is read to the end.
  *
  * Failures (unreachable, 401, other non-2xx, a truncated stream) throw an
- * `SDKError` (`LOUSHY_REMOTE_UNAUTHORIZED`, `LOUSHY_REMOTE_REQUEST_FAILED`),
+ * `SDKError` (`LOUSHO_REMOTE_UNAUTHORIZED`, `LOUSHO_REMOTE_REQUEST_FAILED`),
  * which fails the case. Results carry `missing` when the stream had no usage.
  *
  * @example
  * ```ts
  * defineEval({
  *   name: 'smoke',
- *   target: remoteTarget({ url: 'https://agent.example.com', auth: process.env.LOUSHY_EVAL_TOKEN }),
+ *   target: remoteTarget({ url: 'https://agent.example.com', auth: process.env.LOUSHO_EVAL_TOKEN }),
  *   async test(t) {
  *     await t.send('Refund order 42');
  *     t.completed();
@@ -77,7 +77,7 @@ export function remoteTarget(options: RemoteTargetOptions): () => EvalTarget {
   };
 }
 
-/** The target `loushy eval --url` asked for (through the worker's environment), if any. */
+/** The target `lousho eval --url` asked for (through the worker's environment), if any. */
 export function remoteTargetFromEnv(env: Record<string, string | undefined> = process.env): (() => EvalTarget) | undefined {
   const url = env[REMOTE_URL_ENV];
   return url ? remoteTarget({ url, auth: env[REMOTE_TOKEN_ENV] || undefined }) : undefined;

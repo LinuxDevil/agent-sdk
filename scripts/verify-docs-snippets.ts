@@ -6,7 +6,7 @@
  * one type-checks AND runs without error against the LOCALLY BUILT package
  * - exactly what a reader copy-pasting it into a fresh project would get.
  *
- * How (mirrors LOU-H4's create-loushy-agent approach for its generated
+ * How (mirrors LOU-H4's create-lousho-agent approach for its generated
  * projects): build the SDK, `npm pack` it, install the tarball into a
  * throwaway temp project, write each snippet there as its own ES module
  * (`snippet-<n>.mts`), then
@@ -23,7 +23,7 @@
  *
  *   A. SOURCE CHECK - every ```ts / ```typescript block in README.md and
  *      docs/*.md (all of them, not just the quick start) is type-checked
- *      against the real SDK SOURCE: `@loushy/build-ai-agent` and its subpaths
+ *      against the real SDK SOURCE: `@lousho/build-ai-agent` and its subpaths
  *      are resolved to `src/` through `paths` derived from package.json
  *      `exports`, so a docs example can never drift from the code (wrong
  *      argument order, methods that do not exist, ...). Types only; nothing
@@ -57,7 +57,7 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 /** Docs that are type-checked AND executed against the packed tarball (stage B). */
 const RUNNABLE_DOCS = [path.join(REPO_ROOT, 'docs', 'quick-start.md')];
 /** Ambient names (typed against the SDK where possible) that intentionally-partial snippets may use without defining. */
-const SDK = "import('@loushy/build-ai-agent')";
+const SDK = "import('@lousho/build-ai-agent')";
 const PLACEHOLDERS: Record<string, string> = {
   agent: `${SDK}.AgentConfig`,
   provider: `${SDK}.LLMProvider`,
@@ -117,7 +117,7 @@ const npmCmd = isWindows ? 'npm.cmd' : 'npm';
 function run(cmd: string, args: string[], cwd: string): string {
   // shell:true is needed on Windows to run npm.cmd; every argument here is a
   // fixed literal or a path this script computed itself (same reasoning as
-  // packages/create-loushy-agent/src/template.ts).
+  // packages/create-lousho-agent/src/template.ts).
   return execFileSync(cmd, args, { cwd, encoding: 'utf8', shell: isWindows, stdio: ['ignore', 'pipe', 'pipe'] });
 }
 
@@ -145,7 +145,7 @@ function setUpProject(projectDir: string, skipBuild: boolean): void {
   // `@ai-sdk/*` peer on several majors (LOU-D28d): pin the pairing the repo
   // develops against (its devDependencies), not whatever the widest range resolves to.
   const dependencies: Record<string, string> = {
-    '@loushy/build-ai-agent': `file:./${tarball}`,
+    '@lousho/build-ai-agent': `file:./${tarball}`,
     ai: dev.ai,
     zod: peers.zod,
     '@ai-sdk/openai': dev['@ai-sdk/openai'],
@@ -366,7 +366,7 @@ function checkAgainstSource(snippets: Snippet[]): Failure[] {
 
 /** Stage B: type-check and run the snippets against the packed tarball in a throwaway project. */
 function verifyPacked(snippets: Snippet[], skipBuild: boolean, keep: boolean): Failure[] {
-  const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-docs-snippets-'));
+  const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-docs-snippets-'));
   try {
     setUpProject(projectDir, skipBuild);
     const files = writeSnippetFiles(projectDir, snippets);

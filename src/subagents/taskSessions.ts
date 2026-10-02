@@ -19,7 +19,7 @@ export interface TaskRecord {
 }
 
 /** Name of the header message stored before a child's transcript. */
-const HEADER = 'loushy-subagent-task';
+const HEADER = 'lousho-subagent-task';
 
 async function sha256(text: string): Promise<string> {
   const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
@@ -38,7 +38,7 @@ function runMemory(): SessionStore {
 
 /** The error for a taskId this lead session has no conversation for. */
 export function taskNotFound(message: string): SDKError {
-  return new SDKError(message, 'LOUSHY_SUBAGENT_TASK_NOT_FOUND');
+  return new SDKError(message, 'LOUSHO_SUBAGENT_TASK_NOT_FOUND');
 }
 
 /** The child conversations of one lead session (or, without a session, of one lead run). */
@@ -106,6 +106,6 @@ export class TaskSessions {
 export function busy(taskId: string): SDKError {
   return new SDKError(
     `Task '${taskId}' is still running. Wait for it with agent_await (or stop it with agent_cancel), then continue it.`,
-    'LOUSHY_SUBAGENT_TASK_BUSY'
+    'LOUSHO_SUBAGENT_TASK_BUSY'
   );
 }

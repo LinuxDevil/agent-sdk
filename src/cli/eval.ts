@@ -1,5 +1,5 @@
 /**
- * `loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge]`
+ * `lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge]`
  * - run eval files under vitest and report the results (LOU-D8).
  * `--record` / `--replay` / `--drift` run every case through a cassette (LOU-D46, src/evals/cassettes.ts).
  * `--url <base> [--token t]` runs the cases against a deployed agent instead (LOU-D47, src/evals/remoteTarget.ts).
@@ -25,9 +25,9 @@ import { parseCommand, stringValue, usageError, type CommandSpec } from './args'
 import { failsRun, parseResults, renderDriftTable, renderJson, renderJunit, renderTable, type DriftRow } from './evalReport';
 
 const USAGE =
-  'Usage: loushy eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts]';
+  'Usage: lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts]';
 
-/** Parsed `loushy eval` arguments. */
+/** Parsed `lousho eval` arguments. */
 export interface EvalCliArgs {
   /** Eval files to run; empty means every `*.eval.ts` (or `*.judge.eval.ts` with `--judge`). */
   globs: string[];
@@ -43,7 +43,7 @@ export interface EvalCliArgs {
   config?: string;
   /** Run the cases against the deployed agent at this base URL instead of in-process (LOU-D47). */
   url?: string;
-  /** Bearer token for `url`; defaults to the `LOUSHY_EVAL_TOKEN` environment variable. Never printed. */
+  /** Bearer token for `url`; defaults to the `LOUSHO_EVAL_TOKEN` environment variable. Never printed. */
   token?: string;
   /** Record a cassette per case from the real provider (LOU-D46). */
   record?: boolean;
@@ -81,8 +81,8 @@ function assertOneCassetteMode(args: EvalCliArgs): void {
   if (args.driftUsage) args.drift = true;
   if (args.url && (args.record || args.replay || args.drift)) {
     throw new SDKError(
-      'loushy eval: --url cannot be combined with --record, --replay or --drift: cassettes record a provider in-process, and a deployed agent runs its own.',
-      'LOUSHY_CONFIG_CONFLICTING_OPTIONS'
+      'lousho eval: --url cannot be combined with --record, --replay or --drift: cassettes record a provider in-process, and a deployed agent runs its own.',
+      'LOUSHO_CONFIG_CONFLICTING_OPTIONS'
     );
   }
   if ([args.record, args.replay, args.drift].filter(Boolean).length > 1) {
@@ -90,7 +90,7 @@ function assertOneCassetteMode(args: EvalCliArgs): void {
   }
 }
 
-/** Parses `loushy eval` arguments; throws a `LOUSHY_CONFIG_INVALID` error (usage as the hint) for a bad invocation. */
+/** Parses `lousho eval` arguments; throws a `LOUSHO_CONFIG_INVALID` error (usage as the hint) for a bad invocation. */
 export function parseEvalArgs(rest: string[]): EvalCliArgs {
   const { values: v, positionals, help } = parseCommand(SPEC, rest);
   if (help) return { globs: [], tags: [], strict: false, judge: false, help };
@@ -160,7 +160,7 @@ export function buildVitestConfig(args: Pick<EvalCliArgs, 'globs' | 'judge'>): s
     environment: 'node',
     include: args.globs.length > 0 ? args.globs : defaults,
     exclude,
-    env: args.judge ? { LOUSHY_ALLOW_LLM_JUDGE: '1' } : {},
+    env: args.judge ? { LOUSHO_ALLOW_LLM_JUDGE: '1' } : {},
   };
   return `export default ${JSON.stringify({ test }, null, 2)};\n`;
 }
@@ -204,7 +204,7 @@ function prepareInvocation(args: EvalCliArgs, cwd: string, workDir: string): Vit
       ...withoutVitestVars(process.env),
       [RESULTS_ENV]: resultsFile,
       [TAGS_ENV]: args.tags.join(','),
-      ...(args.judge ? { LOUSHY_ALLOW_LLM_JUDGE: '1' } : {}),
+      ...(args.judge ? { LOUSHO_ALLOW_LLM_JUDGE: '1' } : {}),
       ...(args.token ? { [REMOTE_TOKEN_ENV]: args.token } : {}),
       [CASSETTES_ENV]: cassetteMode(args),
       [REMOTE_URL_ENV]: args.url ?? '',
@@ -255,13 +255,13 @@ function applyDrift(results: EvalResult[], args: EvalCliArgs, driftDir: string):
 }
 
 async function runAndReport(args: EvalCliArgs, deps: Required<EvalDeps>, vitestBin: string): Promise<number> {
-  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-eval-'));
+  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-eval-'));
   try {
     const invocation = prepareInvocation(args, deps.cwd, workDir);
     const vitestCode = await deps.spawnVitest(vitestBin, invocation.args, invocation.env);
     const results = parseResults(fs.readFileSync(invocation.resultsFile, 'utf8'));
     const drift = args.drift ? applyDrift(results, args, invocation.env[DRIFT_DIR_ENV] as string) : undefined;
-    deps.log(results.length > 0 ? `\n${renderTable(results, args.strict)}` : '\nloushy eval: no eval results were recorded.');
+    deps.log(results.length > 0 ? `\n${renderTable(results, args.strict)}` : '\nlousho eval: no eval results were recorded.');
     if (drift) deps.log(`\n${renderDriftTable(drift)}`);
     if (args.junit) writeReport(args.junit, renderJunit(results, args.strict));
     if (args.json) writeReport(args.json, renderJson(results, args.strict));
@@ -293,7 +293,7 @@ export async function runEval(rest: string[], deps: EvalDeps = {}): Promise<numb
     }
     const vitestBin = resolved.resolveVitest(resolved.cwd);
     if (!vitestBin) {
-      console.error('loushy eval: vitest is not installed in this project. Install it with:\n  npm install --save-dev vitest');
+      console.error('lousho eval: vitest is not installed in this project. Install it with:\n  npm install --save-dev vitest');
       return 2;
     }
     return await runAndReport(args, resolved, vitestBin);

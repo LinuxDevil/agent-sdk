@@ -58,7 +58,7 @@ export interface EvalConfig {
   score: (result: ExecutionResult) => number | Promise<number>;
   /** Minimum score (inclusive) for the eval to pass. */
   threshold: number;
-  /** Tags for `loushy eval --tag`. */
+  /** Tags for `lousho eval --tag`. */
   tags?: string[];
 }
 
@@ -81,7 +81,7 @@ export interface EvalConfig {
  * ```
  */
 export interface TrajectoryEvalConfig<C = Record<string, never>> {
-  /** Eval name, shown in vitest and `loushy eval` output. */
+  /** Eval name, shown in vitest and `lousho eval` output. */
   name: string;
   /**
    * The agent under test (from `createAgent()`), or a factory that builds a
@@ -91,10 +91,10 @@ export interface TrajectoryEvalConfig<C = Record<string, never>> {
   agent?: AgentSource;
   /**
    * Run the cases against this instead of `agent`, e.g. `remoteTarget({ url })`
-   * for a deployed agent. `loushy eval --url` overrides both.
+   * for a deployed agent. `lousho eval --url` overrides both.
    */
   target?: AgentSource;
-  /** Tags for `loushy eval --tag`. */
+  /** Tags for `lousho eval --tag`. */
   tags?: string[];
   /** Dataset: `test` runs once per case. A case's `label` (or `name`, or its `input`) names it in reports. */
   cases?: readonly C[];
@@ -135,11 +135,11 @@ async function runAndReport(
   const spec = { ...config, agent: agent ?? missingAgent };
   const result = await withEvalCassettes({ file, name: config.name, label }, () => runTrajectoryCase(spec, c, label, file));
   recordEvalResult(result);
-  if (!result.passed) throw new SDKError(describeFailure(result), 'LOUSHY_TEST_FAILED');
+  if (!result.passed) throw new SDKError(describeFailure(result), 'LOUSHO_TEST_FAILED');
 }
 
 const missingAgent: AgentSource = () => {
-  throw new SDKError("defineEval() needs an `agent` (or a `target`) to run the cases against", 'LOUSHY_CONFIG_MISSING_AGENT');
+  throw new SDKError("defineEval() needs an `agent` (or a `target`) to run the cases against", 'LOUSHO_CONFIG_MISSING_AGENT');
 };
 
 function defineTrajectoryEval(config: TrajectoryEvalConfig<unknown>): void {
@@ -177,7 +177,7 @@ function currentVitest(): Pick<typeof Vitest, 'test' | 'expect'> {
   if (typeof g.test === 'function' && typeof g.expect === 'function') {
     return { test: g.test as typeof Vitest.test, expect: g.expect as typeof Vitest.expect };
   }
-  throw new SDKError('defineEval() must be called from a test file running under vitest', 'LOUSHY_EVALS_INVALID');
+  throw new SDKError('defineEval() must be called from a test file running under vitest', 'LOUSHO_EVALS_INVALID');
 }
 
 
@@ -188,7 +188,7 @@ function defineClassicEval(config: EvalConfig): void {
 
   register(name, async () => {
     if (remoteTargetFromEnv()) {
-      throw new SDKError(`eval '${name}' is a score/threshold eval, which runs an in-process provider and cannot run with --url; use a trajectory eval`, 'LOUSHY_CONFIG_CONFLICTING_OPTIONS');
+      throw new SDKError(`eval '${name}' is a score/threshold eval, which runs an in-process provider and cannot run with --url; use a trajectory eval`, 'LOUSHO_CONFIG_CONFLICTING_OPTIONS');
     }
     const file = currentTestPath(expect);
     const evalResult = await withEvalCassettes({ file, name }, async () => {
@@ -230,7 +230,7 @@ function defineClassicEval(config: EvalConfig): void {
  * - Trajectory: `{ name, agent, cases?, test(t, c) }` drives a
  *   `createAgent()` agent and asserts on its tool calls, steps and reply.
  *
- * Run evals with `loushy eval` for a summary table and JUnit/JSON reports.
+ * Run evals with `lousho eval` for a summary table and JUnit/JSON reports.
  *
  * @example
  * ```ts

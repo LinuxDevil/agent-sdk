@@ -113,7 +113,7 @@ describe('a missing provider package on ai 6/7', () => {
 
     expect(error).toMatchObject({
       name: 'MissingPeerDependencyError',
-      code: 'LOUSHY_PEER_MISSING',
+      code: 'LOUSHO_PEER_MISSING',
       packageName: 'ollama-ai-provider-v2',
       installCommand: `npm install ollama-ai-provider-v2@${range}`,
     });

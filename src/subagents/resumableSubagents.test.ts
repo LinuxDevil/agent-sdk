@@ -92,9 +92,9 @@ describe('resumable sub-agent tasks (LOU-Y6)', () => {
     const [unknown, , foreign, noId] = taskResults((await lead.send('go')).messages);
 
     expect(unknown).toContain("Unknown taskId 'task_9'");
-    expect(unknown).toContain('LOUSHY_SUBAGENT_TASK_NOT_FOUND');
+    expect(unknown).toContain('LOUSHO_SUBAGENT_TASK_NOT_FOUND');
     expect(foreign).toContain("belongs to sub-agent 'researcher'");
-    expect(foreign).toContain('LOUSHY_SUBAGENT_TASK_NOT_FOUND');
+    expect(foreign).toContain('LOUSHO_SUBAGENT_TASK_NOT_FOUND');
     expect(noId).toContain("mode 'fork' needs the taskId");
   });
 
@@ -108,13 +108,13 @@ describe('resumable sub-agent tasks (LOU-Y6)', () => {
     const other = await lead.session({ id: 'beta' }).send('steal');
     const same = await lead.session({ id: 'alpha' }).send('continue');
 
-    expect(taskResults(other.messages)[0]).toContain('LOUSHY_SUBAGENT_TASK_NOT_FOUND');
+    expect(taskResults(other.messages)[0]).toContain('LOUSHO_SUBAGENT_TASK_NOT_FOUND');
     expect(taskResults(same.messages).at(-1)).toContain("A2\n\n[sub-agent 'researcher'");
     expect(childTurns(child.model)[1]).toEqual(['user: A', 'assistant: A1', 'user: more']);
   });
 
   it('resumes a task through a fresh agent instance on the same SQLite store', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'loushy-y6-'));
+    const dir = mkdtempSync(join(tmpdir(), 'lousho-y6-'));
     const file = join(dir, 'agent.db');
     try {
       const first = new SqliteStore(file);
@@ -162,7 +162,7 @@ describe('resumable sub-agent tasks (LOU-Y6)', () => {
     const result = await lead.send('go');
 
     const [, busy, resumed] = taskResults(result.messages);
-    expect(busy).toContain('LOUSHY_SUBAGENT_TASK_BUSY');
+    expect(busy).toContain('LOUSHO_SUBAGENT_TASK_BUSY');
     expect(busy).toContain('agent_await');
     expect(resumed).toContain("second\n\n[sub-agent 'researcher'");
     expect(childTurns(childModel)[2]).toEqual(['user: A', 'assistant: ', 'tool: "waited"', 'assistant: first', 'user: B']);

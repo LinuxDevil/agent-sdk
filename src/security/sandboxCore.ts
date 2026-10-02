@@ -5,7 +5,7 @@
  * Split out of sandbox.ts (LOU-I2) so the execution core (AgentExecutor,
  * resume, FlowExecutor, sandboxGuard, types) can depend on the interface and
  * the default NoopSandbox WITHOUT pulling in dockerode (and its native,
- * unbundleable ssh2/cpu-features subtree) - which is what lets `loushy build`
+ * unbundleable ssh2/cpu-features subtree) - which is what lets `lousho build`
  * bundle a self-contained deployment server. sandbox.ts re-exports
  * everything here, so existing imports of ./sandbox are unaffected.
  */

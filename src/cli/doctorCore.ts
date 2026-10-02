@@ -1,5 +1,5 @@
 /**
- * `runDoctor`: the pure, testable core of `loushy doctor`. All access to the
+ * `runDoctor`: the pure, testable core of `lousho doctor`. All access to the
  * outside world goes through the injected DoctorEnvironment.
  */
 import {

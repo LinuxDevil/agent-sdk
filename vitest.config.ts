@@ -26,7 +26,7 @@ export default defineConfig({
       '**/node_modules/**',
       '**/dist/**',
       'src/execution/__fixtures__/**',
-      // Fixture evals that src/cli/eval.test.ts runs through `loushy eval`.
+      // Fixture evals that src/cli/eval.test.ts runs through `lousho eval`.
       'src/cli/__fixtures__/**',
       '**/*.judge.eval.ts',
       // apps/* are separate npm workspaces (LOU-L1) with their own Vite/
@@ -63,7 +63,7 @@ export default defineConfig({
       // Re-measured for LOU-L: `npm run test:coverage` had never actually run
       // to completion in CI (masked by the `npm run lint` step failing first
       // on every PR since LOU-B - see the eslint.config.mjs fix in this same
-      // PR) once packages/create-loushy-agent's dist finally got built ahead
+      // PR) once packages/create-lousho-agent's dist finally got built ahead
       // of the test step, its own source is exercised too, which raises
       // statements/functions/lines but landed branches ~2.5pts under the old
       // (never-actually-verified) 84.52% figure. Branches floor lowered to

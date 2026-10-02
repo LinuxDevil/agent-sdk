@@ -60,7 +60,7 @@ describe('NodeServerAdapter', () => {
   });
 
   it('rejects non-spec agent configs and invalid specs with clear errors', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-node-server-bad-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-node-server-bad-'));
     const tsPath = path.join(dir, 'agent.ts');
     fs.writeFileSync(tsPath, 'export {}');
     expect(() => loadAgentSpecForDeploy(tsPath)).toThrow(/expected an AgentSpec .yaml\/.yml\/.json/);
@@ -70,7 +70,7 @@ describe('NodeServerAdapter', () => {
   });
 
   it('bakes the auth.token build option into the generated server', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-node-server-auth-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-node-server-auth-'));
     const outDir = path.join(dir, 'out');
     await NodeServerAdapter.scaffold(writeSpec(dir, SPEC), outDir, { auth: { token: 'build-time-token' } });
     expect(fs.readFileSync(path.join(outDir, 'server.ts'), 'utf8')).toContain('createDeployedServer(agent, { ...{"auth":{"token":"build-time-token"}}, schedules })');
@@ -80,7 +80,7 @@ describe('NodeServerAdapter', () => {
     let outDir: string;
 
     beforeAll(async () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-node-server-'));
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-node-server-'));
       const specPath = writeSpec(dir, SPEC);
       outDir = path.join(dir, 'out');
       await NodeServerAdapter.scaffold(specPath, outDir);
@@ -132,9 +132,9 @@ describe('NodeServerAdapter', () => {
       }
     }, 30_000);
 
-    it('serves sessions over SSE, and keeps them in the sqlite file LOUSHY_STORE names across restarts', async () => {
-      const db = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-node-server-db-')), 'agent.db');
-      const env = { LOUSHY_STORE: `sqlite:${db}` };
+    it('serves sessions over SSE, and keeps them in the sqlite file LOUSHO_STORE names across restarts', async () => {
+      const db = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-node-server-db-')), 'agent.db');
+      const env = { LOUSHO_STORE: `sqlite:${db}` };
       const send = (base: string, sessionId: string, input: string) =>
         fetch(`${base}/chat`, {
           method: 'POST',
@@ -164,8 +164,8 @@ describe('NodeServerAdapter', () => {
       }
     }, 60_000);
 
-    it('requires LOUSHY_API_TOKEN as a bearer token on every route but /health, and warns when public without one', async () => {
-      const { child, port } = await startServer(outDir, [], { LOUSHY_API_TOKEN: 'deploy-secret' });
+    it('requires LOUSHO_API_TOKEN as a bearer token on every route but /health, and warns when public without one', async () => {
+      const { child, port } = await startServer(outDir, [], { LOUSHO_API_TOKEN: 'deploy-secret' });
       try {
         const base = `http://127.0.0.1:${port}`;
         expect((await fetch(`${base}/health`)).status).toBe(200);
@@ -183,7 +183,7 @@ describe('NodeServerAdapter', () => {
 
       const open = spawn(process.execPath, ['dist/server.js', '--port=0', '--host=0.0.0.0'], {
         cwd: outDir,
-        env: { ...process.env, LOUSHY_API_TOKEN: '' },
+        env: { ...process.env, LOUSHO_API_TOKEN: '' },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       try {
@@ -191,7 +191,7 @@ describe('NodeServerAdapter', () => {
           let err = '';
           open.stderr!.on('data', (chunk) => {
             err += chunk;
-            if (err.includes('no LOUSHY_API_TOKEN')) resolve(err);
+            if (err.includes('no LOUSHO_API_TOKEN')) resolve(err);
           });
         });
         expect(warning).toContain('anyone who can reach 0.0.0.0');

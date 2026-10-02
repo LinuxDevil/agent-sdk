@@ -17,7 +17,7 @@ import { RESULTS_ENV, TAGS_ENV } from '../evals/recorder';
 const FIXTURES = path.resolve(__dirname, '__fixtures__', 'eval');
 
 function tempFile(name: string): string {
-  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-eval-test-')), name);
+  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-eval-test-')), name);
 }
 
 afterEach(() => {
@@ -51,7 +51,7 @@ describe('parseEvalArgs', () => {
   });
 
   it('explains how to fix an unknown option or a missing value', () => {
-    expect(() => parseEvalArgs(['--bogus'])).toThrow(/unknown option '--bogus'[\s\S]*Usage: loushy eval/);
+    expect(() => parseEvalArgs(['--bogus'])).toThrow(/unknown option '--bogus'[\s\S]*Usage: lousho eval/);
     expect(() => parseEvalArgs(['--junit'])).toThrow(/--junit needs a value/);
     expect(() => parseEvalArgs(['--tag', '--strict'])).toThrow(/--tag needs a value/);
   });
@@ -62,13 +62,13 @@ describe('buildVitestConfig', () => {
     const config = buildVitestConfig({ globs: [], judge: false });
     expect(config).toContain('"**/*.eval.{ts,mts,js,mjs}"');
     expect(config).toContain('"**/*.judge.eval.*"');
-    expect(config).not.toContain('LOUSHY_ALLOW_LLM_JUDGE');
+    expect(config).not.toContain('LOUSHO_ALLOW_LLM_JUDGE');
   });
 
   it('collects only judge evals and allows the judge with --judge', () => {
     const config = buildVitestConfig({ globs: [], judge: true });
     expect(config).toContain('"**/*.judge.eval.{ts,mts,js,mjs}"');
-    expect(config).toContain('"LOUSHY_ALLOW_LLM_JUDGE": "1"');
+    expect(config).toContain('"LOUSHO_ALLOW_LLM_JUDGE": "1"');
   });
 
   it('uses the given globs as the include list', () => {
@@ -165,7 +165,7 @@ describe('runEval with a fake vitest', () => {
     fs.writeFileSync(config, 'export default {};');
     const fake = fakeVitest([result({})]);
     await runEval(['--judge', '--config', config, 'only.judge.eval.ts'], { resolveVitest: () => 'v', spawnVitest: fake.spawnVitest, log: () => {} });
-    expect(fake.calls[0].env.LOUSHY_ALLOW_LLM_JUDGE).toBe('1');
+    expect(fake.calls[0].env.LOUSHO_ALLOW_LLM_JUDGE).toBe('1');
     expect(fake.calls[0].args).toEqual(['run', '--config', config, '--root', process.cwd(), 'only.judge.eval.ts']);
   });
 
@@ -180,7 +180,7 @@ describe('runEval with a fake vitest', () => {
   });
 });
 
-describe('loushy eval --url (LOU-D47)', () => {
+describe('lousho eval --url (LOU-D47)', () => {
   it('parses --url and --token', () => {
     expect(parseEvalArgs(['--url', 'https://a.test', '--token=abc'])).toMatchObject({ url: 'https://a.test', token: 'abc' });
   });
@@ -189,7 +189,7 @@ describe('loushy eval --url (LOU-D47)', () => {
     for (const flag of ['--record', '--replay', '--drift']) {
       expect(() => parseEvalArgs(['--url', 'https://a.test', flag])).toThrow(/cannot be combined/);
       expect(() => parseEvalArgs(['--url', 'https://a.test', flag])).toThrowError(
-        expect.objectContaining({ code: 'LOUSHY_CONFIG_CONFLICTING_OPTIONS' })
+        expect.objectContaining({ code: 'LOUSHO_CONFIG_CONFLICTING_OPTIONS' })
       );
     }
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -202,12 +202,12 @@ describe('loushy eval --url (LOU-D47)', () => {
     const log = vi.fn();
     await runEval(['--url', 'https://a.test', '--token', 'tok-123'], { resolveVitest: () => 'v', spawnVitest: fake.spawnVitest, log });
     vi.unstubAllEnvs();
-    expect(fake.calls[0].env).toMatchObject({ LOUSHY_EVAL_URL: 'https://a.test', LOUSHY_EVAL_TOKEN: 'tok-123', LOUSHY_EVAL_CASSETTES: '' });
+    expect(fake.calls[0].env).toMatchObject({ LOUSHO_EVAL_URL: 'https://a.test', LOUSHO_EVAL_TOKEN: 'tok-123', LOUSHO_EVAL_CASSETTES: '' });
     expect(log.mock.calls.join('\n')).not.toContain('tok-123');
   });
 });
 
-describe('loushy eval end to end (real vitest, mockModel fixtures)', () => {
+describe('lousho eval end to end (real vitest, mockModel fixtures)', () => {
   // The real vitest, with its own console output discarded to keep this suite's log readable.
   const quietVitest = createVitestSpawner('ignore');
 
@@ -254,7 +254,7 @@ describe('loushy eval end to end (real vitest, mockModel fixtures)', () => {
   }, 60_000);
 });
 
-describe('loushy eval --record / --replay / --drift (real vitest, mockModel as the "real" provider)', () => {
+describe('lousho eval --record / --replay / --drift (real vitest, mockModel as the "real" provider)', () => {
   const fixture = path.join(FIXTURES, 'replay.eval.ts');
   const cassettes = path.join(FIXTURES, '__cassettes__');
   const cassette = path.join(cassettes, 'recorded-refund', 'plain.json');
@@ -275,7 +275,7 @@ describe('loushy eval --record / --replay / --drift (real vitest, mockModel as t
     const { code, output } = await cli([fixture, '--replay']);
     expect(code).toBe(1);
     expect(output).toContain('no cassette for "recorded refund [plain]"');
-    expect(output).toContain(`npx loushy eval --record ${path.relative(process.cwd(), fixture)}`);
+    expect(output).toContain(`npx lousho eval --record ${path.relative(process.cwd(), fixture)}`);
   }, 60_000);
 
   it('--record writes one cassette per case; --replay (or a CI run) replays it with no provider call', async () => {

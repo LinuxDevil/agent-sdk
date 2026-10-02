@@ -1,6 +1,6 @@
 /**
  * Fixture for src/cli/eval.test.ts: a tiny trajectory eval on a mockModel
- * agent. Run through `loushy eval` by the test, never by the default vitest
+ * agent. Run through `lousho eval` by the test, never by the default vitest
  * run (excluded in vitest.config.ts).
  */
 import { z } from 'zod';

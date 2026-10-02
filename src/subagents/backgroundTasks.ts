@@ -77,7 +77,7 @@ const optionsBySubagents = new WeakMap<object, SubagentOptions>();
 export function withSubagentOptions<T extends Subagents>(subagents: T, options: SubagentOptions): T {
   const { maxConcurrent } = options;
   if (maxConcurrent !== undefined && !(Number.isInteger(maxConcurrent) && maxConcurrent >= 1)) {
-    throw new SDKError(`withSubagentOptions: 'maxConcurrent' must be a whole number >= 1, got ${String(maxConcurrent)}.`, 'LOUSHY_CONFIG_INVALID');
+    throw new SDKError(`withSubagentOptions: 'maxConcurrent' must be a whole number >= 1, got ${String(maxConcurrent)}.`, 'LOUSHO_CONFIG_INVALID');
   }
   optionsBySubagents.set(subagents, options);
   return subagents;

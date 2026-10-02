@@ -1,5 +1,5 @@
 /**
- * Minimal semver range check for `loushy doctor` (the SDK has no `semver`
+ * Minimal semver range check for `lousho doctor` (the SDK has no `semver`
  * dependency). Supports the range forms this package's own `engines` and
  * `peerDependencies` use: `>=x.y.z`, `^x.y.z`, `~x.y.z`, exact versions and
  * `||` alternatives. A range it cannot parse is treated as satisfied rather

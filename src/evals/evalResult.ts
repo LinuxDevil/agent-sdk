@@ -2,7 +2,7 @@
  * Structured eval results (LOU-D7).
  *
  * Every eval case - the classic `score`/`threshold` form and the trajectory
- * `test(t)` form - produces one `EvalResult`. `loushy eval` collects them to
+ * `test(t)` form - produces one `EvalResult`. `lousho eval` collects them to
  * print a summary and write JUnit/JSON reports.
  */
 
@@ -51,7 +51,7 @@ export interface EvalResult {
   error?: string;
   /** Test file the eval was defined in, when known. */
   file?: string;
-  /** Cassettes the case recorded or replayed under `loushy eval --record` / `--replay` / `--drift`. */
+  /** Cassettes the case recorded or replayed under `lousho eval --record` / `--replay` / `--drift`. */
   cassettes?: string[];
 }
 

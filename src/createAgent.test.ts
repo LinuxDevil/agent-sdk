@@ -1,6 +1,6 @@
 /**
  * LOU-H1 test: only imports createAgent() and a mock provider - zero other
- * Loushy imports - to prove the one-liner surface is self-contained.
+ * Lousho imports - to prove the one-liner surface is self-contained.
  * LOU-D1 additions: `model` strings, env fallback, `instructions` alias and
  * error messages (no network: env is stubbed and the registry's create() is
  * the same boundary resolveProvider.test.ts mocks).
@@ -11,7 +11,7 @@ import { createMockProvider } from './providers/mock';
 import { LLMProviderRegistry } from './providers/llm';
 import { mockModel } from './testing';
 
-const ENV_VARS = ['LOUSHY_MODEL', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'OLLAMA_BASE_URL'];
+const ENV_VARS = ['LOUSHO_MODEL', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'OLLAMA_BASE_URL'];
 
 describe('createAgent', () => {
   beforeEach(() => {
@@ -75,8 +75,8 @@ describe('createAgent', () => {
   });
 
   describe('environment fallback', () => {
-    it('uses LOUSHY_MODEL when set, even if provider keys are present', () => {
-      vi.stubEnv('LOUSHY_MODEL', 'anthropic/claude-3-5-haiku-latest');
+    it('uses LOUSHO_MODEL when set, even if provider keys are present', () => {
+      vi.stubEnv('LOUSHO_MODEL', 'anthropic/claude-3-5-haiku-latest');
       vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant');
       vi.stubEnv('OPENAI_API_KEY', 'sk-openai');
       const createSpy = vi.spyOn(LLMProviderRegistry, 'create').mockReturnValue(mockModel([]));
@@ -106,10 +106,10 @@ describe('createAgent', () => {
 
     it('throws an error listing every fix when nothing is configured', () => {
       expect(() => createAgent({ instructions: 'x' })).toThrow(
-        /createAgent: no model configured.*model: 'openai\/gpt-4o-mini'.*provider: \.\.\..*LOUSHY_MODEL.*OPENAI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OLLAMA_BASE_URL/
+        /createAgent: no model configured.*model: 'openai\/gpt-4o-mini'.*provider: \.\.\..*LOUSHO_MODEL.*OPENAI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OLLAMA_BASE_URL/
       );
       expect(() => createAgent({ instructions: 'x' })).toThrow(
-        expect.objectContaining({ code: 'LOUSHY_CONFIG_MISSING_PROVIDER', hint: expect.stringContaining('createAgent') })
+        expect.objectContaining({ code: 'LOUSHO_CONFIG_MISSING_PROVIDER', hint: expect.stringContaining('createAgent') })
       );
     });
   });
@@ -131,7 +131,7 @@ describe('createAgent', () => {
       const provider = mockModel([]);
       const both = { provider, instructions: 'a', prompt: 'b' } as unknown as Parameters<typeof createAgent>[0];
       expect(() => createAgent(both)).toThrow(/both 'instructions' and 'prompt'/);
-      expect(() => createAgent(both)).toThrow(expect.objectContaining({ code: 'LOUSHY_CONFIG_CONFLICTING_OPTIONS' }));
+      expect(() => createAgent(both)).toThrow(expect.objectContaining({ code: 'LOUSHO_CONFIG_CONFLICTING_OPTIONS' }));
     });
   });
 

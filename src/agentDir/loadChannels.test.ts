@@ -24,7 +24,7 @@ describe('channels/ in an agent directory (LOU-P7.2)', () => {
   it('rejects a default export that is not a channel with a coded error naming the file', async () => {
     const failure = await resolveAgentDir(fixture('err-bad-channel'), { provider: mockModel(['x']) }).catch((e: unknown) => e);
     expect(failure).toBeInstanceOf(SDKError);
-    expect((failure as SDKError).code).toBe('LOUSHY_CHANNEL_INVALID');
+    expect((failure as SDKError).code).toBe('LOUSHO_CHANNEL_INVALID');
     expect((failure as SDKError).message).toMatch(/plain\.ts: the default export must be a channel/);
   });
 });

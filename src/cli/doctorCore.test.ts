@@ -182,7 +182,7 @@ describe('optional feature peers (LOU-D40)', () => {
   it.each([
     ['dockerode', 'Docker sandboxing'],
     ['@modelcontextprotocol/sdk', 'MCP'],
-    ['prompts', 'loushy init'],
+    ['prompts', 'lousho init'],
   ])('%s: ok line says what it enables', async (name, enables) => {
     const result = await check(makeEnv(), `optional-peer.${name}`);
     expect(result.status).toBe('ok');
@@ -240,13 +240,13 @@ describe('API keys', () => {
     const picked = await check(makeEnv({ env: { ANTHROPIC_API_KEY: SECRET } }), 'env.default');
     expect(picked.status).toBe('ok');
     expect(picked.finding).toContain('anthropic/');
-    const explicit = await check(makeEnv({ env: { LOUSHY_MODEL: 'openai/gpt-4o' } }), 'env.default');
+    const explicit = await check(makeEnv({ env: { LOUSHO_MODEL: 'openai/gpt-4o' } }), 'env.default');
     expect(explicit.finding).toContain('openai/gpt-4o');
   });
   it('warns when createAgent() would have nothing to pick', async () => {
     const result = await check(makeEnv(), 'env.default');
     expect(result.status).toBe('warn');
-    expect(result.fix).toContain('LOUSHY_MODEL');
+    expect(result.fix).toContain('LOUSHO_MODEL');
   });
   it('never leaks a key value into text or JSON output', async () => {
     const env = makeEnv({
@@ -443,7 +443,7 @@ describe('report, rendering and exit codes', () => {
     });
     const text = renderReport(await runDoctor(env));
     expect(text).toMatchInlineSnapshot(`
-      "loushy doctor
+      "lousho doctor
 
       [FAIL] Node.js: v20.1.0 does not satisfy >=22.19.0
              fix: Install a Node.js version matching ">=22.19.0" (for example with nvm: nvm install --lts).
@@ -454,8 +454,8 @@ describe('report, rendering and exit codes', () => {
       [warn] Provider package ollama-ai-provider: not installed (optional)
              fix: npm install ollama-ai-provider@^1.2.0
       [ ok ] Optional package dockerode: 5.0.1 installed - enables Docker sandboxing (SubprocessSandbox)
-      [ ok ] Optional package @modelcontextprotocol/sdk: 1.30.1 installed - enables MCP (serveMcp, \`loushy mcp\` and MCP client connections)
-      [ ok ] Optional package prompts: 2.4.2 installed - enables the interactive prompts of \`loushy init\` (pass --yes to skip them)
+      [ ok ] Optional package @modelcontextprotocol/sdk: 1.30.1 installed - enables MCP (serveMcp, \`lousho mcp\` and MCP client connections)
+      [ ok ] Optional package prompts: 2.4.2 installed - enables the interactive prompts of \`lousho init\` (pass --yes to skip them)
       [ ok ] openai (OPENAI_API_KEY): set
       [warn] anthropic (ANTHROPIC_API_KEY): not set
              fix: Set ANTHROPIC_API_KEY in your environment, e.g. export ANTHROPIC_API_KEY=<your key>

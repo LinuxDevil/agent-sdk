@@ -24,7 +24,7 @@ const open = (file: string): SqliteStore => {
   return store;
 };
 const tempFile = (): string => {
-  const dir = mkdtempSync(join(tmpdir(), 'loushy-sqlite-memory-'));
+  const dir = mkdtempSync(join(tmpdir(), 'lousho-sqlite-memory-'));
   dirs.push(dir);
   return join(dir, 'agent.db');
 };

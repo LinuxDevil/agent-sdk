@@ -412,8 +412,8 @@ describe('recorder', () => {
     toolCalls: [],
   };
 
-  it('appends one JSON line per result when LOUSHY_EVAL_RESULTS is set, and nothing otherwise', () => {
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-rec-')), 'r.jsonl');
+  it('appends one JSON line per result when LOUSHO_EVAL_RESULTS is set, and nothing otherwise', () => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-rec-')), 'r.jsonl');
     recordEvalResult(sample);
     expect(fs.existsSync(file)).toBe(false);
     process.env[RESULTS_ENV] = file;

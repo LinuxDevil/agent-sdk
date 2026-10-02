@@ -49,12 +49,12 @@ describe('DockerAdapter', () => {
     registerBuiltInAdapters();
     expect(getAdapter('docker')).toBe(DockerAdapter);
     expect(DockerAdapter.describe('/anywhere')).toBe(
-      'docker build -t loushy-agent . && docker run -p 3000:3000 loushy-agent'
+      'docker build -t lousho-agent . && docker run -p 3000:3000 lousho-agent'
     );
   });
 
   it('scaffold() delegates to NodeServerAdapter.scaffold() and adds a Dockerfile', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-docker-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-docker-'));
     const specPath = writeSpec(dir);
     const outDir = path.join(dir, 'out');
     const spy = vi.spyOn(NodeServerAdapter, 'scaffold');
@@ -103,12 +103,12 @@ describe('DockerAdapter', () => {
     // Docker daemon (`npm test`, not just `npm run test:coverage`) so a
     // real regression here stays visible during local development.
     it.skipIf(!!process.env.CI)('the built image serves /health and /chat', async () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-docker-int-'));
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-docker-int-'));
       const outDir = path.join(dir, 'out');
       await DockerAdapter.scaffold(writeSpec(dir), outDir);
       await withBuildLock(() => DockerAdapter.build(outDir));
 
-      const tag = `loushy-agent-test-${Date.now()}`;
+      const tag = `lousho-agent-test-${Date.now()}`;
       execFileSync('docker', ['build', '-t', tag, '.'], { cwd: outDir, stdio: 'ignore' });
       const containerId = execFileSync('docker', ['run', '-d', '-p', '127.0.0.1::3000', tag], {
         encoding: 'utf8',

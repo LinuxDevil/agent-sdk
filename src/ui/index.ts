@@ -7,8 +7,8 @@ export { createAgentRunner } from './agentRunner';
 export type {
   AgentCommands,
   LocalAgentSource,
-  LoushyAgentOptions,
-  LoushyAgentSource,
+  LoushoAgentOptions,
+  LoushoAgentSource,
   RemoteAgentSource,
 } from './agentRunner';
 export {

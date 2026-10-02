@@ -24,7 +24,7 @@
  * fresh ones for genuinely new messages.
  */
 import { randomUUID } from 'node:crypto';
-import { textOf, type Message } from '@loushy/build-ai-agent';
+import { textOf, type Message } from '@lousho/build-ai-agent';
 import type { ChatMessage } from '../shared/wireTypes';
 
 /** The transcript keeps text only (LOU-V11 content parts are flattened with `textOf()`). */

@@ -60,7 +60,7 @@ class SessionRun implements AgentRun {
       throw new SDKError(
         'AgentRun can only be iterated once. Collect the events in the first for-await loop, ' +
           'or call session.stream() again for a new run.',
-        'LOUSHY_RUN_ALREADY_ITERATED'
+        'LOUSHO_RUN_ALREADY_ITERATED'
       );
     }
     this.iterated = true;

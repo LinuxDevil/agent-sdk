@@ -108,7 +108,7 @@ export interface DriftCheck {
 
 /**
  * Applies `onAgentDrift` to a resume: a pending call whose tool is gone is
- * always `LOUSHY_RESUME_TOOL_MISSING`; other drift is `LOUSHY_AGENT_DRIFT`
+ * always `LOUSHO_RESUME_TOOL_MISSING`; other drift is `LOUSHO_AGENT_DRIFT`
  * with `'error'`, a `console.warn` with `'warn'` (the default), nothing with
  * `'ignore'`. Returns the drift a caller reports as an `agent.drift` event.
  */
@@ -118,12 +118,12 @@ export function checkAgentDrift({ saved, current, mode = 'warn', missingTools }:
     const what = drift ? ` (${describeDrift(drift)})` : '';
     throw new SDKError(
       `The run is waiting on a call to ${missingTools.map((name) => `'${name}'`).join(', ')}, but the resuming agent has no such tool${what}.`,
-      'LOUSHY_RESUME_TOOL_MISSING'
+      'LOUSHO_RESUME_TOOL_MISSING'
     );
   }
   if (!drift || mode === 'ignore') return undefined;
   const message = `The agent resuming this run is not the one that paused it: ${describeDrift(drift)}.`;
-  if (mode === 'error') throw new SDKError(message, 'LOUSHY_AGENT_DRIFT');
-  console.warn(`[loushy] ${message} Continuing (onAgentDrift: 'warn').`);
+  if (mode === 'error') throw new SDKError(message, 'LOUSHO_AGENT_DRIFT');
+  console.warn(`[lousho] ${message} Continuing (onAgentDrift: 'warn').`);
   return drift;
 }

@@ -57,7 +57,7 @@ export function assertSessionId(id: string): void {
       `Invalid session id ${JSON.stringify(id)}: use 1-128 characters from A-Z, a-z, 0-9, '_' and '-' ` +
         "(e.g. 'user-42'). Omit the id to get a generated one.",
       'id',
-      'LOUSHY_SESSION_ID_INVALID'
+      'LOUSHO_SESSION_ID_INVALID'
     );
   }
 }
@@ -99,7 +99,7 @@ export class MemorySessionStore implements SessionStore {
  *
  * @example
  * ```ts
- * const store = new FileSessionStore('./.loushy/sessions');
+ * const store = new FileSessionStore('./.lousho/sessions');
  * const session = agent.session({ id: 'user-42', store });
  * ```
  */
@@ -126,7 +126,7 @@ export class FileSessionStore implements SessionStore {
     }
     const parsed: unknown = JSON.parse(raw, decodeBytes);
     if (!Array.isArray(parsed)) {
-      throw new SDKError(`Session file ${file} is corrupt: expected a JSON array of messages.`, 'LOUSHY_SESSION_FILE_CORRUPT');
+      throw new SDKError(`Session file ${file} is corrupt: expected a JSON array of messages.`, 'LOUSHO_SESSION_FILE_CORRUPT');
     }
     return parsed as Message[];
   }

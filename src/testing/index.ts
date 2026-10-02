@@ -1,5 +1,5 @@
 /**
- * `@loushy/build-ai-agent/testing` - test doubles for agents.
+ * `@lousho/build-ai-agent/testing` - test doubles for agents.
  *
  * Re-exports the in-memory repository mocks, the scripted `mockModel` and the
  * `recordReplay` VCR provider.

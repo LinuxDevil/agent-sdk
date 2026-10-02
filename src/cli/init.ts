@@ -1,8 +1,8 @@
 /**
- * `loushy init [dir] [options]` - scaffold a runnable project in one command
+ * `lousho init [dir] [options]` - scaffold a runnable project in one command
  * (LOU-D3).
  *
- * This is the one generator. `npm create loushy-agent` (packages/create-loushy-agent)
+ * This is the one generator. `npm create lousho-agent` (packages/create-lousho-agent)
  * is a thin wrapper that runs this command. See init/templates.ts for what is
  * generated.
  */
@@ -102,7 +102,7 @@ async function resolveChoices(options: InitOptions, environment: InitEnvironment
 
 /** Printed after a failed install: until the first npm release the SDK dependency cannot resolve (E404). */
 const PRE_PUBLISH_HINT =
-  'If the error is a 404 for @loushy/build-ai-agent: the package is not on npm yet. Re-run with `--sdk-path <SDK checkout or packed .tgz>` ' +
+  'If the error is a 404 for @lousho/build-ai-agent: the package is not on npm yet. Re-run with `--sdk-path <SDK checkout or packed .tgz>` ' +
   '(see docs/installation.md#installing-before-the-first-release).\n';
 
 function nextSteps(dir: string, cwd: string, pm: PackageManager, envKey: string, installed: boolean): string {
@@ -116,12 +116,12 @@ function nextSteps(dir: string, cwd: string, pm: PackageManager, envKey: string,
 /** Runs `git init` and the install; failures are reported, not fatal to generation. */
 async function finish(options: InitOptions, choices: Choices, dir: string, environment: InitEnvironment): Promise<boolean> {
   if (options.git && (await environment.exec('git', ['init'], dir)) !== 0) {
-    environment.writeError('loushy init: `git init` failed; continuing without a git repository.\n');
+    environment.writeError('lousho init: `git init` failed; continuing without a git repository.\n');
   }
   if (!options.install) return false;
   const code = await environment.exec(choices.packageManager, ['install'], dir);
   if (code !== 0) {
-    environment.writeError(`loushy init: \`${choices.packageManager} install\` failed (exit ${code}). Run it yourself in ${dir}.\n`);
+    environment.writeError(`lousho init: \`${choices.packageManager} install\` failed (exit ${code}). Run it yourself in ${dir}.\n`);
     environment.writeError(PRE_PUBLISH_HINT);
   }
   return code === 0;
@@ -151,7 +151,7 @@ async function scaffold(options: InitOptions, environment: InitEnvironment): Pro
 }
 
 /**
- * Entry point behind `loushy init` (and `npm create loushy-agent`). Resolves to
+ * Entry point behind `lousho init` (and `npm create lousho-agent`). Resolves to
  * the process exit code; usage errors are printed, not thrown.
  */
 export async function runInit(argv: string[], environment: InitEnvironment = realInitEnvironment()): Promise<number> {

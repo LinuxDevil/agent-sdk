@@ -1,5 +1,5 @@
 /**
- * `loushy doctor <agent.yaml>`: validates the spec with the SDK's own loader
+ * `lousho doctor <agent.yaml>`: validates the spec with the SDK's own loader
  * and checks what the spec references (provider, built-in tools, MCP servers).
  */
 import type { AgentSpec, McpServerSpec } from '../spec/schema';

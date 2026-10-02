@@ -1,5 +1,5 @@
 /**
- * LOU-P3: `loushyAgent()` for Svelte, a store over an agent's typed event
+ * LOU-P3: `loushoAgent()` for Svelte, a store over an agent's typed event
  * stream. Same state and actions as the React hook and the Vue composable;
  * the logic lives in the framework-neutral reducer and run logic (src/ui).
  * The Svelte store contract is just `subscribe(run) => unsubscribe`, so it is
@@ -12,15 +12,15 @@ import {
   reduceAgentEvents,
   type AgentCommands,
   type AgentUIState,
-  type LoushyAgentOptions,
-  type LoushyAgentSource,
+  type LoushoAgentOptions,
+  type LoushoAgentSource,
 } from '../ui';
 
-export type { LocalAgentSource, LoushyAgentSource, RemoteAgentSource } from '../ui';
-export type LoushyAgentStoreOptions = LoushyAgentOptions;
+export type { LocalAgentSource, LoushoAgentSource, RemoteAgentSource } from '../ui';
+export type LoushoAgentStoreOptions = LoushoAgentOptions;
 
 /** A readable Svelte store (works with `$agent` in Svelte 4 and 5) holding the chat state, plus the actions. */
-export type LoushyAgentStore = {
+export type LoushoAgentStore = {
   /** Calls `run` with the current state, then on every change; returns the unsubscribe function. */
   subscribe(run: (state: AgentUIState) => void): () => void;
 } & AgentCommands & {
@@ -37,11 +37,11 @@ export type LoushyAgentStore = {
  *
  * @example
  * ```ts
- * const agent = loushyAgent({ url: '/api/agent' });
+ * const agent = loushoAgent({ url: '/api/agent' });
  * agent.subscribe(({ messages, status }) => console.log(status, messages.length));
  * ```
  */
-export function loushyAgent(source: LoushyAgentSource, options: LoushyAgentStoreOptions = {}): LoushyAgentStore {
+export function loushoAgent(source: LoushoAgentSource, options: LoushoAgentStoreOptions = {}): LoushoAgentStore {
   let state = initialAgentUIState;
   const subscribers = new Set<(state: AgentUIState) => void>();
   const runner = createAgentRunner({

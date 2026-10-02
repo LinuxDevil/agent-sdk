@@ -11,7 +11,7 @@ export async function listSorted(
     entries = await fs.readdir(dir, { withFileTypes: true });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
-    throw new SDKError(`loadAgentDir: cannot read directory '${dir}' (${(error as Error).message}).`, 'LOUSHY_AGENT_DIR_INVALID');
+    throw new SDKError(`loadAgentDir: cannot read directory '${dir}' (${(error as Error).message}).`, 'LOUSHO_AGENT_DIR_INVALID');
   }
   return entries
     .filter((e) => keep({ name: e.name, isFile: e.isFile(), isDirectory: e.isDirectory() }))
@@ -40,6 +40,6 @@ export async function readText(file: string): Promise<string> {
   try {
     return await fs.readFile(file, 'utf8');
   } catch (error) {
-    throw new SDKError(`loadAgentDir: cannot read ${file} (${(error as Error).message}).`, 'LOUSHY_AGENT_DIR_INVALID');
+    throw new SDKError(`loadAgentDir: cannot read ${file} (${(error as Error).message}).`, 'LOUSHO_AGENT_DIR_INVALID');
   }
 }

@@ -59,7 +59,7 @@ async function uiChat(agent: SimpleAgent, request: Request): Promise<Response> {
 }
 
 /**
- * The routes `useLoushyAgent({ url, approvalsUrl })` talks to, mapped onto the
+ * The routes `useLoushoAgent({ url, approvalsUrl })` talks to, mapped onto the
  * session API: `POST <base>` takes `{ input, sessionId? }` (a fresh session when
  * none is sent) and `POST <base>/approvals/:id` decides a pending approval.
  */
@@ -72,9 +72,9 @@ async function hookRoute(request: Request, path: string): Promise<{ path: string
 }
 
 /**
- * Serves `agent` (the session API of `loushy dev` and the deployed server:
+ * Serves `agent` (the session API of `lousho dev` and the deployed server:
  * `POST /chat`, `GET /chat/:id`, approvals, `GET /health`) under `basePath`;
- * `POST <basePath>` and `POST <basePath>/approvals/:id` serve `useLoushyAgent`.
+ * `POST <basePath>` and `POST <basePath>/approvals/:id` serve `useLoushoAgent`.
  *
  * @example
  * ```ts

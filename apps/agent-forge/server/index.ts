@@ -1,7 +1,7 @@
 /**
  * LOU-N runtime control server entry point.
  *
- * Started either directly (`tsx server/index.ts`, e.g. from `loushy studio`
+ * Started either directly (`tsx server/index.ts`, e.g. from `lousho studio`
  * - see src/cli/studio.ts) or programmatically via `startStudioServer()`
  * for tests/embedding.
  */
@@ -26,7 +26,7 @@ export interface StudioServerHandle {
 }
 
 export interface StartStudioServerOptions {
-  /** Directory `.loushy/agents/**` is read from/written to. Defaults to process.cwd(). */
+  /** Directory `.lousho/agents/**` is read from/written to. Defaults to process.cwd(). */
   baseDir?: string;
   port?: number;
   host?: string;
@@ -49,7 +49,7 @@ async function listen(server: http.Server, port: number, host: string): Promise<
     await once(server, 'listening');
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE') {
-      throw new Error(`[loushy studio] API server port ${port} is already in use.`);
+      throw new Error(`[lousho studio] API server port ${port} is already in use.`);
     }
     throw err;
   }
@@ -102,7 +102,7 @@ export async function startStudioServer(
 
 // Allow `tsx server/index.ts` (or `node --import tsx server/index.ts`) to
 // boot the server directly, reading PORT/HOST/BASE_DIR from the
-// environment - this is how `loushy studio` (src/cli/studio.ts) launches it
+// environment - this is how `lousho studio` (src/cli/studio.ts) launches it
 // as a child process. `apps/agent-forge/package.json` has `"type": "module"`,
 // so this module runs as real ESM under tsx - there is no CJS `require`/
 // `module` to compare against, hence the `import.meta.url` check instead of
@@ -114,7 +114,7 @@ if (isMainModule) {
   const port = process.env.PORT ? Number(process.env.PORT) : undefined;
   const host = process.env.HOST;
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-  // moduleDir is apps/agent-forge/server - the repo root (where `.loushy/`
+  // moduleDir is apps/agent-forge/server - the repo root (where `.lousho/`
   // should live) is three levels up, unless BASE_DIR is set explicitly.
   const baseDir = process.env.BASE_DIR ?? path.resolve(moduleDir, '..', '..', '..');
   // `src/cli/studio.ts` sets NO_STATIC=1 in dev mode (separate Vite dev
@@ -124,7 +124,7 @@ if (isMainModule) {
 
   startStudioServer({ port, host, baseDir, staticDir })
     .then((handle) => {
-      console.log(`[loushy studio] API server listening on http://${host ?? '127.0.0.1'}:${handle.port}`);
+      console.log(`[lousho studio] API server listening on http://${host ?? '127.0.0.1'}:${handle.port}`);
     })
     .catch((error) => {
       console.error(error instanceof Error ? error.message : String(error));

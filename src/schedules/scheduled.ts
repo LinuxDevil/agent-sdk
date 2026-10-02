@@ -20,8 +20,8 @@ const normalize = (cron: string): string => cron.trim().split(/\s+/).join(' ');
 
 /** `console.error` with the schedule name and the SDK error code. */
 export function logScheduleFailure(name: string, error: unknown): void {
-  const code = error instanceof SDKError ? error.code : 'LOUSHY_GENERIC_ERROR';
-  console.error(`[loushy schedule] '${name}' failed [${code}]:`, error);
+  const code = error instanceof SDKError ? error.code : 'LOUSHO_GENERIC_ERROR';
+  console.error(`[lousho schedule] '${name}' failed [${code}]:`, error);
 }
 
 /**

@@ -19,7 +19,7 @@ export class AgentExecutionError extends SDKError {
     public readonly agentId?: string,
     public readonly cause?: Error
   ) {
-    super(message, 'LOUSHY_AGENT_EXECUTION_FAILED');
+    super(message, 'LOUSHO_AGENT_EXECUTION_FAILED');
     this.name = 'AgentExecutionError';
   }
 }
@@ -32,7 +32,7 @@ export class ToolExecutionError extends SDKError {
     message: string,
     public readonly toolName?: string,
     public readonly cause?: Error,
-    code: ErrorCode = 'LOUSHY_TOOL_EXECUTION_FAILED'
+    code: ErrorCode = 'LOUSHO_TOOL_EXECUTION_FAILED'
   ) {
     super(message, code, { appendHelp: false });
     this.name = 'ToolExecutionError';
@@ -49,7 +49,7 @@ export class LLMProviderError extends SDKError {
     public readonly statusCode?: number,
     public readonly cause?: Error
   ) {
-    super(message, 'LOUSHY_PROVIDER_REQUEST_FAILED', { appendHelp: false });
+    super(message, 'LOUSHO_PROVIDER_REQUEST_FAILED', { appendHelp: false });
     this.name = 'LLMProviderError';
   }
 }
@@ -80,7 +80,7 @@ export class SessionAwaitingApprovalError extends SDKError {
         'cannot add new input to it. Resolve the approval with resumeAfterApproval({ id: approvalId, approved: true }, ' +
         'approvalStore, toolRegistry, provider, options, checkpointStore) - passing the same checkpointStore so the ' +
         'session is marked as resumed - then call execute() again with your new input.',
-      'LOUSHY_SESSION_AWAITING_APPROVAL'
+      'LOUSHO_SESSION_AWAITING_APPROVAL'
     );
     this.name = 'SessionAwaitingApprovalError';
   }
@@ -96,7 +96,7 @@ export class FlowExecutionError extends SDKError {
     public readonly step?: string,
     public readonly cause?: Error
   ) {
-    super(message, 'LOUSHY_FLOW_EXECUTION_FAILED');
+    super(message, 'LOUSHO_FLOW_EXECUTION_FAILED');
     this.name = 'FlowExecutionError';
   }
 }
@@ -105,7 +105,7 @@ export class FlowExecutionError extends SDKError {
  * Configuration error
  */
 export class ConfigurationError extends SDKError {
-  constructor(message: string, public readonly field?: string, code: ErrorCode = 'LOUSHY_CONFIG_INVALID', options?: SDKErrorOptions) {
+  constructor(message: string, public readonly field?: string, code: ErrorCode = 'LOUSHO_CONFIG_INVALID', options?: SDKErrorOptions) {
     super(message, code, options);
     this.name = 'ConfigurationError';
   }
@@ -118,7 +118,7 @@ export class ValidationError extends SDKError {
   constructor(
     message: string,
     public readonly errors?: Record<string, string[]>,
-    code: ErrorCode = 'LOUSHY_VALIDATION_FAILED'
+    code: ErrorCode = 'LOUSHO_VALIDATION_FAILED'
   ) {
     super(message, code);
     this.name = 'ValidationError';
@@ -134,7 +134,7 @@ export class TimeoutError extends SDKError {
     public readonly timeoutMs?: number,
     public readonly operation?: string
   ) {
-    super(message, 'LOUSHY_OPERATION_TIMEOUT', { appendHelp: false });
+    super(message, 'LOUSHO_OPERATION_TIMEOUT', { appendHelp: false });
     this.name = 'TimeoutError';
   }
 }
@@ -148,7 +148,7 @@ export class RateLimitError extends SDKError {
     public readonly retryAfter?: number,
     public readonly limit?: number
   ) {
-    super(message, 'LOUSHY_PROVIDER_RATE_LIMITED', { appendHelp: false });
+    super(message, 'LOUSHO_PROVIDER_RATE_LIMITED', { appendHelp: false });
     this.name = 'RateLimitError';
   }
 }

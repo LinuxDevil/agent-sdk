@@ -1,5 +1,5 @@
 /**
- * The registry behind `loushy add` (LOU-D50): a JSON index plus one JSON
+ * The registry behind `lousho add` (LOU-D50): a JSON index plus one JSON
  * document per item, at a URL or a local path. Reading is all this does; nothing
  * from a registry is executed or imported. See docs/registry.md.
  */
@@ -53,7 +53,7 @@ export type RegistryIndex = z.infer<typeof IndexSchema>;
 export type RegistryItem = z.infer<typeof ItemSchema>;
 
 export interface RegistryOptions {
-  /** `--registry`; the `LOUSHY_REGISTRY` environment variable when absent. */
+  /** `--registry`; the `LOUSHO_REGISTRY` environment variable when absent. */
   registry?: string;
   env?: Record<string, string | undefined>;
   fetch?: typeof fetch;
@@ -62,12 +62,12 @@ export interface RegistryOptions {
 const isHttp = (source: string): boolean => /^https?:\/\//i.test(source);
 
 function unreachable(source: string, reason: string, cause?: unknown): SDKError {
-  return new SDKError(`loushy add: cannot read the registry document ${source}: ${reason}`, 'LOUSHY_REGISTRY_UNREACHABLE', { cause });
+  return new SDKError(`lousho add: cannot read the registry document ${source}: ${reason}`, 'LOUSHO_REGISTRY_UNREACHABLE', { cause });
 }
 
 async function fetchText(source: string, options: RegistryOptions): Promise<string> {
   const response = await (options.fetch ?? fetch)(source, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-  if (!response.ok) throw new SDKError(`HTTP ${response.status}`, 'LOUSHY_REGISTRY_UNREACHABLE');
+  if (!response.ok) throw new SDKError(`HTTP ${response.status}`, 'LOUSHO_REGISTRY_UNREACHABLE');
   return response.text();
 }
 
@@ -92,20 +92,20 @@ async function readJson<T>(source: string, schema: SafeParser<T>, options: Regis
   try {
     json = JSON.parse(text);
   } catch (error) {
-    throw new SDKError(`loushy add: ${source} is not valid JSON.`, 'LOUSHY_REGISTRY_INVALID', { cause: error });
+    throw new SDKError(`lousho add: ${source} is not valid JSON.`, 'LOUSHO_REGISTRY_INVALID', { cause: error });
   }
   const parsed = schema.safeParse(json);
   if (parsed.success) return parsed.data;
   const problems = parsed.error.issues.map((issue) => `${issuePath(issue)}: ${issueMessage(issue)}`).join('; ');
-  throw new SDKError(`loushy add: ${source} is not a valid registry document: ${problems}`, 'LOUSHY_REGISTRY_INVALID');
+  throw new SDKError(`lousho add: ${source} is not a valid registry document: ${problems}`, 'LOUSHO_REGISTRY_INVALID');
 }
 
-/** Where the registry is: `--registry`, else `LOUSHY_REGISTRY`, else a coded error that says how to pass one. */
+/** Where the registry is: `--registry`, else `LOUSHO_REGISTRY`, else a coded error that says how to pass one. */
 export function registrySource(options: RegistryOptions): string {
-  const source = options.registry ?? (options.env ?? process.env).LOUSHY_REGISTRY;
+  const source = options.registry ?? (options.env ?? process.env).LOUSHO_REGISTRY;
   if (source) return source;
-  throw new SDKError('loushy add: no registry configured; there is no hosted registry yet.', 'LOUSHY_CONFIG_INVALID', {
-    hint: 'Pass --registry <url-or-path> to a registry index.json, or set LOUSHY_REGISTRY. See docs/registry.md.',
+  throw new SDKError('lousho add: no registry configured; there is no hosted registry yet.', 'LOUSHO_CONFIG_INVALID', {
+    hint: 'Pass --registry <url-or-path> to a registry index.json, or set LOUSHO_REGISTRY. See docs/registry.md.',
   });
 }
 
@@ -120,19 +120,19 @@ function resolveRef(registry: string, ref: string): string {
   return path.resolve(path.dirname(registry), ref);
 }
 
-/** Finds `name` in the index (a `LOUSHY_REGISTRY_ITEM_NOT_FOUND` with a did-you-mean otherwise) and loads its document. */
+/** Finds `name` in the index (a `LOUSHO_REGISTRY_ITEM_NOT_FOUND` with a did-you-mean otherwise) and loads its document. */
 export async function loadItem(registry: string, index: RegistryIndex, name: string, options: RegistryOptions): Promise<RegistryItem> {
   const entry = index.items.find((candidate) => candidate.name === name);
   if (!entry) {
     const names = index.items.map((candidate) => candidate.name);
     const suggestion = closestMatch(name, names);
-    throw new SDKError(`loushy add: no item named '${name}' in the registry${suggestion ? `. Did you mean '${suggestion}'?` : '.'}`, 'LOUSHY_REGISTRY_ITEM_NOT_FOUND', {
-      hint: `Run loushy add --list to see the ${names.length} available item(s).`,
+    throw new SDKError(`lousho add: no item named '${name}' in the registry${suggestion ? `. Did you mean '${suggestion}'?` : '.'}`, 'LOUSHO_REGISTRY_ITEM_NOT_FOUND', {
+      hint: `Run lousho add --list to see the ${names.length} available item(s).`,
     });
   }
   const item = await readJson(resolveRef(registry, (entry.url ?? entry.path) as string), ItemSchema, options);
   if (item.name !== entry.name || item.type !== entry.type) {
-    throw new SDKError(`loushy add: the document for '${entry.name}' says it is ${item.type} '${item.name}'.`, 'LOUSHY_REGISTRY_INVALID');
+    throw new SDKError(`lousho add: the document for '${entry.name}' says it is ${item.type} '${item.name}'.`, 'LOUSHO_REGISTRY_INVALID');
   }
   return item;
 }

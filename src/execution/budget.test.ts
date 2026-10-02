@@ -117,7 +117,7 @@ describe('limits (LOU-V6)', () => {
   it("onExceeded: 'throw' rejects with BudgetExceededError", async () => {
     const error = await run({ maxTokens: 100, onExceeded: 'throw' }, [callEcho(100, 50)]).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(BudgetExceededError);
-    expect(error).toMatchObject({ code: 'LOUSHY_BUDGET_EXCEEDED', budget: { limit: 'maxTokens', value: 150, max: 100 } });
+    expect(error).toMatchObject({ code: 'LOUSHO_BUDGET_EXCEEDED', budget: { limit: 'maxTokens', value: 150, max: 100 } });
   });
 
   it('maxDurationMs aborts an in-flight model call', async () => {

@@ -82,7 +82,7 @@ Status: a ✅ with a PR link next to the ID means merged.
 |---|---|---|
 | LOU-Z1 | Robust MCP schema conversion | `anyOf`, `oneOf`, `$ref` and nullable schemas convert; one bad tool is skipped with a warning instead of failing the server load. |
 | LOU-Z2 | MCP `isError` and content handling | `isError` results surface as tool errors; image/resource content is preserved. |
-| LOU-Z3 | Agent as an MCP server | `serveMcp(agent)` (stdio and HTTP) exposes the agent as a tool; `loushy mcp <config>`. |
+| LOU-Z3 | Agent as an MCP server | `serveMcp(agent)` (stdio and HTTP) exposes the agent as a tool; `lousho mcp <config>`. |
 
 ## Epic D — DX, CLI, packaging, testing
 
@@ -90,19 +90,19 @@ Status: a ✅ with a PR link next to the ID means merged.
 |---|---|---|
 | LOU-D1 | Five-line hello world | `createAgent({ model: 'openai/gpt-4o-mini', instructions })` accepts a model string and reads the key from env; README leads with it. |
 | LOU-D2 | Error codes with fixes | Every thrown SDK error has a stable `code`, a "how to fix" hint and a docs link; spec validation suggests "did you mean". |
-| LOU-D3 | `loushy init` | Scaffolds a runnable project from the published package (no sibling checkout needed); wraps `create-loushy-agent`. |
-| LOU-D4 | `loushy doctor` | Reports Node version, installed peers, missing API keys and config problems with fixes. |
+| LOU-D3 | `lousho init` | Scaffolds a runnable project from the published package (no sibling checkout needed); wraps `create-lousho-agent`. |
+| LOU-D4 | `lousho doctor` | Reports Node version, installed peers, missing API keys and config problems with fixes. |
 | LOU-D5 | Scripted mock model | `mockModel([...turns])` at `/testing` for deterministic agent tests (text, tool calls, errors, usage). |
 | LOU-D6 | Record/replay provider | `recordReplay(provider, { cassette })` records real calls once and replays them in CI. |
 | LOU-D7 | Trajectory evals | `defineEval` gains `t.calledTool()`, `t.completed()`, multiple named scores, datasets, gate vs soft assertions. |
-| LOU-D8 | `loushy eval` | Runs evals with a summary table, `--junit` output and non-zero exit on gate failures. |
+| LOU-D8 | `lousho eval` | Runs evals with a summary table, `--junit` output and non-zero exit on gate failures. |
 | LOU-D9 | OTel GenAI conventions | Spans use `gen_ai.*` attribute names; flows are traced. |
 | LOU-D10 | Lazy provider loading | Importing the root entry does not load any provider SDK; providers load on first use. |
 | LOU-D11 | Upgrade the `ai` peer range | Providers work against the current major of `ai`/`@ai-sdk/*`; peer ranges widened; contract tests pass. |
 | LOU-D12 | Agent-readable docs | `llms.txt` and `llms-full.txt` generated from `docs/` and shipped in the npm package. |
 | LOU-D13 | Trigger hardening | Webhook HMAC verification; real cron expressions in `CronTriggerAdapter`. |
 | LOU-D14 | Deployed `/chat` upgrade | Multi-turn sessions, SSE streaming and bearer auth in the node-server and worker targets. |
-| LOU-D15 | React hook | `useLoushyAgent()` consuming the typed event stream. |
+| LOU-D15 | React hook | `useLoushoAgent()` consuming the typed event stream. |
 | LOU-D16 | ESLint ratchet | Clear the remaining warnings in touched areas and turn `no-explicit-any`/`no-unused-vars` back to `error`; delete the stale baseline doc. |
 | LOU-D17 | Slack signature verification ✅ [#55](https://github.com/LinuxDevil/agent-sdk/pull/55) | (was LOU-D18) Inbound Slack requests are verified with the signing secret. |
 | LOU-D19 | Lazy optional peers | A missing optional provider peer never fails at SDK import time; the install hint appears when that provider is first used. (Merge with LOU-D10.) |
@@ -111,4 +111,4 @@ Status: a ✅ with a PR link next to the ID means merged.
 
 ## Not ticketed (needs the owner)
 
-- Publishing to npm: the README advertises `npm install @loushy/build-ai-agent`, but the package is not on the registry. Publishing is an owner action.
+- Publishing to npm: the README advertises `npm install @lousho/build-ai-agent`, but the package is not on the registry. Publishing is an owner action.

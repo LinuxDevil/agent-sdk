@@ -12,7 +12,7 @@ afterEach(() => {
 });
 
 function evalFile(): string {
-  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-cassettes-')), 'refund.eval.ts');
+  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-cassettes-')), 'refund.eval.ts');
 }
 
 /** Runs one "case": sends a message to an agent on `provider`, returns a minimal result. */
@@ -40,7 +40,7 @@ describe('cassettePath', () => {
 });
 
 describe('withEvalCassettes', () => {
-  it('runs the case untouched when loushy eval set no mode', async () => {
+  it('runs the case untouched when lousho eval set no mode', async () => {
     const file = evalFile();
     const { result, reply } = await runCase(file, mockModel(['live']));
     expect(reply).toBe('live');
@@ -64,14 +64,14 @@ describe('withEvalCassettes', () => {
   it('fails a replay without a cassette with the --record command, and runs live in auto mode', async () => {
     const file = evalFile();
     vi.stubEnv(CASSETTES_ENV, 'replay');
-    await expect(runCase(file, mockModel(['x']))).rejects.toThrow(/no cassette for "Refund flow \[Order #42\]".*npx loushy eval --record/);
+    await expect(runCase(file, mockModel(['x']))).rejects.toThrow(/no cassette for "Refund flow \[Order #42\]".*npx lousho eval --record/);
     vi.stubEnv(CASSETTES_ENV, 'auto');
     expect((await runCase(file, mockModel(['live']))).reply).toBe('live');
   });
 
   it('records into the drift dir instead of over the committed cassette', async () => {
     const file = evalFile();
-    const driftDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-drift-'));
+    const driftDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-drift-'));
     vi.stubEnv(CASSETTES_ENV, 'record');
     vi.stubEnv(DRIFT_DIR_ENV, driftDir);
     const { result } = await runCase(file, mockModel(['again']));

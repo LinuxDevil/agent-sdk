@@ -1,6 +1,6 @@
 # API Overview
 
-The package root (`@loushy/build-ai-agent`) exports everything below. For
+The package root (`@lousho/build-ai-agent`) exports everything below. For
 the complete, generated API reference (every export, signature and doc
 comment), build the TypeDoc site:
 
@@ -17,7 +17,7 @@ How the pieces fit:
 └──────────────┬──────────────────────┘
                │
 ┌──────────────▼──────────────────────┐
-│     @loushy/build-ai-agent          │
+│     @lousho/build-ai-agent          │
 │  ┌────────────────────────────┐    │
 │  │ createAgent / Builder /     │    │
 │  │ Executor (approvals,        │    │
@@ -69,8 +69,8 @@ permissions, approvals and guardrails. A dynamic agent used as a sub-agent
 resolves with the task prompt as `input`.
 
 ```ts
-import { createAgent, defineTool } from '@loushy/build-ai-agent';
-import { mockModel } from '@loushy/build-ai-agent/testing';
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
 import { z } from 'zod';
 
 const refund = defineTool({ name: 'refund', description: 'Refunds an order', input: z.object({ orderId: z.string() }), execute: async () => 'ok' });
@@ -86,7 +86,7 @@ const agent = createAgent({
 await agent.send('Hi', { metadata: { tenant: 'Globex', role: 'admin' } });
 ```
 
-A function that throws fails the run with `LOUSHY_CONFIG_RESOLVER_FAILED`
+A function that throws fails the run with `LOUSHO_CONFIG_RESOLVER_FAILED`
 (`error.field` names the option, `error.cause` is the thrown error): `send()`
 rejects, `stream()` ends with an `error` event and a session keeps its
 transcript as it was. A run paused for an approval or a question keeps the
@@ -99,14 +99,14 @@ when it is created.
 
 ### UI bindings
 
-`@loushy/build-ai-agent/react` exports `useLoushyAgent(source, options?)`, a
+`@lousho/build-ai-agent/react` exports `useLoushoAgent(source, options?)`, a
 React hook that runs an agent in process (`{ agent, sessionId? }`) or over HTTP
 (`{ url }`) and returns `messages`, `status`, `pendingApproval`,
 `send()`, `stop()`, `approve()` and `reject()`. Its framework-neutral parts,
 `reduceAgentEvents()` and `parseEventStream()`, are exported too. See
-[React](./react.md). `@loushy/build-ai-agent/vue` exports the same
-`useLoushyAgent()` as a Vue 3 composable, with the state as refs. See
-[Vue](./vue.md). `@loushy/build-ai-agent/svelte` exports `loushyAgent()`, the
+[React](./react.md). `@lousho/build-ai-agent/vue` exports the same
+`useLoushoAgent()` as a Vue 3 composable, with the state as refs. See
+[Vue](./vue.md). `@lousho/build-ai-agent/svelte` exports `loushoAgent()`, the
 same state and actions as a Svelte store (`$agent`). See [Svelte](./svelte.md).
 
 ### Sub-agents
@@ -180,7 +180,7 @@ Pass an `AbortSignal` to stop a run: `agent.send(input, { signal })`,
 `resumeAfterApproval(..., { signal })`.
 
 ```ts
-import { createAgent, createMockProvider } from '@loushy/build-ai-agent';
+import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
 const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
 const controller = new AbortController();
 setTimeout(() => controller.abort(), 5_000); // e.g. from a Stop button
@@ -191,7 +191,7 @@ console.log(result.finishReason); // 'aborted' if it was cancelled, else 'stop'
 For a time limit, use `AbortSignal.timeout(ms)`:
 
 ```ts
-import { createAgent, createMockProvider } from '@loushy/build-ai-agent';
+import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
 const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
 const result = await agent.send('Summarize this', { signal: AbortSignal.timeout(30_000) });
 ```
@@ -238,7 +238,7 @@ same reason is on the `finish` event and on `run.done` in
 [streaming](streaming.md).
 
 ```ts
-import { createAgent, createMockProvider } from '@loushy/build-ai-agent';
+import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
 const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider(), maxSteps: 3 });
 const result = await agent.send('Research this thoroughly');
 if (result.finishReason === 'max-steps') console.warn(`Gave up after ${result.steps} steps`);
@@ -253,7 +253,7 @@ for strictly sequential execution, e.g. when your tools share state that is
 not safe to touch concurrently.
 
 ```ts
-import { createAgent, createMockProvider, defineTool } from '@loushy/build-ai-agent';
+import { createAgent, createMockProvider, defineTool } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 const getWeather = defineTool({
@@ -330,7 +330,7 @@ See [Providers](./providers.md) for how a model string is resolved and which mod
 
 ## Testing
 
-Exported from `@loushy/build-ai-agent/testing` (see [Testing agents](testing.md)).
+Exported from `@lousho/build-ai-agent/testing` (see [Testing agents](testing.md)).
 
 | Export                | Description                                                                              |
 | --------------------- | ---------------------------------------------------------------------------------------- |
@@ -349,12 +349,12 @@ Exported from `@loushy/build-ai-agent/testing` (see [Testing agents](testing.md)
 | `NodeWorkspace`, `MemoryWorkspace`, `SandboxShell` | Workspace providers: a real directory (paths confined to `root`, minimal shell env), an in-memory tree with a scripted `exec` for tests, and a `ShellProvider` over a `SandboxAdapter` (Docker). |
 | `createTodoTools({ store?, onChange? })`     | `todo_write` / `todo_read` tools (plus `getTodos()`) so agents can plan and track multi-step work; see [Todo tools](#todo-tools). |
 | `connectMcp(servers, options?)`             | Connect MCP servers from config (stdio or HTTP) and load their tools; see [Connect MCP servers](./configuration.md#connect-mcp-servers-mcpservers-connectmcp). |
-| `loadMcpTools(client, connectionName)`       | Load a connected MCP server's tools as `ToolDescriptor`s. Available from the package root, `@loushy/build-ai-agent/tools`, and `@loushy/build-ai-agent/mcp`. |
+| `loadMcpTools(client, connectionName)`       | Load a connected MCP server's tools as `ToolDescriptor`s. Available from the package root, `@lousho/build-ai-agent/tools`, and `@lousho/build-ai-agent/mcp`. |
 
 See [Tools](./tools.md) for a guide to defining and registering tools.
 
 ```ts
-import { defineTool } from '@loushy/build-ai-agent';
+import { defineTool } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 const sendEmail = defineTool({
@@ -380,7 +380,7 @@ execute }`) is legacy, still built for compatibility, and used only for
 descriptors that do not set `inputSchema` / `execute`.
 
 ```ts
-import { loadMcpTools } from '@loushy/build-ai-agent/mcp';
+import { loadMcpTools } from '@lousho/build-ai-agent/mcp';
 
 const tools = await loadMcpTools(mcpClient, 'my-server');
 ```
@@ -407,7 +407,7 @@ warning naming the server, the tool and the reason, and `onSkip` to collect
 what was left out:
 
 ```ts
-import { loadMcpTools, type SkippedMcpTool } from '@loushy/build-ai-agent/mcp';
+import { loadMcpTools, type SkippedMcpTool } from '@lousho/build-ai-agent/mcp';
 
 const skipped: SkippedMcpTool[] = [];
 const tools = await loadMcpTools(mcpClient, 'my-server', {
@@ -440,7 +440,7 @@ retry. The list lives in memory per call; pass `store` (`{ get, set }`) to
 persist it, and `onChange` to update a UI.
 
 ```ts
-import { createAgent, createTodoTools, type TodoStore } from '@loushy/build-ai-agent';
+import { createAgent, createTodoTools, type TodoStore } from '@lousho/build-ai-agent';
 
 const todos = createTodoTools({ onChange: (list) => console.log(list.length, 'todos') });
 const planner = createAgent({ prompt: 'Plan multi-step work, then do it.', provider, tools: todos.tools });
@@ -508,7 +508,7 @@ shown to the model.
 Dependency-free helpers for budgeting and context decisions.
 
 ```ts
-import { estimateTokens, estimateCost, getModelInfo, registerModel } from '@loushy/build-ai-agent';
+import { estimateTokens, estimateCost, getModelInfo, registerModel } from '@lousho/build-ai-agent';
 
 // A custom or self-hosted model: add it (or override a built-in) before use.
 registerModel({
@@ -536,7 +536,7 @@ The built-in context windows and prices are a dated snapshot (see the retrieval 
 Every `ExecutionResult` (and `agent.send()` result) carries `usage`, the running total of the whole run:
 
 ```ts
-import { AgentExecutor, formatUsage } from '@loushy/build-ai-agent';
+import { AgentExecutor, formatUsage } from '@lousho/build-ai-agent';
 
 const result = await AgentExecutor.execute({ agent, input: 'Compare 3 cities', provider });
 
@@ -552,14 +552,14 @@ console.log(formatUsage(result.usage)); // 1,234 in / 567 out tokens · $0.0042 
 - **Cost.** `costUsd` is the sum of `estimateCost` per model. It is `undefined`, never a misleading partial sum, as soon as any model used has unknown pricing; `byModel` shows which ones are priced.
 - **Delegation.** A delegated child's usage is added to the parent's totals and `byModel`, and is also shown on its own as `usage.delegated` (`{ inputTokens, outputTokens, totalTokens, costUsd, modelCalls, estimated, runs }`).
 - **Resume.** A run resumed from a checkpoint, or after an approval, continues from the saved totals instead of restarting at zero. Checkpoints written by older versions start from their saved token counts with an unknown cost.
-- **Events and traces.** The `finish` event (and every lifecycle event that carried `usage`) now carries the running totals; `text-complete` also has `stepUsage`, and `onLLMResponse` receives the call's usage as a third argument. The `chat` span's `gen_ai.usage.*` attributes use the same numbers, with `loushy.usage.estimated` set to `true` when they are estimates.
+- **Events and traces.** The `finish` event (and every lifecycle event that carried `usage`) now carries the running totals; `text-complete` also has `stepUsage`, and `onLLMResponse` receives the call's usage as a third argument. The `chat` span's `gen_ai.usage.*` attributes use the same numbers, with `lousho.usage.estimated` set to `true` when they are estimates.
 - **Streaming.** `agent.stream()` events carry the same accounting: `step.done` and `run.done` have `usage` with `inputTokens`, `outputTokens`, `estimated` and `costUsd` (run-level also `modelCalls`), alongside the older `promptTokens`/`completionTokens`.
 - `promptTokens` and `completionTokens` on `usage` remain as deprecated aliases of `inputTokens` and `outputTokens`.
 
 Prices come from the model registry above, so to get a cost for a custom or fine-tuned model, register it under the id you pass as the model:
 
 ```ts
-import { registerModel } from '@loushy/build-ai-agent';
+import { registerModel } from '@lousho/build-ai-agent';
 
 registerModel({
   id: 'ft:gpt-4o-mini:acme',
@@ -592,11 +592,11 @@ See [Context compaction](./compaction.md).
 - `FlowBuilder` / `FlowExecutor` - multi-step workflow graphs; see [Flows](./flows.md).
 - `defineEval()`, scorers such as `exactMatch`, `toolCallOrder` and `budget`, checks such
   as `includes` and `atLeast`, and `llmJudge()` - agent evals run under vitest
-  or `loushy eval`; see [Evals](evals.md).
+  or `lousho eval`; see [Evals](evals.md).
 - `withSpan()` and `TraceExporter` - tracing for `AgentExecutor.execute()`.
   `TraceExporter` is a bring-your-own-exporter interface (no exporter
   ships by default); for real OpenTelemetry spans, import
-  `createOtelTraceExporter()` from the `@loushy/build-ai-agent/otel`
+  `createOtelTraceExporter()` from the `@lousho/build-ai-agent/otel`
   subpath (requires the optional peer dependency `@opentelemetry/api`)
   instead of hand-rolling the OTel bridge - see
   `examples/tracing/run-otel.ts`. Spans follow the OpenTelemetry GenAI
@@ -611,13 +611,13 @@ See [Context compaction](./compaction.md).
   or an LLM `generate`, can mutate args/messages/results or throw to abort
   the step; tool-call hooks can also deny a call, replace its result or
   modify its input, see [Hook outcomes](#hook-outcomes)). Available from the package root and from
-  `@loushy/build-ai-agent/hooks`. Agent Forge's canvas hook editor
+  `@lousho/build-ai-agent/hooks`. Agent Forge's canvas hook editor
   ([docs/agent-forge.md](./agent-forge.md#hooks)) compiles the hooks a user
   attaches to a node into a `HookRegistry` this way, run sandboxed via
   `SandboxAdapter` rather than in the host process.
 
   ```ts
-  import { HookRegistry, type AgentHook } from '@loushy/build-ai-agent/hooks';
+  import { HookRegistry, type AgentHook } from '@lousho/build-ai-agent/hooks';
 
   const redactPii: AgentHook = {
     name: 'redact-pii',
@@ -666,7 +666,7 @@ supply its result, but an `{ input }` that differs from the approved input is
 refused with a tool error instead of running.
 
 ```ts
-import { createAgent, type AgentHook } from '@loushy/build-ai-agent';
+import { createAgent, type AgentHook } from '@lousho/build-ai-agent';
 
 const guard: AgentHook = {
   name: 'guard',
@@ -727,7 +727,7 @@ the `ExpressionError` detail.
 
 ## Triggers
 
-Trigger adapters (`@loushy/build-ai-agent/triggers`) wake an agent up from an
+Trigger adapters (`@lousho/build-ai-agent/triggers`) wake an agent up from an
 inbound webhook, a schedule or a Slack message. Wire any of them with
 `listen(agent, onEvent)`, where `onEvent` runs the agent.
 
@@ -746,8 +746,8 @@ on a non-loopback host with no `auth`, the adapter logs a one-time warning
 through `options.logger`.
 
 ```ts
-import { createAgent, createMockProvider } from '@loushy/build-ai-agent';
-import { WebhookTriggerAdapter } from '@loushy/build-ai-agent/triggers';
+import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
+import { WebhookTriggerAdapter } from '@lousho/build-ai-agent/triggers';
 
 const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
 
@@ -803,8 +803,8 @@ logged at `warn` level. The signed `url_verification` handshake is answered
 after verification.
 
 ```ts
-import { createAgent, createMockProvider } from '@loushy/build-ai-agent';
-import { SlackTriggerAdapter, verifySlackSignature } from '@loushy/build-ai-agent/triggers';
+import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
+import { SlackTriggerAdapter, verifySlackSignature } from '@lousho/build-ai-agent/triggers';
 import * as http from 'node:http';
 
 const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
@@ -841,8 +841,8 @@ the background.
 expression:
 
 ```ts
-import { createAgent, createMockProvider } from '@loushy/build-ai-agent';
-import { CronTriggerAdapter } from '@loushy/build-ai-agent/triggers';
+import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
+import { CronTriggerAdapter } from '@lousho/build-ai-agent/triggers';
 
 const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
 
@@ -870,4 +870,4 @@ run from the scheduled time (no drift, no double fire), and `stop()` clears it.
 ## Deployment
 
 - `DeploymentAdapter`, `registerAdapter()`, `getAdapter()`, `listAdapters()` -
-  the adapter registry behind `loushy build` (see [Deployment](./deployment.md)).
+  the adapter registry behind `lousho build` (see [Deployment](./deployment.md)).

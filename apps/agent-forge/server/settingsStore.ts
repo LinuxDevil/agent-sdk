@@ -8,10 +8,10 @@
  * provider" label becomes the active profile's name + provider) and the
  * Settings drawer's deploy-adapter dropdown/OTel toggle.
  *
- * Persisted to `.loushy/settings.json` (plaintext - it holds no secrets,
+ * Persisted to `.lousho/settings.json` (plaintext - it holds no secrets,
  * only a provider TYPE name like 'openai' and which of `secretsStore`'s
  * managed providers to use; the actual key lives only in
- * `secretsStore.ts`'s encrypted store). `.loushy/` is already gitignored.
+ * `secretsStore.ts`'s encrypted store). `.lousho/` is already gitignored.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -57,7 +57,7 @@ export class SettingsStore {
   private readonly file: string;
 
   constructor(baseDir: string) {
-    this.file = path.join(baseDir, '.loushy', 'settings.json');
+    this.file = path.join(baseDir, '.lousho', 'settings.json');
   }
 
   private ensureDir(): void {

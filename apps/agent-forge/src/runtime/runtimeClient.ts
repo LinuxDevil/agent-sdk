@@ -6,7 +6,7 @@
  * so the two can evolve together without every component knowing the HTTP
  * details.
  */
-import type { AgentSpec } from '@loushy/build-ai-agent';
+import type { AgentSpec } from '@lousho/build-ai-agent';
 import type {
   AgentRunStatusPayload,
   ChatSessionMeta,
@@ -24,7 +24,7 @@ import type {
   StreamMessage,
 } from '../../shared/wireTypes';
 
-/** Same-origin default: `loushy studio` prints the API server's own URL, but in dev the Vite server proxies to it (see vite.config.ts). */
+/** Same-origin default: `lousho studio` prints the API server's own URL, but in dev the Vite server proxies to it (see vite.config.ts). */
 const DEFAULT_BASE_URL = '';
 
 interface RuntimeClientOptions {
@@ -239,7 +239,7 @@ class RuntimeClient {
     return (await res.json()) as string[];
   }
 
-  /** R2: "Deploy this agent" - shells out to `loushy build --target=<adapter>` against this agent's saved spec. */
+  /** R2: "Deploy this agent" - shells out to `lousho build --target=<adapter>` against this agent's saved spec. */
   async deployAgent(agentId: string, adapter: string): Promise<DeployResult> {
     const res = await fetch(`${this.baseUrl}/agents/${encodeURIComponent(agentId)}/deploy`, {
       method: 'POST',

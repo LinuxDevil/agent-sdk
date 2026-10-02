@@ -8,7 +8,7 @@
  * any other host service listening on that address or on all addresses), so
  * its allowlist is enforced. Anywhere that cannot hold (Docker Desktop, a
  * remote or rootless daemon, an Engine that forwards DNS from internal
- * networks) fails closed with LOUSHY_SANDBOX_EGRESS_UNSUPPORTED.
+ * networks) fails closed with LOUSHO_SANDBOX_EGRESS_UNSUPPORTED.
  *
  * Node-only, like sandbox.ts.
  */
@@ -19,7 +19,7 @@ import { SDKError } from '../execution/errors';
 import type { CredentialBroker } from './credentialBroker';
 
 /** Label on networks the SDK creates. */
-const MANAGED_LABEL = 'com.loushy.sandbox';
+const MANAGED_LABEL = 'com.lousho.sandbox';
 
 /** The internal network and broker listener a sandbox's containers use. */
 export interface Egress {
@@ -42,7 +42,7 @@ export async function ignoreFailure(fn: () => Promise<unknown>): Promise<void> {
 function unsupported(reason: string, cause?: unknown): SDKError {
   return new SDKError(
     `SubprocessSandbox: network { allow } with a broker cannot be enforced here: ${reason}. No container was started.`,
-    'LOUSHY_SANDBOX_EGRESS_UNSUPPORTED',
+    'LOUSHO_SANDBOX_EGRESS_UNSUPPORTED',
     { cause }
   );
 }

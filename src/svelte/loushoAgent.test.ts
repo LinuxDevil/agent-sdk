@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * LOU-P3: the Svelte loushyAgent() store driven through its subscribe()
+ * LOU-P3: the Svelte loushoAgent() store driven through its subscribe()
  * contract (no DOM needed), in process with mockModel and remote with a
  * scripted fetch.
  */
@@ -11,10 +11,10 @@ import { defineTool } from '../tools/defineTool';
 import { mockModel } from '../testing';
 import { AGENT_EVENT_SCHEMA_VERSION } from '../execution/agentEvents';
 import type { AgentUIState } from '../ui';
-import { loushyAgent, type LoushyAgentStore } from './loushyAgent';
+import { loushoAgent, type LoushoAgentStore } from './loushoAgent';
 
 /** What `$agent` reads: the latest value the store handed to a subscriber. */
-function watch(store: LoushyAgentStore) {
+function watch(store: LoushoAgentStore) {
   let value!: AgentUIState;
   const unsubscribe = store.subscribe((state) => (value = state));
   return { state: () => value, unsubscribe };
@@ -28,9 +28,9 @@ function emailAgent(...turns: Parameters<typeof mockModel>[0]) {
 
 const callEmail = { toolCalls: [{ name: 'send_email', args: { to: 'sam' }, id: 'call_email' }] };
 
-describe('loushyAgent for Svelte (LOU-P3)', () => {
+describe('loushoAgent for Svelte (LOU-P3)', () => {
   it('calls a subscriber at once with the initial state, and streams the reply into it', async () => {
-    const store = loushyAgent({ agent: createAgent({ provider: mockModel([{ text: 'Hello there!', usage: { inputTokens: 5, outputTokens: 3 } }]) }) });
+    const store = loushoAgent({ agent: createAgent({ provider: mockModel([{ text: 'Hello there!', usage: { inputTokens: 5, outputTokens: 3 } }]) }) });
     const seen: string[] = [];
     store.subscribe((state) => seen.push(state.status));
     expect(seen).toEqual(['idle']);
@@ -51,7 +51,7 @@ describe('loushyAgent for Svelte (LOU-P3)', () => {
 
   it('shows a tool call and its state through the approval round trip', async () => {
     const { agent, execute } = emailAgent(callEmail, 'Email sent.');
-    const store = loushyAgent({ agent });
+    const store = loushoAgent({ agent });
     const { state } = watch(store);
 
     await store.send('Email Sam');
@@ -67,7 +67,7 @@ describe('loushyAgent for Svelte (LOU-P3)', () => {
 
   it('reject() marks the call rejected', async () => {
     const { agent, execute } = emailAgent(callEmail, 'OK, not sent.');
-    const store = loushyAgent({ agent });
+    const store = loushoAgent({ agent });
     const { state } = watch(store);
     await store.send('Email Sam');
     await store.reject('not today');
@@ -76,7 +76,7 @@ describe('loushyAgent for Svelte (LOU-P3)', () => {
   });
 
   it('a failing run ends in the error status', async () => {
-    const store = loushyAgent({ agent: createAgent({ provider: mockModel([{ error: new Error('provider down') }]) }) });
+    const store = loushoAgent({ agent: createAgent({ provider: mockModel([{ error: new Error('provider down') }]) }) });
     const { state } = watch(store);
     await store.send('Hi');
     expect(state().status).toBe('error');
@@ -85,7 +85,7 @@ describe('loushyAgent for Svelte (LOU-P3)', () => {
 
   it('reset() starts a new conversation and clears the state', async () => {
     const model = mockModel(['Nice to meet you, Ali.', 'Hello again']);
-    const store = loushyAgent({ agent: createAgent({ provider: model }), sessionId: 'chat-1' });
+    const store = loushoAgent({ agent: createAgent({ provider: model }), sessionId: 'chat-1' });
     const { state } = watch(store);
     await store.send('My name is Ali.');
     store.reset();
@@ -95,7 +95,7 @@ describe('loushyAgent for Svelte (LOU-P3)', () => {
   });
 });
 
-describe('loushyAgent for Svelte remote and abort (LOU-P3)', () => {
+describe('loushoAgent for Svelte remote and abort (LOU-P3)', () => {
   const base = { runId: 'r1', timestamp: new Date(0).toISOString(), v: AGENT_EVENT_SCHEMA_VERSION };
   const partial = `data: ${JSON.stringify({ ...base, seq: 0, type: 'text.delta', text: 'partial' })}\n\n`;
 
@@ -118,7 +118,7 @@ describe('loushyAgent for Svelte remote and abort (LOU-P3)', () => {
 
   it('stop() aborts the request and returns to idle', async () => {
     const remote = openFetch();
-    const store = loushyAgent({ url: '/api/agent', fetch: remote.fetch });
+    const store = loushoAgent({ url: '/api/agent', fetch: remote.fetch });
     const { state } = watch(store);
 
     const sending = store.send('Long story');
@@ -133,7 +133,7 @@ describe('loushyAgent for Svelte remote and abort (LOU-P3)', () => {
 
   it('aborts when the last subscriber unsubscribes, not before', async () => {
     const remote = openFetch();
-    const store = loushyAgent({ url: '/api/agent', fetch: remote.fetch });
+    const store = loushoAgent({ url: '/api/agent', fetch: remote.fetch });
     const first = watch(store);
     const second = watch(store);
 

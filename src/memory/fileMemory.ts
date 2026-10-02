@@ -16,7 +16,7 @@ export interface FileMemoryOptions extends MemoryProviderOptions {
  *
  * @example
  * ```ts
- * const prefs = defineMemory({ name: 'prefs', scope: 'session', provider: fileMemory({ dir: './.loushy/memory' }) });
+ * const prefs = defineMemory({ name: 'prefs', scope: 'session', provider: fileMemory({ dir: './.lousho/memory' }) });
  * ```
  */
 export function fileMemory({ dir, ...options }: FileMemoryOptions): MemoryProvider {

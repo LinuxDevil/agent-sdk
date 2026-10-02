@@ -1,5 +1,5 @@
 /**
- * The individual `loushy doctor` checks. Each is a small function over the
+ * The individual `lousho doctor` checks. Each is a small function over the
  * injected DoctorEnvironment returning one or more DoctorCheck lines.
  */
 import { FEATURE_PEERS } from '../providers/optionalPeer';
@@ -187,7 +187,7 @@ function checkDefaultProvider(env: DoctorEnvironment): DoctorCheck {
       ...base,
       status: 'warn',
       finding: 'none configured (createAgent() needs a model, a provider instance, or an env var)',
-      fix: 'Set LOUSHY_MODEL (e.g. openai/gpt-4o-mini) or one of the API key variables above.',
+      fix: 'Set LOUSHO_MODEL (e.g. openai/gpt-4o-mini) or one of the API key variables above.',
     };
   }
 }
@@ -234,7 +234,7 @@ export async function checkDocker(env: DoctorEnvironment, needs: SpecNeeds): Pro
       ...base,
       status: 'warn',
       finding: 'daemon not reachable, but the agent spec uses a sandboxed tool',
-      fix: 'Install and start Docker (https://docs.docker.com/get-docker/), then re-run `loushy doctor`.',
+      fix: 'Install and start Docker (https://docs.docker.com/get-docker/), then re-run `lousho doctor`.',
     };
   }
   return {

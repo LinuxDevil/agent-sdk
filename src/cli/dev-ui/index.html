@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>loushy dev</title>
+<title>lousho dev</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
@@ -29,7 +29,7 @@
 </head>
 <body>
   <header>
-    <h1>loushy dev</h1>
+    <h1>lousho dev</h1>
     <span id="sid"></span>
     <button id="new">New session</button>
   </header>
@@ -48,11 +48,11 @@
     // One session per tab: the id lives in sessionStorage, the history on the server.
     function newSessionId() {
       const id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2));
-      try { sessionStorage.setItem('loushy.sessionId', id); } catch (err) { /* storage blocked: this page load keeps the id */ }
+      try { sessionStorage.setItem('lousho.sessionId', id); } catch (err) { /* storage blocked: this page load keeps the id */ }
       return id;
     }
     let sessionId;
-    try { sessionId = sessionStorage.getItem('loushy.sessionId'); } catch (err) { /* ignore */ }
+    try { sessionId = sessionStorage.getItem('lousho.sessionId'); } catch (err) { /* ignore */ }
     sessionId = sessionId || newSessionId();
     const sid = document.getElementById('sid');
     function showSession() { sid.textContent = 'session ' + sessionId.slice(0, 8); sid.title = sessionId; }
