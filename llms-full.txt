@@ -25,7 +25,7 @@ Three things set it apart:
   usage and USD cost.
 
 [Quickstart](#quickstart) · [Features](#features) · [Documentation](#documentation) ·
-[Examples](#examples) · [Docs site](https://lousho.mintlify.app)
+[Examples](#examples) · [Docs](https://lousho.com)
 
 ## Installation
 
@@ -208,7 +208,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md) | The main exports, triggers, tokens and cost; `npm run docs:build` generates the full TypeDoc reference |
 | [Utilities](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/utilities.md) | Encryption, hashing and file storage |
 
-The full guides site is at [lousho.mintlify.app](https://lousho.mintlify.app).
+The full guides are at [lousho.com](https://lousho.com), in English and Arabic.
 
 **For AI coding agents.** The package ships its docs in machine-readable form:
 `llms-full.txt` (this README and every docs page in one file, with absolute
