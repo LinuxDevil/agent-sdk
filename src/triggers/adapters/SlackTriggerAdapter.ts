@@ -125,7 +125,7 @@ export class SlackTriggerAdapter implements TriggerAdapter<string> {
     this.warnedUnauthenticated = true;
     (this.options.logger ?? noopLogger).warn(
       'SlackTriggerAdapter has no `signingSecret`: Slack request signatures are not verified, so anyone who can reach ' +
-        'your endpoint can run your agent. Pass options.signingSecret; see docs/api-overview.md#slack-request-signatures.'
+        'your endpoint can run your agent. Pass options.signingSecret; see docs/triggers.md#slack.'
     );
   }
 
