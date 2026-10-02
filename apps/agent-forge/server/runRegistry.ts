@@ -10,6 +10,8 @@
  */
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
+import { fileTraceExporter } from '@lousho/build-ai-agent/traces';
+import { agentTraceDir, fanOutExporter } from './traceStore';
 import {
   AgentExecutor,
   FlowExecutor,
@@ -313,6 +315,8 @@ export class RunManager extends EventEmitter {
       startTime: span.startTime,
       endTime: span.endTime,
       attributes: span.attributes,
+      ...(span.kind !== undefined && { kind: span.kind }),
+      ...(span.status !== undefined && { status: span.status }),
     });
   }
 
@@ -320,13 +324,15 @@ export class RunManager extends EventEmitter {
    * O2: builds a `TraceExporter` (src/execution/tracing.ts) that forwards
    * every real span start/end notification for this run over the existing
    * WS channel (as `{type:'span', ...}` messages, see wsServer.ts) rather
-   * than a second tracing pipeline.
+   * than a second tracing pipeline. M5b: it also writes the run to the
+   * agent's trace folder (see traceStore.ts), so the Trace tab can reopen it.
    */
   private makeTraceExporter(agentId: string): TraceExporter {
-    return {
+    const live: TraceExporter = {
       onSpanStart: (span) => this.emitSpan(agentId, span),
       onSpanEnd: (span) => this.emitSpan(agentId, span),
     };
+    return fanOutExporter(live, fileTraceExporter({ dir: agentTraceDir(this.opts.baseDir, agentId) }));
   }
 
   /** O3: (re)creates the debug session for a fresh run(), seeded from this agent's persisted breakpoints. */
