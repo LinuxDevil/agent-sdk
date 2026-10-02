@@ -65,6 +65,12 @@ export interface StudioOptions {
    * been built, else 'dev'.
    */
   mode?: StudioMode;
+  /**
+   * Root of the installed `@lousho/build-ai-agent` package, whose own
+   * `apps/agent-forge` is used when `repoRoot` has none. Defaults to the
+   * package this CLI runs from; tests point it at a temporary directory.
+   */
+  packageRoot?: string;
 }
 
 export interface StudioHandle {
@@ -105,9 +111,11 @@ function resolveMode(appDir: string, requested: StudioMode): 'dev' | 'prod' {
  */
 export function startStudio(options: StudioOptions = {}): StudioHandle {
   const { repoRoot = process.cwd(), apiPort = 4750, apiHost = '127.0.0.1', mode: requested = 'auto' } = options;
-  const appDir = path.join(repoRoot, 'apps', 'agent-forge');
+  // dist/cli/studio.js and src/cli/studio.ts both sit two levels below the package root.
+  const packageRoot = options.packageRoot ?? path.join(__dirname, '..', '..');
+  const appDir = resolveAgentForgeDir(repoRoot, packageRoot);
 
-  assertAgentForgeApp(appDir, repoRoot);
+  if (!appDir) throw agentForgeNotFound(repoRoot, packageRoot);
 
   const mode = resolveMode(appDir, requested);
 
@@ -115,13 +123,24 @@ export function startStudio(options: StudioOptions = {}): StudioHandle {
   return startDevStudio(appDir, repoRoot, apiPort, apiHost);
 }
 
-function assertAgentForgeApp(appDir: string, repoRoot: string): void {
-  if (!fs.existsSync(path.join(appDir, 'package.json'))) {
-    throw new ConfigurationError(
-      `lousho studio: could not find apps/agent-forge under '${repoRoot}'. ` +
-        'Run this from the root of a repo that includes the Agent Forge app ' +
-        '(this SDK monorepo, or a project that vendors apps/agent-forge the same way).', 'studio');
+/**
+ * Finds the Agent Forge app: the project's own `apps/agent-forge` first (the
+ * SDK repo, or a project that vendors the app), else the copy shipped inside
+ * the installed package. Returns undefined when neither has a `package.json`.
+ */
+export function resolveAgentForgeDir(repoRoot: string, packageRoot: string): string | undefined {
+  for (const root of [repoRoot, packageRoot]) {
+    const dir = path.join(root, 'apps', 'agent-forge');
+    if (fs.existsSync(path.join(dir, 'package.json'))) return dir;
   }
+  return undefined;
+}
+
+function agentForgeNotFound(repoRoot: string, packageRoot: string): ConfigurationError {
+  return new ConfigurationError(
+    `lousho studio: could not find apps/agent-forge under '${repoRoot}' or in the installed package ` +
+      `('${path.join(packageRoot, 'apps', 'agent-forge')}'). Run this from the root of a repo that ` +
+      'includes the Agent Forge app, or reinstall @lousho/build-ai-agent.', 'studio');
 }
 
 /** Logs a child process's non-zero exit (a null code means it was killed by a signal). */
