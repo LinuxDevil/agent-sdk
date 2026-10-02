@@ -4,7 +4,7 @@ import { jsonSchemaToZod } from './schema';
 describe('jsonSchemaToZod', () => {
   const cases: Array<{
     name: string;
-    schema: any;
+    schema: unknown;
     valid: unknown[];
     invalid: unknown[];
   }> = [

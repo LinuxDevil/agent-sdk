@@ -34,6 +34,7 @@
  * through this adapter's HTTP surface.)
  */
 import { describe, it, expect, beforeAll } from 'vitest';
+import type { Message } from '../../providers';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -181,7 +182,7 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
     expect(midRunCheckpoint.messages.length).toBeGreaterThan(0);
     // A distinctive marker proving these ARE this run's real messages, not
     // synthesized ones - the tool result role/name will be 'current-date'.
-    expect(midRunCheckpoint.messages.some((m) => (m as any).name === 'current-date')).toBe(true);
+    expect(midRunCheckpoint.messages.some((m) => m.name === 'current-date')).toBe(true);
 
     // --- Leg 2: replay that real checkpoint into a FRESH KV/session, ----
     // standing in for "the isolate serving leg 1 was recycled/crashed
@@ -219,7 +220,7 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
     expect(resumeBody.messages.slice(0, midRunCheckpoint.messages.length)).toEqual(midRunCheckpoint.messages);
     expect(
       resumeBody.messages.some(
-        (m: any) => typeof m.content === 'string' && m.content.includes('totally unrelated follow-up text')
+        (m: Message) => typeof m.content === 'string' && m.content.includes('totally unrelated follow-up text')
       )
     ).toBe(true);
 

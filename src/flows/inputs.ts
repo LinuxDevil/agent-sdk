@@ -31,20 +31,33 @@ export function replaceVariablesInString(
   return result;
 }
 
-const LIST_CHILD_AGENTS: ReadonlySet<string> = new Set([
+const LIST_CHILD_AGENTS: ReadonlySet<unknown> = new Set([
   'sequenceAgent',
   'parallelAgent',
   'bestOfAllAgent',
   'oneOfAgent',
 ]);
 
-const SINGLE_CHILD_AGENTS: ReadonlySet<string> = new Set(['forEachAgent', 'optimizeAgent']);
+const SINGLE_CHILD_AGENTS: ReadonlySet<unknown> = new Set(['forEachAgent', 'optimizeAgent']);
+
+/**
+ * A node of an agent-style flow definition (`{ agent: 'sequenceAgent', input: [...] }`),
+ * the fields {@link injectVariables} and {@link applyInputTransformation} read and write.
+ */
+export interface FlowDefinitionNode {
+  agent?: string;
+  name?: string;
+  /** A string, the child nodes (list-style agents) or the child node (wrapper-style agents). */
+  input?: unknown;
+  conditions?: unknown;
+  criteria?: unknown;
+}
 
 /**
  * Nested flow nodes of a flow definition: the input array of list-style
  * agents, or the single input object of wrapper-style agents.
  */
-function getChildNodes(flowDef: any): any[] {
+function getChildNodes(flowDef: FlowDefinitionNode): FlowDefinitionNode[] {
   if (LIST_CHILD_AGENTS.has(flowDef.agent)) {
     return listChildNodes(flowDef.input);
   }
@@ -54,21 +67,26 @@ function getChildNodes(flowDef: any): any[] {
   return [];
 }
 
-function listChildNodes(input: any): any[] {
+function listChildNodes(input: unknown): FlowDefinitionNode[] {
   return Array.isArray(input) ? input : [];
 }
 
-function singleChildNode(input: any): any[] {
+function singleChildNode(input: unknown): FlowDefinitionNode[] {
   return input && typeof input === 'object' ? [input] : [];
 }
 
 /**
  * Inject variable values into a flow definition recursively
  */
-export function injectVariables(
-  flowDef: any,
+export function injectVariables<T extends FlowDefinitionNode>(
+  flowDef: T,
   variables: Record<string, string>
-): any {
+): T {
+  injectNodeVariables(flowDef, variables);
+  return flowDef;
+}
+
+function injectNodeVariables(flowDef: FlowDefinitionNode, variables: Record<string, string>): void {
   // Replace variables in string input
   if (typeof flowDef.input === 'string') {
     flowDef.input = replaceVariablesInString(flowDef.input, variables);
@@ -87,29 +105,28 @@ export function injectVariables(
   }
 
   // Recursively process nested flows
-  getChildNodes(flowDef).forEach((child) => injectVariables(child, variables));
-
-  return flowDef;
+  getChildNodes(flowDef).forEach((child) => injectNodeVariables(child, variables));
 }
 
 /**
  * Apply transformation function to all input fields in flow definition
  */
-export async function applyInputTransformation(
-  flowDef: any,
-  transformFn: (node: any) => Promise<any> | any
+export async function applyInputTransformation<T extends FlowDefinitionNode>(
+  flowDef: T,
+  transformFn: (node: T) => unknown
 ): Promise<void> {
+  const node: FlowDefinitionNode = flowDef;
   // Transform current node's input
-  flowDef.input = await transformFn(flowDef);
+  node.input = await transformFn(flowDef);
 
   // Set name if not present
-  if (!flowDef.name) {
-    flowDef.name = flowDef.agent;
+  if (!node.name) {
+    node.name = node.agent;
   }
 
-  // Recursively transform nested nodes
+  // Recursively transform nested nodes (a flow definition's children are nodes of the same type)
   await Promise.all(
-    getChildNodes(flowDef).map((child) => applyInputTransformation(child, transformFn))
+    getChildNodes(node).map((child) => applyInputTransformation(child as T, transformFn))
   );
 }
 
@@ -139,7 +156,7 @@ function buildFieldSchema(inputVar: FlowInputVariable): z.ZodTypeAny {
  */
 export function createDynamicZodSchemaForInputs(options: {
   availableInputs: FlowInputVariable[];
-}): z.ZodObject<any> {
+}): z.ZodObject<Record<string, z.ZodTypeAny>> {
   const { availableInputs } = options;
 
   if (!availableInputs || availableInputs.length === 0) {
@@ -183,7 +200,7 @@ function checkInputType(variable: FlowInputVariable, value: unknown): string | n
  * Validate flow input against schema
  */
 export function validateFlowInput(
-  input: any,
+  input: Record<string, unknown>,
   variables: FlowInputVariable[]
 ): { valid: boolean; errors: string[] } {
   const errors: string[] = [];

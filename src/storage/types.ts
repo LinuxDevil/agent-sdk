@@ -24,7 +24,7 @@ export interface IStorageService {
   /**
    * Read JSON file
    */
-  readPlainJSONAttachment<T = any>(key: string): T;
+  readPlainJSONAttachment<T = unknown>(key: string): T;
 
   /**
    * Save file from File object
@@ -44,7 +44,7 @@ export interface IStorageService {
   /**
    * Write JSON file
    */
-  writePlainJSONAttachment(key: string, data: any, maxFileSizeMB?: number): void;
+  writePlainJSONAttachment(key: string, data: unknown, maxFileSizeMB?: number): void;
 
   /**
    * Delete file

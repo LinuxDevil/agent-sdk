@@ -37,8 +37,8 @@ export function getErrorMessage(error: unknown): string {
 /**
  * Format Zod validation error
  */
-export function formatZodError(err: unknown): { type: string; message: string; [key: string]: any } {
-  let errorChunk: { type: string; message: string; [key: string]: any } = { 
+export function formatZodError(err: unknown): { type: string; message: string; [key: string]: unknown } {
+  let errorChunk: { type: string; message: string; [key: string]: unknown } = { 
     type: 'error', 
     message: getErrorMessage(err) 
   };
@@ -73,19 +73,27 @@ export function getZodErrorMessage(error: ZodError): string {
 /**
  * Format Axios error (if axios is being used)
  */
-export function formatAxiosError(error: any): string {
-  if (error.isAxiosError) {
-    return `HTTP Error ${axiosStatusLabel(error)}${describeAxiosErrorDetail(error)}`;
+export function formatAxiosError(error: unknown): string {
+  const axiosError = error as AxiosErrorLike;
+  if (axiosError.isAxiosError) {
+    return `HTTP Error ${axiosStatusLabel(axiosError)}${describeAxiosErrorDetail(axiosError)}`;
   }
 
   return `Unexpected error: ${error instanceof Error ? error.message : String(error)}`;
 }
 
-function axiosStatusLabel(error: any): string {
+/** The fields of an axios error read here (axios is not a dependency). */
+type AxiosErrorLike = {
+  isAxiosError?: unknown;
+  message?: string;
+  response?: { status?: number; data?: unknown };
+};
+
+function axiosStatusLabel(error: AxiosErrorLike): number | string {
   return error.response?.status || 'Unknown Status';
 }
 
-function describeAxiosErrorDetail(error: any): string {
+function describeAxiosErrorDetail(error: AxiosErrorLike): string {
   const data = error.response?.data;
   if (!data) return `: ${error.message}`;
   return describeAxiosErrorBody(data);

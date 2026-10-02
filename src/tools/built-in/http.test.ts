@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach, beforeAll, vi } from 'vitest';
+import type { ToolExecutionOptions } from 'ai';
 import http from 'http';
 import https from 'https';
 import dns from 'dns';
@@ -41,14 +42,18 @@ describe('makeHttpRequest', () => {
     // this hostname to return a non-blocked address for the purposes of the
     // SSRF pre-check only. The actual fetch() call still connects to the
     // real local server via Node's own (unmocked) DNS resolution.
-    dnsLookupSpy = vi.spyOn(dns.promises, 'lookup').mockImplementation(async (hostname: any, opts?: any) => {
+    // Implemented through the plain MockInstance: lookup() is overloaded (one
+    // address, or all of them with `all: true`), which one signature can't type.
+    dnsLookupSpy = vi.spyOn(dns.promises, 'lookup');
+    dnsLookupSpy?.mockImplementation(async (...args: unknown[]) => {
+      const [hostname, opts] = args as [string, dns.LookupOptions | undefined];
       if (hostname === 'localhost') {
         const entry = { address: '203.0.113.10', family: 4 };
-        return (opts && opts.all ? [entry] : entry) as any;
+        return opts && opts.all ? [entry] : entry;
       }
       return vi.importActual<typeof dns>('dns').then((actual) =>
-        actual.promises.lookup(hostname, opts)
-      ) as any;
+        actual.promises.lookup(hostname, opts as dns.LookupOptions)
+      );
     });
   });
 
@@ -170,10 +175,11 @@ describe('makeHttpRequest', () => {
     });
 
     it('rejects a domain name that DNS-resolves to a blocked IP (DNS rebinding)', async () => {
-      dnsLookupSpy?.mockImplementation(async (hostname: any, opts?: any) => {
+      dnsLookupSpy?.mockImplementation(async (...args: unknown[]) => {
+        const [hostname, opts] = args as [string, dns.LookupOptions | undefined];
         if (hostname === 'evil.example.com') {
           const entry = { address: '127.0.0.1', family: 4 };
-          return (opts && opts.all ? [entry] : entry) as any;
+          return opts && opts.all ? [entry] : entry;
         }
         throw new Error(`unexpected lookup for ${hostname}`);
       });
@@ -370,7 +376,7 @@ describe('makeHttpRequest', () => {
       try {
         const descriptor = createHttpTool();
 
-        const direct = await descriptor.tool.execute!({ url: baseUrl, method: 'GET' }, {} as any);
+        const direct = await descriptor.tool.execute!({ url: baseUrl, method: 'GET' }, {} as ToolExecutionOptions);
         const viaGuard = await executeToolWithSandboxGuard('http', descriptor, { url: baseUrl, method: 'GET' }, NoopSandbox);
 
         expect(direct).toBe('sandboxed-ok');

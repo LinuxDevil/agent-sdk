@@ -11,6 +11,13 @@ import { StorageService, FileSystemAdapter, PathAdapter } from '../storage/Stora
 function createFakeFs(): { fs: FileSystemAdapter; path: PathAdapter } {
   const files = new Map<string, string>();
 
+  // Returns text only: StorageService reads with 'utf8' (the Buffer overload is unused).
+  function readFileSync(p: string, encoding: 'utf8'): string;
+  function readFileSync(p: string): Buffer;
+  function readFileSync(p: string): string | Buffer {
+    return files.get(p) as string;
+  }
+
   const fs: FileSystemAdapter = {
     existsSync: (p: string) => files.has(p),
     mkdirSync: () => undefined,
@@ -20,7 +27,7 @@ function createFakeFs(): { fs: FileSystemAdapter; path: PathAdapter } {
     unlinkSync: (p: string) => {
       files.delete(p);
     },
-    readFileSync: (p: string) => files.get(p) as any,
+    readFileSync,
     rmSync: (p: string) => {
       files.delete(p);
     },

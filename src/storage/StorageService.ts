@@ -8,9 +8,13 @@
 import { IStorageService } from './types';
 import { SDKError } from '../execution/errors';
 
-// Type-safe way to access Buffer and process without Node.js type dependencies
-declare const Buffer: any;
-declare const process: any;
+// Buffer and process exist on Node.js only (checked with typeof before use);
+// declared with just the members used, so this module needs no Node.js types.
+declare const Buffer: {
+  from(data: string, encoding: 'base64'): Uint8Array;
+  byteLength(data: string, encoding: 'utf8'): number;
+};
+declare const process: { cwd?: () => string };
 
 /**
  * Minimal shape of the Node.js `fs` module (or a compatible implementation)
@@ -206,7 +210,7 @@ export class StorageService implements IStorageService {
   /**
    * Read a JSON file from disk and parse it. Returns {} if not found.
    */
-  public readPlainJSONAttachment<T = any>(storageKey: string): T {
+  public readPlainJSONAttachment<T = unknown>(storageKey: string): T {
     this.ensureDirExists();
     const filePath = this.getFilePath(storageKey);
     if (!this.fs.existsSync(filePath)) {
@@ -219,7 +223,7 @@ export class StorageService implements IStorageService {
   /**
    * Writes data as JSON to disk. Checks size against maxFileSizeMB (default 10).
    */
-  public writePlainJSONAttachment(storageKey: string, data: any, maxFileSizeMB = 10): void {
+  public writePlainJSONAttachment(storageKey: string, data: unknown, maxFileSizeMB = 10): void {
     this.ensureDirExists();
     const jsonString = JSON.stringify(data);
     // Calculate size (use Buffer if available, otherwise approximate)

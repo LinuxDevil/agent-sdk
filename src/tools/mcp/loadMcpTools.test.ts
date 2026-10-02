@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import type { ToolExecutionOptions } from 'ai';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { loadMcpTools, type McpApproval } from './McpToolLoader';
 import { createConnectedClient } from './McpToolLoader.test';
@@ -18,7 +19,7 @@ describe('loadMcpTools', () => {
     const callToolSpy = vi.spyOn(client, 'callTool');
 
     const descriptors = await loadMcpTools(client, 'myconn');
-    const result = await descriptors['myconn__add'].tool.execute!({ a: 2, b: 3 }, {} as any);
+    const result = await descriptors['myconn__add'].tool.execute!({ a: 2, b: 3 }, {} as ToolExecutionOptions);
 
     expect(callToolSpy).toHaveBeenCalledWith({ name: 'add', arguments: { a: 2, b: 3 } });
     expect(result).toMatchObject({ content: [{ type: 'text', text: '5' }] });

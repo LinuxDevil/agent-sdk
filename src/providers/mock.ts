@@ -12,6 +12,7 @@ import {
   StreamResult,
   StreamChunk,
   ToolCall,
+  Message,
 } from './llm';
 import { abortableDelay } from './abortableDelay';
 import { textOf } from './content';
@@ -178,7 +179,7 @@ export class MockLLMProvider implements LLMProvider {
     return [];
   }
 
-  private countTokens(messages: any[]): number {
+  private countTokens(messages: Message[]): number {
     // Simple approximation: 1 token per 4 characters
     return Math.ceil(
       messages.reduce((sum, msg) => sum + textOf(msg).length, 0) / 4

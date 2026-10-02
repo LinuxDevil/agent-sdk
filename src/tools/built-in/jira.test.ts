@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import type { ToolExecutionOptions } from 'ai';
 import http from 'http';
 import type { AddressInfo } from 'net';
 import { createJiraTools } from './jira';
@@ -65,7 +66,7 @@ describe('JiraTools sandbox seam (LOU-K2)', () => {
     vi.stubGlobal('fetch', fetchSpy);
 
     const descriptor = jiraTools.get('jira_get_ticket')!;
-    const result = await descriptor.tool.execute!({ ticketKey: 'PROJ-1' }, {} as any);
+    const result = await descriptor.tool.execute!({ ticketKey: 'PROJ-1' }, {} as ToolExecutionOptions);
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(JSON.parse(result as string).key).toBe('PROJ-1');
@@ -190,7 +191,7 @@ describe('JiraTools jira_create_ticket / jira_update_ticket execute()', () => {
 
   describe('jira_create_ticket', () => {
     const run = (args: Record<string, unknown>) =>
-      makeTools().get('jira_create_ticket')!.tool.execute!(args as any, {} as any);
+      makeTools().get('jira_create_ticket')!.tool.execute!(args, {} as ToolExecutionOptions);
 
     it('sends only required fields when optionals are omitted and returns key/id/self', async () => {
       const fetchSpy = vi.fn().mockResolvedValue({
@@ -267,7 +268,7 @@ describe('JiraTools jira_create_ticket / jira_update_ticket execute()', () => {
 
   describe('jira_update_ticket', () => {
     const run = (args: Record<string, unknown>) =>
-      makeTools().get('jira_update_ticket')!.tool.execute!(args as any, {} as any);
+      makeTools().get('jira_update_ticket')!.tool.execute!(args, {} as ToolExecutionOptions);
 
     it('PUTs all provided fields and returns success', async () => {
       const fetchSpy = vi.fn().mockResolvedValue({ ok: true });

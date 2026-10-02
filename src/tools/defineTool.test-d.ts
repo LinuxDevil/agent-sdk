@@ -41,6 +41,7 @@ describe('defineTool types', () => {
   it('awaits async results and preserves sync ones', () => {
     const sync = defineTool({ name: 's', description: 'd', input: z.object({}), execute: () => 42 });
     expectTypeOf<ToolOutput<typeof sync>>().toEqualTypeOf<number>();
+    expectTypeOf(sync).toMatchTypeOf<DefinedTool>();
   });
 
   it('is accepted everywhere tools are', () => {

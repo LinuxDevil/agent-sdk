@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import type { ToolExecutionOptions } from 'ai';
 import { createDelegateTool, DelegationDepthExceededError } from './DelegationTool';
 import { AgentExecutor } from './AgentExecutor';
 import { ToolRegistry } from '../tools';
@@ -9,7 +10,7 @@ function makeMockProvider(generate: LLMProvider['generate']): LLMProvider {
   return {
     name: 'mock',
     generate,
-    stream: vi.fn() as any,
+    stream: vi.fn() as LLMProvider['stream'],
     supportsTools: () => true,
     supportsStreaming: () => true,
     getModels: async () => [],
@@ -30,7 +31,7 @@ describe('createDelegateTool', () => {
       provider,
     });
 
-    const result = await delegateTool.tool.execute!({ task: 'Do the thing' }, {} as any);
+    const result = await delegateTool.tool.execute!({ task: 'Do the thing' }, {} as ToolExecutionOptions);
 
     expect(provider.calls).toHaveLength(1);
     const callArgs = provider.calls[0];
@@ -55,7 +56,7 @@ describe('createDelegateTool', () => {
     };
 
     const delegateTool = createDelegateTool({ agent: childAgent, provider });
-    await delegateTool.tool.execute!({ task: 'task 1' }, {} as any);
+    await delegateTool.tool.execute!({ task: 'task 1' }, {} as ToolExecutionOptions);
 
     expect(provider.calls[0].messages).toEqual([{ role: 'user', content: 'task 1' }]);
   });
@@ -72,7 +73,7 @@ describe('createDelegateTool', () => {
         { role: 'assistant' as const, content: 'earlier answer' },
       ];
 
-      await delegateTool.tool.execute!({ task: 'follow-up task', context }, {} as any);
+      await delegateTool.tool.execute!({ task: 'follow-up task', context }, {} as ToolExecutionOptions);
 
       expect(provider.calls[0].messages).toEqual([
         ...context,
@@ -87,7 +88,7 @@ describe('createDelegateTool', () => {
       const delegateTool = createDelegateTool({ agent, provider });
 
       const context = [{ role: 'user' as const, content: 'earlier question' }];
-      await delegateTool.tool.execute!({ task: 'follow-up task', context }, {} as any);
+      await delegateTool.tool.execute!({ task: 'follow-up task', context }, {} as ToolExecutionOptions);
 
       expect(provider.calls[0].messages).toEqual([{ role: 'user', content: 'follow-up task' }]);
     });
@@ -129,11 +130,11 @@ describe('createDelegateTool', () => {
 
       vi.spyOn(AgentExecutor, 'execute').mockImplementation(async (options) => {
         if (options.agent === agentA) {
-          const r = await delegateToB.tool.execute!({ task: 'to B' }, {} as any);
+          const r = await delegateToB.tool.execute!({ task: 'to B' }, {} as ToolExecutionOptions);
           return { text: r.text, messages: [], toolCalls: [], usage: r.usage, finishReason: 'stop', steps: 1 };
         }
         if (options.agent === agentB) {
-          const r = await delegateToA.tool.execute!({ task: 'to A' }, {} as any);
+          const r = await delegateToA.tool.execute!({ task: 'to A' }, {} as ToolExecutionOptions);
           return { text: r.text, messages: [], toolCalls: [], usage: r.usage, finishReason: 'stop', steps: 1 };
         }
         throw new Error('unexpected agent in test stub');
@@ -141,7 +142,7 @@ describe('createDelegateTool', () => {
 
       // A delegates to B (depth 0 -> 1), B delegates back to A (depth 1 ->
       // 2), A tries to delegate to B again but depth (2) >= maxDepth (2).
-      await expect(delegateToB.tool.execute!({ task: 'start' }, {} as any)).rejects.toThrow(
+      await expect(delegateToB.tool.execute!({ task: 'start' }, {} as ToolExecutionOptions)).rejects.toThrow(
         DelegationDepthExceededError
       );
     });
@@ -158,7 +159,7 @@ describe('createDelegateTool', () => {
       vi.spyOn(AgentExecutor, 'execute').mockImplementation(async () => {
         callCount++;
         if (callCount < totalHops) {
-          const r = await delegateTool.tool.execute!({ task: `hop ${callCount}` }, {} as any);
+          const r = await delegateTool.tool.execute!({ task: `hop ${callCount}` }, {} as ToolExecutionOptions);
           return { text: r.text, messages: [], toolCalls: [], usage: r.usage, finishReason: 'stop', steps: 1 };
         }
         return {
@@ -171,7 +172,7 @@ describe('createDelegateTool', () => {
         };
       });
 
-      await expect(delegateTool.tool.execute!({ task: 'start' }, {} as any)).resolves.toEqual(
+      await expect(delegateTool.tool.execute!({ task: 'start' }, {} as ToolExecutionOptions)).resolves.toEqual(
         expect.objectContaining({ text: 'done' })
       );
     });
@@ -188,7 +189,7 @@ describe('createDelegateTool', () => {
       vi.spyOn(AgentExecutor, 'execute').mockImplementation(async () => {
         callCount++;
         if (callCount < totalHops) {
-          const r = await delegateTool.tool.execute!({ task: `hop ${callCount}` }, {} as any);
+          const r = await delegateTool.tool.execute!({ task: `hop ${callCount}` }, {} as ToolExecutionOptions);
           return { text: r.text, messages: [], toolCalls: [], usage: r.usage, finishReason: 'stop', steps: 1 };
         }
         return {
@@ -201,7 +202,7 @@ describe('createDelegateTool', () => {
         };
       });
 
-      await expect(delegateTool.tool.execute!({ task: 'start' }, {} as any)).rejects.toThrow(
+      await expect(delegateTool.tool.execute!({ task: 'start' }, {} as ToolExecutionOptions)).rejects.toThrow(
         DelegationDepthExceededError
       );
     });
@@ -216,7 +217,7 @@ describe('createDelegateTool', () => {
       vi.spyOn(AgentExecutor, 'execute').mockImplementation(async () => {
         callCount++;
         if (callCount < totalHops) {
-          const r = await delegateTool.tool.execute!({ task: `hop ${callCount}` }, {} as any);
+          const r = await delegateTool.tool.execute!({ task: `hop ${callCount}` }, {} as ToolExecutionOptions);
           return { text: r.text, messages: [], toolCalls: [], usage: r.usage, finishReason: 'stop', steps: 1 };
         }
         return {
@@ -229,7 +230,7 @@ describe('createDelegateTool', () => {
         };
       });
 
-      await expect(delegateTool.tool.execute!({ task: 'start' }, {} as any)).rejects.toThrow(
+      await expect(delegateTool.tool.execute!({ task: 'start' }, {} as ToolExecutionOptions)).rejects.toThrow(
         DelegationDepthExceededError
       );
     });

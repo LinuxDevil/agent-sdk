@@ -31,7 +31,7 @@ export { parseToolArguments };
 export interface ToolCallOutcome {
   toolCallId: string;
   toolName: string;
-  result: any;
+  result: unknown;
   error?: string;
   requiresApproval?: boolean;
   args?: Record<string, unknown>;

@@ -90,7 +90,7 @@ describe('Security - Crypto', () => {
   });
 
   describe('DTOEncryptionFilter', () => {
-    let filter: DTOEncryptionFilter<any>;
+    let filter: DTOEncryptionFilter<Record<string, unknown>>;
     const testSecret = 'test-secret-key-12345';
 
     beforeEach(() => {

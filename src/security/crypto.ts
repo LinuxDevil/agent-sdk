@@ -275,7 +275,7 @@ export class DTOEncryptionFilter<T> {
     const result = {} as T;
     for (const key in dto) {
       if (isProcessedField(key, dto[key], encryptionSettings)) {
-        result[key] = (await processFn(dto[key] as string)) as any;
+        result[key] = (await processFn(dto[key] as string)) as T[typeof key];
       } else {
         result[key] = dto[key];
       }

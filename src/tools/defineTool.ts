@@ -42,8 +42,6 @@ export interface DefineToolOptions<S extends StandardSchemaV1, R> {
   requiresSandbox?: boolean;
   /** Sandboxed execution path used instead of `execute` when `requiresSandbox` is true. */
   sandboxExecute?: (args: InferSchemaOutput<S>, sandbox: SandboxAdapter) => Promise<unknown>;
-  /** See {@link ToolDescriptor.injectStreamingController}. */
-  injectStreamingController?: ToolDescriptor['injectStreamingController'];
   /** Runs the tool. Arguments are typed from `input`; the return type is preserved on the result. */
   execute: (args: InferSchemaOutput<S>, ctx: ToolExecutionContext) => R | Promise<R>;
 }
@@ -153,7 +151,6 @@ export function defineTool<S extends StandardSchemaV1, R>(
     needsApproval: opts.needsApproval,
     requiresSandbox: opts.requiresSandbox,
     sandboxExecute: opts.sandboxExecute as ToolDescriptor['sandboxExecute'],
-    injectStreamingController: opts.injectStreamingController,
     ...(opts.annotations ? { metadata: { mcp: { annotations: opts.annotations } } } : {}),
   };
   definedTools.add(defined);

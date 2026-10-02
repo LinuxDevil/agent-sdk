@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import type { ToolExecutionOptions } from 'ai';
 import http from 'http';
 import type { AddressInfo } from 'net';
 import { buildSlackAlertPayload, createSlackTool, postSlackAlert } from './slack';
@@ -73,7 +74,7 @@ describe('postSlackAlert / createSlackTool (mocked Slack API)', () => {
     expect(descriptor.tool).toBeDefined();
     const result = await descriptor.tool.execute!(
       { channel: '#incidents', message: 'Deploy failed', approvalId: 'approval-123' },
-      {} as any
+      {} as ToolExecutionOptions
     );
 
     expect(result).toEqual({ ok: true });
@@ -89,7 +90,7 @@ describe('slack tool sandbox seam (LOU-K2)', () => {
   });
 
   it('(a) NoopSandbox: sandboxExecute() posts the same payload to a real local webhook, unchanged from execute()', async () => {
-    let received: any;
+    let received: { channel: string; blocks: Array<{ elements: Array<{ value: string }> }> } | undefined;
     const server = http.createServer((req, res) => {
       let body = '';
       req.on('data', (chunk) => (body += chunk));
@@ -114,8 +115,8 @@ describe('slack tool sandbox seam (LOU-K2)', () => {
       );
 
       expect(result).toEqual({ ok: true });
-      expect(received.channel).toBe('#incidents');
-      expect(received.blocks[1].elements[0].value).toBe('approval-123');
+      expect(received?.channel).toBe('#incidents');
+      expect(received?.blocks[1].elements[0].value).toBe('approval-123');
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }

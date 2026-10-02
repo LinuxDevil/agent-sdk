@@ -11,6 +11,8 @@
  * out since Miniflare/workers-types aren't already devDependencies here).
  */
 import { describe, it, expect, vi } from 'vitest';
+import type { Tool } from 'ai';
+import type { LLMProvider } from '../providers';
 import { KVBinding, KVCheckpointStore, DEFAULT_KV_KEY_PREFIX } from './kvCheckpointStore';
 import { Checkpoint } from '../execution/checkpoint';
 import { resumeAfterApproval } from '../execution/resume';
@@ -151,13 +153,13 @@ describe('KVCheckpointStore', () => {
     const chargeExecute = vi.fn().mockResolvedValue({ charged: true });
     toolRegistry.register('chargeCard', {
       displayName: 'Charge Card',
-      tool: { description: 'Charge a card', parameters: {}, execute: chargeExecute } as any,
+      tool: { description: 'Charge a card', parameters: {}, execute: chargeExecute } as Tool,
       needsApproval: true,
     });
     const lookupExecute = vi.fn().mockResolvedValue({ found: true });
     toolRegistry.register('lookup', {
       displayName: 'Lookup',
-      tool: { description: 'Look something up', parameters: {}, execute: lookupExecute } as any,
+      tool: { description: 'Look something up', parameters: {}, execute: lookupExecute } as Tool,
       needsApproval: false,
     });
 
@@ -226,7 +228,7 @@ describe('KVCheckpointStore', () => {
     const paused = await AgentExecutor.execute({
       agent,
       input: 'go',
-      provider: scriptedProvider as any,
+      provider: scriptedProvider as LLMProvider,
       toolRegistry,
       approvalStore,
       sessionId,
@@ -239,7 +241,7 @@ describe('KVCheckpointStore', () => {
       { id: paused.approvalId!, approved: true },
       approvalStore,
       toolRegistry,
-      scriptedProvider as any,
+      scriptedProvider as LLMProvider,
       {},
       checkpointStore
     );

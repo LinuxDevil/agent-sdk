@@ -4,7 +4,6 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { OpenRouterProvider, OpenRouterProviderConfig } from './OpenRouterProvider';
-import { MessageRole } from './llm';
 
 describe('OpenRouterProvider', () => {
   let config: OpenRouterProviderConfig;
