@@ -230,4 +230,6 @@ The exit code is `1` if any check fails and `0` otherwise (warnings do not
 fail), so it can gate CI. Add `--json` for machine-readable output. Colour is
 used only when stdout is a terminal and `NO_COLOR` is unset.
 
+For problems that are not about installing, see [Troubleshooting](./troubleshooting.md).
+
 Next: [Quick Start](./quick-start.md).
