@@ -93,7 +93,10 @@ jobs:
       - run: npm install --no-save ${{ matrix.flags }} ${{ matrix.install }}
       - run: npx tsc --noEmit
       - run: npm run test:types
+      # The DTS build of the ai7-zod4 install runs out of the default heap (seen on #322, #335).
       - run: npm run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
       - run: npm run build --workspace=packages/create-lousho-agent
       - run: npx vitest run
   # LOU-D49: what `npm pack` produces must install and work in a fresh project. The script
