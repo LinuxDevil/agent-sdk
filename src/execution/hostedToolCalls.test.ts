@@ -10,7 +10,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
-import { codeInterpreter, webSearch } from '../tools/hosted';
+import { codeInterpreter, fileSearch, hostedTool, webSearch } from '../tools/hosted';
+import { hostedToolsInMode } from './permissions';
 import { mockModel } from '../testing';
 import type { StreamChunk } from '../providers';
 import type { AgentEvent } from './agentEvents';
@@ -237,5 +238,54 @@ describe('approvals', () => {
     const done = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
     expect(done.text).toBe('Sent.');
     expect(model.calls.map((call) => call.hostedTools?.map((tool) => tool.name))).toEqual([['web_search'], ['web_search']]);
+  });
+});
+
+describe('hosted tools under permission modes (N1a x N4)', () => {
+  const allHosted = () => [webSearch(), fileSearch({ vectorStoreIds: ['vs_1'] }), codeInterpreter(), hostedTool('image_generation', { type: 'provider' })];
+  const sentNames = (model: ReturnType<typeof mockModel>) => model.calls.map((call) => call.hostedTools?.map((tool) => tool.name));
+
+  it('hostedToolsInMode(): plan keeps only web and file search; other modes keep every tool', () => {
+    const tools = allHosted();
+    expect(hostedToolsInMode(tools, 'plan')?.map((tool) => tool.name)).toEqual(['web_search', 'file_search']);
+    for (const mode of ['default', 'acceptEdits', 'dontAsk'] as const) expect(hostedToolsInMode(tools, mode)).toBe(tools);
+    expect(hostedToolsInMode(undefined, 'plan')).toBeUndefined();
+  });
+
+  it('plan mode sends only the read-only hosted tools to the provider', async () => {
+    const model = mockModel(['Planned.']);
+    await createAgent({ provider: model, instructions: 'x', tools: allHosted(), permissionMode: 'plan' }).send('go');
+    expect(sentNames(model)).toEqual([['web_search', 'file_search']]);
+  });
+
+  it('plan mode with only a code interpreter sends no hosted tools at all', async () => {
+    const model = mockModel(['Planned.']);
+    await createAgent({ provider: model, instructions: 'x', tools: [codeInterpreter()], permissionMode: 'plan' }).send('go');
+    expect(model.lastCall?.hostedTools).toBeUndefined();
+  });
+
+  it.each(['default', 'acceptEdits', 'dontAsk'] as const)('%s mode sends every hosted tool', async (permissionMode) => {
+    const model = mockModel(['Done.']);
+    await createAgent({ provider: model, instructions: 'x', tools: allHosted(), permissionMode }).send('go');
+    expect(sentNames(model)).toEqual([['web_search', 'file_search', 'code_interpreter', 'image_generation']]);
+  });
+
+  it('a session switched to plan mode drops the code interpreter from the next call, and gets it back after', async () => {
+    const model = mockModel(['One.', 'Two.', 'Three.']);
+    const session = createAgent({ provider: model, instructions: 'x', tools: [webSearch(), codeInterpreter()] }).session();
+    await session.send('one');
+    session.setPermissionMode('plan');
+    await session.send('two');
+    session.setPermissionMode('default');
+    await session.send('three');
+    expect(sentNames(model)).toEqual([['web_search', 'code_interpreter'], ['web_search'], ['web_search', 'code_interpreter']]);
+  });
+
+  it('a function mode is read at every model call of a run', async () => {
+    let mode: 'default' | 'plan' = 'default';
+    const lookup = defineTool({ name: 'lookup', description: 'Look up', input: z.object({}), execute: async () => ((mode = 'plan'), 'ok'), annotations: { readOnlyHint: true } });
+    const model = mockModel([{ toolCalls: [{ name: 'lookup', id: 'c1' }] }, 'Done.']);
+    await createAgent({ provider: model, instructions: 'x', tools: [codeInterpreter(), lookup], permissionMode: () => mode }).send('go');
+    expect(sentNames(model)).toEqual([['code_interpreter'], undefined]);
   });
 });

@@ -159,6 +159,22 @@ const agent = createAgent({
 await agent.send('Summarize this page.', { metadata: { allowSearch: true } });
 ```
 
+[Permission modes](./permission-modes.md) cannot refuse a hosted call either,
+so they decide which hosted tools are sent with each model call:
+
+| Mode | `webSearch()`, `fileSearch()` | `codeInterpreter()`, `hostedTool()` |
+| --- | --- | --- |
+| `'default'` | Sent | Sent |
+| `'plan'` | Sent (they only read) | **Not sent**: the model does not see them |
+| `'acceptEdits'` | Sent | Sent |
+| `'dontAsk'` | Sent (a hosted call never asks) | Sent |
+
+A code interpreter runs code, and a `hostedTool()` is a tool the SDK knows
+nothing about, so plan mode treats both as tools with side effects. The mode is
+read before every model call, so a switch (`session.setPermissionMode()` or a
+function mode) applies from the next call. No `permission.decision` entry is
+written for a hosted tool left out: no call was made.
+
 Sub-agents do not inherit the lead's hosted tools; give a sub-agent its own
 in its `tools`. A run resumed from a checkpoint or an approval sends the same
 hosted tools; a resuming agent with a different set reports

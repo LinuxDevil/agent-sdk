@@ -180,6 +180,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md) | Every `lousho` command and its flags |
 | [ACP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/acp.md) | `lousho acp` / `serveAcp()`: drive an agent from Zed and other Agent Client Protocol editors |
 | [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md) | `defineTool()`, validation and errors, built-in tools, `ToolRegistry` |
+| [Hosted tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hosted-tools.md) | `webSearch()`, `codeInterpreter()`, `fileSearch()`, `hostedTool()`: tools the provider runs inside the request |
 | [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md) | `needsApproval`, `agent.approvals`, the `approve` callback, `resumeAfterApproval()`, stores |
 | [Permission modes](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md) | `permissionMode: 'plan' \| 'acceptEdits' \| 'dontAsk'`, `session.setPermissionMode()`, the `editsFiles` marker |
 | [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md) | Multi-turn conversations, `session.stream()`, session stores, `SqliteStore` |
@@ -7530,6 +7531,22 @@ const agent = createAgent({
 await agent.send('Summarize this page.', { metadata: { allowSearch: true } });
 ```
 
+[Permission modes](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md) cannot refuse a hosted call either,
+so they decide which hosted tools are sent with each model call:
+
+| Mode | `webSearch()`, `fileSearch()` | `codeInterpreter()`, `hostedTool()` |
+| --- | --- | --- |
+| `'default'` | Sent | Sent |
+| `'plan'` | Sent (they only read) | **Not sent**: the model does not see them |
+| `'acceptEdits'` | Sent | Sent |
+| `'dontAsk'` | Sent (a hosted call never asks) | Sent |
+
+A code interpreter runs code, and a `hostedTool()` is a tool the SDK knows
+nothing about, so plan mode treats both as tools with side effects. The mode is
+read before every model call, so a switch (`session.setPermissionMode()` or a
+function mode) applies from the next call. No `permission.decision` entry is
+written for a hosted tool left out: no call was made.
+
 Sub-agents do not inherit the lead's hosted tools; give a sub-agent its own
 in its `tools`. A run resumed from a checkpoint or an approval sends the same
 hosted tools; a resuming agent with a different set reports
@@ -9114,6 +9131,10 @@ says nothing is treated as one with side effects and is refused.
   not a guarantee, so only connect servers you trust.
 - The built-in `ask_question` (it only asks; the call still pauses for the
   answer) and `task` (its sub-agent inherits plan mode, see below).
+- [Hosted provider tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hosted-tools.md) run inside the provider's request,
+  so no call can be refused. Plan mode sends `webSearch()` and `fileSearch()`
+  (they read) and leaves `codeInterpreter()` and every `hostedTool()` out of
+  the model request; the other modes send them all.
 
 Declare a custom read-only tool like this:
 
