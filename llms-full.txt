@@ -3160,7 +3160,6 @@ a restart); use the list form or the default for approvals that must survive
 one. Answers to an `ask_question` are not restricted: the next message (Slack)
 or `/ask` (Discord) in the conversation is the answer. Who decided goes to
 `mountChannels(agent, channels, { onDecision({ approver, decision, sessionId, channel }) {} })`.
-r
 The Telegram channel takes the same `approvers` (Telegram user ids as strings; a
 function gets `{ id, name }`, with `name` the username or first name).
 
