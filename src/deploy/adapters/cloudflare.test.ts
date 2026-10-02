@@ -577,7 +577,8 @@ describe('CloudflareWorkerAdapter', () => {
 
     it('returns the body when the binding lists the host', async () => {
       const { text, requested } = await chat({ LOUSHO_HTTP_ALLOW: 'api.github.com, *.example.com' });
-      expect(text).toBe('tool said: "the listed body"');
+      // The OpenAI package of `ai` 4 sends a string tool result JSON-quoted; those of `ai` 6/7 send it as is (LOU-M8).
+      expect(text).toMatch(/^tool said: "?the listed body"?$/);
       expect(requested).toContain('https://api.example.com/data');
     });
   });
