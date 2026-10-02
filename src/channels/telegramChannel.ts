@@ -207,7 +207,7 @@ export function telegramChannel(options: TelegramChannelOptions): Channel<Telegr
     const input = addressed(message, message.text ?? message.caption ?? '');
     if (!input) return null;
     const key = sessionKey(message);
-    const inbound = { sessionKey: key, input, replyTo: targetOf(message), event: update, metadata: { user: String(message.from.id) } };
+    const inbound = { sessionKey: key, input, replyTo: targetOf(message), event: update, metadata: { user: String(message.from.id) }, principal: { id: String(message.from.id), type: 'user' as const, authenticator: 'telegram' } };
     // the next message in the chat answers a pending ask_question, also one asked before a restart
     const question = questions.get(key) ?? (await ctx.pendingQuestion(key));
     if (!question) return inbound;

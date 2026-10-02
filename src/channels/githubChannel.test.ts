@@ -18,6 +18,7 @@ import { MemorySessionStore } from '../session/sessionStore';
 import type { Message } from '../providers';
 import { mountChannels, type ChannelsHandler } from './mountChannels';
 import { githubChannel } from './githubChannel';
+import { defineMemory, inMemoryMemory, type MemoryScopeContext } from '../memory';
 import { durableStores } from './__fixtures__/durableStores';
 
 const TOKEN = 'ghp_SECRET_personal_token';
@@ -187,6 +188,14 @@ describe('githubChannel (N11b)', () => {
     expect(t.userTexts(0)).toEqual(['what are widgets?']);
     expect(t.userTexts(1)[1]).toMatch(/^hey\s+and the second\?$/);
     expect(t.calls[0].headers).toMatchObject({ accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28', 'user-agent': 'lousho' });
+  });
+
+  it('runs the turn with the commenter as its principal, which a memory scope sees (N10a)', async () => {
+    const scopes: MemoryScopeContext[] = [];
+    const notes = defineMemory({ name: 'notes', scope: (ctx) => (scopes.push(ctx), ctx.principal && `github:${ctx.principal.id}`), provider: inMemoryMemory() });
+    const t = setup(['Hi'], { memory: [notes] });
+    await t.send(issueComment('@my-agent hello'));
+    expect(scopes[0].principal).toEqual({ id: 'octocat', type: 'user', authenticator: 'github' });
   });
 
   it('the mention must be a whole token', async () => {

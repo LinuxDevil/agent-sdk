@@ -353,7 +353,7 @@ export function githubChannel(options: GitHubChannelOptions): Channel<GitHubComm
     const mentioned = new RegExp(mention.source, 'i').test(event.body);
     const input = event.body.replace(mention, ' ').trim();
     if (!input) return null;
-    const inbound: ChannelInbound<GitHubCommentEvent> = { sessionKey: key, input, replyTo: targetOf(event), event, metadata: { user: event.author, association: event.association } };
+    const inbound: ChannelInbound<GitHubCommentEvent> = { sessionKey: key, input, replyTo: targetOf(event), event, metadata: { user: event.author, association: event.association }, principal: { id: event.author, type: 'user', authenticator: 'github' } };
     // the next comment in the thread answers a pending ask_question, also one asked before a restart
     const question = questions.get(key) ?? (await ctx.pendingQuestion(key));
     if (question) {
