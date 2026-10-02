@@ -182,13 +182,16 @@ export function slackChannel(options: SlackChannelOptions): Channel<SlackChannel
 
   async function toInbound(envelope: SlackEnvelope, ctx: ChannelContext): Promise<ChannelInbound<SlackChannelEvent> | ChannelDecision | null> {
     const read = readEvent(envelope);
-    if (!read || (!read.dm && !(read.mentioned || (read.event.thread_ts && (await ctx.hasSession(read.key)))))) return null;
+    if (!read || !(read.dm || read.mentioned || read.event.thread_ts)) return null;
     if (read.event.type === 'message' && read.mentioned && !read.dm) return null; // the app_mention event runs it
-    const question = questions.get(read.key);
-    questions.delete(read.key);
-    if (question) return { decision: { id: question, answer: read.text } };
     const thread: SlackThread = { channel: read.event.channel, ...(read.dm ? {} : { thread_ts: read.event.thread_ts ?? read.event.ts }) };
-    return { sessionKey: read.key, input: read.text, replyTo: thread, event: read.event, metadata: { user: read.event.user } };
+    const inbound = { sessionKey: read.key, input: read.text, replyTo: thread, event: read.event, metadata: { user: read.event.user } };
+    // the next message in the thread answers a pending ask_question, also one asked before a restart
+    const question = questions.get(read.key) ?? (await ctx.pendingQuestion(read.key));
+    questions.delete(read.key);
+    if (question) return { decision: { id: question, answer: read.text }, inbound };
+    if (!read.dm && !read.mentioned && !(await ctx.hasSession(read.key))) return null;
+    return inbound;
   }
 
   return defineChannel<SlackChannelEvent>({

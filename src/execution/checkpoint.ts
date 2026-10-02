@@ -9,6 +9,7 @@ import type { StepUsage } from '../models/usage';
 import type { CheckpointUsage } from './runUsage';
 import type { AgentFingerprint } from './agentFingerprint';
 import { ConfigurationError } from './errors';
+import type { ApprovalKind } from './ApprovalGate';
 
 /** Key of `AgentConfig.metadata` holding a dynamic run's `ctx` and model (LOU-V15): saved in approval snapshots and checkpoints. */
 export const RUN_CONFIG_KEY = 'loushoRunConfig';
@@ -90,6 +91,13 @@ export interface Checkpoint {
   status?: CheckpointStatus;
   /** LOU-U8: with `status: 'awaiting-approval'`, the id of the pending approval. */
   approvalId?: string;
+  /**
+   * M10a: with `status: 'awaiting-approval'`, `'question'` when the pending
+   * approval is an `ask_question` call (`PendingApproval.kind`), so a
+   * process that did not make the pause can tell a question from a tool
+   * approval. Absent for a tool approval and on older checkpoints.
+   */
+  approvalKind?: ApprovalKind;
   /**
    * LOU-W9.2: the fingerprint of the agent that wrote this checkpoint. A
    * resume compares it with the resuming agent's (`onAgentDrift`). Absent on
