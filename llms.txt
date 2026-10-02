@@ -23,6 +23,7 @@
 - [The executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md): `createAgent()` is the recommended entry point (see the Quick Start).
 - [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md): A flow is a fixed, multi-step workflow run by one agent: the steps and their order are written down up front instead of being left to the model's judgment.
 - [Guardrails and sandboxing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md): Tools for running agents safely: input and output guardrails check what goes into and comes out of any run (and its tool arguments), patch guardrails are fail-closed checks over a proposed change before you act on it, and sandboxed tools run inside an isolated container instead of the host process.
+- [MCP (Model Context Protocol)](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md): MCP works in two directions.
 - [Memory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md): A session remembers one conversation.
 - [Next.js and other Fetch-API frameworks](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md): `createRouteHandler(agent, options?)` serves an agent from a route file of any framework whose handlers take a Web `Request` and return a `Response`: the Next.js App Router, SvelteKit, Remix / React Router, Hono, Bun.serve.
 - [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md): `AgentExecutor.execute()` and `FlowExecutor.execute()` emit spans through a `TraceExporter`.
