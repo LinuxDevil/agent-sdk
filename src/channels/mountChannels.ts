@@ -28,7 +28,7 @@ import {
   type ChannelRespond,
 } from './defineChannel';
 import { reportChannelError } from './channelSupport';
-import { SDKError } from '../execution/errors';
+import { SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 
 /** Options of {@link mountChannels}. */
 export interface MountChannelsOptions {
@@ -109,7 +109,9 @@ export function mountChannels(
   const byName = new Map(channels.map((channel) => [channel.name, channel]));
   if (byName.size !== channels.length) throw new SDKError('mountChannels: channel names must be unique', 'LOUSHO_CHANNEL_INVALID');
   const paused = new Map<string, PausedTurn>();
-  const tails = new Map<string, Promise<void>>();
+  const tails = new Map<string, Promise<unknown>>();
+  /** Question ids `pendingQuestion` handed out whose answer has not been processed yet. */
+  const claimed = new Set<string>();
   const answered = new WeakSet<ChannelRespond>();
   const sessions = withDefaultStores({ store }).store as SessionStore | undefined;
 
@@ -120,7 +122,37 @@ export function mountChannels(
       approval: async (id) => (await agent.approvals.list()).find((request) => request.id === id),
       sessionId,
       hasSession: async (sessionKey) => (await sessions?.load(sessionId(sessionKey))) !== undefined,
+      pendingQuestion: (sessionKey) => {
+        const id = sessionId(sessionKey);
+        return serialized(id, async () => {
+          const question = await questionOf(id);
+          if (question === undefined || claimed.has(question)) return undefined;
+          claimed.add(question);
+          return question;
+        });
+      },
     };
+  }
+
+  /**
+   * M10a: the `ask_question` session `sessionId` waits on. A pause of this process is in `paused`;
+   * after a restart, the session's checkpoint says whether its turn waits on a question, and
+   * `resume()` (which throws `SessionAwaitingApprovalError`) binds that approval to the session, so
+   * the answer's continuation is appended to its transcript.
+   */
+  async function questionOf(sessionId: string): Promise<string | undefined> {
+    const known = [...paused].find(([, turn]) => turn.sessionId === sessionId)?.[0];
+    if (known !== undefined) return (await agent.approvals.list()).find((request) => request.id === known)?.kind === 'question' ? known : undefined;
+    const session = agent.session({ id: sessionId, store });
+    const pending = await session.pending();
+    if (pending?.status !== 'awaiting-approval' || pending.approvalKind !== 'question') return undefined;
+    try {
+      await session.resume();
+    } catch (error) {
+      if (error instanceof SessionAwaitingApprovalError && error.approvalId === pending.approvalId) return error.approvalId;
+      throw error;
+    }
+    return undefined;
   }
 
   /**
@@ -139,7 +171,7 @@ export function mountChannels(
   }
 
   /** Runs `turn` after the session's previous turn has settled. */
-  function serialized(sessionId: string, turn: () => Promise<void>): Promise<void> {
+  function serialized<T>(sessionId: string, turn: () => Promise<T>): Promise<T> {
     const next = (tails.get(sessionId) ?? Promise.resolve()).then(turn);
     const tail = next.catch(() => undefined);
     tails.set(sessionId, tail);
@@ -174,15 +206,17 @@ export function mountChannels(
     });
   }
 
-  /** Decides the pause `turn` stopped on and delivers the continuation. */
+  /** Decides the pause `turn` stopped on and delivers the continuation, as the session's next turn. */
   function continueTurn(turn: PausedTurn, decision: ChannelApprovalDecision, respond?: ChannelRespond): Promise<void> {
     paused.delete(decision.id);
     const { id, approved, note, answer } = decision;
-    return guard(turn, 'approval', respond, async () => {
-      const result =
-        typeof answer === 'string' ? await agent.approvals.answer({ id, answer }) : await agent.approvals.resolve({ id, approved: approved === true, note });
-      await finish(turn, result, undefined, respond);
-    });
+    const run = () =>
+      guard(turn, 'approval', respond, async () => {
+        const result =
+          typeof answer === 'string' ? await agent.approvals.answer({ id, answer }) : await agent.approvals.resolve({ id, approved: approved === true, note });
+        await finish(turn, result, undefined, respond);
+      });
+    return serialized(turn.sessionId, run).finally(() => claimed.delete(id));
   }
 
   async function resolveApproval(decision: ChannelApprovalDecision, respond?: ChannelRespond): Promise<void> {

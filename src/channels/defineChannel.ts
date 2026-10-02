@@ -93,6 +93,14 @@ export interface ChannelContext {
   sessionId(sessionKey: string): string;
   /** Whether a session was already saved for `sessionKey` (e.g. "the bot is active in this thread"). */
   hasSession(sessionKey: string): Promise<boolean>;
+  /**
+   * M10a: the id of the `ask_question` the session for `sessionKey` is waiting on, or `undefined`
+   * (no pending turn, or a turn waiting on a tool approval). Also finds a question asked before a
+   * restart, given durable stores for sessions, checkpoints and approvals. Call it only for a message
+   * you will return as the answer (`{ decision: { id, answer }, inbound }`): the id is handed out once,
+   * and a second call returns `undefined` until that answer has been processed.
+   */
+  pendingQuestion(sessionKey: string): Promise<string | undefined>;
 }
 
 /** What `reply` gets. */

@@ -24,6 +24,7 @@ import '../providers/mock';
 import { httpTool } from '../tools/built-in/http';
 import { currentDateTool } from '../tools/built-in/currentDate';
 import { dayNameTool } from '../tools/built-in/dayName';
+import { webFetchTool } from '../tools/built-in/webFetch';
 import { ToolDescriptor } from '../types';
 import { compilePolicy } from './policy';
 
@@ -60,6 +61,7 @@ const RESOLVABLE_BUILT_IN_TOOLS: Record<string, ToolDescriptor> = {
   http: httpTool,
   'current-date': currentDateTool,
   'day-name': dayNameTool,
+  'web-fetch': webFetchTool,
 };
 
 const CREDENTIALED_TOOLS = new Set(['github', 'jira']);

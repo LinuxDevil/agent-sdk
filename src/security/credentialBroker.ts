@@ -23,6 +23,7 @@ import * as net from 'node:net';
 import { lookup } from 'node:dns/promises';
 import type { Duplex } from 'node:stream';
 import { isHostPattern, matchesHost } from './hostPattern';
+import { isPrivateAddress } from './privateAddress';
 import { SDKError } from '../execution/errors';
 
 /** A header value to inject: a string, or a function called per request (e.g. to read a rotating token). */
@@ -101,12 +102,6 @@ class Refused extends Error {
 
 const HOP_BY_HOP = ['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'proxy-connection', 'te', 'trailer', 'transfer-encoding', 'upgrade'];
 
-const PRIVATE = new net.BlockList();
-for (const [prefix, bits] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.168.0.0', 16], ['224.0.0.0', 3]] as const) {
-  PRIVATE.addSubnet(prefix, bits, 'ipv4');
-}
-for (const [prefix, bits] of [['::', 127], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8]] as const) PRIVATE.addSubnet(prefix, bits, 'ipv6');
-
 /** True if `address` (IPv4, IPv6 or IPv4-mapped IPv6) is in `list`. */
 function inList(list: net.BlockList, address: string): boolean {
   const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address);
@@ -148,7 +143,7 @@ async function admit(policy: Policy, hostname: string): Promise<string> {
   } catch {
     throw new Refused(502, `cannot resolve ${host}`);
   }
-  if (!matchesHost(policy.allowPrivate, host) && addresses.some((a) => inList(PRIVATE, a.address))) {
+  if (!matchesHost(policy.allowPrivate, host) && addresses.some((a) => isPrivateAddress(a.address))) {
     throw new Refused(403, `${host} resolves to a loopback, link-local or private address`);
   }
   return addresses[0].address;

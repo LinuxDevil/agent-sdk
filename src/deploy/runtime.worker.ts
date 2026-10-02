@@ -26,15 +26,15 @@
  *    a realistic Workers target, and openrouter has had no Workers
  *    compatibility audit - both remain node-server/docker-only for now.
  *  - Only the built-in tools that need no Node builtins are available
- *    ('current-date', 'day-name'); 'http' uses node:net/node:dns/undici
- *    for its SSRF denylist (DNS-rebinding-safe resolve-then-verify) and a
- *    pinned undici Agent/dispatcher for per-request TLS settings - neither
- *    has a Workers-native equivalent (fetch() gives no hook to resolve a
- *    hostname up front and pin the connection to the verified IP), so a
- *    Workers 'http' tool re-implemented on plain fetch() would silently
- *    drop that DNS-rebinding protection rather than just losing convenience
- *    functionality. Left unsupported here rather than shipping a weaker
- *    tool under the same name - see LOU-K3 PR description.
+ *    ('current-date', 'day-name'). 'http' and 'web-fetch' refuse private
+ *    destinations through an undici Agent whose connect.lookup is the
+ *    pinned lookup of src/security/privateAddress.ts (node:dns): it checks
+ *    every address a host resolves to and the socket connects to the
+ *    address it checked (N13a). Workers' fetch() resolves names inside
+ *    Cloudflare's network with no hook to see or pin the address, so a
+ *    Workers version could check the URL but not where a host name
+ *    connects. Left unsupported here rather than shipping a weaker tool
+ *    under the same name - see LOU-K3 PR description and docs/deployment.md.
  *  - LOU-T2, LOU-D51: sessions, durable execution (CheckpointStore-backed
  *    pause/resume, see src/execution/checkpoint.ts) and paused approvals live
  *    in a Workers KV namespace bound as `AGENT_CHECKPOINTS` (./checkpointBinding)
