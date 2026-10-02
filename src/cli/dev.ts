@@ -87,7 +87,6 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 function createDevHttpServer(holder: AgentHolder): http.Server {
   return http.createServer((req, res) => {
     handleRequest(req, res, holder).catch((error) => {
-      // eslint-disable-next-line no-console
       console.error('[loushy dev] unhandled request error:', error);
       if (!res.headersSent) {
         res.writeHead(500);

@@ -127,7 +127,6 @@ function assertAgentForgeApp(appDir: string, repoRoot: string): void {
 /** Logs a child process's non-zero exit (a null code means it was killed by a signal). */
 function reportUnexpectedExit(label: string, code: number | null): void {
   if (code !== 0 && code !== null) {
-    // eslint-disable-next-line no-console
     console.error(`[loushy studio] ${label} exited with code ${code}`);
   }
 }
@@ -142,7 +141,6 @@ function assertProdBuildPresent(appDir: string, entry: string): void {
   }
   const clientIndex = path.join(appDir, 'dist', 'index.html');
   if (!fs.existsSync(clientIndex)) {
-    // eslint-disable-next-line no-console
     console.error(
       `[loushy studio] warning: '${clientIndex}' not found - the API will run, but no UI will ` +
         "be served. Run 'npm run build:studio' from the repo root to build the client too."
@@ -154,7 +152,6 @@ function startProdStudio(appDir: string, repoRoot: string, apiPort: number, apiH
   const entry = distServerEntry(appDir);
   assertProdBuildPresent(appDir, entry);
 
-  // eslint-disable-next-line no-console
   console.log(`[loushy studio] starting production server (port ${apiPort})...`);
 
   const apiProcess = spawn(process.execPath, [entry], {
@@ -169,7 +166,6 @@ function startProdStudio(appDir: string, repoRoot: string, apiPort: number, apiH
 
   apiProcess.on('exit', (code) => reportUnexpectedExit('server', code));
 
-  // eslint-disable-next-line no-console
   console.log(`[loushy studio] Agent Forge: http://${apiHost}:${apiPort}`);
 
   return { apiProcess, mode: 'prod', stop };
@@ -189,7 +185,6 @@ function startDevStudio(appDir: string, repoRoot: string, apiPort: number, apiHo
   assertDevSourcePresent(appDir);
   const npmCmd = resolveNpmCommand();
 
-  // eslint-disable-next-line no-console
   console.log(`[loushy studio] starting API server (port ${apiPort}) and Vite dev server...`);
 
   const apiProcess = spawn(npmCmd, ['run', 'server:dev'], {
@@ -233,9 +228,7 @@ function startDevStudio(appDir: string, repoRoot: string, apiPort: number, apiHo
     apiProcess.kill();
   });
 
-  // eslint-disable-next-line no-console
   console.log(`[loushy studio] API server:  http://${apiHost}:${apiPort}`);
-  // eslint-disable-next-line no-console
   console.log('[loushy studio] Agent Forge UI: see the Vite dev server output above for its URL (default http://localhost:5173)');
 
   return { apiProcess, viteProcess, mode: 'dev', stop };
