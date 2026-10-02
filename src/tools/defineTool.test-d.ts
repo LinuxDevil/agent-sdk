@@ -2,7 +2,7 @@ import { describe, it, expectTypeOf } from 'vitest';
 import { z } from 'zod';
 import { z as z3 } from 'zod/v3';
 import { z as z4 } from 'zod/v4';
-import { tool as aiTool } from 'ai';
+import { aiTool } from '../providers/aiShapes.testkit';
 import type { Message } from '../providers/llm';
 import { defineTool, type DefinedTool, type ToolInput, type ToolOutput } from './defineTool';
 import { createAgent } from '../createAgent';
@@ -84,7 +84,7 @@ describe('defineTool types', () => {
   it('still registers a legacy ai tool() descriptor', () => {
     const legacy: ToolDescriptor = {
       displayName: 'legacy',
-      tool: aiTool({ description: 'd', parameters: z.object({ a: z.string() }), execute: async ({ a }) => a }),
+      tool: aiTool({ description: 'd', schema: z.object({ a: z.string() }), execute: async () => 'ok' }) as ToolDescriptor['tool'],
     };
     new ToolRegistry().register('legacy', legacy);
   });

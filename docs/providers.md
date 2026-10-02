@@ -262,7 +262,11 @@ pair (for example `ai` 7 with `@ai-sdk/openai` 1.x). `OllamaProvider` loads
 `ollama-ai-provider` on `ai` 4 and `ollama-ai-provider-v2` on `ai` 6/7; the v2
 package peers on zod 4, which the SDK accepts, so install zod 4
 with it (zod 3 projects use Ollama with `ai` 4). `lousho init` scaffolds `ai@^7.0.0` with `@ai-sdk/*@^4.0.0` for
-OpenAI, Anthropic and OpenRouter, and `ai@^4.3.19` for Ollama.
+OpenAI, Anthropic and OpenRouter, and `ai@^7.0.0` with `ollama-ai-provider-v2@^4.0.0` and zod 4 for Ollama.
+
+CI installs and tests `ai` 4, 6 and 7, each with zod 3 and zod 4 (six pairings;
+`ai` 4 with zod 4 is the one pairing the provider packages do not declare), with
+the real `ollama-ai-provider-v2` on `ai` 6 and 7 in the zod 4 jobs.
 
 OpenRouter uses `@ai-sdk/openai` against OpenRouter's base URL. From
 `@ai-sdk/openai` 2 on, the default `openai(modelId)` call targets the Responses
