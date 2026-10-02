@@ -152,8 +152,12 @@ export interface RunEventSink {
   hookEvent(event: HookEventPayload): void;
   /** LOU-W9.2: the resuming agent differs from the one that saved the run. */
   agentDrift(drift: AgentDrift): void;
-  /** Obtains one model step - streamed when the provider can; `onOutput` before its first text or tool call is reported. */
-  generate(provider: LLMProvider, request: GenerateOptions, onOutput?: () => void): Promise<GenerateResult>;
+  /**
+   * Obtains one model step - streamed when the provider can; `onOutput` before its first text or tool call is reported.
+   * N5b: with `hold`, the step's `text.delta`, `reasoning.*` and provider-run tool events wait for it: released
+   * in order when it resolves `true`, dropped when `false`.
+   */
+  generate(provider: LLMProvider, request: GenerateOptions, onOutput?: () => void, hold?: Promise<boolean>): Promise<GenerateResult>;
   /** LOU-Y1: the sink for a sub-agent's run, whose events carry `subagent`. */
   forSubagent(subagent: SubagentInfo): RunEventSink;
 }
@@ -415,11 +419,14 @@ class RunEvents {
       hookEvent: (event) => this.emit(event, subagent),
       agentDrift: (drift) => this.emit({ type: 'agent.drift', ...drift }, subagent),
       guardrail: (event) => this.emit(event, subagent),
-      generate: async (provider, request, onOutput) => {
+      generate: async (provider, request, onOutput, hold) => {
         const call = withProviderEvents(request, this.providerEvents(subagent));
-        const generated = settleHostedFinish(await this.generateStep(provider, call, subagent, onOutput));
+        const generated = settleHostedFinish(await this.generateStep(provider, call, subagent, onOutput, hold));
         const measured = measureUsage(request.model ?? provider.name, request.messages, generated);
-        stepResult = { finishReason: generated.finishReason, ...measured, usage: measured.usage };
+        const measuredStep = { finishReason: generated.finishReason, ...measured, usage: measured.usage };
+        // N5b: a step a parallel input guardrail blocked reports only the usage the provider reported.
+        if (!hold || !measured.estimated) stepResult = measuredStep;
+        else void hold.then((passed) => passed && (stepResult = measuredStep));
         return generated;
       },
       forSubagent: (child) => this.sink(subagent ? { ...child, depth: subagent.depth + 1, parent: subagent } : child),
@@ -444,13 +451,15 @@ class RunEvents {
     provider: LLMProvider,
     request: GenerateOptions,
     subagent: SubagentInfo | undefined,
-    onOutput?: () => void
+    onOutput?: () => void,
+    hold?: Promise<boolean>
   ): Promise<GenerateResult> {
+    const report = heldUntil(hold);
     const sink: StepSink = {
-      onTextDelta: (text) => this.emit({ type: 'text.delta', text }, subagent),
-      onReasoning: (event) => this.emit(event, subagent),
-      onHostedToolCall: (hosted) => this.hostedStarted(hosted, subagent),
-      onHostedToolResult: (hosted) => this.hostedSettled(hosted, subagent),
+      onTextDelta: (text) => report(() => this.emit({ type: 'text.delta', text }, subagent)),
+      onReasoning: (event) => report(() => this.emit(event, subagent)),
+      onHostedToolCall: (hosted) => report(() => this.hostedStarted(hosted, subagent)),
+      onHostedToolResult: (hosted) => report(() => this.hostedSettled(hosted, subagent)),
       onOutput,
     };
     if (this.mode.streamModelCalls && canStream(provider, request)) {
@@ -466,6 +475,28 @@ class RunEvents {
     if (generated.text) sink.onTextDelta(generated.text);
     return generated;
   }
+}
+
+/**
+ * N5b: reports events at once without `hold`; with it, holds them in order
+ * until it settles: released when it resolves `true` (and later ones then go
+ * out at once), dropped for good when `false`.
+ */
+function heldUntil(hold: Promise<boolean> | undefined): (report: () => void) => void {
+  if (!hold) return (report) => report();
+  let held: Array<() => void> | undefined = [];
+  let dropped = false;
+  void hold.then((passed) => {
+    const waiting = held ?? [];
+    held = undefined;
+    dropped = !passed;
+    if (passed) for (const report of waiting) report();
+  });
+  return (report) => {
+    if (dropped) return;
+    if (held) held.push(report);
+    else report();
+  };
 }
 
 /** Identifies a sub-agent run within the stream: the chain of tool calls that started it. */

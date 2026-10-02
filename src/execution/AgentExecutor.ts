@@ -93,7 +93,15 @@ import {
   maxStepsOf,
   startBudget,
 } from './budget';
-import { GuardrailError, checkInputGuardrails, checkOutputGuardrails, type AgentGuardrails, type GuardrailTrip } from './ioGuardrails';
+import {
+  GuardrailError,
+  checkInputGuardrails,
+  checkOutputGuardrails,
+  startParallelInputGuardrails,
+  type AgentGuardrails,
+  type GuardrailTrip,
+  type ParallelInputCheck,
+} from './ioGuardrails';
 
 export { PropagatingToolError } from './propagatingToolError';
 
@@ -811,6 +819,8 @@ export class AgentExecutor {
     // LOU-X4: the new input is checked before anything else runs.
     const blocked = await checkInputGuardrails(options, [state.messages, state.queuedInput]);
     if (blocked) return this.stopForGuardrail(options, state, blocked);
+    // N5b: the `runInParallel` ones check the (possibly rewritten) input while the first model call runs.
+    state.inputCheck = startParallelInputGuardrails(options, [...state.messages, ...state.queuedInput]);
 
     options.inputQueue?.listen((queued) => {
       runEventsOf(options)?.inputQueued(queued);
@@ -822,6 +832,9 @@ export class AgentExecutor {
     // calls (some of them) have no result yet - finish those first, without
     // calling the model again.
     if (state.pendingToolCalls.length > 0) {
+      // N5b: no tool runs before the parallel input guardrails passed.
+      const blockedLate = await this.settleInputCheck(options, state);
+      if (blockedLate) return blockedLate;
       const resumed = await this.runStepOrAbort(options, state, () =>
         this.runPendingToolCalls(options, state, agentSpanId)
       );
@@ -983,6 +996,7 @@ export class AgentExecutor {
     if (!generatedStep || generatedStep === 'steered') {
       return generatedStep ?? 'continue';
     }
+    if (!('generated' in generatedStep)) return generatedStep;
     const { generated, measured } = generatedStep;
 
     // A turn produced a real result - any pending "the last thing that
@@ -1070,16 +1084,23 @@ export class AgentExecutor {
     state: AgentRunState,
     tools: ToolDefinition[],
     agentSpanId: string
-  ): Promise<GeneratedStep | 'steered' | undefined> {
-    const callSignal = options.inputQueue?.startCall();
+  ): Promise<GeneratedStep | 'steered' | ExecutionResult | undefined> {
+    // N5b: the first call runs alongside the parallel input guardrails; their trip aborts it alone.
+    const inputCheck = state.inputCheck;
+    state.inputCheck = undefined;
+    const steerSignal = options.inputQueue?.startCall();
+    const callSignal = inputCheck ? (steerSignal ? AbortSignal.any([steerSignal, inputCheck.signal]) : inputCheck.signal) : steerSignal;
     try {
       const generateRequest = await prepareGenerateRequest(options, state.messages, tools, callSignal);
       callSignal?.throwIfAborted();
-      const generated = await generateInSpan(options, generateRequest, state.messages, agentSpanId, callSignal);
+      const generated = await generateInSpan(options, generateRequest, state.messages, agentSpanId, callSignal, inputCheck);
       callSignal?.throwIfAborted();
       return generated;
     } catch (generateError) {
-      if (callSignal?.aborted && !options.signal?.aborted) {
+      // N5b: whatever else happened, a blocked input wins; nothing goes on before the checks settled.
+      const blocked = await this.settleInputCheck(options, state, inputCheck);
+      if (blocked) return blocked;
+      if (steerSignal?.aborted && !options.signal?.aborted) {
         return 'steered';
       }
       // A cancellation is not a provider failure - never compact it or fold
@@ -1115,6 +1136,28 @@ export class AgentExecutor {
     } finally {
       options.inputQueue?.endPhase();
     }
+  }
+
+  /**
+   * N5b: waits for the parallel input guardrails (`check`, default the run's
+   * pending ones) to settle. Resolves to the blocked run's result on a trip -
+   * counting the cancelled call's usage only when the provider reported it -
+   * or `undefined` when they passed or the run was aborted (the loop then ends
+   * it as `'aborted'`). A check that threw rejects with its error.
+   */
+  private static async settleInputCheck(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    check: ParallelInputCheck | undefined = state.inputCheck
+  ): Promise<ExecutionResult | undefined> {
+    if (!check) return undefined;
+    if (check === state.inputCheck) state.inputCheck = undefined;
+    if (await check.verdict) return undefined;
+    if (options.signal?.aborted) return undefined;
+    if (!check.trip) throw check.error;
+    const reported = check.response && !check.response.measured.estimated ? check.response.measured : undefined;
+    if (reported) recordStep(state, reported);
+    return this.stopForGuardrail(options, state, check.trip);
   }
 
   /**
