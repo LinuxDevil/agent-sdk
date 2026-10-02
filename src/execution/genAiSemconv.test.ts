@@ -336,13 +336,13 @@ describe('traced flows (LOU-D9)', () => {
     expect(spans[0].attributes).toEqual({
       'gen_ai.operation.name': 'invoke_workflow',
       'gen_ai.workflow.name': 'Weather Flow',
-      'loushy.flow.code': 'weather-flow',
-      'loushy.flow.outcome': 'success',
+      'lousho.flow.code': 'weather-flow',
+      'lousho.flow.outcome': 'success',
     });
     expect(spans[2].attributes).toEqual({
-      'loushy.flow.node.id': 'lookup',
-      'loushy.flow.node.type': 'toolCall',
-      'loushy.flow.outcome': 'success',
+      'lousho.flow.node.id': 'lookup',
+      'lousho.flow.node.type': 'toolCall',
+      'lousho.flow.outcome': 'success',
     });
     expect(spans[5].attributes['gen_ai.usage.input_tokens']).toBe(3);
   });
@@ -369,7 +369,7 @@ describe('traced flows (LOU-D9)', () => {
     const run = spans[0];
     const boom = spans.find((s) => s.name === 'flow.node throw')!;
     for (const span of [run, boom]) {
-      expect(span.attributes['loushy.flow.outcome']).toBe('error');
+      expect(span.attributes['lousho.flow.outcome']).toBe('error');
       expect(span.attributes['error.type']).toBe('Error');
       expect(span.status).toEqual({ code: 'error', message: 'nope' });
     }
@@ -388,7 +388,7 @@ describe('traced flows (LOU-D9)', () => {
   });
 });
 
-describe('loushy.cost_usd and loushy.usage.estimated spans (LOU-D48)', () => {
+describe('lousho.cost_usd and lousho.usage.estimated spans (LOU-D48)', () => {
   async function runPriced(model: string, scripted: boolean) {
     const { agent, toolRegistry } = setup();
     const { exporter, spans } = memoryExporter();
@@ -411,27 +411,27 @@ describe('loushy.cost_usd and loushy.usage.estimated spans (LOU-D48)', () => {
     const { spans, result } = await runPriced('gpt-4o-mini', true);
     const [run, chat1, tool, chat2] = spans;
 
-    expect(chat1.attributes['loushy.cost_usd']).toBeCloseTo(gpt4oMini(10, 5), 12);
-    expect(chat2.attributes['loushy.cost_usd']).toBeCloseTo(gpt4oMini(20, 7), 12);
-    expect(run.attributes['loushy.cost_usd']).toBeCloseTo(gpt4oMini(30, 12), 12);
-    expect(run.attributes['loushy.cost_usd']).toBeCloseTo(result.usage.costUsd as number, 12);
-    expect(tool.attributes).not.toHaveProperty('loushy.cost_usd');
-    for (const span of [run, chat1, chat2]) expect(span.attributes).not.toHaveProperty('loushy.usage.estimated');
+    expect(chat1.attributes['lousho.cost_usd']).toBeCloseTo(gpt4oMini(10, 5), 12);
+    expect(chat2.attributes['lousho.cost_usd']).toBeCloseTo(gpt4oMini(20, 7), 12);
+    expect(run.attributes['lousho.cost_usd']).toBeCloseTo(gpt4oMini(30, 12), 12);
+    expect(run.attributes['lousho.cost_usd']).toBeCloseTo(result.usage.costUsd as number, 12);
+    expect(tool.attributes).not.toHaveProperty('lousho.cost_usd');
+    for (const span of [run, chat1, chat2]) expect(span.attributes).not.toHaveProperty('lousho.usage.estimated');
   });
 
-  it('omits loushy.cost_usd when the model has no known price', async () => {
+  it('omits lousho.cost_usd when the model has no known price', async () => {
     const { spans } = await runPriced('test-model', true);
-    expect(spans.some((s) => 'loushy.cost_usd' in s.attributes)).toBe(false);
+    expect(spans.some((s) => 'lousho.cost_usd' in s.attributes)).toBe(false);
   });
 
-  it('flags loushy.usage.estimated on the chat spans and the run span when tokens were estimated', async () => {
+  it('flags lousho.usage.estimated on the chat spans and the run span when tokens were estimated', async () => {
     const { spans, result } = await runPriced('gpt-4o-mini', false);
     const [run, chat1, , chat2] = spans;
 
     expect(result.usage.estimated).toBe(true);
-    expect(run.attributes['loushy.usage.estimated']).toBe(true);
-    expect(chat1.attributes['loushy.usage.estimated']).toBe(true);
-    expect(chat2.attributes['loushy.usage.estimated']).toBe(true);
-    expect(run.attributes['loushy.cost_usd']).toBeCloseTo(result.usage.costUsd as number, 12);
+    expect(run.attributes['lousho.usage.estimated']).toBe(true);
+    expect(chat1.attributes['lousho.usage.estimated']).toBe(true);
+    expect(chat2.attributes['lousho.usage.estimated']).toBe(true);
+    expect(run.attributes['lousho.cost_usd']).toBeCloseTo(result.usage.costUsd as number, 12);
   });
 });

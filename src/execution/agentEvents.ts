@@ -317,7 +317,7 @@ export interface GuardrailRewroteEvent extends AgentEventBase<'guardrail.rewrote
  * LOU-W9.2: a checkpointed or approval-paused run is being continued by an
  * agent that differs from the one that saved it, and `onAgentDrift` is
  * `'warn'` (the default). The run continues; with `'error'` it is refused
- * with `LOUSHY_AGENT_DRIFT` instead and this event is not emitted.
+ * with `LOUSHO_AGENT_DRIFT` instead and this event is not emitted.
  */
 export interface AgentDriftEvent extends AgentEventBase<'agent.drift'>, AgentDrift {}
 

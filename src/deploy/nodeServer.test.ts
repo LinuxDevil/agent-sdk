@@ -104,7 +104,7 @@ describe('deployed node server /chat API', () => {
     });
 
     it('requires the token on every route but /health: 401 JSON without or with a wrong one, 200 with it', async () => {
-      const { call, events, authenticated } = await serve(mockModel(['secret answer']), { env: { LOUSHY_API_TOKEN: 's3cret' } });
+      const { call, events, authenticated } = await serve(mockModel(['secret answer']), { env: { LOUSHO_API_TOKEN: 's3cret' } });
       expect(authenticated).toBe(true);
       expect((await call('/health')).status).toBe(200);
 
@@ -123,7 +123,7 @@ describe('deployed node server /chat API', () => {
       expect((await call('/chat/a', undefined, bearer)).status).toBe(200);
     });
 
-    it('takes the build option token, which LOUSHY_API_TOKEN overrides', async () => {
+    it('takes the build option token, which LOUSHO_API_TOKEN overrides', async () => {
       const built = await serve(mockModel(['ok']), { auth: { token: 'baked' }, env: {} });
       expect((await built.call('/chat/a')).status).toBe(401);
       expect((await built.call('/chat/a', undefined, { Authorization: 'Bearer baked' })).status).toBe(200);
@@ -131,7 +131,7 @@ describe('deployed node server /chat API', () => {
       server?.closeAllConnections();
       server?.close();
 
-      const env = await serve(mockModel(['ok']), { auth: { token: 'baked' }, env: { LOUSHY_API_TOKEN: 'from-env' } });
+      const env = await serve(mockModel(['ok']), { auth: { token: 'baked' }, env: { LOUSHO_API_TOKEN: 'from-env' } });
       expect((await env.call('/chat/a', undefined, { Authorization: 'Bearer baked' })).status).toBe(401);
       expect((await env.call('/chat/a', undefined, { Authorization: 'Bearer from-env' })).status).toBe(200);
     });
@@ -141,13 +141,13 @@ describe('deployed node server /chat API', () => {
 describe('storeFromEnv', () => {
   it("defaults to memory, accepts 'memory' and 'sqlite:<path>', and rejects anything else", () => {
     expect(storeFromEnv({}).sessions).toBeDefined();
-    expect(storeFromEnv({ LOUSHY_STORE: 'memory' }).sessions).toBeDefined();
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-store-')), 'agent.db');
-    const store = storeFromEnv({ LOUSHY_STORE: `sqlite:${file}` });
+    expect(storeFromEnv({ LOUSHO_STORE: 'memory' }).sessions).toBeDefined();
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-store-')), 'agent.db');
+    const store = storeFromEnv({ LOUSHO_STORE: `sqlite:${file}` });
     expect(store).toBeInstanceOf(SqliteStore);
     (store as SqliteStore).close();
     expect(fs.existsSync(file)).toBe(true);
-    expect(() => storeFromEnv({ LOUSHY_STORE: 'redis://x' })).toThrow(/LOUSHY_STORE must be 'memory' or 'sqlite:<path>'/);
-    expect(() => storeFromEnv({ LOUSHY_STORE: 'sqlite:' })).toThrow(/LOUSHY_STORE/);
+    expect(() => storeFromEnv({ LOUSHO_STORE: 'redis://x' })).toThrow(/LOUSHO_STORE must be 'memory' or 'sqlite:<path>'/);
+    expect(() => storeFromEnv({ LOUSHO_STORE: 'sqlite:' })).toThrow(/LOUSHO_STORE/);
   });
 });

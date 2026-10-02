@@ -1,19 +1,19 @@
-# @loushy/build-ai-agent
+# @lousho/build-ai-agent
 
 > A TypeScript SDK for building AI agents that run in your own code, on your own host: a typed tool-calling loop with approvals, sessions, streaming, sub-agents, skills, MCP and a CLI, with no web framework or hosted runtime required. It is for developers who need an agent to keep working when a run pauses for a human or the process restarts, and who want to test it like the rest of their code.
 
 ## Docs
 
-- [@loushy/build-ai-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/README.md): A TypeScript SDK for building AI agents that run in your own code, on your own host: a typed tool-calling loop with approvals, sessions, streaming, sub-agents, skills, MCP and a CLI, with no web framework or hosted runtime required.
+- [@lousho/build-ai-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/README.md): A TypeScript SDK for building AI agents that run in your own code, on your own host: a typed tool-calling loop with approvals, sessions, streaming, sub-agents, skills, MCP and a CLI, with no web framework or hosted runtime required.
 - [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md): When it is published
 - [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md): Every TypeScript snippet on this page is a complete, standalone ES module (`.mts`).
-- [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md): The package root (`@loushy/build-ai-agent`) exports everything below.
+- [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md): The package root (`@lousho/build-ai-agent`) exports everything below.
 - [Agent Client Protocol (ACP)](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/acp.md): The Agent Client Protocol lets an editor drive a coding agent that runs as a subprocess: the editor writes JSON-RPC 2.0 requests to the agent's stdin, one JSON message per line, and reads the agent's replies and streamed updates from its stdout.
 - [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md): An agent can be defined as a directory.
-- [AI SDK UI (`useChat`)](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/ai-sdk-ui.md): If your front end already uses the Vercel AI SDK's UI hooks (`useChat` from `@ai-sdk/react`, and the Vue, Svelte and Angular equivalents), you can keep them and run a Loushy agent behind the route.
+- [AI SDK UI (`useChat`)](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/ai-sdk-ui.md): If your front end already uses the Vercel AI SDK's UI hooks (`useChat` from `@ai-sdk/react`, and the Vue, Svelte and Angular equivalents), you can keep them and run a Lousho agent behind the route.
 - [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md): Flag a tool `needsApproval` and the run pauses before calling it, until a human (or your code) approves or rejects the call.
 - [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md): A channel connects an agent to one surface: a JSON API, a webhook, a chat app.
-- [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md): Installing the package also installs the `loushy` command.
+- [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md): Installing the package also installs the `lousho` command.
 - [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md): A long agent run fills its context window mostly with tool results: file contents, search hits, API responses the model read once and no longer needs in full.
 - [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md): A declarative agent is a YAML (`.yaml`/`.yml`) or JSON (`.json`) file, validated with zod by `loadSpec()` (`src/spec/schema.ts`).
 - [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md): Pass a `sessionId` and a `checkpointStore` to `AgentExecutor.execute()` and the run survives a crash, a restart, an abort or a human approval that takes days.
@@ -25,20 +25,20 @@
 - [Next.js and other Fetch-API frameworks](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md): `createRouteHandler(agent, options?)` serves an agent from a route file of any framework whose handlers take a Web `Request` and return a `Response`: the Next.js App Router, SvelteKit, Remix / React Router, Hono, Bun.serve.
 - [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md): `AgentExecutor.execute()` and `FlowExecutor.execute()` emit spans through a `TraceExporter`.
 - [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md): An `LLMProvider` is what an agent generates with.
-- [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md): `useLoushyAgent()` puts an agent behind a chat UI.
+- [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md): `useLoushoAgent()` puts an agent behind a chat UI.
 - [Reasoning](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/reasoning.md): Reasoning models think before they answer.
-- [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md): `loushy add` installs a tool, skill, channel, schedule or memory slot into an agent directory from a registry.
+- [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md): `lousho add` installs a tool, skill, channel, schedule or memory slot into an agent directory from a registry.
 - [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md): A schedule runs the agent on a cron expression, with nobody asking: a morning summary, a nightly cleanup.
 - [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md): `agent.send(text)` is single-turn: every call starts from an empty history.
 - [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md): A skill is a named chunk of instructions (a markdown document) that the model loads only when it needs it.
 - [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md): `agent.stream()` runs an agent exactly like `agent.send()` and reports the run as a stream of typed events: model text as it arrives, every tool call, step boundaries, approval requests, and a final `run.done`.
 - [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md): Give an agent a zod schema as `output` and its final reply becomes a typed, validated object: `result.object`.
 - [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md): A sub-agent is a separate agent - its own instructions, model, tools and skills - that a lead agent hands a self-contained task to.
-- [Svelte](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/svelte.md): `loushyAgent()` for Svelte is the React hook as a store: the same sources, the same state and the same actions, over the same typed event stream.
-- [Testing agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md): `@loushy/build-ai-agent/testing` ships `mockModel`: a scripted, deterministic `LLMProvider` for unit tests.
+- [Svelte](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/svelte.md): `loushoAgent()` for Svelte is the React hook as a store: the same sources, the same state and the same actions, over the same typed event stream.
+- [Testing agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md): `@lousho/build-ai-agent/testing` ships `mockModel`: a scripted, deterministic `LLMProvider` for unit tests.
 - [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md): A tool is a typed function the model can call.
 - [Utilities](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/utilities.md): Supporting helpers exported from the package root: encryption and hashing, and file storage for attachments.
-- [Vue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/vue.md): `useLoushyAgent()` for Vue 3 is the React hook as a composable: the same sources, the same state and the same actions, over the same typed event stream.
+- [Vue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/vue.md): `useLoushoAgent()` for Vue 3 is the React hook as a composable: the same sources, the same state and the same actions, over the same typed event stream.
 - [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md): Workspace tools give an agent a file system and a shell, so you can build coding agents in the style of Claude Code.
 
 ## Examples
@@ -54,5 +54,5 @@
 
 ## Optional
 
-- [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md): Agent Forge (`apps/agent-forge`) is this SDK's companion visual dashboard: build an agent's graph on a canvas, run it, watch it execute in a live debug console, chat with it, and author sandboxed pre/post hooks - all reading and writing the exact same `AgentSpec` YAML that `loushy dev` and `loushy build` use.
-- [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md): `loushy build` turns an agent spec file (see Configuration) into a deployable artifact for one target platform
+- [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md): Agent Forge (`apps/agent-forge`) is this SDK's companion visual dashboard: build an agent's graph on a canvas, run it, watch it execute in a live debug console, chat with it, and author sandboxed pre/post hooks - all reading and writing the exact same `AgentSpec` YAML that `lousho dev` and `lousho build` use.
+- [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md): `lousho build` turns an agent spec file (see Configuration) into a deployable artifact for one target platform

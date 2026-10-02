@@ -1,5 +1,5 @@
 /**
- * Pure aggregation and rendering for `loushy eval` (LOU-D8): the summary
+ * Pure aggregation and rendering for `lousho eval` (LOU-D8): the summary
  * table, JUnit XML and JSON. No I/O, so every output is snapshot-testable.
  */
 import {
@@ -117,7 +117,7 @@ export function renderTable(results: readonly EvalResult[], strict: boolean): st
   ].join('\n');
 }
 
-/** One drifted field of one case (`loushy eval --drift`, LOU-D46). */
+/** One drifted field of one case (`lousho eval --drift`, LOU-D46). */
 export interface DriftRow {
   result: EvalResult;
   /** A trajectory difference, or `cassette` when one side was never recorded. */
@@ -201,7 +201,7 @@ export function renderJunit(results: readonly EvalResult[], strict: boolean): st
   const { failures, errors, time } = counts(results, strict);
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    `<testsuites name="loushy eval" tests="${results.length}" failures="${failures}" errors="${errors}" time="${time}">`,
+    `<testsuites name="lousho eval" tests="${results.length}" failures="${failures}" errors="${errors}" time="${time}">`,
     ...[...byEval].map(([name, cases]) => suiteXml(name, cases, strict)),
     '</testsuites>',
     '',

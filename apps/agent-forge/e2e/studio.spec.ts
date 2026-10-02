@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * S3 (LOU-S): full-stack smoke test against the real, BUILT `loushy studio`
+ * S3 (LOU-S): full-stack smoke test against the real, BUILT `lousho studio`
  * (see playwright.config.ts's `webServer` - it runs the same
- * `dist-server/index.cjs` production entry `loushy studio --prod` spawns,
+ * `dist-server/index.cjs` production entry `lousho studio --prod` spawns,
  * serving the pre-built client too). This is the guard against regressions
  * across the whole stack: the canvas/graph editor, the Save/PUT-agent
  * round trip, the mock provider's tool-call heuristic, the real

@@ -17,7 +17,7 @@ export function loadChannels(dir: string): Promise<Channel[]> {
   return loadDefaultExports(
     dir,
     'channels',
-    'LOUSHY_CHANNEL_INVALID',
+    'LOUSHO_CHANNEL_INVALID',
     'a channel from defineChannel(), httpChannel(), webhookChannel() or slackChannel().',
     isChannelLike,
     (channel, stem) => defineChannel({ ...channel, name: channel.name ?? stem } as Channel)

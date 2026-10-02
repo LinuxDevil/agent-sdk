@@ -95,15 +95,15 @@ export const TOOL_TYPE_FUNCTION = 'function';
 /** Attributes specific to this SDK (not part of the GenAI semantic conventions). */
 export const SdkAttr = {
   /** `true` on a span whose token counts are (partly) estimates because the provider reported none (LOU-V5). */
-  USAGE_ESTIMATED: 'loushy.usage.estimated',
+  USAGE_ESTIMATED: 'lousho.usage.estimated',
   /**
    * Estimated USD (LOU-D48): per step on a `chat` span; cumulative on the
    * parent spans (`invoke_agent`, and a delegating `execute_tool`). Absent
    * when the price table does not know a contributing model.
    */
-  COST_USD: 'loushy.cost_usd',
+  COST_USD: 'lousho.cost_usd',
   /** Reasoning (thinking) tokens of a `chat` span's call, when the provider reports them (LOU-V13). */
-  USAGE_REASONING_TOKENS: 'loushy.usage.reasoning_tokens',
+  USAGE_REASONING_TOKENS: 'lousho.usage.reasoning_tokens',
 } as const;
 
 /**
@@ -127,10 +127,10 @@ export const LegacyAttr = {
 
 /** Attributes for flow spans (no GenAI convention exists for flow nodes). */
 export const FlowAttr = {
-  CODE: 'loushy.flow.code',
-  NODE_ID: 'loushy.flow.node.id',
-  NODE_TYPE: 'loushy.flow.node.type',
-  OUTCOME: 'loushy.flow.outcome',
+  CODE: 'lousho.flow.code',
+  NODE_ID: 'lousho.flow.node.id',
+  NODE_TYPE: 'lousho.flow.node.type',
+  OUTCOME: 'lousho.flow.outcome',
 } as const;
 
 /** Span-name prefix for a flow node span (`flow.node sequence`, ...). */

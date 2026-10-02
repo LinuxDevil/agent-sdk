@@ -79,17 +79,17 @@ const DEFAULT_TOLERANCE_SECONDS = 300;
 export function assertValidWebhookAuth(auth: WebhookAuth): void {
   if (auth.type === 'hmac') {
     if (!auth.secret) {
-      throw new SDKError("WebhookTriggerAdapter: auth.secret must be a non-empty string (e.g. { type: 'hmac', secret: process.env.WEBHOOK_SECRET }).", 'LOUSHY_TRIGGER_INVALID');
+      throw new SDKError("WebhookTriggerAdapter: auth.secret must be a non-empty string (e.g. { type: 'hmac', secret: process.env.WEBHOOK_SECRET }).", 'LOUSHO_TRIGGER_INVALID');
     }
     if (auth.toleranceSeconds !== undefined && !auth.timestampHeader) {
-      throw new SDKError('WebhookTriggerAdapter: auth.toleranceSeconds has no effect without auth.timestampHeader. Set timestampHeader (e.g. "x-timestamp") or remove toleranceSeconds.', 'LOUSHY_TRIGGER_INVALID');
+      throw new SDKError('WebhookTriggerAdapter: auth.toleranceSeconds has no effect without auth.timestampHeader. Set timestampHeader (e.g. "x-timestamp") or remove toleranceSeconds.', 'LOUSHO_TRIGGER_INVALID');
     }
   } else if (auth.type === 'bearer') {
     if (!auth.token) {
-      throw new SDKError("WebhookTriggerAdapter: auth.token must be a non-empty string (e.g. { type: 'bearer', token: process.env.WEBHOOK_TOKEN }).", 'LOUSHY_TRIGGER_INVALID');
+      throw new SDKError("WebhookTriggerAdapter: auth.token must be a non-empty string (e.g. { type: 'bearer', token: process.env.WEBHOOK_TOKEN }).", 'LOUSHO_TRIGGER_INVALID');
     }
   } else if (auth.type !== 'custom' || typeof auth.verify !== 'function') {
-    throw new SDKError("WebhookTriggerAdapter: auth.type must be 'hmac', 'bearer' or 'custom' (custom needs a verify(req, rawBody) function).", 'LOUSHY_TRIGGER_INVALID');
+    throw new SDKError("WebhookTriggerAdapter: auth.type must be 'hmac', 'bearer' or 'custom' (custom needs a verify(req, rawBody) function).", 'LOUSHO_TRIGGER_INVALID');
   }
 }
 

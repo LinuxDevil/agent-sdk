@@ -20,7 +20,7 @@ Give each sub-agent a `description` (the lead model reads it to choose), then
 pass them to the lead as `subagents`:
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const researcher = createAgent({
   provider,
@@ -97,10 +97,10 @@ needs no code. A lead that keeps its work across turns or restarts needs a
 store and a session:
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
-import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
+import { createAgent } from '@lousho/build-ai-agent';
+import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
 
-const store = new SqliteStore('./.loushy/agent.db');
+const store = new SqliteStore('./.lousho/agent.db');
 const researcher = createAgent({ provider, instructions: 'You research.', description: 'Finds and summarizes sources' });
 const lead = createAgent({ provider, instructions: 'You coordinate research.', store, subagents: { researcher } });
 
@@ -130,8 +130,8 @@ Only tasks that finished (`stop`, `length` or `max-steps`) are saved, so a
 task that failed or was cancelled cannot be continued. Errors reach the lead
 as structured tool errors: an unknown `taskId`, one of another lead session,
 or one that belongs to another sub-agent fails with
-`LOUSHY_SUBAGENT_TASK_NOT_FOUND`; a task that is still running (a background
-task that has not ended) fails with `LOUSHY_SUBAGENT_TASK_BUSY`, telling the
+`LOUSHO_SUBAGENT_TASK_NOT_FOUND`; a task that is still running (a background
+task that has not ended) fails with `LOUSHO_SUBAGENT_TASK_BUSY`, telling the
 model to `agent_await` or `agent_cancel` it first.
 
 A resumed or forked task is a normal `task` call otherwise: it can run in the
@@ -164,7 +164,7 @@ At most `maxConcurrent` background sub-agents of one lead run run at once
 as slots free. Set it with `subagentOptions` on `createAgent()`:
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const researcher = createAgent({ provider, instructions: 'You research.', description: 'Finds and summarizes sources' });
 
@@ -199,7 +199,7 @@ events arrive before the lead's `run.done`.
 The result lists every background task of the run with its final status:
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const researcher = createAgent({ provider, instructions: 'You research.', description: 'Finds and summarizes sources' });
 const lead = createAgent({ provider, instructions: 'You coordinate research.', subagents: { researcher } });
@@ -241,7 +241,7 @@ the set can change between runs; `resolve()` is called when the lead picks a
 name (return `undefined` for an unknown one).
 
 ```ts
-import { createAgent, type SubagentCatalog } from '@loushy/build-ai-agent';
+import { createAgent, type SubagentCatalog } from '@lousho/build-ai-agent';
 
 const experts = new Map([
   ['researcher', createAgent({ provider, instructions: 'You research.' })],
@@ -257,13 +257,13 @@ const lead = createAgent({ provider, instructions: 'You coordinate.', subagents:
 
 ## Remote sub-agents
 
-`remoteAgent()` uses an agent you already deployed (`loushy deploy`: the node
+`remoteAgent()` uses an agent you already deployed (`lousho deploy`: the node
 server, Docker or a Cloudflare Worker) as a sub-agent. It goes in `subagents`
 next to local ones, and the lead delegates to it with the same `task` tool,
 including `background: true`.
 
 ```ts
-import { createAgent, remoteAgent } from '@loushy/build-ai-agent';
+import { createAgent, remoteAgent } from '@lousho/build-ai-agent';
 
 const lead = createAgent({
   provider,
@@ -271,7 +271,7 @@ const lead = createAgent({
   subagents: {
     researcher: remoteAgent({
       url: 'https://researcher.example.workers.dev',
-      auth: process.env.RESEARCHER_TOKEN, // the deployment's LOUSHY_API_TOKEN; or () => string | Promise<string>
+      auth: process.env.RESEARCHER_TOKEN, // the deployment's LOUSHO_API_TOKEN; or () => string | Promise<string>
       description: 'Finds and summarizes sources',
     }),
   },
@@ -294,7 +294,7 @@ lead run's abort signal aborts the request. Options: `url`, `auth`, `name`,
 
 Failures (the agent is unreachable, a 401 or other non-2xx answer, a malformed
 stream, or a remote run that ends in an error) reach the lead as the
-structured tool error with the code `LOUSHY_REMOTE_REQUEST_FAILED` (`LOUSHY_REMOTE_UNAUTHORIZED` for a 401); the token is
+structured tool error with the code `LOUSHO_REMOTE_REQUEST_FAILED` (`LOUSHO_REMOTE_UNAUTHORIZED` for a 401); the token is
 never part of an error or an event.
 
 ### Remote approvals
@@ -312,7 +312,7 @@ final answer becomes the `task` result; a continuation that pauses again pauses
 the lead again.
 
 ```ts
-import type { SimpleAgent } from '@loushy/build-ai-agent';
+import type { SimpleAgent } from '@lousho/build-ai-agent';
 declare const lead: SimpleAgent; // the lead agent above
 
 const paused = await lead.send('Deploy the docs site');
@@ -330,7 +330,7 @@ the `remoteAgent()` options again). A failure while deciding (a 401, any other
 non-2xx answer such as the remote's 404 for an approval no longer pending, a
 network error) is the structured tool error of that `task` call with the codes
 above, and the lead run continues. Only a run without an approval store (a bare
-`AgentExecutor`) still fails the task with `LOUSHY_SESSION_AWAITING_APPROVAL`,
+`AgentExecutor`) still fails the task with `LOUSHO_SESSION_AWAITING_APPROVAL`,
 naming the remote session and approval id to decide on the remote agent.
 
 ## Depth
@@ -376,7 +376,7 @@ the enclosing sub-agent as `parent` when nested deeper. A hook that should only
 see the top-level run returns early:
 
 ```ts
-import { HookRegistry } from '@loushy/build-ai-agent';
+import { HookRegistry } from '@lousho/build-ai-agent';
 
 const hooks = new HookRegistry();
 hooks.register({
@@ -410,7 +410,7 @@ sub-agents it runs inside (e.g. `['researcher']`). Approve or reject it with
 `resumeAfterApproval()`, passing the same `subagents` option as the paused run:
 
 ```ts
-import { AgentExecutor, resumeAfterApproval, ToolRegistry, createAgent } from '@loushy/build-ai-agent';
+import { AgentExecutor, resumeAfterApproval, ToolRegistry, createAgent } from '@lousho/build-ai-agent';
 
 const subagents = { researcher: createAgent({ provider, instructions: 'You research.', description: 'Researches' }) };
 
@@ -468,7 +468,7 @@ same way, and its result shape (`{ text, usage }`) is unchanged. Prefer
 limits come for free.
 
 ```ts
-import { AgentExecutor, createDelegateTool, ToolRegistry } from '@loushy/build-ai-agent';
+import { AgentExecutor, createDelegateTool, ToolRegistry } from '@lousho/build-ai-agent';
 
 const billingAgent = {
   name: 'Billing Agent',

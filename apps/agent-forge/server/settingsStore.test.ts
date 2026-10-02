@@ -80,8 +80,8 @@ describe('SettingsStore', () => {
   });
 
   it('falls back to defaults if the settings file is corrupted', () => {
-    fs.mkdirSync(path.join(baseDir, '.loushy'), { recursive: true });
-    fs.writeFileSync(path.join(baseDir, '.loushy', 'settings.json'), 'not json', 'utf8');
+    fs.mkdirSync(path.join(baseDir, '.lousho'), { recursive: true });
+    fs.writeFileSync(path.join(baseDir, '.lousho', 'settings.json'), 'not json', 'utf8');
     expect(() => store.list()).not.toThrow();
     expect(store.list().profiles.length).toBeGreaterThan(0);
   });

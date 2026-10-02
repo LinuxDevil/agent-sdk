@@ -116,7 +116,7 @@ export class StorageService implements IStorageService {
       if (attempts > maxAttempts) {
         throw new SDKError(
           `Could not acquire lock for "${storageKey}" after ${maxAttempts} attempts`,
-          'LOUSHY_STORAGE_FAILED'
+          'LOUSHO_STORAGE_FAILED'
         );
       }
       await this.delay(attemptDelayMs);
@@ -232,7 +232,7 @@ export class StorageService implements IStorageService {
       : jsonString.length;
 
     if (size > maxFileSizeMB * 1024 * 1024) {
-      throw new SDKError(`File size limit of ${maxFileSizeMB}MB exceeded for ${storageKey}.`, 'LOUSHY_STORAGE_FAILED');
+      throw new SDKError(`File size limit of ${maxFileSizeMB}MB exceeded for ${storageKey}.`, 'LOUSHO_STORAGE_FAILED');
     }
 
     this.fs.writeFileSync(this.getFilePath(storageKey), jsonString, 'utf8');

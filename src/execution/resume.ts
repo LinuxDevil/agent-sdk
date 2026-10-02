@@ -141,7 +141,7 @@ async function resumeObserved(
 ): Promise<ExecutionResult> {
   const record = await approvalStore.resolve(decision.id);
   if (!record) {
-    throw new SDKError(`No pending approval found for id '${decision.id}' (unknown or already resolved)`, 'LOUSHY_APPROVAL_NOT_FOUND');
+    throw new SDKError(`No pending approval found for id '${decision.id}' (unknown or already resolved)`, 'LOUSHO_APPROVAL_NOT_FOUND');
   }
 
   const { pending, snapshot } = record;

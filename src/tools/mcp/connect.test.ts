@@ -56,7 +56,7 @@ describe('connectMcp (LOU-Z4)', () => {
   it("onError: 'skip' leaves out a server that cannot connect, with a warning", async () => {
     const logger = warnLogger();
     const mcp = await connect(
-      { files: stdio(), broken: { command: 'loushy-no-such-command-z4' } },
+      { files: stdio(), broken: { command: 'lousho-no-such-command-z4' } },
       { onError: 'skip', logger }
     );
     expect(Object.keys(mcp.tools)).toEqual(['files__echo', 'files__wipe']);
@@ -68,7 +68,7 @@ describe('connectMcp (LOU-Z4)', () => {
   });
 
   it('rejects by default when a server cannot connect, naming it', async () => {
-    await expect(connectMcp({ files: stdio(), broken: { command: 'loushy-no-such-command-z4' } })).rejects.toThrow(
+    await expect(connectMcp({ files: stdio(), broken: { command: 'lousho-no-such-command-z4' } })).rejects.toThrow(
       /connectMcp: MCP server 'broken' failed to connect/
     );
   });
@@ -133,7 +133,7 @@ describe('createAgent({ mcpServers }) (LOU-Z4)', () => {
   });
 
   it('send() rejects when a server cannot connect, and retries on the next call', async () => {
-    const agent = createAgent({ provider: mockModel(['a', 'b']), mcpServers: { broken: { command: 'loushy-no-such-command-z4' } } });
+    const agent = createAgent({ provider: mockModel(['a', 'b']), mcpServers: { broken: { command: 'lousho-no-such-command-z4' } } });
     await expect(agent.send('hi')).rejects.toThrow(/'broken' failed to connect/);
     await expect(agent.ready()).rejects.toThrow(/'broken' failed to connect/);
     await expect(agent.close()).resolves.toBeUndefined();

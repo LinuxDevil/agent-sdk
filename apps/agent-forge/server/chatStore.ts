@@ -1,9 +1,9 @@
 /**
  * P3: file-backed persistence for chat transcripts, one JSON file per
  * (agentId, chat session) under
- * `<baseDir>/.loushy/agents/<agentId>/chats/<sessionId>.json` - sibling to
+ * `<baseDir>/.lousho/agents/<agentId>/chats/<sessionId>.json` - sibling to
  * FileCheckpointStore.ts/FileApprovalStore.ts/fsAgentStore.ts, following the
- * same `.loushy/agents/<id>/...` layout rather than a fourth, unrelated
+ * same `.lousho/agents/<id>/...` layout rather than a fourth, unrelated
  * persistence mechanism.
  *
  * A "session" here is a chat conversation, not an individual run: Stop-then-
@@ -21,7 +21,7 @@ export class FileChatStore {
   constructor(private readonly baseDir: string) {}
 
   private dir(agentId: string): string {
-    return path.join(this.baseDir, '.loushy', 'agents', agentId, 'chats');
+    return path.join(this.baseDir, '.lousho', 'agents', agentId, 'chats');
   }
 
   private filePath(agentId: string, sessionId: string): string {

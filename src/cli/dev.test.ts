@@ -46,7 +46,7 @@ afterEach(async () => {
 
 describe('startDevServer', () => {
   it('serves the chat UI on GET / with an id="msg" input', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-dev-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-dev-'));
     const configPath = writeConfig(dir);
     handle = await startDevServer(configPath, 0);
 
@@ -60,7 +60,7 @@ describe('startDevServer', () => {
   });
 
   it('a realistic message round-trip via the UI page\'s own /chat call produces a reply', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-dev-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-dev-'));
     const configPath = writeConfig(dir);
     handle = await startDevServer(configPath, 0);
     const port = addressPort(handle);
@@ -79,7 +79,7 @@ describe('startDevServer', () => {
   });
 
   it('responds 200 ok on GET /health', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-dev-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-dev-'));
     const configPath = writeConfig(dir);
     handle = await startDevServer(configPath, 0);
 
@@ -89,7 +89,7 @@ describe('startDevServer', () => {
   });
 
   it('POST /chat returns the mock provider response', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-dev-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-dev-'));
     const configPath = writeConfig(dir);
     handle = await startDevServer(configPath, 0);
 
@@ -104,7 +104,7 @@ describe('startDevServer', () => {
   });
 
   it('rejects a POST /chat body larger than the size cap with 413', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-dev-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-dev-'));
     const configPath = writeConfig(dir);
     handle = await startDevServer(configPath, 0);
     const port = addressPort(handle);
@@ -121,7 +121,7 @@ describe('startDevServer', () => {
   });
 
   it('binds to 127.0.0.1 (localhost-only) by default, not all interfaces', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-dev-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-dev-'));
     const configPath = writeConfig(dir);
     handle = await startDevServer(configPath, 0);
 
@@ -130,7 +130,7 @@ describe('startDevServer', () => {
   });
 
   it('rejects with a clear message when the port is already in use', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-dev-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-dev-'));
     const configPath = writeConfig(dir);
     handle = await startDevServer(configPath, 0);
     const port = addressPort(handle);
@@ -143,7 +143,7 @@ describe('startDevServer', () => {
 
 describe('hot reload (LOU-H8)', () => {
   it('picks up an edited prompt without restarting the server/port, and keeps working on an invalid edit', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-dev-reload-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-dev-reload-'));
     const configPath = writeConfig(dir);
     handle = await startDevServer(configPath, 0);
     const port = addressPort(handle);
@@ -244,9 +244,9 @@ describe('agent directories and TS modules (LOU-D31)', () => {
     expect(detectTarget(path.join(fixtures, 'dev-agent')).kind).toBe('dir');
     expect(detectTarget(path.join(fixtures, 'dev-module', 'agent.ts')).kind).toBe('module');
     expect(detectTarget('agent.yaml').kind).toBe('spec');
-    expect(() => detectTarget(path.join(fixtures, 'nope.ts'))).toThrow(/LOUSHY_CONFIG_INVALID/);
+    expect(() => detectTarget(path.join(fixtures, 'nope.ts'))).toThrow(/LOUSHO_CONFIG_INVALID/);
     expect(() => detectTarget(path.join(fixtures, 'dev-agent', 'instructions.md'))).toThrow(
-      /LOUSHY_SPEC_UNSUPPORTED_FORMAT/
+      /LOUSHO_SPEC_UNSUPPORTED_FORMAT/
     );
   });
 
@@ -276,7 +276,7 @@ describe('agent directories and TS modules (LOU-D31)', () => {
 
   it('rejects a module that exports no agent with a coded error', async () => {
     await expect(startDevServer(path.join(fixtures, 'dev-module', 'bad.ts'), 0)).rejects.toThrow(
-      /LOUSHY_CONFIG_INVALID/
+      /LOUSHO_CONFIG_INVALID/
     );
   });
 

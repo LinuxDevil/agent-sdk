@@ -573,9 +573,9 @@ export interface ExecuteOptions extends PermissionOptions {
    * it: a different model, tools with other names or input schemas, other
    * instructions. `'warn'` (default) reports an `agent.drift` event and a
    * `console.warn`, then continues; `'error'` rejects with
-   * `LOUSHY_AGENT_DRIFT` before any model call or tool runs, leaving the
+   * `LOUSHO_AGENT_DRIFT` before any model call or tool runs, leaving the
    * checkpoint untouched; `'ignore'` does nothing. A pending tool call whose
-   * tool no longer exists always rejects with `LOUSHY_RESUME_TOOL_MISSING`.
+   * tool no longer exists always rejects with `LOUSHO_RESUME_TOOL_MISSING`.
    * Checkpoints and snapshots saved before this option existed are not checked.
    * See docs/durable-execution.md#resuming-with-a-changed-agent.
    */
@@ -723,7 +723,7 @@ export class AgentExecutor {
    * (rewrite messages, replace a tool result, change `businessState`, queue
    * a user message) and saves it as the `'in-progress'` checkpoint of a new
    * session. The original session is not changed. Throws
-   * `LOUSHY_CHECKPOINT_NOT_FOUND` when the history has no such step. See
+   * `LOUSHO_CHECKPOINT_NOT_FOUND` when the history has no such step. See
    * docs/durable-execution.md#fork-and-replay.
    *
    * @example
@@ -1302,7 +1302,7 @@ export class AgentExecutor {
       throw new ConfigurationError(
         `Tool '${toolResult.toolName}' requires approval but no approvalStore was provided to AgentExecutor.execute()`,
         'approvalStore',
-        'LOUSHY_APPROVAL_STORE_MISSING'
+        'LOUSHO_APPROVAL_STORE_MISSING'
       );
     }
 
@@ -1493,7 +1493,7 @@ export class AgentExecutor {
         `${caller}: 'provider' is required. ` +
           "Example: AgentExecutor.execute({ agent, input, provider: myProvider })",
         'provider',
-        'LOUSHY_CONFIG_MISSING_PROVIDER'
+        'LOUSHO_CONFIG_MISSING_PROVIDER'
       );
     }
     if (!options.agent) {
@@ -1501,7 +1501,7 @@ export class AgentExecutor {
         `${caller}: 'agent' is required. ` +
           'Example: AgentExecutor.execute({ agent: AgentBuilder.create()...build(), input, provider })',
         'agent',
-        'LOUSHY_CONFIG_MISSING_AGENT'
+        'LOUSHO_CONFIG_MISSING_AGENT'
       );
     }
     if (options.input === undefined || options.input === null) {
@@ -1509,7 +1509,7 @@ export class AgentExecutor {
         `${caller}: 'input' is required. ` +
           "Example: AgentExecutor.execute({ agent, input: 'hello', provider })",
         'input',
-        'LOUSHY_CONFIG_MISSING_INPUT'
+        'LOUSHO_CONFIG_MISSING_INPUT'
       );
     }
     assertToolConcurrency(options.toolConcurrency, caller);

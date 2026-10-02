@@ -1,4 +1,4 @@
-import type { AgentSpec } from '@loushy/build-ai-agent';
+import type { AgentSpec } from '@lousho/build-ai-agent';
 
 export interface AgentStoreEntry {
   id: string;
@@ -14,7 +14,7 @@ export interface AgentStoreEntry {
  * today it's implemented by `LocalStorageAgentStore` (browser-only, backed
  * by `window.localStorage`, good enough for a dev experience with autosave)
  * and by `createFsAgentStore()` (Node-only, reads/writes real
- * `.loushy/agents/*.yaml` files via the SDK's own YAML format - see
+ * `.lousho/agents/*.yaml` files via the SDK's own YAML format - see
  * persistence/fsAgentStore.ts) for use once a server exists.
  *
  * LOU-N's runtime control server should implement this same interface

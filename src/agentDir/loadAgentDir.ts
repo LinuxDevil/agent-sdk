@@ -85,7 +85,7 @@ async function readInstructions(dir: string): Promise<{ file: string; text: stri
   if (!(await isFile(file))) return undefined;
   const text = (await readText(file)).trim();
   if (text === '') {
-    throw new SDKError(`loadAgentDir: ${file} is empty. Write the agent's system prompt in it.`, 'LOUSHY_AGENT_DIR_INVALID');
+    throw new SDKError(`loadAgentDir: ${file} is empty. Write the agent's system prompt in it.`, 'LOUSHO_AGENT_DIR_INVALID');
   }
   return { file, text };
 }
@@ -103,7 +103,7 @@ function chooseInstructions(
     throw new SDKError(
       `loadAgentDir: ${fromFile.file}: instructions are given twice - here and as 'instructions' in the config file. ` +
         'Keep one of them.',
-      'LOUSHY_AGENT_DIR_INVALID'
+      'LOUSHO_AGENT_DIR_INVALID'
     );
   }
   const text = fromFile?.text ?? config.instructions;
@@ -111,7 +111,7 @@ function chooseInstructions(
     throw new SDKError(
       `loadAgentDir: ${dir} has no instructions. Create ${path.join(dir, 'instructions.md')} with the ` +
         "agent's system prompt, or set 'instructions' in agent.ts / agent.json / agent.yaml.",
-      'LOUSHY_AGENT_DIR_INVALID'
+      'LOUSHO_AGENT_DIR_INVALID'
     );
   }
   return text;
@@ -166,7 +166,7 @@ async function resolveWith(
 ): Promise<ResolvedAgentDir> {
   const dir = path.resolve(rawDir);
   if (!(await isDirectory(dir))) {
-    throw new SDKError(`loadAgentDir: '${dir}' is not a directory. Pass the path of an agent directory.`, 'LOUSHY_AGENT_DIR_INVALID');
+    throw new SDKError(`loadAgentDir: '${dir}' is not a directory. Pass the path of an agent directory.`, 'LOUSHO_AGENT_DIR_INVALID');
   }
   const { file: configFile, config } = await readConfig(dir);
   const fromFile = await readInstructions(dir);

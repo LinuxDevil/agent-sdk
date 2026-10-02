@@ -1,5 +1,5 @@
 /**
- * `loushy build --target=<name> --agent=<path> [--out=<dir>]` (LOU-I1).
+ * `lousho build --target=<name> --agent=<path> [--out=<dir>]` (LOU-I1).
  *
  * Looks the target up in the DeploymentAdapter registry (src/deploy/types.ts)
  * and drives it through scaffold() -> build() -> describe(), printing the
@@ -26,7 +26,7 @@ export interface BuildArgs {
   help?: boolean;
 }
 
-const USAGE = 'Usage: loushy build <agent-dir|spec> --target=<name> [--out=<dir>]   (or --agent=<path>)';
+const USAGE = 'Usage: lousho build <agent-dir|spec> --target=<name> [--out=<dir>]   (or --agent=<path>)';
 
 const SPEC: CommandSpec = {
   command: 'build',
@@ -35,10 +35,10 @@ const SPEC: CommandSpec = {
   options: { target: { type: 'string' }, agent: { type: 'string' }, out: { type: 'string' } },
 };
 
-/** Parses `loushy build` arguments (`--flag=value` or `--flag value`); throws `LOUSHY_CONFIG_INVALID` for an unknown flag or a flag without its value. */
+/** Parses `lousho build` arguments (`--flag=value` or `--flag value`); throws `LOUSHO_CONFIG_INVALID` for an unknown flag or a flag without its value. */
 export function parseBuildArgs(argv: string[]): BuildArgs {
   const { values, positionals, help } = parseCommand(SPEC, argv);
-  // `loushy build <agent-dir|spec>` is `--agent=<path>`.
+  // `lousho build <agent-dir|spec>` is `--agent=<path>`.
   return { target: stringValue(values.target), agent: stringValue(values.agent) ?? positionals[0], out: stringValue(values.out), help: help || undefined };
 }
 
@@ -78,7 +78,7 @@ const defaultIO: BuildIO = {
 };
 
 /**
- * Runs `loushy build` for the given argv (everything after `build`) and
+ * Runs `lousho build` for the given argv (everything after `build`) and
  * resolves with the process exit code (0 on success, 1 on any error).
  * Never throws - adapter errors are reported on stderr.
  */
@@ -120,7 +120,7 @@ export async function runBuild(argv: string[], io: BuildIO = defaultIO): Promise
 /** Runs scaffold() -> build() -> describe() and returns describe()'s output. */
 async function driveAdapter(adapter: DeploymentAdapter, args: BuildArgs, target: string): Promise<string> {
   const agentPath = args.agent ? path.resolve(args.agent) : '';
-  const outDir = path.resolve(args.out || path.join('.loushy', 'build', target));
+  const outDir = path.resolve(args.out || path.join('.lousho', 'build', target));
   await adapter.scaffold(agentPath, outDir);
   await adapter.build(outDir);
   return adapter.describe(outDir);

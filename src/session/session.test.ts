@@ -150,7 +150,7 @@ describe('AgentSession', () => {
     const agent = createAgent({ provider: mockModel([]) });
     for (const id of ['../evil', 'a/b', 'a.b', '', 'x'.repeat(129)]) {
       expect(() => agent.session({ id })).toThrow(/Invalid session id/);
-      expect(() => agent.session({ id })).toThrow(expect.objectContaining({ code: 'LOUSHY_SESSION_ID_INVALID' }));
+      expect(() => agent.session({ id })).toThrow(expect.objectContaining({ code: 'LOUSHO_SESSION_ID_INVALID' }));
     }
     expect(() => agent.session({ id: 'user_42-A' })).not.toThrow();
   });
@@ -225,13 +225,13 @@ describe('AgentSession', () => {
       }
     });
 
-    it('rejects a corrupt session file with LOUSHY_SESSION_FILE_CORRUPT (LOU-D2)', async () => {
+    it('rejects a corrupt session file with LOUSHO_SESSION_FILE_CORRUPT (LOU-D2)', async () => {
       const dir = mkdtempSync(join(tmpdir(), 'sessions-'));
       try {
         writeFileSync(join(dir, 'bad.json'), '{"not":"an array"}');
         await expect(new FileSessionStore(dir).load('bad')).rejects.toMatchObject({
           message: expect.stringMatching(/is corrupt/),
-          code: 'LOUSHY_SESSION_FILE_CORRUPT',
+          code: 'LOUSHO_SESSION_FILE_CORRUPT',
         });
       } finally {
         rmSync(dir, { recursive: true, force: true });
@@ -262,10 +262,10 @@ describe('providerValidPrefix', () => {
 });
 
 describe('AgentSession errors (LOU-D2)', () => {
-  it('stream() without a streaming runner throws LOUSHY_SESSION_STREAM_UNSUPPORTED', () => {
+  it('stream() without a streaming runner throws LOUSHO_SESSION_STREAM_UNSUPPORTED', () => {
     const session = new AgentSession(async () => {
       throw new Error('not called');
     });
-    expect(() => session.stream('hi')).toThrow(expect.objectContaining({ code: 'LOUSHY_SESSION_STREAM_UNSUPPORTED' }));
+    expect(() => session.stream('hi')).toThrow(expect.objectContaining({ code: 'LOUSHO_SESSION_STREAM_UNSUPPORTED' }));
   });
 });

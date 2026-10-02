@@ -151,7 +151,7 @@ export interface RunEventSink {
 }
 
 /** Options key under which a streaming run hands the loop its {@link RunEventSink}. */
-export const RUN_EVENTS: unique symbol = Symbol('loushy.agentRunEvents');
+export const RUN_EVENTS: unique symbol = Symbol('lousho.agentRunEvents');
 
 /** ExecuteOptions as passed through the loop of a streaming run. */
 export type StreamingExecuteOptions = ExecuteOptions & { [RUN_EVENTS]?: RunEventSink };
@@ -510,7 +510,7 @@ class AgentRunImpl implements AgentRun {
       throw new SDKError(
         'AgentRun can only be iterated once. Collect the events in the first for-await loop, ' +
           'or call agent.stream() again for a new run.',
-        'LOUSHY_RUN_ALREADY_ITERATED'
+        'LOUSHO_RUN_ALREADY_ITERATED'
       );
     }
     this.iterated = true;

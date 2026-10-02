@@ -16,7 +16,7 @@ export interface LoadedTool {
 const EXAMPLE = `Expected a tool made with defineTool(), for example:
 
   import { z } from 'zod';
-  import { defineTool } from '@loushy/build-ai-agent';
+  import { defineTool } from '@lousho/build-ai-agent';
   export default defineTool({ name: 'ping', description: 'Ping', input: z.object({}), execute: () => 'pong' });`;
 
 /** Tools found in one exported value: a tool, an array of tools, or (CJS) an exports object of tools. */
@@ -35,7 +35,7 @@ function describeExports(mod: Record<string, unknown>): string {
   const shown = names.map((n) => `${n}: ${typeof mod[n]}`).join(', ');
   return (
     `it exports { ${shown} } but none of these is a defineTool() tool ` +
-    '(if it is, check the file imports defineTool from the same copy of @loushy/build-ai-agent that loads the directory)'
+    '(if it is, check the file imports defineTool from the same copy of @lousho/build-ai-agent that loads the directory)'
   );
 }
 
@@ -44,7 +44,7 @@ async function loadToolFile(file: string): Promise<DefinedTool[]> {
   const exported = [mod.default, ...Object.entries(mod).filter(([k]) => k !== 'default').map(([, v]) => v)];
   const unique = [...new Set(exported.flatMap((v) => toolsIn(v)))];
   if (unique.length === 0) {
-    throw new SDKError(`loadAgentDir: ${file}: ${describeExports(mod)}. ${EXAMPLE}`, 'LOUSHY_AGENT_DIR_INVALID');
+    throw new SDKError(`loadAgentDir: ${file}: ${describeExports(mod)}. ${EXAMPLE}`, 'LOUSHO_AGENT_DIR_INVALID');
   }
   return unique;
 }
@@ -66,7 +66,7 @@ export async function loadTools(dir: string): Promise<LoadedTool[]> {
         throw new SDKError(
           `loadAgentDir: duplicate tool name '${tool.name}' in ${earlier.file} and ${file}. ` +
             'Rename one of the tools - the model addresses tools by name.',
-          'LOUSHY_AGENT_DIR_INVALID'
+          'LOUSHO_AGENT_DIR_INVALID'
         );
       }
       byName.set(tool.name, { tool, file });

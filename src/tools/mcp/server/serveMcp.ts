@@ -1,5 +1,5 @@
 /**
- * `serveMcp()` - expose a Loushy agent (and optionally some of its tools) as
+ * `serveMcp()` - expose a Lousho agent (and optionally some of its tools) as
  * a Model Context Protocol server, so Claude Code, Cursor and other MCP
  * clients can call it (LOU-Z3).
  */

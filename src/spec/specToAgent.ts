@@ -10,7 +10,7 @@ import { ConfigurationError } from '../execution/errors';
 // dependency graph references a providers module as a VALUE (only as
 // types, e.g. LLMProvider), so bundlers (tsup/esbuild) never pull any
 // providers module into CLI bundles like dist/cli/dev.js that don't also
-// go through src/index.ts. Without this explicit import, `loushy dev` (and
+// go through src/index.ts. Without this explicit import, `lousho dev` (and
 // anything else that loads a spec directly, bypassing the SDK's top-level
 // index.ts) never actually registers 'mock' at runtime, even though the
 // registration code exists. This imports mock.ts specifically (not the
@@ -18,7 +18,7 @@ import { ConfigurationError } from '../execution/errors';
 // dependencies - importing the full barrel would also eagerly pull in
 // OpenAIProvider/OllamaProvider/OpenRouterProvider, whose top-level
 // imports of their optional peer-dependency SDKs ('@ai-sdk/openai',
-// 'ollama-ai-provider', ...) would then crash `loushy dev` for the exact
+// 'ollama-ai-provider', ...) would then crash `lousho dev` for the exact
 // zero-API-key/zero-extra-installs use case this fix exists for.
 import '../providers/mock';
 import { httpTool } from '../tools/built-in/http';
@@ -34,7 +34,7 @@ const REAL_PROVIDER_TYPES = new Set(['openai', 'anthropic', 'ollama', 'openroute
  * go through LOU-F8's resolveProvider() (env-var driven credentials, as
  * usual). Any other registered type - notably 'mock', which intentionally
  * has no env var and is never part of resolveProvider()'s whitelist - is
- * created directly via LLMProviderRegistry. This is what lets `loushy dev`
+ * created directly via LLMProviderRegistry. This is what lets `lousho dev`
  * (LOU-H6/H8) run end-to-end against a MockLLMProvider in tests without
  * real API credentials, while still reusing resolveProvider() verbatim for
  * every real provider type.
@@ -67,7 +67,7 @@ const CREDENTIALED_TOOLS = new Set(['github', 'jira']);
 /**
  * Resolves one AgentSpec `tools` entry to its built-in ToolDescriptor.
  * Exported (LOU-I2) so generated deployment servers (src/deploy) resolve
- * spec tools exactly the way specToAgent()/`loushy dev` do.
+ * spec tools exactly the way specToAgent()/`lousho dev` do.
  */
 export function resolveSpecTool(name: string): ToolDescriptor {
   const tool = RESOLVABLE_BUILT_IN_TOOLS[name];
@@ -79,14 +79,14 @@ export function resolveSpecTool(name: string): ToolDescriptor {
         `create${name === 'github' ? 'GitHub' : 'Jira'}Tools(config)) that an AgentSpec has no ` +
         `field for. Build this agent with createAgent() directly and pass the configured tool instead.`,
       'tools',
-      'LOUSHY_TOOL_NEEDS_CREDENTIALS'
+      'LOUSHO_TOOL_NEEDS_CREDENTIALS'
     );
   }
 
   throw new ConfigurationError(
     `specToAgent: unknown tool '${name}'. Known built-in tools: ${Object.keys(RESOLVABLE_BUILT_IN_TOOLS).join(', ')}`,
     'tools',
-    'LOUSHY_TOOL_NOT_FOUND'
+    'LOUSHO_TOOL_NOT_FOUND'
   );
 }
 

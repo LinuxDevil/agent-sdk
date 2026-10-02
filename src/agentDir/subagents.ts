@@ -22,7 +22,7 @@ export async function listSubagentDirs(dir: string): Promise<string[]> {
       throw new SDKError(
         `loadAgentDir: ${path.join(dir, 'subagents', name)}: sub-agent directory names may only contain ` +
           "letters, digits, '_' and '-' (up to 50 characters), because the name becomes a tool name. Rename the directory.",
-        'LOUSHY_AGENT_DIR_INVALID'
+        'LOUSHO_AGENT_DIR_INVALID'
       );
     }
   }
@@ -35,7 +35,7 @@ export function requireDescription(subagentDir: string, description: string | un
     throw new SDKError(
       `loadAgentDir: ${subagentDir}: a sub-agent needs a 'description' so the parent agent knows when to ` +
         'delegate to it. Add one to its config, e.g. agent.json: { "description": "Reviews pull requests" }.',
-      'LOUSHY_AGENT_DIR_INVALID'
+      'LOUSHO_AGENT_DIR_INVALID'
     );
   }
   return description;

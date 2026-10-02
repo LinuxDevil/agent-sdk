@@ -79,7 +79,7 @@ export * from './schedules';
 // Channels: inbound surfaces mapped to sessions, replies back to the surface (LOU-P7)
 export * from './channels';
 
-// Agent Client Protocol server for editors such as Zed (`loushy acp`, LOU-Z6)
+// Agent Client Protocol server for editors such as Zed (`lousho acp`, LOU-Z6)
 export { serveAcp, type ServeAcpOptions } from './acp/serveAcp';
 
 // Declarative agent spec file format (LOU-H9)
@@ -87,7 +87,7 @@ export * from './spec';
 
 // Deployment adapter registry (LOU-I1). Only the interface + registry are
 // exported here; the built-in adapters (node-server, cloudflare-worker,
-// docker) are wired up by the `loushy build` CLI (src/cli/build.ts).
+// docker) are wired up by the `lousho build` CLI (src/cli/build.ts).
 export * from './deploy/types';
 
 // AI SDK UI stream adapter (LOU-P1): Fetch/Worker-safe, no node:* imports.

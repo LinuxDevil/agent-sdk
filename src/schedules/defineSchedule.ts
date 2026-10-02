@@ -47,7 +47,7 @@ export function isDefinedSchedule(value: unknown): value is DefinedSchedule {
 }
 
 function invalid(problem: string, cause?: unknown): never {
-  throw new SDKError(`defineSchedule: ${problem}`, 'LOUSHY_SCHEDULE_INVALID', cause === undefined ? {} : { cause });
+  throw new SDKError(`defineSchedule: ${problem}`, 'LOUSHO_SCHEDULE_INVALID', cause === undefined ? {} : { cause });
 }
 
 /**

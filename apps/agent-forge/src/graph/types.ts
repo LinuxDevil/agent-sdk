@@ -38,7 +38,7 @@
  *    single fixed anchor node by `specToGraph()`.
  */
 
-import type { AgentSpec } from '@loushy/build-ai-agent';
+import type { AgentSpec } from '@lousho/build-ai-agent';
 
 export type AgentGraphNodeType = 'trigger' | 'llm' | 'tool' | 'approval' | 'output' | 'router';
 

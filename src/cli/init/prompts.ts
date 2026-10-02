@@ -3,7 +3,7 @@ import { loadOptionalPeer } from '../../providers/optionalPeer';
 import { PROVIDER_NAMES, TEMPLATES } from './options';
 import { SDKError } from '../../execution/errors';
 
-/** The answers `loushy init` can ask for; a key is only asked when it is missing. */
+/** The answers `lousho init` can ask for; a key is only asked when it is missing. */
 export interface InitAnswers {
   dir: string;
   provider: string;
@@ -19,7 +19,7 @@ export interface AskInput {
 const TEMPLATE_HINTS: Record<string, string> = {
   minimal: 'one agent, one example tool, an offline test',
   tools: 'several example tools',
-  yaml: 'an agent.yaml spec, run with `loushy dev`',
+  yaml: 'an agent.yaml spec, run with `lousho dev`',
 };
 
 function choices(values: readonly string[], hints: Record<string, string> = {}) {
@@ -51,7 +51,7 @@ function questions({ known, defaults }: AskInput): PromptObject<keyof InitAnswer
  * Interactively asks only for the answers not already given as flags, using
  * the `prompts` library (tests drive it with `prompts.inject()`). Ctrl+C
  * cancels the whole scaffold. `prompts` is an optional peer, loaded here on
- * first use (LOU-D40), so `loushy init --yes` never needs it.
+ * first use (LOU-D40), so `lousho init --yes` never needs it.
  */
 export async function askMissing(input: AskInput): Promise<InitAnswers> {
   const { default: prompts } = await loadOptionalPeer('prompts', () => import('prompts'));
@@ -62,6 +62,6 @@ export async function askMissing(input: AskInput): Promise<InitAnswers> {
       return false;
     },
   });
-  if (cancelled) throw new SDKError('loushy init: cancelled.', 'LOUSHY_GENERIC_ERROR', { appendHelp: false });
+  if (cancelled) throw new SDKError('lousho init: cancelled.', 'LOUSHO_GENERIC_ERROR', { appendHelp: false });
   return { ...input.defaults, ...input.known, ...response };
 }

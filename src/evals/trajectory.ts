@@ -88,7 +88,7 @@ export interface EvalTestContext {
 const NO_JUDGE_MESSAGE =
   't.judge() needs a judge provider. Pass `judge: { provider, model }` to defineEval() - ' +
   'use mockModel for a deterministic CI eval, or put the eval in a "*.judge.eval.ts" file ' +
-  '(run by `loushy eval --judge`) with a real provider. loushy never calls a real LLM unless you configure one.';
+  '(run by `lousho eval --judge`) with a real provider. lousho never calls a real LLM unless you configure one.';
 
 const REMOTE_MISSING = (what: string) => `the remote stream carried no ${what}, so this cannot be checked against a deployment`;
 
@@ -210,8 +210,8 @@ class TrajectoryContext implements EvalTestContext {
   }
 
   async judge(rubric: string): Promise<number> {
-    if (!this.judgeConfig) throw new SDKError(NO_JUDGE_MESSAGE, 'LOUSHY_EVALS_INVALID');
-    if (!this.result) throw new SDKError('t.judge() grades the latest reply - call t.send() first.', 'LOUSHY_EVALS_INVALID', { appendHelp: false });
+    if (!this.judgeConfig) throw new SDKError(NO_JUDGE_MESSAGE, 'LOUSHO_EVALS_INVALID');
+    if (!this.result) throw new SDKError('t.judge() grades the latest reply - call t.send() first.', 'LOUSHO_EVALS_INVALID', { appendHelp: false });
     const grade = llmJudge({ ...this.judgeConfig, rubric, allowOutsideJudgeRunner: true });
     return grade(this.result);
   }

@@ -91,22 +91,22 @@ async function setup(fake: FakeOptions = {}) {
 describe('SubprocessSandbox egress through the credential broker (LOU-X12.2)', () => {
   it('creates a labelled internal network, has the broker listen on its gateway for its subnet, and starts the container on it', async () => {
     const { calls, containers, networks, listens, broker, SubprocessSandbox } = await setup();
-    const sandbox = new SubprocessSandbox({ network: { allow: ['registry.npmjs.org'] }, broker, networkName: 'loushy-egress-test' });
+    const sandbox = new SubprocessSandbox({ network: { allow: ['registry.npmjs.org'] }, broker, networkName: 'lousho-egress-test' });
     await sandbox.run('npm', ['ci'], { env: { CI: '1', HTTP_PROXY: 'http://evil.example:1' } });
     await sandbox.run('npm', ['test']);
 
     expect(networks).toEqual([
-      { Name: 'loushy-egress-test', Driver: 'bridge', Internal: true, EnableIPv6: false, CheckDuplicate: true, Labels: { 'com.loushy.sandbox': 'egress' } },
+      { Name: 'lousho-egress-test', Driver: 'bridge', Internal: true, EnableIPv6: false, CheckDuplicate: true, Labels: { 'com.lousho.sandbox': 'egress' } },
     ]);
     expect(listens).toEqual([{ host: GATEWAY, clients: SUBNET, allow: ['registry.npmjs.org'] }]);
-    expect(containers[0].HostConfig).toMatchObject({ NetworkMode: 'loushy-egress-test', AutoRemove: true });
-    expect(containers[0].NetworkingConfig).toEqual({ EndpointsConfig: { 'loushy-egress-test': {} } });
+    expect(containers[0].HostConfig).toMatchObject({ NetworkMode: 'lousho-egress-test', AutoRemove: true });
+    expect(containers[0].NetworkingConfig).toEqual({ EndpointsConfig: { 'lousho-egress-test': {} } });
     expect(containers[0].Env).toEqual(['CI=1', `HTTP_PROXY=http://${GATEWAY}:40000`, `HTTPS_PROXY=http://${GATEWAY}:40000`, `NO_PROXY=${GATEWAY}`]);
-    expect(containers[1].HostConfig?.NetworkMode).toBe('loushy-egress-test');
+    expect(containers[1].HostConfig?.NetworkMode).toBe('lousho-egress-test');
     expect(JSON.stringify(containers)).not.toContain(SECRET);
 
     await sandbox.close();
-    expect(calls.filter((call) => !['start', 'container.remove'].includes(call))).toEqual(['listener.close', 'network.remove:loushy-egress-test']);
+    expect(calls.filter((call) => !['start', 'container.remove'].includes(call))).toEqual(['listener.close', 'network.remove:lousho-egress-test']);
   });
 
   it('reuses an existing internal network and leaves it in place on close()', async () => {
@@ -126,7 +126,7 @@ describe('SubprocessSandbox egress through the credential broker (LOU-X12.2)', (
     const { networks, broker, SubprocessSandbox } = await setup();
     await new SubprocessSandbox({ network: { allow: [] }, broker }).run('ls', []);
     await new SubprocessSandbox({ network: { allow: [] }, broker }).run('ls', []);
-    expect(networks[0].Name).toMatch(/^loushy-egress-[0-9a-f]{8}$/);
+    expect(networks[0].Name).toMatch(/^lousho-egress-[0-9a-f]{8}$/);
     expect(networks[1].Name).not.toBe(networks[0].Name);
   });
 
@@ -166,14 +166,14 @@ describe('SubprocessSandbox egress through the credential broker (LOU-X12.2)', (
   ])('fails closed with a coded error on %s, before creating anything', async (_name, info, reason) => {
     const { containers, networks, broker, SubprocessSandbox } = await setup({ info });
     const run = new SubprocessSandbox({ network: { allow: ['api.github.com'] }, broker }).run('ls', []);
-    await expect(run).rejects.toMatchObject({ code: 'LOUSHY_SANDBOX_EGRESS_UNSUPPORTED', message: expect.stringMatching(reason) });
+    await expect(run).rejects.toMatchObject({ code: 'LOUSHO_SANDBOX_EGRESS_UNSUPPORTED', message: expect.stringMatching(reason) });
     expect([...containers, ...networks]).toEqual([]);
   });
 
   it('fails closed when a reused network is not internal, without removing it', async () => {
     const { calls, containers, broker, SubprocessSandbox } = await setup({ existing: { open: { Internal: false } } });
     const run = new SubprocessSandbox({ network: { allow: [] }, broker, networkName: 'open' }).run('ls', []);
-    await expect(run).rejects.toMatchObject({ code: 'LOUSHY_SANDBOX_EGRESS_UNSUPPORTED', message: expect.stringMatching(/not internal/) });
+    await expect(run).rejects.toMatchObject({ code: 'LOUSHO_SANDBOX_EGRESS_UNSUPPORTED', message: expect.stringMatching(/not internal/) });
     expect(containers).toEqual([]);
     expect(calls).toEqual([]);
   });
@@ -181,17 +181,17 @@ describe('SubprocessSandbox egress through the credential broker (LOU-X12.2)', (
   it('fails closed and removes the network it created when there is no IPv4 gateway or the broker cannot bind it', async () => {
     const noGateway = await setup({ ipam: [{ Subnet: 'fd00::/64', Gateway: 'fd00::1' }] });
     const first = new noGateway.SubprocessSandbox({ network: { allow: [] }, broker: noGateway.broker, networkName: 'a' }).run('ls', []);
-    await expect(first).rejects.toMatchObject({ code: 'LOUSHY_SANDBOX_EGRESS_UNSUPPORTED', message: expect.stringMatching(/no IPv4 gateway/) });
+    await expect(first).rejects.toMatchObject({ code: 'LOUSHO_SANDBOX_EGRESS_UNSUPPORTED', message: expect.stringMatching(/no IPv4 gateway/) });
     expect(noGateway.calls).toEqual(['network.remove:a']);
 
     const remote = await setup();
     remote.broker.listen = () => Promise.reject(Object.assign(new Error('listen EADDRNOTAVAIL'), { code: 'EADDRNOTAVAIL' }));
     const sandbox = new remote.SubprocessSandbox({ network: { allow: [] }, broker: remote.broker, networkName: 'b' });
-    await expect(sandbox.run('ls', [])).rejects.toMatchObject({ code: 'LOUSHY_SANDBOX_EGRESS_UNSUPPORTED', message: expect.stringMatching(/not on the bridge/) });
+    await expect(sandbox.run('ls', [])).rejects.toMatchObject({ code: 'LOUSHO_SANDBOX_EGRESS_UNSUPPORTED', message: expect.stringMatching(/not on the bridge/) });
     expect(remote.calls).toEqual(['network.remove:b']);
     expect(remote.containers).toEqual([]);
     // A failed setup is not cached: the next run tries again.
-    await expect(sandbox.run('ls', [])).rejects.toMatchObject({ code: 'LOUSHY_SANDBOX_EGRESS_UNSUPPORTED' });
+    await expect(sandbox.run('ls', [])).rejects.toMatchObject({ code: 'LOUSHO_SANDBOX_EGRESS_UNSUPPORTED' });
     expect(remote.networks).toHaveLength(2);
     await sandbox.close();
   });

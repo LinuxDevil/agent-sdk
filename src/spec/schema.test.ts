@@ -72,7 +72,7 @@ describe('AgentSpec.mcpServers (LOU-D20)', () => {
     expect(issues({ web: { url: 'not a url' } })[0]).toMatch(/'url' must be a valid URL/);
   });
 
-  it('accepts the legacy list form that loushy doctor used to read', () => {
+  it('accepts the legacy list form that lousho doctor used to read', () => {
     const parsed = agentSpecSchema.parse({
       ...base,
       mcpServers: [{ name: 'fs', command: 'npx' }, { url: 'https://example.com' }],

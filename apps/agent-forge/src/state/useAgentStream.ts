@@ -102,7 +102,7 @@ export function useAgentStream(agentId: string) {
       .then(setRunStatus)
       .catch(() => {
         // The runtime control server may not be running (e.g. the app was
-        // opened without `loushy studio`) - status just stays unknown, and
+        // opened without `lousho studio`) - status just stays unknown, and
         // Run/Stop surface that as a real error when clicked instead of
         // failing silently here.
       });

@@ -3,7 +3,7 @@ import type { AgentSpecTrigger } from '../spec/schema';
 import { defineSchedule, type DefinedSchedule } from './defineSchedule';
 
 function invalidTrigger(name: string, problem: string, cause?: unknown): never {
-  throw new SDKError(`triggers: cron trigger '${name}': ${problem}`, 'LOUSHY_SCHEDULE_INVALID', cause === undefined ? {} : { cause });
+  throw new SDKError(`triggers: cron trigger '${name}': ${problem}`, 'LOUSHO_SCHEDULE_INVALID', cause === undefined ? {} : { cause });
 }
 
 const text = (value: unknown): string | undefined => (typeof value === 'string' && value !== '' ? value : undefined);
@@ -29,7 +29,7 @@ function toSchedule(trigger: AgentSpecTrigger, name: string): DefinedSchedule {
  * The schedules of an AgentSpec's `{ type: 'cron' }` triggers:
  * `{ type: 'cron', cron: '0 9 * * MON', input: 'Weekly report.', name?, timezone? }`
  * (`prompt` is accepted for `input`). A trigger without a valid `cron` or
- * `input` throws a `LOUSHY_SCHEDULE_INVALID` SDKError naming it.
+ * `input` throws a `LOUSHO_SCHEDULE_INVALID` SDKError naming it.
  */
 export function specSchedules(triggers: readonly AgentSpecTrigger[] | undefined): DefinedSchedule[] {
   return (triggers ?? [])

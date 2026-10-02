@@ -47,7 +47,7 @@ import { GenerateOptions, GenerateResult, Message, ToolCall } from '../providers
 import type { AgentEventPayload } from './agentEvents';
 import { instanceOfBranded } from '../utils/brand';
 
-const HOOK_REGISTRY_BRAND = Symbol.for('loushy.HookRegistry');
+const HOOK_REGISTRY_BRAND = Symbol.for('lousho.HookRegistry');
 
 /**
  * Fields common to every hook invocation.

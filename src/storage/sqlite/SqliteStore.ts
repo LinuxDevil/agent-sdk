@@ -32,9 +32,9 @@ export interface PruneResult {
  *
  * @example
  * ```ts
- * import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
+ * import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
  *
- * const store = new SqliteStore('./.loushy/agent.db'); // or ':memory:'
+ * const store = new SqliteStore('./.lousho/agent.db'); // or ':memory:'
  * const session = agent.session({ id: 'user-42', store: store.sessions });
  * await AgentExecutor.execute({
  *   agent, input, provider, toolRegistry,
@@ -86,7 +86,7 @@ export class SqliteStore {
    */
   prune({ olderThanMs }: PruneOptions): PruneResult {
     if (!Number.isFinite(olderThanMs) || olderThanMs < 0) {
-      throw new SDKError(`prune: olderThanMs must be a non-negative number of milliseconds, got ${olderThanMs}.`, 'LOUSHY_CONFIG_INVALID');
+      throw new SDKError(`prune: olderThanMs must be a non-negative number of milliseconds, got ${olderThanMs}.`, 'LOUSHO_CONFIG_INVALID');
     }
     const cutoff = Date.now() - olderThanMs;
     return this.connection.transaction(() => {

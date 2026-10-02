@@ -76,8 +76,8 @@ interface SlackInteraction {
   response_url?: string;
 }
 
-const APPROVE = 'loushy_approve';
-const DENY = 'loushy_deny';
+const APPROVE = 'lousho_approve';
+const DENY = 'lousho_deny';
 
 function header(req: ChannelRequest, name: string): string | undefined {
   const value = req.headers[name];
@@ -122,7 +122,7 @@ function button(text: string, actionId: string, style: string, value: string) {
  *
  * @example
  * ```ts
- * import { slackChannel } from '@loushy/build-ai-agent';
+ * import { slackChannel } from '@lousho/build-ai-agent';
  *
  * const slack = slackChannel({
  *   signingSecret: process.env.SLACK_SIGNING_SECRET ?? '',
@@ -146,14 +146,14 @@ export function slackChannel(options: SlackChannelOptions): Channel<SlackChannel
       body: JSON.stringify({ ...(thread as SlackThread), ...message }),
     });
     const body = (await res.json()) as { ok?: boolean; error?: string };
-    if (!body.ok) throw new SDKError(`slackChannel: chat.postMessage failed: ${body.error ?? res.status}`, 'LOUSHY_CHANNEL_REQUEST_FAILED');
+    if (!body.ok) throw new SDKError(`slackChannel: chat.postMessage failed: ${body.error ?? res.status}`, 'LOUSHO_CHANNEL_REQUEST_FAILED');
   }
 
   /** Answers a click through its `response_url` (an ephemeral note, or the clicked message replaced); a failure goes to `onError`. */
   async function respondTo(url: string | undefined, body: Record<string, unknown>): Promise<void> {
     try {
       const res = url ? await doFetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }) : undefined;
-      if (res && !res.ok) throw new SDKError(`slackChannel: response_url failed: ${res.status}`, 'LOUSHY_CHANNEL_REQUEST_FAILED');
+      if (res && !res.ok) throw new SDKError(`slackChannel: response_url failed: ${res.status}`, 'LOUSHO_CHANNEL_REQUEST_FAILED');
     } catch (error) {
       await reportChannelError(options.onError, error, { channel: name, stage: 'reply' });
     }

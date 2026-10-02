@@ -30,7 +30,7 @@ export function compactionHookFor(compaction: AgentCompaction | undefined): Agen
       "createAgent: compaction has both 'strategy' and 'summarizer'. 'summarizer' selects twoPhaseStrategy(); " +
         "drop it and pass your own strategy (e.g. twoPhaseStrategy({ model, protectedTokens })) as 'strategy'.",
       'compaction',
-      'LOUSHY_CONFIG_CONFLICTING_OPTIONS'
+      'LOUSHO_CONFIG_CONFLICTING_OPTIONS'
     );
   }
   return createCompactionHook({

@@ -128,7 +128,7 @@ describe('compilePolicy (LOU-X5)', () => {
   });
 
   it('throws a ValidationError for an unvalidated invalid policy', () => {
-    expect(() => compilePolicy({ guardrails: ['nope'] })).toThrow(expect.objectContaining({ code: 'LOUSHY_SPEC_INVALID' }));
+    expect(() => compilePolicy({ guardrails: ['nope'] })).toThrow(expect.objectContaining({ code: 'LOUSHO_SPEC_INVALID' }));
     expect(() => compilePolicy({ guardrails: ['nope'] })).toThrow(/policy\.guardrails\.0.*unknown guardrail 'nope'/);
     expect(() => compilePolicy({ limits: { maxTokens: -1 } })).toThrow(/policy\.limits\.maxTokens/);
   });

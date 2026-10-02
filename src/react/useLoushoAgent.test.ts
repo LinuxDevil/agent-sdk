@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * LOU-D15: useLoushyAgent() rendered with react-test-renderer (no DOM
+ * LOU-D15: useLoushoAgent() rendered with react-test-renderer (no DOM
  * needed), in process with mockModel and remote with a scripted fetch.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
@@ -11,21 +11,21 @@ import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import { mockModel } from '../testing';
 import { AGENT_EVENT_SCHEMA_VERSION, type AgentEvent } from '../execution/agentEvents';
-import { useLoushyAgent, type LoushyAgentSource, type UseLoushyAgentOptions, type UseLoushyAgentResult } from './useLoushyAgent';
+import { useLoushoAgent, type LoushoAgentSource, type UseLoushoAgentOptions, type UseLoushoAgentResult } from './useLoushoAgent';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-let hook: UseLoushyAgentResult;
+let hook: UseLoushoAgentResult;
 let renderer: ReactTestRenderer | undefined;
 const statuses: string[] = [];
 
-function Probe({ source, options }: { source: LoushyAgentSource; options?: UseLoushyAgentOptions }) {
-  hook = useLoushyAgent(source, options);
+function Probe({ source, options }: { source: LoushoAgentSource; options?: UseLoushoAgentOptions }) {
+  hook = useLoushoAgent(source, options);
   statuses.push(hook.status);
   return null;
 }
 
-function mount(source: LoushyAgentSource, options?: UseLoushyAgentOptions): void {
+function mount(source: LoushoAgentSource, options?: UseLoushoAgentOptions): void {
   statuses.length = 0;
   act(() => {
     renderer = create(createElement(Probe, { source, options }));
@@ -45,7 +45,7 @@ function emailAgent(...turns: Parameters<typeof mockModel>[0]) {
 
 const callEmail = { toolCalls: [{ name: 'send_email', args: { to: 'sam' }, id: 'call_email' }] };
 
-describe('useLoushyAgent in process (LOU-D15)', () => {
+describe('useLoushoAgent in process (LOU-D15)', () => {
   it('send(parts) sends one user message with the parts and shows their text and a marker (LOU-V12)', async () => {
     const model = mockModel(['A cat.']);
     mount({ agent: createAgent({ provider: model }) });
@@ -169,7 +169,7 @@ function scriptedFetch(responses: { body: string; close?: boolean; status?: numb
   return { fetch: fetchMock as unknown as typeof fetch, fetchMock, signals };
 }
 
-describe('useLoushyAgent remote (LOU-D15)', () => {
+describe('useLoushoAgent remote (LOU-D15)', () => {
   it('POSTs { input } with headers and reads the SSE event stream', async () => {
     const remote = scriptedFetch([
       {

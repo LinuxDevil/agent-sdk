@@ -1,4 +1,4 @@
-import type { AgentSpec } from '@loushy/build-ai-agent';
+import type { AgentSpec } from '@lousho/build-ai-agent';
 import type { AgentGraphEdge, AgentGraphNode, AgentGraphSpec, AgentNodeHookInstance } from './types';
 import { hookNodeKey } from './graphToSpec';
 

@@ -11,7 +11,7 @@ Give a cron expression and exactly one of `prompt` (text sent to the agent as a
 new turn) or `run` (your own function).
 
 ```ts
-import { createAgent, createMockProvider, defineSchedule, startSchedules } from '@loushy/build-ai-agent';
+import { createAgent, createMockProvider, defineSchedule, startSchedules } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ instructions: 'You write reports.', provider: createMockProvider() });
 
@@ -32,8 +32,8 @@ running.stop();
 - `cron`: five fields (`minute hour day-of-month month day-of-week`) or
   `@hourly`, `@daily`, `@weekly`, `@monthly`; evaluated in `timezone` (an IANA
   name, default the machine's zone). An invalid expression, or both/neither of
-  `prompt` and `run`, throws `LOUSHY_SCHEDULE_INVALID` from `defineSchedule()`,
-  not at the first fire. See [Errors](errors.md#loushy_schedule_invalid).
+  `prompt` and `run`, throws `LOUSHO_SCHEDULE_INVALID` from `defineSchedule()`,
+  not at the first fire. See [Errors](errors.md#lousho_schedule_invalid).
 - `run` receives `{ agent, firedAt, name }`.
 
 `startSchedules(agent, schedules, { now?, setTimer?, onError? })` keeps one
@@ -58,7 +58,7 @@ my-agent/
 `schedules/` loads exactly as before.
 
 ```ts
-import { createAgent, resolveAgentDir, startSchedules } from '@loushy/build-ai-agent';
+import { createAgent, resolveAgentDir, startSchedules } from '@lousho/build-ai-agent';
 
 const { config, schedules } = await resolveAgentDir('./my-agent');
 const agent = createAgent(config);
@@ -69,20 +69,20 @@ const running = startSchedules(agent, schedules);
 
 `createDeployedServer(agent, { schedules })` (the server of the `node-server`
 and `docker` targets) starts the schedules when it listens and stops them when it
-closes. `loushy build ./my-agent --target=node-server` (or `docker`) builds an
+closes. `lousho build ./my-agent --target=node-server` (or `docker`) builds an
 agent directory into such a server, so its `schedules/` run in the deployed
 process ([Deployment](deployment.md#agent-directories)). A spec's cron
 `triggers` (`{ type: 'cron', cron, input, name?, timezone? }`) run on these
-targets too: `loushy build spec.yaml --target=node-server` converts them with the
+targets too: `lousho build spec.yaml --target=node-server` converts them with the
 same rules as the Worker and the built server starts them when it listens
 (`timezone` is supported; an invalid trigger fails the build with
-`LOUSHY_SCHEDULE_INVALID`). The model calls run in the server process, so the
+`LOUSHO_SCHEDULE_INVALID`). The model calls run in the server process, so the
 provider's package must be installed where it runs. On Cloudflare Workers see
 below.
 
-## In `loushy dev`
+## In `lousho dev`
 
-`loushy dev ./my-agent` starts the directory's schedules, so a cron fires while
+`lousho dev ./my-agent` starts the directory's schedules, so a cron fires while
 you develop, and a hot reload stops the old schedules before starting the new
 ones. Starting is the default so that dev behaves like the deployed server;
 because firing crons (and spending model calls) while you edit is often
@@ -103,7 +103,7 @@ triggers:
     input: Summarise last week.
 ```
 
-`loushy build` writes the deduplicated expressions to `[triggers] crons` and the
+`lousho build` writes the deduplicated expressions to `[triggers] crons` and the
 Worker's `scheduled()` runs every trigger whose `cron` equals the invoked one as
 an agent turn inside `ctx.waitUntil()`. Each trigger has its own session,
 `schedule:<name>`, so its runs are inspectable in the KV session store when
@@ -112,7 +112,7 @@ A failing trigger is logged with `console.error` (name and error code) and never
 stops the others, and `scheduled()` never throws.
 
 Cloudflare's cron triggers differ from the in-process ones, so the build fails
-with `LOUSHY_SCHEDULE_INVALID` naming the trigger instead of emitting a config
+with `LOUSHO_SCHEDULE_INVALID` naming the trigger instead of emitting a config
 that deploys and never fires: expressions are UTC (no `timezone`), exactly five
 fields (no seconds, no `@daily`), and the day-of-week must be `*` or names
 (`MON-FRI`), because Cloudflare numbers days 1-7 from Sunday. The finest

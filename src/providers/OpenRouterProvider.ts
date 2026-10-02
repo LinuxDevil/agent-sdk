@@ -146,7 +146,7 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
 
     if (!response.ok) {
       // Callers catch this, log it and fall back; the message stays as it was.
-      throw new SDKError(`Failed to fetch ${what}: ${response.statusText}`, 'LOUSHY_PROVIDER_REQUEST_FAILED', { appendHelp: false });
+      throw new SDKError(`Failed to fetch ${what}: ${response.statusText}`, 'LOUSHO_PROVIDER_REQUEST_FAILED', { appendHelp: false });
     }
 
     const data = await response.json();

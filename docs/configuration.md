@@ -4,7 +4,7 @@
 
 A declarative agent is a YAML (`.yaml`/`.yml`) or JSON (`.json`) file,
 validated with zod by `loadSpec()` (`src/spec/schema.ts`). It is the format
-`loushy dev` serves and `loushy build` deploys.
+`lousho dev` serves and `lousho build` deploys.
 
 | Field            | Type       | Required | Description                                             |
 | ---------------- | ---------- | -------- | ------------------------------------------------------- |
@@ -101,7 +101,7 @@ mean" suggestion:
 
 `requiresApproval` pauses the run (`finishReason: 'awaiting-approval'`) until
 `agent.approvals.resolve()`; before this, a spec that set it ran its tools
-without asking. `loushy doctor agent.yaml` prints one line per policy block.
+without asking. `lousho doctor agent.yaml` prints one line per policy block.
 
 ### MCP servers (`mcpServers`)
 
@@ -113,7 +113,7 @@ stdio and `headers` only to HTTP. The field is validated by `loadSpec()`, and
 an invalid entry fails with the entry name in the message, e.g.
 `'mcpServers.files': AgentSpec validation failed: missing 'command' (stdio server) or 'url' (HTTP server)`.
 An optional `approval` (`annotations`, `always` or `never`) says which of the server's tools ask for approval; see [MCP tool approval](#mcp-tool-approval-approval).
-`loushy doctor` checks each stdio `command` is resolvable.
+`lousho doctor` checks each stdio `command` is resolvable.
 
 ```yaml
 mcpServers:
@@ -129,7 +129,7 @@ mcpServers:
 ```
 
 ```ts
-import { agentSpecSchema, specToAgent, type McpServerSpec } from '@loushy/build-ai-agent';
+import { agentSpecSchema, specToAgent, type McpServerSpec } from '@lousho/build-ai-agent';
 
 const filesystem: McpServerSpec = { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem'] };
 const spec = agentSpecSchema.parse({
@@ -145,7 +145,7 @@ console.log(Object.keys(agent.mcpServers)); // ['filesystem', 'docs']
 ```
 
 `specToAgent()` passes the servers to `createAgent({ mcpServers })`, described
-next, so `loushy dev` and `loushy mcp` agents get their tools.
+next, so `lousho dev` and `lousho mcp` agents get their tools.
 
 ### Connect MCP servers (`mcpServers`, `connectMcp()`)
 
@@ -157,7 +157,7 @@ A server that cannot connect fails that call, and the next call tries again.
 reconnects. Without `mcpServers`, `ready()` and `close()` do nothing.
 
 ```ts no-run
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({
   model: 'openai/gpt-4o-mini',
@@ -186,8 +186,8 @@ It returns `{ tools, close(), status() }`; `status()` maps each server to
 `'idle'`, `'connected'` or `'failed'`.
 
 ```ts no-run
-import { createAgent } from '@loushy/build-ai-agent';
-import { connectMcp } from '@loushy/build-ai-agent/mcp';
+import { createAgent } from '@lousho/build-ai-agent';
+import { connectMcp } from '@lousho/build-ai-agent/mcp';
 
 const mcp = await connectMcp(
   { files: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'] } },
@@ -228,7 +228,7 @@ in `loadMcpTools(client, name, { approval })`:
 `allow`, `deny` or `ask`.
 
 ```ts no-run
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({
   model: 'openai/gpt-4o-mini',
@@ -249,15 +249,15 @@ its tools with `loadMcpTools()`, then pass the result to `createAgent()` (or
 register it on a `ToolRegistry`):
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
-import { loadMcpTools } from '@loushy/build-ai-agent/mcp';
+import { createAgent } from '@lousho/build-ai-agent';
+import { loadMcpTools } from '@lousho/build-ai-agent/mcp';
 
 const tools = await loadMcpTools(mcpClient, 'my-server');
 const agent = createAgent({ prompt: '...', provider, tools });
 ```
 
 `loadMcpTools` is also available from the package root and from
-`@loushy/build-ai-agent/tools`.
+`@lousho/build-ai-agent/tools`.
 
 ### Serve an agent over MCP
 
@@ -266,8 +266,8 @@ optionally, some of its tools) as an MCP server, so Claude Code, Cursor and
 other MCP clients can call it.
 
 ```ts
-import { createAgent, defineTool } from '@loushy/build-ai-agent';
-import { serveMcp } from '@loushy/build-ai-agent/mcp';
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { serveMcp } from '@lousho/build-ai-agent/mcp';
 import { z } from 'zod';
 
 const searchDocs = defineTool({
@@ -307,13 +307,13 @@ await server.close();
 `tools/list` carries MCP annotations so clients can tell what a tool does. A tool
 that needs approval is advertised `readOnlyHint: false, destructiveHint: true`;
 state hints yourself with `annotations` (sent verbatim). A tool with no hints sends
-none, so a Loushy agent consuming this server keeps asking before it runs (see
+none, so a Lousho agent consuming this server keeps asking before it runs (see
 `approval` on `connectMcp()`); `readOnlyHint: true` runs without asking. A tool that
 needs approval is never advertised read-only. The built-in `read_file`, `list_dir`,
 `glob`, `grep`, `todo_read`, `current_date` and `day_name` tools are read-only.
 
 ```ts
-import { defineTool } from '@loushy/build-ai-agent';
+import { defineTool } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 const lookupOrder = defineTool({
@@ -325,11 +325,11 @@ const lookupOrder = defineTool({
 });
 ```
 
-From the command line, `loushy mcp` serves an agent spec file (stdio by default):
+From the command line, `lousho mcp` serves an agent spec file (stdio by default):
 
 ```sh
-npx loushy mcp agent.yaml
-npx loushy mcp agent.yaml --http --port 3920 --host 127.0.0.1
+npx lousho mcp agent.yaml
+npx lousho mcp agent.yaml --http --port 3920 --host 127.0.0.1
 ```
 
 To use it from an MCP client, add it to the client's MCP config (for example
@@ -338,7 +338,7 @@ To use it from an MCP client, add it to the client's MCP config (for example
 ```json
 {
   "mcpServers": {
-    "support-bot": { "command": "npx", "args": ["loushy", "mcp", "agent.yaml"] }
+    "support-bot": { "command": "npx", "args": ["lousho", "mcp", "agent.yaml"] }
   }
 }
 ```
@@ -364,7 +364,7 @@ what the examples and the Quick Start use by default.
 other models:
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({
   model: 'openai/gpt-4o-mini',
@@ -399,7 +399,7 @@ To build the same thing by hand, or for providers you construct yourself,
 anywhere a provider is accepted:
 
 ```ts
-import { createAgent, resolveProvider, withFallback, withRetry } from '@loushy/build-ai-agent';
+import { createAgent, resolveProvider, withFallback, withRetry } from '@lousho/build-ai-agent';
 
 const provider = withFallback(
   [
@@ -464,7 +464,7 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `compaction` | `true` (prune old tool results above 90% of the context window) or `{ strategy?, thresholdPercent?, contextWindow?, protectedTokens?, summarizer? }`; `summarizer` (`'provider/model'` or an `LLMProvider`) selects the two-phase strategy. `stream()` reports `compaction.start` / `compaction.done`. See [Context compaction](./compaction.md#compacting-an-agent). |
 
 With neither `model` nor `provider`, `createAgent()` resolves from the
-environment: `LOUSHY_MODEL` (a `'provider/model'` string) if set, otherwise
+environment: `LOUSHO_MODEL` (a `'provider/model'` string) if set, otherwise
 the first provider whose variable is set, checked in this order:
 `OPENAI_API_KEY` (`openai/gpt-4o-mini`), `ANTHROPIC_API_KEY`
 (`anthropic/claude-3-5-sonnet-latest`), `OPENROUTER_API_KEY`
@@ -504,10 +504,10 @@ for in that step get a "cancelled" result, so the transcript stays valid, and
 with a checkpoint store it is checkpointed as finished, like `'max-steps'`.
 `stream()` emits a `budget.exceeded` event before `run.done`. With
 `onExceeded: 'throw'` the run rejects with `BudgetExceededError`
-(`LOUSHY_BUDGET_EXCEEDED`, with the same `budget`) instead.
+(`LOUSHO_BUDGET_EXCEEDED`, with the same `budget`) instead.
 
 ```ts
-import { BudgetExceededError, createAgent } from '@loushy/build-ai-agent';
+import { BudgetExceededError, createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({
   provider,
@@ -536,7 +536,7 @@ continued from its store keeps its budget. Both apply together; the first limit
 reached stops the turn. A turn that was aborted is not counted.
 
 ```ts
-import { createAgent, memoryStore } from '@loushy/build-ai-agent';
+import { createAgent, memoryStore } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ provider, store: memoryStore(), limits: { maxTokens: 20_000 } });
 const session = agent.session({ id: 'user-42', limits: { maxCostUsd: 1 } });
@@ -550,7 +550,7 @@ Many repositories keep guidance for coding agents in an `AGENTS.md` (or
 `CLAUDE.md`) file. `createAgent` can append it to the agent's instructions:
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({
   instructions: 'You review pull requests.',
@@ -599,5 +599,5 @@ finishReason, steps, approvalId? }`.
 
 ## CLI
 
-`loushy dev`, `loushy build`, `loushy mcp` and the other commands, with their
+`lousho dev`, `lousho build`, `lousho mcp` and the other commands, with their
 flags, are described in [CLI](./cli.md).

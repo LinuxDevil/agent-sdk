@@ -61,7 +61,7 @@ const CONFIG_FILES = [
 ] as const;
 
 function fail(file: string, message: string): never {
-  throw new SDKError(`loadAgentDir: ${file}: ${message}`, 'LOUSHY_AGENT_DIR_INVALID');
+  throw new SDKError(`loadAgentDir: ${file}: ${message}`, 'LOUSHO_AGENT_DIR_INVALID');
 }
 
 function describeValue(value: unknown): string {
@@ -156,7 +156,7 @@ async function findConfigFile(dir: string): Promise<string | undefined> {
   if (found.length > 1) {
     throw new SDKError(
       `loadAgentDir: ${dir} has more than one config file (${found.map((f) => path.basename(f)).join(', ')}). Keep exactly one.`,
-      'LOUSHY_AGENT_DIR_INVALID'
+      'LOUSHO_AGENT_DIR_INVALID'
     );
   }
   return found[0];

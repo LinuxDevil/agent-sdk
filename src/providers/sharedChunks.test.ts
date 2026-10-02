@@ -61,8 +61,8 @@ describe('shared chunks across package entries (LOU-D42)', () => {
   });
 
   it('brands answer instanceof for foreign-copy objects but not for unrelated ones', () => {
-    expect(Object.create({ [Symbol.for('loushy.SDKError')]: true })).toBeInstanceOf(SDKError);
-    expect(Object.create({ [Symbol.for('loushy.HookRegistry')]: true })).toBeInstanceOf(HookRegistry);
+    expect(Object.create({ [Symbol.for('lousho.SDKError')]: true })).toBeInstanceOf(SDKError);
+    expect(Object.create({ [Symbol.for('lousho.HookRegistry')]: true })).toBeInstanceOf(HookRegistry);
     expect(new Error('x')).not.toBeInstanceOf(SDKError);
     expect({}).not.toBeInstanceOf(HookRegistry);
     expect(null instanceof SDKError).toBe(false);

@@ -81,7 +81,7 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
   let handler: WorkerHandler;
 
   beforeAll(async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-cf-checkpoint-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-cf-checkpoint-'));
     outDir = path.join(dir, 'out');
     await CloudflareWorkerAdapter.scaffold(writeSpec(dir, SPEC), outDir);
     await withBuildLock(() => CloudflareWorkerAdapter.build(outDir));

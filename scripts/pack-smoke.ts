@@ -5,7 +5,7 @@
  * Proves that what `npm pack` produces installs and works, in a fresh project
  * that has never seen this checkout:
  *
- *   1. builds the SDK and `create-loushy-agent` (skip with --skip-build),
+ *   1. builds the SDK and `create-lousho-agent` (skip with --skip-build),
  *   2. `npm pack`s both into a temp dir and checks the SDK tarball (no `.env`,
  *      tests, fixtures or secret-looking strings; entry count and unpacked size
  *      under the thresholds below),
@@ -15,7 +15,7 @@
  *      temp project,
  *   5. in that project, runs Node: ESM `import` and CJS `require` of the root
  *      and of every `exports` subpath, a mock-model agent turn in both formats,
- *      `loushy --help` / `loushy doctor` through the installed bin, and
+ *      `lousho --help` / `lousho doctor` through the installed bin, and
  *      `tsc --noEmit` with `moduleResolution` bundler and node16.
  *
  * Usage: npm run pack-smoke [-- --skip-build] [--keep]
@@ -31,7 +31,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 const REPO_ROOT = path.resolve(__dirname, '..');
-const SDK_NAME = '@loushy/build-ai-agent';
+const SDK_NAME = '@lousho/build-ai-agent';
 const IS_WIN = process.platform === 'win32';
 
 /** Thresholds: the 1.0.0-alpha.8 tarball is ~705 entries / ~11.4 MB unpacked / ~3.1 MB packed; headroom ~25%. */
@@ -208,20 +208,20 @@ function checkModuleLoads(project: string, pkgDir: string): void {
 }
 
 function checkBin(project: string): void {
-  const installed = path.join(project, 'node_modules', '.bin', IS_WIN ? 'loushy.cmd' : 'loushy');
-  if (!fs.existsSync(installed)) return fail(`node_modules/.bin/loushy was not created (${installed})`);
-  const help = run('npx', ['--no-install', 'loushy', '--help'], project);
-  if (help.status !== 0 || !/loushy init/.test(help.stdout + help.stderr)) fail(`npx loushy --help failed: ${help.stdout}${help.stderr}`);
-  else log('npx loushy --help: ok');
+  const installed = path.join(project, 'node_modules', '.bin', IS_WIN ? 'lousho.cmd' : 'lousho');
+  if (!fs.existsSync(installed)) return fail(`node_modules/.bin/lousho was not created (${installed})`);
+  const help = run('npx', ['--no-install', 'lousho', '--help'], project);
+  if (help.status !== 0 || !/lousho init/.test(help.stdout + help.stderr)) fail(`npx lousho --help failed: ${help.stdout}${help.stderr}`);
+  else log('npx lousho --help: ok');
   const clean = { ...process.env };
   for (const k of ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY']) delete clean[k];
-  const doctor = run('npx', ['--no-install', 'loushy', 'doctor', '--json'], project, clean);
+  const doctor = run('npx', ['--no-install', 'lousho', 'doctor', '--json'], project, clean);
   // doctor exits non-zero when a check fails (e.g. no API key); only a crash is a smoke failure.
   try {
     const parsed = JSON.parse(doctor.stdout);
-    log(`loushy doctor: ran (exit ${doctor.status}, ${JSON.stringify(parsed).length} bytes of JSON)`);
+    log(`lousho doctor: ran (exit ${doctor.status}, ${JSON.stringify(parsed).length} bytes of JSON)`);
   } catch {
-    fail(`loushy doctor did not produce JSON: ${doctor.stdout}${doctor.stderr}`);
+    fail(`lousho doctor did not produce JSON: ${doctor.stdout}${doctor.stderr}`);
   }
 }
 
@@ -257,9 +257,9 @@ function checkTypes(project: string): void {
 function main(): void {
   if (!args.has('--skip-build')) {
     mustRun('npm run build', 'npm', ['run', 'build'], REPO_ROOT);
-    mustRun('npm run build (create-loushy-agent)', 'npm', ['run', 'build', '--workspace=packages/create-loushy-agent'], REPO_ROOT);
+    mustRun('npm run build (create-lousho-agent)', 'npm', ['run', 'build', '--workspace=packages/create-lousho-agent'], REPO_ROOT);
   }
-  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-pack-smoke-'));
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-pack-smoke-'));
   log(`temp dir ${base}`);
   const packDir = path.join(base, 'tarballs');
   const project = path.join(base, 'project');
@@ -267,10 +267,10 @@ function main(): void {
   fs.mkdirSync(project);
   try {
     const sdk = pack('(sdk)', REPO_ROOT, packDir);
-    const creator = pack('(create-loushy-agent)', path.join(REPO_ROOT, 'packages', 'create-loushy-agent'), packDir);
+    const creator = pack('(create-lousho-agent)', path.join(REPO_ROOT, 'packages', 'create-lousho-agent'), packDir);
     checkTarball(sdk.entry, sdk.tarball);
     dryRunPublish('(sdk)', sdk.tarball, base);
-    dryRunPublish('(create-loushy-agent)', creator.tarball, base);
+    dryRunPublish('(create-lousho-agent)', creator.tarball, base);
 
     const peers = (process.env.PACK_SMOKE_PEERS ?? DEFAULT_PEERS).split(/\s+/).filter(Boolean);
     const fileUrl = (p: string) => `file:${p.replace(/\\/g, '/')}`;
@@ -279,25 +279,25 @@ function main(): void {
       JSON.stringify({ name: 'pack-smoke-project', version: '0.0.0', private: true }, null, 2)
     );
     mustRun(`npm install ${peers.join(' ')} typescript @types/node + sdk tarball`, 'npm', ['install', '--no-audit', '--no-fund', sdk.tarball, ...peers, 'typescript@5', '@types/node@22'], project);
-    // create-loushy-agent depends on the SDK by a registry range that does not exist yet: point it at the tarball.
+    // create-lousho-agent depends on the SDK by a registry range that does not exist yet: point it at the tarball.
     const creatorProject = path.join(base, 'creator-project');
     fs.mkdirSync(creatorProject);
     fs.writeFileSync(
       path.join(creatorProject, 'package.json'),
       JSON.stringify({ name: 'pack-smoke-creator', version: '0.0.0', private: true, overrides: { [SDK_NAME]: fileUrl(sdk.tarball) } }, null, 2)
     );
-    mustRun('npm install create-loushy-agent tarball', 'npm', ['install', '--no-audit', '--no-fund', creator.tarball, ...peers], creatorProject);
+    mustRun('npm install create-lousho-agent tarball', 'npm', ['install', '--no-audit', '--no-fund', creator.tarball, ...peers], creatorProject);
 
     const pkgDir = path.join(project, 'node_modules', ...SDK_NAME.split('/'));
     checkModuleLoads(project, pkgDir);
     checkBin(project);
     checkTypes(project);
-    const creatorBin = path.join(creatorProject, 'node_modules', '.bin', IS_WIN ? 'create-loushy-agent.cmd' : 'create-loushy-agent');
-    if (!fs.existsSync(creatorBin)) fail('create-loushy-agent bin was not installed');
+    const creatorBin = path.join(creatorProject, 'node_modules', '.bin', IS_WIN ? 'create-lousho-agent.cmd' : 'create-lousho-agent');
+    if (!fs.existsSync(creatorBin)) fail('create-lousho-agent bin was not installed');
     else {
-      const res = run('npx', ['--no-install', 'create-loushy-agent', '--help'], creatorProject);
-      if (res.status !== 0) fail(`create-loushy-agent --help failed: ${res.stdout}${res.stderr}`);
-      else log('create-loushy-agent --help: ok');
+      const res = run('npx', ['--no-install', 'create-lousho-agent', '--help'], creatorProject);
+      if (res.status !== 0) fail(`create-lousho-agent --help failed: ${res.stdout}${res.stderr}`);
+      else log('create-lousho-agent --help: ok');
     }
   } finally {
     if (args.has('--keep')) log(`kept ${base}`);

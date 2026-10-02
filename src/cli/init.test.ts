@@ -14,7 +14,7 @@ interface Harness {
 
 let root: string;
 beforeEach(() => {
-  root = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-init-'));
+  root = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-init-'));
 });
 afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 
@@ -95,12 +95,12 @@ describe('runInit --yes', () => {
 
   it('writes a caret range of the SDK version, or a tarball with --sdk-path', async () => {
     await runInit(['plain', '--yes', '--no-install', '--no-git'], harness().environment);
-    expect(JSON.parse(read('plain', 'package.json')).dependencies['@loushy/build-ai-agent']).toBe('^1.0.0-alpha.8');
+    expect(JSON.parse(read('plain', 'package.json')).dependencies['@lousho/build-ai-agent']).toBe('^1.0.0-alpha.8');
 
     const tarball = path.join(root, 'sdk-9.9.9.tgz');
     fs.writeFileSync(tarball, 'tgz');
     await runInit(['local', '--yes', '--no-install', '--no-git', '--sdk-path', tarball], harness().environment);
-    expect(JSON.parse(read('local', 'package.json')).dependencies['@loushy/build-ai-agent']).toBe('file:./sdk-9.9.9.tgz');
+    expect(JSON.parse(read('local', 'package.json')).dependencies['@lousho/build-ai-agent']).toBe('file:./sdk-9.9.9.tgz');
     expect(fs.existsSync(path.join(root, 'local', 'sdk-9.9.9.tgz'))).toBe(true);
   });
 
@@ -152,7 +152,7 @@ describe('runInit guards', () => {
   it('prints usage for --help', async () => {
     const h = harness();
     expect(await runInit(['--help'], h.environment)).toBe(0);
-    expect(h.out.join('')).toContain('Usage: loushy init');
+    expect(h.out.join('')).toContain('Usage: lousho init');
   });
 
   it('reports a failed install, still prints next steps, and exits 1', async () => {

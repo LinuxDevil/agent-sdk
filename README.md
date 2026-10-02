@@ -1,4 +1,4 @@
-# @loushy/build-ai-agent
+# @lousho/build-ai-agent
 
 ![CI](https://github.com/LinuxDevil/agent-sdk/actions/workflows/ci.yml/badge.svg)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -19,8 +19,8 @@ Three things set it apart:
 - **Record/replay and trajectory evals.** `mockModel` scripts the model,
   `recordReplay` cassettes replay real runs offline, and `defineEval()` asserts
   on which tools were called, in what order, with which arguments, gating CI
-  through `loushy eval` with JUnit reports.
-- **Node and Cloudflare Workers, traced with OpenTelemetry.** `loushy build`
+  through `lousho eval` with JUnit reports.
+- **Node and Cloudflare Workers, traced with OpenTelemetry.** `lousho build`
   ships the same agent spec to a Node server, Docker or a Worker; runs emit
   OpenTelemetry GenAI spans to any exporter, and every result reports token
   usage and USD cost.
@@ -31,29 +31,29 @@ Three things set it apart:
 ## Installation
 
 Requires Node.js 22.19 or newer. **Not on npm yet:** `npm install
-@loushy/build-ai-agent`, `npx loushy ...` and `npm create loushy-agent` fail
+@lousho/build-ai-agent`, `npx lousho ...` and `npm create lousho-agent` fail
 until it is published. Today, build it from a checkout and scaffold a project
 that depends on the build:
 
 ```bash
 git clone https://github.com/LinuxDevil/agent-sdk.git
 cd agent-sdk && npm install && npm run build
-node bin/loushy.js init ../my-agent --sdk-path .   # agent, example tool, offline test
+node bin/lousho.js init ../my-agent --sdk-path .   # agent, example tool, offline test
 cd ../my-agent && cp .env.example .env              # then put your API key in .env
 npm run dev                                          # chat in the terminal; `npm test` runs offline
 ```
 
 To add it to an existing project, install the packed tarball instead
 ([Installing before the first release](docs/installation.md#installing-before-the-first-release)).
-Once published: `npm install @loushy/build-ai-agent ai zod` plus
+Once published: `npm install @lousho/build-ai-agent ai zod` plus
 the provider package you use (`@ai-sdk/openai`, `@ai-sdk/anthropic` or
-`ollama-ai-provider`). `npx loushy doctor` checks Node, peers and API keys and
+`ollama-ai-provider`). `npx lousho doctor` checks Node, peers and API keys and
 prints a fix for anything missing.
 
 ## Quickstart
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are a helpful assistant.' });
 const { text } = await agent.send('Hello!');
@@ -66,7 +66,7 @@ console.log(text);
 environment, or pass `provider:` with your own or a mock provider. See
 [Quick Start](docs/quick-start.md) for runnable, offline versions and
 [Providers](docs/providers.md) for the details. Prefer config files? The same
-agent can be an `agent.yaml` spec served with `npx loushy dev agent.yaml`
+agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 ([Configuration](docs/configuration.md)).
 
 ## Features
@@ -78,7 +78,7 @@ agent can be an `agent.yaml` spec served with `npx loushy dev agent.yaml`
 - **Memory**: `defineMemory()` slots, scoped globally, per session or per user, are recalled into the prompt at the start of a run and read and written with `remember_` / `recall_` tools. [Memory](docs/memory.md)
 - **Structured output**: `output: zodSchema` makes the final reply a typed, validated `result.object`, with one repair step. [Structured output](docs/structured-output.md)
 - **Streaming**: `agent.stream()` and `session.stream()` yield typed, versioned JSON events ready for SSE. [Streaming](docs/streaming.md)
-- **UI bindings**: `useLoushyAgent()` from `@loushy/build-ai-agent/react` (and `/vue`; `loushyAgent()` store from `/svelte`) turns the event stream into chat state, with approvals. [React](docs/react.md), [Vue](docs/vue.md), [Svelte](docs/svelte.md)
+- **UI bindings**: `useLoushoAgent()` from `@lousho/build-ai-agent/react` (and `/vue`; `loushoAgent()` store from `/svelte`) turns the event stream into chat state, with approvals. [React](docs/react.md), [Vue](docs/vue.md), [Svelte](docs/svelte.md)
 - **AI SDK UI**: `toUIMessageStreamResponse(agent.stream(...))` renders a run with the Vercel AI SDK's `useChat`. [AI SDK UI](docs/ai-sdk-ui.md)
 - **Next.js and Fetch frameworks**: `createRouteHandler(agent)` serves the session API from an App Router, SvelteKit, Hono or Bun route. [Next.js](docs/nextjs.md)
 - **Durable execution**: `sessionId` + `checkpointStore` resume a crashed or paused run without redoing finished tools. [Durable execution](docs/durable-execution.md)
@@ -88,23 +88,23 @@ agent can be an `agent.yaml` spec served with `npx loushy dev agent.yaml`
 - **Skills and AGENTS.md**: `loadSkills()` loads instructions on demand; `projectInstructions` appends your `AGENTS.md`. [Skills](docs/skills.md), [Project instructions](docs/configuration.md#project-instructions)
 - **Agent directories**: `loadAgentDir('./my-agent')` builds an agent from `instructions.md`, `tools/` and `skills/`. [Agent directories](docs/agent-directories.md)
 - **Compaction**: `createCompactionHook()` prunes old tool results before the context window fills. [Context compaction](docs/compaction.md)
-- **MCP client and server**: `createAgent({ mcpServers })` (or `connectMcp()`) connects stdio and HTTP MCP servers from config; `serveMcp()` / `loushy mcp` exposes your agent. [Configuration](docs/configuration.md#connect-mcp-servers-mcpservers-connectmcp)
+- **MCP client and server**: `createAgent({ mcpServers })` (or `connectMcp()`) connects stdio and HTTP MCP servers from config; `serveMcp()` / `lousho mcp` exposes your agent. [Configuration](docs/configuration.md#connect-mcp-servers-mcpservers-connectmcp)
 - **Workspace tools**: file system and shell tools for coding agents, confined to a root, shell approval-gated. [Workspace tools](docs/workspace-tools.md)
 - **Hooks, guardrails, sandboxing**: veto tool calls, gate a patch on fail-closed checks, run tools in Docker. [Guardrails](docs/guardrails.md)
 - **Channels, flows and triggers**: `defineChannel()` / `mountChannels()` map a surface's messages to sessions and send replies and approvals back; fixed multi-step workflows; webhook, Slack and cron adapters. [Channels](docs/channels.md), [Flows](docs/flows.md), [Triggers](docs/api-overview.md#triggers)
 - **Tracing**: OpenTelemetry GenAI spans (`invoke_agent`, `chat`, `execute_tool`); content capture is opt-in. [Observability](docs/observability.md)
-- **Testing and evals**: `mockModel`, `recordReplay` cassettes, `defineEval()` trajectory assertions, `loushy eval` with `--record` / `--replay` cassettes and `--drift` trajectory diffs. [Testing](docs/testing.md), [Evals](docs/evals.md)
+- **Testing and evals**: `mockModel`, `recordReplay` cassettes, `defineEval()` trajectory assertions, `lousho eval` with `--record` / `--replay` cassettes and `--drift` trajectory diffs. [Testing](docs/testing.md), [Evals](docs/evals.md)
 - **CLI**: `init`, `doctor`, `dev`, `mcp`, `eval`, `build` and `studio`. [CLI](docs/cli.md)
-- **Editors (ACP)**: `loushy acp ./my-agent` serves your agent to Zed and other Agent Client Protocol editors, with tool calls and permission prompts. [ACP](docs/acp.md)
-- **Registry**: `loushy add <name> --registry <url-or-path>` copies a tool, skill, channel, schedule or memory slot into your agent directory from a static JSON registry, after showing its permissions. [Registry](docs/registry.md)
-- **Agent Forge**: `loushy studio` opens a visual canvas, run debugger and chat with approval cards. [Agent Forge](docs/agent-forge.md)
+- **Editors (ACP)**: `lousho acp ./my-agent` serves your agent to Zed and other Agent Client Protocol editors, with tool calls and permission prompts. [ACP](docs/acp.md)
+- **Registry**: `lousho add <name> --registry <url-or-path>` copies a tool, skill, channel, schedule or memory slot into your agent directory from a static JSON registry, after showing its permissions. [Registry](docs/registry.md)
+- **Agent Forge**: `lousho studio` opens a visual canvas, run debugger and chat with approval cards. [Agent Forge](docs/agent-forge.md)
 
 ## Usage
 
 ### A tool-using agent, streamed
 
 ```ts
-import { createAgent, defineTool } from '@loushy/build-ai-agent';
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 const getWeather = defineTool({
@@ -129,7 +129,7 @@ for await (const event of agent.stream('What should I wear in Lisbon today?')) {
 ### Pause for approval, then resume
 
 ```ts
-import { createAgent, defineTool } from '@loushy/build-ai-agent';
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 const sendEmail = defineTool({
@@ -154,11 +154,11 @@ if (run.finishReason === 'awaiting-approval') {
 ### Durable sessions with SQLite
 
 ```ts
-import { createAgent, resolveProvider } from '@loushy/build-ai-agent';
-import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
+import { createAgent, resolveProvider } from '@lousho/build-ai-agent';
+import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
 
 // Transcripts, per-step checkpoints and approvals in one SQLite file, wired by one option.
-const agent = createAgent({ provider: resolveProvider('openai/gpt-4o-mini'), store: new SqliteStore('./.loushy/agent.db') });
+const agent = createAgent({ provider: resolveProvider('openai/gpt-4o-mini'), store: new SqliteStore('./.lousho/agent.db') });
 
 await agent.resume('user-42'); // after a crash: finishes the interrupted turn without redoing finished steps
 const { text } = await agent.session({ id: 'user-42' }).send('What is my name?'); // same id, same conversation
@@ -168,12 +168,12 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 
 | Page | What it covers |
 | ---- | -------------- |
-| [Installation](docs/installation.md) | Requirements, peer and provider packages, installing from a local build, `loushy init`, `loushy doctor` |
+| [Installation](docs/installation.md) | Requirements, peer and provider packages, installing from a local build, `lousho init`, `lousho doctor` |
 | [Quick Start](docs/quick-start.md) | Runnable, verified snippets: `createAgent()`, tools, `AgentBuilder` + `AgentExecutor`, spec files |
 | [Configuration](docs/configuration.md) | Spec fields, `mcpServers`, MCP client and server, provider env vars, retries and fallback, `createAgent()` and `execute()` options |
 | [Providers](docs/providers.md) | Model strings, `resolveProvider()`, which model runs, custom providers |
-| [CLI](docs/cli.md) | Every `loushy` command and its flags |
-| [ACP](docs/acp.md) | `loushy acp` / `serveAcp()`: drive an agent from Zed and other Agent Client Protocol editors |
+| [CLI](docs/cli.md) | Every `lousho` command and its flags |
+| [ACP](docs/acp.md) | `lousho acp` / `serveAcp()`: drive an agent from Zed and other Agent Client Protocol editors |
 | [Tools](docs/tools.md) | `defineTool()`, validation and errors, built-in tools, `ToolRegistry` |
 | [Approvals](docs/approvals.md) | `needsApproval`, `agent.approvals`, the `approve` callback, `resumeAfterApproval()`, stores |
 | [Sessions](docs/sessions.md) | Multi-turn conversations, `session.stream()`, session stores, `SqliteStore` |
@@ -181,9 +181,9 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Structured output](docs/structured-output.md) | `output: zodSchema`: typed `result.object`, the repair step, `'output-invalid'` |
 | [Reasoning](docs/reasoning.md) | The `reasoning` option per provider, `reasoning.*` events, `result.reasoning` |
 | [Streaming](docs/streaming.md) | `agent.stream()`: the typed event schema, terminal and SSE examples |
-| [AI SDK UI](docs/ai-sdk-ui.md) | `useChat` on a Loushy run: `toUIMessageStreamResponse()`, `fromUIMessages()`, approvals |
+| [AI SDK UI](docs/ai-sdk-ui.md) | `useChat` on a Lousho run: `toUIMessageStreamResponse()`, `fromUIMessages()`, approvals |
 | [Next.js](docs/nextjs.md) | `createRouteHandler(agent)`: the session API as a Fetch route (App Router, SvelteKit, Hono), auth, `useChat` endpoint |
-| [React](docs/react.md) | `useLoushyAgent()`: chat state from the event stream, in process or over HTTP; `reduceAgentEvents()`, `parseEventStream()` |
+| [React](docs/react.md) | `useLoushoAgent()`: chat state from the event stream, in process or over HTTP; `reduceAgentEvents()`, `parseEventStream()` |
 | [Durable execution](docs/durable-execution.md) | Checkpoints, crash resume, approvals mid-batch, at-least-once tools |
 | [Sub-agents](docs/sub-agents.md) | The `subagents` option and its `task` tool, inheritance, approvals in sub-agents |
 | [Skills](docs/skills.md) | On-demand instructions: `defineSkill()`, `loadSkills()` |
@@ -195,11 +195,11 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Workspace tools](docs/workspace-tools.md) | File system and shell tools for coding agents, and their security model |
 | [Guardrails and sandboxing](docs/guardrails.md) | `runGuardrails()`, built-in guardrails, `requiresSandbox`, `SubprocessSandbox` |
 | [Testing](docs/testing.md) | Deterministic tests with `mockModel`; record and replay with `recordReplay` |
-| [Evals](docs/evals.md) | Trajectory evals with `defineEval()`, datasets, judges, `loushy eval` reports |
+| [Evals](docs/evals.md) | Trajectory evals with `defineEval()`, datasets, judges, `lousho eval` reports |
 | [Tracing and observability](docs/observability.md) | OpenTelemetry GenAI spans, attribute table, content opt-in |
-| [Deployment](docs/deployment.md) | `loushy build` targets: Node server, Docker, Cloudflare Workers (with KV checkpoints) |
+| [Deployment](docs/deployment.md) | `lousho build` targets: Node server, Docker, Cloudflare Workers (with KV checkpoints) |
 | [Agent Forge](docs/agent-forge.md) | The visual dashboard: quickstart, first-agent walkthrough, hooks |
-| [Errors](docs/errors.md) | Every error code (`LOUSHY_*`): what it means, how to fix it, an example |
+| [Errors](docs/errors.md) | Every error code (`LOUSHO_*`): what it means, how to fix it, an example |
 | [API Overview](docs/api-overview.md) | The main exports, triggers, tokens and cost; `npm run docs:build` generates the full TypeDoc reference |
 | [Utilities](docs/utilities.md) | Encryption, file storage and templates |
 
@@ -208,7 +208,7 @@ The full guides site is at [linuxdevil.github.io/agent-sdk-docs](https://linuxde
 **For AI coding agents.** The package ships its docs in machine-readable form:
 `llms-full.txt` (this README and every docs page in one file, with absolute
 links) and `llms.txt` (an [llmstxt.org](https://llmstxt.org) index), both in
-the repo root and in `node_modules/@loushy/build-ai-agent/`. They are generated
+the repo root and in `node_modules/@lousho/build-ai-agent/`. They are generated
 with `npm run docs:llms` and checked in CI.
 
 ## Examples
@@ -232,18 +232,18 @@ Most examples run offline with a mock provider; see the
 
 | Command | What it does |
 | ------- | ------------ |
-| `loushy init [dir]` | Scaffold a project with an agent, a tool and an offline test |
-| `loushy doctor [spec]` | Check Node, peers, API keys and a spec file; print fixes |
-| `loushy dev <spec>` | Local chat UI and `POST /chat` with hot reload |
-| `loushy chat <path>` | Terminal REPL: streamed replies, tool calls, approvals and questions |
-| `loushy mcp <spec>` | Serve the agent as an MCP server (stdio or HTTP) |
-| `loushy eval [globs]` | Run `*.eval.ts` files; JUnit and JSON reports |
-| `loushy build --target=<t> --agent=<spec>` | Build a Node server, Docker image or Cloudflare Worker |
-| `loushy studio` | Launch Agent Forge |
+| `lousho init [dir]` | Scaffold a project with an agent, a tool and an offline test |
+| `lousho doctor [spec]` | Check Node, peers, API keys and a spec file; print fixes |
+| `lousho dev <spec>` | Local chat UI and `POST /chat` with hot reload |
+| `lousho chat <path>` | Terminal REPL: streamed replies, tool calls, approvals and questions |
+| `lousho mcp <spec>` | Serve the agent as an MCP server (stdio or HTTP) |
+| `lousho eval [globs]` | Run `*.eval.ts` files; JUnit and JSON reports |
+| `lousho build --target=<t> --agent=<spec>` | Build a Node server, Docker image or Cloudflare Worker |
+| `lousho studio` | Launch Agent Forge |
 
 Flags for each command are in [CLI](docs/cli.md).
 
-**Deployment:** `npx loushy build --target=node-server|docker|cloudflare-worker --agent=agent.yaml`
+**Deployment:** `npx lousho build --target=node-server|docker|cloudflare-worker --agent=agent.yaml`
 writes a self-contained artifact and prints the command to run or deploy it
 ([Deployment](docs/deployment.md)).
 

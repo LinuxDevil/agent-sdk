@@ -6,7 +6,7 @@ const cacheBust = new AsyncLocalStorage<string>();
 /**
  * Runs `fn` so every file `importModule()` loads inside it is imported with a
  * `?t=<token>` query: a fresh module instance instead of the cached one
- * (`loushy dev` hot reload, LOU-D31). Only the file itself is re-evaluated;
+ * (`lousho dev` hot reload, LOU-D31). Only the file itself is re-evaluated;
  * modules it imports stay cached by the runtime.
  */
 export function withFreshImports<T>(token: string, fn: () => Promise<T>): Promise<T> {

@@ -1,20 +1,20 @@
 /**
  * File-backed `ApprovalStore` (src/execution/ApprovalGate.ts, public SDK
  * API) for the LOU-N runtime control server, persisting pending approvals
- * under `<baseDir>/.loushy/agents/<agentId>/approvals/<approvalId>.json`.
+ * under `<baseDir>/.lousho/agents/<agentId>/approvals/<approvalId>.json`.
  *
  * Sibling to FileCheckpointStore.ts - see its doc comment for why this is a
  * separate store rather than extending fsAgentStore.ts.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { ApprovalStore, ExecutionSnapshot, PendingApproval, ResolvedApproval } from '@loushy/build-ai-agent';
+import type { ApprovalStore, ExecutionSnapshot, PendingApproval, ResolvedApproval } from '@lousho/build-ai-agent';
 
 export class FileApprovalStore implements ApprovalStore {
   constructor(private readonly baseDir: string) {}
 
   private dir(agentId: string): string {
-    return path.join(this.baseDir, '.loushy', 'agents', agentId, 'approvals');
+    return path.join(this.baseDir, '.lousho', 'agents', agentId, 'approvals');
   }
 
   private filePath(agentId: string, approvalId: string): string {
@@ -38,7 +38,7 @@ export class FileApprovalStore implements ApprovalStore {
    * generic `ApprovalStore` interface contract (e.g. direct SDK use).
    */
   async resolve(approvalId: string): Promise<ResolvedApproval | null> {
-    const agentsDir = path.join(this.baseDir, '.loushy', 'agents');
+    const agentsDir = path.join(this.baseDir, '.lousho', 'agents');
     if (!fs.existsSync(agentsDir)) return null;
     for (const agentId of fs.readdirSync(agentsDir)) {
       const found = await this.resolveFor(agentId, approvalId);

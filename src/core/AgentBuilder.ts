@@ -61,7 +61,7 @@ export class AgentBuilder {
         throw new SDKError(
           `AgentBuilder.addTool('${keyOrTool}'): a configuration is required. ` +
             `Example: addTool('${keyOrTool}', { tool: '${keyOrTool}' }), or pass a defineTool() result.`,
-          'LOUSHY_CONFIG_INVALID'
+          'LOUSHO_CONFIG_INVALID'
         );
       }
       this.config.tools[keyOrTool] = config;
@@ -175,13 +175,13 @@ export class AgentBuilder {
   private validate(): void {
     const validation = validateAgentConfig(this.config);
     if (!validation.valid) {
-      throw new SDKError(`Agent configuration validation failed: ${validation.errors.join(', ')}`, 'LOUSHY_VALIDATION_FAILED');
+      throw new SDKError(`Agent configuration validation failed: ${validation.errors.join(', ')}`, 'LOUSHO_VALIDATION_FAILED');
     }
 
     if (this.config.tools) {
       const toolsValidation = validateAgentTools(this.config.tools);
       if (!toolsValidation.valid) {
-        throw new SDKError(`Agent tools validation failed: ${toolsValidation.errors.join(', ')}`, 'LOUSHY_VALIDATION_FAILED');
+        throw new SDKError(`Agent tools validation failed: ${toolsValidation.errors.join(', ')}`, 'LOUSHO_VALIDATION_FAILED');
       }
     }
   }

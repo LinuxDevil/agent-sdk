@@ -26,7 +26,7 @@ import { MemorySessionStore, type SessionStore } from '../session/sessionStore';
  *
  * @example
  * ```ts
- * const store: AgentStore = { sessions: new FileSessionStore('./.loushy/sessions'), approvals: new InMemoryApprovalStore() };
+ * const store: AgentStore = { sessions: new FileSessionStore('./.lousho/sessions'), approvals: new InMemoryApprovalStore() };
  * ```
  */
 export interface AgentStore {

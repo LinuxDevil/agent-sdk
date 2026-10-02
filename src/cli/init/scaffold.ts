@@ -1,5 +1,5 @@
 /**
- * Filesystem side of `loushy init`: name derivation, the non-empty-directory
+ * Filesystem side of `lousho init`: name derivation, the non-empty-directory
  * guard, and writing the rendered files.
  */
 import * as fs from 'node:fs';
@@ -20,12 +20,12 @@ export function packageNameFor(dir: string): string {
 export function assertWritable(dir: string, force: boolean): void {
   if (force || !fs.existsSync(dir)) return;
   if (!fs.statSync(dir).isDirectory()) {
-    throw new InitUsageError(`loushy init: '${dir}' exists and is not a directory. Choose another name.`);
+    throw new InitUsageError(`lousho init: '${dir}' exists and is not a directory. Choose another name.`);
   }
   const entries = fs.readdirSync(dir);
   if (entries.length > 0) {
     throw new InitUsageError(
-      `loushy init: '${dir}' is not empty (${entries.slice(0, 3).join(', ')}${entries.length > 3 ? ', ...' : ''}). ` +
+      `lousho init: '${dir}' is not empty (${entries.slice(0, 3).join(', ')}${entries.length > 3 ? ', ...' : ''}). ` +
         'Choose an empty or new directory, or pass --force to write into it anyway (existing files with the same names are overwritten).'
     );
   }

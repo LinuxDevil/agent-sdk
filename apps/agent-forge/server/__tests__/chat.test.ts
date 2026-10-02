@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import request from 'supertest';
-import type { AgentSpec } from '@loushy/build-ai-agent';
+import type { AgentSpec } from '@lousho/build-ai-agent';
 import { createApp } from '../app';
 import { RunManager, AlreadyRunningError, ApprovalPendingError } from '../runRegistry';
 import { FileCheckpointStore } from '../checkpointStore';

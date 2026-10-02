@@ -3,7 +3,7 @@
 `createRouteHandler(agent, options?)` serves an agent from a route file of any
 framework whose handlers take a Web `Request` and return a `Response`: the
 Next.js App Router, SvelteKit, Remix / React Router, Hono, Bun.serve. It is a
-thin wrapper over the same session API as `loushy dev` and the deployed server
+thin wrapper over the same session API as `lousho dev` and the deployed server
 (docs/deployment.md), so the React, Vue and Svelte bindings work against it
 unchanged. It imports no framework and no `node:*` module.
 
@@ -11,7 +11,7 @@ unchanged. It imports no framework and no `node:*` module.
 
 ```ts
 // app/api/agent/[[...path]]/route.ts
-import { createAgent, createRouteHandler } from '@loushy/build-ai-agent';
+import { createAgent, createRouteHandler } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are helpful.' });
 
@@ -27,7 +27,7 @@ and spend your model budget. Pass a bearer token, or a function that checks your
 own session or cookie:
 
 ```ts
-import { createAgent, createRouteHandler } from '@loushy/build-ai-agent';
+import { createAgent, createRouteHandler } from '@lousho/build-ai-agent';
 
 declare function isSignedIn(request: Request): Promise<boolean>;
 
@@ -43,8 +43,8 @@ accepted, and a request outside the base path is a 404).
 
 | Route | What it does |
 | --- | --- |
-| `POST <basePath>` | `{ input, sessionId? }`: the turn streamed as SSE. This is what `useLoushyAgent({ url })` posts; without a `sessionId` each turn is a fresh session |
-| `POST <basePath>/approvals/:id` | `{ approved, note? }` or `{ answer }`: the continuation streamed (`useLoushyAgent`'s `approvalsUrl`) |
+| `POST <basePath>` | `{ input, sessionId? }`: the turn streamed as SSE. This is what `useLoushoAgent({ url })` posts; without a `sessionId` each turn is a fresh session |
+| `POST <basePath>/approvals/:id` | `{ approved, note? }` or `{ answer }`: the continuation streamed (`useLoushoAgent`'s `approvalsUrl`) |
 | `POST <basePath>/chat` | `{ sessionId, input }`: the session API of the deployed server |
 | `GET <basePath>/chat/:sessionId` | the session's transcript and pending approvals |
 | `POST <basePath>/chat/:sessionId/approvals/:id` | decide an approval in a session |
@@ -54,14 +54,14 @@ accepted, and a request outside the base path is a 404).
 Sessions are kept by the agent's `store` (`createAgent({ store })`), so give
 the agent one that outlives a serverless invocation when you use sessions.
 
-## Client: `useLoushyAgent`
+## Client: `useLoushoAgent`
 
 ```tsx no-verify
 'use client';
-import { useLoushyAgent } from '@loushy/build-ai-agent/react';
+import { useLoushoAgent } from '@lousho/build-ai-agent/react';
 
 export function Chat() {
-  const agent = useLoushyAgent({ url: '/api/agent', headers: { Authorization: `Bearer ${token}` } }, { approvalsUrl: '/api/agent/approvals' });
+  const agent = useLoushoAgent({ url: '/api/agent', headers: { Authorization: `Bearer ${token}` } }, { approvalsUrl: '/api/agent/approvals' });
   // agent.messages, agent.send(text), agent.approve() ...
 }
 ```
@@ -84,7 +84,7 @@ const { messages, sendMessage } = useChat({ transport: new DefaultChatTransport(
 The same handler, mounted where the framework wants it:
 
 ```ts
-import { createAgent, createRouteHandler } from '@loushy/build-ai-agent';
+import { createAgent, createRouteHandler } from '@lousho/build-ai-agent';
 
 const { handler } = createRouteHandler(createAgent({ model: 'openai/gpt-4o-mini' }), { basePath: '/agent', auth: 'secret' });
 

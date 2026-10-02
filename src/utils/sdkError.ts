@@ -8,7 +8,7 @@
 import { errorHelp, type ErrorCode } from './errorCodes';
 import { instanceOfBranded } from './brand';
 
-const SDK_ERROR_BRAND = Symbol.for('loushy.SDKError');
+const SDK_ERROR_BRAND = Symbol.for('lousho.SDKError');
 
 /** Options of {@link SDKError}. */
 export interface SDKErrorOptions {
@@ -41,7 +41,7 @@ function withHelp(message: string, code: string, hint?: string, docs?: string): 
  * try {
  *   await agent.send('hi');
  * } catch (error) {
- *   if (error instanceof SDKError && error.code === 'LOUSHY_APPROVAL_STORE_MISSING') console.error(error.hint);
+ *   if (error instanceof SDKError && error.code === 'LOUSHO_APPROVAL_STORE_MISSING') console.error(error.hint);
  * }
  * ```
  */
@@ -61,7 +61,7 @@ export class SDKError extends Error {
   /** The message without the appended `[code] hint (docs)` line. */
   readonly detail: string;
 
-  constructor(message: string, code: ErrorCode | (string & {}) = 'LOUSHY_GENERIC_ERROR', options: SDKErrorOptions = {}) {
+  constructor(message: string, code: ErrorCode | (string & {}) = 'LOUSHO_GENERIC_ERROR', options: SDKErrorOptions = {}) {
     const help = errorHelp(code);
     const hint = options.hint ?? help?.hint;
     const docs = options.docs ?? help?.docs;

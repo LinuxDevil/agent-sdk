@@ -13,7 +13,7 @@ afterEach(() => vi.restoreAllMocks());
 
 const SPEC: CommandSpec = {
   command: 'demo',
-  usage: 'Usage: loushy demo [path] [--name n] [--tag t]... [--all]',
+  usage: 'Usage: lousho demo [path] [--name n] [--tag t]... [--all]',
   positionals: 1,
   options: { name: { type: 'string' }, tag: { type: 'string', multiple: true }, all: { type: 'boolean' } },
 };
@@ -25,7 +25,7 @@ describe('parseCommand', () => {
     expect(parseCommand(SPEC, ['--name', 'a', 'p']).positionals).toEqual(['p']);
   });
 
-  it('rejects an unknown flag, a missing value and an extra argument with LOUSHY_CONFIG_INVALID and the usage as the hint', () => {
+  it('rejects an unknown flag, a missing value and an extra argument with LOUSHO_CONFIG_INVALID and the usage as the hint', () => {
     for (const [args, message] of [
       [['--bogus'], /unknown option '--bogus'\./],
       [['-z'], /unknown option '-z'\./],
@@ -38,8 +38,8 @@ describe('parseCommand', () => {
       try {
         parseCommand(SPEC, args);
       } catch (error) {
-        expect(error).toMatchObject({ code: 'LOUSHY_CONFIG_INVALID', hint: SPEC.usage });
-        expect((error as Error).message).toMatch(/^loushy demo: /);
+        expect(error).toMatchObject({ code: 'LOUSHO_CONFIG_INVALID', hint: SPEC.usage });
+        expect((error as Error).message).toMatch(/^lousho demo: /);
       }
     }
   });
@@ -62,7 +62,7 @@ describe('parseCommand', () => {
     expect(portValue(SPEC, undefined, 3000)).toBe(3000);
     expect(portValue(SPEC, '0', 3000)).toBe(0);
     for (const bad of ['abc', '1.5', '-1', '70000']) expect(() => portValue(SPEC, bad, 1)).toThrowError(/--port must be an integer/);
-    expect(usageError(SPEC, 'x')).toMatchObject({ code: 'LOUSHY_CONFIG_INVALID', hint: SPEC.usage });
+    expect(usageError(SPEC, 'x')).toMatchObject({ code: 'LOUSHO_CONFIG_INVALID', hint: SPEC.usage });
   });
 });
 
@@ -88,14 +88,14 @@ const CASES: Case[] = [
   { command: 'doctor', parse: parseDoctorArgs, base: [], positionals: 1, run: (a) => runDoctorCommand(a, undefined, () => {}) },
 ];
 
-describe.each(CASES)('loushy $command flag parsing', ({ command, parse, base, run }) => {
-  const usage = new RegExp(`Usage: loushy ${command}`);
+describe.each(CASES)('lousho $command flag parsing', ({ command, parse, base, run }) => {
+  const usage = new RegExp(`Usage: lousho ${command}`);
 
-  it('rejects an unknown flag with LOUSHY_CONFIG_INVALID and the usage line', () => {
+  it('rejects an unknown flag with LOUSHO_CONFIG_INVALID and the usage line', () => {
     for (const arg of ['--bogus', '--bogus=1', '-z']) {
       expect(() => parse([...base, arg])).toThrowError(/unknown option/);
       expect(() => parse([...base, arg])).toThrowError(usage);
-      expect(() => parse([...base, arg])).toThrowError(/LOUSHY_CONFIG_INVALID/);
+      expect(() => parse([...base, arg])).toThrowError(/LOUSHO_CONFIG_INVALID/);
     }
   });
 
@@ -109,13 +109,13 @@ describe.each(CASES)('loushy $command flag parsing', ({ command, parse, base, ru
   });
 });
 
-describe.each(CASES.filter((c) => c.positionals < Infinity))('loushy $command extra arguments', ({ parse, base }) => {
+describe.each(CASES.filter((c) => c.positionals < Infinity))('lousho $command extra arguments', ({ parse, base }) => {
   it('rejects an extra positional argument', () => {
     expect(() => parse([...base, 'extra-one', 'extra-two'])).toThrowError(/unexpected argument|unknown option/);
   });
 });
 
-describe.each(CASES.filter((c) => c.flag))('loushy $command flag values', ({ parse, base, flag }) => {
+describe.each(CASES.filter((c) => c.flag))('lousho $command flag values', ({ parse, base, flag }) => {
   it('takes a value as --flag value or --flag=value, and a repeated flag keeps the last', () => {
     const [name, key, value] = flag!;
     expect(parse([...base, name, value])).toMatchObject({ [key]: value });
@@ -137,14 +137,14 @@ describe.each(CASES.filter((c) => c.flag))('loushy $command flag values', ({ par
   });
 });
 
-describe.each(CASES.filter((c) => c.positionals >= 1))('loushy $command --', ({ parse }) => {
+describe.each(CASES.filter((c) => c.positionals >= 1))('lousho $command --', ({ parse }) => {
   it('ends the flags at --', () => {
     const args = parse(['--', '--looks-like-a-flag']) as { path?: string; configPath?: string; specPath?: string; globs?: string[] };
     expect(args.path ?? args.configPath ?? args.specPath ?? args.globs?.[0]).toBe('--looks-like-a-flag');
   });
 });
 
-describe('loushy mcp, dev and studio ports', () => {
+describe('lousho mcp, dev and studio ports', () => {
   it('reject a port that is not an integer from 0 to 65535 and accept --port=N', () => {
     for (const parse of [parseMcpArgs, parseDevArgs, parseStudioArgs]) {
       expect(() => parse([...(parse === parseStudioArgs ? [] : ['a.yaml']), '--port', 'abc'])).toThrowError(/--port must be an integer between 0 and 65535/);
@@ -159,7 +159,7 @@ describe('loushy mcp, dev and studio ports', () => {
   });
 });
 
-describe('loushy chat and eval specifics', () => {
+describe('lousho chat and eval specifics', () => {
   it('chat help does not need a path, and a missing path still fails', () => {
     expect(parseChatArgs(['--help']).help).toBe(true);
     expect(() => parseChatArgs([])).toThrowError(/a path is required/);

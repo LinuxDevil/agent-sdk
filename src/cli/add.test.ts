@@ -43,7 +43,7 @@ function writeJson(file: string, value: unknown) {
 }
 
 beforeEach(() => {
-  root = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-add-'));
+  root = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-add-'));
   agentDir = path.join(root, 'agent');
   fs.mkdirSync(agentDir);
   registry = path.join(root, 'index.json');
@@ -70,7 +70,7 @@ async function add(args: string[], options: { stdin?: string; tty?: boolean; fet
 
 const withRegistry = (...rest: string[]) => [...rest, '--registry', registry, '--dir', 'agent'];
 
-describe('loushy add', () => {
+describe('lousho add', () => {
   it('parses its flags and needs a name or --list', () => {
     expect(parseAddArgs(['x', '--yes', '--dry-run', '--overwrite']).dryRun).toBe(true);
     expect(parseAddArgs(['--list']).list).toBe(true);
@@ -129,7 +129,7 @@ describe('loushy add', () => {
     fs.writeFileSync(target, 'mine');
     const refused = await add(withRegistry('web-search', '--yes'));
     expect(refused.code).toBe(1);
-    expect(refused.err).toContain('LOUSHY_REGISTRY_FILE_EXISTS');
+    expect(refused.err).toContain('LOUSHO_REGISTRY_FILE_EXISTS');
     expect(fs.readFileSync(target, 'utf8')).toBe('mine');
     expect((await add(withRegistry('web-search', '--yes', '--overwrite'))).code).toBe(0);
     expect(fs.readFileSync(target, 'utf8')).toBe('export default {};\n');
@@ -142,28 +142,28 @@ describe('loushy add', () => {
     expect(result.out).toMatch(/triage\s+skill\s+Triage tickets/);
   });
 
-  it('reads LOUSHY_REGISTRY, and without a registry says how to pass --registry', async () => {
-    expect((await add(['--list'], { env: { LOUSHY_REGISTRY: registry } })).code).toBe(0);
+  it('reads LOUSHO_REGISTRY, and without a registry says how to pass --registry', async () => {
+    expect((await add(['--list'], { env: { LOUSHO_REGISTRY: registry } })).code).toBe(0);
     const none = await add(['--list']);
     expect(none.code).toBe(1);
     expect(none.err).toContain('--registry');
-    expect(none.err).toContain('LOUSHY_CONFIG_INVALID');
+    expect(none.err).toContain('LOUSHO_CONFIG_INVALID');
   });
 
   it('suggests the closest name for an unknown item', async () => {
     const result = await add(withRegistry('web-serach', '--yes'));
     expect(result.err).toContain("Did you mean 'web-search'?");
-    expect(result.err).toContain('LOUSHY_REGISTRY_ITEM_NOT_FOUND');
+    expect(result.err).toContain('LOUSHO_REGISTRY_ITEM_NOT_FOUND');
   });
 
   it('reports an unreachable registry and an invalid document with their codes', async () => {
     const missing = await add(['--list', '--registry', path.join(root, 'nope.json')]);
-    expect(missing.err).toContain('LOUSHY_REGISTRY_UNREACHABLE');
+    expect(missing.err).toContain('LOUSHO_REGISTRY_UNREACHABLE');
     const scheme = await add(['--list', '--registry', 'file:///etc/passwd']);
     expect(scheme.err).toContain('only http(s) URLs and local paths');
     writeJson(path.join(root, 'web-search.json'), { name: 'web-search', type: 'tool', description: 'x' });
     const invalid = await add(withRegistry('web-search', '--yes'));
-    expect(invalid.err).toContain('LOUSHY_REGISTRY_INVALID');
+    expect(invalid.err).toContain('LOUSHO_REGISTRY_INVALID');
     expect(invalid.err).toContain('files');
   });
 
@@ -213,7 +213,7 @@ describe('unsafe paths', () => {
     ['empty', ''],
   ];
   it.each(unsafe)('rejects %s', (_label, file) => {
-    expect(() => planFiles(item('tool', file), dir)).toThrow(/LOUSHY_REGISTRY_UNSAFE_PATH/);
+    expect(() => planFiles(item('tool', file), dir)).toThrow(/LOUSHO_REGISTRY_UNSAFE_PATH/);
   });
 
   it.each([
@@ -240,7 +240,7 @@ describe('unsafe paths', () => {
   it('writes nothing when any file of the item is unsafe', async () => {
     writeJson(path.join(root, 'web-search.json'), { ...SEARCH, files: [...SEARCH.files, { path: '../escape.ts', content: 'x' }] });
     const result = await add(withRegistry('web-search', '--yes'));
-    expect(result.err).toContain('LOUSHY_REGISTRY_UNSAFE_PATH');
+    expect(result.err).toContain('LOUSHO_REGISTRY_UNSAFE_PATH');
     expect(fs.existsSync(path.join(agentDir, 'tools'))).toBe(false);
   });
 
@@ -253,7 +253,7 @@ describe('unsafe paths', () => {
       return; // symlinks not permitted on this machine
     }
     const result = await add(withRegistry('web-search', '--yes'));
-    expect(result.err).toContain('LOUSHY_REGISTRY_UNSAFE_PATH');
+    expect(result.err).toContain('LOUSHO_REGISTRY_UNSAFE_PATH');
     expect(fs.readdirSync(outside)).toEqual([]);
   });
 });

@@ -1,5 +1,5 @@
 /**
- * Events for `loushy dev` responses that are not a live `stream()` (LOU-D32):
+ * Events for `lousho dev` responses that are not a live `stream()` (LOU-D32):
  * a request that failed while streaming is answered with `error` + `run.done`.
  * (Approval continuations stream live from `agent.approvals.streamResolve()`,
  * LOU-D32.2.)

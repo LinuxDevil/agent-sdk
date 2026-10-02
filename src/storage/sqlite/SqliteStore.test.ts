@@ -33,7 +33,7 @@ const tempDirs: string[] = [];
 const stores: SqliteStore[] = [];
 
 function tempDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'loushy-sqlite-'));
+  const dir = mkdtempSync(join(tmpdir(), 'lousho-sqlite-'));
   tempDirs.push(dir);
   return dir;
 }

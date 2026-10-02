@@ -49,17 +49,17 @@ describe('defineSchedule', () => {
       expect.unreachable();
     } catch (error) {
       expect(error).toBeInstanceOf(SDKError);
-      expect((error as SDKError).code).toBe('LOUSHY_SCHEDULE_INVALID');
+      expect((error as SDKError).code).toBe('LOUSHO_SCHEDULE_INVALID');
       expect((error as SDKError).message).toContain('61');
     }
-    expect(() => defineSchedule({ cron: '* * * *', prompt: 'hi' })).toThrow(/LOUSHY_SCHEDULE_INVALID/);
-    expect(() => defineSchedule({ cron: '* * * * *', timezone: 'Mars/Olympus', prompt: 'hi' })).toThrow(/LOUSHY_SCHEDULE_INVALID/);
+    expect(() => defineSchedule({ cron: '* * * *', prompt: 'hi' })).toThrow(/LOUSHO_SCHEDULE_INVALID/);
+    expect(() => defineSchedule({ cron: '* * * * *', timezone: 'Mars/Olympus', prompt: 'hi' })).toThrow(/LOUSHO_SCHEDULE_INVALID/);
   });
 
   it('needs exactly one of prompt and run', () => {
     expect(() => defineSchedule({ cron: '@daily' } as never)).toThrow(/exactly one of 'prompt'/);
-    expect(() => defineSchedule({ cron: '@daily', prompt: 'a', run: async () => undefined } as never)).toThrow(/LOUSHY_SCHEDULE_INVALID/);
-    expect(() => defineSchedule({ cron: '@daily', prompt: '  ' })).toThrow(/LOUSHY_SCHEDULE_INVALID/);
+    expect(() => defineSchedule({ cron: '@daily', prompt: 'a', run: async () => undefined } as never)).toThrow(/LOUSHO_SCHEDULE_INVALID/);
+    expect(() => defineSchedule({ cron: '@daily', prompt: '  ' })).toThrow(/LOUSHO_SCHEDULE_INVALID/);
   });
 });
 

@@ -116,7 +116,7 @@ describe('renderJunit', () => {
   it('writes testsuites/testsuite/testcase with diagnostic failures and escapes XML', () => {
     expect(renderJunit(all, false)).toMatchInlineSnapshot(`
       "<?xml version="1.0" encoding="UTF-8"?>
-      <testsuites name="loushy eval" tests="4" failures="1" errors="1" time="1.522">
+      <testsuites name="lousho eval" tests="4" failures="1" errors="1" time="1.522">
         <testsuite name="refund flow" tests="2" failures="0" errors="0" skipped="0" time="1.512">
           <testcase classname="refund flow" name="Refund order 42" time="0.012" />
           <testcase classname="refund flow" name="polite" time="1.500">
@@ -141,7 +141,7 @@ describe('renderJunit', () => {
   it('turns soft failures into failures under --strict', () => {
     expect(renderJunit([softFail], true)).toMatchInlineSnapshot(`
       "<?xml version="1.0" encoding="UTF-8"?>
-      <testsuites name="loushy eval" tests="1" failures="1" errors="0" time="1.500">
+      <testsuites name="lousho eval" tests="1" failures="1" errors="0" time="1.500">
         <testsuite name="refund flow" tests="1" failures="1" errors="0" skipped="0" time="1.500">
           <testcase classname="refund flow" name="polite" time="1.500">
             <failure message="soft check 'brevity' failed: score 0.5 is below the threshold 0.9" type="AssertionError">soft check 'brevity' failed: score 0.5 is below the threshold 0.9</failure>
@@ -155,7 +155,7 @@ describe('renderJunit', () => {
   it('is an empty but valid document without results', () => {
     expect(renderJunit([], false)).toMatchInlineSnapshot(`
       "<?xml version="1.0" encoding="UTF-8"?>
-      <testsuites name="loushy eval" tests="0" failures="0" errors="0" time="0.000">
+      <testsuites name="lousho eval" tests="0" failures="0" errors="0" time="0.000">
       </testsuites>
       "
     `);

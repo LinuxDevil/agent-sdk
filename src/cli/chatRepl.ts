@@ -1,5 +1,5 @@
 /**
- * The REPL behind `loushy chat` (LOU-D33): reads lines, streams each turn's
+ * The REPL behind `lousho chat` (LOU-D33): reads lines, streams each turn's
  * events, asks for approvals and questions, and runs the slash commands. It
  * takes its input, output and agent factory as arguments, so tests drive it
  * with scripted lines and a `mockModel` agent; src/cli/chat.ts wires readline.
@@ -158,7 +158,7 @@ export async function runChatRepl(options: ChatReplOptions): Promise<number> {
       let events: AsyncIterable<AgentEvent> = openSession().stream(input);
       for (let paused = await render(events); paused; paused = await render(events)) {
         const request = (await agent.approvals.list()).find((pending) => pending.id === paused?.approvalId);
-        if (!request) throw new SDKError(`No pending approval '${paused.approvalId}'.`, 'LOUSHY_APPROVAL_NOT_FOUND');
+        if (!request) throw new SDKError(`No pending approval '${paused.approvalId}'.`, 'LOUSHO_APPROVAL_NOT_FOUND');
         events = await decide(request);
       }
     } catch (error) {
@@ -217,7 +217,7 @@ export async function runChatRepl(options: ChatReplOptions): Promise<number> {
     return true;
   }
 
-  say(dim(`loushy chat: session ${sessionId}${model ? `, model ${model}` : ''}. Commands: ${COMMANDS}`));
+  say(dim(`lousho chat: session ${sessionId}${model ? `, model ${model}` : ''}. Commands: ${COMMANDS}`));
   try {
     for (let line = await ask('> '); line !== undefined; line = await ask('> ')) {
       if (line === '') continue;

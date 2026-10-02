@@ -54,12 +54,12 @@ describe('wrangler.toml crons', () => {
       thrown = error;
     }
     expect(thrown).toBeInstanceOf(SDKError);
-    expect((thrown as SDKError).code).toBe('LOUSHY_SCHEDULE_INVALID');
+    expect((thrown as SDKError).code).toBe('LOUSHO_SCHEDULE_INVALID');
     expect((thrown as SDKError).message).toContain("'nightly'");
   });
 
   it('scaffold() fails before writing anything for an unsupported expression', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-cf-cron-bad-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-cf-cron-bad-'));
     const specPath = path.join(dir, 'agent.json');
     fs.writeFileSync(specPath, JSON.stringify({ ...SPEC, triggers: [trigger({ cron: '0 0 9 * * *' })] }));
     await expect(CloudflareWorkerAdapter.scaffold(specPath, path.join(dir, 'out'))).rejects.toThrow(/nightly/);
@@ -81,7 +81,7 @@ describe('built Worker bundle scheduled()', () => {
   };
 
   beforeAll(async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-cf-cron-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-cf-cron-'));
     const build = async (name: string, value: object) => {
       const out = path.join(dir, name);
       fs.mkdirSync(dir, { recursive: true });

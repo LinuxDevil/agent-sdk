@@ -57,14 +57,14 @@ describe('SecretsStore', () => {
 
   it('writes ciphertext, not the plaintext key, to secrets.json', () => {
     store.setKey('openai', 'sk-super-secret-value');
-    const raw = fs.readFileSync(path.join(baseDir, '.loushy', 'secrets.json'), 'utf8');
+    const raw = fs.readFileSync(path.join(baseDir, '.lousho', 'secrets.json'), 'utf8');
     expect(raw).not.toContain('sk-super-secret-value');
   });
 
   it('keeps the encryption key in a separate file from the ciphertext', () => {
     store.setKey('openai', 'sk-abc');
-    expect(fs.existsSync(path.join(baseDir, '.loushy', 'secrets.key'))).toBe(true);
-    expect(fs.existsSync(path.join(baseDir, '.loushy', 'secrets.json'))).toBe(true);
+    expect(fs.existsSync(path.join(baseDir, '.lousho', 'secrets.key'))).toBe(true);
+    expect(fs.existsSync(path.join(baseDir, '.lousho', 'secrets.json'))).toBe(true);
   });
 
   it('a second store instance (simulating a server restart) can decrypt keys the first instance wrote', () => {
@@ -75,7 +75,7 @@ describe('SecretsStore', () => {
 
   it('getKey returns undefined (not a throw) for a corrupted secrets file', () => {
     store.setKey('openai', 'sk-abc');
-    fs.writeFileSync(path.join(baseDir, '.loushy', 'secrets.json'), 'not json', 'utf8');
+    fs.writeFileSync(path.join(baseDir, '.lousho', 'secrets.json'), 'not json', 'utf8');
     expect(store.getKey('openai')).toBeUndefined();
     expect(() => store.list()).not.toThrow();
   });

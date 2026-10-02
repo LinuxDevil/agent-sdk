@@ -1,4 +1,4 @@
-import type { AgentSpec, AgentSpecTrigger } from '@loushy/build-ai-agent';
+import type { AgentSpec, AgentSpecTrigger } from '@lousho/build-ai-agent';
 import type { AgentGraphNode, AgentGraphSpec } from './types';
 import { graphToFlow, hasRouterNode } from './graphToFlow';
 

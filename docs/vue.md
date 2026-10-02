@@ -1,19 +1,19 @@
 # Vue
 
-`useLoushyAgent()` for Vue 3 is the [React hook](./react.md) as a composable:
+`useLoushoAgent()` for Vue 3 is the [React hook](./react.md) as a composable:
 the same sources, the same state and the same actions, over the same
 [typed event stream](./streaming.md). Read [React](./react.md) for what each
 field means, the two kinds of source, how approvals work and the server side;
 this page covers what differs.
 
-It lives in the `@loushy/build-ai-agent/vue` subpath. `vue` (3.x) is an
+It lives in the `@lousho/build-ai-agent/vue` subpath. `vue` (3.x) is an
 optional peer dependency: install it in the app that uses the composable.
 
 ```ts
-import { useLoushyAgent } from '@loushy/build-ai-agent/vue';
+import { useLoushoAgent } from '@lousho/build-ai-agent/vue';
 
 // In <script setup>:
-const { messages, status, pendingApproval, send, stop, approve, reject, reset } = useLoushyAgent(
+const { messages, status, pendingApproval, send, stop, approve, reject, reset } = useLoushoAgent(
   { url: '/api/agent' },
   { approvalsUrl: '/api/approvals' }
 );
@@ -59,4 +59,4 @@ and in the template:
 
 The reducer and the stream parser are exported from this subpath too
 (`reduceAgentEvents`, `initialAgentUIState`, `parseEventStream`), the same
-ones as in `@loushy/build-ai-agent/react`.
+ones as in `@lousho/build-ai-agent/react`.

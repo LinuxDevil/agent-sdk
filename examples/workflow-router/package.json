@@ -2,7 +2,7 @@
   "name": "workflow-router-example",
   "private": true,
   "version": "0.0.0",
-  "description": "Request classification/routing agent built with @loushy/build-ai-agent's createAgent()",
+  "description": "Request classification/routing agent built with @lousho/build-ai-agent's createAgent()",
   "scripts": {
     "start": "tsx index.ts"
   }

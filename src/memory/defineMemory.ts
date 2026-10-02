@@ -79,14 +79,14 @@ const SLOT_NAME = /^[a-zA-Z0-9_-]{1,55}$/;
 export function defineMemory(options: DefineMemoryOptions): MemorySlot {
   const { name, description, scope, provider, recall = {}, expose = {} } = options;
   if (typeof name !== 'string' || !SLOT_NAME.test(name)) {
-    throw new SDKError(`defineMemory: invalid name ${JSON.stringify(name)}. Use 1-55 characters of A-Z, a-z, 0-9, '_' and '-'.`, 'LOUSHY_MEMORY_INVALID');
+    throw new SDKError(`defineMemory: invalid name ${JSON.stringify(name)}. Use 1-55 characters of A-Z, a-z, 0-9, '_' and '-'.`, 'LOUSHO_MEMORY_INVALID');
   }
   if (typeof provider?.list !== 'function' || typeof provider.add !== 'function') {
-    throw new SDKError(`defineMemory: memory '${name}' needs a provider, e.g. inMemoryMemory() or fileMemory({ dir }).`, 'LOUSHY_MEMORY_INVALID');
+    throw new SDKError(`defineMemory: memory '${name}' needs a provider, e.g. inMemoryMemory() or fileMemory({ dir }).`, 'LOUSHO_MEMORY_INVALID');
   }
   const maxItems = recall.maxItems ?? 10;
   if (!Number.isInteger(maxItems) || maxItems < 1) {
-    throw new SDKError(`defineMemory: memory '${name}': recall.maxItems must be a positive integer, got ${maxItems}.`, 'LOUSHY_MEMORY_INVALID');
+    throw new SDKError(`defineMemory: memory '${name}': recall.maxItems must be a positive integer, got ${maxItems}.`, 'LOUSHO_MEMORY_INVALID');
   }
   return Object.freeze({
     name,

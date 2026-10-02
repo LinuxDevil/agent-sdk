@@ -8,7 +8,7 @@ directory, an in-memory tree in tests, a Docker container, or a remote
 sandbox such as E2B, Daytona or Cloudflare.
 
 ```ts
-import { AgentExecutor, ToolRegistry, NodeWorkspace, createFsTools, createShellTool } from '@loushy/build-ai-agent';
+import { AgentExecutor, ToolRegistry, NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
 
 const workspace = new NodeWorkspace({ root: '.' }); // every path is confined to this directory
 const registry = new ToolRegistry();
@@ -27,7 +27,7 @@ some commands run without asking, pass `needsApproval: false` together with an
 commands you trust.
 
 ```ts
-import { createAgent, NodeWorkspace, createFsTools, createShellTool } from '@loushy/build-ai-agent';
+import { createAgent, NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
 
 const workspace = new NodeWorkspace({ root: './project' });
 const agent = createAgent({
@@ -81,7 +81,7 @@ has `timedOut: true` or `aborted: true` and a `note` saying why.
 | `name`             | `'shell'` | Tool name. |
 
 ```ts
-import { createShellTool, NodeWorkspace } from '@loushy/build-ai-agent';
+import { createShellTool, NodeWorkspace } from '@lousho/build-ai-agent';
 
 const shell = createShellTool(new NodeWorkspace({ root: '.' }), {
   needsApproval: (command) => !/^(ls|cat|git (status|diff|log))\b/.test(command), // read-only commands run without asking
@@ -152,7 +152,7 @@ Node's process launcher also adds the session variables every process needs
 them is a secret.
 
 ```ts
-import { NodeWorkspace } from '@loushy/build-ai-agent';
+import { NodeWorkspace } from '@lousho/build-ai-agent';
 
 const workspace = new NodeWorkspace({
   root: './project',
@@ -206,7 +206,7 @@ you pass, nothing from the host. File tools can keep using `NodeWorkspace`
 on the same directory:
 
 ```ts
-import { createFsTools, createShellTool, NodeWorkspace, SandboxShell, SubprocessSandbox } from '@loushy/build-ai-agent';
+import { createFsTools, createShellTool, NodeWorkspace, SandboxShell, SubprocessSandbox } from '@lousho/build-ai-agent';
 
 const workspace = new NodeWorkspace({ root: './project' });
 const shell = new SandboxShell(new SubprocessSandbox({ image: 'node:20-alpine' }), { cwd: workspace.root });
@@ -240,8 +240,8 @@ list is only enforced when a proxy is the container's only way out.
 `SubprocessSandbox` builds that with Docker's own primitives:
 
 1. On the first `run()` it creates an **internal** bridge network
-   (`Internal: true`, no IPv6, label `com.loushy.sandbox=egress`), named
-   `networkName` or `loushy-egress-<random>`. An internal network has no
+   (`Internal: true`, no IPv6, label `com.lousho.sandbox=egress`), named
+   `networkName` or `lousho-egress-<random>`. An internal network has no
    route off the bridge. If a network with that name exists, it is reused,
    but only if it is internal.
 2. The broker gets a second listener on that network's gateway address,
@@ -262,7 +262,7 @@ list is only enforced when a proxy is the container's only way out.
    before; the network stays for the sandbox's next run until `close()`.
 
 ```ts
-import { createCredentialBroker, createShellTool, SandboxShell, SubprocessSandbox } from '@loushy/build-ai-agent';
+import { createCredentialBroker, createShellTool, SandboxShell, SubprocessSandbox } from '@lousho/build-ai-agent';
 
 const token = 'ghp_example'; // read from your secret store; it never enters the container
 const broker = await createCredentialBroker({ rules: { 'api.github.com': { authorization: () => `Bearer ${token}` } } });
@@ -287,7 +287,7 @@ What this enforces, and where:
   Containers run in a VM, so the host has no address on the internal
   network. `host.docker.internal` reaches the host only from non-internal
   networks, which would also reach everything else. `run()` rejects with
-  [`LOUSHY_SANDBOX_EGRESS_UNSUPPORTED`](./errors.md#loushy_sandbox_egress_unsupported)
+  [`LOUSHO_SANDBOX_EGRESS_UNSUPPORTED`](./errors.md#lousho_sandbox_egress_unsupported)
   and starts no container. So do rootless Docker (the bridge lives in its
   own network namespace), a daemon on another machine (the broker cannot
   bind the gateway address), a reused network that is not internal, and an
@@ -308,7 +308,7 @@ the SDK's tests exercise the wiring against a fake Docker client, not a live
 daemon.
 
 ```ts
-import { createShellTool, SandboxShell, SubprocessSandbox } from '@loushy/build-ai-agent';
+import { createShellTool, SandboxShell, SubprocessSandbox } from '@lousho/build-ai-agent';
 
 const sandbox = new SubprocessSandbox({ image: 'node:20-alpine', network: 'none' });
 const shell = new SandboxShell(sandbox, {
@@ -339,7 +339,7 @@ local HTTP proxy that adds the auth headers to requests for the hosts you
 name, so the command only ever sees the proxy's address.
 
 ```ts
-import { createCredentialBroker, NodeWorkspace } from '@loushy/build-ai-agent';
+import { createCredentialBroker, NodeWorkspace } from '@lousho/build-ai-agent';
 
 const token = 'ghp_example'; // read from your secret store; never passed to the command
 const broker = await createCredentialBroker({
@@ -399,7 +399,7 @@ custom tool could call it directly. Throw `WorkspaceError` with a readable
 message on failure.
 
 ```ts
-import { normalizeWorkspacePath, WorkspaceError, type FsProvider, type ShellProvider } from '@loushy/build-ai-agent';
+import { normalizeWorkspacePath, WorkspaceError, type FsProvider, type ShellProvider } from '@lousho/build-ai-agent';
 
 // A stand-in for your remote sandbox SDK (E2B, Daytona, Cloudflare, ...).
 declare const remote: {
@@ -448,8 +448,8 @@ way. Its `exec` is a stub you program, and every command it receives is
 recorded. Combine it with `mockModel` for deterministic tests:
 
 ```ts
-import { createAgent, createFsTools, createShellTool, MemoryWorkspace } from '@loushy/build-ai-agent';
-import { mockModel } from '@loushy/build-ai-agent/testing';
+import { createAgent, createFsTools, createShellTool, MemoryWorkspace } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
 
 const workspace = new MemoryWorkspace({
   files: { 'src/math.ts': 'export const add = (a: number, b: number) => a - b;\n' },

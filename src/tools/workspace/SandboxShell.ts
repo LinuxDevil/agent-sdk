@@ -54,7 +54,7 @@ function joinCwd(base: string | undefined, sub: string | undefined): string | un
  *
  * @example
  * ```ts
- * import { createShellTool, SandboxShell, SubprocessSandbox } from '@loushy/build-ai-agent';
+ * import { createShellTool, SandboxShell, SubprocessSandbox } from '@lousho/build-ai-agent';
  * const shell = new SandboxShell(new SubprocessSandbox({ image: 'node:20-alpine' }), { cwd: '/abs/path/to/project' });
  * const tool = createShellTool(shell, { needsApproval: false });
  * ```

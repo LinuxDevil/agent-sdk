@@ -33,7 +33,7 @@ type LocalOrRemoteSubagent = SimpleAgent | RemoteSubagent;
 export interface RemoteAgentOptions {
   /** Base URL of the deployed agent; the task goes to `<url>/chat`. */
   url: string;
-  /** Bearer token (`LOUSHY_API_TOKEN` of the deployment), or a function returning it, called per task. */
+  /** Bearer token (`LOUSHO_API_TOKEN` of the deployment), or a function returning it, called per task. */
   auth?: string | (() => string | Promise<string>);
   /** Name used in errors and the footer; defaults to the key in `subagents`. */
   name?: string;

@@ -53,7 +53,7 @@ describe('real environment', () => {
   });
 
   it('loads a spec file with its validated mcpServers', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-doctor-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-doctor-'));
     fs.writeFileSync(
       path.join(dir, 'a.yaml'),
       'name: bot\nprompt: hi\nprovider:\n  type: mock\n  model: m\nmcpServers:\n  fs:\n    command: npx\n'
@@ -95,6 +95,6 @@ describe('runDoctorCommand', () => {
     } finally {
       console.log = original;
     }
-    expect(String(lines[0])).toContain('loushy doctor');
+    expect(String(lines[0])).toContain('lousho doctor');
   });
 });

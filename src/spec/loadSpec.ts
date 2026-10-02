@@ -31,7 +31,7 @@ function parseSpecData(raw: string, ext: string, filePath: string): unknown {
   throw new ConfigurationError(
     `loadSpec: unsupported extension '${ext}' for '${filePath}'. Use .yaml, .yml or .json`,
     undefined,
-    'LOUSHY_SPEC_UNSUPPORTED_FORMAT'
+    'LOUSHO_SPEC_UNSUPPORTED_FORMAT'
   );
 }
 
@@ -39,10 +39,10 @@ function parseSpecData(raw: string, ext: string, filePath: string): unknown {
  * Loads and validates an agent spec file. Supports both .yaml/.yml (via
  * the `yaml` package) and .json (via JSON.parse), chosen by file
  * extension. Validated against the zod schema in schema.ts; a missing or
- * invalid field throws a `ValidationError` (`code: 'LOUSHY_SPEC_INVALID'`)
+ * invalid field throws a `ValidationError` (`code: 'LOUSHO_SPEC_INVALID'`)
  * whose message names the exact field (e.g. "'prompt': Required"); a
  * top-level field that looks like a typo of a spec field (`promt`) throws
- * `LOUSHY_SPEC_UNKNOWN_FIELD` with a "did you mean" suggestion. Other
+ * `LOUSHO_SPEC_UNKNOWN_FIELD` with a "did you mean" suggestion. Other
  * unknown fields are ignored.
  */
 export function loadSpec(filePath: string): AgentSpec {
@@ -54,10 +54,10 @@ export function loadSpec(filePath: string): AgentSpec {
   const typos = unknownFieldTypos(data);
   const result = agentSpecSchema.safeParse(data);
   if (!result.success) {
-    throw new ValidationError(formatZodError(filePath, result.error, typos), undefined, 'LOUSHY_SPEC_INVALID');
+    throw new ValidationError(formatZodError(filePath, result.error, typos), undefined, 'LOUSHO_SPEC_INVALID');
   }
   if (typos.length > 0) {
-    throw new ConfigurationError(`loadSpec: '${filePath}': ${typos.join('; ')}`, undefined, 'LOUSHY_SPEC_UNKNOWN_FIELD');
+    throw new ConfigurationError(`loadSpec: '${filePath}': ${typos.join('; ')}`, undefined, 'LOUSHO_SPEC_UNKNOWN_FIELD');
   }
 
   return result.data;

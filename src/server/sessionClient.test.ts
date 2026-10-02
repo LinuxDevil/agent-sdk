@@ -90,31 +90,31 @@ describe('runRemoteTurn (LOU-D53)', () => {
     expect(summary.text).toBe('ok');
   });
 
-  it('throws LOUSHY_REMOTE_UNAUTHORIZED on 401', async () => {
+  it('throws LOUSHO_REMOTE_UNAUTHORIZED on 401', async () => {
     const error = await failure(runRemoteTurn(client(deployed(['x'], 'other-token')), turn()));
     expect(error).toBeInstanceOf(SDKError);
-    expect(error?.code).toBe('LOUSHY_REMOTE_UNAUTHORIZED');
+    expect(error?.code).toBe('LOUSHO_REMOTE_UNAUTHORIZED');
     expect(error?.message).toContain('The remote');
     expect(error?.message).toContain('401');
   });
 
-  it('throws LOUSHY_REMOTE_REQUEST_FAILED on a non-2xx answer, with the server detail', async () => {
+  it('throws LOUSHO_REMOTE_REQUEST_FAILED on a non-2xx answer, with the server detail', async () => {
     const error = await failure(
       runRemoteTurn(
         client(async () => Response.json({ error: 'boom' }, { status: 502 })),
         turn()
       )
     );
-    expect(error?.code).toBe('LOUSHY_REMOTE_REQUEST_FAILED');
+    expect(error?.code).toBe('LOUSHO_REMOTE_REQUEST_FAILED');
     expect(error?.message).toContain('answered 502: boom');
   });
 
-  it('throws LOUSHY_REMOTE_REQUEST_FAILED on a network error', async () => {
+  it('throws LOUSHO_REMOTE_REQUEST_FAILED on a network error', async () => {
     const down: Fetch = async () => {
       throw new TypeError('ECONNREFUSED');
     };
     const error = await failure(runRemoteTurn(client(down), turn()));
-    expect(error?.code).toBe('LOUSHY_REMOTE_REQUEST_FAILED');
+    expect(error?.code).toBe('LOUSHO_REMOTE_REQUEST_FAILED');
     expect(error?.message).toContain('could not be reached at https://agent.test/chat: ECONNREFUSED');
   });
 
@@ -127,7 +127,7 @@ describe('runRemoteTurn (LOU-D53)', () => {
           turn()
         )
       );
-      expect(error?.code).toBe('LOUSHY_REMOTE_REQUEST_FAILED');
+      expect(error?.code).toBe('LOUSHO_REMOTE_REQUEST_FAILED');
       expect(error?.message).toContain('without a run.done');
     }
     const broken = new ReadableStream<Uint8Array>({
@@ -139,7 +139,7 @@ describe('runRemoteTurn (LOU-D53)', () => {
         turn()
       )
     );
-    expect(error?.code).toBe('LOUSHY_REMOTE_REQUEST_FAILED');
+    expect(error?.code).toBe('LOUSHO_REMOTE_REQUEST_FAILED');
     expect(error?.message).toContain('stream failed: socket hang up');
   });
 
@@ -150,7 +150,7 @@ describe('runRemoteTurn (LOU-D53)', () => {
     const run = failure(runRemoteTurn(client(hanging), turn({ signal: controller.signal })));
     controller.abort();
     const error = await run;
-    expect(error?.code).toBe('LOUSHY_REMOTE_REQUEST_FAILED');
+    expect(error?.code).toBe('LOUSHO_REMOTE_REQUEST_FAILED');
     expect(error?.message).toContain('was aborted');
   });
 

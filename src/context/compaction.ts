@@ -229,7 +229,7 @@ export function summarizeStrategy(options: SummarizeStrategyOptions): Compaction
           signal,
         });
         const summary = text.trim();
-        if (!summary) throw new SDKError('the summarizer returned an empty summary', 'LOUSHY_AGENT_EXECUTION_FAILED');
+        if (!summary) throw new SDKError('the summarizer returned an empty summary', 'LOUSHO_AGENT_EXECUTION_FAILED');
         kept.splice(summaryAt, 0, { role: 'user', content: `${SUMMARY_HEADER}\n${summary}` });
         const compacted = [...kept, ...tail];
         return { messages: compacted, tokensBefore, tokensAfter: count(compacted), prunedToolCallIds: [], summary };

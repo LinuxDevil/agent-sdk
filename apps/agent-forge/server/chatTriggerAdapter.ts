@@ -4,7 +4,7 @@
  * Wraps Agent Forge's existing chat transport - `RunManager.sendMessage()`
  * (see runRegistry.ts's doc comment on that method for the full
  * continuation semantics) - behind the SDK's `TriggerAdapter` shape
- * (`@loushy/build-ai-agent/triggers`), so `POST /agents/:id/message`
+ * (`@lousho/build-ai-agent/triggers`), so `POST /agents/:id/message`
  * (app.ts) is registered as `'chat'` in a `TriggerRegistry` alongside the
  * webhook/cron/Slack built-ins, instead of being a bespoke, unregistered
  * code path - closing the last of the four ad hoc "ways an agent can be
@@ -40,8 +40,8 @@
  * if ever actually called, rather than silently no-op-ing; `trigger()` is
  * the real, per-request entrypoint `app.ts` uses.
  */
-import type { AgentSpec, ExecutionResult } from '@loushy/build-ai-agent';
-import type { RunnableAgent, TriggerAdapter, TriggerContext, TriggerHandle } from '@loushy/build-ai-agent/triggers';
+import type { AgentSpec, ExecutionResult } from '@lousho/build-ai-agent';
+import type { RunnableAgent, TriggerAdapter, TriggerContext, TriggerHandle } from '@lousho/build-ai-agent/triggers';
 import type { RunManager } from './runRegistry';
 
 export class ChatTriggerAdapter implements TriggerAdapter {

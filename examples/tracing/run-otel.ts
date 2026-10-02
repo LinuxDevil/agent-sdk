@@ -12,7 +12,7 @@
  * LOU-D48: the same exporter also records the GenAI metrics
  * (`gen_ai.client.token.usage`, `gen_ai.client.operation.duration`) through
  * whatever global MeterProvider is registered; here an OTel MeterProvider
- * prints them to the console on shutdown. The spans carry `loushy.cost_usd`.
+ * prints them to the console on shutdown. The spans carry `lousho.cost_usd`.
  *
  * Run with:
  *   npm run example:tracing:otel
@@ -37,7 +37,7 @@ async function main() {
     spanProcessors: [new SimpleSpanProcessor(new ConsoleSpanExporter())],
   });
   provider.register();
-  const tracer = provider.getTracer('loushy-tracing-example');
+  const tracer = provider.getTracer('lousho-tracing-example');
 
   // Metrics go wherever the global MeterProvider sends them. `shutdown()`
   // below flushes them to the console once.

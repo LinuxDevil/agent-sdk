@@ -13,7 +13,7 @@ import { createMockProvider } from '../../src/providers/mock';
 import { resolveProvider } from '../../src/providers/resolveProvider';
 
 const DOCUMENT = `
-Loushy Refund Policy: Refunds are available within 30 days of purchase.
+Lousho Refund Policy: Refunds are available within 30 days of purchase.
 Digital goods are non-refundable once downloaded. Contact support with
 your order number to request a refund.
 `;

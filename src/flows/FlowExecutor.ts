@@ -329,7 +329,7 @@ export class FlowExecutor {
   ): unknown {
     const handler = this.nodeHandlers.get(node.type);
     if (!handler) {
-      throw new SDKError(`Unknown node type: ${node.type}`, 'LOUSHY_FLOW_INVALID');
+      throw new SDKError(`Unknown node type: ${node.type}`, 'LOUSHO_FLOW_INVALID');
     }
     // The handler was found by `node.type`, so `node` has that handler's shape.
     return handler(node as ExecutableNode, context, events, onEvent);
@@ -343,7 +343,7 @@ export class FlowExecutor {
     const maxDepth = context.maxDepth || 100;
     const currentDepth = context.currentDepth || 0;
     if (currentDepth > maxDepth) {
-      throw new SDKError(`Maximum flow depth ${maxDepth} exceeded`, 'LOUSHY_FLOW_EXECUTION_FAILED');
+      throw new SDKError(`Maximum flow depth ${maxDepth} exceeded`, 'LOUSHO_FLOW_EXECUTION_FAILED');
     }
   }
 
@@ -702,7 +702,7 @@ export class FlowExecutor {
 
   private static requireToolRegistry(context: FlowExecutionContext): ToolRegistry {
     if (!context.toolRegistry) {
-      throw new SDKError('Tool registry not available', 'LOUSHY_FLOW_EXECUTION_FAILED');
+      throw new SDKError('Tool registry not available', 'LOUSHO_FLOW_EXECUTION_FAILED');
     }
     return context.toolRegistry;
   }
@@ -720,7 +720,7 @@ export class FlowExecutor {
     const toolDesc = toolRegistry.get(toolName);
 
     if (!toolDesc || !toolDesc.tool) {
-      throw new SDKError(`Tool '${toolName}' not found`, 'LOUSHY_TOOL_NOT_FOUND');
+      throw new SDKError(`Tool '${toolName}' not found`, 'LOUSHO_TOOL_NOT_FOUND');
     }
 
     return { toolName, toolDesc };
@@ -916,7 +916,7 @@ export class FlowExecutor {
       return evaluateSafeExpression(expression, variables, { bindPlaceholders: true });
     } catch (error) {
       const detail = error instanceof ExpressionError ? ` (${error.message})` : '';
-      throw new SDKError(`Failed to evaluate expression: ${expression}${detail}`, 'LOUSHY_FLOW_EXECUTION_FAILED');
+      throw new SDKError(`Failed to evaluate expression: ${expression}${detail}`, 'LOUSHO_FLOW_EXECUTION_FAILED');
     }
   }
 }

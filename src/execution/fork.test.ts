@@ -178,9 +178,9 @@ describe('AgentExecutor.fork (LOU-D44)', () => {
 
     const missing = await fork({ fromStep: 9 }).catch((error: unknown) => error);
     expect(missing).toBeInstanceOf(SDKError);
-    expect(missing).toMatchObject({ code: 'LOUSHY_CHECKPOINT_NOT_FOUND' });
+    expect(missing).toMatchObject({ code: 'LOUSHO_CHECKPOINT_NOT_FOUND' });
     expect((missing as SDKError).detail).toContain('steps kept: 1, 2, 3');
-    await expect(fork({ sessionId: 'nope' })).rejects.toMatchObject({ code: 'LOUSHY_CHECKPOINT_NOT_FOUND' });
+    await expect(fork({ sessionId: 'nope' })).rejects.toMatchObject({ code: 'LOUSHO_CHECKPOINT_NOT_FOUND' });
 
     const store = env.checkpointStore;
     const noHistory: CheckpointStore = {
@@ -217,6 +217,6 @@ describe('agent.fork (LOU-D44)', () => {
 
   it('needs a checkpoint store', async () => {
     const agent = createAgent({ provider: mockModel([]) });
-    await expect(agent.fork('trip', { fromStep: 1 })).rejects.toMatchObject({ code: 'LOUSHY_CONFIG_MISSING_CHECKPOINT_STORE' });
+    await expect(agent.fork('trip', { fromStep: 1 })).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE' });
   });
 });

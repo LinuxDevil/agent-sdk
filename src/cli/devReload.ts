@@ -1,5 +1,5 @@
 /**
- * What `loushy dev` serves and how it hot-reloads it (LOU-D31).
+ * What `lousho dev` serves and how it hot-reloads it (LOU-D31).
  *
  * A target is a spec file (.yaml/.yml/.json), an agent directory, or a
  * .ts/.js module whose default (or `agent`) export is a `SimpleAgent` or a
@@ -67,7 +67,7 @@ const RESOLVE_EXT = ['.ts', '.mts', '.cts', '.js', '.mjs', '.cjs', '.json'];
 const TARGET_HINT = 'Pass an agent spec (.yaml/.yml/.json), an agent directory, or a .ts/.js module that exports an agent.';
 
 function log(message: string): void {
-  console.log(`[loushy dev] ${message}`);
+  console.log(`[lousho dev] ${message}`);
 }
 
 /** Picks the target kind from the path: a directory, a spec by extension, or a module by extension. */
@@ -78,12 +78,12 @@ export function detectTarget(rawPath: string): DevTarget {
   // A missing spec keeps failing inside loadSpec, as it always did.
   if (SPEC_EXT.has(ext)) return { kind: 'spec', path: file };
   if (!fs.existsSync(file)) {
-    throw new SDKError(`loushy dev: '${rawPath}' does not exist.`, 'LOUSHY_CONFIG_INVALID', { hint: TARGET_HINT });
+    throw new SDKError(`lousho dev: '${rawPath}' does not exist.`, 'LOUSHO_CONFIG_INVALID', { hint: TARGET_HINT });
   }
   if (MODULE_EXT.has(ext)) return { kind: 'module', path: file };
   throw new SDKError(
-    `loushy dev: unsupported file type '${ext || '(none)'}' for '${rawPath}'.`,
-    'LOUSHY_SPEC_UNSUPPORTED_FORMAT',
+    `lousho dev: unsupported file type '${ext || '(none)'}' for '${rawPath}'.`,
+    'LOUSHO_SPEC_UNSUPPORTED_FORMAT',
     { hint: TARGET_HINT }
   );
 }
@@ -120,8 +120,8 @@ async function loadModuleAgent(file: string, token: string, overrides: CreateAge
     return agent;
   }
   throw new SDKError(
-    `loushy dev: ${file} must export a SimpleAgent or a createAgent() config as its default export (or as 'agent').`,
-    'LOUSHY_CONFIG_INVALID',
+    `lousho dev: ${file} must export a SimpleAgent or a createAgent() config as its default export (or as 'agent').`,
+    'LOUSHO_CONFIG_INVALID',
     { hint: "Add 'export default createAgent({ ... })', or export the createAgent() options object." }
   );
 }
@@ -268,7 +268,7 @@ export async function startReloader(target: DevTarget, options: DevOptions = {})
       log(`reloaded ${name} (changed: ${what})`);
     } catch (error) {
       state.error = error instanceof Error ? error.message : String(error);
-      console.error(`[loushy dev] failed to reload ${name}, keeping the previous agent: ${state.error}`);
+      console.error(`[lousho dev] failed to reload ${name}, keeping the previous agent: ${state.error}`);
     }
   }
 

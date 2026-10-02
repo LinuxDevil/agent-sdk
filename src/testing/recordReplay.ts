@@ -70,7 +70,7 @@ export interface RecordReplayOptions {
  * ```ts
  * const provider = recordReplay(() => resolveProvider('openai/gpt-4o-mini'), {
  *   cassette: './__cassettes__/refund-flow.json',
- *   mode: process.env.LOUSHY_RECORD ? 'record' : 'replay',
+ *   mode: process.env.LOUSHO_RECORD ? 'record' : 'replay',
  * });
  * ```
  */
@@ -438,11 +438,11 @@ function resolveMode(options: RecordReplayOptions): 'record' | 'replay' {
  *
  * @example
  * ```ts
- * import { recordReplay } from '@loushy/build-ai-agent/testing';
+ * import { recordReplay } from '@lousho/build-ai-agent/testing';
  *
  * const provider = recordReplay(() => resolveProvider('openai/gpt-4o-mini'), {
  *   cassette: './__cassettes__/refund-flow.json',
- *   mode: process.env.LOUSHY_RECORD ? 'record' : 'replay',
+ *   mode: process.env.LOUSHO_RECORD ? 'record' : 'replay',
  * });
  * const agent = createAgent({ provider, prompt: 'You handle refunds.' });
  * ```
@@ -454,7 +454,7 @@ export function recordReplay(provider: RecordReplaySource, options: RecordReplay
   if (!real) {
     throw new SDKError(
       "recordReplay: record mode needs a provider to record from, but none was given. Pass the real provider (or a () => provider factory) as the first argument, or use mode: 'replay'.",
-      'LOUSHY_CONFIG_INVALID'
+      'LOUSHO_CONFIG_INVALID'
     );
   }
   return new Recorder(real, options);

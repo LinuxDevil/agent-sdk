@@ -33,7 +33,7 @@ export interface DefineToolOptions<S extends StandardSchemaV1, R> {
   /**
    * MCP hints about the tool (`readOnlyHint`, `destructiveHint`, `idempotentHint`,
    * `openWorldHint`, `title`). `serveMcp()` sends them to MCP clients verbatim, and a
-   * Loushy agent consuming that server skips approval for `readOnlyHint: true`.
+   * Lousho agent consuming that server skips approval for `readOnlyHint: true`.
    * Stored as `metadata.mcp.annotations`. A tool that needs approval is never
    * advertised as read-only, whatever is set here.
    */
@@ -79,7 +79,7 @@ export function isDefinedTool(value: unknown): value is DefinedTool {
 }
 
 function fail(problem: string, fix: string): never {
-  throw new SDKError(`defineTool: ${problem}. ${fix}`, 'LOUSHY_CONFIG_INVALID');
+  throw new SDKError(`defineTool: ${problem}. ${fix}`, 'LOUSHO_CONFIG_INVALID');
 }
 
 function assertValidOptions(opts: { name?: unknown; description?: unknown; input?: unknown; execute?: unknown }): void {

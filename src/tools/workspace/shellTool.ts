@@ -143,7 +143,7 @@ function toToolResult(result: ShellExecResult, timeoutMs: number, maxChars: numb
  *
  * @example
  * ```ts
- * import { createShellTool, NodeWorkspace } from '@loushy/build-ai-agent';
+ * import { createShellTool, NodeWorkspace } from '@lousho/build-ai-agent';
  * const workspace = new NodeWorkspace({ root: '.' });
  * const shell = createShellTool(workspace, {
  *   needsApproval: (command) => !command.startsWith('git status'),

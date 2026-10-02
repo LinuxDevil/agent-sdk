@@ -238,7 +238,7 @@ describe('createCredentialBroker (LOU-X12)', () => {
 
   it('end to end: a NodeWorkspace command reaches the API through broker.env with the token it never holds', async () => {
     const b = await broker();
-    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-broker-')));
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-broker-')));
     try {
       const script = [
         "const http = require('node:http');",

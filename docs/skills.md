@@ -22,7 +22,7 @@ can correct itself.
 ## Skills in code
 
 ```ts
-import { createAgent, defineSkill } from '@loushy/build-ai-agent';
+import { createAgent, defineSkill } from '@lousho/build-ai-agent';
 
 const agent = createAgent({
   prompt: 'You are a release engineer.',
@@ -44,7 +44,7 @@ non-empty. Errors say what is wrong and how to fix it.
 The full executor API takes the same option:
 
 ```ts
-import { AgentExecutor, defineSkill } from '@loushy/build-ai-agent';
+import { AgentExecutor, defineSkill } from '@lousho/build-ai-agent';
 
 const result = await AgentExecutor.execute({
   agent,
@@ -90,7 +90,7 @@ Use the imperative mood and link the PR.
   (both paths are listed).
 
 ```ts
-import { createAgent, loadSkills } from '@loushy/build-ai-agent';
+import { createAgent, loadSkills } from '@lousho/build-ai-agent';
 
 const agent = createAgent({
   prompt: 'You are a release engineer.',

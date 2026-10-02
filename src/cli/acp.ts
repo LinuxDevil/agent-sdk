@@ -1,7 +1,7 @@
 /**
- * `loushy acp <path> [--model provider/model]` - serve an agent over the
+ * `lousho acp <path> [--model provider/model]` - serve an agent over the
  * Agent Client Protocol on stdio, for editors such as Zed (LOU-Z6). The path
- * is what `loushy chat` takes. stdout carries only protocol messages, so
+ * is what `lousho chat` takes. stdout carries only protocol messages, so
  * everything else (errors, the agent's own console output) goes to stderr.
  */
 import * as readline from 'node:readline';
@@ -11,11 +11,11 @@ import type { CreateAgentConfig } from '../createAgent';
 import { parseCommand, stringValue, usageError, type CommandSpec } from './args';
 import { buildAgent } from './chat';
 
-const USAGE = 'Usage: loushy acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]';
+const USAGE = 'Usage: lousho acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]';
 
 const SPEC: CommandSpec = { command: 'acp', usage: USAGE, positionals: 1, options: { model: { type: 'string' } } };
 
-/** Parses the arguments after `acp`; throws `LOUSHY_CONFIG_INVALID` for a missing path, an unknown flag or a flag without its value. */
+/** Parses the arguments after `acp`; throws `LOUSHO_CONFIG_INVALID` for a missing path, an unknown flag or a flag without its value. */
 export function parseAcpArgs(args: string[]): { path: string; model?: string; help?: boolean } {
   const { values, positionals, help } = parseCommand(SPEC, args);
   if (help) return { path: '', help };
@@ -42,7 +42,7 @@ async function withConsoleOnStderr<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
-/** Runs `loushy acp` with the arguments after `acp` until stdin ends; resolves with the exit code. */
+/** Runs `lousho acp` with the arguments after `acp` until stdin ends; resolves with the exit code. */
 export async function runAcp(args: string[], io: AcpIo = { stdin: process.stdin, stdout: process.stdout, stderr: process.stderr }): Promise<number> {
   try {
     const parsed = parseAcpArgs(args);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Message } from '@loushy/build-ai-agent';
+import type { Message } from '@lousho/build-ai-agent';
 import { reconcileChatMessages } from '../chatReconcile';
 import type { ChatMessage } from '../../shared/wireTypes';
 

@@ -203,7 +203,7 @@ export function createMockProvider(config: MockProviderConfig = { name: 'mock' }
  * imports OpenAIProvider/OllamaProvider/OpenRouterProvider, which statically
  * `import` their optional peer-dependency SDKs ('@ai-sdk/openai',
  * 'ollama-ai-provider', ...) at module scope - fine for consumers who have
- * those installed, but not for a bundle like `loushy dev`'s CLI entry
+ * those installed, but not for a bundle like `lousho dev`'s CLI entry
  * (dist/cli/dev.js) or LOU-H10's starter templates, which must boot with
  * zero API keys/SDKs installed via just the mock provider.
  *

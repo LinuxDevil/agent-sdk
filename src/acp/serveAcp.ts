@@ -2,7 +2,7 @@
  * `serveAcp()` - serve an agent over the Agent Client Protocol (ACP v1,
  * agentclientprotocol.com): JSON-RPC 2.0, one JSON message per line (LOU-Z6).
  * Transport-independent: it reads lines from `input` and hands each outgoing
- * line to `write`; `loushy acp` wires them to stdin and stdout.
+ * line to `write`; `lousho acp` wires them to stdin and stdout.
  */
 import type { SimpleAgent } from '../createAgent';
 import type { AgentEvent, AgentEventOf, AgentEventType } from '../execution/agentEvents';
@@ -96,7 +96,7 @@ function promptText(blocks: unknown): string {
 function toRpcError(error: unknown): Json {
   if (error instanceof RpcError) return { code: error.code, message: error.message, ...(error.data && { data: error.data }) };
   const message = error instanceof Error ? error.message : String(error);
-  return { code: -32603, message, data: { code: /\[([A-Z][A-Z0-9_]+)\]/.exec(message)?.[1] ?? 'LOUSHY_GENERIC_ERROR' } };
+  return { code: -32603, message, data: { code: /\[([A-Z][A-Z0-9_]+)\]/.exec(message)?.[1] ?? 'LOUSHO_GENERIC_ERROR' } };
 }
 
 /**
@@ -116,7 +116,7 @@ export async function serveAcp(agent: SimpleAgent, options: ServeAcpOptions): Pr
 
   /** Sends a request to the client; an abort settles it as `cancelled`. */
   function request(method: string, params: Json, signal: AbortSignal): Promise<RpcMessage> {
-    const id = `loushy-${nextRequest++}`;
+    const id = `lousho-${nextRequest++}`;
     return new Promise((resolve) => {
       const settle = (message: RpcMessage) => (waiting.delete(id), resolve(message));
       const cancelled = () => settle({ result: { outcome: { outcome: 'cancelled' } } });
@@ -188,7 +188,7 @@ export async function serveAcp(agent: SimpleAgent, options: ServeAcpOptions): Pr
     try {
       const outcome = await turn(sessionId, session, input, controller.signal);
       if (controller.signal.aborted) return { stopReason: 'cancelled' };
-      if (outcome.finishReason === 'error') throw new SDKError(outcome.error ?? 'The run failed.', 'LOUSHY_AGENT_EXECUTION_FAILED');
+      if (outcome.finishReason === 'error') throw new SDKError(outcome.error ?? 'The run failed.', 'LOUSHO_AGENT_EXECUTION_FAILED');
       return { stopReason: STOP_REASONS[outcome.finishReason] ?? 'end_turn' };
     } finally {
       session.abort = undefined;

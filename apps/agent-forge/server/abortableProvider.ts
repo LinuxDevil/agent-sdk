@@ -40,7 +40,7 @@
  * cancellation; this wrapper's shape (signal checked, forwarded if the
  * real provider accepts one) is what that wiring would build on.
  */
-import type { LLMProvider, GenerateOptions, GenerateResult, StreamResult } from '@loushy/build-ai-agent';
+import type { LLMProvider, GenerateOptions, GenerateResult, StreamResult } from '@lousho/build-ai-agent';
 
 /**
  * Named `AbortError` (the fetch/AbortSignal convention) on purpose: the SDK's

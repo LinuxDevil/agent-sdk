@@ -1,5 +1,5 @@
 /**
- * `loushy dev` - a local dev server for iterating on an agent (LOU-H6).
+ * `lousho dev` - a local dev server for iterating on an agent (LOU-H6).
  *
  * Serves:
  *   GET  /health  -> 200 'ok'
@@ -76,7 +76,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   if (handler) return handler(req, res, holder);
   if (await holder.channels?.(req, res)) return;
   const chat: ChatRoutesContext = {
-    name: 'loushy dev',
+    name: 'lousho dev',
     agent: () => holder.agent,
     // The dev store keeps sessions across reloads, unless the agent brought its own.
     session: (agent, id) => agent.session(hasOwnStore(agent) ? { id } : { id, store: holder.store }),
@@ -87,7 +87,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 function createDevHttpServer(holder: AgentHolder): http.Server {
   return http.createServer((req, res) => {
     handleRequest(req, res, holder).catch((error) => {
-      console.error('[loushy dev] unhandled request error:', error);
+      console.error('[lousho dev] unhandled request error:', error);
       if (!res.headersSent) {
         res.writeHead(500);
       }
@@ -101,7 +101,7 @@ function listenOnPort(server: http.Server, port: number, host: string): Promise<
     const onError = (err: NodeJS.ErrnoException) => {
       server.removeListener('listening', onListening);
       if (err.code === 'EADDRINUSE') {
-        reject(new Error(`[loushy dev] port ${port} is already in use. Pass a different port.`));
+        reject(new Error(`[lousho dev] port ${port} is already in use. Pass a different port.`));
       } else {
         reject(err);
       }
@@ -159,7 +159,7 @@ export async function startDevServer(
   };
 }
 
-const USAGE = 'Usage: loushy dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--no-schedules]';
+const USAGE = 'Usage: lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--no-schedules]';
 
 const SPEC: CommandSpec = {
   command: 'dev',
@@ -178,7 +178,7 @@ export interface DevCliArgs {
   help?: boolean;
 }
 
-/** Parses the arguments after `dev`; throws `LOUSHY_CONFIG_INVALID` for a missing path, an unknown flag, a flag without its value or a bad port. */
+/** Parses the arguments after `dev`; throws `LOUSHO_CONFIG_INVALID` for a missing path, an unknown flag, a flag without its value or a bad port. */
 export function parseDevArgs(rest: string[]): DevCliArgs {
   const { values, positionals, help } = parseCommand(SPEC, rest);
   if (help) return { path: '', port: 3737, host: '127.0.0.1', help };
@@ -187,7 +187,7 @@ export function parseDevArgs(rest: string[]): DevCliArgs {
   return { path: positionals[0], port: portValue(SPEC, values.port, 3737), host: stringValue(values.host) ?? '127.0.0.1', noSchedules };
 }
 
-/** Runs `loushy dev` with the arguments after `dev`; resolves with the exit code once the server listens. */
+/** Runs `lousho dev` with the arguments after `dev`; resolves with the exit code once the server listens. */
 export async function runDev(rest: string[]): Promise<number> {
   try {
     const args = parseDevArgs(rest);
@@ -196,7 +196,7 @@ export async function runDev(rest: string[]): Promise<number> {
       return 0;
     }
     const handle = await startDevServer(path.resolve(args.path), args.port, args.host, { schedules: !args.noSchedules });
-    console.log(`loushy dev: listening on http://${args.host}:${handle.port}`);
+    console.log(`lousho dev: listening on http://${args.host}:${handle.port}`);
     return 0;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

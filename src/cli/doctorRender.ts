@@ -25,7 +25,7 @@ export function renderReport(report: DoctorReport, options: RenderOptions = {}):
   const color = options.color === true;
   const { ok, warn, fail } = report.summary;
   return [
-    'loushy doctor',
+    'lousho doctor',
     '',
     ...report.checks.flatMap((check) => renderCheck(check, color)),
     '',

@@ -10,7 +10,7 @@
  * defines the wire shape of the status/events the server reports back to
  * the app over `GET /agents/:id/status` and `WS /agents/:id/stream`.
  */
-import type { CheckpointStatus, TrajectoryComparison, TrajectoryStep } from '@loushy/build-ai-agent';
+import type { CheckpointStatus, TrajectoryComparison, TrajectoryStep } from '@lousho/build-ai-agent';
 
 /**
  * Status pill states the app's agent list / topbar render (LOU-L/M's
@@ -215,7 +215,7 @@ export interface SettingsFile {
   profiles: SettingsProfile[];
 }
 
-/** R2: `POST /agents/:id/deploy`'s result - the shelled-out `loushy build` child process's outcome. */
+/** R2: `POST /agents/:id/deploy`'s result - the shelled-out `lousho build` child process's outcome. */
 export interface DeployResult {
   exitCode: number;
   stdout: string;

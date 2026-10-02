@@ -11,9 +11,9 @@ import { Statements } from './stores';
  *
  * @example
  * ```ts
- * import { SqliteStore, sqliteMemory } from '@loushy/build-ai-agent/sqlite';
+ * import { SqliteStore, sqliteMemory } from '@lousho/build-ai-agent/sqlite';
  *
- * const store = new SqliteStore('./.loushy/agent.db');
+ * const store = new SqliteStore('./.lousho/agent.db');
  * const prefs = defineMemory({ name: 'prefs', scope: 'global', provider: sqliteMemory(store) });
  * ```
  */

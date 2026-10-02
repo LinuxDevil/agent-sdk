@@ -7,7 +7,7 @@ to build an agent; they are here for the apps around one.
 ## Encryption and hashing
 
 ```ts
-import { EncryptionUtils, sha256 } from '@loushy/build-ai-agent';
+import { EncryptionUtils, sha256 } from '@lousho/build-ai-agent';
 
 const encryption = new EncryptionUtils('your-secret-key');
 const encrypted = await encryption.encrypt('sensitive data'); // fresh random salt every call
@@ -28,7 +28,7 @@ as-is. It is also what `StorageServiceApprovalStore` and
 `LocalStorageCheckpointStore` write through.
 
 ```ts
-import { StorageService } from '@loushy/build-ai-agent';
+import { StorageService } from '@lousho/build-ai-agent';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 

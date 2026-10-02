@@ -24,7 +24,7 @@ function startServer(outDir: string): Promise<{ stop: () => void; port: number; 
     const timer = setTimeout(() => reject(new Error(`server did not start: ${stdout} ${stderr}`)), 15_000);
     child.stdout.on('data', (chunk) => {
       stdout += chunk;
-      const match = /listening on http:\/\/[^:]+:(\d+)\s+loushy server: schedules: (.*)/.exec(stdout);
+      const match = /listening on http:\/\/[^:]+:(\d+)\s+lousho server: schedules: (.*)/.exec(stdout);
       if (!match) return;
       clearTimeout(timer);
       resolve({ stop: () => child.kill(), port: Number(match[1]), stdout });
@@ -35,7 +35,7 @@ function startServer(outDir: string): Promise<{ stop: () => void; port: number; 
 }
 
 function tmp(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'loushy-p83-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-p83-'));
 }
 
 describe('optional peers stay external in bundled builds', () => {
@@ -97,6 +97,6 @@ describe('spec cron triggers on the node server', () => {
     const dir = tmp();
     const spec = path.join(dir, 'agent.json');
     fs.writeFileSync(spec, JSON.stringify({ name: 'bad', prompt: 'p', provider: { type: 'mock', model: 'm' }, triggers: [{ type: 'cron', input: 'x' }] }));
-    await expect(NodeServerAdapter.scaffold(spec, path.join(dir, 'out'))).rejects.toMatchObject({ code: 'LOUSHY_SCHEDULE_INVALID' });
+    await expect(NodeServerAdapter.scaffold(spec, path.join(dir, 'out'))).rejects.toMatchObject({ code: 'LOUSHO_SCHEDULE_INVALID' });
   });
 });

@@ -57,7 +57,7 @@ export interface SessionBudget {
 /** Thrown when a limit trips under `onExceeded: 'throw'`; `budget` says which. */
 export class BudgetExceededError extends SDKError {
   constructor(readonly budget: BudgetExceeded) {
-    super(`The ${budget.scope} limit ${budget.limit} (${budget.max}) was reached: ${budget.value}.`, 'LOUSHY_BUDGET_EXCEEDED');
+    super(`The ${budget.scope} limit ${budget.limit} (${budget.max}) was reached: ${budget.value}.`, 'LOUSHO_BUDGET_EXCEEDED');
     this.name = 'BudgetExceededError';
   }
 }

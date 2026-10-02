@@ -8,7 +8,7 @@ days. Nothing here depends on a particular host: any `CheckpointStore`
 and any `ApprovalStore` work the same way.
 
 ```ts
-import { AgentExecutor, LocalStorageCheckpointStore } from '@loushy/build-ai-agent';
+import { AgentExecutor, LocalStorageCheckpointStore } from '@lousho/build-ai-agent';
 
 const checkpoints = new LocalStorageCheckpointStore(storage);
 
@@ -25,10 +25,10 @@ after a crash, `agent.resume(sessionId)` finishes it (and returns `null` when
 nothing is pending). No `AgentExecutor` needed:
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
-import { SqliteStore } from '@loushy/build-ai-agent/sqlite';
+import { createAgent } from '@lousho/build-ai-agent';
+import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
 
-const agent = createAgent({ provider, store: new SqliteStore('./.loushy/jobs.db') });
+const agent = createAgent({ provider, store: new SqliteStore('./.lousho/jobs.db') });
 
 const finished = await agent.resume('job-1'); // the interrupted run, if any
 const next = await agent.send('Now write a summary', { sessionId: 'job-1' }); // continues the same run's conversation
@@ -92,7 +92,7 @@ session (the session already has its system prompt). To end a session and
 start over under the same id, call `checkpointStore.delete(sessionId)`.
 
 ```ts
-import { AgentExecutor, SessionAwaitingApprovalError } from '@loushy/build-ai-agent';
+import { AgentExecutor, SessionAwaitingApprovalError } from '@lousho/build-ai-agent';
 
 try {
   await AgentExecutor.execute({ agent, input: 'Are you done?', provider, sessionId: 'chat-42', checkpointStore });
@@ -118,7 +118,7 @@ approval snapshot records the calls after it (`remainingToolCalls`).
 3. calls the model once every call of the turn has exactly one result.
 
 ```ts
-import { AgentExecutor, resumeAfterApproval } from '@loushy/build-ai-agent';
+import { AgentExecutor, resumeAfterApproval } from '@lousho/build-ai-agent';
 
 const paused = await AgentExecutor.execute({
   agent, input, provider, toolRegistry, approvalStore, sessionId: 'chat-42', checkpointStore,
@@ -167,7 +167,7 @@ re-run on resume) is passed to `execute`, so it works as an idempotency
 key:
 
 ```ts
-import { defineTool } from '@loushy/build-ai-agent';
+import { defineTool } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 declare const payments: { charge(amount: number, opts: { idempotencyKey: string }): Promise<{ id: string }> };
@@ -206,7 +206,7 @@ Which stores keep one:
 For example, with the in-memory store:
 
 ```ts
-import { getCheckpointHistory, memoryStore } from '@loushy/build-ai-agent';
+import { getCheckpointHistory, memoryStore } from '@lousho/build-ai-agent';
 
 const { checkpoints } = memoryStore({ historyLimit: 20 }); // default 50, 0 keeps none
 // new SqliteStore(path, { historyLimit }), new LocalStorageCheckpointStore(storage, { historyLimit })
@@ -244,7 +244,7 @@ await checkpoints.delete('chat-42', { keepHistory: true });
   requests to one location when that matters. Each save costs one `get` and two
   `put`s more; `historyLimit: 0` turns it off.
 - Agent Forge's file store writes the history as one file per session
-  (`.loushy/agents/<id>/checkpoint-history/<session>.json`, replaced
+  (`.lousho/agents/<id>/checkpoint-history/<session>.json`, replaced
   atomically); a file damaged by a crash reads as no history and is rebuilt by
   the next save.
 - `SqliteStore` keeps the history in a new `checkpoint_history` table, added when
@@ -260,7 +260,7 @@ newest history entry of `fromStep`, applies `patch`, saves the result as the
 `{ sessionId, step, checkpoint }`. Resume the fork like any unfinished run:
 
 ```ts
-import { AgentExecutor, compareTrajectories, memoryStore } from '@loushy/build-ai-agent';
+import { AgentExecutor, compareTrajectories, memoryStore } from '@lousho/build-ai-agent';
 
 const { checkpoints } = memoryStore();
 await AgentExecutor.execute({ agent, provider, toolRegistry, input: 'Plan my trip', sessionId: 'trip', checkpointStore: checkpoints });
@@ -287,7 +287,7 @@ does the same over `store.checkpoints`, and `agent.resume(fork.sessionId)`
 continues the fork:
 
 ```ts
-import { createAgent, memoryStore } from '@loushy/build-ai-agent';
+import { createAgent, memoryStore } from '@lousho/build-ai-agent';
 
 const assistant = createAgent({ provider, store: memoryStore() });
 await assistant.send('Plan my trip', { sessionId: 'trip' });
@@ -311,14 +311,14 @@ const result = await assistant.resume(fork.sessionId);
   is refused.
 - A step the history does not have (the session is unknown, the step never
   ran, or it was dropped past `historyLimit`) throws an `SDKError` with code
-  [`LOUSHY_CHECKPOINT_NOT_FOUND`](./errors.md#loushy_checkpoint_not_found),
+  [`LOUSHO_CHECKPOINT_NOT_FOUND`](./errors.md#lousho_checkpoint_not_found),
   whose message lists the steps that are kept. A store without `history()`
   cannot fork (`ConfigurationError`).
 - `compareTrajectories(a, b)` takes two checkpoints or two transcripts and
   returns each run's steps (one per assistant turn: its text and tool calls
   with their results), `divergedAt` (the first step that differs, tool call
   ids aside) and `drift`, the tool-order, argument, step-count and
-  finish-reason differences in the same shape as `loushy eval --drift`.
+  finish-reason differences in the same shape as `lousho eval --drift`.
 
 ## Resuming with a changed agent
 
@@ -340,17 +340,17 @@ difference does:
 | `onAgentDrift` | On a different model, tools or instructions |
 | -------------- | ------------------------------------------- |
 | `'warn'` (default) | A `console.warn` naming what changed and an `agent.drift` event (`model`, `toolsAdded`, `toolsRemoved`, `toolsChanged`, `instructions`); the run continues. |
-| `'error'` | Rejects with [`LOUSHY_AGENT_DRIFT`](./errors.md#loushy_agent_drift). The checkpoint is left as it was; an approval is put back, so the right agent can still resolve it. |
+| `'error'` | Rejects with [`LOUSHO_AGENT_DRIFT`](./errors.md#lousho_agent_drift). The checkpoint is left as it was; an approval is put back, so the right agent can still resolve it. |
 | `'ignore'` | Nothing. |
 
 A pending tool call whose tool no longer exists (the model's last turn called
 it and it has no result yet, or the human approved it) always rejects with
-[`LOUSHY_RESUME_TOOL_MISSING`](./errors.md#loushy_resume_tool_missing),
+[`LOUSHO_RESUME_TOOL_MISSING`](./errors.md#lousho_resume_tool_missing),
 whatever the option.
 
 ```ts
-import { createAgent, memoryStore } from '@loushy/build-ai-agent';
-import type { LLMProvider } from '@loushy/build-ai-agent';
+import { createAgent, memoryStore } from '@lousho/build-ai-agent';
+import type { LLMProvider } from '@lousho/build-ai-agent';
 
 declare const provider: LLMProvider;
 

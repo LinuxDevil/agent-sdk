@@ -47,8 +47,8 @@ describe('renderProject', () => {
     const pkg = JSON.parse(files['package.json']!);
     expect(pkg).toMatchObject({ name: 'demo-agent', type: 'module', private: true });
     expect(Object.keys(pkg.scripts)).toEqual(expect.arrayContaining(['dev', 'test', 'doctor']));
-    expect(pkg.scripts.doctor).toMatch(/^loushy doctor/);
-    expect(pkg.dependencies['@loushy/build-ai-agent']).toBe('^1.0.0-alpha.8');
+    expect(pkg.scripts.doctor).toMatch(/^lousho doctor/);
+    expect(pkg.dependencies['@lousho/build-ai-agent']).toBe('^1.0.0-alpha.8');
     expect(pkg.dependencies).toMatchObject({ ai: SCAFFOLD_PAIRINGS[provider]!.ai, zod: '^3.25.76' });
 
     expect(JSON.parse(files['tsconfig.json']!).compilerOptions).toMatchObject({ strict: true, module: 'NodeNext' });
@@ -67,10 +67,10 @@ describe('renderProject', () => {
     '%s / %s: agent.ts uses createAgent + defineTool and the test uses mockModel',
     (provider, template) => {
       const files = renderProject(config(provider, template));
-      expect(files['src/agent.ts']).toContain("import { createAgent, defineTool, type LLMProvider } from '@loushy/build-ai-agent';");
+      expect(files['src/agent.ts']).toContain("import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';");
       expect(files['src/agent.ts']).toMatch(new RegExp(`model: '${provider}/[^']+'`));
       expect(files['src/agent.ts']).toContain('instructions');
-      expect(files['src/agent.test.ts']).toContain("import { mockModel } from '@loushy/build-ai-agent/testing';");
+      expect(files['src/agent.test.ts']).toContain("import { mockModel } from '@lousho/build-ai-agent/testing';");
       expect(files['agent.yaml']).toBeUndefined();
       expect(JSON.parse(files['package.json']!).scripts.dev).toContain('src/index.ts');
     }
@@ -99,10 +99,10 @@ describe('renderProject', () => {
     expect(dependencies).toMatchObject(pairing);
   });
 
-  it('the yaml template ships agent.yaml and runs it with loushy dev', () => {
+  it('the yaml template ships agent.yaml and runs it with lousho dev', () => {
     const files = renderProject(config('anthropic', 'yaml'));
     expect(files['agent.yaml']).toContain('type: anthropic');
-    expect(JSON.parse(files['package.json']!).scripts.dev).toBe('loushy dev agent.yaml');
+    expect(JSON.parse(files['package.json']!).scripts.dev).toBe('lousho dev agent.yaml');
     expect(files['src/agent.ts']).toBeUndefined();
   });
 

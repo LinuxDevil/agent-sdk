@@ -30,7 +30,7 @@ export class Connection {
       migrate(database);
     } catch (error) {
       database.close();
-      throw new SDKError(`Could not open SQLite database at ${location}: ${(error as Error).message}`, 'LOUSHY_STORAGE_FAILED', {
+      throw new SDKError(`Could not open SQLite database at ${location}: ${(error as Error).message}`, 'LOUSHO_STORAGE_FAILED', {
         cause: error,
       });
     }
@@ -40,7 +40,7 @@ export class Connection {
   /** The open database; throws once {@link close} has been called. */
   get db(): SqlDatabase {
     if (!this.database) {
-      throw new SDKError(`SqliteStore for ${this.path} is closed. Create a new SqliteStore to keep using it.`, 'LOUSHY_STORAGE_FAILED');
+      throw new SDKError(`SqliteStore for ${this.path} is closed. Create a new SqliteStore to keep using it.`, 'LOUSHO_STORAGE_FAILED');
     }
     return this.database;
   }

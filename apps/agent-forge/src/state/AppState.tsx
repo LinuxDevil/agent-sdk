@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { AgentSpec } from '@loushy/build-ai-agent';
+import type { AgentSpec } from '@lousho/build-ai-agent';
 import { LocalStorageAgentStore } from '../persistence/LocalStorageAgentStore';
 import type { AgentStore, AgentStoreEntry } from '../persistence/AgentStore';
 import type { AgentGraphSpec } from '../graph/types';

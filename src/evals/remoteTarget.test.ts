@@ -89,7 +89,7 @@ describe('remoteTarget (LOU-D47)', () => {
       await t.send('hi');
     });
     expect(result.passed).toBe(false);
-    expect(result.error).toContain('LOUSHY_REMOTE_UNAUTHORIZED');
+    expect(result.error).toContain('LOUSHO_REMOTE_UNAUTHORIZED');
     expect(JSON.stringify(result)).not.toContain('wrong-token-value');
     expect(renderJunit([result], false)).not.toContain('wrong-token-value');
   });
@@ -97,12 +97,12 @@ describe('remoteTarget (LOU-D47)', () => {
   it('turns network errors, non-2xx and truncated streams into coded SDK errors', async () => {
     const send = (fetchImpl: typeof fetch) => target(fetchImpl)().send('hi');
     const down = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'));
-    await expect(send(down)).rejects.toMatchObject({ code: 'LOUSHY_REMOTE_REQUEST_FAILED', message: expect.stringContaining('ECONNREFUSED') });
+    await expect(send(down)).rejects.toMatchObject({ code: 'LOUSHO_REMOTE_REQUEST_FAILED', message: expect.stringContaining('ECONNREFUSED') });
     await expect(send(async () => new Response('boom', { status: 502 }))).rejects.toThrow(/502/);
     const truncated = async () => new Response('data: {"type":"run.start","runId":"r","seq":0,"v":1,"timestamp":"t","agentName":"a"}\n\n');
     const error = await send(truncated).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(SDKError);
-    expect((error as SDKError).code).toBe('LOUSHY_REMOTE_REQUEST_FAILED');
+    expect((error as SDKError).code).toBe('LOUSHO_REMOTE_REQUEST_FAILED');
     expect((error as SDKError).message).toContain('without a run.done');
   });
 
@@ -124,6 +124,6 @@ describe('remoteTarget (LOU-D47)', () => {
 
   it('remoteTargetFromEnv reads the URL and token the CLI passes on', () => {
     expect(remoteTargetFromEnv({})).toBeUndefined();
-    expect(remoteTargetFromEnv({ LOUSHY_EVAL_URL: 'https://x.test', LOUSHY_EVAL_TOKEN: 't' })).toBeTypeOf('function');
+    expect(remoteTargetFromEnv({ LOUSHO_EVAL_URL: 'https://x.test', LOUSHO_EVAL_TOKEN: 't' })).toBeTypeOf('function');
   });
 });

@@ -240,7 +240,7 @@ describe('serveAcp', () => {
     const reply = await c.prompt(sessionId, 'hi');
     expect(reply.error.code).toBe(-32603);
     expect(reply.error.message).toContain('boom');
-    expect(reply.error.data.code).toMatch(/^LOUSHY_/);
+    expect(reply.error.data.code).toMatch(/^LOUSHO_/);
     await c.end();
   });
 

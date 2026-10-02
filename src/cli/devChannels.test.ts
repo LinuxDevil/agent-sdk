@@ -1,4 +1,4 @@
-/** LOU-P8.2: `loushy dev` mounts an agent directory's channels and starts its schedules, and swaps both on reload. */
+/** LOU-P8.2: `lousho dev` mounts an agent directory's channels and starts its schedules, and swaps both on reload. */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -45,7 +45,7 @@ async function waitFor(check: () => boolean | Promise<boolean>): Promise<void> {
   throw new Error('timed out waiting for the dev server');
 }
 
-describe('loushy dev with an agent directory that has channels and schedules', () => {
+describe('lousho dev with an agent directory that has channels and schedules', () => {
   it('mounts the channels and starts the schedules; a reload replaces the channel and restarts the schedules once', async () => {
     const dir = copyFixture();
     const { timers, scheduler } = fakeTimers();

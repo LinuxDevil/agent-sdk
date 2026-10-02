@@ -24,16 +24,16 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm run lint
       # Build the root SDK's dist *before* running tests:
-      # packages/create-loushy-agent/src/template.e2e.test.ts `npm pack`s the
+      # packages/create-lousho-agent/src/template.e2e.test.ts `npm pack`s the
       # root SDK's own source tree to install it into a generated project,
       # which needs dist/ (package.json's main/module/types) to already
       # exist - it was previously built only in the step after tests, so
       # this test always failed once it actually got a chance to run.
       - run: npm run build
-      # packages/create-loushy-agent's own tests execFileSync its bin/cli.js,
+      # packages/create-lousho-agent's own tests execFileSync its bin/cli.js,
       # which requires ITS dist/index.js to exist too - build it before the
       # test step (this is a separate package from the root SDK above).
-      - run: npm run build --workspace=packages/create-loushy-agent
+      - run: npm run build --workspace=packages/create-lousho-agent
       # Every ```ts block in README.md and docs/*.md must type-check against
       # src/ (quick-start also runs against the packed tarball). Needs dist/.
       - run: npm run docs:verify-snippets -- --skip-build
@@ -43,7 +43,7 @@ jobs:
       - run: npm run docs:llms:check
       - run: npm run test:coverage
       # Agent Forge (apps/agent-forge) imports the SDK as
-      # `@loushy/build-ai-agent` via `file:../..`, i.e. the root dist/ built
+      # `@lousho/build-ai-agent` via `file:../..`, i.e. the root dist/ built
       # above, so these run after the root build. Its client and server
       # suites were never run in CI before, which is how a Stop-then-Run
       # resume regression (LOU-U10) landed unnoticed.
@@ -71,7 +71,7 @@ jobs:
       # LOU-D28b: the suite runs on ai v7 too. The v4-only tests are gated by the shared
       # describeOnAiV4/itOnAiV4 helpers; the Worker bundle tests run on both (LOU-D28c).
       - run: npm run build
-      - run: npm run build --workspace=packages/create-loushy-agent
+      - run: npm run build --workspace=packages/create-lousho-agent
       - run: npx vitest run
   # LOU-D29: the peer is zod ^3.25.76 || ^4.0.0, and the dev install is zod 3.
   # This job runs the type check, build and suite with zod 4 installed as `zod`.
@@ -88,12 +88,12 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm run test:types
       - run: npm run build
-      - run: npm run build --workspace=packages/create-loushy-agent
+      - run: npm run build --workspace=packages/create-lousho-agent
       - run: npx vitest run
   # LOU-D49: what `npm pack` produces must install and work in a fresh project. The script
-  # builds, packs the SDK and create-loushy-agent, runs `npm publish --dry-run` (never a real
+  # builds, packs the SDK and create-lousho-agent, runs `npm publish --dry-run` (never a real
   # publish), installs the tarballs plus peers from the registry, and loads every export in
-  # ESM and CJS, runs a mock-model turn, the loushy bin and tsc (bundler and node16).
+  # ESM and CJS, runs a mock-model turn, the lousho bin and tsc (bundler and node16).
   pack-smoke:
     runs-on: ubuntu-latest
     steps:

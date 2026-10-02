@@ -1,5 +1,5 @@
 {
-  "name": "@loushy/build-ai-agent",
+  "name": "@lousho/build-ai-agent",
   "version": "1.0.0-alpha.8",
   "description": "Framework-agnostic SDK for building AI agents",
   "workspaces": [
@@ -10,7 +10,7 @@
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "bin": {
-    "loushy": "bin/loushy.js"
+    "lousho": "bin/lousho.js"
   },
   "exports": {
     ".": {
@@ -149,10 +149,10 @@
     "workflow",
     "automation",
     "framework-agnostic",
-    "loushy",
+    "lousho",
     "build-ai-agent"
   ],
-  "author": "Loushy Team",
+  "author": "Lousho Team",
   "license": "MIT",
   "repository": {
     "type": "git",

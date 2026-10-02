@@ -28,7 +28,7 @@ describe('memory/ in an agent directory (LOU-W6.3)', () => {
   it('rejects a default export that is not a slot with a coded error naming the file', async () => {
     const failure = await resolveAgentDir(fixture('err-bad-memory'), { provider: mockModel(['x']) }).catch((e: unknown) => e);
     expect(failure).toBeInstanceOf(SDKError);
-    expect((failure as SDKError).code).toBe('LOUSHY_MEMORY_INVALID');
+    expect((failure as SDKError).code).toBe('LOUSHO_MEMORY_INVALID');
     expect((failure as SDKError).message).toMatch(/broken\.ts: the default export must be a memory slot/);
   });
 

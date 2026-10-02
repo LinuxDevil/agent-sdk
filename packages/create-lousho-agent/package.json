@@ -1,10 +1,10 @@
 {
-  "name": "create-loushy-agent",
+  "name": "create-lousho-agent",
   "version": "0.1.0",
-  "description": "npm create loushy-agent: scaffold a new @loushy/build-ai-agent project (runs `loushy init`)",
+  "description": "npm create lousho-agent: scaffold a new @lousho/build-ai-agent project (runs `lousho init`)",
   "type": "commonjs",
   "bin": {
-    "create-loushy-agent": "bin/cli.js"
+    "create-lousho-agent": "bin/cli.js"
   },
   "files": [
     "dist",
@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@loushy/build-ai-agent": "^1.0.0-alpha.8",
+    "@lousho/build-ai-agent": "^1.0.0-alpha.8",
     "prompts": "^2.4.2"
   },
   "devDependencies": {

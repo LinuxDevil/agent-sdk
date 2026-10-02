@@ -105,7 +105,7 @@ describe('AgentSession.stream()', () => {
     const run = session.stream('two');
     await collect(run);
     await expect(collect(run)).rejects.toThrow(/only be iterated once/);
-    await expect(collect(run)).rejects.toMatchObject({ code: 'LOUSHY_RUN_ALREADY_ITERATED' });
+    await expect(collect(run)).rejects.toMatchObject({ code: 'LOUSHO_RUN_ALREADY_ITERATED' });
   });
 
   it('leaves the transcript unchanged when a stream is aborted by its signal', async () => {

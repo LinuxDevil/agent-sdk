@@ -349,7 +349,7 @@ describe('AgentExecutor', () => {
         })
       ).rejects.toMatchObject({
         message: expect.stringMatching(/requires approval/),
-        code: 'LOUSHY_APPROVAL_STORE_MISSING',
+        code: 'LOUSHO_APPROVAL_STORE_MISSING',
       });
     });
 
@@ -1392,7 +1392,7 @@ describe('AgentExecutor', () => {
       ).rejects.toThrow(/'provider' is required.*Example:/s);
       await expect(
         AgentExecutor.execute({ agent, input: 'Hello' } as never)
-      ).rejects.toMatchObject({ code: 'LOUSHY_CONFIG_MISSING_PROVIDER', field: 'provider' });
+      ).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_MISSING_PROVIDER', field: 'provider' });
     });
 
     it('throws naming "agent" with a corrective snippet when agent is omitted', async () => {
@@ -1404,7 +1404,7 @@ describe('AgentExecutor', () => {
       ).rejects.toThrow(/'agent' is required.*Example:/s);
       await expect(
         AgentExecutor.execute({ input: 'Hello', provider } as never)
-      ).rejects.toMatchObject({ code: 'LOUSHY_CONFIG_MISSING_AGENT' });
+      ).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_MISSING_AGENT' });
     });
 
     it('throws naming "input" with a corrective snippet when input is omitted', async () => {
@@ -1420,7 +1420,7 @@ describe('AgentExecutor', () => {
       ).rejects.toThrow(/'input' is required.*Example:/s);
       await expect(
         AgentExecutor.execute({ agent, provider } as never)
-      ).rejects.toMatchObject({ code: 'LOUSHY_CONFIG_MISSING_INPUT' });
+      ).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_MISSING_INPUT' });
     });
   });
 

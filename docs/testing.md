@@ -1,6 +1,6 @@
 # Testing agents
 
-`@loushy/build-ai-agent/testing` ships `mockModel`: a scripted, deterministic
+`@lousho/build-ai-agent/testing` ships `mockModel`: a scripted, deterministic
 `LLMProvider` for unit tests. You write down what the model should say on each
 turn, run your agent, and then assert on exactly what the agent sent to the
 model. No network, no API keys, no flakiness.
@@ -14,8 +14,8 @@ npm install --save-dev vitest
 A bare string is shorthand for `{ text }`.
 
 ```ts
-import { createAgent } from '@loushy/build-ai-agent';
-import { mockModel } from '@loushy/build-ai-agent/testing';
+import { createAgent } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
 
 const model = mockModel(['Hello! How can I help?']);
 const agent = createAgent({ prompt: 'You are friendly.', provider: model });
@@ -37,8 +37,8 @@ ids are generated deterministically (`call_1`, `call_2`, ...) unless you pass
 ```ts no-verify
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
-import { createAgent } from '@loushy/build-ai-agent';
-import { mockModel } from '@loushy/build-ai-agent/testing';
+import { createAgent } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
 
 describe('weather agent', () => {
   it('calls get_weather and reports the result', async () => {
@@ -80,8 +80,8 @@ when the provider fails.
 
 ```ts no-verify
 import { it, expect } from 'vitest';
-import { createAgent } from '@loushy/build-ai-agent';
-import { mockModel } from '@loushy/build-ai-agent/testing';
+import { createAgent } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
 
 it('surfaces a provider failure', async () => {
   const model = mockModel([{ error: new Error('upstream 503') }]);
@@ -110,7 +110,7 @@ Pass a function to compute a turn from the request. It may be async and may
 return a string or any turn object.
 
 ```ts
-import { mockModel } from '@loushy/build-ai-agent/testing';
+import { mockModel } from '@lousho/build-ai-agent/testing';
 
 const model = mockModel([(req) => `You said: ${req.messages.at(-1)?.content}`]);
 const result = await model.generate({ messages: [{ role: 'user', content: 'ping' }] });
@@ -137,7 +137,7 @@ request and tells you to add a turn. To replay the final turn forever (handy for
 loop and step-limit tests), pass `{ onExhausted: 'repeat-last' }`:
 
 ```ts
-import { mockModel } from '@loushy/build-ai-agent/testing';
+import { mockModel } from '@lousho/build-ai-agent/testing';
 
 const looping = mockModel([{ toolCalls: [{ name: 'again' }] }], { onExhausted: 'repeat-last' });
 ```
@@ -160,12 +160,12 @@ the same test replays the cassette with no network, no API key and no installed
 provider peer package.
 
 ```ts
-import { createAgent, resolveProvider } from '@loushy/build-ai-agent';
-import { recordReplay } from '@loushy/build-ai-agent/testing';
+import { createAgent, resolveProvider } from '@lousho/build-ai-agent';
+import { recordReplay } from '@lousho/build-ai-agent/testing';
 
 const provider = recordReplay(() => resolveProvider('openai/gpt-4o-mini'), {
   cassette: './__cassettes__/refund-flow.json',
-  mode: process.env.LOUSHY_RECORD ? 'record' : 'replay', // or 'auto'
+  mode: process.env.LOUSHO_RECORD ? 'record' : 'replay', // or 'auto'
 });
 const agent = createAgent({ provider, prompt: 'You handle refund requests.' });
 ```
@@ -176,17 +176,17 @@ only called when recording (so replay never constructs it). It may be
 
 ### Workflow
 
-1. Record locally with a key: `LOUSHY_RECORD=1 OPENAI_API_KEY=... npx vitest run`.
+1. Record locally with a key: `LOUSHO_RECORD=1 OPENAI_API_KEY=... npx vitest run`.
 2. Review and commit the cassette (it is stable, 2-space indented JSON, so
    diffs are readable).
 3. CI runs `npx vitest run` and replays it. Nothing else is needed.
 4. When you change the prompt, tools or flow, replay fails with a
-   `CassetteMismatchError`; re-record with `LOUSHY_RECORD=1`.
+   `CassetteMismatchError`; re-record with `LOUSHO_RECORD=1`.
 
 `mode: 'auto'` replays if the cassette file exists and records otherwise.
 
 For `defineEval()` evals you do not need to wrap the provider yourself:
-`loushy eval --record` writes one cassette per eval case, `--replay` runs from
+`lousho eval --record` writes one cassette per eval case, `--replay` runs from
 them, and `--drift` reports how each case's trajectory changed. See
 [Record, replay and drift](evals.md#record-replay-and-drift).
 
@@ -202,7 +202,7 @@ Call #2 does not match the recorded request in ./__cassettes__/refund-flow.json.
 First difference at request.messages[1].content:
   recorded: "Refund order 1234"
   actual:   "Refund order 9999"
-If the change is intentional, re-record the cassette (run with LOUSHY_RECORD=1, or set mode: 'record').
+If the change is intentional, re-record the cassette (run with LOUSHO_RECORD=1, or set mode: 'record').
 ```
 
 For parallel or unordered calls pass `match: 'request'`: each call finds the
@@ -216,7 +216,7 @@ are ignored (tool calls match by name and arguments). For anything else, pass
 `normalize`:
 
 ```ts
-import { mockModel, recordReplay } from '@loushy/build-ai-agent/testing';
+import { mockModel, recordReplay } from '@lousho/build-ai-agent/testing';
 
 const provider = recordReplay(mockModel(['ok']), {
   cassette: './__cassettes__/users.json',
@@ -259,7 +259,7 @@ the file. Pass `redact` to scrub them (it runs on every recorded string, in both
 requests and responses, and replay applies it when matching):
 
 ```ts
-import { mockModel, recordReplay } from '@loushy/build-ai-agent/testing';
+import { mockModel, recordReplay } from '@lousho/build-ai-agent/testing';
 
 const provider = recordReplay(mockModel(['ok']), {
   cassette: './__cassettes__/support.json',

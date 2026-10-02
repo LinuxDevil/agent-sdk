@@ -39,7 +39,7 @@ export interface WorkspaceDirEntry {
  *
  * @example
  * ```ts
- * import type { FsProvider } from '@loushy/build-ai-agent';
+ * import type { FsProvider } from '@lousho/build-ai-agent';
  * const files = new Map<string, string>();
  * const fsProvider: FsProvider = {
  *   async readFile(path) { const c = files.get(path); if (c === undefined) throw new Error(`File not found: ${path}`); return c; },
@@ -105,7 +105,7 @@ export interface ShellExecResult {
  *
  * @example
  * ```ts
- * import type { ShellProvider } from '@loushy/build-ai-agent';
+ * import type { ShellProvider } from '@lousho/build-ai-agent';
  * const echoShell: ShellProvider = {
  *   async exec(command) {
  *     return { stdout: `would run: ${command}\n`, stderr: '', exitCode: 0, timedOut: false };
