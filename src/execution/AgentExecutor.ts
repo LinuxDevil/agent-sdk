@@ -14,7 +14,7 @@ import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult, ToolDe
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
 import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
-import { ApprovalStore, ExecutionSnapshot, PendingApproval, SubagentSuspension } from './ApprovalGate';
+import { ApprovalStore, describeApproval, ExecutionSnapshot, PendingApproval, SubagentSuspension } from './ApprovalGate';
 import { CheckpointStore, ForkOptions, ForkResult } from './checkpoint';
 import type { AgentDriftMode } from './agentFingerprint';
 import { forkSession } from './fork';
@@ -1345,7 +1345,7 @@ export class AgentExecutor {
       snapshot.agentFingerprint ??= await ensureFingerprint(options, state);
       await approvalStore.save(pending, snapshot);
     }
-    await saveStepCheckpoint(options, state, 'awaiting-approval', pending.id);
+    await saveStepCheckpoint(options, state, 'awaiting-approval', pending.id, describeApproval(pending).kind);
     runEventsOf(options)?.approvalRequested(pending);
 
     return {

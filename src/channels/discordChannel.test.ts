@@ -16,6 +16,7 @@ import { MemorySessionStore } from '../session/sessionStore';
 import type { Message } from '../providers';
 import { mountChannels, type ChannelsHandler } from './mountChannels';
 import { discordChannel } from './discordChannel';
+import { durableStores } from './__fixtures__/durableStores';
 
 const APP = 'app1';
 const hex = (bytes: ArrayBuffer | Uint8Array) => Buffer.from(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)).toString('hex');
@@ -256,5 +257,59 @@ describe('discordChannel (LOU-P6)', () => {
 
     expect(t.calls[1]).toMatchObject({ method: 'PATCH', url: 'tok-Lisbon/messages/@original', body: { content: 'Booked Lisbon.' } });
     expect(JSON.stringify(t.model.calls[1].messages)).toContain('Lisbon');
+  });
+
+  describe('after a restart: a second channel over the same durable stores (M10a)', () => {
+    const ask = { toolCalls: [{ name: 'ask_question', args: { question: 'Which city?' }, id: 'call_q' }] };
+
+    it('a pending ask_question survives a restart', async () => {
+      const stores = durableStores();
+      const agentOptions = { askQuestion: true, approvalStore: stores.approvalStore };
+      const first = setup([ask], agentOptions, { mount: { store: stores.store } });
+      await first.send(command('Book a trip'));
+      expect(first.calls[0].body.content).toContain('Which city?');
+
+      const second = setup(['Booked Lisbon.', 'You are welcome.'], agentOptions, { mount: { store: stores.store } });
+      await second.send(command('Lisbon'));
+
+      expect(second.calls).toEqual([{ method: 'PATCH', url: 'tok-Lisbon/messages/@original', body: expect.objectContaining({ content: 'Booked Lisbon.' }) }]);
+      expect(second.model.calls).toHaveLength(1);
+      expect(JSON.stringify(second.model.calls[0].messages)).toContain('Lisbon');
+      const transcript = await stores.transcript();
+      for (const text of ['Book a trip', 'Which city?', 'Lisbon', 'Booked Lisbon.']) expect(transcript).toContain(text);
+
+      // answered: the next /ask is a new turn of the same session
+      await second.send(command('Thanks'));
+      expect(second.calls[1]).toMatchObject({ method: 'PATCH', url: 'tok-Thanks/messages/@original', body: { content: 'You are welcome.' } });
+      expect(second.userTexts(1)).toEqual(['Book a trip', 'Thanks']);
+    });
+
+    it('a channel with no pending question still starts a normal turn', async () => {
+      const stores = durableStores();
+      await setup(['Hello.'], { approvalStore: stores.approvalStore }, { mount: { store: stores.store } }).send(command('hi'));
+
+      const second = setup(['Still here.'], { approvalStore: stores.approvalStore }, { mount: { store: stores.store } });
+      await second.send(command('again'));
+
+      expect(second.calls[0]).toMatchObject({ url: 'tok-again/messages/@original', body: { content: 'Still here.' } });
+      expect(second.userTexts(0)).toEqual(['hi', 'again']);
+    });
+
+    it('a plain /ask does not answer a pending tool approval; the click still does', async () => {
+      const stores = durableStores();
+      const execute = vi.fn(async ({ to }: { to: string }) => `sent to ${to}`);
+      const agentOptions = { tools: [emailTool(execute)], approvalStore: stores.approvalStore };
+      const id = await pause(setup([emailCall], agentOptions, { mount: { store: stores.store } }));
+
+      const second = setup(['Email sent.'], agentOptions, { mount: { store: stores.store } });
+      await second.send(command('yes'));
+      expect(second.model.calls).toHaveLength(0);
+      expect(execute).not.toHaveBeenCalled();
+      expect(second.calls[0].body.content).toBe('Sorry, that request failed.'); // the session waits on the click
+
+      await second.send(click(id));
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(second.calls.at(-1)).toMatchObject({ method: 'POST', url: 'tok-click', body: { content: 'Email sent.' } });
+    });
   });
 });

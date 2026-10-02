@@ -11,7 +11,8 @@ import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import { mockModel } from '../testing';
 import type { Message } from '../providers';
-import { channelSessionId, defineChannel, type Channel, type ChannelReplyContext } from './defineChannel';
+import { channelSessionId, defineChannel, type Channel, type ChannelContext, type ChannelReplyContext } from './defineChannel';
+import { durableStores } from './__fixtures__/durableStores';
 import { mountChannels, type ChannelsHandler } from './mountChannels';
 import { httpChannel } from './httpChannel';
 
@@ -173,6 +174,85 @@ describe('defineChannel / mountChannels (LOU-P7)', () => {
     expect((await post(handler, '/channels/http/approvals/nope', { answer: 'x' })).status).toBe(404);
     const done = await post(handler, `/channels/http/approvals/${approval.id}`, { answer: 'Lisbon' });
     expect(done.json).toMatchObject({ text: 'Booked Lisbon.', finishReason: 'stop', sessionId: paused.json.sessionId });
+  });
+
+  describe('ChannelContext.pendingQuestion (M10a)', () => {
+    const ask = { toolCalls: [{ name: 'ask_question', args: { question: 'Which city?' }, id: 'call_q' }] };
+
+    /** A custom channel whose next message answers a pending question; `ctx()` is the context its last parse got. */
+    function answeringChannel() {
+      let context: ChannelContext | undefined;
+      const recorded = recordingChannel({
+        async parse(req, _respond, ctx) {
+          context = ctx;
+          const { user, text } = JSON.parse(req.text) as { user: string; text: string };
+          const inbound = { sessionKey: user, input: text, replyTo: `dm:${user}` };
+          const question = await ctx.pendingQuestion(user);
+          return question ? { decision: { id: question, answer: text }, inbound } : inbound;
+        },
+      });
+      return { ...recorded, ctx: () => context! };
+    }
+
+    function mount(responses: Parameters<typeof mockModel>[0], stores: ReturnType<typeof durableStores>, tools = [emailTool().tool]) {
+      const model = mockModel(responses);
+      const agent = createAgent({ provider: model, askQuestion: true, tools, approvalStore: stores.approvalStore });
+      const recorded = answeringChannel();
+      return { ...recorded, model, agent, handler: mountChannels(agent, [recorded.channel], { store: stores.store }) };
+    }
+
+    it('in process: the question the session waits on, handed out once until it is answered', async () => {
+      const t = mount([ask, 'Booked Lisbon.'], durableStores());
+      await post(t.handler, '/channels/test', { user: 'ali', text: 'Book a trip' });
+      const [approval] = await t.agent.approvals.list();
+      expect(approval.kind).toBe('question');
+
+      expect(await t.ctx().pendingQuestion('ali')).toBe(approval.id);
+      expect(await t.ctx().pendingQuestion('ali')).toBeUndefined(); // claimed by the first caller
+      expect(await t.ctx().pendingQuestion('sam')).toBeUndefined(); // another session
+    });
+
+    it('after a restart: found from the checkpoint, and the answer is appended to the transcript', async () => {
+      const stores = durableStores();
+      await post(mount([ask], stores).handler, '/channels/test', { user: 'ali', text: 'Book a trip' });
+
+      const second = mount(['Booked Lisbon.'], stores);
+      await post(second.handler, '/channels/test', { user: 'ali', text: 'Lisbon' });
+
+      expect(second.replies.map((r) => r.text)).toEqual(['Booked Lisbon.']);
+      const transcript = await stores.transcript();
+      for (const text of ['Book a trip', 'Which city?', 'Lisbon', 'Booked Lisbon.']) expect(transcript).toContain(text);
+      expect(await second.ctx().pendingQuestion('ali')).toBeUndefined(); // answered
+    });
+
+    it('after a restart, two quick messages: the first answers, the second is the next turn', async () => {
+      const stores = durableStores();
+      await post(mount([ask], stores).handler, '/channels/test', { user: 'ali', text: 'Book a trip' });
+
+      const second = mount(['Booked Lisbon.', 'Noted.'], stores);
+      await Promise.all([
+        post(second.handler, '/channels/test', { user: 'ali', text: 'Lisbon' }),
+        post(second.handler, '/channels/test', { user: 'ali', text: 'And a hotel' }),
+      ]);
+
+      expect(second.replies.map((r) => r.text)).toEqual(['Booked Lisbon.', 'Noted.']);
+      const userTexts = (second.model.calls[1].messages as Message[]).filter((m) => m.role === 'user').map((m) => m.content);
+      expect(userTexts).toEqual(['Book a trip', 'And a hotel']);
+    });
+
+    it('undefined for a session with no pending turn, or one waiting on a tool approval (the turn is not run)', async () => {
+      const stores = durableStores();
+      const first = mount([callEmail], stores);
+      await post(first.handler, '/channels/test', { user: 'ali', text: 'Email Sam' });
+      expect(await first.ctx().pendingQuestion('ali')).toBeUndefined();
+
+      const second = mount(['Hi Bob.'], stores);
+      await post(second.handler, '/channels/test', { user: 'bob', text: 'hi' }); // a normal turn
+      expect(second.replies.map((r) => r.text)).toEqual(['Hi Bob.']);
+      expect(await second.ctx().pendingQuestion('ali')).toBeUndefined();
+      expect(await second.ctx().pendingQuestion('nobody')).toBeUndefined();
+      expect(second.model.calls).toHaveLength(1); // Bob's turn only: nothing of Ali's was run
+    });
   });
 
   it('rejects an invalid channel name and duplicate names', () => {

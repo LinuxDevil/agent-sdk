@@ -28,7 +28,7 @@ console.log(session.id, session.messages.length);
 | `compact(options?)` | Compacts the transcript now - see [Compacting a session](./compaction.md#compacting-a-session). |
 | `clear()` | Empties the transcript and saves it empty (the store holds no messages for the id). Keeps the session id, store and options; deletes an interrupted turn's checkpoint; memory slots are cross-session and untouched. Emits `context.cleared` to `on()` listeners. Rejects with `LOUSHO_SESSION_BUSY` while a turn is running, and with `LOUSHO_SESSION_AWAITING_APPROVAL` while a durable turn waits on an approval. |
 | `on(listener)` | Listens for `compact()` / `clear()` events (`compaction.start`, `compaction.done`, `context.cleared`); returns a function that removes the listener. |
-| `pending()` | In a [durable session](#durable-sessions), the turn that has not finished (`{ status, approvalId? }`), or `null`. |
+| `pending()` | In a [durable session](#durable-sessions), the turn that has not finished (`{ status, approvalId?, approvalKind? }`; `approvalKind` is `'question'` when the turn waits on an `ask_question`), or `null`. |
 | `resume({ signal })` | In a durable session, finishes an interrupted turn and resolves with its result, or `null` when none is pending. |
 | `discardPending()` | In a durable session, drops an unfinished turn without running it. |
 
