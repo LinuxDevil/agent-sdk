@@ -28,10 +28,31 @@ export interface IoGuardrailContext {
   signal?: AbortSignal;
 }
 
-/** A passed check, or a failed one: `block` (default) stops the run, `rewrite` replaces the text with `replacement`. */
+/** The kinds of personal data `piiGuardrail()` looks for (N5a). */
+export type PiiType = 'email' | 'phone' | 'credit-card' | 'iban' | 'us-ssn' | 'ip-address';
+
+/** The categories `moderationGuardrail()` asks the model about (N5a). */
+export type ModerationCategory = 'hate' | 'harassment' | 'self-harm' | 'sexual' | 'sexual-minors' | 'violence' | 'illicit';
+
+/**
+ * What tripped, as data (N5a): types, labels and offsets into the checked
+ * `text`, never the matched text itself, so events, traces and logs do not
+ * copy the personal data or the secret. Your own guardrails use `'custom'`.
+ */
+export type GuardrailTripInfo =
+  | { category: 'pii'; matches: Array<{ type: PiiType; start: number; end: number }> }
+  | { category: 'secret'; matches: Array<{ label: string; start: number; end: number }> }
+  | { category: 'prompt-injection'; source: 'heuristic' | 'model'; signals: string[] }
+  | { category: 'moderation'; categories: ModerationCategory[] }
+  | { category: 'custom'; [key: string]: unknown };
+
+/**
+ * A passed check, or a failed one: `block` (default) stops the run, `rewrite`
+ * replaces the text with `replacement`. `info` (optional) is copied to the trip.
+ */
 export type IoGuardrailResult =
   | { ok: true }
-  | { ok: false; reason: string; action?: 'block' | 'rewrite'; replacement?: string };
+  | { ok: false; reason: string; action?: 'block' | 'rewrite'; replacement?: string; info?: GuardrailTripInfo };
 
 /** One named input, output or tool guardrail. A check that throws fails the run. */
 export interface IoGuardrail {
@@ -58,6 +79,8 @@ export interface GuardrailTrip {
   reason: string;
   /** For a `tool` guardrail: the tool called. */
   toolName?: string;
+  /** What tripped, when the guardrail says (the built-in starter set always does). */
+  info?: GuardrailTripInfo;
 }
 
 /** Thrown when a guardrail blocks under `onTripped: 'throw'`; `guardrail` says which. */
@@ -82,7 +105,13 @@ async function runChecks(
   for (const guardrail of guardrails) {
     const result = await guardrail.check({ ...ctx, text, signal: options.signal });
     if (result.ok) continue;
-    const trip = { name: guardrail.name, kind: ctx.kind, reason: result.reason, ...(ctx.toolName && { toolName: ctx.toolName }) };
+    const trip: GuardrailTrip = {
+      name: guardrail.name,
+      kind: ctx.kind,
+      reason: result.reason,
+      ...(ctx.toolName && { toolName: ctx.toolName }),
+      ...(result.info && { info: result.info }),
+    };
     if (result.action !== 'rewrite') return { tripped: trip };
     text = result.replacement ?? '';
     rewritten = true;

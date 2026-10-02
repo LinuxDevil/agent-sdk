@@ -5,6 +5,7 @@ import type { ExecuteOptions, ExecutionEvent, ExecutionEventType, ExecutionResul
 import type { Todo } from '../tools/built-in/todo';
 import type { AgentRun } from './agentRun';
 import type { CompactedProviderErrorCategory } from './errors';
+import type { GuardrailTripInfo, ModerationCategory, PiiType } from './ioGuardrails';
 import {
   AGENT_EVENT_SCHEMA_VERSION,
   isToolEvent,
@@ -110,7 +111,17 @@ describe('AgentEvent types', () => {
     if (event.type === 'guardrail.tripped' || event.type === 'guardrail.rewrote') {
       expectTypeOf(event.kind).toEqualTypeOf<'input' | 'output' | 'tool'>();
       expectTypeOf(event.toolName).toEqualTypeOf<string | undefined>();
+      expectTypeOf(event.info).toEqualTypeOf<GuardrailTripInfo | undefined>();
     }
+  });
+
+  it('narrows a guardrail trip info on its category (N5a)', () => {
+    type Info<C extends GuardrailTripInfo['category']> = Extract<GuardrailTripInfo, { category: C }>;
+    expectTypeOf<Info<'pii'>['matches'][number]>().toEqualTypeOf<{ type: PiiType; start: number; end: number }>();
+    expectTypeOf<Info<'secret'>['matches'][number]>().toEqualTypeOf<{ label: string; start: number; end: number }>();
+    expectTypeOf<Info<'prompt-injection'>['source']>().toEqualTypeOf<'heuristic' | 'model'>();
+    expectTypeOf<Info<'moderation'>['categories']>().toEqualTypeOf<ModerationCategory[]>();
+    expectTypeOf<Info<'custom'>['anything']>().toBeUnknown();
   });
 
   it('narrows todo.updated on event.type (N12)', () => {
