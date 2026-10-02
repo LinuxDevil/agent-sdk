@@ -2,11 +2,11 @@
  * Provider packages follow the installed `ai` major (LOU-D28d): the peer
  * ranges in package.json, the install hint of a missing provider package,
  * and which Ollama package OllamaProvider loads. The `ai` v6/v7 cases give a
- * provider the aliased `ai-v7` module (or a v6-shaped stand-in) instead of
- * the installed one.
+ * provider the aliased real `ai-v6` / `ai-v7` module instead of the installed one.
  */
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as aiV6 from 'ai-v6';
 import * as aiV7 from 'ai-v7';
 import { aiMajorOf, type AiSdkModule } from './aiSdkCompat';
 import { installedAiMajor } from './aiMajor.testkit';
@@ -22,7 +22,7 @@ function aiV4Stub(): AiSdkModule {
   return { generateText: fail, streamText: fail, jsonSchema: fail };
 }
 
-const AI_MODULES: Record<AiMajor, () => AiSdkModule> = { 4: aiV4Stub, 6: () => aiV6Like, 7: () => aiV7 };
+const AI_MODULES: Record<AiMajor, () => AiSdkModule> = { 4: aiV4Stub, 6: () => aiV6, 7: () => aiV7 };
 
 const messages = [{ role: 'user' as const, content: 'hi' }];
 
