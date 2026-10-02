@@ -78,6 +78,12 @@ export interface RunUsage {
   byModel: Record<string, ModelUsage>;
   /** Present when the run delegated to child agents. */
   delegated?: DelegatedUsage;
+  /**
+   * N1a: hosted tool calls the provider ran (`webSearch()` and the like), per
+   * tool name; absent when there were none. Their fees are billed by the
+   * provider and are not in `costUsd`.
+   */
+  hostedToolCalls?: Partial<Record<string, number>>;
   /** @deprecated Alias of `inputTokens`, kept for code written before LOU-V5. */
   promptTokens: number;
   /** @deprecated Alias of `outputTokens`, kept for code written before LOU-V5. */

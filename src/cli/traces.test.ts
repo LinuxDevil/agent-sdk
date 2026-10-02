@@ -137,3 +137,24 @@ describe('lousho traces (M5a)', () => {
     expect([formatDuration(12), formatDuration(1234), formatDuration(125_000)]).toEqual(['12ms', '1.23s', '2m 05s']);
   });
 });
+
+describe('lousho traces: hosted tools (N1a)', () => {
+  it('a chat span names the tools the provider ran in it', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'traces-hosted-'));
+    try {
+      const id = '3f2a9c1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f';
+      const source = path.join(fixtures, 'traces', '2026-10-01', `${id}.jsonl`);
+      const lines = fs.readFileSync(source, 'utf8').trim().split('\n').map((line) => JSON.parse(line) as { attributes: Record<string, unknown> });
+      const chat = lines.find((span) => span.attributes['gen_ai.operation.name'] === 'chat')!;
+      chat.attributes['lousho.hosted_tool_calls'] = ['web_search'];
+      fs.mkdirSync(path.join(dir, 'traces', '2026-10-01'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'traces', '2026-10-01', `${id}.jsonl`), lines.map((span) => JSON.stringify(span)).join('\n') + '\n');
+      const out: string[] = [];
+      const code = await runTraces(['3f2a', '--dir', 'traces'], { cwd: dir, now: NOW, color: false, log: (text) => out.push(text) });
+      expect(code).toBe(0);
+      expect(out.join('\n')).toContain('provider ran web_search');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

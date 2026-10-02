@@ -30,6 +30,7 @@ import {
   ReasoningBlock,
 } from './llm';
 import { reasoningProviderOptions } from './reasoning';
+import { hostedToolUnsupported, type HostedTool, type HostedToolType } from '../tools/hosted';
 import { textOf } from './content';
 import { schemaToJsonSchema } from '../utils/zodCompat';
 import { type AiSdkMessage, type AiSdkModule, aiMajorOf, compatGenerateText, streamCompat } from './aiSdkCompat';
@@ -287,10 +288,38 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
     return reasoningProviderOptions(this.name, modelId, options.reasoning);
   }
 
+  /**
+   * N1a: whether this provider can send a hosted tool of `type`. The base
+   * supports only `hostedTool()` pass-through, on `ai` 6 or 7; providers with
+   * built-in hosted tools (OpenAI) override it.
+   */
+  supportsHostedTool(type: HostedToolType | 'custom'): boolean {
+    return type === 'custom' && aiMajorOf(this.ai) >= 6;
+  }
+
+  /**
+   * N1a: the AI SDK tool objects for `tools`, keyed by name, sent with the
+   * function tools. The base passes `hostedTool()` objects through on `ai` 6
+   * or 7 and throws `LOUSHO_HOSTED_TOOL_UNSUPPORTED` for everything else;
+   * a provider with built-in hosted tools maps them (see OpenAIProvider).
+   */
+  protected async hostedToolsFor(tools: readonly HostedTool[], _modelId: string): Promise<Record<string, unknown>> {
+    const major = aiMajorOf(this.ai);
+    const result: Record<string, unknown> = {};
+    for (const tool of tools) {
+      if (major < 6) throw hostedToolUnsupported(this.name, tool, `hosted tools need ai 6 or 7, and ai ${major} is installed`);
+      if (tool.type !== 'custom') throw hostedToolUnsupported(this.name, tool, `this provider has no built-in ${tool.type} tool`);
+      result[tool.name] = tool.aiSdkTool;
+    }
+    return result;
+  }
+
   /** The call settings shared by generate() and stream(). */
   private async buildCallSettings(options: GenerateOptions) {
     const modelId = options.model || this.defaultModel;
+    const hostedTools = options.hostedTools?.length ? await this.hostedToolsFor(options.hostedTools, modelId) : undefined;
     return {
+      ...(hostedTools && { hostedTools }),
       model: await this.createModel(modelId, options),
       messages: this.convertMessages(options.messages),
       temperature: options.temperature,

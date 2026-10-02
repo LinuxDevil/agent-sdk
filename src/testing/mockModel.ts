@@ -8,6 +8,7 @@
 import type {
   GenerateOptions,
   GenerateResult,
+  HostedToolCall,
   LLMProvider,
   Message,
   StreamChunk,
@@ -47,6 +48,31 @@ export interface MockToolCall {
 }
 
 /**
+ * N1a: a hosted tool call the mock "provider" ran this turn (as a real
+ * provider runs `webSearch()`): reported in events with `executedBy: 'provider'`,
+ * never executed by the agent.
+ *
+ * @example
+ * ```ts
+ * const call: MockHostedToolCall = { name: 'web_search', args: { query: 'lousho' }, result: { results: [] } };
+ * ```
+ */
+export interface MockHostedToolCall {
+  /** The hosted tool's name, e.g. `web_search`. */
+  name: string;
+  /** The input the model gave the tool. Defaults to `{}`. */
+  args?: unknown;
+  /** The provider's result. */
+  result?: unknown;
+  /** Report the call as failed (`result` is the error). */
+  isError?: boolean;
+  /** URL sources the provider cited. */
+  sources?: Array<{ url: string; title?: string }>;
+  /** Call id. Defaults to `hosted_1`, `hosted_2`, ... (sharing the tool-call counter). */
+  id?: string;
+}
+
+/**
  * One scripted model reply (object form).
  *
  * @example
@@ -62,6 +88,8 @@ export interface MockTurnObject {
   text?: string;
   /** Tool calls the model requests this turn. */
   toolCalls?: readonly MockToolCall[];
+  /** N1a: hosted tool calls the provider ran this turn (reported before the text; never run by the agent). */
+  hostedToolCalls?: readonly MockHostedToolCall[];
   /** Make `generate()` / `stream()` reject with this error instead of replying. */
   error?: Error;
   /**
@@ -133,6 +161,7 @@ export interface MockModel extends LLMProvider {
 interface ResolvedTurn {
   text: string;
   toolCalls: ToolCall[];
+  hostedToolCalls: HostedToolCall[];
   finishReason: GenerateResult['finishReason'];
   usage: GenerateResult['usage'];
 }
@@ -218,6 +247,7 @@ class ScriptedMockModel implements MockModel {
       finishReason: turn.finishReason,
       usage: turn.usage,
       ...(turn.toolCalls.length > 0 ? { toolCalls: turn.toolCalls } : {}),
+      ...(turn.hostedToolCalls.length > 0 && { hostedToolCalls: turn.hostedToolCalls }),
     };
   }
 
@@ -225,6 +255,11 @@ class ScriptedMockModel implements MockModel {
     const turn = await this.resolve(options);
     const chunks = chunkText(turn.text);
     const fullStream = async function* (): AsyncGenerator<StreamChunk> {
+      for (const hostedToolCall of turn.hostedToolCalls) {
+        const { result: _result, isError: _isError, sources: _sources, ...started } = hostedToolCall;
+        yield { type: 'hosted-tool-call', hostedToolCall: started };
+        yield { type: 'hosted-tool-result', hostedToolCall };
+      }
       for (const textDelta of chunks) yield { type: 'text-delta', textDelta };
       for (const toolCall of turn.toolCalls) yield { type: 'tool-call', toolCall };
       yield { type: 'finish', finishReason: turn.finishReason, usage: turn.usage };
@@ -247,6 +282,11 @@ class ScriptedMockModel implements MockModel {
   }
 
   supportsStreaming(): boolean {
+    return true;
+  }
+
+  /** N1a: the mock takes every hosted tool; a turn scripts the calls it "ran" (`hostedToolCalls`). */
+  supportsHostedTool(): boolean {
     return true;
   }
 
@@ -291,12 +331,24 @@ class ScriptedMockModel implements MockModel {
     return {
       text: turn.text ?? '',
       toolCalls,
+      hostedToolCalls: (turn.hostedToolCalls ?? []).map((call) => this.toHostedCall(call)),
       finishReason: turn.finishReason ?? (toolCalls.length > 0 ? 'tool_calls' : 'stop'),
       usage: turn.usage && {
         promptTokens: turn.usage.inputTokens,
         completionTokens: turn.usage.outputTokens,
         totalTokens: turn.usage.inputTokens + turn.usage.outputTokens,
       },
+    };
+  }
+
+  private toHostedCall({ id, name, args, result, isError, sources }: MockHostedToolCall): HostedToolCall {
+    return {
+      id: id ?? `hosted_${++this.idCounter}`,
+      name,
+      args: args ?? {},
+      ...(result !== undefined && { result }),
+      ...(isError && { isError: true }),
+      ...(sources && { sources: sources.map((source) => ({ ...source })) }),
     };
   }
 

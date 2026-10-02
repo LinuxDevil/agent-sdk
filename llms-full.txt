@@ -180,6 +180,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md) | Every `lousho` command and its flags |
 | [ACP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/acp.md) | `lousho acp` / `serveAcp()`: drive an agent from Zed and other Agent Client Protocol editors |
 | [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md) | `defineTool()`, validation and errors, built-in tools, `ToolRegistry` |
+| [Hosted tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hosted-tools.md) | `webSearch()`, `codeInterpreter()`, `fileSearch()`, `hostedTool()`: tools the provider runs inside the request |
 | [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md) | `needsApproval`, `agent.approvals`, the `approve` callback, `resumeAfterApproval()`, stores |
 | [Permission modes](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md) | `permissionMode: 'plan' \| 'acceptEdits' \| 'dontAsk'`, `session.setPermissionMode()`, the `editsFiles` marker |
 | [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md) | Multi-turn conversations, `session.stream()`, session stores, `SqliteStore` |
@@ -5555,7 +5556,7 @@ Find a code by area:
 | Area | Codes | When you meet them |
 | ---- | ----- | ------------------ |
 | [Configuration](#configuration) | [`LOUSHO_CONFIG_INVALID`](#lousho_config_invalid), [`LOUSHO_CONFIG_MISSING_PROVIDER`](#lousho_config_missing_provider), [`LOUSHO_CONFIG_MISSING_AGENT`](#lousho_config_missing_agent), [`LOUSHO_CONFIG_MISSING_INPUT`](#lousho_config_missing_input), [`LOUSHO_CONFIG_CONFLICTING_OPTIONS`](#lousho_config_conflicting_options), [`LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE`](#lousho_config_missing_checkpoint_store), [`LOUSHO_CONFIG_RESOLVER_FAILED`](#lousho_config_resolver_failed) | A `createAgent()` or executor call that is missing or mixing options, or a config resolver that failed. |
-| [Providers and peers](#providers-and-peers) | [`LOUSHO_PROVIDER_SPEC_INVALID`](#lousho_provider_spec_invalid), [`LOUSHO_PROVIDER_UNKNOWN`](#lousho_provider_unknown), [`LOUSHO_PROVIDER_MISSING_API_KEY`](#lousho_provider_missing_api_key), [`LOUSHO_PROVIDER_REQUEST_FAILED`](#lousho_provider_request_failed), [`LOUSHO_PROVIDER_RATE_LIMITED`](#lousho_provider_rate_limited), [`LOUSHO_PEER_MISSING`](#lousho_peer_missing) | Resolving a model string, a missing API key or peer package, a failed or rate-limited model request. |
+| [Providers and peers](#providers-and-peers) | [`LOUSHO_PROVIDER_SPEC_INVALID`](#lousho_provider_spec_invalid), [`LOUSHO_PROVIDER_UNKNOWN`](#lousho_provider_unknown), [`LOUSHO_PROVIDER_MISSING_API_KEY`](#lousho_provider_missing_api_key), [`LOUSHO_PROVIDER_REQUEST_FAILED`](#lousho_provider_request_failed), [`LOUSHO_PROVIDER_RATE_LIMITED`](#lousho_provider_rate_limited), [`LOUSHO_PEER_MISSING`](#lousho_peer_missing), [`LOUSHO_HOSTED_TOOL_UNSUPPORTED`](#lousho_hosted_tool_unsupported) | Resolving a model string, a missing API key or peer package, a failed or rate-limited model request, a hosted tool the provider cannot run. |
 | [Agent spec files](#agent-spec-files) | [`LOUSHO_SPEC_INVALID`](#lousho_spec_invalid), [`LOUSHO_SPEC_UNKNOWN_FIELD`](#lousho_spec_unknown_field), [`LOUSHO_SPEC_UNSUPPORTED_FORMAT`](#lousho_spec_unsupported_format) | Loading an `AgentSpec` file with `loadSpec()` or `specToAgent()`. |
 | [Tools](#tools) | [`LOUSHO_TOOL_NOT_FOUND`](#lousho_tool_not_found), [`LOUSHO_TOOL_NEEDS_CREDENTIALS`](#lousho_tool_needs_credentials), [`LOUSHO_TOOL_EXECUTION_FAILED`](#lousho_tool_execution_failed), [`LOUSHO_TOOL_ARGS_INVALID`](#lousho_tool_args_invalid) | A tool the model called is unknown, needs credentials, threw, or got invalid arguments. |
 | [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
@@ -5707,6 +5708,22 @@ send fewer requests.
 
 **Example:** `SubprocessSandbox` without `dockerode`:
 `npm install dockerode@^5.0.1`.
+
+### LOUSHO_HOSTED_TOOL_UNSUPPORTED
+
+**Means:** an agent has a hosted tool (`webSearch()`, `codeInterpreter()`,
+`fileSearch()` or `hostedTool()`) that its provider cannot send: the provider
+has no hosted tools (Ollama, a custom `LLMProvider` without
+`supportsHostedTool()`), `ai` 4 is installed (hosted tools need `ai` 6 or 7), or
+the installed provider package has no such tool. The message names the
+provider, the tool and what would work.
+
+**Fix:** run the tool on a provider and package pairing that supports it (see
+[Hosted provider tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hosted-tools.md)), or leave it out of `tools` for
+this provider.
+
+**Example:** `createAgent({ model: 'ollama/llama3.2', tools: [webSearch()] })`
+rejects its first `send()`.
 
 ## Agent spec files
 
@@ -7351,6 +7368,219 @@ console.log(hooks.list().map((hook) => hook.name)); // [ 'redact-pii' ]
 
 `HookRegistry`, `AgentHook` and the context types are available from the package root and from the `@lousho/build-ai-agent/hooks` subpath. Hooks authored in the Agent Forge canvas editor are compiled into a `HookRegistry` and run sandboxed rather than in the host process: see [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md#hooks).
 
+# Hosted provider tools
+
+Source: docs/hosted-tools.md
+
+Some model providers run tools themselves, inside the model request: OpenAI's
+web search, code interpreter and file search are the common ones. Put them in
+`tools` next to your own tools; the provider runs them, and the run reports
+each call in its events, keeps it on the transcript and counts it in usage.
+
+```ts
+import { createAgent, webSearch, defineTool } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+const saveNote = defineTool({
+  name: 'save_note',
+  description: 'Save a note',
+  input: z.object({ text: z.string() }),
+  execute: async ({ text }) => ({ saved: text.length }),
+});
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  instructions: 'Answer with sources.',
+  tools: [webSearch({ searchContextSize: 'low' }), saveNote],
+});
+
+const result = await agent.send('What changed in Node 24?');
+console.log(result.text, result.usage.hostedToolCalls); // { web_search: 1 }
+```
+
+The SDK never executes a hosted tool. It sends it with every model call of
+the run and reports what the provider did.
+
+## The helpers
+
+| Helper | Name | Options |
+| --- | --- | --- |
+| `webSearch(options?)` | `web_search` | `searchContextSize` (`'low' \| 'medium' \| 'high'`), `userLocation` (`{ country, city, region, timezone }`), `allowedDomains`, `blockedDomains`, `maxUses` |
+| `codeInterpreter(options?)` | `code_interpreter` | `container`: an existing container id; by default the provider creates one |
+| `fileSearch({ vectorStoreIds, maxResults? })` | `file_search` | `vectorStoreIds` (at least one; vector stores you created with the provider), `maxResults` |
+| `hostedTool(name, aiSdkTool)` | `name` | Any AI SDK provider tool object, passed through as it is |
+
+`isHostedTool(value)` tells a hosted tool from a local one. Each helper's
+name is also the name the model, the events and `usage.hostedToolCalls` use.
+In the record form of `tools` a hosted tool's key must be its name
+(`tools: { web_search: webSearch(), lookup }`). A hosted tool with the name of
+another tool is a `LOUSHO_CONFIG_INVALID` error when the agent is created.
+
+A provider uses the options it supports. OpenAI takes `searchContextSize`,
+`userLocation` and `allowedDomains`; it has no `maxUses` or `blockedDomains`,
+so those are dropped with one `console.warn`.
+
+## Which provider runs which
+
+| Tool | OpenAI | Anthropic | OpenRouter | Ollama | `fromAiSdk()` / other AI SDK providers |
+| --- | --- | --- | --- | --- | --- |
+| `webSearch()` | ✅ `ai` 6 + `@ai-sdk/openai` 3, `ai` 7 + `@ai-sdk/openai` 4 | see N1b | see N1b | ❌ | ❌ (use `hostedTool()`) |
+| `codeInterpreter()` | ✅ same pairings | see N1b | see N1b | ❌ | ❌ (use `hostedTool()`) |
+| `fileSearch()` | ✅ same pairings | see N1b | see N1b | ❌ | ❌ (use `hostedTool()`) |
+| `hostedTool()` | ✅ `ai` 6 or 7 | ✅ `ai` 6 or 7 | ✅ `ai` 6 or 7 | ✅ `ai` 6 or 7 | ✅ `ai` 6 or 7 |
+
+Hosted tools need `ai` 6 or 7. With `ai` 4 (and its `@ai-sdk/openai` 0.0.x
+or 1.x) every hosted tool is refused. On OpenAI the model is the Responses API
+model, which `@ai-sdk/openai` gives from version 2 on. An unsupported
+pairing rejects the run before the first model call with
+[`LOUSHO_HOSTED_TOOL_UNSUPPORTED`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_hosted_tool_unsupported),
+naming the provider, the tool and what would work.
+
+A custom `LLMProvider` declares what it can send with
+`supportsHostedTool(type)` (`type` is `'web_search'`, `'code_interpreter'`,
+`'file_search'` or `'custom'` for `hostedTool()`) and receives the tools in
+`GenerateOptions.hostedTools`. A provider without that method supports none.
+`withRetry()` and `withFallback()` ask the (first) wrapped provider.
+
+## Any AI SDK provider tool: hostedTool()
+
+`hostedTool(name, tool)` sends a provider tool object you built with the
+provider's package, unchanged, on `ai` 6 or 7. It works with the built-in
+providers and with any AI SDK model wrapped by
+[`fromAiSdk()`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md#any-ai-sdk-model-fromaisdk):
+
+```ts no-verify
+import { createAgent, fromAiSdk, hostedTool } from '@lousho/build-ai-agent';
+import { openai } from '@ai-sdk/openai';
+
+const agent = createAgent({
+  provider: fromAiSdk(openai('gpt-4o-mini')),
+  tools: [hostedTool('image_generation', openai.tools.imageGeneration())],
+});
+```
+
+Use the name the provider package documents for its tool.
+
+## Events
+
+A hosted call is reported like a tool call, with `executedBy: 'provider'` on
+`tool.start`, `tool.done` and `tool.error`:
+
+```ts
+import { createAgent, webSearch } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', tools: [webSearch()] });
+
+for await (const event of agent.stream('Latest TypeScript release?')) {
+  if (event.type === 'tool.start' && event.executedBy === 'provider') console.log('provider runs', event.toolName, event.args);
+  if (event.type === 'tool.done' && event.executedBy === 'provider') console.log('provider result', event.result);
+  if (event.type === 'text.delta') process.stdout.write(event.text);
+}
+```
+
+In a streamed model call the events arrive as the provider reports the call;
+in a call made without streaming they follow the call, in call order, before
+its text. `tool.done.result` is capped at 20,000 characters of JSON (a longer
+result becomes the cut JSON text ending in `... [truncated N characters]`);
+`tool.error` has `error.name` `'HostedToolError'` and the provider's message.
+The AI SDK UI stream (`toUIMessageStream()`) marks these tool parts
+`providerExecuted: true`.
+
+In traces, the `chat` span of the model call carries
+`lousho.hosted_tool_calls` (the names of the tools the provider ran in it);
+there is no `execute_tool` span for them, since the SDK ran nothing.
+
+## Transcript and replay
+
+The assistant message of the step gets `metadata.hostedToolCalls`: each call's
+`id`, `name`, `args`, `result` (capped as above), `isError` and the url
+`sources` the provider cited after it. Find them in `result.messages`.
+
+Only the assistant's text is sent back to the model on later calls, never the
+provider's tool blocks. That works on every provider and model; the cost is
+that citations from earlier turns are not replayed to the model.
+
+## Usage and cost
+
+`result.usage.hostedToolCalls` (and `run.done` `usage.hostedToolCalls`) counts
+the calls per tool name, for example `{ web_search: 2 }`; a sub-agent's calls
+are added to the lead's. The tokens a hosted tool adds (search results the
+model reads, code output) are in the token counts the provider reports.
+
+`costUsd` covers tokens only. Per-call fees for hosted tools (a web search or
+a code interpreter session) are billed by the provider and are **not**
+included; check the provider's pricing and use the counts above.
+
+## Approvals and permissions
+
+The SDK cannot gate what it does not execute. A hosted tool runs inside the
+provider's request, so no permission rule, tool guardrail, `needsApproval`,
+`preToolCall` / `postToolCall` hook or `onToolCall` sees it, and **a hosted
+tool cannot be paused for approval**. If a run must not search or run code
+without a human, leave the tool out of `tools`, or choose tools per run with a
+function:
+
+```ts
+import { createAgent, webSearch } from '@lousho/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  tools: ({ metadata }) => (metadata?.allowSearch ? [webSearch()] : []),
+});
+
+await agent.send('Summarize this page.', { metadata: { allowSearch: true } });
+```
+
+[Permission modes](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md) cannot refuse a hosted call either,
+so they decide which hosted tools are sent with each model call:
+
+| Mode | `webSearch()`, `fileSearch()` | `codeInterpreter()`, `hostedTool()` |
+| --- | --- | --- |
+| `'default'` | Sent | Sent |
+| `'plan'` | Sent (they only read) | **Not sent**: the model does not see them |
+| `'acceptEdits'` | Sent | Sent |
+| `'dontAsk'` | Sent (a hosted call never asks) | Sent |
+
+A code interpreter runs code, and a `hostedTool()` is a tool the SDK knows
+nothing about, so plan mode treats both as tools with side effects. The mode is
+read before every model call, so a switch (`session.setPermissionMode()` or a
+function mode) applies from the next call. No `permission.decision` entry is
+written for a hosted tool left out: no call was made.
+
+Sub-agents do not inherit the lead's hosted tools; give a sub-agent its own
+in its `tools`. A run resumed from a checkpoint or an approval sends the same
+hosted tools; a resuming agent with a different set reports
+[agent drift](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md).
+
+## Testing
+
+`mockModel` takes hosted calls in a turn and records `hostedTools` on each
+request, so an agent with hosted tools runs offline:
+
+```ts
+import { createAgent, webSearch } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+
+const model = mockModel([
+  {
+    text: 'Node 24 ships npm 11.',
+    hostedToolCalls: [{ name: 'web_search', args: { query: 'node 24' }, result: { hits: 3 }, sources: [{ url: 'https://nodejs.org' }] }],
+  },
+]);
+const agent = createAgent({ provider: model, tools: [webSearch()] });
+const result = await agent.send('What changed in Node 24?');
+
+console.log(model.calls[0]?.hostedTools?.[0]?.name); // 'web_search'
+console.log(result.usage.hostedToolCalls); // { web_search: 1 }
+```
+
+## Not covered yet
+
+Image generation, computer use, hosted MCP and hosted shell have no helpers;
+pass the provider package's tool with `hostedTool()` where it works.
+Replaying provider tool blocks to keep citations across turns is not
+supported.
+
 # MCP (Model Context Protocol)
 
 Source: docs/mcp.md
@@ -8085,6 +8315,7 @@ console.log(formatUsage(result.usage)); // 1,234 in / 567 out tokens · $0.0042 
 
 - **Reported vs estimated.** Providers report `promptTokens`/`completionTokens`; the built-in providers also pass on `cachedInputTokens`/`reasoningTokens` when the 'ai' SDK's provider metadata carries them (`usage.cachedInputTokens` and `usage.reasoningTokens` only appear then). A backend that reports nothing gives `undefined` usage, never zeros. For that step the executor falls back to `estimateTokens` and sets `usage.estimated` (a leading `~` in `formatUsage`). A custom provider should leave `GenerateResult.usage` unset rather than fill in zeros.
 - **Cost.** `costUsd` is the sum of `estimateCost` per model. It is `undefined`, never a misleading partial sum, as soon as any model used has unknown pricing; `byModel` shows which ones are priced.
+- **Hosted tools.** `usage.hostedToolCalls` counts the calls the provider ran for [hosted tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hosted-tools.md) per tool name (e.g. `{ web_search: 2 }`). Their per-call fees are billed by the provider and are not in `costUsd`.
 - **Delegation.** A delegated child's usage is added to the parent's totals and `byModel`, and is also shown on its own as `usage.delegated` (`{ inputTokens, outputTokens, totalTokens, costUsd, modelCalls, estimated, runs }`). A [remote sub-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md#remote-sub-agents)'s usage is what the remote agent reports, filed under `byModel['remote:<name>']` with the remote's own `costUsd`.
 - **Resume.** A run resumed from a checkpoint, or after an approval, continues from the saved totals instead of restarting at zero. Checkpoints written by older versions start from their saved token counts with an unknown cost.
 - **Events and traces.** The `finish` event (and every lifecycle event that carried `usage`) now carries the running totals; `text-complete` also has `stepUsage`, and `onLLMResponse` receives the call's usage as a third argument. The `chat` span's `gen_ai.usage.*` attributes use the same numbers, with `lousho.usage.estimated` set to `true` when they are estimates.
@@ -8900,6 +9131,10 @@ says nothing is treated as one with side effects and is refused.
   not a guarantee, so only connect servers you trust.
 - The built-in `ask_question` (it only asks; the call still pauses for the
   answer) and `task` (its sub-agent inherits plan mode, see below).
+- [Hosted provider tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hosted-tools.md) run inside the provider's request,
+  so no call can be refused. Plan mode sends `webSearch()` and `fileSearch()`
+  (they read) and leaves `codeInterpreter()` and every `hostedTool()` out of
+  the model request; the other modes send them all.
 
 Declare a custom read-only tool like this:
 
@@ -12377,6 +12612,8 @@ type WeatherResult = ToolOutput<typeof weather>; // { temperature: number; condi
 
 const agent = createAgent({ prompt: '...', provider, tools: [weather] });
 ```
+
+Tools the model provider runs itself (web search, code interpreter, file search) go in the same `tools` list; see [Hosted provider tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hosted-tools.md).
 
 ## `defineTool()` options
 

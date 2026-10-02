@@ -183,6 +183,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [CLI](docs/cli.md) | Every `lousho` command and its flags |
 | [ACP](docs/acp.md) | `lousho acp` / `serveAcp()`: drive an agent from Zed and other Agent Client Protocol editors |
 | [Tools](docs/tools.md) | `defineTool()`, validation and errors, built-in tools, `ToolRegistry` |
+| [Hosted tools](docs/hosted-tools.md) | `webSearch()`, `codeInterpreter()`, `fileSearch()`, `hostedTool()`: tools the provider runs inside the request |
 | [Approvals](docs/approvals.md) | `needsApproval`, `agent.approvals`, the `approve` callback, `resumeAfterApproval()`, stores |
 | [Permission modes](docs/permission-modes.md) | `permissionMode: 'plan' \| 'acceptEdits' \| 'dontAsk'`, `session.setPermissionMode()`, the `editsFiles` marker |
 | [Sessions](docs/sessions.md) | Multi-turn conversations, `session.stream()`, session stores, `SqliteStore` |

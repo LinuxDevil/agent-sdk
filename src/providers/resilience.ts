@@ -135,6 +135,8 @@ export function withRetry(provider: LLMProvider, options: WithRetryOptions = {})
     supportsTools: (model) => provider.supportsTools(model),
     supportsStreaming: (model) => provider.supportsStreaming(model),
     getModels: () => provider.getModels(),
+    // N1a: absent on the wrapped provider means no hosted tools.
+    supportsHostedTool: (type) => provider.supportsHostedTool?.(type) ?? false,
   };
 }
 
@@ -168,7 +170,7 @@ export interface WithFallbackOptions {
  * Try each provider in order until one succeeds; every call starts with the
  * first. Rethrows the last error when all fail. `name` and `defaultModel`
  * report the provider that served (or is serving) the latest call;
- * `supportsTools`, `supportsStreaming` and `getModels` ask the first.
+ * `supportsTools`, `supportsStreaming`, `getModels` and `supportsHostedTool` ask the first.
  *
  * A call's `model` goes only to the first provider, and only when it differs
  * from this wrapper's `defaultModel`; otherwise, and always for fallbacks,
@@ -224,5 +226,6 @@ export function withFallback(providers: LLMProvider[], options: WithFallbackOpti
     supportsTools: (model) => first.supportsTools(model),
     supportsStreaming: (model) => first.supportsStreaming(model),
     getModels: () => first.getModels(),
+    supportsHostedTool: (type) => first.supportsHostedTool?.(type) ?? false,
   };
 }
