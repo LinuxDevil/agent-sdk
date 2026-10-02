@@ -204,7 +204,7 @@ the tool exists and released with it by garbage collection (there is no close
 method). `web_fetch` does not exist in the Cloudflare Worker build, and the
 Worker's `http_request` is a different tool that reaches only the host names
 listed in its `LOUSHO_HTTP_ALLOW` binding; see
-[Deployment](./deployment.md#cloudflare-worker).
+[Cloudflare Workers](./cloudflare-workers.md#providers-and-tools).
 
 ## Todo tools
 

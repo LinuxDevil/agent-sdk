@@ -267,4 +267,4 @@ takes for images, so there is no deprecation warning). `ai` v5 is not supported.
 All providers run on Node. The `cloudflare-worker` deploy target supports
 `mock`, `openai`, `anthropic` and `openrouter` (key from the
 `OPENROUTER_API_KEY` binding); `ollama` needs the `node-server` or `docker`
-target (see [Deployment](./deployment.md#cloudflare-worker)).
+target (see [Cloudflare Workers](./cloudflare-workers.md)).

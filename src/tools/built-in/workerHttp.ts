@@ -6,7 +6,7 @@
  * Why an allowlist instead of the Node tool's private-address check: a
  * Worker's `fetch()` resolves names inside Cloudflare's network and gives no
  * hook to see or pin the address, so where a host name connects cannot be
- * checked here (see docs/deployment.md). What a Worker can check is the URL,
+ * checked here (see docs/cloudflare-workers.md). What a Worker can check is the URL,
  * so every URL, the first and each redirect target, must:
  *  1. use `http:` or `https:`;
  *  2. not have an IP-literal host, even a listed one (there is no address
