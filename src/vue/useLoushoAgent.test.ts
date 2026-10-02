@@ -9,7 +9,9 @@ import { z } from 'zod';
 import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import { mockModel } from '../testing';
+import { createTodoTools } from '../tools/built-in/todo';
 import { AGENT_EVENT_SCHEMA_VERSION, type AgentEvent } from '../execution/agentEvents';
+import { useTodos } from './useTodos';
 import { useLoushoAgent, type LoushoAgentSource, type UseLoushoAgentOptions, type UseLoushoAgentResult } from './useLoushoAgent';
 
 let scope: EffectScope | undefined;
@@ -197,5 +199,41 @@ describe('useLoushoAgent for Vue remote (LOU-P2)', () => {
     await sending;
 
     expect(remote.signals[0].aborted).toBe(true);
+  });
+
+});
+
+describe('useTodos (N12)', () => {
+  const todoWrite = { name: 'todo_write', args: { todos: [{ content: 'Plan', status: 'completed' }, { content: 'Build', status: 'in_progress' }, { content: 'Ship', status: 'pending' }] } };
+
+  it('follows the todo list of an in-process run', async () => {
+    const chat = mount({ agent: createAgent({ provider: mockModel([{ toolCalls: [todoWrite] }, 'done']), tools: createTodoTools().tools }) });
+    const plan = useTodos(chat);
+    expect(plan.todos.value).toEqual([]);
+
+    await chat.send('Go');
+
+    expect(plan.counts.value).toEqual({ pending: 1, in_progress: 1, completed: 1, total: 3 });
+    expect(plan.current.value?.content).toBe('Build');
+    expect(plan.progress.value).toBeCloseTo(1 / 3);
+    expect(chat.todos.value).toBe(plan.todos.value);
+  });
+
+  it('follows a remote run, which now also receives agent.drift, and clears on reset()', async () => {
+    const remote = scriptedFetch([{ body: sse([
+  { ...base, seq: 0, type: 'run.start', agentName: 'a' },
+  { ...base, seq: 1, type: 'agent.drift', model: { from: 'a', to: 'b' }, toolsAdded: [], toolsRemoved: [], instructions: false },
+  { ...base, seq: 2, type: 'todo.updated', toolCallId: 'w1', todos: [{ id: 'todo_1', content: 'Plan', status: 'completed' }, { id: 'todo_2', content: 'Build', status: 'pending' }], counts: { pending: 1, in_progress: 0, completed: 1, total: 2 } },
+  { ...base, seq: 3, type: 'run.done', finishReason: 'stop', text: '' },
+]) }]);
+    const chat = mount({ url: '/api/agent', fetch: remote.fetch });
+    const plan = useTodos(chat);
+
+    await chat.send('Go');
+    expect(plan.counts.value).toEqual({ pending: 1, in_progress: 0, completed: 1, total: 2 });
+
+    chat.reset();
+    expect(plan.todos.value).toEqual([]);
+    expect(plan.current.value).toBeUndefined();
   });
 });

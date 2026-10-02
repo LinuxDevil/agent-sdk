@@ -11,6 +11,9 @@ import { defineTool } from '../tools/defineTool';
 import { mockModel } from '../testing';
 import { AGENT_EVENT_SCHEMA_VERSION } from '../execution/agentEvents';
 import type { AgentUIState } from '../ui';
+import { loushoTodos } from './loushoTodos';
+import { createTodoTools } from '../tools/built-in/todo';
+import type { TodoView } from '../ui';
 import { loushoAgent, type LoushoAgentStore } from './loushoAgent';
 
 /** What `$agent` reads: the latest value the store handed to a subscriber. */
@@ -145,5 +148,46 @@ describe('loushoAgent for Svelte remote and abort (LOU-P3)', () => {
     await sending;
 
     expect(remote.signals[0].aborted).toBe(true);
+  });
+
+});
+
+describe('loushoTodos (N12)', () => {
+  const todoWrite = { name: 'todo_write', args: { todos: [{ content: 'Plan', status: 'completed' }, { content: 'Build', status: 'in_progress' }, { content: 'Ship', status: 'pending' }] } };
+  const base = { runId: 'r1', timestamp: new Date(0).toISOString(), v: AGENT_EVENT_SCHEMA_VERSION };
+
+  it('follows the todo list of an in-process run and notifies only when it changes', async () => {
+    const store = loushoAgent({ agent: createAgent({ provider: mockModel([{ toolCalls: [todoWrite] }, 'done']), tools: createTodoTools().tools }) });
+    const views: TodoView[] = [];
+    const unsubscribe = loushoTodos(store).subscribe((view) => views.push(view));
+    expect(views).toHaveLength(1);
+    expect(views[0].todos).toEqual([]);
+
+    await store.send('Go');
+
+    expect(views).toHaveLength(2);
+    expect(views[1].counts).toEqual({ pending: 1, in_progress: 1, completed: 1, total: 3 });
+    expect(views[1].current?.content).toBe('Build');
+    unsubscribe();
+  });
+
+  it('follows a remote run, which now also receives agent.drift', async () => {
+    const events = [
+  { ...base, seq: 0, type: 'run.start', agentName: 'a' },
+  { ...base, seq: 1, type: 'agent.drift', model: { from: 'a', to: 'b' }, toolsAdded: [], toolsRemoved: [], instructions: false },
+  { ...base, seq: 2, type: 'todo.updated', toolCallId: 'w1', todos: [{ id: 'todo_1', content: 'Plan', status: 'completed' }, { id: 'todo_2', content: 'Build', status: 'pending' }], counts: { pending: 1, in_progress: 0, completed: 1, total: 2 } },
+  { ...base, seq: 3, type: 'run.done', finishReason: 'stop', text: '' },
+];
+    const body = events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join('');
+    const store = loushoAgent({ url: '/api/agent', fetch: (async () => new Response(body)) as typeof fetch });
+    let view!: TodoView;
+    loushoTodos(store).subscribe((next) => (view = next));
+
+    await store.send('Go');
+
+    expect(view.counts).toEqual({ pending: 1, in_progress: 0, completed: 1, total: 2 });
+    expect(view.progress).toBe(0.5);
+    store.reset();
+    expect(view.todos).toEqual([]);
   });
 });

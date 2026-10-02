@@ -23,4 +23,5 @@ export {
   type UIToolCall,
   type UIToolCallStatus,
 } from './reducer';
+export { todoView, type TodoView } from './todos';
 export { parseEventStream } from './parseEventStream';

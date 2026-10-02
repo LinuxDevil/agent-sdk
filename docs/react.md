@@ -70,6 +70,7 @@ on the server.
 | `pendingApproval` | `{ id, toolCallId, toolName, args }` of the tool call the run paused on, else `null`. For an `ask_question` call it also has `kind: 'question'` and `question: { text, options?, allowFreeText? }`. |
 | `error` | `{ name, message }` of the last `error` event or a failed request, else `null`. |
 | `usage` | Token usage of the last finished run (from `run.done`), else `null`. |
+| `todos` | The agent's todo list (`{ id, content, status }[]`), set by each `todo.updated` event of the [todo tools](./tools.md#todo-tools); `[]` until the first one. It carries across turns; see [Todos](#todos). |
 | `lastEvent` | The last event received, for anything the projection does not cover. |
 | `send(input)` | Starts a turn. If a turn is still running, it is aborted first. `input` is a string, content parts or a `Message[]` (an `AgentInput`); the user bubble shows the text with an `[image]` / `[file]` marker per other part (remote mode POSTs it as `{ "input": ... }`). |
 | `stop()` | Aborts the turn in flight through its `AbortSignal`; `status` goes back to `'idle'`. |
@@ -196,3 +197,43 @@ console.log(state.status, state.messages.at(-1)?.text, state.usage?.totalTokens)
 `parseEventStream()` skips blank lines, SSE comments and `event:`/`id:`
 fields, and any line that is not a known event, so it reads both framings.
 Breaking out of its loop cancels the response body.
+
+## Todos
+
+An agent that has the [todo tools](./tools.md#todo-tools) emits a
+`todo.updated` event for every `todo_write`; the hook keeps the latest list in
+`todos`, and `useTodos(agent)` turns it into a view with counts, the item being
+worked on and the progress. It takes the hook's result, so one stream feeds the
+chat and the plan. The list carries across turns and is cleared by nothing but a
+new hook (it is not restored when the page reconnects to an existing session).
+
+```tsx
+import { useLoushoAgent, useTodos } from '@lousho/build-ai-agent/react';
+
+export function Plan() {
+  const agent = useLoushoAgent({ url: '/api/agent' });
+  const { todos, counts, current, progress } = useTodos(agent);
+
+  return (
+    <aside>
+      <p>
+        {counts.completed} of {counts.total} done ({Math.round(progress * 100)}%)
+        {current && <> - now: {current.content}</>}
+      </p>
+      <ul>
+        {todos.map((todo) => (
+          <li key={todo.id}>
+            {todo.status === 'completed' ? '[x]' : todo.status === 'in_progress' ? '[>]' : '[ ]'} {todo.content}
+          </li>
+        ))}
+      </ul>
+      <button onClick={() => agent.send('Migrate the repo to ESM')}>Start</button>
+    </aside>
+  );
+}
+```
+
+`current` is the `in_progress` item, else the first `pending` one, and `undefined`
+when nothing is left; `progress` is `completed / total` (0 for an empty list).
+The view is memoized on `agent.todos`. `todoView(todos)` computes the same view
+outside React.

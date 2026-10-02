@@ -43,8 +43,8 @@ and in the template:
 
 ## What differs from React
 
-- **State is refs.** `messages`, `status`, `pendingApproval`, `error`, `usage`
-  and `lastEvent` are read-only `ComputedRef`s: use `.value` in script,
+- **State is refs.** `messages`, `status`, `pendingApproval`, `error`, `usage`,
+  `todos` and `lastEvent` are read-only `ComputedRef`s: use `.value` in script,
   nothing in a template. The commands (`send`, `stop`, `approve`, `reject`,
   `answer`) are plain functions with the React hook's signatures.
 - **`reset()`** aborts the run in flight, forgets the in-process session
@@ -60,3 +60,29 @@ and in the template:
 The reducer and the stream parser are exported from this subpath too
 (`reduceAgentEvents`, `initialAgentUIState`, `parseEventStream`), the same
 ones as in `@lousho/build-ai-agent/react`.
+
+## Todos
+
+`useTodos(agent)` takes the composable's result and returns one read-only ref
+per field of the todo view: `todos`, `counts`, `current` (the `in_progress`
+item, else the first `pending` one) and `progress` (`completed / total`). It
+shows the plan of an agent with the [todo tools](./tools.md#todo-tools) live, from
+the same stream as the chat (see [React](./react.md#todos)).
+
+```ts
+import { useLoushoAgent, useTodos } from '@lousho/build-ai-agent/vue';
+
+// In <script setup>:
+const agent = useLoushoAgent({ url: '/api/agent' });
+const { todos, counts, current, progress } = useTodos(agent);
+
+export { agent, todos, counts, current, progress };
+```
+
+```html
+<p>{{ counts.completed }} of {{ counts.total }} done ({{ Math.round(progress * 100) }}%)</p>
+<p v-if="current">Now: {{ current.content }}</p>
+<ul>
+  <li v-for="todo in todos" :key="todo.id">{{ todo.status }}: {{ todo.content }}</li>
+</ul>
+```

@@ -5,12 +5,15 @@ import { describe, it, expectTypeOf } from 'vitest';
 import { createAgent } from '../createAgent';
 import { createMockProvider } from '../providers/mock';
 import type { AgentInput } from '../providers/content';
+import type { Todo } from '../tools/built-in/todo';
 import type { AgentEvent, AgentEventError, AgentEventUsage } from '../execution/agentEvents';
 import {
   initialAgentUIState,
   parseEventStream,
   reduceAgentEvents,
   useLoushoAgent,
+  useTodos,
+  type TodoView,
   type AgentUIAction,
   type AgentUIState,
   type AgentUIStatus,
@@ -55,5 +58,13 @@ describe('@lousho/build-ai-agent/react types', () => {
     expectTypeOf(parseEventStream).returns.toEqualTypeOf<AsyncGenerator<AgentEvent>>();
     // @ts-expect-error - only known actions and events are accepted
     reduceAgentEvents(initialAgentUIState, { type: 'ui.unknown' });
+  });
+
+  it('useTodos takes the agent result (or just its todos) and returns a TodoView', () => {
+    expectTypeOf(useTodos).parameter(0).toEqualTypeOf<Pick<UseLoushoAgentResult, 'todos'>>();
+    expectTypeOf(useTodos).returns.toEqualTypeOf<TodoView>();
+    expectTypeOf<UseLoushoAgentResult['todos']>().toEqualTypeOf<readonly Todo[]>();
+    expectTypeOf<TodoView['current']>().toEqualTypeOf<Todo | undefined>();
+    expectTypeOf<TodoView['counts']>().toEqualTypeOf<{ pending: number; in_progress: number; completed: number; total: number }>();
   });
 });

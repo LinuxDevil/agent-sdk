@@ -10,6 +10,7 @@
  * nothing from `node:*`, so it runs on Workers.
  */
 import type { AgentEvent } from '../execution/agentEvents';
+import type { Todo, TodoListResult } from '../tools/built-in/todo';
 import type { AgentInput } from '../providers/content';
 import type { ContentPart, Message } from '../providers/llm';
 
@@ -26,6 +27,12 @@ export interface LoushoApprovalData {
   kind?: string;
   /** The question's text and options, when `kind` is `'question'`. */
   question?: unknown;
+}
+
+/** Payload of the `data-lousho-todos` part: the agent's complete todo list after a `todo_write`. */
+export interface LoushoTodosData {
+  todos: Todo[];
+  counts: TodoListResult['counts'];
 }
 
 /** `messageMetadata` of the `finish` chunk. */
@@ -51,6 +58,7 @@ export type LoushoUIMessageChunk =
   | { type: 'tool-output-available'; toolCallId: string; output: unknown }
   | { type: 'tool-output-error'; toolCallId: string; errorText: string }
   | { type: 'data-lousho-approval'; id: string; data: LoushoApprovalData }
+  | { type: 'data-lousho-todos'; id: string; data: LoushoTodosData }
   | { type: 'error'; errorText: string }
   | { type: 'finish'; finishReason: UIFinishReason; messageMetadata: LoushoFinishMetadata };
 
@@ -92,6 +100,22 @@ function reasoningChunk(event: Extract<AgentEvent, { type: 'reasoning.delta' | '
   return { type: 'reasoning-delta', id: state.reasoning, delta: event.text };
 }
 
+/** The `data-lousho-approval` part of an `approval.requested` event. */
+function approvalChunk(event: Extract<AgentEvent, { type: 'approval.requested' }>): LoushoUIMessageChunk {
+  return {
+    type: 'data-lousho-approval',
+    id: event.approvalId,
+    data: {
+      approvalId: event.approvalId,
+      toolCallId: event.toolCallId,
+      toolName: event.toolName,
+      input: event.args,
+      ...(event.kind && { kind: event.kind }),
+      ...(event.question && { question: event.question }),
+    },
+  };
+}
+
 /** The chunks one event produces. Sub-agent events and events with no UI counterpart produce none. */
 function chunksFor(event: AgentEvent, state: MapState): LoushoUIMessageChunk[] {
   if (event.subagent) return [];
@@ -122,20 +146,9 @@ function chunksFor(event: AgentEvent, state: MapState): LoushoUIMessageChunk[] {
     case 'tool.error':
       return [{ type: 'tool-output-error', toolCallId: event.toolCallId, errorText: event.error.message }];
     case 'approval.requested':
-      return [
-        {
-          type: 'data-lousho-approval',
-          id: event.approvalId,
-          data: {
-            approvalId: event.approvalId,
-            toolCallId: event.toolCallId,
-            toolName: event.toolName,
-            input: event.args,
-            ...(event.kind && { kind: event.kind }),
-            ...(event.question && { question: event.question }),
-          },
-        },
-      ];
+      return [approvalChunk(event)];
+    case 'todo.updated':
+      return [{ type: 'data-lousho-todos', id: 'todos', data: { todos: event.todos, counts: event.counts } }];
     case 'step.done':
       return [...closeText(state), { type: 'finish-step' }];
     case 'error':

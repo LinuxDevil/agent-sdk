@@ -11,10 +11,13 @@ export {
   type UseLoushoAgentOptions,
   type UseLoushoAgentResult,
 } from './useLoushoAgent';
+export { useTodos } from './useTodos';
 export {
   initialAgentUIState,
   reduceAgentEvents,
   parseEventStream,
+  todoView,
+  type TodoView,
   type AgentUIAction,
   type AgentUIState,
   type AgentUIStatus,
