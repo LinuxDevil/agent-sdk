@@ -403,11 +403,63 @@ the same events, sub-agents' included, as they happen. See
 ## Approvals inside a sub-agent
 
 When a sub-agent calls a tool that `needsApproval`, the **whole run pauses**:
-the lead's `execute()` resolves with `finishReason: 'awaiting-approval'` and
+the lead's `send()` resolves with `finishReason: 'awaiting-approval'` and
 an `approvalId`, and the approval store holds ONE record whose pending call is
 the sub-agent's call (`toolName`, `args`) with `subagentPath` naming the
 sub-agents it runs inside (e.g. `['researcher']`). Approve or reject it with
-`resumeAfterApproval()`, passing the same `subagents` option as the paused run:
+`lead.approvals.resolve({ id, approved })` (the lead already knows its
+`subagents`; the in-memory approval store is the default, so no `approvalStore`
+is needed):
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+
+const lead = createAgent({
+  provider,
+  instructions: 'You lead.',
+  subagents: { researcher: createAgent({ provider, instructions: 'You research.', description: 'Researches' }) },
+});
+
+const paused = await lead.send('Go');
+if (paused.finishReason === 'awaiting-approval' && paused.approvalId) {
+  const result = await lead.approvals.resolve({ id: paused.approvalId, approved: true });
+  console.log(result.text);
+}
+```
+
+Resuming runs (or rejects) the sub-agent's pending call, lets the sub-agent
+finish, returns its final answer to the lead as the `task` result, and then
+continues the lead. If the sub-agent needs another approval, the run pauses
+again with a new `approvalId`. This works at any depth and for
+`createDelegateTool()` children (pass the registry that holds the delegate
+tool).
+
+The lead's `approve` option decides its sub-agents' calls too.
+
+Guarantees and limits:
+
+- No call runs twice and none is lost: the sub-agent's paused state is stored
+  inside the lead's approval record (plain JSON, so any `ApprovalStore`
+  works), and the approved call runs exactly once, on resume.
+- Other tool calls of the same lead turn that finished keep their results and
+  are not run again.
+- One approval is pending per run. If two sub-agents pause in the same turn,
+  the run pauses on the first (in call order); the second sub-agent stops and
+  the lead gets an error result for that `task` call saying its call was not
+  run, so it can ask again after the approval.
+- A `task` call's pre/post tool hooks fire again on resume, like the hooks of
+  any approved tool.
+- Token usage keeps adding up across the pause: the sub-agent's usage before
+  the pause is in the paused result, and what it spends after the resume is
+  added to the resumed lead's `result.usage`.
+
+#### Advanced: the executor API
+
+With `AgentExecutor.execute()` as the lead (see
+[the executor API](./executor-api.md)), the run needs an `approvalStore`;
+without one, the sub-agent's call becomes an error result and nothing runs.
+Resume with `resumeAfterApproval()`, passing the same `subagents` option as the
+paused run:
 
 ```ts
 import { AgentExecutor, resumeAfterApproval, ToolRegistry, createAgent } from '@lousho/build-ai-agent';
@@ -427,38 +479,10 @@ if (paused.finishReason === 'awaiting-approval' && paused.approvalId) {
 }
 ```
 
-Resuming runs (or rejects) the sub-agent's pending call, lets the sub-agent
-finish, returns its final answer to the lead as the `task` result, and then
-continues the lead. If the sub-agent needs another approval, the run pauses
-again with a new `approvalId`. This works at any depth and for
-`createDelegateTool()` children (pass the registry that holds the delegate
-tool).
-
-With a `createAgent()` lead, `lead.send()` pauses the same way and
-`lead.approvals.resolve({ id, approved })` resumes it (the lead already knows
-its `subagents`); the lead's `approve` option decides its sub-agents' calls too.
-
-Guarantees and limits:
-
-- No call runs twice and none is lost: the sub-agent's paused state is stored
-  inside the lead's approval record (plain JSON, so any `ApprovalStore`
-  works), and the approved call runs exactly once, on resume.
-- Other tool calls of the same lead turn that finished keep their results and
-  are not run again.
-- One approval is pending per run. If two sub-agents pause in the same turn,
-  the run pauses on the first (in call order); the second sub-agent stops and
-  the lead gets an error result for that `task` call saying its call was not
-  run, so it can ask again after the approval.
-- A `task` call's pre/post tool hooks fire again on resume, like the hooks of
-  any approved tool.
-- Approvals need an `approvalStore` on the lead run, which `createAgent()`
-  does not take yet; use `AgentExecutor.execute()` for the lead. Without one,
-  the sub-agent's call becomes an error result and nothing runs.
-- Token usage keeps adding up across the pause: the sub-agent's usage before
-  the pause is in the paused result, and what it spends after the resume is
-  added to the resumed lead's `result.usage`.
-
 ## `createDelegateTool()`
+
+`createDelegateTool()` is superseded by `subagents`; it exists for code that
+builds a `ToolRegistry` by hand.
 
 `createDelegateTool({ agent, provider, toolRegistry })` wraps one child agent as
 a tool you name and register yourself, with its own `maxDepth` guard. It runs
