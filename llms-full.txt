@@ -13028,7 +13028,11 @@ entries is also a `CassetteMismatchError`.
 Volatile values do not break matching. Timestamps, dates (`2026-10-01`,
 `October 1, 2026`), UUIDs and prefixed ids (`call_...`, `toolu_...`,
 `chatcmpl_...`) are replaced by placeholders on both sides, and tool-call ids
-are ignored (tool calls match by name and arguments). For anything else, pass
+are ignored (tool calls match by name and arguments). A tool's parameter schema
+matches by what you wrote in it (property names, types, `optional`, enum values,
+checks such as `min` or `int`, descriptions), not by how a zod major prints it,
+so a cassette recorded with zod 3 replays with zod 4 and the other way round;
+changing the schema itself still fails the match. For anything else, pass
 `normalize`:
 
 ```ts
