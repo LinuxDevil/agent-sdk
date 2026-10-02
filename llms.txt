@@ -30,6 +30,7 @@
 - [Models, tokens and cost](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/models-and-cost.md): Dependency-free helpers for budgeting and context decisions.
 - [Next.js and other Fetch-API frameworks](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md): `createRouteHandler(agent, options?)` serves an agent from a route file of any framework whose handlers take a Web `Request` and return a `Response`: the Next.js App Router, SvelteKit, Remix / React Router, Hono, Bun.serve.
 - [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md): `AgentExecutor.execute()` and `FlowExecutor.execute()` emit spans through a `TraceExporter`.
+- [OpenAPI tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/openapi-tools.md): Most services publish an OpenAPI document and no MCP server.
 - [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md): An `LLMProvider` is what an agent generates with.
 - [Queued input and steering](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/queue-and-steer.md): Add input to a run that is still going, or redirect it.
 - [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md): `useLoushoAgent()` puts an agent behind a chat UI.
