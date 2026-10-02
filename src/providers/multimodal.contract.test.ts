@@ -107,7 +107,7 @@ describe.each(providers)('%s provider: multimodal user content (LOU-V11)', (_nam
     await provider.generate({ messages: [file] });
 
     if (sendsPdf) {
-      expect(prompts[0][0]).toMatchObject({ role: 'user', content: [{ type: 'file', mediaType: 'application/pdf' }] });
+      expect(prompts[0][0]).toMatchObject({ role: 'user', content: [{ type: 'file', mimeType: 'application/pdf' }] });
       expect(warn).not.toHaveBeenCalled();
       return;
     }
