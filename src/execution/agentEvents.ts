@@ -15,6 +15,7 @@ import type { ApprovalKind, ApprovalQuestion } from './ApprovalGate';
 import type { BudgetExceeded } from './budget';
 import type { GuardrailTrip } from './ioGuardrails';
 import type { AgentDrift } from './agentFingerprint';
+import type { Todo, TodoListResult } from '../tools/built-in/todo';
 
 /**
  * Version of the {@link AgentEvent} schema, carried on every event as `v`.
@@ -129,6 +130,18 @@ export interface ToolDoneEvent extends AgentEventBase<'tool.done'> {
   durationMs: number;
   /** LOU-X3: the hook whose `{ result }` outcome replaced (or stood in for) the tool's result. */
   replacedByHook?: string;
+}
+
+/**
+ * A successful `todo_write` replaced the todo list; emitted right after that
+ * call's `tool.done` (also for a sub-agent's, with `subagent`). `todos` is the
+ * complete new list.
+ */
+export interface TodoUpdatedEvent extends AgentEventBase<'todo.updated'> {
+  todos: Todo[];
+  counts: TodoListResult['counts'];
+  /** The `todo_write` call that made the change. */
+  toolCallId: string;
 }
 
 /**
@@ -357,6 +370,7 @@ export type AgentEvent =
   | ReasoningDoneEvent
   | ToolStartEvent
   | ToolDoneEvent
+  | TodoUpdatedEvent
   | ToolErrorEvent
   | ApprovalRequestedEvent
   | PermissionDecisionEvent
@@ -394,34 +408,39 @@ export type AgentEventPayload = {
   [K in AgentEventType]: Omit<AgentEventOf<K>, keyof AgentEventBase<string>> & { type: K };
 }[AgentEventType];
 
-const EVENT_TYPES: ReadonlySet<string> = new Set<AgentEventType>([
-  'run.start',
-  'step.start',
-  'text.delta',
-  'text.done',
-  'reasoning.start',
-  'reasoning.delta',
-  'reasoning.done',
-  'tool.start',
-  'tool.done',
-  'tool.error',
-  'approval.requested',
-  'permission.decision',
-  'step.done',
-  'error',
-  'provider.retry',
-  'provider.fallback',
-  'compaction.start',
-  'compaction.done',
-  'context.cleared',
-  'budget.exceeded',
-  'input.queued',
-  'input.steered',
-  'input.applied',
-  'guardrail.tripped',
-  'guardrail.rewrote',
-  'run.done',
-]);
+/** Every event type; typed as a `Record` so the compiler rejects a missing or extra one (the list once lacked `agent.drift`). */
+const EVENT_TYPE_MAP: Record<AgentEventType, true> = {
+  'run.start': true,
+  'step.start': true,
+  'text.delta': true,
+  'text.done': true,
+  'reasoning.start': true,
+  'reasoning.delta': true,
+  'reasoning.done': true,
+  'tool.start': true,
+  'tool.done': true,
+  'todo.updated': true,
+  'tool.error': true,
+  'approval.requested': true,
+  'permission.decision': true,
+  'step.done': true,
+  'error': true,
+  'provider.retry': true,
+  'provider.fallback': true,
+  'compaction.start': true,
+  'compaction.done': true,
+  'context.cleared': true,
+  'budget.exceeded': true,
+  'input.queued': true,
+  'input.steered': true,
+  'input.applied': true,
+  'guardrail.tripped': true,
+  'guardrail.rewrote': true,
+  'agent.drift': true,
+  'run.done': true,
+};
+
+const EVENT_TYPES: ReadonlySet<string> = new Set(Object.keys(EVENT_TYPE_MAP));
 
 /**
  * Whether `value` looks like an {@link AgentEvent} of this schema version -
