@@ -7970,11 +7970,23 @@ console.log(answer.text);
   (an image URL is downloaded by the `ai` SDK first for Anthropic and Ollama).
   Pick a vision model: Ollama ignores images for a text-only model, and
   OpenRouter rejects them for one.
-- **Files** are not sent by the built-in providers, on any `ai` major: a file
-  part is sent as a text note (`[file report.pdf (application/pdf) not sent]`)
-  and the provider warns once. A provider subclass whose model takes files
-  sets `protected readonly acceptsFileParts = true` to send them as `ai` v4
-  file parts.
+- **Files** (`{ type: 'file', data, mimeType }`) are sent as `file` parts for
+  these media types, by provider and `ai` major:
+
+  | Provider | `ai` 4 | `ai` 6 / 7 |
+  | -------- | ------ | ---------- |
+  | `openai` | text note | `application/pdf` |
+  | `anthropic` | text note | `application/pdf`, `text/plain` |
+  | `openrouter` | text note | `application/pdf` |
+  | `ollama` | text note | text note |
+
+  Any other file part is sent as a text note
+  (`[file report.pdf (application/pdf) not sent]`), and the provider warns once
+  per media type, naming it and the `ai` major. On `ai` 4 the accepted
+  `@ai-sdk/*` range includes 0.0.x packages that have no file parts, so every
+  file becomes the note there. A provider subclass whose model takes more types
+  overrides `protected fileMediaTypes(): readonly string[]` to list them, or
+  sets `protected readonly acceptsFileParts = true` to send every type.
 - `system`, `assistant` and `tool` messages are sent as their text parts.
 - Everything that reads message text uses `textOf()`: `estimateTokens()`
   (each image or file part counts as a flat 1,000 tokens), compaction,
@@ -8066,9 +8078,8 @@ or `StreamResult`:
 
 On v6/v7 the model must come from a provider package for that major (the
 table above); the `0.0.x`/`1.x` packages produce models `ai` v7 rejects. Image
-parts are sent as `image` parts, which `ai` v7 accepts with a deprecation
-warning per part (`globalThis.AI_SDK_LOG_WARNINGS = false` turns `ai`'s
-warnings off). `ai` v5 is not supported.
+parts are sent as `file` parts with an image media type (the shape `ai` v6/v7
+takes for images, so there is no deprecation warning). `ai` v5 is not supported.
 
 ## Where each provider runs
 

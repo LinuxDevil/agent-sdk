@@ -32,6 +32,11 @@ export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
     });
   });
 
+  /** PDF file parts go to the model on ai 6 and 7; older peers have no file parts. */
+  protected fileMediaTypes(): readonly string[] {
+    return aiMajorOf(this.ai) >= 6 ? ['application/pdf'] : [];
+  }
+
   protected async createModel(modelId: string): Promise<LanguageModel> {
     return (await this.loadProvider())(modelId);
   }
