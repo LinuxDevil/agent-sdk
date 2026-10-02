@@ -114,6 +114,7 @@
     "dev": "tsup --watch",
     "test": "vitest",
     "test:coverage": "vitest run --coverage --config vitest.coverage.config.ts",
+    "test:live": "vitest run --config vitest.live.config.ts",
     "test:evals:judge": "vitest run --config vitest.judge.config.ts",
     "test:docker": "vitest run --config vitest.docker.config.ts",
     "lint": "eslint src --max-warnings 0",
@@ -139,7 +140,8 @@
     "fallow": "fallow",
     "fallow:score": "fallow health --score",
     "example:openrouter": "tsx examples/openrouter/index.ts",
-    "pack-smoke": "tsx scripts/pack-smoke.ts"
+    "pack-smoke": "tsx scripts/pack-smoke.ts",
+    "registry-smoke": "tsx scripts/registrySmoke.ts"
   },
   "keywords": [
     "ai",

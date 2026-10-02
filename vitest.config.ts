@@ -32,6 +32,8 @@ export default defineConfig({
       // Real-daemon Docker tests (LOU-M6): run only via vitest.docker.config.ts /
       // `npm run test:docker` (the Linux Docker CI job), never in the default run.
       '**/*.docker.test.ts',
+      // Live-model tests (cost money): run with `npm run test:live`.
+      '**/*.live.test.ts',
       // apps/* are separate npm workspaces (LOU-L1) with their own Vite/
       // vitest config and browser-only test environment (jsdom) - without
       // this exclude, this root config's broad default include pattern

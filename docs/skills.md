@@ -41,18 +41,8 @@ const agent = createAgent({
 match `^[a-z0-9][a-z0-9-_]{0,63}$`; `description` and `content` must be
 non-empty. Errors say what is wrong and how to fix it.
 
-The full executor API takes the same option:
-
-```ts
-import { AgentExecutor, defineSkill } from '@lousho/build-ai-agent';
-
-const result = await AgentExecutor.execute({
-  agent,
-  input: 'Write the changelog for 1.2.0',
-  provider,
-  skills: [defineSkill({ name: 'changelog', description: 'Changelog style', content: '...' })],
-});
-```
+`AgentExecutor.execute()` takes the same `skills` option; see
+[the executor API](./executor-api.md).
 
 If you already registered a tool named `load_skill`, passing `skills` throws:
 rename your tool or drop the option.
