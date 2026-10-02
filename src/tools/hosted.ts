@@ -156,7 +156,9 @@ export function hostedToolUnsupported(provider: string, tool: HostedTool, why: s
   return new ConfigurationError(
     `The '${provider}' provider cannot run hosted tool '${tool.name}' (${tool.type}): ${why}. ` +
       'Hosted tools run on the OpenAI provider (web_search, code_interpreter, file_search) with ai 6 + @ai-sdk/openai 3 or ai 7 + @ai-sdk/openai 4, ' +
-      'and hostedTool() passes any AI SDK provider tool through on ai 6 or 7. Leave the tool out of `tools` for this provider. See docs/hosted-tools.md.',
+        'on the Anthropic provider (web_search, code_interpreter) with ai 6 + @ai-sdk/anthropic 3 or ai 7 + @ai-sdk/anthropic 4, ' +
+        'and on the OpenRouter provider (web_search); hostedTool() passes any AI SDK provider tool through on ai 6 or 7. ' +
+        'Leave the tool out of `tools` for this provider. See docs/hosted-tools.md.',
     'tools',
     'LOUSHO_HOSTED_TOOL_UNSUPPORTED'
   );

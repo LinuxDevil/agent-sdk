@@ -7,6 +7,7 @@ import { LanguageModel } from 'ai';
 import { AiSdkProvider, AiSdkProviderConfig } from './aiSdkProvider';
 import { aiMajorOf } from './aiSdkCompat';
 import { lazyValue, loadOptionalPeer } from './optionalPeer';
+import { mappedHostedOptions, type HostedOptionMapping } from './hostedToolMapping';
 import { hostedToolUnsupported, type HostedTool, type HostedToolType } from '../tools/hosted';
 
 /** The `openai.tools` factories the hosted helpers map to (N1a). */
@@ -15,7 +16,7 @@ type OpenAIToolFactories = Partial<Record<'webSearch' | 'codeInterpreter' | 'fil
 /** How one helper maps to its factory: the factory, and each helper option to the factory's argument (`undefined`: OpenAI has none). */
 interface OpenAIToolMapping {
   factory: keyof OpenAIToolFactories;
-  options: Record<string, ((value: unknown) => Record<string, unknown>) | undefined>;
+  options: HostedOptionMapping;
 }
 
 const OPENAI_HOSTED_TOOLS: Record<HostedToolType, OpenAIToolMapping> = {
@@ -36,26 +37,6 @@ const OPENAI_HOSTED_TOOLS: Record<HostedToolType, OpenAIToolMapping> = {
   },
 };
 
-/** `tool name: options` already warned about (once per process). */
-const warnedOptions = new Set<string>();
-
-/** A helper's options as the factory's arguments; options OpenAI does not take are dropped with one warning. */
-function openAIToolArgs(tool: HostedTool, mapping: OpenAIToolMapping): Record<string, unknown> {
-  const args: Record<string, unknown> = {};
-  const dropped: string[] = [];
-  for (const [key, value] of Object.entries(tool.options)) {
-    const map = mapping.options[key];
-    if (map) Object.assign(args, map(value));
-    else dropped.push(key);
-  }
-  const warnKey = `${tool.name}:${dropped.join(',')}`;
-  if (dropped.length > 0 && !warnedOptions.has(warnKey)) {
-    warnedOptions.add(warnKey);
-    console.warn(`[lousho] OpenAI's ${tool.name} tool does not take ${dropped.join(', ')}; ignored.`);
-  }
-  return args;
-}
-
 export interface OpenAIProviderConfig extends AiSdkProviderConfig {
   apiKey: string;
   organization?: string;
@@ -68,6 +49,7 @@ export interface OpenAIProviderConfig extends AiSdkProviderConfig {
  */
 export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
   readonly name = 'openai';
+  protected readonly mapsHostedTools = true;
   protected readonly fallbackModel = 'gpt-4';
   /** Loads `@ai-sdk/openai` on first use (it is an optional peer). */
   private readonly loadProvider = lazyValue(async () => {
@@ -100,11 +82,8 @@ export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
    * and `file_search`; `hostedTool()` objects pass through. The bare model is a
    * Responses API model from @ai-sdk/openai 2 on, which hosted tools need.
    */
-  protected async hostedToolsFor(tools: readonly HostedTool[], modelId: string): Promise<Record<string, unknown>> {
-    // On ai 4 the base rejects every hosted tool.
-    if (aiMajorOf(this.ai) < 6) return super.hostedToolsFor(tools, modelId);
-    const result = await super.hostedToolsFor(tools.filter((tool) => tool.type === 'custom'), modelId);
-    const builtIn = tools.filter((tool) => tool.type !== 'custom');
+  protected async hostedToolsFor(tools: readonly HostedTool[], _modelId: string): Promise<Record<string, unknown>> {
+    const { passed: result, builtIn } = this.splitHostedTools(tools);
     if (builtIn.length === 0) return result;
     const factories = ((await this.loadProvider()) as unknown as { tools?: OpenAIToolFactories }).tools;
     for (const tool of builtIn) {
@@ -117,7 +96,7 @@ export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
           `the installed @ai-sdk/openai has no tools.${mapping.factory}() (it needs @ai-sdk/openai 3 with ai 6, or 4 with ai 7)`
         );
       }
-      result[tool.name] = factory(openAIToolArgs(tool, mapping));
+      result[tool.name] = factory(mappedHostedOptions('OpenAI', tool, mapping.options));
     }
     return result;
   }

@@ -1,0 +1,457 @@
+{
+  "version": 1,
+  "sdkVersion": "1.0.0-alpha.8",
+  "recordedAt": "2026-10-02T21:02:26.541Z",
+  "provider": {
+    "name": "openrouter",
+    "defaultModel": "openai/gpt-3.5-turbo"
+  },
+  "entries": [
+    {
+      "kind": "generate",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are a helpful assistant."
+          },
+          {
+            "role": "user",
+            "content": "Search the web: what is the latest version of Node.js? Answer in one line with the source URL."
+          }
+        ],
+        "tools": [],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "The latest version of Node.js is 21.0.0, released on October 17, 2023. [Source](https://nodejs.org/en/blog/release/v21.0.0)",
+        "finishReason": "stop",
+        "usage": {
+          "promptTokens": 2567,
+          "completionTokens": 67,
+          "totalTokens": 2634
+        },
+        "hostedToolCalls": [
+          {
+            "id": "gen-1790974947-tM3TxbfYk3viFRFOt4eE:web_search",
+            "name": "web_search",
+            "args": {},
+            "result": {},
+            "sources": [
+              {
+                "url": "https://nodejs.org/en/about/previous-releases",
+                "title": "Node.js Releases"
+              },
+              {
+                "url": "https://nodejs.org/en/blog/release/v21.0.0",
+                "title": "Node.js — Node.js 21.0.0 (Current)"
+              },
+              {
+                "url": "https://nodejs.org/en/download/current",
+                "title": "Download Node.js"
+              },
+              {
+                "url": "https://en.wikipedia.org/wiki/Node.js",
+                "title": "Node.js"
+              },
+              {
+                "url": "https://github.com/nodejs/node/releases/tag/v21.3.0",
+                "title": "2023-11-30, Version 21.3.0 (Current), @RafaelGSS"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "stream",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are a helpful assistant."
+          },
+          {
+            "role": "user",
+            "content": "Search the web: what is the latest version of Node.js? Answer in one line with the source URL."
+          }
+        ],
+        "tools": [],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "The latest version of Node.js is 21.0.0, released on October 17, 2023. [Source](https://nodejs.org/en/blog/release/v21.0.0)",
+        "finishReason": "stop",
+        "usage": {
+          "promptTokens": 2592,
+          "completionTokens": 67,
+          "totalTokens": 2659
+        },
+        "chunks": [
+          {
+            "delayMs": 3732,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "The"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " latest"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " version"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " of"
+            }
+          },
+          {
+            "delayMs": 110,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " Node"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": ".js"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " is"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " "
+            }
+          },
+          {
+            "delayMs": 24,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "21"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "."
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "0"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "."
+            }
+          },
+          {
+            "delayMs": 20,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "0"
+            }
+          },
+          {
+            "delayMs": 2,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": ","
+            }
+          },
+          {
+            "delayMs": 1,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " released"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " on"
+            }
+          },
+          {
+            "delayMs": 8,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " October"
+            }
+          },
+          {
+            "delayMs": 2,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " "
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "17"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": ","
+            }
+          },
+          {
+            "delayMs": 2,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " "
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "202"
+            }
+          },
+          {
+            "delayMs": 1,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "3"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "."
+            }
+          },
+          {
+            "delayMs": 29,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " ["
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "Source"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "]("
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "https"
+            }
+          },
+          {
+            "delayMs": 27,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "://"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "node"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "js"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": ".org"
+            }
+          },
+          {
+            "delayMs": 42,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "/en"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "/blog"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "/re"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "lease"
+            }
+          },
+          {
+            "delayMs": 13,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "/v"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "21"
+            }
+          },
+          {
+            "delayMs": 1,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "."
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "0"
+            }
+          },
+          {
+            "delayMs": 38,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "."
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "0"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": ")"
+            }
+          },
+          {
+            "delayMs": 28,
+            "chunk": {
+              "type": "hosted-tool-call",
+              "hostedToolCall": {
+                "id": "gen-1790974953-ZinWx2VXu530sjVzpWJo:web_search",
+                "name": "web_search",
+                "args": {}
+              }
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "hosted-tool-result",
+              "hostedToolCall": {
+                "id": "gen-1790974953-ZinWx2VXu530sjVzpWJo:web_search",
+                "name": "web_search",
+                "args": {},
+                "result": {},
+                "sources": [
+                  {
+                    "url": "https://nodejs.org/en/about/previous-releases",
+                    "title": "Node.js Releases"
+                  },
+                  {
+                    "url": "https://nodejs.org/en/blog/release/v21.0.0",
+                    "title": "Node.js — Node.js 21.0.0 (Current)"
+                  },
+                  {
+                    "url": "https://nodejs.org/en/download/current",
+                    "title": "Download Node.js"
+                  },
+                  {
+                    "url": "https://en.wikipedia.org/wiki/Node.js",
+                    "title": "Node.js"
+                  },
+                  {
+                    "url": "https://github.com/nodejs/node/releases/tag/v21.3.0",
+                    "title": "2023-11-30, Version 21.3.0 (Current), @RafaelGSS"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "finish",
+              "finishReason": "stop",
+              "usage": {
+                "promptTokens": 2592,
+                "completionTokens": 67,
+                "totalTokens": 2659
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
