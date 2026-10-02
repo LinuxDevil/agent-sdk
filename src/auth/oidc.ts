@@ -15,6 +15,8 @@ import {
   fetchJsonDocument,
   KeyDocumentError,
   jwksKeySource,
+  KEY_SET_ALGORITHMS,
+  KEY_SET_DEFAULT_ALGORITHMS,
   type JwtAlgorithm,
   type JwtClaims,
   type KeySource,
@@ -89,11 +91,11 @@ export function oidc(options: OidcOptions): AuthFn {
     throw new SDKError("oidc(): 'discoveryUrl' must be an https URL (http only on localhost).", 'LOUSHO_AUTH_CONFIG_INVALID');
   }
   checkClaimOptions('oidc()', { issuer, audience: options.audience, clockToleranceSec: options.clockToleranceSec });
-  const algorithms = checkAlgorithms('oidc()', options.algorithms, ['RS256', 'RS384', 'RS512', 'ES256', 'ES384']);
+  const algorithms = checkAlgorithms('oidc()', options.algorithms, KEY_SET_ALGORITHMS);
   return bearerJwt({
     source: discoveredKeySource(issuer, discoveryUrl, options.fetch ?? ((...args) => fetch(...args))),
     checks: {
-      algorithms: options.algorithms === undefined ? ['RS256', 'ES256'] : algorithms,
+      algorithms: options.algorithms === undefined ? KEY_SET_DEFAULT_ALGORITHMS : algorithms,
       issuer,
       audience: options.audience,
       ...(options.clockToleranceSec !== undefined && { clockToleranceSec: options.clockToleranceSec }),

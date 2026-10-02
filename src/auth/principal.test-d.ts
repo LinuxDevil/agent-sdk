@@ -18,7 +18,10 @@ describe('Principal types (N10a)', () => {
     expectTypeOf<SendOptions['principal']>().toEqualTypeOf<Principal | undefined>();
     createAgent({
       provider: createMockProvider(),
-      instructions: ({ principal }) => `Serving ${principal?.issuer ?? ''}:${principal?.id ?? 'anonymous'}`,
+      instructions: (ctx) => {
+        expectTypeOf(ctx.principal).toEqualTypeOf<Principal | undefined>();
+        return 'ok';
+      },
     });
   });
 

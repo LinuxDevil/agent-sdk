@@ -40,8 +40,24 @@ function isPrincipal(value: unknown): value is Principal {
 }
 
 /** The 401 every unauthenticated request gets. */
-export function unauthorized(entries: readonly AuthFn[]): Response {
+function unauthorized(entries: readonly AuthFn[]): Response {
   return respond(401, 'Unauthorized', challenges(entries));
+}
+
+/** One entry's decision: a principal, `undefined` to skip, or the response that ends the walk. */
+async function decide(entry: AuthFn, request: Request, entries: readonly AuthFn[]): Promise<Principal | Response | undefined> {
+  let result: unknown;
+  try {
+    result = await entry(request);
+  } catch (error) {
+    if (error instanceof AuthError) return error.status === 403 ? respond(403, 'Forbidden') : unauthorized(entries);
+    console.error('[lousho auth] an auth function threw; answering 500:', error);
+    return respond(500, 'Internal Server Error');
+  }
+  if (result === null || result === undefined) return undefined;
+  if (isPrincipal(result)) return result;
+  console.error('[lousho auth] an auth function returned something that is not a Principal ({ id, type, authenticator }), null or undefined; answering 500.');
+  return respond(500, 'Internal Server Error');
 }
 
 /**
@@ -60,22 +76,9 @@ export function unauthorized(entries: readonly AuthFn[]): Response {
 export async function routeAuth(request: Request, auth: AuthFn | readonly AuthFn[]): Promise<RouteAuthOutcome> {
   const entries: readonly AuthFn[] = Array.isArray(auth) ? auth : [auth as AuthFn];
   for (const entry of entries) {
-    let result: unknown;
-    try {
-      result = await entry(request);
-    } catch (error) {
-      if (error instanceof AuthError) {
-        return { ok: false, response: error.status === 403 ? respond(403, 'Forbidden') : unauthorized(entries) };
-      }
-      console.error('[lousho auth] an auth function threw; answering 500:', error);
-      return { ok: false, response: respond(500, 'Internal Server Error') };
-    }
-    if (result === null || result === undefined) continue;
-    if (!isPrincipal(result)) {
-      console.error('[lousho auth] an auth function returned something that is not a Principal ({ id, type, authenticator }), null or undefined; answering 500.');
-      return { ok: false, response: respond(500, 'Internal Server Error') };
-    }
-    return { ok: true, principal: result };
+    const decision = await decide(entry, request, entries);
+    if (decision instanceof Response) return { ok: false, response: decision };
+    if (decision) return { ok: true, principal: decision };
   }
   return { ok: false, response: unauthorized(entries) };
 }

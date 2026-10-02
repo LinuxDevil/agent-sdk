@@ -163,43 +163,60 @@ function checkClaims(claims: JwtClaims, checks: JwtChecks): void {
   }
 }
 
+interface ParsedJwt {
+  header: Record<string, unknown>;
+  payload: JwtClaims;
+  signature: Uint8Array;
+  /** The signed bytes: `<header>.<payload>`. */
+  data: Uint8Array;
+}
+
+/** The three parts of a compact JWS, decoded; `malformed` for anything else. */
+function parseJwt(token: string): ParsedJwt {
+  const parts = token.length > MAX_TOKEN_LENGTH ? [] : token.split('.');
+  if (parts.length !== 3 || parts.some((part) => part === '')) throw new JwtVerificationError('malformed');
+  const header = parseJson(parts[0]);
+  const payload = parseJson(parts[1]);
+  const signature = fromBase64Url(parts[2]);
+  if (!header || !payload || !signature) throw new JwtVerificationError('malformed');
+  return { header, payload, signature, data: new TextEncoder().encode(`${parts[0]}.${parts[1]}`) };
+}
+
+/** The header's `alg`, when it is one of `allowed`; `alg: none` (any casing), others and a `crit` header are refused. */
+function allowedAlgorithm(header: Record<string, unknown>, allowed: readonly JwtAlgorithm[]): JwtAlgorithm {
+  const { alg } = header;
+  if (typeof alg !== 'string') throw new JwtVerificationError('malformed');
+  if (alg.toLowerCase() === 'none') throw new JwtVerificationError('alg-none');
+  if (!isAlgorithm(alg) || !allowed.includes(alg)) throw new JwtVerificationError('alg-not-allowed');
+  // No JWS extension is understood, so a token that marks one critical is refused (RFC 7515 4.1.11).
+  if (header.crit !== undefined) throw new JwtVerificationError('crit');
+  return alg;
+}
+
+/** Whether one of `candidates` verifies the signature. A key that cannot be imported (bad material, RSA under 2048 bits) does not. */
+async function anyKeyVerifies(candidates: readonly VerifyKey[], alg: JwtAlgorithm, token: ParsedJwt): Promise<boolean> {
+  for (const key of candidates) {
+    const cryptoKey = await key.importFor(alg).catch(() => undefined);
+    if (cryptoKey && (await verifySignature(cryptoKey, alg, token.signature, token.data))) return true;
+  }
+  return false;
+}
+
 /**
  * Verifies a compact JWS `token` against `source` and `checks`, and returns its
  * claims. Throws `JwtVerificationError` (with the internal `reason`) for any
  * token that must be refused. Reused by N11c.
  */
 export async function verifyJwt(token: string, source: KeySource, checks: JwtChecks): Promise<JwtClaims> {
-  if (token.length > MAX_TOKEN_LENGTH) throw new JwtVerificationError('malformed');
-  const parts = token.split('.');
-  if (parts.length !== 3 || parts.some((part) => part === '')) throw new JwtVerificationError('malformed');
-  const [headerPart, payloadPart, signaturePart] = parts;
-  const header = parseJson(headerPart);
-  const payload = parseJson(payloadPart);
-  const signature = fromBase64Url(signaturePart);
-  if (!header || !payload || !signature) throw new JwtVerificationError('malformed');
-  const { alg } = header;
-  if (typeof alg !== 'string') throw new JwtVerificationError('malformed');
-  if (alg.toLowerCase() === 'none') throw new JwtVerificationError('alg-none');
-  if (!isAlgorithm(alg) || !checks.algorithms.includes(alg)) throw new JwtVerificationError('alg-not-allowed');
-  // No JWS extension is understood, so a token that marks one critical is refused (RFC 7515 4.1.11).
-  if (header.crit !== undefined) throw new JwtVerificationError('crit');
-  const kid = typeof header.kid === 'string' ? header.kid : undefined;
+  const parsed = parseJwt(token);
+  const alg = allowedAlgorithm(parsed.header, checks.algorithms);
+  const kid = typeof parsed.header.kid === 'string' ? parsed.header.kid : undefined;
   // A token without a `kid` is tried against a bounded number of keys, so one request cannot cost a key set's worth of verifications.
   const candidates = (await source.keys(kid)).filter((key) => fits(key, alg)).slice(0, MAX_CANDIDATE_KEYS);
   if (candidates.length === 0) throw new JwtVerificationError('no-key');
-  const data = new TextEncoder().encode(`${headerPart}.${payloadPart}`);
-  let verified = false;
-  for (const key of candidates) {
-    // A key that cannot be imported (bad key material, an RSA key under 2048 bits) is not a candidate.
-    const cryptoKey = await key.importFor(alg).catch(() => undefined);
-    if (cryptoKey && (await verifySignature(cryptoKey, alg, signature, data))) {
-      verified = true;
-      break;
-    }
-  }
-  if (!verified) throw new JwtVerificationError('bad-signature');
-  checkClaims(payload, checks);
-  return payload;
+  if (!(await anyKeyVerifies(candidates, alg, parsed))) throw new JwtVerificationError('bad-signature');
+  checkClaims(parsed.payload, checks);
+  return parsed.payload;
 }
 
 // ---- keys -------------------------------------------------------------------
@@ -325,17 +342,19 @@ export async function fetchJsonDocument(url: string, fetchImpl: typeof fetch): P
   return value as Record<string, unknown>;
 }
 
-/** The signing keys of a JWKS document: RSA and EC only (a key set never supplies an HMAC secret), `use: sig`, `key_ops` with `verify`. */
+/** A key-set entry usable for verification: `use: sig` (or none), `key_ops` with `verify` (or none), RSA or EC. */
+function usableJwk(entry: unknown): VerifyKey | undefined {
+  if (typeof entry !== 'object' || entry === null) return undefined;
+  const jwk = entry as JsonWebKey & { kid?: unknown; use?: unknown };
+  const signing = jwk.use === undefined || jwk.use === 'sig';
+  const verifying = jwk.key_ops === undefined || (Array.isArray(jwk.key_ops) && jwk.key_ops.includes('verify'));
+  return signing && verifying ? jwkKey(jwk) : undefined;
+}
+
+/** The signing keys of a JWKS document (a key set never supplies an HMAC secret: `jwkKey` takes RSA and EC only). */
 function jwksKeys(document: Record<string, unknown>): VerifyKey[] {
   if (!Array.isArray(document.keys)) throw new KeyDocumentError("no 'keys' array");
-  return (document.keys as unknown[]).slice(0, MAX_KEYS).flatMap((entry) => {
-    if (typeof entry !== 'object' || entry === null) return [];
-    const jwk = entry as JsonWebKey & { kid?: unknown; use?: unknown };
-    if (jwk.use !== undefined && jwk.use !== 'sig') return [];
-    if (jwk.key_ops !== undefined && !(Array.isArray(jwk.key_ops) && jwk.key_ops.includes('verify'))) return [];
-    const key = jwkKey(jwk);
-    return key ? [key] : [];
-  });
+  return (document.keys as unknown[]).slice(0, MAX_KEYS).flatMap((entry) => usableJwk(entry) ?? []);
 }
 
 /**
@@ -461,10 +480,37 @@ export function checkClaimOptions(helper: string, options: Pick<JwtOptions, 'iss
   }
 }
 
+/** Algorithms a key set (JWKS, OIDC) may use: never HMAC. */
+export const KEY_SET_ALGORITHMS: readonly JwtAlgorithm[] = ['RS256', 'RS384', 'RS512', 'ES256', 'ES384'];
+/** The default of a key set's `algorithms`. */
+export const KEY_SET_DEFAULT_ALGORITHMS: readonly JwtAlgorithm[] = ['RS256', 'ES256'];
+
 const FAMILY_ALGORITHMS = (filter: (alg: JwtAlgorithm) => boolean) => (Object.keys(ALGORITHMS) as JwtAlgorithm[]).filter(filter);
 
 function keyAlgorithms(key: { kty: KeyType; crv?: string }): readonly JwtAlgorithm[] {
   return FAMILY_ALGORITHMS((alg) => KEY_TYPE[ALGORITHMS[alg].family] === key.kty && (ALGORITHMS[alg].curve === undefined || ALGORITHMS[alg].curve === key.crv));
+}
+
+/** The key source of `jwt()`'s options and the algorithms its key allows. */
+function jwtKeySetup(options: JwtOptions): { source: KeySource; allowed: readonly JwtAlgorithm[] } {
+  const sources = [options.secret, options.publicKey, options.jwksUrl].filter((value) => value !== undefined);
+  if (sources.length !== 1) throw configError("jwt(): give exactly one key source: 'secret', 'publicKey' or 'jwksUrl'.");
+  if (options.secret !== undefined) {
+    if (typeof options.secret !== 'string' || new TextEncoder().encode(options.secret).length < MIN_SECRET_BYTES) {
+      throw configError(`jwt(): 'secret' must be a string of at least ${MIN_SECRET_BYTES} bytes.`);
+    }
+    return { source: secretKeySource(options.secret), allowed: FAMILY_ALGORITHMS((alg) => ALGORITHMS[alg].family === 'HS') };
+  }
+  if (options.publicKey !== undefined) {
+    const configured = publicKeySource(options.publicKey);
+    const allowed = keyAlgorithms(configured.key);
+    // Surface unusable key material at start-up instead of as silent 401s.
+    void configured.key.importFor(allowed[0]).catch(() => console.warn("[lousho auth] jwt(): 'publicKey' could not be imported; every token will be refused."));
+    return { source: configured.source, allowed };
+  }
+  const url = options.jwksUrl as string;
+  if (!isTrustedKeyUrl(url)) throw configError("jwt(): 'jwksUrl' must be an https URL (http only on localhost).");
+  return { source: jwksKeySource(url, options.fetch ?? ((...args) => fetch(...args))), allowed: KEY_SET_ALGORITHMS };
 }
 
 /**
@@ -480,34 +526,13 @@ function keyAlgorithms(key: { kty: KeyType; crv?: string }): readonly JwtAlgorit
  * ```
  */
 export function jwt(options: JwtOptions): AuthFn {
-  const sources = [options.secret, options.publicKey, options.jwksUrl].filter((value) => value !== undefined);
-  if (sources.length !== 1) throw configError("jwt(): give exactly one key source: 'secret', 'publicKey' or 'jwksUrl'.");
   checkClaimOptions('jwt()', options);
-  let source: KeySource;
-  let allowed: readonly JwtAlgorithm[];
-  if (options.secret !== undefined) {
-    if (typeof options.secret !== 'string' || new TextEncoder().encode(options.secret).length < MIN_SECRET_BYTES) {
-      throw configError(`jwt(): 'secret' must be a string of at least ${MIN_SECRET_BYTES} bytes.`);
-    }
-    source = secretKeySource(options.secret);
-    allowed = FAMILY_ALGORITHMS((alg) => ALGORITHMS[alg].family === 'HS');
-  } else if (options.publicKey !== undefined) {
-    const configured = publicKeySource(options.publicKey);
-    source = configured.source;
-    allowed = keyAlgorithms(configured.key);
-    // Surface unusable key material at start-up instead of as silent 401s.
-    void configured.key.importFor(allowed[0]).catch(() => console.warn("[lousho auth] jwt(): 'publicKey' could not be imported; every token will be refused."));
-  } else {
-    const url = options.jwksUrl as string;
-    if (!isTrustedKeyUrl(url)) throw configError("jwt(): 'jwksUrl' must be an https URL (http only on localhost).");
-    source = jwksKeySource(url, options.fetch ?? ((...args) => fetch(...args)));
-    allowed = ['RS256', 'RS384', 'RS512', 'ES256', 'ES384'];
-  }
+  const { source, allowed } = jwtKeySetup(options);
   const algorithms = checkAlgorithms('jwt()', options.algorithms, allowed);
   return bearerJwt({
     source,
     checks: {
-      algorithms: options.algorithms === undefined && options.jwksUrl !== undefined ? ['RS256', 'ES256'] : algorithms,
+      algorithms: options.algorithms === undefined && options.jwksUrl !== undefined ? KEY_SET_DEFAULT_ALGORITHMS : algorithms,
       ...(options.issuer !== undefined && { issuer: options.issuer }),
       ...(options.audience !== undefined && { audience: options.audience }),
       ...(options.clockToleranceSec !== undefined && { clockToleranceSec: options.clockToleranceSec }),
