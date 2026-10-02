@@ -351,8 +351,14 @@ Notes:
   the saved `ctx` (before, it resolved with `input: []` and no `metadata`).
 - The fingerprint covers the agent's own tools, model and instructions, not
   the tools that `subagents` and `skills` add. A sub-agent that pauses for an
-  approval has its own fingerprint in its nested snapshot, but a resume
-  compares only the top-level agent.
+  approval has its own fingerprint in its nested snapshot. On resume, each
+  paused level (the lead, the sub-agent, and a sub-agent of that sub-agent) is
+  compared with its current definition from `subagents`, under the lead's
+  `onAgentDrift`. With `'warn'` the `agent.drift` event carries `subagent`.
+  When a sub-agent's check rejects, the lead's approval and its
+  `'awaiting-approval'` checkpoint are put back, so fixing the sub-agent and
+  resolving again works. A [remote sub-agent](./sub-agents.md#remote-sub-agents)
+  is not compared: its pause is kept on the remote.
 - A run resumed after an approval continues with the instructions it started
   with (they are in its transcript), so its later checkpoints record those.
 

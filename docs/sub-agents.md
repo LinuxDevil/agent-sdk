@@ -465,6 +465,13 @@ Guarantees and limits:
   run, so it can ask again after the approval.
 - A `task` call's pre/post tool hooks fire again on resume, like the hooks of
   any approved tool.
+- A sub-agent whose definition changed since the pause (instructions, model
+  or tools) is handled by the lead's `onAgentDrift`, like the lead itself:
+  `'error'` rejects the resume and leaves the approval pending, `'warn'` (the
+  default) warns and emits `agent.drift` with `subagent` set. A sub-agent that
+  no longer has the approved call's tool always rejects with
+  `LOUSHO_RESUME_TOOL_MISSING`. See
+  [Resuming with a changed agent](./durable-execution.md#resuming-with-a-changed-agent).
 - Token usage keeps adding up across the pause: the sub-agent's usage before
   the pause is in the paused result, and what it spends after the resume is
   added to the resumed lead's `result.usage`.

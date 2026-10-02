@@ -90,7 +90,11 @@ export async function runSubagent(
   const resume = scope?.resume;
   const result =
     resume && capture.store
-      ? await resume.run(resume.decision, capture.store, spec.toolRegistry ?? new ToolRegistry(), spec.provider, options)
+      ? // M10c: the paused child is compared with its current definition, under the lead's `onAgentDrift`.
+        await resume.run(resume.decision, capture.store, spec.toolRegistry ?? new ToolRegistry(), spec.provider, {
+          ...options,
+          currentAgent: spec.agent,
+        })
       : await run({
           ...options,
           agent: spec.agent,
@@ -177,6 +181,8 @@ function childOptions(
         ? [...runtime.permissions, ...spec.permissions]
         : (runtime.permissions ?? spec.permissions),
     onPermissionDecision: runtime.onPermissionDecision,
+    // M10c: a paused child (and its own children) resumes under the top-level run's drift mode.
+    onAgentDrift: runtime.onAgentDrift,
     guardrails: inheritGuardrails(runtime.guardrails, spec.guardrails),
     reasoning: spec.reasoning,
     output: spec.output,
