@@ -43,7 +43,7 @@ export function readonlyPrincipal(principal: Principal | undefined): Readonly<Pr
 }
 
 /** Whether `a` and `b` are the same caller: same `id`, `type`, `authenticator` and `issuer`. */
-export function samePrincipal(a: Principal, b: Principal): boolean {
+function samePrincipal(a: Principal, b: Principal): boolean {
   return a.id === b.id && a.type === b.type && a.authenticator === b.authenticator && a.issuer === b.issuer;
 }
 

@@ -25,16 +25,14 @@ describe('Principal types in tools and approvals (N10b)', () => {
       name: 'whoami',
       description: 'Says who is calling',
       input: z.object({}),
-      execute: (_args, ctx) => {
-        expectTypeOf(ctx.principal?.id).toEqualTypeOf<string | undefined>();
-        expectTypeOf(ctx.principal?.claims).toEqualTypeOf<Readonly<Record<string, unknown>> | undefined>();
-        if (ctx.principal) {
-          // @ts-expect-error - a tool cannot change who the run acts for
-          ctx.principal.id = 'someone-else';
-        }
-        return ctx.approval?.by?.id ?? 'nobody';
-      },
+      execute: (_args, ctx) => expectTypeOf(ctx).toEqualTypeOf<ToolExecutionContext>(),
     });
+    expectTypeOf<NonNullable<ToolExecutionContext['principal']>['claims']>().toEqualTypeOf<Readonly<Record<string, unknown>> | undefined>();
+    const change = (principal: NonNullable<ToolExecutionContext['principal']>) => {
+      // @ts-expect-error - a tool cannot change who the run acts for
+      principal.id = 'someone-else';
+    };
+    void change;
   });
 
   it('needsApproval policies, permission rules, hooks and the audit callback see it', () => {
