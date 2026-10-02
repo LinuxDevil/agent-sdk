@@ -112,7 +112,7 @@ describe('SlackTriggerAdapter signature verification', () => {
     adapter.listen(noopAgent, vi.fn());
     adapter.listen(noopAgent, vi.fn());
     expect(logger.warn).toHaveBeenCalledTimes(1);
-    expect(logger.warn.mock.calls[0][0]).toMatch(/signingSecret.*api-overview/s);
+    expect(logger.warn.mock.calls[0][0]).toMatch(/signingSecret.*docs\/triggers\.md/s);
 
     const quiet = makeLogger();
     new SlackTriggerAdapter({ logger: quiet, signingSecret: SECRET }).listen(noopAgent, vi.fn());
