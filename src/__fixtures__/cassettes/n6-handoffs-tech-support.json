@@ -1,0 +1,444 @@
+{
+  "version": 1,
+  "sdkVersion": "1.0.0-alpha.8",
+  "recordedAt": "2026-10-02T23:34:35.884Z",
+  "provider": {
+    "name": "openrouter",
+    "defaultModel": "openai/gpt-4o-mini"
+  },
+  "entries": [
+    {
+      "kind": "stream",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are tech support. Use send_reset_link for password resets and answer in one or two sentences."
+          },
+          {
+            "role": "user",
+            "content": "I was charged twice for my subscription."
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "transfer_to_billing",
+                "arguments": "{\"reason\":\"User was charged twice for their subscription.\"}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "{\"transferred_to\":\"billing\"}",
+            "name": "transfer_to_billing",
+            "toolName": "transfer_to_billing"
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "lookup_charges",
+                "arguments": "{}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "[{\"date\":\"<date>\",\"amountUsd\":9.99},{\"date\":\"<date>\",\"amountUsd\":9.99}]",
+            "name": "lookup_charges",
+            "toolName": "lookup_charges"
+          },
+          {
+            "role": "assistant",
+            "content": "It appears you were charged twice on <date>, for your subscription, each for $9.99. If you need further assistance, please let me know!"
+          },
+          {
+            "role": "user",
+            "content": "Thanks, and how do I reset my password?"
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "transfer_to_triage",
+                "arguments": "{\"reason\":\"User is asking about resetting their password.\"}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "{\"transferred_to\":\"triage\"}",
+            "name": "transfer_to_triage",
+            "toolName": "transfer_to_triage"
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "transfer_to_tech-support",
+                "arguments": "{\"reason\":\"User is asking about resetting their password.\"}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "{\"transferred_to\":\"tech-support\"}",
+            "name": "transfer_to_tech-support",
+            "toolName": "transfer_to_tech-support"
+          }
+        ],
+        "tools": [
+          {
+            "name": "send_reset_link",
+            "description": "Emails the user a password reset link",
+            "parameters": {
+              "properties": {},
+              "type": "object"
+            }
+          }
+        ],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "",
+        "finishReason": "tool-calls",
+        "usage": {
+          "promptTokens": 301,
+          "completionTokens": 11,
+          "totalTokens": 312
+        },
+        "toolCalls": [
+          {
+            "id": "call_Z55YMgN4YytMTkgdpVTG6vfE",
+            "type": "function",
+            "function": {
+              "name": "send_reset_link",
+              "arguments": "{}"
+            }
+          }
+        ],
+        "chunks": [
+          {
+            "delayMs": 783,
+            "chunk": {
+              "type": "tool-call",
+              "toolCall": {
+                "id": "call_Z55YMgN4YytMTkgdpVTG6vfE",
+                "type": "function",
+                "function": {
+                  "name": "send_reset_link",
+                  "arguments": "{}"
+                }
+              }
+            }
+          },
+          {
+            "delayMs": 20,
+            "chunk": {
+              "type": "finish",
+              "finishReason": "tool-calls",
+              "usage": {
+                "promptTokens": 301,
+                "completionTokens": 11,
+                "totalTokens": 312
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "stream",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are tech support. Use send_reset_link for password resets and answer in one or two sentences."
+          },
+          {
+            "role": "user",
+            "content": "I was charged twice for my subscription."
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "transfer_to_billing",
+                "arguments": "{\"reason\":\"User was charged twice for their subscription.\"}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "{\"transferred_to\":\"billing\"}",
+            "name": "transfer_to_billing",
+            "toolName": "transfer_to_billing"
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "lookup_charges",
+                "arguments": "{}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "[{\"date\":\"<date>\",\"amountUsd\":9.99},{\"date\":\"<date>\",\"amountUsd\":9.99}]",
+            "name": "lookup_charges",
+            "toolName": "lookup_charges"
+          },
+          {
+            "role": "assistant",
+            "content": "It appears you were charged twice on <date>, for your subscription, each for $9.99. If you need further assistance, please let me know!"
+          },
+          {
+            "role": "user",
+            "content": "Thanks, and how do I reset my password?"
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "transfer_to_triage",
+                "arguments": "{\"reason\":\"User is asking about resetting their password.\"}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "{\"transferred_to\":\"triage\"}",
+            "name": "transfer_to_triage",
+            "toolName": "transfer_to_triage"
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "transfer_to_tech-support",
+                "arguments": "{\"reason\":\"User is asking about resetting their password.\"}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "{\"transferred_to\":\"tech-support\"}",
+            "name": "transfer_to_tech-support",
+            "toolName": "transfer_to_tech-support"
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "send_reset_link",
+                "arguments": "{}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "{\"sent\":true}",
+            "name": "send_reset_link",
+            "toolName": "send_reset_link"
+          }
+        ],
+        "tools": [
+          {
+            "name": "send_reset_link",
+            "description": "Emails the user a password reset link",
+            "parameters": {
+              "properties": {},
+              "type": "object"
+            }
+          }
+        ],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "I've sent you a password reset link to your email. Please check your inbox to proceed with the reset.",
+        "finishReason": "stop",
+        "usage": {
+          "promptTokens": 326,
+          "completionTokens": 22,
+          "totalTokens": 348
+        },
+        "chunks": [
+          {
+            "delayMs": 813,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "I've"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " sent"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " you"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " a"
+            }
+          },
+          {
+            "delayMs": 50,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " password"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " reset"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " link"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " to"
+            }
+          },
+          {
+            "delayMs": 51,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " your"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " email"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "."
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " Please"
+            }
+          },
+          {
+            "delayMs": 65,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " check"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " your"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " inbox"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " to"
+            }
+          },
+          {
+            "delayMs": 55,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " proceed"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " with"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " the"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " reset"
+            }
+          },
+          {
+            "delayMs": 27,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "."
+            }
+          },
+          {
+            "delayMs": 19,
+            "chunk": {
+              "type": "finish",
+              "finishReason": "stop",
+              "usage": {
+                "promptTokens": 326,
+                "completionTokens": 22,
+                "totalTokens": 348
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

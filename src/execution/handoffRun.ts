@@ -91,7 +91,7 @@ export function activeAgentOf(messages: readonly Message[]): string | undefined 
 }
 
 /** The run's handoff offered under the tool name `toolName`. */
-export function handoffNamed(options: Pick<ExecuteOptions, 'handoffs'>, toolName: string): ResolvedHandoff | undefined {
+function handoffNamed(options: Pick<ExecuteOptions, 'handoffs'>, toolName: string): ResolvedHandoff | undefined {
   return options.handoffs?.find((handoff) => handoff.toolName === toolName);
 }
 
@@ -127,7 +127,7 @@ export function splitHandoffCalls(options: Pick<ExecuteOptions, 'handoffs'>, too
  * Inserts a tool result where the model's call order puts it among the
  * results that follow its assistant turn (appended when the turn is not found).
  */
-export function insertToolResult(messages: Message[], result: Message): void {
+function insertToolResult(messages: Message[], result: Message): void {
   const id = result.toolCallId;
   let turn = messages.length - 1;
   while (turn >= 0 && !(messages[turn].role === 'assistant' && messages[turn].toolCalls?.some((call) => call.id === id))) turn--;

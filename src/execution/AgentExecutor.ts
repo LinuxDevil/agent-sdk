@@ -862,7 +862,7 @@ export class AgentExecutor {
         return resumed;
       }
       // N6: the resumed step handed off.
-      if (state.switched) return this.runSteps(state.switched.options, state, state.switched.tools, agentSpanId);
+      if (state.switched) return this.runSwitched(state, agentSpanId);
     }
 
     return this.runSteps(options, state, tools, agentSpanId);
@@ -870,15 +870,11 @@ export class AgentExecutor {
 
   /** The generate -> tools loop of runAgentLoop(), run once `state` is loaded. */
   private static async runSteps(
-    runOptions: ExecuteOptions,
+    options: ExecuteOptions,
     state: AgentRunState,
-    runToolList: ToolDefinition[],
+    tools: ToolDefinition[],
     agentSpanId: string
   ): Promise<ExecutionResult> {
-    let options = runOptions;
-    let tools = runToolList;
-    state.switched = undefined;
-    const { signal } = options;
     // N6: counted across the agents of the run (a handoff keeps the run's maxSteps).
     const maxSteps = maxStepsOf(options);
     let repaired = false;
@@ -893,16 +889,11 @@ export class AgentExecutor {
       state.steps++;
       this.applyQueuedInput(options, state);
 
-      const stepOptions = options;
-      const stepTools = tools;
       const outcome = await this.runStepOrAbort(options, state, () =>
-        this.runStep(stepOptions, state, stepTools, agentSpanId)
+        this.runStep(options, state, tools, agentSpanId)
       );
-      // N6: the step handed off; the next one runs the target.
-      if (state.switched) {
-        ({ options, tools } = state.switched);
-        state.switched = undefined;
-      }
+      // N6: the step handed off; the run goes on as the target.
+      if (state.switched) return this.runSwitched(state, agentSpanId);
       if (await this.stepsOnForInput(options, state, outcome, maxSteps)) {
         continue;
       }
@@ -919,7 +910,12 @@ export class AgentExecutor {
       }
     }
 
-    if (signal?.aborted) {
+    return this.outOfSteps(options, state);
+  }
+
+  /** The run's end once the loop left without a result: aborted, or out of steps. */
+  private static outOfSteps(options: ExecuteOptions, state: AgentRunState): Promise<ExecutionResult> {
+    if (options.signal?.aborted) {
       return this.abortRun(options, state);
     }
     // LOU-U19: every non-final turn 'continue's, so leaving the loop here
@@ -927,6 +923,13 @@ export class AgentExecutor {
     // spent while the model still wanted to go on.
     state.finishReason = 'max-steps';
     return this.finishRun(options, state);
+  }
+
+  /** N6: the rest of the run, as the agent the last step handed off to. */
+  private static runSwitched(state: AgentRunState, agentSpanId: string): Promise<ExecutionResult> {
+    const { options, tools } = state.switched as NonNullable<AgentRunState['switched']>;
+    state.switched = undefined;
+    return this.runSteps(options, state, tools, agentSpanId);
   }
 
   /**

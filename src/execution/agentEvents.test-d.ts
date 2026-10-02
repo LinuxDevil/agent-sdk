@@ -124,6 +124,14 @@ describe('AgentEvent types', () => {
     expectTypeOf<Info<'custom'>['anything']>().toBeUnknown();
   });
 
+  it('narrows handoff on event.type (N6)', () => {
+    if (event.type === 'handoff') {
+      expectTypeOf(event.from).toBeString();
+      expectTypeOf(event.to).toBeString();
+      expectTypeOf(event.toolCallId).toBeString();
+    }
+  });
+
   it('narrows todo.updated on event.type (N12)', () => {
     if (event.type === 'todo.updated') {
       expectTypeOf(event.todos).toEqualTypeOf<Todo[]>();
@@ -161,6 +169,7 @@ describe('AgentEvent types', () => {
       | 'guardrail.tripped'
       | 'guardrail.rewrote'
       | 'agent.drift'
+      | 'handoff'
       | 'run.done'
     >();
   });

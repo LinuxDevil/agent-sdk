@@ -1,0 +1,269 @@
+{
+  "version": 1,
+  "sdkVersion": "1.0.0-alpha.8",
+  "recordedAt": "2026-10-02T23:34:35.885Z",
+  "provider": {
+    "name": "openrouter",
+    "defaultModel": "openai/gpt-4o-mini"
+  },
+  "entries": [
+    {
+      "kind": "stream",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You route the user. Hand billing questions to billing and technical questions (logins, passwords) to tech-support. Do not answer them yourself."
+          },
+          {
+            "role": "user",
+            "content": "I was charged twice for my subscription."
+          }
+        ],
+        "tools": [
+          {
+            "name": "transfer_to_billing",
+            "description": "Handles charges, refunds and subscriptions",
+            "parameters": {
+              "properties": {
+                "reason": {
+                  "description": "Why the conversation is handed off, in one sentence.",
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "transfer_to_tech-support",
+            "description": "Handles logins, passwords and technical problems",
+            "parameters": {
+              "properties": {
+                "reason": {
+                  "description": "Why the conversation is handed off, in one sentence.",
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          }
+        ],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "",
+        "finishReason": "tool-calls",
+        "usage": {
+          "promptTokens": 133,
+          "completionTokens": 23,
+          "totalTokens": 156
+        },
+        "toolCalls": [
+          {
+            "id": "call_NMxJgwrrYa5mMNk6QU7YxNkI",
+            "type": "function",
+            "function": {
+              "name": "transfer_to_billing",
+              "arguments": "{\"reason\":\"User was charged twice for their subscription.\"}"
+            }
+          }
+        ],
+        "chunks": [
+          {
+            "delayMs": 1104,
+            "chunk": {
+              "type": "tool-call",
+              "toolCall": {
+                "id": "call_NMxJgwrrYa5mMNk6QU7YxNkI",
+                "type": "function",
+                "function": {
+                  "name": "transfer_to_billing",
+                  "arguments": "{\"reason\":\"User was charged twice for their subscription.\"}"
+                }
+              }
+            }
+          },
+          {
+            "delayMs": 48,
+            "chunk": {
+              "type": "finish",
+              "finishReason": "tool-calls",
+              "usage": {
+                "promptTokens": 133,
+                "completionTokens": 23,
+                "totalTokens": 156
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "stream",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You route the user. Hand billing questions to billing and technical questions (logins, passwords) to tech-support. Do not answer them yourself."
+          },
+          {
+            "role": "user",
+            "content": "I was charged twice for my subscription."
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "transfer_to_billing",
+                "arguments": "{\"reason\":\"User was charged twice for their subscription.\"}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "{\"transferred_to\":\"billing\"}",
+            "name": "transfer_to_billing",
+            "toolName": "transfer_to_billing"
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "lookup_charges",
+                "arguments": "{}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "[{\"date\":\"<date>\",\"amountUsd\":9.99},{\"date\":\"<date>\",\"amountUsd\":9.99}]",
+            "name": "lookup_charges",
+            "toolName": "lookup_charges"
+          },
+          {
+            "role": "assistant",
+            "content": "It appears you were charged twice on <date>, for your subscription, each for $9.99. If you need further assistance, please let me know!"
+          },
+          {
+            "role": "user",
+            "content": "Thanks, and how do I reset my password?"
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "transfer_to_triage",
+                "arguments": "{\"reason\":\"User is asking about resetting their password.\"}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "{\"transferred_to\":\"triage\"}",
+            "name": "transfer_to_triage",
+            "toolName": "transfer_to_triage"
+          }
+        ],
+        "tools": [
+          {
+            "name": "transfer_to_billing",
+            "description": "Handles charges, refunds and subscriptions",
+            "parameters": {
+              "properties": {
+                "reason": {
+                  "description": "Why the conversation is handed off, in one sentence.",
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "transfer_to_tech-support",
+            "description": "Handles logins, passwords and technical problems",
+            "parameters": {
+              "properties": {
+                "reason": {
+                  "description": "Why the conversation is handed off, in one sentence.",
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          }
+        ],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "",
+        "finishReason": "tool-calls",
+        "usage": {
+          "promptTokens": 323,
+          "completionTokens": 24,
+          "totalTokens": 347
+        },
+        "toolCalls": [
+          {
+            "id": "call_oUCTmWOQmGkFaQPfJbTdhDtq",
+            "type": "function",
+            "function": {
+              "name": "transfer_to_tech-support",
+              "arguments": "{\"reason\":\"User is asking about resetting their password.\"}"
+            }
+          }
+        ],
+        "chunks": [
+          {
+            "delayMs": 1023,
+            "chunk": {
+              "type": "tool-call",
+              "toolCall": {
+                "id": "call_oUCTmWOQmGkFaQPfJbTdhDtq",
+                "type": "function",
+                "function": {
+                  "name": "transfer_to_tech-support",
+                  "arguments": "{\"reason\":\"User is asking about resetting their password.\"}"
+                }
+              }
+            }
+          },
+          {
+            "delayMs": 58,
+            "chunk": {
+              "type": "finish",
+              "finishReason": "tool-calls",
+              "usage": {
+                "promptTokens": 323,
+                "completionTokens": 24,
+                "totalTokens": 347
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,610 @@
+{
+  "version": 1,
+  "sdkVersion": "1.0.0-alpha.8",
+  "recordedAt": "2026-10-02T23:34:35.879Z",
+  "provider": {
+    "name": "openrouter",
+    "defaultModel": "openai/gpt-4o-mini"
+  },
+  "entries": [
+    {
+      "kind": "stream",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are the billing desk. Check charges with lookup_charges and answer in one or two sentences. For anything that is not about billing, hand back to triage."
+          },
+          {
+            "role": "user",
+            "content": "I was charged twice for my subscription."
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "transfer_to_billing",
+                "arguments": "{\"reason\":\"User was charged twice for their subscription.\"}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "{\"transferred_to\":\"billing\"}",
+            "name": "transfer_to_billing",
+            "toolName": "transfer_to_billing"
+          }
+        ],
+        "tools": [
+          {
+            "name": "lookup_charges",
+            "description": "Lists the user's recent subscription charges",
+            "parameters": {
+              "properties": {},
+              "type": "object"
+            }
+          },
+          {
+            "name": "transfer_to_triage",
+            "description": "Routes the user to the right desk",
+            "parameters": {
+              "properties": {
+                "reason": {
+                  "description": "Why the conversation is handed off, in one sentence.",
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          }
+        ],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "",
+        "finishReason": "tool-calls",
+        "usage": {
+          "promptTokens": 157,
+          "completionTokens": 11,
+          "totalTokens": 168
+        },
+        "toolCalls": [
+          {
+            "id": "call_0yD7MQEdyPh7kdUa6PTMX3Qe",
+            "type": "function",
+            "function": {
+              "name": "lookup_charges",
+              "arguments": "{}"
+            }
+          }
+        ],
+        "chunks": [
+          {
+            "delayMs": 758,
+            "chunk": {
+              "type": "tool-call",
+              "toolCall": {
+                "id": "call_0yD7MQEdyPh7kdUa6PTMX3Qe",
+                "type": "function",
+                "function": {
+                  "name": "lookup_charges",
+                  "arguments": "{}"
+                }
+              }
+            }
+          },
+          {
+            "delayMs": 20,
+            "chunk": {
+              "type": "finish",
+              "finishReason": "tool-calls",
+              "usage": {
+                "promptTokens": 157,
+                "completionTokens": 11,
+                "totalTokens": 168
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "stream",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are the billing desk. Check charges with lookup_charges and answer in one or two sentences. For anything that is not about billing, hand back to triage."
+          },
+          {
+            "role": "user",
+            "content": "I was charged twice for my subscription."
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "transfer_to_billing",
+                "arguments": "{\"reason\":\"User was charged twice for their subscription.\"}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "{\"transferred_to\":\"billing\"}",
+            "name": "transfer_to_billing",
+            "toolName": "transfer_to_billing"
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "lookup_charges",
+                "arguments": "{}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "[{\"date\":\"<date>\",\"amountUsd\":9.99},{\"date\":\"<date>\",\"amountUsd\":9.99}]",
+            "name": "lookup_charges",
+            "toolName": "lookup_charges"
+          }
+        ],
+        "tools": [
+          {
+            "name": "lookup_charges",
+            "description": "Lists the user's recent subscription charges",
+            "parameters": {
+              "properties": {},
+              "type": "object"
+            }
+          },
+          {
+            "name": "transfer_to_triage",
+            "description": "Routes the user to the right desk",
+            "parameters": {
+              "properties": {
+                "reason": {
+                  "description": "Why the conversation is handed off, in one sentence.",
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          }
+        ],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "It appears you were charged twice on September 1, 2026, for your subscription, each for $9.99. If you need further assistance, please let me know!",
+        "finishReason": "stop",
+        "usage": {
+          "promptTokens": 211,
+          "completionTokens": 38,
+          "totalTokens": 249
+        },
+        "chunks": [
+          {
+            "delayMs": 751,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "It"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " appears"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " you"
+            }
+          },
+          {
+            "delayMs": 1,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " were"
+            }
+          },
+          {
+            "delayMs": 97,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " charged"
+            }
+          },
+          {
+            "delayMs": 1,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " twice"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " on"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " September"
+            }
+          },
+          {
+            "delayMs": 67,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " "
+            }
+          },
+          {
+            "delayMs": 1,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "1"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": ","
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " "
+            }
+          },
+          {
+            "delayMs": 58,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "202"
+            }
+          },
+          {
+            "delayMs": 1,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "6"
+            }
+          },
+          {
+            "delayMs": 1,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": ","
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " for"
+            }
+          },
+          {
+            "delayMs": 41,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " your"
+            }
+          },
+          {
+            "delayMs": 1,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " subscription"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": ","
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " each"
+            }
+          },
+          {
+            "delayMs": 53,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " for"
+            }
+          },
+          {
+            "delayMs": 1,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " $"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "9"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "."
+            }
+          },
+          {
+            "delayMs": 85,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "99"
+            }
+          },
+          {
+            "delayMs": 1,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "."
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " If"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " you"
+            }
+          },
+          {
+            "delayMs": 26,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " need"
+            }
+          },
+          {
+            "delayMs": 1,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " further"
+            }
+          },
+          {
+            "delayMs": 1,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " assistance"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": ","
+            }
+          },
+          {
+            "delayMs": 106,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " please"
+            }
+          },
+          {
+            "delayMs": 1,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " let"
+            }
+          },
+          {
+            "delayMs": 1,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " me"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " know"
+            }
+          },
+          {
+            "delayMs": 20,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "!"
+            }
+          },
+          {
+            "delayMs": 21,
+            "chunk": {
+              "type": "finish",
+              "finishReason": "stop",
+              "usage": {
+                "promptTokens": 211,
+                "completionTokens": 38,
+                "totalTokens": 249
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "stream",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are the billing desk. Check charges with lookup_charges and answer in one or two sentences. For anything that is not about billing, hand back to triage."
+          },
+          {
+            "role": "user",
+            "content": "I was charged twice for my subscription."
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "transfer_to_billing",
+                "arguments": "{\"reason\":\"User was charged twice for their subscription.\"}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "{\"transferred_to\":\"billing\"}",
+            "name": "transfer_to_billing",
+            "toolName": "transfer_to_billing"
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "lookup_charges",
+                "arguments": "{}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "[{\"date\":\"<date>\",\"amountUsd\":9.99},{\"date\":\"<date>\",\"amountUsd\":9.99}]",
+            "name": "lookup_charges",
+            "toolName": "lookup_charges"
+          },
+          {
+            "role": "assistant",
+            "content": "It appears you were charged twice on <date>, for your subscription, each for $9.99. If you need further assistance, please let me know!"
+          },
+          {
+            "role": "user",
+            "content": "Thanks, and how do I reset my password?"
+          }
+        ],
+        "tools": [
+          {
+            "name": "lookup_charges",
+            "description": "Lists the user's recent subscription charges",
+            "parameters": {
+              "properties": {},
+              "type": "object"
+            }
+          },
+          {
+            "name": "transfer_to_triage",
+            "description": "Routes the user to the right desk",
+            "parameters": {
+              "properties": {
+                "reason": {
+                  "description": "Why the conversation is handed off, in one sentence.",
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          }
+        ],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "",
+        "finishReason": "tool-calls",
+        "usage": {
+          "promptTokens": 266,
+          "completionTokens": 23,
+          "totalTokens": 289
+        },
+        "toolCalls": [
+          {
+            "id": "call_EypjhwBhaIsHnoYuNkD0kTt4",
+            "type": "function",
+            "function": {
+              "name": "transfer_to_triage",
+              "arguments": "{\"reason\":\"User is asking about resetting their password.\"}"
+            }
+          }
+        ],
+        "chunks": [
+          {
+            "delayMs": 848,
+            "chunk": {
+              "type": "tool-call",
+              "toolCall": {
+                "id": "call_EypjhwBhaIsHnoYuNkD0kTt4",
+                "type": "function",
+                "function": {
+                  "name": "transfer_to_triage",
+                  "arguments": "{\"reason\":\"User is asking about resetting their password.\"}"
+                }
+              }
+            }
+          },
+          {
+            "delayMs": 51,
+            "chunk": {
+              "type": "finish",
+              "finishReason": "tool-calls",
+              "usage": {
+                "promptTokens": 266,
+                "completionTokens": 23,
+                "totalTokens": 289
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

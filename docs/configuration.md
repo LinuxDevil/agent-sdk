@@ -264,6 +264,7 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `toolConcurrency` | How many tool calls of one model turn run at once: a positive integer or `'unbounded'` (default). See [Parallel tool calls](./runs.md#parallel-tool-calls). |
 | `skills`   | Skills from `defineSkill()` / `loadSkills()`; see [Skills](./skills.md). |
 | `subagents`, `maxSubagentDepth` | Named sub-agents behind one `task` tool, and how deep they may nest (default 1); see [Sub-agents](./sub-agents.md). |
+| `handoffs`, `maxHandoffs` | Agents this agent can hand the whole conversation to, one `transfer_to_<name>` tool each, and how many handoffs one run may make (default 5); see [Handoffs](./handoffs.md). |
 | `store`    | An `AgentStore` (`SqliteStore`, `memoryStore()`, or `{ sessions?, checkpoints?, approvals? }`): the default stores of `agent.session()`, approvals, and `send(message, { sessionId })` runs; `agent.resume(id)` finishes an interrupted one. See [Durable sessions](./sessions.md#durable-sessions). |
 | `memory`   | Memory slots from `defineMemory()`: recalled into the system prompt at the start of each run, with `remember_<name>` / `recall_<name>` tools. See [Memory](./memory.md). |
 | `approvalStore` | Where a `needsApproval` pause is saved (default: `store.approvals`, else a per-agent `InMemoryApprovalStore`); see [Approvals](./approvals.md). |
