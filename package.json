@@ -68,6 +68,11 @@
       "import": "./dist/deploy/kv.mjs",
       "require": "./dist/deploy/kv.js"
     },
+    "./traces": {
+      "types": "./dist/traces/index.d.ts",
+      "import": "./dist/traces/index.mjs",
+      "require": "./dist/traces/index.js"
+    },
     "./triggers": {
       "types": "./dist/triggers/index.d.ts",
       "import": "./dist/triggers/index.mjs",

@@ -43,6 +43,8 @@ describe('renderProject', () => {
     expect(files['.env.example']).toMatch(new RegExp(`^${ENV_KEYS[provider]}=$`, 'm'));
     expect(files['.gitignore']).toMatch(/^\.env$/m);
     expect(files['.gitignore']).toMatch(/^!\.env\.example$/m);
+    // M5a: local trace files (fileTraceExporter) and other .lousho/ state stay out of git.
+    expect(files['.gitignore']).toMatch(/^\.lousho\/$/m);
 
     const pkg = JSON.parse(files['package.json']!);
     expect(pkg).toMatchObject({ name: 'demo-agent', type: 'module', private: true });
