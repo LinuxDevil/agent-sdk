@@ -24,6 +24,7 @@ import { toolErrorResult } from './toolErrors';
 import type { Principal } from '../auth/types';
 import { readonlyPrincipal, resumedRunPrincipal } from './runPrincipal';
 import { withHostedCalls } from './hostedToolCalls';
+import type { ParallelInputCheck } from './ioGuardrails';
 
 export interface AgentRunState {
   messages: Message[];
@@ -73,6 +74,8 @@ export interface AgentRunState {
   resumedFrom?: { fingerprint?: AgentFingerprint };
   /** N10b: who the run acts for (frozen): an unfinished checkpoint's, else `ExecuteOptions.principal`. */
   principal?: Readonly<Principal>;
+  /** N5b: the `runInParallel` input guardrails, until the first model call takes them. */
+  inputCheck?: ParallelInputCheck;
 }
 
 /**
