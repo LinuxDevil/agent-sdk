@@ -304,15 +304,30 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
    * a provider with built-in hosted tools maps them (see OpenAIProvider).
    */
   protected async hostedToolsFor(tools: readonly HostedTool[], _modelId: string): Promise<Record<string, unknown>> {
+    return this.splitHostedTools(tools).passed;
+  }
+
+  /**
+   * N1a/N1b: for providers with built-in hosted tools: the `hostedTool()`
+   * objects as tools (`passed`, which is where `ai` 4 and a provider without
+   * the tool are refused) and the helpers' tools for the provider to map (`builtIn`).
+   */
+  protected splitHostedTools(tools: readonly HostedTool[]): { passed: Record<string, unknown>; builtIn: HostedTool[] } {
     const major = aiMajorOf(this.ai);
-    const result: Record<string, unknown> = {};
+    const passed: Record<string, unknown> = {};
     for (const tool of tools) {
       if (major < 6) throw hostedToolUnsupported(this.name, tool, `hosted tools need ai 6 or 7, and ai ${major} is installed`);
-      if (tool.type !== 'custom') throw hostedToolUnsupported(this.name, tool, `this provider has no built-in ${tool.type} tool`);
-      result[tool.name] = tool.aiSdkTool;
+      if (tool.type !== 'custom') {
+        if (this.mapsHostedTools) continue;
+        throw hostedToolUnsupported(this.name, tool, `this provider has no built-in ${tool.type} tool`);
+      }
+      passed[tool.name] = tool.aiSdkTool;
     }
-    return result;
+    return { passed, builtIn: tools.filter((tool) => tool.type !== 'custom') };
   }
+
+  /** Set by providers whose hostedToolsFor() maps the helpers (OpenAI, Anthropic). */
+  protected readonly mapsHostedTools: boolean = false;
 
   /** The call settings shared by generate() and stream(). */
   private async buildCallSettings(options: GenerateOptions) {
