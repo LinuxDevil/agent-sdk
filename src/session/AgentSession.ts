@@ -13,7 +13,7 @@ import { startAgentRun, type AgentRun } from '../execution/agentRun';
 import { InputQueue } from '../execution/inputQueue';
 import type { Checkpoint, CheckpointStore } from '../execution/checkpoint';
 import type { ApprovalKind } from '../execution/ApprovalGate';
-import { SDKError, SessionAwaitingApprovalError } from '../execution/errors';
+import { ConfigurationError, SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 import { streamSessionTurn } from './sessionStream';
 import { MemorySessionStore, assertSessionId, type SessionStore } from './sessionStore';
 import { addSpent, runSpent, sessionSpent, type BudgetSpent, type RunLimits, type SessionBudget } from '../execution/budget';
@@ -22,6 +22,9 @@ import { AGENT_EVENT_SCHEMA_VERSION, type AgentEvent, type AgentEventPayload } f
 import { manualCompactionOptions, type AgentCompaction } from '../context/agentCompaction';
 import { compactTranscript, type SessionCompactOptions, type SessionCompactResult } from './sessionCompact';
 import type { Principal } from '../auth/types';
+import { forkTranscript, transcriptSteps, type SessionForkOptions, type SessionHistoryStep } from './sessionFork';
+
+export type { SessionForkOptions, SessionHistoryStep } from './sessionFork';
 
 /** Options for `agent.session()`. */
 export interface SessionOptions {
@@ -139,6 +142,12 @@ export type SessionStreamRunner = (
   call?: SessionTurnCall
 ) => AgentRun;
 
+/**
+ * Creates a session bound to the same agent (N3a), for `session.fork()`.
+ * Supplied by `createAgent()`.
+ */
+export type SessionSpawner = (options: SessionOptions) => AgentSession;
+
 /** `store` as its parts: a plain `SessionStore` is the transcript store. */
 function splitStores(store: SessionOptions['store']): Partial<SessionStores> {
   if (!store) return {};
@@ -207,15 +216,17 @@ export class AgentSession<TObject = unknown> {
   private readonly limits: RunLimits | undefined;
   private readonly turnPolicy: SessionOptions['turnPolicy'];
   private readonly compaction: SessionOptions['compaction'];
+  private readonly options: SessionOptions;
+  private readonly spawn: SessionSpawner | undefined;
   private readonly listeners = new Set<(event: AgentEvent) => void>();
   /** The turn running (or about to run) and the queue its run takes input from (LOU-V9). */
   private running: { inputs: InputQueue; result: Promise<ExecutionResult> } | undefined;
   private turnStartedAt = 0;
-  private history: Message[] = [];
+  private transcript: Message[] = [];
   private loaded = false;
   private tail: Promise<unknown> = Promise.resolve();
 
-  constructor(run: SessionRunner, options: SessionOptions = {}, streamRun?: SessionStreamRunner) {
+  constructor(run: SessionRunner, options: SessionOptions = {}, streamRun?: SessionStreamRunner, spawn?: SessionSpawner) {
     if (options.id !== undefined) assertSessionId(options.id);
     this.id = options.id ?? randomUUID();
     const stores = splitStores(options.store);
@@ -226,6 +237,8 @@ export class AgentSession<TObject = unknown> {
     this.compaction = options.compaction;
     this.run = run;
     this.streamRun = streamRun;
+    this.options = options;
+    this.spawn = spawn;
   }
 
   /**
@@ -234,7 +247,7 @@ export class AgentSession<TObject = unknown> {
    * `load()` has completed.
    */
   get messages(): readonly Message[] {
-    return structuredClone(this.history);
+    return structuredClone(this.transcript);
   }
 
   /** Read the saved transcript from the store (done automatically by `send()`). */
@@ -298,7 +311,7 @@ export class AgentSession<TObject = unknown> {
           async () => {
             await this.beforeTurn(signal);
             const call = { input, metadata: options.metadata, principal: options.principal };
-            const run = streamRun([...this.history, ...toMessages(input)], signal, this.turnOptions(inputs), call);
+            const run = streamRun([...this.transcript, ...toMessages(input)], signal, this.turnOptions(inputs), call);
             started(run);
             return this.record(await run.result);
           },
@@ -377,12 +390,12 @@ export class AgentSession<TObject = unknown> {
     return this.idle(async () => {
       await this.ensureLoaded();
       await this.assertNoPendingTurn();
-      const before = this.history;
+      const before = this.transcript;
       if (before.length === 0) return { messagesBefore: 0, messagesAfter: 0, tokensBefore: 0, tokensAfter: 0, strategy: 'none' };
       const { messages, result } = await compactTranscript(structuredClone(before), { ...manualCompactionOptions(this.compaction), ...options }, this.emitter());
       if (JSON.stringify(messages) !== JSON.stringify(before)) {
         await this.store.save(this.id, messages);
-        this.history = messages;
+        this.transcript = messages;
       }
       return result;
     });
@@ -404,12 +417,85 @@ export class AgentSession<TObject = unknown> {
       if (pending?.status === 'awaiting-approval') throw this.awaitingApproval(pending);
       await this.deleteCheckpoint();
       await this.store.delete(this.id);
-      const messagesCleared = this.history.length;
-      this.history = [];
+      const messagesCleared = this.transcript.length;
+      this.transcript = [];
       // A first turn that finished just before a crash, so was never adopted.
       await this.deleteCheckpoint();
       this.emitter()({ type: 'context.cleared', sessionId: this.id, messagesCleared });
     });
+  }
+
+  /**
+   * The steps of the committed transcript, oldest first (N3a): one per model
+   * response, with its tool calls and their results, numbered from 1 across
+   * the whole session. A checkpointed turn that has not finished is not in
+   * the transcript yet, so it is not listed. After `compact()` the steps are
+   * those of the compacted transcript.
+   *
+   * @example
+   * ```ts
+   * for (const { step, turn, text, toolCalls } of await session.history()) {
+   *   console.log(step, turn, text, toolCalls.map((call) => call.name));
+   * }
+   * ```
+   */
+  history(): Promise<SessionHistoryStep[]> {
+    return this.enqueue(async () => {
+      await this.ensureLoaded();
+      return transcriptSteps(structuredClone(this.transcript)).map(({ step }) => step);
+    });
+  }
+
+  /**
+   * Starts a new session from this one's transcript up to and including step
+   * `fromStep` of `history()` (N3a), optionally with one tool result
+   * replaced, saved under a new id in the same store and bound to the same
+   * agent and options. This session is not changed. Only the conversation is
+   * copied: a turn waiting on an approval or a question, or an interrupted
+   * checkpointed turn, stays with this session, and workspace files and other
+   * side effects are not rewound. Rejects with `LOUSHO_SESSION_BUSY` while a
+   * turn is running, `LOUSHO_SESSION_STEP_NOT_FOUND` for a step outside
+   * `0..history().length` and `LOUSHO_SESSION_EXISTS` for an `id` that is taken.
+   *
+   * @example
+   * ```ts
+   * const fork = await session.fork({ fromStep: 2 }); // id `${session.id}-fork-1`
+   * const { text } = await fork.send('Try the other airport instead.');
+   * ```
+   */
+  fork(options: SessionForkOptions): Promise<AgentSession<TObject>> {
+    const spawn = this.spawn;
+    if (!spawn) {
+      return Promise.reject(
+        new SDKError('This AgentSession was created without a way to create sessions, so it cannot fork().', 'LOUSHO_SESSION_FORK_UNSUPPORTED')
+      );
+    }
+    return this.idle(async () => {
+      await this.ensureLoaded();
+      const messages = forkTranscript(this.transcript, options, this.id, providerValidPrefix);
+      const id = options.id ?? (await this.nextForkId(messages.length));
+      assertSessionId(id);
+      if (id === this.id || (await this.isTaken(id, messages.length))) {
+        throw new ConfigurationError(`fork: session '${id}' already exists; pick an id with no transcript in the store.`, 'id', 'LOUSHO_SESSION_EXISTS');
+      }
+      await this.store.save(id, messages);
+      // This session's own stores: without `store`, each session has its own new MemorySessionStore.
+      return spawn({ ...this.options, id, store: this.store, checkpointStore: this.checkpointStore }) as AgentSession<TObject>;
+    });
+  }
+
+  /** `<id>-fork-<n>` for the first `n` (from 1) that is not taken. */
+  private async nextForkId(length: number): Promise<string> {
+    for (let n = 1; ; n++) {
+      const id = `${this.id}-fork-${n}`;
+      if (!(await this.isTaken(id, length))) return id;
+    }
+  }
+
+  /** `id` has a transcript, or a checkpointed turn that a fork of `length` messages would pick up as its own. */
+  private async isTaken(id: string, length: number): Promise<boolean> {
+    if ((await this.store.load(id)) !== undefined) return true;
+    return Boolean(this.checkpointStore && (await this.checkpointStore.load(`${id}.turn-${length}`)));
   }
 
   /** Runs `task` after queued calls, unless a turn is running or queued now (`LOUSHO_SESSION_BUSY`). */
@@ -455,13 +541,13 @@ export class AgentSession<TObject = unknown> {
 
   private async ensureLoaded(): Promise<void> {
     if (this.loaded) return;
-    this.history = (await this.store.load(this.id)) ?? [];
+    this.transcript = (await this.store.load(this.id)) ?? [];
     this.loaded = true;
   }
 
   private async turn(call: SessionTurnCall, inputs: InputQueue, signal?: AbortSignal): Promise<ExecutionResult> {
     await this.beforeTurn(signal);
-    return this.record(await this.run([...this.history, ...toMessages(call.input)], signal, this.turnOptions(inputs), call));
+    return this.record(await this.run([...this.transcript, ...toMessages(call.input)], signal, this.turnOptions(inputs), call));
   }
 
   /**
@@ -513,7 +599,7 @@ export class AgentSession<TObject = unknown> {
   /** Where the next turn is checkpointed: keyed by the transcript length, so it is found again after a restart. */
   private turnCheckpoint(): SessionTurnCheckpoint | undefined {
     const { checkpointStore } = this;
-    return checkpointStore && { sessionId: `${this.id}.turn-${this.history.length}`, checkpointStore };
+    return checkpointStore && { sessionId: `${this.id}.turn-${this.transcript.length}`, checkpointStore };
   }
 
   /** The next turn's checkpoint and, with `limits`, the session's budget (LOU-V6); starts the turn's clock. */
@@ -521,7 +607,7 @@ export class AgentSession<TObject = unknown> {
     this.turnStartedAt = Date.now();
     const checkpoint = inputQueue ? { ...this.turnCheckpoint(), inputQueue } : this.turnCheckpoint();
     if (!this.limits) return checkpoint;
-    return { ...checkpoint, sessionBudget: { limits: this.limits, spent: sessionSpent(this.history) } };
+    return { ...checkpoint, sessionBudget: { limits: this.limits, spent: sessionSpent(this.transcript) } };
   }
 
   private async deleteCheckpoint(): Promise<void> {
@@ -582,12 +668,12 @@ export class AgentSession<TObject = unknown> {
     const next = providerValidPrefix(withoutSystem);
     const last = next.at(-1);
     if (this.limits && spent && last) {
-      const sessionUsage = addSpent(sessionSpent(this.history), spent);
+      const sessionUsage = addSpent(sessionSpent(this.transcript), spent);
       next[next.length - 1] = { ...last, metadata: { ...last.metadata, sessionUsage } };
     }
     await this.store.save(this.id, next);
     const turn = this.turnCheckpoint();
-    this.history = next;
+    this.transcript = next;
     if (turn) await turn.checkpointStore.delete(turn.sessionId);
   }
 }

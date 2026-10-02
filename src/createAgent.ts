@@ -780,7 +780,9 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
       (input, signal, turn, call) => run(input, ctxOf(input, call), signal, turn),
       (input, signal, turn, call) => stream(input, ctxOf(input, call), signal, turn),
       // LOU-W8 follow-up: `session.compact()` uses the agent's `compaction` unless the session sets its own.
-      withDefaultStores({ ...options, compaction: options.compaction ?? config.compaction, id: sessionId }, config.store)
+      withDefaultStores({ ...options, compaction: options.compaction ?? config.compaction, id: sessionId }, config.store),
+      // N3a: a fork is a session of this agent, so memory scoped to the session sees the fork's id.
+      session
     ) as AgentSession<Typed>;
   };
 

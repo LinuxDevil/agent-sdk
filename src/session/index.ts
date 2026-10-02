@@ -1,8 +1,11 @@
 export { AgentSession } from './AgentSession';
 export type {
   PendingTurn,
+  SessionForkOptions,
+  SessionHistoryStep,
   SessionOptions,
   SessionRunner,
+  SessionSpawner,
   SessionStores,
   SessionStreamRunner,
   SessionTurnCall,

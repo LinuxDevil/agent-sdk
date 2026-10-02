@@ -13,7 +13,7 @@ import type { CheckpointStore } from './execution/checkpoint';
 import { SessionAwaitingApprovalError } from './execution/errors';
 import type { InputQueue } from './execution/inputQueue';
 import { streamSessionTurn } from './session/sessionStream';
-import { AgentSession, type SessionOptions, type SessionRunner, type SessionStreamRunner } from './session/AgentSession';
+import { AgentSession, type SessionOptions, type SessionRunner, type SessionSpawner, type SessionStreamRunner } from './session/AgentSession';
 
 /**
  * Decides a tool call that needs approval without pausing the run: `true`
@@ -207,26 +207,30 @@ export function createAgentApprovals(options: {
     streamAnswer: ({ id, answer }, resolveOptions) => streamResolve({ id, approved: true, note: answer }, resolveOptions),
   };
 
+  /** A session of the agent; `spawn` creates its forks (N3a), by default another session with the same `run` / `stream`. */
+  function session(run: SessionRunner, stream: SessionStreamRunner, sessionOptions?: SessionOptions, spawn?: SessionSpawner): AgentSession {
+    const created: ApprovalSession = new ApprovalSession(
+      async (input, signal, turn, call) => {
+        try {
+          return inSession(created, await settle(await run(input, signal, turn, call), signal, turn?.checkpointStore));
+        } catch (error) {
+          // A checkpointed turn found paused (e.g. after a restart): resolving it continues this session.
+          if (error instanceof SessionAwaitingApprovalError && error.approvalId) sessions.set(error.approvalId, created);
+          throw error;
+        }
+      },
+      sessionOptions,
+      (input, signal, turn, call) => inSessionRun(created, stream(input, signal, turn, call)),
+      spawn ?? ((options) => session(run, stream, options))
+    );
+    return created;
+  }
+
   return {
     /** The store to run with: the agent's store, recording what is pending. */
     store,
     approvals,
     settle,
-    session(run: SessionRunner, stream: SessionStreamRunner, sessionOptions?: SessionOptions): AgentSession {
-      const session: ApprovalSession = new ApprovalSession(
-        async (input, signal, turn, call) => {
-          try {
-            return inSession(session, await settle(await run(input, signal, turn, call), signal, turn?.checkpointStore));
-          } catch (error) {
-            // A checkpointed turn found paused (e.g. after a restart): resolving it continues this session.
-            if (error instanceof SessionAwaitingApprovalError && error.approvalId) sessions.set(error.approvalId, session);
-            throw error;
-          }
-        },
-        sessionOptions,
-        (input, signal, turn, call) => inSessionRun(session, stream(input, signal, turn, call))
-      );
-      return session;
-    },
+    session,
   };
 }
