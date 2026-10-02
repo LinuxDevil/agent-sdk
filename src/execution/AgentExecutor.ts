@@ -76,7 +76,7 @@ import { AgentRun, RUN_EVENTS, StreamingExecuteOptions, observeRun, runEventsOf,
 import type { AgentEvent } from './agentEvents';
 import { withSteerSignal, type InputQueue } from './inputQueue';
 import { OutputError, outputInstruction, outputRepairMessage, validateOutput } from './structuredOutput';
-import type { PermissionOptions } from './permissions';
+import { PLAN_MODE_INSTRUCTION, permissionModeOf, type PermissionOptions } from './permissions';
 import {
   BudgetExceeded,
   BudgetExceededError,
@@ -678,10 +678,11 @@ export class AgentExecutor {
   private static async withExtensions(options: ExecuteOptions): Promise<ExecuteOptions> {
     const skilled = withSkills(options.agent, options.toolRegistry, options.skills);
     const extended = await withSubagents(skilled.agent, skilled.toolRegistry, options.subagents, options);
-    // LOU-V4: the output instruction goes last in the system prompt.
+    // N4: a run that starts in plan mode is told so. LOU-V4: the output instruction goes last in the system prompt.
     const { agent } = extended;
-    if (!options.output) return { ...options, ...extended };
-    const instruction = outputInstruction(options.output);
+    const blocks = [...(permissionModeOf(options) === 'plan' ? [PLAN_MODE_INSTRUCTION] : []), ...(options.output ? [outputInstruction(options.output)] : [])];
+    if (blocks.length === 0) return { ...options, ...extended };
+    const instruction = blocks.join('\n\n');
     const prompt = agent.prompt ? `${agent.prompt}\n\n${instruction}` : instruction;
     return { ...options, ...extended, agent: extendAgent(agent, { prompt }) };
   }

@@ -33,6 +33,7 @@
 - [Next.js and other Fetch-API frameworks](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md): `createRouteHandler(agent, options?)` serves an agent from a route file of any framework whose handlers take a Web `Request` and return a `Response`: the Next.js App Router, SvelteKit, Remix / React Router, Hono, Bun.serve.
 - [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md): `AgentExecutor.execute()` and `FlowExecutor.execute()` emit spans through a `TraceExporter`.
 - [OpenAPI tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/openapi-tools.md): Most services publish an OpenAPI document and no MCP server.
+- [Permission modes](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md): A permission mode puts an agent in a named state instead of writing rules: look but do not touch (`plan`), edit files without asking (`acceptEdits`), or never pause (`dontAsk`).
 - [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md): An `LLMProvider` is what an agent generates with.
 - [Queued input and steering](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/queue-and-steer.md): Add input to a run that is still going, or redirect it.
 - [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md): `useLoushoAgent()` puts an agent behind a chat UI.
@@ -61,6 +62,7 @@
 - [doc-qa](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/doc-qa/README.md): A question-answering agent scoped to a single fixed document (a short refund policy, inlined in the prompt), built with `createAgent()`.
 - [openrouter](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/openrouter/README.md): Runnable snippets showing `OpenRouterProvider` usage (LOU-B6): basic and streaming generation, multi-model comparison, tool calling, `AgentBuilder` configuration, model listing, cost-aware model choice, error handling, multi-turn conversation, and capability checks.
 - [ops-pipeline (LOU-J8)](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/ops-pipeline/README.md): An end-to-end "flagship pipeline" demo composing every LOU-J primitive
+- [plan-mode](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/plan-mode/README.md): Plan first, then let the agent edit: a coding agent over a `MemoryWorkspace` with `createFsTools()`.
 - [research-assistant](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/research-assistant/README.md): An agent with the built-in `http` tool wired up so it can fetch sources while researching a question, built with `createAgent()`.
 - [slack-notifier](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/slack-notifier/README.md): Turns a raw event description into a short, Slack-ready notification message, built with `createAgent()`.
 - [support-bot](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/support-bot/README.md): A minimal customer-support agent built with `createAgent()`.

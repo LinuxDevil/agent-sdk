@@ -33,6 +33,8 @@ const agent = createAgent({ prompt: '...', provider, tools: [weather] });
 | `execute(args, ctx)` | yes | Runs the tool. `ctx` carries the call's `toolCallId` and `abortSignal`. The return type is kept on the tool (`ToolOutput`). |
 | `displayName` | no | Label for UIs. Defaults to `name`. |
 | `needsApproval` | no | `true`, or a predicate typed from `input`, to pause for a human decision before the call runs. See [Approvals](./approvals.md). |
+| `annotations` | no | MCP hints (`readOnlyHint`, `destructiveHint`, ...), stored as `metadata.mcp.annotations`. `readOnlyHint: true` lets the tool run in [plan mode](./permission-modes.md#which-tools-are-read-only). |
+| `editsFiles` | no | The tool edits files: [`permissionMode: 'acceptEdits'`](./permission-modes.md#file-edits-the-editsfiles-marker) runs its calls without asking. Stored as `metadata.editsFiles`. |
 | `requiresSandbox` | no | Run the tool through the configured `SandboxAdapter` instead of in-process (needs `sandboxExecute`). See [Guardrails and sandboxing](./guardrails.md#sandboxed-tools). |
 | `sandboxExecute(args, sandbox)` | no | The sandboxed execution path used when `requiresSandbox` is true. |
 

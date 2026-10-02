@@ -1,0 +1,9 @@
+{
+  "name": "plan-mode-example",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Plan first, then edit: permission modes of @lousho/build-ai-agent",
+  "scripts": {
+    "start": "tsx index.ts"
+  }
+}

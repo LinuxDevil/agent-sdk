@@ -54,7 +54,7 @@ import type { AgentDriftMode } from './execution/agentFingerprint';
 import { ConfigurationError, SDKError } from './execution/errors';
 import { newId } from './utils/id';
 import { createAgentApprovals, type AgentApprovals, type ApproveToolCall } from './createAgentApprovals';
-import type { PermissionOptions } from './execution/permissions';
+import { assertPermissionMode, type PermissionMode, type PermissionOptions } from './execution/permissions';
 import type { InferSchemaOutput, StandardSchemaV1 } from './utils/zodCompat';
 import type { McpServerSpec } from './spec/schema';
 import { agentMcp, streamAfter, streamPrepared } from './tools/mcp/agentMcp';
@@ -521,10 +521,16 @@ export interface SendOptions {
   principal?: Principal;
   /** This run's reasoning (LOU-V13), instead of the agent's `reasoning`. */
   reasoning?: ReasoningOption;
+  /**
+   * This run's permission mode (N4), instead of the agent's `permissionMode`.
+   * A run continued by `agent.approvals.resolve()` uses the agent's again.
+   * See docs/permission-modes.md.
+   */
+  permissionMode?: PermissionMode;
 }
 
 /** How a run is checkpointed, plus (LOU-V13) a `send()` / `stream()` call's own `reasoning`. */
-type RunTurn = SessionTurnOptions & Pick<ExecuteOptions, 'reasoning'>;
+type RunTurn = SessionTurnOptions & Pick<ExecuteOptions, 'reasoning' | 'permissionMode'>;
 
 /** `TObject`: the type of `result.object` - `z.output` of the `output` schema. */
 export interface SimpleAgent<TObject = unknown> {
@@ -631,6 +637,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   assertToolConcurrency(config.toolConcurrency, 'createAgent');
   assertMaxSubagentDepth(config.maxSubagentDepth, 'createAgent');
   assertSubagents(config.subagents, 'createAgent');
+  if (typeof config.permissionMode === 'string') assertPermissionMode(config.permissionMode, 'createAgent');
   const hasMcp = Object.keys(config.mcpServers ?? {}).length > 0;
   const memory = agentMemory(config.memory);
   const mcpTools: Record<string, ToolDescriptor> = {};
@@ -645,6 +652,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     // LOU-X2: also used by resumed runs and when this agent is a sub-agent.
     permissions: config.permissions,
     onPermissionDecision: config.onPermissionDecision,
+    // N4: the agent's mode; a session's turn or a send() call may override it.
+    permissionMode: config.permissionMode,
     skills: config.skills,
     // LOU-Y6: `task` conversations are kept in the agent's session store, to be resumed by taskId.
     subagents: subagentsWithOptions(
@@ -679,7 +688,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     approvalStore: ApprovalStore,
     decision: ApprovalDecision,
     signal?: AbortSignal,
-    checkpointStore?: CheckpointStore
+    checkpointStore?: CheckpointStore,
+    permissionMode?: PermissionOptions['permissionMode']
   ): Promise<ResumeRequest> => {
     const paused = await pausedRun(specs, approvalStore, decision.id);
     return {
@@ -689,6 +699,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
       provider: paused.spec.provider,
       executeOptions: {
         ...runOptions,
+        // N4: a paused session turn continues under the session's mode (read at each call), else the agent's.
+        ...(permissionMode !== undefined && { permissionMode }),
         output: config.output,
         hooks,
         approvalStore: paused.store,
@@ -706,9 +718,9 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     approve: config.approve,
     resume: async (...args) => resumeRequest(await resumeRequestFor(...args)),
     // LOU-V14: the streamed run's own signal and event sink are wired into the request.
-    streamResume: (approvalStore, decision, signal, checkpointStore, inputQueue) =>
+    streamResume: (approvalStore, decision, signal, checkpointStore, inputQueue, permissionMode) =>
       streamResumed(async (wire) => {
-        const request = await resumeRequestFor(approvalStore, decision, undefined, checkpointStore);
+        const request = await resumeRequestFor(approvalStore, decision, undefined, checkpointStore, permissionMode);
         return resumeRequest({ ...request, executeOptions: wire(request.executeOptions ?? {}) });
       }, signal, inputQueue),
   });
@@ -725,7 +737,10 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     }
     return { sessionId, checkpointStore: checkpoints };
   };
-  const callTurn = ({ sessionId, reasoning }: SendOptions): RunTurn => ({ ...durable(sessionId), ...(reasoning !== undefined && { reasoning }) });
+  const callTurn = ({ sessionId, reasoning, permissionMode }: SendOptions): RunTurn => {
+    if (permissionMode !== undefined) assertPermissionMode(permissionMode, 'send');
+    return { ...durable(sessionId), ...(reasoning !== undefined && { reasoning }), ...(permissionMode !== undefined && { permissionMode }) };
+  };
   const executeOptions = (
     spec: SubagentSpec,
     input: Message[],
@@ -777,8 +792,17 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     return approvals.session(
       (input, signal, turn, call) => run(input, ctxOf(input, call), signal, turn),
       (input, signal, turn, call) => stream(input, ctxOf(input, call), signal, turn),
-      // LOU-W8 follow-up: `session.compact()` uses the agent's `compaction` unless the session sets its own.
-      withDefaultStores({ ...options, compaction: options.compaction ?? config.compaction, id: sessionId }, config.store)
+      // LOU-W8 follow-up: `session.compact()` uses the agent's `compaction` unless the session sets its own; N4: the same for the permission mode.
+      withDefaultStores(
+        {
+          ...options,
+          compaction: options.compaction ?? config.compaction,
+          permissionMode: options.permissionMode ?? config.permissionMode,
+          onPermissionModeChange: options.onPermissionModeChange ?? config.onPermissionModeChange,
+          id: sessionId,
+        },
+        config.store
+      )
     ) as AgentSession<Typed>;
   };
 
@@ -787,8 +811,10 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   const simpleAgent: SimpleAgent<Typed> = {
     async send(message: AgentInput, options: SendOptions = {}): Promise<ExecutionResult<Typed>> {
       const { sessionId, metadata, principal } = options;
-      const result = await run(toMessages(message), { sessionId, input: message, metadata, principal }, options.signal, callTurn(options));
-      return approvals.settle(result, options.signal) as Promise<ExecutionResult<Typed>>;
+      const turn = callTurn(options);
+      const result = await run(toMessages(message), { sessionId, input: message, metadata, principal }, options.signal, turn);
+      // N4: an `approve` callback's decisions continue the run under this call's mode.
+      return approvals.settle(result, options.signal, undefined, turn.permissionMode) as Promise<ExecutionResult<Typed>>;
     },
     stream(message: AgentInput, options: SendOptions = {}): AgentRun<Typed> {
       const { sessionId, metadata, principal } = options;

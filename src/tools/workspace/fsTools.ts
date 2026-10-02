@@ -144,6 +144,7 @@ function mutatingTools(fs: FsProvider, approvals: FsToolApprovals, checkpoints: 
   return [
     defineTool({
       name: 'write_file',
+      editsFiles: true,
       description: 'Create or overwrite a file with the given content. Missing parent directories are created.',
       input: writeFileInput,
       needsApproval: approvals.write_file,
@@ -159,6 +160,7 @@ function mutatingTools(fs: FsProvider, approvals: FsToolApprovals, checkpoints: 
     }),
     defineTool({
       name: 'edit_file',
+      editsFiles: true,
       description:
         'Replace exact text in a file. old_string must match the file exactly (whitespace included) and be unique, unless replace_all is true. Read the file first.',
       input: editFileInput,
