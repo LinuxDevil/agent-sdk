@@ -123,7 +123,11 @@ function dryRunPublish(label: string, tarball: string, cwd: string): void {
   // `--tag next`: the versions are prereleases and npm 11 refuses a prerelease without an explicit tag.
   const res = run('npm', ['publish', tarball, '--dry-run', '--tag', 'next', '--access', 'public'], cwd);
   const out = res.stdout + res.stderr;
-  if (res.status !== 0 || /npm (error|ERR!)/.test(out)) {
+  // After a release the version in the repo is the one on npm until the next bump. The dry run
+  // then fails only on that; the tarball itself was accepted, which is what this step checks.
+  if (/cannot publish over the previously published versions/i.test(out)) {
+    log(`npm publish --dry-run ${label}: ok (this version is already on npm; bump it before the next release)`);
+  } else if (res.status !== 0 || /npm (error|ERR!)/.test(out)) {
     fail(`npm publish --dry-run ${label} failed:\n${out}`);
   } else {
     log(`npm publish --dry-run ${label}: ok`);
