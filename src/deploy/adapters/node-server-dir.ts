@@ -28,12 +28,17 @@ export function isAgentDir(agentPath: string): boolean {
   return agentPath !== '' && fs.existsSync(agentPath) && fs.statSync(agentPath).isDirectory();
 }
 
+/** Throws LOUSHO_DEPLOY_FAILED unless `agentPath` has an instructions.md or an agent.* config file. */
+export function assertAgentDirLayout(agentPath: string): void {
+  const looksLikeAgent = fs.readdirSync(agentPath).some((f) => f === 'instructions.md' || /^agent\./.test(f));
+  if (!looksLikeAgent) throw new SDKError(`'${agentPath}' is not an agent directory: it has no instructions.md or agent.* config file.`, 'LOUSHO_DEPLOY_FAILED');
+}
+
 /** Records `agentPath` as the directory to bundle, or (undefined) removes an earlier record so a spec build is not mistaken for it. */
 export function writeAgentDirPointer(outDir: string, agentPath: string | undefined): void {
   const pointer = path.join(outDir, AGENT_DIR_POINTER);
   if (agentPath === undefined) return fs.rmSync(pointer, { force: true });
-  const looksLikeAgent = fs.readdirSync(agentPath).some((f) => f === 'instructions.md' || /^agent\./.test(f));
-  if (!looksLikeAgent) throw new SDKError(`'${agentPath}' is not an agent directory: it has no instructions.md or agent.* config file.`, 'LOUSHO_DEPLOY_FAILED');
+  assertAgentDirLayout(agentPath);
   writeFile(pointer, JSON.stringify({ source: agentPath }) + '\n');
 }
 

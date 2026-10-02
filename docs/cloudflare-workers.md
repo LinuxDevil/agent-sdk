@@ -1,6 +1,6 @@
 # Cloudflare Workers
 
-`npx lousho build --target=cloudflare-worker --agent=agent.yaml` generates a module Worker (`worker.ts`), a `wrangler.toml` and a bundle, `dist/worker.js`, that the build checks for `node:` imports. It needs `tsup` and `wrangler` installed, and it takes an [agent spec file](./configuration.md). The Worker serves the same [HTTP API](./deployment.md#http-api) as the other targets. This target has the tightest limits of the three, so they come first.
+`npx lousho build --target=cloudflare-worker --agent=agent.yaml` generates a module Worker (`worker.ts`), a `wrangler.toml` and a bundle, `dist/worker.js`, that the build checks for `node:` imports. It needs `tsup` and `wrangler` installed, and it takes an [agent spec file](./configuration.md) or an [agent directory](./agent-directories.md) (`npx lousho build ./my-agent --target=cloudflare-worker`). The Worker serves the same [HTTP API](./deployment.md#http-api) as the other targets. This target has the tightest limits of the three, so they come first.
 
 ## What works and what does not
 
@@ -9,10 +9,10 @@
 | Feature | Cloudflare Worker | `node-server` / `docker` |
 | ------- | ----------------- | ------------------------ |
 | Agent spec files | yes | yes |
-| [Agent directories](./agent-directories.md) | no | yes |
+| [Agent directories](./agent-directories.md) | yes: config, `instructions.md`, `tools/`, `skills/`; not `subagents/`, `schedules/`, `channels/`, `memory/` or `projectInstructions` | yes, all of it |
 | Providers | `mock`, `openai`, `anthropic`, `openrouter` | `mock`, `openai`, `anthropic`, `ollama`, `openrouter` |
 | Built-in tools | `current-date`, `day-name`, `http` (listed host names only, from the `LOUSHO_HTTP_ALLOW` binding) | all, including `http` and `web-fetch` |
-| Tools written in TypeScript | no (a spec file cannot hold code) | yes, in an agent directory |
+| Tools written in TypeScript | yes, in an agent directory: no Node builtins, and from `@lousho/build-ai-agent` only the names listed under [Agent directories on a Worker](#build-and-deploy) | yes, in an agent directory |
 | Sandboxed tool execution | no (the build swaps the sandbox for a shim that fails when used) | yes |
 | MCP servers over stdio | no (the child process cannot start; the shim fails when used) | yes |
 | MCP servers over HTTP | not verified | yes |
@@ -20,7 +20,7 @@
 | Schedules | cron triggers only, in UTC, five fields, one-minute granularity | full cron expressions, with a time zone |
 | Bundle | `lousho build` checks for Node builtins and reports its size | not checked |
 
-`lousho build` rejects a spec whose provider or tool is not in the Worker column, with a `LOUSHO_DEPLOY_FAILED` error that names it and suggests `--target=node-server` or `--target=docker`.
+`lousho build` rejects a spec whose provider or tool is not in the Worker column, and an agent directory with a folder or setting the Worker column leaves out, with a `LOUSHO_DEPLOY_FAILED` error that names it and suggests `--target=node-server` or `--target=docker`.
 
 ### Providers and tools
 
@@ -85,6 +85,46 @@ Provider API keys are read from Worker bindings named `<TYPE>_API_KEY` (for exam
 `wrangler secret put OPENROUTER_API_KEY`). The peer packages (`@ai-sdk/openai` for
 `openai` and `openrouter`, `@ai-sdk/anthropic` for `anthropic`, and `ai`) must be
 installed alongside `@lousho/build-ai-agent` for `lousho build` to bundle them.
+
+**Agent directories on a Worker.** A Worker has no file system and cannot import
+a file by path at run time, so the build reads the
+[agent directory](./agent-directories.md) on Node and writes `agent.module.ts`:
+a static import of each `tools/*.ts` file (and of an `agent.ts` / `agent.js`
+config), with `instructions.md`, a JSON/YAML config and the skills copied in as
+JSON. The Worker builds the agent with the same rules as `resolveAgentDir()`
+(config keys, tool exports, duplicate tool names):
+
+```bash
+npx lousho build ./my-agent --target=cloudflare-worker
+cd .lousho/build/cloudflare-worker && npx wrangler deploy
+```
+
+- The config's `model` must name a provider of the table above (`"model": "openai/gpt-4o-mini"`),
+  with its key in the `OPENAI_API_KEY` binding; or `agent.ts` sets `provider` to an instance.
+  There is no environment to pick a default model from, so a directory without either is rejected.
+- A JSON/YAML config is checked by `lousho build`; an `agent.ts` config is checked when the
+  Worker starts, so `wrangler deploy` reports the problem.
+- `subagents/`, `schedules/`, `channels/`, `memory/` and `projectInstructions` are rejected,
+  naming the folder or key. Use `node-server` or `docker` for them.
+- Tool files are bundled from where they are, so their relative imports and their
+  `node_modules` resolve as in development. A tool that imports a Node builtin fails the
+  build's leak check, which names the file.
+- In a tool or `agent.ts`, `@lousho/build-ai-agent` is a Worker-safe subset of the package:
+  `defineTool`, `isDefinedTool`, `always`, `never`, `once`, `defineSkill`, `createMockProvider`,
+  `MockLLMProvider`, `OpenAIProvider`, `AnthropicProvider`, `OpenRouterProvider`, `fromAiSdk`,
+  `LLMProviderRegistry`, `textOf`, `SDKError`, `ConfigurationError`, `ToolExecutionError` and
+  `ValidationError`. Importing another name fails the build with this list; type-only imports
+  work for every type.
+
+What a tool can reach on a Worker: a tool file runs in the Worker's isolate, not in a
+sandbox, with the same rights as the rest of the Worker. It can `fetch()` any host
+(`LOUSHO_HTTP_ALLOW` restricts only the built-in `http` tool, not your code), and it
+shares the isolate's memory with every session the isolate serves (without
+`AGENT_CHECKPOINTS`, that includes their sessions). The SDK does not hand a tool the
+Worker's `env` (the provider API keys, `LOUSHO_API_TOKEN`, the KV namespace), and the
+build does not resolve `cloudflare:` imports, so `import { env } from 'cloudflare:workers'`
+fails the build; but code in one isolate is not a security boundary. Deploy only tool
+code you would trust with those bindings.
 
 ## Bindings
 
@@ -248,7 +288,7 @@ Node-only imports (project instructions, the file session store, guardrail
 patches, MCP over stdio) the build points at a shim that fails when used
 (`src/deploy/shims/node.worker.ts`). The built `dist/worker.js` bundle is then
 checked for `node:` and bare Node builtin specifiers as part of `lousho build`,
-and fails the build if any are found. One exception: `ai` v7 and
+and fails the build if any are found; when one was imported (by an agent directory's tool, say), the error names the importing file. One exception: `ai` v7 and
 `@ai-sdk/provider-utils` v5 look up `node:module`, `node:dns`,
 `node:diagnostics_channel` and `node:async_hooks` at run time with
 `process.getBuiltinModule()`, only when they detect Node, and fall back to

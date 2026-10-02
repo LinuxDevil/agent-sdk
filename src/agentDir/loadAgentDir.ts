@@ -80,7 +80,8 @@ interface Inherited {
   model?: PerRun<string>;
 }
 
-async function readInstructions(dir: string): Promise<{ file: string; text: string } | undefined> {
+/** `dir`'s `instructions.md`, trimmed (undefined when absent; empty throws LOUSHO_AGENT_DIR_INVALID). */
+export async function readInstructions(dir: string): Promise<{ file: string; text: string } | undefined> {
   const file = path.join(dir, 'instructions.md');
   if (!(await isFile(file))) return undefined;
   const text = (await readText(file)).trim();

@@ -23,7 +23,7 @@ Every target answers `GET /health` (`200 ok`) and serves the full
 
 ## Agent directories
 
-`node-server` and `docker` also take an [agent directory](./agent-directories.md)
+All three targets also take an [agent directory](./agent-directories.md)
 in place of a spec file (the path may be positional or `--agent`):
 
 ```bash
@@ -42,8 +42,18 @@ The directory's code files are pre-bundled with the build's tsup step into
 rest of the directory is copied; nothing needs a TypeScript loader at run time.
 `dist/` is then ESM (`dist/package.json` says so). The Docker image copies it as
 before. The optional `dockerode` sandbox is not bundled (it loads lazily), so a
-directory that uses `SubprocessSandbox` must install it where it runs. The
-Cloudflare Worker target still takes spec files only.
+directory that uses `SubprocessSandbox` must install it where it runs.
+
+The Cloudflare Worker target builds a directory's config, `instructions.md`,
+`tools/` and `skills/`; it rejects `subagents/`, `schedules/`, `channels/`,
+`memory/`, `projectInstructions` and a `model` whose provider the Worker lacks,
+naming what to remove. Tools run inside the Worker with its rights, and may import
+only a Worker-safe part of `@lousho/build-ai-agent`
+([Cloudflare Workers](./cloudflare-workers.md#build-and-deploy) has the details):
+
+```bash
+npx lousho build ./my-agent --target=cloudflare-worker
+```
 
 ## HTTP API
 
@@ -135,7 +145,8 @@ Generates a module Worker (`export default { fetch }`), a `wrangler.toml` and `d
 browser-platform ES module; the build fails if any `node:` import ends up in the bundle. It needs `tsup` and
 `wrangler`, and it serves the [HTTP API](#http-api) above. It has the tightest limits of the three targets:
 
-- spec files only (no agent directories, no tools written in TypeScript, no sandboxed tools);
+- spec files, and agent directories with a config, instructions, TypeScript tools and skills (no sub-agents,
+  schedules, channels or memory slots from a directory, no sandboxed tools);
 - providers `mock`, `openai`, `anthropic` and `openrouter`; built-in tools `current-date`, `day-name` and `http`
   (`http` reaches only the host names listed in the `LOUSHO_HTTP_ALLOW` binding);
 - sessions, checkpoints and approvals in one KV namespace; cron triggers in UTC.

@@ -11,7 +11,8 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { Plugin } from 'esbuild';
+import { builtinModules } from 'node:module';
+import type { OnResolveResult, Plugin, ResolveResult } from 'esbuild';
 import { SDKError } from '../execution/errors';
 
 export const RUNTIME_SPECIFIER = '@lousho/build-ai-agent/deploy-runtime';
@@ -57,8 +58,13 @@ function runtimeSourceFile(fileName: string): string {
   return file;
 }
 
-/** esbuild plugin mapping the virtual runtime specifiers to the SDK's runtime sources. */
-export function sdkRuntimePlugin(): Plugin {
+/**
+ * esbuild plugin mapping the virtual runtime specifiers to the SDK's runtime
+ * sources. `sdkEntry: 'worker'` (cloudflare-worker target) resolves agent
+ * code's `@lousho/build-ai-agent` to the Worker-safe subset in ./workerSdk.ts
+ * instead of the package's main entry, which imports Node-only modules.
+ */
+export function sdkRuntimePlugin({ sdkEntry = 'main' }: { sdkEntry?: 'main' | 'worker' } = {}): Plugin {
   return {
     name: 'lousho-deploy-runtime',
     setup(build) {
@@ -70,7 +76,7 @@ export function sdkRuntimePlugin(): Plugin {
       // An agent directory's own `import ... from '@lousho/build-ai-agent'` bundles this SDK copy
       // (the one the runtime above comes from), so tools, schedules and channels share its classes.
       build.onResolve({ filter: /^@lousho\/build-ai-agent$/ }, () => ({
-        path: path.join(findSdkRoot(), 'src', 'index.ts'),
+        path: sdkEntry === 'worker' ? runtimeSourceFile('workerSdk.ts') : path.join(findSdkRoot(), 'src', 'index.ts'),
       }));
     },
   };
@@ -116,6 +122,49 @@ export function workerNodeShimPlugin(): Plugin {
       build.onResolve({ filter: /^node:|^@modelcontextprotocol\/sdk\/client\/stdio\.js$/ }, (args) => (shimmed(args.importer) ? { path: shim } : undefined));
     },
   };
+}
+
+const SKIP_BUILTIN_CHECK = 'lousho-skip-builtin-check';
+
+/**
+ * esbuild plugin (cloudflare-worker target only, registered last) for Node
+ * builtins nothing else resolves: rather than failing the build with esbuild's
+ * "Could not resolve", it leaves the import external and records who imported
+ * it in `importers` (specifier -> importer paths), so the build's leak check
+ * can name the file (M3b). A builtin that resolves normally (an npm polyfill,
+ * a package's `browser` field) is resolved as before.
+ */
+export function workerBuiltinImportersPlugin(importers: Map<string, Set<string>>): Plugin {
+  const names = builtinModules.map((name) => name.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')).join('|');
+  const builtin = new RegExp(`^(?:node:.+|(?:${names})(?:/.*)?)$`);
+  const record = (specifier: string, importer: string) => importers.set(specifier, (importers.get(specifier) ?? new Set()).add(importer));
+  return {
+    name: 'lousho-worker-builtin-importers',
+    setup(build) {
+      build.onResolve({ filter: builtin }, async (args) => {
+        if (isBuiltinCheck(args.pluginData)) return undefined;
+        const resolved = await build.resolve(args.path, {
+          kind: args.kind,
+          importer: args.importer,
+          resolveDir: args.resolveDir,
+          pluginData: { [SKIP_BUILTIN_CHECK]: true },
+        });
+        if (resolved.errors.length === 0) return resolvedAs(resolved);
+        record(args.path, args.importer);
+        return { path: args.path, external: true };
+      });
+    },
+  };
+}
+
+/** True for the plugin's own nested `build.resolve()` call. */
+function isBuiltinCheck(pluginData: unknown): boolean {
+  return (pluginData as Record<string, unknown> | undefined)?.[SKIP_BUILTIN_CHECK] === true;
+}
+
+/** An onResolve result that keeps what esbuild's own resolution found. */
+function resolvedAs({ path: file, external, namespace, sideEffects, suffix, pluginData }: ResolveResult): OnResolveResult {
+  return { path: file, external, namespace, sideEffects, suffix, pluginData };
 }
 
 /**
