@@ -54,7 +54,8 @@ describe('SandboxShell (LOU-X6)', () => {
       delete process.env.FAKE_SECRET_FOR_TEST;
       delete process.env.FAKE_ALLOWED_FOR_TEST;
     }
-  });
+    // Two real `node -e` child processes: slow to start when parallel suites load the machine (#330).
+  }, 30_000);
 
   it('rejects a per-call cwd that escapes the base directory', async () => {
     const shell = new SandboxShell(fakeSandbox(async () => ({ stdout: '', stderr: '', exitCode: 0 })), { cwd: '/work' });

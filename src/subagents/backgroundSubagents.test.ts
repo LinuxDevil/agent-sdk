@@ -148,20 +148,24 @@ describe('background sub-agents (LOU-Y4)', () => {
     const needsApproval = () => (asked(), true);
     const deploy = defineTool({ name: 'deploy', description: 'Deploys', input: z.object({}), needsApproval, execute: () => (ran = true) });
     const researcher = createAgent({ provider: mockModel([{ toolCalls: [{ name: 'deploy' }] }]), tools: [deploy], description: 'Deploys' });
-    // The child's pause settles in microtasks once its approval is asked for.
-    const statusOncePaused = async (): Promise<MockTurn> => {
+    // The child's pause settles a few async steps after its approval is asked for, and how long that takes
+    // depends on machine load (#330), so ask again until the task has left `running` (no fixed sleep).
+    const statusOncePaused: MockTurn = async (req) => {
       await approvalAsked;
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      const last = req.messages.at(-1);
+      const seen = last?.role === 'tool' && last.toolName === 'agent_status' ? (JSON.parse(last.content as string) as { tasks: { status: string }[] }) : undefined;
+      if (seen && seen.tasks[0]?.status !== 'running') return 'done';
+      await new Promise((resolve) => setTimeout(resolve, 5));
       return { toolCalls: [{ name: 'agent_status', args: { taskId: 'task_1' } }] };
     };
     const lead = createAgent({
-      provider: mockModel([{ toolCalls: [bgTask('researcher', 'ship it')] }, statusOncePaused, 'done']),
+      provider: mockModel([{ toolCalls: [bgTask('researcher', 'ship it')] }, statusOncePaused], { onExhausted: 'repeat-last' }),
       subagents: { researcher },
     });
 
     const result = await lead.send('go');
 
-    const [status] = results(result.messages, 'agent_status');
+    const status = results(result.messages, 'agent_status').at(-1)!;
     expect(status.tasks).toEqual([expect.objectContaining({ status: 'awaiting-approval', toolName: 'deploy', approvalId: expect.any(String) })]);
     expect(ran).toBe(false);
     expect(result.finishReason).toBe('stop');

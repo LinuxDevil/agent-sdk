@@ -9,8 +9,10 @@ import { aiMajorOf } from './aiSdkCompat';
 import { lazyValue, loadOptionalPeer } from './optionalPeer';
 import { Logger, noopLogger } from '../execution/logger';
 import { SDKError } from '../execution/errors';
-import type { GenerateOptions } from './llm';
+import type { GenerateOptions, GenerateResult, HostedToolCall, StreamChunk, StreamResult } from './llm';
 import { openRouterReasoning } from './reasoning';
+import { mappedHostedOptions, type HostedOptionMapping } from './hostedToolMapping';
+import { hostedToolUnsupported, type HostedTool, type HostedToolType } from '../tools/hosted';
 
 export interface OpenRouterProviderConfig extends AiSdkProviderConfig {
   apiKey: string;
@@ -46,11 +48,112 @@ function buildHeaders(config: OpenRouterProviderConfig): Record<string, string> 
   return headers;
 }
 
-/** `fetch`, with `extra` merged into each JSON request body. */
-function withJsonBody(extra: Record<string, unknown>): typeof fetch {
-  return (input, init) => {
-    const body = typeof init?.body === 'string' ? JSON.stringify({ ...JSON.parse(init.body), ...extra }) : init?.body;
-    return globalThis.fetch(input, { ...init, body });
+/** N1b: `webSearch()` options as the `parameters` of OpenRouter's `openrouter:web_search` server tool. */
+const OPENROUTER_SEARCH_PARAMETERS: HostedOptionMapping = {
+  maxUses: (max_uses) => ({ max_uses }),
+  allowedDomains: (allowed_domains) => ({ allowed_domains }),
+  blockedDomains: (excluded_domains) => ({ excluded_domains }),
+  searchContextSize: (search_context_size) => ({ search_context_size }),
+  userLocation: undefined,
+};
+
+/** What a web search left in one response: the count OpenRouter reports, the cited urls, and the completion id. */
+interface SearchObservation {
+  id?: string;
+  requests?: number;
+  sources: Array<{ url: string; title?: string }>;
+}
+
+/** The parts of a response body or stream chunk that a web search leaves. */
+interface SearchBody {
+  id?: unknown;
+  usage?: { server_tool_use?: { web_search_requests?: unknown } };
+  choices?: Array<{ message?: { annotations?: unknown }; delta?: { annotations?: unknown } }>;
+}
+
+/** A `url_citation` annotation's source (OpenRouter nests the fields under `url_citation`; a flat one is read too). */
+function citedSource(note: Record<string, unknown>): { url: string; title?: string } | undefined {
+  if (note.type !== 'url_citation') return undefined;
+  const { url, title } = (note.url_citation ?? note) as { url?: unknown; title?: unknown };
+  if (typeof url !== 'string') return undefined;
+  return { url, ...(typeof title === 'string' && title !== '' && { title }) };
+}
+
+/** `usage.server_tool_use.web_search_requests` and the `url_citation` annotations of one response body or stream chunk. */
+function scanSearchBody(chunk: SearchBody | null, found: SearchObservation): void {
+  if (typeof chunk?.id === 'string') found.id ??= chunk.id;
+  const requests = chunk?.usage?.server_tool_use?.web_search_requests;
+  if (typeof requests === 'number') found.requests = Math.max(found.requests ?? 0, requests);
+  for (const choice of chunk?.choices ?? []) {
+    const annotations = choice.message?.annotations ?? choice.delta?.annotations;
+    const sources = (Array.isArray(annotations) ? (annotations as Array<Record<string, unknown>>) : []).map(citedSource);
+    for (const source of sources) {
+      if (source && !found.sources.some((known) => known.url === source.url)) found.sources.push(source);
+    }
+  }
+}
+
+/** A JSON response body, or a server-sent-events stream of JSON chunks, as a {@link SearchObservation}. */
+function parseSearchResponse(text: string): SearchObservation {
+  const found: SearchObservation = { sources: [] };
+  const lines = text.trimStart().startsWith('{')
+    ? [text]
+    : text
+        .split('\n')
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5));
+  for (const line of lines) {
+    try {
+      scanSearchBody(JSON.parse(line) as SearchBody, found);
+    } catch {
+      // `[DONE]` or a partial line carries nothing.
+    }
+  }
+  return found;
+}
+
+/** What one model call changes about the request, and what it watches in the response. */
+interface RequestChanges {
+  /** Top-level body fields to set (LOU-V13: `reasoning`). */
+  merge?: Record<string, unknown>;
+  /** N1b: tool entries appended to the body's `tools` array, after the function tools `@ai-sdk/openai` put there. */
+  tools?: unknown[];
+  /** N1b: called with the parsed response of each successful call (the last one wins). */
+  observe?: (settled: Promise<SearchObservation | undefined>) => void;
+}
+
+/** `fetch`, with each JSON request body changed as `changes` says (the reasoning merge and the tools append compose). */
+function withRequestChanges(changes: RequestChanges): typeof fetch {
+  return async (input, init) => {
+    let body = init?.body;
+    if (typeof body === 'string') {
+      const json = JSON.parse(body) as Record<string, unknown>;
+      const tools = changes.tools && [...(Array.isArray(json.tools) ? (json.tools as unknown[]) : []), ...changes.tools];
+      body = JSON.stringify({ ...json, ...changes.merge, ...(tools && { tools }) });
+    }
+    const response = await globalThis.fetch(input, { ...init, body });
+    if (changes.observe && response.ok) {
+      // The clone is read in the background; the caller reads the original as usual.
+      changes.observe(
+        response
+          .clone()
+          .text()
+          .then(parseSearchResponse, () => undefined)
+      );
+    }
+    return response;
+  };
+}
+
+/** The hosted call a step's search left, from what its response reported (undefined when it did not search). */
+function searchCallOf(found: SearchObservation | undefined): HostedToolCall | undefined {
+  if (!found || ((found.requests ?? 0) === 0 && found.sources.length === 0)) return undefined;
+  return {
+    id: `${found.id ?? 'openrouter'}:web_search`,
+    name: 'web_search',
+    args: {},
+    result: found.requests === undefined ? {} : { requests: found.requests },
+    ...(found.sources.length > 0 && { sources: found.sources }),
   };
 }
 
@@ -67,15 +170,18 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
     (await loadOptionalPeer('@ai-sdk/openai', () => import('@ai-sdk/openai'), aiMajorOf(this.ai))).createOpenAI
   );
 
-  /** `@ai-sdk/openai` pointed at OpenRouter; `body` (LOU-V13: `reasoning`) is added to each request's JSON. */
-  private async openRouter(body?: Record<string, unknown>) {
+  /** `@ai-sdk/openai` pointed at OpenRouter; `changes` (LOU-V13 `reasoning`, N1b web search) are applied to each request. */
+  private async openRouter(changes?: RequestChanges) {
     return (await this.loadFactory())({
       apiKey: this.config.apiKey,
       baseURL: OPENROUTER_API_URL,
       headers: buildHeaders(this.config),
-      ...(body && { fetch: withJsonBody(body) }),
+      ...(changes && { fetch: withRequestChanges(changes) }),
     });
   }
+
+  /** N1b: what the web search of each call (by its options object) left in OpenRouter's response. */
+  private readonly searches = new WeakMap<GenerateOptions, { settled?: Promise<SearchObservation | undefined> }>();
 
   private readonly loadProvider = lazyValue(() => this.openRouter());
 
@@ -92,9 +198,73 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
   protected async createModel(modelId: string, options?: GenerateOptions): Promise<LanguageModel> {
     // LOU-V13: `@ai-sdk/openai` has no field for OpenRouter's unified `reasoning`, so it is added to the body.
     const reasoning = openRouterReasoning(modelId, options?.reasoning);
+    // N1b: OpenRouter's web search is a server tool in the `tools` array, not an AI SDK tool.
+    const search = options?.hostedTools?.find((tool) => tool.type === 'web_search');
+    if (search && options) {
+      const watch: { settled?: Promise<SearchObservation | undefined> } = {};
+      this.searches.set(options, watch);
+      const parameters = mappedHostedOptions('OpenRouter', search, OPENROUTER_SEARCH_PARAMETERS);
+      const changes: RequestChanges = {
+        ...(reasoning && { merge: reasoning }),
+        tools: [{ type: 'openrouter:web_search', ...(Object.keys(parameters).length > 0 && { parameters }) }],
+        observe: (settled) => {
+          watch.settled = settled;
+        },
+      };
+      return (await this.openRouter(changes)).chat(modelId);
+    }
     // `.chat()` is the Chat Completions API, the only one OpenRouter implements. `@ai-sdk/openai`
     // 2+ makes the bare call a Responses API model, so the factory is named on every major.
-    return (reasoning ? await this.openRouter(reasoning) : await this.loadProvider()).chat(modelId);
+    return (reasoning ? await this.openRouter({ merge: reasoning }) : await this.loadProvider()).chat(modelId);
+  }
+
+  /**
+   * N1b: `webSearch()` only (an `openrouter:web_search` server tool added to the request body); `hostedTool()`
+   * passes through on ai 6 or 7. The server runs the search inside the request, so the model reports no tool call:
+   * the call is read from the response (see generate() and stream()).
+   */
+  supportsHostedTool(type: HostedToolType | 'custom'): boolean {
+    return type === 'web_search' || super.supportsHostedTool(type);
+  }
+
+  protected async hostedToolsFor(tools: readonly HostedTool[], modelId: string): Promise<Record<string, unknown>> {
+    const unsupported = tools.find((tool) => tool.type === 'code_interpreter' || tool.type === 'file_search');
+    if (unsupported) throw hostedToolUnsupported(this.name, unsupported, 'OpenRouter runs only web search (webSearch())');
+    return super.hostedToolsFor(
+      tools.filter((tool) => tool.type === 'custom'),
+      modelId
+    );
+  }
+
+  /** The hosted call the web search of the call made with `options` left, once its response was read. */
+  private async searchCall(options: GenerateOptions): Promise<HostedToolCall | undefined> {
+    return searchCallOf(await this.searches.get(options)?.settled);
+  }
+
+  async generate(options: GenerateOptions): Promise<GenerateResult> {
+    const result = await super.generate(options);
+    const call = await this.searchCall(options);
+    return call ? { ...result, hostedToolCalls: [...(result.hostedToolCalls ?? []), call] } : result;
+  }
+
+  async stream(options: GenerateOptions): Promise<StreamResult> {
+    const result = await super.stream(options);
+    if (!this.searches.has(options)) return result;
+    return { ...result, fullStream: this.withSearchCall(result.fullStream, options) };
+  }
+
+  /** `chunks`, with the web search's hosted call before the `finish` chunk (the response is read to its end by then). */
+  private async *withSearchCall(chunks: AsyncIterable<StreamChunk>, options: GenerateOptions): AsyncGenerator<StreamChunk> {
+    for await (const chunk of chunks) {
+      if (chunk.type === 'finish') {
+        const call = await this.searchCall(options);
+        if (call) {
+          yield { type: 'hosted-tool-call', hostedToolCall: { id: call.id, name: call.name, args: call.args } };
+          yield { type: 'hosted-tool-result', hostedToolCall: call };
+        }
+      }
+      yield chunk;
+    }
   }
 
   /** Sent in the request body instead (createModel). */
