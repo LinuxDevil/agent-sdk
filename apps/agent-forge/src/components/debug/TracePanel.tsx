@@ -33,6 +33,24 @@ function spanGeometry(span: SpanEvent, minStart: number, totalMs: number) {
   return { startPct, durationMs, widthPct };
 }
 
+/** The tooltip of a span row: its attributes, led by the failure message of an errored span. */
+function spanTitle(span: SpanEvent): string {
+  const attributes = JSON.stringify(span.attributes);
+  const message = span.status?.code === 'error' ? span.status.message : undefined;
+  return message ? `${message}
+${attributes}` : attributes;
+}
+
+/** The duration column: `error` for a failed span, `running` until it ends. */
+function spanDuration(span: SpanEvent, durationMs: number): string {
+  if (span.status?.code === 'error') return 'error';
+  return span.endTime === undefined ? 'running' : `${durationMs}ms`;
+}
+
+function classNames(...names: (string | false)[]): string {
+  return names.filter(Boolean).join(' ');
+}
+
 function SpanRow({
   span,
   minStart,
@@ -47,24 +65,18 @@ function SpanRow({
   onSelect: () => void;
 }) {
   const { startPct, durationMs, widthPct } = spanGeometry(span, minStart, totalMs);
-  const running = span.endTime === undefined;
   const failed = span.status?.code === 'error';
-  const attributes = JSON.stringify(span.attributes);
   return (
-    <div
-      className={`trace-row${selected ? ' selected' : ''}${failed ? ' trace-row-error' : ''}`}
-      onClick={onSelect}
-      title={failed && span.status?.message ? `${span.status.message}\n${attributes}` : attributes}
-    >
+    <div className={classNames('trace-row', selected && 'selected', failed && 'trace-row-error')} onClick={onSelect} title={spanTitle(span)}>
       <span className="trace-name">{span.name}</span>
       {span.kind && <span className="trace-kind">{span.kind}</span>}
       <span className="trace-bar-track">
         <span
-          className={`trace-bar${running ? ' pending' : ''}${failed ? ' error' : ''}`}
+          className={classNames('trace-bar', span.endTime === undefined && 'pending', failed && 'error')}
           style={{ left: `${startPct}%`, width: `${widthPct}%` }}
         />
       </span>
-      <span className="trace-dur">{failed ? 'error' : running ? 'running' : `${durationMs}ms`}</span>
+      <span className="trace-dur">{spanDuration(span, durationMs)}</span>
     </div>
   );
 }
