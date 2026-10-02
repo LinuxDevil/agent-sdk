@@ -2,7 +2,7 @@
 
 Installing the package also installs the `lousho` command. It scaffolds
 projects, checks your setup, runs an agent locally, serves it over MCP, runs
-evals, builds a deployable artifact and launches the Agent Forge dashboard.
+evals, shows saved traces, builds a deployable artifact and launches the Agent Forge dashboard.
 Run it with `npx lousho <command>` inside a project that has the SDK installed.
 
 | Command | What it does | Details |
@@ -15,6 +15,7 @@ Run it with `npx lousho <command>` inside a project that has the SDK installed.
 | `lousho add <name>` | Install a tool, skill, channel, schedule or memory slot from a JSON registry into an agent directory, after showing its permission manifest. | [Registry](./registry.md) |
 | `lousho mcp <spec>` | Serve the agent as an MCP server (stdio, or HTTP with `--http`). | [MCP](./mcp.md#serve-an-agent-over-mcp) |
 | `lousho eval [globs...]` | Run `*.eval.ts` files under vitest; print a summary and write JUnit/JSON reports. | [Evals](./evals.md#lousho-eval) |
+| `lousho traces [id]` | List the recent runs saved by `fileTraceExporter()` (duration, model and tool calls, tokens, cost), or print one run as a span tree. | [Observability](./observability.md#local-traces) |
 | `lousho build --target=<t> --agent=<spec>` | Build a deployable Node server, Docker image or Cloudflare Worker. | [Deployment](./deployment.md) |
 | `lousho studio` | Launch Agent Forge, the visual dashboard, on one local port. | [Agent Forge](./agent-forge.md) |
 
@@ -34,6 +35,7 @@ lousho studio [--port N] [--host H] [--prod|--dev]
 lousho mcp <agent.yaml|json> [--http --port N --host H]
 lousho doctor [agent.yaml|json] [--json]
 lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]]
+lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
 ```
 
 Every command parses its flags the same way (Node's `parseArgs`, strict):

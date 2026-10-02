@@ -98,6 +98,7 @@ agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 - **Hooks, guardrails, sandboxing**: veto tool calls, gate a patch on fail-closed checks, run tools in Docker. [Guardrails](docs/guardrails.md)
 - **Channels, flows and triggers**: `defineChannel()` / `mountChannels()` map a surface's messages to sessions and send replies and approvals back; fixed multi-step workflows; webhook, Slack and cron adapters. [Channels](docs/channels.md), [Flows](docs/flows.md), [Triggers](docs/api-overview.md#triggers)
 - **Tracing**: OpenTelemetry GenAI spans (`invoke_agent`, `chat`, `execute_tool`); content capture is opt-in. [Observability](docs/observability.md)
+- **Trace viewer**: `createAgent({ exporter: fileTraceExporter() })` keeps each run as a local file; `npx lousho traces` lists runs and prints one as a tree with durations, tokens and cost. [Local traces](docs/observability.md#local-traces)
 - **Testing and evals**: `mockModel`, `recordReplay` cassettes, `defineEval()` trajectory assertions, `lousho eval` with `--record` / `--replay` cassettes and `--drift` trajectory diffs. [Testing](docs/testing.md), [Evals](docs/evals.md)
 - **CLI**: `init`, `doctor`, `dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `build` and `studio`. [CLI](docs/cli.md)
 - **Editors (ACP)**: `lousho acp ./my-agent` serves your agent to Zed and other Agent Client Protocol editors, with tool calls and permission prompts. [ACP](docs/acp.md)
@@ -206,7 +207,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Guardrails and sandboxing](docs/guardrails.md) | `runGuardrails()`, built-in guardrails, `requiresSandbox`, `SubprocessSandbox` |
 | [Testing](docs/testing.md) | Deterministic tests with `mockModel`; record and replay with `recordReplay` |
 | [Evals](docs/evals.md) | Trajectory evals with `defineEval()`, datasets, judges, `lousho eval` reports |
-| [Tracing and observability](docs/observability.md) | OpenTelemetry GenAI spans, attribute table, content opt-in |
+| [Tracing and observability](docs/observability.md) | OpenTelemetry GenAI spans, attribute table, content opt-in, local traces and `lousho traces` |
 | [Deployment](docs/deployment.md) | `lousho build` targets: Node server, Docker, Cloudflare Workers (with KV checkpoints) |
 | [Registry](docs/registry.md) | `lousho add`: copy a tool, skill, channel, schedule or memory slot from a static JSON registry |
 | [Agent Forge](docs/agent-forge.md) | The visual dashboard: quickstart, first-agent walkthrough, hooks |
@@ -253,6 +254,7 @@ Most examples run offline with a mock provider; see the
 | `lousho add <name> --registry <url-or-path>` | Copy a tool, skill, channel, schedule or memory slot from a registry into an agent directory |
 | `lousho mcp <spec>` | Serve the agent as an MCP server (stdio or HTTP) |
 | `lousho eval [globs]` | Run `*.eval.ts` files; JUnit and JSON reports |
+| `lousho traces [id]` | List saved runs, or print one as a span tree |
 | `lousho build --target=<t> --agent=<spec>` | Build a Node server, Docker image or Cloudflare Worker |
 | `lousho studio` | Launch Agent Forge |
 
@@ -268,7 +270,7 @@ Alpha (`1.0.0-alpha`, pre-1.0): APIs can still change between releases, and
 breaking changes are listed in the [CHANGELOG](CHANGELOG.md) with migration
 notes. Known gaps:
 
-- There is no trace viewer. Spans go to the OpenTelemetry exporter you configure.
+- The trace viewer is terminal-only (`lousho traces`); Agent Forge does not show saved traces yet.
 - Docker sandbox egress (`network: { allow }`) and the credential broker need
   Docker Engine on Linux; Docker Desktop is refused
   ([Workspace tools](docs/workspace-tools.md)).

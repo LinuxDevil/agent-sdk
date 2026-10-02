@@ -15,6 +15,7 @@ const USAGE = [
   '  lousho mcp <agent.yaml|json> [--http --port N --host H]',
   '  lousho doctor [agent.yaml|json] [--json]',
   '  lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge]',
+  '  lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]',
 ].join('\n');
 
 // Flag parsing for every command lives in src/cli/args.ts (node:util parseArgs, strict);
@@ -80,6 +81,12 @@ async function runEvalCommand(rest) {
   process.exitCode = await runEval(rest);
 }
 
+// Lists the runs fileTraceExporter() saved, or prints one as a span tree (M5a); see src/cli/traces.ts.
+async function runTracesCommand(rest) {
+  const { runTraces } = require(path.join(__dirname, '..', 'dist', 'cli', 'traces.js'));
+  process.exitCode = await runTraces(rest);
+}
+
 function runHelp() {
   console.log(USAGE);
 }
@@ -95,6 +102,7 @@ const COMMANDS = new Map([
   ['mcp', runMcp],
   ['doctor', runDoctorCommand],
   ['eval', runEvalCommand],
+  ['traces', runTracesCommand],
   // `lousho --help` / `-h` / `help` print the usage and succeed (a bare `lousho` is still an error).
   ['--help', runHelp],
   ['-h', runHelp],
