@@ -42,6 +42,7 @@ function backup(overrides: Partial<WorkspaceFileBackup>): WorkspaceFileBackup {
 }
 
 describe('WorkspaceCheckpoints on NodeWorkspace (N7)', () => {
+  // Three agent turns, a cold createAgent import and real file I/O: well under a second alone, but past the 5s default when the machine is saturated (#326).
   it('rewinds three turns on disk, with a file store', async () => {
     const workspace = new NodeWorkspace({ root: rootDir });
     const checkpoints = new WorkspaceCheckpoints(workspace, { store: new FileWorkspaceCheckpointStore(storeDir) });
@@ -70,7 +71,7 @@ describe('WorkspaceCheckpoints on NodeWorkspace (N7)', () => {
     expect(await reopened.rewind(1, { sessionId: session.id })).toEqual({ ...dry, dryRun: false });
     expect([read('a.txt'), read('b.txt'), exists('new/c.txt')]).toEqual(['a1\n', 'b0\n', false]);
     expect(await reopened.list({ sessionId: session.id })).toEqual([{ turn: 0, paths: ['a.txt'] }]);
-  });
+  }, 30_000);
 
   it('never writes outside the root: a tampered store path is refused before anything changes', async () => {
     const workspace = new NodeWorkspace({ root: rootDir });

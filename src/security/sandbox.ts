@@ -146,13 +146,14 @@ async function stopContainer(container: Docker.Container): Promise<void> {
 }
 
 /**
- * `container.wait()`, or whichever comes first of the container exiting, the
+ * The `exited` wait (started before `start()`), or whichever comes first of the container exiting, the
  * timeout and the abort `signal`. A timeout or abort stops and removes the
  * container (once) and rejects: with a "timed out" error, or an `AbortError`
  * like `NoopSandbox` (LOU-U23). Listeners and the timer are always cleaned up.
  */
 async function waitForExit(
   container: Docker.Container,
+  exited: Promise<unknown>,
   { timeoutMs, signal }: Pick<SandboxRunOptions, 'timeoutMs' | 'signal'>
 ): Promise<unknown> {
   let cleanup = () => {};
@@ -177,7 +178,7 @@ async function waitForExit(
     };
   });
   try {
-    return await Promise.race([container.wait(), interrupted]);
+    return await Promise.race([exited, interrupted]);
   } finally {
     cleanup();
   }
@@ -294,8 +295,18 @@ export class SubprocessSandbox implements SandboxAdapter {
     const attachStream = await container.attach({ stream: true, stdout: true, stderr: true });
     docker.modem.demuxStream(attachStream, output.stdout, output.stderr);
 
-    await container.start();
-    const result = await waitForExit(container, opts);
+    // Begin waiting before start(): with AutoRemove a fast command can exit and
+    // be removed before a later wait() call, which then fails with a 404 "no
+    // such container". 'next-exit' makes the daemon hold the wait until it exits.
+    const exited = container.wait({ condition: 'next-exit' });
+    exited.catch(() => {});
+    try {
+      await container.start();
+    } catch (error) {
+      await stopContainer(container);
+      throw error;
+    }
+    const result = await waitForExit(container, exited, opts);
 
     return {
       ...output.read(),
