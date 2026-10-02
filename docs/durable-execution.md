@@ -277,6 +277,12 @@ if (original && replayed) {
 `AgentExecutor.fork()` is the same operation on the executor; see the
 [advanced section](#advanced-the-executor-api).
 
+`agent.fork()` forks one run by its checkpoint history. To branch a
+multi-turn `agent.session()` conversation, use `session.history()` and
+`session.fork({ fromStep })`, which work from the session's saved transcript
+with any store (finished turns keep no checkpoint history); see
+[Forking a session](./sessions.md#forking-a-session).
+
 - `patch` is applied in this order: `messages(messages)` rewrites the
   transcript; `businessState` replaces it; `toolResult: { toolCallId, result }`
   replaces that call's result in place (same position, call id and tool name,

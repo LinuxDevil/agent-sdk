@@ -172,7 +172,10 @@ the root, symlinks included. A real rewind then forgets the backups of the
 rewound turns, skipped files' included, so a second rewind does nothing:
 look at the dry run first. Directories the agent created stay (empty) after
 their files are deleted. The conversation is not rewound; to branch it as
-well, fork the run (see [Fork and replay](./durable-execution.md#fork-and-replay)).
+well, fork the session with `session.fork({ fromStep })` (see
+[Forking a session](./sessions.md#forking-a-session); a step's `turn` in
+`session.history()` is the turn number used here), or a single run with
+`agent.fork()` (see [Fork and replay](./durable-execution.md#fork-and-replay)).
 
 What is not tracked: changes made by the `shell` tool, files written by a
 sub-agent with its own file tools (unless it gets the same

@@ -17,10 +17,10 @@ async function nextForkId(store: CheckpointStore, sessionId: string): Promise<st
 }
 
 /** `messages` with the result of `toolCallId` replaced in place, or appended when it has none yet. */
-function withToolResult(messages: Message[], { toolCallId, result }: NonNullable<ForkPatch['toolResult']>): Message[] {
+export function withToolResult(messages: Message[], { toolCallId, result }: NonNullable<ForkPatch['toolResult']>): Message[] {
   const call = messages.flatMap((m) => (m.role === 'assistant' ? (m.toolCalls ?? []) : [])).find((c) => c.id === toolCallId);
   if (!call) {
-    throw new ConfigurationError(`fork: the checkpoint has no tool call '${toolCallId}'.`, 'patch.toolResult');
+    throw new ConfigurationError(`fork: the kept transcript has no tool call '${toolCallId}'.`, 'patch.toolResult');
   }
   const name = call.function.name;
   const message: Message = { role: 'tool', content: JSON.stringify(result), name, toolCallId, toolName: name };

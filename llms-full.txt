@@ -5302,6 +5302,12 @@ if (original && replayed) {
 `AgentExecutor.fork()` is the same operation on the executor; see the
 [advanced section](#advanced-the-executor-api).
 
+`agent.fork()` forks one run by its checkpoint history. To branch a
+multi-turn `agent.session()` conversation, use `session.history()` and
+`session.fork({ fromStep })`, which work from the session's saved transcript
+with any store (finished turns keep no checkpoint history); see
+[Forking a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#forking-a-session).
+
 - `patch` is applied in this order: `messages(messages)` rewrites the
   transcript; `businessState` replaces it; `toolResult: { toolCallId, result }`
   replaces that call's result in place (same position, call id and tool name,
@@ -5552,7 +5558,7 @@ Find a code by area:
 | [Providers and peers](#providers-and-peers) | [`LOUSHO_PROVIDER_SPEC_INVALID`](#lousho_provider_spec_invalid), [`LOUSHO_PROVIDER_UNKNOWN`](#lousho_provider_unknown), [`LOUSHO_PROVIDER_MISSING_API_KEY`](#lousho_provider_missing_api_key), [`LOUSHO_PROVIDER_REQUEST_FAILED`](#lousho_provider_request_failed), [`LOUSHO_PROVIDER_RATE_LIMITED`](#lousho_provider_rate_limited), [`LOUSHO_PEER_MISSING`](#lousho_peer_missing) | Resolving a model string, a missing API key or peer package, a failed or rate-limited model request. |
 | [Agent spec files](#agent-spec-files) | [`LOUSHO_SPEC_INVALID`](#lousho_spec_invalid), [`LOUSHO_SPEC_UNKNOWN_FIELD`](#lousho_spec_unknown_field), [`LOUSHO_SPEC_UNSUPPORTED_FORMAT`](#lousho_spec_unsupported_format) | Loading an `AgentSpec` file with `loadSpec()` or `specToAgent()`. |
 | [Tools](#tools) | [`LOUSHO_TOOL_NOT_FOUND`](#lousho_tool_not_found), [`LOUSHO_TOOL_NEEDS_CREDENTIALS`](#lousho_tool_needs_credentials), [`LOUSHO_TOOL_EXECUTION_FAILED`](#lousho_tool_execution_failed), [`LOUSHO_TOOL_ARGS_INVALID`](#lousho_tool_args_invalid) | A tool the model called is unknown, needs credentials, threw, or got invalid arguments. |
-| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
+| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
 | [Schedules](#schedules) | [`LOUSHO_SCHEDULE_INVALID`](#lousho_schedule_invalid) | Defining or loading a schedule. |
 | [Channels](#channels) | [`LOUSHO_CHANNEL_INVALID`](#lousho_channel_invalid), [`LOUSHO_MEMORY_INVALID`](#lousho_memory_invalid) | Defining a channel or a memory slot. |
 | [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists) | `lousho add` fetching or copying from a registry. |
@@ -5836,7 +5842,7 @@ paused on an approval (`error.approvalId`), so it cannot take new input yet.
 
 ### LOUSHO_SESSION_BUSY
 
-**Means:** `session.compact()` or `session.clear()` was called while a turn of
+**Means:** `session.compact()`, `session.clear()` or `session.fork()` was called while a turn of
 that session is running or queued.
 
 **Fix:** await the turn's `send()` (or abort it), then call again.
@@ -5858,6 +5864,35 @@ streaming runner.
 `send()`.
 
 **Example:** `new AgentSession(run).stream('hi')`.
+
+### LOUSHO_SESSION_STEP_NOT_FOUND
+
+**Means:** `session.fork({ fromStep })` was given a step that is not an integer
+from 0 to the number of steps in `session.history()`. The error is a
+`ConfigurationError` (`field: 'fromStep'`) whose message lists the valid range.
+
+**Fix:** pick a step from `session.history()`, or `0` to keep nothing.
+
+**Example:** `session.fork({ fromStep: 9 })` on a session with three steps.
+
+### LOUSHO_SESSION_EXISTS
+
+**Means:** `session.fork({ id })` was given an id that already has a transcript
+in the session's store (or a checkpointed turn the fork would pick up), or the
+session's own id. The error is a `ConfigurationError` (`field: 'id'`).
+
+**Fix:** pick an unused id, or leave `id` out to get `<id>-fork-<n>`.
+
+**Example:** `session.fork({ fromStep: 1, id: session.id })`.
+
+### LOUSHO_SESSION_FORK_UNSUPPORTED
+
+**Means:** `fork()` was called on an `AgentSession` built by hand without the
+function that creates sibling sessions.
+
+**Fix:** get the session from `agent.session()`, which can fork.
+
+**Example:** `new AgentSession(run).fork({ fromStep: 0 })`.
 
 ### LOUSHO_REMOTE_UNAUTHORIZED
 
@@ -10236,6 +10271,8 @@ console.log(session.id, session.messages.length);
 | `pending()` | In a [durable session](#durable-sessions), the turn that has not finished (`{ status, approvalId?, approvalKind? }`; `approvalKind` is `'question'` when the turn waits on an `ask_question`), or `null`. |
 | `resume({ signal })` | In a durable session, finishes an interrupted turn and resolves with its result, or `null` when none is pending. |
 | `discardPending()` | In a durable session, drops an unfinished turn without running it. |
+| `history()` | The steps of the transcript (one per model response, with its tool calls and results) - see [Forking a session](#forking-a-session). |
+| `fork({ fromStep, id?, patch? })` | A new session that starts from this one's transcript up to a step; this session is not changed - see [Forking a session](#forking-a-session). |
 
 Concurrent `send()` calls on one session are queued and run one after another in
 call order, so the transcript never interleaves.
@@ -10502,6 +10539,96 @@ With the executor directly, pass `store.checkpoints` as `checkpointStore` and
 Not part of sessions, but often wanted together: see "Project instructions" in
 [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md) to give an agent your repository's
 `AGENTS.md`.
+
+## Forking a session
+
+`session.history()` lists the steps of a session, and `session.fork({ fromStep })`
+starts a new session from any of them, so you can try another direction
+without losing the original conversation:
+
+```ts
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+import { z } from 'zod';
+
+const searchFlights = defineTool({
+  name: 'search_flights',
+  description: 'Find flights to a city',
+  input: z.object({ to: z.string() }),
+  execute: async ({ to }) => `2 flights to ${to}`,
+});
+const agent = createAgent({
+  tools: [searchFlights],
+  provider: mockModel([
+    { toolCalls: [{ name: 'search_flights', args: { to: 'Lisbon' } }] },
+    'Two flights to Lisbon on Friday.',
+    'Porto has a direct flight at 9:00.',
+  ]),
+});
+const session = agent.session({ id: 'trip' });
+await session.send('Find me a flight to Lisbon on Friday.');
+
+for (const { step, turn, text, toolCalls } of await session.history()) {
+  console.log(step, turn, text, toolCalls.map((call) => `${call.name} -> ${call.result}`));
+}
+
+// Keep everything up to and including step 1, then go another way.
+const fork = await session.fork({ fromStep: 1 }); // saved in the same store
+const reply = await fork.send('Look at Porto instead.');
+console.log(fork.id, reply.text); // 'trip-fork-1', 'Porto has a direct flight at 9:00.'
+```
+
+- A **step** is one model response in the transcript: an assistant message,
+  plus the tool messages answering its tool calls. `history()` returns
+  `{ step, turn, messageIndex, text, toolCalls }` for each, oldest first:
+  `step` is numbered from 1 across the whole session (not per turn), `turn`
+  from 0, `messageIndex` is the assistant message's index in
+  `session.messages`, and each tool call has its `id`, `name`, parsed `args`
+  (the raw string when it is not JSON) and `result` (the tool message's
+  content as text, JSON-encoded as the model saw it). The steps are copies.
+- A **turn** starts at every user message, so a step's `turn` is the 0-based
+  index of the user message it answers, the same numbering as workspace
+  rewind uses. Input queued or steered into a running turn
+  (`turnPolicy: 'queue'` or `'steer'`) is a user message too, so it starts a
+  new turn in `history()`.
+- `history()` is the history of the current transcript: after
+  `session.compact()` the steps are renumbered from the compacted transcript.
+  A durable turn that has not finished is not in the transcript yet, so it is
+  not listed.
+- `fork({ fromStep })` keeps the transcript up to and including the step's
+  last tool message; `fromStep: 0` keeps nothing. A step outside
+  `0..history().length` is refused with
+  [`LOUSHO_SESSION_STEP_NOT_FOUND`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_session_step_not_found),
+  whose message lists the valid range.
+- `patch: { toolResult: { toolCallId, result } }` replaces the result of one
+  tool call in the kept transcript ("what if the search had found nothing?"),
+  the same way as `agent.fork()`'s patch.
+- The fork is saved in the session's own store and is a session of the same
+  agent with the same options (`store`, checkpoints, `limits`, `turnPolicy`,
+  `compaction`, and the [permission mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md) the session
+  has when it forks), so streaming, approvals and checkpointed turns work as on any
+  `agent.session()`, and `agent.session({ id: fork.id, store })` continues it
+  later, in another process too. Its id is `id` when you pass one, else
+  `<id>-fork-<n>` for the first `n` from 1 that has no transcript. An `id` that
+  already has a transcript (or the session's own id) is refused with
+  [`LOUSHO_SESSION_EXISTS`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_session_exists).
+- The original session's transcript and checkpoints are not changed.
+- Budgets: the spend recorded for `limits` stays on the kept messages, so a
+  fork's `limits` start from what the session had spent at the end of the last
+  turn it keeps (a turn records its spend on its last message).
+- `fork()` waits for queued calls, and rejects with `LOUSHO_SESSION_BUSY` while
+  a turn is running.
+- A paused session can be forked. The paused turn, its approval or
+  `ask_question` and a durable session's interrupted turn stay with the source
+  session: the fork has no pending turn, and `agent.approvals.resolve()`
+  continues the source only, once.
+- Only the conversation is forked. Files the agent wrote and other side
+  effects of the steps after the fork point are not undone; to restore
+  workspace files, see the rewind part of [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md).
+
+To fork a single run started with `agent.send(message, { sessionId })`, from
+its checkpoint history, use `agent.fork()` instead (see
+[Fork and replay](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#fork-and-replay)).
 
 # Skills
 
@@ -13161,7 +13288,10 @@ the root, symlinks included. A real rewind then forgets the backups of the
 rewound turns, skipped files' included, so a second rewind does nothing:
 look at the dry run first. Directories the agent created stay (empty) after
 their files are deleted. The conversation is not rewound; to branch it as
-well, fork the run (see [Fork and replay](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#fork-and-replay)).
+well, fork the session with `session.fork({ fromStep })` (see
+[Forking a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#forking-a-session); a step's `turn` in
+`session.history()` is the turn number used here), or a single run with
+`agent.fork()` (see [Fork and replay](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#fork-and-replay)).
 
 What is not tracked: changes made by the `shell` tool, files written by a
 sub-agent with its own file tools (unless it gets the same

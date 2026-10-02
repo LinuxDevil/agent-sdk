@@ -13,7 +13,7 @@ import type { CheckpointStore } from './execution/checkpoint';
 import { SessionAwaitingApprovalError } from './execution/errors';
 import type { InputQueue } from './execution/inputQueue';
 import { streamSessionTurn } from './session/sessionStream';
-import { AgentSession, type SessionOptions, type SessionRunner, type SessionStreamRunner } from './session/AgentSession';
+import { AgentSession, type SessionOptions, type SessionRunner, type SessionSpawner, type SessionStreamRunner } from './session/AgentSession';
 import type { PermissionOptions } from './execution/permissions';
 
 /** N4: the mode a continued run uses: the paused session's (a getter), or undefined for the agent's. */
@@ -221,7 +221,8 @@ export function createAgentApprovals(options: {
     store,
     approvals,
     settle,
-    session(run: SessionRunner, stream: SessionStreamRunner, sessionOptions?: SessionOptions): AgentSession {
+    /** A session of the agent; `spawn` creates its forks (N3a), by default another session with the same `run` / `stream`. */
+    session(run: SessionRunner, stream: SessionStreamRunner, sessionOptions?: SessionOptions, spawn?: SessionSpawner): AgentSession {
       const session: ApprovalSession = new ApprovalSession(
         async (input, signal, turn, call) => {
           try {
@@ -233,7 +234,8 @@ export function createAgentApprovals(options: {
           }
         },
         sessionOptions,
-        (input, signal, turn, call) => inSessionRun(session, stream(input, signal, turn, call))
+        (input, signal, turn, call) => inSessionRun(session, stream(input, signal, turn, call)),
+        spawn ?? ((forkOptions) => this.session(run, stream, forkOptions))
       );
       return session;
     },

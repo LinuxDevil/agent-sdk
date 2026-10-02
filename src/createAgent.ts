@@ -804,7 +804,9 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
           id: sessionId,
         },
         config.store
-      )
+      ),
+      // N3a: a fork is a session of this agent, so memory scoped to the session sees the fork's id.
+      session
     ) as AgentSession<Typed>;
   };
 
