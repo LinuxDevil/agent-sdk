@@ -27,6 +27,7 @@ import { outputResponseFormat } from './structuredOutput';
 import { withSteerSignal } from './inputQueue';
 import { settleHostedFinish } from './hostedToolCalls';
 import { hostedToolsInMode, permissionModeOf } from './permissions';
+import type { ParallelInputCheck } from './ioGuardrails';
 
 /** A legacy `.tool`'s description when it is a string (always, on `ai` v4). */
 function legacyDescription(description: unknown): string | undefined {
@@ -166,7 +167,8 @@ export function generateInSpan(
   generateRequest: GenerateOptions,
   messages: Message[],
   agentSpanId: string,
-  callSignal?: AbortSignal
+  callSignal?: AbortSignal,
+  inputCheck?: ParallelInputCheck
 ): Promise<GeneratedStep> {
   const { exporter, onLLMResponse, hooks, redactContent = false } = options;
   // LOU-D46.2: the one place a run's model call is routed, so eval cassettes cover every entry point.
@@ -184,12 +186,20 @@ export function generateInSpan(
       // step through it (streamed when the provider can); everything around it is the same.
       const runEvents = runEventsOf(options);
       const onOutput = () => options.inputQueue?.callOutput();
+      // N5b: the sink holds the step's streamed output until the parallel input guardrails pass.
+      const hold = inputCheck?.verdict;
       const generated = settleHostedFinish(
-        await abortable(runEvents ? runEvents.generate(provider, generateRequest, onOutput) : provider.generate(generateRequest), callSignal)
+        await abortable(runEvents ? runEvents.generate(provider, generateRequest, onOutput, hold) : provider.generate(generateRequest), callSignal)
       );
       const llmLatencyMs = Date.now() - llmStart;
 
       const measured = measureUsage(resolveModel(options) ?? provider.name, messages, generated);
+      if (inputCheck) {
+        // N5b: a reply that came first waits for the checks; a trip (which aborts `callSignal`) discards it.
+        inputCheck.response = { generated, measured };
+        await inputCheck.verdict;
+        callSignal?.throwIfAborted();
+      }
       recordLlmResult(llmSpan, generated, captureContent, measured);
 
       if (onLLMResponse) {

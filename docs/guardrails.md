@@ -14,9 +14,46 @@ three points, each list in order:
 
 | List | Runs on | When |
 | ---- | ------- | ---- |
-| `input` | Each new user message (the user messages that end the transcript) | Before the first model call. A block makes no model call. |
+| `input` | Each new user message (the user messages that end the transcript) | Before the first model call. A block makes no model call. A `runInParallel` input guardrail runs while the first model call is in flight instead (see below). |
 | `output` | The final assistant text; in a `stream()` run (one you iterate), every step's text. `send()` with a listener checks the final text only. | Before it is emitted: before its `text.done`, and before `run.done`. |
 | `tools` | A tool call's arguments (`text` is them as JSON, `args` the object) | After the [permission rules](./approvals.md#permission-policies) (skipped when a rule denies the call) and before `needsApproval`. |
+
+**Parallel input guardrails.** A slow input check (one that calls a model,
+such as `moderationGuardrail({ model })`) adds its whole latency before the
+agent starts answering. Mark it `runInParallel: true` (on your own
+`IoGuardrail`, or as an option of `promptInjectionGuardrail` and
+`moderationGuardrail`) and it runs while the first model call is already in
+flight: the blocking input guardrails (the default) run first, including their
+rewrites, then the parallel ones start together on that input and the model
+call starts at once. Until every parallel check has passed, nothing the call
+produced is released: its `text.delta`, `reasoning.*` and provider-run tool
+events are held (`step.start` is not), in order, and its tool calls do not
+run; a reply that comes first waits for the checks. When they pass, the held
+events go out and the run goes on exactly as with blocking guardrails. When one
+trips, the model call is aborted, the held events are dropped, nothing of the
+call reaches the transcript, a checkpoint or `onLLMResponse`, and the run ends
+with `finishReason: 'guardrail'` and `guardrail.tripped` (or
+`GuardrailError` with `onTripped: 'throw'`) like a blocking trip. A parallel
+check cannot rewrite, because the model already has the input: a `rewrite`
+result blocks, with the reason starting `runInParallel guardrails cannot
+rewrite: `. The trade-off is cost: a tripped call may already have used tokens.
+They count in `result.usage` when the provider reported them (a call that
+finished before the trip); an aborted stream usually reports none, and none is
+estimated. Only the first model call of a run is raced, and a run resumed after an
+approval does not check its input again. On `output` and
+`tools` guardrails `runInParallel` is ignored.
+
+```ts
+import { createAgent, moderationGuardrail, piiGuardrail } from '@lousho/build-ai-agent';
+
+const agent = createAgent({
+  provider,
+  guardrails: {
+    // The PII check is instant and may rewrite, so it blocks; the moderation call runs alongside the agent's.
+    input: [piiGuardrail({ action: 'rewrite' }), moderationGuardrail({ model: 'openai/gpt-4o-mini', runInParallel: true })],
+  },
+});
+```
 
 A guardrail is `{ name, check(ctx) }`. `ctx` has `kind` (`'input'`, `'output'`
 or `'tool'`), `text`, the run's `messages`, `toolName` and `args` for a tool
@@ -87,8 +124,8 @@ try {
 | `llmJudgeGuardrail({ model, instruction, name? })` | `model` (an `LLMProvider` or `"provider/model"`), asked once per check whether the text follows `instruction`, does not reply `PASS`; its `FAIL: <reason>` is the reason. |
 | `piiGuardrail({ types?, action?, name? })` | The text contains personal data of one of `types` (default all): `email`, `phone` (9 to 15 digits, optional `+` country code and separators), `credit-card` (must pass the Luhn check), `iban` (must pass its mod-97 check), `us-ssn` (`123-45-6789` form), `ip-address` (IPv4). Blocks by default; `action: 'rewrite'` replaces each match with `[<type>]`, e.g. `[email]`. Heuristic, no model call. |
 | `secretsGuardrail({ action?, extraPatterns?, name? })` | The text contains a private key, an Anthropic (`sk-ant-`), OpenRouter (`sk-or-v1-`), OpenAI (`sk-proj-`, `sk-`), AWS (`AKIA`), GitHub (`ghp_` and the other `gh?_` prefixes, `github_pat_`), Slack (`xoxb-` and the like), Google (`AIza`) or Stripe live (`sk_live_`, `rk_live_`) key, a JWT, an `Authorization: Bearer` token, or a match of `extraPatterns`. Rewrites each match to `[secret]` by default; `action: 'block'` blocks. Heuristic, no model call. |
-| `promptInjectionGuardrail({ model?, name? })` | The text has a prompt-injection signal: "ignore (all) previous instructions" and similar, "you are now", a request for the system prompt, a chat-template role marker (`<\|im_start\|>`, `### System:`, `[INST]`), a known jailbreak phrase, or invisible Unicode tag characters (U+E0000 to U+E007F). With `model`, a text the patterns pass is also sent to the model, which must reply `SAFE` or `INJECTION: <reason>`. Blocks only. |
-| `moderationGuardrail({ model, categories?, name? })` | `model`, asked once per check with a fixed prompt, lists one of `categories` (default all: `hate`, `harassment`, `self-harm`, `sexual`, `sexual-minors`, `violence`, `illicit`) as applying; it replies `NONE` or the categories. A prompt rather than a vendor moderation endpoint, so it works with every provider. Blocks only. |
+| `promptInjectionGuardrail({ model?, name?, runInParallel? })` | The text has a prompt-injection signal: "ignore (all) previous instructions" and similar, "you are now", a request for the system prompt, a chat-template role marker (`<\|im_start\|>`, `### System:`, `[INST]`), a known jailbreak phrase, or invisible Unicode tag characters (U+E0000 to U+E007F). With `model`, a text the patterns pass is also sent to the model, which must reply `SAFE` or `INJECTION: <reason>`. Blocks only. |
+| `moderationGuardrail({ model, categories?, name?, runInParallel? })` | `model`, asked once per check with a fixed prompt, lists one of `categories` (default all: `hate`, `harassment`, `self-harm`, `sexual`, `sexual-minors`, `violence`, `illicit`) as applying; it replies `NONE` or the categories. A prompt rather than a vendor moderation endpoint, so it works with every provider. Blocks only. With `runInParallel: true` (also on `promptInjectionGuardrail`), an input check runs alongside the first model call. |
 
 The last four are a starter set for checks most production agents need:
 

@@ -5,7 +5,8 @@
  * diff/patch gates in guardrails.ts.
  */
 
-import type { LLMProvider, Message } from '../providers';
+import type { GenerateResult, LLMProvider, Message } from '../providers';
+import type { CallUsage } from '../models/usage';
 import { textOf } from '../providers/content';
 import { resolveProvider } from '../providers/resolveProvider';
 import type { ExecuteOptions } from './AgentExecutor';
@@ -58,6 +59,15 @@ export type IoGuardrailResult =
 export interface IoGuardrail {
   name: string;
   check(ctx: IoGuardrailContext): IoGuardrailResult | Promise<IoGuardrailResult>;
+  /**
+   * N5b: on an `input` guardrail, run the check while the first model call is
+   * already in flight instead of before it. The call's streamed output is
+   * held until every parallel check passes; a trip cancels the call and ends
+   * the run as a blocking trip would. Such a check cannot rewrite: a
+   * `rewrite` result blocks. Ignored on `output` and `tools` guardrails.
+   * Default `false`. See docs/guardrails.md.
+   */
+  runInParallel?: boolean;
 }
 
 /** `createAgent({ guardrails })` / `ExecuteOptions.guardrails`: each list runs in order. */
@@ -120,15 +130,25 @@ async function runChecks(
   return { text, rewritten };
 }
 
-/** Input guardrails on the user messages that end the transcript (the new input); rewrites them in place. */
-export async function checkInputGuardrails(options: GuardrailRuntime, lists: Message[][]): Promise<GuardrailTrip | undefined> {
-  const guardrails = options.guardrails?.input;
-  if (!guardrails?.length) return undefined;
+/** The new input: the user messages that end the transcript (over all `lists`), and the transcript. */
+function newInput(lists: Message[][]): { entries: Array<{ list: Message[]; index: number; message: Message }>; messages: Message[] } {
   const all = lists.flatMap((list) => list.map((message, index) => ({ list, index, message })));
   const messages = all.map(({ message }) => message);
   let start = all.length;
   while (start > 0 && messages[start - 1].role === 'user') start--;
-  for (const { list, index, message } of all.slice(start)) {
+  return { entries: all.slice(start), messages };
+}
+
+/**
+ * Input guardrails on the user messages that end the transcript (the new
+ * input); rewrites them in place. N5b: `runInParallel` ones are left to
+ * {@link startParallelInputGuardrails}.
+ */
+export async function checkInputGuardrails(options: GuardrailRuntime, lists: Message[][]): Promise<GuardrailTrip | undefined> {
+  const guardrails = options.guardrails?.input?.filter((guardrail) => !guardrail.runInParallel);
+  if (!guardrails?.length) return undefined;
+  const { entries, messages } = newInput(lists);
+  for (const { list, index, message } of entries) {
     const checked = await runChecks(options, guardrails, { kind: 'input', text: textOf(message), messages });
     if ('tripped' in checked) return checked.tripped;
     // A rewrite replaces the text; image and file parts stay.
@@ -136,6 +156,80 @@ export async function checkInputGuardrails(options: GuardrailRuntime, lists: Mes
     if (checked.rewritten) list[index] = { ...message, content: parts.length ? [{ type: 'text', text: checked.text }, ...parts] : checked.text };
   }
   return undefined;
+}
+
+/**
+ * N5b: the `runInParallel` input guardrails of a run, checking its new input
+ * while the first model call is in flight. Internal.
+ */
+export interface ParallelInputCheck {
+  /** Aborts on the first trip (reason: a {@link ParallelInputTripped}) or throw (reason: the error). */
+  readonly signal: AbortSignal;
+  /** `true` once every check passed; `false` on the first trip or throw. Never rejects. */
+  readonly verdict: Promise<boolean>;
+  /** The trip, once one happened. */
+  readonly trip?: GuardrailTrip;
+  /** The error a check threw, once one did (it fails the run). */
+  readonly error?: unknown;
+  /** The model's reply and its usage, when the call finished before the verdict (reported usage counts after a trip). */
+  response?: { generated: GenerateResult; measured: CallUsage };
+}
+
+/** N5b: the abort reason of a model call a parallel input guardrail cancelled. */
+export class ParallelInputTripped extends Error {
+  constructor(readonly trip: GuardrailTrip) {
+    super(`Guardrail '${trip.name}' blocked the input while the model call was in flight: ${trip.reason}`);
+    this.name = 'AbortError';
+  }
+}
+
+/** N5b: the start of the reason a `runInParallel` guardrail's rewrite blocks with. */
+export const PARALLEL_REWRITE_PREFIX = 'runInParallel guardrails cannot rewrite: ';
+
+type MutableCheck = { -readonly [K in keyof ParallelInputCheck]: ParallelInputCheck[K] };
+
+/**
+ * N5b: starts the `runInParallel` input guardrails on the new input (the
+ * user messages ending `messages`), all at once, on a snapshot: they never
+ * change the transcript. `undefined` when there are none or there is no new
+ * input. The first trip or throw aborts the returned signal (and the signal
+ * the other checks were given) and settles the verdict.
+ */
+export function startParallelInputGuardrails(options: GuardrailRuntime, messages: readonly Message[]): ParallelInputCheck | undefined {
+  const guardrails = options.guardrails?.input?.filter((guardrail) => guardrail.runInParallel);
+  if (!guardrails?.length) return undefined;
+  const { entries, messages: snapshot } = newInput([[...messages]]);
+  if (entries.length === 0) return undefined;
+  // The checks' signal: aborted by a trip, a throw, or the run's own signal (the verdict is then `false`, with that reason as `error`).
+  const controller = new AbortController();
+  const { signal } = controller;
+  const gate: MutableCheck = { signal, verdict: Promise.resolve(true) };
+  const settle = (outcome: { trip: GuardrailTrip } | { error: unknown }) => {
+    if (signal.aborted) return;
+    if ('trip' in outcome) gate.trip = outcome.trip;
+    else gate.error = outcome.error;
+    controller.abort('trip' in outcome ? new ParallelInputTripped(outcome.trip) : outcome.error);
+  };
+  const stopped = new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve(), { once: true }));
+  const runSignal = options.signal;
+  const onRunAbort = () => settle({ error: runSignal?.reason });
+  runSignal?.addEventListener('abort', onRunAbort, { once: true });
+  if (runSignal?.aborted) onRunAbort();
+  const checks = entries.flatMap(({ message }) =>
+    guardrails.map((guardrail) =>
+      (async () => {
+        const result = await guardrail.check({ kind: 'input', text: textOf(message), messages: snapshot, signal });
+        if (result.ok) return;
+        const reason = result.action === 'rewrite' ? `${PARALLEL_REWRITE_PREFIX}${result.reason}` : result.reason;
+        settle({ trip: { name: guardrail.name, kind: 'input', reason, ...(result.info && { info: result.info }) } });
+      })().catch((error: unknown) => settle({ error }))
+    )
+  );
+  gate.verdict = Promise.race([Promise.all(checks), stopped]).then(() => {
+    runSignal?.removeEventListener('abort', onRunAbort);
+    return !signal.aborted;
+  });
+  return gate;
 }
 
 /** Output guardrails on an assistant text: the text to keep, or the trip. */

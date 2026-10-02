@@ -239,13 +239,15 @@ const INJECTION_PROMPT = [
  * prompt, chat-template role markers (`<|im_start|>`, `### System:`) and
  * invisible Unicode tag characters. With `model`, a text the heuristics pass
  * is also classified by the model (`SAFE` or `INJECTION: <reason>`); a reply
- * that is neither trips the guardrail.
+ * that is neither trips the guardrail. `runInParallel` (N5b, default `false`):
+ * as an input guardrail, check while the first model call is in flight.
  */
-export function promptInjectionGuardrail(options: { model?: LLMProvider | string; name?: string } = {}): IoGuardrail {
-  const { model, name = 'prompt-injection' } = options;
+export function promptInjectionGuardrail(options: { model?: LLMProvider | string; name?: string; runInParallel?: boolean } = {}): IoGuardrail {
+  const { model, name = 'prompt-injection', runInParallel } = options;
   const ask = model === undefined ? undefined : lazyModel(model);
   return {
     name,
+    ...(runInParallel && { runInParallel }),
     async check({ text, signal }): Promise<IoGuardrailResult> {
       const signals = INJECTION_SIGNALS.filter(({ pattern }) => pattern.test(text)).map((entry) => entry.signal);
       if (signals.length > 0) return injection(`prompt injection signals: ${signals.join(', ')}`, 'heuristic', signals);
@@ -293,13 +295,20 @@ function parseModeration(reply: string): ModerationCategory[] | undefined {
  * for `NONE` or the categories that apply. A listed category in `categories`
  * (default: all) blocks; a reply that is neither form blocks too (fail closed).
  * A prompt rather than a vendor moderation endpoint, so it works with every
- * provider.
+ * provider. `runInParallel` (N5b, default `false`): as an input guardrail,
+ * check while the first model call is in flight.
  */
-export function moderationGuardrail(options: { model: LLMProvider | string; categories?: readonly ModerationCategory[]; name?: string }): IoGuardrail {
-  const { model, categories = MODERATION_CATEGORIES, name = 'moderation' } = options;
+export function moderationGuardrail(options: {
+  model: LLMProvider | string;
+  categories?: readonly ModerationCategory[];
+  name?: string;
+  runInParallel?: boolean;
+}): IoGuardrail {
+  const { model, categories = MODERATION_CATEGORIES, name = 'moderation', runInParallel } = options;
   const ask = lazyModel(model);
   return {
     name,
+    ...(runInParallel && { runInParallel }),
     async check({ text, signal }): Promise<IoGuardrailResult> {
       const found = parseModeration(await ask([{ role: 'system', content: MODERATION_PROMPT }, { role: 'user', content: text }], signal));
       if (!found) return moderation(`${UNREADABLE} NONE or a list of categories)`, []);
