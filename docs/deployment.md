@@ -200,9 +200,9 @@ curl -N https://<your-worker>.workers.dev/chat \
 ```
 
 `KVStore(kvBinding, { prefix?, ttl? })` (`src/deploy/kvStore.ts`) is the
-`AgentStore` the Worker builds from the binding; use it yourself with
-`createAgent({ store: new KVStore(env.AGENT_CHECKPOINTS) })` in a Worker you
-write. Keys, with an optional `prefix` before each:
+`AgentStore` the generated Worker builds from the binding. It is not exported
+from any entry point of the package, so importing it in a hand-written Worker
+is not supported yet. Its keys, with an optional `prefix` before each:
 
 | Key | Value |
 | --- | ----- |

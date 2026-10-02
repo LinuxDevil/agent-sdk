@@ -121,8 +121,7 @@ console.log(answer.text);
   (an image URL is downloaded by the `ai` SDK first for Anthropic and Ollama).
   Pick a vision model: Ollama ignores images for a text-only model, and
   OpenRouter rejects them for one.
-- **Files** cannot be sent by the built-in providers' `ai` SDK peers
-  (`@ai-sdk/openai` / `@ai-sdk/anthropic` 0.0.x, `ollama-ai-provider`): a file
+- **Files** are not sent by the built-in providers, on any `ai` major: a file
   part is sent as a text note (`[file report.pdf (application/pdf) not sent]`)
   and the provider warns once. A provider subclass whose model takes files
   sets `protected readonly acceptsFileParts = true` to send them as `ai` v4
@@ -159,9 +158,9 @@ on each major today:
 | `ai` | `generate()` | `stream()` | Notes |
 | ---- | ------------ | ---------- | ----- |
 | v4 (`^4.3.19`) | Yes | Yes | Everything in these docs. |
-| v6 (`^6.0.0`), v7 (`^7.0.0`) | Yes, through a compatibility layer (LOU-D26) | Yes, through the same layer (LOU-D27) | Ollama needs zod 4 installed (below). |
+| v6 (`^6.0.0`), v7 (`^7.0.0`) | Yes, through a compatibility layer | Yes, through the same layer | Ollama needs zod 4 installed (below). |
 
-The peer ranges accept all three majors (LOU-D28d). Pair each with its
+The peer ranges accept all three majors. Pair each with its
 provider packages:
 
 | `ai` | `@ai-sdk/openai`, `@ai-sdk/anthropic` | Ollama package |
@@ -174,7 +173,7 @@ The install hint of a missing provider package and `lousho doctor` name the
 version for the `ai` you have installed, and `lousho doctor` flags a mismatched
 pair (for example `ai` 7 with `@ai-sdk/openai` 1.x). `OllamaProvider` loads
 `ollama-ai-provider` on `ai` 4 and `ollama-ai-provider-v2` on `ai` 6/7; the v2
-package peers on zod 4, which the SDK accepts since LOU-D29, so install zod 4
+package peers on zod 4, which the SDK accepts, so install zod 4
 with it (zod 3 projects use Ollama with `ai` 4). `lousho init` scaffolds `ai@^7.0.0` with `@ai-sdk/*@^4.0.0` for
 OpenAI, Anthropic and OpenRouter, and `ai@^4.3.19` for Ollama.
 
@@ -213,8 +212,8 @@ or `StreamResult`:
   the SDK's finish reason and the usage above (v6/v7 `totalUsage`). An
   `error` part rejects the stream with its error, on v4 too (v4 used to end
   such a stream with finish reason `error`), and an `abort` part with the
-  signal's reason. Reasoning deltas are not reported yet (no reasoning chunk
-  type until LOU-V13).
+  signal's reason. Reasoning deltas are reported as `reasoning-delta` chunks and
+  surface as `reasoning.*` events (see [Reasoning](./reasoning.md)).
 
 On v6/v7 the model must come from a provider package for that major (the
 table above); the `0.0.x`/`1.x` packages produce models `ai` v7 rejects. Image

@@ -13,7 +13,7 @@ Three things set it apart:
 
 - **Durable sessions and approvals on any host.** Sessions, checkpoints and
   approval pauses live in pluggable stores (memory, files, one SQLite file, or
-  Cloudflare KV for checkpoints on Workers), so a paused or interrupted run
+  Cloudflare KV on Workers), so a paused or interrupted run
   resumes from another request or another process.
 - **Record/replay and trajectory evals.** `mockModel` scripts the model,
   `recordReplay` cassettes replay real runs offline, and `defineEval()` asserts
@@ -37,12 +37,22 @@ cd my-agent && cp .env.example .env                  # then put your API key in 
 npm run dev                                          # chat in the terminal; `npm test` runs offline
 ```
 
-To add it to an existing project: `npm install @lousho/build-ai-agent ai zod` plus
-the provider package you use (`@ai-sdk/openai`, `@ai-sdk/anthropic` or
-`ollama-ai-provider`). `npx lousho doctor` checks Node, peers and API keys and
+To add it to an existing project, install the SDK with the current `ai` major
+and the provider packages that pair with it:
+
+```bash
+npm install @lousho/build-ai-agent ai@^7.0.0 zod
+npm install @ai-sdk/openai@^4.0.0 @ai-sdk/anthropic@^4.0.0
+```
+
+For Ollama, use `ai@^4.3.19` with `ollama-ai-provider@^1.2.0` (`ollama-ai-provider`
+only pairs with `ai` 4); [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#provider-packages)
+lists every pairing. `npx lousho doctor` checks Node, peers and API keys and
 prints a fix for anything missing.
 
 ## Quickstart
+
+The snippet uses top-level `await`, so the file must be an ES module (`.mts`, or `"type": "module"` in `package.json`).
 
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
@@ -73,20 +83,20 @@ agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 - **UI bindings**: `useLoushoAgent()` from `@lousho/build-ai-agent/react` (and `/vue`; `loushoAgent()` store from `/svelte`) turns the event stream into chat state, with approvals. [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md), [Vue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/vue.md), [Svelte](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/svelte.md)
 - **AI SDK UI**: `toUIMessageStreamResponse(agent.stream(...))` renders a run with the Vercel AI SDK's `useChat`. [AI SDK UI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/ai-sdk-ui.md)
 - **Next.js and Fetch frameworks**: `createRouteHandler(agent)` serves the session API from an App Router, SvelteKit, Hono or Bun route. [Next.js](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md)
-- **Durable execution**: `sessionId` + `checkpointStore` resume a crashed or paused run without redoing finished tools. [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)
+- **Durable execution**: `createAgent({ store })` checkpoints every step, and `agent.resume()` finishes a crashed or paused run without redoing finished tools. [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)
 - **Cancellation, usage and cost**: pass an `AbortSignal`; every result carries token usage and USD cost for priced models. [API overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#cancellation)
 - **Providers**: OpenAI, Anthropic, OpenRouter, Ollama or a mock, with `withRetry()` and `withFallback()`. [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md)
 - **Sub-agents**: `subagents: { researcher, writer }` gives the lead one `task` tool; sub-agents run in parallel. [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md)
 - **Skills and AGENTS.md**: `loadSkills()` loads instructions on demand; `projectInstructions` appends your `AGENTS.md`. [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md), [Project instructions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#project-instructions)
 - **Agent directories**: `loadAgentDir('./my-agent')` builds an agent from `instructions.md`, `tools/` and `skills/`. [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md)
-- **Compaction**: `createCompactionHook()` prunes old tool results before the context window fills. [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md)
+- **Compaction**: `createAgent({ compaction })` prunes old tool results, then summarizes old turns, before the context window fills. [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md)
 - **MCP client and server**: `createAgent({ mcpServers })` (or `connectMcp()`) connects stdio and HTTP MCP servers from config; `serveMcp()` / `lousho mcp` exposes your agent. [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#connect-mcp-servers-mcpservers-connectmcp)
 - **Workspace tools**: file system and shell tools for coding agents, confined to a root, shell approval-gated. [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md)
 - **Hooks, guardrails, sandboxing**: veto tool calls, gate a patch on fail-closed checks, run tools in Docker. [Guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md)
 - **Channels, flows and triggers**: `defineChannel()` / `mountChannels()` map a surface's messages to sessions and send replies and approvals back; fixed multi-step workflows; webhook, Slack and cron adapters. [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md), [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md), [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#triggers)
 - **Tracing**: OpenTelemetry GenAI spans (`invoke_agent`, `chat`, `execute_tool`); content capture is opt-in. [Observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md)
 - **Testing and evals**: `mockModel`, `recordReplay` cassettes, `defineEval()` trajectory assertions, `lousho eval` with `--record` / `--replay` cassettes and `--drift` trajectory diffs. [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md), [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md)
-- **CLI**: `init`, `doctor`, `dev`, `mcp`, `eval`, `build` and `studio`. [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md)
+- **CLI**: `init`, `doctor`, `dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `build` and `studio`. [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md)
 - **Editors (ACP)**: `lousho acp ./my-agent` serves your agent to Zed and other Agent Client Protocol editors, with tool calls and permission prompts. [ACP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/acp.md)
 - **Registry**: `lousho add <name> --registry <url-or-path>` copies a tool, skill, channel, schedule or memory slot into your agent directory from a static JSON registry, after showing its permissions. [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md)
 - **Agent Forge**: `lousho studio` opens a visual canvas, run debugger and chat with approval cards. [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md)
@@ -176,11 +186,13 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [AI SDK UI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/ai-sdk-ui.md) | `useChat` on a Lousho run: `toUIMessageStreamResponse()`, `fromUIMessages()`, approvals |
 | [Next.js](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md) | `createRouteHandler(agent)`: the session API as a Fetch route (App Router, SvelteKit, Hono), auth, `useChat` endpoint |
 | [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md) | `useLoushoAgent()`: chat state from the event stream, in process or over HTTP; `reduceAgentEvents()`, `parseEventStream()` |
+| [Vue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/vue.md) | `useLoushoAgent()` from `@lousho/build-ai-agent/vue`: the React hook as a Vue 3 composable |
+| [Svelte](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/svelte.md) | `loushoAgent()` from `@lousho/build-ai-agent/svelte`: the React hook as a Svelte store |
 | [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md) | Checkpoints, crash resume, approvals mid-batch, at-least-once tools |
 | [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md) | The `subagents` option and its `task` tool, inheritance, approvals in sub-agents |
 | [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md) | On-demand instructions: `defineSkill()`, `loadSkills()` |
 | [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md) | An agent as a folder: layout, mapping to `createAgent()`, security |
-| [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md) | Prune old tool results with `createCompactionHook()` |
+| [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md) | `createAgent({ compaction })`: prune old tool results, then summarize old turns |
 | [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) | `defineChannel()`, `mountChannels()`, `httpChannel()`, `webhookChannel()`, `slackChannel()`: surfaces mapped to sessions, replies and approvals sent back |
 | [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md) | `defineSchedule()` cron schedules, `schedules/` in an agent directory, `startSchedules()` |
 | [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md) | Fixed multi-step workflows with `FlowBuilder` and `FlowExecutor` |
@@ -190,10 +202,11 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md) | Trajectory evals with `defineEval()`, datasets, judges, `lousho eval` reports |
 | [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md) | OpenTelemetry GenAI spans, attribute table, content opt-in |
 | [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md) | `lousho build` targets: Node server, Docker, Cloudflare Workers (with KV checkpoints) |
+| [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md) | `lousho add`: copy a tool, skill, channel, schedule or memory slot from a static JSON registry |
 | [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md) | The visual dashboard: quickstart, first-agent walkthrough, hooks |
 | [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md) | Every error code (`LOUSHO_*`): what it means, how to fix it, an example |
 | [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md) | The main exports, triggers, tokens and cost; `npm run docs:build` generates the full TypeDoc reference |
-| [Utilities](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/utilities.md) | Encryption, file storage and templates |
+| [Utilities](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/utilities.md) | Encryption, hashing and file storage |
 
 The full guides site is at [lousho.mintlify.app](https://lousho.mintlify.app).
 
@@ -228,6 +241,8 @@ Most examples run offline with a mock provider; see the
 | `lousho doctor [spec]` | Check Node, peers, API keys and a spec file; print fixes |
 | `lousho dev <spec>` | Local chat UI and `POST /chat` with hot reload |
 | `lousho chat <path>` | Terminal REPL: streamed replies, tool calls, approvals and questions |
+| `lousho acp <path>` | Serve the agent to Zed and other Agent Client Protocol editors |
+| `lousho add <name> --registry <url-or-path>` | Copy a tool, skill, channel, schedule or memory slot from a registry into an agent directory |
 | `lousho mcp <spec>` | Serve the agent as an MCP server (stdio or HTTP) |
 | `lousho eval [globs]` | Run `*.eval.ts` files; JUnit and JSON reports |
 | `lousho build --target=<t> --agent=<spec>` | Build a Node server, Docker image or Cloudflare Worker |
@@ -243,21 +258,26 @@ writes a self-contained artifact and prints the command to run or deploy it
 
 Alpha (`1.0.0-alpha`, pre-1.0): APIs can still change between releases, and
 breaking changes are listed in the [CHANGELOG](https://github.com/LinuxDevil/agent-sdk/blob/main/CHANGELOG.md) with migration
-notes. Known gaps include killing
-the whole process group of a timed-out guardrail command on POSIX (only the
-direct child is signalled today) and interactive, in-browser Quick Start
-snippets; planned work is in the [ticket catalogue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/plan/tickets.md).
+notes. Known gaps:
+
+- There is no trace viewer. Spans go to the OpenTelemetry exporter you configure.
+- Docker sandbox egress (`network: { allow }`) and the credential broker need
+  Docker Engine on Linux; Docker Desktop is refused
+  ([Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md)).
+- The built-in providers do not send file (non-image) parts; a file part is
+  replaced by a text note ([Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md)).
+- The Cloudflare Worker target takes spec files only, with a limited provider
+  and tool set ([Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)).
 
 ## Contributing
 
 Contributions are welcome: see [CONTRIBUTING.md](https://github.com/LinuxDevil/agent-sdk/blob/main/CONTRIBUTING.md) for setup and
 the checks a pull request must pass (`npm run typecheck`, `npm run lint`,
-`npm test`, `npm run test:coverage && npm run fallow`). Maintainer notes:
-[ESLint baseline follow-up](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/eslint-baseline-followup.md).
+`npm test`, `npm run test:coverage && npm run fallow`).
 
 ## License
 
-MIT © [Build AI Agent](https://github.com/LinuxDevil/agent-sdk/blob/main/LICENSE)
+MIT © [Lousho Team](https://github.com/LinuxDevil/agent-sdk/blob/main/LICENSE)
 
 # Installation
 
@@ -309,7 +329,7 @@ npm install @lousho/build-ai-agent ai@^7.0.0 zod @ai-sdk/openai@^4.0.0
 ```
 
 **Ollama on `ai` 6/7 needs zod 4.** `ollama-ai-provider-v2` (the Ollama package
-for `ai` 6 and 7) declares `zod ^4` as a peer. The SDK accepts zod 4 (LOU-D29),
+for `ai` 6 and 7) declares `zod ^4` as a peer. The SDK accepts zod 4,
 so install it with zod 4, for example
 `npm install ai@^7.0.0 ollama-ai-provider-v2@^4.0.0 zod@^4.0.0`. With zod 3,
 use `ai@^4.3.19` with `ollama-ai-provider@^1.2.0` (what
@@ -341,13 +361,18 @@ try {
 
 ### Optional peers
 
-Three heavier packages are optional peers too. A project that never uses
-Docker sandboxing, MCP or the `lousho init` questions installs none of them:
+These packages are optional peers too. A project that never uses Docker
+sandboxing, MCP, OpenTelemetry tracing, the React or Vue bindings, `lousho build`
+or the `lousho init` questions installs none of them:
 
 | Package                     | Range     | Enables                                                                                       | Install                                          |
 | --------------------------- | --------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | `dockerode`                 | `^5.0.1`  | Docker sandboxing: `SubprocessSandbox` (and `lousho doctor`'s Docker ping)                    | `npm install dockerode@^5.0.1`                   |
-| `@modelcontextprotocol/sdk` | `^1.30.1` | MCP: `serveMcp()`, `lousho mcp`, and the `Client` you connect before `loadMcpTools()`         | `npm install @modelcontextprotocol/sdk@^1.30.1`  |
+| `@modelcontextprotocol/sdk` | `^1.30.1` | MCP: `createAgent({ mcpServers })` / `connectMcp()`, `serveMcp()` and `lousho mcp`            | `npm install @modelcontextprotocol/sdk@^1.30.1`  |
+| `@opentelemetry/api`        | `^1.9.1`  | OpenTelemetry tracing: `createOtelTraceExporter()` from `@lousho/build-ai-agent/otel`         | `npm install @opentelemetry/api@^1.9.1`          |
+| `react`                     | `^18`, `^19` | The React bindings (`@lousho/build-ai-agent/react`)                                      | `npm install react`                              |
+| `vue`                       | `^3`      | The Vue bindings (`@lousho/build-ai-agent/vue`)                                               | `npm install vue@^3`                             |
+| `tsup`                      | `^8.0.0`  | `lousho build`, which bundles the agent for each target                                       | `npm install --save-dev tsup@^8.0.0`             |
 | `prompts`                   | `^2.4.2`  | The interactive questions of `lousho init` (`lousho init --yes` and flags need nothing)       | `npm install prompts@^2.4.2`                     |
 
 Like the provider packages, each is loaded on first use, never at import
@@ -435,9 +460,9 @@ runs `lousho init` with the same arguments.
 ## The `lousho` CLI
 
 Installing the package also installs the `lousho` command: `init`, `doctor`,
-`dev`, `mcp`, `eval`, `build` and `studio`. See [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md) for what each
-one does and its flags. Building requires `tsup`
-(`npm install --save-dev tsup`).
+`dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `build` and `studio`. See
+[CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md) for what each one does and its flags. Building needs `tsup`,
+an optional peer (see the table above): `npm install --save-dev tsup`.
 
 ## Troubleshooting: lousho doctor
 
@@ -449,12 +474,12 @@ not ok, the command to run or the setting to change:
 lousho doctor
 
 [ ok ] Node.js: v22.19.0 satisfies >=22.19.0
-[ ok ] Required peer ai: 4.3.19 satisfies ^4.3.19
+[ ok ] Required peer ai: 7.0.0 satisfies ^7.0.0
 [FAIL] Required peer zod: not installed
        fix: npm install zod@^4.0.0
-[ ok ] Provider package @ai-sdk/openai: 0.0.42 installed
+[ ok ] Provider package @ai-sdk/openai: 4.0.0 installed
 [warn] Provider package @ai-sdk/anthropic: not installed (optional)
-       fix: npm install @ai-sdk/anthropic@^0.0.42
+       fix: npm install @ai-sdk/anthropic@^4.0.0
 [warn] openai (OPENAI_API_KEY): not set
        fix: Set OPENAI_API_KEY in your environment, e.g. export OPENAI_API_KEY=<your key>
 [warn] Default provider for createAgent(): none configured (createAgent() needs a model, a provider instance, or an env var)
@@ -643,9 +668,10 @@ you pass keyed by name: `tools: { current_date: currentDateTool }`.
 ## 4. Full control: `AgentBuilder` + `AgentExecutor`
 
 `createAgent()` is a thin wrapper over `AgentBuilder` and the static
-`AgentExecutor.execute()`. Use them directly when you need the full set of
-execution options (`maxSteps`, `temperature`, `onAgentEvent`, approvals,
-checkpoints, tracing, ...). `AgentExecutor` is a static API - there is no
+`AgentExecutor.execute()`. Use them directly only for what `createAgent()` does not
+take: `temperature` and `maxTokens`, and a `TraceExporter` for tracing
+(`exporter`, `captureContent`). `createAgent()` already takes `maxSteps`,
+`limits`, `onEvent`, approvals, `store` (checkpoints), `hooks` and `compaction`. `AgentExecutor` is a static API - there is no
 `new AgentExecutor()`.
 
 ```ts
@@ -2775,7 +2801,7 @@ handler and runs every request the same way:
 POST <basePath>/<name>  ->  verify  ->  parse  ->  session turn  ->  reply (or onApproval)
 ```
 
-Channels are new (LOU-P7). The [trigger adapters](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#triggers)
+Channels are new. The [trigger adapters](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#triggers)
 still work: `WebhookTriggerAdapter` now uses `webhookChannel()` for its auth and
 parsing. Channels add what triggers lack: each conversation on the surface is
 a [session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md), and approvals and questions go back to the surface.
@@ -2956,8 +2982,8 @@ does not decide the approval: the user gets an ephemeral "not allowed" message
 and the approval stays pending.
 
 **Security note.** Without `approvers`, only the user who started the turn (the
-message author on Slack, the command's user on Discord) may approve. Before
-LOU-P5.2 anyone who could see the message could; `approvers: () => true`
+message author on Slack, the command's user on Discord) may approve. In
+earlier versions anyone who could see the message could; `approvers: () => true`
 restores that, which you should only do in a private channel. A function
 `approvers` fails closed when the process does not know the pending call (after
 a restart); use the list form or the default for approvals that must survive
@@ -4411,9 +4437,9 @@ curl -N https://<your-worker>.workers.dev/chat \
 ```
 
 `KVStore(kvBinding, { prefix?, ttl? })` (`src/deploy/kvStore.ts`) is the
-`AgentStore` the Worker builds from the binding; use it yourself with
-`createAgent({ store: new KVStore(env.AGENT_CHECKPOINTS) })` in a Worker you
-write. Keys, with an optional `prefix` before each:
+`AgentStore` the generated Worker builds from the binding. It is not exported
+from any entry point of the package, so importing it in a hand-written Worker
+is not supported yet. Its keys, with an optional `prefix` before each:
 
 | Key | Value |
 | --- | ----- |
@@ -6422,7 +6448,7 @@ Source: docs/nextjs.md
 framework whose handlers take a Web `Request` and return a `Response`: the
 Next.js App Router, SvelteKit, Remix / React Router, Hono, Bun.serve. It is a
 thin wrapper over the same session API as `lousho dev` and the deployed server
-(docs/deployment.md), so the React, Vue and Svelte bindings work against it
+([Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)), so the React, Vue and Svelte bindings work against it
 unchanged. It imports no framework and no `node:*` module.
 
 ## Next.js App Router
@@ -6488,7 +6514,7 @@ export function Chat() {
 
 With `uiMessageStream: true`, point `useChat` at the `ui` route. The chat `id`
 names the session, so only the newest user message is sent to the agent
-(docs/ai-sdk-ui.md).
+([AI SDK UI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/ai-sdk-ui.md)).
 
 ```tsx no-verify
 import { useChat } from '@ai-sdk/react';
@@ -6863,8 +6889,7 @@ console.log(answer.text);
   (an image URL is downloaded by the `ai` SDK first for Anthropic and Ollama).
   Pick a vision model: Ollama ignores images for a text-only model, and
   OpenRouter rejects them for one.
-- **Files** cannot be sent by the built-in providers' `ai` SDK peers
-  (`@ai-sdk/openai` / `@ai-sdk/anthropic` 0.0.x, `ollama-ai-provider`): a file
+- **Files** are not sent by the built-in providers, on any `ai` major: a file
   part is sent as a text note (`[file report.pdf (application/pdf) not sent]`)
   and the provider warns once. A provider subclass whose model takes files
   sets `protected readonly acceptsFileParts = true` to send them as `ai` v4
@@ -6901,9 +6926,9 @@ on each major today:
 | `ai` | `generate()` | `stream()` | Notes |
 | ---- | ------------ | ---------- | ----- |
 | v4 (`^4.3.19`) | Yes | Yes | Everything in these docs. |
-| v6 (`^6.0.0`), v7 (`^7.0.0`) | Yes, through a compatibility layer (LOU-D26) | Yes, through the same layer (LOU-D27) | Ollama needs zod 4 installed (below). |
+| v6 (`^6.0.0`), v7 (`^7.0.0`) | Yes, through a compatibility layer | Yes, through the same layer | Ollama needs zod 4 installed (below). |
 
-The peer ranges accept all three majors (LOU-D28d). Pair each with its
+The peer ranges accept all three majors. Pair each with its
 provider packages:
 
 | `ai` | `@ai-sdk/openai`, `@ai-sdk/anthropic` | Ollama package |
@@ -6916,7 +6941,7 @@ The install hint of a missing provider package and `lousho doctor` name the
 version for the `ai` you have installed, and `lousho doctor` flags a mismatched
 pair (for example `ai` 7 with `@ai-sdk/openai` 1.x). `OllamaProvider` loads
 `ollama-ai-provider` on `ai` 4 and `ollama-ai-provider-v2` on `ai` 6/7; the v2
-package peers on zod 4, which the SDK accepts since LOU-D29, so install zod 4
+package peers on zod 4, which the SDK accepts, so install zod 4
 with it (zod 3 projects use Ollama with `ai` 4). `lousho init` scaffolds `ai@^7.0.0` with `@ai-sdk/*@^4.0.0` for
 OpenAI, Anthropic and OpenRouter, and `ai@^4.3.19` for Ollama.
 
@@ -6955,8 +6980,8 @@ or `StreamResult`:
   the SDK's finish reason and the usage above (v6/v7 `totalUsage`). An
   `error` part rejects the stream with its error, on v4 too (v4 used to end
   such a stream with finish reason `error`), and an `abort` part with the
-  signal's reason. Reasoning deltas are not reported yet (no reasoning chunk
-  type until LOU-V13).
+  signal's reason. Reasoning deltas are reported as `reasoning-delta` chunks and
+  surface as `reasoning.*` events (see [Reasoning](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/reasoning.md)).
 
 On v6/v7 the model must come from a provider package for that major (the
 table above); the `0.0.x`/`1.x` packages produce models `ai` v7 rejects. Image
@@ -9712,7 +9737,7 @@ import { StorageService } from '@lousho/build-ai-agent';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-// fs/path are injected as adapters (LOU-A7); the Node modules satisfy them as-is.
+// fs/path are injected as adapters; the Node modules satisfy them as-is.
 const storage = new StorageService('user-123', 'attachments', fs, path);
 
 await storage.saveAttachment(file, 'document.pdf');

@@ -10,7 +10,7 @@ handler and runs every request the same way:
 POST <basePath>/<name>  ->  verify  ->  parse  ->  session turn  ->  reply (or onApproval)
 ```
 
-Channels are new (LOU-P7). The [trigger adapters](api-overview.md#triggers)
+Channels are new. The [trigger adapters](api-overview.md#triggers)
 still work: `WebhookTriggerAdapter` now uses `webhookChannel()` for its auth and
 parsing. Channels add what triggers lack: each conversation on the surface is
 a [session](sessions.md), and approvals and questions go back to the surface.
@@ -191,8 +191,8 @@ does not decide the approval: the user gets an ephemeral "not allowed" message
 and the approval stays pending.
 
 **Security note.** Without `approvers`, only the user who started the turn (the
-message author on Slack, the command's user on Discord) may approve. Before
-LOU-P5.2 anyone who could see the message could; `approvers: () => true`
+message author on Slack, the command's user on Discord) may approve. In
+earlier versions anyone who could see the message could; `approvers: () => true`
 restores that, which you should only do in a private channel. A function
 `approvers` fails closed when the process does not know the pending call (after
 a restart); use the list form or the default for approvals that must survive

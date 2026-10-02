@@ -32,7 +32,7 @@ import { StorageService } from '@lousho/build-ai-agent';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-// fs/path are injected as adapters (LOU-A7); the Node modules satisfy them as-is.
+// fs/path are injected as adapters; the Node modules satisfy them as-is.
 const storage = new StorageService('user-123', 'attachments', fs, path);
 
 await storage.saveAttachment(file, 'document.pdf');

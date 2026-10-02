@@ -4,7 +4,7 @@
 framework whose handlers take a Web `Request` and return a `Response`: the
 Next.js App Router, SvelteKit, Remix / React Router, Hono, Bun.serve. It is a
 thin wrapper over the same session API as `lousho dev` and the deployed server
-(docs/deployment.md), so the React, Vue and Svelte bindings work against it
+([Deployment](./deployment.md)), so the React, Vue and Svelte bindings work against it
 unchanged. It imports no framework and no `node:*` module.
 
 ## Next.js App Router
@@ -70,7 +70,7 @@ export function Chat() {
 
 With `uiMessageStream: true`, point `useChat` at the `ui` route. The chat `id`
 names the session, so only the newest user message is sent to the agent
-(docs/ai-sdk-ui.md).
+([AI SDK UI](./ai-sdk-ui.md)).
 
 ```tsx no-verify
 import { useChat } from '@ai-sdk/react';

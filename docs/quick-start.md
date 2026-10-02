@@ -149,9 +149,10 @@ you pass keyed by name: `tools: { current_date: currentDateTool }`.
 ## 4. Full control: `AgentBuilder` + `AgentExecutor`
 
 `createAgent()` is a thin wrapper over `AgentBuilder` and the static
-`AgentExecutor.execute()`. Use them directly when you need the full set of
-execution options (`maxSteps`, `temperature`, `onAgentEvent`, approvals,
-checkpoints, tracing, ...). `AgentExecutor` is a static API - there is no
+`AgentExecutor.execute()`. Use them directly only for what `createAgent()` does not
+take: `temperature` and `maxTokens`, and a `TraceExporter` for tracing
+(`exporter`, `captureContent`). `createAgent()` already takes `maxSteps`,
+`limits`, `onEvent`, approvals, `store` (checkpoints), `hooks` and `compaction`. `AgentExecutor` is a static API - there is no
 `new AgentExecutor()`.
 
 ```ts
