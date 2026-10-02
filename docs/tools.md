@@ -126,8 +126,8 @@ its kind by carrying a `toolErrorKind` property. An error extending
 | `askQuestionTool()`, `createAgent({ askQuestion: true })` | `ask_question`: the agent asks the user something and the run pauses until `agent.approvals.answer()`; see [Asking the user a question](./approvals.md#asking-the-user-a-question). |
 | `createFsTools()`, `createShellTool()` | File system and shell tools for coding agents; see [Workspace tools](./workspace-tools.md). |
 | `createEmailTool()`, `createSlackTool()`, `createGitHubTools()`, `createJiraTools()` | Integrations that need credentials, so they are built with options. |
-| `createAgent({ mcpServers })`, `connectMcp(servers)` | Every tool of MCP servers given as config (stdio `command` or HTTP `url`), named `<server>__<tool>`; see [Connect MCP servers](./configuration.md#connect-mcp-servers-mcpservers-connectmcp). |
-| `loadMcpTools(client, name)` | Every tool of a connected MCP server; see [MCP tools](./configuration.md#mcp-model-context-protocol-tools). |
+| `createAgent({ mcpServers })`, `connectMcp(servers)` | Every tool of MCP servers given as config (stdio `command` or HTTP `url`), named `<server>__<tool>`; see [Use MCP servers in an agent](./mcp.md#use-mcp-servers-in-an-agent). |
+| `loadMcpTools(client, name)` | Every tool of a connected MCP server; see [MCP tools](./mcp.md#tools-from-a-client-you-connected-yourself). |
 
 Built-in descriptors are passed keyed by the name the agent uses:
 `createAgent({ tools: { current_date: currentDateTool } })`. Spec files refer to

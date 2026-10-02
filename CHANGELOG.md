@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `@lousho/build-ai-agent` and `create-lousho-agent` are on npm. The README and the installation, quick start, CLI and Agent Forge docs no longer say the package is unpublished; "Installing before the first release" is now "Installing from a local build" (docs/installation.md#installing-from-a-local-build) and covers trying an unreleased commit. The hint printed after a failed `lousho init` install no longer mentions a 404; it points to `--sdk-path`. The docs site moved to https://lousho.com.
 
 ### Docs
+- New page docs/mcp.md, "MCP (Model Context Protocol)": using MCP servers in an agent, `connectMcp()`, approval for MCP tools, `loadMcpTools()`, serving an agent with `serveMcp()` and `lousho mcp`, and a Limits list. These sections moved out of docs/configuration.md, which keeps the `mcpServers` spec field and links to the new page; links from approvals, CLI, tools, API overview and the README now point to `mcp.md`.
 - The Quick Start is rewritten around `createAgent()`: hello world, a tool, streaming, a session, an approval, an offline test with `mockModel`, a custom provider and spec files, each runnable with no API key (the first excepted). The `AgentBuilder` + `AgentExecutor` section moved to a new page, docs/executor-api.md (with the `ToolRegistry` note); the Quick Start no longer shows either API.
 - `create-lousho-agent` has a README (its npm page was empty) and `license`, `homepage` and `repository` fields; they appear on npm with its next release. `lousho init --help` no longer says `--sdk-path` is needed until the package is on npm.
 
@@ -148,6 +149,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `finishReason: 'max-steps'` (LOU-U19): a run that exhausts `maxSteps` while the model still wanted to continue (last turn ended in tool calls) now resolves with `finishReason: 'max-steps'` instead of the stale last-turn reason (usually `'tool_calls'`), on `ExecutionResult`, the `finish` event and `run.done`. Resumed runs count `initialSteps` toward the budget. A run that finishes naturally within the budget is unchanged. Code that treated `'tool_calls'` as "hit maxSteps" should check `'max-steps'` instead (the eval `completed()` message and the MCP server's agent tool do).
 
 ### Docs
+- New page docs/mcp.md, "MCP (Model Context Protocol)": using MCP servers in an agent, `connectMcp()`, approval for MCP tools, `loadMcpTools()`, serving an agent with `serveMcp()` and `lousho mcp`, and a Limits list. These sections moved out of docs/configuration.md, which keeps the `mcpServers` spec field and links to the new page; links from approvals, CLI, tools, API overview and the README now point to `mcp.md`.
 - README revamped into a short front page (LOU-D52); the details it dropped moved to `docs/` (new pages: tools, approvals, providers, cli, flows, guardrails, utilities).
 
 ### Fixed
