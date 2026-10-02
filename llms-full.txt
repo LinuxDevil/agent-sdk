@@ -4672,8 +4672,14 @@ Notes:
   the saved `ctx` (before, it resolved with `input: []` and no `metadata`).
 - The fingerprint covers the agent's own tools, model and instructions, not
   the tools that `subagents` and `skills` add. A sub-agent that pauses for an
-  approval has its own fingerprint in its nested snapshot, but a resume
-  compares only the top-level agent.
+  approval has its own fingerprint in its nested snapshot. On resume, each
+  paused level (the lead, the sub-agent, and a sub-agent of that sub-agent) is
+  compared with its current definition from `subagents`, under the lead's
+  `onAgentDrift`. With `'warn'` the `agent.drift` event carries `subagent`.
+  When a sub-agent's check rejects, the lead's approval and its
+  `'awaiting-approval'` checkpoint are put back, so fixing the sub-agent and
+  resolving again works. A [remote sub-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md#remote-sub-agents)
+  is not compared: its pause is kept on the remote.
 - A run resumed after an approval continues with the instructions it started
   with (they are in its transcript), so its later checkpoints record those.
 
@@ -10427,6 +10433,13 @@ Guarantees and limits:
   run, so it can ask again after the approval.
 - A `task` call's pre/post tool hooks fire again on resume, like the hooks of
   any approved tool.
+- A sub-agent whose definition changed since the pause (instructions, model
+  or tools) is handled by the lead's `onAgentDrift`, like the lead itself:
+  `'error'` rejects the resume and leaves the approval pending, `'warn'` (the
+  default) warns and emits `agent.drift` with `subagent` set. A sub-agent that
+  no longer has the approved call's tool always rejects with
+  `LOUSHO_RESUME_TOOL_MISSING`. See
+  [Resuming with a changed agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#resuming-with-a-changed-agent).
 - Token usage keeps adding up across the pause: the sub-agent's usage before
   the pause is in the paused result, and what it spends after the resume is
   added to the resumed lead's `result.usage`.
