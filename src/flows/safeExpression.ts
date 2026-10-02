@@ -5,7 +5,7 @@
  * are tokenized and parsed by a small hand-written recursive-descent parser
  * and then walked directly - no host code is ever compiled or executed.
  *
- * Supported grammar (see `docs/api-overview.md#flow-expressions`):
+ * Supported grammar (see `docs/flows.md#flow-expressions`):
  *
  * - literals: `'str'`, `"str"`, `12`, `1.5`, `true`, `false`, `null`
  * - variables of the flow scope, with dot and bracket paths: `a.b[0]['c']`

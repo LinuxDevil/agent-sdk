@@ -49,7 +49,7 @@ const result = await FlowExecutor.execute(flow, { agent, provider, variables: { 
 `oneOf` conditions and `evaluator` expressions use a small, safe expression
 language (no `eval`, no host code; `{{name}}` placeholders are bound as
 values, never pasted into the expression). Its grammar and failure rules are
-in [Flow expressions](./api-overview.md#flow-expressions).
+in [Flow expressions](#flow-expressions).
 
 ## Flows, sub-agents or skills?
 
@@ -60,3 +60,45 @@ some tasks. See [Sub-agents, skills or flows?](./sub-agents.md#sub-agents-skills
 
 Flows are traced like agent runs (see
 [Tracing and observability](./observability.md#flows)).
+
+## Flow expressions
+
+`oneOf` branch conditions (and the Agent Forge router node's branch conditions)
+and `evaluator` node expressions are evaluated by a small built-in expression
+evaluator. It never compiles or runs host code: there is no `eval`,
+`new Function` or `vm` in `src/flows`. `{{name}}` placeholders are bound as
+values, never pasted into the expression text: a bare `{{score}} >= 90` uses the
+variable's value, and inside a string literal, `'{{classify}}' === 'refund'`
+interpolates the value's text into that literal after the expression has been
+tokenized. A variable whose value contains quotes, backslashes or operators
+(for example `x' === 'x' || 'a`) is therefore just data and cannot change the
+condition's logic. A missing or `null` variable is an empty string inside a
+literal; used bare it contributes nothing, so `{{missing}} >= 90` is a syntax
+error and the condition counts as not matched. The expression is evaluated
+against the flow's variables.
+
+| Form | Examples |
+| --- | --- |
+| Literals | `'text'`, `"text"`, `42`, `1.5`, `true`, `false`, `null` |
+| Variables and paths | `score`, `user.address.city`, `user['first-name']`, `items[0].id` |
+| Length | `name.length`, `items.length` (strings and arrays) |
+| Comparison | `==`, `===`, `!=`, `!==`, `<`, `<=`, `>`, `>=` |
+| Logical | `&&`, `\|\|`, `!` (short-circuiting, return the deciding operand) |
+| Arithmetic | `+`, `-`, `*`, `/`, `%`, unary `-` and `+` |
+| Grouping | `( ... )` |
+| Allow-listed methods | `s.includes(x)`, `s.startsWith(x)`, `s.endsWith(x)` on strings; `list.includes(x)` on arrays (exactly one argument) |
+
+Precedence, loosest to tightest: `||`, `&&`, equality, relational, `+ -`,
+`* / %`, unary, member access.
+
+Not supported, and rejected with an `ExpressionError` that names the
+expression, the character position and this list of supported forms: any other
+function or method call, assignment (`=`, `+=`, `++`), ternaries, template
+strings, object/array literals, access to `constructor`, `__proto__` or
+`prototype`, and globals (`process`, `require`, `globalThis`, ...). Only a
+flow's own variables, and only their own properties, are reachable.
+
+Failure behaviour is unchanged: a `oneOf` condition that cannot be evaluated
+counts as not matched (`false`), and an `evaluator` expression that cannot be
+evaluated fails the flow with `Failed to evaluate expression: ...`, including
+the `ExpressionError` detail.
