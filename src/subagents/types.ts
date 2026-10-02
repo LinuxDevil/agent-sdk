@@ -1,4 +1,5 @@
 import type { SimpleAgent } from '../createAgent';
+import type { AgentEventUsage } from '../execution/agentEvents';
 
 /** A sub-agent as listed to the lead agent: its name and what it is for. */
 export interface SubagentSummary {
@@ -71,6 +72,13 @@ export interface RemoteRunOptions {
   taskId?: string;
   pausable?: boolean;
   decision?: { approvalId: string; approved: boolean; note?: string };
+  /**
+   * M10b: called once per remote turn with the usage the remote run reported on its `run.done` event (not called when
+   * it reported none, e.g. an older server), before the turn's outcome is returned or thrown, so a turn that paused
+   * for approval reports what it spent too. A continuation after a `decision` reports the remote run's usage from its
+   * start, the turn before the pause included. `withSubagents()` uses it to add the usage to the lead run's totals.
+   */
+  onUsage?: (usage: AgentEventUsage) => void;
 }
 
 /**

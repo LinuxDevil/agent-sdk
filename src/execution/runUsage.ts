@@ -8,9 +8,23 @@ import type { GenerateResult, Message } from '../providers';
 import { estimateCost, estimateTokens } from '../models';
 import { normalizeUsage } from '../models/usage';
 import type { CallUsage, DelegatedUsage, RunUsage, Usage } from '../models/usage';
+import type { AgentEventUsage } from './agentEvents';
 
 /** Model id that pre-LOU-V5 checkpoint tokens are attributed to. */
 const UNKNOWN_MODEL = 'unknown';
+
+/** M10b: prefix of the `byModel` key a remote sub-agent's usage is filed under (`remote:<agent name>`). */
+const REMOTE_MODEL_PREFIX = 'remote:';
+
+/** The `byModel` key of remote sub-agent `name`'s usage. */
+export function remoteModelKey(name: string): string {
+  return `${REMOTE_MODEL_PREFIX}${name}`;
+}
+
+/** A remote entry keeps the cost the remote reported: there is no model id to price it by. */
+const isRemoteKey = (model: string): boolean => model.startsWith(REMOTE_MODEL_PREFIX);
+
+const addCost = (a: number | undefined, b: number | undefined): number | undefined => (a === undefined || b === undefined ? undefined : a + b);
 
 /** A fresh, empty run total. */
 export function emptyRunUsage(): RunUsage {
@@ -58,8 +72,8 @@ function addOptional(run: RunUsage, key: OptionalCount, add: number | undefined)
 function refreshDerived(run: RunUsage): void {
   let total: number | undefined = 0;
   for (const [model, entry] of Object.entries(run.byModel)) {
-    entry.costUsd = estimateCost(entry, model);
-    total = total === undefined || entry.costUsd === undefined ? undefined : total + entry.costUsd;
+    if (!isRemoteKey(model)) entry.costUsd = estimateCost(entry, model);
+    total = addCost(total, entry.costUsd);
   }
   run.costUsd = total;
   run.promptTokens = run.inputTokens;
@@ -69,13 +83,15 @@ function refreshDerived(run: RunUsage): void {
 function addToModel(
   run: RunUsage,
   model: string,
-  tokens: { inputTokens: number; outputTokens: number },
+  tokens: { inputTokens: number; outputTokens: number; costUsd?: number },
   calls: number
 ): void {
+  const existing = run.byModel[model];
   const entry = (run.byModel[model] ??= { inputTokens: 0, outputTokens: 0, calls: 0 });
   entry.inputTokens += tokens.inputTokens;
   entry.outputTokens += tokens.outputTokens;
   entry.calls += calls;
+  if (isRemoteKey(model)) entry.costUsd = existing ? addCost(existing.costUsd, tokens.costUsd) : tokens.costUsd;
 }
 
 /** Adds one model call to the run total (mutates). */
@@ -106,10 +122,7 @@ function delegatedTotals(before: DelegatedUsage | undefined, child: RunUsage): D
     inputTokens: prior.inputTokens + child.inputTokens,
     outputTokens: prior.outputTokens + child.outputTokens,
     totalTokens: prior.totalTokens + child.totalTokens,
-    costUsd:
-      prior.costUsd === undefined || child.costUsd === undefined
-        ? undefined
-        : prior.costUsd + child.costUsd,
+    costUsd: addCost(prior.costUsd, child.costUsd),
     modelCalls: prior.modelCalls + child.modelCalls,
     estimated: prior.estimated || child.estimated,
     runs: prior.runs + 1,
@@ -128,6 +141,57 @@ export function mergeDelegatedUsage(run: RunUsage, child: RunUsage): void {
   for (const [model, entry] of Object.entries(child.byModel)) addToModel(run, model, entry, entry.calls);
   run.delegated = delegatedTotals(run.delegated, child);
   refreshDerived(run);
+}
+
+/**
+ * M10b: a remote sub-agent run's `run.done` usage as a {@link RunUsage}, to roll into the lead's totals. The remote
+ * sends no per-model breakdown, so `byModel` has one entry under `modelKey` (see {@link remoteModelKey}) holding the
+ * totals and the remote's own cost estimate (`undefined` when it sent none).
+ */
+export function fromEventUsage(usage: AgentEventUsage, modelKey: string): RunUsage {
+  const { inputTokens, outputTokens, totalTokens, estimated, costUsd } = usage;
+  const calls = usage.modelCalls ?? 1;
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    costUsd,
+    modelCalls: calls,
+    estimated,
+    byModel: { [modelKey]: { inputTokens, outputTokens, calls, costUsd } },
+    promptTokens: inputTokens,
+    completionTokens: outputTokens,
+  };
+}
+
+const since = (now: number, before: number | undefined): number => Math.max(0, now - (before ?? 0));
+
+/**
+ * M10b: what a run spent after `before`, given its cumulative usage `now` (a remote run resumed after an approval
+ * reports its usage from its start, the turn before the pause included). Counts never go below zero.
+ */
+export function usageSince(now: RunUsage, before: RunUsage | undefined): RunUsage {
+  if (!before) return now;
+  const inputTokens = since(now.inputTokens, before.inputTokens);
+  const outputTokens = since(now.outputTokens, before.outputTokens);
+  const costUsd = now.costUsd === undefined || before.costUsd === undefined ? now.costUsd : Math.max(0, now.costUsd - before.costUsd);
+  const byModel: RunUsage['byModel'] = {};
+  for (const [model, entry] of Object.entries(now.byModel)) {
+    const prior = before.byModel[model];
+    const cost = entry.costUsd === undefined || prior?.costUsd === undefined ? entry.costUsd : Math.max(0, entry.costUsd - prior.costUsd);
+    byModel[model] = { inputTokens: since(entry.inputTokens, prior?.inputTokens), outputTokens: since(entry.outputTokens, prior?.outputTokens), calls: since(entry.calls, prior?.calls), costUsd: cost };
+  }
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens: since(now.totalTokens, before.totalTokens),
+    costUsd,
+    modelCalls: since(now.modelCalls, before.modelCalls),
+    estimated: now.estimated,
+    byModel,
+    promptTokens: inputTokens,
+    completionTokens: outputTokens,
+  };
 }
 
 /** What a checkpoint stores of a run's usage: always the pre-LOU-V5 fields, plus the rest of RunUsage on newer ones. */
