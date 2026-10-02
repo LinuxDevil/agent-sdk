@@ -45,9 +45,9 @@ npm install @lousho/build-ai-agent ai@^7.0.0 zod
 npm install @ai-sdk/openai@^4.0.0 @ai-sdk/anthropic@^4.0.0
 ```
 
-For Ollama, use `ai@^4.3.19` with `ollama-ai-provider@^1.2.0` (`ollama-ai-provider`
-only pairs with `ai` 4); [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#provider-packages)
-lists every pairing. `npx lousho doctor` checks Node, peers and API keys and
+For Ollama, use `ai@^7.0.0` with `ollama-ai-provider-v2@^4.0.0` and zod 4 (or
+`ai@^4.3.19` with `ollama-ai-provider@^1.2.0` and zod 3);
+[Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#provider-packages) lists every pairing. `npx lousho doctor` checks Node, peers and API keys and
 prints a fix for anything missing.
 
 ## Quickstart
@@ -347,8 +347,16 @@ npm install @lousho/build-ai-agent ai@^7.0.0 zod @ai-sdk/openai@^4.0.0
 for `ai` 6 and 7) declares `zod ^4` as a peer. The SDK accepts zod 4,
 so install it with zod 4, for example
 `npm install ai@^7.0.0 ollama-ai-provider-v2@^4.0.0 zod@^4.0.0`. With zod 3,
-use `ai@^4.3.19` with `ollama-ai-provider@^1.2.0` (what
-`lousho init --provider ollama` scaffolds).
+use `ai@^4.3.19` with `ollama-ai-provider@^1.2.0`.
+`lousho init --provider ollama` scaffolds `ai@^7.0.0` with
+`ollama-ai-provider-v2@^4.0.0` and zod 4.
+
+**What CI tests.** Every pairing the peer ranges accept is installed for real
+and run through the type check, the build and the whole test suite, on every
+change: `ai` 4 with zod 3 (the dev install) and zod 4, `ai` 6 with zod 3 and
+with zod 4, and `ai` 7 with zod 3 and with zod 4. The two zod 4 entries on
+`ai` 6 and 7 also install `ollama-ai-provider-v2` (3.x and 4.x) and run the
+Ollama provider against it, so Ollama on `ai` 6/7 is tested, not assumed.
 
 Peers are loaded on demand: importing `@lousho/build-ai-agent` (or any of
 its sub-entries) never loads a provider package, so you only need to install
@@ -569,8 +577,8 @@ npm install @lousho/build-ai-agent ai@^7.0.0 zod
 npm install @ai-sdk/openai@^4.0.0 @ai-sdk/anthropic@^4.0.0
 ```
 
-That is the current `ai` major; for Ollama, use `ai@^4.3.19` with
-`ollama-ai-provider@^1.2.0` (see [the pairings](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#provider-packages)).
+That is the current `ai` major; for Ollama, use `ai@^7.0.0` with
+`ollama-ai-provider-v2@^4.0.0` and zod 4 (see [the pairings](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#provider-packages)).
 
 ## 1. Hello world
 
@@ -8017,7 +8025,11 @@ pair (for example `ai` 7 with `@ai-sdk/openai` 1.x). `OllamaProvider` loads
 `ollama-ai-provider` on `ai` 4 and `ollama-ai-provider-v2` on `ai` 6/7; the v2
 package peers on zod 4, which the SDK accepts, so install zod 4
 with it (zod 3 projects use Ollama with `ai` 4). `lousho init` scaffolds `ai@^7.0.0` with `@ai-sdk/*@^4.0.0` for
-OpenAI, Anthropic and OpenRouter, and `ai@^4.3.19` for Ollama.
+OpenAI, Anthropic and OpenRouter, and `ai@^7.0.0` with `ollama-ai-provider-v2@^4.0.0` and zod 4 for Ollama.
+
+CI installs and tests `ai` 4, 6 and 7, each with zod 3 and zod 4 (six pairings;
+`ai` 4 with zod 4 is the one pairing the provider packages do not declare), with
+the real `ollama-ai-provider-v2` on `ai` 6 and 7 in the zod 4 jobs.
 
 OpenRouter uses `@ai-sdk/openai` against OpenRouter's base URL. From
 `@ai-sdk/openai` 2 on, the default `openai(modelId)` call targets the Responses

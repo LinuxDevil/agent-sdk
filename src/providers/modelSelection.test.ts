@@ -20,9 +20,16 @@ vi.mock('ai', async () => {
   };
 });
 
-// On ai 6/7 OllamaProvider loads ollama-ai-provider-v2 (LOU-D28d), which needs zod 4 and is
-// not installed (also not in the ai-7 CI job); generateText is mocked, so a stand-in model does.
-vi.mock('ollama-ai-provider-v2', () => ({ createOllama: () => (modelId: string) => ({ modelId }) }));
+// On ai 6/7 OllamaProvider loads ollama-ai-provider-v2 (LOU-D28d), which needs zod 4. Where it is
+// installed (the ai6-zod4 / ai7-zod4 CI jobs, LOU-M8) the real package builds the model; where it is
+// not, generateText is mocked anyway, so a stand-in model does.
+vi.mock('ollama-ai-provider-v2', async (importActual) => {
+  try {
+    return await importActual<object>();
+  } catch {
+    return { createOllama: () => (modelId: string) => ({ modelId }) };
+  }
+});
 
 import { OpenAIProvider } from './OpenAIProvider';
 import { AnthropicProvider } from './AnthropicProvider';

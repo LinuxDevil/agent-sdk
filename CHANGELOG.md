@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-09-28
 
+### Changed
+- CI peer matrix (LOU-M8, #231): the `typecheck-ai7` and `typecheck-zod4` jobs are replaced by one `peers` job with five entries, each installed for real on top of the default install and run through `tsc`, `test:types`, both builds and `npx vitest run`: `ai4-zod4`, `ai6-zod3`, `ai6-zod4`, `ai7-zod3`, `ai7-zod4`. The two zod 4 entries on `ai` 6/7 also install `ollama-ai-provider-v2` (3.x / 4.x), and the new `src/providers/ollamaV2.contract.test.ts` runs `OllamaProvider` against the real package and a local fake Ollama server (`generate()`, `stream()`, a tool-call turn through `createAgent().send()` and `.stream()`). The `ai-v6` dev alias replaces the hand-made `ai` 6 stand-in in `aiMajorPeers.test.ts`.
+- `lousho init --provider ollama` now scaffolds `ai@^7.0.0` with `ollama-ai-provider-v2@^4.0.0` and `zod@^4.0.0` (it was `ai@^4.3.19` with `ollama-ai-provider@^1.2.0` and zod 3). Existing projects are not touched; to stay on the old pairing keep `ai@^4.3.19` and `ollama-ai-provider@^1.2.0`.
+
+### Fixed
+- The `cloudflare-worker` build's Node-builtin leak check now accepts the runtime-guarded `loadNodeModule("node:module" | "node:dns")` probes that `@ai-sdk/provider-utils` 4 (installed with `ai` 6) uses, as it already did for `ai` 7's `loadBuiltinModule`; without it a Worker bundle built on `ai` 6 failed with "Node builtins leaked" (found by the new `ai6` matrix entries).
+
 ### Published
 - `@lousho/build-ai-agent` and `create-lousho-agent` are on npm. The README and the installation, quick start, CLI and Agent Forge docs no longer say the package is unpublished; "Installing before the first release" is now "Installing from a local build" (docs/installation.md#installing-from-a-local-build) and covers trying an unreleased commit. The hint printed after a failed `lousho init` install no longer mentions a 404; it points to `--sdk-path`. The docs site moved to https://lousho.com.
 
