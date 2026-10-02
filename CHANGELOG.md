@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-09-28
 
+### Added
+- Agent Forge keeps the traces of its runs (M5b, #227): every run is written with `fileTraceExporter()` to `.lousho/agents/<agent id>/traces` (the files `lousho traces` reads), and the Trace tab gets a list of the agent's past runs (time, duration, model calls, tokens, cost, status) with a "Live" entry while a run is active; choosing one opens its spans in the waterfall, with span kind and error status. New server routes `GET /agents/:id/traces?limit=N` and `GET /agents/:id/traces/:traceId`; the server reads only inside the agent's trace folder. The live `span` WebSocket messages now carry `kind` and `status` (optional fields of `SpanEvent`). See [Agent Forge](docs/agent-forge.md).
+
 ### Changed
 - CI peer matrix (LOU-M8, #231): the `typecheck-ai7` and `typecheck-zod4` jobs are replaced by one `peers` job with five entries, each installed for real on top of the default install and run through `tsc`, `test:types`, both builds and `npx vitest run`: `ai4-zod4`, `ai6-zod3`, `ai6-zod4`, `ai7-zod3`, `ai7-zod4`. The two zod 4 entries on `ai` 6/7 also install `ollama-ai-provider-v2` (3.x / 4.x), and the new `src/providers/ollamaV2.contract.test.ts` runs `OllamaProvider` against the real package and a local fake Ollama server (`generate()`, `stream()`, a tool-call turn through `createAgent().send()` and `.stream()`). The `ai-v6` dev alias replaces the hand-made `ai` 6 stand-in in `aiMajorPeers.test.ts`.
 - `lousho init --provider ollama` now scaffolds `ai@^7.0.0` with `ollama-ai-provider-v2@^4.0.0` and `zod@^4.0.0` (it was `ai@^4.3.19` with `ollama-ai-provider@^1.2.0` and zod 3). Existing projects are not touched; to stay on the old pairing keep `ai@^4.3.19` and `ollama-ai-provider@^1.2.0`.

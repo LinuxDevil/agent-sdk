@@ -10,6 +10,8 @@
  *   POST /agents/:id/stop            -> abort the in-flight run, if any
  *   GET  /agents/:id/status          -> AgentRunStatusPayload
  *   POST /agents/:id/approve         -> body: { approvalId, approved, note? }
+ *   GET  /agents/:id/traces?limit=N  -> { traces: TraceSummaryPayload[] } (M5b, newest first)
+ *   GET  /agents/:id/traces/:traceId -> TraceDetailPayload | 404 (M5b)
  *   GET  /runs/:id/history           -> RunHistoryPayload (LOU-D45 time travel)
  *   POST /runs/:id/fork              -> body: ForkRunRequest; starts the fork, 202 ForkRunResponse
  *   GET  /runs/compare?a=&b=         -> RunComparisonPayload (compareTrajectories)
@@ -45,6 +47,14 @@ import { isValidAgentId } from './types';
 import { SecretsStore, isSecretProvider } from './secretsStore';
 import { SettingsStore } from './settingsStore';
 import type { ForkRunRequest, ForkRunResponse, SettingsProfile } from '../shared/wireTypes';
+import {
+  DEFAULT_TRACE_LIMIT,
+  MAX_TRACE_LIMIT,
+  isValidTraceId,
+  listAgentTraces,
+  readAgentTrace,
+  traceDirExists,
+} from './traceStore';
 import { DEPLOY_ADAPTERS, isDeployAdapter, runDeploy } from './deployRunner';
 
 export interface CreateAppOptions {
@@ -214,6 +224,54 @@ function parseForkRequest(body: Partial<ForkRunRequest> | undefined): { fromStep
     return `'patch.${invalid[0]}' is invalid: 'patch' takes toolResult { toolCallId: string, result }, appendInput (a non-empty string) and businessState`;
   }
   return { fromStep: fromStep as number, patch };
+}
+
+/** M5b: the persisted traces of an agent's runs (files under `.lousho/agents/<id>/traces`, the ones `lousho traces` reads). */
+function registerTraceRoutes(app: Express, agentStore: AgentStore, baseDir: string): void {
+  const known = async (id: string) => traceDirExists(baseDir, id) || (await agentStore.load(id)) !== undefined;
+
+  app.get(
+    '/agents/:id/traces',
+    asyncRoute(async (req, res) => {
+      const raw = Number.parseInt(String(req.query.limit ?? ''), 10);
+      const limit = Number.isInteger(raw) && raw > 0 ? Math.min(raw, MAX_TRACE_LIMIT) : DEFAULT_TRACE_LIMIT;
+      if (!(await known(paramId(req)))) {
+        res.status(404).json({ error: `No saved agent '${paramId(req)}'` });
+        return;
+      }
+      res.json({ traces: await listAgentTraces(baseDir, paramId(req), limit) });
+    })
+  );
+
+  app.get(
+    '/agents/:id/traces/:traceId',
+    asyncRoute(async (req, res) => {
+      const traceId = Array.isArray(req.params.traceId) ? req.params.traceId[0] : req.params.traceId;
+      if (!isValidTraceId(traceId)) {
+        res.status(400).json({ error: 'Invalid trace id' });
+        return;
+      }
+      if (!(await known(paramId(req)))) {
+        res.status(404).json({ error: `No saved agent '${paramId(req)}'` });
+        return;
+      }
+      let spans;
+      try {
+        spans = await readAgentTrace(baseDir, paramId(req), traceId);
+      } catch (error) {
+        if (error instanceof SDKError) {
+          res.status(400).json({ error: error.message });
+          return;
+        }
+        throw error;
+      }
+      if (spans.length === 0) {
+        res.status(404).json({ error: `No trace '${traceId}' for agent '${paramId(req)}'` });
+        return;
+      }
+      res.json({ traceId, spans });
+    })
+  );
 }
 
 /** LOU-D45 time travel: a run's step history, forking it from a step, and comparing two runs. */
@@ -553,6 +611,7 @@ export function createApp({
   registerChatRoutes(app, runManager, triggerRegistry);
   registerDebugRoutes(app, runManager);
   registerTimeTravelRoutes(app, runManager);
+  registerTraceRoutes(app, agentStore, baseDir);
   registerProviderKeyRoutes(app, secrets);
   registerProfileRoutes(app, settings);
   registerDeployRoutes(app, agentStore, baseDir);

@@ -1,9 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAppState } from '../../state/AppState';
 import { orderSpansForWaterfall } from '../../state/spanReducer';
-import type { SpanEvent } from '../../../shared/wireTypes';
+import type { SpanEvent, TraceSummaryPayload } from '../../../shared/wireTypes';
 import type { AgentGraphSpec } from '../../graph/types';
+import { runtimeClient } from '../../runtime/runtimeClient';
+import { errorMessage } from '../errorMessage';
 import { findLlmNodeId, findToolNodeId } from './nodeLookup';
+import { LIVE_ENTRY, TraceHistory } from './TraceHistory';
 
 function nodeIdForSpan(graph: AgentGraphSpec, span: SpanEvent): string | undefined {
   // SDK spans follow the OpenTelemetry GenAI conventions (LOU-D9): the operation is
@@ -30,6 +33,24 @@ function spanGeometry(span: SpanEvent, minStart: number, totalMs: number) {
   return { startPct, durationMs, widthPct };
 }
 
+/** The tooltip of a span row: its attributes, led by the failure message of an errored span. */
+function spanTitle(span: SpanEvent): string {
+  const attributes = JSON.stringify(span.attributes);
+  const message = span.status?.code === 'error' ? span.status.message : undefined;
+  return message ? `${message}
+${attributes}` : attributes;
+}
+
+/** The duration column: `error` for a failed span, `running` until it ends. */
+function spanDuration(span: SpanEvent, durationMs: number): string {
+  if (span.status?.code === 'error') return 'error';
+  return span.endTime === undefined ? 'running' : `${durationMs}ms`;
+}
+
+function classNames(...names: (string | false)[]): string {
+  return names.filter(Boolean).join(' ');
+}
+
 function SpanRow({
   span,
   minStart,
@@ -44,29 +65,25 @@ function SpanRow({
   onSelect: () => void;
 }) {
   const { startPct, durationMs, widthPct } = spanGeometry(span, minStart, totalMs);
-  const running = span.endTime === undefined;
+  const failed = span.status?.code === 'error';
   return (
-    <div className={`trace-row${selected ? ' selected' : ''}`} onClick={onSelect} title={JSON.stringify(span.attributes)}>
+    <div className={classNames('trace-row', selected && 'selected', failed && 'trace-row-error')} onClick={onSelect} title={spanTitle(span)}>
       <span className="trace-name">{span.name}</span>
+      {span.kind && <span className="trace-kind">{span.kind}</span>}
       <span className="trace-bar-track">
-        <span className={`trace-bar${running ? ' pending' : ''}`} style={{ left: `${startPct}%`, width: `${widthPct}%` }} />
+        <span
+          className={classNames('trace-bar', span.endTime === undefined && 'pending', failed && 'error')}
+          style={{ left: `${startPct}%`, width: `${widthPct}%` }}
+        />
       </span>
-      <span className="trace-dur">{running ? 'running' : `${durationMs}ms`}</span>
+      <span className="trace-dur">{spanDuration(span, durationMs)}</span>
     </div>
   );
 }
 
-/**
- * O2: real span waterfall, driven by `{type:'span'}` WS messages forwarded
- * from the SDK's `TraceExporter.onSpanStart`/`onSpanEnd` hooks (see
- * server/runRegistry.ts's `makeTraceExporter()`) - bar position/width are
- * real `Date.now()` timestamps, not synthetic ones. Clicking a span
- * highlights the corresponding canvas node (`llm`/`tool.call`'s attribute
- * carries the tool name) and jumps the Logs tab's highlight to the same
- * node, via the shared `AppState.highlightedNodeId`.
- */
-export function TracePanel() {
-  const { spans, highlightedNodeId, setHighlightedNodeId, graph, setDrawerTab } = useAppState();
+/** The waterfall of one trace's spans; clicking a span highlights its canvas node. */
+function Waterfall({ spans, jumpToLogs }: { spans: SpanEvent[]; jumpToLogs: boolean }) {
+  const { highlightedNodeId, setHighlightedNodeId, graph, setDrawerTab } = useAppState();
   const [selectedSpanId, setSelectedSpanId] = useState<string | undefined>(undefined);
 
   const ordered = useMemo(() => orderSpansForWaterfall(spans), [spans]);
@@ -76,7 +93,7 @@ export function TracePanel() {
   function handleSelect(span: SpanEvent) {
     setSelectedSpanId(span.id);
     setHighlightedNodeId(nodeIdForSpan(graph, span));
-    setDrawerTab('logs');
+    if (jumpToLogs) setDrawerTab('logs');
   }
 
   if (ordered.length === 0) {
@@ -98,6 +115,99 @@ export function TracePanel() {
           />
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * O2: real span waterfall, driven by `{type:'span'}` WS messages forwarded
+ * from the SDK's `TraceExporter.onSpanStart`/`onSpanEnd` hooks (see
+ * server/runRegistry.ts's `makeTraceExporter()`) - bar position/width are
+ * real `Date.now()` timestamps, not synthetic ones. Clicking a span
+ * highlights the corresponding canvas node (`llm`/`tool.call`'s attribute
+ * carries the tool name) and jumps the Logs tab's highlight to the same
+ * node, via the shared `AppState.highlightedNodeId`.
+ *
+ * M5b: a list on the left holds the agent's persisted traces (the files
+ * `lousho traces` reads, served by `GET /agents/:id/traces`); choosing one
+ * shows its spans in the same waterfall. While a run is active the list
+ * starts with "Live", which is the WebSocket feed above. The list reloads
+ * when the agent changes and each time a run ends.
+ */
+export function TracePanel() {
+  const { spans, agentId, runStatus } = useAppState();
+  const [traces, setTraces] = useState<TraceSummaryPayload[]>([]);
+  const [listError, setListError] = useState<string | undefined>(undefined);
+  const [selectedId, setSelectedId] = useState<string>(LIVE_ENTRY);
+  const [pastSpans, setPastSpans] = useState<SpanEvent[]>([]);
+  const status = runStatus?.status;
+  const liveActive = status === 'running' || status === 'paused';
+
+  // A run starts: follow it.
+  useEffect(() => {
+    if (liveActive) setSelectedId(LIVE_ENTRY);
+  }, [liveActive]);
+
+  // Another agent: back to its live view.
+  useEffect(() => {
+    setSelectedId(LIVE_ENTRY);
+    setPastSpans([]);
+  }, [agentId]);
+
+  // Load the list for this agent, and again when a run ends.
+  useEffect(() => {
+    if (liveActive) return;
+    let cancelled = false;
+    runtimeClient
+      .listTraces(agentId)
+      .then((list) => {
+        if (cancelled) return;
+        setTraces(list);
+        setListError(undefined);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setListError(errorMessage(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId, liveActive, status]);
+
+  // A past trace is loaded when it is chosen.
+  useEffect(() => {
+    if (selectedId === LIVE_ENTRY) return;
+    let cancelled = false;
+    runtimeClient
+      .readTrace(agentId, selectedId)
+      .then((loaded) => {
+        if (!cancelled) setPastSpans(loaded);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setPastSpans([]);
+        setListError(errorMessage(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId, selectedId]);
+
+  const showingLive = selectedId === LIVE_ENTRY;
+  return (
+    <div className="trace-layout">
+      <TraceHistory
+        traces={traces}
+        selectedId={selectedId}
+        liveActive={liveActive}
+        error={listError}
+        onSelect={(id) => {
+          setListError(undefined);
+          setSelectedId(id);
+        }}
+      />
+      <div className="trace-main">
+        <Waterfall key={selectedId} spans={showingLive ? spans : pastSpans} jumpToLogs={showingLive} />
+      </div>
     </div>
   );
 }

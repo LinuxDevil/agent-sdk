@@ -22,6 +22,9 @@ import type {
   SettingsFile,
   SettingsProfile,
   StreamMessage,
+  SpanEvent,
+  TraceDetailPayload,
+  TraceSummaryPayload,
 } from '../../shared/wireTypes';
 
 /** Same-origin default: `lousho studio` prints the API server's own URL, but in dev the Vite server proxies to it (see vite.config.ts). */
@@ -163,6 +166,25 @@ class RuntimeClient {
   /** LOU-D45: the steps of run `runId`'s checkpoint history (a run id is the agent id, or a fork's id). */
   async runHistory(runId: string): Promise<RunHistoryPayload> {
     return this.request(`/runs/${encodeURIComponent(runId)}/history`, { method: 'GET' });
+  }
+
+  /** M5b: the agent's persisted traces (the files `lousho traces` reads), newest first. */
+  async listTraces(agentId: string, limit?: number): Promise<TraceSummaryPayload[]> {
+    const query = limit === undefined ? '' : `?${new URLSearchParams({ limit: String(limit) })}`;
+    const body = await this.request<{ traces: TraceSummaryPayload[] }>(
+      `/agents/${encodeURIComponent(agentId)}/traces${query}`,
+      { method: 'GET' }
+    );
+    return body.traces;
+  }
+
+  /** M5b: the spans of one persisted trace. */
+  async readTrace(agentId: string, traceId: string): Promise<SpanEvent[]> {
+    const body = await this.request<TraceDetailPayload>(
+      `/agents/${encodeURIComponent(agentId)}/traces/${encodeURIComponent(traceId)}`,
+      { method: 'GET' }
+    );
+    return body.spans;
   }
 
   /** LOU-D45: forks run `runId` at a step, patched, and starts the fork - its status streams on `subscribe(response.runId)`. */
