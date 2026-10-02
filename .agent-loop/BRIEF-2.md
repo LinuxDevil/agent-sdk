@@ -49,7 +49,7 @@ npm run test:coverage             # full suite; then:
 npm run fallow
 npm run typecheck --workspace apps/agent-forge
 npm run typecheck:server --workspace apps/agent-forge
-npm run test --workspace apps/agent-forge -- --run
+(cd apps/agent-forge && npx vitest run)   # npm run test --workspace ... -- --run runs the root vitest (EISDIR)
 npm run test:server --workspace apps/agent-forge
 npm run pack-smoke                # for anything touching exports, bin, package.json or the build
 ```
