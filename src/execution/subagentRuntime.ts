@@ -38,7 +38,6 @@ export type InheritedRuntime = Pick<
   | 'toolConcurrency'
   | 'sandbox'
   | 'signal'
-  | 'onEvent'
   | 'maxSubagentDepth'
   | 'permissions'
   | 'onPermissionDecision'

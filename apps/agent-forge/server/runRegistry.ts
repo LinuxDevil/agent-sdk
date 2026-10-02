@@ -14,7 +14,7 @@ import {
   AgentExecutor,
   FlowExecutor,
   ToolRegistry,
-  type ExecutionEvent,
+  type AgentEvent,
   type CheckpointStore,
   type Span,
   type TraceExporter,
@@ -298,16 +298,8 @@ export class RunManager extends EventEmitter {
     return this.chatState(agentId);
   }
 
-  private emitEvent(agentId: string, event: ExecutionEvent): void {
-    this.emit('event', agentId, {
-      type: event.type,
-      timestamp: event.timestamp,
-      text: event.text,
-      toolCall: event.toolCall,
-      toolResult: event.toolResult,
-      finishReason: event.finishReason,
-      error: event.error ? { message: event.error.message } : undefined,
-    });
+  private emitEvent(agentId: string, event: AgentEvent): void {
+    this.emit('event', agentId, event);
     for (const log of toLogEntries(agentId, event)) {
       this.emit('log', agentId, log);
     }
@@ -556,7 +548,7 @@ export class RunManager extends EventEmitter {
       sessionId,
       checkpointStore: this.opts.checkpointStore,
       approvalStore: this.opts.approvalStore,
-      onEvent: (event) => this.emitEvent(agentId, event),
+      onAgentEvent: (event) => this.emitEvent(agentId, event),
       exporter: this.makeTraceExporter(agentId),
       skipSystemPromptInjection: options.skipSystemPromptInjection,
       // LOU-Q1/Q2: hooks compiled from this agent's graph (spec.policy.hooks)
@@ -645,7 +637,7 @@ export class RunManager extends EventEmitter {
     // P1: reconcile the chat transcript against the real, authoritative
     // ExecutionResult.messages - see chatReconcile.ts's doc comment for why
     // this (rather than building the transcript incrementally from
-    // ExecutionEvents) is the single source of truth. Done for BOTH the
+    // AgentEvents) is the single source of truth. Done for BOTH the
     // completed and paused-for-approval branches below, since both hand
     // back a full `messages` array (the pause happens exactly at the point
     // the assistant's tool-call message was added).
@@ -753,7 +745,7 @@ export class RunManager extends EventEmitter {
       toolRegistry ?? new ToolRegistry(),
       withAbortSignal(provider, controller.signal),
       {
-        onEvent: (event) => this.emitEvent(agentId, event),
+        onAgentEvent: (event) => this.emitEvent(agentId, event),
         exporter: this.makeTraceExporter(agentId),
         // LOU-Q1: hooks must fire on the deferred, post-approval tool
         // execution path too (see resume.ts in the core SDK) - not just

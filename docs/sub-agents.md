@@ -181,7 +181,7 @@ value with `withSubagentOptions(subagents, options)`, which returns it. On
 `createAgent()`, `subagentOptions` override options attached that way.
 
 A background sub-agent inherits from the lead run like a synchronous one
-(hooks, tracing, `onEvent`, usage roll-up), and `maxSubagentDepth` applies the
+(hooks, tracing, event listeners, usage roll-up), and `maxSubagentDepth` applies the
 same way. Aborting the lead's signal cancels its background sub-agents, queued
 or running.
 
@@ -193,8 +193,8 @@ When that run ends, however it ends, the tasks still queued or running are
 `awaitBackgroundOnFinish: true` the run instead waits for them to finish
 before it resolves (an aborted or failed lead run still cancels them). Either
 way the run resolves only once their runs have stopped, so no sub-agent event
-reaches `onEvent` after it; with `awaitBackgroundOnFinish` their events arrive
-after the lead's own `finish` event.
+reaches the run's listeners after it; with `awaitBackgroundOnFinish` their
+events arrive before the lead's `run.done`.
 
 The result lists every background task of the run with its final status:
 
@@ -355,12 +355,12 @@ inherits:
 | Tracing (`exporter`) | Yes | The sub-agent's `invoke_agent` span is a child of the lead's `execute_tool task` span. `captureContent` and `redactContent` are inherited too. |
 | Hooks (`hooks`) | Yes | They run on the sub-agent's model calls and tool calls, with `ctx.subagent` set (see below). A hook that throws inside a sub-agent halts the whole run. |
 | Approval store (`approvalStore`) | Yes | See [Approvals](#approvals-inside-a-sub-agent). |
-| `onEvent` and `stream()` | Yes | The sub-agent's events are forwarded with a `subagent` field. |
+| Event listeners (`onAgentEvent`, `createAgent({ onEvent })`) and `stream()` | Yes | The sub-agent's events are forwarded with a `subagent` field. |
 | `toolConcurrency` | Yes, unless the sub-agent sets its own | |
 | `sandbox` | Yes | |
 | Token usage | Rolls up | Added to the lead's `result.usage` (totals, `byModel`, and `usage.delegated`). |
 | `maxSubagentDepth` | The remaining budget | See [Depth](#depth). |
-| `onLLMRequest`, `onToolCall` and the other single-run callbacks | No | They describe one run; use hooks or `onEvent` to observe sub-agents. |
+| `onLLMRequest`, `onToolCall` and the other single-run callbacks | No | They describe one run; use hooks or an event listener to observe sub-agents. |
 | `sessionId` / `checkpointStore` | No | A sub-agent is not checkpointed on its own. If the process dies while a sub-agent runs, the resumed lead runs that `task` call again. |
 | `output` schema | No | A sub-agent's output is its own: with one, `task` returns its validated object as JSON (see [Structured output](./structured-output.md#sub-agents)); without, text. |
 | Conversation history | No | The sub-agent sees only the task prompt (plus its own earlier turns when the lead [resumes the task](#continuing-a-task)). |
@@ -396,10 +396,9 @@ errors - with a `subagent` field on every one of its events, so a UI can nest
 sub-agent activity under the lead's `task` call (`subagent.toolCallId`). See
 [Streaming: sub-agents](./streaming.md#sub-agents).
 
-With `onEvent` on the lead, every event a sub-agent emits (`start`,
-`tool-call`, `tool-result`, `text-complete`, `finish`, ...) reaches the same
-listener with `event.subagent` set. The lead's own events have no `subagent`
-field.
+A listener on the lead (`createAgent({ onEvent })` or `onAgentEvent`) gets
+the same events, sub-agents' included, as they happen. See
+[Listening without iterating](./streaming.md#listening-without-iterating).
 
 ## Approvals inside a sub-agent
 

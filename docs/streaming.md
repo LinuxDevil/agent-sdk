@@ -20,6 +20,10 @@ The full API has the same method: `AgentExecutor.stream(options)` takes the
 same options as `AgentExecutor.execute()` (approval store, checkpoints, hooks,
 tracing, `toolConcurrency`, ...).
 
+These events, the `AgentEvent` union, are the SDK's one event system: the
+stream, the [listener options](#listening-without-iterating), `session.on()`,
+the UI hooks, the server routes, ACP and channels all carry them.
+
 ## The `AgentRun` handle
 
 `stream()` returns an `AgentRun`:
@@ -65,6 +69,59 @@ const run = agent.stream('Summarize the report', { signal: AbortSignal.timeout(3
 const result = await run.result; // no iteration needed
 console.log(result.finishReason, result.text);
 ```
+
+## Listening without iterating
+
+To observe every run without iterating one, give the agent a listener:
+`createAgent({ onEvent })`, or `onAgentEvent` in the `AgentExecutor.execute()`
+/ `stream()` / `resumeAfterApproval()` options. It is called synchronously
+with each `AgentEvent` as it happens, on `send()` as on `stream()`, for
+session turns and for runs resumed after an approval. It gets the same events,
+in the same order, as iterating the stream would, with one difference:
+`send()` / `execute()` generate each model step whole, so a step's text comes
+as a single `text.delta` (as it does on `stream()` with a provider that cannot
+stream). Sub-agents' events arrive tagged with `subagent`.
+
+```ts
+import { createAgent } from '@loushy/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  onEvent: (event) => {
+    if (event.type === 'tool.start') console.log('calling', event.toolName, event.args);
+    if (event.type === 'run.done') console.log('done:', event.finishReason, event.usage?.totalTokens);
+  },
+});
+
+await agent.send('Weather in Paris?');
+```
+
+### Migrating from `onEvent` / `ExecutionEvent`
+
+`ExecuteOptions.onEvent` with `ExecutionEvent` is the SDK's older event
+callback. It is deprecated: it still works (it logs a one-time
+`console.warn`), with its events now derived from the run's `AgentEvent`s,
+and it will be removed in a future major version. Replace it with
+`onAgentEvent` (or `createAgent({ onEvent })`, which already takes
+`AgentEvent`s):
+
+| `ExecutionEvent` (`onEvent`) | `AgentEvent` (`onAgentEvent`) |
+| --- | --- |
+| `start` (`agentId`, `agentName`) | `run.start` (`agentId`, `agentName`) |
+| `text-delta` (never emitted) | `text.delta` (`text`) |
+| `text-complete` (`text`, `stepUsage`) | `text.done` (`text`); the step's usage is on `step.done` (`usage`) |
+| `tool-call` (`toolCall`) | `tool.start` (`toolCallId`, `toolName`, parsed `args`) |
+| `tool-result` (`toolResult`) | `tool.done` (`result`, `durationMs`, `replacedByHook`), or `tool.error` (`error.name`, `error.message`) |
+| `error` (`error: Error`) | `error` (`error: { name, message }`) |
+| `abort` (`abortReason`, `usage`) | `run.done` with `finishReason: 'aborted'` (the reason is your signal's `reason`) |
+| `finish` (`finishReason`, `usage: RunUsage`) | `run.done` (`finishReason`, `text`, `usage`, `object`); the full `RunUsage` is on `result.usage` |
+| a sub-agent's `start` / `finish` (with `subagent`) | the lead's `tool.start` / `tool.done` of the call that started it |
+| `timestamp: Date` | `timestamp`: an ISO-8601 string; plus `runId`, `seq` and `v` |
+
+`AgentEvent` also reports what `ExecutionEvent` never did: step boundaries,
+approval requests, permission decisions, budgets, guardrails, queued and
+steered input, compaction, reasoning, provider retries and agent drift (see the
+[schema](#event-schema-version-1)).
 
 ## Streaming a session turn
 

@@ -3,11 +3,8 @@
  * fresh, authoritative `Message[]` from an `ExecutionResult` (the SDK's own
  * `AgentExecutor` conversation state - see AgentExecutor.ts).
  *
- * Why reconcile instead of appending incrementally from ExecutionEvents:
- * AgentExecutor.runAgentLoop() only ever calls `provider.generate()` (never
- * `provider.stream()` - see AgentExecutor.ts), so there is no per-token or
- * even per-partial-message event to append from mid-run. The
- * 'text-complete'/'tool-call'/'tool-result' ExecutionEvents it does emit are
+ * Why reconcile instead of appending incrementally from the run's
+ * AgentEvents: the `text.done`/`tool.start`/`tool.done` events are
  * already forwarded as `{type:'event'}` WS messages (driving the Logs tab
  * and the chat's typing indicator), but building the chat transcript itself
  * from that same event stream would mean reconstructing (and risking
