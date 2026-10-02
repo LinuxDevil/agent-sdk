@@ -1434,7 +1434,7 @@ all of them.
 
 Each file in `channels/` default-exports a [channel](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) made with
 `defineChannel()` or a built-in factory (`webhookChannel()`, `httpChannel()`,
-`slackChannel()`, `discordChannel()`, `telegramChannel()`). The channel's name is the one it sets, else the file name.
+`slackChannel()`, `discordChannel()`, `telegramChannel()`, `githubChannel()`). The channel's name is the one it sets, else the file name.
 A file that does not export a channel fails with `LOUSHO_CHANNEL_INVALID`
 naming the file. `resolveAgentDir()` returns them as `channels` (and their names
 as `manifest.channels`); `loadAgentDir()` does not mount them. The node server
@@ -2829,6 +2829,7 @@ await channels.resolveApproval({ id: 'the-approval-id', approved: true });
 | `slackChannel({ signingSecret, botToken, name?, fetch?, approvers?, onError? })` | Slack Events API and interactivity requests (see [Slack](#slack)) | `200` at once; replies are posted in the Slack thread |
 | `discordChannel({ publicKey, applicationId, botToken?, name?, fetch?, approvers?, onError? })` | Discord slash-command and button interactions (see [Discord](#discord)) | Deferred ack at once; the reply edits the original response |
 | `telegramChannel({ botToken, secretToken, botUsername?, name?, fetch?, approvers?, onError? })` | Telegram bot webhook updates: messages and inline-keyboard taps (see [Telegram](#telegram)) | `200` at once; replies are sent with `sendMessage` as plain text |
+| `githubChannel({ webhookSecret, botName, token?, app?, name?, apiUrl?, fetch?, triggers?, approvers?, onError? })` | GitHub issue, pull-request and review comments that mention `@<botName>` (see [GitHub](#github)) | `200` at once; replies are posted as comments in the same thread |
 
 `webhookChannel({ secret })` checks an HMAC-SHA256 signature of the raw body in
 `x-signature-256: sha256=<hex>`; `auth` takes any
@@ -3100,6 +3101,142 @@ for sessions, checkpoints and approvals: the next message in the chat is the
 answer and the continued turn is appended to the session transcript. A tap's
 continuation after a restart is sent but not appended to the session
 transcript.
+
+## GitHub
+
+`githubChannel({ webhookSecret, botName, token?, app?, name?, apiUrl?, fetch?, triggers?, approvers?, onError? })`
+lets people summon an agent with `@<botName>` in a GitHub issue, pull-request
+or review comment; the agent answers with a comment in the same thread. It reads
+the webhooks of a GitHub App (or of one repository) and posts through the REST
+API with `fetch` and Web Crypto only (no `node:*` import and no GitHub library),
+so it also runs on Workers.
+
+- Every request's `X-Hub-Signature-256` header is checked against the raw body
+  with `webhookSecret` (HMAC-SHA256, compared in constant time) before the body
+  is parsed; a missing or wrong signature answers 401. The channel has no
+  unauthenticated mode.
+- The webhook is acknowledged with `200` at once and the turn runs after: GitHub
+  waits 10 seconds and does not retry, and a slow reply is posted as a new
+  comment. A `ping` is acknowledged without a turn.
+- A comment on an issue, on a pull request (the conversation tab) or a review
+  comment (on a line of the diff) that contains `@<botName>` as a whole word
+  (case-insensitive) starts a turn, with the mention removed from the text. Once
+  a thread has a session, every later comment in it is a follow-up and needs no
+  mention. Edited and deleted comments, comments by bots (`user.type` is `Bot`),
+  by `<botName>[bot]`, by `botLogin` and any comment the channel itself posted
+  are ignored, so the agent never answers itself. Other events (issues opened,
+  pushes, reactions, check runs) are ignored.
+- One session per issue or pull request (`<owner>/<repo>#<number>`), and one
+  per review thread (a review comment and the replies under it).
+- The reply is a new comment: a timeline comment on the issue or pull request,
+  or a reply in the review thread. Text over 60,000 characters (GitHub's limit
+  is 65,536) is split at line breaks into several comments. Every comment
+  carries a hidden marker (an HTML comment) that the channel recognizes.
+- A tool approval is a comment with the tool and its arguments in a fenced block
+  and the line "Reply `/approve <id>` or `/deny <id>`.". A comment whose
+  **first line** is `/approve <id>` or `/deny <id>` (any case) decides it; lines
+  after the first are a note for the model. A quote of the prompt, or the
+  command anywhere but the first line, decides nothing. The channel answers
+  "Approved by @login." or "Denied by @login." and the run continues with a new
+  comment. The id is the pending approval's, so an old command (a redelivered
+  webhook, or the comment of an approval already decided) cannot decide a later
+  approval.
+- An `ask_question` is posted as a comment and the next comment in that thread is
+  the answer (no mention needed, from anyone `triggers` allows). A pending
+  question survives a restart given durable stores for sessions, checkpoints
+  and approvals, as on Slack and Discord; the cost is one store lookup for each
+  comment that is not a mention in a thread without a session.
+
+**Security note.** A GitHub comment is text written by anyone who can comment on
+the repository, which on a public repository is everybody. It is untrusted input
+to the agent, like any user message, and can try to steer it (prompt
+injection); the issue and pull-request text it refers to is just as untrusted.
+Give the agent only tools whose worst use you accept, and keep `needsApproval`
+on the ones that write or spend. Two options say who is trusted, and both are
+explicit:
+
+- `triggers` (default: everyone who can comment) says who may start a turn or
+  answer a question: a list of logins, or a function
+  `({ login, association }) => boolean`. On a public repository, restrict it
+  (for example to `association` `OWNER`, `MEMBER` or `COLLABORATOR`) unless you
+  want strangers to spend your model credits.
+- `approvers` says who may `/approve` and `/deny`, and it **defaults closed**:
+  without it only a commenter whose `author_association` is `OWNER`, `MEMBER` or
+  `COLLABORATOR` may decide. This differs from Slack and Discord on purpose: a
+  GitHub thread is visible to everyone who can read the repository, and the
+  person who started the turn may be anyone, so the author of the request is not
+  trusted to approve it. A refused command gets "@login is not allowed to
+  approve this request." and the approval stays pending. With a list of logins
+  (case-insensitive), only those users decide, whatever their association. With
+  a function `(user, { toolName, input, sessionId }) => boolean`, `user.id` is
+  the login and `user.roles` is `[author_association]`.
+
+The association is read from the webhook of the command comment itself, so the
+decision is based on what GitHub reported when that comment was written (the
+request is authentic because of the signature), not on the membership the
+commenter had when the approval was requested: a collaborator who was removed
+before posting `/approve` is refused. It is a snapshot taken at the command, not
+a live permission check; if a revocation must take effect inside that window,
+use `approvers` with a function that asks the GitHub API (for example the
+collaborator permission) before it returns `true`. A function `approvers`, as on
+the other channels, fails closed when the process does not know the pending
+call (after a restart).
+
+Set up a GitHub App:
+
+1. Create the app (Settings, Developer settings, GitHub Apps, New GitHub App).
+   Under Webhook, set the URL to `https://<host>/channels/github`, keep it
+   active, and choose a long random secret (this is `webhookSecret`).
+2. Permissions: Issues read and write, Pull requests read and write. Subscribe
+   to the events **Issue comment** and **Pull request review comment**.
+3. Generate a private key (GitHub downloads it as a PKCS#1 PEM, `BEGIN RSA PRIVATE KEY`;
+   PKCS#8 works too) and note the App ID. Install the app on the repositories it
+   should answer in. Every webhook names its installation, and the channel
+   exchanges a signed JWT for an installation token for each one and caches it
+   until 5 minutes before it expires.
+4. `botName` is the app's slug: `@my-agent` in a comment mentions the app
+   `my-agent`, which posts as `my-agent[bot]`.
+
+For a single repository you can skip the app: add a repository webhook
+(content type `application/json`, the same two events, the same URL and secret)
+and pass `token`, a fine-grained personal access token with Issues and Pull
+requests read and write on that repository (or a function that returns a
+token). Replies are then posted as the token's user, so also pass `botLogin`
+with that user's login. Without it, only the channel's hidden marker stops the
+agent from answering its own comments.
+
+```ts
+import * as http from 'node:http';
+import { createAgent, githubChannel, mountChannels } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ instructions: 'You answer questions about this repository.', provider });
+
+const channels = mountChannels(agent, [
+  githubChannel({
+    webhookSecret: process.env.GITHUB_WEBHOOK_SECRET ?? '',
+    botName: 'my-agent',
+    app: { appId: process.env.GITHUB_APP_ID ?? '', privateKey: process.env.GITHUB_APP_PRIVATE_KEY ?? '' },
+    triggers: ({ association }) => ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(association),
+  }),
+]);
+
+http.createServer((req, res) => {
+  void channels(req, res).then((handled) => handled || res.writeHead(404).end());
+}).listen(3000);
+```
+
+`apiUrl` points the channel at GitHub Enterprise Server
+(`https://<host>/api/v3`). The token, the private key and the JWT are never put
+in an error message or log line: a failed call is reported to `onError` with the
+call and the HTTP status only (`LOUSHO_CHANNEL_REQUEST_FAILED`).
+
+Pending approvals are resolved from the command comment and the approval store.
+A pending `ask_question` is kept in memory until the next comment, and survives
+a restart given durable stores, as on the other channels. After a restart, a
+command with an id that is no longer pending (decided already, expired) fails
+with the generic "Sorry, that request failed." comment instead of being ignored,
+and an id is no longer tied to the thread it was posted in. A continuation after
+a restart is posted but not appended to the session transcript.
 
 # CLI
 
@@ -5397,7 +5534,7 @@ See [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules
 a channel (an object with `parse` and `reply`). The message names the file.
 
 **Fix:** default-export a channel made with `defineChannel()`, `httpChannel()`,
-`webhookChannel()`, `slackChannel()`, `discordChannel()` or `telegramChannel()`. See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md).
+`webhookChannel()`, `slackChannel()`, `discordChannel()`, `telegramChannel()` or `githubChannel()`. See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md).
 
 **Example:** `export default { cron: 'x' }` in `channels/sms.ts`.
 
@@ -5552,12 +5689,12 @@ unknown type, or a Slack trigger that cannot verify requests.
 
 ### LOUSHO_CHANNEL_REQUEST_FAILED
 
-**Means:** a call to a chat platform's API (Slack, Discord, Telegram) failed; the message
+**Means:** a call to a chat platform's API (Slack, Discord, Telegram, GitHub) failed; the message
 names the call and the HTTP status or the platform's error.
 
 **Fix:** check the bot token and its permissions, and the platform status. See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md).
 
-**Example:** Slack `chat.postMessage` answering `channel_not_found`, or Telegram `sendMessage` answering 400 for an unknown chat.
+**Example:** Slack `chat.postMessage` answering `channel_not_found`, Telegram `sendMessage` answering 400 for an unknown chat, or GitHub `POST /repos/{owner}/{repo}/issues/{number}/comments` answering 403 for a token without write access.
 
 ### LOUSHO_DEPLOY_FAILED
 
