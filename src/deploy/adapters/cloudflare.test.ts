@@ -68,12 +68,12 @@ const SPEC = {
 };
 
 /**
- * The bundle minus `ai` v7's runtime-guarded `getBuiltinModule("node:...")`
+ * The bundle minus `ai` v6/v7's runtime-guarded `getBuiltinModule("node:...")`
  * probes (LOU-D28c; which ids are allowed is findNodeBuiltinReferences' job).
  * On `ai` v4 there are none, so this is the whole bundle.
  */
 function withoutBuiltinProbes(bundle: string): string {
-  return bundle.replace(/(?:get|load)BuiltinModule\d*(?:\?\.)?\(\s*"node:[a-z_]+"\s*\)/g, '');
+  return bundle.replace(/(?:get|load)(?:Node|Builtin)Module\d*(?:\?\.)?\(\s*"node:[a-z_]+"\s*\)/g, '');
 }
 
 function freePort(): Promise<number> {
@@ -128,8 +128,8 @@ describe('CloudflareWorkerAdapter', () => {
     expect(findNodeBuiltinReferences('const x = "no builtins here"; import { x } from "./path";')).toEqual([]);
   });
 
-  it('findNodeBuiltinReferences accepts only the allowlisted getBuiltinModule probes of ai v7 (LOU-D28c)', () => {
-    const probes = 'loadBuiltinModule2("node:diagnostics_channel"); loadBuiltinModule4("node:dns"); process.getBuiltinModule?.("node:async_hooks"); loadBuiltinModule("node:module");';
+  it('findNodeBuiltinReferences accepts only the allowlisted getBuiltinModule probes of ai v6/v7 (LOU-D28c, LOU-M8)', () => {
+    const probes = 'loadBuiltinModule2("node:diagnostics_channel"); loadBuiltinModule4("node:dns"); process.getBuiltinModule?.("node:async_hooks"); loadBuiltinModule("node:module"); await loadNodeModule("node:dns");';
     expect(findNodeBuiltinReferences(probes)).toEqual([]);
     // Any other builtin, or an allowlisted id outside a probe call, is still a leak.
     expect(findNodeBuiltinReferences('loadBuiltinModule("node:fs"); const id = "node:dns"; import("node:async_hooks");')).toEqual([
