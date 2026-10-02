@@ -43,7 +43,7 @@ console.log(events); // includes 'run.start' and 'run.done'
 `ToolDescriptor`s, use `registry.register(tool)` for a defined tool or
 `registry.register(name, descriptor)` for a descriptor. Pass the registry as
 `toolRegistry` to `AgentExecutor.execute()`. See
-[Tools](./tools.md#toolregistry) for a full example.
+[Tools](./tools.md#advanced-toolregistry) for a full example.
 
 ## Options of `AgentExecutor.execute()`
 

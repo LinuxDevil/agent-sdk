@@ -127,7 +127,7 @@ environment (`LOUSHO_CONFIG_MISSING_PROVIDER`).
 
 - **Cause:** the servers connect on `await agent.ready()` or on the first `send()` / `stream()`, and a server that cannot connect fails that call. Each tool is named `<server>__<tool>` (for example `docs__search`), so look for that name, not the server's own.
 - **Fix:** `await agent.ready()` to see the connection error. With `connectMcp()`, check `status()`, which maps each server to `'idle'`, `'connected'` or `'failed'`; `onError: 'skip'` leaves a failing server out and warns through `logger`. MCP needs the optional peer `@modelcontextprotocol/sdk`.
-- **More:** [Connect MCP servers](./configuration.md#connect-mcp-servers-mcpservers-connectmcp).
+- **More:** [Use MCP servers in an agent](./mcp.md#use-mcp-servers-in-an-agent).
 
 ### My Worker build rejects the provider or tool
 
