@@ -88,33 +88,41 @@ bytes as a `Uint8Array`) and `{ type: 'file', data, mimeType, filename? }`.
 `agent.send()`, `agent.stream()`, `session.send()` / `stream()`, `t.send()` in
 evals and the React hook's `send()` all take an `AgentInput`: a string, a list
 of parts (sent as one user message) or a `Message[]` (passed through as it is).
-`AgentExecutor.execute()` takes the same messages as its `input`:
+Parts sent through `createAgent()`:
 
 ```ts
 import { readFileSync } from 'node:fs';
-import { AgentBuilder, AgentExecutor, createAgent, resolveProvider, textOf, type Message } from '@lousho/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent';
 
-const agent = AgentBuilder.create().setName('vision').setPrompt('Describe images briefly.').build();
-const input: Message[] = [
+const agent = createAgent({ instructions: 'Describe images briefly.', model: 'openai/gpt-4o-mini' });
+
+// Parts become one user message.
+const answer = await agent.send([
+  { type: 'text', text: 'What is in these pictures?' },
+  { type: 'image', image: 'https://example.com/cat.png' },
+  { type: 'image', image: new Uint8Array(readFileSync('dog.png')), mimeType: 'image/png' },
+]);
+console.log(answer.text);
+```
+
+A `Message[]` is passed through as it is; `textOf()` returns the text parts of a message:
+
+```ts
+import { createAgent, textOf, type Message } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ instructions: 'Describe images briefly.', model: 'openai/gpt-4o-mini' });
+const messages: Message[] = [
   {
     role: 'user',
     content: [
-      { type: 'text', text: 'What is in these pictures?' },
+      { type: 'text', text: 'What is in this picture?' },
       { type: 'image', image: 'https://example.com/cat.png' },
-      { type: 'image', image: new Uint8Array(readFileSync('dog.png')), mimeType: 'image/png' },
     ],
   },
 ];
 
-const result = await AgentExecutor.execute({ agent, input, provider: resolveProvider('openai/gpt-4o-mini') });
-console.log(textOf(input[0]), '->', result.text); // textOf(): the text parts of a message
-
-// The same through the public API: parts become one user message.
-const answer = await createAgent({ prompt: 'Describe images briefly.', model: 'openai/gpt-4o-mini' }).send([
-  { type: 'text', text: 'What is in this picture?' },
-  { type: 'image', image: 'https://example.com/cat.png' },
-]);
-console.log(answer.text);
+const result = await agent.send(messages);
+console.log(textOf(messages[0]), '->', result.text);
 ```
 
 - **Images** go to the model on `user` messages with every built-in provider
@@ -145,6 +153,28 @@ console.log(answer.text);
   image or file, or its URL) and `mockModel()`. `FileSessionStore` saves bytes
   as base64 (`{ "$bytes": "..." }`) and loads them back as `Uint8Array`s;
   `SqliteStore` (sessions and checkpoints) does the same.
+
+#### Advanced: the executor API
+
+`AgentExecutor.execute()` takes the same messages as its `input` (see [the executor API](./executor-api.md)):
+
+```ts
+import { AgentBuilder, AgentExecutor, resolveProvider, type Message } from '@lousho/build-ai-agent';
+
+const agent = AgentBuilder.create().setName('vision').setPrompt('Describe images briefly.').build();
+const input: Message[] = [
+  {
+    role: 'user',
+    content: [
+      { type: 'text', text: 'What is in this picture?' },
+      { type: 'image', image: 'https://example.com/cat.png' },
+    ],
+  },
+];
+
+const result = await AgentExecutor.execute({ agent, input, provider: resolveProvider('openai/gpt-4o-mini') });
+console.log(result.text);
+```
 
 ## Provider classes
 

@@ -42,17 +42,17 @@ How the pieces fit:
 | Export                        | Description                                                                 |
 | ----------------------------- | --------------------------------------------------------------------------- |
 | `createAgent(config)`         | Zero-config `{ send(message) }` agent from a `model` string or provider (+ instructions, tools). |
-| `AgentBuilder`                | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). |
-| `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. |
+| `AgentBuilder`                | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). Advanced: see [the executor API](./executor-api.md). |
+| `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. Advanced: see [the executor API](./executor-api.md). |
 | `AgentType`                   | Deprecated, no runtime effect: agents need no type.                        |
-| `resumeAfterApproval()`       | Resume an execution paused for human approval.                             |
+| `resumeAfterApproval()`       | Resume an execution paused for human approval. Advanced: see [the executor API](./executor-api.md). |
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
 | `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](./approvals.md), [Durable execution](./durable-execution.md)). |
 | `SqliteStore` (from `/sqlite`) | Sessions, checkpoints and approvals in one SQLite file (see [Sessions](./sessions.md#choosing-a-store)). |
 | `AgentStore`, `memoryStore()` | The `createAgent({ store })` option: `{ sessions?, checkpoints?, approvals? }`, and an in-memory one (see [Sessions](./sessions.md#choosing-a-store)). |
 | `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](./durable-execution.md)). |
 | `SDKError`, `ERROR_CODES`    | Base class of the SDK's errors: a stable `code`, a `hint` and a `docs` link (see [Errors](./errors.md)). |
-| `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation.                    |
+| `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation. Superseded by `subagents`. |
 
 ### Dynamic config
 
@@ -536,9 +536,9 @@ The built-in context windows and prices are a dated snapshot (see the retrieval 
 Every `ExecutionResult` (and `agent.send()` result) carries `usage`, the running total of the whole run:
 
 ```ts
-import { AgentExecutor, formatUsage } from '@lousho/build-ai-agent';
+import { createAgent, formatUsage } from '@lousho/build-ai-agent';
 
-const result = await AgentExecutor.execute({ agent, input: 'Compare 3 cities', provider });
+const result = await createAgent({ provider, instructions: 'You compare cities.' }).send('Compare 3 cities');
 
 result.usage.inputTokens; // all model calls of the run, delegated children included
 result.usage.costUsd; // number, or undefined if any model used has no known price
@@ -590,6 +590,9 @@ See [Context compaction](./compaction.md).
 ## Flows, evals, observability and security
 
 - `FlowBuilder` / `FlowExecutor` - multi-step workflow graphs; see [Flows](./flows.md).
+- `WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter` and `TriggerRegistry`
+  (`@lousho/build-ai-agent/triggers`) - wake an agent from a webhook, a Slack
+  message or a schedule; see [Triggers](./triggers.md).
 - `defineEval()`, scorers such as `exactMatch`, `toolCallOrder` and `budget`, checks such
   as `includes` and `atLeast`, and `llmJudge()` - agent evals run under vitest
   or `lousho eval`; see [Evals](evals.md).
@@ -653,148 +656,6 @@ Failure behaviour is unchanged: a `oneOf` condition that cannot be evaluated
 counts as not matched (`false`), and an `evaluator` expression that cannot be
 evaluated fails the flow with `Failed to evaluate expression: ...`, including
 the `ExpressionError` detail.
-
-## Triggers
-
-Trigger adapters (`@lousho/build-ai-agent/triggers`) wake an agent up from an
-inbound webhook, a schedule or a Slack message. Wire any of them with
-`listen(agent, onEvent)`, where `onEvent` runs the agent.
-
-For a surface people talk to, use a [channel](channels.md) instead:
-`defineChannel()` and `mountChannels()` (package root) map each conversation
-on the surface to a session and send the reply, and any approval or question
-the agent pauses on, back to it. `httpChannel()` and `webhookChannel()` are
-built in; `WebhookTriggerAdapter` uses `webhookChannel()` for its auth.
-
-### Webhook authentication
-
-`WebhookTriggerAdapter` starts an HTTP server. **Always set `auth` for a
-webhook that is reachable from outside your machine**: without it, anyone who
-can reach the port can run your agent (and spend your tokens). If you listen
-on a non-loopback host with no `auth`, the adapter logs a one-time warning
-through `options.logger`.
-
-```ts
-import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
-import { WebhookTriggerAdapter } from '@lousho/build-ai-agent/triggers';
-
-const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
-
-// HMAC of the RAW request body (GitHub / Shopify style): header `x-signature-256: sha256=<hex>`.
-new WebhookTriggerAdapter({
-  port: 8787,
-  auth: { type: 'hmac', secret: process.env.WEBHOOK_SECRET ?? '' },
-}).listen(agent, (input) => agent.send(input));
-
-// Replay protection: the signed payload becomes `${timestamp}.${body}` and
-// requests more than `toleranceSeconds` (default 300) old are rejected.
-new WebhookTriggerAdapter({
-  auth: {
-    type: 'hmac',
-    secret: process.env.WEBHOOK_SECRET ?? '',
-    header: 'x-signature',
-    timestampHeader: 'x-timestamp',
-    toleranceSeconds: 120,
-  },
-});
-
-// A shared bearer token (`Authorization: Bearer <token>`).
-new WebhookTriggerAdapter({ auth: { type: 'bearer', token: process.env.WEBHOOK_TOKEN ?? '' } });
-
-// Anything else: return true to accept. `rawBody` is a Buffer of the exact bytes received.
-new WebhookTriggerAdapter({
-  auth: { type: 'custom', verify: (req) => req.headers['x-api-key'] === process.env.API_KEY },
-});
-```
-
-HMAC options: `header` (default `x-signature-256`), `algorithm` (`sha256` or
-`sha1`, default `sha256`), `prefix` (default `sha256=`; `''` for a bare
-digest), `timestampHeader` and `toleranceSeconds`. Signatures and bearer
-tokens are compared in constant time. A request that fails authentication gets
-a generic `401 {"error":"Unauthorized"}` - the response never says which check
-failed - and the reason (never a secret or signature) is logged at `warn`
-level. Serve webhooks over HTTPS (terminate TLS in front of the adapter) so
-tokens and payloads are not sent in clear text.
-
-### Slack request signatures
-
-`SlackTriggerAdapter.handleRequest({ headers, rawBody })` handles a raw Slack
-Events API request and returns the `{ status, body }` to send back. **Set
-`signingSecret` for any endpoint reachable from outside your machine**: without
-it, anyone who can reach the endpoint can run your agent, and `listen()` logs a
-one-time warning through `options.logger`. With it, every request is verified
-as [Slack documents](https://docs.slack.dev/authentication/verifying-requests-from-slack)
-before the body is parsed: HMAC-SHA256 over `v0:{X-Slack-Request-Timestamp}:{raw body}`,
-compared in constant time with `X-Slack-Signature` (`v0=<hex>`), and requests
-more than five minutes old are rejected. Failures get a generic
-`401 {"error":"Unauthorized"}`; the reason (never a secret or signature) is
-logged at `warn` level. The signed `url_verification` handshake is answered
-after verification.
-
-```ts
-import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
-import { SlackTriggerAdapter, verifySlackSignature } from '@lousho/build-ai-agent/triggers';
-import * as http from 'node:http';
-
-const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
-const slack = new SlackTriggerAdapter({ signingSecret: process.env.SLACK_SIGNING_SECRET });
-slack.listen(agent, (input) => agent.send(input));
-
-http
-  .createServer((req, res) => {
-    const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => chunks.push(chunk));
-    req.on('end', async () => {
-      const { status, body } = await slack.handleRequest({ headers: req.headers, rawBody: Buffer.concat(chunks) });
-      res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
-    });
-  })
-  .listen(3000);
-
-// Your own handler (slash commands, interactivity)? Verify the RAW body yourself:
-const authentic = verifySlackSignature({
-  signingSecret: process.env.SLACK_SIGNING_SECRET ?? '',
-  timestamp: '1700000000', // the X-Slack-Request-Timestamp header
-  signature: 'v0=...', // the X-Slack-Signature header
-  rawBody: '{"type":"url_verification"}',
-});
-```
-
-`handleRequest` answers Slack after the agent finishes; Slack expects a reply
-within three seconds, so for slow agents acknowledge first and run the agent in
-the background.
-
-### Cron schedules
-
-`CronTriggerAdapter` takes either a fixed `intervalMs` or a real cron
-expression:
-
-```ts
-import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
-import { CronTriggerAdapter } from '@lousho/build-ai-agent/triggers';
-
-const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
-
-new CronTriggerAdapter({
-  cron: '*/15 9-17 * * MON-FRI', // minute hour day-of-month month day-of-week
-  timezone: 'Europe/Paris', // IANA name; defaults to the machine's local zone
-  input: 'Check the support queue',
-  onResult: (result, error) => console.log(error ?? result?.text),
-}).listen(agent, (input) => agent.send(input));
-```
-
-Supported syntax: `*`, lists (`1,15`), ranges (`1-5`), steps (`*/15`,
-`10-40/10`), month names (`JAN`) and weekday names (`MON`), with `0` and `7`
-both meaning Sunday, plus `@hourly`, `@daily`, `@weekly` and `@monthly`. As in
-classic cron, when both day-of-month and day-of-week are restricted a day
-matches if either does. An invalid expression throws a `CronExpressionError`
-naming the field and showing a valid example. `parseCronExpression(expr,
-timezone).nextRun(after)` is exported if you need the next fire time.
-
-Around daylight-saving changes, a time that does not exist (spring forward) is
-skipped for that day, and a time that happens twice (fall back) fires once;
-an every-hour schedule keeps firing hourly. The timer is re-armed after each
-run from the scheduled time (no drift, no double fire), and `stop()` clears it.
 
 ## Deployment
 

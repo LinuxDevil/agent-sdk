@@ -133,7 +133,7 @@ export class WebhookTriggerAdapter implements TriggerAdapter<http.ServerResponse
     this.warnedUnauthenticated = true;
     logger.warn(
       `WebhookTriggerAdapter is listening on ${host} without \`auth\`: anyone who can reach it can run your agent. ` +
-        'Configure options.auth (hmac, bearer or custom); see docs/api-overview.md#triggers.'
+        'Configure options.auth (hmac, bearer or custom); see docs/triggers.md#webhook-authentication.'
     );
   }
 
