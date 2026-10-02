@@ -204,8 +204,9 @@ export function permissionModeVerdict(
 
 /**
  * N4: a sub-agent's mode: the lead's while the lead's is not `'default'`,
- * else the sub-agent's own. A function, so a switch of the lead's mode
- * applies to the sub-agent's next tool call too.
+ * else the sub-agent's own - except that a sub-agent whose own mode is
+ * `'plan'` stays in plan mode whatever the lead's is. A function, so a switch
+ * of the lead's mode applies to the sub-agent's next tool call too.
  */
 export function inheritPermissionMode(
   lead: PermissionOptions['permissionMode'],
@@ -215,7 +216,8 @@ export function inheritPermissionMode(
   if (own === undefined) return lead;
   return () => {
     const mode = permissionModeOf({ permissionMode: lead });
-    return mode === 'default' ? permissionModeOf({ permissionMode: own }) : mode;
+    const ownMode = permissionModeOf({ permissionMode: own });
+    return mode === 'default' || ownMode === 'plan' ? ownMode : mode;
   };
 }
 

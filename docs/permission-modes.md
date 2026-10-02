@@ -165,7 +165,8 @@ entry keeps that rule's `rule.index`. Mode switches go to
 
 A sub-agent (the `task` tool, a background task, `createDelegateTool()`) runs
 under the lead's mode while the lead's mode is not `'default'`, and under its
-own `permissionMode` otherwise. The mode is read at each of the sub-agent's tool
+own `permissionMode` otherwise. A sub-agent created with
+`permissionMode: 'plan'` stays in plan mode whatever the lead's mode is. The mode is read at each of the sub-agent's tool
 calls, so switching the lead's session mode applies to a sub-agent that is
 running. That is what makes `task` safe in plan mode: the sub-agent cannot
 change anything either.

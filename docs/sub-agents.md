@@ -418,7 +418,7 @@ inherits:
 | `sandbox` | Yes | |
 | Token usage | Rolls up | Added to the lead's `result.usage` (totals, `byModel`, and `usage.delegated`); a remote sub-agent's under `byModel['remote:<name>']`. |
 | `maxSubagentDepth` | The remaining budget | See [Depth](#depth). |
-| `permissionMode` | Yes, unless the lead's is `'default'` | The sub-agent runs under the lead's [permission mode](./permission-modes.md#sub-agents), read at each of its tool calls; while the lead's is `'default'`, under its own. A remote sub-agent does not inherit it: plan mode refuses a `task` call to one. |
+| `permissionMode` | Yes, unless the lead's is `'default'` | The sub-agent runs under the lead's [permission mode](./permission-modes.md#sub-agents), read at each of its tool calls; while the lead's is `'default'`, under its own (a sub-agent whose own mode is `'plan'` always stays in plan mode). A remote sub-agent does not inherit it: plan mode refuses a `task` call to one. |
 | `onLLMRequest`, `onToolCall` and the other single-run callbacks | No | They describe one run; use hooks or an event listener to observe sub-agents. |
 | `sessionId` / `checkpointStore` | No | A sub-agent is not checkpointed on its own. If the process dies while a sub-agent runs, the resumed lead runs that `task` call again. |
 | `output` schema | No | A sub-agent's output is its own: with one, `task` returns its validated object as JSON (see [Structured output](./structured-output.md#sub-agents)); without, text. |

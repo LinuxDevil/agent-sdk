@@ -295,9 +295,28 @@ describe('permission modes and sub-agents (N4)', () => {
     await lead.send('go');
     expect(workspace.snapshot()).toEqual({});
 
+    // an explicit 'default' on the lead keeps the sub-agent's own mode too
+    const explicit = new MemoryWorkspace();
+    await createAgent({ provider: mockModel([delegate, 'done']), subagents: { writer: writer(explicit, 'plan') }, permissionMode: 'default' }).send('go');
+    expect(explicit.snapshot()).toEqual({});
+
     const free = new MemoryWorkspace();
     await createAgent({ provider: mockModel([delegate, 'done']), subagents: { writer: writer(free) } }).send('go');
     expect(free.snapshot()).toEqual({ 'a.txt': 'x' });
+  });
+
+  it("a sub-agent whose own mode is 'plan' stays in plan mode under a lead in acceptEdits; a lead in plan mode overrides a sub-agent's acceptEdits", async () => {
+    const workspace = new MemoryWorkspace();
+    await createAgent({ provider: mockModel([delegate, 'done']), subagents: { writer: writer(workspace, 'plan') }, permissionMode: 'acceptEdits' }).send('go');
+    expect(workspace.snapshot()).toEqual({});
+
+    const strict = new MemoryWorkspace();
+    await createAgent({ provider: mockModel([delegate, 'done']), subagents: { writer: writer(strict, 'acceptEdits') }, permissionMode: 'plan' }).send('go');
+    expect(strict.snapshot()).toEqual({});
+
+    const loose = new MemoryWorkspace();
+    await createAgent({ provider: mockModel([delegate, 'done']), subagents: { writer: writer(loose, 'dontAsk') }, permissionMode: 'acceptEdits' }).send('go');
+    expect(loose.snapshot()).toEqual({ 'a.txt': 'x' });
   });
 
   it('refuses a remote sub-agent in plan mode without calling it: it does not inherit the mode', async () => {

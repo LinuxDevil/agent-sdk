@@ -8700,7 +8700,8 @@ entry keeps that rule's `rule.index`. Mode switches go to
 
 A sub-agent (the `task` tool, a background task, `createDelegateTool()`) runs
 under the lead's mode while the lead's mode is not `'default'`, and under its
-own `permissionMode` otherwise. The mode is read at each of the sub-agent's tool
+own `permissionMode` otherwise. A sub-agent created with
+`permissionMode: 'plan'` stays in plan mode whatever the lead's mode is. The mode is read at each of the sub-agent's tool
 calls, so switching the lead's session mode applies to a sub-agent that is
 running. That is what makes `task` safe in plan mode: the sub-agent cannot
 change anything either.
@@ -11402,7 +11403,7 @@ inherits:
 | `sandbox` | Yes | |
 | Token usage | Rolls up | Added to the lead's `result.usage` (totals, `byModel`, and `usage.delegated`); a remote sub-agent's under `byModel['remote:<name>']`. |
 | `maxSubagentDepth` | The remaining budget | See [Depth](#depth). |
-| `permissionMode` | Yes, unless the lead's is `'default'` | The sub-agent runs under the lead's [permission mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md#sub-agents), read at each of its tool calls; while the lead's is `'default'`, under its own. A remote sub-agent does not inherit it: plan mode refuses a `task` call to one. |
+| `permissionMode` | Yes, unless the lead's is `'default'` | The sub-agent runs under the lead's [permission mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md#sub-agents), read at each of its tool calls; while the lead's is `'default'`, under its own (a sub-agent whose own mode is `'plan'` always stays in plan mode). A remote sub-agent does not inherit it: plan mode refuses a `task` call to one. |
 | `onLLMRequest`, `onToolCall` and the other single-run callbacks | No | They describe one run; use hooks or an event listener to observe sub-agents. |
 | `sessionId` / `checkpointStore` | No | A sub-agent is not checkpointed on its own. If the process dies while a sub-agent runs, the resumed lead runs that `task` call again. |
 | `output` schema | No | A sub-agent's output is its own: with one, `task` returns its validated object as JSON (see [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md#sub-agents)); without, text. |
