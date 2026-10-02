@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createAgent } from '../createAgent';
+import '../providers'; // registers the real providers (openrouter)
 import { resolveProvider } from '../providers/resolveProvider';
 import { recordReplay } from '../testing';
 import type { AgentEvent } from './agentEvents';

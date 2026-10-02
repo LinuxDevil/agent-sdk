@@ -1,15 +1,10 @@
 /**
- * Live test (costs money, needs OPENROUTER_API_KEY; at most 0.05 USD): the
- * model-backed checks of the guardrail starter set (N5a) against
- * `openrouter/openai/gpt-4o-mini` on six short fixed texts, to confirm their
- * fixed prompts get replies the parsers can read on a real model. Records the
- * calls to `__fixtures__/cassettes/n5a-guardrail-models.json` for an offline
- * replay test. Run with `npm run test:live -- src/execution/guardrailStarterSet`.
+ * CI replay of the N5a live recording (`__fixtures__/cassettes/n5a-guardrail-models.json`, gpt-4o-mini via
+ * OpenRouter): the prompt-injection and moderation guardrails read a real model's replies on six fixed texts.
+ * No key, no network. Re-record with `npm run test:live -- src/execution/guardrailStarterSet`.
  */
-import { describe, expect, it } from 'vitest';
 import { join } from 'node:path';
-import '../providers'; // registers the real providers (openrouter)
-import { resolveProvider } from '../providers/resolveProvider';
+import { describe, expect, it } from 'vitest';
 import { recordReplay } from '../testing';
 import { moderationGuardrail, promptInjectionGuardrail } from './guardrailStarterSet';
 import type { IoGuardrail } from './ioGuardrails';
@@ -26,9 +21,9 @@ async function verdict(guardrail: IoGuardrail, text: string) {
   return guardrail.check({ kind: 'input', text, messages: [] });
 }
 
-describe.skipIf(!process.env.OPENROUTER_API_KEY)('guardrail starter set on a real model (N5a)', () => {
+describe('guardrail starter set, replayed from a real recording (N5a)', () => {
   it('prompt-injection and moderation replies are parseable and classify the fixed texts', async () => {
-    const model = recordReplay(() => resolveProvider('openrouter/openai/gpt-4o-mini'), { cassette: CASSETTE, mode: 'record' });
+    const model = recordReplay(undefined, { cassette: CASSETTE, mode: 'replay' });
     const injection = promptInjectionGuardrail({ model });
     const moderation = moderationGuardrail({ model });
 
@@ -37,8 +32,7 @@ describe.skipIf(!process.env.OPENROUTER_API_KEY)('guardrail starter set on a rea
       expect(await verdict(moderation, text)).toEqual({ ok: true });
     }
     for (const text of TEXTS.injection) {
-      const result = await verdict(injection, text);
-      expect(result).toMatchObject({ ok: false, info: { category: 'prompt-injection', source: 'model', signals: ['model'] } });
+      expect(await verdict(injection, text)).toMatchObject({ ok: false, info: { category: 'prompt-injection', source: 'model', signals: ['model'] } });
     }
     for (const text of TEXTS.moderation) {
       const result = await verdict(moderation, text);
