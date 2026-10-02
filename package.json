@@ -161,7 +161,7 @@
   "bugs": {
     "url": "https://github.com/LinuxDevil/agent-sdk/issues"
   },
-  "homepage": "https://github.com/LinuxDevil/agent-sdk#readme",
+  "homepage": "https://lousho.com",
   "engines": {
     "node": ">=22.19.0"
   },

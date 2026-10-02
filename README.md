@@ -1,6 +1,8 @@
 # @lousho/build-ai-agent
 
+[![npm](https://img.shields.io/npm/v/@lousho/build-ai-agent)](https://www.npmjs.com/package/@lousho/build-ai-agent)
 ![CI](https://github.com/LinuxDevil/agent-sdk/actions/workflows/ci.yml/badge.svg)
+[![Docs](https://img.shields.io/badge/docs-lousho.com-0F9D74)](https://lousho.com)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A TypeScript SDK for building AI agents that run in your own code, on your own
@@ -26,7 +28,7 @@ Three things set it apart:
   usage and USD cost.
 
 [Quickstart](#quickstart) · [Features](#features) · [Documentation](#documentation) ·
-[Examples](#examples) · [Docs site](https://lousho.mintlify.app)
+[Examples](#examples) · [Docs](https://lousho.com)
 
 ## Installation
 
@@ -209,7 +211,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [API Overview](docs/api-overview.md) | The main exports, triggers, tokens and cost; `npm run docs:build` generates the full TypeDoc reference |
 | [Utilities](docs/utilities.md) | Encryption, hashing and file storage |
 
-The full guides site is at [lousho.mintlify.app](https://lousho.mintlify.app).
+The full guides are at [lousho.com](https://lousho.com), in English and Arabic.
 
 **For AI coding agents.** The package ships its docs in machine-readable form:
 `llms-full.txt` (this README and every docs page in one file, with absolute
