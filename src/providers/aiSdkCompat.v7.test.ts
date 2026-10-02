@@ -249,7 +249,7 @@ describe.each(providers)('%s provider on ai v7: generate() (LOU-D26)', (_name, m
     });
   });
 
-  it('sends a file part as a text note, and the text of system and assistant parts', async () => {
+  it('sends an unsupported file type as a text note, and the text of system and assistant parts', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const provider = make();
     const calls = onV7(provider);
@@ -257,14 +257,14 @@ describe.each(providers)('%s provider on ai v7: generate() (LOU-D26)', (_name, m
     await provider.generate({
       messages: [
         { role: 'system', content: [{ type: 'text', text: 'Be brief.' }] },
-        { role: 'user', content: [{ type: 'file', data: PNG, mimeType: 'application/pdf', filename: 'report.pdf' }] },
+        { role: 'user', content: [{ type: 'file', data: PNG, mimeType: 'application/vnd.ms-excel', filename: 'report.pdf' }] },
         { role: 'assistant', content: [{ type: 'text', text: 'Hello' }, { type: 'image', image: PNG }] },
       ],
     });
 
     expect(calls[0]!.prompt).toMatchObject([
       { role: 'system', content: 'Be brief.' },
-      { role: 'user', content: [{ type: 'text', text: '[file report.pdf (application/pdf) not sent]' }] },
+      { role: 'user', content: [{ type: 'text', text: '[file report.pdf (application/vnd.ms-excel) not sent]' }] },
       { role: 'assistant', content: [{ type: 'text', text: 'Hello' }] },
     ]);
   });
