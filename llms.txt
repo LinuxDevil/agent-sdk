@@ -26,6 +26,7 @@
 - [Hooks](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hooks.md): A hook is an object `{ name, preToolCall?, postToolCall?, preGenerate?, postGenerate?
 - [MCP (Model Context Protocol)](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md): MCP works in two directions.
 - [Memory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md): A session remembers one conversation.
+- [Migrating to createAgent()](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/migrating-to-create-agent.md): This page is for code that uses `AgentBuilder`, `AgentExecutor`, `ToolRegistry` and `resumeAfterApproval()`: the lower-level API the SDK started with.
 - [Next.js and other Fetch-API frameworks](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md): `createRouteHandler(agent, options?)` serves an agent from a route file of any framework whose handlers take a Web `Request` and return a `Response`: the Next.js App Router, SvelteKit, Remix / React Router, Hono, Bun.serve.
 - [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md): `AgentExecutor.execute()` and `FlowExecutor.execute()` emit spans through a `TraceExporter`.
 - [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md): An `LLMProvider` is what an agent generates with.

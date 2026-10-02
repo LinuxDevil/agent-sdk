@@ -84,6 +84,11 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
     this.logger = logger;
   }
 
+  /** PDF file parts go to the model on ai 6 and 7; older peers have no file parts. */
+  protected fileMediaTypes(): readonly string[] {
+    return aiMajorOf(this.ai) >= 6 ? ['application/pdf'] : [];
+  }
+
   protected async createModel(modelId: string, options?: GenerateOptions): Promise<LanguageModel> {
     // LOU-V13: `@ai-sdk/openai` has no field for OpenRouter's unified `reasoning`, so it is added to the body.
     const reasoning = openRouterReasoning(modelId, options?.reasoning);
