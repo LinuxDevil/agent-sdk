@@ -890,7 +890,9 @@ operator connected Slack.
 
 **Means:** a tool called `ctx.getToken()`, or `agent.oauth` was used, on an
 agent without a token store, so there is nowhere to read or keep a token. The
-run stops with this error.
+run stops with this error. An HTTP MCP server with `oauth` needs the store
+too: connecting it (`ready()`, `connectMcp()` without `tokens`) fails with
+this error.
 
 **Fix:** pass `createAgent({ store })` with `tokens`: `memoryStore()`,
 `fileStore()`, `SqliteStore` or `KVStore` (the persistent ones need a
@@ -929,7 +931,8 @@ callback, then approve again; or approve with `false` to cancel the call. See
 code (or a request to it failed), or the callback came without a code, or no
 provider with the pending sign-in's name is defined in this process. The
 message names the provider, the HTTP status and the OAuth `error` code, never
-the code or the response body. The callback route answers 502.
+the code or the response body. The callback route answers 502. For an MCP
+server with `oauth` the message names the server and the OAuth `error` code.
 
 **Fix:** check `tokenUrl`, `clientId`, `clientSecret`, `clientAuth` and that
 `redirectUri` matches the one registered with the provider exactly, and that
@@ -937,3 +940,22 @@ the module defining the provider is loaded by the process serving the
 callback. Then sign in again. See [The callback route](./oauth.md#the-callback-route).
 
 **Example:** `invalid_client` from GitHub after the client secret was rotated.
+
+### LOUSHO_MCP_AUTH_REQUIRED
+
+**Means:** an HTTP MCP server with `oauth` refused the connection or a tool
+call because the app has no usable token for it: nobody has signed the app in
+yet, the grant was revoked, or the server's `url` changed since the sign-in (a
+token is only sent to the url it was obtained for). The server's status becomes
+`'needs-auth'`. When connecting, `ready()` (and `connectMcp()`) fails with this
+error; during a run, the tool call's result is this error and the run goes on.
+A chat user is never asked to sign in for an MCP server, and the message never
+contains the authorization URL.
+
+**Fix:** sign the app in once: open the URL from
+`agent.oauth.mcpSignInUrl('<server>')` and let the provider redirect to the
+callback route. The next connection or tool call uses the stored token. See
+[MCP servers with OAuth](./oauth.md#mcp-servers-with-oauth).
+
+**Example:** `createAgent({ mcpServers: { linear: { url, oauth: { redirectUri } } }, store })`
+and `await agent.ready()` before the operator signed in.

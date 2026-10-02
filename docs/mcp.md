@@ -40,8 +40,9 @@ await agent.close();
 stdio entries are spawned with `command` and `args`; `env` is added to the
 default environment (`PATH` and the like), not a replacement for it. HTTP
 entries use the streamable HTTP transport and send the static `headers` on every
-request. Static headers are the only authentication an HTTP entry supports
-today.
+request. An HTTP entry can also sign in with OAuth, as the MCP authorization
+spec describes: add `oauth: { redirectUri }` and an operator signs the agent in
+once; see [MCP servers with OAuth](./oauth.md#mcp-servers-with-oauth).
 
 The map is the same one a spec file declares; see
 [Configuration](./configuration.md) (the `mcpServers` section) for the YAML form.
@@ -59,9 +60,12 @@ Options:
   tool call reconnects. With `false` that call fails instead. Listing tools
   needs a connection, so `lazy` never delays the first connect.
 - `logger`: receives skipped-server and skipped-tool warnings (default: none).
+- `tokens`: the token store (`AgentStore.tokens`) of servers with `oauth`;
+  required when any server has `oauth`.
 
 It returns `{ tools, close(), status() }`; `status()` maps each server to
-`'idle'`, `'connected'` or `'failed'`.
+`'idle'`, `'connected'`, `'failed'` or `'needs-auth'` (an `oauth` server the
+app is not signed in to).
 
 ```ts no-run
 import { createAgent } from '@lousho/build-ai-agent';
@@ -221,5 +225,5 @@ To use it from an MCP client, add it to the client's MCP config (for example
 ## Limits
 
 - Approval-gated tools cannot be approved over MCP when you serve an agent: a run that pauses for approval returns `isError: true`, and tools flagged `needsApproval` are not exposed unless `allowApprovalTools` is set.
-- HTTP clients use static headers: `headers` is sent on every request, and there is no OAuth flow.
+- HTTP clients send static `headers` on every request. OAuth (`oauth`) is app-owned: one grant per server for the whole agent, signed in by an operator; there are no per-user MCP grants yet.
 - `serveMcp()` calls are stateless: each call to the agent tool is a fresh conversation, and the HTTP transport accepts `POST` only.

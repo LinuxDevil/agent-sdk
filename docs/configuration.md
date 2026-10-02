@@ -118,6 +118,7 @@ stdio and `headers` only to HTTP. The field is validated by `loadSpec()`, and
 an invalid entry fails with the entry name in the message, e.g.
 `'mcpServers.files': AgentSpec validation failed: missing 'command' (stdio server) or 'url' (HTTP server)`.
 An optional `approval` (`annotations`, `always` or `never`) says which of the server's tools ask for approval; see [Approval for MCP tools](./mcp.md#approval-for-mcp-tools).
+An HTTP entry may set `oauth` (`redirectUri`, optional `clientId`, `clientSecret`, `scopes` and `clientName`) to sign in to the server with OAuth instead of a static `Authorization` header; see [MCP servers with OAuth](./oauth.md#mcp-servers-with-oauth).
 `lousho doctor` checks each stdio `command` is resolvable.
 
 ```yaml
