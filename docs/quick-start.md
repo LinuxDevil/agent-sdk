@@ -32,8 +32,8 @@ npm install @lousho/build-ai-agent ai@^7.0.0 zod
 npm install @ai-sdk/openai@^4.0.0 @ai-sdk/anthropic@^4.0.0
 ```
 
-That is the current `ai` major; for Ollama, use `ai@^4.3.19` with
-`ollama-ai-provider@^1.2.0` (see [the pairings](./installation.md#provider-packages)).
+That is the current `ai` major; for Ollama, use `ai@^7.0.0` with
+`ollama-ai-provider-v2@^4.0.0` and zod 4 (see [the pairings](./installation.md#provider-packages)).
 
 ## 1. Hello world
 

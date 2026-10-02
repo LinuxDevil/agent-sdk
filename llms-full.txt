@@ -45,9 +45,9 @@ npm install @lousho/build-ai-agent ai@^7.0.0 zod
 npm install @ai-sdk/openai@^4.0.0 @ai-sdk/anthropic@^4.0.0
 ```
 
-For Ollama, use `ai@^4.3.19` with `ollama-ai-provider@^1.2.0` (`ollama-ai-provider`
-only pairs with `ai` 4); [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#provider-packages)
-lists every pairing. `npx lousho doctor` checks Node, peers and API keys and
+For Ollama, use `ai@^7.0.0` with `ollama-ai-provider-v2@^4.0.0` and zod 4 (or
+`ai@^4.3.19` with `ollama-ai-provider@^1.2.0` and zod 3);
+[Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#provider-packages) lists every pairing. `npx lousho doctor` checks Node, peers and API keys and
 prints a fix for anything missing.
 
 ## Quickstart
@@ -348,8 +348,16 @@ npm install @lousho/build-ai-agent ai@^7.0.0 zod @ai-sdk/openai@^4.0.0
 for `ai` 6 and 7) declares `zod ^4` as a peer. The SDK accepts zod 4,
 so install it with zod 4, for example
 `npm install ai@^7.0.0 ollama-ai-provider-v2@^4.0.0 zod@^4.0.0`. With zod 3,
-use `ai@^4.3.19` with `ollama-ai-provider@^1.2.0` (what
-`lousho init --provider ollama` scaffolds).
+use `ai@^4.3.19` with `ollama-ai-provider@^1.2.0`.
+`lousho init --provider ollama` scaffolds `ai@^7.0.0` with
+`ollama-ai-provider-v2@^4.0.0` and zod 4.
+
+**What CI tests.** Every pairing the peer ranges accept is installed for real
+and run through the type check, the build and the whole test suite, on every
+change: `ai` 4 with zod 3 (the dev install) and zod 4, `ai` 6 with zod 3 and
+with zod 4, and `ai` 7 with zod 3 and with zod 4. The two zod 4 entries on
+`ai` 6 and 7 also install `ollama-ai-provider-v2` (3.x and 4.x) and run the
+Ollama provider against it, so Ollama on `ai` 6/7 is tested, not assumed.
 
 Peers are loaded on demand: importing `@lousho/build-ai-agent` (or any of
 its sub-entries) never loads a provider package, so you only need to install
@@ -570,8 +578,8 @@ npm install @lousho/build-ai-agent ai@^7.0.0 zod
 npm install @ai-sdk/openai@^4.0.0 @ai-sdk/anthropic@^4.0.0
 ```
 
-That is the current `ai` major; for Ollama, use `ai@^4.3.19` with
-`ollama-ai-provider@^1.2.0` (see [the pairings](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#provider-packages)).
+That is the current `ai` major; for Ollama, use `ai@^7.0.0` with
+`ollama-ai-provider-v2@^4.0.0` and zod 4 (see [the pairings](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#provider-packages)).
 
 ## 1. Hello world
 
@@ -7198,7 +7206,7 @@ console.log(formatUsage(result.usage)); // 1,234 in / 567 out tokens · $0.0042 
 
 - **Reported vs estimated.** Providers report `promptTokens`/`completionTokens`; the built-in providers also pass on `cachedInputTokens`/`reasoningTokens` when the 'ai' SDK's provider metadata carries them (`usage.cachedInputTokens` and `usage.reasoningTokens` only appear then). A backend that reports nothing gives `undefined` usage, never zeros. For that step the executor falls back to `estimateTokens` and sets `usage.estimated` (a leading `~` in `formatUsage`). A custom provider should leave `GenerateResult.usage` unset rather than fill in zeros.
 - **Cost.** `costUsd` is the sum of `estimateCost` per model. It is `undefined`, never a misleading partial sum, as soon as any model used has unknown pricing; `byModel` shows which ones are priced.
-- **Delegation.** A delegated child's usage is added to the parent's totals and `byModel`, and is also shown on its own as `usage.delegated` (`{ inputTokens, outputTokens, totalTokens, costUsd, modelCalls, estimated, runs }`).
+- **Delegation.** A delegated child's usage is added to the parent's totals and `byModel`, and is also shown on its own as `usage.delegated` (`{ inputTokens, outputTokens, totalTokens, costUsd, modelCalls, estimated, runs }`). A [remote sub-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md#remote-sub-agents)'s usage is what the remote agent reports, filed under `byModel['remote:<name>']` with the remote's own `costUsd`.
 - **Resume.** A run resumed from a checkpoint, or after an approval, continues from the saved totals instead of restarting at zero. Checkpoints written by older versions start from their saved token counts with an unknown cost.
 - **Events and traces.** The `finish` event (and every lifecycle event that carried `usage`) now carries the running totals; `text-complete` also has `stepUsage`, and `onLLMResponse` receives the call's usage as a third argument. The `chat` span's `gen_ai.usage.*` attributes use the same numbers, with `lousho.usage.estimated` set to `true` when they are estimates.
 - **Streaming.** `agent.stream()` events carry the same accounting: `step.done` and `run.done` have `usage` with `inputTokens`, `outputTokens`, `estimated` and `costUsd` (run-level also `modelCalls`), alongside the older `promptTokens`/`completionTokens`.
@@ -8068,7 +8076,11 @@ pair (for example `ai` 7 with `@ai-sdk/openai` 1.x). `OllamaProvider` loads
 `ollama-ai-provider` on `ai` 4 and `ollama-ai-provider-v2` on `ai` 6/7; the v2
 package peers on zod 4, which the SDK accepts, so install zod 4
 with it (zod 3 projects use Ollama with `ai` 4). `lousho init` scaffolds `ai@^7.0.0` with `@ai-sdk/*@^4.0.0` for
-OpenAI, Anthropic and OpenRouter, and `ai@^4.3.19` for Ollama.
+OpenAI, Anthropic and OpenRouter, and `ai@^7.0.0` with `ollama-ai-provider-v2@^4.0.0` and zod 4 for Ollama.
+
+CI installs and tests `ai` 4, 6 and 7, each with zod 3 and zod 4 (six pairings;
+`ai` 4 with zod 4 is the one pairing the provider packages do not declare), with
+the real `ollama-ai-provider-v2` on `ai` 6 and 7 in the zod 4 jobs.
 
 OpenRouter uses `@ai-sdk/openai` against OpenRouter's base URL. From
 `@ai-sdk/openai` 2 on, the default `openai(modelId)` call targets the Responses
@@ -10089,7 +10101,8 @@ If the sub-agent does not finish - it throws, runs out of `maxSteps`, or is
 aborted - the lead gets an error result (`isError: true`) that says why, for
 example `Sub-agent 'researcher' used all 10 of its steps (maxSteps) without
 giving a final answer.` An unknown agent name is also an error result listing
-the valid names. Sub-agent token usage is added to the lead's `result.usage`.
+the valid names. Sub-agent token usage is added to the lead's `result.usage`,
+a [remote sub-agent](#remote-sub-agents)'s too.
 
 Errors at setup time are thrown with a fix: a sub-agent without a
 `description`, a value that is not a `createAgent()` agent, or a tool of your
@@ -10311,6 +10324,19 @@ stream, or a remote run that ends in an error) reach the lead as the
 structured tool error with the code `LOUSHO_REMOTE_REQUEST_FAILED` (`LOUSHO_REMOTE_UNAUTHORIZED` for a 401); the token is
 never part of an error or an event.
 
+The remote run's token usage, as the remote agent reports it on its `run.done`
+event, is added to the lead's `result.usage`: to the totals, to
+`usage.delegated`, and to `byModel['remote:<name>']` (`<name>` is the key in
+`subagents`). The remote sends no per-model breakdown, so that one entry holds
+its totals and the remote's own `costUsd` estimate; when the remote sends no
+cost, the lead's `costUsd` becomes `undefined`. The lead trusts these numbers:
+it cannot check them. A deployment from before this change sends no usage, and
+then nothing is added. A remote run that pauses for an approval adds what it
+spent up to the pause, and the continuation adds only what it spent after it.
+The usage arrives when the remote run ends, so the lead's `limits` see it only
+after the `task` call returns. A hand-written `RemoteSubagent` gets the
+per-turn usage through the `onUsage` option of its `run()`.
+
 ### Remote approvals
 
 If the remote run pauses for an approval, the lead run pauses on it exactly as
@@ -10372,7 +10398,7 @@ inherits:
 | Event listeners (`onAgentEvent`, `createAgent({ onEvent })`) and `stream()` | Yes | The sub-agent's events are forwarded with a `subagent` field. |
 | `toolConcurrency` | Yes, unless the sub-agent sets its own | |
 | `sandbox` | Yes | |
-| Token usage | Rolls up | Added to the lead's `result.usage` (totals, `byModel`, and `usage.delegated`). |
+| Token usage | Rolls up | Added to the lead's `result.usage` (totals, `byModel`, and `usage.delegated`); a remote sub-agent's under `byModel['remote:<name>']`. |
 | `maxSubagentDepth` | The remaining budget | See [Depth](#depth). |
 | `onLLMRequest`, `onToolCall` and the other single-run callbacks | No | They describe one run; use hooks or an event listener to observe sub-agents. |
 | `sessionId` / `checkpointStore` | No | A sub-agent is not checkpointed on its own. If the process dies while a sub-agent runs, the resumed lead runs that `task` call again. |

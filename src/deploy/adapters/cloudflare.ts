@@ -248,8 +248,8 @@ export default { fetch, scheduled };
 `;
 
 /**
- * Runtime probes the leak check accepts (LOU-D28c). `ai` v7 and its
- * `@ai-sdk/provider-utils` v5 ship one `dist/index.js` for every runtime (no
+ * Runtime probes the leak check accepts (LOU-D28c). `ai` v6/v7 and their
+ * `@ai-sdk/provider-utils` v4/v5 (v6 `loadNodeModule`, v7 `loadBuiltinModule`) ship one `dist/index.js` for every runtime (no
  * browser/worker/edge export condition to pick instead) and load these
  * builtins through `globalThis.process?.getBuiltinModule?.(id)`, never through
  * an import, so there is nothing for esbuild to resolve or shim:
@@ -259,9 +259,9 @@ export default { fetch, scheduled };
  *    channel, used only when `process.release.name === 'node'`, and a missing
  *    module is treated as "no subscribers".
  * Only these ids, and only as the argument of a `getBuiltinModule` /
- * `loadBuiltinModule` call, are exempt; any other `node:` string still fails.
+ * `loadBuiltinModule` / `loadNodeModule` call, are exempt; any other `node:` string still fails.
  */
-const WORKER_SAFE_BUILTIN_PROBE = /\b(?:get|load)BuiltinModule\d*(?:\?\.)?\(\s*(["'`])node:(?:module|dns|diagnostics_channel|async_hooks)\1\s*\)/g;
+const WORKER_SAFE_BUILTIN_PROBE = /\b(?:get|load)(?:Node|Builtin)Module\d*(?:\?\.)?\(\s*(["'`])node:(?:module|dns|diagnostics_channel|async_hooks)\1\s*\)/g;
 
 /** Returns every `node:`-prefixed module specifier referenced in `source`. */
 export function findNodeBuiltinReferences(source: string): string[] {

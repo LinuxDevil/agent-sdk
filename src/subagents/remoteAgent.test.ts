@@ -8,6 +8,7 @@ import { defineTool } from '../tools/defineTool';
 import { mockModel, type MockTurn } from '../testing';
 import { serveFetch } from '../server/fetchRoutes';
 import type { Message } from '../providers';
+import type { AgentEventUsage } from '../execution/agentEvents';
 import { memoryStore } from '../storage/agentStore';
 import { SqliteStore } from '../storage/sqlite';
 import { remoteAgent } from './remoteAgent';
@@ -317,5 +318,110 @@ describe('remote sub-agent approvals through the lead run (LOU-Y7.3)', () => {
     const { agent } = lead(remoteAgent({ url: 'https://remote.test', auth: TOKEN, fetch: server.fetch }));
     const result = await agent.send('go');
     expect(taskResult(result.messages)).toMatch(/^\{"city":"Oslo","tempC":-3\}\n\n\[remote sub-agent 'remote': session 'task_[\w-]+', finish reason 'stop', taskId 'task_1'\]$/);
+  });
+});
+
+describe("remote sub-agent usage in the lead's totals (M10b)", () => {
+  /** The lead delegates once; its own two model calls spend 10/1 and 20/2 tokens. */
+  const leadTurns = (): MockTurn[] => [{ ...delegate(), usage: { inputTokens: 10, outputTokens: 1 } }, { text: 'done', usage: { inputTokens: 20, outputTokens: 2 } }];
+  const used = (inputTokens: number, outputTokens: number) => ({ usage: { inputTokens, outputTokens } });
+
+  /** The deployed agent's stream with its `run.done` usage replaced by `usage` (removed when `undefined`, as an older server sends it). */
+  function rewriteUsage(fetcher: Fetch, usage: AgentEventUsage | undefined): Fetch {
+    return async (input, init) => {
+      const response = await fetcher(input, init);
+      const body = (await response.text())
+        .split('\n\n')
+        .map((frame) => {
+          if (!frame.startsWith('data: ')) return frame;
+          const event = JSON.parse(frame.slice(6)) as { type: string; usage?: unknown };
+          if (event.type === 'run.done') event.usage = usage;
+          return `data: ${JSON.stringify(event)}`;
+        })
+        .join('\n\n');
+      return new Response(body, { status: response.status, headers: response.headers });
+    };
+  }
+
+  it("adds the remote run's tokens to the lead's totals, under byModel['remote:<name>'] and usage.delegated", async () => {
+    const server = deployed(createAgent({ provider: mockModel([{ text: 'The answer is 42.', ...used(100, 50) }]), instructions: 'remote' }));
+    const { agent } = lead(remoteAgent({ url: 'https://remote.test', auth: TOKEN, fetch: server.fetch }), leadTurns());
+
+    const { usage } = await agent.send('go');
+
+    expect(usage).toMatchObject({ inputTokens: 130, outputTokens: 53, totalTokens: 183, modelCalls: 3, promptTokens: 130, completionTokens: 53 });
+    expect(usage.byModel['remote:remote']).toEqual({ inputTokens: 100, outputTokens: 50, calls: 1, costUsd: undefined });
+    expect(usage.delegated).toMatchObject({ inputTokens: 100, outputTokens: 50, totalTokens: 150, modelCalls: 1, runs: 1 });
+    const own = Object.entries(usage.byModel).filter(([model]) => model !== 'remote:remote');
+    expect(own.reduce((sum, [, entry]) => sum + entry.inputTokens, 0)).toBe(30);
+  });
+
+  it("passes each turn's usage to onUsage and keeps the remote's reported cost", async () => {
+    const reported: AgentEventUsage = { promptTokens: 7, completionTokens: 3, totalTokens: 10, inputTokens: 7, outputTokens: 3, estimated: false, costUsd: 0.25, modelCalls: 2 };
+    const server = deployed(createAgent({ provider: mockModel(['ok', 'ok']), instructions: 'remote' }));
+    const remote = remoteAgent({ url: 'https://remote.test', auth: TOKEN, fetch: rewriteUsage(server.fetch, reported) });
+    const seen: AgentEventUsage[] = [];
+    await expect(remote.run('go', { onUsage: (usage) => seen.push(usage) })).resolves.toContain('ok');
+    expect(seen).toEqual([reported]);
+
+    const model = mockModel([delegate(), 'done']);
+    const { usage } = await createAgent({ provider: model, instructions: 'lead', subagents: { remote } }).send('go');
+    expect(usage.byModel['remote:remote']).toEqual({ inputTokens: 7, outputTokens: 3, calls: 2, costUsd: 0.25 });
+    expect(usage.delegated).toMatchObject({ costUsd: 0.25, modelCalls: 2 });
+  });
+
+  it('adds each turn of a remote run paused for approval once: the continuation adds only what it spent after the pause', async () => {
+    const deploy = defineTool({ name: 'deploy', description: 'Deploys', input: z.object({}), needsApproval: true, execute: () => 'deployed' });
+    const remoteModel = mockModel([{ toolCalls: [{ name: 'deploy' }], ...used(100, 10) }, { text: 'Deployed.', ...used(200, 20) }]);
+    const server = deployed(createAgent({ provider: remoteModel, instructions: 'remote', tools: [deploy] }));
+    const { agent } = lead(remoteAgent({ url: 'https://remote.test', auth: TOKEN, fetch: server.fetch }), leadTurns());
+
+    const paused = await agent.send('go');
+    expect(paused.finishReason).toBe('awaiting-approval');
+    expect(paused.usage.byModel['remote:remote']).toMatchObject({ inputTokens: 100, outputTokens: 10, calls: 1 });
+
+    const { usage } = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+
+    expect(usage).toMatchObject({ inputTokens: 330, outputTokens: 33 });
+    expect(usage.byModel['remote:remote']).toMatchObject({ inputTokens: 300, outputTokens: 30, calls: 2 });
+    expect(usage.delegated).toMatchObject({ inputTokens: 300, outputTokens: 30, modelCalls: 2 });
+  });
+
+  it('a continuation that pauses again still adds every remote call once', async () => {
+    const deploy = defineTool({ name: 'deploy', description: 'Deploys', input: z.object({ env: z.string() }), needsApproval: true, execute: ({ env }) => env });
+    const call = (env: string): MockTurn => ({ toolCalls: [{ name: 'deploy', args: { env } }], ...used(100, 10) });
+    const server = deployed(createAgent({ provider: mockModel([call('staging'), call('prod'), { text: 'Both.', ...used(100, 10) }]), instructions: 'remote', tools: [deploy] }));
+    const { agent } = lead(remoteAgent({ url: 'https://remote.test', auth: TOKEN, fetch: server.fetch }));
+
+    const first = await agent.send('go');
+    const second = await agent.approvals.resolve({ id: first.approvalId!, approved: true });
+    expect(second.usage.byModel['remote:remote']).toMatchObject({ inputTokens: 200, calls: 2 });
+    const { usage } = await agent.approvals.resolve({ id: second.approvalId!, approved: true });
+
+    expect(usage.byModel['remote:remote']).toMatchObject({ inputTokens: 300, outputTokens: 30, calls: 3 });
+  });
+
+  it("adds a background remote task's usage when it finishes", async () => {
+    const server = deployed(createAgent({ provider: mockModel([{ text: 'bg answer', ...used(100, 50) }]), instructions: 'remote' }));
+    const start = { name: 'task', args: { agent: 'remote', prompt: 'p', description: 'd', background: true } };
+    const turns: MockTurn[] = [{ toolCalls: [start] }, { toolCalls: [{ name: 'agent_await', args: { taskId: 'task_1' } }] }, 'finished'];
+    const { agent } = lead(remoteAgent({ url: 'https://remote.test', auth: TOKEN, fetch: server.fetch }), turns);
+
+    const { usage } = await agent.send('go');
+
+    expect(usage.byModel['remote:remote']).toMatchObject({ inputTokens: 100, outputTokens: 50, calls: 1 });
+    expect(usage.delegated).toMatchObject({ inputTokens: 100, runs: 1 });
+  });
+
+  it('adds nothing, and does not fail, when the remote reports no usage (older server)', async () => {
+    const server = deployed(createAgent({ provider: mockModel([{ text: 'old answer', ...used(100, 50) }]), instructions: 'remote' }));
+    const { agent } = lead(remoteAgent({ url: 'https://remote.test', auth: TOKEN, fetch: rewriteUsage(server.fetch, undefined) }), leadTurns());
+
+    const result = await agent.send('go');
+
+    expect(String(toolResult(result.messages))).toMatch(/^old answer/);
+    expect(result.usage).toMatchObject({ inputTokens: 30, outputTokens: 3 });
+    expect(result.usage.byModel['remote:remote']).toBeUndefined();
+    expect(result.usage.delegated).toBeUndefined();
   });
 });

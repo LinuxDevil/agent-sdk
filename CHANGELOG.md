@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-09-28
 
+### Changed
+- CI peer matrix (LOU-M8, #231): the `typecheck-ai7` and `typecheck-zod4` jobs are replaced by one `peers` job with five entries, each installed for real on top of the default install and run through `tsc`, `test:types`, both builds and `npx vitest run`: `ai4-zod4`, `ai6-zod3`, `ai6-zod4`, `ai7-zod3`, `ai7-zod4`. The two zod 4 entries on `ai` 6/7 also install `ollama-ai-provider-v2` (3.x / 4.x), and the new `src/providers/ollamaV2.contract.test.ts` runs `OllamaProvider` against the real package and a local fake Ollama server (`generate()`, `stream()`, a tool-call turn through `createAgent().send()` and `.stream()`). The `ai-v6` dev alias replaces the hand-made `ai` 6 stand-in in `aiMajorPeers.test.ts`.
+- `lousho init --provider ollama` now scaffolds `ai@^7.0.0` with `ollama-ai-provider-v2@^4.0.0` and `zod@^4.0.0` (it was `ai@^4.3.19` with `ollama-ai-provider@^1.2.0` and zod 3). Existing projects are not touched; to stay on the old pairing keep `ai@^4.3.19` and `ollama-ai-provider@^1.2.0`.
+
+### Fixed
+- The `cloudflare-worker` build's Node-builtin leak check now accepts the runtime-guarded `loadNodeModule("node:module" | "node:dns")` probes that `@ai-sdk/provider-utils` 4 (installed with `ai` 6) uses, as it already did for `ai` 7's `loadBuiltinModule`; without it a Worker bundle built on `ai` 6 failed with "Node builtins leaked" (found by the new `ai6` matrix entries).
+
 ### Published
 - `@lousho/build-ai-agent` and `create-lousho-agent` are on npm. The README and the installation, quick start, CLI and Agent Forge docs no longer say the package is unpublished; "Installing before the first release" is now "Installing from a local build" (docs/installation.md#installing-from-a-local-build) and covers trying an unreleased commit. The hint printed after a failed `lousho init` install no longer mentions a 404; it points to `--sdk-path`. The docs site moved to https://lousho.com.
 
@@ -61,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AgentExecutionOptions.streaming` (LOU-D41.2): it was never read (`AgentExecutionOptions` is a legacy type no SDK API takes). Remove the property; stream a run with `agent.stream()` / `AgentExecutor.stream()`.
 
 ### Fixed
+- A remote sub-agent's token usage is added to the lead's `result.usage` (M10b). It was dropped, so budgets and cost reports undercounted delegation to a `remoteAgent()`. The lead adds what the remote agent reports on its `run.done` event to its totals, to `usage.delegated` and to `byModel['remote:<name>']`, which keeps the remote's own `costUsd` (the lead's `costUsd` is `undefined` when the remote sends none). A remote run that pauses for an approval adds what it spent up to the pause, and the continuation adds only what it spent after it; background remote tasks roll up the same way. A deployment that sends no usage adds nothing. `RemoteRunOptions` has a new optional `onUsage(usage)` callback; `RemoteSubagent.run()` still returns `Promise<string>`, so hand-written ones compile unchanged. See docs/sub-agents.md#remote-sub-agents.
 - `lousho studio` finds the Agent Forge build that ships inside the installed package when it is run from a project that does not have `apps/agent-forge` (it used to fail with "could not find apps/agent-forge" everywhere except the SDK repo). A project's own `apps/agent-forge` still wins, and `.lousho/` is still created in the directory you ran it from. `--dev` from an installed package still needs the TypeScript source and says so.
 - Documentation corrections: install commands, CLI command lists, optional peers, durable execution and compaction descriptions, the Status section, reasoning and file-part notes in the providers guide, and the `KVStore` note in the deployment guide now match the code. Ticket ids are gone from user-facing prose.
 - `lousho --help`, `-h` and `help` print the usage and exit 0 (they were "unknown command" with exit 1) (LOU-D49).

@@ -48,9 +48,9 @@ npm install @lousho/build-ai-agent ai@^7.0.0 zod
 npm install @ai-sdk/openai@^4.0.0 @ai-sdk/anthropic@^4.0.0
 ```
 
-For Ollama, use `ai@^4.3.19` with `ollama-ai-provider@^1.2.0` (`ollama-ai-provider`
-only pairs with `ai` 4); [Installation](docs/installation.md#provider-packages)
-lists every pairing. `npx lousho doctor` checks Node, peers and API keys and
+For Ollama, use `ai@^7.0.0` with `ollama-ai-provider-v2@^4.0.0` and zod 4 (or
+`ai@^4.3.19` with `ollama-ai-provider@^1.2.0` and zod 3);
+[Installation](docs/installation.md#provider-packages) lists every pairing. `npx lousho doctor` checks Node, peers and API keys and
 prints a fix for anything missing.
 
 ## Quickstart

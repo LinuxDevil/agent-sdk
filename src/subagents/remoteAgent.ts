@@ -92,6 +92,7 @@ export function remoteAgent(options: RemoteAgentOptions): RemoteSubagent {
       const summary = decision
         ? await resolveRemoteApproval(options, { ...decision, sessionId, signal, label })
         : await runRemoteTurn(options, { sessionId, input: prompt, signal, label });
+      if (summary.usage) run.onUsage?.(summary.usage);
       return outcome(label, name, summary, run);
     },
   };

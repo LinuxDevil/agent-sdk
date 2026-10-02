@@ -27,7 +27,7 @@ const SCAFFOLD_PAIRINGS: Record<string, Record<string, string>> = {
   openai: { ai: '^7.0.0', '@ai-sdk/openai': '^4.0.0' },
   anthropic: { ai: '^7.0.0', '@ai-sdk/anthropic': '^4.0.0' },
   openrouter: { ai: '^7.0.0', '@ai-sdk/openai': '^4.0.0' },
-  ollama: { ai: '^4.3.19', 'ollama-ai-provider': '^1.2.0' },
+  ollama: { ai: '^7.0.0', 'ollama-ai-provider-v2': '^4.0.0' },
 };
 
 const combos = PROVIDER_NAMES.flatMap((provider) => TEMPLATES.map((template) => [provider, template] as const));
@@ -51,7 +51,7 @@ describe('renderProject', () => {
     expect(Object.keys(pkg.scripts)).toEqual(expect.arrayContaining(['dev', 'test', 'doctor']));
     expect(pkg.scripts.doctor).toMatch(/^lousho doctor/);
     expect(pkg.dependencies['@lousho/build-ai-agent']).toBe('^1.0.0-alpha.8');
-    expect(pkg.dependencies).toMatchObject({ ai: SCAFFOLD_PAIRINGS[provider]!.ai, zod: '^3.25.76' });
+    expect(pkg.dependencies).toMatchObject({ ai: SCAFFOLD_PAIRINGS[provider]!.ai, zod: provider === 'ollama' ? '^4.0.0' : '^3.25.76' });
 
     expect(JSON.parse(files['tsconfig.json']!).compilerOptions).toMatchObject({ strict: true, module: 'NodeNext' });
     expect(files['README.md']).toContain(ENV_KEYS[provider]);
@@ -62,7 +62,8 @@ describe('renderProject', () => {
     const sdk = { ...SDK, peerDependencies: { ...SDK.peerDependencies, zod: '^3.25.76 || ^4.0.0' } };
     const pkg = JSON.parse(renderProject({ ...config(provider, 'minimal'), sdk })['package.json']!);
     const zod3Only = SCAFFOLD_PAIRINGS[provider]!.ai === '^4.3.19';
-    expect(pkg.dependencies.zod).toBe(zod3Only ? '^3.25.76' : '^3.25.76 || ^4.0.0');
+    // zod 3 for ai 4, zod 4 for Ollama's ai 6/7 package (LOU-M8), both for the rest.
+    expect(pkg.dependencies.zod).toBe(zod3Only ? '^3.25.76' : provider === 'ollama' ? '^4.0.0' : '^3.25.76 || ^4.0.0');
   });
 
   it.each(combos.filter(([, template]) => template !== 'yaml'))(
@@ -89,7 +90,7 @@ describe('renderProject', () => {
     ['openai', '@ai-sdk/openai', ['@ai-sdk/anthropic', 'ollama-ai-provider']],
     ['openrouter', '@ai-sdk/openai', ['@ai-sdk/anthropic', 'ollama-ai-provider']],
     ['anthropic', '@ai-sdk/anthropic', ['@ai-sdk/openai', 'ollama-ai-provider']],
-    ['ollama', 'ollama-ai-provider', ['@ai-sdk/openai', '@ai-sdk/anthropic', 'ollama-ai-provider-v2']],
+    ['ollama', 'ollama-ai-provider-v2', ['@ai-sdk/openai', '@ai-sdk/anthropic', 'ollama-ai-provider']],
   ])('%s depends on its own provider package only', (provider, peer, others) => {
     const dependencies = JSON.parse(renderProject(config(provider, 'minimal'))['package.json']!).dependencies;
     expect(Object.keys(dependencies)).toContain(peer);
