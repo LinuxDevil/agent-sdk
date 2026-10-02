@@ -16,7 +16,7 @@
  */
 
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ApprovalStore, ExecutionSnapshot, PendingApproval, ResolvedApproval } from '../execution/ApprovalGate';
 import {
@@ -70,11 +70,18 @@ async function readText(file: string): Promise<string | undefined> {
   }
 }
 
-/** Write to a unique temp file next to `file` and rename it over `file`. */
+/** Write to a unique temp file next to `file` and rename it over `file`; creates the directory when it is missing. */
 async function writeAtomic(file: string, value: unknown): Promise<void> {
   const temp = `${file}.${process.pid}.${randomUUID()}.tmp`;
+  const content = JSON.stringify(value, encodeBytes);
   try {
-    await writeFile(temp, JSON.stringify(value, encodeBytes), 'utf8');
+    try {
+      await writeFile(temp, content, 'utf8');
+    } catch (error) {
+      if (!isMissing(error)) throw error;
+      await mkdir(dirname(file), { recursive: true });
+      await writeFile(temp, content, 'utf8');
+    }
     await rename(temp, file);
   } catch (error) {
     await rm(temp, { force: true });
@@ -113,11 +120,9 @@ class FileCheckpointStore implements CheckpointStore {
 
   async save(sessionId: string, checkpoint: Checkpoint): Promise<void> {
     const file = this.fileFor(this.checkpointDir, sessionId);
-    await mkdir(this.checkpointDir, { recursive: true });
     await writeAtomic(file, checkpoint);
     if (this.historyLimit === 0) return;
     const ring = appendToRing(await this.readRing(sessionId), toHistoryEntry(checkpoint), this.historyLimit);
-    await mkdir(this.historyDir, { recursive: true });
     await writeAtomic(this.fileFor(this.historyDir, sessionId), ring);
   }
 
@@ -154,7 +159,6 @@ class FileApprovalStore implements ApprovalStore {
 
   async save(pending: PendingApproval, snapshot: ExecutionSnapshot): Promise<void> {
     const file = this.fileFor(pending.id);
-    await mkdir(this.dir, { recursive: true });
     const record: ResolvedApproval = { pending, snapshot };
     await writeAtomic(file, record);
     await rm(`${file}.claim`, { force: true });

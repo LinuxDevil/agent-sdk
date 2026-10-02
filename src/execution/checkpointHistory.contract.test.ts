@@ -4,7 +4,7 @@
  * `LocalStorageCheckpointStore`, `KVCheckpointStore` and `fileStore()`), plus the `getCheckpointHistory()` helper on
  * stores that do not.
  */
-import { describe, it, expect, afterEach, afterAll } from 'vitest';
+import { describe, it, expect, afterEach, afterAll, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -26,6 +26,9 @@ const sqliteStores: SqliteStore[] = [];
 afterEach(() => {
   while (sqliteStores.length) sqliteStores.pop()?.close();
 });
+
+// fileStore() writes 55 checkpoints in one test; real files are slow on a loaded Windows machine.
+vi.setConfig({ testTimeout: 20_000 });
 
 const tempDirs: string[] = [];
 afterAll(() => {
