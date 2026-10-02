@@ -180,7 +180,7 @@ export function allowInPlanMode<T extends object>(tool: T): T {
 }
 
 /** N4: plan mode lets a tool run when it declares `readOnlyHint: true` or is a built-in marked by {@link allowInPlanMode}. */
-export function isReadOnlyTool(tool: ToolDescriptor): boolean {
+function isReadOnlyTool(tool: ToolDescriptor): boolean {
   return tool.metadata?.mcp?.annotations?.readOnlyHint === true || planModeTools.has(tool);
 }
 
