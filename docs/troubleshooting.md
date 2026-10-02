@@ -131,7 +131,7 @@ environment (`LOUSHO_CONFIG_MISSING_PROVIDER`).
 
 ### My Worker build rejects the provider or tool
 
-- **Cause:** the `cloudflare-worker` target supports the `mock`, `openai` and `anthropic` providers, and the `current-date` and `day-name` tools. `ollama`, `openrouter` and the `http` tool are not supported there, and `lousho build` fails with an error naming the one it rejected.
+- **Cause:** the `cloudflare-worker` target supports the `mock`, `openai`, `anthropic` and `openrouter` providers, and the `current-date`, `day-name` and `http` tools (`http` reaches only the hosts listed in the `LOUSHO_HTTP_ALLOW` binding). `ollama` and the `web-fetch` tool are not supported there, and `lousho build` fails with an error naming the one it rejected.
 - **Fix:** use another provider or tool, or build for the `node-server` or `docker` target.
 - **More:** [Deployment](./deployment.md#cloudflare-worker).
 

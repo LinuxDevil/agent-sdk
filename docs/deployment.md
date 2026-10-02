@@ -147,34 +147,59 @@ npx wrangler deploy    # requires a Cloudflare account (`wrangler login`)
 
 Workers have no Node.js builtins, so this target currently supports:
 
-- providers: `mock`, `openai` and `anthropic`. The `openai`/`anthropic`
+- providers: `mock`, `openai`, `anthropic` and `openrouter`. The real
   providers are built on the Vercel `ai` SDK's `generateText`/`streamText`
-  plus `@ai-sdk/openai`/`@ai-sdk/anthropic`, which are pure
-  `fetch()`/Web-standard implementations with no `node:*` imports anywhere
-  in their dependency graph, so they bundle and run on Workers cleanly.
-  `ollama` and `openrouter` are **not** supported here - `ollama` defaults
-  to a local `http://localhost:11434` endpoint that a Worker can't reach,
-  and `openrouter` hasn't had a Workers-compatibility audit; use
-  `node-server` or `docker` for those;
-- tools: `current-date` and `day-name`. `http` and `web-fetch` are **not**
-  supported. On Node both refuse private destinations with a DNS lookup of
-  their own (`node:dns` inside an `undici` `Agent`) that checks every
-  address a host resolves to and connects to the address it checked, so DNS
-  rebinding cannot get past the check. A Worker has neither: its `fetch()`
-  resolves names inside Cloudflare's network and gives no hook to see or pin
-  the address. What a Worker can check is the URL (scheme, host name, an
-  IP-literal host); what it cannot guarantee is where a host name connects,
-  so a name that resolves to an internal address would not be caught. Rather
-  than ship a weaker tool under the same name, the Worker build has neither.
-  A tool of your own that calls `fetch()` in a Worker gets no SSRF
+  plus `@ai-sdk/openai`/`@ai-sdk/anthropic` (`openrouter` is
+  `@ai-sdk/openai` pointed at `https://openrouter.ai/api/v1`), which are
+  pure `fetch()`/Web-standard implementations with no `node:*` imports, so
+  they bundle and run on Workers cleanly; the build's leak check verifies
+  every bundle. `ollama` is **not** supported here: it defaults to a local
+  `http://localhost:11434` endpoint that a Worker can't reach; use
+  `node-server` or `docker` for it;
+- tools: `current-date`, `day-name` and `http`. `web-fetch` is **not**
+  supported. On Node, `http` and `web-fetch` refuse private destinations
+  with a DNS lookup of their own (`node:dns` inside an `undici` `Agent`)
+  that checks every address a host resolves to and connects to the address
+  it checked, so DNS rebinding cannot get past the check. A Worker has
+  neither: its `fetch()` resolves names inside Cloudflare's network and
+  gives no hook to see or pin the address. What a Worker can check is the
+  URL (scheme, host name, an IP-literal host); what it cannot guarantee is
+  where a host name connects, so a name that resolves to an internal
+  address would not be caught. So the Worker's `http` (the same
+  `http_request` tool name and input as on Node) is a different tool: it
+  reaches only the host names you list. On the first URL and on every
+  redirect it refuses:
+  - any scheme but `http:` and `https:`;
+  - an IP-address host (`http://10.0.0.1/`, `http://[::1]/`), even a listed
+    one: there is no address check, so only names are allowed;
+  - a host that does not match the `LOUSHO_HTTP_ALLOW` binding, a
+    comma-separated list of host names (`api.github.com`) and `*.` wildcards
+    (`*.example.com`, which matches subdomains only, not `example.com`).
+    Unset or empty, every request is refused (fail closed); an entry that is
+    not a host name fails every request with an error naming it.
+
+  A model therefore cannot pick an arbitrary host, or a DNS-rebinding one,
+  because only the names you listed pass; a listed name is trusted wherever
+  it resolves, so list only hosts you control or trust. TLS is always
+  validated (there is no `validateSSL` option) and the tool runs without a
+  sandbox. A tool of your own that calls `fetch()` in a Worker gets no SSRF
   protection from the SDK.
 
 `lousho build` rejects a spec that uses anything else, with an error naming
 the unsupported provider or tool. Provider API keys are read from Worker
 bindings named `<TYPE>_API_KEY` (e.g. `wrangler secret put OPENAI_API_KEY`,
-`wrangler secret put ANTHROPIC_API_KEY`) - the `openai`/`anthropic`
-peer packages (`@ai-sdk/openai`/`@ai-sdk/anthropic`, `ai`) must be installed
-alongside `@lousho/build-ai-agent` for `lousho build` to bundle them.
+`wrangler secret put ANTHROPIC_API_KEY`, `wrangler secret put
+OPENROUTER_API_KEY`) - the peer packages (`@ai-sdk/openai` for `openai` and
+`openrouter`, `@ai-sdk/anthropic` for `anthropic`, and `ai`) must be
+installed alongside `@lousho/build-ai-agent` for `lousho build` to bundle
+them. When the spec lists `http`, `wrangler.toml` is scaffolded with a
+commented `[vars]` block holding `LOUSHO_HTTP_ALLOW`; uncomment it and list
+your hosts:
+
+```toml
+[vars]
+LOUSHO_HTTP_ALLOW = "api.github.com,*.example.com"
+```
 
 ### Bindings, sessions and the API on Workers
 

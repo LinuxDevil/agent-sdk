@@ -201,8 +201,10 @@ const agent = createAgent({ model: 'openai/gpt-4o-mini', tools: [webFetch] });
 
 Each `createWebFetchTool()` has its own connection pool, kept for as long as
 the tool exists and released with it by garbage collection (there is no close
-method). Neither `http_request` nor `web_fetch` exists in the Cloudflare
-Worker build; see [Deployment](./deployment.md#cloudflare-worker).
+method). `web_fetch` does not exist in the Cloudflare Worker build, and the
+Worker's `http_request` is a different tool that reaches only the host names
+listed in its `LOUSHO_HTTP_ALLOW` binding; see
+[Deployment](./deployment.md#cloudflare-worker).
 
 ## Todo tools
 
