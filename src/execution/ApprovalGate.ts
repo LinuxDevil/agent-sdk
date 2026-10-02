@@ -142,6 +142,29 @@ export interface SubagentSuspension {
   agentName: string;
   /** The sub-agent's own paused run (which may itself wait on a sub-agent). */
   snapshot: ExecutionSnapshot;
+  /**
+   * M4: set when the suspended call is an `agent_await` waiting on background
+   * sub-agent tasks paused for approval. Kept here, not in `args`, so the
+   * model never sees it.
+   */
+  background?: SuspendedBackgroundTasks;
+}
+
+/** M4: the background tasks an `agent_await` call paused on (see {@link SubagentSuspension.background}). */
+export interface SuspendedBackgroundTasks {
+  /** The `task` call (`agent`, `prompt`, `description`) of the task this suspension pauses on (its run is `snapshot`). */
+  task: Record<string, unknown>;
+  /** The other awaited tasks still paused, in order: the run pauses on each in turn once this one is decided. */
+  waiting: PausedBackgroundTask[];
+}
+
+/** M4: a background sub-agent task paused for approval, kept until an `agent_await` call resumes it. */
+export interface PausedBackgroundTask {
+  taskId: string;
+  /** The `task` call that started it (`agent`, `prompt`, `description`). */
+  task: Record<string, unknown>;
+  /** The sub-agent's paused run. */
+  snapshot: ExecutionSnapshot;
 }
 
 /**

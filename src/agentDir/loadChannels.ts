@@ -18,7 +18,7 @@ export function loadChannels(dir: string): Promise<Channel[]> {
     dir,
     'channels',
     'LOUSHO_CHANNEL_INVALID',
-    'a channel from defineChannel(), httpChannel(), webhookChannel(), slackChannel(), discordChannel() or telegramChannel().',
+    'a channel from defineChannel(), httpChannel(), webhookChannel(), slackChannel(), discordChannel(), telegramChannel() or githubChannel().',
     isChannelLike,
     (channel, stem) => defineChannel({ ...channel, name: channel.name ?? stem } as Channel)
   );

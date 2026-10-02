@@ -44,6 +44,8 @@ export function taskNotFound(message: string): SDKError {
 /** The child conversations of one lead session (or, without a session, of one lead run). */
 export class TaskSessions {
   private counter = 0;
+  /** The last allocate() call, which the next one waits for. */
+  private allocating: Promise<unknown> = Promise.resolve();
   private readonly running = new Set<string>();
 
   private constructor(
@@ -60,8 +62,18 @@ export class TaskSessions {
     return new TaskSessions(sessions, leadSessionId.replace(/\.turn-\d+$/, ''));
   }
 
-  /** A taskId not used yet in this lead session. */
-  async allocate(): Promise<string> {
+  /**
+   * A taskId not used yet in this lead session. Calls are served one after
+   * another, so parallel `task` calls get their ids, and start, in call order
+   * (each lookup awaits a digest, whose completion order is not fixed).
+   */
+  allocate(): Promise<string> {
+    const taskId = this.allocating.then(() => this.nextFree());
+    this.allocating = taskId.catch(() => undefined);
+    return taskId;
+  }
+
+  private async nextFree(): Promise<string> {
     for (;;) {
       const taskId = `task_${++this.counter}`;
       if (!(await this.store.load(await this.key(taskId)))) return taskId;

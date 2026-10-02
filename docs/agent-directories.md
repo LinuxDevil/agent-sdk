@@ -100,7 +100,7 @@ all of them.
 
 Each file in `channels/` default-exports a [channel](./channels.md) made with
 `defineChannel()` or a built-in factory (`webhookChannel()`, `httpChannel()`,
-`slackChannel()`, `discordChannel()`, `telegramChannel()`). The channel's name is the one it sets, else the file name.
+`slackChannel()`, `discordChannel()`, `telegramChannel()`, `githubChannel()`). The channel's name is the one it sets, else the file name.
 A file that does not export a channel fails with `LOUSHO_CHANNEL_INVALID`
 naming the file. `resolveAgentDir()` returns them as `channels` (and their names
 as `manifest.channels`); `loadAgentDir()` does not mount them. The node server

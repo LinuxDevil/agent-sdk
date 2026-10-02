@@ -141,28 +141,34 @@ describe('background sub-agents (LOU-Y4)', () => {
     await aborted;
   });
 
-  it('reports a sub-agent paused for approval as awaiting-approval, with its approvalId', async () => {
+  it('reports a sub-agent paused for approval as awaiting-approval, with its approvalId (without agent_await, M4)', async () => {
     let ran = false;
-    const deploy = defineTool({ name: 'deploy', description: 'Deploys', input: z.object({}), needsApproval: true, execute: () => (ran = true) });
+    let asked!: () => void;
+    const approvalAsked = new Promise<void>((resolve) => (asked = resolve));
+    const needsApproval = () => (asked(), true);
+    const deploy = defineTool({ name: 'deploy', description: 'Deploys', input: z.object({}), needsApproval, execute: () => (ran = true) });
     const researcher = createAgent({ provider: mockModel([{ toolCalls: [{ name: 'deploy' }] }]), tools: [deploy], description: 'Deploys' });
+    // The child's pause settles in microtasks once its approval is asked for.
+    const statusOncePaused = async (): Promise<MockTurn> => {
+      await approvalAsked;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return { toolCalls: [{ name: 'agent_status', args: { taskId: 'task_1' } }] };
+    };
     const lead = createAgent({
-      provider: mockModel([
-        { toolCalls: [bgTask('researcher', 'ship it')] },
-        { toolCalls: [{ name: 'agent_await', args: { taskId: 'task_1' } }] },
-        'done',
-      ]),
+      provider: mockModel([{ toolCalls: [bgTask('researcher', 'ship it')] }, statusOncePaused, 'done']),
       subagents: { researcher },
     });
 
     const result = await lead.send('go');
 
-    expect(results(result.messages, 'agent_await')[0]).toMatchObject({
-      status: 'awaiting-approval',
-      toolName: 'deploy',
-      approvalId: expect.any(String),
-    });
+    const [status] = results(result.messages, 'agent_status');
+    expect(status.tasks).toEqual([expect.objectContaining({ status: 'awaiting-approval', toolName: 'deploy', approvalId: expect.any(String) })]);
     expect(ran).toBe(false);
+    expect(result.finishReason).toBe('stop');
     expect(result.text).toBe('done');
+    // Never awaited: reported at the end, and not resumable (no approval of the lead).
+    expect(result.backgroundTasks).toEqual([expect.objectContaining({ status: 'awaiting-approval' })]);
+    expect(await lead.approvals.list()).toEqual([]);
   });
 
   it('still applies maxSubagentDepth to background sub-agents', async () => {

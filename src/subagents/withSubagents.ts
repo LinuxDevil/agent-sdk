@@ -20,18 +20,21 @@ import type { ExecuteOptions, ExecutionResult } from '../execution/AgentExecutor
 import type { RemoteSubagent, SubagentCatalog, SubagentSummary, Subagents } from './types';
 import { isRemoteSubagent } from './remoteAgent';
 import { anyError } from '../utils/zodCompat';
-import { BackgroundTasks, subagentOptionsOf, withSubagentOptions, type SubagentOptions } from './backgroundTasks';
+import { BackgroundTasks, subagentOptionsOf, withSubagentOptions, type BackgroundTaskView, type SubagentOptions } from './backgroundTasks';
 import { busy, taskNotFound, TaskSessions, type TaskMode, type TaskRecord } from './taskSessions';
 import { SDKError } from '../execution/errors';
 import { toolFailure } from '../tools/built-in/toolFailure';
 import { fromEventUsage, remoteModelKey, usageSince } from '../execution/runUsage';
 import type { RunUsage } from '../models/usage';
 import type { AgentEventUsage } from '../execution/agentEvents';
+import type { PausedBackgroundTask, SuspendedBackgroundTasks } from '../execution/ApprovalGate';
 
 /** Name of the tool the lead model delegates with. */
 const TASK_TOOL = 'task';
 /** Tools that observe and steer background tasks (LOU-Y4), registered with `task`. */
 const BACKGROUND_TOOLS = ['agent_status', 'agent_await', 'agent_cancel'] as const;
+/** Told to the model by `task` and `agent_status` (M4). */
+const AWAIT_APPROVAL_HINT = 'A task awaiting approval continues only when you call agent_await on it.';
 
 /** Same default as `ExecuteOptions.maxSteps`. */
 const DEFAULT_MAX_STEPS = 10;
@@ -279,6 +282,8 @@ interface TaskContext {
   names: readonly string[];
   background: BackgroundTasks;
   sessions: TaskSessions;
+  /** M4: the `task` call of each background task, so a paused one can be resumed from the lead's suspension. */
+  backgroundCalls: Map<string, TaskArgs>;
 }
 
 /**
@@ -304,16 +309,21 @@ async function openTask(ctx: TaskContext, args: TaskArgs, reentered: boolean): P
   return child(await ctx.sessions.allocate(), record);
 }
 
+/** Runs (or, inside a resume, resumes) the child of a `task` call with `toolOptions`. */
+function runChild(ctx: TaskContext, resolved: ResolvedSubagent, args: TaskArgs, toolOptions: ToolOptions, task: ChildTask): Promise<string> {
+  return ctx.sessions.run(task.taskId, () =>
+    'remote' in resolved ? runRemoteTask(resolved.remote, args, toolOptions, task) : runTask(resolved.spec, args, toolOptions, task)
+  );
+}
+
 async function startTask(ctx: TaskContext, args: TaskArgs, toolOptions: ToolOptions): Promise<unknown> {
   const resolved = await resolveSubagent(ctx.subagents, args.agent, ctx.names);
   const task = await openTask(ctx, args, toolCallScopeOf(toolOptions)?.resume !== undefined);
-  const run = (options: ToolOptions) =>
-    ctx.sessions.run(task.taskId, () =>
-      'remote' in resolved ? runRemoteTask(resolved.remote, args, options, task) : runTask(resolved.spec, args, options, task)
-    );
+  const run = (options: ToolOptions) => runChild(ctx, resolved, args, options, task);
   if (!args.background) {
     return run(toolOptions);
   }
+  ctx.backgroundCalls.set(task.taskId, { agent: args.agent, prompt: args.prompt, description: args.description });
   const { taskId, status, agent } = ctx.background.start(
     task.taskId,
     args.agent,
@@ -343,7 +353,7 @@ function createTaskTool(ctx: TaskContext): DefinedTool {
       background: z
         .boolean()
         .optional()
-        .describe('true: start the sub-agent and return a taskId at once; collect the answer later with agent_await'),
+        .describe(`true: start the sub-agent and return a taskId at once; collect the answer later with agent_await. ${AWAIT_APPROVAL_HINT}`),
       taskId: z.string().optional().describe('The taskId of an earlier task of the same agent, to continue (or fork) it'),
       mode: z
         .enum(['new', 'resume', 'fork'])
@@ -354,12 +364,79 @@ function createTaskTool(ctx: TaskContext): DefinedTool {
   });
 }
 
-function createBackgroundTools(background: BackgroundTasks): DefinedTool[] {
+type AwaitArgs = { taskId?: string; taskIds?: string[]; timeoutMs?: number };
+
+/** What `agent_await` returns: the one task's view, or `{ tasks }` when it was called with `taskIds`. */
+function awaitResult(args: AwaitArgs, views: BackgroundTaskView[]): unknown {
+  return args.taskIds ? { tasks: views } : views[0];
+}
+
+/**
+ * M4: `pause` (of background task `taskId`) as the pause of the lead's `agent_await` call. The re-entered
+ * call gets `views` (what it returns once the task is decided) in its args; the `task` call and the other
+ * paused tasks, each with its paused run, stay on the suspension record (`suspended`).
+ */
+function pauseOnTask(pause: SubagentApprovalPause, taskId: string, suspended: SuspendedBackgroundTasks, views: BackgroundTaskView[]): SubagentApprovalPause {
+  pause.resumeArgs = { pausedTaskId: taskId, views };
+  pause.background = suspended;
+  return pause;
+}
+
+/** M4: the pause of the lead on the first of `paused` (the rest wait on the suspension), or none. */
+function pauseOnFirst([first, ...waiting]: readonly PausedBackgroundTask[], views: BackgroundTaskView[]): SubagentApprovalPause | undefined {
+  if (!first) return undefined;
+  return pauseOnTask(new SubagentApprovalPause(String(first.task.agent), first.snapshot), first.taskId, { task: first.task, waiting }, views);
+}
+
+/** Waits for background tasks; pauses the lead on the first one paused for approval (M4). */
+async function awaitTasks(ctx: TaskContext, args: AwaitArgs, signal: AbortSignal | undefined): Promise<unknown> {
+  const ids = args.taskIds ?? (args.taskId === undefined ? [] : [args.taskId]);
+  if (ids.length === 0) throw toolFailure('agent_await: pass taskId or taskIds.');
+  const views = await ctx.background.wait(ids, args.timeoutMs, signal);
+  const paused = new Map<string, PausedBackgroundTask>();
+  for (const { taskId } of views) {
+    const pause = ctx.background.pauseOf(taskId);
+    const task = ctx.backgroundCalls.get(taskId);
+    if (pause && task) paused.set(taskId, { taskId, task, snapshot: pause.snapshot });
+  }
+  const pause = pauseOnFirst([...paused.values()], views);
+  if (pause) throw pause;
+  return awaitResult(args, views);
+}
+
+/**
+ * M4: `agent_await` re-entered on resume. The paused task is resumed from the suspension (not from the
+ * run's background tasks, which ended with the paused run) with the decision, in this call: its answer
+ * replaces its view, then the call pauses on the next awaited task still paused, if any.
+ */
+async function resumeAwaited(ctx: TaskContext, args: AwaitArgs & Record<string, unknown>, toolOptions: ToolOptions, suspended: SuspendedBackgroundTasks): Promise<unknown> {
+  const taskId = String(args.pausedTaskId);
+  const views = (args.views ?? []) as BackgroundTaskView[];
+  const task = suspended.task as TaskArgs;
+  let outcome: Pick<BackgroundTaskView, 'status' | 'result' | 'error'>;
+  try {
+    const resolved = await resolveSubagent(ctx.subagents, task.agent, ctx.names);
+    const child: ChildTask = { taskId, history: [], save: (record) => ctx.sessions.save(taskId, task.agent, record) };
+    outcome = { status: 'done', result: await runChild(ctx, resolved, task, toolOptions, child) };
+  } catch (error) {
+    // Paused again: the lead pauses again on the same task (the next approval).
+    if (error instanceof SubagentApprovalPause) throw pauseOnTask(error, taskId, suspended, views);
+    if (isPropagatingToolError(error)) throw error;
+    outcome = { status: 'failed', error: (error as Error | undefined)?.message ?? String(error) };
+  }
+  const settled = views.map((view) => (view.taskId === taskId ? { ...view, approvalId: undefined, toolName: undefined, ...outcome } : view));
+  const next = pauseOnFirst(suspended.waiting, settled);
+  if (next) throw next;
+  return awaitResult(args, settled);
+}
+
+function createBackgroundTools(ctx: TaskContext): DefinedTool[] {
+  const { background } = ctx;
   const taskId = z.string().describe('The taskId returned by task with background: true');
   return [
     defineTool({
       name: 'agent_status',
-      description: 'Status of one background task, or of all of them: queued, running, done, failed, cancelled or awaiting-approval, with elapsedMs.',
+      description: `Status of one background task, or of all of them: queued, running, done, failed, cancelled or awaiting-approval, with elapsedMs. ${AWAIT_APPROVAL_HINT}`,
       input: z.object({ taskId: taskId.optional() }),
       execute: ({ taskId: id }) => ({ tasks: background.status(id) }),
     }),
@@ -371,11 +448,9 @@ function createBackgroundTools(background: BackgroundTasks): DefinedTool[] {
         taskIds: z.array(z.string()).optional().describe('Several taskIds to wait for'),
         timeoutMs: z.number().int().positive().optional().describe('Stop waiting after this many milliseconds'),
       }),
-      execute: async (args, ctx) => {
-        const ids = args.taskIds ?? (args.taskId === undefined ? [] : [args.taskId]);
-        if (ids.length === 0) throw toolFailure('agent_await: pass taskId or taskIds.');
-        const views = await background.wait(ids, args.timeoutMs, ctx.abortSignal);
-        return args.taskIds ? { tasks: views } : views[0];
+      execute: (args, options) => {
+        const suspended = toolCallScopeOf(options)?.resume?.suspension.background;
+        return suspended ? resumeAwaited(ctx, args, options, suspended) : awaitTasks(ctx, args, options.abortSignal);
       },
     }),
     defineTool({
@@ -439,10 +514,10 @@ export async function withSubagents(
   const options = subagentOptionsOf(subagents);
   const background = new BackgroundTasks(options.maxConcurrent);
   const sessions = TaskSessions.of(options.sessions, run.sessionId);
-  const ctx: TaskContext = { subagents, names: summaries.map((s) => s.name), background, sessions };
+  const ctx: TaskContext = { subagents, names: summaries.map((s) => s.name), background, sessions, backgroundCalls: new Map() };
   const extended = withPromptTool(agent, toolRegistry, createTaskTool(ctx), subagentsPromptBlock(summaries));
   const tools = { ...extended.agent.tools };
-  for (const tool of createBackgroundTools(background)) {
+  for (const tool of createBackgroundTools(ctx)) {
     extended.toolRegistry.register(tool);
     tools[tool.name] = { tool: tool.name };
   }
