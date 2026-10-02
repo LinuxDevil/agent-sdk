@@ -7,7 +7,7 @@
  */
 import { oidc } from '../auth/oidc';
 import { ConfigurationError, SDKError } from '../execution/errors';
-import { decodeApprovalRef, encodeApprovalRef, mayApprove, reportChannelError, type ApprovalRef, type Approvers } from './channelSupport';
+import { decodeApprovalRef, encodeApprovalRef, mayApprove, reportChannelError, type ApprovalRef, type Approvers, splitText, answerPendingQuestion } from './channelSupport';
 import {
   defineChannel,
   type Channel,
@@ -75,19 +75,6 @@ const REFRESH_MARGIN_MS = 5 * 60_000;
 const CALL_TIMEOUT_MS = 30_000;
 const ADAPTIVE_CARD = 'application/vnd.microsoft.card.adaptive';
 const NOT_ALLOWED = 'You are not allowed to approve this request.';
-
-/** Splits `text` into chunks of at most 25,000 characters (Teams rejects messages near 28 KB), preferably at line breaks. */
-function chunk(text: string): string[] {
-  const parts: string[] = [];
-  let rest = text || '(no reply)';
-  while (rest.length > MAX_LENGTH) {
-    const cut = rest.lastIndexOf('\n', MAX_LENGTH);
-    const at = cut > MAX_LENGTH / 2 ? cut : MAX_LENGTH;
-    parts.push(rest.slice(0, at));
-    rest = rest.slice(at).replace(/^\n/, '');
-  }
-  return [...parts, rest];
-}
 
 const trimSlash = (url: string): string => url.replace(/\/+$/, '');
 
@@ -192,29 +179,32 @@ export function teamsChannel(options: TeamsChannelOptions): Channel<TeamsActivit
   let accessToken: { value: string; refreshAt: number } | undefined;
   let tokenRequest: Promise<string> | undefined;
 
-  /** The outbound client-credentials token, cached until 5 minutes before it expires. Errors name the status only. */
+  /** Asks the token endpoint for a client-credentials token. Errors name the status only: the response may echo the secret. */
+  async function requestToken(): Promise<{ value: string; lifetimeMs: number }> {
+    const failed = (why: string) => new SDKError(`teamsChannel: the token request failed: ${why}`, 'LOUSHO_CHANNEL_REQUEST_FAILED');
+    const form = new URLSearchParams({ grant_type: 'client_credentials', client_id: appId, client_secret: appPassword, scope: TOKEN_SCOPE });
+    const res = await doFetch(tokenUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: form.toString(),
+      signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+    }).catch(() => {
+      throw failed('the request did not complete');
+    });
+    const body = (await res.json().catch(() => ({}))) as { access_token?: unknown; expires_in?: unknown };
+    if (!res.ok || typeof body.access_token !== 'string' || body.access_token === '') throw failed(String(res.status));
+    return { value: body.access_token, lifetimeMs: (typeof body.expires_in === 'number' ? body.expires_in : 3600) * 1000 };
+  }
+
+  /** The outbound access token, cached until 5 minutes before it expires; one request at a time. */
   function token(): Promise<string> {
     if (accessToken && Date.now() < accessToken.refreshAt) return Promise.resolve(accessToken.value);
-    tokenRequest ??= (async () => {
-      let res: Response;
-      try {
-        res = await doFetch(tokenUrl, {
-          method: 'POST',
-          headers: { 'content-type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ grant_type: 'client_credentials', client_id: appId, client_secret: appPassword, scope: TOKEN_SCOPE }).toString(),
-          signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
-        });
-      } catch {
-        throw new SDKError('teamsChannel: the token request failed: the request did not complete', 'LOUSHO_CHANNEL_REQUEST_FAILED');
-      }
-      const body = (await res.json().catch(() => ({}))) as { access_token?: unknown; expires_in?: unknown };
-      if (!res.ok || typeof body.access_token !== 'string' || body.access_token === '') {
-        throw new SDKError(`teamsChannel: the token request failed: ${res.status}`, 'LOUSHO_CHANNEL_REQUEST_FAILED');
-      }
-      const lifetimeMs = (typeof body.expires_in === 'number' ? body.expires_in : 3600) * 1000;
-      accessToken = { value: body.access_token, refreshAt: Date.now() + Math.max(lifetimeMs - REFRESH_MARGIN_MS, 0) };
-      return body.access_token;
-    })().finally(() => (tokenRequest = undefined));
+    tokenRequest ??= requestToken()
+      .then(({ value, lifetimeMs }) => {
+        accessToken = { value, refreshAt: Date.now() + Math.max(lifetimeMs - REFRESH_MARGIN_MS, 0) };
+        return value;
+      })
+      .finally(() => (tokenRequest = undefined));
     return tokenRequest;
   }
 
@@ -235,7 +225,7 @@ export function teamsChannel(options: TeamsChannelOptions): Channel<TeamsActivit
   }
 
   async function post(target: TeamsTarget, text: string): Promise<void> {
-    for (const part of chunk(text)) {
+    for (const part of splitText(text, MAX_LENGTH)) {
       await connector('send activity', 'POST', target, target.replyToId, { type: 'message', text: part, textFormat: 'markdown', ...(target.replyToId ? { replyToId: target.replyToId } : {}) });
     }
   }
@@ -299,10 +289,7 @@ export function teamsChannel(options: TeamsChannelOptions): Channel<TeamsActivit
       principal: { id: from.aadObjectId ?? from.id, type: 'user', authenticator: 'teams', ...(conversation.tenantId ? { issuer: conversation.tenantId } : {}) },
     };
     // the next message in the conversation answers a pending ask_question, also one asked before a restart
-    const question = questions.get(key) ?? (await ctx.pendingQuestion(key));
-    if (!question) return inbound;
-    questions.delete(key);
-    return { decision: { id: question, answer: input }, inbound };
+    return answerPendingQuestion(inbound, questions, ctx);
   }
 
   return defineChannel<TeamsActivity>({

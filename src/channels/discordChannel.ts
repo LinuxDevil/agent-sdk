@@ -4,7 +4,7 @@
  * Crypto (Ed25519): no `node:*` import and no Discord library.
  */
 import { ConfigurationError } from '../execution/errors';
-import { decodeApprovalRef, encodeApprovalRef, mayApprove, type Approvers } from './channelSupport';
+import { decodeApprovalRef, encodeApprovalRef, mayApprove, type Approvers, splitText } from './channelSupport';
 import {
   defineChannel,
   type Channel,
@@ -101,19 +101,6 @@ function sessionKey(interaction: DiscordInteraction): string {
   return [interaction.guild_id ?? 'dm', thread && channel?.parent_id ? channel.parent_id : id, ...(thread && channel?.parent_id ? [id] : [])].join(':');
 }
 
-/** Splits `text` into chunks of at most Discord's 2000-character limit, preferably at line breaks. */
-function chunk(text: string): string[] {
-  const parts: string[] = [];
-  let rest = text || '(no reply)';
-  while (rest.length > MAX_LENGTH) {
-    const cut = rest.lastIndexOf('\n', MAX_LENGTH);
-    const at = cut > MAX_LENGTH / 2 ? cut : MAX_LENGTH;
-    parts.push(rest.slice(0, at));
-    rest = rest.slice(at).replace(/^\n/, '');
-  }
-  return [...parts, rest];
-}
-
 function button(label: string, customId: string, style: number) {
   return { type: 2, style, label, custom_id: customId };
 }
@@ -163,7 +150,7 @@ export function discordChannel(options: DiscordChannelOptions): Channel<DiscordI
 
   /** The first message edits the interaction's original response; the rest (and later replies) are follow-ups. */
   async function post(target: DiscordTarget, text: string, components?: unknown[]): Promise<void> {
-    for (const [i, part] of chunk(text).entries()) {
+    for (const [i, part] of splitText(text, MAX_LENGTH).entries()) {
       const attach = i === 0 ? components : undefined;
       if (target.edited) await call('POST', target.token, part, attach);
       else await call('PATCH', `${target.token}/messages/@original`, part, attach);
