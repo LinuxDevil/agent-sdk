@@ -1439,7 +1439,7 @@ all of them.
 
 Each file in `channels/` default-exports a [channel](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) made with
 `defineChannel()` or a built-in factory (`webhookChannel()`, `httpChannel()`,
-`slackChannel()`). The channel's name is the one it sets, else the file name.
+`slackChannel()`, `discordChannel()`, `telegramChannel()`). The channel's name is the one it sets, else the file name.
 A file that does not export a channel fails with `LOUSHO_CHANNEL_INVALID`
 naming the file. `resolveAgentDir()` returns them as `channels` (and their names
 as `manifest.channels`); `loadAgentDir()` does not mount them. The node server
@@ -3116,6 +3116,7 @@ await channels.resolveApproval({ id: 'the-approval-id', approved: true });
 | `webhookChannel({ secret?, auth?, name? })` | The JSON body's `input` string, or the whole body; a one-shot session unless the body has a `sessionKey` | `200` with the turn's `ExecutionResult`, as `WebhookTriggerAdapter` answers |
 | `slackChannel({ signingSecret, botToken, name?, fetch?, approvers?, onError? })` | Slack Events API and interactivity requests (see [Slack](#slack)) | `200` at once; replies are posted in the Slack thread |
 | `discordChannel({ publicKey, applicationId, botToken?, name?, fetch?, approvers?, onError? })` | Discord slash-command and button interactions (see [Discord](#discord)) | Deferred ack at once; the reply edits the original response |
+| `telegramChannel({ botToken, secretToken, botUsername?, name?, fetch?, approvers?, onError? })` | Telegram bot webhook updates: messages and inline-keyboard taps (see [Telegram](#telegram)) | `200` at once; replies are sent with `sendMessage` as plain text |
 
 `webhookChannel({ secret })` checks an HMAC-SHA256 signature of the raw body in
 `x-signature-256: sha256=<hex>`; `auth` takes any
@@ -3158,6 +3159,9 @@ a restart); use the list form or the default for approvals that must survive
 one. Answers to an `ask_question` are not restricted: the next message (Slack)
 or `/ask` (Discord) in the conversation is the answer. Who decided goes to
 `mountChannels(agent, channels, { onDecision({ approver, decision, sessionId, channel }) {} })`.
+r
+The Telegram channel takes the same `approvers` (Telegram user ids as strings; a
+function gets `{ id, name }`, with `name` the username or first name).
 
 Failures after the acknowledgment go to `onError` (option of the channel, or of
 `mountChannels`); see the contract above.
@@ -3301,6 +3305,89 @@ An [agent directory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agen
 as channels too, and the node server mounts them. `SlackTriggerAdapter` and `verifySlackSignature()`
 (see [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md)) still work for one-shot replies
 through an incoming webhook.
+
+## Telegram
+
+`telegramChannel({ botToken, secretToken, botUsername?, name?, fetch?, approvers?, onError? })`
+puts an agent behind a Telegram bot over webhooks (no long polling, no Telegram
+library; Web Crypto and `fetch` only, so it also runs on Workers).
+
+- Every request's `X-Telegram-Bot-Api-Secret-Token` header is compared with
+  `secretToken` in constant time; a missing or wrong value answers 401. The
+  channel has no unauthenticated mode, so always pass `secret_token` to
+  `setWebhook`.
+- The update is acknowledged with `200` at once and the turn runs after, so
+  Telegram does not retry the webhook.
+- In a private chat every text message (or photo or document caption) is a
+  message to the agent. In a group or supergroup only a `/ask` command (or
+  `/ask@<botUsername>`), a message containing `@<botUsername>`, or a reply to
+  one of the bot's own messages wakes the bot; the command and the mention are
+  removed from the text and every other message is ignored. Messages from bots
+  are ignored. Set `botUsername` (without `@`) to use the group rules that need
+  it.
+- One session per chat, and one per topic in a forum supergroup. Replies go to
+  the same chat and topic, as a reply to the triggering message.
+- Replies are plain text (no `parse_mode`), so Markdown from the model cannot
+  make Telegram reject the message. Text over 4096 characters is split at line
+  breaks into several messages.
+- A tool approval is posted with an inline keyboard of **Approve** and
+  **Deny**. Only `approvers` (default: the user whose message started the turn)
+  may tap them; anyone else gets an alert and the approval stays pending. A tap
+  answers the callback, edits the message to append "Approved by ..." or
+  "Denied by ..." and remove the keyboard, and the continuation is sent as a new
+  message. The tap carries its chat, so it works after a restart. Telegram
+  limits `callback_data` to 64 bytes: it holds `a:` or `d:`, the starter's user
+  id and the approval id (about 55 bytes). If it would be longer, the starter is
+  left out, and then only an `approvers` list or function can approve (the
+  default refuses everyone).
+- An `ask_question` is sent as text with `force_reply`, and the next message in
+  the chat is the answer (in a group it has to be addressed to the bot, which
+  replying to the question does).
+- Attachments are not read yet: only the text or caption reaches the agent.
+
+Set the bot up with [@BotFather](https://t.me/BotFather):
+
+1. Send `/newbot`, choose a name and a username, and copy the bot token. For
+   use in groups, `/setprivacy` decides whether the bot sees every message;
+   `/ask`, mentions and replies work either way.
+2. Pick a random secret token (1 to 256 characters from `A-Z`, `a-z`, `0-9`,
+   `_` and `-`).
+3. Register the webhook once, with the bot token in the URL and the secret
+   token in the body (keep both out of shell history and logs):
+
+```sh
+curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" -H "Content-Type: application/json" -d '{"url":"https://<host>/channels/telegram","secret_token":"'"$TELEGRAM_SECRET_TOKEN"'","allowed_updates":["message","callback_query"]}'
+```
+
+```ts
+import * as http from 'node:http';
+import { createAgent, mountChannels, telegramChannel } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ instructions: 'You are a helpful Telegram bot.', provider });
+
+const channels = mountChannels(agent, [
+  telegramChannel({
+    botToken: process.env.TELEGRAM_BOT_TOKEN ?? '',
+    secretToken: process.env.TELEGRAM_SECRET_TOKEN ?? '',
+    botUsername: 'my_agent_bot',
+  }),
+]);
+
+http.createServer((req, res) => {
+  void channels(req, res).then((handled) => handled || res.writeHead(404).end());
+}).listen(3000);
+```
+
+The bot token is part of every Bot API URL, so the channel builds its error
+messages from the method name and status only: the token never reaches
+`onError` or the default log line.
+
+Pending approvals are resolved from the tap and the approval store. As on Slack
+and Discord, a pending `ask_question` survives a restart given durable stores
+for sessions, checkpoints and approvals: the next message in the chat is the
+answer and the continued turn is appended to the session transcript. A tap's
+continuation after a restart is sent but not appended to the session
+transcript.
 
 # CLI
 
@@ -4181,6 +4268,10 @@ Guardrail names (see [Input and output guardrails](https://github.com/LinuxDevil
 | `regex`        | `pattern` (required), `flags`, `action`, `replacement` | Blocks (or rewrites) texts matching `pattern`. |
 | `deny-topics`  | `topics` (required, a list) | Blocks texts that mention a topic (case-insensitive). |
 | `llm-judge`    | `model` (required, `"provider/model"`), `instruction` | Asks a model whether the text is acceptable; one call per check. |
+| `pii`          | `types` (a list of `email`, `phone`, `credit-card`, `iban`, `us-ssn`, `ip-address`; default all), `action` (default `block`) | Blocks (or rewrites to `[email]`, ...) personal data found by pattern. Heuristic. |
+| `secrets`      | `action` (default `rewrite`), `extraPatterns` (a list of regular expressions) | Rewrites (or blocks) API keys, tokens and private keys found by pattern. Heuristic. |
+| `prompt-injection` | `model` (optional, `"provider/model"`) | Blocks common prompt-injection phrasing and markers; with `model`, also asks the model. Heuristic. |
+| `moderation`   | `model` (required, `"provider/model"`), `categories` (default all) | Asks a model which harmful-content categories apply; one call per check. |
 
 Every guardrail also takes `on`: `input`, `output` or `tools` (a tool call's
 arguments), or a list of them. The default is `[input, output]`. An unknown name
@@ -5604,7 +5695,7 @@ See [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules
 a channel (an object with `parse` and `reply`). The message names the file.
 
 **Fix:** default-export a channel made with `defineChannel()`, `httpChannel()`,
-`webhookChannel()` or `slackChannel()`. See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md).
+`webhookChannel()`, `slackChannel()`, `discordChannel()` or `telegramChannel()`. See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md).
 
 **Example:** `export default { cron: 'x' }` in `channels/sms.ts`.
 
@@ -5759,12 +5850,12 @@ unknown type, or a Slack trigger that cannot verify requests.
 
 ### LOUSHO_CHANNEL_REQUEST_FAILED
 
-**Means:** a call to a chat platform's API (Slack, Discord) failed; the message
+**Means:** a call to a chat platform's API (Slack, Discord, Telegram) failed; the message
 names the call and the HTTP status or the platform's error.
 
 **Fix:** check the bot token and its permissions, and the platform status. See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md).
 
-**Example:** Slack `chat.postMessage` answering `channel_not_found`.
+**Example:** Slack `chat.postMessage` answering `channel_not_found`, or Telegram `sendMessage` answering 400 for an unknown chat.
 
 ### LOUSHO_DEPLOY_FAILED
 
@@ -6453,10 +6544,10 @@ three points, each list in order:
 A guardrail is `{ name, check(ctx) }`. `ctx` has `kind` (`'input'`, `'output'`
 or `'tool'`), `text`, the run's `messages`, `toolName` and `args` for a tool
 call, and the run's `signal`. `check` returns (or resolves to) `{ ok: true }`
-or `{ ok: false, reason, action?, replacement? }`:
+or `{ ok: false, reason, action?, replacement?, info? }`:
 
 - `action: 'block'` (the default) ends the run with `finishReason: 'guardrail'`
-  and `result.guardrail` (`{ name, kind, reason, toolName? }`). `result.text`
+  and `result.guardrail` (`{ name, kind, reason, toolName?, info? }`). `result.text`
   is `''` and a blocked reply is not added to the transcript; a blocked tool
   call does not run (nor do the calls after it in that turn) and gets a
   "cancelled" result, so the transcript stays valid. `stream()` emits
@@ -6517,6 +6608,53 @@ try {
 | `regexGuardrail({ name, pattern?, action?, replacement? })` | The text matches `pattern` (a `RegExp` or a list; default: the `secretScanGuardrail` patterns). With `action: 'rewrite'` every match becomes `replacement` (default `'[redacted]'`). |
 | `denyTopicsGuardrail({ topics })` | The text contains one of `topics` (case-insensitive keywords). |
 | `llmJudgeGuardrail({ model, instruction, name? })` | `model` (an `LLMProvider` or `"provider/model"`), asked once per check whether the text follows `instruction`, does not reply `PASS`; its `FAIL: <reason>` is the reason. |
+| `piiGuardrail({ types?, action?, name? })` | The text contains personal data of one of `types` (default all): `email`, `phone` (9 to 15 digits, optional `+` country code and separators), `credit-card` (must pass the Luhn check), `iban` (must pass its mod-97 check), `us-ssn` (`123-45-6789` form), `ip-address` (IPv4). Blocks by default; `action: 'rewrite'` replaces each match with `[<type>]`, e.g. `[email]`. Heuristic, no model call. |
+| `secretsGuardrail({ action?, extraPatterns?, name? })` | The text contains a private key, an Anthropic (`sk-ant-`), OpenRouter (`sk-or-v1-`), OpenAI (`sk-proj-`, `sk-`), AWS (`AKIA`), GitHub (`ghp_` and the other `gh?_` prefixes, `github_pat_`), Slack (`xoxb-` and the like), Google (`AIza`) or Stripe live (`sk_live_`, `rk_live_`) key, a JWT, an `Authorization: Bearer` token, or a match of `extraPatterns`. Rewrites each match to `[secret]` by default; `action: 'block'` blocks. Heuristic, no model call. |
+| `promptInjectionGuardrail({ model?, name? })` | The text has a prompt-injection signal: "ignore (all) previous instructions" and similar, "you are now", a request for the system prompt, a chat-template role marker (`<\|im_start\|>`, `### System:`, `[INST]`), a known jailbreak phrase, or invisible Unicode tag characters (U+E0000 to U+E007F). With `model`, a text the patterns pass is also sent to the model, which must reply `SAFE` or `INJECTION: <reason>`. Blocks only. |
+| `moderationGuardrail({ model, categories?, name? })` | `model`, asked once per check with a fixed prompt, lists one of `categories` (default all: `hate`, `harassment`, `self-harm`, `sexual`, `sexual-minors`, `violence`, `illicit`) as applying; it replies `NONE` or the categories. A prompt rather than a vendor moderation endpoint, so it works with every provider. Blocks only. |
+
+The last four are a starter set for checks most production agents need:
+
+```ts
+import { createAgent, piiGuardrail, promptInjectionGuardrail, secretsGuardrail } from '@lousho/build-ai-agent';
+
+const agent = createAgent({
+  provider,
+  guardrails: {
+    input: [promptInjectionGuardrail(), piiGuardrail({ action: 'rewrite' })],
+    output: [secretsGuardrail()],
+  },
+});
+
+const result = await agent.send('My card is 4111 1111 1111 1111, can you check my order?');
+// The model sees "My card is [credit-card], can you check my order?"
+if (result.guardrail?.info?.category === 'prompt-injection') console.warn(result.guardrail.info.signals);
+```
+
+**What tripped, without the text.** A trip (`result.guardrail`, `guardrail.tripped`,
+`guardrail.rewrote`, `GuardrailError.guardrail`) carries `info`, a
+`GuardrailTripInfo` when the guardrail gives one, which the starter set always
+does: `{ category: 'pii', matches: [{ type, start, end }] }`,
+`{ category: 'secret', matches: [{ label, start, end }] }`,
+`{ category: 'prompt-injection', source: 'heuristic' | 'model', signals }` or
+`{ category: 'moderation', categories }`. Offsets point into the checked text
+(`ctx.text`). `info` never contains the matched text, and neither does the
+`reason` of the PII and secret checks (types and labels only), so events,
+traces and logs do not copy the personal data or the secret. Your own
+guardrail can return `info: { category: 'custom', ...anything }`.
+
+**Limits.** The PII, secret and prompt-injection checks are heuristic pattern
+checks: they catch the common forms listed above and miss others (personal data
+in other formats or languages, a secret with an unknown prefix, an injection
+that is paraphrased, translated or encoded), and they flag some harmless text
+too (an order number that looks like a phone number, a version string that
+looks like an IP address, a user asking about "system prompts"). Treat them as
+a first filter, not a security boundary; keep tool permissions and approvals in
+place for anything that matters. The model-backed checks are only as reliable
+as the model, cost one call per checked text, and fail closed: a reply that is
+neither form blocks, with a reason saying the reply could not be read. Tool
+results (for example a fetched web page carrying an indirect injection) are not
+checked by any guardrail yet.
 
 ## Patch guardrails
 
@@ -9761,8 +9899,8 @@ The event types and their extra fields:
 | `input.queued`       | `id: string`, `text: string` | `run.enqueue()` took an input (`id` is `EnqueueResult.id`, `text` its user text). Can come at any point of the run, also inside a step. See [Queued input](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/queue-and-steer.md#queued-input). |
 | `input.steered`      | `id: string`, `text: string`, `mode: 'immediate' \| 'queued'` | `run.steer()` took an input (`id` is `SteerResult.id`). `mode: 'immediate'`: the in-flight model call was aborted for it, and its step ends with `step.done` `'steered'`; `'queued'`: it waits for the next safe point like `enqueue()`. See [Steering](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/queue-and-steer.md#steering). |
 | `input.applied`      | `id: string`, `step: number` | The queued (or steered) input joined the transcript, right before the model call of `step`: the `step.start` of that step follows. |
-| `guardrail.tripped`  | `name: string`, `kind: 'input' \| 'output' \| 'tool'`, `reason: string`, `toolName?: string` | An [input, output or tool guardrail](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md#input-and-output-guardrails) blocked: before the first model call (input), before the step's `text.done` (output) or after the call's `tool.start` (tool). `run.done` (`'guardrail'`) follows; with `onTripped: 'throw'`, `error` and `run.done` (`'error'`). |
-| `guardrail.rewrote`  | `name`, `kind`, `reason`, `toolName?` | A guardrail rewrote the input, the step's text (before its `text.done`, which carries the new text) or a tool call's arguments. The run continues. |
+| `guardrail.tripped`  | `name: string`, `kind: 'input' \| 'output' \| 'tool'`, `reason: string`, `toolName?: string`, `info?: GuardrailTripInfo` (what tripped: types and offsets, never the matched text; see [the starter set](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md#input-and-output-guardrails)) | An [input, output or tool guardrail](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md#input-and-output-guardrails) blocked: before the first model call (input), before the step's `text.done` (output) or after the call's `tool.start` (tool). `run.done` (`'guardrail'`) follows; with `onTripped: 'throw'`, `error` and `run.done` (`'error'`). |
+| `guardrail.rewrote`  | `name`, `kind`, `reason`, `toolName?`, `info?` | A guardrail rewrote the input, the step's text (before its `text.done`, which carries the new text) or a tool call's arguments. The run continues. |
 | `run.done`           | `finishReason: string`, `text: string`, `usage?: { promptTokens, completionTokens, totalTokens }`, `object?: unknown` | Last event of every run, exactly once, including aborted, failed and awaiting-approval runs. `finishReason` and `text` match `run.result` (`'max-steps'` when the `maxSteps` budget ran out while the model still wanted to continue); a failed run has `finishReason: 'error'`, `text: ''` and no `usage`. `object` is `run.result`'s validated `object` for an agent with an `output` schema (see [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)), absent otherwise. |
 
 Optional fields are left out when they have no value. They are never

@@ -43,6 +43,16 @@ export async function mayApprove(approvers: Approvers | undefined, user: Channel
   return pending ? Boolean(await approvers(user, { toolName: pending.toolName, input: pending.args, sessionId: ctx.sessionId(sessionKey) })) : false;
 }
 
+async function sha256(text: string): Promise<Uint8Array> {
+  return new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
+}
+
+/** Whether two secrets are equal, in constant time: both are hashed (so the lengths match), then the digests are XOR-compared. Web Crypto only. */
+export async function secretsEqual(a: string, b: string): Promise<boolean> {
+  const [x, y] = await Promise.all([sha256(a), sha256(b)]);
+  return x.reduce((diff, byte, index) => diff | (byte ^ y[index]), 0) === 0;
+}
+
 /** Hands `error` to `onError`, or logs it (channel, stage, session, SDK error code; never a token). Never throws. */
 export async function reportChannelError(onError: ChannelErrorHandler | undefined, error: unknown, context: ChannelErrorContext): Promise<void> {
   try {

@@ -15,7 +15,18 @@ export * from './semconv';
 export * from './logger';
 export * from './guardrails';
 export { GuardrailError, maxLengthGuardrail, regexGuardrail, denyTopicsGuardrail, llmJudgeGuardrail } from './ioGuardrails';
-export type { AgentGuardrails, GuardrailTrip, IoGuardrail, IoGuardrailContext, IoGuardrailKind, IoGuardrailResult } from './ioGuardrails';
+export type {
+  AgentGuardrails,
+  GuardrailTrip,
+  GuardrailTripInfo,
+  IoGuardrail,
+  IoGuardrailContext,
+  IoGuardrailKind,
+  IoGuardrailResult,
+  ModerationCategory,
+  PiiType,
+} from './ioGuardrails';
+export { piiGuardrail, secretsGuardrail, promptInjectionGuardrail, moderationGuardrail } from './guardrailStarterSet';
 export * from './hooks';
 export { ToolArgumentsValidationError } from './toolArgsValidation';
 export type { ToolArgumentIssue } from './toolArgsValidation';
