@@ -8,9 +8,9 @@
  * transcript). From the parent run it inherits, unless the child sets its
  * own: the abort signal, the trace exporter and span parent, the hooks
  * (tagged with `ctx.subagent`), the approval store (a paused child pauses the
- * parent), `toolConcurrency`, the sandbox and content-capture settings, and
- * the run's event listeners (events tagged with `event.subagent`). Its token
- * usage is added to the parent's.
+ * parent), `toolConcurrency`, the sandbox and content-capture settings, the
+ * run's principal (N10b) and the run's event listeners (events tagged with
+ * `event.subagent`). Its token usage is added to the parent's.
  */
 
 import type { LLMProvider, Message, ReasoningOption } from '../providers';
@@ -99,6 +99,8 @@ export async function runSubagent(
         await resume.run(resume.decision, capture.store, spec.toolRegistry ?? new ToolRegistry(), spec.provider, {
           ...options,
           currentAgent: spec.agent,
+          // N10b: who decided, for the sub-agent's approved call.
+          ...(resume.approver && { approver: resume.approver }),
         })
       : await run({
           ...options,
@@ -190,6 +192,8 @@ function childOptions(
     permissionMode: inheritPermissionMode(runtime.permissionMode, spec.permissionMode),
     // M10c: a paused child (and its own children) resumes under the top-level run's drift mode.
     onAgentDrift: runtime.onAgentDrift,
+    // N10b: an in-process child acts for the lead's caller (a remote sub-agent is never told who it is).
+    principal: runtime.principal,
     guardrails: inheritGuardrails(runtime.guardrails, spec.guardrails),
     reasoning: spec.reasoning,
     output: spec.output,

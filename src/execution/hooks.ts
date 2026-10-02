@@ -46,6 +46,7 @@
 import { GenerateOptions, GenerateResult, Message, ToolCall } from '../providers';
 import type { AgentEventPayload } from './agentEvents';
 import { instanceOfBranded } from '../utils/brand';
+import type { Principal } from '../auth/types';
 
 const HOOK_REGISTRY_BRAND = Symbol.for('lousho.HookRegistry');
 
@@ -114,6 +115,8 @@ export interface ToolCallHookContext extends HookContext {
   args: Record<string, unknown>;
   /** The raw ToolCall as returned by the LLM provider. */
   toolCall: ToolCall;
+  /** N10b: who the run acts for (docs/auth.md), frozen; absent for a run without one. */
+  principal?: Readonly<Principal>;
 }
 
 /** Result payload passed (mutable) to `AgentHook.postToolCall`. */

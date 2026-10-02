@@ -34,6 +34,8 @@ import type { RunUsage } from '../models/usage';
 import { emptyRunUsage, mergeDelegatedUsage, restoreRunUsage } from './runUsage';
 import { planModeRefusal } from './permissions';
 import { resumeSubagentCall, type ResumeContext } from './resumeSubagent';
+import type { Principal } from '../auth/types';
+import { readonlyPrincipal } from './runPrincipal';
 
 /**
  * Options passed through to the underlying AgentExecutor.execute() call
@@ -84,6 +86,13 @@ export type ResumeExecuteOptions = Omit<
    * default model. `createAgent()` passes its own.
    */
   currentAgent?: AgentConfig;
+  /**
+   * N10b: who decides (route auth's principal, a channel's clicking user).
+   * The approved tool sees it as `ctx.approval.by`. It never becomes the
+   * run's principal: the resumed run acts for the principal it paused with
+   * (`snapshot.principal`), and `principal` here is ignored.
+   */
+  approver?: Principal;
 };
 
 /**
@@ -137,7 +146,7 @@ async function resumeObserved(
   approvalStore: ApprovalStore,
   toolRegistry: ToolRegistry,
   provider: LLMProvider,
-  executeOptions: ResumeExecuteOptions,
+  observed: ResumeExecuteOptions,
   checkpointStore?: CheckpointStore
 ): Promise<ExecutionResult> {
   const record = await approvalStore.resolve(decision.id);
@@ -146,6 +155,9 @@ async function resumeObserved(
   }
 
   const { pending, snapshot } = record;
+  // N10b: the run goes on as the caller that paused it, whoever resumes it (an old snapshot: no principal).
+  const { approver, ...rest } = observed;
+  const executeOptions: ResumeExecuteOptions = { ...rest, principal: readonlyPrincipal(snapshot.principal) };
   const messages: Message[] = [...snapshot.currentMessages];
   const drift = await checkApprovalDrift(record, decision, { approvalStore, toolRegistry, provider, executeOptions });
 
@@ -162,6 +174,7 @@ async function resumeObserved(
     usage: snapshot.usage ? restoreRunUsage(snapshot.usage) : emptyRunUsage(),
     execute: (options) => AgentExecutor.execute(options),
     resumeRun: resumeAfterApproval,
+    approver: readonlyPrincipal(approver),
   };
   let step: Awaited<ReturnType<typeof decidedToolMessage>>;
   try {
@@ -365,7 +378,8 @@ async function decidedToolMessage(
   }
   // N4: a call approved before a switch to plan mode does not run in plan mode.
   const { toolName, toolCallId, args } = pending;
-  const planned = planModeRefusal(executeOptions, ctx.toolRegistry.get(toolName), { toolName, toolCallId, sessionId: ctx.snapshot.sessionId, args });
+  const { principal } = executeOptions;
+  const planned = planModeRefusal(executeOptions, ctx.toolRegistry.get(toolName), { toolName, toolCallId, sessionId: ctx.snapshot.sessionId, ...(principal && { principal }), args });
   if (planned) {
     const error = `Tool '${toolName}' was denied by plan mode: ${planned}`;
     return { message: toolResultMessage(pending, toolErrorResult({ toolName, error, kind: 'denied', details: { reason: planned } }), true) };
@@ -377,8 +391,8 @@ async function decidedToolMessage(
     onDelegatedUsage: (child) => mergeDelegatedUsage(ctx.usage, child),
     execute: ctx.execute,
   };
-  // LOU-X9: the tool sees the decision's note (an `ask_question` answer) as `ctx.approval`.
-  const message = await runApproved(pending, ctx.toolRegistry, scope, { note: ctx.decision.note });
+  // LOU-X9: the tool sees the decision's note (an `ask_question` answer) as `ctx.approval`; N10b: and who decided as `by`.
+  const message = await runApproved(pending, ctx.toolRegistry, scope, { note: ctx.decision.note, ...(ctx.approver && { by: ctx.approver }) });
   // LOU-X8: the transcript remembers the approval, for `once()`.
   return { message: { ...message, metadata: { ...message.metadata, ...approvalMarker(pending.args) } } };
 }
@@ -458,6 +472,7 @@ async function markAwaitingApproval(
     approvalId: paused.approvalId,
     agentFingerprint: snapshot.agentFingerprint,
     runConfig: snapshot.agent.metadata?.[RUN_CONFIG_KEY],
+    ...(snapshot.principal && { principal: snapshot.principal }),
   });
 }
 
@@ -549,6 +564,7 @@ async function runApprovedToolCall(
     agentId: snapshot.agent.id,
     agentName: snapshot.agent.name,
     sessionId: snapshot.sessionId,
+    ...(executeOptions.principal && { principal: executeOptions.principal }),
     messages,
     toolCallId: pending.toolCallId,
     toolName: pending.toolName,
@@ -637,7 +653,7 @@ async function executeApprovedTool(
         args,
         sandbox,
         executeOptions.signal,
-        { toolCallId: pending.toolCallId, messages, approval, sessionId },
+        { toolCallId: pending.toolCallId, messages, approval, sessionId, principal: executeOptions.principal },
         scope
       ),
     };

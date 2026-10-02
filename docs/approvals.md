@@ -135,8 +135,10 @@ before the sub-agent's own, and report their decisions to the lead's
 ## Approve, deny or ask
 
 A `needsApproval` function may return more than a boolean. It gets the
-validated arguments and `{ toolName, toolCallId, sessionId, messages }`, and
-returns (or resolves to):
+validated arguments and `{ toolName, toolCallId, sessionId, messages, principal }`
+(`principal`: who the run acts for, see
+[Principals in tools and approvals](./auth.md#principals-in-tools-and-approvals)),
+and returns (or resolves to):
 
 - `'ask'` or `true`: pause for approval, as before.
 - `'approve'` or `false`: run the call.
@@ -240,6 +242,9 @@ should run on the paused run too, so the human approves the redacted input.
 Pass `approve` to decide each call as it comes up instead of pausing: `true`
 runs the tool, `false` sends the model a rejection. It applies to `send()`,
 sessions and `agent.approvals.resolve()`; `stream()` still ends at the pause.
+Its argument's `principal` is whose call it is, and
+`agent.approvals.resolve(decision, { principal })` records who decided as the
+tool's `ctx.approval.by` (see [auth](./auth.md#who-approved)).
 
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
