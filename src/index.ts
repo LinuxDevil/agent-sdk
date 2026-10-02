@@ -54,6 +54,7 @@ export * from './createAgent';
 export type { AgentApprovals, ApproveToolCall } from './createAgentApprovals';
 // One store for sessions, checkpoints and approvals: createAgent({ store }) (LOU-D30)
 export { memoryStore, type AgentStore, type MemoryStoreOptions } from './storage/agentStore';
+export { fileStore, type FileStoreOptions } from './storage/fileStore';
 
 // Sessions: multi-turn conversations for createAgent() (LOU-W4)
 export * from './session';
