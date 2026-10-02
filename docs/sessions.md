@@ -40,7 +40,7 @@ while a turn is running or waiting to start:
 
 - `'wait'` (the default): it waits and runs as its own turn, as above.
 - `'queue'`: its input joins that turn, like
-  [`run.enqueue()`](./streaming.md#queued-input): it is added after the
+  [`run.enqueue()`](./queue-and-steer.md#queued-input): it is added after the
   current step's tool results and the turn's next model call sees it. The call
   resolves with that turn's result (its own `signal` does not apply to the
   turn), and the transcript saved when the turn ends holds the queued user
@@ -51,7 +51,7 @@ while a turn is running or waiting to start:
   all. If the turn fails, the call rejects with the same error; in a durable
   session the input stays in the turn's checkpoint and `resume()` applies it.
 - `'steer'`: like `'queue'`, but the input joins through
-  [`run.steer()`](./streaming.md#steering): if the turn's model call has not
+  [`run.steer()`](./queue-and-steer.md#steering): if the turn's model call has not
   emitted anything yet, it is aborted and made again with the new message, and
   tool calls of the turn that have not started are not run. Otherwise it waits
   for the next safe point, as with `'queue'`. The call resolves with the

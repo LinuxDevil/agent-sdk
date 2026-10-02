@@ -120,7 +120,7 @@ approval store and provider, so deciding the pause needs only the approval id.
 | `signal` | `agent.send(message, { signal })`. |
 | `maxSteps`, `limits`, `guardrails`, `toolConcurrency`, `onAgentDrift`, `reasoning`, `output` | The same names on `createAgent()`; `reasoning` can also be set per `send()`. |
 | `skills`, `subagents` | The same names on `createAgent()`, which also takes `mcpServers` and `memory`. |
-| `inputQueue` | `run.enqueue()` on a streamed run, or `agent.session({ turnPolicy })`; see [Queued input](./streaming.md#queued-input). |
+| `inputQueue` | `run.enqueue()` on a streamed run, or `agent.session({ turnPolicy })`; see [Queued input](./queue-and-steer.md#queued-input). |
 | `sessionBudget` | `agent.session({ id, limits })`; see [Sessions](./sessions.md). |
 | `createDelegateTool()` | `subagents`; see [Sub-agents](./sub-agents.md). |
 | `AgentType`, `setType()` | Nothing to move: the type has no effect. |
