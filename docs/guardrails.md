@@ -21,10 +21,10 @@ three points, each list in order:
 A guardrail is `{ name, check(ctx) }`. `ctx` has `kind` (`'input'`, `'output'`
 or `'tool'`), `text`, the run's `messages`, `toolName` and `args` for a tool
 call, and the run's `signal`. `check` returns (or resolves to) `{ ok: true }`
-or `{ ok: false, reason, action?, replacement? }`:
+or `{ ok: false, reason, action?, replacement?, info? }`:
 
 - `action: 'block'` (the default) ends the run with `finishReason: 'guardrail'`
-  and `result.guardrail` (`{ name, kind, reason, toolName? }`). `result.text`
+  and `result.guardrail` (`{ name, kind, reason, toolName?, info? }`). `result.text`
   is `''` and a blocked reply is not added to the transcript; a blocked tool
   call does not run (nor do the calls after it in that turn) and gets a
   "cancelled" result, so the transcript stays valid. `stream()` emits
@@ -85,6 +85,53 @@ try {
 | `regexGuardrail({ name, pattern?, action?, replacement? })` | The text matches `pattern` (a `RegExp` or a list; default: the `secretScanGuardrail` patterns). With `action: 'rewrite'` every match becomes `replacement` (default `'[redacted]'`). |
 | `denyTopicsGuardrail({ topics })` | The text contains one of `topics` (case-insensitive keywords). |
 | `llmJudgeGuardrail({ model, instruction, name? })` | `model` (an `LLMProvider` or `"provider/model"`), asked once per check whether the text follows `instruction`, does not reply `PASS`; its `FAIL: <reason>` is the reason. |
+| `piiGuardrail({ types?, action?, name? })` | The text contains personal data of one of `types` (default all): `email`, `phone` (9 to 15 digits, optional `+` country code and separators), `credit-card` (must pass the Luhn check), `iban` (must pass its mod-97 check), `us-ssn` (`123-45-6789` form), `ip-address` (IPv4). Blocks by default; `action: 'rewrite'` replaces each match with `[<type>]`, e.g. `[email]`. Heuristic, no model call. |
+| `secretsGuardrail({ action?, extraPatterns?, name? })` | The text contains a private key, an Anthropic (`sk-ant-`), OpenRouter (`sk-or-v1-`), OpenAI (`sk-proj-`, `sk-`), AWS (`AKIA`), GitHub (`ghp_` and the other `gh?_` prefixes, `github_pat_`), Slack (`xoxb-` and the like), Google (`AIza`) or Stripe live (`sk_live_`, `rk_live_`) key, a JWT, an `Authorization: Bearer` token, or a match of `extraPatterns`. Rewrites each match to `[secret]` by default; `action: 'block'` blocks. Heuristic, no model call. |
+| `promptInjectionGuardrail({ model?, name? })` | The text has a prompt-injection signal: "ignore (all) previous instructions" and similar, "you are now", a request for the system prompt, a chat-template role marker (`<\|im_start\|>`, `### System:`, `[INST]`), a known jailbreak phrase, or invisible Unicode tag characters (U+E0000 to U+E007F). With `model`, a text the patterns pass is also sent to the model, which must reply `SAFE` or `INJECTION: <reason>`. Blocks only. |
+| `moderationGuardrail({ model, categories?, name? })` | `model`, asked once per check with a fixed prompt, lists one of `categories` (default all: `hate`, `harassment`, `self-harm`, `sexual`, `sexual-minors`, `violence`, `illicit`) as applying; it replies `NONE` or the categories. A prompt rather than a vendor moderation endpoint, so it works with every provider. Blocks only. |
+
+The last four are a starter set for checks most production agents need:
+
+```ts
+import { createAgent, piiGuardrail, promptInjectionGuardrail, secretsGuardrail } from '@lousho/build-ai-agent';
+
+const agent = createAgent({
+  provider,
+  guardrails: {
+    input: [promptInjectionGuardrail(), piiGuardrail({ action: 'rewrite' })],
+    output: [secretsGuardrail()],
+  },
+});
+
+const result = await agent.send('My card is 4111 1111 1111 1111, can you check my order?');
+// The model sees "My card is [credit-card], can you check my order?"
+if (result.guardrail?.info?.category === 'prompt-injection') console.warn(result.guardrail.info.signals);
+```
+
+**What tripped, without the text.** A trip (`result.guardrail`, `guardrail.tripped`,
+`guardrail.rewrote`, `GuardrailError.guardrail`) carries `info`, a
+`GuardrailTripInfo` when the guardrail gives one, which the starter set always
+does: `{ category: 'pii', matches: [{ type, start, end }] }`,
+`{ category: 'secret', matches: [{ label, start, end }] }`,
+`{ category: 'prompt-injection', source: 'heuristic' | 'model', signals }` or
+`{ category: 'moderation', categories }`. Offsets point into the checked text
+(`ctx.text`). `info` never contains the matched text, and neither does the
+`reason` of the PII and secret checks (types and labels only), so events,
+traces and logs do not copy the personal data or the secret. Your own
+guardrail can return `info: { category: 'custom', ...anything }`.
+
+**Limits.** The PII, secret and prompt-injection checks are heuristic pattern
+checks: they catch the common forms listed above and miss others (personal data
+in other formats or languages, a secret with an unknown prefix, an injection
+that is paraphrased, translated or encoded), and they flag some harmless text
+too (an order number that looks like a phone number, a version string that
+looks like an IP address, a user asking about "system prompts"). Treat them as
+a first filter, not a security boundary; keep tool permissions and approvals in
+place for anything that matters. The model-backed checks are only as reliable
+as the model, cost one call per checked text, and fail closed: a reply that is
+neither form blocks, with a reason saying the reply could not be read. Tool
+results (for example a fetched web page carrying an indirect injection) are not
+checked by any guardrail yet.
 
 ## Patch guardrails
 

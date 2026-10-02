@@ -3,11 +3,22 @@
  * names, each one's options, and the entry's validation.
  */
 import { z } from 'zod';
+import { MODERATION_CATEGORIES, PII_TYPES } from '../execution/guardrailStarterSet';
 import { closestMatch } from '../utils/closestMatch';
 import { anyError, issueMessage } from '../utils/zodCompat';
 
 /** The built-in guardrails `policy.guardrails` can name (LOU-X5); see `compilePolicy()`. */
-export const SPEC_GUARDRAIL_NAMES = ['max-length', 'secret-scan', 'regex', 'deny-topics', 'llm-judge'] as const;
+export const SPEC_GUARDRAIL_NAMES = [
+  'max-length',
+  'secret-scan',
+  'regex',
+  'deny-topics',
+  'llm-judge',
+  'pii',
+  'secrets',
+  'prompt-injection',
+  'moderation',
+] as const;
 export type SpecGuardrailName = (typeof SPEC_GUARDRAIL_NAMES)[number];
 
 /** A `policy.guardrails` entry: a built-in's name, or `{ name, ...options }`. `on` picks the checked text (default input and output). */
@@ -17,7 +28,8 @@ const POLICY = 'AgentSpec validation failed:';
 
 const guardrailTargets = z.enum(['input', 'output', 'tools']);
 const guardrailBase = { on: z.union([guardrailTargets, z.array(guardrailTargets).min(1)]).optional() };
-const rewriteOptions = { action: z.enum(['block', 'rewrite']).optional(), replacement: z.string().optional() };
+const blockOrRewrite = z.enum(['block', 'rewrite']).optional();
+const rewriteOptions = { action: blockOrRewrite, replacement: z.string().optional() };
 
 function regexCompiles(pattern: string, flags?: string): boolean {
   try {
@@ -38,6 +50,17 @@ export const GUARDRAIL_OPTIONS = {
   'deny-topics': z.object({ ...guardrailBase, topics: z.array(z.string().min(1)).min(1) }).strict(),
   'llm-judge': z
     .object({ ...guardrailBase, model: z.string().min(1), instruction: z.string().min(1).optional() })
+    .strict(),
+  pii: z.object({ ...guardrailBase, action: blockOrRewrite, types: z.array(z.enum(PII_TYPES)).min(1).optional() }).strict(),
+  secrets: z
+    .object({ ...guardrailBase, action: blockOrRewrite, extraPatterns: z.array(z.string().min(1)).optional() })
+    .strict()
+    .refine(({ extraPatterns = [] }) => extraPatterns.every((pattern) => regexCompiles(pattern)), {
+      message: 'extraPatterns has an invalid regular expression',
+    }),
+  'prompt-injection': z.object({ ...guardrailBase, model: z.string().min(1).optional() }).strict(),
+  moderation: z
+    .object({ ...guardrailBase, model: z.string().min(1), categories: z.array(z.enum(MODERATION_CATEGORIES)).min(1).optional() })
     .strict(),
 } satisfies Record<SpecGuardrailName, z.ZodTypeAny>;
 
