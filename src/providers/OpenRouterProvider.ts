@@ -21,8 +21,8 @@ export interface OpenRouterProviderConfig extends AiSdkProviderConfig {
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1';
 
-/** One entry of OpenRouter's GET /models catalog (only the fields read here). */
-interface OpenRouterModel {
+/** One entry of OpenRouter's GET /models catalog: its `id`, plus the other fields as sent (pricing, context length, ...). */
+export interface OpenRouterModel {
   id: string;
   [key: string]: unknown;
 }
