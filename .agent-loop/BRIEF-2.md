@@ -59,6 +59,11 @@ Known local problems, not regressions: a native vitest crash on Node 26 / Window
   curl -s https://openrouter.ai/api/v1/key -H "Authorization: Bearer $OPENROUTER_API_KEY"
   ```
   The response has `data.usage` (USD spent so far) and `data.limit_remaining`. Put "Live test spend: before X, after Y" in the pull request. If `limit_remaining` is under 1.00, do not make live calls; report it.
+- **Check the account balance too.** The key's counter does not show when the account itself is out of credit (found on 2026-10-02: `total_usage` above `total_credits`, calls fail with HTTP 402):
+  ```bash
+  curl -s https://openrouter.ai/api/v1/credits -H "Authorization: Bearer $OPENROUTER_API_KEY"
+  ```
+  If `total_usage` is at or above `total_credits`, or a call returns 402, **do not hold your pull request**: finish and verify the offline work, leave out any test that needs a cassette you could not record, merge, and add a checklist line for the skipped live step to issue #260 (`gh issue comment 260` with the ticket id, what to run, the cassette to record and the cap). Say so in your report.
 - **Record once, replay forever.** When a live call proves something worth keeping, record it with `recordReplay` (or `lousho eval --record`) and commit the cassette so CI replays it for free.
 - A live test in the repository must skip itself when `OPENROUTER_API_KEY` is not set (`it.skipIf(!process.env.OPENROUTER_API_KEY)`), and must not be in the default `npm test` path if it costs money on every run.
 - The owner removes the key after each phase. A 401 means the phase is over: stop live testing and say so.
