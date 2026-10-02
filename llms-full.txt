@@ -207,6 +207,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md) | `lousho add`: copy a tool, skill, channel, schedule or memory slot from a static JSON registry |
 | [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md) | The visual dashboard: quickstart, first-agent walkthrough, hooks |
 | [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md) | Every error code (`LOUSHO_*`): what it means, how to fix it, an example |
+| [Troubleshooting](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/troubleshooting.md) | Start from the symptom: setup, runs that end without an answer, tools, providers, sandbox and MCP; cause, fix, link |
 | [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md) | The main exports, triggers, tokens and cost; `npm run docs:build` generates the full TypeDoc reference |
 | [Utilities](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/utilities.md) | Encryption, hashing and file storage |
 | [The executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md) | `AgentBuilder` and `AgentExecutor`: the lower-level options `createAgent()` does not take |
@@ -515,6 +516,8 @@ What it checks:
 The exit code is `1` if any check fails and `0` otherwise (warnings do not
 fail), so it can gate CI. Add `--json` for machine-readable output. Colour is
 used only when stdout is a terminal and `NO_COLOR` is unset.
+
+For problems that are not about installing, see [Troubleshooting](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/troubleshooting.md).
 
 Next: [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md).
 
@@ -4858,29 +4861,12 @@ package root.
 
 Source: docs/durable-execution.md
 
-Pass a `sessionId` and a `checkpointStore` to `AgentExecutor.execute()` and
-the run survives a crash, a restart, an abort or a human approval that takes
+Give `createAgent()` a `store` and pass a `sessionId` to `send()`, and the
+run survives a crash, a restart, an abort or a human approval that takes
 days. Nothing here depends on a particular host: any `CheckpointStore`
-(`LocalStorageCheckpointStore` on Node, the Cloudflare KV store the
+(`memoryStore()`, `SqliteStore`, the Cloudflare KV store the
 `cloudflare-worker` build wires up, or your own three-method implementation)
 and any `ApprovalStore` work the same way.
-
-```ts
-import { AgentExecutor, LocalStorageCheckpointStore } from '@lousho/build-ai-agent';
-
-const checkpoints = new LocalStorageCheckpointStore(storage);
-
-// First message of a conversation.
-await AgentExecutor.execute({ agent, input: 'Book a table for 2 tonight', provider, sessionId: 'chat-42', checkpointStore: checkpoints });
-
-// Later - same process or another one - the next message of the same conversation.
-await AgentExecutor.execute({ agent, input: 'Make it 3 people', provider, sessionId: 'chat-42', checkpointStore: checkpoints });
-```
-
-With `createAgent()`, one `store` option does the wiring: pass a `sessionId` to
-`send()` (or `stream()`) and the run is checkpointed in `store.checkpoints`;
-after a crash, `agent.resume(sessionId)` finishes it (and returns `null` when
-nothing is pending). No `AgentExecutor` needed:
 
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
@@ -4888,20 +4874,34 @@ import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
 
 const agent = createAgent({ provider, store: new SqliteStore('./.lousho/jobs.db') });
 
-const finished = await agent.resume('job-1'); // the interrupted run, if any
-const next = await agent.send('Now write a summary', { sessionId: 'job-1' }); // continues the same run's conversation
+// First message of a conversation.
+await agent.send('Book a table for 2 tonight', { sessionId: 'chat-42' });
+
+// Later - same process or another one - the next message of the same conversation.
+await agent.send('Make it 3 people', { sessionId: 'chat-42' });
+
+// After a crash: finish the interrupted run, if there is one (`null` when nothing is pending).
+const finished = await agent.resume('chat-42');
 ```
 
-`store.approvals` holds approval pauses, and `agent.approvals.resolve()`
-keeps checkpointing the run under its `sessionId`. Sessions are checkpointed
+The `store` option does the wiring: `store.checkpoints` holds the run's
+checkpoints and `store.approvals` holds approval pauses, and
+`agent.approvals.resolve()` keeps checkpointing the run under its
+`sessionId`. `stream()` takes a `sessionId` too. Sessions are checkpointed
 too: `agent.session({ id })` checkpoints every turn and `agent.resume(id)` (or
 `session.resume()`) finishes an interrupted one - see
 [Durable sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#durable-sessions).
 
+Underneath, `createAgent()` runs `AgentExecutor.execute()` with a
+`sessionId` and a `checkpointStore`; the behavior described below is the
+executor's, and the [advanced section](#advanced-the-executor-api) shows the
+executor calls.
+
 ## What is checkpointed, and when
 
 A checkpoint is the run's whole transcript plus its step count, usage,
-`businessState` and a `status`. It is written under the `sessionId`:
+`businessState` and a `status`. `send()` (and `stream()`) write it under the
+`sessionId`:
 
 | Moment | `status` |
 | ------ | -------- |
@@ -4915,17 +4915,19 @@ A run that rejects (a provider error, a throwing hook, a
 `PropagatingToolError`, a process crash) keeps its last `'in-progress'`
 checkpoint.
 
-## What happens when you call `execute()` again with the same `sessionId`
+## What happens when you send again with the same `sessionId`
 
-It depends on the stored `status`:
+Calling `send()` again with the same `sessionId` (or `execute()`, on the
+executor) depends on the stored `status`:
 
 - **Unfinished run** (`'in-progress'`: it crashed, was aborted, or a store
-  write failed). The run resumes. If its last model turn has tool calls
+  write failed). The run resumes (`agent.resume(sessionId)` does the same
+  without new input). If its last model turn has tool calls
   without a result, exactly those calls run first, through the normal tool
   path (argument validation, hooks, `needsApproval`, `toolConcurrency`),
   **without calling the model again**. Then the loop continues, with the
   remaining `maxSteps` budget; `usage` continues from the checkpointed
-  totals (the same holds for `resumeAfterApproval()`, from the snapshot).
+  totals (the same holds after `agent.approvals.resolve()`, from the snapshot).
   - New `input` is appended as a user message after those tool results.
     It is never placed between a tool-call turn and its results, so the
     transcript stays valid for every provider. This is what lets a user
@@ -4939,24 +4941,26 @@ It depends on the stored `status`:
   new messages, the history is recognised and not duplicated. `steps`,
   `usage` and `toolCalls` on the result count from zero for the new run;
   `messages` is the whole conversation.
-- **Paused awaiting approval** (`'awaiting-approval'`). `execute()` throws
+- **Paused awaiting approval** (`'awaiting-approval'`). `send()` throws
   `SessionAwaitingApprovalError` (with `sessionId` and `approvalId`) and
   does not call the model or any tool: new input must not bypass a pending
-  decision. Resolve it with `resumeAfterApproval()` first, passing the same
-  `checkpointStore`, then send the new message.
+  decision. Resolve it with `agent.approvals.resolve()` first, then send the
+  new message.
 
 System messages in `input` are ignored when it is added to a stored
 session (the session already has its system prompt). To end a session and
-start over under the same id, call `checkpointStore.delete(sessionId)`.
+start over under the same id, call `store.checkpoints.delete(sessionId)`.
 
 ```ts
-import { AgentExecutor, SessionAwaitingApprovalError } from '@lousho/build-ai-agent';
+import { createAgent, memoryStore, SessionAwaitingApprovalError } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ provider, store: memoryStore() });
 
 try {
-  await AgentExecutor.execute({ agent, input: 'Are you done?', provider, sessionId: 'chat-42', checkpointStore });
+  await agent.send('Are you done?', { sessionId: 'chat-42' });
 } catch (error) {
   if (error instanceof SessionAwaitingApprovalError) {
-    console.log(`Waiting on approval ${error.approvalId} - resolve it with resumeAfterApproval() first.`);
+    console.log(`Waiting on approval ${error.approvalId} - resolve it with agent.approvals.resolve() first.`);
   }
 }
 ```
@@ -4966,7 +4970,7 @@ try {
 When one model turn asks for several tools and one of them needs approval,
 the calls before it run and are recorded, and the run pauses on it. The
 approval snapshot records the calls after it (`remainingToolCalls`).
-`resumeAfterApproval()` then:
+`agent.approvals.resolve()` (`resumeAfterApproval()` on the executor) then:
 
 1. records the paused call's result - the tool's result if approved, or a
    structured `{ error, note }` rejection result if rejected;
@@ -4976,22 +4980,15 @@ approval snapshot records the calls after it (`remainingToolCalls`).
 3. calls the model once every call of the turn has exactly one result.
 
 ```ts
-import { AgentExecutor, resumeAfterApproval } from '@lousho/build-ai-agent';
+import { createAgent, memoryStore } from '@lousho/build-ai-agent';
 
-const paused = await AgentExecutor.execute({
-  agent, input, provider, toolRegistry, approvalStore, sessionId: 'chat-42', checkpointStore,
-});
+const agent = createAgent({ provider, store: memoryStore() });
+
+const paused = await agent.send('Email the whole team', { sessionId: 'chat-42' });
 
 if (paused.finishReason === 'awaiting-approval') {
-  // ...a human decides, possibly days later, in another process...
-  const result = await resumeAfterApproval(
-    { id: paused.approvalId!, approved: true },
-    approvalStore,
-    toolRegistry,
-    provider,
-    {},
-    checkpointStore, // clears the 'awaiting-approval' mark and keeps checkpointing
-  );
+  // ...a human decides, possibly days later, in another process (same store)...
+  const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
   console.log(result.finishReason); // 'stop', or 'awaiting-approval' again for the next gated call
 }
 ```
@@ -5111,47 +5108,34 @@ await checkpoints.delete('chat-42', { keepHistory: true });
 
 ## Fork and replay
 
-`AgentExecutor.fork()` starts a new session from a step of another session's
-history: "what if the tool had returned something else at step 1?" It takes the
-newest history entry of `fromStep`, applies `patch`, saves the result as the
-`'in-progress'` checkpoint of the new session and returns
-`{ sessionId, step, checkpoint }`. Resume the fork like any unfinished run:
+`agent.fork(sessionId, { fromStep, patch? })` starts a new session from a step
+of another session's history: "what if the tool had returned something else
+at step 1?" It takes the newest history entry of `fromStep`, applies `patch`,
+saves the result as the `'in-progress'` checkpoint of the new session over
+`store.checkpoints` and returns `{ sessionId, step, checkpoint }`. Resume the
+fork like any unfinished run with `agent.resume(fork.sessionId)`:
 
 ```ts
-import { AgentExecutor, compareTrajectories, memoryStore } from '@lousho/build-ai-agent';
+import { createAgent, compareTrajectories, memoryStore } from '@lousho/build-ai-agent';
 
-const { checkpoints } = memoryStore();
-await AgentExecutor.execute({ agent, provider, toolRegistry, input: 'Plan my trip', sessionId: 'trip', checkpointStore: checkpoints });
+const store = memoryStore();
+const assistant = createAgent({ provider, store });
+await assistant.send('Plan my trip', { sessionId: 'trip' });
 
-const fork = await AgentExecutor.fork({
-  sessionId: 'trip',
-  fromStep: 1,
-  checkpointStore: checkpoints,
-  patch: { toolResult: { toolCallId: 'call_weather', result: { forecast: 'rain' } } },
-});
+const fork = await assistant.fork('trip', { fromStep: 1, patch: { appendInput: 'It will rain, plan for that.' } });
 // fork.sessionId is 'trip.fork-1'; the 'trip' checkpoint and history are unchanged.
-await AgentExecutor.execute({ agent, provider, toolRegistry, input: [], sessionId: fork.sessionId, checkpointStore: checkpoints });
+const result = await assistant.resume(fork.sessionId);
 
-const original = await checkpoints.load('trip');
-const replayed = await checkpoints.load(fork.sessionId);
+const original = await store.checkpoints?.load('trip');
+const replayed = await store.checkpoints?.load(fork.sessionId);
 if (original && replayed) {
   const { divergedAt, a, b, drift } = compareTrajectories(original, replayed);
   console.log(divergedAt, a.length, b.length, drift); // 1, then each run's steps and the tool-call diff
 }
 ```
 
-With `createAgent({ store })`, `agent.fork(sessionId, { fromStep, patch? })`
-does the same over `store.checkpoints`, and `agent.resume(fork.sessionId)`
-continues the fork:
-
-```ts
-import { createAgent, memoryStore } from '@lousho/build-ai-agent';
-
-const assistant = createAgent({ provider, store: memoryStore() });
-await assistant.send('Plan my trip', { sessionId: 'trip' });
-const fork = await assistant.fork('trip', { fromStep: 1, patch: { appendInput: 'It will rain, plan for that.' } });
-const result = await assistant.resume(fork.sessionId);
-```
+`AgentExecutor.fork()` is the same operation on the executor; see the
+[advanced section](#advanced-the-executor-api).
 
 - `patch` is applied in this order: `messages(messages)` rewrites the
   transcript; `businessState` replaces it; `toolResult: { toolCallId, result }`
@@ -5232,6 +5216,93 @@ Notes:
 - A run resumed after an approval continues with the instructions it started
   with (they are in its transcript), so its later checkpoints record those.
 
+## Advanced: the executor API
+
+`createAgent()` is built on `AgentExecutor`, which stays available when you
+want to own the wiring: the provider, the `ToolRegistry`, the stores and the
+resume calls are all explicit (see [The executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md)). Each snippet below says which `createAgent()`
+call it corresponds to.
+
+`AgentExecutor.execute()` with a `sessionId` and a `checkpointStore` is
+`agent.send(message, { sessionId })`:
+
+```ts
+import { AgentExecutor, LocalStorageCheckpointStore } from '@lousho/build-ai-agent';
+
+const checkpoints = new LocalStorageCheckpointStore(storage);
+
+// First message of a conversation.
+await AgentExecutor.execute({ agent, input: 'Book a table for 2 tonight', provider, sessionId: 'chat-42', checkpointStore: checkpoints });
+
+// Later - same process or another one - the next message of the same conversation.
+await AgentExecutor.execute({ agent, input: 'Make it 3 people', provider, sessionId: 'chat-42', checkpointStore: checkpoints });
+```
+
+It throws `SessionAwaitingApprovalError` on a paused session, as `send()` does:
+
+```ts
+import { AgentExecutor, SessionAwaitingApprovalError, memoryStore } from '@lousho/build-ai-agent';
+
+const { checkpoints } = memoryStore();
+
+try {
+  await AgentExecutor.execute({ agent, input: 'Are you done?', provider, sessionId: 'chat-42', checkpointStore: checkpoints });
+} catch (error) {
+  if (error instanceof SessionAwaitingApprovalError) {
+    console.log(`Waiting on approval ${error.approvalId} - resolve it with resumeAfterApproval() first.`);
+  }
+}
+```
+
+`resumeAfterApproval()` is `agent.approvals.resolve()`:
+
+```ts
+import { AgentExecutor, resumeAfterApproval } from '@lousho/build-ai-agent';
+
+const paused = await AgentExecutor.execute({
+  agent, input, provider, toolRegistry, approvalStore, sessionId: 'chat-42', checkpointStore,
+});
+
+if (paused.finishReason === 'awaiting-approval') {
+  // ...a human decides, possibly days later, in another process...
+  const result = await resumeAfterApproval(
+    { id: paused.approvalId!, approved: true },
+    approvalStore,
+    toolRegistry,
+    provider,
+    {},
+    checkpointStore, // clears the 'awaiting-approval' mark and keeps checkpointing
+  );
+  console.log(result.finishReason); // 'stop', or 'awaiting-approval' again for the next gated call
+}
+```
+
+`AgentExecutor.fork()` is `agent.fork()`; `execute()` with `input: []` on the
+fork's `sessionId` is `agent.resume(fork.sessionId)`:
+
+```ts
+import { AgentExecutor, compareTrajectories, memoryStore } from '@lousho/build-ai-agent';
+
+const { checkpoints } = memoryStore();
+await AgentExecutor.execute({ agent, provider, toolRegistry, input: 'Plan my trip', sessionId: 'trip', checkpointStore: checkpoints });
+
+const fork = await AgentExecutor.fork({
+  sessionId: 'trip',
+  fromStep: 1,
+  checkpointStore: checkpoints,
+  patch: { toolResult: { toolCallId: 'call_weather', result: { forecast: 'rain' } } },
+});
+// fork.sessionId is 'trip.fork-1'; the 'trip' checkpoint and history are unchanged.
+await AgentExecutor.execute({ agent, provider, toolRegistry, input: [], sessionId: fork.sessionId, checkpointStore: checkpoints });
+
+const original = await checkpoints.load('trip');
+const replayed = await checkpoints.load(fork.sessionId);
+if (original && replayed) {
+  const { divergedAt, a, b, drift } = compareTrajectories(original, replayed);
+  console.log(divergedAt, a.length, b.length, drift); // 1, then each run's steps and the tool-call diff
+}
+```
+
 ## Compatibility with stored data
 
 - Checkpoints written before `status` existed are treated as
@@ -5246,11 +5317,13 @@ Notes:
 ## Limits
 
 - A `sessionId` identifies one logical conversation; running two
-  `execute()` calls on the same id at the same time is not supported.
-- If you call `resumeAfterApproval()` without the `checkpointStore`, the
-  session keeps its `'awaiting-approval'` mark and later `execute()` calls
-  keep throwing `SessionAwaitingApprovalError`; pass the store (or delete
-  the checkpoint).
+  `send()` calls (or two `execute()` calls) on the same id at the same time
+  is not supported.
+- If you call `resumeAfterApproval()` (the executor behind
+  `agent.approvals.resolve()`) without the `checkpointStore`, the session
+  keeps its `'awaiting-approval'` mark and later `send()` (or `execute()`)
+  calls keep throwing `SessionAwaitingApprovalError`; pass the store (or
+  delete the checkpoint). `agent.approvals.resolve()` passes it for you.
 - Workers KV is eventually consistent across locations - see
   [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md) for the caveat.
 
@@ -5297,6 +5370,8 @@ try {
 used in the source and the sections below in sync. A second test fails when new
 SDK code throws a plain `Error` instead of an `SDKError`; the few plain ones left
 are internal and listed in `src/utils/plainErrors.test.ts` with the reason for each.
+
+To start from a symptom instead of a code, see [Troubleshooting](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/troubleshooting.md).
 
 ## Configuration
 
@@ -10311,6 +10386,155 @@ tools.register('current_date', currentDateTool);
 Pass it as `toolRegistry` to `AgentExecutor.execute()`; the agent config's
 `tools` map names the tools it may use.
 
+# Troubleshooting
+
+Source: docs/troubleshooting.md
+
+This page starts from what you see and points to the cause, the fix and the page
+that explains it. First run `npx lousho doctor` ([what it checks](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#troubleshooting-lousho-doctor)),
+then, if you have an error code (`LOUSHO_...`), look it up in [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md).
+
+## Setup
+
+### "No model configured"
+
+- **Cause:** `createAgent()` got no `model` or `provider` and found nothing in the
+environment (`LOUSHO_CONFIG_MISSING_PROVIDER`).
+- **Fix:** pass `model: 'openai/gpt-4o-mini'` (any `<provider>/<model>`), or set `LOUSHO_MODEL` or a provider key such as `OPENAI_API_KEY`.
+- **More:** [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md), [the error](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_config_missing_provider).
+
+### "The API key is not set"
+
+- **Cause:** the provider's key variable (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`) is not in the environment of the process that runs the agent (`LOUSHO_PROVIDER_MISSING_API_KEY`).
+- **Fix:** set it, or pass a configured provider instance. `npx lousho doctor` prints `set` or `not set` for each key, never the value.
+- **More:** [the error](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_provider_missing_api_key).
+
+### "Cannot find package `@ai-sdk/openai`" or "install the optional peer"
+
+- **Cause:** each provider is backed by an optional package that is loaded on first use, in the major that pairs with your `ai` major (`LOUSHO_PEER_MISSING`). The same error covers the other optional peers, such as `dockerode` and `@modelcontextprotocol/sdk`.
+- **Fix:** run the `npm install` command in the message (it is also on `error.installCommand`), or look up your `ai` major in the pairing table.
+- **More:** [Provider packages](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#provider-packages), [Optional peers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#optional-peers), [the error](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_peer_missing).
+
+### "`ai` 5 is installed"
+
+- **Cause:** `ai` 5 is not supported. The SDK takes `ai` `^4.3.19`, `^6.0.0` or `^7.0.0`.
+- **Fix:** install one of those majors together with the provider package row that pairs with it.
+- **More:** [Install the package](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#install-the-package).
+
+### "Top-level await is only available in ES modules"
+
+- **Cause:** the quick start uses top-level `await`, so the file must be an ES module.
+- **Fix:** name the file `.mts`, or set `"type": "module"` in `package.json`.
+- **More:** [Quickstart in the README](https://github.com/LinuxDevil/agent-sdk/blob/main/README.md#quickstart).
+
+### The Node version is too old
+
+- **Cause:** the SDK needs Node.js 22.19 or newer (`engines.node`).
+- **Fix:** upgrade Node. `npx lousho doctor` compares your version with the requirement.
+- **More:** [Requirements](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#requirements).
+
+### Ollama and zod versions disagree
+
+- **Cause:** `ollama-ai-provider-v2` (the Ollama package for `ai` 6 and 7) declares zod 4 as a peer. Zod 3 does not satisfy it.
+- **Fix:** use zod 4 with `ai` 6 or 7, or use `ai@^4.3.19` with `ollama-ai-provider@^1.2.0`.
+- **More:** [Provider packages](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#provider-packages).
+
+## Runs that end without an answer
+
+### `send()` returned but `text` is empty
+
+- **Cause:** a run that stops early resolves; it does not throw. `result.finishReason` says why. These are the ones that leave `text` empty or partial:
+
+  - `'awaiting-approval'`: a tool call needs a human. Resolve it (next entry). [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md).
+  - `'max-steps'`: the `maxSteps` budget (default 10) ran out while the model still wanted to continue. Raise `maxSteps`, or simplify the task. [Finish reasons](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#finish-reasons).
+  - `'budget-exceeded'`: a `limits` budget such as `maxTokens` or `maxCostUsd` tripped; `result.budget` says which. Raise the limit. [Budgets](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#budgets).
+  - `'guardrail'`: an input, output or tool guardrail blocked the run; `result.guardrail` says which. [Guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md#input-and-output-guardrails).
+  - `'output-invalid'`: the reply did not match the `output` schema even after the repair step. [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md).
+
+- **Fix:** check `result.finishReason` before reading `result.text`.
+
+### The run seems stuck on a tool
+
+- **Cause:** an approval is pending. A paused `send()` resolves with `finishReason: 'awaiting-approval'` and an `approvalId`; nothing runs until someone decides.
+- **Fix:** list the pending calls with `agent.approvals.list()`, then `agent.approvals.resolve({ id, approved })`.
+- **More:** [`createAgent()` agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#createagent-agents).
+
+### `LOUSHO_SESSION_AWAITING_APPROVAL` or `LOUSHO_SESSION_BUSY`
+
+- **Cause:** a session paused on an approval cannot take new input (`LOUSHO_SESSION_AWAITING_APPROVAL`); `session.compact()` or `session.clear()` was called while a turn was running or queued (`LOUSHO_SESSION_BUSY`).
+- **Fix:** resolve the approval, then send again; or await the turn's `send()` (or abort it), then call again.
+- **More:** [awaiting approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_session_awaiting_approval), [busy](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_session_busy).
+
+## Tools
+
+### The model never calls my tool
+
+- **Cause:** the model decides from the tool's `description` and input schema, so a vague description or unclear fields leave it nothing to go on. The `name` must match `^[a-zA-Z0-9_-]{1,64}$` (1-64 characters of letters, digits, `_` and `-`).
+- **Fix:** say in the `description` what the tool does and when to use it, and `.describe()` each input field.
+- **More:** [`defineTool()` options](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#definetool-options).
+
+### My tool throws and the run goes on
+
+- **Cause:** this is by design. A tool that throws gives the model an error result (`{ error, toolName, message, kind }`) and the run continues, so the model can react.
+- **Fix:** if an error must stop the run, throw an error that extends `PropagatingToolError`; that one rejects the run instead.
+- **More:** [Tool errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#errors).
+
+### `LOUSHO_TOOL_ARGS_INVALID`
+
+- **Cause:** the model sent arguments that do not match the tool's input schema. Inside a run it gets the issues back as a result and can retry, so a run seldom ends on it.
+- **Fix:** if the model keeps getting a field wrong, make its `.describe()` text clearer. If you called the tool yourself, fix the arguments named in the message.
+- **More:** [the error](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_tool_args_invalid).
+
+## Providers and models
+
+### Rate limits and flaky calls
+
+- **Cause:** the provider throttled the call (`LOUSHO_PROVIDER_RATE_LIMITED`) or failed transiently.
+- **Fix:** `createAgent()` already retries a failed call twice; raise it with `retry: { maxRetries: 3 }`, and set `fallbackModels` to move on to the next model when the call still fails.
+- **More:** [Retries and fallback models](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md#retries-and-fallback-models), [the error](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_provider_rate_limited).
+
+### The model does not read my files
+
+- **Cause:** the built-in providers do not send file parts, on any `ai` major. A file part is sent as a text note (`[file report.pdf (application/pdf) not sent]`) and the provider warns once. Images are sent.
+- **Fix:** put the file's text in the message, or use a provider subclass whose model takes files.
+- **More:** [Multimodal input](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md#multimodal-input).
+
+### I do not see the model's reasoning
+
+- **Cause:** reasoning is reported separately from the answer, as `reasoning.*` events in `agent.stream()` and as `result.reasoning`; it is not in `result.text`. Options are only sent to model families known to accept them, and `reasoning: 'none'` sends nothing.
+- **Fix:** read `result.reasoning` or the `reasoning.delta` events; for a model outside the known families, pass `{ effort, force: true }`.
+- **More:** [Reasoning](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/reasoning.md).
+
+## Sandbox, MCP and deployment
+
+### Docker sandbox: "egress is unsupported"
+
+- **Cause:** a `SubprocessSandbox` with `network: { allow }` and a `broker` needs the broker to be the container's only way out. Docker Desktop, rootless Docker, a daemon on another machine and an Engine older than 25.0.5 cannot do that, so no container starts (`LOUSHO_SANDBOX_EGRESS_UNSUPPORTED`). This is refused on purpose rather than granting open egress.
+- **Fix:** run the agent on the Linux host of a Docker Engine 25.0.5 or later, or use `network: 'none'`.
+- **More:** [Sandboxed shell](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md#sandboxed-shell-sandboxshell), [the error](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_sandbox_egress_unsupported).
+
+### An MCP server's tools do not appear
+
+- **Cause:** the servers connect on `await agent.ready()` or on the first `send()` / `stream()`, and a server that cannot connect fails that call. Each tool is named `<server>__<tool>` (for example `docs__search`), so look for that name, not the server's own.
+- **Fix:** `await agent.ready()` to see the connection error. With `connectMcp()`, check `status()`, which maps each server to `'idle'`, `'connected'` or `'failed'`; `onError: 'skip'` leaves a failing server out and warns through `logger`. MCP needs the optional peer `@modelcontextprotocol/sdk`.
+- **More:** [Connect MCP servers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#connect-mcp-servers-mcpservers-connectmcp).
+
+### My Worker build rejects the provider or tool
+
+- **Cause:** the `cloudflare-worker` target supports the `mock`, `openai` and `anthropic` providers, and the `current-date` and `day-name` tools. `ollama`, `openrouter` and the `http` tool are not supported there, and `lousho build` fails with an error naming the one it rejected.
+- **Fix:** use another provider or tool, or build for the `node-server` or `docker` target.
+- **More:** [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#cloudflare-worker).
+
+## Getting help
+
+Open an issue at <https://github.com/LinuxDevil/agent-sdk/issues>. Include:
+
+- the output of `npx lousho doctor --json`,
+- the error code (`LOUSHO_...`) and the full message,
+- the SDK version (`npm ls @lousho/build-ai-agent`) and your `ai` version.
+
+Never paste an API key.
+
 # Utilities
 
 Source: docs/utilities.md
@@ -10433,23 +10657,28 @@ sandbox such as E2B, Daytona or Cloudflare.
 For a walkthrough, see [Build a coding agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/build-a-coding-agent.md).
 
 ```ts
-import { AgentExecutor, ToolRegistry, NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
+import { createAgent, NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
 
-const workspace = new NodeWorkspace({ root: '.' }); // every path is confined to this directory
-const registry = new ToolRegistry();
-registry.registerMany([...createFsTools(workspace), createShellTool(workspace)]);
+const workspace = new NodeWorkspace({ root: './project' }); // every path is confined to this directory
+const agent = createAgent({
+  instructions: 'You are a careful coding assistant. Run the tests after every change.',
+  provider,
+  tools: [...createFsTools(workspace), createShellTool(workspace)],
+});
 
 // The shell tool needs approval by default, so the run pauses before any command runs.
-const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistry: registry, approvalStore });
-// paused.finishReason === 'awaiting-approval' -> resumeAfterApproval(...) once a human approves
+const paused = await agent.send('Fix the failing test in src/math.test.ts');
+if (paused.finishReason === 'awaiting-approval') {
+  // A human decides, then the command runs (or is rejected) and the run continues.
+  const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+}
 ```
 
-A `createAgent()` agent pauses the same way: `send()` resolves with
-`finishReason: 'awaiting-approval'` and `agent.approvals.resolve()` runs (or
-rejects) the command and continues (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)). To let
-some commands run without asking, pass `needsApproval: false` together with an
-`allow` list, or a `needsApproval` predicate that returns `false` for the
-commands you trust.
+`send()` resolves with `finishReason: 'awaiting-approval'` and
+`agent.approvals.resolve()` runs (or rejects) the command and continues (see
+[Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)). To let some commands run without asking, pass
+`needsApproval: false` together with an `allow` list, or a `needsApproval`
+predicate that returns `false` for the commands you trust.
 
 ```ts
 import { createAgent, NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
@@ -10464,6 +10693,26 @@ const agent = createAgent({
   ],
 });
 const result = await agent.send('Fix the failing test in src/math.test.ts');
+```
+
+### Advanced: the executor API
+
+`createAgent()` runs `AgentExecutor` underneath (see
+[The executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md)). To own the wiring yourself,
+register the tools in a `ToolRegistry` and call the executor; the pause is
+the same, and `resumeAfterApproval(...)` is what `agent.approvals.resolve()`
+calls once a human approves:
+
+```ts
+import { AgentExecutor, ToolRegistry, NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
+
+const workspace = new NodeWorkspace({ root: '.' }); // every path is confined to this directory
+const registry = new ToolRegistry();
+registry.registerMany([...createFsTools(workspace), createShellTool(workspace)]);
+
+// The shell tool needs approval by default, so the run pauses before any command runs.
+const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistry: registry, approvalStore });
+// paused.finishReason === 'awaiting-approval' -> resumeAfterApproval(...) once a human approves
 ```
 
 ## The tools
