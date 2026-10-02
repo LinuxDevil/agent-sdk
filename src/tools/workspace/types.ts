@@ -70,6 +70,14 @@ export interface FsProvider {
    * file paths.
    */
   glob?(pattern: string, options?: { signal?: AbortSignal }): Promise<string[]>;
+  /**
+   * Optional: a file's permission bits (e.g. `0o755`), or `undefined` when
+   * nothing exists at `path`. With `chmod`, it lets `WorkspaceCheckpoints`
+   * restore a file's mode as well as its content (N7). `NodeWorkspace` has both.
+   */
+  getMode?(path: string): Promise<number | undefined>;
+  /** Optional: set a file's permission bits. See {@link FsProvider.getMode}. */
+  chmod?(path: string, mode: number): Promise<void>;
 }
 
 /** Options for {@link ShellProvider.exec}. */

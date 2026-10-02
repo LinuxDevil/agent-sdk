@@ -2661,6 +2661,7 @@ recording afterwards, see [Record and replay](https://github.com/LinuxDevil/agen
 ## Next steps
 
 - [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md): the full tool reference, the security model, and `SandboxShell` to run commands in Docker.
+- [Undo the agent's file changes](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md#the-tools): pass `createFsTools(workspace, { checkpoints })` a `WorkspaceCheckpoints`, then `checkpoints.rewind(turn, { sessionId: session.id, dryRun: true })` shows what rewinding to a turn would restore.
 - [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md): durable approval stores, `approve` callbacks and deciding from another process.
 - [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md): every event type, cancelling a run, and the web stream formats.
 - [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md): stores, limits and durable sessions.
@@ -11956,6 +11957,7 @@ const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistr
 | `maxResults`      | 200                         | Most paths, matches or entries `glob`, `grep` and `list_dir` return. |
 | `maxFilesScanned` | 20,000                      | Most files a `glob` or `grep` walk visits. |
 | `ignore`          | `['.git', 'node_modules']`  | Directory names `glob` and `grep` skip. |
+| `checkpoints`     | none                        | A `WorkspaceCheckpoints`: back up every file `write_file` and `edit_file` change, so the changes can be rewound (see below). |
 
 `createShellTool(shell, options?)` returns one tool, `shell`, that takes
 `command` and an optional `timeout_ms`. It returns
@@ -11987,6 +11989,79 @@ Cancelling the run (`agent.send(input, { signal })` or
 `AgentExecutor.execute({ signal })`) kills the running command together with
 every process it started: a process group on Linux and macOS, and
 `taskkill /T` on Windows.
+
+To undo what the agent did to the files, pass a `WorkspaceCheckpoints` to
+`createFsTools(fs, { checkpoints })`. Before `write_file` or `edit_file`
+changes a file, the old content (and its permission bits, when the provider
+has `getMode` and `chmod`, as `NodeWorkspace` does) is recorded under the run's
+session and turn. A turn is the 0-based index of the user message the tool
+call answers: the first `session.send()` is turn 0, the next is turn 1.
+`checkpoints.list({ sessionId })` returns the turns with changes and the paths
+each one changed. `checkpoints.rewind(toTurn, { sessionId })` puts every file
+changed in turn `toTurn` or later back as it was before `toTurn`: a file the
+agent created is deleted, one it edited or overwrote gets its content back.
+With `dryRun: true` it changes nothing and returns the same report.
+
+```ts
+import { createAgent, createFsTools, MemoryWorkspace, WorkspaceCheckpoints } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+
+const workspace = new MemoryWorkspace({ files: { 'notes.md': '# Notes\n' } });
+const checkpoints = new WorkspaceCheckpoints(workspace); // backups in memory; FileWorkspaceCheckpointStore keeps them on disk
+const agent = createAgent({
+  instructions: 'You edit files in the workspace.',
+  provider: mockModel([
+    { toolCalls: [{ name: 'edit_file', args: { path: 'notes.md', old_string: '# Notes', new_string: '# Plan' } }] },
+    'Renamed the heading.',
+    { toolCalls: [{ name: 'write_file', args: { path: 'todo.md', content: '- ship it\n' } }] },
+    'Added a to-do list.',
+  ]),
+  tools: createFsTools(workspace, { checkpoints }),
+});
+
+const session = agent.session();
+await session.send('Rename the heading to Plan'); // turn 0
+await session.send('Start a to-do list'); // turn 1
+console.log(await checkpoints.list({ sessionId: session.id }));
+// [{ turn: 0, paths: ['notes.md'] }, { turn: 1, paths: ['todo.md'] }]
+
+const preview = await checkpoints.rewind(0, { sessionId: session.id, dryRun: true });
+console.log(preview); // { dryRun: true, restored: ['notes.md'], deleted: ['todo.md'], skipped: [] }
+await checkpoints.rewind(0, { sessionId: session.id });
+console.log(workspace.snapshot()); // { 'notes.md': '# Notes\n' }
+```
+
+A file whose content is no longer what the agent last wrote there was changed
+by something else (you, an editor, the `shell` tool), so rewind leaves it
+alone and reports it in `skipped` as `'changed-since'`; pass `force: true` to
+restore it anyway. Every path is checked before anything is written, and
+restores go through the same provider, so `NodeWorkspace` keeps them inside
+the root, symlinks included. A real rewind then forgets the backups of the
+rewound turns, skipped files' included, so a second rewind does nothing:
+look at the dry run first. Directories the agent created stay (empty) after
+their files are deleted. The conversation is not rewound; to branch it as
+well, fork the run (see [Fork and replay](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#fork-and-replay)).
+
+What is not tracked: changes made by the `shell` tool, files written by a
+sub-agent with its own file tools (unless it gets the same
+`WorkspaceCheckpoints`, in which case they are recorded under its own
+session id), and files larger than `maxFileBytes` (default 1,000,000 bytes):
+those are reported as `'too-large'` and never deleted. Without a session,
+every `agent.send()` is turn 0 of the session `'default'`, so use
+`agent.session()` to rewind by turn. Turns are counted in the transcript the
+model sees, so after a compaction removes old user messages the numbering
+of later turns shifts.
+
+Backups do not grow without bound. Only the newest `maxTurns` turns of each
+session are kept (default 20; `rewind()` to an older turn throws); a file
+over `maxFileBytes` is not copied; when one turn writes a path several
+times, only the first write keeps the old content (the later ones keep a
+hash, for the audit trail); a rewind drops the backups it rewound; and
+`checkpoints.clear({ sessionId })` forgets a session. The default store keeps
+backups in memory. `new FileWorkspaceCheckpointStore(dir)` writes one JSON
+file per session, atomically (temp file, then rename), so a rewind works after
+a restart; implement `WorkspaceCheckpointStore` to keep them elsewhere. File
+content lives only in the store, never in events or traces.
 
 ## Security model
 
@@ -12339,6 +12414,10 @@ export const remoteShell: ShellProvider = {
   },
 };
 ```
+
+Two optional methods, `getMode(path)` and `chmod(path, mode)`, let
+`WorkspaceCheckpoints` restore a file's permission bits along with its
+content; without them a rewind restores the content only.
 
 `ShellProvider.exec` should resolve, not reject, for a non-zero exit code,
 a timeout (`timedOut: true`) or an abort (`aborted: true`). It should reject
