@@ -134,8 +134,8 @@ describe('createAgent({ onEvent }) (LOU-D41)', () => {
 
   it('gets the same AgentEvents from send() as stream() yields', async () => {
     const heard: AgentEvent[] = [];
-    // send() generates each step whole, so its text matches a stream only chunk for chunk with a non-streaming provider.
-    const provider = Object.assign(mockModel([...script(), ...script()]), { supportsStreaming: () => false });
+    // M9: send() with a listener streams its model calls, so its text.delta events match a stream's chunk for chunk.
+    const provider = mockModel([...script(), ...script()]);
     const agent = createAgent({ instructions: 'Be brief.', provider, tools: [weather], onEvent: (e) => heard.push(e) });
     await agent.send('go');
     const sent = heard.splice(0);

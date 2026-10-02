@@ -15,7 +15,7 @@ three points, each list in order:
 | List | Runs on | When |
 | ---- | ------- | ---- |
 | `input` | Each new user message (the user messages that end the transcript) | Before the first model call. A block makes no model call. |
-| `output` | The final assistant text; in a streamed run, every step's text | Before it is emitted: before its `text.done`, and before `run.done`. |
+| `output` | The final assistant text; in a `stream()` run (one you iterate), every step's text. `send()` with a listener checks the final text only. | Before it is emitted: before its `text.done`, and before `run.done`. |
 | `tools` | A tool call's arguments (`text` is them as JSON, `args` the object) | After the [permission rules](./approvals.md#permission-policies) (skipped when a rule denies the call) and before `needsApproval`. |
 
 A guardrail is `{ name, check(ctx) }`. `ctx` has `kind` (`'input'`, `'output'`

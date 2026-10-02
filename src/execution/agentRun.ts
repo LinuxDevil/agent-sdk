@@ -7,8 +7,9 @@
  * {@link RUN_EVENTS} key of its options), including how one model step is
  * obtained (streamed, with `text.delta` per chunk). The sink turns it into
  * AgentEvents for the run's listeners: an AgentRun's buffer, `onAgentEvent`,
- * and the deprecated `onEvent` (through legacyEvents.ts). A non-streamed run
- * with listeners gets a sink too (see {@link observeRun}).
+ * and the deprecated `onEvent` (through legacyEvents.ts). A run that is not
+ * iterated but has listeners (`send()`, `execute({ onAgentEvent })`) gets a
+ * sink too, and (M9) streams its model calls as well (see {@link observeRun}).
  *
  * Backpressure: none. The run never waits for the consumer; events are
  * buffered without loss until they are read.
@@ -106,16 +107,21 @@ export interface AgentRun<TObject = unknown> extends AsyncIterable<AgentEvent> {
 /** A tool call's outcome, as the loop reports it. */
 export type ToolSettled = NonNullable<ExecutionEvent['toolResult']>;
 
-/** The listeners a run's options can carry (LOU-D41). */
-export type RunListeners = Pick<ExecuteOptions, 'onAgentEvent' | 'onEvent'>;
+/** The listeners a run's options can carry (LOU-D41), and whether they get model calls streamed (M9). */
+export type RunListeners = Pick<ExecuteOptions, 'onAgentEvent' | 'onEvent' | 'streamModelCalls'>;
 
 /**
  * Everything AgentExecutor reports about a run, as AgentEvents. Internal:
  * reached through `options[RUN_EVENTS]`.
  */
 export interface RunEventSink {
-  /** Whether model steps are streamed (a `stream()` run; `execute()` generates each step whole). */
-  readonly streamed: boolean;
+  /**
+   * Whether the caller iterates the run (a `stream()` run). Output guardrails
+   * then check every step's text, not only the final reply. `send()` and
+   * `execute()` with listeners are not iterated, even though (M9) their
+   * model calls are streamed.
+   */
+  readonly iterated: boolean;
   /** Adds `options`' listeners to the run's (each listener once). */
   listen(options: RunListeners): void;
   /** A top-level run reports one `run.start`, however often it is (re)started. */
@@ -233,7 +239,13 @@ class RunEvents {
   private readonly legacy = new Set<(event: ExecutionEvent) => void>();
   private readonly toolStarts = new Map<string, number>();
 
-  constructor(private readonly streamed: boolean) {}
+  /**
+   * `iterated`: the caller iterates a `stream()` (see {@link RunEventSink.iterated}).
+   * `streamModelCalls` (M9): each model call is streamed when the provider
+   * can, so its text arrives as several `text.delta`; otherwise each step is
+   * generated whole and its text is one `text.delta`.
+   */
+  constructor(private readonly mode: { readonly iterated: boolean; readonly streamModelCalls: boolean }) {}
 
   listen({ onAgentEvent, onEvent }: RunListeners): void {
     if (onAgentEvent) this.listeners.add(onAgentEvent);
@@ -320,7 +332,7 @@ class RunEvents {
       this.emit({ type: 'error', error: toEventError(error) }, subagent, { error });
     };
     return {
-      streamed: this.streamed,
+      iterated: this.mode.iterated,
       listen: (options) => this.listen(options),
       runStart: ({ id, name }) => this.emit({ type: 'run.start', agentName: name ?? '', ...(id !== undefined && { agentId: id }) }, subagent),
       textDone: (text, stepUsage) => this.emit({ type: 'text.done', text }, subagent, { stepUsage }),
@@ -412,7 +424,7 @@ class RunEvents {
       onReasoning: (event) => this.emit(event, subagent),
       onOutput,
     };
-    if (this.streamed && canStream(provider, request)) {
+    if (this.mode.streamModelCalls && canStream(provider, request)) {
       return generateViaStream(provider, request, sink);
     }
     const generated = await provider.generate(request);
@@ -460,13 +472,18 @@ export function streamResumed(
  * stream's, or a new one when `options` has listeners - after adding
  * `options`' listeners to it, then reports how it ended (`run.done`, or
  * `error` and `run.done`). Without a sink or listeners, just runs it.
+ *
+ * M9: a new sink (listeners, no iteration) streams the run's model calls
+ * like `stream()` does, unless `options.streamModelCalls` is `false`; it is
+ * not `iterated`, so output guardrails behave as on a run without listeners.
  */
 export async function observeRun<T extends RunListeners & WiredOptions>(
   options: T,
   run: (options: T) => Promise<ExecutionResult>
 ): Promise<ExecutionResult> {
-  const { onAgentEvent, onEvent } = options;
-  const sink = runEventsOf(options) ?? (onAgentEvent || onEvent ? new RunEvents(false).sink() : undefined);
+  const { onAgentEvent, onEvent, streamModelCalls = true } = options;
+  const sink =
+    runEventsOf(options) ?? (onAgentEvent || onEvent ? new RunEvents({ iterated: false, streamModelCalls }).sink() : undefined);
   if (!sink) return run(options);
   sink.listen(options);
   try {
@@ -481,7 +498,7 @@ export async function observeRun<T extends RunListeners & WiredOptions>(
 
 class AgentRunImpl implements AgentRun {
   readonly result: Promise<ExecutionResult>;
-  private readonly events = new RunEvents(true);
+  private readonly events = new RunEvents({ iterated: true, streamModelCalls: true });
   private readonly controller = new AbortController();
   private readonly queue: AgentEvent[] = [];
   private iterated = false;
