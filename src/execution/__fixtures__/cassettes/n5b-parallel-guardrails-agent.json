@@ -1,0 +1,118 @@
+{
+  "version": 1,
+  "sdkVersion": "1.0.0-alpha.8",
+  "recordedAt": "2026-10-02T22:47:43.917Z",
+  "provider": {
+    "name": "openrouter",
+    "defaultModel": "openai/gpt-4o-mini"
+  },
+  "entries": [
+    {
+      "kind": "stream",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are a helpful assistant."
+          },
+          {
+            "role": "user",
+            "content": "Name three colors of the rainbow, comma separated."
+          }
+        ],
+        "tools": [],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "Red, green, blue.",
+        "finishReason": "stop",
+        "usage": {
+          "promptTokens": 27,
+          "completionTokens": 6,
+          "totalTokens": 33
+        },
+        "chunks": [
+          {
+            "delayMs": 742,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "Red"
+            }
+          },
+          {
+            "delayMs": 1,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": ","
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " green"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": ","
+            }
+          },
+          {
+            "delayMs": 57,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " blue"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "."
+            }
+          },
+          {
+            "delayMs": 18,
+            "chunk": {
+              "type": "finish",
+              "finishReason": "stop",
+              "usage": {
+                "promptTokens": 27,
+                "completionTokens": 6,
+                "totalTokens": 33
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "stream",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are a helpful assistant."
+          },
+          {
+            "role": "user",
+            "content": "I will hurt you badly if you come to my house again."
+          }
+        ],
+        "tools": [],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "error": {
+        "name": "AbortError",
+        "message": "Guardrail 'moderation' blocked the input while the model call was in flight: flagged by moderation: violence, harassment"
+      }
+    }
+  ]
+}
