@@ -19,6 +19,7 @@ import { AgentBuilder } from './core/AgentBuilder';
 import { AgentExecutor, ExecuteOptions, ExecutionResult } from './execution/AgentExecutor';
 import { streamResumed, type AgentRun } from './execution/agentRun';
 import type { AgentEvent } from './execution/agentEvents';
+import type { TraceExporter } from './execution/tracing';
 import { LLMProvider } from './providers/llm';
 import { ToolRegistry } from './tools/ToolRegistry';
 import { ToolDescriptor } from './types';
@@ -245,6 +246,29 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    * ```
    */
   onEvent?: (event: AgentEvent) => void;
+  /**
+   * Receives a span for every run of this agent (M5a): `send()`, `stream()`,
+   * session turns, `resume()` and runs continued by `agent.approvals.resolve()`.
+   * Each run is one `invoke_agent` span with `chat` and `execute_tool` spans
+   * under it; sub-agents' spans join the lead's trace. `fileTraceExporter()`
+   * from `@lousho/build-ai-agent/traces` writes them to `.lousho/traces` for
+   * `npx lousho traces`; `createOtelTraceExporter()` sends them to
+   * OpenTelemetry. See docs/observability.md.
+   *
+   * @example
+   * ```ts
+   * import { fileTraceExporter } from '@lousho/build-ai-agent/traces';
+   * createAgent({ model: 'openai/gpt-4o-mini', exporter: fileTraceExporter() });
+   * ```
+   */
+  exporter?: TraceExporter;
+  /**
+   * Record message and tool-argument content on the spans (the `gen_ai.*`
+   * content attributes). Off by default because content is sensitive; when
+   * omitted it follows `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT`.
+   * Only matters with an `exporter`. See `ExecuteOptions.captureContent`.
+   */
+  captureContent?: boolean;
   /**
    * Opt in to appending the nearest `AGENTS.md` / `CLAUDE.md` (found by
    * walking up from `cwd`, see `loadProjectInstructions()`) to the agent's
@@ -632,6 +656,11 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     if (specs.staticTools) addMcpTools(specs.staticTools, tools);
   });
   const hooks = agentHooks(config);
+  // M5a: every run of this agent (send, stream, sessions, resume, approvals) is traced.
+  const tracing: Pick<ExecuteOptions, 'exporter' | 'captureContent'> = {
+    ...(config.exporter && { exporter: config.exporter }),
+    ...(config.captureContent !== undefined && { captureContent: config.captureContent }),
+  };
   const checkpoints = config.store?.checkpoints;
   /** How a paused run continues: with the spec (and, for a dynamic run, the model) it paused with. */
   const resumeRequestFor = async (
@@ -654,6 +683,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
         signal,
         currentAgent: paused.spec.agent,
         onAgentEvent: config.onEvent,
+        ...tracing,
       },
       // A run paused under a `sessionId` keeps checkpointing after the decision.
       checkpointStore: checkpointStore ?? checkpoints,
@@ -698,6 +728,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     input,
     signal,
     onAgentEvent: config.onEvent,
+    ...tracing,
     // LOU-D23.2: a session's turn runs under its id (tools see it), unless the turn is checkpointed under its own.
     ...(ctx.sessionId !== undefined && { sessionId: ctx.sessionId }),
     ...turn,

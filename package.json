@@ -63,6 +63,11 @@
       "import": "./dist/storage/sqlite/index.mjs",
       "require": "./dist/storage/sqlite/index.js"
     },
+    "./traces": {
+      "types": "./dist/traces/index.d.ts",
+      "import": "./dist/traces/index.mjs",
+      "require": "./dist/traces/index.js"
+    },
     "./triggers": {
       "types": "./dist/triggers/index.d.ts",
       "import": "./dist/triggers/index.mjs",
