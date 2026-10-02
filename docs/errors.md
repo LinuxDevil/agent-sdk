@@ -857,3 +857,83 @@ key after the new one (`tokenKey: [newKey, oldKey]`, or
 
 **Example:** a `SqliteStore` file written with one `tokenKey` and opened with
 another.
+
+### LOUSHO_OAUTH_PRINCIPAL_REQUIRED
+
+**Means:** a tool called `ctx.getToken()` (or `requireAuth()`) for a provider
+whose credential belongs to each user (`credentialOwner: 'user'`, the default),
+but the run has no principal, so there is no user to own the token. The call
+fails with this error; the run does not pause and no sign-in link is made.
+
+**Fix:** serve the agent behind route auth or a channel, so each run has a
+principal ([Auth](./auth.md)), or define the provider with
+`credentialOwner: 'app'` when one credential is meant for everyone. See
+[Tools that need sign-in](./oauth.md#tools-that-need-sign-in).
+
+**Example:** `agent.send('List my repositories')` without `{ principal }`, with
+a tool that calls `ctx.getToken(github)`.
+
+### LOUSHO_OAUTH_APP_SIGNIN_REQUIRED
+
+**Means:** a tool asked for the app's own credential (`credentialOwner: 'app'`)
+and none is stored (or it was revoked). A chat user is never sent the app's
+sign-in link, so the call fails instead of pausing.
+
+**Fix:** sign the app in once: open the URL from
+`agent.oauth.signInUrl(provider)` and let the callback store the token. See
+[App credentials](./oauth.md#tools-that-need-sign-in).
+
+**Example:** a `post_update` tool calling `ctx.getToken(slackBot)` before the
+operator connected Slack.
+
+### LOUSHO_OAUTH_STORE_MISSING
+
+**Means:** a tool called `ctx.getToken()`, or `agent.oauth` was used, on an
+agent without a token store, so there is nowhere to read or keep a token. The
+run stops with this error.
+
+**Fix:** pass `createAgent({ store })` with `tokens`: `memoryStore()`,
+`fileStore()`, `SqliteStore` or `KVStore` (the persistent ones need a
+`tokenKey`). See [Token storage](./oauth.md#token-storage).
+
+**Example:** `createAgent({ provider, tools: [listRepos] })` with no `store`.
+
+### LOUSHO_OAUTH_STATE_INVALID
+
+**Means:** `agent.oauth.complete()` (the `/oauth/callback` route) got a `state`
+that is unknown, was already used, or is older than 10 minutes, or (with an
+authenticated callback request) a sign-in started for another user. The route
+answers 400.
+
+**Fix:** start again from a fresh link: approve nothing, let the tool ask
+again (a new pause has a new link), or call `agent.oauth.signInUrl()` again for
+an app sign-in. See [The callback route](./oauth.md#the-callback-route).
+
+**Example:** opening the same provider redirect twice, or after 10 minutes.
+
+### LOUSHO_SIGNIN_PENDING
+
+**Means:** `agent.approvals.resolve({ id, approved: true })` was called on a
+sign-in pause (`kind: 'sign-in'`) before the user's token was stored. The pause
+stays as it was. On `POST /chat/:id/approvals/:approvalId` this is HTTP 409.
+
+**Fix:** open the sign-in link first and let the provider redirect to the
+callback, then approve again; or approve with `false` to cancel the call. See
+[What the user sees](./oauth.md#what-the-user-sees).
+
+**Example:** clicking "I've signed in" before finishing the provider's page.
+
+### LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED
+
+**Means:** the provider's token endpoint refused to exchange the authorization
+code (or a request to it failed), or the callback came without a code, or no
+provider with the pending sign-in's name is defined in this process. The
+message names the provider, the HTTP status and the OAuth `error` code, never
+the code or the response body. The callback route answers 502.
+
+**Fix:** check `tokenUrl`, `clientId`, `clientSecret`, `clientAuth` and that
+`redirectUri` matches the one registered with the provider exactly, and that
+the module defining the provider is loaded by the process serving the
+callback. Then sign in again. See [The callback route](./oauth.md#the-callback-route).
+
+**Example:** `invalid_client` from GitHub after the client secret was rotated.

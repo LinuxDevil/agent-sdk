@@ -213,8 +213,11 @@ export function channelSessionId<TEvent>(channel: Channel<TEvent>, inbound: Chan
   return SESSION_ID.test(key) ? key : `${key.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 112)}-${hash(key)}`;
 }
 
-/** The default text for a pause: the question (with numbered options), or the tool call to approve. */
+/** The default text for a pause: the question (with numbered options), the sign-in link (N9b), or the tool call to approve. */
 export function approvalPrompt(approval: PendingApproval): string {
+  if (approval.kind === 'sign-in' && approval.signIn) {
+    return `Sign in to ${approval.signIn.displayName ?? approval.signIn.provider} to continue: ${approval.signIn.url}`;
+  }
   if (approval.question) {
     const options = (approval.question.options ?? []).map((option, i) => `\n${i + 1}. ${option}`).join('');
     return `${approval.question.text}${options}\n(answer id: ${approval.id})`;

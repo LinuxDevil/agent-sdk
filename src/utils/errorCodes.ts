@@ -92,6 +92,14 @@ export const ERROR_CODES = {
     "Pass the store's tokenKey (32 random bytes as base64, from generateTokenKey()) or set LOUSHO_TOKEN_KEY before storing OAuth tokens.",
   LOUSHO_TOKEN_DECRYPT_FAILED:
     'Use the tokenKey the tokens were written with (list the old key after the new one while rotating), or delete the record and sign in again.',
+  LOUSHO_OAUTH_PRINCIPAL_REQUIRED:
+    "Run the agent behind route auth or a channel (so the run has a principal), or use credentialOwner: 'app' for a credential shared by everyone.",
+  LOUSHO_OAUTH_APP_SIGNIN_REQUIRED: 'Sign the app in once: open the URL from agent.oauth.signInUrl(provider) and let the callback store the token.',
+  LOUSHO_OAUTH_STORE_MISSING: 'Give the agent a store with `tokens`: createAgent({ store: memoryStore() }), fileStore(), SqliteStore or KVStore.',
+  LOUSHO_OAUTH_STATE_INVALID: 'Start the sign-in again from a fresh link: a state works once, for 10 minutes, and only for the user it was made for.',
+  LOUSHO_SIGNIN_PENDING: 'Open the sign-in link first and let the provider redirect to the callback, then approve again (or approve with false to cancel).',
+  LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED:
+    "Check the provider's tokenUrl, clientId, clientSecret and redirectUri (it must match the one registered with the provider), then sign in again.",
 } as const;
 
 /** A stable error code, e.g. `'LOUSHO_CONFIG_MISSING_PROVIDER'`. */

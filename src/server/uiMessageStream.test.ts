@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { memoryStore } from '../storage/agentStore';
+import { ALICE, fakeOAuthServer, githubProvider, listReposTool } from '../oauth/__fixtures__/fakeOAuth';
 import { z } from 'zod';
 import { readUIMessageStream, type UIMessage, type UIMessageChunk } from 'ai-v7';
 import { createAgent } from '../createAgent';
@@ -83,6 +85,15 @@ describe('toUIMessageStream (LOU-P1)', () => {
     const approval = chunks.find((c) => c.type === 'data-lousho-approval');
     expect(approval).toMatchObject({ data: { toolCallId: 'c1', toolName: 'deploy', input: { env: 'prod' } } });
     expect(chunks.at(-1)).toMatchObject({ type: 'finish', finishReason: 'other', messageMetadata: { loushoFinishReason: 'awaiting-approval' } });
+  });
+
+  it('emits a sign-in pause with its link in the data-lousho-approval part (N9b)', async () => {
+    const github = githubProvider(fakeOAuthServer());
+    const { tool } = listReposTool(github);
+    const agent = createAgent({ provider: mockModel([{ toolCalls: [{ name: 'list_repos', id: 'c1' }] }]), tools: [tool], store: memoryStore() });
+    const chunks = await collect(toUIMessageStream(agent.stream('list', { principal: ALICE })));
+    const approval = chunks.find((c) => c.type === 'data-lousho-approval');
+    expect(approval).toMatchObject({ data: { toolName: 'list_repos', kind: 'sign-in', signIn: { provider: 'github', displayName: 'GitHub', url: expect.stringContaining('code_challenge_method=S256') } } });
   });
 
   it('emits a todo.updated event as a data-lousho-todos part (N12)', async () => {

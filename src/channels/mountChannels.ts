@@ -228,10 +228,13 @@ export function mountChannels(
     const decided = { ...(approver && { principal: approver }) };
     const run = () =>
       guard(turn, 'approval', respond, async () => {
-        const result =
-          typeof answer === 'string'
-            ? await agent.approvals.answer({ id, answer }, decided)
-            : await agent.approvals.resolve({ id, approved: approved === true, note }, decided);
+        const decide = () =>
+          typeof answer === 'string' ? agent.approvals.answer({ id, answer }, decided) : agent.approvals.resolve({ id, approved: approved === true, note }, decided);
+        const result = await decide().catch((error: unknown) => {
+          // N9b: approved before the user signed in: the pause stays, and so does this turn's binding to it.
+          if (error instanceof Error && error.name === 'SignInPendingError') paused.set(id, turn);
+          throw error;
+        });
         await finish(turn, result, undefined, respond);
       });
     return serialized(turn.sessionId, run).finally(() => claimed.delete(id));
@@ -292,4 +295,22 @@ export function mountChannels(
     return true;
   };
   return Object.assign(handler, { resolveApproval });
+}
+
+/**
+ * N9b: after the OAuth callback stored a user's token (or the user declined),
+ * continues the channel turn this process paused on that sign-in, so the
+ * answer is posted to the surface it was asked on. A sign-in that no channel
+ * turn of this process waits on is left alone (a client continues it with the
+ * approvals route). Not awaited: the continuation can take a while.
+ */
+export function continueChannelSignIn(channels: Pick<ChannelsHandler, 'resolveApproval'> | undefined, result: { approvalId?: string }): void {
+  if (!channels || result.approvalId === undefined) return;
+  void channels.resolveApproval({ id: result.approvalId, approved: true }).catch(reportSignInContinuation);
+}
+
+/** A sign-in no channel turn of this process waits on is fine; anything else is logged. */
+function reportSignInContinuation(error: unknown): void {
+  if (error instanceof SDKError && error.code === 'LOUSHO_APPROVAL_NOT_FOUND') return;
+  console.error('[lousho channels] continuing a turn after sign-in failed:', (error as Error | null)?.message ?? error);
 }

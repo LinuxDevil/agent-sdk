@@ -18,7 +18,8 @@
  * function rather than calling `toolDesc.tool.execute()` directly.
  */
 
-import { ToolDescriptor } from '../types';
+import { ToolDescriptor, type ToolExecutionContext } from '../types';
+import { redactHandedOutTokens } from '../oauth/signIn';
 import { getToolExecute } from '../tools/toolContract';
 import { SandboxAdapter } from '../security/sandboxCore';
 import type { ToolCallScope } from './subagentRuntime';
@@ -65,11 +66,18 @@ export async function executeToolWithSandboxGuard(
   args: Record<string, unknown>,
   sandbox: SandboxAdapter,
   signal?: AbortSignal,
-  runContext?: Omit<ToolRunInput, 'signal' | 'scope'>,
+  runContext?: Omit<ToolRunInput, 'signal' | 'scope' | 'handedOut'>,
   scope?: ToolCallScope
 ): Promise<unknown> {
   // LOU-U15: one context for both routes (toolCallId, messages, abortSignal).
-  const ctx = buildToolRunContext({ ...runContext, signal, scope });
+  // N9b: tokens `ctx.getToken()` hands out are remembered, so a result that echoes one is redacted.
+  const handedOut = new Set<string>();
+  const ctx = buildToolRunContext({ ...runContext, signal, scope, handedOut });
+  const result = await runGuarded(toolName, toolDesc, args, sandbox, ctx);
+  return handedOut.size > 0 ? redactHandedOutTokens(toolName, result, handedOut) : result;
+}
+
+async function runGuarded(toolName: string, toolDesc: ToolDescriptor, args: Record<string, unknown>, sandbox: SandboxAdapter, ctx: ToolExecutionContext): Promise<unknown> {
   if (toolDesc.requiresSandbox) {
     if (!toolDesc.sandboxExecute) {
       throw new SandboxRequiredError(

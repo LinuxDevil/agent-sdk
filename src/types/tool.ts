@@ -4,6 +4,8 @@ import type { RunUsage } from '../models/usage';
 import type { Message } from '../providers/llm';
 import { SandboxAdapter } from '../security/sandboxCore';
 import type { Principal } from '../auth/types';
+import type { OAuthProvider } from '../oauth/defineOAuthProvider';
+import type { OAuthToken } from '../oauth/types';
 
 /**
  * Tool parameter definition
@@ -71,6 +73,25 @@ export interface ToolExecutionContext {
    * run's `principal`.
    */
   approval?: { note?: string; by?: Readonly<Principal> };
+  /**
+   * N9b: an OAuth token for `provider` (docs/oauth.md): the run principal's
+   * own (`credentialOwner: 'user'`) or the app's. A token that expires within
+   * 60 seconds is refreshed first. Without one the run pauses (an approval of
+   * `kind: 'sign-in'`) until the user signs in, and this call runs again from
+   * the start - so call it before any side effect. Never return the token
+   * from the tool.
+   *
+   * @example
+   * ```ts
+   * const { accessToken } = await ctx.getToken(github);
+   * ```
+   */
+  getToken(provider: OAuthProvider): Promise<OAuthToken>;
+  /**
+   * N9b: the API refused the token from `getToken()` (a 401): deletes it and
+   * pauses the run for a new sign-in, like `getToken()` without a token.
+   */
+  requireAuth(provider: OAuthProvider): never;
 }
 
 /**

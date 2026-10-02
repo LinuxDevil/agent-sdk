@@ -18,6 +18,8 @@ import { ApprovalStore, describeApproval, ExecutionSnapshot, PendingApproval, Su
 import { CheckpointStore, ForkOptions, ForkResult } from './checkpoint';
 import type { AgentDriftMode } from './agentFingerprint';
 import type { Principal } from '../auth/types';
+import type { OAuthTokenStore } from '../oauth/types';
+import { signInRequest } from '../oauth/signIn';
 import { forkSession } from './fork';
 import type { CallUsage, RunUsage, StepUsage } from '../models/usage';
 import { mergeDelegatedUsage } from './runUsage';
@@ -49,6 +51,7 @@ import {
 import {
   StartedToolCall,
   ToolBatchResult,
+  type UnrecordedToolCall,
   ToolConcurrency,
   assertToolConcurrency,
   runToolBatch,
@@ -341,6 +344,12 @@ export interface ExecuteOptions extends PermissionOptions {
    * with; passing a different one throws `LOUSHO_CONFIG_INVALID`.
    */
   principal?: Principal;
+  /**
+   * N9b: where tools' OAuth tokens live (`ctx.getToken()`, docs/oauth.md):
+   * `createAgent()` passes its `store.tokens`. A tool that needs sign-in
+   * pauses the run (`kind: 'sign-in'`); the pending sign-in is kept here too.
+   */
+  tokens?: OAuthTokenStore;
   /** Where `sessionId` checkpoints are stored - see `sessionId` for the semantics. */
   checkpointStore?: CheckpointStore;
   /**
@@ -1216,6 +1225,11 @@ export class AgentExecutor {
     if (batch.failure) {
       throw batch.failure.error;
     }
+    // N9b: a tool that needs sign-in pauses the run first; it runs again once the user signed in.
+    const signIn = batch.unrecorded.find((call) => call.outcome?.signIn);
+    if (signIn) {
+      return this.pauseForSignIn(options, state, batch.unrecorded, signIn, suspensions);
+    }
     const suspension = settleSuspensions(state.messages, suspensions, Boolean(batch.approval));
     if (batch.approval) {
       const { toolCall, outcome } = batch.approval;
@@ -1330,6 +1344,35 @@ export class AgentExecutor {
   }
 
   /**
+   * N9b: pauses on the first call of the batch that needs sign-in. Calls
+   * after it that finished are recorded; the ones that did not run (another
+   * call needing sign-in, a call waiting on approval and what came after it)
+   * run after the decision, like the rest of a turn paused on an approval.
+   */
+  private static pauseForSignIn(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    unrecorded: UnrecordedToolCall[],
+    paused: UnrecordedToolCall,
+    suspensions: SubagentSuspension[]
+  ): Promise<ExecutionResult> {
+    const remaining: ToolCall[] = [];
+    for (const call of unrecorded) {
+      if (call === paused) continue;
+      const { outcome } = call;
+      if (outcome && !outcome.requiresApproval && !outcome.signIn) {
+        pushToolResult(state, call.toolCall, outcome);
+        if (outcome.subagent) suspensions.push(outcome.subagent);
+      } else {
+        remaining.push(call.toolCall);
+      }
+    }
+    // One pause per run: a sub-agent that paused meanwhile is dropped (its result says so).
+    settleSuspensions(state.messages, suspensions, true);
+    return this.pauseForApproval(options, state, paused.toolCall, paused.outcome as ToolCallOutcome, remaining);
+  }
+
+  /**
    * Persists a pending approval (plus the snapshot resume.ts needs, with
    * the turn's not-yet-run calls - LOU-U7) and ends this execute() call
    * with an 'awaiting-approval' result. The checkpoint is marked
@@ -1351,8 +1394,9 @@ export class AgentExecutor {
       );
     }
 
+    const id = newId();
     const pending: PendingApproval = {
-      id: newId(),
+      id,
       toolCallId: toolCall.id,
       toolName: toolCall.function.name,
       args: toolResult.args || {},
@@ -1360,6 +1404,8 @@ export class AgentExecutor {
       createdAt: new Date().toISOString(),
       // N10b: whose call it is, for `approve` and channel `approvers`.
       ...(principal && { principal }),
+      // N9b: a tool that needs sign-in pauses with the link to open.
+      ...(toolResult.signIn && { kind: 'sign-in' as const, signIn: await signInRequest(toolResult.signIn, options.tokens, { approvalId: id, sessionId }) }),
     };
     const snapshot: ExecutionSnapshot = {
       // The agent as configured: resume re-applies skills and sub-agents.

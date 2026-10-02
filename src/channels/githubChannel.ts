@@ -368,6 +368,11 @@ export function githubChannel(options: GitHubChannelOptions): Channel<GitHubComm
     reply: ({ inbound, text }) => post(inbound.replyTo as GitHubTarget, text),
     async onApproval({ inbound, approval }) {
       const target = inbound.replyTo as GitHubTarget;
+      // N9b: a thread is public, and whoever opens a sign-in link binds their own account to the asker's grant: no link here.
+      if (approval.kind === 'sign-in') {
+        const name = approval.signIn?.displayName ?? approval.signIn?.provider ?? 'the provider';
+        return post(target, `\`${approval.toolName}\` needs a sign-in to ${name}. Sign-in links are not posted in a public thread, so this request waits until it is signed in from the app (pending approval ${approval.id}).`);
+      }
       if (approval.question) {
         questions.set(inbound.sessionKey, approval.id);
         const options = (approval.question.options ?? []).map((option, i) => `\n${i + 1}. ${option}`).join('');

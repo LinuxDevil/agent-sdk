@@ -23,10 +23,12 @@ export interface LoushoApprovalData {
   toolCallId: string;
   toolName: string;
   input: Record<string, unknown>;
-  /** `'question'` for an `ask_question` pause; absent for a tool approval. */
+  /** `'question'` for an `ask_question` pause, `'sign-in'` (N9b) for a tool waiting on an OAuth sign-in; absent for a tool approval. */
   kind?: string;
   /** The question's text and options, when `kind` is `'question'`. */
   question?: unknown;
+  /** N9b: `{ provider, displayName?, url }`, when `kind` is `'sign-in'`: show the link, approve once the user signed in. */
+  signIn?: unknown;
 }
 
 /** Payload of the `data-lousho-todos` part: the agent's complete todo list after a `todo_write`. */
@@ -112,6 +114,7 @@ function approvalChunk(event: Extract<AgentEvent, { type: 'approval.requested' }
       input: event.args,
       ...(event.kind && { kind: event.kind }),
       ...(event.question && { question: event.question }),
+      ...(event.signIn && { signIn: event.signIn }),
     },
   };
 }

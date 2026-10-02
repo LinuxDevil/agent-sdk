@@ -158,7 +158,27 @@
       const url = '/chat/' + encodeURIComponent(sessionId) + '/approvals/' + encodeURIComponent(event.approvalId);
       const decide = (body) => { box.querySelectorAll('button,input').forEach((c) => { c.disabled = true; }); stream(url, body); };
       const question = event.kind === 'question' ? event.question || { text: event.toolName } : null;
-      if (!question) {
+      if (event.kind === 'sign-in' && event.signIn) {
+        // N9b: open the link, then continue; approving before the callback answers 409 and the pause stays.
+        const link = el('a', '', 'Sign in to ' + (event.signIn.displayName || event.signIn.provider));
+        link.href = event.signIn.url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        const p = el('p');
+        p.appendChild(link);
+        const done = el('button', '', "I've signed in");
+        done.onclick = async () => {
+          const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approved: true }) });
+          if (res.status === 409) return box.appendChild(el('div', 'error', 'Not signed in yet: open the link first.'));
+          box.querySelectorAll('button').forEach((c) => { c.disabled = true; });
+          if (!res.ok) return box.appendChild(el('div', 'error', 'Error: ' + ((await res.json()).error || res.status)));
+          const next = { node: add(el('div', 'entry agent')), text: null, tools: new Map() };
+          await readEvents(res, (e) => render(next, e));
+        };
+        const cancel = el('button', '', 'Cancel');
+        cancel.onclick = () => decide({ approved: false });
+        box.append(p, done, cancel);
+      } else if (!question) {
         box.appendChild(el('p', '', 'Approve ' + event.toolName + '(' + show(event.args) + ')?'));
         const approve = el('button', '', 'Approve');
         approve.onclick = () => decide({ approved: true });

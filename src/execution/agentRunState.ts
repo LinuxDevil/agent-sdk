@@ -314,7 +314,7 @@ export function pushAbortedBatchResults(
   reason = 'the run was aborted'
 ): void {
   for (const { toolCall, outcome } of calls) {
-    if (outcome && !outcome.requiresApproval) {
+    if (outcome && !outcome.requiresApproval && !outcome.signIn) {
       pushToolResult(state, toolCall, outcome);
     } else {
       pushCancelledToolResult(state, toolCall, reason);

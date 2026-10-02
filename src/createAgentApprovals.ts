@@ -38,7 +38,8 @@ export interface ResolveApprovalOptions {
  * Decides a tool call that needs approval without pausing the run: `true`
  * runs the tool, `false` gives the model a rejection as the tool's result.
  * A string approves with that string as the note - for an `ask_question`
- * call (`request.kind === 'question'`), it is the answer (LOU-X9).
+ * call (`request.kind === 'question'`), it is the answer (LOU-X9). It is
+ * never asked about a sign-in (`kind: 'sign-in'`, N9b): only the user can sign in.
  * `request.principal` (N10b) is who the paused run acts for.
  *
  * @example
@@ -177,7 +178,8 @@ export function createAgentApprovals(options: {
     let current = result;
     for (;;) {
       const request = current.approvalId ? pending.get(current.approvalId) : undefined;
-      if (!approve || current.finishReason !== 'awaiting-approval' || !request) return current;
+      // N9b: only the user can sign in, so a sign-in pause is never decided by `approve`.
+      if (!approve || current.finishReason !== 'awaiting-approval' || !request || request.kind === 'sign-in') return current;
       const verdict = await approve(request);
       const decision = typeof verdict === 'string' ? { id: request.id, approved: true, note: verdict } : { id: request.id, approved: verdict };
       current = await resume(store, decision, signal, checkpointStore, permissionMode);
@@ -207,24 +209,35 @@ export function createAgentApprovals(options: {
     };
   }
 
+  /** N9b: a sign-in pause approved too early stays paused, and stays bound to its session. */
+  function keepPendingSession(id: string, session: ApprovalSession | undefined, error: unknown): void {
+    if (session && error instanceof Error && error.name === 'SignInPendingError') sessions.set(id, session);
+  }
+
   // N10b: `principal` is the approver of this decision only; the `approve` callback's later decisions have none.
   function resolve(decision: ApprovalDecision, { signal, principal }: ResolveApprovalOptions = {}): Promise<ExecutionResult> {
     const session = sessions.get(decision.id);
     sessions.delete(decision.id);
     const next = async (checkpointStore?: CheckpointStore, permissionMode?: ResumeMode) =>
       inSession(session, await settle(await resume(store, decision, signal, checkpointStore, permissionMode, principal), signal, checkpointStore, permissionMode));
-    return session ? session.resolveWith(next) : next();
+    const resolved = session ? session.resolveWith(next) : next();
+    return resolved.catch((error: unknown) => {
+      keepPendingSession(decision.id, session, error);
+      throw error;
+    });
   }
 
   function streamResolve(decision: ApprovalDecision, { signal, principal }: ResolveApprovalOptions = {}): AgentRun {
     const session = sessions.get(decision.id);
     sessions.delete(decision.id);
     if (!session) return streamResume(store, decision, signal, undefined, undefined, undefined, principal);
-    return session.streamResolveWith(
+    const run = session.streamResolveWith(
       (checkpointStore, runSignal, inputs, permissionMode) =>
         inSessionRun(session, streamResume(store, decision, runSignal, checkpointStore, inputs, permissionMode, principal)),
       signal
     );
+    run.result.catch((error: unknown) => keepPendingSession(decision.id, session, error));
+    return run;
   }
 
   const approvals: AgentApprovals = {

@@ -333,6 +333,8 @@ export function teamsChannel(options: TeamsChannelOptions): Channel<TeamsActivit
     reply: ({ inbound, text }) => post(inbound.replyTo as TeamsTarget, text),
     async onApproval({ inbound, approval, text }) {
       const target = inbound.replyTo as TeamsTarget;
+      // N9b: a sign-in is its link as text, no Approve / Deny card (Teams has no message only one user sees).
+      if (approval.kind === 'sign-in') return post(target, text);
       if (approval.question) {
         questions.set(inbound.sessionKey, approval.id);
         return post(target, text);

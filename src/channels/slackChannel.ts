@@ -17,6 +17,7 @@ import {
   type ChannelUser,
 } from './defineChannel';
 import { SDKError } from '../execution/errors';
+import type { PendingApproval } from '../execution/ApprovalGate';
 
 /** Options of {@link slackChannel}. */
 export interface SlackChannelOptions {
@@ -118,7 +119,9 @@ function button(text: string, actionId: string, style: string, value: string) {
  * skipped. A tool approval is posted as Approve / Deny buttons that only
  * `approvers` (default: the user who asked) can use, and the message is
  * updated with the outcome; an `ask_question` as text, answered by the next
- * message in the thread.
+ * message in the thread. A sign-in (N9b) is sent with `chat.postEphemeral`
+ * to the user who asked only, without buttons; the turn continues once the
+ * OAuth callback stored the token.
  *
  * @example
  * ```ts
@@ -147,6 +150,19 @@ export function slackChannel(options: SlackChannelOptions): Channel<SlackChannel
     });
     const body = (await res.json()) as { ok?: boolean; error?: string };
     if (!body.ok) throw new SDKError(`slackChannel: chat.postMessage failed: ${body.error ?? res.status}`, 'LOUSHO_CHANNEL_REQUEST_FAILED');
+  }
+
+  /** N9b: the sign-in link as an ephemeral message to `user` in the thread (`chat.postEphemeral`); never posted for everyone. */
+  async function postSignIn(thread: unknown, user: unknown, approval: PendingApproval, text: string): Promise<void> {
+    const name = approval.signIn?.displayName ?? approval.signIn?.provider ?? 'the provider';
+    if (typeof user !== 'string' || !user) return post(thread, { text: `This needs a sign-in to ${name}, but the user who asked is unknown, so no link was sent.` });
+    const res = await doFetch('https://slack.com/api/chat.postEphemeral', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${options.botToken}`, 'content-type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ ...(thread as SlackThread), user, text }),
+    });
+    const body = (await res.json()) as { ok?: boolean; error?: string };
+    if (!body.ok) throw new SDKError(`slackChannel: chat.postEphemeral failed: ${body.error ?? res.status}`, 'LOUSHO_CHANNEL_REQUEST_FAILED');
   }
 
   /** Answers a click through its `response_url` (an ephemeral note, or the clicked message replaced); a failure goes to `onError`. */
@@ -214,6 +230,8 @@ export function slackChannel(options: SlackChannelOptions): Channel<SlackChannel
     },
     reply: ({ inbound, text }) => post(inbound.replyTo, { text }),
     async onApproval({ inbound, approval, text }) {
+      // N9b: the sign-in link goes only to the user who asked (ephemeral), with no buttons: whoever opens it binds their account.
+      if (approval.kind === 'sign-in') return postSignIn(inbound.replyTo, inbound.metadata?.user, approval, text);
       if (approval.question) {
         questions.set(inbound.sessionKey, approval.id);
         return post(inbound.replyTo, { text });

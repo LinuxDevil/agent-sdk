@@ -8,6 +8,9 @@
  *                                        the deprecated { message } still returns the ExecutionResult
  *   GET  /chat/:sessionId                the session's transcript and pending approvals
  *   POST /chat/:sessionId/approvals/:id  { approved, note? } or { answer }, the continuation streamed
+ *                                        (409 for a sign-in pause the user has not signed in to yet)
+ *   GET  /oauth/callback                 N9b: where an OAuth provider redirects after sign-in; never behind
+ *                                        the bearer token (its protection is the single-use `state`)
  *
  * `Request` in, `Response` out, and no `node:*` import (this file is bundled
  * into Workers): chatRoutes.ts adapts it to `node:http`, the Worker runtime
@@ -23,6 +26,8 @@ import { errorEvents } from '../cli/devEvents';
 import type { AuthFn, Principal } from '../auth/types';
 import { routeAuth } from '../auth/routeAuth';
 import { apiToken } from '../auth/basic';
+import type { OAuthCompleteResult } from '../oauth/signIn';
+import { awaitSignInGate } from '../oauth/signInPending';
 
 /** What the routes need from their host: the live agent and how sessions are opened on it. */
 export interface ChatRoutesContext {
@@ -34,6 +39,12 @@ export interface ChatRoutesContext {
   session?: (agent: SimpleAgent, id: string) => AgentSession;
   /** Checkpoints the deprecated `{ message, sessionId }` run under its `sessionId` (needs a checkpoint store on the agent). */
   durableMessage?: boolean;
+  /**
+   * N9b: called after `GET /oauth/callback` stored a token (or the user
+   * declined), e.g. to continue a channel turn that paused on that sign-in.
+   * Not awaited by the response.
+   */
+  afterSignIn?: (result: OAuthCompleteResult) => void;
 }
 
 /** Body-size cap for POST routes, matching common Node.js body-size-limit conventions. */
@@ -72,9 +83,9 @@ const warnedLegacy = new Set<string>();
  * failure becomes `error` + `run.done` events. The turn is aborted when the
  * client goes away (the request's signal, or the response body cancelled).
  */
-function sseResponse(request: Request, events: (signal: AbortSignal) => AsyncIterable<AgentEvent>): Response {
-  const controller = new AbortController();
-  request.signal.addEventListener('abort', () => controller.abort());
+function sseResponse(request: Request, events: (signal: AbortSignal) => AsyncIterable<AgentEvent>, aborter?: AbortController): Response {
+  const controller = aborter ?? new AbortController();
+  if (!aborter) request.signal.addEventListener('abort', () => controller.abort());
   const encoder = new TextEncoder();
   const frame = (event: AgentEvent) => encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
   const iterator = events(controller.signal)[Symbol.asyncIterator]();
@@ -164,11 +175,61 @@ const runApproval: RouteHandler = async (request, ctx, [sessionId, id], principa
   }
   // LOU-D32.2: the continuation streams live (decided call, text deltas, a further pause, run.done).
   // N10b: the caller route auth accepted is the approver (`ctx.approval.by`); the run keeps its own principal.
-  return sseResponse(request, (signal) =>
+  const controller = new AbortController();
+  request.signal.addEventListener('abort', () => controller.abort());
+  const run =
     typeof answer === 'string'
-      ? agent.approvals.streamAnswer({ id, answer }, { signal, principal })
-      : agent.approvals.streamResolve({ id, approved: approved === true, note: typeof note === 'string' ? note : undefined }, { signal, principal })
-  );
+      ? agent.approvals.streamAnswer({ id, answer }, { signal: controller.signal, principal })
+      : agent.approvals.streamResolve({ id, approved: approved === true, note: typeof note === 'string' ? note : undefined }, { signal: controller.signal, principal });
+  // N9b: approving a sign-in pause before the user signed in leaves it paused: 409, not a failed stream.
+  const gate = await awaitSignInGate(run);
+  if (gate.pending) return jsonResponse(409, { error: gate.message, code: 'LOUSHO_SIGNIN_PENDING' });
+  return sseResponse(request, () => gate.events, controller);
+};
+
+const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (char) => HTML_ESCAPES[char]);
+}
+
+/** The small page the browser lands on after a sign-in: no script, every value escaped, never cached. */
+function signInPage(status: number, title: string, text: string): Response {
+  const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(title)}</title></head><body><p>${escapeHtml(text)}</p></body></html>`;
+  return new Response(body, {
+    status,
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff' },
+  });
+}
+
+/**
+ * N9b: `GET /oauth/callback?state&code` (or `&error`): finishes the sign-in
+ * with `agent.oauth.complete()` and answers a small HTML page. An unknown,
+ * used or expired `state` is 400. The page never shows a query value.
+ */
+const runOAuthCallback: RouteHandler = async (request, ctx, _params, principal) => {
+  const query = new URL(request.url).searchParams;
+  const code = query.get('code');
+  const error = query.get('error');
+  try {
+    const result = await ctx.agent().oauth.complete({
+      state: query.get('state') ?? '',
+      ...(code !== null && { code }),
+      ...(error !== null && { error }),
+      ...(principal && { principal }),
+    });
+    ctx.afterSignIn?.(result);
+    const name = result.displayName ?? result.provider;
+    return result.outcome === 'signed-in'
+      ? signInPage(200, 'Signed in', `Signed in to ${name}. You can close this tab.`)
+      : signInPage(200, 'Sign-in cancelled', `Sign-in to ${name} was cancelled. You can close this tab.`);
+  } catch (failure) {
+    const failed = (failure as { code?: unknown } | null)?.code;
+    if (failed === 'LOUSHO_OAUTH_STATE_INVALID') return signInPage(400, 'Sign-in failed', 'This sign-in link is invalid, was already used, or expired. Start again from the app.');
+    if (failed === 'LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED') return signInPage(502, 'Sign-in failed', 'The sign-in could not be completed. Start again from the app.');
+    console.error(`[${ctx.name}] OAuth callback failed:`, (failure as Error | null)?.message ?? failure);
+    return signInPage(500, 'Sign-in failed', 'The sign-in could not be completed. Start again from the app.');
+  }
 };
 
 const runTranscript: RouteHandler = async (_request, ctx, [sessionId]) => {
@@ -176,11 +237,32 @@ const runTranscript: RouteHandler = async (_request, ctx, [sessionId]) => {
   return session instanceof Response ? session : jsonResponse(200, { sessionId, messages: await session.load(), pending: await session.pending() });
 };
 
+/** N9b: the sign-in callback, under any prefix (a proxy may mount the API below a path). */
+const OAUTH_CALLBACK = /^(?:\/.*)?\/oauth\/callback$/;
+
+/** Whether `request` is the OAuth callback: a browser redirect, so it carries no API token. */
+function isOAuthCallback(request: Request): boolean {
+  return request.method === 'GET' && OAUTH_CALLBACK.test(new URL(request.url).pathname);
+}
+
+/**
+ * N9b: who is completing a sign-in, when the callback request happens to be
+ * authenticated (e.g. a session cookie the auth list accepts); `undefined`
+ * otherwise. Never a refusal: the callback is open, its `state` protects it.
+ * An anonymous principal says nothing about the user, so it is not used.
+ */
+export async function callbackPrincipal(request: Request, auth: readonly AuthFn[] | AuthFn | undefined): Promise<Principal | undefined> {
+  if (auth === undefined) return undefined;
+  const outcome = await routeAuth(request, auth);
+  return outcome.ok && outcome.principal.authenticator !== 'anonymous' ? outcome.principal : undefined;
+}
+
 /** Routes by method and path; path parameters reach the handler as `params` (already URL-decoded). */
 const ROUTES: Array<[method: string, pattern: RegExp, handler: RouteHandler]> = [
   ['POST', /^\/chat$/, runChat],
   ['GET', /^\/chat\/([^/]+)$/, runTranscript],
   ['POST', /^\/chat\/([^/]+)\/approvals\/([^/]+)$/, runApproval],
+  ['GET', OAUTH_CALLBACK, runOAuthCallback],
 ];
 
 /**
@@ -215,7 +297,10 @@ export type ServeAuth = string | AuthFn | readonly AuthFn[];
 export async function serveFetch(request: Request, ctx: ChatRoutesContext, auth?: ServeAuth): Promise<Response> {
   if (request.method === 'GET' && new URL(request.url).pathname === '/health') return textResponse(200, 'ok');
   let principal: Principal | undefined;
-  if (auth !== undefined && auth !== '') {
+  if (isOAuthCallback(request)) {
+    // N9b: a browser redirect carries no API token; an authenticated one still names who completes the sign-in.
+    principal = typeof auth === 'string' ? undefined : await callbackPrincipal(request, auth);
+  } else if (auth !== undefined && auth !== '') {
     const outcome = await routeAuth(request, typeof auth === 'string' ? apiToken(auth) : auth);
     if (!outcome.ok) return outcome.response;
     principal = outcome.principal;

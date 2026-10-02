@@ -36,6 +36,9 @@ import { planModeRefusal } from './permissions';
 import { resumeSubagentCall, type ResumeContext } from './resumeSubagent';
 import type { Principal } from '../auth/types';
 import { readonlyPrincipal } from './runPrincipal';
+import type { OAuthTokenStore } from '../oauth/types';
+import { isSignInRequired, settleSignInRequired, signInOwner, signInRequest, SignInPendingError, type SignInRequired } from '../oauth/signIn';
+import { newId } from '../utils/id';
 
 /**
  * Options passed through to the underlying AgentExecutor.execute() call
@@ -158,14 +161,16 @@ async function resumeObserved(
   // N10b: the run goes on as the caller that paused it, whoever resumes it (an old snapshot: no principal).
   const { approver, ...rest } = observed;
   const executeOptions: ResumeExecuteOptions = { ...rest, principal: readonlyPrincipal(snapshot.principal) };
+  // N9b: a sign-in pause continues only once the user signed in (else it stays paused), or ends as cancelled.
+  const decided = await signInDecision(record, decision, approvalStore, executeOptions.tokens);
   const messages: Message[] = [...snapshot.currentMessages];
-  const drift = await checkApprovalDrift(record, decision, { approvalStore, toolRegistry, provider, executeOptions });
+  const drift = await checkApprovalDrift(record, decided, { approvalStore, toolRegistry, provider, executeOptions });
 
   const staleCheckpoint = await clearStaleCheckpoint(snapshot.sessionId, checkpointStore);
   const staleBusinessState = staleCheckpoint?.businessState;
 
   const ctx: ResumeContext = {
-    decision,
+    decision: decided,
     approvalStore,
     snapshot,
     messages,
@@ -272,6 +277,62 @@ async function restorePause(
 }
 
 /**
+ * N9b: the decision on a `kind: 'sign-in'` pause as it is carried out.
+ * Approving continues only when the run's user has a token for the provider
+ * now; otherwise the record is put back and `LOUSHO_SIGNIN_PENDING` is thrown,
+ * so the run stays paused. After the provider reported that the user declined,
+ * approving cancels the call like `approved: false`.
+ */
+async function signInDecision(
+  { pending, snapshot }: ResolvedApproval,
+  decision: ApprovalDecision,
+  approvalStore: ApprovalStore,
+  tokens: OAuthTokenStore | undefined
+): Promise<ApprovalDecision> {
+  const signIn = pending.kind === 'sign-in' ? pending.signIn : undefined;
+  if (!signIn || !decision.approved) return decision;
+  if (signIn.declined) return { ...decision, approved: false };
+  const owner = signInOwner(snapshot.principal ?? pending.principal);
+  try {
+    if (owner && tokens && (await tokens.get(signIn.provider, owner))) return decision;
+  } catch (error) {
+    await approvalStore.save(pending, snapshot);
+    throw error;
+  }
+  await approvalStore.save(pending, snapshot);
+  throw new SignInPendingError(signIn.displayName ?? signIn.provider);
+}
+
+/** N9b: the rejection a declined or cancelled call gets: a sign-in, a question, or a tool call. */
+function rejectionOf(pending: PendingApproval): { error: string; kind: 'denied' | 'rejected' } {
+  const described = describeApproval(pending);
+  if (described.kind === 'sign-in') return { error: `Sign-in to ${described.signIn?.displayName ?? described.signIn?.provider ?? 'the provider'} was cancelled.`, kind: 'denied' };
+  // LOU-X9: declining an `ask_question` call is not a tool rejection.
+  if (described.kind === 'question') return { error: 'The user declined to answer the question', kind: 'rejected' };
+  return { error: 'Tool execution was rejected by the reviewer', kind: 'rejected' };
+}
+
+/**
+ * N9b: the approved call needed sign-in (again, or to another provider): the
+ * run pauses again on it with a new `kind: 'sign-in'` approval - or, for the
+ * app's own credential, the call gets the error.
+ */
+async function signInAgain(ctx: ResumeContext, pending: PendingApproval, signal: SignInRequired): Promise<{ message: Message } | { paused: ExecutionResult }> {
+  const { snapshot, executeOptions } = ctx;
+  const settled = await settleSignInRequired(signal, executeOptions.tokens);
+  if ('error' in settled) {
+    return { message: toolResultMessage(pending, toolErrorResult({ toolName: pending.toolName, error: settled.error }), true) };
+  }
+  const id = newId();
+  const signIn = await signInRequest(settled.pause, executeOptions.tokens, { approvalId: id, sessionId: snapshot.sessionId });
+  const next: PendingApproval = { ...pending, id, createdAt: new Date().toISOString(), kind: 'sign-in', signIn };
+  delete next.question;
+  await ctx.approvalStore.save(next, { ...snapshot, pendingToolCall: next, usage: structuredClone(ctx.usage) });
+  runEventsOf(executeOptions as ExecuteOptions)?.approvalRequested(next);
+  return { paused: { text: '', messages: ctx.messages, toolCalls: [], usage: ctx.usage, finishReason: 'awaiting-approval', steps: snapshot.steps, approvalId: id } };
+}
+
+/**
  * LOU-W9.2: compares the agent resuming a paused run with the one that paused
  * it (`onAgentDrift`) before anything runs: an approved call, or a call still
  * to run, whose tool is gone is always an error. On an error the approval
@@ -359,22 +420,8 @@ async function decidedToolMessage(
     return resumeSubagentCall(ctx, snapshot.subagent, runApproved);
   }
   if (!ctx.decision.approved) {
-    return {
-      message: toolResultMessage(
-        pending,
-        toolErrorResult({
-          toolName: pending.toolName,
-          // LOU-X9: declining an `ask_question` call is not a tool rejection.
-          error:
-            describeApproval(pending).kind === 'question'
-              ? 'The user declined to answer the question'
-              : 'Tool execution was rejected by the reviewer',
-          kind: 'rejected',
-          details: { note: ctx.decision.note },
-        }),
-        true
-      ),
-    };
+    const { error, kind } = rejectionOf(pending);
+    return { message: toolResultMessage(pending, toolErrorResult({ toolName: pending.toolName, error, kind, details: { note: ctx.decision.note } }), true) };
   }
   // N4: a call approved before a switch to plan mode does not run in plan mode.
   const { toolName, toolCallId, args } = pending;
@@ -392,7 +439,13 @@ async function decidedToolMessage(
     execute: ctx.execute,
   };
   // LOU-X9: the tool sees the decision's note (an `ask_question` answer) as `ctx.approval`; N10b: and who decided as `by`.
-  const message = await runApproved(pending, ctx.toolRegistry, scope, { note: ctx.decision.note, ...(ctx.approver && { by: ctx.approver }) });
+  let message: Message;
+  try {
+    message = await runApproved(pending, ctx.toolRegistry, scope, { note: ctx.decision.note, ...(ctx.approver && { by: ctx.approver }) });
+  } catch (error) {
+    if (!isSignInRequired(error)) throw error;
+    return signInAgain(ctx, pending, error);
+  }
   // LOU-X8: the transcript remembers the approval, for `once()`.
   return { message: { ...message, metadata: { ...message.metadata, ...approvalMarker(pending.args) } } };
 }
@@ -653,11 +706,13 @@ async function executeApprovedTool(
         args,
         sandbox,
         executeOptions.signal,
-        { toolCallId: pending.toolCallId, messages, approval, sessionId, principal: executeOptions.principal },
+        { toolCallId: pending.toolCallId, messages, approval, sessionId, principal: executeOptions.principal, tokens: executeOptions.tokens },
         scope
       ),
     };
   } catch (error) {
+    // N9b: the call needs sign-in: decidedToolMessage() pauses the run again.
+    if (isSignInRequired(error)) throw error;
     // Mirror AgentExecutor.executeToolCall's (post-fix) handling of a
     // thrown tool error: errors that mark themselves as
     // `PropagatingToolError` (e.g. DelegationDepthExceededError) must NOT

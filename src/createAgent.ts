@@ -55,6 +55,7 @@ import type { AgentDriftMode } from './execution/agentFingerprint';
 import { ConfigurationError, SDKError } from './execution/errors';
 import { newId } from './utils/id';
 import { createAgentApprovals, type AgentApprovals, type ApproveToolCall } from './createAgentApprovals';
+import { createAgentOAuth, type AgentOAuth } from './oauth/agentOAuth';
 import { assertPermissionMode, type PermissionMode, type PermissionOptions } from './execution/permissions';
 import type { InferSchemaOutput, StandardSchemaV1 } from './utils/zodCompat';
 import type { McpServerSpec } from './spec/schema';
@@ -615,6 +616,12 @@ export interface SimpleAgent<TObject = unknown> {
    */
   approvals: AgentApprovals;
   /**
+   * N9b: OAuth sign-ins for tools that call `ctx.getToken()` (docs/oauth.md):
+   * `complete()` finishes a sign-in at the callback, `signInUrl()` signs the
+   * app itself in to an app-owned provider. Tokens live in `store.tokens`.
+   */
+  oauth: AgentOAuth;
+  /**
    * Connects the `mcpServers` and registers their tools (LOU-Z4); `send()`
    * and `stream()` await it. Resolves at once without `mcpServers`.
    */
@@ -692,6 +699,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     ...(config.captureContent !== undefined && { captureContent: config.captureContent }),
   };
   const checkpoints = config.store?.checkpoints;
+  // N9b: tools' OAuth tokens (`ctx.getToken()`) and pending sign-ins.
+  const tokens = config.store?.tokens;
   /** How a paused run continues: with the spec (and, for a dynamic run, the model) it paused with. */
   const resumeRequestFor = async (
     approvalStore: ApprovalStore,
@@ -721,6 +730,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
         ...tracing,
         // N10b: who decides; the run itself goes on as the principal it paused with (its snapshot's).
         ...(approver && { approver }),
+        // N9b: a sign-in pause continues once the user's token is in the store.
+        ...(tokens && { tokens }),
       },
       // A run paused under a `sessionId` keeps checkpointing after the decision.
       checkpointStore: checkpointStore ?? checkpoints,
@@ -769,6 +780,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     signal,
     onAgentEvent: config.onEvent,
     ...tracing,
+    ...(tokens && { tokens }),
     // LOU-D23.2: a session's turn runs under its id (tools see it), unless the turn is checkpointed under its own.
     ...(ctx.sessionId !== undefined && { sessionId: ctx.sessionId }),
     // N10b: tools, approval policies, permission rules and sub-agents act for this caller.
@@ -850,6 +862,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     // durable() throws LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE without `store.checkpoints`.
     fork: async (sessionId, options) => AgentExecutor.fork({ ...options, ...(durable(sessionId) as SessionTurnCheckpoint) }),
     approvals: approvals.approvals,
+    oauth: createAgentOAuth(tokens, approvals.store),
     ready: mcp.ready,
     close: mcp.close,
   };

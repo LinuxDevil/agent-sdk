@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { memoryStore } from '../storage/agentStore';
+import { SignInRequired } from '../oauth/signIn';
+import { fakeOAuthServer, githubProvider } from '../oauth/__fixtures__/fakeOAuth';
 import { z } from 'zod';
 import { createAgent, type CreateAgentConfig } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
@@ -73,6 +76,20 @@ function client(turns: MockTurn[], config: Partial<CreateAgentConfig> = {}) {
     await done;
   };
   return { model, out, push, call, newSession, prompt, updates, waitFor, end };
+}
+
+
+/** N9b: a tool that needs a GitHub sign-in the user never completes (the chat surfaces run without a principal). */
+function signInTool() {
+  const github = githubProvider(fakeOAuthServer());
+  return defineTool({
+    name: 'list_repos',
+    description: 'Lists repositories',
+    input: z.object({}),
+    execute: () => {
+      throw new SignInRequired(github, { owner: 'user', principalId: 'local' });
+    },
+  });
 }
 
 describe('serveAcp', () => {
@@ -150,6 +167,23 @@ describe('serveAcp', () => {
     const updates = c.updates(sessionId);
     expect(updates).toContainEqual(expect.objectContaining({ sessionUpdate: 'tool_call_update', status: 'completed', rawOutput: 'pong' }));
     expect(updates.filter((u) => u.sessionUpdate === 'agent_message_chunk').map((u) => u.content.text).join('')).toBe('The tool said pong.');
+    await c.end();
+  });
+
+  it('a sign-in: shows the link, asks again while not signed in, and a rejection cancels the call (N9b)', async () => {
+    const c = client([{ toolCalls: [{ name: 'list_repos' }] }, 'Okay, not listing.'], { tools: [signInTool()], store: memoryStore() });
+    const sessionId = await c.newSession();
+    const pending = c.prompt(sessionId, 'list my repos');
+    const first = await c.waitFor((m) => m.method === 'session/request_permission');
+    expect(first.params).toMatchObject({ toolCall: { title: 'Sign in to GitHub' } });
+    c.push(JSON.stringify({ jsonrpc: '2.0', id: first.id, result: { outcome: { outcome: 'selected', optionId: 'allow' } } }));
+    const second = await c.waitFor((m) => m.method === 'session/request_permission' && m.id !== first.id);
+    c.push(JSON.stringify({ jsonrpc: '2.0', id: second.id, result: { outcome: { outcome: 'selected', optionId: 'reject' } } }));
+    expect((await pending).result.stopReason).toBe('end_turn');
+    const said = c.updates(sessionId).filter((u) => u.sessionUpdate === 'agent_message_chunk').map((u) => u.content.text).join('');
+    expect(said).toMatch(/Sign in to GitHub to continue: https:\/\/github\.example\.com\//);
+    expect(said).toContain('Not signed in yet: open the link first.');
+    expect(said).toContain('Okay, not listing.');
     await c.end();
   });
 

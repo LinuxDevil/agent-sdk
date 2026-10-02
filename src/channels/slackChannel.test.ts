@@ -18,6 +18,8 @@ import { mountChannels, type ChannelsHandler } from './mountChannels';
 import { slackChannel } from './slackChannel';
 import { durableStores } from './__fixtures__/durableStores';
 import { defineMemory, inMemoryMemory, type MemoryScopeContext } from '../memory';
+import { memoryStore } from '../storage/agentStore';
+import { fakeOAuthServer, githubProvider, listReposTool } from '../oauth/__fixtures__/fakeOAuth';
 
 const SECRET = 'slack-signing-secret';
 const BOT = 'UBOT';
@@ -29,17 +31,19 @@ function fakeSlack() {
   const log: string[] = [];
   const posts: Array<Record<string, unknown>> = [];
   const callbacks: Array<Record<string, unknown>> = [];
+  const ephemerals: Array<Record<string, unknown>> = [];
   const state = { failPosts: false };
   const fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
     if (String(url) === RESPONSE_URL) return callbacks.push(body), new Response('ok');
+    if (String(url) === 'https://slack.com/api/chat.postEphemeral') return ephemerals.push(body), new Response(JSON.stringify({ ok: true }));
     expect(String(url)).toBe('https://slack.com/api/chat.postMessage');
     expect((init?.headers as Record<string, string>).authorization).toBe('Bearer xoxb-test');
     posts.push(body);
     log.push('post');
     return new Response(JSON.stringify(state.failPosts ? { ok: false, error: 'channel_not_found' } : { ok: true }));
   });
-  return { fetch: fetch as unknown as typeof globalThis.fetch, posts, callbacks, state, log };
+  return { fetch: fetch as unknown as typeof globalThis.fetch, posts, callbacks, ephemerals, state, log };
 }
 
 interface SendOptions {
@@ -390,5 +394,32 @@ describe('slackChannel (LOU-P5)', () => {
       expect(execute).toHaveBeenCalledTimes(1);
       expect(second.posts.at(-1)).toEqual({ channel: 'C1', thread_ts: '100.1', text: 'Email sent.' });
     });
+  });
+});
+
+describe('slackChannel sign-in (N9b)', () => {
+  it('sends the sign-in link ephemerally to the user who asked, with no buttons, and continues in the thread after the callback', async () => {
+    const slack = fakeSlack();
+    const { tool, executions } = listReposTool(githubProvider(fakeOAuthServer()));
+    const agent = createAgent({ provider: mockModel([{ toolCalls: [{ name: 'list_repos', id: 'call_1', args: {} }] }, 'You have lousho-demo.']), tools: [tool], store: memoryStore() });
+    const handler = mountChannels(agent, [slackChannel({ signingSecret: SECRET, botToken: 'xoxb-test', fetch: slack.fetch })]);
+
+    await send(handler, slack.log, event('list my repos'));
+    expect(slack.posts).toEqual([]); // nothing in the thread for everyone
+    expect(slack.ephemerals).toHaveLength(1);
+    const [ephemeral] = slack.ephemerals;
+    expect(ephemeral).toMatchObject({ channel: 'C1', thread_ts: '100.1', user: 'U1' });
+    expect(ephemeral.blocks).toBeUndefined();
+    expect(String(ephemeral.text)).toMatch(/^Sign in to GitHub to continue: https:\/\/github\.example\.com\/login\/oauth\/authorize\?/);
+
+    const [pending] = await agent.approvals.list();
+    expect(pending).toMatchObject({ kind: 'sign-in', principal: { id: 'U1', authenticator: 'slack' } });
+    const state = new URL(String(ephemeral.text).slice(String(ephemeral.text).indexOf('https://'))).searchParams.get('state') ?? '';
+    // approving before the sign-in fails, and the turn stays bound to the pause
+    await expect(handler.resolveApproval({ id: pending.id, approved: true })).rejects.toMatchObject({ code: 'LOUSHO_SIGNIN_PENDING' });
+    await agent.oauth.complete({ state, code: 'code-u1' });
+    await handler.resolveApproval({ id: pending.id, approved: true });
+    expect(executions).toEqual(['gho_SECRET_u1_1']);
+    expect(slack.posts).toEqual([{ channel: 'C1', thread_ts: '100.1', text: 'You have lousho-demo.' }]);
   });
 });

@@ -31,6 +31,7 @@ import { stableStringify } from '../testing/fingerprint';
 import type { SubagentSuspension } from './ApprovalGate';
 import { SubagentApprovalPause, suspendedToolResult, toSuspension, type ToolCallScope } from './subagentRuntime';
 import type { Principal } from '../auth/types';
+import { isSignInRequired, settleSignInRequired, type SignInRequired } from '../oauth/signIn';
 
 export { parseToolArguments };
 
@@ -52,6 +53,12 @@ export interface ToolCallOutcome {
   subagent?: SubagentSuspension;
   /** LOU-X3: the hook whose `{ result }` outcome became this call's result. */
   replacedByHook?: string;
+  /**
+   * N9b: set when the tool called `ctx.getToken()` without a usable token.
+   * The call has no result; the run pauses for sign-in (`kind: 'sign-in'`)
+   * once the batch is done, and the call runs again after the user signed in.
+   */
+  signIn?: SignInRequired;
 }
 
 /** Everything a tool call needs from the surrounding execute() run. */
@@ -376,9 +383,10 @@ async function settleToolCall(
 
 /** Runs the post-tool hooks; a `{ result }` outcome replaces a settled call's result (LOU-X3). */
 async function runPostToolHooks(hooks: HookRegistry, hookCtx: ToolCallHookContext, outcome: ToolCallOutcome): Promise<ToolCallOutcome> {
-  const payload = { result: outcome.result, error: outcome.error, requiresApproval: outcome.requiresApproval };
+  // N9b: a call paused for sign-in is reported like one awaiting approval (no result yet).
+  const payload = { result: outcome.result, error: outcome.error, requiresApproval: outcome.requiresApproval ?? (outcome.signIn ? true : undefined) };
   const hook = await hooks.runPostToolCall(hookCtx, payload);
-  if (hook === undefined || outcome.requiresApproval || outcome.subagent) {
+  if (hook === undefined || outcome.requiresApproval || outcome.subagent || outcome.signIn) {
     return outcome;
   }
   return { ...outcome, result: payload.result, replacedByHook: hook };
@@ -531,8 +539,8 @@ async function doExecuteToolCall(
       ctx.signal,
       // LOU-U9: `toolCallId` is the tool's idempotency key on a re-run.
       // LOU-U15: `messages` is the run's transcript (the guard copies it).
-      // LOU-D23.2: and the run's `sessionId`, when it has one. N10b: and its principal.
-      { onDelegatedUsage: ctx.onDelegatedUsage, toolCallId: toolCall.id, messages: ctx.messages, sessionId: ctx.sessionId, principal: ctx.principal },
+      // LOU-D23.2: and the run's `sessionId`, when it has one. N10b: and its principal. N9b: and the token store.
+      { onDelegatedUsage: ctx.onDelegatedUsage, toolCallId: toolCall.id, messages: ctx.messages, sessionId: ctx.sessionId, principal: ctx.principal, tokens: ctx.scope?.runtime.tokens },
       ctx.scope
     );
 
@@ -545,8 +553,22 @@ async function doExecuteToolCall(
     if (error instanceof SubagentApprovalPause) {
       return suspendedOutcome(toolCall, overrideArgs ?? {}, error);
     }
+    // N9b: checked by name before the error-to-result path, so the model never sees it as a tool error.
+    if (isSignInRequired(error)) {
+      return signInOutcome(toolCall, overrideArgs ?? {}, error, ctx);
+    }
     return thrownToolFailure(toolCall, error);
   }
+}
+
+/**
+ * N9b: a call whose tool needs the user to sign in: a pause (no result; the
+ * executor pauses the run for it), or - for the app's own credential - an error.
+ */
+async function signInOutcome(toolCall: ToolCall, args: Record<string, unknown>, signal: SignInRequired, ctx: ToolCallContext): Promise<ToolCallOutcome> {
+  const settled = await settleSignInRequired(signal, ctx.scope?.runtime.tokens);
+  if ('error' in settled) return thrownToolFailure(toolCall, settled.error);
+  return { toolCallId: toolCall.id, toolName: toolCall.function.name, result: null, args, signIn: settled.pause };
 }
 
 /** The outcome of a tool call whose sub-agent paused for approval. */

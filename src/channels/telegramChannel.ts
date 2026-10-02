@@ -238,6 +238,8 @@ export function telegramChannel(options: TelegramChannelOptions): Channel<Telegr
     reply: ({ inbound, text }) => post(inbound.replyTo as TelegramTarget, text),
     async onApproval({ inbound, approval, text }) {
       const target = inbound.replyTo as TelegramTarget;
+      // N9b: a sign-in is its link as text, no Approve / Deny keyboard (Telegram has no message only one user sees).
+      if (approval.kind === 'sign-in') return post(target, text);
       if (approval.question) {
         questions.set(inbound.sessionKey, approval.id);
         return post(target, text, { force_reply: true });

@@ -66,6 +66,8 @@ const DENY = 'lousho_deny:';
 const MAX_LENGTH = 2000;
 const NOT_ALLOWED = 'You are not allowed to approve this request.';
 const THREAD_TYPES = new Set([10, 11, 12]);
+/** Message flag: only the user of the interaction sees it. */
+const EPHEMERAL = 64;
 
 function header(req: ChannelRequest, name: string): string | undefined {
   const value = req.headers[name];
@@ -117,7 +119,8 @@ function button(label: string, customId: string, style: number) {
  * (or thread) share one session. A tool approval is posted with Approve / Deny
  * buttons that only `approvers` (default: the user who ran the command) can use;
  * a click names the conversation itself, so it works after a restart. An `ask_question` as text, answered by the next command in that
- * channel. Interaction tokens last 15 minutes, which bounds a reply's delay.
+ * channel. A sign-in (N9b) is sent as an ephemeral follow-up to the user who
+ * ran the command, without buttons. Interaction tokens last 15 minutes, which bounds a reply's delay.
  *
  * @example
  * ```ts
@@ -139,11 +142,11 @@ export function discordChannel(options: DiscordChannelOptions): Channel<DiscordI
   const publicKey = () => (key ??= crypto.subtle.importKey('raw', keyBytes, 'Ed25519', false, ['verify']));
   const questions = new Map<string, string>();
 
-  async function call(method: string, path: string, content: string, components?: unknown[]): Promise<void> {
+  async function call(method: string, path: string, content: string, components?: unknown[], flags?: number): Promise<void> {
     const res = await doFetch(`${API}/webhooks/${options.applicationId}/${path}`, {
       method,
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ content, allowed_mentions: { parse: [] }, ...(components ? { components } : {}) }),
+      body: JSON.stringify({ content, allowed_mentions: { parse: [] }, ...(components ? { components } : {}), ...(flags !== undefined ? { flags } : {}) }),
     });
     if (!res.ok) throw new SDKError(`discordChannel: ${method} ${path.split('/').slice(1).join('/')} failed: ${res.status}`, 'LOUSHO_CHANNEL_REQUEST_FAILED');
   }
@@ -209,6 +212,12 @@ export function discordChannel(options: DiscordChannelOptions): Channel<DiscordI
     reply: ({ inbound, text }) => post(inbound.replyTo as DiscordTarget, text),
     async onApproval({ inbound, approval, text }) {
       const target = inbound.replyTo as DiscordTarget;
+      // N9b: the sign-in link only as an ephemeral follow-up (flag 64) to the user who ran the command; no buttons.
+      if (approval.kind === 'sign-in') {
+        const name = approval.signIn?.displayName ?? approval.signIn?.provider ?? 'the provider';
+        await post(target, `Waiting for a sign-in to ${name}. The link was sent privately to the user who asked.`);
+        return call('POST', target.token, text.slice(0, MAX_LENGTH), undefined, EPHEMERAL);
+      }
       if (approval.question) {
         questions.set(inbound.sessionKey, approval.id);
         return post(target, text);
