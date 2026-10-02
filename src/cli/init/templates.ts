@@ -32,9 +32,10 @@ function sortKeys(record: Record<string, string>): Record<string, string> {
  * The `ai` major a new project gets (LOU-D28d): the current one, 7, for the
  * providers CI runs on it (`@ai-sdk/openai` and `@ai-sdk/anthropic` 4); OpenRouter
  * is one of them since it asks `@ai-sdk/openai` for its Chat Completions model
- * (LOU-D28f). Ollama stays on 4 with zod 3: its `ai` 6/7 package needs zod 4 (accepted since LOU-D29).
+ * (LOU-D28f). Ollama is on 7 too since LOU-M8: `ollama-ai-provider-v2` is installed and tested in CI
+ * (`ai7-zod4`), and needs zod 4 (accepted since LOU-D29), so its scaffold narrows zod to `^4.0.0`.
  */
-const SCAFFOLD_AI_MAJOR: Readonly<Record<string, AiMajor>> = { openai: 7, anthropic: 7, openrouter: 7, ollama: 4 };
+const SCAFFOLD_AI_MAJOR: Readonly<Record<string, AiMajor>> = { openai: 7, anthropic: 7, openrouter: 7, ollama: 7 };
 
 /** `ai` and only the chosen provider's package (the SDK loads provider packages on first use), as one pairing. */
 function aiPackages(provider: string): Record<string, string> {
@@ -43,10 +44,15 @@ function aiPackages(provider: string): Record<string, string> {
   return { ai: AI_RANGES[major], [name]: range };
 }
 
-/** The SDK's zod range, narrowed to zod 3 for `ai` 4, whose packages peer on zod 3 only (LOU-D29). */
+/**
+ * The SDK's zod range, narrowed to the one major the scaffolded provider packages peer on:
+ * zod 3 for `ai` 4 (LOU-D29), zod 4 for Ollama's `ai` 6/7 package (LOU-M8).
+ */
 function zodRange(peerRange: string | undefined, provider: string): string {
   const range = peerRange ?? '^3.25.76';
-  return (SCAFFOLD_AI_MAJOR[provider] ?? 4) === 4 ? range.split('||')[0].trim() : range;
+  const alternatives = range.split('||').map((part) => part.trim());
+  if ((SCAFFOLD_AI_MAJOR[provider] ?? 4) === 4) return alternatives[0]!;
+  return provider === 'ollama' ? (alternatives.find((part) => part.startsWith('^4')) ?? '^4.0.0') : range;
 }
 
 function packageJson(config: ProjectConfig): string {

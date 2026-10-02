@@ -49,8 +49,16 @@ npm install @lousho/build-ai-agent ai@^7.0.0 zod @ai-sdk/openai@^4.0.0
 for `ai` 6 and 7) declares `zod ^4` as a peer. The SDK accepts zod 4,
 so install it with zod 4, for example
 `npm install ai@^7.0.0 ollama-ai-provider-v2@^4.0.0 zod@^4.0.0`. With zod 3,
-use `ai@^4.3.19` with `ollama-ai-provider@^1.2.0` (what
-`lousho init --provider ollama` scaffolds).
+use `ai@^4.3.19` with `ollama-ai-provider@^1.2.0`.
+`lousho init --provider ollama` scaffolds `ai@^7.0.0` with
+`ollama-ai-provider-v2@^4.0.0` and zod 4.
+
+**What CI tests.** Every pairing the peer ranges accept is installed for real
+and run through the type check, the build and the whole test suite, on every
+change: `ai` 4 with zod 3 (the dev install) and zod 4, `ai` 6 with zod 3 and
+with zod 4, and `ai` 7 with zod 3 and with zod 4. The two zod 4 entries on
+`ai` 6 and 7 also install `ollama-ai-provider-v2` (3.x and 4.x) and run the
+Ollama provider against it, so Ollama on `ai` 6/7 is tested, not assumed.
 
 Peers are loaded on demand: importing `@lousho/build-ai-agent` (or any of
 its sub-entries) never loads a provider package, so you only need to install
