@@ -16,6 +16,10 @@ mapping.
 
 ## Quick start
 
+`createAgent()` does not take `exporter` yet, so tracing goes through the executor.
+
+#### Advanced: the executor API
+
 ```ts
 import { AgentExecutor, type TraceExporter } from '@lousho/build-ai-agent';
 
@@ -159,7 +163,9 @@ The cost is an estimate from the price table (see `registerModel`), not a bill.
 
 Prompts, model output and tool arguments/results are sensitive and large, so
 the `gen_ai.*` content attributes are **never recorded by default**. Opt in
-per run:
+per run. `createAgent()` does not take `captureContent` yet, so this goes through the executor too.
+
+#### Advanced: the executor API
 
 ```ts
 import { AgentExecutor, type TraceExporter } from '@lousho/build-ai-agent';
