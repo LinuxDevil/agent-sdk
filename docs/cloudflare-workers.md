@@ -19,6 +19,7 @@
 | Sessions, checkpoints, approvals | one KV namespace, `AGENT_CHECKPOINTS` (eventually consistent) | memory, files, SQLite |
 | Schedules | cron triggers only, in UTC, five fields, one-minute granularity | full cron expressions, with a time zone |
 | Bundle | `lousho build` checks for Node builtins and reports its size | not checked |
+| [Route auth](./auth.md) | the `LOUSHO_API_TOKEN` bearer token only | the token, or an ordered list (`jwt()`, `oidc()`, `basic()`, ...) from an agent directory's `auth.ts` |
 
 `lousho build` rejects a spec whose provider or tool is not in the Worker column, with a `LOUSHO_DEPLOY_FAILED` error that names it and suggests `--target=node-server` or `--target=docker`.
 

@@ -23,6 +23,8 @@ import { loadTools, type LoadedTool } from './loadTools';
 import { readConfig, type AgentDirConfig } from './readConfig';
 import { delegateTool, listSubagentDirs, requireDescription, type LoadedSubagent } from './subagents';
 import { SDKError } from '../execution/errors';
+import type { AuthFn } from '../auth/types';
+import { loadAuth } from './loadAuth';
 
 export type { AgentDirConfig } from './readConfig';
 
@@ -60,6 +62,8 @@ export interface AgentDirManifest {
   channels: string[];
   /** Memory slot names discovered in `memory/` (the file name unless the slot sets its own). */
   memory: string[];
+  /** Whether the directory has an `auth.ts` / `.js` (N10a); only the top-level directory's counts. */
+  auth: boolean;
 }
 
 /** The result of {@link resolveAgentDir}: ready-to-use `createAgent()` options plus what was discovered. */
@@ -71,6 +75,12 @@ export interface ResolvedAgentDir {
   schedules: DefinedSchedule[];
   /** The channels of `channels/`; serve them with `createDeployedServer(agent, { channels })` or `mountChannels()`. `loadAgentDir()` does not mount them. */
   channels: Channel[];
+  /**
+   * The route auth of `auth.ts` (N10a, docs/auth.md): pass it to
+   * `createDeployedServer(agent, { auth })` or `createRouteHandler(agent, { auth })`.
+   * `loadAgentDir()` does not use it.
+   */
+  auth?: AuthFn | readonly AuthFn[];
 }
 
 /** The model source a parent hands down to sub-agents that do not choose their own. */
@@ -212,6 +222,7 @@ async function resolveWith(
       schedules: schedules.map((s) => s.name as string),
       channels: channels.map((c) => c.name),
       memory: memorySlots.map((m) => m.name),
+      auth: false,
     },
   };
 }
@@ -240,6 +251,7 @@ async function skillsFor(dir: string, overrides: AgentDirOverrides): Promise<Ski
  *   schedules/*.ts|js                                each default-exports defineSchedule(); run with startSchedules()
  *   channels/*.ts|js                                 each default-exports a channel (defineChannel(), webhookChannel(), ...)
  *   memory/*.ts|js                                   each default-exports a memory slot (defineMemory()); part of the agent
+ *   auth.ts | auth.js                                default-exports route auth (jwt(), oidc(), basic(), ...); the deployed server uses it
  * ```
  *
  * Loading executes the directory's code. Only load directories you trust.
@@ -255,7 +267,10 @@ export async function resolveAgentDir(
   dir: string,
   overrides: AgentDirOverrides = {}
 ): Promise<ResolvedAgentDir> {
-  return resolveWith(dir, overrides, {});
+  const resolved = await resolveWith(dir, overrides, {});
+  const auth = await loadAuth(resolved.manifest.dir);
+  if (!auth) return resolved;
+  return { ...resolved, auth: auth.auth, manifest: { ...resolved.manifest, auth: true, files: [...resolved.manifest.files, auth.file] } };
 }
 
 /**

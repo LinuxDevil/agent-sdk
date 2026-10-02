@@ -86,11 +86,23 @@ function notFoundMessage(path: string, content: string, oldString: string): stri
   );
 }
 
-/** `edit_file`: exact string replacement that refuses ambiguous edits unless `replace_all`. */
-export async function editFile(
-  fs: FsProvider,
-  args: { path: string; old_string: string; new_string: string; replace_all?: boolean }
-): Promise<string> {
+/** The arguments of `edit_file`. */
+interface EditArgs {
+  path: string;
+  old_string: string;
+  new_string: string;
+  replace_all?: boolean;
+}
+
+/** An `edit_file` call that passed every check: the content to write and the message to return. */
+export interface PreparedEdit {
+  path: string;
+  content: string;
+  message: string;
+}
+
+/** Reads the file and computes an `edit_file` change without writing it; throws for an edit that would fail. */
+export async function prepareEdit(fs: FsProvider, args: EditArgs): Promise<PreparedEdit> {
   const path = normalizeWorkspacePath(args.path);
   if (args.old_string === '') {
     throw new WorkspaceError('old_string must not be empty. To create or overwrite a whole file, use write_file.');
@@ -107,8 +119,18 @@ export async function editFile(
         'or pass replace_all: true to replace every occurrence.'
     );
   }
-  await fs.writeFile(path, content.split(args.old_string).join(args.new_string));
-  return `Edited ${path}: replaced ${count} occurrence${count === 1 ? '' : 's'}.`;
+  return {
+    path,
+    content: content.split(args.old_string).join(args.new_string),
+    message: `Edited ${path}: replaced ${count} occurrence${count === 1 ? '' : 's'}.`,
+  };
+}
+
+/** `edit_file`: exact string replacement that refuses ambiguous edits unless `replace_all`. */
+export async function editFile(fs: FsProvider, args: EditArgs): Promise<string> {
+  const edit = await prepareEdit(fs, args);
+  await fs.writeFile(edit.path, edit.content);
+  return edit.message;
 }
 
 /** `list_dir`: sorted entries, directories suffixed with `/`. */

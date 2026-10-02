@@ -18,10 +18,10 @@ characters from `A-Z`, `a-z`, `0-9`, `_` and `-`) and an owner:
 - **A user** (`{ owner: 'user', principalId, issuer? }`): one credential per
   signed-in person. `principalId` is the user's id and `issuer` names the
   identity provider that issued it, so `alice` from one issuer and `alice`
-  from another are different owners. With route auth, a request's principal
-  maps onto it as `{ owner: 'user', principalId: principal.id, issuer:
-  principal.issuer }`; a user credential needs that principal, because
-  without one there is no user to own it.
+  from another are different owners. With [route auth](auth.md), a request's
+  principal maps onto it as `{ owner: 'user', principalId: principal.id,
+  issuer: principal.issuer }`; a user credential needs that principal,
+  because without one there is no user to own it.
 
 `tokenStoreKey(provider, owner)` is the record key of a credential:
 `<provider>|app`, or `<provider>|user|<issuer>|<principalId>` with the issuer

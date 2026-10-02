@@ -2,7 +2,7 @@
  * Agent directories as a node-server / docker deployment source (LOU-P8.2).
  *
  * Decision: the directory is pre-bundled, not copied as TypeScript. Its code
- * files (agent config, tools, schedules, channels, memory, and the same inside
+ * files (agent config, auth.ts, tools, schedules, channels, memory, and the same inside
  * each sub-agent) are compiled by the adapter's own tsup/esbuild step into
  * `dist/agent/**.js` next to `dist/server.js`, in one ESM build with shared
  * chunks (so tools, channels and the server use one copy of the SDK), and the
@@ -15,6 +15,7 @@ import * as path from 'node:path';
 import { listSorted } from '../../agentDir/fsUtil';
 import { writeFile } from '../bundle';
 import { SDKError } from '../../execution/errors';
+import { AUTH_FILE } from '../../agentDir/loadAuth';
 
 /** Records where the directory lives, so `build(outDir)` can bundle it (`build` only receives `outDir`). */
 const AGENT_DIR_POINTER = 'agent-dir.json';
@@ -43,15 +44,16 @@ export function scaffoldedAgentDir(outDir: string): string | undefined {
   return fs.existsSync(pointer) ? (JSON.parse(fs.readFileSync(pointer, 'utf8')) as { source: string }).source : undefined;
 }
 
-async function codeFiles(dir: string, folder: string | undefined): Promise<string[]> {
+/** Code files in `folder` (or, without one, the config file and, at the root only, `auth.ts`). */
+async function codeFiles(dir: string, folder: string | undefined, isRoot: boolean): Promise<string[]> {
   const where = folder ? path.join(dir, folder) : dir;
   const keep = (e: { name: string; isFile: boolean }) =>
-    e.isFile && CODE.test(e.name) && !NOT_CODE.test(e.name) && (folder !== undefined || /^agent\./.test(e.name));
+    e.isFile && CODE.test(e.name) && !NOT_CODE.test(e.name) && (folder !== undefined || /^agent\./.test(e.name) || (isRoot && AUTH_FILE.test(e.name)));
   return (await listSorted(where, keep)).map((name) => path.join(where, name));
 }
 
 async function collectEntries(dir: string, root: string, entries: Record<string, string>): Promise<void> {
-  for (const file of (await Promise.all([undefined, ...CODE_FOLDERS].map((f) => codeFiles(dir, f)))).flat()) {
+  for (const file of (await Promise.all([undefined, ...CODE_FOLDERS].map((f) => codeFiles(dir, f, dir === root)))).flat()) {
     entries[`agent/${path.relative(root, file).replace(/\\/g, '/').replace(CODE, '')}`] = file;
   }
   for (const name of await listSorted(path.join(dir, 'subagents'), (e) => e.isDirectory)) {
