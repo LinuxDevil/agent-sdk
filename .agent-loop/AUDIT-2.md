@@ -64,7 +64,7 @@ No matrix verdict flipped in the one-day window. Corrections to the old audit's 
 
 Every cell re-confirmed at the same commit. One correction: "Current `ai` major" is ⚠️ (it depends on `ai` 6; latest is 7). Capabilities not in the old matrix: todo tools with `useTodos` UI hooks, client-side resumable UI streams, runner / middleware composition (`pipe`, `withRetry`, `withCompaction`), a ChatGPT-subscription model provider, a virtual filesystem provider. Its quickstart gives no run command and an unpinned `npm install @ai-sdk/openai` now resolves to a major that does not match its `ai` 6 (inferred from npm metadata, not run).
 
-open-harness is no longer the competitor to chase: on the 51 rows it scores 15 ✅ against our 40. The comparison that matters is eve for features and the wider field for ideas.
+open-harness is no longer the competitor to chase: on the 51 rows it scores 16 ✅ against our 40. The comparison that matters is eve for features and the wider field for ideas.
 
 ## 5. The wider field: ranked ideas
 
@@ -108,7 +108,7 @@ The 51 old rows keep their order in the scorecard; these 14 rows are added becau
 | Channels beyond Slack / Discord | ❌ | ✅ nine more | ❌ | N11 |
 | Todo tools with UI hooks | ⚠️ tools, no hook | ❌ | ✅ | N12 |
 
-Totals with the strict rule: old 51 rows 40 / 10 / 1; the 14 new rows 0 / 5 / 9. On all 65 rows we are at **40 ✅ / 15 ⚠️ / 10 ❌**; eve is at 53 / 6 / 6 by the same reading.
+Totals with the strict rule: old 51 rows 40 / 10 / 1; the 14 new rows 0 / 5 / 9. On all 65 rows we are at **40 ✅ / 15 ⚠️ / 10 ❌**; eve is at 51 / 9 / 5 and open-harness at 19 / 12 / 34 by the same reading.
 
 ## 7. Where we still win
 
