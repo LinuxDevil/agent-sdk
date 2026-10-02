@@ -29,6 +29,9 @@ export default defineConfig({
       // Fixture evals that src/cli/eval.test.ts runs through `lousho eval`.
       'src/cli/__fixtures__/**',
       '**/*.judge.eval.ts',
+      // Real-daemon Docker tests (LOU-M6): run only via vitest.docker.config.ts /
+      // `npm run test:docker` (the Linux Docker CI job), never in the default run.
+      '**/*.docker.test.ts',
       // apps/* are separate npm workspaces (LOU-L1) with their own Vite/
       // vitest config and browser-only test environment (jsdom) - without
       // this exclude, this root config's broad default include pattern
