@@ -98,6 +98,31 @@ export interface SpanEvent {
   startTime: number;
   endTime?: number;
   attributes: Record<string, unknown>;
+  /** M5b: `internal` or `client` (a model call). */
+  kind?: 'internal' | 'client';
+  /** M5b: `error` when the span failed. */
+  status?: { code: 'ok' | 'error'; message?: string };
+}
+
+/** M5b: one persisted run in `GET /agents/:id/traces` (the SDK's `TraceSummary` without the server-side file path). */
+export interface TraceSummaryPayload {
+  traceId: string;
+  name: string;
+  agent?: string;
+  startTime: number;
+  durationMs: number;
+  status: 'ok' | 'error';
+  modelCalls: number;
+  toolCalls: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd?: number;
+}
+
+/** M5b: `GET /agents/:id/traces/:traceId`. */
+export interface TraceDetailPayload {
+  traceId: string;
+  spans: SpanEvent[];
 }
 
 /**

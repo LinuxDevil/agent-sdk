@@ -793,6 +793,8 @@
 
 /* ---------- O2: Trace tab ---------- */
 .trace-panel {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -1071,4 +1073,24 @@
 }
 .chat-input:disabled {
   opacity: 0.6;
+}
+
+/* M5b: persisted trace history next to the waterfall */
+.trace-layout { display: flex; height: 100%; min-height: 0; }
+.trace-main { flex: 1; min-width: 0; height: 100%; }
+.trace-history { display: flex; flex-direction: column; gap: 4px; width: 240px; flex: none; padding: 8px; overflow-y: auto; border-right: 1px solid var(--border); }
+.trace-item { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
+.trace-item:hover, .trace-item.selected { background: var(--surface-2); }
+.trace-item.selected { border-color: var(--accent); }
+.trace-item-head { display: flex; justify-content: space-between; gap: 8px; }
+.trace-item-meta { color: var(--text-muted); }
+.trace-item-error .trace-item-status, .trace-history-error { color: var(--danger); }
+.trace-history-note { padding: 4px; color: var(--text-faint); font-size: 12px; }
+.trace-kind { flex: none; color: var(--text-faint); font-size: 11px; }
+.trace-bar.error { background: var(--danger); }
+.trace-row-error .trace-name { color: var(--danger); }
+@media (max-width: 700px) {
+  .trace-layout { flex-direction: column; }
+  .trace-history { width: auto; flex-direction: row; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--border); }
+  .trace-item { min-width: 200px; }
 }
