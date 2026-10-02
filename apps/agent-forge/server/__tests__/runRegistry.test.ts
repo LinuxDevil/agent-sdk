@@ -148,6 +148,10 @@ describe('RunManager', () => {
     expect(runSpans).toHaveLength(2); // start + end
     const [startSpan, endSpan] = runSpans;
     expect(startSpan.endTime).toBeUndefined();
+    // M5b: span kind is forwarded, and status when the SDK set one (only a failed span has it).
+    expect(startSpan.kind).toBe('internal');
+    expect(spans.every((s) => s.status === undefined)).toBe(true);
+    expect(spans.find((s) => s.attributes['gen_ai.operation.name'] === 'chat')?.kind).toBe('client');
     expect(endSpan.endTime).toBeGreaterThanOrEqual(endSpan.startTime);
     expect(spans.some((s) => s.attributes['gen_ai.operation.name'] === 'chat')).toBe(true);
     expect(

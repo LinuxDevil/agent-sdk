@@ -157,6 +157,7 @@ await channels.resolveApproval({ id: 'the-approval-id', approved: true });
 | `webhookChannel({ secret?, auth?, name? })` | The JSON body's `input` string, or the whole body; a one-shot session unless the body has a `sessionKey` | `200` with the turn's `ExecutionResult`, as `WebhookTriggerAdapter` answers |
 | `slackChannel({ signingSecret, botToken, name?, fetch?, approvers?, onError? })` | Slack Events API and interactivity requests (see [Slack](#slack)) | `200` at once; replies are posted in the Slack thread |
 | `discordChannel({ publicKey, applicationId, botToken?, name?, fetch?, approvers?, onError? })` | Discord slash-command and button interactions (see [Discord](#discord)) | Deferred ack at once; the reply edits the original response |
+| `telegramChannel({ botToken, secretToken, botUsername?, name?, fetch?, approvers?, onError? })` | Telegram bot webhook updates: messages and inline-keyboard taps (see [Telegram](#telegram)) | `200` at once; replies are sent with `sendMessage` as plain text |
 
 `webhookChannel({ secret })` checks an HMAC-SHA256 signature of the raw body in
 `x-signature-256: sha256=<hex>`; `auth` takes any
@@ -199,6 +200,9 @@ a restart); use the list form or the default for approvals that must survive
 one. Answers to an `ask_question` are not restricted: the next message (Slack)
 or `/ask` (Discord) in the conversation is the answer. Who decided goes to
 `mountChannels(agent, channels, { onDecision({ approver, decision, sessionId, channel }) {} })`.
+r
+The Telegram channel takes the same `approvers` (Telegram user ids as strings; a
+function gets `{ id, name }`, with `name` the username or first name).
 
 Failures after the acknowledgment go to `onError` (option of the channel, or of
 `mountChannels`); see the contract above.
@@ -342,3 +346,86 @@ An [agent directory](./agent-directories.md)'s `channels/*.ts` files are loaded
 as channels too, and the node server mounts them. `SlackTriggerAdapter` and `verifySlackSignature()`
 (see [Triggers](triggers.md)) still work for one-shot replies
 through an incoming webhook.
+
+## Telegram
+
+`telegramChannel({ botToken, secretToken, botUsername?, name?, fetch?, approvers?, onError? })`
+puts an agent behind a Telegram bot over webhooks (no long polling, no Telegram
+library; Web Crypto and `fetch` only, so it also runs on Workers).
+
+- Every request's `X-Telegram-Bot-Api-Secret-Token` header is compared with
+  `secretToken` in constant time; a missing or wrong value answers 401. The
+  channel has no unauthenticated mode, so always pass `secret_token` to
+  `setWebhook`.
+- The update is acknowledged with `200` at once and the turn runs after, so
+  Telegram does not retry the webhook.
+- In a private chat every text message (or photo or document caption) is a
+  message to the agent. In a group or supergroup only a `/ask` command (or
+  `/ask@<botUsername>`), a message containing `@<botUsername>`, or a reply to
+  one of the bot's own messages wakes the bot; the command and the mention are
+  removed from the text and every other message is ignored. Messages from bots
+  are ignored. Set `botUsername` (without `@`) to use the group rules that need
+  it.
+- One session per chat, and one per topic in a forum supergroup. Replies go to
+  the same chat and topic, as a reply to the triggering message.
+- Replies are plain text (no `parse_mode`), so Markdown from the model cannot
+  make Telegram reject the message. Text over 4096 characters is split at line
+  breaks into several messages.
+- A tool approval is posted with an inline keyboard of **Approve** and
+  **Deny**. Only `approvers` (default: the user whose message started the turn)
+  may tap them; anyone else gets an alert and the approval stays pending. A tap
+  answers the callback, edits the message to append "Approved by ..." or
+  "Denied by ..." and remove the keyboard, and the continuation is sent as a new
+  message. The tap carries its chat, so it works after a restart. Telegram
+  limits `callback_data` to 64 bytes: it holds `a:` or `d:`, the starter's user
+  id and the approval id (about 55 bytes). If it would be longer, the starter is
+  left out, and then only an `approvers` list or function can approve (the
+  default refuses everyone).
+- An `ask_question` is sent as text with `force_reply`, and the next message in
+  the chat is the answer (in a group it has to be addressed to the bot, which
+  replying to the question does).
+- Attachments are not read yet: only the text or caption reaches the agent.
+
+Set the bot up with [@BotFather](https://t.me/BotFather):
+
+1. Send `/newbot`, choose a name and a username, and copy the bot token. For
+   use in groups, `/setprivacy` decides whether the bot sees every message;
+   `/ask`, mentions and replies work either way.
+2. Pick a random secret token (1 to 256 characters from `A-Z`, `a-z`, `0-9`,
+   `_` and `-`).
+3. Register the webhook once, with the bot token in the URL and the secret
+   token in the body (keep both out of shell history and logs):
+
+```sh
+curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" -H "Content-Type: application/json" -d '{"url":"https://<host>/channels/telegram","secret_token":"'"$TELEGRAM_SECRET_TOKEN"'","allowed_updates":["message","callback_query"]}'
+```
+
+```ts
+import * as http from 'node:http';
+import { createAgent, mountChannels, telegramChannel } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ instructions: 'You are a helpful Telegram bot.', provider });
+
+const channels = mountChannels(agent, [
+  telegramChannel({
+    botToken: process.env.TELEGRAM_BOT_TOKEN ?? '',
+    secretToken: process.env.TELEGRAM_SECRET_TOKEN ?? '',
+    botUsername: 'my_agent_bot',
+  }),
+]);
+
+http.createServer((req, res) => {
+  void channels(req, res).then((handled) => handled || res.writeHead(404).end());
+}).listen(3000);
+```
+
+The bot token is part of every Bot API URL, so the channel builds its error
+messages from the method name and status only: the token never reaches
+`onError` or the default log line.
+
+Pending approvals are resolved from the tap and the approval store. As on Slack
+and Discord, a pending `ask_question` survives a restart given durable stores
+for sessions, checkpoints and approvals: the next message in the chat is the
+answer and the continued turn is appended to the session transcript. A tap's
+continuation after a restart is sent but not appended to the session
+transcript.

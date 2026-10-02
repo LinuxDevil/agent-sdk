@@ -1434,7 +1434,7 @@ all of them.
 
 Each file in `channels/` default-exports a [channel](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) made with
 `defineChannel()` or a built-in factory (`webhookChannel()`, `httpChannel()`,
-`slackChannel()`). The channel's name is the one it sets, else the file name.
+`slackChannel()`, `discordChannel()`, `telegramChannel()`). The channel's name is the one it sets, else the file name.
 A file that does not export a channel fails with `LOUSHO_CHANNEL_INVALID`
 naming the file. `resolveAgentDir()` returns them as `channels` (and their names
 as `manifest.channels`); `loadAgentDir()` does not mount them. The node server
@@ -1670,6 +1670,26 @@ exists.
    message array" there to inspect the in-flight message list. **Output**
    shows the full `ExecutionResult` (messages, tool calls, usage, steps) as
    a collapsible JSON tree once the run finishes or pauses.
+
+   **Trace history.** Every run is also saved as a trace file, so the
+   **Trace** tab keeps the runs of the agent after the page is reloaded or the
+   server restarted. A list on the left shows the agent's past runs, newest
+   first (start time, duration, model calls, tokens in/out, cost, status),
+   with a **Live** entry on top while a run is active; choose one to open its
+   spans in the same waterfall, with each span's kind (`internal` or
+   `client`) and failed spans in the error colour. The list refreshes when
+   a run ends. The files are the ones `lousho traces` reads, in
+   `.lousho/agents/<agent id>/traces/<day>/<trace id>.jsonl` under the
+   directory `lousho studio` was started in (see
+   [Local traces](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md#local-traces)):
+   `npx lousho traces --dir .lousho/agents/<agent id>/traces` shows the same
+   runs in the terminal, and deleting the agent's folder deletes its traces.
+   The tab shows what the spans hold: model and tool names, token counts,
+   cost, durations and error messages, and with the span's tooltip the
+   attributes, which carry prompt and tool content. The server reads traces
+   only from that folder (an id with a path separator is a 400) and never
+   sends the file path to the browser. Keep `.lousho/` out of version
+   control.
 5. **Chat with it.** The **Chat** tab is a separate conversational
    transport (`POST /agents/:id/message`, streamed back over the same
    WebSocket as everything else) - send it a message and it replies in the
@@ -1768,12 +1788,15 @@ and replay it next to the original, with
 
 A run id is the run's checkpoint session id: the agent id for the agent's
 own runs, `<id>.fork-<n>` for a fork of run `<id>`. The runtime control
-server has three routes for it (the History tab uses them):
+server has three routes for it (the History tab uses them), and two more for
+an agent's saved traces (the Trace tab uses them):
 
 | Route | What it does |
 | --- | --- |
 | `GET /runs/:id/history` | `{ runId, steps }`: one entry per step of the run's latest execution (the newest checkpoint saved at that step), oldest first, with `status`, `savedAt`, `finishReason`, `toolCalls` (`{ id, name, args, result? }`), and `tokens` / `costUsd` of the step's model call when known. 404 when the run has no checkpoints. |
 | `POST /runs/:id/fork` | Body `{ fromStep, patch? }`, where `patch` is `{ toolResult?: { toolCallId, result }, appendInput?, businessState? }`. Forks the run at `fromStep`, then starts the fork through the run registry with the original run's spec. Returns 202 `{ runId, fromStep, status }`; the fork streams on `WS /agents/<runId>/stream` and reports on `GET /agents/<runId>/status` like any run. 400 for a bad body or an unknown `toolCallId`, 404 for an unknown run or a step with no checkpoint. |
+| `GET /agents/:id/traces?limit=N` | `{ traces }`: the agent's saved runs from `.lousho/agents/<id>/traces`, newest first (`limit` defaults to 20, at most 200), each with `traceId`, `name`, `startTime`, `durationMs`, `status`, `modelCalls`, `toolCalls`, `inputTokens`, `outputTokens` and `costUsd` when known. An agent with no runs gives an empty list; 404 for an unknown agent. |
+| `GET /agents/:id/traces/:traceId` | `{ traceId, spans }`: the spans of one saved run by start time, each with `id`, `parentId`, `name`, `kind`, `status`, `startTime`, `endTime` and `attributes`. `traceId` may be a unique prefix. 400 for an id that is not letters, digits and dashes or a prefix that matches several runs, 404 for an unknown agent or trace. |
 | `GET /runs/compare?a=&b=` | `compareTrajectories(a, b)` of two runs' latest checkpoints: each run's model turns, `divergedAt` (the first turn that differs) and the `drift` entries. 404 when either run has no checkpoint. |
 
 The flow, for an agent `weather` that has run once:
@@ -2805,6 +2828,7 @@ await channels.resolveApproval({ id: 'the-approval-id', approved: true });
 | `webhookChannel({ secret?, auth?, name? })` | The JSON body's `input` string, or the whole body; a one-shot session unless the body has a `sessionKey` | `200` with the turn's `ExecutionResult`, as `WebhookTriggerAdapter` answers |
 | `slackChannel({ signingSecret, botToken, name?, fetch?, approvers?, onError? })` | Slack Events API and interactivity requests (see [Slack](#slack)) | `200` at once; replies are posted in the Slack thread |
 | `discordChannel({ publicKey, applicationId, botToken?, name?, fetch?, approvers?, onError? })` | Discord slash-command and button interactions (see [Discord](#discord)) | Deferred ack at once; the reply edits the original response |
+| `telegramChannel({ botToken, secretToken, botUsername?, name?, fetch?, approvers?, onError? })` | Telegram bot webhook updates: messages and inline-keyboard taps (see [Telegram](#telegram)) | `200` at once; replies are sent with `sendMessage` as plain text |
 
 `webhookChannel({ secret })` checks an HMAC-SHA256 signature of the raw body in
 `x-signature-256: sha256=<hex>`; `auth` takes any
@@ -2847,6 +2871,9 @@ a restart); use the list form or the default for approvals that must survive
 one. Answers to an `ask_question` are not restricted: the next message (Slack)
 or `/ask` (Discord) in the conversation is the answer. Who decided goes to
 `mountChannels(agent, channels, { onDecision({ approver, decision, sessionId, channel }) {} })`.
+r
+The Telegram channel takes the same `approvers` (Telegram user ids as strings; a
+function gets `{ id, name }`, with `name` the username or first name).
 
 Failures after the acknowledgment go to `onError` (option of the channel, or of
 `mountChannels`); see the contract above.
@@ -2990,6 +3017,89 @@ An [agent directory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agen
 as channels too, and the node server mounts them. `SlackTriggerAdapter` and `verifySlackSignature()`
 (see [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md)) still work for one-shot replies
 through an incoming webhook.
+
+## Telegram
+
+`telegramChannel({ botToken, secretToken, botUsername?, name?, fetch?, approvers?, onError? })`
+puts an agent behind a Telegram bot over webhooks (no long polling, no Telegram
+library; Web Crypto and `fetch` only, so it also runs on Workers).
+
+- Every request's `X-Telegram-Bot-Api-Secret-Token` header is compared with
+  `secretToken` in constant time; a missing or wrong value answers 401. The
+  channel has no unauthenticated mode, so always pass `secret_token` to
+  `setWebhook`.
+- The update is acknowledged with `200` at once and the turn runs after, so
+  Telegram does not retry the webhook.
+- In a private chat every text message (or photo or document caption) is a
+  message to the agent. In a group or supergroup only a `/ask` command (or
+  `/ask@<botUsername>`), a message containing `@<botUsername>`, or a reply to
+  one of the bot's own messages wakes the bot; the command and the mention are
+  removed from the text and every other message is ignored. Messages from bots
+  are ignored. Set `botUsername` (without `@`) to use the group rules that need
+  it.
+- One session per chat, and one per topic in a forum supergroup. Replies go to
+  the same chat and topic, as a reply to the triggering message.
+- Replies are plain text (no `parse_mode`), so Markdown from the model cannot
+  make Telegram reject the message. Text over 4096 characters is split at line
+  breaks into several messages.
+- A tool approval is posted with an inline keyboard of **Approve** and
+  **Deny**. Only `approvers` (default: the user whose message started the turn)
+  may tap them; anyone else gets an alert and the approval stays pending. A tap
+  answers the callback, edits the message to append "Approved by ..." or
+  "Denied by ..." and remove the keyboard, and the continuation is sent as a new
+  message. The tap carries its chat, so it works after a restart. Telegram
+  limits `callback_data` to 64 bytes: it holds `a:` or `d:`, the starter's user
+  id and the approval id (about 55 bytes). If it would be longer, the starter is
+  left out, and then only an `approvers` list or function can approve (the
+  default refuses everyone).
+- An `ask_question` is sent as text with `force_reply`, and the next message in
+  the chat is the answer (in a group it has to be addressed to the bot, which
+  replying to the question does).
+- Attachments are not read yet: only the text or caption reaches the agent.
+
+Set the bot up with [@BotFather](https://t.me/BotFather):
+
+1. Send `/newbot`, choose a name and a username, and copy the bot token. For
+   use in groups, `/setprivacy` decides whether the bot sees every message;
+   `/ask`, mentions and replies work either way.
+2. Pick a random secret token (1 to 256 characters from `A-Z`, `a-z`, `0-9`,
+   `_` and `-`).
+3. Register the webhook once, with the bot token in the URL and the secret
+   token in the body (keep both out of shell history and logs):
+
+```sh
+curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" -H "Content-Type: application/json" -d '{"url":"https://<host>/channels/telegram","secret_token":"'"$TELEGRAM_SECRET_TOKEN"'","allowed_updates":["message","callback_query"]}'
+```
+
+```ts
+import * as http from 'node:http';
+import { createAgent, mountChannels, telegramChannel } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ instructions: 'You are a helpful Telegram bot.', provider });
+
+const channels = mountChannels(agent, [
+  telegramChannel({
+    botToken: process.env.TELEGRAM_BOT_TOKEN ?? '',
+    secretToken: process.env.TELEGRAM_SECRET_TOKEN ?? '',
+    botUsername: 'my_agent_bot',
+  }),
+]);
+
+http.createServer((req, res) => {
+  void channels(req, res).then((handled) => handled || res.writeHead(404).end());
+}).listen(3000);
+```
+
+The bot token is part of every Bot API URL, so the channel builds its error
+messages from the method name and status only: the token never reaches
+`onError` or the default log line.
+
+Pending approvals are resolved from the tap and the approval store. As on Slack
+and Discord, a pending `ask_question` survives a restart given durable stores
+for sessions, checkpoints and approvals: the next message in the chat is the
+answer and the continued turn is appended to the session transcript. A tap's
+continuation after a restart is sent but not appended to the session
+transcript.
 
 # CLI
 
@@ -5287,7 +5397,7 @@ See [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules
 a channel (an object with `parse` and `reply`). The message names the file.
 
 **Fix:** default-export a channel made with `defineChannel()`, `httpChannel()`,
-`webhookChannel()` or `slackChannel()`. See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md).
+`webhookChannel()`, `slackChannel()`, `discordChannel()` or `telegramChannel()`. See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md).
 
 **Example:** `export default { cron: 'x' }` in `channels/sms.ts`.
 
@@ -5442,12 +5552,12 @@ unknown type, or a Slack trigger that cannot verify requests.
 
 ### LOUSHO_CHANNEL_REQUEST_FAILED
 
-**Means:** a call to a chat platform's API (Slack, Discord) failed; the message
+**Means:** a call to a chat platform's API (Slack, Discord, Telegram) failed; the message
 names the call and the HTTP status or the platform's error.
 
 **Fix:** check the bot token and its permissions, and the platform status. See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md).
 
-**Example:** Slack `chat.postMessage` answering `channel_not_found`.
+**Example:** Slack `chat.postMessage` answering `channel_not_found`, or Telegram `sendMessage` answering 400 for an unknown chat.
 
 ### LOUSHO_DEPLOY_FAILED
 
