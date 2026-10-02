@@ -63,6 +63,11 @@
       "import": "./dist/storage/sqlite/index.mjs",
       "require": "./dist/storage/sqlite/index.js"
     },
+    "./kv": {
+      "types": "./dist/deploy/kv.d.ts",
+      "import": "./dist/deploy/kv.mjs",
+      "require": "./dist/deploy/kv.js"
+    },
     "./triggers": {
       "types": "./dist/triggers/index.d.ts",
       "import": "./dist/triggers/index.mjs",

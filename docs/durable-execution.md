@@ -199,7 +199,8 @@ Which stores keep one:
 | `memoryStore()` | yes | `memoryStore({ historyLimit })` |
 | `SqliteStore` | yes (`checkpoint_history` table) | `new SqliteStore(path, { historyLimit })` |
 | `LocalStorageCheckpointStore` | yes | `new LocalStorageCheckpointStore(storage, { historyLimit })` |
-| `KVCheckpointStore` / `KVStore` (Cloudflare Workers KV) | yes (see below) | `new KVStore(kv, { historyLimit })` |
+| `fileStore(dir)` (JSON files) | yes (`checkpoint-history/<id>.json`) | `fileStore(dir, { historyLimit })` |
+| `KVCheckpointStore` / `KVStore` (Cloudflare Workers KV, from `@lousho/build-ai-agent/kv`) | yes (see below) | `new KVStore(kv, { historyLimit })` |
 | Agent Forge's `FileCheckpointStore` | yes | `new FileCheckpointStore(dir, { historyLimit })` |
 | a custom `CheckpointStore` | only if it implements `history()` | - |
 

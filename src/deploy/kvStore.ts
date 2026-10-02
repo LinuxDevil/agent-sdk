@@ -16,7 +16,8 @@
  */
 import type { ApprovalStore, ExecutionSnapshot, PendingApproval, ResolvedApproval } from '../execution/ApprovalGate';
 import type { Message } from '../providers/llm';
-import { assertSessionId, type SessionStore } from '../session/sessionStore';
+import { assertSessionId } from '../session/sessionId';
+import type { SessionStore } from '../session/sessionStore';
 import type { AgentStore } from '../storage/agentStore';
 import { DEFAULT_KV_KEY_PREFIX, KVCheckpointStore, type KVBinding } from './kvCheckpointStore';
 

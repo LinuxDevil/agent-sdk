@@ -3,8 +3,8 @@
  * Backend-agnostic durable-execution checkpointing for AgentExecutor runs.
  */
 
-import { Message } from '../providers';
-import { StorageService } from '../storage';
+import type { Message } from '../providers';
+import type { StorageService } from '../storage';
 import type { StepUsage } from '../models/usage';
 import type { CheckpointUsage } from './runUsage';
 import type { AgentFingerprint } from './agentFingerprint';

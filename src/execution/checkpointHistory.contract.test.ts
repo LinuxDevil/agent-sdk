@@ -1,10 +1,13 @@
 /**
  * LOU-D43: one contract suite for `CheckpointStore.history()`, run against
  * every store that implements it (the in-memory store, `SqliteStore`,
- * `LocalStorageCheckpointStore` and `KVCheckpointStore`), plus the `getCheckpointHistory()` helper on
+ * `LocalStorageCheckpointStore`, `KVCheckpointStore` and `fileStore()`), plus the `getCheckpointHistory()` helper on
  * stores that do not.
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, afterAll } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   getCheckpointHistory,
   LocalStorageCheckpointStore,
@@ -12,6 +15,7 @@ import {
 } from './checkpoint';
 import { StorageService } from '../storage/StorageService';
 import { memoryStore } from '../storage/agentStore';
+import { fileStore } from '../storage/fileStore';
 import { SqliteStore } from '../storage/sqlite';
 import { KVCheckpointStore } from '../deploy/kvCheckpointStore';
 import { createFakeFs } from './__fixtures__/fakeFs';
@@ -23,7 +27,12 @@ afterEach(() => {
   while (sqliteStores.length) sqliteStores.pop()?.close();
 });
 
-const implementations: Array<[string, CheckpointHistoryStoreFactory]> = [
+const tempDirs: string[] = [];
+afterAll(() => {
+  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
+
+const implementations:Array<[string, CheckpointHistoryStoreFactory]> = [
   ['memoryStore()', (options) => memoryStore(options).checkpoints],
   [
     'SqliteStore',
@@ -39,6 +48,14 @@ const implementations: Array<[string, CheckpointHistoryStoreFactory]> = [
       const data = new Map<string, string>();
       const kv = { get: async (key: string) => data.get(key) ?? null, put: async (key: string, value: string) => void data.set(key, value), delete: async (key: string) => void data.delete(key) };
       return new KVCheckpointStore(kv, undefined, undefined, options);
+    },
+  ],
+  [
+    'fileStore()',
+    (options) => {
+      const dir = mkdtempSync(join(tmpdir(), 'lousho-history-'));
+      tempDirs.push(dir);
+      return fileStore(dir, options).checkpoints;
     },
   ],
   [

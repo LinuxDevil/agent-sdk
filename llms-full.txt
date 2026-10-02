@@ -801,6 +801,8 @@ How the pieces fit:
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
 | `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md), [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). |
 | `SqliteStore` (from `/sqlite`) | Sessions, checkpoints and approvals in one SQLite file (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
+| `fileStore(dir)`              | Sessions, checkpoints and approvals as plain JSON files under `dir` (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
+| `KVStore`, `KVCheckpointStore` (from `/kv`) | Stores on a Cloudflare Workers KV binding, for a hand-written Worker (see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)). |
 | `AgentStore`, `memoryStore()` | The `createAgent({ store })` option: `{ sessions?, checkpoints?, approvals? }`, and an in-memory one (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
 | `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). |
 | `SDKError`, `ERROR_CODES`    | Base class of the SDK's errors: a stable `code`, a `hint` and a `docs` link (see [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md)). |
@@ -4436,10 +4438,33 @@ curl -N https://<your-worker>.workers.dev/chat \
   -d '{ "sessionId": "alice", "input": "Hello" }'
 ```
 
-`KVStore(kvBinding, { prefix?, ttl? })` (`src/deploy/kvStore.ts`) is the
-`AgentStore` the generated Worker builds from the binding. It is not exported
-from any entry point of the package, so importing it in a hand-written Worker
-is not supported yet. Its keys, with an optional `prefix` before each:
+`KVStore(kvBinding, { prefix?, ttl?, historyLimit? })` is the `AgentStore` the
+generated Worker builds from the binding. A hand-written Worker imports it from
+the `/kv` subpath, which has no `node:*` import anywhere in its graph, with the
+binding typed as `KVBinding` (the `get`/`put`/`delete` part of Cloudflare's
+`KVNamespace`, so `@cloudflare/workers-types` is not needed):
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+import { KVStore, type KVBinding } from '@lousho/build-ai-agent/kv';
+
+interface Env {
+  AGENT_KV: KVBinding;
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const agent = createAgent({ provider, store: new KVStore(env.AGENT_KV) });
+    const { sessionId, input } = (await request.json()) as { sessionId: string; input: string };
+    const { text } = await agent.session({ id: sessionId }).send(input);
+    return Response.json({ text });
+  },
+};
+```
+
+`/kv` also exports `KVCheckpointStore` (checkpoints only) and
+`CHECKPOINT_KV_BINDING` (`'AGENT_CHECKPOINTS'`, the binding name the generated
+Worker reads). `KVStore`'s keys, with an optional `prefix` before each:
 
 | Key | Value |
 | --- | ----- |
@@ -4540,9 +4565,8 @@ one session at the same moment can overwrite each other's turn, since a KV
 read-modify-write is not atomic.
 
 The KV-backed stores (`KVStore`, `KVCheckpointStore` and `CHECKPOINT_KV_BINDING`,
-in `src/deploy/kvStore.ts`, `src/deploy/kvCheckpointStore.ts` and
-`src/deploy/checkpointBinding.ts`) have no `node:*` references anywhere in their
-dependency graph. The Worker runs the spec as a `createAgent()` agent, whose
+exported from `@lousho/build-ai-agent/kv`) have no `node:*` references anywhere
+in their dependency graph. The Worker runs the spec as a `createAgent()` agent, whose
 Node-only imports (project instructions, the file session store, guardrail
 patches, MCP over stdio) the build points at a shim that fails when used
 (`src/deploy/shims/node.worker.ts`). The built `dist/worker.js` bundle is then
@@ -4766,7 +4790,8 @@ Which stores keep one:
 | `memoryStore()` | yes | `memoryStore({ historyLimit })` |
 | `SqliteStore` | yes (`checkpoint_history` table) | `new SqliteStore(path, { historyLimit })` |
 | `LocalStorageCheckpointStore` | yes | `new LocalStorageCheckpointStore(storage, { historyLimit })` |
-| `KVCheckpointStore` / `KVStore` (Cloudflare Workers KV) | yes (see below) | `new KVStore(kv, { historyLimit })` |
+| `fileStore(dir)` (JSON files) | yes (`checkpoint-history/<id>.json`) | `fileStore(dir, { historyLimit })` |
+| `KVCheckpointStore` / `KVStore` (Cloudflare Workers KV, from `@lousho/build-ai-agent/kv`) | yes (see below) | `new KVStore(kv, { historyLimit })` |
 | Agent Forge's `FileCheckpointStore` | yes | `new FileCheckpointStore(dir, { historyLimit })` |
 | a custom `CheckpointStore` | only if it implements `history()` | - |
 
@@ -7781,32 +7806,29 @@ implementation by where the process runs:
 | Store | Sessions | Checkpoints | Approvals | Use it when |
 | --- | --- | --- | --- | --- |
 | In memory (`memoryStore()`) | `MemorySessionStore` | in memory | `InMemoryApprovalStore` | Tests, scripts, one process that never restarts |
-| Files | `FileSessionStore(dir)` | `LocalStorageCheckpointStore` | `StorageServiceApprovalStore` | One machine, you want plain inspectable files |
+| Files (`fileStore(dir)`) | `<dir>/sessions/<id>.json` | `<dir>/checkpoints/`, `<dir>/checkpoint-history/` | `<dir>/approvals/<id>.json` | One machine, you want plain inspectable files |
 | SQLite | `store.sessions` | `store.checkpoints` | `store.approvals` | A Node server: one durable, transactional file, shared safely by several processes |
-| Cloudflare KV | - | `KVCheckpointStore` | - | Workers deployments (see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)) |
+| Cloudflare KV (`KVStore` from `@lousho/build-ai-agent/kv`) | `store.sessions` | `store.checkpoints` | `store.approvals` | Workers deployments (see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)) |
 
 Each one is an `AgentStore` part: pass them together as
-`createAgent({ store: { sessions, checkpoints, approvals } })`. `memoryStore()`
-and `SqliteStore` are ready-made `AgentStore`s; for plain files, combine the
-file stores:
+`createAgent({ store: { sessions, checkpoints, approvals } })`. `memoryStore()`,
+`fileStore(dir)`, `SqliteStore` and `KVStore` are ready-made `AgentStore`s. For
+plain files, `fileStore(dir)` writes one JSON file per session, checkpoint and
+pending approval under `dir`, each written to a temp file and renamed into
+place, with no lock files:
 
 ```ts
-import {
-  createAgent,
-  FileSessionStore,
-  LocalStorageCheckpointStore,
-  StorageServiceApprovalStore,
-  type AgentStore,
-} from '@lousho/build-ai-agent';
+import { createAgent, fileStore } from '@lousho/build-ai-agent';
 
-// `storage` is a StorageService rooted where the files should go.
-const store: AgentStore = {
-  sessions: new FileSessionStore('./.lousho/sessions'),
-  checkpoints: new LocalStorageCheckpointStore(storage),
-  approvals: new StorageServiceApprovalStore(storage),
-};
-const agent = createAgent({ provider, store });
+const agent = createAgent({ provider, store: fileStore('./.lousho') });
+// ./.lousho/sessions/user-42.json, ./.lousho/checkpoints/..., ./.lousho/approvals/...
+await agent.session({ id: 'user-42' }).send('Hello');
 ```
+
+Resolving an approval from `fileStore` is safe across processes (only one
+caller gets the record); two processes writing one session at the same moment
+are not coordinated, so the last write wins. For several processes sharing a
+store, use `SqliteStore`.
 
 Any object with the three methods of a part works there too: a Redis
 `SessionStore`, or a KV-backed `CheckpointStore` on Cloudflare Workers (the

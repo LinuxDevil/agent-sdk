@@ -39,6 +39,7 @@ export default defineConfig({
     'execution/otel': 'src/execution/otel.ts',
     'execution/hooks': 'src/execution/hooks.ts',
     'storage/sqlite/index': 'src/storage/sqlite/index.ts',
+    'deploy/kv': 'src/deploy/kv.ts',
     'triggers/index': 'src/triggers/index.ts',
     'react/index': 'src/react/index.ts',
     'vue/index': 'src/vue/index.ts',

@@ -49,6 +49,8 @@ How the pieces fit:
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
 | `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](./approvals.md), [Durable execution](./durable-execution.md)). |
 | `SqliteStore` (from `/sqlite`) | Sessions, checkpoints and approvals in one SQLite file (see [Sessions](./sessions.md#choosing-a-store)). |
+| `fileStore(dir)`              | Sessions, checkpoints and approvals as plain JSON files under `dir` (see [Sessions](./sessions.md#choosing-a-store)). |
+| `KVStore`, `KVCheckpointStore` (from `/kv`) | Stores on a Cloudflare Workers KV binding, for a hand-written Worker (see [Deployment](./deployment.md)). |
 | `AgentStore`, `memoryStore()` | The `createAgent({ store })` option: `{ sessions?, checkpoints?, approvals? }`, and an in-memory one (see [Sessions](./sessions.md#choosing-a-store)). |
 | `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](./durable-execution.md)). |
 | `SDKError`, `ERROR_CODES`    | Base class of the SDK's errors: a stable `code`, a `hint` and a `docs` link (see [Errors](./errors.md)). |

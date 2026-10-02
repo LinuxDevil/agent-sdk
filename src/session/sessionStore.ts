@@ -7,7 +7,8 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { Message } from '../providers/llm';
-import { ConfigurationError, SDKError } from '../execution/errors';
+import { SDKError } from '../execution/errors';
+import { assertSessionId } from './sessionId';
 
 /** How bytes (image and file parts, LOU-V11) are saved in a JSON transcript: `{ "$bytes": "<base64>" }`. */
 const BYTES_KEY = '$bytes';
@@ -45,22 +46,7 @@ export interface SessionStore {
   delete(id: string): Promise<void>;
 }
 
-const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
-
-/**
- * Throws unless `id` is 1-128 characters of letters, digits, `_` or `-`.
- * Session ids become file names, so anything else (`../`, `/`, `.`) is refused.
- */
-export function assertSessionId(id: string): void {
-  if (typeof id !== 'string' || !SESSION_ID_PATTERN.test(id)) {
-    throw new ConfigurationError(
-      `Invalid session id ${JSON.stringify(id)}: use 1-128 characters from A-Z, a-z, 0-9, '_' and '-' ` +
-        "(e.g. 'user-42'). Omit the id to get a generated one.",
-      'id',
-      'LOUSHO_SESSION_ID_INVALID'
-    );
-  }
-}
+export { assertSessionId };
 
 /**
  * In-memory store: the default. Transcripts live as long as the process

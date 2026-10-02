@@ -227,32 +227,29 @@ implementation by where the process runs:
 | Store | Sessions | Checkpoints | Approvals | Use it when |
 | --- | --- | --- | --- | --- |
 | In memory (`memoryStore()`) | `MemorySessionStore` | in memory | `InMemoryApprovalStore` | Tests, scripts, one process that never restarts |
-| Files | `FileSessionStore(dir)` | `LocalStorageCheckpointStore` | `StorageServiceApprovalStore` | One machine, you want plain inspectable files |
+| Files (`fileStore(dir)`) | `<dir>/sessions/<id>.json` | `<dir>/checkpoints/`, `<dir>/checkpoint-history/` | `<dir>/approvals/<id>.json` | One machine, you want plain inspectable files |
 | SQLite | `store.sessions` | `store.checkpoints` | `store.approvals` | A Node server: one durable, transactional file, shared safely by several processes |
-| Cloudflare KV | - | `KVCheckpointStore` | - | Workers deployments (see [Deployment](deployment.md)) |
+| Cloudflare KV (`KVStore` from `@lousho/build-ai-agent/kv`) | `store.sessions` | `store.checkpoints` | `store.approvals` | Workers deployments (see [Deployment](deployment.md)) |
 
 Each one is an `AgentStore` part: pass them together as
-`createAgent({ store: { sessions, checkpoints, approvals } })`. `memoryStore()`
-and `SqliteStore` are ready-made `AgentStore`s; for plain files, combine the
-file stores:
+`createAgent({ store: { sessions, checkpoints, approvals } })`. `memoryStore()`,
+`fileStore(dir)`, `SqliteStore` and `KVStore` are ready-made `AgentStore`s. For
+plain files, `fileStore(dir)` writes one JSON file per session, checkpoint and
+pending approval under `dir`, each written to a temp file and renamed into
+place, with no lock files:
 
 ```ts
-import {
-  createAgent,
-  FileSessionStore,
-  LocalStorageCheckpointStore,
-  StorageServiceApprovalStore,
-  type AgentStore,
-} from '@lousho/build-ai-agent';
+import { createAgent, fileStore } from '@lousho/build-ai-agent';
 
-// `storage` is a StorageService rooted where the files should go.
-const store: AgentStore = {
-  sessions: new FileSessionStore('./.lousho/sessions'),
-  checkpoints: new LocalStorageCheckpointStore(storage),
-  approvals: new StorageServiceApprovalStore(storage),
-};
-const agent = createAgent({ provider, store });
+const agent = createAgent({ provider, store: fileStore('./.lousho') });
+// ./.lousho/sessions/user-42.json, ./.lousho/checkpoints/..., ./.lousho/approvals/...
+await agent.session({ id: 'user-42' }).send('Hello');
 ```
+
+Resolving an approval from `fileStore` is safe across processes (only one
+caller gets the record); two processes writing one session at the same moment
+are not coordinated, so the last write wins. For several processes sharing a
+store, use `SqliteStore`.
 
 Any object with the three methods of a part works there too: a Redis
 `SessionStore`, or a KV-backed `CheckpointStore` on Cloudflare Workers (the
