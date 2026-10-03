@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { FlowBuilder } from './FlowBuilder';
+import { createAgent } from '../createAgent';
+import { mockModel } from '../testing';
+import { SDKError } from '../execution/errors';
+import type { FlowAgentDefinition } from '../types';
 
 describe('FlowBuilder', () => {
   describe('basic building', () => {
@@ -186,6 +190,19 @@ describe('FlowBuilder', () => {
         .build();
 
       expect(flow.agents).toEqual(agents);
+    });
+
+    it('rejects a createAgent() agent at build() with a coded error (LOU-R14)', () => {
+      const simpleAgent = createAgent({ provider: mockModel(['hi']) });
+
+      const builder = new FlowBuilder()
+        .setCode('test')
+        .setName('Test')
+        .addAgent(simpleAgent as unknown as FlowAgentDefinition);
+
+      expect(() => builder.build()).toThrow(SDKError);
+      expect(() => builder.build()).toThrow('LOUSHO_FLOW_INVALID');
+      expect(() => builder.build()).toThrow('createAgent()');
     });
   });
 

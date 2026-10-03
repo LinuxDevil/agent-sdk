@@ -10,6 +10,9 @@ import { AgentFlow, AgentConfig } from '../types';
 import { MockLLMProvider } from '../providers/mock';
 import { ToolRegistry } from '../tools';
 import { SandboxAdapter } from '../security/sandbox';
+import { createAgent } from '../createAgent';
+import { mockModel } from '../testing';
+import { SDKError } from '../execution/errors';
 
 describe('FlowExecutor', () => {
   let mockProvider: MockLLMProvider;
@@ -884,6 +887,46 @@ describe('FlowExecutor', () => {
       const result = await FlowExecutor.execute(flow, context);
 
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe('createAgent() agent rejection (LOU-R14)', () => {
+    it('rejects a createAgent() agent with a coded error instead of silently dropping its instructions', async () => {
+      const simpleAgent = createAgent({ provider: mockModel(['hi']) });
+      const flow: AgentFlow = {
+        code: 'test-flow',
+        name: 'Test Flow',
+        flow: {
+          type: 'llmCall',
+          prompt: 'Tell me a joke',
+        },
+      };
+
+      await expect(
+        FlowExecutor.execute(flow, { ...context, agent: simpleAgent as unknown as AgentConfig })
+      ).rejects.toThrow(SDKError);
+      await expect(
+        FlowExecutor.execute(flow, { ...context, agent: simpleAgent as unknown as AgentConfig })
+      ).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_INVALID' });
+      await expect(
+        FlowExecutor.execute(flow, { ...context, agent: simpleAgent as unknown as AgentConfig })
+      ).rejects.toThrow('createAgent()');
+    });
+
+    it('still accepts a plain { name, prompt } agent config', async () => {
+      const flow: AgentFlow = {
+        code: 'test-flow',
+        name: 'Test Flow',
+        flow: {
+          type: 'llmCall',
+          prompt: 'Tell me a joke',
+        },
+      };
+
+      const result = await FlowExecutor.execute(flow, context);
+
+      expect(result.success).toBe(true);
+      expect(result.output).toBe('Hello from LLM');
     });
   });
 });

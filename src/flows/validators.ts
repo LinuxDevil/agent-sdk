@@ -1,6 +1,19 @@
 import { AgentFlow, FlowAgentDefinition } from '../types';
 
 /**
+ * Whether `value` is a `createAgent()` result (a `SimpleAgent`): a live agent
+ * that runs itself through `send()`/`stream()`, not a plain data config.
+ * Flow APIs take plain data - `FlowExecutionContext.agent` is an
+ * `AgentConfig` (`{ name, prompt?, settings }`) and `FlowBuilder.addAgent` a
+ * `FlowAgentDefinition` (`{ name, model, system, tools }`) - so a SimpleAgent
+ * passed to either was silently accepted while its instructions were dropped
+ * (LOU-R14). Both reject it with a coded `SDKError` instead.
+ */
+export function isCreateAgentResult(value: unknown): boolean {
+  return typeof value === 'object' && value !== null && typeof (value as { send?: unknown }).send === 'function';
+}
+
+/**
  * Errors for a missing or already-seen name. Records the name in `seen` so later
  * duplicates are caught. `label` is e.g. "Agent" or "Input variable".
  */

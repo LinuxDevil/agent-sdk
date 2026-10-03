@@ -25,6 +25,7 @@ import { AgentConfig } from '../types';
 import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from '../execution/sandboxGuard';
 import { evaluateSafeExpression, ExpressionError } from './safeExpression';
+import { isCreateAgentResult } from './validators';
 import { Span, TraceExporter, recordSpanError, withSpan } from '../execution/tracing';
 import {
   defined,
@@ -41,6 +42,12 @@ import { SDKError } from '../execution/errors';
  * Flow execution context
  */
 export interface FlowExecutionContext {
+  /**
+   * The plain agent config the flow's steps run under: `prompt` is the
+   * system message of every `llmCall`, `settings.model` its default model.
+   * A `createAgent()` result (a `SimpleAgent`, which runs itself) is NOT one
+   * and is rejected with `LOUSHO_CONFIG_INVALID` (LOU-R14).
+   */
   agent: AgentConfig;
   session?: unknown;
   variables: Record<string, unknown>;
@@ -199,6 +206,7 @@ export class FlowExecutor {
     context: FlowExecutionContext,
     onEvent?: (event: FlowExecutionEvent) => void
   ): Promise<FlowExecutionResult> {
+    this.assertRunnableAgent(context.agent);
     return withSpan(
       context.exporter,
       `${GenAiOperation.INVOKE_WORKFLOW} ${flow.name}`,
@@ -215,6 +223,24 @@ export class FlowExecutor {
       context.parentSpanId,
       'internal'
     );
+  }
+
+  /**
+   * `context.agent` is the plain config `buildLLMMessages()`/`resolveLLMModel()`
+   * read (`{ name, prompt?, settings }`); a `createAgent()` agent is a live
+   * object that runs itself through `send()`, so its instructions, model and
+   * tools are not readable here - it was silently accepted and dropped before
+   * LOU-R14. Reject it, naming the expected shape.
+   */
+  private static assertRunnableAgent(agent: AgentConfig): void {
+    if (isCreateAgentResult(agent)) {
+      throw new SDKError(
+        `FlowExecutor.execute: 'agent' is a createAgent() agent, which runs itself. ` +
+          `A flow's steps run under a plain config instead. ` +
+          `Example: FlowExecutor.execute(flow, { agent: { name: 'my-agent', prompt: 'You are a triager.' }, provider, variables })`,
+        'LOUSHO_CONFIG_INVALID'
+      );
+    }
   }
 
   /** Records a flow/node outcome (and the error, when it failed) on its span. */
