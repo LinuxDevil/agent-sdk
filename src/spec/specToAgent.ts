@@ -3,24 +3,12 @@ import { createAgent, SimpleAgent, CreateAgentConfig } from '../createAgent';
 import { resolveProvider } from '../providers/resolveProvider';
 import { LLMProvider, LLMProviderRegistry } from '../providers/llm';
 import { ConfigurationError } from '../execution/errors';
-// Side-effect import: '../providers/mock' self-registers 'mock' into
-// LLMProviderRegistry (see the bottom of src/providers/mock.ts for why).
-// specToAgent resolves provider types dynamically by string via
-// LLMProviderRegistry.create() below, but nothing else in this module's
-// dependency graph references a providers module as a VALUE (only as
-// types, e.g. LLMProvider), so bundlers (tsup/esbuild) never pull any
-// providers module into CLI bundles like dist/cli/dev.js that don't also
-// go through src/index.ts. Without this explicit import, `lousho dev` (and
-// anything else that loads a spec directly, bypassing the SDK's top-level
-// index.ts) never actually registers 'mock' at runtime, even though the
-// registration code exists. This imports mock.ts specifically (not the
-// whole '../providers' barrel) because mock.ts has no external
-// dependencies - importing the full barrel would also eagerly pull in
-// OpenAIProvider/OllamaProvider/OpenRouterProvider, whose top-level
-// imports of their optional peer-dependency SDKs ('@ai-sdk/openai',
-// 'ollama-ai-provider', ...) would then crash `lousho dev` for the exact
-// zero-API-key/zero-extra-installs use case this fix exists for.
-import '../providers/mock';
+// No provider-registration side-effect import is needed here:
+// LLMProviderRegistry.create() - reached below directly, and via
+// resolveProvider() for the real provider types - registers the built-in
+// providers lazily on a miss (LOU-R1), so 'mock', 'openai', 'anthropic',
+// 'openrouter' and 'ollama' all resolve in CLI bundles like dist/cli/dev.js
+// that never load src/index.ts.
 import { httpTool } from '../tools/built-in/http';
 import { currentDateTool } from '../tools/built-in/currentDate';
 import { dayNameTool } from '../tools/built-in/dayName';

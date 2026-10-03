@@ -132,6 +132,33 @@ export function workerNodeShimPlugin(): Plugin {
   };
 }
 
+/**
+ * esbuild plugin (cloudflare-worker target only) that leaves the optional
+ * peers of the providers a Worker cannot run external:
+ * 'ollama-ai-provider' / 'ollama-ai-provider-v2' for 'ollama', the one
+ * built-in provider not in WORKER_SUPPORTED_PROVIDERS.
+ *
+ * Needed since LOU-R1: llm.ts now imports ./builtinProviders.ts (lazy
+ * registration on a create() miss), which statically imports every built-in
+ * provider module - so OllamaProvider and its lazy `import('ollama-ai-provider*')`
+ * specifiers reach the Worker bundle, whose "inline everything" noExternal
+ * would otherwise bundle those packages wholesale (where installed) or fail the
+ * build with "Could not resolve" (where they are not). A plugin result of
+ * `external: true` wins over noExternal, so the import() stays a lazy
+ * runtime specifier behind OllamaProvider's first generate()/stream() -
+ * code no Worker ever reaches: the adapter rejects a non-worker provider
+ * before a spec is scaffolded, and the workerSdk has no OllamaProvider export.
+ */
+export function workerUnsupportedPeerPlugin(): Plugin {
+  const filter = /^ollama-ai-provider(?:-v2)?(?:\/.*)?$/;
+  return {
+    name: 'lousho-worker-unsupported-peer',
+    setup(build) {
+      build.onResolve({ filter }, (args) => ({ path: args.path, external: true }));
+    },
+  };
+}
+
 const SKIP_BUILTIN_CHECK = 'lousho-skip-builtin-check';
 
 /**
