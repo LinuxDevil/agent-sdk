@@ -716,10 +716,15 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     throw new ConfigurationError(`createAgent: the handoff tool '${clash}' has the name of one of the agent's tools; set another toolName with handoff(target, { toolName }).`, 'handoffs');
   }
   // LOU-Z4: MCP tools join the registry and the agent's tools once connected.
-  const mcp = agentMcp(config.mcpServers, (tools) => {
-    Object.assign(mcpTools, tools);
-    if (specs.staticTools) addMcpTools(specs.staticTools, tools);
-  });
+  const mcp = agentMcp(
+    config.mcpServers,
+    (tools) => {
+      Object.assign(mcpTools, tools);
+      if (specs.staticTools) addMcpTools(specs.staticTools, tools);
+    },
+    // N9c: servers with `oauth` keep their tokens with the tools' ones.
+    config.store?.tokens
+  );
   const hooks = agentHooks(config);
   // M5a: every run of this agent (send, stream, sessions, resume, approvals) is traced.
   const tracing: Pick<ExecuteOptions, 'exporter' | 'captureContent'> = {
@@ -925,7 +930,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     // durable() throws LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE without `store.checkpoints`.
     fork: async (sessionId, options) => AgentExecutor.fork({ ...options, ...(durable(sessionId) as SessionTurnCheckpoint) }),
     approvals: approvals.approvals,
-    oauth: createAgentOAuth(tokens, approvals.store),
+    oauth: createAgentOAuth(tokens, approvals.store, mcp.oauth),
     ready: mcp.ready,
     close: mcp.close,
   };

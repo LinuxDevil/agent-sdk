@@ -67,12 +67,32 @@ export interface McpStdioServerSpec {
   approval?: McpApproval;
 }
 
+/**
+ * OAuth for an HTTP MCP server (N9c), per the MCP authorization spec: the SDK
+ * discovers the authorization server, registers a client when no `clientId` is
+ * given, and signs in with PKCE and a resource indicator. The grant belongs to
+ * the app: an operator signs the agent in once (`agent.oauth.mcpSignInUrl()`).
+ */
+export interface McpOAuthOptions {
+  /** The agent's callback URL, e.g. `https://agent.example.com/oauth/callback`. */
+  redirectUri: string;
+  /** A pre-registered client. Omitted: dynamic client registration (RFC 7591). */
+  clientId?: string;
+  /** The secret of a confidential pre-registered client. */
+  clientSecret?: string;
+  scopes?: readonly string[];
+  /** Shown on the consent screen when registering. Default `'lousho'`. */
+  clientName?: string;
+}
+
 /** An MCP server reached over HTTP. */
 export interface McpHttpServerSpec {
   url: string;
   headers?: Record<string, string>;
   /** Which of this server's tools ask for approval (LOU-Z5). Default `'annotations'`. */
   approval?: McpApproval;
+  /** Sign in to this server with OAuth (N9c); see {@link McpOAuthOptions}. */
+  oauth?: McpOAuthOptions;
 }
 
 /**
@@ -157,6 +177,28 @@ const mcpApprovalSchema = z.union(
   anyError(`${MCP_PREFIX} 'approval' must be 'annotations', 'always' or 'never'`)
 );
 
+const mcpOAuthText = (field: string) =>
+  z.string(typeErrors({ invalid: `${MCP_PREFIX} 'oauth.${field}' must be a string` })).min(1, `${MCP_PREFIX} 'oauth.${field}' must not be empty`);
+
+/** `oauth` of an HTTP entry (N9c). */
+const mcpOAuthSchema = z
+  .object(
+    {
+      redirectUri: z
+        .string(typeErrors({ required: `${MCP_PREFIX} 'oauth.redirectUri' is required`, invalid: `${MCP_PREFIX} 'oauth.redirectUri' must be a string` }))
+        .url(`${MCP_PREFIX} 'oauth.redirectUri' must be a valid URL`),
+      clientId: mcpOAuthText('clientId').optional(),
+      clientSecret: mcpOAuthText('clientSecret').optional(),
+      scopes: z.array(z.string(), typeErrors({ invalid: `${MCP_PREFIX} 'oauth.scopes' must be a list of strings` })).optional(),
+      clientName: mcpOAuthText('clientName').optional(),
+    },
+    typeErrors({ invalid: `${MCP_PREFIX} 'oauth' must be an object with 'redirectUri'` })
+  )
+  .strict()
+  .refine((oauth) => oauth.clientSecret === undefined || oauth.clientId !== undefined, {
+    message: `${MCP_PREFIX} 'oauth.clientSecret' needs 'oauth.clientId' (a pre-registered client)`,
+  });
+
 /** What is wrong with a loosely-parsed `mcpServers` entry, if anything. */
 function mcpServerProblem(server: Record<string, unknown>): string | undefined {
   const stdio = server.command !== undefined;
@@ -165,7 +207,7 @@ function mcpServerProblem(server: Record<string, unknown>): string | undefined {
       ? "set either 'command' (stdio) or 'url' (HTTP), not both"
       : "missing 'command' (stdio server) or 'url' (HTTP server)";
   }
-  const stray = (stdio ? ['headers'] : ['args', 'env']).find((key) => server[key] !== undefined);
+  const stray = (stdio ? ['headers', 'oauth'] : ['args', 'env']).find((key) => server[key] !== undefined);
   return stray && `'${stray}' does not apply to ${stdio ? "a stdio ('command')" : "an HTTP ('url')"} server`;
 }
 
@@ -192,6 +234,7 @@ const mcpServerSchema = z
         .optional(),
       headers: mcpStringMap('headers').optional(),
       approval: mcpApprovalSchema.optional(),
+      oauth: mcpOAuthSchema.optional(),
     },
     typeErrors({ invalid: `${MCP_PREFIX} each mcpServers entry must be an object with 'command' or 'url'` })
   )

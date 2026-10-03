@@ -19,7 +19,7 @@ import type { ApprovalSignIn } from '../execution/ApprovalGate';
 import { toBase64Url as base64url } from '../utils/base64url';
 
 /** How long a sign-in link (its `state`) works. */
-const SIGN_IN_TTL_MS = 10 * 60 * 1000;
+export const SIGN_IN_TTL_MS = 10 * 60 * 1000;
 /** A token this close to `expiresAt` is refreshed first (when it has a refresh token). */
 const REFRESH_MARGIN_MS = 60 * 1000;
 const SIGN_IN_REQUIRED = 'LoushoSignInRequired';
@@ -289,9 +289,15 @@ function whereOf(pending: PendingSignIn, provider: OAuthProvider | undefined): O
  * sign-in was started for. A provider `error` ends it as `'declined'`. It does
  * not continue the paused run.
  */
-export async function completeSignIn(params: OAuthCallbackParams, tokens: OAuthTokenStore | undefined): Promise<OAuthCompleteResult> {
+export async function completeSignIn(
+  params: OAuthCallbackParams,
+  tokens: OAuthTokenStore | undefined,
+  mcp?: McpSignInExchange
+): Promise<OAuthCompleteResult> {
   if (!tokens) throw storeMissing();
   const pending = await takeOwnPending(params, tokens);
+  const mcpServer = pending.data?.mcpServer;
+  if (typeof mcpServer === 'string') return completeMcpSignIn(mcpServer, pending, params, mcp);
   const provider = registeredOAuthProvider(pending.provider);
   const where = whereOf(pending, provider);
   if (params.error !== undefined) return { ...where, outcome: 'declined' };
@@ -308,6 +314,26 @@ export async function completeSignIn(params: OAuthCallbackParams, tokens: OAuthT
     ...(pending.codeVerifier !== undefined && { code_verifier: pending.codeVerifier }),
   });
   await tokens.set(provider.name, pending.owner, token);
+  return { ...where, outcome: 'signed-in' };
+}
+
+/**
+ * N9c: exchanges the code of an MCP server's sign-in (a pending record with
+ * `data.mcpServer`) through the MCP SDK and stores the token.
+ */
+export type McpSignInExchange = (server: string, pending: PendingSignIn, code: string) => Promise<void>;
+
+/** {@link completeSignIn} for an MCP server's pending sign-in (N9c). */
+async function completeMcpSignIn(server: string, pending: PendingSignIn, params: OAuthCallbackParams, mcp: McpSignInExchange | undefined): Promise<OAuthCompleteResult> {
+  const where = { provider: pending.provider, displayName: server };
+  if (params.error !== undefined) return { ...where, outcome: 'declined' };
+  if (!mcp) {
+    throw new SDKError(`No MCP server named '${server}' with \`oauth\` is configured on this agent.`, 'LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED');
+  }
+  if (typeof params.code !== 'string' || params.code === '') {
+    throw new SDKError(`MCP server '${server}' redirected without an authorization code.`, 'LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED');
+  }
+  await mcp(server, pending, params.code);
   return { ...where, outcome: 'signed-in' };
 }
 

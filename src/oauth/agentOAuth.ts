@@ -5,7 +5,7 @@
 import { ConfigurationError } from '../execution/errors';
 import type { ApprovalStore, PendingApproval } from '../execution/ApprovalGate';
 import { isOAuthProvider, type OAuthProvider } from './defineOAuthProvider';
-import { completeSignIn, startSignIn, type OAuthCallbackParams, type OAuthCompleteResult } from './signIn';
+import { completeSignIn, startSignIn, type McpSignInExchange, type OAuthCallbackParams, type OAuthCompleteResult } from './signIn';
 import type { OAuthTokenStore } from './types';
 
 /** `agent.oauth`: sign-ins for tools that call `ctx.getToken()` (docs/oauth.md). */
@@ -36,6 +36,25 @@ export interface AgentOAuth {
    * ```
    */
   signInUrl(provider: OAuthProvider): Promise<string>;
+  /**
+   * N9c: an authorization URL that signs the app in to the HTTP MCP server
+   * `server` (an `mcpServers` entry with `oauth`). It discovers the server's
+   * authorization server, registers a client when no `clientId` is set, and
+   * uses PKCE and a resource indicator. The operator opens it once; the
+   * callback stores the token and the next connection uses it.
+   *
+   * @example
+   * ```ts
+   * console.log('Open this to connect Linear:', await agent.oauth.mcpSignInUrl('linear'));
+   * ```
+   */
+  mcpSignInUrl(server: string): Promise<string>;
+}
+
+/** The agent's MCP servers with `oauth` (N9c): starting and finishing their sign-ins. */
+export interface McpOAuthSignIn {
+  signInUrl(server: string): Promise<string>;
+  complete: McpSignInExchange;
 }
 
 /** Marks a sign-in pause as declined, so approving it cancels the call. */
@@ -47,11 +66,11 @@ async function markDeclined(store: ApprovalStore, id: string): Promise<void> {
   await store.save(mark(record.pending), { ...record.snapshot, pendingToolCall: mark(record.snapshot.pendingToolCall) });
 }
 
-/** `agent.oauth` over the agent's token store and approval store. */
-export function createAgentOAuth(tokens: OAuthTokenStore | undefined, approvals: ApprovalStore): AgentOAuth {
+/** `agent.oauth` over the agent's token store, approval store and (N9c) MCP servers. */
+export function createAgentOAuth(tokens: OAuthTokenStore | undefined, approvals: ApprovalStore, mcp?: McpOAuthSignIn): AgentOAuth {
   return {
     async complete(params) {
-      const result = await completeSignIn(params, tokens);
+      const result = await completeSignIn(params, tokens, mcp?.complete);
       if (result.outcome === 'declined' && result.approvalId !== undefined) await markDeclined(approvals, result.approvalId);
       return result;
     },
@@ -63,6 +82,12 @@ export function createAgentOAuth(tokens: OAuthTokenStore | undefined, approvals:
         );
       }
       return startSignIn(provider, { owner: 'app' }, tokens);
+    },
+    async mcpSignInUrl(server) {
+      if (!mcp) {
+        throw new ConfigurationError(`agent.oauth.mcpSignInUrl('${server}'): this agent has no HTTP MCP server with \`oauth\`.`, 'server');
+      }
+      return mcp.signInUrl(server);
     },
   };
 }
