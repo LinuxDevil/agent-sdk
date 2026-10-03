@@ -6,8 +6,8 @@
 
 `createAgent()` is a thin wrapper over `AgentBuilder` and the static
 `AgentExecutor.execute()`. Use them directly only for what `createAgent()` does not
-take: `temperature` and `maxTokens`, and a `TraceExporter` for tracing
-(`exporter`, `captureContent`). `createAgent()` already takes `maxSteps`,
+take: `temperature` and `maxTokens` (`exporter`, `captureContent` and
+`redactContent` are `createAgent()` options too). `createAgent()` already takes `maxSteps`,
 `limits`, `onEvent`, approvals, `store` (checkpoints), `hooks` and `compaction`. `AgentExecutor` is a static API - there is no
 `new AgentExecutor()`.
 

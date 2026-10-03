@@ -301,8 +301,8 @@ npx lousho build --target=node-server --agent=agent.yaml
 
 `createAgent()` is the recommended entry point. It sits on top of
 `AgentBuilder` and the static `AgentExecutor.execute()`, which take a few
-lower-level options `createAgent()` does not, such as `temperature`,
-`maxTokens` and a trace exporter. See [The executor API](./executor-api.md).
+lower-level options `createAgent()` does not, such as `temperature` and
+`maxTokens`. See [The executor API](./executor-api.md).
 
 ## Next steps
 

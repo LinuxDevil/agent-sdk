@@ -83,10 +83,10 @@ agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 - **UI bindings**: `useLoushoAgent()` from `@lousho/build-ai-agent/react` (and `/vue`; `loushoAgent()` store from `/svelte`) turns the event stream into chat state, with approvals. [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md), [Vue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/vue.md), [Svelte](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/svelte.md)
 - **AI SDK UI**: `toUIMessageStreamResponse(agent.stream(...))` renders a run with the Vercel AI SDK's `useChat`. [AI SDK UI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/ai-sdk-ui.md)
 - **Next.js and Fetch frameworks**: `createRouteHandler(agent)` serves the session API from an App Router, SvelteKit, Hono or Bun route. [Next.js](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md)
-- **Durable execution**: `createAgent({ store })` checkpoints every step, and `agent.resume()` finishes a crashed or paused run without redoing finished tools. [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)
+- **Durable execution**: `createAgent({ store })` checkpoints every step, and `agent.resume()` finishes a crashed or interrupted run without redoing finished tools (it throws `SessionAwaitingApprovalError` on an approval-paused run, which continues via `agent.approvals.resolve()`). [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)
 - **Cancellation, usage and cost**: pass an `AbortSignal`; every result carries token usage and USD cost for priced models. [Runs](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/runs.md), [Models and cost](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/models-and-cost.md)
 - **Providers**: OpenAI, Anthropic, OpenRouter, Ollama or a mock, with `withRetry()` and `withFallback()`. [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md)
-- **Sub-agents**: `subagents: { researcher, writer }` gives the lead one `task` tool; sub-agents run in parallel. [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md)
+- **Sub-agents**: `subagents: { researcher, writer }` gives the lead a `task` tool plus `agent_status`, `agent_await` and `agent_cancel` for background tasks; sub-agents run in parallel. [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md)
 - **Handoffs**: `handoffs: [billing, support]` lets a triage agent hand the conversation to a specialist, which answers the user and keeps the session. [Handoffs](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/handoffs.md)
 - **Skills and AGENTS.md**: `loadSkills()` loads instructions on demand; `projectInstructions` appends your `AGENTS.md`. [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md), [Project instructions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#project-instructions)
 - **Agent directories**: `loadAgentDir('./my-agent')` builds an agent from `instructions.md`, `tools/` and `skills/`. [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md)
@@ -98,7 +98,7 @@ agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 - **Tracing**: OpenTelemetry GenAI spans (`invoke_agent`, `chat`, `execute_tool`); content capture is opt-in. [Observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md)
 - **Trace viewer**: `createAgent({ exporter: fileTraceExporter() })` keeps each run as a local file; `npx lousho traces` lists runs and prints one as a tree with durations, tokens and cost. [Local traces](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md#local-traces)
 - **Testing and evals**: `mockModel`, `recordReplay` cassettes, `defineEval()` trajectory assertions, `lousho eval` with `--record` / `--replay` cassettes and `--drift` trajectory diffs. [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md), [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md)
-- **CLI**: `init`, `doctor`, `dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `build` and `studio`. [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md)
+- **CLI**: `init`, `doctor`, `dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `traces`, `build` and `studio`. [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md)
 - **Editors (ACP)**: `lousho acp ./my-agent` serves your agent to Zed and other Agent Client Protocol editors, with tool calls and permission prompts. [ACP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/acp.md)
 - **Registry**: `lousho add <name> --registry <url-or-path>` copies a tool, skill, channel, schedule or memory slot into your agent directory from a static JSON registry, after showing its permissions. [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md)
 - **Agent Forge**: `lousho studio` opens a visual canvas, run debugger and chat with approval cards. [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md)
@@ -283,12 +283,13 @@ Alpha (`1.0.0-alpha`, pre-1.0): APIs can still change between releases, and
 breaking changes are listed in the [CHANGELOG](https://github.com/LinuxDevil/agent-sdk/blob/main/CHANGELOG.md) with migration
 notes. Known gaps:
 
-- The trace viewer is terminal-only (`lousho traces`); Agent Forge does not show saved traces yet.
 - Docker sandbox egress (`network: { allow }`) and the credential broker need
   Docker Engine on Linux; Docker Desktop is refused
   ([Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md)).
-- The built-in providers do not send file (non-image) parts; a file part is
-  replaced by a text note ([Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md)).
+- File (non-image) parts reach the model only for media types the provider
+  accepts (`application/pdf` for OpenAI and OpenRouter, `application/pdf` and
+  `text/plain` for Anthropic, on `ai` 6/7); other types - and every file part
+  on `ai` 4 - are replaced by a text note ([Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md)).
 - The Cloudflare Worker target has a limited provider and tool set, and builds
   agent directories without sub-agents, schedules, channels or memory slots
   ([Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md)).
@@ -496,7 +497,7 @@ runs `lousho init` with the same arguments.
 ## The `lousho` CLI
 
 Installing the package also installs the `lousho` command: `init`, `doctor`,
-`dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `build` and `studio`. See
+`dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `traces`, `build` and `studio`. See
 [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md) for what each one does and its flags. Building needs `tsup`,
 an optional peer (see the table above): `npm install --save-dev tsup`.
 
@@ -858,8 +859,8 @@ npx lousho build --target=node-server --agent=agent.yaml
 
 `createAgent()` is the recommended entry point. It sits on top of
 `AgentBuilder` and the static `AgentExecutor.execute()`, which take a few
-lower-level options `createAgent()` does not, such as `temperature`,
-`maxTokens` and a trace exporter. See [The executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md).
+lower-level options `createAgent()` does not, such as `temperature` and
+`maxTokens`. See [The executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md).
 
 ## Next steps
 
@@ -987,7 +988,9 @@ same state and actions as a Svelte store (`$agent`). See [Svelte](https://github
 
 Pass `subagents: { researcher, writer }` (agents from `createAgent()` with a
 `description`, or a `{ list, resolve }` catalog) to `createAgent()` or
-`AgentExecutor.execute()`: the lead gets one `task` tool and a prompt listing,
+`AgentExecutor.execute()`: the lead gets a `task` tool to delegate, the three
+background-task tools `agent_status`, `agent_await` and `agent_cancel`, and a
+prompt listing,
 each sub-agent runs on the task prompt alone, and it inherits the lead run's
 signal, hooks (`ctx.subagent`), tracing, approval store and event listeners
 (`event.subagent`). `maxSubagentDepth` (default 1) bounds nesting. See
@@ -4277,7 +4280,7 @@ records are kept until deleted.
 An approval that pauses a turn on one request can be decided by a later request
 on another isolate: the checkpointed session names its pending approval, and the
 approvals endpoint continues it from KV. The continuation streams as a normal
-resumed run: the decided call's `tool.start` and `tool.done` (`tool.error` for
+resumed run: the decided call's `tool.resume` and `tool.done` (`tool.error` for
 a rejection), then the turn's events, ending with a `run.done` that carries
 the final text.
 
@@ -7342,8 +7345,8 @@ Source: docs/executor-api.md
 
 `createAgent()` is a thin wrapper over `AgentBuilder` and the static
 `AgentExecutor.execute()`. Use them directly only for what `createAgent()` does not
-take: `temperature` and `maxTokens`, and a `TraceExporter` for tracing
-(`exporter`, `captureContent`). `createAgent()` already takes `maxSteps`,
+take: `temperature` and `maxTokens` (`exporter`, `captureContent` and
+`redactContent` are `createAgent()` options too). `createAgent()` already takes `maxSteps`,
 `limits`, `onEvent`, approvals, `store` (checkpoints), `hooks` and `compaction`. `AgentExecutor` is a static API - there is no
 `new AgentExecutor()`.
 
@@ -10561,7 +10564,7 @@ import { resolveProvider, LLMProviderRegistry } from '@lousho/build-ai-agent';
 
 // The convenient way — reads the credential from the environment
 const openai = resolveProvider('openai/gpt-4o-mini');       // OPENAI_API_KEY
-const anthropic = resolveProvider('anthropic/claude-sonnet-5'); // ANTHROPIC_API_KEY
+const anthropic = resolveProvider('anthropic/claude-sonnet-5-5'); // ANTHROPIC_API_KEY
 const openrouter = resolveProvider('openrouter/openai/gpt-4o-mini'); // OPENROUTER_API_KEY
 const ollama = resolveProvider('ollama/llama3.1');           // OLLAMA_BASE_URL
 
@@ -10590,7 +10593,7 @@ const custom = LLMProviderRegistry.create('openai', {
 ```ts
 import { createAgent, createMockProvider, resolveProvider } from '@lousho/build-ai-agent';
 
-const fromString = createAgent({ model: 'anthropic/claude-sonnet-5' });
+const fromString = createAgent({ model: 'anthropic/claude-sonnet-5-5' });
 const fromInstance = createAgent({ provider: resolveProvider('openai/gpt-4o-mini'), model: 'gpt-4o' });
 const offline = createAgent({ provider: createMockProvider({ responses: ['Hi! How can I help?'] }) });
 ```
@@ -14457,11 +14460,13 @@ What to know:
 - **Only the result is kept.** Snapshots are not sent to the model, not added
   to the transcript or the session, not checkpointed and not recorded in trace
   spans. Hooks (`postToolCall`, `onToolResult`) see only the result.
-- **A crash loses them.** Partial output is not durable: after a crash, or a
-  pause for a [sign-in](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md) inside the generator, the call has no
-  result yet and runs again from the start (a new `tool.start`, `index` from
-  0). Snapshots already streamed stay in the event log; a UI should drop them
-  when the call pauses or starts again (the [UI bindings](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md) do).
+- **A crash loses them.** Partial output is not durable: after a crash the
+  call has no result yet and runs again from the start (a new `tool.start`,
+  `index` from 0). A pause for a [sign-in](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md) inside the generator
+  re-runs it from the start too, but the continued run reports `tool.resume`
+  rather than a second `tool.start`, again with `index` from 0. Snapshots
+  already streamed stay in the event log; a UI should drop them when the call
+  pauses or starts again (the [UI bindings](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md) do).
 - **Approvals and permissions apply first.** A generator tool that needs
   approval runs, and streams, only after the decision (also on a streamed
   resume, `agent.approvals.streamResolve()`).

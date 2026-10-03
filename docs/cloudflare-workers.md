@@ -208,7 +208,7 @@ records are kept until deleted.
 An approval that pauses a turn on one request can be decided by a later request
 on another isolate: the checkpointed session names its pending approval, and the
 approvals endpoint continues it from KV. The continuation streams as a normal
-resumed run: the decided call's `tool.start` and `tool.done` (`tool.error` for
+resumed run: the decided call's `tool.resume` and `tool.done` (`tool.error` for
 a rejection), then the turn's events, ending with a `run.done` that carries
 the final text.
 
