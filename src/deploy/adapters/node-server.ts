@@ -8,7 +8,10 @@
  *     - server.ts        starts the SDK's node server (src/deploy/nodeServer.ts):
  *                        GET /health plus the `lousho dev` /chat API (sessions,
  *                        SSE, approvals; LOU-D14), bearer auth via LOUSHO_API_TOKEN
- *     - package.json     minimal manifest with a `start` script
+ *     - package.json     manifest with a `start` script and the runtime
+ *                        dependencies the built server needs (the SDK, the
+ *                        spec's provider peer, the MCP SDK when mcpServers
+ *                        are configured) - the docker image's `npm install`
  *   An agent directory (LOU-P8.2, see node-server-dir.ts) is accepted in place
  *   of a spec: server.ts then resolves it with resolveAgentDir() and starts
  *   its schedules and mounts its channels.
@@ -22,13 +25,17 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { createRequire } from 'node:module';
+import { parse as parseYaml } from 'yaml';
 import { DeploymentAdapter, DeployOptions } from '../types';
 import { SDKError } from '../../execution/errors';
 import { loadSpec } from '../../spec/loadSpec';
 import { AgentSpec } from '../../spec/schema';
 import { specSchedules } from '../../schedules/specSchedules';
 import { resolveSpecTool } from '../../spec/specToAgent';
-import { RUNTIME_SPECIFIER, bundleExternals, loadTsup, sdkRuntimePlugin, writeFile } from '../bundle';
+import { listProviders, type AiMajor } from '../../providers/providerSpec';
+import { findConfigFile, isCodeConfigFile } from '../../agentDir/readConfig';
+import { RUNTIME_SPECIFIER, bundleExternals, findSdkRoot, loadTsup, sdkRuntimePlugin, writeFile } from '../bundle';
 import { agentDirEntries, copyAgentDirAssets, isAgentDir, scaffoldedAgentDir, writeAgentDirPointer } from './node-server-dir';
 
 const SPEC_EXTENSIONS = new Set(['.yaml', '.yml', '.json']);
@@ -167,7 +174,68 @@ main().catch((error: Error) => {
 `;
 }
 
-function packageJsonSource(agentName: string): string {
+/** The `ai` major the SDK copy doing the build runs on (its bundled runtime calls it); 7 when unresolvable. */
+function bundledAiMajor(sdkRoot: string): AiMajor {
+  try {
+    const require = createRequire(path.join(sdkRoot, 'noop.js'));
+    const version = JSON.parse(fs.readFileSync(require.resolve('ai/package.json'), 'utf8')).version as string;
+    const major = Number.parseInt(version, 10);
+    return major === 4 || major === 6 ? major : 7;
+  } catch {
+    return 7;
+  }
+}
+
+/** The provider prefix of a `provider/model` string, or of a bare provider name. */
+function providerTypeOf(modelOrType: string | undefined): string | undefined {
+  if (!modelOrType) return undefined;
+  const slash = modelOrType.indexOf('/');
+  return (slash > 0 ? modelOrType.slice(0, slash) : modelOrType).toLowerCase();
+}
+
+/** The `model` a directory's data config (agent.json/agent.yaml) names; undefined for a code config or none. */
+async function agentDirModel(dir: string): Promise<string | undefined> {
+  try {
+    const file = await findConfigFile(dir);
+    if (!file || isCodeConfigFile(file)) return undefined;
+    const raw = fs.readFileSync(file, 'utf8');
+    const config = (file.endsWith('.json') ? JSON.parse(raw) : parseYaml(raw)) as { model?: unknown };
+    return typeof config.model === 'string' ? config.model : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The runtime dependencies a built server needs (LOU-R20): `dist/server.js`
+ * bundles the SDK and its required dependencies, but the SDK's optional peers
+ * stay external (see bundleExternals()), so `npm install` where the server
+ * runs - the docker image's `npm install --omit=dev` - must install the ones
+ * the agent actually uses. That is the SDK itself (pinned to the version that
+ * built it, which also pulls its required peers such as `ai`), the provider
+ * package `providerType` resolves to (at the range pairing with the build's
+ * `ai` major), and `@modelcontextprotocol/sdk` when the agent uses MCP
+ * servers. An unknown provider type (e.g. a registered test provider) adds no
+ * dependency.
+ */
+export function deployDependencies(providerType?: string, hasMcpServers = false): Record<string, string> {
+  const sdkRoot = findSdkRoot();
+  const pkg = JSON.parse(fs.readFileSync(path.join(sdkRoot, 'package.json'), 'utf8')) as {
+    version: string;
+    peerDependencies?: Record<string, string>;
+  };
+  const dependencies: Record<string, string> = { '@lousho/build-ai-agent': pkg.version };
+  const info = listProviders().find((p) => p.name === providerType);
+  if (info) {
+    const peer = info.peers[bundledAiMajor(sdkRoot)];
+    dependencies[peer.name] = peer.range;
+  }
+  const mcpRange = hasMcpServers ? pkg.peerDependencies?.['@modelcontextprotocol/sdk'] : undefined;
+  if (mcpRange) dependencies['@modelcontextprotocol/sdk'] = mcpRange;
+  return dependencies;
+}
+
+function packageJsonSource(agentName: string, dependencies: Record<string, string>): string {
   const name = agentName.toLowerCase().replace(/[^a-z0-9-_.]+/g, '-').replace(/^[-_.]+/, '') || 'lousho-agent';
   return (
     JSON.stringify(
@@ -177,9 +245,9 @@ function packageJsonSource(agentName: string): string {
         private: true,
         description: 'Deployable agent server generated by `lousho build`',
         scripts: { start: 'node dist/server.js' },
-        // dist/server.js is fully bundled (SDK + deps included), so there
-        // are no runtime dependencies to install.
-        dependencies: {},
+        // dist/server.js bundles the SDK and its required deps; the optional
+        // peers the agent uses stay external and are installed from here.
+        dependencies,
       },
       null,
       2
@@ -190,7 +258,9 @@ function packageJsonSource(agentName: string): string {
 async function scaffoldAgentDir(agentPath: string, outDir: string, options: DeployOptions): Promise<void> {
   writeAgentDirPointer(outDir, agentPath);
   writeFile(path.join(outDir, 'server.ts'), serverSource(agentDirVariant(options)));
-  writeFile(path.join(outDir, 'package.json'), packageJsonSource(path.basename(agentPath)));
+  // A code config can name any provider; a data config's `model` ('openai/...') tells us the peer to ship.
+  const model = await agentDirModel(agentPath);
+  writeFile(path.join(outDir, 'package.json'), packageJsonSource(path.basename(agentPath), deployDependencies(providerTypeOf(model))));
 }
 
 export const NodeServerAdapter: DeploymentAdapter = {
@@ -205,7 +275,10 @@ export const NodeServerAdapter: DeploymentAdapter = {
     writeAgentDirPointer(outDir, undefined);
     writeFile(path.join(outDir, 'agent.config.js'), agentConfigModuleSource(spec));
     writeFile(path.join(outDir, 'server.ts'), serverSource(specVariant(options)));
-    writeFile(path.join(outDir, 'package.json'), packageJsonSource(spec.name));
+    writeFile(
+      path.join(outDir, 'package.json'),
+      packageJsonSource(spec.name, deployDependencies(providerTypeOf(spec.provider.type), Object.keys(spec.mcpServers ?? {}).length > 0))
+    );
   },
 
   async build(outDir: string): Promise<void> {
