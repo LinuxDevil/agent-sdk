@@ -90,10 +90,13 @@ export function sdkRuntimePlugin({ sdkEntry = 'main' }: { sdkEntry?: 'main' | 'w
  * esbuild plugin (cloudflare-worker target only) that redirects the SDK's
  * internal `security/sandboxCore` imports to the Worker-safe shim in
  * ./shims/sandboxCore.worker.ts - the real module's NoopSandbox needs
- * node:child_process, which Workers don't have.
+ * node:child_process, which Workers don't have. N14: and the optional peer
+ * `quickjs-emscripten` (code mode) to ./shims/quickjs.worker.ts, so the
+ * Emscripten runtime never lands in a Worker bundle.
  */
 export function workerSandboxShimPlugin(): Plugin {
   const shim = path.join(findSdkRoot(), 'src', 'deploy', 'shims', 'sandboxCore.worker.ts');
+  const quickjs = path.join(findSdkRoot(), 'src', 'deploy', 'shims', 'quickjs.worker.ts');
   return {
     name: 'lousho-worker-sandbox-shim',
     setup(build) {
@@ -101,6 +104,7 @@ export function workerSandboxShimPlugin(): Plugin {
         if (path.resolve(args.importer) === shim) return undefined;
         return { path: shim };
       });
+      build.onResolve({ filter: /^quickjs-emscripten$/ }, () => ({ path: quickjs }));
     },
   };
 }

@@ -4020,6 +4020,7 @@ Source: docs/cloudflare-workers.md
 | Tools written in TypeScript | yes, in an agent directory: no Node builtins, and from `@lousho/build-ai-agent` only the names listed under [Agent directories on a Worker](#build-and-deploy) | yes, in an agent directory |
 | Sandboxed tool execution | no (the build swaps the sandbox for a shim that fails when used) | yes |
 | MCP servers over stdio | no (the child process cannot start; the shim fails when used) | yes |
+| [Code mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/code-mode.md) (`codeMode`) | no (the build swaps QuickJS for a shim that fails the run at its start) | yes |
 | MCP servers over HTTP | not verified | yes |
 | Sessions, checkpoints, approvals | one KV namespace, `AGENT_CHECKPOINTS` (eventually consistent) | memory, files, SQLite |
 | Schedules | cron triggers only, in UTC, five fields, one-minute granularity | full cron expressions, with a time zone |
@@ -4517,7 +4518,9 @@ With tracing, each inner call has its own `execute_tool` span, a child of the
 - **JavaScript only.** The model writes JavaScript; TypeScript is not
   transpiled.
 - **Where it runs.** The runs of a `createAgent()` agent: `send()`, `stream()`,
-  sessions, resumes and approvals. An agent started as a sub-agent (the `task`
+  sessions, resumes and approvals, on Node. The `cloudflare-worker` target of
+  `lousho build` does not bundle QuickJS: a run with `codeMode` fails there at
+  its start. An agent started as a sub-agent (the `task`
   tool or a delegate tool) runs without code mode, and the lead's `codeMode`
   does not reach a sub-agent's tools.
 - **Errors are results.** A script error, a timeout, the memory limit, too many

@@ -23,7 +23,7 @@ import type { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools/ToolRegistry';
 import { defineTool, type DefinedTool } from '../tools/defineTool';
 import { getToolExecute } from '../tools/toolContract';
-import { ConfigurationError } from './errors';
+import { ConfigurationError, SDKError } from './errors';
 import { buildTools } from './generateStep';
 import { extendAgent, toolCallScopeOf, type ToolCallScope } from './subagentRuntime';
 import { markPropagating } from './propagatingToolError';
@@ -190,7 +190,7 @@ function runCodeTool(allowed: readonly ToolDefinition[], codeMode: CodeModeOptio
     annotations: { readOnlyHint: true, destructiveHint: false },
     execute: async ({ code }, ctx): Promise<RunCodeResult> => {
       const callTool = toolCallScopeOf(ctx)?.callTool;
-      if (!callTool) throw new Error(`${RUN_CODE_TOOL} can only run as a tool call of an agent run with codeMode.`);
+      if (!callTool) throw new SDKError(`${RUN_CODE_TOOL} can only run as a tool call of an agent run with codeMode.`, 'LOUSHO_CONFIG_INVALID');
       const module = await loadQuickJS();
       return runScript(module, code, { toolNames, callTool, signal: ctx.abortSignal }, limits);
     },

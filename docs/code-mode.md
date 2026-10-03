@@ -208,7 +208,9 @@ With tracing, each inner call has its own `execute_tool` span, a child of the
 - **JavaScript only.** The model writes JavaScript; TypeScript is not
   transpiled.
 - **Where it runs.** The runs of a `createAgent()` agent: `send()`, `stream()`,
-  sessions, resumes and approvals. An agent started as a sub-agent (the `task`
+  sessions, resumes and approvals, on Node. The `cloudflare-worker` target of
+  `lousho build` does not bundle QuickJS: a run with `codeMode` fails there at
+  its start. An agent started as a sub-agent (the `task`
   tool or a delegate tool) runs without code mode, and the lead's `codeMode`
   does not reach a sub-agent's tools.
 - **Errors are results.** A script error, a timeout, the memory limit, too many

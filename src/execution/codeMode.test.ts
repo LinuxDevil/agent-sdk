@@ -588,10 +588,17 @@ describe('code mode (N14): the isolate', () => {
   it('runs 200 short scripts without memory growth', async () => {
     const module = await loadQuickJS();
     const once = () => runScript(module, `let s = 0; for (let i = 0; i < 1000; i++) s += i; return { s, echoed: await tools.echo({ s }) };`, host(), limits);
-    for (let i = 0; i < 20; i++) await once();
-    const before = process.memoryUsage().rss;
-    for (let i = 0; i < 200; i++) await expect(once()).resolves.toMatchObject({ result: { s: 499500 } });
-    expect(process.memoryUsage().rss - before).toBeLessThan(64 * 1024 * 1024);
+    const batch = async () => {
+      for (let i = 0; i < 200; i++) await expect(once()).resolves.toMatchObject({ result: { s: 499500 } });
+    };
+    // The first batch grows the WebAssembly heap to its working size (and, under coverage, V8's own counters).
+    await batch();
+    // The isolate's memory is the module's WebAssembly heap: a leak would grow it run after run.
+    const heap = () => (module as unknown as { getWasmMemory?: () => WebAssembly.Memory }).getWasmMemory?.().buffer.byteLength ?? 0;
+    const before = { heap: heap(), rss: process.memoryUsage().rss };
+    await batch();
+    expect(heap() - before.heap).toBe(0);
+    expect(process.memoryUsage().rss - before.rss).toBeLessThan(64 * 1024 * 1024);
   });
 
   it('names the cause on the ScriptError', async () => {
