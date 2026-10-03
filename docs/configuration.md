@@ -174,7 +174,8 @@ what the examples and the Quick Start use by default.
 ## Provider retries and fallback
 
 `createAgent()` retries failed model calls on its own, and can fall back to
-other models:
+other models. The `vendor/` model prefix chooses the provider; with OpenRouter
+use `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
@@ -182,7 +183,7 @@ import { createAgent } from '@lousho/build-ai-agent';
 const agent = createAgent({
   model: 'openai/gpt-4o-mini',
   retry: { maxRetries: 3, backoff: { initialMs: 1000 } }, // default { maxRetries: 2 }; false turns it off
-  fallbackModels: ['anthropic/claude-3-5-haiku-latest'], // tried in order once the retries are used up
+  fallbackModels: ['anthropic/claude-haiku-4-5'], // tried in order once the retries are used up
 });
 
 for await (const event of agent.stream('Hello!')) {
@@ -221,7 +222,7 @@ const provider = withFallback(
       backoff: { initialMs: 500, maxMs: 10_000 },
       onRetry: ({ attempt, delayMs }) => console.warn(`retry ${attempt} in ${delayMs}ms`),
     }),
-    withRetry(resolveProvider('anthropic/claude-3-5-haiku-latest')),
+    withRetry(resolveProvider('anthropic/claude-haiku-4-5')),
   ],
   { onFallback: ({ from, to }) => console.warn(`falling back from ${from} to ${to}`) }
 );

@@ -103,6 +103,8 @@ cd .lousho/build/cloudflare-worker && npx wrangler deploy
 
 - The config's `model` must name a provider of the table above (`"model": "openai/gpt-4o-mini"`),
   with its key in the `OPENAI_API_KEY` binding; or `agent.ts` sets `provider` to an instance.
+  The `vendor/` model prefix chooses the provider; with OpenRouter use
+  `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
   There is no environment to pick a default model from, so a directory without either is rejected.
 - A JSON/YAML config is checked by `lousho build`; an `agent.ts` config is checked when the
   Worker starts, so `wrangler deploy` reports the problem.

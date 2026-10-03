@@ -41,7 +41,10 @@ They count in `result.usage` when the provider reported them (a call that
 finished before the trip); an aborted stream usually reports none, and none is
 estimated. Only the first model call of a run is raced, and a run resumed after an
 approval does not check its input again. On `output` and
-`tools` guardrails `runInParallel` is ignored.
+`tools` guardrails `runInParallel` is ignored. A guardrail `model` string is a
+`provider/model` spec: the `vendor/` prefix chooses the provider; with
+OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { createAgent, moderationGuardrail, piiGuardrail } from '@lousho/build-ai-agent';

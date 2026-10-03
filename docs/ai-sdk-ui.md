@@ -14,6 +14,9 @@ the package root, do the translation. They import nothing from `ai`, use no
 
 ## Route handler
 
+The `vendor/` model prefix chooses the provider; with OpenRouter use
+`openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
+
 ```ts
 import { createAgent, fromUIMessages, toUIMessageStreamResponse, type UIMessageLike } from '@lousho/build-ai-agent';
 

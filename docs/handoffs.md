@@ -15,7 +15,8 @@ user directly, and in a session it keeps the conversation in later turns.
 
 Give each target a `name` and a `description` (the model reads the
 description to decide when to hand off), then pass them to the triage agent as
-`handoffs`:
+`handoffs`. The `vendor/` model prefix chooses the provider; with OpenRouter
+use `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { createAgent, defineTool } from '@lousho/build-ai-agent';

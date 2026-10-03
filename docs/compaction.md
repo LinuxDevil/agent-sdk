@@ -13,7 +13,9 @@ With `createAgent()`, turn compaction on with the `compaction` option. `true`
 installs the hook with its defaults (prune old tool results above 90% of the
 model's window); an object configures it, and `summarizer` selects
 `twoPhaseStrategy()` with that model (a `"provider/model"` string or an
-`LLMProvider`):
+`LLMProvider`). The `vendor/` model prefix chooses the provider; with
+OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';

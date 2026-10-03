@@ -27,7 +27,9 @@ console.log(result.text, result.usage.hostedToolCalls); // { web_search: 1 }
 ```
 
 The SDK never executes a hosted tool. It sends it with every model call of
-the run and reports what the provider did.
+the run and reports what the provider did. The `vendor/` model prefix chooses
+the provider; with OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`).
 
 ## The helpers
 

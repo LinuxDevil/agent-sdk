@@ -109,7 +109,9 @@ pause arrives the same way, with `pendingApproval.kind === 'question'`: show
 
 ## The server side
 
-A Node endpoint for the remote mode, with the approvals route:
+A Node endpoint for the remote mode, with the approvals route (the `vendor/`
+model prefix chooses the provider; with OpenRouter use
+`openrouter/<vendor>/<model>`, e.g. `openrouter/openai/gpt-4o-mini`):
 
 ```ts
 import { createServer, type IncomingMessage } from 'node:http';

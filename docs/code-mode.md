@@ -26,7 +26,9 @@ calls are simpler and the model is better at them.
 ## Turn it on
 
 Install the optional peer `quickjs-emscripten` and set `codeMode` on
-`createAgent()`:
+`createAgent()`. The `vendor/` model prefix chooses the provider; with
+OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`).
 
 ```bash
 npm install quickjs-emscripten@^0.32.0

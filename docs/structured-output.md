@@ -2,7 +2,9 @@
 
 Give an agent a zod schema as `output` and its final reply becomes a typed,
 validated object: `result.object`. The agent can still call tools first; only
-the final answer has to match the schema.
+the final answer has to match the schema. The `vendor/` model prefix chooses
+the provider; with OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { z } from 'zod';

@@ -4,7 +4,9 @@ An `LLMProvider` is what an agent generates with. The SDK ships OpenAI,
 Anthropic, OpenRouter and Ollama providers (each backed by an optional peer
 package, see [Installation](./installation.md#provider-packages)) and a
 deterministic mock for tests. Name one with a `provider/model` string, or pass
-a provider instance.
+a provider instance. The `vendor/` model prefix chooses the provider; with
+OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { resolveProvider, LLMProviderRegistry } from '@lousho/build-ai-agent';
@@ -61,7 +63,7 @@ import { createAgent } from '@lousho/build-ai-agent';
 const agent = createAgent({
   model: 'openai/gpt-4o-mini',
   retry: { maxRetries: 3 }, // or false
-  fallbackModels: ['anthropic/claude-3-5-haiku-latest', 'openrouter/meta-llama/llama-3.1-70b-instruct'],
+  fallbackModels: ['anthropic/claude-haiku-4-5', 'openrouter/meta-llama/llama-3.3-70b-instruct'],
 });
 ```
 
@@ -211,7 +213,7 @@ const agent = createAgent({
 });
 ```
 
-The same works with `@ai-sdk/google` (`google('gemini-2.0-flash')`),
+The same works with `@ai-sdk/google` (`google('gemini-2.5-flash')`),
 `@ai-sdk/amazon-bedrock`, `@ai-sdk/azure`, `@ai-sdk/mistral` and the AI Gateway
 (`gateway('openai/gpt-4o')` from `ai` 7 or `@ai-sdk/gateway`). Calls go through
 your installed `ai`, so install the provider package major that pairs with it

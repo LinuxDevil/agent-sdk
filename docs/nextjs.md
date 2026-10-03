@@ -5,7 +5,9 @@ framework whose handlers take a Web `Request` and return a `Response`: the
 Next.js App Router, SvelteKit, Remix / React Router, Hono, Bun.serve. It is a
 thin wrapper over the same session API as `lousho dev` and the deployed server
 ([Deployment](./deployment.md)), so the React, Vue and Svelte bindings work against it
-unchanged. It imports no framework and no `node:*` module.
+unchanged. It imports no framework and no `node:*` module. The `vendor/` model
+prefix chooses the provider; with OpenRouter use `openrouter/<vendor>/<model>`
+(e.g. `openrouter/openai/gpt-4o-mini`).
 
 ## Next.js App Router
 

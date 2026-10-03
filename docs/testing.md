@@ -154,7 +154,9 @@ chunks and a final `finish` chunk, so streaming consumers can be tested too.
 VCR for real model behavior. Run your test once against the real provider and
 every `generate()` / `stream()` exchange is written to a cassette file. In CI
 the same test replays the cassette with no network, no API key and no installed
-provider peer package.
+provider peer package. The `vendor/` model prefix chooses the provider; with
+OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { createAgent, resolveProvider } from '@lousho/build-ai-agent';

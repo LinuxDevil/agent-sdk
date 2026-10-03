@@ -59,6 +59,9 @@ while a turn is running or waiting to start:
   for the next safe point, as with `'queue'`. The call resolves with the
   turn's result, and the same fallbacks apply.
 
+The `vendor/` model prefix chooses the provider; with OpenRouter use
+`openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
+
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
 
