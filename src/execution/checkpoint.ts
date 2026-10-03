@@ -118,6 +118,13 @@ export interface Checkpoint {
    * one and on older checkpoints (they resume with no principal).
    */
   principal?: Principal;
+  /**
+   * LOU-R16: the run's `ExecuteOptions.metadata` (the hook contexts'
+   * `ctx.metadata`), so a resumed unfinished run's hooks keep seeing it when
+   * the resuming call passes none. Absent for a run without one and on older
+   * checkpoints.
+   */
+  metadata?: Record<string, unknown>;
 }
 
 /**

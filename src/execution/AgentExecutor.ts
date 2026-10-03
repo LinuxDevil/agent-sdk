@@ -370,6 +370,16 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   principal?: Principal;
   /**
+   * LOU-R16: free-form per-run data (`createAgent`'s `send(x, { metadata })`)
+   * handed to every hook invocation as `ctx.metadata` - a correlation id, a
+   * tenant, a request tag hooks read but the model never sees. In-process
+   * sub-agents inherit it, and it is stored with checkpoints and approval
+   * snapshots so a resumed run's hooks keep seeing the run's metadata. An
+   * explicit `metadata` on the resuming call wins over the stored one.
+   * JSON-serializable: stores may round-trip it through `JSON.stringify`.
+   */
+  metadata?: Record<string, unknown>;
+  /**
    * N9b: where tools' OAuth tokens live (`ctx.getToken()`, docs/oauth.md):
    * `createAgent()` passes its `store.tokens`. A tool that needs sign-in
    * pauses the run (`kind: 'sign-in'`); the pending sign-in is kept here too.
@@ -862,6 +872,8 @@ export class AgentExecutor {
     // N10b: the run's principal, as loaded (an unfinished checkpoint's wins), frozen once. `options` is
     // this run's own copy (withExtensions() made it), and the scope every tool call hands on.
     options.principal = state.principal;
+    // LOU-R16: likewise the run's metadata (an unfinished checkpoint's fills in when this call set none).
+    options.metadata = state.metadata;
     await checkResumedAgent(options, state, tools);
     state.budget = budget;
     // LOU-X4: the new input is checked before anything else runs.
@@ -1462,7 +1474,7 @@ export class AgentExecutor {
           scope.callTool = nestedToolCaller({
             parentToolCallId: toolCall.id,
             parentSpanId: toolSpan.id,
-            base: { agent, toolRegistry, onToolCall, onToolResult, sandbox, hooks, sessionId, principal: options.principal, messages: state.messages, onDelegatedUsage: (child) => mergeDelegatedUsage(state.usage, child) },
+            base: { agent, toolRegistry, onToolCall, onToolResult, sandbox, hooks, sessionId, principal: options.principal, metadata: options.metadata, messages: state.messages, onDelegatedUsage: (child) => mergeDelegatedUsage(state.usage, child) },
             signal,
             runtime: options,
             execute: scope.execute,
@@ -1585,6 +1597,8 @@ export class AgentExecutor {
       usage: structuredClone(state.usage),
       // N10b: the resumed run acts for this caller, whoever decides.
       ...(principal && { principal }),
+      // LOU-R16: and its hooks keep seeing the run's metadata.
+      ...(options.metadata !== undefined && { metadata: options.metadata }),
     };
     return this.savePause(options, state, { pending, snapshot });
   }
@@ -1730,6 +1744,8 @@ export class AgentExecutor {
         sessionId,
         // N10b: the run's principal (the scope's runtime is the run's options).
         principal: scope?.runtime.principal,
+        // LOU-R16: the run's metadata, for the pre/post tool-call hooks.
+        metadata: scope?.runtime.metadata,
         messages,
         signal,
         onDelegatedUsage,

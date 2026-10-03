@@ -72,6 +72,8 @@ export interface ToolCallContext {
   sessionId?: string;
   /** N10b: who the run acts for (frozen): reaches hooks, permission rules, `needsApproval` and the tool. */
   principal?: Readonly<Principal>;
+  /** LOU-R16: the run's `ExecuteOptions.metadata`, handed to hooks as `ctx.metadata`. */
+  metadata?: Record<string, unknown>;
   messages: Message[];
   /** LOU-V1: the run's signal, handed to the tool as `abortSignal`. */
   signal?: AbortSignal;
@@ -98,6 +100,7 @@ function toolHookContext(
     agentName: ctx.agent.name,
     sessionId: ctx.sessionId,
     ...(ctx.principal && { principal: ctx.principal }),
+    metadata: ctx.metadata,
     messages: ctx.messages,
     toolCallId: toolCall.id,
     toolName: toolCall.function.name,

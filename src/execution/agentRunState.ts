@@ -75,6 +75,8 @@ export interface AgentRunState {
   resumedFrom?: { fingerprint?: AgentFingerprint };
   /** N10b: who the run acts for (frozen): an unfinished checkpoint's, else `ExecuteOptions.principal`. */
   principal?: Readonly<Principal>;
+  /** LOU-R16: the run's hook-context metadata: an unfinished checkpoint's fills in when `ExecuteOptions.metadata` is unset. */
+  metadata?: Record<string, unknown>;
   /** N5b: the `runInParallel` input guardrails, until the first model call takes them. */
   inputCheck?: ParallelInputCheck;
   /** N6: the agent running now (the target after a handoff): `result.agentName`. */
@@ -172,6 +174,13 @@ export async function loadRunState(options: ExecuteOptions): Promise<AgentRunSta
   const principal = readonlyPrincipal(
     sessionId && checkpoint && checkpoint.status !== 'finished' ? resumedRunPrincipal(checkpoint.principal, options.principal, sessionId) : options.principal
   );
+  // LOU-R16: an unfinished run's hooks keep seeing the metadata it was saved
+  // with when this call did not pass its own; a finished run's next turn (or
+  // a fresh run) uses exactly the call's.
+  const metadata =
+    sessionId && checkpoint && checkpoint.status !== 'finished'
+      ? (options.metadata ?? checkpoint.metadata)
+      : options.metadata;
 
   return {
     ...initial,
@@ -185,6 +194,7 @@ export async function loadRunState(options: ExecuteOptions): Promise<AgentRunSta
     ...(sessionId && checkpointStore && { fingerprint: await fingerprintOf(baseAgentOf(options.agent), options.toolRegistry, options.provider, options.hostedTools) }),
     ...(checkpoint && checkpoint.status !== 'finished' && { resumedFrom: { fingerprint: checkpoint.agentFingerprint } }),
     ...(principal && { principal }),
+    ...(metadata !== undefined && { metadata }),
   };
 }
 
@@ -258,6 +268,8 @@ export async function saveStepCheckpoint(
     ...(agent.metadata?.[RUN_CONFIG_KEY] !== undefined && { runConfig: agent.metadata[RUN_CONFIG_KEY] }),
     // N10b: so a crash resume acts for the same caller.
     ...(options.principal && { principal: options.principal }),
+    // LOU-R16: so a crash resume's hooks keep seeing the run's metadata.
+    ...(options.metadata !== undefined && { metadata: options.metadata }),
   };
   const save = () => checkpointStore.save(sessionId, checkpoint);
   const saved = state.saving ? state.saving.then(save) : save();

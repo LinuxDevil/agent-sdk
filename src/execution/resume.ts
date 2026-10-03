@@ -166,7 +166,12 @@ async function resumeObserved(
   const { pending, snapshot } = record;
   // N10b: the run goes on as the caller that paused it, whoever resumes it (an old snapshot: no principal).
   const { approver, ...rest } = observed;
-  const executeOptions: ResumeExecuteOptions = { ...rest, principal: readonlyPrincipal(snapshot.principal) };
+  const executeOptions: ResumeExecuteOptions = {
+    ...rest,
+    principal: readonlyPrincipal(snapshot.principal),
+    // LOU-R16: and its hooks keep seeing the metadata it paused with, unless the resuming call passed its own.
+    ...(rest.metadata === undefined && snapshot.metadata !== undefined && { metadata: snapshot.metadata }),
+  };
   // N9b: a sign-in pause continues only once the user signed in (else it stays paused), or ends as cancelled.
   const decided = await signInDecision(record, decision, approvalStore, executeOptions.tokens);
   const messages: Message[] = [...snapshot.currentMessages];
@@ -538,6 +543,7 @@ async function approvedCodeMode(ctx: ResumeContext, scope: ToolCallScope): Promi
       hooks: executeOptions.hooks,
       sessionId: snapshot.sessionId,
       principal: executeOptions.principal,
+      metadata: executeOptions.metadata,
       messages: ctx.messages,
       onDelegatedUsage: scope.onDelegatedUsage,
     },
@@ -626,6 +632,7 @@ async function markAwaitingApproval(
     agentFingerprint: snapshot.agentFingerprint,
     runConfig: snapshot.agent.metadata?.[RUN_CONFIG_KEY],
     ...(snapshot.principal && { principal: snapshot.principal }),
+    ...(snapshot.metadata !== undefined && { metadata: snapshot.metadata }),
   });
 }
 
@@ -718,6 +725,7 @@ async function runApprovedToolCall(
     agentName: snapshot.agent.name,
     sessionId: snapshot.sessionId,
     ...(executeOptions.principal && { principal: executeOptions.principal }),
+    metadata: executeOptions.metadata,
     messages,
     toolCallId: pending.toolCallId,
     toolName: pending.toolName,
