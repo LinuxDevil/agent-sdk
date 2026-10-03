@@ -66,6 +66,7 @@ console.log(events); // includes 'run.start' and 'run.done'
 | `exporter`                              | A `TraceExporter` for tracing spans (OpenTelemetry GenAI conventions, see [observability](observability.md)). |
 | `captureContent`, `redactContent`       | Record message/tool content on `gen_ai.*` span attributes (opt-in) / omit the deprecated content attributes. |
 | `onLLMRequest`, `onLLMResponse`, `onToolCall`, `onToolResult` | Observability hooks.                |
+| `toolSearch`                            | Tunes [tool search](./tool-search.md) for tools marked `deferLoading`, or `false` to send every tool on every call. |
 
 It resolves to an `ExecutionResult`: `{ text, messages, toolCalls, usage,
 finishReason, steps, approvalId? }`.

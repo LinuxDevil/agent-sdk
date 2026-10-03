@@ -44,6 +44,13 @@ export interface DefineToolOptions<S extends StandardSchemaV1, R> {
    * `metadata.editsFiles`. A tool is never a file edit by its name alone.
    */
   editsFiles?: boolean;
+  /**
+   * N2: withhold this tool's definition from the model until it finds the
+   * tool with the built-in `tool_search` tool. Use it for large tool sets;
+   * `createAgent({ toolSearch })` tunes when deferral applies. See
+   * docs/tool-search.md.
+   */
+  deferLoading?: boolean;
   /** Route execution through the configured SandboxAdapter (requires `sandboxExecute`). */
   requiresSandbox?: boolean;
   /** Sandboxed execution path used instead of `execute` when `requiresSandbox` is true. */
@@ -157,6 +164,7 @@ export function defineTool<S extends StandardSchemaV1, R>(
     needsApproval: opts.needsApproval,
     requiresSandbox: opts.requiresSandbox,
     sandboxExecute: opts.sandboxExecute as ToolDescriptor['sandboxExecute'],
+    ...(opts.deferLoading !== undefined && { deferLoading: opts.deferLoading }),
     ...toolMetadata(opts),
   };
   definedTools.add(defined);

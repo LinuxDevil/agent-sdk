@@ -205,6 +205,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Durable execution](docs/durable-execution.md) | Checkpoints, crash resume, approvals mid-batch, at-least-once tools |
 | [Sub-agents](docs/sub-agents.md) | The `subagents` option and its `task` tool, inheritance, approvals in sub-agents |
 | [Handoffs](docs/handoffs.md) | `handoffs: [billing, support]`: hand the conversation to another agent, input filters, sessions, approvals after a handoff |
+| [Tool search](docs/tool-search.md) | `deferLoading` on tools and MCP servers: the model finds tools with `tool_search` instead of receiving every definition |
 | [Skills](docs/skills.md) | On-demand instructions: `defineSkill()`, `loadSkills()` |
 | [Agent directories](docs/agent-directories.md) | An agent as a folder: layout, mapping to `createAgent()`, security |
 | [Context compaction](docs/compaction.md) | `createAgent({ compaction })`: prune old tool results, then summarize old turns |

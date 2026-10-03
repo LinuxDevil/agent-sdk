@@ -179,7 +179,12 @@ export async function connectMcp(
   };
   const loaded = await Promise.allSettled(
     connections.map((connection) =>
-      loadMcpTools(connection.handle, connection.name, { logger, approval: servers[connection.name].approval })
+      loadMcpTools(connection.handle, connection.name, {
+        logger,
+        approval: servers[connection.name].approval,
+        // N2: a server with `deferLoading` has all its tools withheld until `tool_search` finds them.
+        ...(servers[connection.name].deferLoading && { deferLoading: true }),
+      })
     )
   );
 

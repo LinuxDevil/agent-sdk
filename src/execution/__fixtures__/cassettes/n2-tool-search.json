@@ -1,0 +1,934 @@
+{
+  "version": 1,
+  "sdkVersion": "1.0.0-alpha.8",
+  "recordedAt": "2026-10-03T00:34:53.893Z",
+  "provider": {
+    "name": "openrouter",
+    "defaultModel": "openai/gpt-4o-mini"
+  },
+  "entries": [
+    {
+      "kind": "generate",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are a helpful assistant. Use tools to answer. Keep answers short.\n\n## Tool search\n\n40 more tools are available but not loaded yet. To find one, call `tool_search` with a few words describing the capability you need; the tools it finds can be called from your next step."
+          },
+          {
+            "role": "user",
+            "content": "What is 100 USD in EUR?"
+          }
+        ],
+        "tools": [
+          {
+            "name": "tool_search",
+            "description": "Search for more tools by what they do. Returns the matching tools (name and description); call them from your next step. Use a few words describing the capability you need, e.g. \"currency conversion\".",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "checks": [],
+                  "description": "A few words describing the capability you need",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          }
+        ],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "",
+        "finishReason": "tool_calls",
+        "usage": {
+          "promptTokens": 157,
+          "completionTokens": 18,
+          "totalTokens": 175
+        },
+        "toolCalls": [
+          {
+            "id": "call_vdpw0yZdMJji89kLG0QMaR7b",
+            "type": "function",
+            "function": {
+              "name": "tool_search",
+              "arguments": "{\"query\":\"currency conversion USD to EUR\"}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "generate",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are a helpful assistant. Use tools to answer. Keep answers short.\n\n## Tool search\n\n40 more tools are available but not loaded yet. To find one, call `tool_search` with a few words describing the capability you need; the tools it finds can be called from your next step."
+          },
+          {
+            "role": "user",
+            "content": "What is 100 USD in EUR?"
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "tool_search",
+                "arguments": "{\"query\":\"currency conversion USD to EUR\"}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "{\"loaded\":[{\"name\":\"convert_currency\",\"description\":\"Convert an amount of money from one currency to another\"}],\"more\":39}",
+            "name": "tool_search",
+            "toolName": "tool_search"
+          }
+        ],
+        "tools": [
+          {
+            "name": "convert_currency",
+            "description": "Convert an amount of money from one currency to another",
+            "parameters": {
+              "properties": {
+                "amount": {
+                  "checks": [],
+                  "type": "number"
+                },
+                "from": {
+                  "checks": [],
+                  "type": "string"
+                },
+                "to": {
+                  "checks": [],
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "tool_search",
+            "description": "Search for more tools by what they do. Returns the matching tools (name and description); call them from your next step. Use a few words describing the capability you need, e.g. \"currency conversion\".",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "checks": [],
+                  "description": "A few words describing the capability you need",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          }
+        ],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "",
+        "finishReason": "tool_calls",
+        "usage": {
+          "promptTokens": 243,
+          "completionTokens": 22,
+          "totalTokens": 265
+        },
+        "toolCalls": [
+          {
+            "id": "call_v7Yk0nos7YwWOdqzeUBzbS77",
+            "type": "function",
+            "function": {
+              "name": "convert_currency",
+              "arguments": "{\"amount\":100,\"from\":\"USD\",\"to\":\"EUR\"}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "generate",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are a helpful assistant. Use tools to answer. Keep answers short.\n\n## Tool search\n\n40 more tools are available but not loaded yet. To find one, call `tool_search` with a few words describing the capability you need; the tools it finds can be called from your next step."
+          },
+          {
+            "role": "user",
+            "content": "What is 100 USD in EUR?"
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "tool_search",
+                "arguments": "{\"query\":\"currency conversion USD to EUR\"}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "{\"loaded\":[{\"name\":\"convert_currency\",\"description\":\"Convert an amount of money from one currency to another\"}],\"more\":39}",
+            "name": "tool_search",
+            "toolName": "tool_search"
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "convert_currency",
+                "arguments": "{\"amount\":100,\"from\":\"USD\",\"to\":\"EUR\"}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "{\"amount\":92,\"currency\":\"EUR\"}",
+            "name": "convert_currency",
+            "toolName": "convert_currency"
+          }
+        ],
+        "tools": [
+          {
+            "name": "convert_currency",
+            "description": "Convert an amount of money from one currency to another",
+            "parameters": {
+              "properties": {
+                "amount": {
+                  "checks": [],
+                  "type": "number"
+                },
+                "from": {
+                  "checks": [],
+                  "type": "string"
+                },
+                "to": {
+                  "checks": [],
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "tool_search",
+            "description": "Search for more tools by what they do. Returns the matching tools (name and description); call them from your next step. Use a few words describing the capability you need, e.g. \"currency conversion\".",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "checks": [],
+                  "description": "A few words describing the capability you need",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          }
+        ],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "100 USD is approximately 92 EUR.",
+        "finishReason": "stop",
+        "usage": {
+          "promptTokens": 282,
+          "completionTokens": 9,
+          "totalTokens": 291
+        }
+      }
+    },
+    {
+      "kind": "generate",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are a helpful assistant. Use tools to answer. Keep answers short."
+          },
+          {
+            "role": "user",
+            "content": "What is 100 USD in EUR?"
+          }
+        ],
+        "tools": [
+          {
+            "name": "get_weather",
+            "description": "Get the current weather for a city",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "convert_currency",
+            "description": "Convert an amount of money from one currency to another",
+            "parameters": {
+              "properties": {
+                "amount": {
+                  "checks": [],
+                  "type": "number"
+                },
+                "from": {
+                  "checks": [],
+                  "type": "string"
+                },
+                "to": {
+                  "checks": [],
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "lookup_stock",
+            "description": "Look up the latest price of a stock ticker",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "send_email",
+            "description": "Send an email to a recipient",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "create_calendar_event",
+            "description": "Create an event in the calendar",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "list_calendar_events",
+            "description": "List upcoming calendar events",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "translate_text",
+            "description": "Translate text into another language",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "search_web",
+            "description": "Search the web for pages",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "get_news",
+            "description": "Get the latest news headlines on a topic",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "book_flight",
+            "description": "Book a flight between two airports",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "find_hotel",
+            "description": "Find hotels in a city",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "get_directions",
+            "description": "Get driving directions between two places",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "set_reminder",
+            "description": "Set a reminder at a time",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "create_note",
+            "description": "Create a note",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "search_notes",
+            "description": "Search saved notes",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "create_ticket",
+            "description": "Open a support ticket",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "close_ticket",
+            "description": "Close a support ticket",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "get_order_status",
+            "description": "Get the status of an order",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "refund_order",
+            "description": "Refund an order",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "list_invoices",
+            "description": "List invoices of a customer",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "get_customer",
+            "description": "Look up a customer record",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "update_customer",
+            "description": "Update a customer record",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "run_sql",
+            "description": "Run a read-only SQL query",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "get_time",
+            "description": "Get the current time in a time zone",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "define_word",
+            "description": "Look up the definition of a word",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "get_recipe",
+            "description": "Find a recipe for a dish",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "track_package",
+            "description": "Track a parcel by tracking number",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "get_exchange_holidays",
+            "description": "List stock exchange holidays",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "create_invoice",
+            "description": "Create an invoice for a customer",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "send_sms",
+            "description": "Send a text message to a phone number",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "post_message",
+            "description": "Post a message to a chat channel",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "list_files",
+            "description": "List files in a folder",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "read_file",
+            "description": "Read a file",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "summarize_document",
+            "description": "Summarize a document",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "generate_password",
+            "description": "Generate a random password",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "shorten_url",
+            "description": "Shorten a long URL",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "check_domain",
+            "description": "Check whether a domain name is available",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "get_air_quality",
+            "description": "Get the air quality index for a city",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "calculate_tax",
+            "description": "Calculate sales tax for an amount",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "get_population",
+            "description": "Get the population of a country",
+            "parameters": {
+              "properties": {
+                "query": {
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          }
+        ],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "",
+        "finishReason": "tool_calls",
+        "usage": {
+          "promptTokens": 892,
+          "completionTokens": 22,
+          "totalTokens": 914
+        },
+        "toolCalls": [
+          {
+            "id": "call_b39bgmbWSG14KWpALkVby5Oj",
+            "type": "function",
+            "function": {
+              "name": "convert_currency",
+              "arguments": "{\"amount\":100,\"from\":\"USD\",\"to\":\"EUR\"}"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

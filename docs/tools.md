@@ -25,6 +25,8 @@ const agent = createAgent({ prompt: '...', provider, tools: [weather] });
 
 Tools the model provider runs itself (web search, code interpreter, file search) go in the same `tools` list; see [Hosted provider tools](./hosted-tools.md).
 
+With many tools, mark them `deferLoading` so the model finds them with a built-in `tool_search` tool instead of receiving every definition on every call; see [Tool search](./tool-search.md).
+
 ## `defineTool()` options
 
 | Option | Required | Description |
@@ -36,6 +38,7 @@ Tools the model provider runs itself (web search, code interpreter, file search)
 | `displayName` | no | Label for UIs. Defaults to `name`. |
 | `needsApproval` | no | `true`, or a predicate typed from `input`, to pause for a human decision before the call runs. See [Approvals](./approvals.md). |
 | `annotations` | no | MCP hints (`readOnlyHint`, `destructiveHint`, ...), stored as `metadata.mcp.annotations`. `readOnlyHint: true` lets the tool run in [plan mode](./permission-modes.md#which-tools-are-read-only). |
+| `deferLoading` | no | Withhold the tool's definition from the model until it finds the tool with `tool_search`. See [Tool search](./tool-search.md). |
 | `editsFiles` | no | The tool edits files: [`permissionMode: 'acceptEdits'`](./permission-modes.md#file-edits-the-editsfiles-marker) runs its calls without asking. Stored as `metadata.editsFiles`. |
 | `requiresSandbox` | no | Run the tool through the configured `SandboxAdapter` instead of in-process (needs `sandboxExecute`). See [Guardrails and sandboxing](./guardrails.md#sandboxed-tools). |
 | `sandboxExecute(args, sandbox)` | no | The sandboxed execution path used when `requiresSandbox` is true. |

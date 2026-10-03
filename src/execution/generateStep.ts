@@ -28,6 +28,7 @@ import { withSteerSignal } from './inputQueue';
 import { settleHostedFinish } from './hostedToolCalls';
 import { hostedToolsInMode, permissionModeOf } from './permissions';
 import type { ParallelInputCheck } from './ioGuardrails';
+import { deferralOf, visibleTools, type ToolDeferral } from './toolDeferral';
 
 /** A legacy `.tool`'s description when it is a string (always, on `ai` v4). */
 function legacyDescription(description: unknown): string | undefined {
@@ -107,6 +108,9 @@ export async function prepareGenerateRequest(
   const signal = withSteerSignal(options.signal, callSignal);
   // N1a x N4: read the mode at every call, so a switch to plan mode drops non-read-only hosted tools from the next one.
   const hostedTools = hostedToolsInMode(options.hostedTools, permissionModeOf(options));
+  // N2: the tools of this call, from the transcript as it is now (deferred tools load through `tool_search`).
+  const deferral = deferralOf(options);
+  const sent = visibleTools(tools, messages, deferral);
 
   const generateRequest: GenerateOptions = {
     // agent.settings.model > the model the provider was configured with >
@@ -115,7 +119,7 @@ export async function prepareGenerateRequest(
     messages,
     temperature,
     maxTokens,
-    tools: tools.length > 0 ? tools : undefined,
+    tools: sent.length > 0 ? sent : undefined,
     // N1a: the provider's own tools, sent with every call of the run (plan mode: read-only ones only).
     ...(hostedTools?.length && { hostedTools }),
     // LOU-V4: a JSON-mode hint for runs with an `output` schema.
@@ -131,10 +135,21 @@ export async function prepareGenerateRequest(
   }
 
   if (hooks) {
+    const before = generateRequest.tools;
     await hooks.runPreGenerate(generateHookContext(options, messages, generateRequest));
+    if (deferral && generateRequest.tools === before) reloadTools(generateRequest, tools, messages, deferral);
   }
 
   return generateRequest;
+}
+
+/**
+ * N2: after the preGenerate hooks, the call's tools again from the transcript: a compaction
+ * hook that pruned a `tool_search` result unloads its tools from this call on.
+ */
+function reloadTools(request: GenerateOptions, tools: ToolDefinition[], messages: Message[], deferral: ToolDeferral): void {
+  const after = visibleTools(tools, messages, deferral);
+  if (after.length !== (request.tools?.length ?? 0)) request.tools = after.length > 0 ? after : undefined;
 }
 
 /** A generate() reply with what the call spent (LOU-V5). */

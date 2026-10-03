@@ -57,6 +57,7 @@ import { newId } from './utils/id';
 import { createAgentApprovals, type AgentApprovals, type ApproveToolCall } from './createAgentApprovals';
 import { createAgentOAuth, type AgentOAuth } from './oauth/agentOAuth';
 import { assertPermissionMode, type PermissionMode, type PermissionOptions } from './execution/permissions';
+import { assertToolSearchOptions, type ToolSearchOptions } from './execution/toolSearch';
 import type { InferSchemaOutput, StandardSchemaV1 } from './utils/zodCompat';
 import type { McpServerSpec } from './spec/schema';
 import { agentMcp, streamAfter, streamPrepared } from './tools/mcp/agentMcp';
@@ -191,6 +192,19 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
   handoffs?: ReadonlyArray<SimpleAgent | Handoff>;
   /** How many handoffs one run may make (N6, default 5); a handoff call over it gets a tool error and the agent answers itself. */
   maxHandoffs?: number;
+  /**
+   * Tunes tool search (N2). Tools marked `deferLoading` (`defineTool({ deferLoading })`,
+   * or `mcpServers: { name: { ..., deferLoading: true } }`) are withheld from
+   * the model, which finds them with the built-in `tool_search` tool, once
+   * their definitions reach `thresholdPercent` (default 10%) of the context
+   * window. `false` sends every tool on every call. See docs/tool-search.md.
+   *
+   * @example
+   * ```ts
+   * createAgent({ model: 'openai/gpt-4o-mini', mcpServers: { github: { url: 'https://example.com/mcp', deferLoading: true } }, toolSearch: { maxResults: 3 } });
+   * ```
+   */
+  toolSearch?: false | ToolSearchOptions;
   /**
    * How deep sub-agents may nest. Defaults to 1: this agent's sub-agents
    * cannot call sub-agents of their own (they are not offered the `task`
@@ -672,6 +686,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   assertSubagents(config.subagents, 'createAgent');
   if (typeof config.permissionMode === 'string') assertPermissionMode(config.permissionMode, 'createAgent');
   assertMaxHandoffs(config.maxHandoffs);
+  assertToolSearchOptions(config.toolSearch, 'createAgent');
   const agentName = config.name || 'agent';
   const handoffTools = checkHandoffs(config.handoffs, { name: agentName }, 'createAgent').map((checked) => checked.toolName);
   const hasMcp = Object.keys(config.mcpServers ?? {}).length > 0;
@@ -706,6 +721,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     toolConcurrency: config.toolConcurrency,
     onAgentDrift: config.onAgentDrift,
     reasoning: config.reasoning,
+    toolSearch: config.toolSearch,
   };
   const specs = agentSpecs(config, toolsFor, runOptions);
   const staticSpec = specs.static;
