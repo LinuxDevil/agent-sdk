@@ -11,7 +11,7 @@
  *
  * Run with: npx tsx examples/plan-mode/index.ts
  */
-import { createAgent } from '../../src/createAgent';
+import { createAgent } from '../../src';
 import { createFsTools } from '../../src/tools/workspace/fsTools';
 import { MemoryWorkspace } from '../../src/tools/workspace/MemoryWorkspace';
 import { mockModel } from '../../src/testing';
