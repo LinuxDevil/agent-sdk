@@ -1,6 +1,7 @@
 import { newId } from '../utils/id';
 import { EditorStep, AgentFlow, FlowAgentDefinition, FlowInputVariable } from '../types';
 import { SDKError } from '../execution/errors';
+import { isCreateAgentResult } from './validators';
 
 /** Throw on the first input variable with a missing or duplicate name. */
 function assertUniqueInputNames(inputs: FlowInputVariable[]): void {
@@ -83,7 +84,9 @@ export class FlowBuilder {
   }
 
   /**
-   * Add an agent definition
+   * Add an agent definition. `agent` is a plain
+   * `{ name, model, system, tools }` definition (`FlowAgentDefinition`) - a
+   * `createAgent()` agent runs itself and is rejected by `build()`.
    */
   public addAgent(agent: FlowAgentDefinition): this {
     if (!this.flow.agents) {
@@ -132,6 +135,22 @@ export class FlowBuilder {
     // Validate input variables
     if (this.flow.inputs) {
       assertUniqueInputNames(this.flow.inputs);
+    }
+
+    // LOU-R14: a createAgent() agent runs itself; `agents` entries are the
+    // plain data a flow's steps run under ({ name, model, system, tools }),
+    // and its instructions are not readable from a flow. Reject it instead
+    // of silently building a flow that drops them.
+    for (const agent of this.flow.agents ?? []) {
+      if (isCreateAgentResult(agent)) {
+        throw new SDKError(
+          `FlowBuilder: 'agents' entries are plain { name, model, system, tools } ` +
+            `definitions (FlowAgentDefinition), not createAgent() agents - their ` +
+            `instructions are not readable from a flow. ` +
+            `Example: .addAgent({ name: 'summarizer', model: 'openai/gpt-4o-mini', system: 'You summarize.', tools: [] })`,
+          'LOUSHO_FLOW_INVALID'
+        );
+      }
     }
   }
 
