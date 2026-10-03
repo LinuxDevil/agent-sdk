@@ -805,7 +805,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     signal?: AbortSignal,
     checkpointStore?: CheckpointStore,
     permissionMode?: PermissionOptions['permissionMode'],
-    approver?: Principal
+    approver?: Principal,
+    onAgentEvent?: (event: AgentEvent) => void
   ): Promise<ResumeRequest> => {
     // N6: a run paused after a handoff continues as the agent it handed off to.
     const paused = await pausedRun(specs, approvalStore, decision.id, handoffs.has() ? handoffs : undefined);
@@ -827,7 +828,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
         currentAgent: pausedAgent,
         hostedTools,
         ...(paused.handoffs && { handoffs: paused.handoffs, maxHandoffs: config.maxHandoffs }),
-        onAgentEvent: config.onEvent,
+        // LOU-R18: `onAgentEvent` is the paused session's on() forwarder when the run is continued in one.
+        onAgentEvent: mergedAgentEvent(config.onEvent, onAgentEvent),
         ...tracing,
         // N10b: who decides; the run itself goes on as the principal it paused with (its snapshot's).
         ...(approver && { approver }),
@@ -843,9 +845,9 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     approve: config.approve,
     resume: async (...args) => resumeRequest(await resumeRequestFor(...args)),
     // LOU-V14: the streamed run's own signal and event sink are wired into the request.
-    streamResume: (approvalStore, decision, signal, checkpointStore, inputQueue, permissionMode, approver) =>
+    streamResume: (approvalStore, decision, signal, checkpointStore, inputQueue, permissionMode, approver, onAgentEvent) =>
       streamResumed(async (wire) => {
-        const request = await resumeRequestFor(approvalStore, decision, undefined, checkpointStore, permissionMode, approver);
+        const request = await resumeRequestFor(approvalStore, decision, undefined, checkpointStore, permissionMode, approver, onAgentEvent);
         return resumeRequest({ ...request, executeOptions: wire(request.executeOptions ?? {}) });
       }, signal, inputQueue),
   });
@@ -874,26 +876,30 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     signal?: AbortSignal,
     turn?: RunTurn,
     lead = true
-  ): ExecuteOptions => ({
-    ...spec,
-    output: config.output,
-    hooks,
-    approvalStore: approvals.store,
-    input,
-    signal,
-    onAgentEvent: config.onEvent,
-    ...tracing,
-    ...(tokens && { tokens }),
-    // LOU-D23.2: a session's turn runs under its id (tools see it), unless the turn is checkpointed under its own.
-    ...(ctx.sessionId !== undefined && { sessionId: ctx.sessionId }),
-    // N10b: tools, approval policies, permission rules and sub-agents act for this caller.
-    ...(ctx.principal && { principal: ctx.principal }),
-    // LOU-R16: the call's metadata reaches every hook context as `ctx.metadata`.
-    ...(ctx.metadata !== undefined && { metadata: ctx.metadata }),
-    ...turn,
-    // LOU-W6: memory tools and recall bound to this run's scope keys.
-    ...(lead && memory?.forRun({ sessionId: ctx.sessionId, metadata: ctx.metadata, principal: ctx.principal }, spec.toolRegistry, hooks)),
-  });
+  ): ExecuteOptions => {
+    // LOU-R18: a session's turn carries its on() forwarder; it joins the agent's listener instead of replacing it.
+    const { onAgentEvent: turnListener, ...turnRest } = turn ?? {};
+    return {
+      ...spec,
+      output: config.output,
+      hooks,
+      approvalStore: approvals.store,
+      input,
+      signal,
+      onAgentEvent: mergedAgentEvent(config.onEvent, turnListener),
+      ...tracing,
+      ...(tokens && { tokens }),
+      // LOU-D23.2: a session's turn runs under its id (tools see it), unless the turn is checkpointed under its own.
+      ...(ctx.sessionId !== undefined && { sessionId: ctx.sessionId }),
+      // N10b: tools, approval policies, permission rules and sub-agents act for this caller.
+      ...(ctx.principal && { principal: ctx.principal }),
+      // LOU-R16: the call's metadata reaches every hook context as `ctx.metadata`.
+      ...(ctx.metadata !== undefined && { metadata: ctx.metadata }),
+      ...turnRest,
+      // LOU-W6: memory tools and recall bound to this run's scope keys.
+      ...(lead && memory?.forRun({ sessionId: ctx.sessionId, metadata: ctx.metadata, principal: ctx.principal }, spec.toolRegistry, hooks)),
+    };
+  };
   /**
    * N6: the run's options when this agent has handoffs: the agent the transcript (a session's, when `inSession`, or the
    * checkpointed run's) last handed off to runs, with its handoffs; else this agent.
@@ -1057,6 +1063,18 @@ function addMcpTools(target: RunTools, tools: Record<string, ToolDescriptor>): v
 interface PinnedRunConfig {
   ctx: RunConfigContext;
   model: string | undefined;
+}
+
+/** `config.onEvent` plus a turn's own listener (a session's `on()` forwarder, LOU-R18), as one `onAgentEvent`. */
+function mergedAgentEvent(
+  agent: ((event: AgentEvent) => void) | undefined,
+  turn: ((event: AgentEvent) => void) | undefined
+): ((event: AgentEvent) => void) | undefined {
+  if (!agent || !turn) return agent ?? turn;
+  return (event) => {
+    agent(event);
+    turn(event);
+  };
 }
 
 /** The `ctx` and model of the unfinished run checkpointed for `turn` (LOU-V15.2), if there is one. */

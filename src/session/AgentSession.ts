@@ -113,6 +113,8 @@ export type SessionTurnOptions = Partial<SessionTurnCheckpoint> & {
   inputQueue?: InputQueue;
   /** N4: the session's mode, read at each tool call of the turn. */
   permissionMode?: PermissionOptions['permissionMode'];
+  /** LOU-R18: forwards the turn's events to the session's `on()` listeners. */
+  onAgentEvent?: (event: AgentEvent) => void;
 };
 
 /** A turn's own user input and `metadata` (LOU-V15), for `createAgent()`'s per-run config; absent on a resumed turn. */
@@ -237,6 +239,29 @@ export class AgentSession<TObject = unknown> {
   /** N4: the session's mode at the time of the call; handed to every turn, so a switch applies from the next tool call. */
   protected readonly currentPermissionMode = (): PermissionMode => this.permissionMode;
   private readonly listeners = new Set<(event: AgentEvent) => void>();
+  /**
+   * LOU-R18: forwards a turn's event, as the run reports it, to the `on()`
+   * listeners (a throwing listener is ignored). Protected so the approval
+   * continuation (`resolveWith` / `streamResolveWith`) reports the resumed
+   * run's events to them too.
+   */
+  protected readonly forwardToListeners = (event: AgentEvent): void => {
+    for (const listener of this.listeners) {
+      try {
+        listener(event);
+      } catch {
+        // a listener must not break the session
+      }
+    }
+  };
+
+  /**
+   * `forwardToListeners` for a run's `onAgentEvent` while the session has
+   * listeners, `undefined` without - a listener-less turn needs no run sink.
+   */
+  protected get turnEvents(): ((event: AgentEvent) => void) | undefined {
+    return this.listeners.size > 0 ? this.forwardToListeners : undefined;
+  }
   /** The turn running (or about to run) and the queue its run takes input from (LOU-V9). */
   private running: { inputs: InputQueue; result: Promise<ExecutionResult> } | undefined;
   private turnStartedAt = 0;
@@ -410,9 +435,21 @@ export class AgentSession<TObject = unknown> {
   }
 
   /**
-   * Listens for the events of `compact()` and `clear()` (`compaction.start`,
-   * `compaction.done`, `context.cleared`; a turn's own events come from
-   * `stream()`). Returns a function that removes the listener.
+   * Listens for the session's events (LOU-R18): every turn's events as the
+   * turn runs - on `send()` as on `stream()`, and on a paused turn continued
+   * by `agent.approvals.resolve()` - plus `compact()`'s `compaction.start` /
+   * `compaction.done` and `clear()`'s `context.cleared`. A turn's events are
+   * the `AgentEvent`s its `stream()` yields (`run.start`, `tool.start`, ...,
+   * `run.done`), delivered synchronously as they happen, so a listener can
+   * act on the rest of the turn (e.g. `setPermissionMode()` on `tool.start`,
+   * see docs/permission-modes.md). Returns a function that removes the listener.
+   *
+   * @example
+   * ```ts
+   * session.on((event) => {
+   *   if (event.type === 'tool.start') console.log('calling', event.toolName);
+   * });
+   * ```
    */
   on(listener: (event: AgentEvent) => void): () => void {
     this.listeners.add(listener);
@@ -653,7 +690,7 @@ export class AgentSession<TObject = unknown> {
   /** The next turn's checkpoint and, with `limits`, the session's budget (LOU-V6); starts the turn's clock. */
   private turnOptions(inputQueue?: InputQueue): SessionTurnOptions | undefined {
     this.turnStartedAt = Date.now();
-    const checkpoint = { ...this.turnCheckpoint(), ...(inputQueue && { inputQueue }), permissionMode: this.currentPermissionMode };
+    const checkpoint = { ...this.turnCheckpoint(), ...(inputQueue && { inputQueue }), permissionMode: this.currentPermissionMode, ...(this.turnEvents && { onAgentEvent: this.turnEvents }) };
     if (!this.limits) return checkpoint;
     return { ...checkpoint, sessionBudget: { limits: this.limits, spent: sessionSpent(this.transcript) } };
   }

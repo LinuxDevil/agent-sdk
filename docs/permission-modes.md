@@ -131,7 +131,8 @@ a call a guardrail blocked.
 - `agent.session({ permissionMode })`, then `session.setPermissionMode(mode)`
   and the `session.permissionMode` getter. The session reads its mode at every
   tool call of a turn, so `setPermissionMode()` during a turn (from a
-  `tool.start` listener, say) applies from the next tool call of that turn. A
+  `tool.start` listener, say - a `session.on()` listener or a `stream()` loop)
+  applies from the next tool call of that turn. A
   session defaults to the agent's mode.
 
 Switching is always an explicit call to `setPermissionMode()`. Each switch is
