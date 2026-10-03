@@ -36,6 +36,7 @@ import {
   workerBuiltinImportersPlugin,
   workerNodeShimPlugin,
   workerSandboxShimPlugin,
+  workerUnsupportedPeerPlugin,
   writeFile,
 } from '../bundle';
 import { CHECKPOINT_KV_BINDING } from '../checkpointBinding';
@@ -387,6 +388,7 @@ export const CloudflareWorkerAdapter: DeploymentAdapter = {
         workerSandboxShimPlugin(),
         workerNodeShimPlugin(),
         sdkRuntimePlugin({ sdkEntry: 'worker' }),
+        workerUnsupportedPeerPlugin(),
         workerBuiltinImportersPlugin(builtinImporters),
       ],
       // Keep `node:` prefixes: the shim plugin matches them (and the leak check below reports any left).
