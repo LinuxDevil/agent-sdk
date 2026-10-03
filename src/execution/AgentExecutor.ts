@@ -38,7 +38,7 @@ import {
   suspensionRecord,
   type ToolCallScope,
 } from './subagentRuntime';
-import { ConfigurationError, isAbortError } from './errors';
+import { ConfigurationError, isAbortError, isCassetteError } from './errors';
 import type { HostedTool } from '../tools/hosted';
 import { assertHostedToolsSupported, countHostedCalls, withHostedCalls } from './hostedToolCalls';
 import {
@@ -1184,6 +1184,15 @@ export class AgentExecutor {
       // loop turns it into an 'aborted' result; an AbortError thrown without
       // one (see isAbortError()) reaches the caller untouched.
       if (options.signal?.aborted || isAbortError(generateError)) {
+        throw generateError;
+      }
+
+      // LOU-R13: a cassette mismatch (or an unreadable cassette raised by the
+      // interception seam) is a test-fixture failure, not a provider failure.
+      // It reaches the caller typed - compacting it would hide the cassette
+      // path, the call number and the re-record hint behind a generic
+      // CompactedLLMProviderError.
+      if (isCassetteError(generateError)) {
         throw generateError;
       }
 

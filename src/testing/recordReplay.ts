@@ -87,8 +87,14 @@ export interface RecordReplayProvider extends LLMProvider {
   save(): Promise<void>;
 }
 
-/** Thrown in replay mode when a request does not match the cassette (or it ran out of entries). */
-export class CassetteMismatchError extends Error {
+/**
+ * Thrown in replay mode when a request does not match the cassette (or it ran
+ * out of entries). It is a `LOUSHO_CASSETTE_INVALID` SDKError (docs/errors.md)
+ * and AgentExecutor never compacts it into a provider error: through
+ * `agent.send()` it reaches the caller typed, with `.cassette`/`.callNumber`
+ * intact (LOU-R13).
+ */
+export class CassetteMismatchError extends SDKError {
   constructor(
     message: string,
     /** The cassette file. */
@@ -96,7 +102,7 @@ export class CassetteMismatchError extends Error {
     /** 1-based number of the call that failed to match. */
     readonly callNumber: number
   ) {
-    super(message);
+    super(message, 'LOUSHO_CASSETTE_INVALID');
     this.name = 'CassetteMismatchError';
   }
 }

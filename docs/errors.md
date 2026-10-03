@@ -734,7 +734,11 @@ judge runner.
 ### LOUSHO_CASSETTE_INVALID
 
 **Means:** a record/replay cassette is missing, is not valid JSON or does not
-match the recorded request. The message names the file.
+match the recorded request. The message names the file. A mismatch inside a
+run reaches `send()` as the `CassetteMismatchError` itself (from
+`@lousho/build-ai-agent/testing`, with `.cassette` and `.callNumber`) - it is
+a test-fixture failure, so it is never compacted into a
+`CompactedLLMProviderError`.
 
 **Fix:** record it again (`lousho eval --record <file>`, or `recordReplay()` with
 `mode: 'record'`). See [Testing](./testing.md).

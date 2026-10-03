@@ -284,13 +284,17 @@ a real judge only in `*.judge.eval.ts` files.
 
 How it works: the run loop sends every model call (`generate` or `stream`, from
 a plain run, a streamed run, a sub-agent or an approval resume) through one
-provider-interception seam, `setProviderInterceptor()` in
-`src/providers/interception.ts`. Nothing is installed by default, so the seam is
+provider-interception seam, `setProviderInterceptor()` (exported from
+`@lousho/build-ai-agent/testing`; `src/providers/interception.ts` in the
+source). Nothing is installed by default, so the seam is
 free. While a case runs under one of these modes, `lousho eval` answers it with
 the provider wrapped by `recordReplay()` for that case's cassette. You can use
 the seam yourself to put any wrapper at the model boundary: the interceptor gets
 the run's provider and returns the one to call (it must return the same wrapper
-for the same provider, and leave a provider it already wrapped alone).
+for the same provider, and leave a provider it already wrapped alone). A
+cassette failure it raises - a replay mismatch or a missing cassette - reaches
+`send()` typed (`CassetteMismatchError`, `LOUSHO_CASSETTE_INVALID`), not as a
+compacted provider error.
 
 ## Run evals against a deployment
 
