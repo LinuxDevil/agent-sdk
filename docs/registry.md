@@ -73,7 +73,8 @@ and its entry in `index.json`:
 
 Host both as static files anywhere (a folder in a repository, an object store, a
 web server). The document's `name` and `type` must match its index entry, and a
-name is letters, digits, `.`, `_` and `-`. A document that does not match the
+name starts with a letter or digit, followed by letters, digits, `.`, `_` and
+`-`. A document that does not match the
 format is `LOUSHO_REGISTRY_INVALID`, with the fields named.
 
 ## Permission manifest
@@ -94,25 +95,30 @@ What `lousho add` enforces, before it writes anything:
 - **The code matches the manifest.** Every JavaScript and TypeScript file of the
   item is scanned, with comments stripped, for what it visibly reaches for:
   - `exec: true` for an import of `child_process` (with or without `node:`),
-    `execa` or `shelljs`, or a use of the SDK's `createShellTool` or `SubprocessSandbox`;
-  - `filesystem: "read"` (or `"write"`) for an import of `fs`, `fs/promises` or the
+    `execa` or `shelljs`, or a use of the SDK's `createShellTool`,
+    `runShellCommand` or `SubprocessSandbox`;
+  - `filesystem: "read"` (or `"write"`) for an import of `fs` (including
+    `fs/promises` and the `node:` forms), `fs-extra` or `graceful-fs`, or the
     SDK's `createFsTools`, and `"write"` for a call to `writeFile`, `appendFile`,
-    `createWriteStream`, `mkdir`, `rm`, `rmdir`, `unlink`, `rename`, `copyFile` or
-    `cp` (and their `Sync` forms);
-  - a non-empty `network` for `fetch(` or an import of `http`, `https`, `net`,
-    `tls`, `undici`, `axios`, `node-fetch` or `ws`, and every `http(s)://host` in a
+    `createWriteStream`, `mkdir`, `mkdtemp`, `rm`, `rmdir`, `unlink`, `rename`,
+    `copyFile` or `cp` (and their `Sync` forms);
+  - a non-empty `network` for `fetch(`, a use of the SDK's `createHttpTool`, or
+    an import of `http`, `https`, `http2`, `net`, `tls`, `dgram`, `undici`,
+    `axios`, `node-fetch` or `ws`, and every `http(s)://` or `ws(s)://` host in a
     string must match a `network` entry (a host built at run time, such as
     `` `https://${host}/` ``, needs a non-empty `network` and is printed as a note,
     since it cannot be checked);
   - every `process.env.NAME` and `process.env['NAME']` must be listed in `env`.
 
   `eval(`, `new Function(`, a computed `process.env[name]`, `process.env` used as
-  a whole, and an `import()` or `require()` of anything but a string literal are
+  a whole, an `import()` or `require()` of anything but a string literal, and
+  `require` used as a value (`const r = require`) are
   always refused. A mismatch is `LOUSHO_REGISTRY_MANIFEST_MISMATCH` with every
   finding as `<file>:<line>: <what> (<fix>)`; `--dry-run` reports it too. Markdown
   and other files that are not code (a skill's `SKILL.md`) are not scanned.
   `network` entries must be host names or `*.` wildcards (`api.example.com`,
-  `*.example.com`) and `env` entries variable names (`SEARCH_KEY`); anything else
+  `*.example.com` — a wildcard matches subdomains only, not the bare host) and
+  `env` entries variable names (`SEARCH_KEY`); anything else
   is `LOUSHO_REGISTRY_INVALID`.
 - **Consent covers the elevated permissions.** `exec: true`, `filesystem: "write"`,
   a non-empty `network` and a non-empty `env` are marked `[elevated: ...]` in the

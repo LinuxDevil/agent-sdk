@@ -109,7 +109,7 @@ try {
 When one model turn asks for several tools and one of them needs approval,
 the calls before it run and are recorded, and the run pauses on it. The
 approval snapshot records the calls after it (`remainingToolCalls`).
-`agent.approvals.resolve()` (`resumeAfterApproval()` on the executor) then:
+`agent.approvals.resolve()` (the `resumeAfterApproval()` export underneath) then:
 
 1. records the paused call's result - the tool's result if approved, or a
    structured `{ error, note }` rejection result if rejected;
@@ -270,7 +270,7 @@ const original = await store.checkpoints?.load('trip');
 const replayed = await store.checkpoints?.load(fork.sessionId);
 if (original && replayed) {
   const { divergedAt, a, b, drift } = compareTrajectories(original, replayed);
-  console.log(divergedAt, a.length, b.length, drift); // 1, then each run's steps and the tool-call diff
+  console.log(divergedAt, a.length, b.length, drift); // 2, then each run's steps and the tool-call diff
 }
 ```
 
@@ -322,7 +322,7 @@ When a run is resumed (`agent.resume(id)`, `session.resume()`, a later
 `execute()` on an unfinished `sessionId`, `agent.approvals.resolve()` and the
 streamed forms), the resuming agent's fingerprint is compared with the saved
 one, before any model call or tool runs. `onAgentDrift` on `createAgent()` (and
-on `AgentExecutor.execute()` / `resumeAfterApproval()`) decides what a
+on `AgentExecutor.execute()` / the `resumeAfterApproval()` export) decides what a
 difference does:
 
 | `onAgentDrift` | On a different model, tools or instructions |
@@ -406,7 +406,8 @@ try {
 }
 ```
 
-`resumeAfterApproval()` is `agent.approvals.resolve()`:
+The exported `resumeAfterApproval()` function is what
+`agent.approvals.resolve()` calls:
 
 ```ts
 import { AgentExecutor, resumeAfterApproval } from '@lousho/build-ai-agent';
@@ -472,7 +473,7 @@ if (original && replayed) {
 - A `sessionId` identifies one logical conversation; running two
   `send()` calls (or two `execute()` calls) on the same id at the same time
   is not supported.
-- If you call `resumeAfterApproval()` (the executor behind
+- If you call `resumeAfterApproval()` (the function behind
   `agent.approvals.resolve()`) without the `checkpointStore`, the session
   keeps its `'awaiting-approval'` mark and later `send()` (or `execute()`)
   calls keep throwing `SessionAwaitingApprovalError`; pass the store (or

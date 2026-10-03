@@ -68,7 +68,8 @@ const running = startSchedules(agent, schedules);
 
 ## On the node server
 
-`createDeployedServer(agent, { schedules })` (the server of the `node-server`
+`createDeployedServer(agent, { schedules })` (the internal helper behind the
+server that `lousho build` emits for the `node-server`
 and `docker` targets) starts the schedules when it listens and stops them when it
 closes. `lousho build ./my-agent --target=node-server` (or `docker`) builds an
 agent directory into such a server, so its `schedules/` run in the deployed
@@ -107,9 +108,12 @@ triggers:
 `lousho build` writes the deduplicated expressions to `[triggers] crons` and the
 Worker's `scheduled()` runs every trigger whose `cron` equals the invoked one as
 an agent turn inside `ctx.waitUntil()`. Each trigger has its own session,
-`schedule:<name>`, so its runs are inspectable in the KV session store when
-`AGENT_CHECKPOINTS` is bound (`GET /chat/schedule:weekly-report`, URL-encoded).
-A failing trigger is logged with `console.error` (name and error code) and never
+`schedule-<name>`, so its runs are inspectable in the KV session store when
+`AGENT_CHECKPOINTS` is bound (`GET /chat/schedule-weekly-report`). The run
+happens inside `ctx.waitUntil()`, past the request's lifetime, so give the
+agent a store (`KVStore` on `AGENT_CHECKPOINTS`) — an in-memory one keeps the
+`schedule-<name>` sessions only until the isolate is recycled. A failing
+trigger is logged with `console.error` (name and error code) and never
 stops the others, and `scheduled()` never throws.
 
 Cloudflare's cron triggers differ from the in-process ones, so the build fails

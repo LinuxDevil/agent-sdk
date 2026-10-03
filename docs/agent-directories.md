@@ -51,7 +51,7 @@ export default {
 | Key | Maps to |
 | --- | ------- |
 | `name` | `createAgent({ name })` (default: the directory name) |
-| `description` | not a `createAgent` option; what a parent agent reads for a sub-agent (required there) |
+| `description` | `manifest.description` — the directory loader does not forward it to `createAgent` (though `createAgent({ description })` accepts it); what a parent agent reads for a sub-agent (required there) |
 | `model` | `createAgent({ model })`; the `vendor/` prefix chooses the provider — with OpenRouter use `openrouter/<vendor>/<model>` |
 | `provider` | `createAgent({ provider })` (code config files only) |
 | `instructions` | `createAgent({ instructions })` (use this or `instructions.md`, not both) |
@@ -104,8 +104,10 @@ Each file in `channels/` default-exports a [channel](./channels.md) made with
 A file that does not export a channel fails with `LOUSHO_CHANNEL_INVALID`
 naming the file. `resolveAgentDir()` returns them as `channels` (and their names
 as `manifest.channels`); `loadAgentDir()` does not mount them. The node server
-(`createDeployedServer(agent, { channels })`) mounts them under `/channels`
-next to the chat routes; with your own server, use `mountChannels()`:
+that `lousho build --target=node-server` emits mounts them under `/channels`
+next to the chat routes (`createDeployedServer(agent, { channels })`, an
+internal helper of the generated bundle); with your own server, use
+`mountChannels()`:
 
 ```ts
 import { createServer } from 'node:http';

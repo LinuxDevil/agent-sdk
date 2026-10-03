@@ -129,7 +129,7 @@ tool that uses a token should return the API's answer, not the token.
 file store claims it with an exclusive file create, so exactly one caller gets
 it. Workers KV has no transactions: `takePending` reads and then deletes, so two
 callbacks at different edge locations within KV's propagation delay (up to
-about a minute) could both read the same state. The state is a 128-bit random
+about a minute) could both read the same state. The state is a 256-bit random
 value that only the user's browser holds, so reusing it gains nothing to anyone
 who does not already have it. `KVStore`'s `tokens.list()` needs the binding's
 `list()` (a real KV namespace has it; a hand-made fake may not). `prune()` of a

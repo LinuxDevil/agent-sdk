@@ -48,6 +48,15 @@ the `=` form: `--model=-x`. `--traces` is the one flag whose value is optional:
 it takes it only in the `=` form (`--traces=./t`), so `--traces agent.yaml` is
 still the flag followed by the path.
 
+`lousho init` is the exception: it parses its own flags, and a bad flag or
+value fails with `InitUsageError` — its message printed as-is, exit code 1 —
+not the shared `LOUSHO_CONFIG_INVALID` path. The only short flags besides
+`-h` are `-y` for `--yes`, on `init` and on `add`.
+
+`lousho eval` also takes `--config <file>` to run under your own vitest config
+instead of the generated one; globs then narrow that config's files as vitest
+filters.
+
 `npm create lousho-agent my-agent` runs `lousho init` with the same arguments.
 To scaffold against an unreleased build of the SDK, pass `--sdk-path` (see
 [Installing from a local build](./installation.md#installing-from-a-local-build)).
@@ -74,7 +83,7 @@ endpoints below (1MB body limit). What `<path>` is follows from the path:
 | ---- | ----------- |
 | `.yaml`, `.yml`, `.json` | `loadSpec()` + `specToAgent()` ([Configuration](./configuration.md)) |
 | a directory | `loadAgentDir()` ([Agent directories](./agent-directories.md)) |
-| `.ts`, `.mts`, `.js`, `.mjs`, `.cjs` | the module's default export, or its `agent` export: a `SimpleAgent` (what `createAgent()` returns) or a `createAgent()` options object |
+| `.ts`, `.mts`, `.cts`, `.js`, `.mjs`, `.cjs` | the module's default export, or its `agent` export: a `SimpleAgent` (what `createAgent()` returns) or a `createAgent()` options object |
 
 Any other extension, a missing path, or a module with no agent export fails
 with a coded error (`LOUSHO_SPEC_UNSUPPORTED_FORMAT`, `LOUSHO_CONFIG_INVALID`)
@@ -93,7 +102,7 @@ plus a free-text field. The same endpoints work from `curl` or your own page:
 | -------- | ------------ |
 | `POST /chat` `{ "sessionId", "input" }` | Runs `agent.session({ id: sessionId }).stream(input)` and streams the turn as SSE: one `data: <AgentEvent JSON>` per event ([Streaming](./streaming.md)), then `event: done`. History is kept per `sessionId` (1-128 characters of `A-Za-z0-9_-`). |
 | `GET /chat/:sessionId` | The session's transcript: `{ sessionId, messages, pending }`; `pending` is `{ status, approvalId? }` while a turn waits on an approval, else `null`. |
-| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides the pending approval (`agent.approvals.resolve()`), or answers a question (`agent.approvals.answer()`), and streams the continued turn as SSE. It can pause again with another `approval.requested`. `404` when `id` is not pending. |
+| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides the pending approval (`agent.approvals.streamResolve()`), or answers a question (`agent.approvals.streamAnswer()`), and streams the continued turn as SSE. It can pause again with another `approval.requested`. `404` when `id` is not pending. |
 | `POST /chat` `{ "message" }` | Deprecated: no session, no streaming. Returns the agent's `ExecutionResult` as JSON, with a `Deprecation: true` header. |
 
 `--traces` (or `--traces=<dir>`) writes every run to local trace files with
@@ -106,9 +115,10 @@ See [Local traces](./observability.md#local-traces).
 
 Sessions live in an in-process `memoryStore()` (gone when `lousho dev` stops),
 or in the agent's own `store` when a module's `createAgent()` options set one.
-The continuation of an approval is not streamed token by token: the endpoint
-runs it with `agent.approvals.resolve()` and sends the turn's tool results and
-text as events once it finishes.
+The continuation of an approval is streamed too: the endpoint runs it with
+`agent.approvals.streamResolve()` (or `streamAnswer()` for a question) and
+sends the continued turn's events — the decided tool call, text deltas, a
+further pause and `run.done` — as they happen.
 
 `lousho build` servers (`node-server`, `docker`) serve these same endpoints from
 the same code, with sessions in a store chosen by `LOUSHO_STORE` and optional
