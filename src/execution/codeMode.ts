@@ -77,25 +77,40 @@ const DEFAULT_LIMITS: ScriptLimits = {
 const NOT_BY_DEFAULT = new Set([ASK_QUESTION_TOOL_NAME, 'task', 'agent_status', 'agent_await', 'agent_cancel', TOOL_SEARCH_TOOL, 'load_skill']);
 const isDelegateTool = (name: string) => name.startsWith('delegate_to_');
 
-const OPTION_KEYS = new Set<string>(['tools', 'exclusive', 'timeoutMs', 'memoryLimitBytes', 'maxToolCalls', 'maxOutputChars']);
+/** What is wrong with one `codeMode` option's value (undefined: nothing), per option. */
+const OPTION_CHECKS: Record<string, (value: unknown) => string | undefined> = {
+  tools: (tools) => {
+    if (!Array.isArray(tools) || !tools.every((name) => typeof name === 'string')) return 'must be an array of tool names';
+    return tools.includes(RUN_CODE_TOOL) ? `cannot name '${RUN_CODE_TOOL}' itself` : undefined;
+  },
+  exclusive: (exclusive) => (typeof exclusive === 'boolean' ? undefined : 'must be a boolean'),
+  timeoutMs: wholeNumber,
+  memoryLimitBytes: wholeNumber,
+  maxToolCalls: wholeNumber,
+  maxOutputChars: wholeNumber,
+};
+
+function wholeNumber(value: unknown): string | undefined {
+  return Number.isInteger(value) && (value as number) >= 1 ? undefined : `must be a whole number >= 1, got ${String(value)}`;
+}
 
 /** Throws `LOUSHO_CONFIG_INVALID` unless `value` is a valid `codeMode` option. */
 export function assertCodeModeOptions(value: unknown, where: string): void {
   if (value === undefined || typeof value === 'boolean') return;
-  const fail = (problem: string): never => {
-    throw new ConfigurationError(`${where}: ${problem}. See docs/code-mode.md.`, 'codeMode');
-  };
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) fail(`'codeMode' must be true, false or an object, got ${String(value)}`);
-  const options = value as Record<string, unknown>;
-  for (const key of Object.keys(options)) if (!OPTION_KEYS.has(key)) fail(`'codeMode.${key}' is not an option`);
-  const { tools, exclusive } = options;
-  if (tools !== undefined && !(Array.isArray(tools) && tools.every((name) => typeof name === 'string'))) fail(`'codeMode.tools' must be an array of tool names`);
-  if (Array.isArray(tools) && tools.includes(RUN_CODE_TOOL)) fail(`'codeMode.tools' cannot name '${RUN_CODE_TOOL}' itself`);
-  if (exclusive !== undefined && typeof exclusive !== 'boolean') fail(`'codeMode.exclusive' must be a boolean`);
-  for (const key of ['timeoutMs', 'memoryLimitBytes', 'maxToolCalls', 'maxOutputChars'] as const) {
-    const limit = options[key];
-    if (limit !== undefined && !(Number.isInteger(limit) && (limit as number) >= 1)) fail(`'codeMode.${key}' must be a whole number >= 1, got ${String(limit)}`);
+  const problem = codeModeProblem(value);
+  if (problem) throw new ConfigurationError(`${where}: ${problem}. See docs/code-mode.md.`, 'codeMode');
+}
+
+/** What is wrong with a `codeMode` object, if anything. */
+function codeModeProblem(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return `'codeMode' must be true, false or an object, got ${String(value)}`;
+  for (const [key, option] of Object.entries(value)) {
+    const check = OPTION_CHECKS[key];
+    if (!check) return `'codeMode.${key}' is not an option`;
+    const problem = option === undefined ? undefined : check(option);
+    if (problem) return `'codeMode.${key}' ${problem}`;
   }
+  return undefined;
 }
 
 /** Where a run's code mode rides on its options (set by `createAgent()`; spreading the options keeps it). */
@@ -235,25 +250,42 @@ const SCALARS: Record<string, string> = { string: 'string', number: 'number', in
 function renderSchema(schema: unknown, depth: number): string {
   if (typeof schema !== 'object' || schema === null || depth > 4) return 'unknown';
   const s = schema as JsonSchema;
+  return renderValues(s) ?? renderUnion(s, depth) ?? renderTyped(s, depth);
+}
+
+/** A `const` or an `enum` as literal types. */
+function renderValues(s: JsonSchema): string | undefined {
   if (s.const !== undefined) return JSON.stringify(s.const);
   if (Array.isArray(s.enum)) return s.enum.map((value) => JSON.stringify(value)).join(' | ') || 'unknown';
+  return undefined;
+}
+
+/** `anyOf` / `oneOf`, or a list of `type`s, as a union. */
+function renderUnion(s: JsonSchema, depth: number): string | undefined {
   const union = s.anyOf ?? s.oneOf;
   if (Array.isArray(union)) return union.map((member) => renderSchema(member, depth + 1)).join(' | ') || 'unknown';
   if (Array.isArray(s.type)) return s.type.map((type) => renderSchema({ ...s, type }, depth)).join(' | ');
+  return undefined;
+}
+
+/** A scalar, an array or an object type. */
+function renderTyped(s: JsonSchema, depth: number): string {
   if (typeof s.type === 'string' && SCALARS[s.type]) return SCALARS[s.type];
   if (s.type === 'array') {
     const item = renderSchema(s.items, depth + 1);
     return item.includes(' ') ? `Array<${item}>` : `${item}[]`;
   }
-  if (s.type === 'object' || s.properties) {
-    const required = new Set(Array.isArray(s.required) ? s.required : []);
-    const fields = Object.entries(s.properties ?? {}).map(([key, value]) => {
-      const name = /^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key);
-      return `${name}${required.has(key) ? '' : '?'}: ${renderSchema(value, depth + 1)}`;
-    });
-    return fields.length > 0 ? `{ ${fields.join('; ')} }` : 'Record<string, unknown>';
-  }
+  if (s.type === 'object' || s.properties) return renderObject(s, depth);
   return 'unknown';
+}
+
+function renderObject(s: JsonSchema, depth: number): string {
+  const required = new Set(Array.isArray(s.required) ? s.required : []);
+  const fields = Object.entries(s.properties ?? {}).map(([key, value]) => {
+    const name = /^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key);
+    return `${name}${required.has(key) ? '' : '?'}: ${renderSchema(value, depth + 1)}`;
+  });
+  return fields.length > 0 ? `{ ${fields.join('; ')} }` : 'Record<string, unknown>';
 }
 
 /** Runs one inner tool call of a script (see {@link ToolCallScope.callTool}). */
