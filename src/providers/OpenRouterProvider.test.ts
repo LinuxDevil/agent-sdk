@@ -149,6 +149,41 @@ describe('OpenRouterProvider', () => {
       expect(headers.get('http-referer')).toBe('https://example.com');
       expect(headers.get('x-title')).toBe('Test Site');
     });
+
+    /**
+     * One generate() against a stubbed fetch answering `status` with `body`;
+     * returns the error generate() rejected with.
+     */
+    async function errorOf(status: number, body: string) {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, { status, statusText: 'status text' })));
+      const provider = new OpenRouterProvider({ ...config, maxRetries: 0 });
+      return provider
+        .generate({ messages: [{ role: 'user', content: 'hi' }], model: 'openai/gpt-4o-mini' })
+        .then(
+          () => {
+            throw new Error('generate() unexpectedly resolved');
+          },
+          (error: unknown) => error as Error
+        );
+    }
+
+    it('LOU-R5: a 404 keeps the body\'s "No endpoints found" on the thrown error', async () => {
+      // OpenRouter's real shape: a numeric `code`, no `type`/`param` - which
+      // does not fit @ai-sdk/openai's error schema, so without the rewrite the
+      // APICallError message is only the status text.
+      const error = await errorOf(404, JSON.stringify({ error: { message: 'No endpoints found for openai/retired.', code: 404 } }));
+      expect(error.message).toContain('No endpoints found for openai/retired.');
+    });
+
+    it('LOU-R5: a 401 keeps the body\'s auth explanation on the thrown error', async () => {
+      const error = await errorOf(401, JSON.stringify({ error: { message: 'No auth credentials found', code: 401 } }));
+      expect(error.message).toContain('No auth credentials found');
+    });
+
+    it('LOU-R5: a non-JSON error body still rejects (status text, nothing to keep)', async () => {
+      const error = await errorOf(502, 'bad gateway');
+      expect(error).toBeInstanceOf(Error);
+    });
   });
 
   it('should handle configuration without optional fields', () => {

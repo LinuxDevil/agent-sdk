@@ -145,6 +145,60 @@ function withRequestChanges(changes: RequestChanges): typeof fetch {
   };
 }
 
+/**
+ * OpenRouter's error body as the `{error}` object `@ai-sdk/openai`'s error
+ * schema expects, or `undefined` when the body has no explanation to keep.
+ * OpenRouter sends `{error: {message, code}}` with `code` a NUMBER and no
+ * `type`/`param`, which fails that schema - the SDK then reports only the
+ * status text.
+ */
+function normalizedOpenRouterError(body: string): { error: { message: string; type: string; param: unknown; code: string | null } } | undefined {
+  let parsed: { error?: unknown; message?: unknown };
+  try {
+    parsed = JSON.parse(body) as typeof parsed;
+  } catch {
+    return undefined;
+  }
+  const error = parsed?.error;
+  const fields = (typeof error === 'object' && error !== null ? error : {}) as { message?: unknown; type?: unknown; param?: unknown; code?: unknown };
+  const message = typeof error === 'string' ? error : (fields.message ?? parsed?.message);
+  if (typeof message !== 'string' || message.trim() === '') return undefined;
+  return {
+    error: {
+      message,
+      type: typeof fields.type === 'string' ? fields.type : 'openrouter_error',
+      param: fields.param ?? null,
+      code: fields.code == null ? null : String(fields.code),
+    },
+  };
+}
+
+/**
+ * LOU-R5: `fetch` that keeps OpenRouter's error explanation. The real cause
+ * of a failed call lives in the response body's `error.message` ("No
+ * endpoints found for ...", "No auth credentials found"), but the body does
+ * not match `@ai-sdk/openai`'s error schema (see normalizedOpenRouterError),
+ * so the thrown `APICallError` ends up with `message` of only the bare HTTP
+ * status text - "Not Found", or "" when the HTTP/2 response has no reason
+ * phrase. Rewriting a non-OK JSON error body into the OpenAI error shape
+ * puts the provider's explanation on the thrown error's `message`.
+ */
+function withErrorMessage(inner: typeof fetch): typeof fetch {
+  return async (input, init) => {
+    const response = await inner(input, init);
+    if (response.ok) return response;
+    // The clone is read so the original body stays intact when there is
+    // nothing to normalize.
+    const normalized = normalizedOpenRouterError(await response.clone().text());
+    if (normalized === undefined) return response;
+    return new Response(JSON.stringify(normalized), {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+  };
+}
+
 /** The hosted call a step's search left, from what its response reported (undefined when it did not search). */
 function searchCallOf(found: SearchObservation | undefined): HostedToolCall | undefined {
   if (!found || ((found.requests ?? 0) === 0 && found.sources.length === 0)) return undefined;
@@ -172,11 +226,15 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
 
   /** `@ai-sdk/openai` pointed at OpenRouter; `changes` (LOU-V13 `reasoning`, N1b web search) are applied to each request. */
   private async openRouter(changes?: RequestChanges) {
+    // LOU-R5: every call goes through the fetch that keeps the body's error
+    // message; the request `changes` compose inside it. `globalThis.fetch` is
+    // read per call so tests can stub it after the provider was created.
+    const inner: typeof fetch = changes ? withRequestChanges(changes) : (input, init) => globalThis.fetch(input, init);
     return (await this.loadFactory())({
       apiKey: this.config.apiKey,
       baseURL: OPENROUTER_API_URL,
       headers: buildHeaders(this.config),
-      ...(changes && { fetch: withRequestChanges(changes) }),
+      fetch: withErrorMessage(inner),
     });
   }
 
