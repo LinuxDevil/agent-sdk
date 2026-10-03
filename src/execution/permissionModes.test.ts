@@ -358,6 +358,68 @@ describe('permission modes in sessions (N4)', () => {
     expect(changes).toEqual([{ sessionId: session.id, from: 'plan', to: 'acceptEdits', at: expect.any(String) }]);
   });
 
+  it("LOU-R18: session.on() gets the turn's events; setPermissionMode('acceptEdits') from its tool.start applies to the next call", async () => {
+    // The docs/permission-modes.md example, with session.on() as the listener.
+    const workspace = new MemoryWorkspace({ files: { 'notes.md': '# Notes\n' } });
+    const agent = createAgent({
+      provider: mockModel([
+        { toolCalls: [{ name: 'write_file', id: 'w1', args: { path: 'early.md', content: 'x' } }] },
+        { toolCalls: [{ name: 'read_file', id: 'r1', args: { path: 'notes.md' } }] },
+        { toolCalls: [{ name: 'write_file', id: 'w2', args: { path: 'plan.md', content: 'the plan' } }] },
+        'done',
+      ]),
+      tools: createFsTools(workspace, { needsApproval: { write_file: true } }),
+    });
+    const session = agent.session({ permissionMode: 'plan' });
+    const events: AgentEvent[] = [];
+    session.on((event) => {
+      events.push(event);
+      if (event.type === 'tool.start' && event.toolName === 'read_file') session.setPermissionMode('acceptEdits');
+    });
+
+    const result = await session.send('Plan, then write the plan.');
+
+    expect(result.finishReason).toBe('stop');
+    expect(Object.keys(workspace.snapshot())).not.toContain('early.md');
+    expect(await workspace.readFile('plan.md')).toBe('the plan');
+    expect(session.permissionMode).toBe('acceptEdits');
+    expect(events.map((event) => event.type)).toEqual(expect.arrayContaining(['run.start', 'tool.start', 'tool.done', 'run.done']));
+  });
+
+  it("LOU-R18: session.on() also gets the continued run's events when the paused turn is resolved", async () => {
+    const { deploy } = toolbox();
+    const agent = createAgent({ provider: mockModel([{ toolCalls: [{ name: 'deploy', id: 'd1' }] }, 'done']), tools: [deploy.defined] });
+    const session = agent.session();
+    const events: AgentEvent[] = [];
+    session.on((event) => events.push(event));
+
+    const paused = await session.send('Deploy.');
+    expect(paused.finishReason).toBe('awaiting-approval');
+    const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+
+    expect(result.finishReason).toBe('stop');
+    expect(deploy.calls).toEqual(['deploy']);
+    const types = events.map((event) => event.type);
+    expect(types.filter((type) => type === 'run.start')).toHaveLength(2); // the paused turn and its continuation
+    expect(types).toContain('tool.done');
+    expect(events.at(-1)).toMatchObject({ type: 'run.done', finishReason: 'stop' });
+  });
+
+  it('LOU-R18: a throwing session.on() listener does not break the turn', async () => {
+    const agent = createAgent({ provider: mockModel(['hi']), onEvent: () => undefined });
+    const session = agent.session();
+    session.on(() => {
+      throw new Error('listener bug');
+    });
+    const other: AgentEvent[] = [];
+    session.on((event) => other.push(event));
+
+    const result = await session.send('Hello');
+
+    expect(result.text).toBe('hi');
+    expect(other.at(-1)).toMatchObject({ type: 'run.done' });
+  });
+
   it("a paused turn resolved after setPermissionMode('dontAsk') follows the new mode for the calls after the approved one", async () => {
     const { deploy } = toolbox();
     const model = mockModel([
