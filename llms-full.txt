@@ -1977,7 +1977,7 @@ This snippet targets `ai` 6 and 7 (`useChat` takes a `transport`, and
 | `step.start` / `step.done` | `start-step` / `finish-step` |
 | `text.delta`, `text.done` | `text-start` (once per text part), `text-delta`, `text-end` |
 | `reasoning.start`, `reasoning.delta`, `reasoning.done` | `reasoning-start`, `reasoning-delta`, `reasoning-end` (see [Reasoning](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/reasoning.md)) |
-| `tool.start` | `tool-input-start`, then `tool-input-available` with the arguments |
+| `tool.start` / `tool.resume` | `tool-input-start`, then `tool-input-available` with the arguments |
 | `tool.partial` | `tool-output-available` with `preliminary: true` (AI SDK 5+): a snapshot of a [streaming tool](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#streaming-partial-results) |
 | `tool.done` / `tool.error` | `tool-output-available` / `tool-output-error` |
 | `approval.requested` | `data-lousho-approval` (below) |
@@ -2320,8 +2320,9 @@ const trusted = createAgent({
 `agent.approvals.streamAnswer({ id, answer }, { signal })` continue the run
 like `resolve()` and `answer()`, but return the `AgentRun` that
 `agent.stream()` returns (see [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#streaming-after-an-approval)):
-`run.start`, the decided call's `tool.start` and `tool.done` (`tool.error` for
-a rejection), then the continuation's events up to `run.done`. `run.result`
+`run.start`, the decided call's `tool.resume` and `tool.done` (`tool.error` for
+a rejection; `tool.resume`, not a second `tool.start`, because the paused run
+already reported that call's start), then the continuation's events up to `run.done`. `run.result`
 is what `resolve()` resolves with. A continuation that pauses again ends with
 `approval.requested` and `run.done` (`'awaiting-approval'`), even with an
 `approve` callback, as `stream()` does. A pause made inside a session
@@ -3012,8 +3013,10 @@ try {
 }
 ```
 
-Two details of the continued stream. The `tool.start` of the call you just
-approved arrives at its start, so the loop prints each call once. And a
+Two details of the continued stream. The call you just approved resumes with
+a `tool.resume` event - its `tool.start` was already printed by the run that
+paused, so the loop prints each call once (`tool.resume` is the event to
+match if you want to mark the call running again). And a
 rejected call does not fail the run: the model gets a rejection result instead
 of the tool output and carries on. To tell it why, pass a `note`:
 `streamResolve({ id, approved: false, note: 'Do not touch the lockfile' })`.
@@ -4635,7 +4638,11 @@ triggered it (see [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/
 Every `compaction.start` is followed by exactly one `compaction.done`. When the
 strategy could not shrink anything, `tokensAfter` equals `tokensBefore`; when it
 failed (or the summarizer failed and the hook fell back to pruning), `error` is
-set and the run continues. `summary` is `true` when old turns were replaced by
+set and the run continues. A summary that does not get the conversation under
+the threshold - or that makes it larger - is rejected the same way: `error` is
+set, the run keeps the pruned result instead, and the hook only prunes that
+transcript for the rest of the run, so a summarizer that cannot help is never
+called again step after step. `summary` is `true` when old turns were replaced by
 a summary (the text itself is not sent; use `onCompaction` for it). A
 `send()` without a listener emits no events. Hooks add their own events with
 `ctx.emit?.(...)` on the `preGenerate` context, which exists when the run has
@@ -5354,7 +5361,7 @@ a page or script written against the dev server works against the deployed one.
 | `GET /health` | `200 ok`. Never needs auth: point load balancers and container health checks here. |
 | `POST /chat` `{ "sessionId", "input" }` | Runs a turn of session `sessionId` (1-128 characters of `A-Za-z0-9_-`; a new id starts a conversation, a known one continues it) and streams it as SSE: one `data: <AgentEvent JSON>` per event ([Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)), then `event: done`. `input` is a string or an array of content parts. |
 | `GET /chat/:sessionId` | The session's transcript: `{ sessionId, messages, pending }`. |
-| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn live as SSE, in the same framing and event types as `POST /chat` (the decided call's `tool.start` / `tool.done` or `tool.error`, text deltas, `approval.requested` if it pauses again, `run.done`), from `agent.approvals.streamResolve()` / `streamAnswer()`. `404` when `id` is not pending. |
+| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn live as SSE, in the same framing and event types as `POST /chat` (the decided call's `tool.resume` / `tool.done` or `tool.error`, text deltas, `approval.requested` if it pauses again, `run.done`), from `agent.approvals.streamResolve()` / `streamAnswer()`. `404` when `id` is not pending. |
 | `POST /chat` `{ "message" }` | Legacy, single turn without history or streaming: returns the agent's `ExecutionResult` as JSON, with a `Deprecation: true` header. |
 
 Bodies over 1MB get `413`, invalid JSON `400`.
@@ -8543,6 +8550,11 @@ const agent = createAgent({ model: 'openai/gpt-4o-mini', tools: mcp.tools });
 await agent.send('List the files here.');
 await mcp.close();
 ```
+
+`mcp.tools` is a record, and `tools` also takes an array, so the two shapes
+mix: `tools: [mcp.tools, weatherTool]` or `tools: [...createFsTools(workspace),
+...Object.values(mcp.tools)]` (each MCP descriptor carries its
+`<server>__<tool>` name, so `Object.values` works too).
 
 ### Approval for MCP tools
 
@@ -12218,9 +12230,10 @@ The event types and their extra fields:
 | `reasoning.start`    | (none) | The model starts reasoning in this step. Only with the [`reasoning` option](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/reasoning.md) (or a model that always reasons). Its `reasoning.delta`s and `reasoning.done` follow, before the step's first `text.delta` or `tool.start`. |
 | `reasoning.delta`    | `text: string` | A chunk of reasoning text (or of its summary). Never part of `text.delta` / `run.done`'s `text`. |
 | `reasoning.done`     | `text: string`, `tokens?: number` | The reasoning ended: `text` is all of it; `tokens` when the provider reported reasoning tokens by then. |
-| `tool.start`         | `toolCallId: string`, `toolName: string`, `args: Record<string, unknown>`, `parentToolCallId?: string` | A tool call starts. `args` are the model's arguments parsed from JSON (`{}` when they are not valid JSON). A call a [code mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/code-mode.md) script made carries `parentToolCallId`, the `run_code` call's id (also on its `tool.partial`, `tool.done` and `tool.error`). |
+| `tool.start`         | `toolCallId: string`, `toolName: string`, `args: Record<string, unknown>`, `parentToolCallId?: string` | A tool call starts. `args` are the model's arguments parsed from JSON (`{}` when they are not valid JSON). A call a [code mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/code-mode.md) script made carries `parentToolCallId`, the `run_code` call's id (also on its `tool.partial`, `tool.done` and `tool.error`). Exactly one per tool call across a pause: a call that paused for approval (or sign-in) and then ran reports `tool.resume` on the continued run, not a second `tool.start`. |
+| `tool.resume`        | `toolCallId`, `toolName`, `args: Record<string, unknown>` | The decided call of [an approval continuation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#streaming-after-an-approval) runs. Its `tool.start` was emitted by the run that paused; handle it like `tool.start` when you track calls. |
 | `tool.partial`       | `toolCallId`, `toolName`, `output: unknown`, `index: number` | A snapshot of a running tool's output: a tool whose `execute` is an `async function*` reports one per `yield` (see [Streaming partial results](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#streaming-partial-results)). Each snapshot is complete and replaces the previous one; `index` counts the call's snapshots from 0. The last one is also the call's `tool.done` `result`. `output` is JSON-encoded like `result`. Snapshots never reach the model, the transcript, checkpoints or traces. A sub-agent's carries `subagent`. |
-| `tool.done`          | `toolCallId`, `toolName`, `result: unknown`, `durationMs: number` | A tool call returned. `result` is the value as it would be JSON-encoded (`undefined` becomes `null`, a `Date` becomes a string). `durationMs` counts from its `tool.start`. |
+| `tool.done`          | `toolCallId`, `toolName`, `result: unknown`, `durationMs: number` | A tool call returned. `result` is the value as it would be JSON-encoded (`undefined` becomes `null`, a `Date` becomes a string). `durationMs` counts from its `tool.start` / `tool.resume`. |
 | `todo.updated`       | `todos: Todo[]`, `counts: { pending, in_progress, completed, total }`, `toolCallId: string` | A successful `todo_write` call of the [todo tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#todo-tools) replaced the list, right after that call's `tool.done`. `todos` is the complete new list (`{ id, content, status }`), `toolCallId` the `todo_write` call. A sub-agent's carries `subagent`. The [UI bindings](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md#todos) keep the list and show it live. |
 | `tool.error`         | `toolCallId`, `toolName`, `error: { name: string, message: string }`, `durationMs: number` | A tool call failed: it threw, its arguments did not match its schema (`name: 'ToolArgumentsValidationError'`), or the tool does not exist. The model gets the error as the call's result and the run continues. |
 | `approval.requested` | `approvalId: string`, `toolCallId`, `toolName`, `args: Record<string, unknown>`, `kind?: 'question' \| 'sign-in'`, `question?: { text, options?, allowFreeText? }`, `signIn?: { provider, displayName?, url }` | A tool call needs a human decision. The run then stops; resume it with `agent.approvals.resolve()` or `resumeAfterApproval()` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)), or stream the continuation (see [Streaming after an approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#streaming-after-an-approval)). An `ask_question` call carries `kind: 'question'` and its `question`; answer it with `agent.approvals.answer()` (see [Asking the user a question](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#asking-the-user-a-question)). A tool waiting for an OAuth sign-in carries `kind: 'sign-in'` and the link in `signIn` (see [What the user sees](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#what-the-user-sees)). |
@@ -12260,9 +12273,9 @@ Optional fields are left out when they have no value. They are never
   settle between its own `tool.start` and its `tool.done` / `tool.error`.
 - A call's `tool.partial` events come between its `tool.start` and its
   `tool.done` / `tool.error`, with `index` 0, 1, 2, ...; the partials of
-  parallel calls interleave. A call that pauses for a sign-in has no
-  `tool.done`; it runs again from the start after the sign-in, with a new
-  `tool.start` and `index` from 0.
+  parallel calls interleave. A call that pauses for a sign-in or an approval
+  has no `tool.done`; it runs again from the start once decided, reported as
+  `tool.resume` (not a second `tool.start`) with `index` from 0.
 - `input.queued` comes when `run.enqueue()` is called (after `run.start`, even
   for input queued before the run got going), so it can fall inside a step.
   Its `input.applied` comes between the `step.done` of the step that was
@@ -12492,7 +12505,9 @@ console.log((await again.result).text);
 A run that paused for an [approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md) can continue as a stream
 too. `agent.approvals.streamResolve()` (or `streamAnswer()`) returns an
 `AgentRun` whose `result` is what `agent.approvals.resolve()` returns. Its events are `run.start`, the decided
-call's `tool.start` and `tool.done` (`tool.error` for a rejection), then the
+call's `tool.resume` and `tool.done` (`tool.error` for a rejection - `tool.resume`,
+not a second `tool.start`, because the paused run already reported that call's
+start), then the
 continuation's events exactly as in a fresh run, up to `run.done`; a further
 pause ends it with `approval.requested` (`kind: 'sign-in'` with a `signIn`
 link when a tool waits for an [OAuth sign-in](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#what-the-user-sees)). Cancellation, `enqueue()` and

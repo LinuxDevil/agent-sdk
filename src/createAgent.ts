@@ -25,9 +25,10 @@ import { ToolRegistry } from './tools/ToolRegistry';
 import { ToolDescriptor } from './types';
 import { modelFromEnv, resolveProviderSpec } from './providers/providerSpec';
 import { withFallback, withRetry, type WithRetryOptions } from './providers/resilience';
-import type { DefinedTool } from './tools/defineTool';
+import { isDefinedTool } from './tools/defineTool';
 import { assertHostedToolNames, isHostedTool, type HostedTool } from './tools/hosted';
-import { withAskQuestion } from './tools/built-in/askQuestion';
+import { withAskQuestion, type ToolEntries } from './tools/built-in/askQuestion';
+import { toolEntries, type ToolsOption } from './tools/toolEntries';
 import { ToolConcurrency, assertToolConcurrency } from './execution/toolBatch';
 import type { Skill } from './skills/defineSkill';
 import type { Message } from './providers/llm';
@@ -100,8 +101,8 @@ export interface RunConfigContext {
  */
 export type PerRun<T> = T | ((ctx: RunConfigContext) => T | Promise<T>);
 
-/** The `tools` option's static form; N1a: hosted tools (`webSearch()`, ...) go in it too. */
-type AgentToolsOption = ReadonlyArray<DefinedTool | HostedTool> | Record<string, ToolDescriptor | HostedTool>;
+/** The `tools` option's static form; N1a: hosted tools (`webSearch()`, ...) go in it too. LOU-R12: arrays may mix tools and records of them. */
+type AgentToolsOption = ToolsOption;
 
 /**
  * Options for createAgent() that do not depend on how the instructions and
@@ -112,8 +113,11 @@ type AgentToolsOption = ReadonlyArray<DefinedTool | HostedTool> | Record<string,
 export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSchemaV1> extends PermissionOptions {
   /**
    * Optional tools: an array of `defineTool()` results (named by the tool),
-   * or a record of descriptors keyed by the name the agent should call them by.
-   * A function of the run picks them per run (LOU-V15, see `PerRun`).
+   * or a record of descriptors keyed by the name the agent should call them by
+   * (the shape `connectMcp().tools` has). LOU-R12: an array may mix tools,
+   * named descriptors (what `connectMcp()` loads) and records of them, so
+   * `tools: [mcp.tools, weatherTool]` and `tools: [...fsTools, mcp.tools]`
+   * work too. A function of the run picks them per run (LOU-V15, see `PerRun`).
    * N1a: hosted provider tools (`webSearch()`, `codeInterpreter()`,
    * `fileSearch()`, `hostedTool()`) go here too; the provider runs them (see
    * docs/hosted-tools.md). In the record form a hosted tool's key must be its name.
@@ -727,7 +731,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   const toolsFor = (tools: AgentToolsOption | undefined): RunTools => {
     // N1a: hosted tools are sent to the provider, never registered.
     const { local, hosted } = splitHostedTools(tools);
-    const runTools = { ...registerTools(withAskQuestion(local, config.askQuestion) ?? {}, hasMcp), hostedTools: hosted };
+    const runTools = { ...registerTools(withAskQuestion(local, config.askQuestion), hasMcp), hostedTools: hosted };
     memory?.addTools(runTools.toolsConfig);
     addMcpTools(runTools, mcpTools);
     assertHostedToolNames(hosted, Object.keys(runTools.toolsConfig));
@@ -1020,23 +1024,19 @@ type RunTools = ReturnType<typeof registerTools> & { hostedTools: HostedTool[] }
  * hosted tools for the provider. In the record form a hosted tool's key must
  * be its name (the provider maps the tool by it).
  */
-function splitHostedTools(tools: AgentToolsOption | undefined): { local: readonly DefinedTool[] | Record<string, ToolDescriptor> | undefined; hosted: HostedTool[] } {
-  if (tools === undefined) return { local: undefined, hosted: [] };
-  if (Array.isArray(tools)) {
-    const list = tools as ReadonlyArray<DefinedTool | HostedTool>;
-    return { local: list.filter((tool): tool is DefinedTool => !isHostedTool(tool)), hosted: list.filter(isHostedTool) };
-  }
-  const local: Record<string, ToolDescriptor> = {};
+function splitHostedTools(tools: AgentToolsOption | undefined): { local: ToolEntries; hosted: HostedTool[] } {
+  const local: Array<readonly [string, ToolDescriptor]> = [];
   const hosted: HostedTool[] = [];
-  for (const [key, tool] of Object.entries(tools as Record<string, ToolDescriptor | HostedTool>)) {
+  // LOU-R12: arrays, records and mixes of both flatten to [name, tool] entries.
+  for (const [name, tool] of toolEntries(tools, 'createAgent')) {
     if (!isHostedTool(tool)) {
-      local[key] = tool;
+      local.push([name, tool]);
       continue;
     }
-    if (key !== tool.name) {
+    if (name !== tool.name) {
       throw new ConfigurationError(
-        `createAgent: hosted tool '${tool.name}' is under the key '${key}' in \`tools\`; use '${tool.name}' as its key ` +
-          `(or create it with hostedTool('${key}', ...)).`,
+        `createAgent: hosted tool '${tool.name}' is under the key '${name}' in \`tools\`; use '${tool.name}' as its key ` +
+          `(or create it with hostedTool('${name}', ...)).`,
         'tools'
       );
     }
@@ -1233,25 +1233,25 @@ function resolveModelSource(config: CreateAgentConfig, model: string | undefined
  * are no tools, unless `alwaysRegistry` (MCP tools are added later).
  */
 function registerTools(
-  tools: readonly DefinedTool[] | Record<string, ToolDescriptor>,
+  tools: ToolEntries,
   alwaysRegistry = false
 ): {
   toolRegistry: ToolRegistry | undefined;
   toolsConfig: Record<string, { tool: string }>;
 } {
-  const entries: Array<[string, ToolDescriptor | DefinedTool]> = Array.isArray(tools)
-    ? (tools as readonly DefinedTool[]).map((t): [string, DefinedTool] => [t.name, t])
-    : Object.entries(tools as Record<string, ToolDescriptor>);
   const toolsConfig: Record<string, { tool: string }> = {};
 
-  if (entries.length === 0 && !alwaysRegistry) {
+  if (tools.length === 0 && !alwaysRegistry) {
     return { toolRegistry: undefined, toolsConfig };
   }
 
   const toolRegistry = new ToolRegistry();
-  for (const [name, descriptor] of entries) {
-    if (Array.isArray(tools)) {
-      toolRegistry.register(descriptor as DefinedTool);
+  for (const [name, descriptor] of tools) {
+    // A `defineTool()` result under its own name keeps the duplicate-check
+    // of registerDefined; anything else registers under the key it came with
+    // (LOU-R12: a record's key, or a named descriptor's own `name`).
+    if (isDefinedTool(descriptor) && descriptor.name === name) {
+      toolRegistry.register(descriptor);
     } else {
       toolRegistry.register(name, descriptor);
     }

@@ -10,7 +10,7 @@ import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { McpServerSpec } from '../../spec/schema';
-import type { ToolDescriptor } from '../../types';
+import type { NamedToolDescriptor } from '../../types';
 import type { OAuthTokenStore } from '../../oauth/types';
 import { noopLogger, type Logger } from '../../execution/logger';
 import { loadOptionalPeer, MissingPeerDependencyError } from '../../providers/optionalPeer';
@@ -45,8 +45,12 @@ export interface ConnectMcpOptions {
 
 /** The connected servers returned by {@link connectMcp}. */
 export interface McpConnections {
-  /** Every server's tools, keyed `<server>__<tool>`; pass them to `createAgent({ tools })`. */
-  readonly tools: Record<string, ToolDescriptor>;
+  /**
+   * Every server's tools, keyed `<server>__<tool>` (also the `name` each
+   * descriptor carries); pass them to `createAgent({ tools })` as the record
+   * they are, inside a `tools` array, or as `Object.values(tools)` (LOU-R12).
+   */
+  readonly tools: Record<string, NamedToolDescriptor>;
   /** Disconnects every server (stops stdio processes). */
   close(): Promise<void>;
   /** Each server's {@link McpServerStatus}, keyed by name. */
@@ -188,7 +192,7 @@ export async function connectMcp(
     )
   );
 
-  const tools: Record<string, ToolDescriptor> = {};
+  const tools: Record<string, NamedToolDescriptor> = {};
   for (const [index, result] of loaded.entries()) {
     if (result.status === 'fulfilled') {
       Object.assign(tools, result.value);

@@ -1,5 +1,7 @@
 import { ToolDescriptor } from '../types';
 import { DefinedTool, isDefinedTool } from './defineTool';
+import { isHostedTool } from './hosted';
+import { toolEntries, type ToolsOption } from './toolEntries';
 import { ConfigurationError } from '../execution/errors';
 
 /**
@@ -56,16 +58,24 @@ export class ToolRegistry {
 
   /**
    * Register multiple tools at once: a record of descriptors keyed by name,
-   * or an array of `defineTool()` results.
+   * or an array of `defineTool()` results, named descriptors (such as the
+   * tools `connectMcp()` loads) and records of them, mixed (LOU-R12).
    */
-  public registerMany(tools: Record<string, ToolDescriptor> | readonly DefinedTool[]): void {
-    if (Array.isArray(tools)) {
-      (tools as readonly DefinedTool[]).forEach((tool) => this.register(tool));
-      return;
+  public registerMany(tools: ToolsOption): void {
+    for (const [name, tool] of toolEntries(tools, 'ToolRegistry.registerMany')) {
+      if (isHostedTool(tool)) {
+        throw new ConfigurationError(
+          `ToolRegistry.registerMany: '${name}' is a hosted tool (${tool.type}) - ` +
+            'hosted tools run on the provider and cannot be registered; pass them in createAgent({ tools }) instead.',
+          'tools'
+        );
+      }
+      if (isDefinedTool(tool) && tool.name === name) {
+        this.registerDefined(tool);
+      } else {
+        this.register(name, tool);
+      }
     }
-    Object.entries(tools as Record<string, ToolDescriptor>).forEach(([name, descriptor]) => {
-      this.register(name, descriptor);
-    });
   }
 
   /**
