@@ -35,6 +35,7 @@ export const FEATURE_PEERS: Readonly<Record<string, FeaturePeer>> = {
     range: '^2.4.2',
     feature: 'the interactive prompts of `lousho init` (pass --yes to skip them)',
   },
+  'quickjs-emscripten': { range: '^0.32.0', feature: 'code mode (`createAgent({ codeMode })`)' },
 };
 
 function installCommandFor(packageName: string, aiMajor: AiMajor | undefined): string {

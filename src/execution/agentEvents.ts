@@ -126,6 +126,8 @@ export interface ToolStartEvent extends AgentEventBase<'tool.start'> {
    * passed no permission rule, guardrail, approval or hook.
    */
   executedBy?: 'provider';
+  /** N14: set on a call a `run_code` script made: the `run_code` call's id. */
+  parentToolCallId?: string;
 }
 
 /**
@@ -143,6 +145,8 @@ export interface ToolPartialEvent extends AgentEventBase<'tool.partial'> {
   output: unknown;
   /** Counts this call's snapshots from 0 (from 0 again when the call runs again, e.g. after a sign-in). */
   index: number;
+  /** N14: set on a call a `run_code` script made: the `run_code` call's id. */
+  parentToolCallId?: string;
 }
 
 /** A tool call returned. Emitted in completion order. */
@@ -157,6 +161,8 @@ export interface ToolDoneEvent extends AgentEventBase<'tool.done'> {
   replacedByHook?: string;
   /** N1a: `'provider'` for a hosted tool's call (see `tool.start`); `result` is capped at 20,000 characters of JSON. */
   executedBy?: 'provider';
+  /** N14: set on a call a `run_code` script made: the `run_code` call's id. */
+  parentToolCallId?: string;
 }
 
 /**
@@ -184,6 +190,8 @@ export interface ToolErrorEvent extends AgentEventBase<'tool.error'> {
   durationMs: number;
   /** N1a: `'provider'` for a hosted tool's call the provider reported as failed (see `tool.start`). */
   executedBy?: 'provider';
+  /** N14: set on a call a `run_code` script made: the `run_code` call's id. */
+  parentToolCallId?: string;
 }
 
 /**

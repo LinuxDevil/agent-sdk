@@ -84,6 +84,7 @@ import { OutputError, outputInstruction, outputRepairMessage, validateOutput } f
 import { PLAN_MODE_INSTRUCTION, permissionModeOf, type PermissionOptions } from './permissions';
 import { assertToolSearchOptions, withToolSearch, type ToolSearchOptions } from './toolSearch';
 import { withDeferral } from './toolDeferral';
+import { RUN_CODE_TOOL, codeModeOf, nestedToolCaller, withCodeMode } from './codeMode';
 import {
   BudgetExceeded,
   BudgetExceededError,
@@ -770,7 +771,9 @@ export class AgentExecutor {
     const subagented = await withSubagents(skilled.agent, skilled.toolRegistry, options.subagents, options);
     // N2: the deferral is the active agent's own; set on every call, so a handoff target never keeps the lead's.
     const { deferral, ...searched } = withToolSearch(options, subagented.agent, subagented.toolRegistry);
-    const extended = { ...subagented, ...searched };
+    // N14: `run_code` sees the run's tools as they are now (deferred ones are not callable by default).
+    const coded = await withCodeMode(options, searched.agent, searched.toolRegistry, deferral);
+    const extended = { ...subagented, ...coded };
     // N4: a run that starts in plan mode is told so. LOU-V4: the output instruction goes last in the system prompt.
     const { agent } = extended;
     const blocks = [...(permissionModeOf(options) === 'plan' ? [PLAN_MODE_INSTRUCTION] : []), ...(options.output ? [outputInstruction(options.output)] : [])];
@@ -1447,6 +1450,19 @@ export class AgentExecutor {
           spanId: toolSpan.id,
           execute: (childOptions) => AgentExecutor.execute(childOptions),
         };
+        // N14: a `run_code` call's script calls tools through this run's gate.
+        if (toolCall.function.name === RUN_CODE_TOOL && codeModeOf(options)) {
+          scope.callTool = nestedToolCaller({
+            parentToolCallId: toolCall.id,
+            parentSpanId: toolSpan.id,
+            base: { agent, toolRegistry, onToolCall, onToolResult, sandbox, hooks, sessionId, principal: options.principal, messages: state.messages, onDelegatedUsage: (child) => mergeDelegatedUsage(state.usage, child) },
+            signal,
+            runtime: options,
+            execute: scope.execute,
+            tracing: { exporter, redactContent, captureContent: options.captureContent },
+            concurrency: options.toolConcurrency ?? 'unbounded',
+          });
+        }
         const executed = await this.executeToolCall(
           toolCall,
           agent,

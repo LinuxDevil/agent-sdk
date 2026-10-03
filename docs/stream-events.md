@@ -26,7 +26,7 @@ The event types and their extra fields:
 | `reasoning.start`    | (none) | The model starts reasoning in this step. Only with the [`reasoning` option](./reasoning.md) (or a model that always reasons). Its `reasoning.delta`s and `reasoning.done` follow, before the step's first `text.delta` or `tool.start`. |
 | `reasoning.delta`    | `text: string` | A chunk of reasoning text (or of its summary). Never part of `text.delta` / `run.done`'s `text`. |
 | `reasoning.done`     | `text: string`, `tokens?: number` | The reasoning ended: `text` is all of it; `tokens` when the provider reported reasoning tokens by then. |
-| `tool.start`         | `toolCallId: string`, `toolName: string`, `args: Record<string, unknown>` | A tool call starts. `args` are the model's arguments parsed from JSON (`{}` when they are not valid JSON). |
+| `tool.start`         | `toolCallId: string`, `toolName: string`, `args: Record<string, unknown>`, `parentToolCallId?: string` | A tool call starts. `args` are the model's arguments parsed from JSON (`{}` when they are not valid JSON). A call a [code mode](./code-mode.md) script made carries `parentToolCallId`, the `run_code` call's id (also on its `tool.partial`, `tool.done` and `tool.error`). |
 | `tool.partial`       | `toolCallId`, `toolName`, `output: unknown`, `index: number` | A snapshot of a running tool's output: a tool whose `execute` is an `async function*` reports one per `yield` (see [Streaming partial results](./tools.md#streaming-partial-results)). Each snapshot is complete and replaces the previous one; `index` counts the call's snapshots from 0. The last one is also the call's `tool.done` `result`. `output` is JSON-encoded like `result`. Snapshots never reach the model, the transcript, checkpoints or traces. A sub-agent's carries `subagent`. |
 | `tool.done`          | `toolCallId`, `toolName`, `result: unknown`, `durationMs: number` | A tool call returned. `result` is the value as it would be JSON-encoded (`undefined` becomes `null`, a `Date` becomes a string). `durationMs` counts from its `tool.start`. |
 | `todo.updated`       | `todos: Todo[]`, `counts: { pending, in_progress, completed, total }`, `toolCallId: string` | A successful `todo_write` call of the [todo tools](./tools.md#todo-tools) replaced the list, right after that call's `tool.done`. `todos` is the complete new list (`{ id, content, status }`), `toolCallId` the `todo_write` call. A sub-agent's carries `subagent`. The [UI bindings](./react.md#todos) keep the list and show it live. |
@@ -64,6 +64,8 @@ Optional fields are left out when they have no value. They are never
 - Tool calls of one step run in parallel (see `toolConcurrency`):
   `tool.start` events come in the model's call order and `tool.done` /
   `tool.error` events in completion order. Match them by `toolCallId`.
+- A `run_code` call's inner calls ([code mode](./code-mode.md)) start and
+  settle between its own `tool.start` and its `tool.done` / `tool.error`.
 - A call's `tool.partial` events come between its `tool.start` and its
   `tool.done` / `tool.error`, with `index` 0, 1, 2, ...; the partials of
   parallel calls interleave. A call that pauses for a sign-in has no

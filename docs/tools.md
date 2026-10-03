@@ -72,6 +72,9 @@ descriptors that set neither `inputSchema` nor `execute`.
 - **Progress.** An `execute` written as `async function*` streams snapshots
   of its output while it runs; the last one is the result. See
   [Streaming partial results](#streaming-partial-results).
+- **Many calls in one step.** With `createAgent({ codeMode })` the model can
+  also call tools from a short JavaScript program (`run_code`), each call going
+  through the same checks. See [Code mode](./code-mode.md).
 - **Retries after a crash.** With durable execution a tool can run more than
   once across a crash; use `ctx.toolCallId` as an idempotency key. See
   [Durable execution](./durable-execution.md#at-least-once-tools-make-side-effects-idempotent).

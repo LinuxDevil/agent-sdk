@@ -8,7 +8,7 @@
  * sub-agent pauses again, the run pauses again with a new approval record.
  */
 
-import type { Message } from '../providers';
+import type { LLMProvider, Message } from '../providers';
 import type { ToolRegistry } from '../tools';
 import { withSubagents } from '../subagents/withSubagents';
 import type { ApprovalDecision, ApprovalStore, ExecutionSnapshot, PendingApproval, SubagentSuspension } from './ApprovalGate';
@@ -34,6 +34,8 @@ export interface ResumeContext {
   messages: Message[];
   toolRegistry: ToolRegistry;
   executeOptions: ResumeExecuteOptions;
+  /** N14: the run's provider (a decided `run_code` call rebuilds its tool with it). */
+  provider: LLMProvider;
   /** The resumed run's usage so far: a resumed sub-agent's usage is added to it (LOU-V5). */
   usage: RunUsage;
   /** `AgentExecutor.execute` and `resumeAfterApproval`, for the sub-agent. */

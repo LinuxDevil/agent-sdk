@@ -128,10 +128,11 @@ export interface RunEventSink {
   /** A top-level run reports one `run.start`, however often it is (re)started. */
   runStart(agent: { id?: string; name: string }): void;
   textDone(text: string, stepUsage?: StepUsage): void;
-  toolStart(toolCall: ToolCall): void;
+  /** N14: `parentToolCallId` for an inner call of a `run_code` script (also on the next two). */
+  toolStart(toolCall: ToolCall, parentToolCallId?: string): void;
   /** N13b: a snapshot a generator tool yielded (`tool.partial`). */
-  toolPartial(toolCallId: string, toolName: string, output: unknown): void;
-  toolSettled(outcome: ToolSettled): void;
+  toolPartial(toolCallId: string, toolName: string, output: unknown, parentToolCallId?: string): void;
+  toolSettled(outcome: ToolSettled, parentToolCallId?: string): void;
   error(error: unknown): void;
   /** `run.done` (a sub-agent's reaches the deprecated `onEvent` only). */
   runDone(result: ExecutionResult, abortReason?: unknown): void;
@@ -296,7 +297,7 @@ class RunEvents {
     for (const listener of this.legacy) for (const old of toExecutionEvents(event, detail)) listener(old);
   }
 
-  private toolStarted(toolCall: ToolCall, subagent?: SubagentInfo): void {
+  private toolStarted(toolCall: ToolCall, subagent?: SubagentInfo, parent?: string): void {
     this.toolStarts.set(toolStartKey(toolCall.id, subagent), Date.now());
     // N13b: a call that runs again (after a sign-in, or on a resume) counts its snapshots from 0.
     this.partials.delete(toolStartKey(toolCall.id, subagent));
@@ -307,6 +308,7 @@ class RunEvents {
         toolCallId: toolCall.id,
         toolName: toolCall.function.name,
         args: (typeof args === 'object' && args !== null ? args : {}) as Record<string, unknown>,
+        ...parentOf(parent),
       },
       subagent,
       { toolCall }
@@ -314,20 +316,20 @@ class RunEvents {
   }
 
   /** N13b: `tool.partial`, the snapshot JSON-round-tripped like `tool.done`'s result. */
-  private toolPartial(toolCallId: string, toolName: string, output: unknown, subagent?: SubagentInfo): void {
+  private toolPartial(toolCallId: string, toolName: string, output: unknown, subagent?: SubagentInfo, parent?: string): void {
     const key = toolStartKey(toolCallId, subagent);
     const index = this.partials.get(key) ?? 0;
     this.partials.set(key, index + 1);
-    this.emit({ type: 'tool.partial', toolCallId, toolName, output: toJsonValue(output), index }, subagent);
+    this.emit({ type: 'tool.partial', toolCallId, toolName, output: toJsonValue(output), index, ...parentOf(parent) }, subagent);
   }
 
-  private toolSettled(outcome: ToolSettled, subagent?: SubagentInfo): void {
+  private toolSettled(outcome: ToolSettled, subagent?: SubagentInfo, parent?: string): void {
     const { toolCallId, toolName } = outcome;
     this.partials.delete(toolStartKey(toolCallId, subagent));
     const durationMs = Date.now() - (this.toolStarts.get(toolStartKey(toolCallId, subagent)) ?? Date.now());
     if (outcome.error === undefined) {
       const replaced = outcome.replacedByHook !== undefined && { replacedByHook: outcome.replacedByHook };
-      this.emit({ type: 'tool.done', toolCallId, toolName, result: toJsonValue(outcome.result), durationMs, ...replaced }, subagent, { toolResult: outcome });
+      this.emit({ type: 'tool.done', toolCallId, toolName, result: toJsonValue(outcome.result), durationMs, ...replaced, ...parentOf(parent) }, subagent, { toolResult: outcome });
       // The brand is checked on the raw result, before `toJsonValue` drops it.
       if (isTodoListResult(outcome.result)) {
         const { todos, counts } = outcome.result;
@@ -343,6 +345,7 @@ class RunEvents {
         toolName,
         error: { name: typeof name === 'string' ? name : 'Error', message: outcome.error },
         durationMs,
+        ...parentOf(parent),
       },
       subagent,
       { toolResult: outcome }
@@ -388,9 +391,9 @@ class RunEvents {
       listen: (options) => this.listen(options),
       runStart: ({ id, name }) => this.emit({ type: 'run.start', agentName: name ?? '', ...(id !== undefined && { agentId: id }) }, subagent),
       textDone: (text, stepUsage) => this.emit({ type: 'text.done', text }, subagent, { stepUsage }),
-      toolStart: (toolCall) => this.toolStarted(toolCall, subagent),
-      toolPartial: (toolCallId, toolName, output) => this.toolPartial(toolCallId, toolName, output, subagent),
-      toolSettled: (outcome) => this.toolSettled(outcome, subagent),
+      toolStart: (toolCall, parent) => this.toolStarted(toolCall, subagent, parent),
+      toolPartial: (toolCallId, toolName, output, parent) => this.toolPartial(toolCallId, toolName, output, subagent, parent),
+      toolSettled: (outcome, parent) => this.toolSettled(outcome, subagent, parent),
       error: reportError,
       runDone: (result, abortReason) => this.emit(runDonePayload(result), subagent, { usage: result.usage, abortReason }),
       runFailed: (error) => {
@@ -522,6 +525,11 @@ function heldUntil(hold: Promise<boolean> | undefined): (report: () => void) => 
     if (held) held.push(report);
     else report();
   };
+}
+
+/** N14: the `parentToolCallId` field of an inner call's tool event (none for a direct call). */
+function parentOf(parent: string | undefined): { parentToolCallId?: string } {
+  return parent === undefined ? {} : { parentToolCallId: parent };
 }
 
 /** Identifies a sub-agent run within the stream: the chain of tool calls that started it. */

@@ -93,8 +93,8 @@ function isDeferred(name: string, descriptor: ToolDescriptor | undefined): boole
   return descriptor?.deferLoading === true && !NEVER_DEFERRED.has(name);
 }
 
-/** A tool's input schema as JSON Schema, for the token estimate; `{}` when it cannot be converted. */
-function jsonSchemaOf(parameters: unknown): unknown {
+/** A tool's input schema as JSON Schema, for the token estimate (N14: and `run_code`'s signatures); `{}` when it cannot be converted. */
+export function jsonSchemaOf(parameters: unknown): unknown {
   try {
     return schemaToJsonSchema(parameters) ?? zodSchema(parameters as never).jsonSchema;
   } catch {
