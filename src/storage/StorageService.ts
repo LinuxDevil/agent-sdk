@@ -80,6 +80,20 @@ export class StorageService implements IStorageService {
   }
 
   /**
+   * Ensures that the parent directory of a resolved file path exists.
+   * Storage keys may name subdirectories (e.g. `checkpoints/<id>.json`), so
+   * creating only `uploadPath` is not enough: on a fresh root the first
+   * write (or `.lock` file) in a subdirectory fails with ENOENT (LOU-R9).
+   */
+  private ensureParentDirExists(filePath: string): void {
+    const separator = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+    const parent = separator > 0 ? filePath.slice(0, separator) : this.uploadPath;
+    if (!this.fs.existsSync(parent)) {
+      this.fs.mkdirSync(parent, { recursive: true });
+    }
+  }
+
+  /**
    * Resolve the absolute path for a particular storage key (file name).
    */
   private getFilePath(storageKey: string): string {
@@ -122,6 +136,7 @@ export class StorageService implements IStorageService {
       await this.delay(attemptDelayMs);
     }
 
+    this.ensureParentDirExists(lockFilePath);
     this.fs.writeFileSync(lockFilePath, '');
   }
 
@@ -139,7 +154,7 @@ export class StorageService implements IStorageService {
    * Save a binary attachment from a File object (browser File).
    */
   public async saveAttachment(file: File, storageKey: string): Promise<void> {
-    this.ensureDirExists();
+    this.ensureParentDirExists(this.getFilePath(storageKey));
     const arrayBuffer = await file.arrayBuffer();
     const buffer = new Uint8Array(arrayBuffer);
     this.fs.writeFileSync(this.getFilePath(storageKey), buffer);
@@ -149,7 +164,7 @@ export class StorageService implements IStorageService {
    * Save a binary attachment from a base64 string.
    */
   public async saveAttachmentFromBase64(base64: string, storageKey: string): Promise<void> {
-    this.ensureDirExists();
+    this.ensureParentDirExists(this.getFilePath(storageKey));
     // Use Buffer if available (Node.js environment)
     const buffer = typeof Buffer !== 'undefined' ? Buffer.from(base64, 'base64') : base64;
     this.fs.writeFileSync(this.getFilePath(storageKey), buffer);
@@ -159,7 +174,7 @@ export class StorageService implements IStorageService {
    * Save a plain-text file (UTF-8).
    */
   public async savePlainTextAttachment(text: string, storageKey: string): Promise<void> {
-    this.ensureDirExists();
+    this.ensureParentDirExists(this.getFilePath(storageKey));
     this.fs.writeFileSync(this.getFilePath(storageKey), text, 'utf8');
   }
 
@@ -224,7 +239,7 @@ export class StorageService implements IStorageService {
    * Writes data as JSON to disk. Checks size against maxFileSizeMB (default 10).
    */
   public writePlainJSONAttachment(storageKey: string, data: unknown, maxFileSizeMB = 10): void {
-    this.ensureDirExists();
+    this.ensureParentDirExists(this.getFilePath(storageKey));
     const jsonString = JSON.stringify(data);
     // Calculate size (use Buffer if available, otherwise approximate)
     const size = typeof Buffer !== 'undefined' 

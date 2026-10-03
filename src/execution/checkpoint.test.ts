@@ -1,4 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
+import * as realFs from 'node:fs';
+import * as os from 'node:os';
+import * as realPath from 'node:path';
 import { Checkpoint, LocalStorageCheckpointStore } from './checkpoint';
 import { StorageService } from '../storage/StorageService';
 import { createFakeFs } from './__fixtures__/fakeFs';
@@ -125,5 +128,26 @@ describe('Execution - LocalStorageCheckpointStore', () => {
     const loaded = await store.load('session-1');
 
     expect(loaded?.businessState).toBeUndefined();
+  });
+
+  // LOU-R9: on a fresh root the first save() used to die with ENOENT on the
+  // `checkpoints/*.lock` file, because nothing created the subdirectories.
+  it('works on a fresh, empty directory: save() creates checkpoints/ and checkpoint-history/', async () => {
+    const root = realFs.mkdtempSync(realPath.join(os.tmpdir(), 'lou-checkpoints-'));
+    try {
+      const storageService = new StorageService('hash', 'schema', realFs, realPath, root);
+      const store = new LocalStorageCheckpointStore(storageService);
+      const checkpoint = buildCheckpoint({ sessionId: 'chat-42' });
+      const base = realPath.join(root, 'data', 'hash', 'schema');
+
+      await store.save('chat-42', checkpoint);
+
+      expect(realFs.readdirSync(base).sort()).toEqual(['checkpoint-history', 'checkpoints']);
+      expect(realFs.readdirSync(realPath.join(base, 'checkpoints'))).toEqual(['chat-42.json']);
+      expect(realFs.readdirSync(realPath.join(base, 'checkpoint-history'))).toEqual(['chat-42.json']);
+      expect(await store.load('chat-42')).toEqual(checkpoint);
+    } finally {
+      realFs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });
