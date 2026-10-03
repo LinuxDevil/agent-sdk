@@ -11,9 +11,16 @@ unchanged. It imports no framework and no `node:*` module.
 
 ```ts
 // app/api/agent/[[...path]]/route.ts
-import { createAgent, createRouteHandler } from '@lousho/build-ai-agent';
+import { createAgent, createRouteHandler, memoryStore } from '@lousho/build-ai-agent';
 
-const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are helpful.' });
+// `store` is what lets a session survive across requests: without one every
+// `agent.session({ id })` the handler opens gets a fresh in-memory transcript,
+// so a second turn forgets the first and `GET /chat/:id` returns empty.
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  instructions: 'You are helpful.',
+  store: memoryStore(), // lives in the server process; use a durable store on serverless
+});
 
 export const { GET, POST } = createRouteHandler(agent, {
   basePath: '/api/agent',
@@ -80,6 +87,7 @@ names the session, so only the newest user message is sent to the agent
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 
+// ai 6/7 signature; on ai 4 (also a supported peer) use useChat({ api: '/api/agent/ui' })
 const { messages, sendMessage } = useChat({ transport: new DefaultChatTransport({ api: '/api/agent/ui' }) });
 ```
 

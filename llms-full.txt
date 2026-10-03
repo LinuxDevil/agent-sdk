@@ -1911,9 +1911,14 @@ the package root, do the translation. They import nothing from `ai`, use no
 ## Route handler
 
 ```ts
-import { createAgent, fromUIMessages, toUIMessageStreamResponse, type UIMessageLike } from '@lousho/build-ai-agent';
+import { createAgent, fromUIMessages, memoryStore, toUIMessageStreamResponse, type UIMessageLike } from '@lousho/build-ai-agent';
 
-const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are helpful.' });
+// The store must outlive the request: without one, every `agent.session({ id })`
+// gets a fresh in-memory transcript and the next turn would start empty.
+// `memoryStore()` keeps it for the process's life; for a serverless deployment
+// or to survive a restart use `fileStore()`, a `SqliteStore` or `KVStore`
+// (see [Sessions](sessions.md#choosing-a-store)).
+const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are helpful.', store: memoryStore() });
 
 // app/api/chat/route.ts
 export async function POST(request: Request): Promise<Response> {
@@ -1931,9 +1936,12 @@ Without a session, pass every message instead:
 
 ```tsx no-verify
 import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport } from 'ai';
 
 export function Chat() {
-  const { messages, sendMessage } = useChat({ api: '/api/chat' });
+  const { messages, sendMessage } = useChat({
+    transport: new DefaultChatTransport({ api: '/api/chat' }),
+  });
   return (
     <>
       {messages.map((message) =>
@@ -1946,6 +1954,12 @@ export function Chat() {
   );
 }
 ```
+
+This snippet targets `ai` 6 and 7 (`useChat` takes a `transport`, and
+`sendMessage` posts the message). On `ai` 4 — also a supported peer —
+`useChat({ api: '/api/chat' })` takes the endpoint directly and returns
+`input` / `handleInputChange` / `handleSubmit` instead of `sendMessage`;
+`ai` 5 is not in the peer range.
 
 ## Event mapping
 
@@ -2007,7 +2021,11 @@ custom data part, which `useChat` shows as a part of type
 }
 ```
 
-`kind` and `question` are present only for an `ask_question`. Render the part
+`kind` and `question` are present only for an `ask_question`; a tool waiting
+for an [OAuth sign-in](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#what-the-user-sees) instead carries
+`kind: 'sign-in'` and `signIn: { provider, displayName?, url }` — show the
+link and, once the provider redirected back, approve it ("I've signed in").
+Render the part
 with your own buttons and answer it with the session API's approvals route
 (`POST /chat/:sessionId/approvals/:approvalId`, see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md) and
 [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)): `{ "approved": true }` or `{ "approved": false,
@@ -9171,9 +9189,16 @@ unchanged. It imports no framework and no `node:*` module.
 
 ```ts
 // app/api/agent/[[...path]]/route.ts
-import { createAgent, createRouteHandler } from '@lousho/build-ai-agent';
+import { createAgent, createRouteHandler, memoryStore } from '@lousho/build-ai-agent';
 
-const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are helpful.' });
+// `store` is what lets a session survive across requests: without one every
+// `agent.session({ id })` the handler opens gets a fresh in-memory transcript,
+// so a second turn forgets the first and `GET /chat/:id` returns empty.
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  instructions: 'You are helpful.',
+  store: memoryStore(), // lives in the server process; use a durable store on serverless
+});
 
 export const { GET, POST } = createRouteHandler(agent, {
   basePath: '/api/agent',
@@ -9240,6 +9265,7 @@ names the session, so only the newest user message is sent to the agent
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 
+// ai 6/7 signature; on ai 4 (also a supported peer) use useChat({ api: '/api/agent/ui' })
 const { messages, sendMessage } = useChat({ transport: new DefaultChatTransport({ api: '/api/agent/ui' }) });
 ```
 
@@ -10896,7 +10922,7 @@ on the server.
 | `messages` | `UIMessage[]`: `{ id, role: 'user' \| 'assistant', text, toolCalls }`. Each `send()` adds a user message and an assistant message that fills in as `text.delta` and tool events arrive. |
 | `toolCalls[i]` | `{ id, name, args, status, result?, error?, partial? }`, `status` being `'running'`, `'awaiting-approval'`, `'done'`, `'error'` or `'rejected'`. `partial` is the latest `tool.partial` snapshot of a running [streaming tool](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#streaming-partial-results), removed when the call settles or pauses. |
 | `status` | `'idle'`, `'streaming'`, `'awaiting-approval'` or `'error'`. |
-| `pendingApproval` | `{ id, toolCallId, toolName, args }` of the tool call the run paused on, else `null`. For an `ask_question` call it also has `kind: 'question'` and `question: { text, options?, allowFreeText? }`. |
+| `pendingApproval` | `{ id, toolCallId, toolName, args }` of the tool call the run paused on, else `null`. For an `ask_question` call it also has `kind: 'question'` and `question: { text, options?, allowFreeText? }`; a tool waiting on an OAuth sign-in has `kind: 'sign-in'` and `signIn: { provider, displayName?, url }` (see [What the user sees](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#what-the-user-sees)). |
 | `error` | `{ name, message }` of the last `error` event or a failed request, else `null`. |
 | `usage` | Token usage of the last finished run (from `run.done`), else `null`. |
 | `todos` | The agent's todo list (`{ id, content, status }[]`), set by each `todo.updated` event of the [todo tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#todo-tools); `[]` until the first one. It carries across turns; see [Todos](#todos). |
@@ -10981,7 +11007,11 @@ createServer(async (req, res) => {
 The client then uses
 `useLoushoAgent({ url: '/api/agent' }, { approvalsUrl: '/api/approvals' })`.
 For a multi-turn chat, keep an `agent.session({ id })` per conversation on the
-server and call `session.stream()` instead of `agent.stream()`.
+server and call `session.stream()` instead of `agent.stream()`. Give the agent
+a `store` (`createAgent({ store: memoryStore() })`, or a durable one) when
+sessions are opened per request: without one each `agent.session({ id })`
+gets a fresh in-memory transcript and the next turn forgets the first (see
+[Choosing a store](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)).
 
 ## In process
 
