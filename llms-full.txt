@@ -14183,7 +14183,8 @@ reaches the run's events as `tool.partial` (see
 result: the model gets it, and it is the `result` of the call's `tool.done`, so
 the final snapshot appears twice (as the last `tool.partial` and in
 `tool.done`). A `return` value is ignored; a generator that yields nothing has
-the result `undefined` (`null` in events).
+the result `null`, as does any tool that returns `undefined`: the transcript, the
+model and `tool.done` all see `null`.
 
 ```ts
 import { createAgent, defineTool, type ToolOutput } from '@lousho/build-ai-agent';

@@ -6,6 +6,7 @@
 
 import type { Message } from '../providers';
 import type { Checkpoint, CheckpointStore, ForkOptions, ForkPatch, ForkResult } from './checkpoint';
+import { toolResultContent } from './toolResult';
 import { ConfigurationError, SDKError } from './errors';
 
 /** `<sessionId>.fork-<n>` for the first `n` (from 1) the store has no checkpoint under. */
@@ -23,7 +24,7 @@ export function withToolResult(messages: Message[], { toolCallId, result }: NonN
     throw new ConfigurationError(`fork: the kept transcript has no tool call '${toolCallId}'.`, 'patch.toolResult');
   }
   const name = call.function.name;
-  const message: Message = { role: 'tool', content: JSON.stringify(result), name, toolCallId, toolName: name };
+  const message: Message = { role: 'tool', content: toolResultContent(result), name, toolCallId, toolName: name };
   const index = messages.findIndex((m) => m.role === 'tool' && m.toolCallId === toolCallId);
   // A pending call's result goes at the end; loading the checkpoint moves it behind its turn.
   return index < 0 ? [...messages, message] : messages.map((m, i) => (i === index ? message : m));
