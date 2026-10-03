@@ -43,6 +43,8 @@ export interface ResumeContext {
   resumeRun: ResumeRun;
   /** N10b: who decided (`ResumeExecuteOptions.approver`), frozen. */
   approver?: Readonly<Principal>;
+  /** #281: the continued run's `invoke_agent` span, the parent of the decided call's `execute_tool` span. */
+  runSpanId?: string;
 }
 
 /** Runs an approved tool call of the paused run and returns its `tool` message. */

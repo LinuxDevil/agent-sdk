@@ -264,6 +264,12 @@ export interface ExecuteOptions extends PermissionOptions {
    * own trace.
    */
   parentSpanId?: string;
+  /**
+   * @internal resumeAfterApproval(): the `invoke_agent` span it already opened
+   * for this run (the approved tool ran inside it, before this call). The run
+   * continues in that span instead of opening its own, and its owner ends it.
+   */
+  agentSpanId?: string;
   maxSteps?: number;
   /**
    * LOU-V6: token, cost, time and step budgets of this run, checked before
@@ -732,6 +738,7 @@ export class AgentExecutor {
       // whose `id` is threaded as `parentId` into the nested 'llm.generate'
       // and 'tool.call' spans, giving the 3-level span tree its parent/child
       // relationships without any instance state.
+      if (observed.agentSpanId) return this.runWithEnd(observed, observed.agentSpanId);
       const init = agentRunSpanInit(observed, resolveCaptureContent(observed.captureContent));
       return withSpan(
         observed.exporter,

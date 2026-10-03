@@ -9760,6 +9760,11 @@ invoke_agent {agent name}          INTERNAL
   execute_tool {tool name}         INTERNAL   one per tool call
 ```
 
+A run continued after an approval (`agent.approvals.resolve()`) is a trace of its
+own: its `invoke_agent` span holds the approved call's `execute_tool` span
+(first, as the call runs before the model is called again), then the `chat`
+spans of the rest of the run. A rejected call has no `execute_tool` span.
+
 A flow run (`FlowExecutor.execute`) produces:
 
 ```

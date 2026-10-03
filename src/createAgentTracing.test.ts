@@ -2,10 +2,17 @@
  * M5a: createAgent({ exporter, captureContent }) traces every kind of run:
  * send(), stream(), agent.approvals.resolve() and agent.resume().
  */
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import type { Tracer } from '@opentelemetry/api';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { createAgent } from './createAgent';
 import { PropagatingToolError } from './execution/AgentExecutor';
+import { createOtelTraceExporter } from './execution/otel';
+import { fileTraceExporter } from './traces/fileTraceExporter';
+import type { TraceLine } from './traces/format';
 import type { Span, TraceExporter } from './execution/tracing';
 import { memoryStore } from './storage/agentStore';
 import { mockModel } from './testing';
@@ -37,9 +44,7 @@ describe('createAgent({ exporter }) (M5a)', () => {
     expect(ops(exporter.ended)).toEqual(['chat', 'invoke_agent']);
   });
 
-  // The approved tool itself runs in resume.ts before the continued run starts, outside any span.
-  it('agent.approvals.resolve() traces the continued run', async () => {
-    const exporter = recording();
+  describe('agent.approvals.resolve() (#281)', () => {
     const sendEmail = defineTool({
       name: 'send_email',
       description: 'Sends an email',
@@ -47,17 +52,113 @@ describe('createAgent({ exporter }) (M5a)', () => {
       needsApproval: true,
       execute: async ({ to }) => `sent to ${to}`,
     });
-    const agent = createAgent({
-      provider: mockModel([{ toolCalls: [{ name: 'send_email', args: { to: 'sam@example.com' } }] }, 'Sent.']),
-      tools: [sendEmail],
-      exporter,
+    const emailAgent = (options: Omit<Parameters<typeof createAgent>[0], 'provider' | 'tools'>) =>
+      createAgent({
+        provider: mockModel([{ toolCalls: [{ name: 'send_email', args: { to: 'sam@example.com' }, id: 'call_1' }] }, 'Sent.']),
+        tools: [sendEmail],
+        ...options,
+      });
+
+    it('traces the continued run, with the approved tool as an execute_tool span under its invoke_agent span', async () => {
+      const exporter = recording();
+      const agent = emailAgent({ exporter });
+      const paused = await agent.send('Email Sam');
+      const before = exporter.ended.length;
+
+      await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+
+      const spans = exporter.ended.slice(before);
+      expect(ops(spans)).toEqual(['chat', 'execute_tool', 'invoke_agent']);
+      const run = spans.find((span) => op(span) === 'invoke_agent')!;
+      const tool = spans.find((span) => op(span) === 'execute_tool')!;
+      expect(tool.name).toBe('execute_tool send_email');
+      expect(tool.parentId).toBe(run.id);
+      expect(tool.attributes['gen_ai.tool.call.id']).toBe('call_1');
+      expect(tool.attributes['gen_ai.tool.name']).toBe('send_email');
+      expect(tool.attributes['result']).toBe('sent to sam@example.com');
+      expect(tool.attributes['gen_ai.tool.call.arguments']).toBeUndefined();
+      expect(run.parentId).toBeUndefined();
+      // the tool ran before the continued model call
+      expect(tool.startTime).toBeLessThanOrEqual(spans.find((span) => op(span) === 'chat')!.startTime);
     });
-    const paused = await agent.send('Email Sam');
-    const before = exporter.ended.length;
 
-    await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+    it('records the call arguments and result with captureContent', async () => {
+      const captured = recording();
+      const first = emailAgent({ exporter: captured, captureContent: true });
+      const paused = await first.send('Email Sam');
+      await first.approvals.resolve({ id: paused.approvalId!, approved: true });
+      const tool = captured.ended.filter((span) => op(span) === 'execute_tool').at(-1)!;
+      expect(tool.attributes['gen_ai.tool.call.arguments']).toContain('sam@example.com');
+      expect(tool.attributes['gen_ai.tool.call.result']).toContain('sent to sam@example.com');
 
-    expect(ops(exporter.ended.slice(before))).toEqual(['chat', 'invoke_agent']);
+    });
+
+    it('marks a tool that failed after approval as an error span, and a rejection runs no tool', async () => {
+      const exporter = recording();
+      const broken = defineTool({
+        name: 'send_email',
+        description: 'Sends an email',
+        input: z.object({ to: z.string() }),
+        needsApproval: true,
+        execute: async () => {
+          throw new Error('smtp down');
+        },
+      });
+      const agent = createAgent({
+        provider: mockModel([{ toolCalls: [{ name: 'send_email', args: { to: 'a@b.c' } }] }, 'Failed.']),
+        tools: [broken],
+        exporter,
+      });
+      const paused = await agent.send('Email');
+      await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+      const tool = exporter.ended.filter((span) => op(span) === 'execute_tool').at(-1)!;
+      expect(tool.status?.code).toBe('error');
+
+      const rejecting = recording();
+      const other = emailAgent({ exporter: rejecting });
+      const second = await other.send('Email Sam');
+      const sent = rejecting.ended.length;
+      await other.approvals.resolve({ id: second.approvalId!, approved: false });
+      expect(ops(rejecting.ended.slice(sent))).toEqual(['chat', 'invoke_agent']);
+    });
+
+    it('reaches fileTraceExporter() in the trace of the continued run', async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-traces-'));
+      try {
+        const agent = emailAgent({ exporter: fileTraceExporter({ dir }) });
+        const paused = await agent.send('Email Sam');
+        await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+
+        const lines = fs
+          .readdirSync(dir)
+          .flatMap((day) => fs.readdirSync(path.join(dir, day)).map((name) => fs.readFileSync(path.join(dir, day, name), 'utf8')))
+          .flatMap((text) => text.trim().split('\n').map((line) => JSON.parse(line) as TraceLine));
+        const tool = lines.find((line) => line.name === 'execute_tool send_email')!;
+        const parent = lines.find((line) => line.id === tool.parentId)!;
+        expect(parent.name).toMatch(/^invoke_agent /);
+        expect(tool.traceId).toBe(parent.traceId);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('reaches an OpenTelemetry exporter, started after the continued run span and before its model call', async () => {
+      const started: string[] = [];
+      const tracer = {
+        startSpan: (name: string) => {
+          started.push(name);
+          return { setAttribute() {}, setStatus() {}, end() {} };
+        },
+        startActiveSpan: () => undefined,
+      } as unknown as Tracer;
+      const agent = emailAgent({ exporter: createOtelTraceExporter({ tracer, metrics: false }) });
+      const paused = await agent.send('Email Sam');
+      started.length = 0;
+
+      await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+
+      expect(started.map((name) => name.split(' ')[0])).toEqual(['invoke_agent', 'execute_tool', 'chat']);
+    });
   });
 
   it('agent.resume() traces the finished run', async () => {
