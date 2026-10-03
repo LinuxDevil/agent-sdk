@@ -110,7 +110,7 @@ export type SpecAgent = SimpleAgent & {
  * disconnects them. They stay readable as `agent.mcpServers`. `options.store`
  * is `createAgent({ store })` (sessions, checkpoints and approvals; LOU-D14).
  */
-export function specToAgent(spec: AgentSpec, options: Pick<CreateAgentConfig, 'store'> = {}): SpecAgent {
+export function specToAgent(spec: AgentSpec, options: Pick<CreateAgentConfig, 'store' | 'exporter'> = {}): SpecAgent {
   const provider = resolveSpecProvider(spec.provider.type, spec.provider.model);
 
   const tools: CreateAgentConfig['tools'] = {};
@@ -126,6 +126,7 @@ export function specToAgent(spec: AgentSpec, options: Pick<CreateAgentConfig, 's
     tools: Object.keys(tools).length > 0 ? tools : undefined,
     mcpServers,
     store: options.store,
+    ...(options.exporter && { exporter: options.exporter }),
     ...compilePolicy(spec.policy),
   });
   return Object.assign(agent, { mcpServers });

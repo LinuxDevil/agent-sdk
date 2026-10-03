@@ -318,6 +318,14 @@ and `result` attributes carry message and tool content (see
 `captureContent: true` adds the `gen_ai.*` content. Keep `.lousho/` out of
 version control; projects made by `lousho init` ignore it.
 
+`lousho dev` and `lousho chat` write these files when you pass `--traces`
+(into `.lousho/traces`) or `--traces=<dir>`, for a spec file, an agent
+directory or a module, so a spec-file agent needs no code to be traced. It is
+opt-in on purpose: the files persist prompt and tool content, and
+`captureContent: false` does not remove it (only `redactContent: true` does),
+so nothing is written to disk unless you ask. The spec file format has no
+traces setting.
+
 ## Backends
 
 Any backend that ingests OpenTelemetry traces (OTLP) receives these spans.

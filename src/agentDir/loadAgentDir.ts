@@ -203,6 +203,7 @@ async function resolveWith(
     ...optional('maxSteps', overrides.maxSteps ?? config.maxSteps),
     ...optional('toolConcurrency', overrides.toolConcurrency ?? config.toolConcurrency),
     ...optional('projectInstructions', overrides.projectInstructions ?? config.projectInstructions),
+    ...optional('exporter', overrides.exporter),
   } as CreateAgentConfig;
 
   const files = [...new Set([configFile, fromFile?.file, ...tools.map((t) => t.file)])].filter(
