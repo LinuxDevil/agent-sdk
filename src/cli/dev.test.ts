@@ -515,3 +515,35 @@ function addressPort(h: DevServerHandle): number {
   if (addr && typeof addr === 'object') return addr.port;
   return h.port;
 }
+
+describe('local traces for the dev server (#282)', () => {
+  beforeAll(() => {
+    LLMProviderRegistry.register('mock', () => createMockProvider({ responses: [MOCK_RESPONSE] }));
+  });
+
+  it('hands the exporter to a spec file agent, so its runs are traced', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-dev-traces-'));
+    const ended: string[] = [];
+    const exporter = { onSpanStart: () => undefined, onSpanEnd: (span: { name: string }) => void ended.push(span.name) };
+    handle = await startDevServer(writeConfig(dir), 0, '127.0.0.1', { overrides: { exporter } });
+    const res = await fetch(`http://localhost:${addressPort(handle)}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: 'traced', input: 'hi' }),
+    });
+    expect(await res.text()).toContain(MOCK_RESPONSE);
+    expect(ended.some((name) => name.startsWith('invoke_agent'))).toBe(true);
+  });
+
+  it('traces nothing without an exporter', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-dev-traces-'));
+    handle = await startDevServer(writeConfig(dir), 0);
+    const res = await fetch(`http://localhost:${addressPort(handle)}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: 'plain', input: 'hi' }),
+    });
+    expect(await res.text()).toContain(MOCK_RESPONSE);
+    expect(fs.existsSync(path.join(dir, '.lousho'))).toBe(false);
+  });
+});

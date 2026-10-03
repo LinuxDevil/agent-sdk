@@ -7,8 +7,10 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import { z } from 'zod';
-import { createAgent } from '../createAgent';
+import { createAgent, type CreateAgentConfig } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
+import { LLMProviderRegistry } from '../providers/llm';
+import { createMockProvider } from '../providers/mock';
 import { mockModel, type MockTurn } from '../testing';
 import { parseChatArgs, runChat } from './chat';
 import { runChatRepl } from './chatRepl';
@@ -375,5 +377,57 @@ describe('lousho chat command', () => {
     fs.rmSync(dir, { recursive: true, force: true });
     expect(out).toContain('you: remember me');
     expect(out).toContain('assistant: Remembered.');
+  });
+});
+
+describe('lousho chat --traces (#282)', () => {
+  const fixtures = path.join(__dirname, '__fixtures__');
+  const traceFiles = (dir: string) =>
+    fs.readdirSync(dir, { recursive: true }).map(String).filter((f) => f.endsWith('.jsonl'));
+
+  async function chatOnce(args: string[], overrides?: CreateAgentConfig) {
+    const stdin = new PassThrough();
+    const out = sink();
+    const err = sink();
+    stdin.end(['hello', '/quit', ''].join(String.fromCharCode(10)));
+    const code = await runChat(args, { stdin, stdout: out.stream, stderr: err.stream, overrides });
+    return { code, err: err.text() };
+  }
+
+  it('says nothing about traces without the flag', async () => {
+    const { code, err } = await chatOnce([path.join(fixtures, 'dev-agent')], { provider: mockModel(['Hi.']) });
+    expect(code).toBe(0);
+    expect(err).not.toContain('traces');
+  });
+
+  it('writes the runs of an agent directory to --traces=<dir> and says where', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-chat-traces-'));
+    try {
+      const { code, err } = await chatOnce([path.join(fixtures, 'dev-agent'), `--traces=${dir}`], { provider: mockModel(['Hi.']) });
+      expect(code).toBe(0);
+      expect(err).toContain(`writing traces to ${dir}`);
+      const files = traceFiles(dir);
+      expect(files).toHaveLength(1);
+      expect(fs.readFileSync(path.join(dir, files[0]), 'utf8')).toContain('invoke_agent');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('writes the runs of a spec file, which has no createAgent() of its own', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-chat-traces-'));
+    const spec = path.join(dir, 'agent.json');
+    fs.writeFileSync(spec, JSON.stringify({ name: 'spec-agent', prompt: 'Be brief.', provider: { type: 'mock', model: 'mock-model-1' } }));
+    LLMProviderRegistry.register('mock', () => createMockProvider({ responses: ['Spec reply.'] }));
+    const traces = path.join(dir, 'traces');
+    try {
+      const { code } = await chatOnce([spec, `--traces=${traces}`]);
+      expect(code).toBe(0);
+      const files = traceFiles(traces);
+      expect(files).toHaveLength(1);
+      expect(fs.readFileSync(path.join(traces, files[0]), 'utf8')).toContain('spec-agent');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

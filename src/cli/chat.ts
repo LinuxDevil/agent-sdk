@@ -10,11 +10,13 @@ import type { CreateAgentConfig, SimpleAgent } from '../createAgent';
 import { loadSpec } from '../spec/loadSpec';
 import { specToAgent } from '../spec/specToAgent';
 import type { AgentStore } from '../storage/agentStore';
-import { parseCommand, stringValue, usageError, type CommandSpec } from './args';
+import { fileTraceExporter } from '../traces';
+import { DEFAULT_TRACE_DIR } from '../traces/format';
+import { parseCommand, stringValue, takeOptionalValueFlag, usageError, type CommandSpec } from './args';
 import { runChatRepl } from './chatRepl';
 import { detectTarget, loadTarget } from './devReload';
 
-const USAGE = 'Usage: lousho chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>]';
+const USAGE = 'Usage: lousho chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>] [--traces[=dir]]';
 
 export interface ChatArgs {
   path: string;
@@ -22,6 +24,8 @@ export interface ChatArgs {
   session?: string;
   /** The SQLite file of `--store sqlite:<file>`. */
   sqlite?: string;
+  /** `--traces` (the default dir) or `--traces=<dir>`: write local traces there. */
+  traces?: string | true;
   /** `-h` / `--help` was given: print the usage, run nothing. */
   help?: boolean;
 }
@@ -35,13 +39,14 @@ const SPEC: CommandSpec = {
 
 /** Parses the arguments after `chat`; throws `LOUSHO_CONFIG_INVALID` for a missing path, an unknown flag, a flag without its value or a bad `--store`. */
 export function parseChatArgs(args: string[]): ChatArgs {
-  const { values, positionals, help } = parseCommand(SPEC, args);
+  const { rest, value: traces } = takeOptionalValueFlag(SPEC, args, 'traces');
+  const { values, positionals, help } = parseCommand(SPEC, rest);
   if (help) return { path: '', help };
   if (positionals.length !== 1) throw usageError(SPEC, 'a path is required (a spec file, an agent directory or a .ts/.js agent module).');
   const store = stringValue(values.store);
   const sqlite = store?.startsWith('sqlite:') ? store.slice('sqlite:'.length) : undefined;
   if (store !== undefined && !sqlite) throw usageError(SPEC, "--store must be 'sqlite:<file>'.");
-  return { path: positionals[0], model: stringValue(values.model), session: stringValue(values.session), sqlite };
+  return { path: positionals[0], model: stringValue(values.model), session: stringValue(values.session), sqlite, traces };
 }
 
 export interface ChatIo {
@@ -58,7 +63,7 @@ export async function buildAgent(path: string, io: Pick<ChatIo, 'overrides'>, mo
   if (target.kind === 'spec' && model) {
     const spec = loadSpec(target.path);
     const [type, ...name] = model.split('/');
-    return specToAgent({ ...spec, provider: { type, model: name.join('/') } });
+    return specToAgent({ ...spec, provider: { type, model: name.join('/') } }, { exporter: io.overrides?.exporter });
   }
   const overrides = {
     ...io.overrides,
@@ -89,6 +94,13 @@ export async function runChat(
       const { SqliteStore } = await import('../storage/sqlite');
       store = new SqliteStore(parsed.sqlite);
     }
+    let overrides = io.overrides;
+    if (parsed.traces) {
+      const dir = parsed.traces === true ? DEFAULT_TRACE_DIR : parsed.traces;
+      overrides = { ...overrides, exporter: fileTraceExporter({ dir }) };
+      io.stderr.write(`lousho chat: writing traces to ${dir} (they include prompt and tool content; see docs/observability.md#local-traces)\n`);
+    }
+    const buildIo = { ...io, overrides };
     const reader = (rl = readline.createInterface({
       input: io.stdin,
       output: io.stdout,
@@ -100,7 +112,7 @@ export async function runChat(
       input: reader,
       output: io.stdout,
       errorOutput: io.stderr,
-      createAgent: (model) => buildAgent(parsed.path, io, model ?? parsed.model),
+      createAgent: (model) => buildAgent(parsed.path, buildIo, model ?? parsed.model),
       store,
       model: parsed.model,
       sessionId: parsed.session,
