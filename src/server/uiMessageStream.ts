@@ -140,6 +140,7 @@ function chunksFor(event: AgentEvent, state: MapState): LoushoUIMessageChunk[] {
     case 'reasoning.done':
       return [reasoningChunk(event, state)];
     case 'tool.start':
+    case 'tool.resume':
       return [
         ...closeText(state),
         { type: 'tool-input-start', toolCallId: event.toolCallId, toolName: event.toolName, ...byProvider(event) },

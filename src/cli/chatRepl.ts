@@ -107,6 +107,11 @@ export async function runChatRepl(options: ChatReplOptions): Promise<number> {
       endLine();
       say(dim(`[${event.toolName}] ${show(event.args)}`));
     },
+    // A resumed call had its `tool.start` before the pause; say so rather than printing it as a new call.
+    'tool.resume': (event) => {
+      endLine();
+      say(dim(`[${event.toolName}] ${show(event.args)} (resumed)`));
+    },
     'tool.done': (event) => say(dim(`  -> ${show(event.result)}`)),
     'tool.error': (event) => say(dim(`  -> error: ${event.error.message}`)),
     error: (event) => {

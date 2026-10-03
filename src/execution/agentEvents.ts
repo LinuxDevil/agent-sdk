@@ -131,6 +131,23 @@ export interface ToolStartEvent extends AgentEventBase<'tool.start'> {
 }
 
 /**
+ * The call a run paused on for approval (or sign-in) runs, now that it is
+ * decided. Its `tool.start` was emitted by the run that paused, so the
+ * continued run reports `tool.resume` instead of a second `tool.start`:
+ * every tool call still has exactly one `tool.start` across a pause. Its
+ * `tool.partial` indexes count from 0 again and its `tool.done` /
+ * `tool.error` measures from this event.
+ */
+export interface ToolResumeEvent extends AgentEventBase<'tool.resume'> {
+  toolCallId: string;
+  toolName: string;
+  /** The approved arguments, parsed like `tool.start`'s (`{}` when they are not valid JSON). */
+  args: Record<string, unknown>;
+  /** Same shape as `tool.start`'s; absent - a provider-run call never pauses for approval. */
+  executedBy?: 'provider';
+}
+
+/**
  * N13b: a snapshot of a running tool's output - a tool whose `execute` is an
  * `async function*` yields one per `yield`. Each snapshot is complete and
  * replaces the previous one; the last one is also the result in `tool.done`.
@@ -426,6 +443,7 @@ export type AgentEvent =
   | ReasoningDeltaEvent
   | ReasoningDoneEvent
   | ToolStartEvent
+  | ToolResumeEvent
   | ToolPartialEvent
   | ToolDoneEvent
   | TodoUpdatedEvent
@@ -477,6 +495,7 @@ const EVENT_TYPE_MAP: Record<AgentEventType, true> = {
   'reasoning.delta': true,
   'reasoning.done': true,
   'tool.start': true,
+  'tool.resume': true,
   'tool.partial': true,
   'tool.done': true,
   'todo.updated': true,
@@ -524,8 +543,8 @@ export function isAgentEvent(value: unknown): value is AgentEvent {
   );
 }
 
-/** `tool.start`, `tool.partial`, `tool.done` or `tool.error` - they all carry `toolCallId` and `toolName`. */
-export function isToolEvent(event: AgentEvent): event is ToolStartEvent | ToolPartialEvent | ToolDoneEvent | ToolErrorEvent {
+/** `tool.start`, `tool.resume`, `tool.partial`, `tool.done` or `tool.error` - they all carry `toolCallId` and `toolName`. */
+export function isToolEvent(event: AgentEvent): event is ToolStartEvent | ToolResumeEvent | ToolPartialEvent | ToolDoneEvent | ToolErrorEvent {
   return event.type.startsWith('tool.');
 }
 

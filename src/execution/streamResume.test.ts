@@ -53,7 +53,7 @@ describe('streamResumeAfterApproval (LOU-V14)', () => {
     const events = await collect(run);
     const result = await run.result;
 
-    expect(kinds(events)).toEqual(['run.start', 'tool.start', 'tool.done', 'step.start', 'text.done', 'step.done', 'run.done']);
+    expect(kinds(events)).toEqual(['run.start', 'tool.resume', 'tool.done', 'step.start', 'text.done', 'step.done', 'run.done']);
     expect(events.find((e) => e.type === 'tool.done')).toMatchObject({ toolCallId: 'call_email', result: 'sent to sam@example.com' });
     expect(text(events)).toBe('Email sent.');
     expect(events.every((e, i) => e.seq === i && e.runId === run.runId)).toBe(true);
@@ -67,7 +67,7 @@ describe('streamResumeAfterApproval (LOU-V14)', () => {
     const run = streamResumeAfterApproval({ id, approved: false, note: 'No' }, approvalStore, toolRegistry, provider);
     const events = await collect(run);
 
-    expect(kinds(events)).toEqual(['run.start', 'tool.start', 'tool.error', 'step.start', 'text.done', 'step.done', 'run.done']);
+    expect(kinds(events)).toEqual(['run.start', 'tool.resume', 'tool.error', 'step.start', 'text.done', 'step.done', 'run.done']);
     expect(events.find((e) => e.type === 'tool.error')).toMatchObject({ error: { name: 'ToolRejectedError', message: 'Tool execution was rejected by the reviewer' } });
     expect((await run.result).text).toBe('OK, not sending.');
   });
@@ -80,7 +80,7 @@ describe('streamResumeAfterApproval (LOU-V14)', () => {
     const events = await collect(run);
     const second = await run.result;
 
-    expect(kinds(events)).toEqual(['run.start', 'tool.start', 'tool.done', 'step.start', 'tool.start', 'approval.requested', 'step.done', 'run.done']);
+    expect(kinds(events)).toEqual(['run.start', 'tool.resume', 'tool.done', 'step.start', 'tool.start', 'approval.requested', 'step.done', 'run.done']);
     expect(events.find((e) => e.type === 'approval.requested')).toMatchObject({ approvalId: second.approvalId, args: { to: 'kim@example.com' } });
     expect(events.at(-1)).toMatchObject({ type: 'run.done', finishReason: 'awaiting-approval' });
     const final = await resumeAfterApproval({ id: second.approvalId!, approved: true }, approvalStore, toolRegistry, provider);
@@ -116,7 +116,7 @@ describe('agent.approvals.streamResolve / streamAnswer (LOU-V14)', () => {
     const events: AgentEvent[] = [];
     for await (const event of run) {
       events.push(event);
-      if (event.type === 'tool.start') controller.abort();
+      if (event.type === 'tool.resume') controller.abort();
     }
 
     expect((await run.result).finishReason).toBe('aborted');
@@ -159,6 +159,21 @@ describe('agent.approvals.streamResolve / streamAnswer (LOU-V14)', () => {
     expect(text(events)).toBe('Sent.');
     expect(second.calls[0].model).toBe('model-1');
     expect(await store.checkpoints?.load('job')).toMatchObject({ status: 'finished' });
+  });
+
+  it('LOU-R17: the approval flow emits exactly one tool.start for the decided call; the continuation reports tool.resume', async () => {
+    const events: AgentEvent[] = [];
+    const agent = createAgent({ provider: mockModel([callEmail, 'Email sent.']), tools: [emailTool()], onEvent: (event) => events.push(event) });
+    const paused = await agent.send('Email Sam');
+    expect(paused.finishReason).toBe('awaiting-approval');
+
+    const resumed = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+
+    expect(resumed.finishReason).toBe('stop');
+    const forCall = events.filter((e) => (e.type === 'tool.start' || e.type === 'tool.resume') && e.toolCallId === 'call_email');
+    expect(forCall.map((e) => e.type)).toEqual(['tool.start', 'tool.resume']);
+    const starts = forCall.filter((e) => e.type === 'tool.start');
+    expect(starts).toHaveLength(1);
   });
 
   it('a pause inside a session continues in that session; run.done comes after the transcript is saved', async () => {

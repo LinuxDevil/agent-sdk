@@ -130,6 +130,12 @@ export interface RunEventSink {
   textDone(text: string, stepUsage?: StepUsage): void;
   /** N14: `parentToolCallId` for an inner call of a `run_code` script (also on the next two). */
   toolStart(toolCall: ToolCall, parentToolCallId?: string): void;
+  /**
+   * The call this run was resumed for (`tool.resume`): it already had its
+   * `tool.start` in the run that paused, so it is reported separately and a
+   * call keeps exactly one `tool.start` across a pause.
+   */
+  toolResume(toolCall: ToolCall): void;
   /** N13b: a snapshot a generator tool yielded (`tool.partial`). */
   toolPartial(toolCallId: string, toolName: string, output: unknown, parentToolCallId?: string): void;
   toolSettled(outcome: ToolSettled, parentToolCallId?: string): void;
@@ -298,13 +304,22 @@ class RunEvents {
   }
 
   private toolStarted(toolCall: ToolCall, subagent?: SubagentInfo, parent?: string): void {
+    this.toolBegan('tool.start', toolCall, subagent, parent);
+  }
+
+  /** A resumed call: like `toolStarted`, but as `tool.resume` (see {@link RunEventSink.toolResume}). */
+  private toolResumed(toolCall: ToolCall, subagent?: SubagentInfo): void {
+    this.toolBegan('tool.resume', toolCall, subagent);
+  }
+
+  private toolBegan(type: 'tool.start' | 'tool.resume', toolCall: ToolCall, subagent?: SubagentInfo, parent?: string): void {
     this.toolStarts.set(toolStartKey(toolCall.id, subagent), Date.now());
     // N13b: a call that runs again (after a sign-in, or on a resume) counts its snapshots from 0.
     this.partials.delete(toolStartKey(toolCall.id, subagent));
     const args = parseToolArguments(toolCall, {});
     this.emit(
       {
-        type: 'tool.start',
+        type,
         toolCallId: toolCall.id,
         toolName: toolCall.function.name,
         args: (typeof args === 'object' && args !== null ? args : {}) as Record<string, unknown>,
@@ -392,6 +407,7 @@ class RunEvents {
       runStart: ({ id, name }) => this.emit({ type: 'run.start', agentName: name ?? '', ...(id !== undefined && { agentId: id }) }, subagent),
       textDone: (text, stepUsage) => this.emit({ type: 'text.done', text }, subagent, { stepUsage }),
       toolStart: (toolCall, parent) => this.toolStarted(toolCall, subagent, parent),
+      toolResume: (toolCall) => this.toolResumed(toolCall, subagent),
       toolPartial: (toolCallId, toolName, output, parent) => this.toolPartial(toolCallId, toolName, output, subagent, parent),
       toolSettled: (outcome, parent) => this.toolSettled(outcome, subagent, parent),
       error: reportError,

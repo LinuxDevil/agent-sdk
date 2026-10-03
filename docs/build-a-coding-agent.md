@@ -133,8 +133,10 @@ try {
 }
 ```
 
-Two details of the continued stream. The `tool.start` of the call you just
-approved arrives at its start, so the loop prints each call once. And a
+Two details of the continued stream. The call you just approved resumes with
+a `tool.resume` event - its `tool.start` was already printed by the run that
+paused, so the loop prints each call once (`tool.resume` is the event to
+match if you want to mark the call running again). And a
 rejected call does not fail the run: the model gets a rejection result instead
 of the tool output and carries on. To tell it why, pass a `note`:
 `streamResolve({ id, approved: false, note: 'Do not touch the lockfile' })`.

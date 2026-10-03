@@ -422,8 +422,8 @@ describe('stateful streaming chat (LOU-D32)', () => {
 
     const { approvalId } = requested as { approvalId: string };
     const continued = await eventsOf(await post(handle, `/chat/s2/approvals/${approvalId}`, { approved: true }));
-    // LOU-D32.2: the continuation is a live stream, as a fresh turn's: the decided call, then the model's reply.
-    expect(continued.map((e) => e.type)).toContain('tool.start');
+    // LOU-D32.2: the continuation is a live stream, as a fresh turn's: the decided call resumes, then the model's reply.
+    expect(continued.map((e) => e.type)).toContain('tool.resume');
     expect(continued.find((e) => e.type === 'tool.done')).toMatchObject({ toolName: 'ping', result: 'pong' });
     expect(continued.flatMap((e) => (e.type === 'text.delta' ? [e.text] : [])).join('')).toBe('The tool said pong.');
     expect(continued.at(-1)).toMatchObject({ finishReason: 'stop', text: 'The tool said pong.' });

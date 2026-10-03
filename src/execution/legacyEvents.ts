@@ -42,6 +42,7 @@ export function toExecutionEvents(event: AgentEvent, detail: LegacyDetail = {}):
     case 'text.done':
       return [{ ...at, type: 'text-complete', text: event.text, ...(detail.stepUsage && { stepUsage: detail.stepUsage }) }];
     case 'tool.start':
+    case 'tool.resume':
       return [{ ...at, type: 'tool-call', toolCall: detail.toolCall ?? toolCallOf(event) }];
     case 'tool.done':
     case 'tool.error':
@@ -55,7 +56,7 @@ export function toExecutionEvents(event: AgentEvent, detail: LegacyDetail = {}):
   }
 }
 
-function toolCallOf({ toolCallId, toolName, args }: AgentEventOf<'tool.start'>): ToolCall {
+function toolCallOf({ toolCallId, toolName, args }: AgentEventOf<'tool.start' | 'tool.resume'>): ToolCall {
   return { id: toolCallId, type: 'function', function: { name: toolName, arguments: JSON.stringify(args) } };
 }
 

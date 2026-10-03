@@ -74,7 +74,7 @@ async function fold(sessionId: string, events: AsyncIterable<AgentEvent>): Promi
     if (event.type === 'approval.requested') approval = event;
     if (event.subagent) continue;
     if (event.type === 'step.done') steps++;
-    if (event.type === 'tool.start') toolCalls.push({ id: event.toolCallId, type: 'function', function: { name: event.toolName, arguments: JSON.stringify(event.args) } });
+    if (event.type === 'tool.start' || event.type === 'tool.resume') toolCalls.push({ id: event.toolCallId, type: 'function', function: { name: event.toolName, arguments: JSON.stringify(event.args) } });
     if (event.type === 'run.done') return { sessionId, text: event.text, finishReason: event.finishReason, toolCalls, steps, usage: event.usage, approval, error, object: event.object };
   }
   return undefined;

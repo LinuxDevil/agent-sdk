@@ -156,7 +156,9 @@ console.log((await again.result).text);
 A run that paused for an [approval](./approvals.md) can continue as a stream
 too. `agent.approvals.streamResolve()` (or `streamAnswer()`) returns an
 `AgentRun` whose `result` is what `agent.approvals.resolve()` returns. Its events are `run.start`, the decided
-call's `tool.start` and `tool.done` (`tool.error` for a rejection), then the
+call's `tool.resume` and `tool.done` (`tool.error` for a rejection - `tool.resume`,
+not a second `tool.start`, because the paused run already reported that call's
+start), then the
 continuation's events exactly as in a fresh run, up to `run.done`; a further
 pause ends it with `approval.requested` (`kind: 'sign-in'` with a `signIn`
 link when a tool waits for an [OAuth sign-in](./oauth.md#what-the-user-sees)). Cancellation, `enqueue()` and
