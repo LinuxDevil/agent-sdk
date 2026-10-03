@@ -50,7 +50,11 @@ while a turn is running or waiting to start:
   the turn's events, `input.queued` and `input.applied` included, stream on
   the run that started it. If the turn ends before it could take the input
   (it finished, paused or was aborted), the call runs as the next turn after
-  all. If the turn fails, the call rejects with the same error; in a durable
+  all — except in a durable session whose paused turn is still pending:
+  there the call first resumes it, and rejects with
+  `SessionAwaitingApprovalError` when it is still waiting on the approval
+  (decide it with `agent.approvals.resolve()`). If the turn fails, the call
+  rejects with the same error; in a durable
   session the input stays in the turn's checkpoint and `resume()` applies it.
 - `'steer'`: like `'queue'`, but the input joins through
   [`run.steer()`](./queue-and-steer.md#steering): if the turn's model call has not

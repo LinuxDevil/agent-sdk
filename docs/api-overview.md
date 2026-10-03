@@ -60,10 +60,12 @@ How the pieces fit:
 
 `createAgent()`'s `model`, `instructions` (or `prompt`) and `tools` each take
 the static value or a function of the run, `(ctx) => value | Promise<value>`
-(type `PerRun<T>`). `ctx` is `{ sessionId?, input, metadata? }` (type
+(type `PerRun<T>`). `ctx` is `{ sessionId?, input, metadata?, principal? }` (type
 `RunConfigContext`): the `sessionId` of `send()` / `stream()` or the
-`agent.session()` id, the run's user input, and the `metadata` call option of
-`send()`, `stream()`, `session.send()` and `session.stream()`. The functions
+`agent.session()` id, the run's user input, the `metadata` call option of
+`send()`, `stream()`, `session.send()` and `session.stream()`, and the caller
+the run's auth accepted (`principal`, absent when the call did not pass one).
+The functions
 run once when a run starts, before the first model call, and again on every
 session turn. Everything else applies to what they return: `fallbackModels`
 and `retry`, `projectInstructions`, memory, skills, sub-agents, MCP tools,
@@ -131,9 +133,9 @@ and an `approvalId`. `agent.approvals.list()` returns the pending calls and
 `agent.approvals.resolve({ id, approved, note? })` runs or rejects the call and
 resolves with the continued run's result (continuing the session it paused
 in). Pauses are kept in a per-agent `InMemoryApprovalStore` unless you pass
-`approvalStore` (e.g. `SqliteStore.approvals`) or a `store`; `approve: (call) => boolean | string`
+`approvalStore` (e.g. `SqliteStore.approvals`) or a `store`; `approve: (request: PendingApproval) => boolean | string | Promise<boolean | string>`
 decides each call in code without pausing (`stream()` still ends at the
-pause). With `askQuestion: true` the agent can ask the user a question
+pause) — `request` carries the call plus its `kind` and `principal`. With `askQuestion: true` the agent can ask the user a question
 (`kind: 'question'`), answered with `agent.approvals.answer({ id, answer })`.
 See [Approvals](./approvals.md).
 

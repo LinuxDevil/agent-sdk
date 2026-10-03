@@ -110,8 +110,9 @@ a token without `sub` skips.
 
 A `jwt()` whose keys come from an OpenID Connect provider. It fetches
 `<issuer>/.well-known/openid-configuration` once (or `discoveryUrl`), requires
-the document's `issuer` to equal yours exactly, and uses its `jwks_uri` (which
-must be https). Algorithms default to `RS256` and `ES256`; HMAC is not allowed.
+the document's `issuer` to equal yours exactly, and uses its `jwks_uri` (https,
+or http on `localhost` / `127.0.0.1` / `[::1]` — the same rule as `jwt()`'s
+`jwksUrl`). Algorithms default to `RS256` and `ES256`; HMAC is not allowed.
 
 ```ts
 import { oidc } from '@lousho/build-ai-agent/auth';

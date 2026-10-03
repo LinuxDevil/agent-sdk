@@ -79,8 +79,9 @@ In order: the agent's own `settings.model` (set with
 `AgentBuilder.setSettings({ model })`, or `model` next to `provider` in
 `createAgent()`), then the model the provider was built with
 (`resolveProvider('openai/gpt-4o-mini')`, a spec's `provider.model`, or
-`defaultModel`), then the provider's built-in default. There is no hard-coded
-fallback model.
+`defaultModel`), then the provider's built-in default. That last default only
+applies when nothing configured a model — a model you set is never overridden
+by a hard-coded one.
 
 ## Multimodal input
 

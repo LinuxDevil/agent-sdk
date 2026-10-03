@@ -64,7 +64,7 @@ on the server.
 
 | Field | What it is |
 | ----- | ---------- |
-| `messages` | `UIMessage[]`: `{ id, role: 'user' \| 'assistant', text, toolCalls }`. Each `send()` adds a user message and an assistant message that fills in as `text.delta` and tool events arrive. |
+| `messages` | `UIMessage[]`: `{ id, role: 'user' \| 'assistant', text, toolCalls, reasoning? }`. Each `send()` adds a user message and an assistant message that fills in as `text.delta` and tool events arrive; `reasoning` collects the model's `reasoning.delta` text when it streams any. |
 | `toolCalls[i]` | `{ id, name, args, status, result?, error?, partial? }`, `status` being `'running'`, `'awaiting-approval'`, `'done'`, `'error'` or `'rejected'`. `partial` is the latest `tool.partial` snapshot of a running [streaming tool](./tools.md#streaming-partial-results), removed when the call settles or pauses. |
 | `status` | `'idle'`, `'streaming'`, `'awaiting-approval'` or `'error'`. |
 | `pendingApproval` | `{ id, toolCallId, toolName, args }` of the tool call the run paused on, else `null`. For an `ask_question` call it also has `kind: 'question'` and `question: { text, options?, allowFreeText? }`; a tool waiting on an OAuth sign-in has `kind: 'sign-in'` and `signIn: { provider, displayName?, url }` (see [What the user sees](./oauth.md#what-the-user-sees)). |
@@ -79,7 +79,9 @@ on the server.
 
 Unmounting the component aborts the turn in flight. Events of a
 [sub-agent](./sub-agents.md)'s run (they carry `subagent`) do not change
-`messages`; read them from `lastEvent` if you want to show them.
+`messages` — except a sub-agent's `approval.requested`, which does update
+`messages`, `pendingApproval` and `status` (the pause is the user's to decide).
+Read other sub-agent events from `lastEvent` if you want to show them.
 
 ## Approvals
 
@@ -88,10 +90,10 @@ When a tool with `needsApproval` is called, the run stops with
 `pendingApproval` holds the call. Then:
 
 - **In process**, `approve(note?)` and `reject(note?)` call
-  `agent.approvals.resolve({ id, approved, note })` (see
-  [Approvals](./approvals.md)). The continued run's text is appended to the
-  assistant message and `status` returns to `'idle'`, or to
-  `'awaiting-approval'` if the run pauses again.
+  `agent.approvals.streamResolve({ id, approved, note }, { signal })` (see
+  [Approvals](./approvals.md)). The continued run's events stream in live, so
+  its text is appended to the assistant message as it arrives and `status`
+  returns to `'idle'`, or to `'awaiting-approval'` if the run pauses again.
 - **Remote**, pass `{ approvalsUrl }` as the second argument. The hook POSTs
   `{ "approved": true, "note": "..." }` to `${approvalsUrl}/${approvalId}` and
   shows the continuation live from the SSE stream the session API answers
@@ -181,7 +183,7 @@ export function useSupportChat() {
 
 The hook is a thin wrapper. The state logic is `reduceAgentEvents(state,
 event)`, a pure reducer over `AgentEvent`s and a few local actions
-(`ui.send`, `ui.decide`, `ui.resumed`, `ui.stopped`, `ui.error`), and
+(`ui.send`, `ui.decide`, `ui.resumed`, `ui.stopped`, `ui.reset`, `ui.error`), and
 `parseEventStream(response)` reads events back from a fetch response. Both are
 exported from the same subpath, for a custom binding or a non-React client:
 

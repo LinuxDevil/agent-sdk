@@ -7,7 +7,7 @@
  * KV has no transactions: `takePending` reads and then deletes, so a state
  * value is single use only as far as KV's eventual consistency allows (two
  * callbacks at different edge locations within a minute could both read it).
- * The state is 128+ random bits, so replaying it is useless to anyone who did
+ * The state is 256 random bits, so replaying it is useless to anyone who did
  * not already have it. Encryption and expiry are `SealedTokenStore`'s.
  */
 import { ConfigurationError } from '../execution/errors';

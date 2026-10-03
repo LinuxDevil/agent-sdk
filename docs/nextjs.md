@@ -58,6 +58,7 @@ accepted, and a request outside the base path is a 404).
 | `GET <basePath>/chat/:sessionId` | the session's transcript and pending approvals |
 | `POST <basePath>/chat/:sessionId/approvals/:id` | decide an approval in a session |
 | `POST <basePath>/ui` | with `uiMessageStream: true`: the AI SDK `useChat` endpoint |
+| `GET <basePath>/oauth/callback` | the OAuth provider's redirect after a sign-in; never behind `auth` (the single-use `state` protects it) |
 | `GET <basePath>/health` | `ok`, never behind `auth` |
 
 Sessions are kept by the agent's `store` (`createAgent({ store })`), so give

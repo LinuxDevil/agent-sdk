@@ -238,7 +238,8 @@ new CronTriggerAdapter({
 
 Supported syntax: `*`, lists (`1,15`), ranges (`1-5`), steps (`*/15`,
 `10-40/10`), month names (`JAN`) and weekday names (`MON`), with `0` and `7`
-both meaning Sunday, plus `@hourly`, `@daily`, `@weekly` and `@monthly`. As in
+both meaning Sunday, plus the `@hourly`, `@daily` (or `@midnight`), `@weekly`,
+`@monthly` and `@yearly` (or `@annually`) shortcuts. As in
 classic cron, when both day-of-month and day-of-week are restricted a day
 matches if either does. An invalid expression throws a `CronExpressionError`
 naming the field and showing a valid example. `parseCronExpression(expr,

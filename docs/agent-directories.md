@@ -21,15 +21,15 @@ const { text } = await agent.send('Hello!');
 
 ```text
 my-agent/
-  agent.ts | agent.js | agent.json | agent.yaml   # optional config
+  agent.{ts,mts,js,mjs,cjs,json,yaml,yml}          # optional config
   instructions.md                                  # system prompt
-  tools/*.ts | *.js                                # defineTool() tools
+  tools/*.{ts,mts,cts,js,mjs,cjs}                  # defineTool() tools
   skills/                                          # same layouts as loadSkills()
   subagents/<name>/                                # nested agent directories
-  schedules/*.ts|js                                # defineSchedule() cron schedules (see schedules.md)
-  channels/*.ts|js                                 # a channel each: defineChannel(), webhookChannel(), ... (see channels.md)
-  memory/*.ts|js                                   # a memory slot each: defineMemory() (see memory.md); part of the agent
-  auth.ts | auth.js                                # route auth for the deployed server: jwt(), oidc(), basic(), ... (see auth.md)
+  schedules/*.{ts,mts,cts,js,mjs,cjs}              # defineSchedule() cron schedules (see schedules.md)
+  channels/*.{ts,mts,cts,js,mjs,cjs}               # a channel each: defineChannel(), webhookChannel(), ... (see channels.md)
+  memory/*.{ts,mts,cts,js,mjs,cjs}                 # a memory slot each: defineMemory() (see memory.md); part of the agent
+  auth.{ts,mts,cts,js,mjs,cjs}                     # route auth for the deployed server: jwt(), oidc(), basic(), ... (see auth.md)
 ```
 
 Only one config file may exist. Files inside `tools/` and the entries of
