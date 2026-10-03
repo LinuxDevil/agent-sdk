@@ -17,6 +17,8 @@ export interface PlannedFile {
   relative: string;
   absolute: string;
   content: string;
+  /** Set by checkTargets(): a file already sits at the target path. */
+  exists?: boolean;
 }
 
 function unsafe(item: RegistryItem, file: string, reason: string): SDKError {
@@ -80,12 +82,13 @@ async function lstatOrUndefined(file: string) {
   }
 }
 
-/** Refuses symlink escapes and (without `overwrite`) existing files. Call before writing anything. */
+/** Refuses symlink escapes and (without `overwrite`) existing files. Call before writing anything. Marks `file.exists` for the report. */
 export async function checkTargets(item: RegistryItem, files: PlannedFile[], agentDir: string, overwrite: boolean): Promise<void> {
   const root = await realpath(agentDir);
   for (const file of files) {
     if (!inside(root, await realAncestor(file.absolute))) throw unsafe(item, file.relative, 'it resolves outside the agent directory (a symlink).');
     const stats = await lstatOrUndefined(file.absolute);
+    file.exists = stats !== undefined;
     if (!stats) continue;
     if (stats.isSymbolicLink()) throw unsafe(item, file.relative, 'the target is a symlink.');
     if (!overwrite) {

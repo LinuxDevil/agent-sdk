@@ -139,8 +139,10 @@ function enforceAllow(args: AddArgs, item: RegistryItem): void {
   );
 }
 
-function planLines(files: PlannedFile[]): string[] {
-  return ['Files it will write:', ...files.map((file) => `  ${file.relative}`)];
+function planLines(files: PlannedFile[], overwrite: boolean): string[] {
+  const note = (file: PlannedFile) =>
+    file.exists ? (overwrite ? ' (exists - will be overwritten)' : ' (exists - a real install needs --overwrite)') : '';
+  return ['Files it will write:', ...files.map((file) => `  ${file.relative}${note(file)}`)];
 }
 
 async function confirm(io: AddIo, question: string): Promise<boolean> {
@@ -162,9 +164,10 @@ async function install(args: AddArgs, registry: string, item: RegistryItem, io: 
     throw new SDKError(`lousho add: the agent directory ${agentDir} does not exist.`, 'LOUSHO_CONFIG_INVALID', { hint: 'Create it, or pass --dir <agent-dir>.' });
   }
   const files = planFiles(item, agentDir);
-  await checkTargets(item, files, agentDir, args.overwrite);
+  // A dry run writes nothing, so an existing file is reported, not refused.
+  await checkTargets(item, files, agentDir, args.overwrite || args.dryRun);
   const receipt = await readReceipt(agentDir);
-  const lines = [...manifestLines(item), ...planLines(files)];
+  const lines = [...manifestLines(item), ...planLines(files, args.overwrite)];
   if (item.dependencies?.length) lines.push('Dependencies (not installed; run this yourself):', `  npm install ${item.dependencies.join(' ')}`);
   io.stdout.write(`${lines.join('\n')}\n`);
   enforceManifest(item, io);

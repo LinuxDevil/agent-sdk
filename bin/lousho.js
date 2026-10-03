@@ -5,16 +5,16 @@ const path = require('node:path');
 
 const USAGE = [
   'Usage:',
-  '  lousho init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force]',
-  '  lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H]',
-  '  lousho chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>]',
+  '  lousho init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force] [--sdk-path <dir|tgz>]',
+  '  lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--no-schedules] [--traces[=dir]]',
+  '  lousho chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>] [--traces[=dir]]',
   '  lousho acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]',
   '  lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--allow <list>] [--overwrite] [--dry-run] | --list',
-  '  lousho build --target=<name> --agent=<path> [--out=<dir>]',
+  '  lousho build <agent-dir|spec> --target=<name> [--out=<dir>]   (or --agent=<path>)',
   '  lousho studio [--port N] [--host H] [--prod|--dev]',
   '  lousho mcp <agent.yaml|json> [--http --port N --host H]',
   '  lousho doctor [agent.yaml|json] [--json]',
-  '  lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge]',
+  '  lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts]',
   '  lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]',
 ].join('\n');
 

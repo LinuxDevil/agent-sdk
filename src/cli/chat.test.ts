@@ -300,6 +300,14 @@ describe('lousho chat command', () => {
     expect(out).toBe('');
   });
 
+  it('fails with LOUSHO_SPEC_NOT_FOUND for a missing spec file (no raw ENOENT)', async () => {
+    const { code, err } = await run([path.join(fixtures, 'nope.yaml')], ['hi'], undefined);
+    expect(code).toBe(1);
+    expect(err).toContain('LOUSHO_SPEC_NOT_FOUND');
+    expect(err).toContain('does not exist');
+    expect(err).not.toContain('ENOENT');
+  });
+
   it('fails with LOUSHO_SPEC_UNSUPPORTED_FORMAT for an unsupported file type', async () => {
     const file = path.join(os.tmpdir(), `lousho-chat-${process.pid}.txt`);
     fs.writeFileSync(file, 'x');
@@ -426,6 +434,21 @@ describe('lousho chat --traces (#282)', () => {
       const files = traceFiles(traces);
       expect(files).toHaveLength(1);
       expect(fs.readFileSync(path.join(traces, files[0]), 'utf8')).toContain('spec-agent');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('writes the runs of a module that exports an already-built agent (LOU-R19)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-chat-traces-'));
+    const traces = path.join(dir, 'traces');
+    try {
+      const { code, err } = await chatOnce([path.join(fixtures, 'dev-module', 'agent.ts'), `--traces=${traces}`]);
+      expect(code).toBe(0);
+      expect(err).toContain(`writing traces to ${traces}`);
+      const files = traceFiles(traces);
+      expect(files).toHaveLength(1);
+      expect(fs.readFileSync(path.join(traces, files[0]), 'utf8')).toContain('dev-module');
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

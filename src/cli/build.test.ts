@@ -97,6 +97,15 @@ describe('bin/lousho.js build (subprocess smoke test)', () => {
     expect(result.stdout).toContain('lousho init');
   });
 
+  it('`lousho --help` lists the implemented flags (LOU-R19)', () => {
+    const { stdout } = runBin(['--help']);
+    expect(stdout).toContain('--no-schedules');
+    expect(stdout).toContain('--traces[=dir]');
+    expect(stdout).toContain('--drift');
+    expect(stdout).toContain('--sdk-path');
+    expect(stdout).toContain('lousho build <agent-dir|spec> --target=<name>');
+  });
+
   it('dispatches `lousho build --target=stub` and runs scaffold, build, describe in order', () => {
     const result = runBin(['build', '--target=stub', '--agent=agent.yaml']);
     expect(result.code).toBe(0);

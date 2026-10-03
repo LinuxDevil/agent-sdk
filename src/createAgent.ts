@@ -682,6 +682,19 @@ export interface SimpleAgent<TObject = unknown> {
   close: () => Promise<void>;
 }
 
+/** The `CreateAgentConfig` each `createAgent()` result was built with (LOU-R19). */
+const builtConfigs = new WeakMap<SimpleAgent, CreateAgentConfig>();
+
+/**
+ * @internal The config `agent` was created with, or `undefined` when it did not
+ * come from `createAgent()`. `lousho dev` / `lousho chat` use it to rebuild a
+ * module's built-agent export with CLI overrides (`--traces`' exporter): an
+ * already-built agent cannot take a new exporter after the fact.
+ */
+export function createAgentConfigOf(agent: SimpleAgent): CreateAgentConfig | undefined {
+  return builtConfigs.get(agent);
+}
+
 /**
  * Build a ready-to-use agent in one call. The smallest useful form is a
  * model string, instructions, and `send()`.
@@ -987,6 +1000,9 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
       return staticSpec ?? specs.resolve(ctx, pinned as PinnedRunConfig | undefined);
     },
   });
+  // LOU-R19: remembered so the CLI can rebuild the agent with its overrides
+  // (`--traces`' exporter) when a module exports the built agent itself.
+  builtConfigs.set(simpleAgent, config);
   return simpleAgent;
 }
 

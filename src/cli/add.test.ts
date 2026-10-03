@@ -140,6 +140,17 @@ describe('lousho add', () => {
     expect(fs.existsSync(path.join(agentDir, 'tools'))).toBe(false);
   });
 
+  it('--dry-run prints and exits 0 when the target file already exists', async () => {
+    fs.mkdirSync(path.join(agentDir, 'tools'));
+    const target = path.join(agentDir, 'tools', 'web-search.ts');
+    fs.writeFileSync(target, 'mine');
+    const result = await add(withRegistry('web-search', '--dry-run'));
+    expect(result.code).toBe(0);
+    expect(result.out).toContain('tools/web-search.ts (exists - a real install needs --overwrite)');
+    expect(result.out).toContain('Dry run');
+    expect(fs.readFileSync(target, 'utf8')).toBe('mine');
+  });
+
   it('refuses to overwrite an existing file unless --overwrite', async () => {
     fs.mkdirSync(path.join(agentDir, 'tools'));
     const target = path.join(agentDir, 'tools', 'web-search.ts');

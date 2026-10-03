@@ -12,6 +12,13 @@ function tmpFile(name: string, content: string): string {
 }
 
 describe('loadSpec', () => {
+  it('throws LOUSHO_SPEC_NOT_FOUND for a path that does not exist (no raw ENOENT)', () => {
+    const missing = path.join(os.tmpdir(), `lousho-spec-missing-${process.pid}.yaml`);
+    expect(() => loadSpec(missing)).toThrow(expect.objectContaining({ code: 'LOUSHO_SPEC_NOT_FOUND' }));
+    expect(() => loadSpec(missing)).toThrow(/does not exist/);
+    expect(() => loadSpec(missing)).not.toThrow(/ENOENT/);
+  });
+
   it('loads a .yaml spec file', () => {
     const filePath = tmpFile(
       'agent.yaml',
