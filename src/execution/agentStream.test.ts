@@ -293,7 +293,7 @@ describe('agent.stream()', () => {
   });
 
   it('drives the run to completion when only result is awaited, keeping every event for a later read', async () => {
-    const onEvent = vi.fn<(event: ExecutionEvent) => void>();
+    const onEvent = vi.fn<[ExecutionEvent], void>();
     const run = AgentExecutor.stream({ ...executorOptions(mockModel(['Done here']), []), onEvent });
 
     const result = await run.result;

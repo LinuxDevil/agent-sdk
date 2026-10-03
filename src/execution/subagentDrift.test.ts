@@ -6,7 +6,10 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { createAgent, type CreateAgentConfig, type SimpleAgent } from '../createAgent';
+import { createAgent, type CreateAgentBase, type SimpleAgent } from '../createAgent';
+
+/** Extra createAgent options a test adds on top of the provider and instructions it sets itself. */
+type ExtraConfig = Partial<CreateAgentBase>;
 import { defineTool } from '../tools/defineTool';
 import { memoryStore, type AgentStore } from '../storage/agentStore';
 import { SqliteStore } from '../storage/sqlite';
@@ -53,7 +56,7 @@ function child(turns: MockTurn[], sent: string[], { instructions = 'You send mai
   });
 }
 
-function lead(store: AgentStore, subagents: Record<string, SimpleAgent>, turns: MockTurn[], config: Partial<CreateAgentConfig> = {}) {
+function lead(store: AgentStore, subagents: Record<string, SimpleAgent>, turns: MockTurn[], config: ExtraConfig = {}) {
   const events: AgentEvent[] = [];
   const agent = createAgent({
     provider: mockModel(turns, { defaultModel: 'lead-model' }),
@@ -66,7 +69,9 @@ function lead(store: AgentStore, subagents: Record<string, SimpleAgent>, turns: 
   return { agent, events };
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe.each(stores)('resuming a run paused inside a sub-agent that changed (M10c): %s', (_name, makeStore) => {
   /** A lead whose sub-agent `mailer` paused on `send`. */
@@ -80,7 +85,7 @@ describe.each(stores)('resuming a run paused inside a sub-agent that changed (M1
   }
 
   /** A new lead instance over `store` with `mailer` as defined by `options`. */
-  const resumer = (store: AgentStore, sent: string[], options: ChildOptions, config: Partial<CreateAgentConfig> = {}) =>
+  const resumer = (store: AgentStore, sent: string[], options: ChildOptions, config: ExtraConfig = {}) =>
     lead(store, { mailer: child(['sent!'], sent, options) }, ['done'], config);
 
   it("'error': a changed sub-agent's instructions refuse the resume; the approval stays pending and resolves with the old definition", async () => {
@@ -189,7 +194,7 @@ describe.each(stores)('resuming a run paused inside a sub-agent that changed (M1
       expect(result.finishReason).toBe('awaiting-approval');
       return { store, sent, approvalId: result.approvalId! };
     }
-    const resumerTwoDeep = (store: AgentStore, sent: string[], mailer: ChildOptions, config: Partial<CreateAgentConfig>) =>
+    const resumerTwoDeep = (store: AgentStore, sent: string[], mailer: ChildOptions, config: ExtraConfig) =>
       lead(store, { manager: child(['managed'], sent, { withSend: false, subagents: { mailer: child(['sent!'], sent, mailer) } }) }, ['done'], { maxSubagentDepth: 2, ...config });
 
     it("'error': the grandchild's drift refuses the resume with the lead's mode; fixed, it finishes", async () => {

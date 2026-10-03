@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { createAgent, type CreateAgentConfig } from '../createAgent';
 import { LLMProviderRegistry } from '../providers/llm';
 import type { Message } from '../providers';
+import { textOf } from '../providers';
 import { estimateTokens } from '../models';
 import { defineTool } from '../tools/defineTool';
 import type { AgentEvent, AgentEventOf, AgentRun, AgentHook } from '../execution';
@@ -93,7 +94,7 @@ describe('compaction stream events (LOU-W3.2)', () => {
     const { agent, model } = agentWith(SMALL);
     const result = await agent.send('read four pages');
     expect(result.text).toBe('done');
-    expect(result.messages.some((m) => m.content.startsWith('[pruned: fetch_page result'))).toBe(true);
+    expect(result.messages.some((m) => textOf(m).startsWith('[pruned: fetch_page result'))).toBe(true);
     expect(model.calls).toHaveLength(5);
   });
 
@@ -109,7 +110,7 @@ describe('compaction stream events (LOU-W3.2)', () => {
     expect(started).toMatchObject({ strategy: 'prune-tool-results', contextWindow: 128_000 });
     expect(done.prunedToolCallIds.length).toBeGreaterThan(0);
     expect(done.tokensAfter).toBeLessThan(started.thresholdTokens);
-    const markers = result.messages.filter((m) => m.role === 'tool' && m.content.startsWith('[pruned: fetch_page result'));
+    const markers = result.messages.filter((m) => m.role === 'tool' && textOf(m).startsWith('[pruned: fetch_page result'));
     expect(markers.map((m) => m.toolCallId)).toEqual(done.prunedToolCallIds);
     expect(model.calls).toHaveLength(5);
   });

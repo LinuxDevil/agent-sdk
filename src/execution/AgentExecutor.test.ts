@@ -9,7 +9,7 @@ import { createMockProvider } from '../providers/mock';
 import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
 import { Span, TraceExporter } from './tracing';
-import { LLMProvider, GenerateResult } from '../providers';
+import { LLMProvider, GenerateResult, textOf } from '../providers';
 
 describe('AgentExecutor', () => {
   let provider: ReturnType<typeof createMockProvider>;
@@ -1110,7 +1110,7 @@ describe('AgentExecutor', () => {
         tool: tool({
           description: 'A tool that always fails',
           parameters: z.object({}),
-          execute: async () => {
+          execute: async (): Promise<string> => {
             throw new Error('tool exploded');
           },
         }),
@@ -1715,7 +1715,7 @@ describe('AgentExecutor', () => {
         tool: tool({
           description: 'always throws',
           parameters: z.object({}),
-          execute: async () => {
+          execute: async (): Promise<string> => {
             throw new Error('tool exploded');
           },
         }),
@@ -1816,7 +1816,7 @@ describe('AgentExecutor', () => {
 
         expect(result.text).toBe('ok');
         const surfaced = result.messages.find(
-          (m) => m.role === 'user' && m.content.startsWith('[provider-error]')
+          (m) => m.role === 'user' && textOf(m).startsWith('[provider-error]')
         );
         expect(surfaced).toBeDefined();
         expect(surfaced!.content).toContain('rate-limit');
@@ -1877,7 +1877,7 @@ describe('AgentExecutor', () => {
 
         expect(result.text).toBe('ok');
         const surfaced = result.messages.find(
-          (m) => m.role === 'user' && m.content.startsWith('[provider-error]')
+          (m) => m.role === 'user' && textOf(m).startsWith('[provider-error]')
         );
         expect(surfaced).toBeDefined();
         expect(surfaced!.content).toContain('context-length-exceeded');

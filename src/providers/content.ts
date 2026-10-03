@@ -4,6 +4,9 @@
 
 import type { ContentPart, Message } from './llm';
 
+/** Anything `textOf` reads: a message, or a frozen copy of one whose content parts are readonly. */
+type TextSource = { readonly content: string | readonly ContentPart[] };
+
 /**
  * The text of a message (or of its `content`): the string itself, or its
  * text parts concatenated. Image and file parts contribute nothing.
@@ -11,11 +14,12 @@ import type { ContentPart, Message } from './llm';
  * @example
  * textOf({ role: 'user', content: [{ type: 'text', text: 'Hi' }, { type: 'image', image: url }] }); // 'Hi'
  */
-export function textOf(message: Pick<Message, 'content'> | Message['content']): string {
-  const content = typeof message === 'object' && !Array.isArray(message) ? message.content : message;
-  if (!Array.isArray(content)) return typeof content === 'string' ? content : '';
+export function textOf(message: TextSource | TextSource['content']): string {
+  const content = typeof message === 'object' && 'content' in message ? message.content : message;
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
   let text = '';
-  for (const part of content) if (part.type === 'text') text += part.text;
+  for (const part of content as readonly ContentPart[]) if (part.type === 'text') text += part.text;
   return text;
 }
 

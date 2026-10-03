@@ -16,6 +16,7 @@ import { ToolRegistry } from '../tools';
 import { mockModel, MockToolCall } from '../testing';
 import { AgentConfig } from '../types';
 import type { Message } from '../providers';
+import { textOf } from '../providers';
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -232,7 +233,7 @@ describe('parallel tool calls (LOU-V3)', () => {
     expect(finishReason).toBe('stop');
     const [brokenMsg, okMsg] = messages.filter((m) => m.role === 'tool');
     expect(brokenMsg).toMatchObject({ toolCallId: 'call_broken', isError: true });
-    expect(JSON.parse(brokenMsg.content)).toMatchObject({ message: 'kaput' });
+    expect(JSON.parse(textOf(brokenMsg))).toMatchObject({ message: 'kaput' });
     expect(okMsg).toMatchObject({ toolCallId: 'call_ok', content: '"ok done"' });
     expect(okMsg.isError).toBeUndefined();
   });
@@ -293,7 +294,7 @@ describe('parallel tool calls (LOU-V3)', () => {
     expect(toolMessages.map((m) => m.toolCallId)).toEqual(['call_finisher', 'call_listener', 'call_queued']);
     expect(toolMessages[0].content).toBe('"finished anyway"');
     expect(toolMessages[1].isError).toBe(true);
-    expect(JSON.parse(toolMessages[2].content)).toMatchObject({ kind: 'not-run', message: expect.stringContaining('cancelled') });
+    expect(JSON.parse(textOf(toolMessages[2]))).toMatchObject({ kind: 'not-run', message: expect.stringContaining('cancelled') });
   });
 
   it('checkpoints only the in-order prefix of finished calls', async () => {

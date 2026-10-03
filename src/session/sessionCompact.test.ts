@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { createAgent } from '../createAgent';
 import { mockModel } from '../testing';
-import { pinMessage } from '../context/compaction';
+import { pinMessage, type CompactionStrategy } from '../context/compaction';
 import { SqliteStore } from '../storage/sqlite';
 import { MemorySessionStore } from './index';
 import type { SessionStore } from './sessionStore';
@@ -104,7 +104,10 @@ describe('compaction strategy of a session', () => {
   it("agent.session() uses the agent's compaction setting (W8 follow-up)", async () => {
     const store = new MemorySessionStore();
     await store.save('s4', toolTurn('a'));
-    const strategy = { name: 'agent-strategy', compact: async (messages: Message[]) => messages };
+    const strategy: CompactionStrategy = {
+      name: 'agent-strategy',
+      compact: async ({ messages }) => ({ messages, tokensBefore: 0, tokensAfter: 0, prunedToolCallIds: [] }),
+    };
     const session = createAgent({ provider: mockModel([]), compaction: { strategy } }).session({ id: 's4', store });
     expect((await session.compact()).strategy).toBe('agent-strategy');
   });

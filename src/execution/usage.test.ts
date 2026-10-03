@@ -13,6 +13,7 @@ import { defineTool } from '../tools/defineTool';
 import type { AgentConfig } from '../types';
 import { mockModel } from '../testing';
 import { formatUsage, normalizeUsage } from '../models';
+import { textOf } from '../providers';
 
 const echo = defineTool({
   name: 'echo',
@@ -181,7 +182,7 @@ describe('run usage (LOU-V5)', () => {
     expect(result.stepUsage).toHaveLength(2);
     // the model only sees token counts, not the whole breakdown
     const toolMessage = result.messages.find((m) => m.role === 'tool');
-    expect(JSON.parse(toolMessage!.content)).toEqual({
+    expect(JSON.parse(textOf(toolMessage!))).toEqual({
       text: 'sub done',
       usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
     });

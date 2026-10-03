@@ -9,12 +9,12 @@ import { join } from 'node:path';
 import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import { PropagatingToolError } from '../execution/AgentExecutor';
-import { mockModel } from '../testing';
+import { mockModel, type MockRequest } from '../testing';
 import { FileSessionStore, MemorySessionStore } from './index';
 import { AgentSession, providerValidPrefix } from './AgentSession';
-import type { Message } from '../providers/llm';
+import type { Message, ToolCall } from '../providers/llm';
 
-const convo = (call: { messages: readonly Message[] } | undefined): readonly Message[] =>
+const convo = (call: Pick<MockRequest, 'messages'> | undefined): MockRequest['messages'] =>
   (call?.messages ?? []).filter((m) => m.role !== 'system');
 const roles = (messages: readonly { role: string }[]): string[] => messages.map((m) => m.role);
 
@@ -40,7 +40,8 @@ describe('AgentSession', () => {
   it('exposes a snapshot that cannot corrupt the session', async () => {
     const session = createAgent({ provider: mockModel(['a', 'b']) }).session();
     await session.send('1');
-    (session.messages as { content: string }[])[0].content = 'tampered';
+    // Deliberately defeat the readonly type: the test is that the runtime snapshot still cannot corrupt the session.
+    (session.messages as unknown as { content: string }[])[0].content = 'tampered';
     expect(session.messages[0].content).toBe('1');
   });
 
@@ -241,20 +242,20 @@ describe('AgentSession', () => {
 });
 
 describe('providerValidPrefix', () => {
-  const call = { id: 'c1', name: 't', arguments: {} };
+  const call: ToolCall = { id: 'c1', type: 'function', function: { name: 't', arguments: '{}' } };
   it('drops an assistant tool-call turn without its results', () => {
-    const messages = [
-      { role: 'user' as const, content: 'q' },
-      { role: 'assistant' as const, content: '', toolCalls: [call] },
+    const messages: Message[] = [
+      { role: 'user', content: 'q' },
+      { role: 'assistant', content: '', toolCalls: [call] },
     ];
     expect(providerValidPrefix(messages)).toEqual([messages[0]]);
   });
 
   it('drops a partially answered batch and orphaned tool messages', () => {
     const two = [call, { ...call, id: 'c2' }];
-    const partial = [
-      { role: 'assistant' as const, content: '', toolCalls: two },
-      { role: 'tool' as const, content: '"x"', toolCallId: 'c1' },
+    const partial: Message[] = [
+      { role: 'assistant', content: '', toolCalls: two },
+      { role: 'tool', content: '"x"', toolCallId: 'c1' },
     ];
     expect(providerValidPrefix(partial)).toEqual([]);
     expect(providerValidPrefix([{ role: 'tool', content: '"x"', toolCallId: 'c1' }])).toEqual([]);

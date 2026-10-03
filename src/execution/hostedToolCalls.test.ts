@@ -27,7 +27,9 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const search = { name: 'web_search', id: 'ws_1', args: { query: 'q' }, result: { hits: 2 }, sources: [{ url: 'https://lousho.com', title: 'Lousho' }] };
 
@@ -42,7 +44,7 @@ describe('mockModel hosted turns', () => {
       { id: 'hosted_1', name: 'code_interpreter', args: { code: '1+1' }, result: 2 },
     ]);
     expect(model.lastCall?.hostedTools?.map((tool) => tool.name)).toEqual(['web_search', 'code_interpreter']);
-    expect(model.supportsHostedTool()).toBe(true);
+    expect(model.supportsHostedTool?.('web_search')).toBe(true);
   });
 
   it('stream() yields each hosted call, then its result, before the text', async () => {

@@ -320,7 +320,7 @@ describe('permission modes and sub-agents (N4)', () => {
   });
 
   it('refuses a remote sub-agent in plan mode without calling it: it does not inherit the mode', async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>();
+    const fetch = vi.fn<Parameters<typeof globalThis.fetch>, ReturnType<typeof globalThis.fetch>>();
     const model = mockModel([{ toolCalls: [{ name: 'task', args: { agent: 'remote', prompt: 'Change it', description: 'change' } }] }, 'ok']);
     const lead = createAgent({ provider: model, subagents: { remote: remoteAgent({ url: 'https://agent.example.test', fetch }) }, permissionMode: 'plan' });
     await lead.send('go');
