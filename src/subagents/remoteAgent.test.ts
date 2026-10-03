@@ -90,7 +90,9 @@ describe('remoteAgent (LOU-Y7)', () => {
     const { agent } = lead(remoteAgent({ url: 'https://remote.test', auth: TOKEN, fetch: server.fetch }));
     const events: string[] = [];
 
-    const result = await agent.send('go', { onEvent: (e) => events.push(JSON.stringify(e)) });
+    const run = agent.stream('go');
+    for await (const event of run) events.push(JSON.stringify(event));
+    const result = await run.result;
 
     expect(toolResult(result.messages)).toMatchObject({ toolName: 'task', kind: 'execution' });
     expect(errorMessage(result.messages)).toContain('LOUSHO_REMOTE_UNAUTHORIZED');
@@ -128,7 +130,10 @@ describe('remoteAgent (LOU-Y7)', () => {
     const remoteModel = mockModel([{ toolCalls: [{ name: 'deploy' }] }, 'never']);
     const server = deployed(createAgent({ provider: remoteModel, instructions: 'remote', tools: [deploy] }));
     const remote = remoteAgent({ url: 'https://remote.test', auth: TOKEN, fetch: server.fetch });
-    const error = await remote.run('go', { name: 'remote', taskId: 'task_1' }).catch((e: unknown) => e as Error);
+    const error = await remote.run('go', { name: 'remote', taskId: 'task_1' }).then(
+      () => new Error('expected the run to reject'),
+      (e: unknown) => e as Error
+    );
     expect(error.message).toContain('awaiting approval');
     expect(error.message).toMatch(/session 'task_[\w-]+'/);
     expect(error).toMatchObject({ code: 'LOUSHO_SESSION_AWAITING_APPROVAL' });

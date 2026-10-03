@@ -5,12 +5,11 @@ import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
 import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
-import { mockModel } from '../testing';
+import { mockModel, type MockRequest } from '../testing';
 import type { AgentEvent } from '../execution/agentEvents';
 import type { AgentRun } from '../execution/agentRun';
 import type { SessionStore } from './index';
 import { MemorySessionStore } from './index';
-import type { Message } from '../providers/llm';
 
 async function collect(run: AgentRun): Promise<AgentEvent[]> {
   const events: AgentEvent[] = [];
@@ -249,6 +248,6 @@ describe('AgentSession.stream()', () => {
   });
 });
 
-function convoTexts(messages: readonly Message[]): unknown[] {
+function convoTexts(messages: MockRequest['messages']): unknown[] {
   return messages.filter((m) => m.role !== 'system').map((m) => m.content);
 }

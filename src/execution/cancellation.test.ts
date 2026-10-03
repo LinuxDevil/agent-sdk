@@ -20,6 +20,7 @@ import { createAgent } from '../createAgent';
 import { ToolRegistry } from '../tools';
 import { AgentConfig, ToolDescriptor } from '../types';
 import type { GenerateOptions, GenerateResult, LLMProvider, ToolCall } from '../providers';
+import { textOf } from '../providers';
 
 const usage = { promptTokens: 1, completionTokens: 1, totalTokens: 2 };
 
@@ -244,7 +245,7 @@ describe('AgentExecutor cancellation (LOU-V1)', () => {
     expect(result.finishReason).toBe('aborted');
     const toolMessages = result.messages.filter((m) => m.role === 'tool');
     expect(toolMessages.map((m) => m.toolCallId)).toEqual(['call_first', 'call_second']);
-    expect(JSON.parse(toolMessages[1].content)).toMatchObject({
+    expect(JSON.parse(textOf(toolMessages[1]))).toMatchObject({
       kind: 'not-run',
       message: expect.stringContaining('cancelled'),
     });
@@ -320,7 +321,7 @@ describe('AgentExecutor cancellation (LOU-V1)', () => {
 
     expect(generate).toHaveBeenCalledTimes(1);
     expect(result.finishReason).toBe('aborted');
-    expect(result.messages.some((m) => m.content.startsWith('[provider-error]'))).toBe(false);
+    expect(result.messages.some((m) => textOf(m).startsWith('[provider-error]'))).toBe(false);
     expect(events.some((e) => e.type === 'error')).toBe(false);
   });
 

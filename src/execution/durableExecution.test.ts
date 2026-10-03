@@ -22,6 +22,7 @@ import { ToolRegistry } from '../tools';
 import { mockModel, MockTurn } from '../testing';
 import { AgentConfig } from '../types';
 import type { Message } from '../providers';
+import { textOf } from '../providers';
 
 type Runs = Record<string, number>;
 
@@ -182,7 +183,7 @@ describe('LOU-U7: approval in the middle of a tool batch', () => {
     expect(runs).toEqual({ a: 1, b: 0, c: 1 });
     const [, rejected, c] = result.messages.filter((m) => m.role === 'tool');
     expect(rejected).toMatchObject({ toolCallId: 'call_b', isError: true });
-    expect(JSON.parse(rejected.content)).toMatchObject({ kind: 'rejected', message: expect.stringContaining('rejected'), note: 'not today' });
+    expect(JSON.parse(textOf(rejected))).toMatchObject({ kind: 'rejected', message: expect.stringContaining('rejected'), note: 'not today' });
     expect(c).toMatchObject({ toolCallId: 'call_c', content: '"c done"' });
   });
 
@@ -248,7 +249,7 @@ describe('LOU-U7: approval in the middle of a tool batch', () => {
     expect(toolIds(result.messages)).toEqual(['call_a', 'call_b', 'call_c']);
     const c = result.messages.find((m) => m.toolCallId === 'call_c')!;
     expect(c.isError).toBe(true);
-    expect(JSON.parse(c.content)).toMatchObject({ kind: 'not-run', message: expect.stringMatching(/not run/) });
+    expect(JSON.parse(textOf(c))).toMatchObject({ kind: 'not-run', message: expect.stringMatching(/not run/) });
   });
 });
 

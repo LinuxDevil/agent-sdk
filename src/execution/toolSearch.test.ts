@@ -17,7 +17,9 @@ import type { ToolSearchResult } from './toolSearch';
 import { loadedToolNames, visibleTools } from './toolDeferral';
 import { defineSkill } from '../skills/defineSkill';
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const names = (model: MockModel, call: number) => (model.calls[call].tools ?? []).map((tool) => tool.function.name);
 const systemOf = (model: MockModel, call: number) => (model.calls[call].messages.find((m) => m.role === 'system')?.content as string) ?? '';

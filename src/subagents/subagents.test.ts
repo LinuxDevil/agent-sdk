@@ -130,7 +130,7 @@ describe('subagents option and the task tool (LOU-Y3)', () => {
     const taskStart = events.findIndex((e) => e.type === 'tool.start' && !e.subagent);
     const taskDone = events.findIndex((e) => e.type === 'tool.done' && !e.subagent);
     expect(events.findIndex((e) => e.subagent)).toBeGreaterThan(taskStart);
-    expect(events.findLastIndex((e) => e.subagent)).toBeLessThan(taskDone);
+    expect(events.map((e) => Boolean(e.subagent)).lastIndexOf(true)).toBeLessThan(taskDone);
   });
 
   describe('maxSubagentDepth', () => {

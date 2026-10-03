@@ -18,7 +18,9 @@ import type { IoGuardrail } from './ioGuardrails';
 import { ALICE, fakeOAuthServer, githubProvider, listReposTool } from '../oauth/__fixtures__/fakeOAuth';
 import { loadQuickJS, runScript, ScriptError, type ScriptHost } from './codeModeIsolate';
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const PRICES: Record<string, number> = { apple: 1.5, pear: 2, plum: 0.75 };
 const RATES: Record<string, number> = { EUR: 0.5, USD: 1 };

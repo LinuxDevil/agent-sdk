@@ -5,7 +5,10 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { createAgent, type CreateAgentConfig } from '../createAgent';
+import { createAgent, type CreateAgentBase } from '../createAgent';
+
+/** Extra createAgent options a test adds on top of the provider and instructions it sets itself. */
+type ExtraConfig = Partial<CreateAgentBase>;
 import { defineTool, type DefinedTool } from '../tools/defineTool';
 import { ToolRegistry } from '../tools';
 import { PropagatingToolError } from './AgentExecutor';
@@ -54,7 +57,9 @@ async function collect(run: AgentRun): Promise<AgentEvent[]> {
   return events;
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('agent fingerprint (LOU-W9.2)', () => {
   const registryOf = (tools: DefinedTool[]) => {
@@ -95,7 +100,7 @@ describe('agent fingerprint (LOU-W9.2)', () => {
 
 describe.each(stores)('resuming with a changed agent: %s', (_name, makeStore) => {
   /** Crashes a durable run in tool `b` (its call is checkpointed without a result) and returns the store. */
-  async function crashedRun(config: Partial<CreateAgentConfig> = {}, sessionId = 'job-1') {
+  async function crashedRun(config: ExtraConfig = {}, sessionId = 'job-1') {
     const store = makeStore();
     const { list } = toolsOf(['a', 'b'], { crash: 'b' });
     const first = createAgent({ provider: mockModel([calling('a'), calling('b')], { defaultModel: 'gpt-old' }), instructions: 'Be brief.', tools: list, store, ...config });
@@ -103,7 +108,7 @@ describe.each(stores)('resuming with a changed agent: %s', (_name, makeStore) =>
     return { store, sessionId };
   }
 
-  const resumer = (store: AgentStore, config: Partial<CreateAgentConfig> = {}, model = mockModel(['Resumed.'], { defaultModel: 'gpt-new' })) => ({
+  const resumer = (store: AgentStore, config: ExtraConfig = {}, model = mockModel(['Resumed.'], { defaultModel: 'gpt-new' })) => ({
     model,
     agent: createAgent({ provider: model, instructions: 'Be brief.', tools: toolsOf(['a', 'b']).list, store, ...config }),
   });
@@ -215,7 +220,7 @@ describe.each(stores)('resuming with a changed agent: %s', (_name, makeStore) =>
   });
 
   describe('approvals', () => {
-    async function pausedRun(config: Partial<CreateAgentConfig> = {}) {
+    async function pausedRun(config: ExtraConfig = {}) {
       const store = makeStore();
       const tools = toolsOf(['lookup', 'send'], { approve: 'send' });
       const agent = createAgent({ provider: mockModel([calling('send')], { defaultModel: 'gpt-old' }), instructions: 'Be brief.', tools: tools.list, store, ...config });
@@ -223,7 +228,7 @@ describe.each(stores)('resuming with a changed agent: %s', (_name, makeStore) =>
       expect(paused.finishReason).toBe('awaiting-approval');
       return { store, approvalId: paused.approvalId! };
     }
-    const resumedBy = (store: AgentStore, config: Partial<CreateAgentConfig>, tools = toolsOf(['lookup', 'send'], { approve: 'send' })) => ({
+    const resumedBy = (store: AgentStore, config: ExtraConfig, tools = toolsOf(['lookup', 'send'], { approve: 'send' })) => ({
       tools,
       model: mockModel(['Sent.'], { defaultModel: 'gpt-new' }),
       make(model = mockModel(['Sent.'], { defaultModel: 'gpt-new' })) {

@@ -13,6 +13,7 @@ import {
   type CompactionStrategy,
 } from './compaction';
 import type { Message } from '../providers';
+import { textOf } from '../providers';
 import { estimateTokens } from '../models';
 import { HookRegistry } from '../execution/hooks';
 import { AgentExecutor } from '../execution/AgentExecutor';
@@ -250,13 +251,13 @@ describe('async strategies in the hook', () => {
     expect(infos[0].error).toBeUndefined();
 
     const fellBack = await runHook(summarizeStrategy({ model: mockModel([{ error: new Error('boom') }]) }), (info) => infos.push(info));
-    expect(fellBack.some((m) => m.content.startsWith('[pruned: '))).toBe(true);
+    expect(fellBack.some((m) => textOf(m).startsWith('[pruned: '))).toBe(true);
     expect(infos[1]).toMatchObject({ strategy: 'summarize', prunedToolCallIds: ['call_1', 'call_2', 'call_3'] });
     expect(infos[1].error?.message).toBe('boom');
   });
 
   it('leaves the run alone and reports the error when a strategy throws', async () => {
-    const onCompaction = vi.fn<(info: CompactionInfo) => void>();
+    const onCompaction = vi.fn<[CompactionInfo], void>();
     const throwing: CompactionStrategy = { name: 'broken', compact: async () => Promise.reject(new Error('bad strategy')) };
     const messages = await runHook(throwing, onCompaction);
     expect(messages).toEqual(transcript(4));

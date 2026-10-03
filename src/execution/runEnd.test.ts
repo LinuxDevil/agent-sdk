@@ -20,7 +20,7 @@ function options(script: MockTurn[], tools: DefinedTool[] = [ping, gated]) {
   const toolRegistry = new ToolRegistry();
   toolRegistry.registerMany(tools);
   const agent: AgentConfig = { id: 'a', name: 'Agent', prompt: 'p', tools: Object.fromEntries(tools.map((t) => [t.name, { tool: t.name }])) };
-  const onRunEnd = vi.fn<NonNullable<ExecuteOptions['onRunEnd']>>();
+  const onRunEnd = vi.fn<Parameters<NonNullable<ExecuteOptions['onRunEnd']>>, void | Promise<void>>();
   return { agent, provider: mockModel(script), toolRegistry, input: 'go', onRunEnd } satisfies ExecuteOptions;
 }
 

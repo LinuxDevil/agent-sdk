@@ -7,6 +7,7 @@ import { CassetteMismatchError, mockModel, recordReplay } from './index';
 import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import type { GenerateOptions, StreamChunk } from '../providers/llm';
+import { textOf } from '../providers';
 
 let dir: string;
 let file: string;
@@ -129,7 +130,8 @@ describe('recordReplay mismatches', () => {
   it('detects changed tools, schemas, temperature and a missing message', async () => {
     const tool = (shape: z.ZodRawShape) => ({
       type: 'function' as const,
-      function: { name: 't', description: 'd', parameters: z.object(shape) },
+      // The SDK hands a zod schema through as `parameters` (generateStep.ts casts it); the fingerprint reads it as one.
+      function: { name: 't', description: 'd', parameters: z.object(shape) as unknown as Record<string, unknown> },
     });
     await record(['a'], [ask('q', { tools: [tool({ city: z.string() })], temperature: 0 })]);
     const replay = (): ReturnType<typeof recordReplay> => recordReplay(undefined, { cassette: file, mode: 'replay' });
@@ -234,7 +236,7 @@ describe('recordReplay normalization', () => {
   it('applies a custom normalize hook on record and replay', async () => {
     const normalize = (r: GenerateOptions): GenerateOptions => ({
       ...r,
-      messages: r.messages.map((m) => ({ ...m, content: m.content.replace(/user-\d+/g, 'user-N') })),
+      messages: r.messages.map((m) => ({ ...m, content: textOf(m).replace(/user-\d+/g, 'user-N') })),
     });
     await record(['ok'], [ask('hello user-1')]);
     fs.rmSync(file);
