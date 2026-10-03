@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { APICallError } from 'ai';
 import { createAgent } from './createAgent';
-import { LLMProviderRegistry, type LLMProvider, type LLMProviderConfig } from './providers/llm';
+import { LLMProviderRegistry, type LLMProvider, type LLMProviderConfig, type StreamChunk } from './providers/llm';
 import { mockModel, type MockModel } from './testing';
 import type { AgentEvent, AgentRun } from './execution';
 
@@ -33,6 +33,34 @@ function named(model: MockModel, name: string): LLMProvider {
     supportsTools: (id) => model.supportsTools(id),
     supportsStreaming: (id) => model.supportsStreaming(id),
     getModels: () => model.getModels(),
+  };
+}
+
+/**
+ * `provider` whose stream() resolves but whose stream fails on its first
+ * read `failures` times, then delegates - the way streaming providers
+ * report a request error inside the stream (LOU-R6).
+ */
+function failInsideStream(provider: LLMProvider, failures: unknown[]): LLMProvider {
+  const inner = provider.stream.bind(provider);
+  return {
+    ...provider,
+    stream: async (call) => {
+      const failure = failures.shift();
+      if (failure === undefined) return inner(call);
+      return {
+        fullStream: (async function* (): AsyncGenerator<StreamChunk> {
+          throw failure;
+        })(),
+        textStream: (async function* (): AsyncGenerator<string> {
+          throw failure;
+        })(),
+        text: Promise.reject(failure),
+        usage: Promise.reject(failure),
+        finishReason: Promise.reject(failure),
+        toolCalls: Promise.reject(failure),
+      };
+    },
   };
 }
 
@@ -165,6 +193,53 @@ describe('createAgent retry and fallbackModels (LOU-V7.2)', () => {
     const events = await collect(run);
     expect((await run.result).text).toBe('retried');
     expect(events.some((e) => e.type === 'provider.retry' && e.provider === 'mock')).toBe(true);
+  });
+
+  it('stream(): retries a failure reported inside the stream and emits provider.retry (LOU-R6)', async () => {
+    const model = mockModel(['recovered']);
+    const provider = failInsideStream(named(model, 'openai'), [apiError(503)]);
+
+    const run = createAgent({ provider, retry: fast }).stream('hi');
+    const events = await collect(run);
+
+    expect((await run.result).text).toBe('recovered');
+    expect(events.find((e) => e.type === 'provider.retry')).toMatchObject({ attempt: 1, provider: 'openai' });
+    expect(events.map((e) => e.type)).toContain('text.delta');
+  });
+
+  it('stream(): falls back on a failure reported inside the stream and emits provider.fallback (LOU-R6)', async () => {
+    const primary = failInsideStream(named(mockModel([]), 'openai'), [apiError(503), apiError(503), apiError(503)]);
+    const fallback = mockModel(['from the fallback'], { defaultModel: 'claude-3-5-haiku-latest' });
+    stubRegistry({ anthropic: named(fallback, 'anthropic') });
+
+    const run = createAgent({ provider: primary, retry: fast, fallbackModels: ['anthropic/claude-3-5-haiku-latest'] }).stream('hi');
+    const events = await collect(run);
+
+    expect((await run.result).text).toBe('from the fallback');
+    expect(events.find((e) => e.type === 'provider.fallback')).toMatchObject({ from: 'openai', to: 'anthropic' });
+  });
+
+  it('stream(): a failure mid-stream, after the first chunk, is not retried (LOU-R6)', async () => {
+    const model = mockModel(['unused']);
+    const inner = named(model, 'openai');
+    const boom = apiError(503);
+    const provider: LLMProvider = {
+      ...inner,
+      stream: async (call) => {
+        const streamed = await inner.stream(call);
+        const fullStream = (async function* (): AsyncGenerator<StreamChunk> {
+          yield { type: 'text-delta', textDelta: 'partial ' };
+          throw boom;
+        })();
+        return { ...streamed, fullStream };
+      },
+    };
+
+    const run = createAgent({ provider, retry: fast }).stream('hi');
+    const events = await collect(run);
+    await expect(run.result).rejects.toMatchObject({ message: 'HTTP 503' });
+    expect(events.filter((e) => e.type === 'provider.retry')).toHaveLength(0);
+    expect(model.calls).toHaveLength(1);
   });
 
   it('session.stream() carries the provider events', async () => {

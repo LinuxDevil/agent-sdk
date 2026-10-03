@@ -12,7 +12,7 @@
  * included).
  */
 
-import type { GenerateOptions, LLMProvider, LLMProviderConfig } from './llm';
+import type { GenerateOptions, LLMProvider, LLMProviderConfig, StreamChunk, StreamResult } from './llm';
 import { abortableDelay } from './abortableDelay';
 import { providerEventsOf } from './providerEvents';
 import {
@@ -53,7 +53,7 @@ export interface WithRetryOptions {
   onRetry?: (info: RetryInfo) => void;
   /** Stops retrying (and aborts the in-flight call) once aborted; the call's own `signal` does the same. */
   signal?: AbortSignal;
-  /** Per-attempt time limit in ms (for `stream()` it also bounds reading the stream); a timed-out attempt is retryable. */
+  /** Per-attempt time limit in ms (for `stream()` it bounds establishing the stream, up to its first chunk); a timed-out attempt is retryable. */
   timeoutMs?: number;
 }
 
@@ -111,11 +111,63 @@ async function callWithRetry<T>(
   }
 }
 
+/** A stream() attempt opened far enough to know it works: the result and its first fullStream chunk. */
+interface OpenedStream {
+  streamed: StreamResult;
+  iterator: AsyncIterator<StreamChunk>;
+  first: IteratorResult<StreamChunk>;
+}
+
+/** The final values of a discarded stream() attempt, marked read so they cannot reject unhandled. */
+function silence(streamed: StreamResult): void {
+  for (const value of [streamed.text, streamed.usage, streamed.finishReason, streamed.toolCalls]) {
+    Promise.resolve(value).catch(() => undefined);
+  }
+}
+
+/**
+ * What a `stream()` attempt is: the `stream()` call plus pulling the stream's
+ * first chunk. Streaming providers resolve `stream()` before the request
+ * finishes and report its failure inside the returned stream, so both count
+ * as the attempt's failure a retry or fallback answers. Once the first chunk
+ * is out the attempt is committed: a later failure propagates unchanged,
+ * since part of the stream may already have been consumed.
+ */
+async function openStream(provider: LLMProvider, call: GenerateOptions): Promise<OpenedStream> {
+  const streamed = await provider.stream(call);
+  const iterator = streamed.fullStream[Symbol.asyncIterator]();
+  let first: IteratorResult<StreamChunk>;
+  try {
+    first = await iterator.next();
+  } catch (error) {
+    silence(streamed);
+    throw error;
+  }
+  if (!first.done && first.value.type === 'error') {
+    silence(streamed);
+    throw first.value.error ?? new Error('The model stream reported an error without details');
+  }
+  return { streamed, iterator, first };
+}
+
+/** `opened` as the StreamResult of a committed attempt: its first chunk, then the rest of the stream. */
+function streamResultOf({ streamed, iterator, first }: OpenedStream): StreamResult {
+  silence(streamed);
+  const fullStream = (async function* (): AsyncGenerator<StreamChunk> {
+    if (first.done) return;
+    yield first.value;
+    for (let next = await iterator.next(); !next.done; next = await iterator.next()) yield next.value;
+  })();
+  return { ...streamed, fullStream };
+}
+
 /**
  * Retry a provider's `generate()` and `stream()` on transient failures, with
  * exponential backoff that honors a provider's `retryAfterMs` hint. A
- * `stream()` call is retried only when it rejects; an error delivered inside
- * an already-returned stream is not, since part of it may have been consumed.
+ * `stream()` call is retried when establishing it fails - `stream()`
+ * rejecting, or the stream failing (or reporting an `error` chunk) before it
+ * yields its first chunk; an error after the first chunk is not retried,
+ * since part of the stream may already have been consumed.
  *
  * @example
  * ```ts
@@ -131,7 +183,7 @@ export function withRetry(provider: LLMProvider, options: WithRetryOptions = {})
       return provider.defaultModel;
     },
     generate: (call) => callWithRetry(provider, call, (attempt) => provider.generate(attempt), options),
-    stream: (call) => callWithRetry(provider, call, (attempt) => provider.stream(attempt), options),
+    stream: (call) => callWithRetry(provider, call, (attempt) => openStream(provider, attempt), options).then(streamResultOf),
     supportsTools: (model) => provider.supportsTools(model),
     supportsStreaming: (model) => provider.supportsStreaming(model),
     getModels: () => provider.getModels(),
@@ -171,6 +223,10 @@ export interface WithFallbackOptions {
  * first. Rethrows the last error when all fail. `name` and `defaultModel`
  * report the provider that served (or is serving) the latest call;
  * `supportsTools`, `supportsStreaming`, `getModels` and `supportsHostedTool` ask the first.
+ *
+ * A `stream()` call falls back on the same boundary `withRetry()` retries on:
+ * establishing the stream failing (up to its first chunk). A failure after
+ * the first chunk propagates unchanged.
  *
  * A call's `model` goes only to the first provider, and only when it differs
  * from this wrapper's `defaultModel`; otherwise, and always for fallbacks,
@@ -222,7 +278,7 @@ export function withFallback(providers: LLMProvider[], options: WithFallbackOpti
       return active.defaultModel;
     },
     generate: (call) => run(call, (provider, attempt) => provider.generate(attempt)),
-    stream: (call) => run(call, (provider, attempt) => provider.stream(attempt)),
+    stream: async (call) => streamResultOf(await run(call, (provider, attempt) => openStream(provider, attempt))),
     supportsTools: (model) => first.supportsTools(model),
     supportsStreaming: (model) => first.supportsStreaming(model),
     getModels: () => first.getModels(),

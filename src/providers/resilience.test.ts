@@ -4,7 +4,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { APICallError } from 'ai';
-import type { GenerateOptions, LLMProvider } from './llm';
+import type { GenerateOptions, LLMProvider, StreamChunk } from './llm';
 import { MockLLMProvider } from './mock';
 import { isRetryableProviderError, resilientProvider, withFallback, withRetry } from './resilience';
 import { CompactedLLMProviderError, compactProviderError } from '../execution/errors';
@@ -40,6 +40,67 @@ function flaky(failures: unknown[], name = 'flaky', reply = `${name} ok`) {
     getModels: async () => [`${name}-model`],
   };
   return { provider, calls };
+}
+
+/**
+ * A provider whose `stream()` resolves, then fails inside the stream the way
+ * a streaming provider reports a request error: the fullStream's first read
+ * throws, or its first chunk is an `error` chunk (LOU-R6).
+ */
+function flakyStream(failures: unknown[], name = 'flaky', reply = `${name} ok`) {
+  const inner = new MockLLMProvider({ responses: [reply], defaultModel: `${name}-model` });
+  const calls: GenerateOptions[] = [];
+  const provider: LLMProvider = {
+    name,
+    defaultModel: inner.defaultModel,
+    generate: (call) => inner.generate(call),
+    stream: async (call) => {
+      calls.push(call);
+      const failure = failures.shift();
+      if (failure === undefined) return inner.stream(call);
+      if (failure === 'error-chunk') {
+        return {
+          fullStream: (async function* (): AsyncGenerator<StreamChunk> {
+            yield { type: 'error', error: apiError(503) };
+          })(),
+          textStream: (async function* (): AsyncGenerator<string> {
+            yield* [];
+          })(),
+          text: Promise.reject(apiError(503)),
+          usage: Promise.resolve(undefined),
+          finishReason: Promise.resolve('error'),
+          toolCalls: Promise.resolve([]),
+        };
+      }
+      return {
+        fullStream: (async function* (): AsyncGenerator<StreamChunk> {
+          throw failure;
+        })(),
+        textStream: (async function* (): AsyncGenerator<string> {
+          throw failure;
+        })(),
+        text: Promise.reject(failure),
+        usage: Promise.reject(failure),
+        finishReason: Promise.reject(failure),
+        toolCalls: Promise.reject(failure),
+      };
+    },
+    supportsTools: () => true,
+    supportsStreaming: () => true,
+    getModels: async () => [`${name}-model`],
+  };
+  return { provider, calls };
+}
+
+async function collect(stream: AsyncIterable<StreamChunk>): Promise<StreamChunk[]> {
+  const chunks: StreamChunk[] = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  return chunks;
+}
+
+/** The text of a collected stream's `text-delta` chunks. */
+function textOf(chunks: StreamChunk[]): string {
+  return chunks.map((chunk) => chunk.textDelta ?? '').join('');
 }
 
 const fast = { backoff: { initialMs: 1, jitter: false } };
@@ -154,6 +215,71 @@ describe('withRetry', () => {
     expect(calls).toHaveLength(2);
   });
 
+  it('retries a stream() whose stream fails before its first chunk (LOU-R6)', async () => {
+    const { provider, calls } = flakyStream([apiError(503), apiError(429)]);
+    const onRetry = vi.fn();
+
+    const stream = await withRetry(provider, { ...fast, onRetry }).stream(request);
+    const chunks = await collect(stream.fullStream);
+
+    expect(calls).toHaveLength(3);
+    expect(onRetry.mock.calls.map(([info]) => info.attempt)).toEqual([1, 2]);
+    expect(textOf(chunks)).toBe('flaky ok');
+    await expect(stream.text).resolves.toBe('flaky ok');
+  });
+
+  it('retries a stream() whose first chunk is an error chunk (LOU-R6)', async () => {
+    const { provider, calls } = flakyStream(['error-chunk']);
+
+    const stream = await withRetry(provider, fast).stream(request);
+    const chunks = await collect(stream.fullStream);
+
+    expect(calls).toHaveLength(2);
+    expect(textOf(chunks)).toBe('flaky ok');
+  });
+
+  it('rethrows the last in-stream failure once maxRetries is exhausted', async () => {
+    const last = apiError(502);
+    const { provider, calls } = flakyStream([apiError(503), last]);
+
+    await expect(withRetry(provider, { ...fast, maxRetries: 1 }).stream(request)).rejects.toBe(last);
+    expect(calls).toHaveLength(2);
+  });
+
+  it('does not retry a failure after the stream delivered a chunk (LOU-R6)', async () => {
+    const boom = apiError(503);
+    const calls: GenerateOptions[] = [];
+    const inner = new MockLLMProvider({ responses: ['partial then boom'] });
+    const provider: LLMProvider = {
+      name: 'flaky',
+      generate: (call) => inner.generate(call),
+      stream: async (call) => {
+        calls.push(call);
+        const fullStream = (async function* (): AsyncGenerator<StreamChunk> {
+          yield { type: 'text-delta', textDelta: 'partial ' };
+          throw boom;
+        })();
+        return {
+          fullStream,
+          textStream: (async function* (): AsyncGenerator<string> {
+            yield 'partial ';
+          })(),
+          text: Promise.reject(boom),
+          usage: Promise.reject(boom),
+          finishReason: Promise.reject(boom),
+          toolCalls: Promise.reject(boom),
+        };
+      },
+      supportsTools: () => true,
+      supportsStreaming: () => true,
+      getModels: async () => [],
+    };
+
+    const stream = await withRetry(provider, { ...fast, maxRetries: 3 }).stream(request);
+    await expect(collect(stream.fullStream)).rejects.toBe(boom);
+    expect(calls).toHaveLength(1);
+  });
+
   it('delegates name, defaultModel and capabilities to the wrapped provider', async () => {
     const { provider } = flaky([]);
     const wrapped = withRetry(provider);
@@ -250,6 +376,36 @@ describe('withFallback', () => {
     expect(provider.supportsTools('x')).toBe(true);
     expect(provider.supportsStreaming('x')).toBe(true);
     await expect(provider.getModels()).resolves.toEqual(['a-model']);
+  });
+
+  it('falls back when a stream() fails inside the stream before its first chunk (LOU-R6)', async () => {
+    const primary = flakyStream([apiError(503)], 'primary');
+    const backup = flakyStream([], 'backup');
+    const onFallback = vi.fn();
+    const provider = withFallback([primary.provider, backup.provider], { onFallback });
+
+    const stream = await provider.stream(request);
+    const chunks = await collect(stream.fullStream);
+
+    expect(textOf(chunks)).toBe('backup ok');
+    expect(primary.calls).toHaveLength(1);
+    expect(backup.calls).toHaveLength(1);
+    expect(onFallback).toHaveBeenCalledWith({ from: 'primary', to: 'backup', error: expect.objectContaining({ statusCode: 503 }) });
+  });
+
+  it('composes with withRetry: in-stream failures are retried, then the next provider serves (LOU-R6)', async () => {
+    const a = flakyStream([apiError(503), apiError(503), apiError(503)], 'a');
+    const b = flakyStream([apiError(503)], 'b');
+    const onFallback = vi.fn();
+    const provider = withFallback([withRetry(a.provider, fast), withRetry(b.provider, fast)], { onFallback });
+
+    const stream = await provider.stream(request);
+    const chunks = await collect(stream.fullStream);
+
+    expect(textOf(chunks)).toBe('b ok');
+    expect(a.calls).toHaveLength(3);
+    expect(b.calls).toHaveLength(2);
+    expect(onFallback).toHaveBeenCalledWith(expect.objectContaining({ from: 'a', to: 'b' }));
   });
 
   it('needs at least one provider', () => {
