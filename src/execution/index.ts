@@ -89,6 +89,9 @@ export type {
   RunDoneEvent,
 } from './agentEvents';
 export type { HandoffInputData, HandoffMarker, HandoffTarget, ResolvedHandoff } from './handoffRun';
+// Tool search: deferred tools and the tool_search tool (N2)
+export type { ToolSearchOptions, ToolSearchResult } from './toolSearch';
+export { rankToolsByKeywords } from '../tools/toolSearchRank';
 export { BudgetExceededError } from './budget';
 export type { BudgetExceeded, BudgetLimit, BudgetSpent, RunLimits, SessionBudget } from './budget';
 export type { AgentRun } from './agentRun';

@@ -78,7 +78,13 @@ describe('connectMcp (LOU-Z4)', () => {
     const asks = (name: string) => mcp.tools[name].needsApproval;
     expect([asks('strict__echo'), asks('loose__wipe'), asks('auto__echo'), asks('auto__wipe')]).toEqual([true, false, false, true]);
     expect(mcp.tools.auto__echo.displayName).toBe('Echo');
-    expect(mcp.tools.auto__echo.metadata).toEqual({ mcp: { annotations: { title: 'Echo', readOnlyHint: true } } });
+    expect(mcp.tools.auto__echo.metadata).toEqual({ mcp: { annotations: { title: 'Echo', readOnlyHint: true }, server: 'auto' } });
+  });
+
+  it('N2: a server with deferLoading marks every one of its tools deferLoading; others are not', async () => {
+    const mcp = await connect({ deferred: { ...stdio(), deferLoading: true }, plain: stdio() });
+    expect([mcp.tools.deferred__echo.deferLoading, mcp.tools.deferred__wipe.deferLoading]).toEqual([true, true]);
+    expect([mcp.tools.plain__echo.deferLoading, mcp.tools.plain__wipe.deferLoading]).toEqual([undefined, undefined]);
   });
 
   it('connects a streamable HTTP server with headers', async () => {
@@ -168,6 +174,16 @@ describe('createAgent({ mcpServers }) (LOU-Z4)', () => {
     const result = await agent.send('clean up');
     expect(result.finishReason).toBe('stop');
     expect(JSON.stringify(result.messages)).toContain('wiped /tmp/x');
+  });
+
+  it("N2: a deferLoading server's tools are withheld until tool_search finds them; the prompt names the server", async () => {
+    const model = mockModel([{ toolCalls: [{ name: 'tool_search', args: { query: 'echo text' }, id: 'call_search' }] }, 'done']);
+    const agent = createAgent({ provider: model, mcpServers: { files: { ...stdio(), deferLoading: true } }, toolSearch: { thresholdPercent: 0 } });
+    closers.push(() => agent.close());
+    await agent.send('echo ping');
+    expect(model.calls[0].tools?.map((t) => t.function.name)).toEqual(['tool_search']);
+    expect(model.calls[0].messages[0].content).toContain("2 more tools are available but not loaded yet (2 from the MCP server 'files')");
+    expect(model.calls[1].tools?.map((t) => t.function.name)).toEqual(['files__echo', 'tool_search']);
   });
 
   it('specToAgent() connects spec.mcpServers', async () => {

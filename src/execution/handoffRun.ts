@@ -247,6 +247,8 @@ function targetOptions(options: ExecuteOptions, target: HandoffTarget): ExecuteO
     guardrails: target.guardrails,
     permissions: target.permissions,
     handoffs: target.handoffs,
+    // N2: the target's own tuning; what the lead loaded stays with the lead (see toolSearch.ts).
+    toolSearch: target.toolSearch,
   };
 }
 

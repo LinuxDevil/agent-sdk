@@ -118,6 +118,7 @@ stdio and `headers` only to HTTP. The field is validated by `loadSpec()`, and
 an invalid entry fails with the entry name in the message, e.g.
 `'mcpServers.files': AgentSpec validation failed: missing 'command' (stdio server) or 'url' (HTTP server)`.
 An optional `approval` (`annotations`, `always` or `never`) says which of the server's tools ask for approval; see [Approval for MCP tools](./mcp.md#approval-for-mcp-tools).
+An optional `deferLoading: true` withholds the server's tools from the model until it finds them with `tool_search`; see [Tool search](./tool-search.md).
 An HTTP entry may set `oauth` (`redirectUri`, optional `clientId`, `clientSecret`, `scopes` and `clientName`) to sign in to the server with OAuth instead of a static `Authorization` header; see [MCP servers with OAuth](./oauth.md#mcp-servers-with-oauth).
 `lousho doctor` checks each stdio `command` is resolvable.
 
@@ -266,6 +267,7 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `skills`   | Skills from `defineSkill()` / `loadSkills()`; see [Skills](./skills.md). |
 | `subagents`, `maxSubagentDepth` | Named sub-agents behind one `task` tool, and how deep they may nest (default 1); see [Sub-agents](./sub-agents.md). |
 | `handoffs`, `maxHandoffs` | Agents this agent can hand the whole conversation to, one `transfer_to_<name>` tool each, and how many handoffs one run may make (default 5); see [Handoffs](./handoffs.md). |
+| `toolSearch` | Tunes [tool search](./tool-search.md) for tools marked `deferLoading`: `{ thresholdPercent?, maxResults?, contextWindow?, search? }`, or `false` to send every tool on every call. |
 | `store`    | An `AgentStore` (`SqliteStore`, `memoryStore()`, or `{ sessions?, checkpoints?, approvals? }`): the default stores of `agent.session()`, approvals, and `send(message, { sessionId })` runs; `agent.resume(id)` finishes an interrupted one. See [Durable sessions](./sessions.md#durable-sessions). |
 | `memory`   | Memory slots from `defineMemory()`: recalled into the system prompt at the start of each run, with `remember_<name>` / `recall_<name>` tools. See [Memory](./memory.md). |
 | `approvalStore` | Where a `needsApproval` pause is saved (default: `store.approvals`, else a per-agent `InMemoryApprovalStore`); see [Approvals](./approvals.md). |

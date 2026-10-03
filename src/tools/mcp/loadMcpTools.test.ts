@@ -5,6 +5,15 @@ import { loadMcpTools, type McpApproval } from './McpToolLoader';
 import { createConnectedClient } from './McpToolLoader.test';
 
 describe('loadMcpTools', () => {
+  it('N2: deferLoading marks every loaded tool; the server name is kept in metadata.mcp.server', async () => {
+    const { client } = await createConnectedClient();
+    const deferred = await loadMcpTools(client, 'myconn', { deferLoading: true });
+    expect(Object.values(deferred).map((descriptor) => descriptor.deferLoading)).toEqual([true, true]);
+    expect(Object.values(deferred).map((descriptor) => descriptor.metadata?.mcp?.server)).toEqual(['myconn', 'myconn']);
+    const plain = await loadMcpTools(client, 'myconn');
+    expect(Object.values(plain).some((descriptor) => descriptor.deferLoading)).toBe(false);
+  });
+
   it('synthesizes exactly 2 ToolDescriptors named <connectionName>__<toolName>', async () => {
     const { client } = await createConnectedClient();
     const descriptors = await loadMcpTools(client, 'myconn');
@@ -143,7 +152,7 @@ describe('loadMcpTools approval (LOU-Z5)', () => {
 
   it('keeps the raw annotations in metadata.mcp and uses the title as displayName', async () => {
     const loaded = await loadMcpTools(client, 's');
-    expect(loaded.s__titled.metadata).toEqual({ mcp: { annotations: { title: 'Nice Title', readOnlyHint: true } } });
+    expect(loaded.s__titled.metadata).toEqual({ mcp: { annotations: { title: 'Nice Title', readOnlyHint: true }, server: 's' } });
     expect(loaded.s__titled.displayName).toBe('Nice Title');
     expect(loaded.s__plain.metadata?.mcp?.annotations).toBeUndefined();
     expect(loaded.s__read_only.displayName).toBe('read_only');

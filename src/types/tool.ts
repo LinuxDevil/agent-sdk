@@ -113,6 +113,8 @@ export interface ToolMetadata {
   mcp?: {
     /** The server's raw annotations for this tool, when it sent any. */
     annotations?: McpToolAnnotations;
+    /** N2: the name of the server (the `<server>` of `<server>__<tool>`), when loaded by `loadMcpTools()` / `connectMcp()`. */
+    server?: string;
   };
   /**
    * N4: the tool edits files in a workspace (`defineTool({ editsFiles })`):
@@ -172,6 +174,12 @@ export interface ToolDescriptor {
   needsApproval?: boolean | ApprovalPredicate;
   /** Where the tool came from, e.g. an MCP server's annotations (LOU-Z5). */
   metadata?: ToolMetadata;
+  /**
+   * N2: withhold the tool's definition from the model until a `tool_search`
+   * call finds it (see docs/tool-search.md). Set by `defineTool({ deferLoading })`
+   * and on every tool of an MCP server with `deferLoading: true`.
+   */
+  deferLoading?: boolean;
   /**
    * When true, AgentExecutor routes this tool's execution through the
    * configured SandboxAdapter (see ExecuteOptions.sandbox, LOU-F5) instead

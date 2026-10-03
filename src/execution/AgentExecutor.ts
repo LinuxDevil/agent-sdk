@@ -82,6 +82,8 @@ import type { AgentEvent } from './agentEvents';
 import { withSteerSignal, type InputQueue } from './inputQueue';
 import { OutputError, outputInstruction, outputRepairMessage, validateOutput } from './structuredOutput';
 import { PLAN_MODE_INSTRUCTION, permissionModeOf, type PermissionOptions } from './permissions';
+import { assertToolSearchOptions, withToolSearch, type ToolSearchOptions } from './toolSearch';
+import { withDeferral } from './toolDeferral';
 import {
   BudgetExceeded,
   BudgetExceededError,
@@ -656,6 +658,19 @@ export interface ExecuteOptions extends PermissionOptions {
   handoffs?: readonly ResolvedHandoff[];
   /** N6: how many handoffs one run may make (default 5); a handoff call over it gets a tool error. */
   maxHandoffs?: number;
+  /**
+   * N2: tunes tool search. Tools marked `deferLoading` (by `defineTool()` or
+   * an MCP server) are withheld from the model, which finds them with the
+   * built-in `tool_search` tool, once their definitions reach
+   * `thresholdPercent` (default 10%) of the context window. `false` sends
+   * every tool on every call. See docs/tool-search.md.
+   *
+   * @example
+   * ```ts
+   * await AgentExecutor.execute({ agent, input: 'What is 100 USD in EUR?', provider, toolRegistry, toolSearch: { thresholdPercent: 0 } });
+   * ```
+   */
+  toolSearch?: false | ToolSearchOptions;
 }
 
 /**
@@ -752,14 +767,17 @@ export class AgentExecutor {
   /** Applies `skills` and `subagents`: their prompt blocks and their tools. */
   private static async withExtensions(options: ExecuteOptions): Promise<ExecuteOptions> {
     const skilled = withSkills(options.agent, options.toolRegistry, options.skills);
-    const extended = await withSubagents(skilled.agent, skilled.toolRegistry, options.subagents, options);
+    const subagented = await withSubagents(skilled.agent, skilled.toolRegistry, options.subagents, options);
+    // N2: the deferral is the active agent's own; set on every call, so a handoff target never keeps the lead's.
+    const { deferral, ...searched } = withToolSearch(options, subagented.agent, subagented.toolRegistry);
+    const extended = { ...subagented, ...searched };
     // N4: a run that starts in plan mode is told so. LOU-V4: the output instruction goes last in the system prompt.
     const { agent } = extended;
     const blocks = [...(permissionModeOf(options) === 'plan' ? [PLAN_MODE_INSTRUCTION] : []), ...(options.output ? [outputInstruction(options.output)] : [])];
-    if (blocks.length === 0) return { ...options, ...extended };
+    if (blocks.length === 0) return withDeferral({ ...options, ...extended }, deferral);
     const instruction = blocks.join('\n\n');
     const prompt = agent.prompt ? `${agent.prompt}\n\n${instruction}` : instruction;
-    return { ...options, ...extended, agent: extendAgent(agent, { prompt }) };
+    return withDeferral({ ...options, ...extended, agent: extendAgent(agent, { prompt }) }, deferral);
   }
 
   /**
@@ -1736,5 +1754,6 @@ export class AgentExecutor {
     }
     assertToolConcurrency(options.toolConcurrency, caller);
     assertMaxSubagentDepth(options.maxSubagentDepth, caller);
+    assertToolSearchOptions(options.toolSearch, caller);
   }
 }

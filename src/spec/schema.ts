@@ -65,6 +65,8 @@ export interface McpStdioServerSpec {
   env?: Record<string, string>;
   /** Which of this server's tools ask for approval (LOU-Z5). Default `'annotations'`. */
   approval?: McpApproval;
+  /** N2: withhold this server's tools from the model until `tool_search` finds them (docs/tool-search.md). */
+  deferLoading?: boolean;
 }
 
 /**
@@ -91,6 +93,8 @@ export interface McpHttpServerSpec {
   headers?: Record<string, string>;
   /** Which of this server's tools ask for approval (LOU-Z5). Default `'annotations'`. */
   approval?: McpApproval;
+  /** N2: withhold this server's tools from the model until `tool_search` finds them (docs/tool-search.md). */
+  deferLoading?: boolean;
   /** Sign in to this server with OAuth (N9c); see {@link McpOAuthOptions}. */
   oauth?: McpOAuthOptions;
 }
@@ -235,6 +239,7 @@ const mcpServerSchema = z
       headers: mcpStringMap('headers').optional(),
       approval: mcpApprovalSchema.optional(),
       oauth: mcpOAuthSchema.optional(),
+      deferLoading: z.boolean(typeErrors({ invalid: `${MCP_PREFIX} 'deferLoading' must be true or false` })).optional(),
     },
     typeErrors({ invalid: `${MCP_PREFIX} each mcpServers entry must be an object with 'command' or 'url'` })
   )

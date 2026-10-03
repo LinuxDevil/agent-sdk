@@ -37,6 +37,14 @@ describe('AgentSpec.mcpServers (LOU-D20)', () => {
     expect(issues({ fs: { command: 'npx', approval: true } })[0]).toMatch(/'approval' must be/);
   });
 
+  it("N2: accepts 'deferLoading' on both shapes and rejects a non-boolean, naming the entry", () => {
+    const mcpServers: AgentSpec['mcpServers'] = { fs: { command: 'npx', deferLoading: true }, docs: { url: 'https://example.com/mcp', deferLoading: false } };
+    expect(agentSpecSchema.parse({ ...base, mcpServers }).mcpServers).toEqual(mcpServers);
+    expect(issues({ fs: { command: 'npx', deferLoading: 'yes' } })).toEqual([
+      "mcpServers.fs.deferLoading: AgentSpec validation failed: 'deferLoading' must be true or false",
+    ]);
+  });
+
   it('still validates specs without the field', () => {
     expect(agentSpecSchema.parse(base)).toEqual(base);
   });

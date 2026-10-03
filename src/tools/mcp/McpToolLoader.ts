@@ -92,6 +92,8 @@ export interface LoadMcpToolsOptions {
   onSkip?: (skipped: SkippedMcpTool) => void;
   /** Which tools ask for approval; see {@link McpApproval}. Default `'annotations'`. */
   approval?: McpApproval;
+  /** N2: mark every tool `deferLoading`, so an agent offers them through `tool_search` (docs/tool-search.md). */
+  deferLoading?: boolean;
 }
 
 /**
@@ -124,13 +126,14 @@ export async function loadMcpTools(
   connectionName: string,
   options: LoadMcpToolsOptions = {}
 ): Promise<Record<string, ToolDescriptor>> {
-  const { logger = noopLogger, onSkip, approval = 'annotations' } = options;
+  const { logger = noopLogger, onSkip, approval = 'annotations', deferLoading } = options;
   const rawTools = await listRemoteTools(client);
   const descriptors: Record<string, ToolDescriptor> = {};
 
   for (const rawTool of rawTools) {
     try {
-      descriptors[`${connectionName}__${rawTool.name}`] = buildDescriptor(client, rawTool, approval);
+      const descriptor = buildDescriptor(client, rawTool, approval, connectionName);
+      descriptors[`${connectionName}__${rawTool.name}`] = deferLoading ? { ...descriptor, deferLoading: true } : descriptor;
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       logger.warn(`MCP server '${connectionName}': skipping tool '${rawTool.name}': ${reason}`, {
@@ -145,13 +148,13 @@ export async function loadMcpTools(
   return descriptors;
 }
 
-function buildDescriptor(client: McpClientLike, rawTool: RawMcpTool, approval: McpApproval): ToolDescriptor {
+function buildDescriptor(client: McpClientLike, rawTool: RawMcpTool, approval: McpApproval, server: string): ToolDescriptor {
   return toolDescriptorFromSchema({
     displayName: rawTool.annotations?.title || rawTool.description || rawTool.name,
     description: rawTool.description || '',
     inputSchema: jsonSchemaToZod(rawTool.inputSchema),
     needsApproval: needsApproval(approval, rawTool.name, rawTool.annotations),
-    metadata: { mcp: { annotations: rawTool.annotations } },
+    metadata: { mcp: { annotations: rawTool.annotations, server } },
     execute: async (args) =>
       handleCallToolResult(await client.callTool({ name: rawTool.name, arguments: args }), rawTool.name),
   });

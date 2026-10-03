@@ -52,6 +52,7 @@
 - [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md): A sub-agent is a separate agent - its own instructions, model, tools and skills - that a lead agent hands a self-contained task to.
 - [Svelte](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/svelte.md): `loushoAgent()` for Svelte is the React hook as a store: the same sources, the same state and the same actions, over the same typed event stream.
 - [Testing agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md): `@lousho/build-ai-agent/testing` ships `mockModel`: a scripted, deterministic `LLMProvider` for unit tests.
+- [Tool search](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tool-search.md): An agent with many tools (several MCP servers, a large internal toolkit) sends every tool definition on every model call.
 - [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md): A tool is a typed function the model can call.
 - [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md): A trigger adapter turns one wake-up mechanism into an agent run: an inbound webhook, a clock, or a Slack event.
 - [Troubleshooting](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/troubleshooting.md): This page starts from what you see and points to the cause, the fix and the page that explains it.

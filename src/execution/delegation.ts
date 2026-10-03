@@ -32,6 +32,7 @@ import { RUN_EVENTS, runEventsOf, type StreamingExecuteOptions } from './agentRu
 import type { ToolRunContext } from './sandboxGuard';
 import { SDKError } from './errors';
 import type { HostedTool } from '../tools/hosted';
+import type { ToolSearchOptions } from './toolSearch';
 
 /** Everything needed to run an agent as a child: its own configuration. */
 export interface SubagentSpec {
@@ -55,6 +56,8 @@ export interface SubagentSpec {
   output?: StandardSchemaV1;
   /** N1a: the sub-agent's own hosted tools (never the lead's). */
   hostedTools?: readonly HostedTool[];
+  /** N2: the sub-agent's own tool search tuning (never the lead's); see docs/tool-search.md. */
+  toolSearch?: false | ToolSearchOptions;
 }
 
 /** One child run requested by a parent tool call. */
@@ -200,6 +203,8 @@ function childOptions(
     reasoning: spec.reasoning,
     output: spec.output,
     hostedTools: spec.hostedTools,
+    // N2: its own deferred tools and tuning; it never sees what the lead loaded (its transcript is its own).
+    toolSearch: spec.toolSearch,
   };
 }
 

@@ -156,6 +156,23 @@ describe('MCP servers with OAuth (N9c)', () => {
     expect(mcpCalls.length).toBeGreaterThan(1);
   });
 
+  it('N2: a deferLoading server that needs a sign-in fails the run like any server; once signed in, its tools load through tool_search', async () => {
+    const server = await fake();
+    const search = { toolCalls: [{ name: 'tool_search', id: 'call_search', args: { query: 'support' } }] };
+    const model = mockModel([search, CALL, { text: 'Done.' }]);
+    const agent = createAgent({ provider: model, mcpServers: { linear: entry(server, {}, { deferLoading: true }) }, store: memoryStore(), toolSearch: { thresholdPercent: 0 } });
+    cleanups.push(() => agent.close());
+    await expect(agent.send('Ask support.')).rejects.toMatchObject({ code: 'LOUSHO_MCP_AUTH_REQUIRED' });
+    expect(model.calls).toHaveLength(0);
+
+    await signIn(agent, server);
+    const result = await agent.send('Ask support.');
+    expect(model.calls[0].tools?.map((tool) => tool.function.name)).toEqual(['tool_search']);
+    // Every deferred tool is loaded, so tool_search is no longer offered.
+    expect(model.calls[1].tools?.map((tool) => tool.function.name)).toEqual(['linear__support']);
+    expect(toolMessage(result)).toContain('pong');
+  });
+
   it('the callback route finishes an MCP sign-in', async () => {
     const server = await fake();
     const agent = createAgent({ provider: mockModel([{ text: 'hi' }]), mcpServers: { linear: entry(server) }, store: memoryStore() });
