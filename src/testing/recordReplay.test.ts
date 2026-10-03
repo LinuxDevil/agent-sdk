@@ -3,9 +3,10 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { z } from 'zod';
-import { CassetteMismatchError, mockModel, recordReplay } from './index';
+import { CassetteMismatchError, mockModel, recordReplay, setProviderInterceptor } from './index';
 import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
+import { CompactedLLMProviderError, SDKError } from '../execution/errors';
 import type { GenerateOptions, StreamChunk } from '../providers/llm';
 import { textOf } from '../providers';
 import { resolveProvider } from '../providers/resolveProvider';
@@ -19,6 +20,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setProviderInterceptor(undefined);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -184,6 +186,69 @@ describe('recordReplay mismatches', () => {
     expect(() => recordReplay(undefined, { cassette: file, mode: 'replay' })).toThrow(/version 99.*Re-record/s);
     fs.writeFileSync(file, JSON.stringify({ version: 1, entries: 3 }));
     expect(() => recordReplay(undefined, { cassette: file, mode: 'replay' })).toThrow(/malformed/);
+  });
+});
+
+describe('cassette errors through agent.send() (LOU-R13)', () => {
+  const build = (provider: ReturnType<typeof recordReplay>) =>
+    createAgent({ provider, prompt: 'You handle refunds.' });
+
+  it('a replay mismatch rejects as CassetteMismatchError, not a CompactedLLMProviderError', async () => {
+    await build(recordReplay(mockModel(['refunded']), { cassette: file, mode: 'record' })).send('Refund order 42');
+
+    const error = await build(recordReplay(undefined, { cassette: file, mode: 'replay' }))
+      .send('Refund order 9999')
+      .catch((e) => e);
+
+    expect(error).toBeInstanceOf(CassetteMismatchError);
+    expect(error).not.toBeInstanceOf(CompactedLLMProviderError);
+    expect(error.code).toBe('LOUSHO_CASSETTE_INVALID');
+    expect(error.cassette).toBe(file);
+    expect(error.callNumber).toBe(1);
+    expect(error.message).toContain('First difference at');
+  });
+
+  it('stays typed when the run streams its model calls (send() with a listener)', async () => {
+    await build(recordReplay(mockModel(['refunded']), { cassette: file, mode: 'record' })).send('Refund order 42');
+
+    const replay = recordReplay(undefined, { cassette: file, mode: 'replay' });
+    const error = await createAgent({ provider: replay, prompt: 'You handle refunds.', onEvent: () => {} })
+      .send('Refund order 9999')
+      .catch((e) => e);
+
+    expect(error).toBeInstanceOf(CassetteMismatchError);
+    expect(error).not.toBeInstanceOf(CompactedLLMProviderError);
+  });
+
+  it('rejects typed when the mismatch is thrown through the interception seam, exported here', async () => {
+    // What `lousho eval --record` / `--replay` installs (src/evals/cassettes.ts):
+    // an interceptor that answers every model call with a recordReplay wrapper.
+    setProviderInterceptor((provider) => recordReplay(provider, { cassette: file, mode: 'record' }));
+    await createAgent({ provider: mockModel(['refunded']), prompt: 'You handle refunds.' }).send('Refund order 42');
+
+    setProviderInterceptor(() => recordReplay(undefined, { cassette: file, mode: 'replay' }));
+    const error = await createAgent({ provider: mockModel(['live']), prompt: 'You handle refunds.' })
+      .send('Refund order 9999')
+      .catch((e) => e);
+
+    expect(error).toBeInstanceOf(CassetteMismatchError);
+    expect(error.code).toBe('LOUSHO_CASSETTE_INVALID');
+    expect(error).not.toBeInstanceOf(CompactedLLMProviderError);
+  });
+
+  it('a cassette error the interceptor itself throws stays typed through send()', async () => {
+    // What `lousho eval --replay` throws when a case has no cassette.
+    const unreadable = new SDKError('no cassette for "Refund flow [polite]". Record it with: npx lousho eval --record', 'LOUSHO_CASSETTE_INVALID');
+    setProviderInterceptor(() => {
+      throw unreadable;
+    });
+
+    const error = await createAgent({ provider: mockModel(['live']), prompt: 'You handle refunds.' })
+      .send('Refund order 42')
+      .catch((e) => e);
+
+    expect(error).toBe(unreadable);
+    expect(error).not.toBeInstanceOf(CompactedLLMProviderError);
   });
 });
 

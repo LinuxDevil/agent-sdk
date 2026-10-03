@@ -19,6 +19,7 @@ import {
   getRetryDelay,
   compactProviderError,
   isModelActionableProviderErrorCategory,
+  isCassetteError,
   CompactedLLMProviderError,
 } from './errors';
 
@@ -430,6 +431,21 @@ describe('Error Classes', () => {
       expect(error.statusCode).toBe(429);
       expect(error.cause).toBe(cause);
       expect(error.compacted.category).toBe('rate-limit');
+    });
+  });
+
+  describe('LOU-R13: isCassetteError', () => {
+    it('is true for a LOUSHO_CASSETTE_INVALID SDKError and anything named CassetteMismatchError', () => {
+      expect(isCassetteError(new SDKError('no cassette', 'LOUSHO_CASSETTE_INVALID'))).toBe(true);
+      // A CassetteMismatchError from another loaded copy of the SDK (LOU-D42) fails instanceof - the name still matches.
+      expect(isCassetteError(Object.assign(new Error('mismatch'), { name: 'CassetteMismatchError' }))).toBe(true);
+    });
+
+    it('is false for other failures, which stay compactable', () => {
+      expect(isCassetteError(new Error('boom'))).toBe(false);
+      expect(isCassetteError(new SDKError('x', 'LOUSHO_CONFIG_INVALID'))).toBe(false);
+      expect(isCassetteError(new CompactedLLMProviderError(compactProviderError(new Error('x')), new Error('x')))).toBe(false);
+      expect(isCassetteError(undefined)).toBe(false);
     });
   });
 });

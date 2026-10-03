@@ -514,6 +514,24 @@ export function isAbortError(error: unknown): boolean {
 }
 
 /**
+ * True for a record/replay cassette failure (LOU-R13): a replay mismatch
+ * (`CassetteMismatchError`) or an unreadable cassette - both carry
+ * `LOUSHO_CASSETTE_INVALID` (docs/errors.md). These are test-fixture
+ * failures, not provider failures, so AgentExecutor must NOT compact them
+ * into a `CompactedLLMProviderError`: the caller needs the typed error (its
+ * cassette path, call number and the re-record hint) to know the cassette
+ * has to be re-recorded. The name check covers a `CassetteMismatchError`
+ * from another loaded copy of the SDK (LOU-D42).
+ */
+export function isCassetteError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.name === 'CassetteMismatchError' ||
+      (error instanceof SDKError && error.code === 'LOUSHO_CASSETTE_INVALID'))
+  );
+}
+
+/**
  * Categories AgentExecutor is willing to surface into `messages` for the
  * model to see and react to, rather than rejecting `execute()` outright -
  * see the design note on `providerErrorMessage()` (generateStep.ts) for

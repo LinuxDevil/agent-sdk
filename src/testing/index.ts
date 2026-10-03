@@ -24,5 +24,10 @@ export type {
   RecordReplayProvider,
   RecordReplaySource,
 } from './recordReplay';
+// LOU-R13 / LOU-D46.2: the model-boundary interception seam. `lousho eval`
+// installs its cassette wrapper here; tests may install their own provider
+// wrapper at the same point (docs/evals.md#record-replay-and-drift).
+export { setProviderInterceptor } from '../providers/interception';
+export type { ProviderInterceptor } from '../providers/interception';
 export { hashEmbedder } from './hashEmbedder';
 export type { HashEmbedderOptions } from './hashEmbedder';
