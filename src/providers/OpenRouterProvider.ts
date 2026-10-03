@@ -9,7 +9,7 @@ import { aiMajorOf } from './aiSdkCompat';
 import { lazyValue, loadOptionalPeer } from './optionalPeer';
 import { Logger, noopLogger } from '../execution/logger';
 import { SDKError } from '../execution/errors';
-import type { GenerateOptions, GenerateResult, HostedToolCall, StreamChunk, StreamResult } from './llm';
+import type { GenerateOptions, GenerateResult, HostedToolCall, ProviderUsage, ReasoningBlock, StreamChunk, StreamResult } from './llm';
 import { openRouterReasoning } from './reasoning';
 import { mappedHostedOptions, type HostedOptionMapping } from './hostedToolMapping';
 import { hostedToolUnsupported, type HostedTool, type HostedToolType } from '../tools/hosted';
@@ -57,18 +57,33 @@ const OPENROUTER_SEARCH_PARAMETERS: HostedOptionMapping = {
   userLocation: undefined,
 };
 
-/** What a web search left in one response: the count OpenRouter reports, the cited urls, and the completion id. */
-interface SearchObservation {
+/**
+ * What one response left: the web search's count, the cited urls and the
+ * completion id (N1b), and the reasoning the model reported (LOU-R8) - the
+ * `reasoning` SDK never reaches these fields, so they are read from the
+ * response body itself.
+ */
+interface CallObservation {
   id?: string;
   requests?: number;
   sources: Array<{ url: string; title?: string }>;
+  /** Reasoning text fragments and detail end-markers, in arrival order. */
+  reasoning: ReasoningPiece[];
+  reasoningTokens?: number;
 }
 
-/** The parts of a response body or stream chunk that a web search leaves. */
-interface SearchBody {
+/** The parts of a response body or stream chunk that a web search or the reasoning leaves. */
+interface ResponseBody {
   id?: unknown;
-  usage?: { server_tool_use?: { web_search_requests?: unknown } };
-  choices?: Array<{ message?: { annotations?: unknown }; delta?: { annotations?: unknown } }>;
+  usage?: {
+    server_tool_use?: { web_search_requests?: unknown };
+    completion_tokens_details?: { reasoning_tokens?: unknown };
+    reasoning_tokens?: unknown;
+  };
+  choices?: Array<{
+    message?: { annotations?: unknown; reasoning?: unknown; reasoning_details?: unknown };
+    delta?: { annotations?: unknown; reasoning?: unknown; reasoning_details?: unknown };
+  }>;
 }
 
 /** A `url_citation` annotation's source (OpenRouter nests the fields under `url_citation`; a flat one is read too). */
@@ -79,23 +94,51 @@ function citedSource(note: Record<string, unknown>): { url: string; title?: stri
   return { url, ...(typeof title === 'string' && title !== '' && { title }) };
 }
 
-/** `usage.server_tool_use.web_search_requests` and the `url_citation` annotations of one response body or stream chunk. */
-function scanSearchBody(chunk: SearchBody | null, found: SearchObservation): void {
+/** One piece of observed reasoning: a text fragment, or the signature/encrypted data ending a `reasoning_details` block. */
+type ReasoningPiece = { text: string } | { end: Omit<ReasoningBlock, 'text'> };
+
+/** One `reasoning_details` entry (`reasoning.text`/`reasoning.summary`/`reasoning.encrypted`) as pieces. */
+function detailPieces(detail: Record<string, unknown>): ReasoningPiece[] {
+  const pieces: ReasoningPiece[] = [];
+  if (detail.type === 'reasoning.encrypted') {
+    // An encrypted entry is its own block: close the text being accumulated, then it.
+    if (typeof detail.data === 'string' && detail.data !== '') pieces.push({ end: {} }, { end: { redactedData: detail.data } });
+    return pieces;
+  }
+  const text = detail.type === 'reasoning.summary' ? detail.summary : detail.text;
+  if (typeof text === 'string' && text !== '') pieces.push({ text });
+  if (typeof detail.signature === 'string' && detail.signature !== '') pieces.push({ end: { signature: detail.signature } });
+  return pieces;
+}
+
+/** The reasoning of one `message` or `delta`: its `reasoning_details` when sent, else its flat `reasoning` text. */
+function reasoningPieces(of: { reasoning?: unknown; reasoning_details?: unknown } | undefined): ReasoningPiece[] {
+  if (Array.isArray(of?.reasoning_details) && of.reasoning_details.length > 0) {
+    return (of.reasoning_details as Array<Record<string, unknown>>).flatMap(detailPieces);
+  }
+  return typeof of?.reasoning === 'string' && of.reasoning !== '' ? [{ text: of.reasoning }] : [];
+}
+
+/** `usage.server_tool_use.web_search_requests`, the citations and the reasoning of one response body or stream chunk. */
+function scanResponseBody(chunk: ResponseBody | null, found: CallObservation): void {
   if (typeof chunk?.id === 'string') found.id ??= chunk.id;
   const requests = chunk?.usage?.server_tool_use?.web_search_requests;
   if (typeof requests === 'number') found.requests = Math.max(found.requests ?? 0, requests);
+  const reasoningTokens = chunk?.usage?.completion_tokens_details?.reasoning_tokens ?? chunk?.usage?.reasoning_tokens;
+  if (typeof reasoningTokens === 'number') found.reasoningTokens = reasoningTokens;
   for (const choice of chunk?.choices ?? []) {
     const annotations = choice.message?.annotations ?? choice.delta?.annotations;
     const sources = (Array.isArray(annotations) ? (annotations as Array<Record<string, unknown>>) : []).map(citedSource);
     for (const source of sources) {
       if (source && !found.sources.some((known) => known.url === source.url)) found.sources.push(source);
     }
+    found.reasoning.push(...reasoningPieces(choice.message ?? choice.delta));
   }
 }
 
-/** A JSON response body, or a server-sent-events stream of JSON chunks, as a {@link SearchObservation}. */
-function parseSearchResponse(text: string): SearchObservation {
-  const found: SearchObservation = { sources: [] };
+/** A JSON response body, or a server-sent-events stream of JSON chunks, as a {@link CallObservation}. */
+function parseResponseBody(text: string): CallObservation {
+  const found: CallObservation = { sources: [], reasoning: [] };
   const lines = text.trimStart().startsWith('{')
     ? [text]
     : text
@@ -104,12 +147,35 @@ function parseSearchResponse(text: string): SearchObservation {
         .map((line) => line.slice(5));
   for (const line of lines) {
     try {
-      scanSearchBody(JSON.parse(line) as SearchBody, found);
+      scanResponseBody(JSON.parse(line) as ResponseBody, found);
     } catch {
       // `[DONE]` or a partial line carries nothing.
     }
   }
   return found;
+}
+
+/** The observed reasoning pieces as {@link ReasoningBlock}s: each `end` marker closes the block being accumulated. */
+function reasoningBlocks(found: CallObservation | undefined): ReasoningBlock[] {
+  const blocks: ReasoningBlock[] = [];
+  let open = '';
+  const close = (end: Omit<ReasoningBlock, 'text'>): void => {
+    if (open !== '' || end.signature !== undefined || end.redactedData !== undefined) blocks.push({ text: open, ...end });
+    open = '';
+  };
+  for (const piece of found?.reasoning ?? []) {
+    if ('text' in piece) open += piece.text;
+    else close(piece.end);
+  }
+  close({});
+  return blocks;
+}
+
+/** The observed reasoning pieces as the stream chunks reporting them (LOU-R8). */
+function reasoningChunks(found: CallObservation | undefined): StreamChunk[] {
+  return (found?.reasoning ?? []).map((piece): StreamChunk =>
+    'text' in piece ? { type: 'reasoning-delta', textDelta: piece.text } : { type: 'reasoning-end', reasoning: piece.end }
+  );
 }
 
 /** What one model call changes about the request, and what it watches in the response. */
@@ -118,8 +184,8 @@ interface RequestChanges {
   merge?: Record<string, unknown>;
   /** N1b: tool entries appended to the body's `tools` array, after the function tools `@ai-sdk/openai` put there. */
   tools?: unknown[];
-  /** N1b: called with the parsed response of each successful call (the last one wins). */
-  observe?: (settled: Promise<SearchObservation | undefined>) => void;
+  /** Called with the parsed response of each successful call (the last one wins). */
+  observe?: (settled: Promise<CallObservation | undefined>) => void;
 }
 
 /** `fetch`, with each JSON request body changed as `changes` says (the reasoning merge and the tools append compose). */
@@ -138,7 +204,7 @@ function withRequestChanges(changes: RequestChanges): typeof fetch {
         response
           .clone()
           .text()
-          .then(parseSearchResponse, () => undefined)
+          .then(parseResponseBody, () => undefined)
       );
     }
     return response;
@@ -199,8 +265,14 @@ function withErrorMessage(inner: typeof fetch): typeof fetch {
   };
 }
 
+/** `usage`, with the observed reasoning token count it lacks (the same instance when nothing is added). */
+function withReasoningTokens(usage: ProviderUsage | undefined, found: CallObservation | undefined): ProviderUsage | undefined {
+  if (!usage || found?.reasoningTokens === undefined || usage.reasoningTokens !== undefined) return usage;
+  return { ...usage, reasoningTokens: found.reasoningTokens };
+}
+
 /** The hosted call a step's search left, from what its response reported (undefined when it did not search). */
-function searchCallOf(found: SearchObservation | undefined): HostedToolCall | undefined {
+function searchCallOf(found: CallObservation | undefined): HostedToolCall | undefined {
   if (!found || ((found.requests ?? 0) === 0 && found.sources.length === 0)) return undefined;
   return {
     id: `${found.id ?? 'openrouter'}:web_search`,
@@ -238,8 +310,8 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
     });
   }
 
-  /** N1b: what the web search of each call (by its options object) left in OpenRouter's response. */
-  private readonly searches = new WeakMap<GenerateOptions, { settled?: Promise<SearchObservation | undefined> }>();
+  /** What each call (by its options object) left in OpenRouter's response: the web search (N1b) and the reasoning (LOU-R8). */
+  private readonly observed = new WeakMap<GenerateOptions, { settled?: Promise<CallObservation | undefined> }>();
 
   private readonly loadProvider = lazyValue(() => this.openRouter());
 
@@ -258,22 +330,26 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
     const reasoning = openRouterReasoning(modelId, options?.reasoning);
     // N1b: OpenRouter's web search is a server tool in the `tools` array, not an AI SDK tool.
     const search = options?.hostedTools?.find((tool) => tool.type === 'web_search');
-    if (search && options) {
-      const watch: { settled?: Promise<SearchObservation | undefined> } = {};
-      this.searches.set(options, watch);
+    const changes: RequestChanges = { ...(reasoning && { merge: reasoning }) };
+    if (search) {
       const parameters = mappedHostedOptions('OpenRouter', search, OPENROUTER_SEARCH_PARAMETERS);
-      const changes: RequestChanges = {
-        ...(reasoning && { merge: reasoning }),
-        tools: [{ type: 'openrouter:web_search', ...(Object.keys(parameters).length > 0 && { parameters }) }],
-        observe: (settled) => {
+      changes.tools = [{ type: 'openrouter:web_search', ...(Object.keys(parameters).length > 0 && { parameters }) }];
+    }
+    if (changes.merge || changes.tools) {
+      if (options) {
+        // The response is watched for what `@ai-sdk/openai` drops: the reasoning
+        // fields (LOU-R8) and the server-side search's traces (N1b).
+        const watch: { settled?: Promise<CallObservation | undefined> } = {};
+        this.observed.set(options, watch);
+        changes.observe = (settled) => {
           watch.settled = settled;
-        },
-      };
+        };
+      }
       return (await this.openRouter(changes)).chat(modelId);
     }
     // `.chat()` is the Chat Completions API, the only one OpenRouter implements. `@ai-sdk/openai`
     // 2+ makes the bare call a Responses API model, so the factory is named on every major.
-    return (reasoning ? await this.openRouter({ merge: reasoning }) : await this.loadProvider()).chat(modelId);
+    return (await this.loadProvider()).chat(modelId);
   }
 
   /**
@@ -294,35 +370,67 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
     );
   }
 
-  /** The hosted call the web search of the call made with `options` left, once its response was read. */
-  private async searchCall(options: GenerateOptions): Promise<HostedToolCall | undefined> {
-    return searchCallOf(await this.searches.get(options)?.settled);
+  /** What the call made with `options` left in its response (the search's traces and the reasoning), once it was read. */
+  private async observation(options: GenerateOptions): Promise<CallObservation | undefined> {
+    return this.observed.get(options)?.settled;
   }
 
   async generate(options: GenerateOptions): Promise<GenerateResult> {
     const result = await super.generate(options);
-    const call = await this.searchCall(options);
-    return call ? { ...result, hostedToolCalls: [...(result.hostedToolCalls ?? []), call] } : result;
+    const found = await this.observation(options);
+    if (!found) return result;
+    const call = searchCallOf(found);
+    const reasoning = reasoningBlocks(found);
+    const usage = withReasoningTokens(result.usage, found);
+    return {
+      ...result,
+      ...(usage && { usage }),
+      ...(call && { hostedToolCalls: [...(result.hostedToolCalls ?? []), call] }),
+      // The SDK-reported reasoning, when any, stays (LOU-R8's observed blocks win: they carry the details it dropped).
+      ...(reasoning.length > 0 && { reasoning }),
+    };
   }
 
   async stream(options: GenerateOptions): Promise<StreamResult> {
     const result = await super.stream(options);
-    if (!this.searches.has(options)) return result;
-    return { ...result, fullStream: this.withSearchCall(result.fullStream, options) };
+    if (!this.observed.has(options)) return result;
+    const usage = this.usageWithReasoning(result.usage, options);
+    usage.catch(() => undefined); // Marked handled, as streamCompat marks the original's.
+    return { ...result, usage, fullStream: this.withObservation(result.fullStream, options) };
   }
 
-  /** `chunks`, with the web search's hosted call before the `finish` chunk (the response is read to its end by then). */
-  private async *withSearchCall(chunks: AsyncIterable<StreamChunk>, options: GenerateOptions): AsyncGenerator<StreamChunk> {
+  /** `usage`, with the observed reasoning token count when the SDK's stream did not carry it. */
+  private async usageWithReasoning(usage: Promise<ProviderUsage | undefined>, options: GenerateOptions): Promise<ProviderUsage | undefined> {
+    return withReasoningTokens(await usage, await this.observation(options));
+  }
+
+  /**
+   * `chunks`, with what the response left that the SDK dropped, just before the
+   * `finish` chunk (the response is read to its end by then): the reasoning
+   * chunks (LOU-R8) and the web search's hosted call (N1b); the `finish` chunk's
+   * usage gains the reasoning token count it lacks.
+   */
+  private async *withObservation(chunks: AsyncIterable<StreamChunk>, options: GenerateOptions): AsyncGenerator<StreamChunk> {
+    let flushed = false;
+    // A newer `@ai-sdk/openai` may report reasoning itself; the observed chunks only fill what it dropped.
+    let sdkReasoning = false;
     for await (const chunk of chunks) {
-      if (chunk.type === 'finish') {
-        const call = await this.searchCall(options);
-        if (call) {
-          yield { type: 'hosted-tool-call', hostedToolCall: { id: call.id, name: call.name, args: call.args } };
-          yield { type: 'hosted-tool-result', hostedToolCall: call };
-        }
+      if (chunk.type === 'reasoning-delta' || chunk.type === 'reasoning-end') sdkReasoning = true;
+      if (chunk.type !== 'finish' || flushed) {
+        yield chunk;
+        continue;
       }
-      yield chunk;
+      flushed = true;
+      const found = await this.observation(options);
+      if (!sdkReasoning) yield* reasoningChunks(found);
+      const call = searchCallOf(found);
+      if (call) {
+        yield { type: 'hosted-tool-call', hostedToolCall: { id: call.id, name: call.name, args: call.args } };
+        yield { type: 'hosted-tool-result', hostedToolCall: call };
+      }
+      yield chunk.usage ? { ...chunk, usage: withReasoningTokens(chunk.usage, found) } : chunk;
     }
+    if (!flushed && !sdkReasoning) yield* reasoningChunks(await this.observation(options));
   }
 
   /** Sent in the request body instead (createModel). */
