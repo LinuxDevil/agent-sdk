@@ -216,6 +216,13 @@ export interface ToolDescriptor {
 }
 
 /**
+ * A {@link ToolDescriptor} that also carries the name it is registered and
+ * called by - the tools `connectMcp()` loads are named `<server>__<tool>`,
+ * so they work in `tools` arrays as well as records (LOU-R12).
+ */
+export type NamedToolDescriptor = ToolDescriptor & { readonly name: string };
+
+/**
  * Tool registry interface
  */
 export interface IToolRegistry {

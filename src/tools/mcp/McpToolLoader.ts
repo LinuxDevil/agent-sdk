@@ -7,7 +7,7 @@
  */
 
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import type { McpToolAnnotations, ToolDescriptor } from '../../types';
+import type { McpToolAnnotations, NamedToolDescriptor, ToolDescriptor } from '../../types';
 import { noopLogger, type Logger } from '../../execution/logger';
 import { handleCallToolResult } from './result';
 import { jsonSchemaToZod } from './schema';
@@ -125,15 +125,18 @@ export async function loadMcpTools(
   client: McpClientLike,
   connectionName: string,
   options: LoadMcpToolsOptions = {}
-): Promise<Record<string, ToolDescriptor>> {
+): Promise<Record<string, NamedToolDescriptor>> {
   const { logger = noopLogger, onSkip, approval = 'annotations', deferLoading } = options;
   const rawTools = await listRemoteTools(client);
-  const descriptors: Record<string, ToolDescriptor> = {};
+  const descriptors: Record<string, NamedToolDescriptor> = {};
 
   for (const rawTool of rawTools) {
     try {
-      const descriptor = buildDescriptor(client, rawTool, approval, connectionName);
-      descriptors[`${connectionName}__${rawTool.name}`] = deferLoading ? { ...descriptor, deferLoading: true } : descriptor;
+      // LOU-R12: the descriptor carries its `<server>__<tool>` name, so
+      // `Object.values(tools)` also works in a `tools` array.
+      const name = `${connectionName}__${rawTool.name}`;
+      const descriptor: NamedToolDescriptor = { ...buildDescriptor(client, rawTool, approval, connectionName), name };
+      descriptors[name] = deferLoading ? { ...descriptor, deferLoading: true } : descriptor;
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       logger.warn(`MCP server '${connectionName}': skipping tool '${rawTool.name}': ${reason}`, {

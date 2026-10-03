@@ -73,11 +73,11 @@ export function askQuestionTool(): DefinedTool<typeof askQuestionInput, AskQuest
   }));
 }
 
-type AgentTools = readonly DefinedTool[] | Record<string, ToolDescriptor>;
+/** A run's local tools, as the `[name, descriptor]` entries `toolEntries()` normalizes `createAgent({ tools })` into (LOU-R12). */
+export type ToolEntries = ReadonlyArray<readonly [string, ToolDescriptor]>;
 
 /** `tools` plus `ask_question` when `enabled` (`createAgent({ askQuestion: true })`). */
-export function withAskQuestion(tools: AgentTools | undefined, enabled: boolean | undefined): AgentTools | undefined {
+export function withAskQuestion(tools: ToolEntries, enabled: boolean | undefined): ToolEntries {
   if (!enabled) return tools;
-  if (tools === undefined || Array.isArray(tools)) return [...((tools as readonly DefinedTool[]) ?? []), askQuestionTool()];
-  return { ...tools, [ASK_QUESTION_TOOL_NAME]: askQuestionTool() };
+  return [...tools, [ASK_QUESTION_TOOL_NAME, askQuestionTool()]];
 }

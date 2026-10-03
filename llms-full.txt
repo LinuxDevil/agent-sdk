@@ -8570,6 +8570,11 @@ await agent.send('List the files here.');
 await mcp.close();
 ```
 
+`mcp.tools` is a record, and `tools` also takes an array, so the two shapes
+mix: `tools: [mcp.tools, weatherTool]` or `tools: [...createFsTools(workspace),
+...Object.values(mcp.tools)]` (each MCP descriptor carries its
+`<server>__<tool>` name, so `Object.values` works too).
+
 ### Approval for MCP tools
 
 MCP servers describe each tool with annotations (`readOnlyHint`,
