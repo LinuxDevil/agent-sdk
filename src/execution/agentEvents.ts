@@ -128,6 +128,23 @@ export interface ToolStartEvent extends AgentEventBase<'tool.start'> {
   executedBy?: 'provider';
 }
 
+/**
+ * N13b: a snapshot of a running tool's output - a tool whose `execute` is an
+ * `async function*` yields one per `yield`. Each snapshot is complete and
+ * replaces the previous one; the last one is also the result in `tool.done`.
+ * Snapshots are not sent to the model, not added to the transcript and not
+ * checkpointed. Emitted between the call's `tool.start` and its `tool.done` /
+ * `tool.error`.
+ */
+export interface ToolPartialEvent extends AgentEventBase<'tool.partial'> {
+  toolCallId: string;
+  toolName: string;
+  /** The snapshot as it would be JSON-encoded (`undefined` becomes `null`). */
+  output: unknown;
+  /** Counts this call's snapshots from 0 (from 0 again when the call runs again, e.g. after a sign-in). */
+  index: number;
+}
+
 /** A tool call returned. Emitted in completion order. */
 export interface ToolDoneEvent extends AgentEventBase<'tool.done'> {
   toolCallId: string;
@@ -401,6 +418,7 @@ export type AgentEvent =
   | ReasoningDeltaEvent
   | ReasoningDoneEvent
   | ToolStartEvent
+  | ToolPartialEvent
   | ToolDoneEvent
   | TodoUpdatedEvent
   | ToolErrorEvent
@@ -451,6 +469,7 @@ const EVENT_TYPE_MAP: Record<AgentEventType, true> = {
   'reasoning.delta': true,
   'reasoning.done': true,
   'tool.start': true,
+  'tool.partial': true,
   'tool.done': true,
   'todo.updated': true,
   'tool.error': true,
@@ -497,8 +516,8 @@ export function isAgentEvent(value: unknown): value is AgentEvent {
   );
 }
 
-/** `tool.start`, `tool.done` or `tool.error` - they all carry `toolCallId` and `toolName`. */
-export function isToolEvent(event: AgentEvent): event is ToolStartEvent | ToolDoneEvent | ToolErrorEvent {
+/** `tool.start`, `tool.partial`, `tool.done` or `tool.error` - they all carry `toolCallId` and `toolName`. */
+export function isToolEvent(event: AgentEvent): event is ToolStartEvent | ToolPartialEvent | ToolDoneEvent | ToolErrorEvent {
   return event.type.startsWith('tool.');
 }
 

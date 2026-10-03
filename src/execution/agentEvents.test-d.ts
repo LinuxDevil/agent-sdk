@@ -150,6 +150,7 @@ describe('AgentEvent types', () => {
       | 'reasoning.delta'
       | 'reasoning.done'
       | 'tool.start'
+      | 'tool.partial'
       | 'tool.done'
       | 'todo.updated'
       | 'tool.error'
@@ -185,7 +186,7 @@ describe('AgentEvent types', () => {
   it('resolves AgentEventOf and the family guards', () => {
     expectTypeOf<AgentEventOf<'tool.done'>['toolName']>().toBeString();
     if (isToolEvent(event)) {
-      expectTypeOf(event.type).toEqualTypeOf<'tool.start' | 'tool.done' | 'tool.error'>();
+      expectTypeOf(event.type).toEqualTypeOf<'tool.start' | 'tool.partial' | 'tool.done' | 'tool.error'>();
     }
   });
 

@@ -55,25 +55,38 @@ export interface DefineToolOptions<S extends StandardSchemaV1, R> {
   requiresSandbox?: boolean;
   /** Sandboxed execution path used instead of `execute` when `requiresSandbox` is true. */
   sandboxExecute?: (args: InferSchemaOutput<S>, sandbox: SandboxAdapter) => Promise<unknown>;
-  /** Runs the tool. Arguments are typed from `input`; the return type is preserved on the result. */
+  /**
+   * Runs the tool. Arguments are typed from `input`; the return type is preserved on the result.
+   * N13b: may be an `async function*`: each `yield` is a complete snapshot of the output, streamed
+   * as a `tool.partial` event, and the last one is the result the model receives (see {@link ToolResultOf}).
+   */
   execute: (args: InferSchemaOutput<S>, ctx: ToolExecutionContext) => R | Promise<R>;
 }
+
+/**
+ * N13b: the result type of a tool whose `execute` returns `R`: the yielded
+ * type when `R` is an async generator (an async iterator that is also async
+ * iterable - the snapshots it yields stream as `tool.partial`, the last one is
+ * the result), else `Awaited<R>`.
+ */
+export type ToolResultOf<R> = R extends AsyncIterator<infer Y> & AsyncIterable<unknown> ? Y : Awaited<R>;
 
 /**
  * A tool created by {@link defineTool}. It is a regular {@link ToolDescriptor}
  * (so it works anywhere a descriptor does) that also carries its `name` and
  * input/output types - see {@link ToolInput} and {@link ToolOutput}.
  * `inputSchema` and `execute` are the canonical contract; `tool` is a
- * legacy `ai` v4-shaped copy of them.
+ * legacy `ai` v4-shaped copy of them. `X` is what `execute` resolves to: the
+ * output `O`, or (N13b) the async generator of a streaming tool.
  */
-export interface DefinedTool<S extends StandardSchemaV1 = StandardSchemaV1, O = unknown>
+export interface DefinedTool<S extends StandardSchemaV1 = StandardSchemaV1, O = unknown, X = O>
   extends ToolDescriptor {
   readonly name: string;
   readonly description: string;
   readonly input: S;
   /** Same schema as `input`. */
   readonly inputSchema: S;
-  execute(args: InferSchemaOutput<S>, ctx: ToolExecutionContext): Promise<O>;
+  execute(args: InferSchemaOutput<S>, ctx: ToolExecutionContext): Promise<X>;
   /** Type-only marker; never set at runtime. */
   readonly _types?: { input: InferSchemaOutput<S>; output: O };
 }
@@ -81,7 +94,7 @@ export interface DefinedTool<S extends StandardSchemaV1 = StandardSchemaV1, O = 
 /** The (parsed) argument type of a defined tool. */
 export type ToolInput<T extends DefinedTool> = InferSchemaOutput<T['input']>;
 
-/** The awaited return type of a defined tool's `execute`. */
+/** The awaited return type of a defined tool's `execute`; for a generator `execute` (N13b), the type it yields. */
 export type ToolOutput<T extends DefinedTool> = NonNullable<T['_types']>['output'];
 
 const definedTools = new WeakSet<object>();
@@ -142,18 +155,31 @@ function assertValidOptions(opts: { name?: unknown; description?: unknown; input
  *   },
  * });
  * type Result = ToolOutput<typeof sendEmail>; // { messageId: string }
+ *
+ * // N13b: a generator streams snapshots (`tool.partial`); the last one is the result.
+ * const report = defineTool({
+ *   name: 'build_report',
+ *   description: 'Build a report',
+ *   input: z.object({ topic: z.string() }),
+ *   async *execute({ topic }) {
+ *     yield { topic, progress: 0.5, done: false };
+ *     yield { topic, progress: 1, done: true };
+ *   },
+ * });
+ * type Snapshot = ToolOutput<typeof report>; // { topic: string; progress: number; done: boolean }
  * ```
  */
 export function defineTool<S extends StandardSchemaV1, R>(
   opts: DefineToolOptions<S, R>
-): DefinedTool<S, Awaited<R>> {
+): DefinedTool<S, ToolResultOf<R>, Awaited<R>> {
   assertValidOptions(opts);
 
+  // N13b: an async generator passes through unchanged (it is not thenable); the runtime iterates it.
   const execute = async (args: InferSchemaOutput<S>, ctx: ToolExecutionContext): Promise<Awaited<R>> =>
     await opts.execute(args, ctx);
   // legacy (.tool): the `ai` v4 Tool shape. Removed in D26.
   const legacyTool = legacyAiTool(opts.description, opts.input, execute as NonNullable<ToolDescriptor['execute']>);
-  const defined: DefinedTool<S, Awaited<R>> = {
+  const defined: DefinedTool<S, ToolResultOf<R>, Awaited<R>> = {
     name: opts.name,
     description: opts.description,
     input: opts.input,

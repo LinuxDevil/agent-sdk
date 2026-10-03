@@ -60,11 +60,16 @@ export function Chat() {
 | `text.delta`, `text.done` | `text-start` (once per text part), `text-delta`, `text-end` |
 | `reasoning.start`, `reasoning.delta`, `reasoning.done` | `reasoning-start`, `reasoning-delta`, `reasoning-end` (see [Reasoning](./reasoning.md)) |
 | `tool.start` | `tool-input-start`, then `tool-input-available` with the arguments |
+| `tool.partial` | `tool-output-available` with `preliminary: true` (AI SDK 5+): a snapshot of a [streaming tool](./tools.md#streaming-partial-results) |
 | `tool.done` / `tool.error` | `tool-output-available` / `tool-output-error` |
 | `approval.requested` | `data-lousho-approval` (below) |
 | `todo.updated` | `data-lousho-todos`: a data part `{ todos, counts }` with the complete todo list, under the id `todos` so each update replaces the last (see [Todo tools](./tools.md#todo-tools)) |
 | `error` | `error` |
 | `run.done` | `finish` |
+
+A streaming tool's snapshots arrive as preliminary outputs, which `useChat`
+shows as the tool part's `output` with `preliminary: true`; the `tool.done`
+chunk after them has no `preliminary` and is the final output.
 
 Events with no UI counterpart (retries, compaction, permission decisions,
 guardrails, ...) and the events of sub-agents are not forwarded. The `finish`

@@ -34,6 +34,11 @@ export interface ToolRunInput extends Pick<ToolRunContext, 'toolCallId' | 'sessi
   tokens?: OAuthTokenStore;
   /** N9b: collects the tokens `ctx.getToken()` handed out during this call (see redactHandedOutTokens()). */
   handedOut?: Set<string>;
+  /**
+   * N13b: told every snapshot a generator `execute` yields (a `tool.partial`),
+   * after the same token redaction as the result. Not part of the tool's context.
+   */
+  onPartial?: (output: unknown) => void;
 }
 
 /**

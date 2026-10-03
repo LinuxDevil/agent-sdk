@@ -129,6 +129,8 @@ export interface RunEventSink {
   runStart(agent: { id?: string; name: string }): void;
   textDone(text: string, stepUsage?: StepUsage): void;
   toolStart(toolCall: ToolCall): void;
+  /** N13b: a snapshot a generator tool yielded (`tool.partial`). */
+  toolPartial(toolCallId: string, toolName: string, output: unknown): void;
   toolSettled(outcome: ToolSettled): void;
   error(error: unknown): void;
   /** `run.done` (a sub-agent's reaches the deprecated `onEvent` only). */
@@ -173,6 +175,12 @@ export type StreamingExecuteOptions = ExecuteOptions & { [RUN_EVENTS]?: RunEvent
 /** The run's event sink, when `options` belong to a streaming run. */
 export function runEventsOf(options: object): RunEventSink | undefined {
   return (options as StreamingExecuteOptions)[RUN_EVENTS];
+}
+
+/** N13b: where a run's generator tools report their snapshots - its sink's `tool.partial` - when the run has a sink. */
+export function partialSink(options: object): ((toolCallId: string, toolName: string, output: unknown) => void) | undefined {
+  const sink = runEventsOf(options);
+  return sink && ((toolCallId, toolName, output) => sink.toolPartial(toolCallId, toolName, output));
 }
 
 /** Starts the run with the composed signal, sink and the queue behind `run.enqueue()`. */
@@ -247,6 +255,8 @@ class RunEvents {
   private readonly listeners = new Set<(event: AgentEvent) => void>();
   private readonly legacy = new Set<(event: ExecutionEvent) => void>();
   private readonly toolStarts = new Map<string, number>();
+  /** N13b: how many snapshots each running call has yielded (keyed like `toolStarts`). */
+  private readonly partials = new Map<string, number>();
 
   /**
    * `iterated`: the caller iterates a `stream()` (see {@link RunEventSink.iterated}).
@@ -288,6 +298,8 @@ class RunEvents {
 
   private toolStarted(toolCall: ToolCall, subagent?: SubagentInfo): void {
     this.toolStarts.set(toolStartKey(toolCall.id, subagent), Date.now());
+    // N13b: a call that runs again (after a sign-in, or on a resume) counts its snapshots from 0.
+    this.partials.delete(toolStartKey(toolCall.id, subagent));
     const args = parseToolArguments(toolCall, {});
     this.emit(
       {
@@ -301,8 +313,17 @@ class RunEvents {
     );
   }
 
+  /** N13b: `tool.partial`, the snapshot JSON-round-tripped like `tool.done`'s result. */
+  private toolPartial(toolCallId: string, toolName: string, output: unknown, subagent?: SubagentInfo): void {
+    const key = toolStartKey(toolCallId, subagent);
+    const index = this.partials.get(key) ?? 0;
+    this.partials.set(key, index + 1);
+    this.emit({ type: 'tool.partial', toolCallId, toolName, output: toJsonValue(output), index }, subagent);
+  }
+
   private toolSettled(outcome: ToolSettled, subagent?: SubagentInfo): void {
     const { toolCallId, toolName } = outcome;
+    this.partials.delete(toolStartKey(toolCallId, subagent));
     const durationMs = Date.now() - (this.toolStarts.get(toolStartKey(toolCallId, subagent)) ?? Date.now());
     if (outcome.error === undefined) {
       const replaced = outcome.replacedByHook !== undefined && { replacedByHook: outcome.replacedByHook };
@@ -368,6 +389,7 @@ class RunEvents {
       runStart: ({ id, name }) => this.emit({ type: 'run.start', agentName: name ?? '', ...(id !== undefined && { agentId: id }) }, subagent),
       textDone: (text, stepUsage) => this.emit({ type: 'text.done', text }, subagent, { stepUsage }),
       toolStart: (toolCall) => this.toolStarted(toolCall, subagent),
+      toolPartial: (toolCallId, toolName, output) => this.toolPartial(toolCallId, toolName, output, subagent),
       toolSettled: (outcome) => this.toolSettled(outcome, subagent),
       error: reportError,
       runDone: (result, abortReason) => this.emit(runDonePayload(result), subagent, { usage: result.usage, abortReason }),

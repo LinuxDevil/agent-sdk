@@ -22,6 +22,12 @@ export interface UIToolCall {
   status: UIToolCallStatus;
   /** The tool's result, from `tool.done`. */
   result?: unknown;
+  /**
+   * N13b: the latest snapshot of a running generator tool's output, from
+   * `tool.partial`. Removed when the call settles (`tool.done` / `tool.error`),
+   * pauses, or starts again.
+   */
+  partial?: unknown;
   /** Why it failed, from `tool.error`. */
   error?: AgentEventError;
 }
@@ -125,6 +131,30 @@ function patchTool(messages: UIMessage[], id: string, patch: Partial<UIToolCall>
   });
 }
 
+/** N13b: `call` without its `partial` snapshot. */
+function withoutPartial({ partial: _partial, ...call }: UIToolCall): UIToolCall {
+  return call;
+}
+
+/** N13b: patches the tool call `id` of the last assistant message and drops its `partial`. */
+function settleTool(messages: UIMessage[], id: string, patch: Partial<UIToolCall>, added?: UIToolCall): UIMessage[] {
+  return onAssistant(patchTool(messages, id, patch, added), (message) => ({
+    ...message,
+    toolCalls: message.toolCalls.map((call) => (call.id === id ? withoutPartial(call) : call)),
+  }));
+}
+
+/**
+ * N13b: the snapshot of a `tool.partial` on its call - only while that call
+ * is running, so a snapshot that arrives after the call settled or paused
+ * never replaces its state.
+ */
+function partialOf(messages: UIMessage[], event: Extract<AgentEvent, { type: 'tool.partial' }>): UIMessage[] {
+  const last = messages[messages.length - 1];
+  const running = last?.role === 'assistant' && last.toolCalls.some((call) => call.id === event.toolCallId && call.status === 'running');
+  return running ? patchTool(messages, event.toolCallId, { partial: event.output }) : messages;
+}
+
 /** The paused call of an `approval.requested` event, with its question (LOU-X9) or sign-in link (N9b) when it has one. */
 function pendingOf(event: Extract<AgentEvent, { type: 'approval.requested' }>): UIPendingApproval {
   const { approvalId: id, toolCallId, toolName, args, kind, question, signIn } = event;
@@ -133,7 +163,7 @@ function pendingOf(event: Extract<AgentEvent, { type: 'approval.requested' }>): 
 
 function pause(state: AgentUIState, approval: UIPendingApproval): AgentUIState {
   const { toolCallId: id, toolName: name, args } = approval;
-  const messages = patchTool(state.messages, id, { status: 'awaiting-approval' }, { id, name, args, status: 'running' });
+  const messages = settleTool(state.messages, id, { status: 'awaiting-approval' }, { id, name, args, status: 'running' });
   return { ...state, messages, status: 'awaiting-approval', pendingApproval: approval };
 }
 
@@ -141,7 +171,7 @@ function resumed(state: AgentUIState, { text, finishReason, usage, approval }: A
   const messages = onAssistant(state.messages, (message) => ({
     ...message,
     text: message.text && text ? `${message.text}\n\n${text}` : message.text || text,
-    toolCalls: message.toolCalls.map((call) => (call.status === 'running' ? { ...call, status: 'done' } : call)),
+    toolCalls: message.toolCalls.map((call) => (call.status === 'running' ? { ...withoutPartial(call), status: 'done' } : call)),
   }));
   const next = { ...state, messages, status: settledStatus(finishReason), usage: usage ?? state.usage };
   return approval ? pause(next, approval) : next;
@@ -198,13 +228,16 @@ export function reduceAgentEvents(state: AgentUIState, event: AgentEvent | Agent
       return { ...next, messages: onAssistant(state.messages, (m) => ({ ...m, reasoning: (m.reasoning ?? '') + event.text })) };
     case 'tool.start': {
       const call: UIToolCall = { id: event.toolCallId, name: event.toolName, args: event.args, status: 'running' };
-      return { ...next, messages: patchTool(state.messages, call.id, {}, call) };
+      // N13b: a call that starts again (after a sign-in) drops the snapshot of its earlier attempt.
+      return { ...next, messages: settleTool(state.messages, call.id, {}, call) };
     }
+    case 'tool.partial':
+      return { ...next, messages: partialOf(state.messages, event) };
     case 'tool.done':
-      return { ...next, messages: patchTool(state.messages, event.toolCallId, { status: 'done', result: event.result }) };
+      return { ...next, messages: settleTool(state.messages, event.toolCallId, { status: 'done', result: event.result }) };
     case 'tool.error':
       // A reviewer's rejection (streamed continuation, LOU-D32.2) is `rejected`, not a failure.
-      return { ...next, messages: patchTool(state.messages, event.toolCallId, event.error.name === 'ToolRejectedError' ? { status: 'rejected' } : { status: 'error', error: event.error }) };
+      return { ...next, messages: settleTool(state.messages, event.toolCallId, event.error.name === 'ToolRejectedError' ? { status: 'rejected' } : { status: 'error', error: event.error }) };
     case 'todo.updated':
       return { ...next, todos: event.todos };
     case 'approval.requested':

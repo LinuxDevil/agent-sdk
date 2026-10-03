@@ -17,7 +17,7 @@ import {
   ResolvedApproval,
 } from './ApprovalGate';
 import { AgentExecutor, ExecuteOptions, ExecutionResult } from './AgentExecutor';
-import { observeRun, runEventsOf, streamResumed, type AgentRun, type ToolSettled } from './agentRun';
+import { observeRun, partialSink, runEventsOf, streamResumed, type AgentRun, type ToolSettled } from './agentRun';
 import { Checkpoint, CheckpointStore, RUN_CONFIG_KEY } from './checkpoint';
 import { checkAgentDrift, fingerprintOf, type AgentDrift } from './agentFingerprint';
 import type { AgentConfig } from '../types';
@@ -706,7 +706,7 @@ async function executeApprovedTool(
         args,
         sandbox,
         executeOptions.signal,
-        { toolCallId: pending.toolCallId, messages, approval, sessionId, principal: executeOptions.principal, tokens: executeOptions.tokens },
+        { toolCallId: pending.toolCallId, messages, approval, sessionId, principal: executeOptions.principal, tokens: executeOptions.tokens, onPartial: partialsOf(pending, executeOptions) },
         scope
       ),
     };
@@ -736,6 +736,12 @@ async function executeApprovedTool(
       errorResult: toolErrorResult({ toolName: pending.toolName, error }),
     };
   }
+}
+
+/** N13b: a streamed resume reports the decided call's snapshots as `tool.partial` (its `tool.start` was reported by streamedDecision()). */
+function partialsOf(pending: PendingApproval, executeOptions: ResumeExecuteOptions): ((output: unknown) => void) | undefined {
+  const report = partialSink(executeOptions);
+  return report && ((output) => report(pending.toolCallId, pending.toolName, output));
 }
 
 /**

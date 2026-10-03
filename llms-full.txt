@@ -1954,11 +1954,16 @@ export function Chat() {
 | `text.delta`, `text.done` | `text-start` (once per text part), `text-delta`, `text-end` |
 | `reasoning.start`, `reasoning.delta`, `reasoning.done` | `reasoning-start`, `reasoning-delta`, `reasoning-end` (see [Reasoning](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/reasoning.md)) |
 | `tool.start` | `tool-input-start`, then `tool-input-available` with the arguments |
+| `tool.partial` | `tool-output-available` with `preliminary: true` (AI SDK 5+): a snapshot of a [streaming tool](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#streaming-partial-results) |
 | `tool.done` / `tool.error` | `tool-output-available` / `tool-output-error` |
 | `approval.requested` | `data-lousho-approval` (below) |
 | `todo.updated` | `data-lousho-todos`: a data part `{ todos, counts }` with the complete todo list, under the id `todos` so each update replaces the last (see [Todo tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#todo-tools)) |
 | `error` | `error` |
 | `run.done` | `finish` |
+
+A streaming tool's snapshots arrive as preliminary outputs, which `useChat`
+shows as the tool part's `output` with `preliminary: true`; the `tool.done`
+chunk after them has no `preliminary` and is the final output.
 
 Events with no UI counterpart (retries, compaction, permission decisions,
 guardrails, ...) and the events of sub-agents are not forwarded. The `finish`
@@ -10639,7 +10644,7 @@ on the server.
 | Field | What it is |
 | ----- | ---------- |
 | `messages` | `UIMessage[]`: `{ id, role: 'user' \| 'assistant', text, toolCalls }`. Each `send()` adds a user message and an assistant message that fills in as `text.delta` and tool events arrive. |
-| `toolCalls[i]` | `{ id, name, args, status, result?, error? }`, `status` being `'running'`, `'awaiting-approval'`, `'done'`, `'error'` or `'rejected'`. |
+| `toolCalls[i]` | `{ id, name, args, status, result?, error?, partial? }`, `status` being `'running'`, `'awaiting-approval'`, `'done'`, `'error'` or `'rejected'`. `partial` is the latest `tool.partial` snapshot of a running [streaming tool](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#streaming-partial-results), removed when the call settles or pauses. |
 | `status` | `'idle'`, `'streaming'`, `'awaiting-approval'` or `'error'`. |
 | `pendingApproval` | `{ id, toolCallId, toolName, args }` of the tool call the run paused on, else `null`. For an `ask_question` call it also has `kind: 'question'` and `question: { text, options?, allowFreeText? }`. |
 | `error` | `{ name, message }` of the last `error` event or a failed request, else `null`. |
@@ -11870,6 +11875,7 @@ The event types and their extra fields:
 | `reasoning.delta`    | `text: string` | A chunk of reasoning text (or of its summary). Never part of `text.delta` / `run.done`'s `text`. |
 | `reasoning.done`     | `text: string`, `tokens?: number` | The reasoning ended: `text` is all of it; `tokens` when the provider reported reasoning tokens by then. |
 | `tool.start`         | `toolCallId: string`, `toolName: string`, `args: Record<string, unknown>` | A tool call starts. `args` are the model's arguments parsed from JSON (`{}` when they are not valid JSON). |
+| `tool.partial`       | `toolCallId`, `toolName`, `output: unknown`, `index: number` | A snapshot of a running tool's output: a tool whose `execute` is an `async function*` reports one per `yield` (see [Streaming partial results](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#streaming-partial-results)). Each snapshot is complete and replaces the previous one; `index` counts the call's snapshots from 0. The last one is also the call's `tool.done` `result`. `output` is JSON-encoded like `result`. Snapshots never reach the model, the transcript, checkpoints or traces. A sub-agent's carries `subagent`. |
 | `tool.done`          | `toolCallId`, `toolName`, `result: unknown`, `durationMs: number` | A tool call returned. `result` is the value as it would be JSON-encoded (`undefined` becomes `null`, a `Date` becomes a string). `durationMs` counts from its `tool.start`. |
 | `todo.updated`       | `todos: Todo[]`, `counts: { pending, in_progress, completed, total }`, `toolCallId: string` | A successful `todo_write` call of the [todo tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#todo-tools) replaced the list, right after that call's `tool.done`. `todos` is the complete new list (`{ id, content, status }`), `toolCallId` the `todo_write` call. A sub-agent's carries `subagent`. The [UI bindings](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md#todos) keep the list and show it live. |
 | `tool.error`         | `toolCallId`, `toolName`, `error: { name: string, message: string }`, `durationMs: number` | A tool call failed: it threw, its arguments did not match its schema (`name: 'ToolArgumentsValidationError'`), or the tool does not exist. The model gets the error as the call's result and the run continues. |
@@ -11906,6 +11912,11 @@ Optional fields are left out when they have no value. They are never
 - Tool calls of one step run in parallel (see `toolConcurrency`):
   `tool.start` events come in the model's call order and `tool.done` /
   `tool.error` events in completion order. Match them by `toolCallId`.
+- A call's `tool.partial` events come between its `tool.start` and its
+  `tool.done` / `tool.error`, with `index` 0, 1, 2, ...; the partials of
+  parallel calls interleave. A call that pauses for a sign-in has no
+  `tool.done`; it runs again from the start after the sign-in, with a new
+  `tool.start` and `index` from 0.
 - `input.queued` comes when `run.enqueue()` is called (after `run.start`, even
   for input queued before the run got going), so it can fall inside a step.
   Its `input.applied` comes between the `step.done` of the step that was
@@ -13726,6 +13737,9 @@ descriptors that set neither `inputSchema` nor `execute`.
   [Parallel tool calls](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/runs.md#parallel-tool-calls).
 - **Cancellation.** A run's `AbortSignal` reaches each call as
   `ctx.abortSignal`, so long-running work can stop early.
+- **Progress.** An `execute` written as `async function*` streams snapshots
+  of its output while it runs; the last one is the result. See
+  [Streaming partial results](#streaming-partial-results).
 - **Retries after a crash.** With durable execution a tool can run more than
   once across a crash; use `ctx.toolCallId` as an idempotency key. See
   [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#at-least-once-tools-make-side-effects-idempotent).
@@ -13928,6 +13942,76 @@ tools.register('current_date', currentDateTool);
 
 Pass it as `toolRegistry` to `AgentExecutor.execute()`; the agent config's
 `tools` map names the tools it may use.
+
+## Streaming partial results
+
+A long tool (a report builder, a search over many sources) can show progress
+while it runs: write `execute` as an `async function*`. Every `yield` is a
+complete snapshot of the output so far, which replaces the previous one, and
+reaches the run's events as `tool.partial` (see
+[Stream events](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/stream-events.md)). The last yielded value is the tool's
+result: the model gets it, and it is the `result` of the call's `tool.done`, so
+the final snapshot appears twice (as the last `tool.partial` and in
+`tool.done`). A `return` value is ignored; a generator that yields nothing has
+the result `undefined` (`null` in events).
+
+```ts
+import { createAgent, defineTool, type ToolOutput } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+const buildReport = defineTool({
+  name: 'build_report',
+  description: 'Builds a report from several sources',
+  input: z.object({ topic: z.string() }),
+  async *execute({ topic }, ctx) {
+    const sections: string[] = [];
+    for (const source of ['news', 'papers', 'forums']) {
+      if (ctx.abortSignal?.aborted) return;
+      sections.push(`${source}: notes on ${topic}`);
+      yield { topic, sections: [...sections], done: false };
+    }
+    yield { topic, sections, done: true };
+  },
+});
+type Report = ToolOutput<typeof buildReport>; // { topic: string; sections: string[]; done: boolean }
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', tools: [buildReport] });
+for await (const event of agent.stream('Write a report on solar power.')) {
+  if (event.type === 'tool.partial') console.log(`step ${event.index}`, event.output);
+}
+```
+
+What to know:
+
+- **Only the result is kept.** Snapshots are not sent to the model, not added
+  to the transcript or the session, not checkpointed and not recorded in trace
+  spans. Hooks (`postToolCall`, `onToolResult`) see only the result.
+- **A crash loses them.** Partial output is not durable: after a crash, or a
+  pause for a [sign-in](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md) inside the generator, the call has no
+  result yet and runs again from the start (a new `tool.start`, `index` from
+  0). Snapshots already streamed stay in the event log; a UI should drop them
+  when the call pauses or starts again (the [UI bindings](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md) do).
+- **Approvals and permissions apply first.** A generator tool that needs
+  approval runs, and streams, only after the decision (also on a streamed
+  resume, `agent.approvals.streamResolve()`).
+- **Cancellation.** When the run is aborted, the SDK stops reading the
+  generator at once, settles the call as aborted and calls its `return()`, so
+  its `finally` blocks run - once the `await` it is in settles, so pass
+  `ctx.abortSignal` to the work you await.
+- **Tokens are redacted in snapshots too.** A snapshot that contains a token
+  the tool got from `ctx.getToken()` has it replaced with `[REDACTED]`, like the
+  result. A `postToolCall` hook that rewrites the result does not see the
+  snapshots: if a tool's output must be filtered by a hook, filter it in the
+  tool or do not stream it.
+- **Which values stream.** Only a value with a `next()` method that is also
+  async iterable (what an `async function*` returns) is streamed. A result that
+  is only async iterable, such as a `ReadableStream`, is an ordinary result.
+- **The whole run counts.** `toolConcurrency` holds the slot until the
+  generator ends. Calling the tool's `execute` yourself returns the generator.
+- **Where.** The main loop, the call that runs after an approval, and a flow's
+  tool-call node (which keeps only the result) all iterate the generator; a
+  tool's `sandboxExecute` does not stream. In the AI SDK UI stream, snapshots
+  are preliminary tool outputs (see [AI SDK UI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/ai-sdk-ui.md#event-mapping)).
 
 # Triggers
 
