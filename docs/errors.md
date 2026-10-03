@@ -1,7 +1,8 @@
 # Errors
 
-Every error the SDK throws on purpose is an `SDKError` (or a subclass such as
-`ConfigurationError`, `ValidationError` or `MissingPeerDependencyError`) with:
+Nearly every error the SDK throws on purpose is an `SDKError` (or a subclass
+such as `ConfigurationError`, `ValidationError` or `MissingPeerDependencyError`)
+with:
 
 - `code`: a stable string, `LOUSHO_<AREA>_<NAME>`. Branch on it, not on the
   message text, which may get clearer over time.
@@ -21,6 +22,14 @@ ConfigurationError: createAgent: no model configured. Do one of the following: (
 keep their message as it was, because the model sees it as a tool result or a
 compacted provider error; their `toString()` still adds the line.
 
+The exceptions are a few named `Error` subclasses with no `code`, kept plain
+on purpose: `PropagatingToolError` and its subclasses (a tool throws one to
+stop the run), `CassetteMismatchError` (`recordReplay` replay; see
+[Testing](./testing.md#what-replay-checks)), `CronExpressionError`
+(`parseCronExpression()`, which `CronTriggerAdapter` lets escape and
+`defineSchedule()` wraps as `LOUSHO_SCHEDULE_INVALID`) and `DecryptionError`
+(`EncryptionUtils`, `DTOEncryptionFilter`).
+
 ```ts
 import { createAgent, SDKError } from '@lousho/build-ai-agent';
 
@@ -37,8 +46,9 @@ try {
 
 `ERROR_CODES` (exported) maps every code to its hint. A test keeps it, the codes
 used in the source and the sections below in sync. A second test fails when new
-SDK code throws a plain `Error` instead of an `SDKError`; the few plain ones left
-are internal and listed in `src/utils/plainErrors.test.ts` with the reason for each.
+SDK code throws a literal `new Error(...)` instead of an `SDKError`; the few
+sites left are internal and listed in `src/utils/plainErrors.test.ts` with the
+reason for each.
 
 To start from a symptom instead of a code, see [Troubleshooting](./troubleshooting.md).
 
@@ -53,13 +63,14 @@ Find a code by area:
 | [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
 | [Schedules](#schedules) | [`LOUSHO_SCHEDULE_INVALID`](#lousho_schedule_invalid) | Defining or loading a schedule. |
 | [Channels](#channels) | [`LOUSHO_CHANNEL_INVALID`](#lousho_channel_invalid), [`LOUSHO_MEMORY_INVALID`](#lousho_memory_invalid) | Defining a channel or a memory slot. |
-| [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists) | `lousho add` fetching or copying from a registry. |
+| [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists), [`LOUSHO_REGISTRY_MANIFEST_MISMATCH`](#lousho_registry_manifest_mismatch) | `lousho add` fetching or copying from a registry. |
 | [Sandbox](#sandbox) | [`LOUSHO_SANDBOX_EGRESS_UNSUPPORTED`](#lousho_sandbox_egress_unsupported) | Asking a sandbox for something it cannot do on the current platform. |
 | [Agent directories, skills and flows](#agent-directories-skills-and-flows) | [`LOUSHO_AGENT_DIR_INVALID`](#lousho_agent_dir_invalid), [`LOUSHO_SKILL_INVALID`](#lousho_skill_invalid), [`LOUSHO_FLOW_INVALID`](#lousho_flow_invalid) | Loading an agent directory, a skill, or a flow definition. |
 | [Storage, deployment and integrations](#storage-deployment-and-integrations) | [`LOUSHO_STORAGE_FAILED`](#lousho_storage_failed), [`LOUSHO_TRIGGER_INVALID`](#lousho_trigger_invalid), [`LOUSHO_CHANNEL_REQUEST_FAILED`](#lousho_channel_request_failed), [`LOUSHO_DEPLOY_FAILED`](#lousho_deploy_failed) | A storage backend, a trigger, a channel request or `lousho build`. |
 | [Tests and evals](#tests-and-evals) | [`LOUSHO_EVALS_INVALID`](#lousho_evals_invalid), [`LOUSHO_TEST_FAILED`](#lousho_test_failed), [`LOUSHO_CASSETTE_INVALID`](#lousho_cassette_invalid) | `defineEval()`, `mockModel` and cassettes. |
 | [General](#general) | [`LOUSHO_GENERIC_ERROR`](#lousho_generic_error), [`LOUSHO_AGENT_EXECUTION_FAILED`](#lousho_agent_execution_failed), [`LOUSHO_FLOW_EXECUTION_FAILED`](#lousho_flow_execution_failed), [`LOUSHO_VALIDATION_FAILED`](#lousho_validation_failed), [`LOUSHO_OPERATION_TIMEOUT`](#lousho_operation_timeout), [`LOUSHO_OUTPUT_INVALID`](#lousho_output_invalid), [`LOUSHO_BUDGET_EXCEEDED`](#lousho_budget_exceeded), [`LOUSHO_GUARDRAIL_TRIPPED`](#lousho_guardrail_tripped) | Run-level failures: a timeout, a budget or guardrail stop, invalid output, and the catch-all codes. |
-| [OAuth](#oauth) | [`LOUSHO_TOKEN_KEY_MISSING`](#lousho_token_key_missing), [`LOUSHO_TOKEN_DECRYPT_FAILED`](#lousho_token_decrypt_failed) | Storing or reading OAuth tokens in a file, SQLite or KV store. |
+| [Auth](#auth) | [`LOUSHO_AUTH_CONFIG_INVALID`](#lousho_auth_config_invalid) | A route auth helper (`jwt()`, `oidc()`, `basic()`, `apiToken()`) got options it cannot verify with. |
+| [OAuth](#oauth) | [`LOUSHO_TOKEN_KEY_MISSING`](#lousho_token_key_missing), [`LOUSHO_TOKEN_DECRYPT_FAILED`](#lousho_token_decrypt_failed), [`LOUSHO_OAUTH_PRINCIPAL_REQUIRED`](#lousho_oauth_principal_required), [`LOUSHO_OAUTH_APP_SIGNIN_REQUIRED`](#lousho_oauth_app_signin_required), [`LOUSHO_OAUTH_STORE_MISSING`](#lousho_oauth_store_missing), [`LOUSHO_OAUTH_STATE_INVALID`](#lousho_oauth_state_invalid), [`LOUSHO_SIGNIN_PENDING`](#lousho_signin_pending), [`LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED`](#lousho_oauth_token_exchange_failed), [`LOUSHO_MCP_AUTH_REQUIRED`](#lousho_mcp_auth_required) | Storing or reading OAuth tokens in a file, SQLite or KV store, sign-in and token exchange for OAuth tools and MCP servers. |
 
 ## Configuration
 
@@ -688,7 +699,7 @@ unknown type, or a Slack trigger that cannot verify requests.
 
 **Fix:** use the example in the message. See [Channels](./channels.md) and [Schedules](./schedules.md).
 
-**Example:** `webhookTrigger({ auth: { type: 'hmac', secret: '' } })`.
+**Example:** `webhookChannel({ auth: { type: 'hmac', secret: '' } })`.
 
 ### LOUSHO_CHANNEL_REQUEST_FAILED
 
@@ -733,12 +744,20 @@ judge runner.
 
 ### LOUSHO_CASSETTE_INVALID
 
+<<<<<<< HEAD
 **Means:** a record/replay cassette is missing, is not valid JSON or does not
 match the recorded request. The message names the file. A mismatch inside a
 run reaches `send()` as the `CassetteMismatchError` itself (from
 `@lousho/build-ai-agent/testing`, with `.cassette` and `.callNumber`) - it is
 a test-fixture failure, so it is never compacted into a
 `CompactedLLMProviderError`.
+=======
+**Means:** a record/replay cassette could not be loaded: the file is missing,
+is not valid JSON, has a format version this SDK does not read, or fails the
+cassette format check. The message names the file. (A cassette that loads but
+whose recorded requests no longer match fails differently — a
+`CassetteMismatchError`, which is a plain `Error` with no code.)
+>>>>>>> 838087a4 (LOU-R23: docs corrections for errors/troubleshooting/testing)
 
 **Fix:** record it again (`lousho eval --record <file>`, or `recordReplay()` with
 `mode: 'record'`). See [Testing](./testing.md).
