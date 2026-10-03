@@ -210,16 +210,20 @@ export const SECRET_PATTERNS: ReadonlyArray<{ label: string; pattern: RegExp }> 
 /**
  * Rejects a diff containing anything that looks like a committed secret
  * (private key material, an OpenAI-style API key, or an AWS access key).
+ *
+ * The rejection reason names the pattern's label only, never the matched
+ * text (LOU-R2): the reason travels into events, traces and logs, and
+ * copying the secret there would leak the very thing the guardrail exists
+ * to keep out - the same rule the ioGuardrails trip-info docs state.
  */
 export const secretScanGuardrail: Guardrail = {
   name: 'secret-scan',
   async check(action: ProposedAction): Promise<GuardrailResult> {
     for (const { label, pattern } of SECRET_PATTERNS) {
-      const match = action.diff.match(pattern);
-      if (match) {
+      if (pattern.test(action.diff)) {
         return {
           pass: false,
-          reason: `diff appears to contain a ${label} (matched "${match[0]}")`,
+          reason: `diff appears to contain a ${label}`,
         };
       }
     }

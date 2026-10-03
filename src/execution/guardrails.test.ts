@@ -8,6 +8,7 @@ import {
   ProposedAction,
   createDiffSizeGuardrail,
   secretScanGuardrail,
+  SECRET_PATTERNS,
   createCommandGuardrail,
   createTestRunGuardrail,
   createLintGuardrail,
@@ -105,6 +106,34 @@ describe('secretScanGuardrail', () => {
     const diff = 'diff --git a/foo.txt b/foo.txt\n+hello world\n-goodbye\n';
     const result = await secretScanGuardrail.check({ diff });
     expect(result.pass).toBe(true);
+  });
+
+  it('never puts the matched secret in the reason (LOU-R2): only the pattern label', async () => {
+    // One fake secret per SECRET_PATTERNS entry. The rejection reason (and
+    // the failure runGuardrails() reports from it) names the label only -
+    // embedding the matched text would copy the secret into events, traces
+    // and logs.
+    const secrets = [
+      '-----BEGIN RSA PRIVATE KEY-----',
+      'sk-FakeTestKey1234567890AbCdEfGh',
+      'AKIA0123456789ABCDEF',
+    ];
+    for (const secret of secrets) {
+      const diff = `+const key = "${secret}";\n`;
+      const matched = SECRET_PATTERNS.map(({ pattern }) => diff.match(pattern)?.[0]).find(Boolean);
+      expect(matched).toBe(secret);
+
+      const result = await secretScanGuardrail.check({ diff });
+      expect(result.pass).toBe(false);
+      expect(result.reason).toBeDefined();
+      expect(result.reason).not.toContain(secret);
+
+      const aggregated = await runGuardrails({ diff }, [secretScanGuardrail]);
+      expect(aggregated.pass).toBe(false);
+      for (const failure of aggregated.failures) {
+        expect(failure.reason ?? '').not.toContain(secret);
+      }
+    }
   });
 });
 
