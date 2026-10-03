@@ -124,7 +124,7 @@ console.log(result.text); // You said: ping
 | `text`         | Assistant text (default `''`).                                                 |
 | `toolCalls`    | `[{ name, args?, id? }]`. Args are JSON-encoded; ids default to `call_N`.      |
 | `error`        | Reject `generate()` / `stream()` with this error.                              |
-| `usage`        | `{ inputTokens, outputTokens }` (default: none reported; the run then estimates usage and flags it `estimated`). |
+| `usage`        | `{ inputTokens, outputTokens }`; when omitted the turn reports no usage at all (`undefined`, like a backend that omits token counts, so the executor estimates and flags `usage.estimated`). |
 | `finishReason` | Defaults to `'tool_calls'` when there are tool calls, otherwise `'stop'`.      |
 | `delayMs`      | Wait before answering (works with `vi.useFakeTimers()`).                       |
 

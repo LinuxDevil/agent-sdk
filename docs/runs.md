@@ -18,8 +18,8 @@ budget (default 10) ran out while the model still wanted to continue, so the
 reply may be empty or partial; a run that finishes naturally within the budget
 keeps its `'stop'`. Steps carried over by `initialSteps` or an approval resume
 count against the budget, and `result.steps` is the number of steps taken. The
-same reason is on the `finish` event and on `run.done` in
-[streaming](streaming.md).
+same reason is on `run.done` in [streaming](streaming.md) (and on `finish`,
+the deprecated `onEvent` counterpart).
 
 ```ts
 import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
@@ -105,11 +105,12 @@ Guarantees, whatever the limit:
 - **Transcript order is call order.** Tool results are appended in the order
   the model requested the calls, not the order they finish, so the next
   provider request is deterministic.
-- **Events.** Calls start in call order. A call's `tool-call` event,
+- **Events.** Calls start in call order. A call's `tool.start` event,
   `onToolCall`, argument validation, `preToolCall` hooks and `needsApproval`
-  check run just before it starts, one call at a time. Its `tool-result`
-  event fires when it finishes, so results arrive in completion order. With
-  `toolConcurrency: 1` events alternate call/result exactly as before.
+  check run just before it starts, one call at a time. Its `tool.done` (or
+  `tool.error`) event fires when it finishes, so results arrive in completion
+  order. With `toolConcurrency: 1` events alternate start/settle exactly as
+  before.
 - **Approvals.** The first call that needs approval stops the batch: the
   calls before it run (concurrently) and their results are recorded, then the
   run pauses on that call (`finishReason: 'awaiting-approval'`). Calls after
