@@ -23,7 +23,7 @@ export const WORKER_RUNTIME_SPECIFIER = '@lousho/build-ai-agent/deploy-runtime-w
  * package root. Works both from source (src/deploy/) and from the bundled
  * CLI (dist/cli/build.js), in a checkout or an installed node_modules copy.
  */
-function findSdkRoot(startDir: string = __dirname): string {
+export function findSdkRoot(startDir: string = __dirname): string {
   let dir = startDir;
   for (;;) {
     if (isSdkPackageRoot(dir)) return dir;

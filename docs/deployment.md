@@ -162,9 +162,15 @@ browser-platform ES module; the build fails if any `node:` import ends up in the
 
 `dist/server.js` bundles the SDK but leaves its optional peers (the `peerDependenciesMeta`
 entries of its package.json: provider packages, `dockerode`, the MCP SDK, `prompts`, ...) external, so a build
-never needs one you do not use. Install, where the server runs, only the peers its agent needs (for example
-`@ai-sdk/openai` for an OpenAI agent); a code path that needs one that is missing raises the SDK's coded
-missing-peer error. A spec's cron triggers run on the node-server and docker targets as well as on Workers
+never needs one you do not use. The generated `package.json` already lists the
+ones the agent needs where the server runs - `@lousho/build-ai-agent` (pinned
+to the version that built it), the provider package the spec names (at the
+range pairing with the build's `ai` major, e.g. `@ai-sdk/openai` for an OpenAI
+agent) and `@modelcontextprotocol/sdk` when the spec has `mcpServers` - so the
+docker image's `npm install --omit=dev` or a `npm install` next to the
+node-server output installs them. Anything else (an agent directory's own
+imports, `dockerode` for sandboxed tools) you add yourself; a code path that
+needs one that is missing raises the SDK's coded missing-peer error. A spec's cron triggers run on the node-server and docker targets as well as on Workers
 ([Schedules](schedules.md#on-the-node-server)).
 
 ## Custom targets

@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { DockerAdapter, DOCKERFILE } from './docker';
-import { NodeServerAdapter } from './node-server';
+import { NodeServerAdapter, deployDependencies } from './node-server';
 import { getAdapter, registerBuiltInAdapters } from '../index';
 
 function writeSpec(dir: string): string {
@@ -66,6 +66,57 @@ describe('DockerAdapter', () => {
     expect(lines).toContain('CMD ["node", "dist/server.js"]');
     // Container needs an explicit all-interfaces opt-in to be reachable via -p.
     expect(lines).toContain('ENV HOST=0.0.0.0');
+  });
+
+  it('writes a package.json shipping the SDK and the peers the spec needs (LOU-R20)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-docker-'));
+    const specPath = path.join(dir, 'agent.yaml');
+    fs.writeFileSync(
+      specPath,
+      'name: docker-agent\nprompt: p\nprovider:\n  type: openai\n  model: gpt-4o-mini\nmcpServers:\n  fs:\n    command: npx\n'
+    );
+    const outDir = path.join(dir, 'out');
+    await DockerAdapter.scaffold(specPath, outDir);
+
+    const manifest = JSON.parse(fs.readFileSync(path.join(outDir, 'package.json'), 'utf8'));
+    const sdk = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'package.json'), 'utf8'));
+    // The image's `npm install --omit=dev` must install what the bundle left external.
+    expect(manifest.dependencies['@lousho/build-ai-agent']).toBe(sdk.version);
+    expect(manifest.dependencies['@ai-sdk/openai']).toBeDefined();
+    expect(manifest.dependencies['@modelcontextprotocol/sdk']).toBe(sdk.peerDependencies['@modelcontextprotocol/sdk']);
+    expect(manifest.scripts.start).toBe('node dist/server.js');
+  });
+
+  it('a mock-provider spec ships only the SDK dependency', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-docker-'));
+    const outDir = path.join(dir, 'out');
+    await DockerAdapter.scaffold(writeSpec(dir), outDir);
+    const manifest = JSON.parse(fs.readFileSync(path.join(outDir, 'package.json'), 'utf8'));
+    const sdk = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'package.json'), 'utf8'));
+    expect(manifest.dependencies).toEqual({ '@lousho/build-ai-agent': sdk.version });
+  });
+
+  it('an agent directory ships the provider peer its data config names', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-docker-'));
+    const agentDir = path.join(dir, 'my-agent');
+    fs.mkdirSync(agentDir);
+    fs.writeFileSync(path.join(agentDir, 'agent.json'), JSON.stringify({ model: 'anthropic/claude-x', description: 'd' }));
+    fs.writeFileSync(path.join(agentDir, 'instructions.md'), 'You help.');
+    const outDir = path.join(dir, 'out');
+    await DockerAdapter.scaffold(agentDir, outDir);
+    const manifest = JSON.parse(fs.readFileSync(path.join(outDir, 'package.json'), 'utf8'));
+    expect(manifest.dependencies['@ai-sdk/anthropic']).toBeDefined();
+  });
+
+  it('deployDependencies pairs the provider peer with the installed ai major', () => {
+    const deps = deployDependencies('openai');
+    expect(deps['@ai-sdk/openai']).toMatch(/^\^/);
+    expect(deps['@modelcontextprotocol/sdk']).toBeUndefined();
+    expect(deployDependencies('nope')).toEqual(deployDependencies());
+    const ollamaMcp = deployDependencies('ollama', true);
+    expect(Object.keys(ollamaMcp)).toHaveLength(3);
+    expect(Object.keys(ollamaMcp).some((k) => k.startsWith('ollama-ai-provider'))).toBe(true);
+    expect(ollamaMcp['@modelcontextprotocol/sdk']).toBeDefined();
   });
 
   it('build() delegates to NodeServerAdapter.build()', async () => {
