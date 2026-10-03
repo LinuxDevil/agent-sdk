@@ -56,7 +56,11 @@ triggered it (see [Streaming](./stream-events.md#event-schema-version-1)):
 Every `compaction.start` is followed by exactly one `compaction.done`. When the
 strategy could not shrink anything, `tokensAfter` equals `tokensBefore`; when it
 failed (or the summarizer failed and the hook fell back to pruning), `error` is
-set and the run continues. `summary` is `true` when old turns were replaced by
+set and the run continues. A summary that does not get the conversation under
+the threshold - or that makes it larger - is rejected the same way: `error` is
+set, the run keeps the pruned result instead, and the hook only prunes that
+transcript for the rest of the run, so a summarizer that cannot help is never
+called again step after step. `summary` is `true` when old turns were replaced by
 a summary (the text itself is not sent; use `onCompaction` for it). A
 `send()` without a listener emits no events. Hooks add their own events with
 `ctx.emit?.(...)` on the `preGenerate` context, which exists when the run has
