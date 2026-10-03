@@ -12,6 +12,7 @@ comes back to the lead as one tool result.
 | --- | --- |
 | **Skills** ([docs](./skills.md)) | The *same* agent needs extra instructions for some tasks. Cheap: a skill is text loaded into the current conversation. |
 | **Sub-agents** | A task needs different tools, a different model, or a long tool-heavy exploration you do not want in the lead's context. The lead decides at run time whether and what to delegate; independent tasks run in parallel. |
+| **Handoffs** ([docs](./handoffs.md)) | Another agent should take over the conversation and answer the user itself (triage to a specialist), instead of returning a result to the lead. |
 | **Flows** | The steps and their order are known up front (a pipeline), so they should not be left to a model's judgment. |
 
 ## Quick start

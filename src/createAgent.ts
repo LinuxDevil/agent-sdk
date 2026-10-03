@@ -68,6 +68,9 @@ import { agentMemory } from './memory/withMemory';
 import type { RunLimits } from './execution/budget';
 import type { AgentGuardrails } from './execution/ioGuardrails';
 import type { Principal } from './auth/types';
+import type { Handoff } from './handoffs';
+import { checkHandoffs, handoffRunner, registerHandoffAgent } from './handoffAgents';
+import { activeAgentOf } from './execution/handoffRun';
 
 /** What a `model` / `instructions` / `tools` function gets (LOU-V15): the run it is resolved for. */
 export interface RunConfigContext {
@@ -171,6 +174,23 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    * run ends are cancelled). Override those set with `withSubagentOptions()`.
    */
   subagentOptions?: SubagentOptions;
+  /**
+   * Agents this agent can hand the whole conversation to (N6): `createAgent()`
+   * agents with a `name` and a `description`, or `handoff(agent, options)`.
+   * Each is offered as a `transfer_to_<name>` tool; when the model calls one,
+   * the run goes on as that agent, which answers the user and keeps the
+   * conversation in later session turns. The array is read at every run, so a
+   * target that hands back can be added after this agent is created. See
+   * docs/handoffs.md.
+   *
+   * @example
+   * ```ts
+   * const triage = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'Route the user.', handoffs: [billing, techSupport] });
+   * ```
+   */
+  handoffs?: ReadonlyArray<SimpleAgent | Handoff>;
+  /** How many handoffs one run may make (N6, default 5); a handoff call over it gets a tool error and the agent answers itself. */
+  maxHandoffs?: number;
   /**
    * How deep sub-agents may nest. Defaults to 1: this agent's sub-agents
    * cannot call sub-agents of their own (they are not offered the `task`
@@ -651,6 +671,9 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   assertMaxSubagentDepth(config.maxSubagentDepth, 'createAgent');
   assertSubagents(config.subagents, 'createAgent');
   if (typeof config.permissionMode === 'string') assertPermissionMode(config.permissionMode, 'createAgent');
+  assertMaxHandoffs(config.maxHandoffs);
+  const agentName = config.name || 'agent';
+  const handoffTools = checkHandoffs(config.handoffs, { name: agentName }, 'createAgent').map((checked) => checked.toolName);
   const hasMcp = Object.keys(config.mcpServers ?? {}).length > 0;
   const memory = agentMemory(config.memory);
   const mcpTools: Record<string, ToolDescriptor> = {};
@@ -687,6 +710,11 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   const specs = agentSpecs(config, toolsFor, runOptions);
   const staticSpec = specs.static;
   if (staticSpec && config.subagents) assertNoTaskTool(staticSpec.agent, staticSpec.toolRegistry);
+  // N6: a handoff tool may not share a tool's name (a per-run `tools` function is checked when the run starts).
+  const clash = handoffTools.find((name) => specs.staticTools?.toolsConfig[name]);
+  if (clash) {
+    throw new ConfigurationError(`createAgent: the handoff tool '${clash}' has the name of one of the agent's tools; set another toolName with handoff(target, { toolName }).`, 'handoffs');
+  }
   // LOU-Z4: MCP tools join the registry and the agent's tools once connected.
   const mcp = agentMcp(
     config.mcpServers,
@@ -704,6 +732,20 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     ...(config.captureContent !== undefined && { captureContent: config.captureContent }),
   };
   const checkpoints = config.store?.checkpoints;
+  /** N6: the handoffs of this agent's runs, and the agent a run continues with after one. */
+  const handoffs = handoffRunner({
+    agent: () => simpleAgent,
+    name: agentName,
+    runOptions,
+    // Handed back to, the agent gets its memory tools again (bound to the run's scope).
+    spec: async (ctx, pinned, viaHandoff) => {
+      await mcp.ready();
+      const spec = staticSpec ?? (await specs.resolve(ctx, pinned as PinnedRunConfig | undefined));
+      if (!viaHandoff || !memory) return spec;
+      const scope = { sessionId: ctx.sessionId, metadata: ctx.metadata, principal: ctx.principal };
+      return { ...spec, toolRegistry: memory.forRun(scope, spec.toolRegistry, undefined).toolRegistry };
+    },
+  });
   // N9b: tools' OAuth tokens (`ctx.getToken()`) and pending sign-ins.
   const tokens = config.store?.tokens;
   /** How a paused run continues: with the spec (and, for a dynamic run, the model) it paused with. */
@@ -715,22 +757,26 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     permissionMode?: PermissionOptions['permissionMode'],
     approver?: Principal
   ): Promise<ResumeRequest> => {
-    const paused = await pausedRun(specs, approvalStore, decision.id);
+    // N6: a run paused after a handoff continues as the agent it handed off to.
+    const paused = await pausedRun(specs, approvalStore, decision.id, handoffs.has() ? handoffs : undefined);
+    const { agent: pausedAgent, provider, toolRegistry, hostedTools, ...pausedOptions } = paused.spec;
     return {
       decision,
       approvalStore: paused.store,
-      toolRegistry: paused.spec.toolRegistry ?? new ToolRegistry(),
-      provider: paused.spec.provider,
+      toolRegistry: toolRegistry ?? new ToolRegistry(),
+      provider,
       executeOptions: {
         ...runOptions,
+        ...pausedOptions,
         // N4: a paused session turn continues under the session's mode (read at each call), else the agent's.
         ...(permissionMode !== undefined && { permissionMode }),
         output: config.output,
         hooks,
         approvalStore: paused.store,
         signal,
-        currentAgent: paused.spec.agent,
-        hostedTools: paused.spec.hostedTools,
+        currentAgent: pausedAgent,
+        hostedTools,
+        ...(paused.handoffs && { handoffs: paused.handoffs, maxHandoffs: config.maxHandoffs }),
         onAgentEvent: config.onEvent,
         ...tracing,
         // N10b: who decides; the run itself goes on as the principal it paused with (its snapshot's).
@@ -770,12 +816,14 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     if (permissionMode !== undefined) assertPermissionMode(permissionMode, 'send');
     return { ...durable(sessionId), ...(reasoning !== undefined && { reasoning }), ...(permissionMode !== undefined && { permissionMode }) };
   };
+  /** `lead` (N6): false when the run starts as a handoff target, which gets none of this agent's memory. */
   const executeOptions = (
     spec: SubagentSpec,
     input: Message[],
     ctx: RunConfigContext,
     signal?: AbortSignal,
-    turn?: RunTurn
+    turn?: RunTurn,
+    lead = true
   ): ExecuteOptions => ({
     ...spec,
     output: config.output,
@@ -792,24 +840,38 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     ...(ctx.principal && { principal: ctx.principal }),
     ...turn,
     // LOU-W6: memory tools and recall bound to this run's scope keys.
-    ...memory?.forRun({ sessionId: ctx.sessionId, metadata: ctx.metadata, principal: ctx.principal }, spec.toolRegistry, hooks),
+    ...(lead && memory?.forRun({ sessionId: ctx.sessionId, metadata: ctx.metadata, principal: ctx.principal }, spec.toolRegistry, hooks)),
   });
+  /**
+   * N6: the run's options when this agent has handoffs: the agent the transcript (a session's, when `inSession`, or the
+   * checkpointed run's) last handed off to runs, with its handoffs; else this agent.
+   */
+  const prepareHandoffs = async (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: RunTurn, inSession = false) => {
+    const checkpoint = turn?.sessionId && turn.checkpointStore ? await turn.checkpointStore.load(turn.sessionId) : null;
+    const pinned = checkpoint && checkpoint.status !== 'finished' ? (checkpoint.runConfig as PinnedRunConfig | undefined) : undefined;
+    const active = activeAgentOf(checkpoint ? checkpoint.messages : inSession ? input : []);
+    const runCtx = pinned?.ctx ?? ctx;
+    const resolved = await handoffs.run(active, runCtx, pinned);
+    const options = { ...executeOptions(resolved.spec, input, runCtx, signal, turn, resolved.lead), handoffs: resolved.handoffs, maxHandoffs: config.maxHandoffs };
+    return pinned ? { ...options, principal: ctx.principal } : options;
+  };
   /**
    * The run's options once MCP servers are connected, with its spec resolved for `ctx` (LOU-V15). A dynamic run
    * restarted from its checkpoint resolves with the `ctx` and model it began with (LOU-V15.2).
    */
-  const prepare = async (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: RunTurn) => {
+  const prepare = async (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: RunTurn, inSession = false) => {
     await mcp.ready();
+    if (handoffs.has()) return prepareHandoffs(input, ctx, signal, turn, inSession);
     if (staticSpec) return executeOptions(staticSpec, input, ctx, signal, turn);
     const pinned = await checkpointedRunConfig(turn);
     const options = executeOptions(await specs.resolve(pinned?.ctx ?? ctx, pinned), input, pinned?.ctx ?? ctx, signal, turn);
     // N10b: the call's own principal, so the executor refuses another caller's; without one, the run keeps its saved principal.
     return pinned ? { ...options, principal: ctx.principal } : options;
   };
-  const run = async (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: RunTurn) =>
-    AgentExecutor.execute(await prepare(input, ctx, signal, turn));
-  const stream = (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: RunTurn): AgentRun => {
-    if (!staticSpec) return streamPrepared(() => prepare(input, ctx, signal, turn), signal, turn?.inputQueue);
+  const run = async (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: RunTurn, inSession = false) =>
+    AgentExecutor.execute(await prepare(input, ctx, signal, turn, inSession));
+  const stream = (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: RunTurn, inSession = false): AgentRun => {
+    if (!staticSpec || handoffs.has()) return streamPrepared(() => prepare(input, ctx, signal, turn, inSession), signal, turn?.inputQueue);
     const options = executeOptions(staticSpec, input, ctx, signal, turn);
     return hasMcp ? streamAfter(mcp.ready, options) : AgentExecutor.stream(options);
   };
@@ -824,8 +886,9 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
       principal: call?.principal,
     });
     return approvals.session(
-      (input, signal, turn, call) => run(input, ctxOf(input, call), signal, turn),
-      (input, signal, turn, call) => stream(input, ctxOf(input, call), signal, turn),
+      // N6: a session's turn continues with the agent its transcript last handed off to.
+      (input, signal, turn, call) => run(input, ctxOf(input, call), signal, turn, true),
+      (input, signal, turn, call) => stream(input, ctxOf(input, call), signal, turn, true),
       // LOU-W8 follow-up: `session.compact()` uses the agent's `compaction` unless the session sets its own; N4: the same for the permission mode.
       withDefaultStores(
         {
@@ -875,7 +938,23 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   // LOU-V4.2: a sub-agent answers with its own `output` object, never the lead's schema.
   const subagentSpec = async (prompt: string): Promise<SubagentSpec> => ({ ...(await specs.resolve({ input: prompt })), output: config.output });
   registerSubagent(simpleAgent, { spec: staticSpec ? { ...staticSpec, output: config.output } : subagentSpec, description: config.description });
+  // N6: as a handoff target, the agent runs with its own config (its `output` is not used: the run's lead types the result).
+  registerHandoffAgent(simpleAgent, {
+    name: config.name,
+    description: config.description,
+    handoffs: () => config.handoffs,
+    resolve: async (ctx, pinned) => {
+      await mcp.ready();
+      return staticSpec ?? specs.resolve(ctx, pinned as PinnedRunConfig | undefined);
+    },
+  });
   return simpleAgent;
+}
+
+/** N6: `maxHandoffs` must be a whole number >= 0. */
+function assertMaxHandoffs(value: unknown): void {
+  if (value === undefined || (typeof value === 'number' && Number.isInteger(value) && value >= 0)) return;
+  throw new ConfigurationError(`createAgent: 'maxHandoffs' must be a whole number >= 0, got ${String(value)}.`, 'maxHandoffs');
 }
 
 /** A run's tool registry, the matching `AgentConfig.tools`, and (N1a) its hosted tools. */
@@ -1002,14 +1081,22 @@ async function resolveOption<T>(option: string, value: PerRun<T>, ctx: RunConfig
  * (to read the `ctx` and model it was paused with) and hands it back to
  * `resumeAfterApproval()` through a store that replays it once.
  */
-async function pausedRun(specs: AgentSpecs, store: ApprovalStore, id: string): Promise<{ spec: SubagentSpec; store: ApprovalStore }> {
-  if (specs.static) return { spec: specs.static, store };
+async function pausedRun(
+  specs: AgentSpecs,
+  store: ApprovalStore,
+  id: string,
+  handoffs?: ReturnType<typeof handoffRunner>
+): Promise<{ spec: SubagentSpec; store: ApprovalStore; handoffs?: ResolvedHandoffs }> {
+  if (specs.static && !handoffs) return { spec: specs.static, store };
   const record = await store.resolve(id);
   if (!record) {
     throw new SDKError(`No pending approval found for id '${id}' (unknown or already resolved)`, 'LOUSHO_APPROVAL_NOT_FOUND');
   }
   const pinned = record.snapshot.agent.metadata?.[RUN_CONFIG_KEY] as PinnedRunConfig | undefined;
-  const spec = await specs.resolve(pinned?.ctx ?? { input: [] }, pinned);
+  const { snapshot } = record;
+  // N6: the agent the paused run's transcript last handed off to (the run's own agent without a handoff).
+  const resolved = handoffs && (await handoffs.run(activeAgentOf(snapshot.currentMessages), pinned?.ctx ?? { input: [], principal: snapshot.principal }, pinned));
+  const spec = resolved ? resolved.spec : await specs.resolve(pinned?.ctx ?? { input: [] }, pinned);
   let replay: ResolvedApproval | undefined = record;
   const replayStore: ApprovalStore = {
     save: (pending, snapshot) => store.save(pending, snapshot),
@@ -1020,8 +1107,10 @@ async function pausedRun(specs: AgentSpecs, store: ApprovalStore, id: string): P
       return once;
     },
   };
-  return { spec, store: replayStore };
+  return { spec, store: replayStore, ...(resolved && { handoffs: resolved.handoffs }) };
 }
+
+type ResolvedHandoffs = ExecuteOptions['handoffs'];
 
 /** The agent's hooks: `hooks`, then the one `compaction` installs; `undefined` when there are none. */
 function agentHooks({ hooks = [], compaction }: CreateAgentBase): HookRegistry | undefined {

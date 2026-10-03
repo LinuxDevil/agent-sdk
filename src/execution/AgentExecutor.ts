@@ -57,7 +57,6 @@ import {
   runToolBatch,
 } from './toolBatch';
 import {
-  buildTools,
   compactGenerateError,
   GeneratedStep,
   generateInSpan,
@@ -102,6 +101,15 @@ import {
   type GuardrailTrip,
   type ParallelInputCheck,
 } from './ioGuardrails';
+
+import {
+  cancelHandoffCalls,
+  handOff,
+  runTools,
+  splitHandoffCalls,
+  takeHandoffCalls,
+  type ResolvedHandoff,
+} from './handoffRun';
 
 export { PropagatingToolError } from './propagatingToolError';
 
@@ -638,6 +646,16 @@ export interface ExecuteOptions extends PermissionOptions {
    * (`GenerateOptions.reasoning`). See docs/reasoning.md.
    */
   reasoning?: ReasoningOption;
+  /**
+   * N6: agents this run can hand the conversation to, one tool each. A call
+   * to one is not run as a tool: once the other calls of its step are done,
+   * the run goes on with the target's configuration (`ResolvedHandoff.spec()`)
+   * on the transcript its `inputFilter` returns. `createAgent({ handoffs })`
+   * sets this; see docs/handoffs.md.
+   */
+  handoffs?: readonly ResolvedHandoff[];
+  /** N6: how many handoffs one run may make (default 5); a handoff call over it gets a tool error. */
+  maxHandoffs?: number;
 }
 
 /**
@@ -670,6 +688,8 @@ export interface ExecutionResult<TObject = unknown> {
   budget?: BudgetExceeded;
   /** LOU-X4: the guardrail that ended the run (`finishReason: 'guardrail'`). */
   guardrail?: GuardrailTrip;
+  /** N6: the agent that produced the final reply: the run's own, or the one it handed off to (docs/handoffs.md). */
+  agentName?: string;
 }
 
 /**
@@ -802,11 +822,11 @@ export class AgentExecutor {
     agentSpanId: string,
     budget?: RunBudget
   ): Promise<ExecutionResult> {
-    const { agent, toolRegistry } = options;
+    const { agent } = options;
     runEventsOf(options)?.runStart(agent);
 
-    // Build tools
-    const tools = buildTools(agent, toolRegistry);
+    // Build tools (N6: and one per handoff)
+    const tools = runTools(options);
     // N1a: the provider must be able to send every hosted tool.
     assertHostedToolsSupported(options.hostedTools, agent, options.provider);
 
@@ -841,6 +861,8 @@ export class AgentExecutor {
       if (resumed !== 'continue') {
         return resumed;
       }
+      // N6: the resumed step handed off.
+      if (state.switched) return this.runSwitched(state, agentSpanId);
     }
 
     return this.runSteps(options, state, tools, agentSpanId);
@@ -853,7 +875,7 @@ export class AgentExecutor {
     tools: ToolDefinition[],
     agentSpanId: string
   ): Promise<ExecutionResult> {
-    const { signal } = options;
+    // N6: counted across the agents of the run (a handoff keeps the run's maxSteps).
     const maxSteps = maxStepsOf(options);
     let repaired = false;
 
@@ -870,6 +892,8 @@ export class AgentExecutor {
       const outcome = await this.runStepOrAbort(options, state, () =>
         this.runStep(options, state, tools, agentSpanId)
       );
+      // N6: the step handed off; the run goes on as the target.
+      if (state.switched) return this.runSwitched(state, agentSpanId);
       if (await this.stepsOnForInput(options, state, outcome, maxSteps)) {
         continue;
       }
@@ -886,7 +910,12 @@ export class AgentExecutor {
       }
     }
 
-    if (signal?.aborted) {
+    return this.outOfSteps(options, state);
+  }
+
+  /** The run's end once the loop left without a result: aborted, or out of steps. */
+  private static outOfSteps(options: ExecuteOptions, state: AgentRunState): Promise<ExecutionResult> {
+    if (options.signal?.aborted) {
       return this.abortRun(options, state);
     }
     // LOU-U19: every non-final turn 'continue's, so leaving the loop here
@@ -894,6 +923,13 @@ export class AgentExecutor {
     // spent while the model still wanted to go on.
     state.finishReason = 'max-steps';
     return this.finishRun(options, state);
+  }
+
+  /** N6: the rest of the run, as the agent the last step handed off to. */
+  private static runSwitched(state: AgentRunState, agentSpanId: string): Promise<ExecutionResult> {
+    const { options, tools } = state.switched as NonNullable<AgentRunState['switched']>;
+    state.switched = undefined;
+    return this.runSteps(options, state, tools, agentSpanId);
   }
 
   /**
@@ -1216,10 +1252,12 @@ export class AgentExecutor {
   private static async runBatch(
     options: ExecuteOptions,
     state: AgentRunState,
-    toolCalls: ToolCall[],
+    turnCalls: ToolCall[],
     agentSpanId: string
   ): Promise<ExecutionResult | undefined> {
     const runEvents = runEventsOf(options);
+    // N6: handoff calls are not run as tools; they are settled once the others are done.
+    const { calls: toolCalls, handoffCalls } = splitHandoffCalls(options, turnCalls);
     // LOU-Y1: tool calls whose sub-agent paused for approval, in call order.
     const suspensions: SubagentSuspension[] = [];
     const batch = await runToolBatch(
@@ -1242,27 +1280,65 @@ export class AgentExecutor {
     );
     options.inputQueue?.endPhase();
 
-    return this.settleToolBatch(options, state, batch, suspensions);
+    const stopped = this.settleToolBatch(options, state, batch, suspensions, handoffCalls);
+    // A steer cut the batch short (its calls, the handoff calls too, were cancelled).
+    if (stopped || handoffCalls.length === 0 || batch.unrecorded.length > 0) return stopped;
+    return this.settleHandoffCalls(options, state, handoffCalls);
+  }
+
+  /**
+   * N6: settles a step's handoff calls once its other calls are done: the
+   * first one that passes its checks switches the run to its target (taken by
+   * the loop from `state.switched`), the others get error results.
+   */
+  private static async settleHandoffCalls(options: ExecuteOptions, state: AgentRunState, handoffCalls: ToolCall[]): Promise<undefined> {
+    const honored = await takeHandoffCalls(options, state, handoffCalls);
+    if (!honored) {
+      await saveStepCheckpoint(options, state);
+      return undefined;
+    }
+    const switched = await handOff(options, state, honored, (next) => this.withExtensions(next));
+    const next = switched.options;
+    const tools = runTools(next);
+    assertHostedToolsSupported(next.hostedTools, next.agent, next.provider);
+    state.messages = switched.messages;
+    state.agentName = switched.marker.to;
+    state.handoffs = (state.handoffs ?? 0) + 1;
+    // LOU-W9.2: checkpoints and pauses from here on record the target, so a resume compares with it.
+    state.fingerprint = undefined;
+    if (next.sessionId && next.checkpointStore) await ensureFingerprint(next, state);
+    const { toolCall } = honored;
+    const runEvents = runEventsOf(options);
+    runEvents?.toolSettled({ toolCallId: toolCall.id, toolName: toolCall.function.name, result: { transferred_to: switched.marker.to } });
+    runEvents?.handoff({ ...switched.marker, toolCallId: toolCall.id });
+    state.switched = { options: next, tools };
+    await saveStepCheckpoint(next, state);
+    return undefined;
   }
 
   /**
    * Turns a finished batch into the run's next move: abort (finished calls
    * keep their results, the rest are cancelled), reject with the first
-   * fatal error, pause for approval, or carry on (`undefined`).
+   * fatal error, pause for approval, or carry on (`undefined`). N6: the
+   * step's handoff calls are cancelled with the rest, or wait with the
+   * calls left for after a pause.
    */
   private static settleToolBatch(
     options: ExecuteOptions,
     state: AgentRunState,
     batch: ToolBatchResult,
-    suspensions: SubagentSuspension[]
+    suspensions: SubagentSuspension[],
+    handoffCalls: ToolCall[]
   ): Promise<ExecutionResult> | undefined {
     if (options.signal?.aborted) {
       pushAbortedBatchResults(state, batch.unrecorded);
+      cancelHandoffCalls(state, handoffCalls, 'the run was aborted');
       return this.abortRun(options, state);
     }
     // LOU-X4: a tool guardrail blocked a call before it ran; the rest of the batch did not start.
     if (batch.failure?.error instanceof GuardrailError) {
       pushAbortedBatchResults(state, batch.unrecorded, 'a guardrail stopped the run');
+      cancelHandoffCalls(state, handoffCalls, 'a guardrail stopped the run');
       return this.stopForGuardrail(options, state, batch.failure.error.guardrail);
     }
     if (batch.failure) {
@@ -1271,19 +1347,23 @@ export class AgentExecutor {
     // N9b: a tool that needs sign-in pauses the run first; it runs again once the user signed in.
     const signIn = batch.unrecorded.find((call) => call.outcome?.signIn);
     if (signIn) {
-      return this.pauseForSignIn(options, state, batch.unrecorded, signIn, suspensions);
+      return this.pauseForSignIn(options, state, batch.unrecorded, signIn, suspensions, handoffCalls);
     }
     const suspension = settleSuspensions(state.messages, suspensions, Boolean(batch.approval));
     if (batch.approval) {
       const { toolCall, outcome } = batch.approval;
       const pausedAt = batch.unrecorded.findIndex((call) => call.toolCall === toolCall);
       const remaining = batch.unrecorded.slice(pausedAt + 1).map((call) => call.toolCall);
-      return this.pauseForApproval(options, state, toolCall, outcome, remaining);
+      return this.pauseForApproval(options, state, toolCall, outcome, [...remaining, ...handoffCalls]);
     }
     // LOU-V10: what is left of a batch a steer stopped was not run.
     pushAbortedBatchResults(state, batch.unrecorded, 'the user steered the run to new input');
+    if (batch.unrecorded.length > 0) cancelHandoffCalls(state, handoffCalls, 'the user steered the run to new input');
     if (suspension) {
-      return this.savePause(options, state, suspensionRecord(options, state, suspension));
+      const record = suspensionRecord(options, state, suspension);
+      // N6: a handoff call of the step is settled once the sub-agent's approval is decided.
+      if (handoffCalls.length > 0) record.snapshot.remainingToolCalls = handoffCalls;
+      return this.savePause(options, state, record);
     }
     return undefined;
   }
@@ -1397,9 +1477,11 @@ export class AgentExecutor {
     state: AgentRunState,
     unrecorded: UnrecordedToolCall[],
     paused: UnrecordedToolCall,
-    suspensions: SubagentSuspension[]
+    suspensions: SubagentSuspension[],
+    handoffCalls: ToolCall[]
   ): Promise<ExecutionResult> {
-    const remaining: ToolCall[] = [];
+    // N6: the step's handoff calls are settled after the decision, with the rest.
+    const remaining: ToolCall[] = [...handoffCalls];
     for (const call of unrecorded) {
       if (call === paused) continue;
       const { outcome } = call;

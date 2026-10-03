@@ -76,6 +76,12 @@ export interface AgentRunState {
   principal?: Readonly<Principal>;
   /** N5b: the `runInParallel` input guardrails, until the first model call takes them. */
   inputCheck?: ParallelInputCheck;
+  /** N6: the agent running now (the target after a handoff): `result.agentName`. */
+  agentName?: string;
+  /** N6: handoffs this run made, checked against `maxHandoffs`. */
+  handoffs?: number;
+  /** N6: the options and tools of the agent a handoff in the last step switched to, for the loop to take. */
+  switched?: { options: ExecuteOptions; tools: ToolDefinition[] };
 }
 
 /**
@@ -173,6 +179,7 @@ export async function loadRunState(options: ExecuteOptions): Promise<AgentRunSta
     queuedInput: turn.queuedInput,
     finalText: '',
     finishReason: 'stop',
+    agentName: options.agent.name,
     // LOU-W9.2: with checkpointing on, known before the first (synchronous) checkpoint write.
     ...(sessionId && checkpointStore && { fingerprint: await fingerprintOf(baseAgentOf(options.agent), options.toolRegistry, options.provider, options.hostedTools) }),
     ...(checkpoint && checkpoint.status !== 'finished' && { resumedFrom: { fingerprint: checkpoint.agentFingerprint } }),
@@ -340,6 +347,7 @@ export function toExecutionResult(
     stepUsage: state.stepUsage,
     finishReason,
     steps: state.steps,
+    ...(state.agentName !== undefined && { agentName: state.agentName }),
   };
 }
 

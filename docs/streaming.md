@@ -119,11 +119,12 @@ and it will be removed in a future major version. Replace it with
 | `abort` (`abortReason`, `usage`) | `run.done` with `finishReason: 'aborted'` (the reason is your signal's `reason`) |
 | `finish` (`finishReason`, `usage: RunUsage`) | `run.done` (`finishReason`, `text`, `usage`, `object`); the full `RunUsage` is on `result.usage` |
 | a sub-agent's `start` / `finish` (with `subagent`) | the lead's `tool.start` / `tool.done` of the call that started it |
+| (none: a run was one agent) | `handoff` (`from`, `to`, `toolCallId`): the run handed the conversation to another agent ([Handoffs](./handoffs.md)) |
 | `timestamp: Date` | `timestamp`: an ISO-8601 string; plus `runId`, `seq` and `v` |
 
 `AgentEvent` also reports what `ExecutionEvent` never did: step boundaries,
 approval requests, permission decisions, budgets, guardrails, queued and
-steered input, compaction, reasoning, provider retries and agent drift (see the
+steered input, compaction, reasoning, provider retries, agent drift and handoffs (see the
 [schema](./stream-events.md#event-schema-version-1)).
 
 ## Streaming a session turn

@@ -51,6 +51,8 @@ export * from './utils';
 
 // createAgent() convenience API (LOU-H1)
 export * from './createAgent';
+// Handoffs: hand the conversation to another agent (N6)
+export * from './handoffs';
 // Who is calling (N10a): the helpers live in '@lousho/build-ai-agent/auth'; the type rides in SendOptions.
 export type { Principal } from './auth/types';
 export type { AgentApprovals, ApproveToolCall, ResolveApprovalOptions } from './createAgentApprovals';

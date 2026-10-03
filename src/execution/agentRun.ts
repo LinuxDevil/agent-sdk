@@ -152,6 +152,8 @@ export interface RunEventSink {
   hookEvent(event: HookEventPayload): void;
   /** LOU-W9.2: the resuming agent differs from the one that saved the run. */
   agentDrift(drift: AgentDrift): void;
+  /** N6: the run handed off to another agent. */
+  handoff(handoff: { from: string; to: string; toolCallId: string }): void;
   /**
    * Obtains one model step - streamed when the provider can; `onOutput` before its first text or tool call is reported.
    * N5b: with `hold`, the step's `text.delta`, `reasoning.*` and provider-run tool events wait for it: released
@@ -418,6 +420,7 @@ class RunEvents {
       inputApplied: (id, step) => this.emit({ type: 'input.applied', id, step }, subagent),
       hookEvent: (event) => this.emit(event, subagent),
       agentDrift: (drift) => this.emit({ type: 'agent.drift', ...drift }, subagent),
+      handoff: (handoff) => this.emit({ type: 'handoff', ...handoff }, subagent),
       guardrail: (event) => this.emit(event, subagent),
       generate: async (provider, request, onOutput, hold) => {
         const call = withProviderEvents(request, this.providerEvents(subagent));
