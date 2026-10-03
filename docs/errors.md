@@ -686,7 +686,7 @@ missing flow name or code, or a node of an unknown type.
 has the driver's error), was used after `close()`, has a newer schema than this
 SDK knows, or `node:sqlite` is missing; or a file exceeded the storage size limit.
 
-**Fix:** check the path and permissions, use Node >= 22.5 for `SqliteStore` (or a
+**Fix:** check the path and permissions, use Node >= 22.13 for `SqliteStore` (or a
 file-based store), and create a new store after closing one.
 
 **Example:** `new SqliteStore('/read-only/agent.db')`.

@@ -104,9 +104,11 @@ const tools = await openApiTools(spec, {
 });
 ```
 
-The key is the parameter's name (or `body` for the request body). A key that no
-selected operation has throws, so a typo does not silently expose the parameter
-to the model.
+The key is the parameter's input key: its name, or `<in>_<name>` (e.g.
+`query_id`) when two parameters of an operation share a name; the request
+body's key is `body` (`requestBody` when a parameter already took `body`). A
+key that no selected operation has throws, so a typo does not silently expose
+the parameter to the model.
 
 ## Security rules
 

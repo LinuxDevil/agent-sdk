@@ -932,10 +932,12 @@ How the pieces fit:
 
 `createAgent()`'s `model`, `instructions` (or `prompt`) and `tools` each take
 the static value or a function of the run, `(ctx) => value | Promise<value>`
-(type `PerRun<T>`). `ctx` is `{ sessionId?, input, metadata? }` (type
+(type `PerRun<T>`). `ctx` is `{ sessionId?, input, metadata?, principal? }` (type
 `RunConfigContext`): the `sessionId` of `send()` / `stream()` or the
-`agent.session()` id, the run's user input, and the `metadata` call option of
-`send()`, `stream()`, `session.send()` and `session.stream()`. The functions
+`agent.session()` id, the run's user input, the `metadata` call option of
+`send()`, `stream()`, `session.send()` and `session.stream()`, and the caller
+the run's auth accepted (`principal`, absent when the call did not pass one).
+The functions
 run once when a run starts, before the first model call, and again on every
 session turn. Everything else applies to what they return: `fallbackModels`
 and `retry`, `projectInstructions`, memory, skills, sub-agents, MCP tools,
@@ -1001,9 +1003,9 @@ and an `approvalId`. `agent.approvals.list()` returns the pending calls and
 `agent.approvals.resolve({ id, approved, note? })` runs or rejects the call and
 resolves with the continued run's result (continuing the session it paused
 in). Pauses are kept in a per-agent `InMemoryApprovalStore` unless you pass
-`approvalStore` (e.g. `SqliteStore.approvals`) or a `store`; `approve: (call) => boolean | string`
+`approvalStore` (e.g. `SqliteStore.approvals`) or a `store`; `approve: (request: PendingApproval) => boolean | string | Promise<boolean | string>`
 decides each call in code without pausing (`stream()` still ends at the
-pause). With `askQuestion: true` the agent can ask the user a question
+pause) — `request` carries the call plus its `kind` and `principal`. With `askQuestion: true` the agent can ask the user a question
 (`kind: 'question'`), answered with `agent.approvals.answer({ id, answer })`.
 See [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md).
 
@@ -1374,15 +1376,15 @@ const { text } = await agent.send('Hello!');
 
 ```text
 my-agent/
-  agent.ts | agent.js | agent.json | agent.yaml   # optional config
+  agent.{ts,mts,js,mjs,cjs,json,yaml,yml}          # optional config
   instructions.md                                  # system prompt
-  tools/*.ts | *.js                                # defineTool() tools
+  tools/*.{ts,mts,cts,js,mjs,cjs}                  # defineTool() tools
   skills/                                          # same layouts as loadSkills()
   subagents/<name>/                                # nested agent directories
-  schedules/*.ts|js                                # defineSchedule() cron schedules (see schedules.md)
-  channels/*.ts|js                                 # a channel each: defineChannel(), webhookChannel(), ... (see channels.md)
-  memory/*.ts|js                                   # a memory slot each: defineMemory() (see memory.md); part of the agent
-  auth.ts | auth.js                                # route auth for the deployed server: jwt(), oidc(), basic(), ... (see auth.md)
+  schedules/*.{ts,mts,cts,js,mjs,cjs}              # defineSchedule() cron schedules (see schedules.md)
+  channels/*.{ts,mts,cts,js,mjs,cjs}               # a channel each: defineChannel(), webhookChannel(), ... (see channels.md)
+  memory/*.{ts,mts,cts,js,mjs,cjs}                 # a memory slot each: defineMemory() (see memory.md); part of the agent
+  auth.{ts,mts,cts,js,mjs,cjs}                     # route auth for the deployed server: jwt(), oidc(), basic(), ... (see auth.md)
 ```
 
 Only one config file may exist. Files inside `tools/` and the entries of
@@ -2568,8 +2570,9 @@ a token without `sub` skips.
 
 A `jwt()` whose keys come from an OpenID Connect provider. It fetches
 `<issuer>/.well-known/openid-configuration` once (or `discoveryUrl`), requires
-the document's `issuer` to equal yours exactly, and uses its `jwks_uri` (which
-must be https). Algorithms default to `RS256` and `ES256`; HMAC is not allowed.
+the document's `issuer` to equal yours exactly, and uses its `jwks_uri` (https,
+or http on `localhost` / `127.0.0.1` / `[::1]` — the same rule as `jwt()`'s
+`jwksUrl`). Algorithms default to `RS256` and `ES256`; HMAC is not allowed.
 
 ```ts
 import { oidc } from '@lousho/build-ai-agent/auth';
@@ -6683,7 +6686,7 @@ missing flow name or code, or a node of an unknown type.
 has the driver's error), was used after `close()`, has a newer schema than this
 SDK knows, or `node:sqlite` is missing; or a file exceeded the storage size limit.
 
-**Fix:** check the path and permissions, use Node >= 22.5 for `SqliteStore` (or a
+**Fix:** check the path and permissions, use Node >= 22.13 for `SqliteStore` (or a
 file-based store), and create a new store after closing one.
 
 **Example:** `new SqliteStore('/read-only/agent.db')`.
@@ -7404,8 +7407,9 @@ console.log(events); // includes 'run.start' and 'run.done'
 | `onLLMRequest`, `onLLMResponse`, `onToolCall`, `onToolResult` | Observability hooks.                |
 | `toolSearch`                            | Tunes [tool search](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tool-search.md) for tools marked `deferLoading`, or `false` to send every tool on every call. |
 
-It resolves to an `ExecutionResult`: `{ text, messages, toolCalls, usage,
-finishReason, steps, approvalId? }`.
+It resolves to an `ExecutionResult`: `{ text, reasoning?, messages, toolCalls,
+usage, stepUsage?, finishReason, steps, approvalId?, object?, outputError?,
+backgroundTasks?, budget?, guardrail?, agentName? }`.
 
 # Flows
 
@@ -9359,6 +9363,7 @@ accepted, and a request outside the base path is a 404).
 | `GET <basePath>/chat/:sessionId` | the session's transcript and pending approvals |
 | `POST <basePath>/chat/:sessionId/approvals/:id` | decide an approval in a session |
 | `POST <basePath>/ui` | with `uiMessageStream: true`: the AI SDK `useChat` endpoint |
+| `GET <basePath>/oauth/callback` | the OAuth provider's redirect after a sign-in; never behind `auth` (the single-use `state` protects it) |
 | `GET <basePath>/health` | `ok`, never behind `auth` |
 
 Sessions are kept by the agent's `store` (`createAgent({ store })`), so give
@@ -10291,9 +10296,11 @@ const tools = await openApiTools(spec, {
 });
 ```
 
-The key is the parameter's name (or `body` for the request body). A key that no
-selected operation has throws, so a typo does not silently expose the parameter
-to the model.
+The key is the parameter's input key: its name, or `<in>_<name>` (e.g.
+`query_id`) when two parameters of an operation share a name; the request
+body's key is `body` (`requestBody` when a parameter already took `body`). A
+key that no selected operation has throws, so a typo does not silently expose
+the parameter to the model.
 
 ## Security rules
 
@@ -10627,8 +10634,9 @@ In order: the agent's own `settings.model` (set with
 `AgentBuilder.setSettings({ model })`, or `model` next to `provider` in
 `createAgent()`), then the model the provider was built with
 (`resolveProvider('openai/gpt-4o-mini')`, a spec's `provider.model`, or
-`defaultModel`), then the provider's built-in default. There is no hard-coded
-fallback model.
+`defaultModel`), then the provider's built-in default. That last default only
+applies when nothing configured a model — a model you set is never overridden
+by a hard-coded one.
 
 ## Multimodal input
 
@@ -11053,7 +11061,7 @@ on the server.
 
 | Field | What it is |
 | ----- | ---------- |
-| `messages` | `UIMessage[]`: `{ id, role: 'user' \| 'assistant', text, toolCalls }`. Each `send()` adds a user message and an assistant message that fills in as `text.delta` and tool events arrive. |
+| `messages` | `UIMessage[]`: `{ id, role: 'user' \| 'assistant', text, toolCalls, reasoning? }`. Each `send()` adds a user message and an assistant message that fills in as `text.delta` and tool events arrive; `reasoning` collects the model's `reasoning.delta` text when it streams any. |
 | `toolCalls[i]` | `{ id, name, args, status, result?, error?, partial? }`, `status` being `'running'`, `'awaiting-approval'`, `'done'`, `'error'` or `'rejected'`. `partial` is the latest `tool.partial` snapshot of a running [streaming tool](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#streaming-partial-results), removed when the call settles or pauses. |
 | `status` | `'idle'`, `'streaming'`, `'awaiting-approval'` or `'error'`. |
 | `pendingApproval` | `{ id, toolCallId, toolName, args }` of the tool call the run paused on, else `null`. For an `ask_question` call it also has `kind: 'question'` and `question: { text, options?, allowFreeText? }`; a tool waiting on an OAuth sign-in has `kind: 'sign-in'` and `signIn: { provider, displayName?, url }` (see [What the user sees](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#what-the-user-sees)). |
@@ -11068,7 +11076,9 @@ on the server.
 
 Unmounting the component aborts the turn in flight. Events of a
 [sub-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md)'s run (they carry `subagent`) do not change
-`messages`; read them from `lastEvent` if you want to show them.
+`messages` — except a sub-agent's `approval.requested`, which does update
+`messages`, `pendingApproval` and `status` (the pause is the user's to decide).
+Read other sub-agent events from `lastEvent` if you want to show them.
 
 ## Approvals
 
@@ -11077,10 +11087,10 @@ When a tool with `needsApproval` is called, the run stops with
 `pendingApproval` holds the call. Then:
 
 - **In process**, `approve(note?)` and `reject(note?)` call
-  `agent.approvals.resolve({ id, approved, note })` (see
-  [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)). The continued run's text is appended to the
-  assistant message and `status` returns to `'idle'`, or to
-  `'awaiting-approval'` if the run pauses again.
+  `agent.approvals.streamResolve({ id, approved, note }, { signal })` (see
+  [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)). The continued run's events stream in live, so
+  its text is appended to the assistant message as it arrives and `status`
+  returns to `'idle'`, or to `'awaiting-approval'` if the run pauses again.
 - **Remote**, pass `{ approvalsUrl }` as the second argument. The hook POSTs
   `{ "approved": true, "note": "..." }` to `${approvalsUrl}/${approvalId}` and
   shows the continuation live from the SSE stream the session API answers
@@ -11170,7 +11180,7 @@ export function useSupportChat() {
 
 The hook is a thin wrapper. The state logic is `reduceAgentEvents(state,
 event)`, a pure reducer over `AgentEvent`s and a few local actions
-(`ui.send`, `ui.decide`, `ui.resumed`, `ui.stopped`, `ui.error`), and
+(`ui.send`, `ui.decide`, `ui.resumed`, `ui.stopped`, `ui.reset`, `ui.error`), and
 `parseEventStream(response)` reads events back from a fetch response. Both are
 exported from the same subpath, for a custom binding or a non-React client:
 
@@ -11834,7 +11844,11 @@ while a turn is running or waiting to start:
   the turn's events, `input.queued` and `input.applied` included, stream on
   the run that started it. If the turn ends before it could take the input
   (it finished, paused or was aborted), the call runs as the next turn after
-  all. If the turn fails, the call rejects with the same error; in a durable
+  all — except in a durable session whose paused turn is still pending:
+  there the call first resumes it, and rejects with
+  `SessionAwaitingApprovalError` when it is still waiting on the approval
+  (decide it with `agent.approvals.resolve()`). If the turn fails, the call
+  rejects with the same error; in a durable
   session the input stays in the turn's checkpoint and `resume()` applies it.
 - `'steer'`: like `'queue'`, but the input joins through
   [`run.steer()`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/queue-and-steer.md#steering): if the turn's model call has not
@@ -13387,6 +13401,8 @@ inherits:
 | Token usage | Rolls up | Added to the lead's `result.usage` (totals, `byModel`, and `usage.delegated`); a remote sub-agent's under `byModel['remote:<name>']`. |
 | `maxSubagentDepth` | The remaining budget | See [Depth](#depth). |
 | `permissionMode` | Yes, unless the lead's is `'default'` | The sub-agent runs under the lead's [permission mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md#sub-agents), read at each of its tool calls; while the lead's is `'default'`, under its own (a sub-agent whose own mode is `'plan'` always stays in plan mode). A remote sub-agent does not inherit it: plan mode refuses a `task` call to one. |
+| `principal` | Yes | Who the lead's run acts for (route auth's caller, a channel's sender); a remote sub-agent is not told. |
+| `metadata` | Yes | The lead run's `metadata` — the sub-agent's hooks see it. |
 | `onLLMRequest`, `onToolCall` and the other single-run callbacks | No | They describe one run; use hooks or an event listener to observe sub-agents. |
 | `sessionId` / `checkpointStore` | No | A sub-agent is not checkpointed on its own. If the process dies while a sub-agent runs, the resumed lead runs that `task` call again. |
 | `output` schema | No | A sub-agent's output is its own: with one, `task` returns its validated object as JSON (see [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md#sub-agents)); without, text. |
@@ -14183,8 +14199,9 @@ tools with the same name throws an error naming the conflict.
 A defined tool is a regular `ToolDescriptor`: it carries its schema as
 `inputSchema` (the same schema as `input`) and its `execute` function directly.
 The `.tool` field (an `ai` v4 `{ description, parameters, execute }` object) is
-legacy: it is still built for compatibility, and only used for hand-written
-descriptors that set neither `inputSchema` nor `execute`.
+legacy: it is still built for compatibility, and is read per field — a
+hand-written descriptor without `inputSchema` falls back to `tool.parameters`,
+and one without `execute` falls back to `tool.execute`, independently.
 
 ## What happens when the model calls a tool
 
@@ -14257,7 +14274,7 @@ The transcript message carries `isError: true`; `tool-result` events, `onToolRes
 | `not-run` | `ToolNotRunError` | The call was never started (a resumed run whose approval was saved without its remaining calls). |
 | `mcp` | `McpToolError` | An MCP server answered `isError: true`; `message` is the server's text. |
 | `sandbox` | `SandboxRequiredError` | The tool has `requiresSandbox` but no `sandboxExecute`, so it was refused rather than run unsandboxed. |
-| `denied` | `ToolDeniedError` | A `deny` [permission rule](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies) refused the call; `execute` did not run. Adds `reason` when the rule has one. |
+| `denied` | `ToolDeniedError` | A `deny` [permission rule](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies), the tool's `needsApproval` returning `'deny'`, a `preToolCall` hook's `deny`, or the permission mode refused the call; `execute` did not run. Adds `reason` when given. |
 
 **Argument validation.** The model's arguments are parsed with the tool's zod
 `inputSchema` (for a legacy descriptor, `tool.parameters`) before the tool runs, so pre-tool hooks, the
@@ -14726,7 +14743,8 @@ new CronTriggerAdapter({
 
 Supported syntax: `*`, lists (`1,15`), ranges (`1-5`), steps (`*/15`,
 `10-40/10`), month names (`JAN`) and weekday names (`MON`), with `0` and `7`
-both meaning Sunday, plus `@hourly`, `@daily`, `@weekly` and `@monthly`. As in
+both meaning Sunday, plus the `@hourly`, `@daily` (or `@midnight`), `@weekly`,
+`@monthly` and `@yearly` (or `@annually`) shortcuts. As in
 classic cron, when both day-of-month and day-of-week are restricted a day
 matches if either does. An invalid expression throws a `CronExpressionError`
 naming the field and showing a valid example. `parseCronExpression(expr,

@@ -68,5 +68,6 @@ console.log(events); // includes 'run.start' and 'run.done'
 | `onLLMRequest`, `onLLMResponse`, `onToolCall`, `onToolResult` | Observability hooks.                |
 | `toolSearch`                            | Tunes [tool search](./tool-search.md) for tools marked `deferLoading`, or `false` to send every tool on every call. |
 
-It resolves to an `ExecutionResult`: `{ text, messages, toolCalls, usage,
-finishReason, steps, approvalId? }`.
+It resolves to an `ExecutionResult`: `{ text, reasoning?, messages, toolCalls,
+usage, stepUsage?, finishReason, steps, approvalId?, object?, outputError?,
+backgroundTasks?, budget?, guardrail?, agentName? }`.

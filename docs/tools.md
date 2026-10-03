@@ -50,8 +50,9 @@ tools with the same name throws an error naming the conflict.
 A defined tool is a regular `ToolDescriptor`: it carries its schema as
 `inputSchema` (the same schema as `input`) and its `execute` function directly.
 The `.tool` field (an `ai` v4 `{ description, parameters, execute }` object) is
-legacy: it is still built for compatibility, and only used for hand-written
-descriptors that set neither `inputSchema` nor `execute`.
+legacy: it is still built for compatibility, and is read per field — a
+hand-written descriptor without `inputSchema` falls back to `tool.parameters`,
+and one without `execute` falls back to `tool.execute`, independently.
 
 ## What happens when the model calls a tool
 
@@ -124,7 +125,7 @@ The transcript message carries `isError: true`; `tool-result` events, `onToolRes
 | `not-run` | `ToolNotRunError` | The call was never started (a resumed run whose approval was saved without its remaining calls). |
 | `mcp` | `McpToolError` | An MCP server answered `isError: true`; `message` is the server's text. |
 | `sandbox` | `SandboxRequiredError` | The tool has `requiresSandbox` but no `sandboxExecute`, so it was refused rather than run unsandboxed. |
-| `denied` | `ToolDeniedError` | A `deny` [permission rule](./approvals.md#permission-policies) refused the call; `execute` did not run. Adds `reason` when the rule has one. |
+| `denied` | `ToolDeniedError` | A `deny` [permission rule](./approvals.md#permission-policies), the tool's `needsApproval` returning `'deny'`, a `preToolCall` hook's `deny`, or the permission mode refused the call; `execute` did not run. Adds `reason` when given. |
 
 **Argument validation.** The model's arguments are parsed with the tool's zod
 `inputSchema` (for a legacy descriptor, `tool.parameters`) before the tool runs, so pre-tool hooks, the

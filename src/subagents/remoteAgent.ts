@@ -52,7 +52,7 @@ function outcome(label: string, name: string, summary: SessionTurnSummary, { tas
 }
 
 /**
- * Uses an agent deployed with `lousho deploy` (node server, Docker or
+ * Uses an agent deployed with `lousho build` (node server, Docker or
  * Cloudflare Worker) as a sub-agent: put it in `createAgent({ subagents })`
  * next to local ones. Each delegated task opens a fresh session on the remote
  * agent over `POST <url>/chat` (a `task` call that resumes a task reuses its
