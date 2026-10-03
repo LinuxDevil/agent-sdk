@@ -11,7 +11,7 @@ import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import { SessionAwaitingApprovalError, type SDKError } from '../execution/errors';
 import { memoryStore } from '../storage/agentStore';
-import { mockModel, type MockTurn } from '../testing';
+import { mockModel, type MockRequest, type MockTurn } from '../testing';
 import { AgentSession, FileSessionStore, MemorySessionStore } from './index';
 import { transcriptSteps } from './sessionFork';
 import type { Message } from '../providers/llm';
@@ -40,7 +40,7 @@ const sendEmail = defineTool({
   },
 });
 
-const convo = (call: { messages: readonly Message[] } | undefined): string[] =>
+const convo = (call: Pick<MockRequest, 'messages'> | undefined): string[] =>
   (call?.messages ?? []).filter((m) => m.role !== 'system').map((m) => `${m.role}:${typeof m.content === 'string' ? m.content : ''}`);
 const lookupTurn: MockTurn = { toolCalls: [{ name: 'lookup', id: 'c1', args: { q: 'x' } }] };
 

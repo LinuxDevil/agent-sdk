@@ -13,31 +13,35 @@ import { ToolRegistry, defineTool } from '../tools';
 import { AgentBuilder } from '../core';
 import { mockModel } from '../testing';
 
+interface FakeOtelSpanState {
+  name: string;
+  attributes: Record<string, unknown>;
+  ended: boolean;
+  endTime: number | undefined;
+}
+
 /**
  * A minimal fake OTel span that just records what was done to it, so
  * assertions can check exact call shapes without needing a real
  * TracerProvider/exporter backend.
  */
 function makeFakeOtelSpan(name: string) {
-  return {
+  const span: FakeOtelSpanState & { setAttribute(key: string, value: unknown): unknown; end(endTime?: number): void } = {
     name,
-    attributes: {} as Record<string, unknown>,
+    attributes: {},
     ended: false,
-    endTime: undefined as number | undefined,
-    setAttribute(key: string, value: unknown) {
+    endTime: undefined,
+    setAttribute(key, value) {
       this.attributes[key] = value;
       return this;
     },
-    end(endTime?: number) {
+    end(endTime) {
       this.ended = true;
       this.endTime = endTime;
     },
-  } as unknown as OtelSpan & {
-    name: string;
-    attributes: Record<string, unknown>;
-    ended: boolean;
-    endTime: number | undefined;
   };
+  // A deliberately partial fake: only the OTel span methods the exporter calls are implemented.
+  return span as unknown as OtelSpan & FakeOtelSpanState;
 }
 
 function makeFakeTracer() {

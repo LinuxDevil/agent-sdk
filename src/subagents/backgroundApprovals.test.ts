@@ -6,17 +6,17 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
-import { mockModel, type MockTurn } from '../testing';
+import { mockModel, type MockTurn, type MockTurnObject } from '../testing';
 import { SqliteStore } from '../storage/sqlite';
 import type { Message } from '../providers';
 import type { AgentEvent } from '../execution/agentEvents';
 
 const bgCall = (agent: string) => ({ name: 'task', args: { agent, prompt: 'fix the bug', description: `${agent} task`, background: true } });
-const bgTask = (agent: string): MockTurn => ({ toolCalls: [bgCall(agent)] });
-const awaitTasks = (...taskIds: string[]): MockTurn => ({
+const bgTask = (agent: string): MockTurnObject => ({ toolCalls: [bgCall(agent)] });
+const awaitTasks = (...taskIds: string[]): MockTurnObject => ({
   toolCalls: [{ name: 'agent_await', args: taskIds.length === 1 ? { taskId: taskIds[0] } : { taskIds } }],
 });
-const shellCall = (cmd: string): MockTurn => ({ toolCalls: [{ name: 'shell', args: { cmd } }] });
+const shellCall = (cmd: string): MockTurnObject => ({ toolCalls: [{ name: 'shell', args: { cmd } }] });
 
 /** A coding sub-agent whose `shell` tool needs approval; `turns` are its model's. */
 function coder(turns: MockTurn[], description = 'Writes code') {

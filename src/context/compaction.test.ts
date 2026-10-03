@@ -8,6 +8,7 @@ import {
   type CompactionStrategy,
 } from './compaction';
 import type { GenerateOptions, Message } from '../providers';
+import { textOf } from '../providers';
 import { estimateTokens, registerModel } from '../models';
 import { HookRegistry } from '../execution/hooks';
 import { AgentExecutor } from '../execution/AgentExecutor';
@@ -35,7 +36,7 @@ function transcript(rounds: number, firstUser = 'start'): Message[] {
   return messages;
 }
 
-const isMarker = (m: Message) => /^\[pruned: search result, \d+ chars\]$/.test(m.content);
+const isMarker = (m: Message) => /^\[pruned: search result, \d+ chars\]$/.test(textOf(m));
 
 /** Every assistant tool call is followed by a tool message answering it. */
 function expectValidTranscript(messages: Message[]): void {
@@ -183,7 +184,7 @@ describe('createCompactionHook', () => {
 
   it('uses the registry context window for request.model and the default 0.9 threshold', async () => {
     // compaction-test-model has a 10,000-token window: 8 rounds (~8,100 tokens) stay, 10 (~10,100) compact.
-    const onCompaction = vi.fn<(info: CompactionInfo) => void>();
+    const onCompaction = vi.fn<[CompactionInfo], void>();
     const small = await runHook(createCompactionHook({ protectedTokens: 2_000, onCompaction }), request(transcript(8)));
     expect(small.messages.some(isMarker)).toBe(false);
 
@@ -254,7 +255,7 @@ describe('compaction in a run', () => {
     const pruned = compactions.flatMap((c) => c.prunedToolCallIds);
     expect(new Set(pruned).size).toBe(pruned.length);
     expect(pruned).toEqual(['call_1', 'call_2']); // call_3 and call_4 fit under the threshold
-    const markers = result.messages.filter((m) => m.role === 'tool' && m.content.startsWith('[pruned: fetch_page result'));
+    const markers = result.messages.filter((m) => m.role === 'tool' && textOf(m).startsWith('[pruned: fetch_page result'));
     expect(markers.map((m) => m.toolCallId)).toEqual(pruned);
     expectValidTranscript(result.messages);
   });

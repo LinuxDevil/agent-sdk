@@ -9,8 +9,11 @@ import { mockModel, type MockTurn } from '../testing';
 import { serveAcp } from './serveAcp';
 import type { GenerateOptions } from '../providers/llm';
 
-/** A parsed JSON value, read loosely in assertions. */
-type Loose = { [key: string]: Loose };
+/** A parsed JSON value, read loosely in assertions: any property is another `Loose`, and a leaf compares with a string. */
+interface LooseObject {
+  [key: string]: Loose;
+}
+type Loose = LooseObject & string;
 type Msg = { id?: string | number | null; method?: string; params: Loose; result: Loose; error: Loose };
 
 const lookup = defineTool({

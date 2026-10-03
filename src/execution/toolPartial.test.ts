@@ -22,9 +22,11 @@ import type { IoGuardrail, IoGuardrailResult } from './ioGuardrails';
 import { defineOAuthProvider } from '../oauth/defineOAuthProvider';
 import { fakeOAuthServer } from '../oauth/__fixtures__/fakeOAuth';
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
-const ALICE = { id: 'alice', issuer: 'https://id.example.com' };
+const ALICE = { id: 'alice', type: 'user' as const, authenticator: 'test', issuer: 'https://id.example.com' };
 
 /** `count_to`: yields `{ at: i }` for each step, then `{ done: true, n }`. */
 function countTo(onFinally?: () => void) {

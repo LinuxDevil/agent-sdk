@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Tool } from 'ai';
 import type { LLMProvider, Message } from '../providers';
+import { textOf } from '../providers';
 import type { ResumeExecuteOptions } from './resume';
 import { resumeAfterApproval } from './resume';
 import { ApprovalStore, PendingApproval, ExecutionSnapshot } from './ApprovalGate';
@@ -142,7 +143,7 @@ describe('Execution - resumeAfterApproval', () => {
     expect(execute).not.toHaveBeenCalled();
     const rejectionMessage = resumed.messages[paused.messages.length];
     expect(rejectionMessage.role).toBe('tool');
-    const parsed = JSON.parse(rejectionMessage.content);
+    const parsed = JSON.parse(textOf(rejectionMessage));
     expect(parsed.note).toBe('Not authorized');
     expect(rejectionMessage.isError).toBe(true);
   });
@@ -241,7 +242,7 @@ describe('Execution - resumeAfterApproval', () => {
     expect(execute).toHaveBeenCalledTimes(1);
     const toolMessage = resumed.messages[paused.messages.length];
     expect(toolMessage.role).toBe('tool');
-    const parsed = JSON.parse(toolMessage.content);
+    const parsed = JSON.parse(textOf(toolMessage));
     expect(parsed).toEqual({ error: 'Error', toolName: 'chargeCard', message: 'payment gateway timeout', kind: 'execution' });
     expect(toolMessage.isError).toBe(true);
   });
@@ -535,7 +536,7 @@ describe('Execution - resumeAfterApproval', () => {
       (m) => m.role === 'tool' && m.toolName === 'chargeCard'
     );
     expect(chargeResultMessage).toBeDefined();
-    expect(JSON.parse(chargeResultMessage!.content).charged).toBe(true);
+    expect(JSON.parse(textOf(chargeResultMessage!)).charged).toBe(true);
 
     // The lookup call/result from before the pause must also survive -
     // the stale checkpoint's own data isn't what's wrong here, silently

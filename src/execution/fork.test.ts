@@ -13,6 +13,7 @@ import { createAgent } from '../createAgent';
 import { compareTrajectories } from '../evals/drift';
 import { defineTool, type DefinedTool } from '../tools/defineTool';import { ToolRegistry } from '../tools';
 import { mockModel, type MockTurn } from '../testing';
+import { textOf } from '../providers';
 import type { AgentConfig } from '../types';
 
 function tools(runs: Record<string, number>): DefinedTool[] {
@@ -34,7 +35,7 @@ function tools(runs: Record<string, number>): DefinedTool[] {
 // Step 1 asks for the weather; step 2 acts on the forecast; step 3 reports the last tool result.
 const askWeather: MockTurn = { toolCalls: [{ name: 'weather', id: 'call_weather' }] };
 const decide: MockTurn = (req) => {
-  const forecast = req.messages.find((m) => m.toolCallId === 'call_weather')?.content ?? '';
+  const forecast = textOf(req.messages.find((m) => m.toolCallId === 'call_weather') ?? { content: '' });
   const name = forecast.includes('rain') ? 'buy_umbrella' : 'plan_picnic';
   return { toolCalls: [{ name, id: `call_${name}` }] };
 };
