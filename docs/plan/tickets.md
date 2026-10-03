@@ -22,7 +22,8 @@ Status: a ✅ with a PR link next to the ID means merged.
 | LOU-U9 | Checkpoint after every LLM turn | A crash after a model response (before tools run) resumes without re-calling the model; test with a failing store/provider. |
 | LOU-U10 | Fix Agent Forge `stop()` then `run()` resume test | `server/__tests__/runRegistry.test.ts > stop() then run() resumes from the last checkpoint` fails on `main` (times out waiting for status); find the root cause and fix it. |
 | LOU-U11 | CI runs the Agent Forge unit and server suites | `ci.yml` runs `apps/agent-forge` typechecks, `vitest run` and `test:server`, so regressions like LOU-U10 cannot land silently. |
-| LOU-U12 ✅ [#37](https://github.com/LinuxDevil/agent-sdk/pull/37) | A thrown tool error reaches the model as a structured error | The model sees `{ error, toolName, message }` instead of `"null"`; message capped; propagating errors still abort. |
+
+| LOU-U12 ✅ [#37](https://github.com/LinuxDevil/agent-sdk/pull/37) | A thrown tool error reaches the model as a structured error | The model sees `{ error, toolName, message }` instead of `"null"`; message capped; propagating errors still abort. |
 | LOU-U13 | Bind flow `{{var}}` placeholders as values | Placeholders in flow conditions are bound as values, not spliced in as text, so a variable containing quotes cannot change a condition's logic. |
 | LOU-U14 | One tool-error shape everywhere | `resume.ts` (tool run after approval), "tool not found" and "no registry" failures use the same `{ error, toolName, message }` shape and `isError` flag as the main loop. |
 | LOU-U15 | Tool `execute` context is real at runtime | The second argument typed as tool execution options is always populated (`toolCallId`, `messages`, `abortSignal`), including on the sandbox path, which passes `{}` today. |
@@ -104,10 +105,51 @@ Status: a ✅ with a PR link next to the ID means merged.
 | LOU-D14 | Deployed `/chat` upgrade | Multi-turn sessions, SSE streaming and bearer auth in the node-server and worker targets. |
 | LOU-D15 | React hook | `useLoushoAgent()` consuming the typed event stream. |
 | LOU-D16 | ESLint ratchet | Clear the remaining warnings in touched areas and turn `no-explicit-any`/`no-unused-vars` back to `error`; delete the stale baseline doc. |
-| LOU-D17 | Slack signature verification ✅ [#55](https://github.com/LinuxDevil/agent-sdk/pull/55) | (was LOU-D18) Inbound Slack requests are verified with the signing secret. |
+
+| LOU-D17 | Slack signature verification ✅ [#55](https://github.com/LinuxDevil/agent-sdk/pull/55) | (was LOU-D18) Inbound Slack requests are verified with the signing secret. |
 | LOU-D19 | Lazy optional peers | A missing optional provider peer never fails at SDK import time; the install hint appears when that provider is first used. (Merge with LOU-D10.) |
 | LOU-D20 | `mcpServers` in `AgentSpec` | MCP servers are a first-class, validated spec field (doctor reads them from the raw file today). |
 | LOU-D21 | Approvals for `createAgent()` agents | The zero-config agent can pause for approval and resume (`approvalStore` option / in-memory default), instead of failing with "requires approval". |
+
+## Epic R — Docs-vs-reality round 2
+
+Sources: the 2026-10-03 live docs audit (`docs-audit-report.html`, 386 pass / 42 fail
+against OpenRouter) and the parallel static verification session. Acceptance for
+doc tickets: `npm run docs:verify-snippets -- --skip-build` stays green and the
+claim matches runtime behavior. `⚠` = decision needed before implementation.
+
+| ID | Ticket | Acceptance |
+|---|---|---|
+| LOU-R1 ✅ [#360](https://github.com/LinuxDevil/agent-sdk/pull/360) | Lazy provider registration | `LLMProviderRegistry.create`/`resolveProvider` self-registers known providers instead of relying on the `src/index.ts` side-effect; `lousho dev/chat/acp`, deploy bundles and `resolveProvider` deep imports resolve `openrouter` etc. without importing the root barrel; reconcile with LOU-D10/D19. |
+| LOU-R2 ✅ [#348](https://github.com/LinuxDevil/agent-sdk/pull/348) | `secretScanGuardrail` must not leak the matched secret | Rejection reason reports the pattern label only; regression test asserts the matched text appears in no reason/event (`src/execution/guardrails.ts:222`). |
+| LOU-R3 ✅ [#352](https://github.com/LinuxDevil/agent-sdk/pull/352) | `createAgent` forwards `redactContent` | Prompts/tool IO are redacted from spans and `.lousho/traces` when set via `createAgent`; `gen_ai.input.messages` is not double-encoded on `invoke_agent` spans. |
+| LOU-R4 ✅ [#349](https://github.com/LinuxDevil/agent-sdk/pull/349) | Plain JSON-Schema tool params work on `ai` 4 | `v4Parameters` wraps non-zod/standard-schema objects in `ai.jsonSchema()`; the `examples/openrouter` `tools` snippet runs without the `typeName` TypeError. |
+| LOU-R5 ✅ [#353](https://github.com/LinuxDevil/agent-sdk/pull/353) | Provider error bodies reach the caller | A 401/404 from OpenRouter surfaces the response-body message instead of `""`/bare "Not Found"; `examples/openrouter` `errors` matcher still classifies correctly (case-insensitive). |
+| LOU-R6 ✅ [#356](https://github.com/LinuxDevil/agent-sdk/pull/356) | `stream()` honors retry and fallbacks | `retry`, `fallbackModels`, `withRetry`, `withFallback` apply to `agent.stream()` (provider-call errors, not only iteration errors); `provider.fallback` events fire; test with a flaky mock. |
+| LOU-R7 ✅ [#358](https://github.com/LinuxDevil/agent-sdk/pull/358) | Strict structured-output schemas | `output: z.object(...)` sends `additionalProperties:false` (recursively) where the provider requires it; works on `ai` 7 + zod 4 without `z.strictObject`; repair path unchanged. |
+| LOU-R8 ✅ [#362](https://github.com/LinuxDevil/agent-sdk/pull/362) | OpenRouter reasoning is surfaced | Provider-returned reasoning emits `reasoning.*` stream events and fills `result.reasoning`; live check on a reasoning-capable model. |
+| LOU-R9 ✅ [#351](https://github.com/LinuxDevil/agent-sdk/pull/351) | `LocalStorageCheckpointStore` works on a fresh directory | First `save()` creates `checkpoints/` and `checkpoint-history/`; no `ENOENT` on `*.lock`. |
+| LOU-R10 ✅ [#354](https://github.com/LinuxDevil/agent-sdk/pull/354) | `recordReplay` is ESM-safe | No `__dirname` ReferenceError in the `.mjs` build (`src/testing/cassette.ts:183`); `--replay` mode does not require an API key. |
+| LOU-R11 ✅ [#357](https://github.com/LinuxDevil/agent-sdk/pull/357) | Compaction never grows context or loops | A summarizer result ≥ input tokens is rejected (fallback to prune or keep); a run cannot hit `max-steps` from re-summarizing every step; test with an adversarial summarizer. |
+| LOU-R12 ✅ [#365](https://github.com/LinuxDevil/agent-sdk/pull/365) | `createAgent.tools` accepts mixed record + array | `[...Object.values(mcp.tools), weatherTool]` (or equivalent mixing) works; normalize to one shape internally; test MCP-record + array combination. |
+| LOU-R13 ✅ [#361](https://github.com/LinuxDevil/agent-sdk/pull/361) | Cassette errors keep their type | A mismatch through `agent.send()` rejects as `CassetteMismatchError` (or a documented single wrapper), not `CompactedLLMProviderError`; `setProviderInterceptor` is exported from a public entry. |
+| LOU-R14 ✅ [#364](https://github.com/LinuxDevil/agent-sdk/pull/364) | `FlowExecutor` handles `createAgent` agents | Either runs them (keeping instructions) or rejects with a coded error; no silent instruction drop. |
+| LOU-R15 ✅ [#373](https://github.com/LinuxDevil/agent-sdk/pull/373) | Schedule session ids are server-legal | Rename schedule sessions to `schedule-<name>` (decided: keep the strict `^[A-Za-z0-9_-]{1,128}$` regex); `GET /chat/<scheduled-session>` works. |
+| LOU-R16 ✅ [#368](https://github.com/LinuxDevil/agent-sdk/pull/368) | Hook context `metadata` is populated | `send(x, { metadata })` reaches `ctx.metadata` in hooks (decided: wire it through — the field is already typed). |
+| LOU-R17 ✅ [#370](https://github.com/LinuxDevil/agent-sdk/pull/370) | `tool.start` emits once around approvals | Decided: fix the code — no re-fire after approval (or a distinct resume event); `build-a-coding-agent.md:134` then matches behavior. |
+| LOU-R18 ✅ [#371](https://github.com/LinuxDevil/agent-sdk/pull/371) | Turn events reach `session.on()` listeners | Decided: fix the code — permission-mode switches (and other turn events) work from `session.on()` listeners, not only `onEvent`/`stream()` loops. |
+| LOU-R19 ✅ [#367](https://github.com/LinuxDevil/agent-sdk/pull/367) | `lousho` CLI surface | `--traces` on a module-exported agent writes trace files; missing `.yaml` path throws a coded error (not raw `ENOENT`); `lousho add --dry-run` exits 0 when the target exists; top-level `--help` matches implemented commands/flags. |
+| LOU-R20 ✅ [#369](https://github.com/LinuxDevil/agent-sdk/pull/369) | Deploy targets carry dependencies | `lousho build --target=docker` emits a `package.json` with the provider peers needed by the bundle; image installs them. |
+| LOU-R21 ✅ [#372](https://github.com/LinuxDevil/agent-sdk/pull/372) | Examples run as documented | `ops-pipeline` invokes `startOpsPipeline()` when run directly; `openrouter` model ids are current + provider config used in `agent-builder`; `plan-mode`/`agent-dir` import via the package barrel; all `npm run` scripts exit 0; live snippets verified (~$0.05 budget). |
+| LOU-R22 ✅ [#350](https://github.com/LinuxDevil/agent-sdk/pull/350) | Docs: provider-prefix note | One sentence on every provider-sensitive page: "the `vendor/` model prefix chooses the provider; with OpenRouter use `openrouter/<vendor>/<model>`"; refresh stale ids (`gemini-2.0-flash`, `claude-3-5-*-latest`, `hosted-tools.md` headline). |
+| LOU-R23 ✅ [#363](https://github.com/LinuxDevil/agent-sdk/pull/363) | Docs: errors + troubleshooting + testing | `errors.md` (SDKError universality, `webhookTrigger`, code-index auth section, `LOUSHO_CASSETTE_INVALID` scope), `troubleshooting.md` (PDF/files claim vs `providers.md:132`, conditional retry defaults, MCP `needs-auth` status), `testing.md` (`temperature` on `createAgent`, usage semantics, recordReplay caveats resolved by LOU-R10). |
+| LOU-R24 ✅ [#355](https://github.com/LinuxDevil/agent-sdk/pull/355) | Docs: event schema | `stream-events.md` gains `agent.drift`, `executedBy`, `replacedByHook`, `hook`, `trigger`, and full `usage` fields (`costUsd`, `modelCalls`, ...); `runs.md` drops deprecated `tool-call`/`tool-result`/`finish` names; "every event inside a step" gets the post-approval caveat. |
+| LOU-R25 ✅ [#359](https://github.com/LinuxDevil/agent-sdk/pull/359) | Docs: UI + servers | `ai-sdk-ui.md` uses `DefaultChatTransport`; `ai-sdk-ui.md`/`nextjs.md` server examples pass a `store` so sessions persist; React/Vue/Svelte version caveats. `⚠` (depends on `ai` v5 peer-range decision) |
+| LOU-R26 ✅ [#366](https://github.com/LinuxDevil/agent-sdk/pull/366) | Docs: long-tail corrections | cli.md (eval `--config`, `init`/`InitUsageError`, `.cts`, streamed approval continuations), sub-agents.md (`lousho deploy`→`build`, unexported `serveFetch`), agent-directories.md (`description`, `createDeployedServer`), cloudflare-workers.md (`tool.done`, `/deploy-runtime-worker` subpath, `handleScheduled` checkpoint store), schedules/sessions folder layout, utilities.md (`saveAttachment` Node form, `readAttachment` → `ArrayBuffer`), oauth.md (256-bit state), memory.md (`<name>`), tools.md (`ctx.sessionId`), flows.md (`throw` node), registry.md (name start char + full static-check list), configuration.md (`triggers`), approvals `when` ctx `principal`, workspace-tools.md (`'not-a-file'`), channels name→route, evals.md `completed()` message, `formatUsage` sub-cent, fallback event field names, durable-execution `divergedAt`, hooks.md `HookRegistry.size()`, permission-modes/`session.on()` scope (per LOU-R18), wildcard `*.example.com` vs bare host, `NodeWorkspace` missing root. |
+
+Decisions recorded (owner, 2026-10): R15 rename to `schedule-<name>`; R16 wire
+`metadata` through; R17+R18 fix the code (not docs); R25 document v4/v6/v7 only —
+the `ai` peer range stays as-is.
 
 ## Not ticketed (needs the owner)
 
