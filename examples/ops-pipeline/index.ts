@@ -26,6 +26,8 @@
  * GitHub token and LLM provider instead.
  */
 import * as http from 'node:http';
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { ToolDescriptor } from '../../src/types';
 import { ToolRegistry } from '../../src/tools';
 import { verifySlackSignature } from '../../src/triggers';
@@ -291,6 +293,36 @@ export async function startOpsPipeline(deps: OpsPipelineDeps = {}): Promise<OpsP
       await slack.close();
     },
   };
+}
+
+/**
+ * Entry point (`npm run pipeline:demo`): starts both listeners against the
+ * in-process mocks, so the demo runs with zero external network access.
+ * Guarded so importing this module (tests, other examples) does not bind
+ * ports - `process.argv[1]` is the script Node was started with; realpath
+ * covers the case where it was invoked through a symlink.
+ */
+if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
+  startOpsPipeline()
+    .then((handle) => {
+      console.log(`ops-pipeline demo is running (mock tools, no external calls):`);
+      console.log(`  monitor webhook:       POST http://127.0.0.1:${handle.monitor.port}/webhook`);
+      console.log(`  slack interactions:    POST http://127.0.0.1:${handle.slack.port}/slack/interactions`);
+      console.log(`Trigger a synthetic error with: npm run pipeline:demo:trigger`);
+      const shutdown = () => {
+        void handle.close().then(() => process.exit(0));
+      };
+      process.once('SIGINT', shutdown);
+      process.once('SIGTERM', shutdown);
+      // Non-interactive runs (piped/closed stdin) shut down once the input
+      // stream ends, so `tsx index.ts </dev/null` exits cleanly.
+      process.stdin.once('end', shutdown);
+      process.stdin.resume();
+    })
+    .catch((error) => {
+      console.error(error);
+      process.exitCode = 1;
+    });
 }
 
 

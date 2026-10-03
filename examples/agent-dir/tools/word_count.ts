@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { defineTool } from '../../../src';
+import { defineTool } from '../../../src/index.js';
 
 export default defineTool({
   name: 'word_count',

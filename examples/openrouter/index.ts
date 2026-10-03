@@ -36,7 +36,7 @@ async function streamingGeneration() {
   const provider = createProvider();
 
   const stream = await provider.stream({
-    model: 'anthropic/claude-3.5-sonnet',
+    model: 'anthropic/claude-sonnet-4',
     messages: [
       { role: 'user', content: 'Write a short story about a robot learning to paint.' },
     ],
@@ -60,8 +60,8 @@ async function multiModelComparison() {
   const question = 'Explain quantum computing in simple terms.';
   const models = [
     'openai/gpt-4o-mini',
-    'anthropic/claude-3-haiku',
-    'google/gemini-pro',
+    'anthropic/claude-haiku-4.5',
+    'google/gemini-2.5-flash',
     'meta-llama/llama-3.1-8b-instruct',
   ];
 
@@ -122,27 +122,38 @@ async function toolCalling() {
   }
 }
 
-/** Configuring an agent to use OpenRouter via AgentBuilder. */
+/** Configuring an agent to use OpenRouter via AgentBuilder, then running its prompt through that provider. */
 async function agentBuilder() {
+  const providerConfig = {
+    apiKey,
+    defaultModel: 'anthropic/claude-sonnet-4',
+    siteUrl: 'https://myapp.com',
+    siteName: 'Travel App',
+  };
+  const provider = createProvider(providerConfig);
+
   const agent = new AgentBuilder()
     .setName('Travel Assistant')
     .setPrompt(`You are a helpful travel assistant. You provide information about destinations,
       travel tips, and help plan trips. Be concise and informative.`)
     .setMetadata({
       provider: 'openrouter',
-      providerConfig: {
-        apiKey,
-        defaultModel: 'anthropic/claude-3.5-sonnet',
-        siteUrl: 'https://myapp.com',
-        siteName: 'Travel App',
-      },
+      providerConfig,
     })
     .build();
 
   console.log('Agent created:', agent.name);
 
-  // Note: execute method requires proper execution setup
-  // This is just to show the configuration
+  // The built agent's system prompt drives a real call through the provider above.
+  const result = await provider.generate({
+    model: providerConfig.defaultModel,
+    messages: [
+      { role: 'system', content: agent.prompt! },
+      { role: 'user', content: 'Suggest one weekend city break from Paris.' },
+    ],
+    maxTokens: 120,
+  });
+  console.log('Agent says:', result.text);
 }
 
 /** Getting available models. */
@@ -178,7 +189,7 @@ async function costOptimizedGeneration() {
   console.log('Tokens used:', simpleTask.usage.totalTokens);
 
   const complexTask = await provider.generate({
-    model: 'anthropic/claude-3.5-sonnet',
+    model: 'anthropic/claude-sonnet-4',
     messages: [
       {
         role: 'user',
@@ -200,11 +211,16 @@ const ERROR_DESCRIPTIONS: Array<{ matches: string[]; description: string }> = [
   { matches: ['insufficient credits'], description: 'Insufficient credits' },
 ];
 
-function describeError(message: string): string {
+function describeError(error: unknown): string {
+  const e = error as { message?: string; name?: string; statusCode?: number };
+  // Match on the whole error surface, not just message: the AI SDK's
+  // APICallError carries the HTTP status in statusCode/name and can have an
+  // empty message.
+  const haystack = `${e?.name ?? ''} ${e?.statusCode ?? ''} ${e?.message ?? String(error)}`.toLowerCase();
   const known = ERROR_DESCRIPTIONS.find((entry) =>
-    entry.matches.some((needle) => message.includes(needle)),
+    entry.matches.some((needle) => haystack.includes(needle)),
   );
-  return known ? known.description : `Unknown error: ${message}`;
+  return known ? known.description : `Unknown error: ${e?.message || String(error)}`;
 }
 
 /** Error handling, using a deliberately invalid key. */
@@ -219,7 +235,7 @@ async function errorHandling() {
     console.log(result.text);
   } catch (error: unknown) {
     console.error('Error occurred:');
-    console.error(describeError(error instanceof Error ? error.message : String(error)));
+    console.error(describeError(error));
   }
 }
 
@@ -249,8 +265,8 @@ async function modelCapabilities() {
 
   const models = [
     'openai/gpt-4o',
-    'anthropic/claude-3.5-sonnet',
-    'google/gemini-pro',
+    'anthropic/claude-sonnet-4',
+    'google/gemini-2.5-flash',
     'meta-llama/llama-3.1-8b-instruct',
   ];
 
