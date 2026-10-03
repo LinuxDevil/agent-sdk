@@ -28,6 +28,7 @@ import { runPreToolHooks, type ToolCallOutcome } from './toolCallExecution';
 import { markPropagating, toolErrorMessage } from './propagatingToolError';
 import { SDKError } from './errors';
 import { toolErrorResult, type ToolErrorResult } from './toolErrors';
+import { toolResultContent } from './toolResult';
 import { splitPendingTurn } from './transcript';
 import { replaceToolResult, type ToolCallScope } from './subagentRuntime';
 import type { RunUsage } from '../models/usage';
@@ -605,7 +606,7 @@ function closeUnlistedToolCalls(messages: Message[], remaining: ToolCall[] | und
 function toolResultMessage(pending: PendingApproval, payload: unknown, isError = false, replacedByHook?: string): Message {
   return {
     role: 'tool',
-    content: JSON.stringify(payload),
+    content: toolResultContent(payload),
     name: pending.toolName,
     toolCallId: pending.toolCallId,
     toolName: pending.toolName,

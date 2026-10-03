@@ -24,6 +24,7 @@ import { toolErrorResult } from './toolErrors';
 import type { Principal } from '../auth/types';
 import { readonlyPrincipal, resumedRunPrincipal } from './runPrincipal';
 import { withHostedCalls } from './hostedToolCalls';
+import { toolResultContent } from './toolResult';
 import type { ParallelInputCheck } from './ioGuardrails';
 
 export interface AgentRunState {
@@ -279,7 +280,7 @@ export function pushToolResult(
   const failurePayload = outcome.result ?? { error: outcome.error };
   state.messages.push({
     role: 'tool',
-    content: JSON.stringify(failed ? failurePayload : outcome.result),
+    content: toolResultContent(failed ? failurePayload : outcome.result),
     name: toolCall.function.name,
     toolCallId: toolCall.id,
     toolName: toolCall.function.name,

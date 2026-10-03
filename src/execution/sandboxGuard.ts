@@ -24,6 +24,7 @@ import { getToolExecute } from '../tools/toolContract';
 import { SandboxAdapter } from '../security/sandboxCore';
 import type { ToolCallScope } from './subagentRuntime';
 import { buildToolRunContext, type ToolRunInput } from './toolRunContext';
+import { normalizeToolResult } from './toolResult';
 import { drainPartialStream, isPartialStream } from './toolPartials';
 
 /**
@@ -83,7 +84,7 @@ export async function executeToolWithSandboxGuard(
   const redacted = (value: unknown) => (handedOut.size > 0 ? redactHandedOutTokens(toolName, value, handedOut) : value);
   // N13b: a snapshot is redacted like the result it may become.
   const result = await runGuarded(toolName, toolDesc, args, sandbox, ctx, (snapshot) => onPartial?.(redacted(snapshot)));
-  return redacted(result);
+  return normalizeToolResult(redacted(result));
 }
 
 async function runGuarded(

@@ -3,7 +3,7 @@
  * every `yield` is a complete snapshot that replaces the previous one (reported
  * as a `tool.partial` event), and the last one is the tool's result. A
  * `return` value is ignored; a generator that yields nothing has the result
- * `undefined`. Snapshots never reach the model, the transcript or a checkpoint.
+ * `null` (a tool that returns `undefined` too: see toolResult.ts). Snapshots never reach the model, the transcript or a checkpoint.
  */
 
 /**
