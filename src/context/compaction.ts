@@ -82,6 +82,9 @@ const DEFAULT_THRESHOLD_PERCENT = 0.9;
 
 const PRUNED_MARKER = /^\[pruned: .* result, \d+ chars\]$/;
 
+/** The strategy a marked (LOU-R11) transcript compacts with: prune only, never summarize. */
+const PRUNE_ONLY = pruneToolResultsStrategy();
+
 const toError = (cause: unknown): Error => (cause instanceof Error ? cause : new Error(String(cause)));
 
 /** The message with its result replaced by a marker, or `undefined` when it is not a tool result worth pruning. */
@@ -338,6 +341,11 @@ export function createCompactionHook(options: CompactionHookOptions = {}): Agent
   if (!(thresholdPercent > 0 && thresholdPercent <= 1)) {
     throw new RangeError(`createCompactionHook: thresholdPercent must be in (0, 1], got ${thresholdPercent}`);
   }
+  // LOU-R11: transcripts whose summary was rejected. Keyed on the run's
+  // transcript array (ctx.request.messages IS it - it stays the same array
+  // through the in-place rewrite below and dies with the run), so a marked
+  // transcript prunes only for the rest of that run.
+  const rejected = new WeakSet<Message[]>();
   return {
     name: 'compaction',
     async preGenerate(ctx: GenerateHookContext) {
@@ -346,12 +354,29 @@ export function createCompactionHook(options: CompactionHookOptions = {}): Agent
       const tokens = input.estimateTokens(messages);
       if (tokens <= input.thresholdTokens) return;
       const { contextWindow, thresholdTokens } = input;
-      ctx.emit?.({ type: 'compaction.start', strategy: strategy.name, tokensBefore: tokens, contextWindow, thresholdTokens });
+      // A rejected summary is not tried again on this transcript.
+      const active = rejected.has(messages) ? PRUNE_ONLY : strategy;
+      ctx.emit?.({ type: 'compaction.start', strategy: active.name, tokensBefore: tokens, contextWindow, thresholdTokens });
       let result: CompactionResult;
       try {
-        result = await strategy.compact(input);
+        result = await active.compact(input);
       } catch (cause) {
         result = { messages, tokensBefore: tokens, tokensAfter: tokens, prunedToolCallIds: [], error: toError(cause) };
+      }
+      // LOU-R11: a summary that does not shrink the conversation, or that
+      // leaves it over the threshold, is rejected. Applied anyway it kept the
+      // request over threshold, so the hook summarized again on every step
+      // until max-steps. Fall back to pruning alone and mark the transcript,
+      // so the rest of the run prunes instead of summarizing each step.
+      if (result.summary !== undefined && (result.tokensAfter >= result.tokensBefore || result.tokensAfter > thresholdTokens)) {
+        rejected.add(messages);
+        result = {
+          ...pruneToolResults(input),
+          error: new SDKError(
+            `the summary did not compact the conversation below the threshold (${result.tokensBefore} -> ${result.tokensAfter} tokens); this transcript is pruned only for the rest of the run`,
+            'LOUSHO_AGENT_EXECUTION_FAILED'
+          ),
+        };
       }
       const { tokensBefore, tokensAfter, prunedToolCallIds, summary, error } = result;
       ctx.emit?.({

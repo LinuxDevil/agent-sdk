@@ -38,7 +38,21 @@ const ofType = <T extends AgentEvent['type']>(events: AgentEvent[], type: T) =>
 
 /** A small window: compaction starts once a request passes 2,700 tokens. */
 const SMALL = { contextWindow: 3_000, protectedTokens: 1_500 };
-const SUMMARIZING = { contextWindow: 3_000, protectedTokens: 1_000, thresholdPercent: 0.3 };
+const SUMMARIZING = { contextWindow: 3_000, protectedTokens: 1_000, thresholdPercent: 0.5 };
+
+/**
+ * A model turn pairing a big assistant text (unprunable) with a fetch call
+ * whose result is tiny, so pruning alone stays over the 1,500-token threshold
+ * of SUMMARIZING but a summary lands under it.
+ */
+const wordyCall = (n: number) => ({ text: BIG, toolCalls: [{ name: 'fetch_page', args: { n }, id: `call_${n}` }] });
+
+/** An agent whose run fills its transcript with assistant text, not tool results. */
+function wordyAgentWith(compaction: CreateAgentConfig['compaction']) {
+  const model = mockModel([wordyCall(1), wordyCall(2), wordyCall(3), wordyCall(4), 'done']);
+  const agent = createAgent({ provider: model, tools: [fetchPage('ok')], maxSteps: 10, compaction });
+  return { agent, model };
+}
 
 function agentWith(compaction: CreateAgentConfig['compaction'], size = BIG, extra: Partial<CreateAgentConfig> = {}) {
   const model = mockModel([pageCall(1), pageCall(2), pageCall(3), pageCall(4), 'done']);
@@ -116,8 +130,8 @@ describe('compaction stream events (LOU-W3.2)', () => {
   });
 
   it('an object with a summarizer provider runs twoPhaseStrategy with it', async () => {
-    const summarizer = mockModel(['The user wants four pages read.']);
-    const { agent, model } = agentWith({ ...SUMMARIZING, summarizer });
+    const summarizer = mockModel(['The user wants four pages read.'], { onExhausted: 'repeat-last' });
+    const { agent, model } = wordyAgentWith({ ...SUMMARIZING, summarizer });
     const run = agent.stream('read four pages');
     const events = await collect(run);
 
@@ -131,9 +145,9 @@ describe('compaction stream events (LOU-W3.2)', () => {
 
   it("resolves a 'provider/model' summarizer with the provider registry", async () => {
     vi.stubEnv('OPENAI_API_KEY', 'sk-test');
-    const summarizer = mockModel(['A summary.']);
+    const summarizer = mockModel(['A summary.'], { onExhausted: 'repeat-last' });
     const create = vi.spyOn(LLMProviderRegistry, 'create').mockReturnValue(summarizer);
-    const { agent } = agentWith({ ...SUMMARIZING, summarizer: 'openai/gpt-4o-mini' });
+    const { agent } = wordyAgentWith({ ...SUMMARIZING, summarizer: 'openai/gpt-4o-mini' });
 
     const events = await collect(agent.stream('read four pages'));
 
@@ -161,7 +175,8 @@ describe('compaction stream events (LOU-W3.2)', () => {
 
   it('reports a failed summarizer (fallback to pruning) on compaction.done', async () => {
     const summarizer = mockModel([{ error: new Error('summarizer down') }]);
-    const { agent } = agentWith({ ...SUMMARIZING, summarizer });
+    // 0.3 keeps the pruned transcript over the 900-token threshold, so the summarizer runs (and fails).
+    const { agent } = agentWith({ ...SUMMARIZING, thresholdPercent: 0.3, summarizer });
     const events = await collect(agent.stream('read four pages'));
 
     const failed = ofType(events, 'compaction.done').find((e) => e.error);
