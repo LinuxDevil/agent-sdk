@@ -111,6 +111,30 @@ describe('resolveProvider errors (LOU-D1)', () => {
     expect(createSpy).not.toHaveBeenCalled();
   });
 
+  it('under cassette replay resolves a spec without the key; a call that reaches it reports the missing key (LOU-R10)', async () => {
+    vi.stubEnv('OPENAI_API_KEY', '');
+    vi.stubEnv('LOUSHO_EVAL_CASSETTES', 'replay');
+    const fake = Object.assign(fakeProvider('openai'), { defaultModel: 'gpt-4o-mini' });
+    vi.spyOn(LLMProviderRegistry, 'create').mockReturnValue(fake);
+
+    const provider = resolveProvider('openai/gpt-4o-mini');
+
+    expect(provider.name).toBe('openai');
+    expect(provider.defaultModel).toBe('gpt-4o-mini');
+    await expect(provider.generate({ messages: [] })).rejects.toThrow('OPENAI_API_KEY is not set');
+    await expect(provider.generate({ messages: [] })).rejects.toThrow(withCode('LOUSHO_PROVIDER_MISSING_API_KEY'));
+    await expect(provider.getModels()).rejects.toThrow(withCode('LOUSHO_PROVIDER_MISSING_API_KEY'));
+  });
+
+  it.each(['', 'record'])('still requires the key when LOUSHO_EVAL_CASSETTES is %s', async (mode) => {
+    vi.stubEnv('OPENAI_API_KEY', '');
+    vi.stubEnv('LOUSHO_EVAL_CASSETTES', mode);
+    const createSpy = vi.spyOn(LLMProviderRegistry, 'create');
+
+    expect(() => resolveProvider('openai/gpt-4o')).toThrow(withCode('LOUSHO_PROVIDER_MISSING_API_KEY'));
+    expect(createSpy).not.toHaveBeenCalled();
+  });
+
   it('does not require an env var for ollama (it has a local default)', () => {
     vi.stubEnv('OLLAMA_BASE_URL', '');
     vi.spyOn(LLMProviderRegistry, 'create').mockReturnValue(fakeProvider('ollama'));

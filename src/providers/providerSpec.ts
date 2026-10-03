@@ -174,6 +174,46 @@ function missingKeyError(caller: string, envKey: string): Error {
   );
 }
 
+/**
+ * Whether a cassette may answer this process's model calls (LOU-R10):
+ * `lousho eval` sets `LOUSHO_EVAL_CASSETTES` (see src/evals/cassettes.ts) in
+ * the eval's vitest process - `replay` under `--replay`, `auto` under CI,
+ * where every case that has a cassette replays it. In those modes the
+ * provider a `model:` spec resolves to can be wrapped by `recordReplay` and
+ * never called, so a missing API key must not stop resolution.
+ */
+function cassetteMayAnswerCalls(): boolean {
+  const mode = process.env.LOUSHO_EVAL_CASSETTES;
+  return mode === 'replay' || mode === 'auto';
+}
+
+/**
+ * A provider that reports `provider`'s identity but rejects every model call
+ * with `error` (LOU-R10). Resolving a keyless spec under cassette replay
+ * still builds the real provider for its name/defaultModel; if a call does
+ * reach it (mode 'auto' on a case with no cassette) the caller gets the same
+ * missing-key error the spec check would have thrown up front.
+ */
+function uncalledProvider(provider: LLMProvider, error: () => Error): LLMProvider {
+  const reject = (): Promise<never> => Promise.reject(error());
+  return {
+    get name() {
+      return provider.name;
+    },
+    get defaultModel() {
+      return provider.defaultModel;
+    },
+    generate: reject,
+    stream: reject,
+    supportsTools: (model) => provider.supportsTools(model),
+    supportsStreaming: (model) => provider.supportsStreaming(model),
+    getModels: reject,
+    ...(provider.supportsHostedTool
+      ? { supportsHostedTool: (type: Parameters<NonNullable<LLMProvider['supportsHostedTool']>>[0]) => provider.supportsHostedTool!(type) }
+      : {}),
+  };
+}
+
 /** True when `error` says an npm package could not be loaded (CommonJS or ESM resolution). */
 function isModuleNotFound(error: unknown): boolean {
   const { code, message } = error as { code?: unknown; message?: unknown };
@@ -222,13 +262,19 @@ export function resolveProviderSpec(spec: string, caller: string, extra: LLMProv
   if (!entry) throw unknownProviderError(caller, spec.slice(0, separatorIndex), spec);
 
   const envValue = process.env[entry.envKey];
-  if (!envValue && entry.envRequired) throw missingKeyError(caller, entry.envKey);
+  const provider = () =>
+    createProvider(caller, providerName, entry, {
+      ...extra,
+      defaultModel: model,
+      [entry.configField]: envValue,
+    });
+  if (!envValue && entry.envRequired) {
+    // Replay needs no key: the cassette answers every model call.
+    if (!cassetteMayAnswerCalls()) throw missingKeyError(caller, entry.envKey);
+    return uncalledProvider(provider(), () => missingKeyError(caller, entry.envKey));
+  }
 
-  return createProvider(caller, providerName, entry, {
-    ...extra,
-    defaultModel: model,
-    [entry.configField]: envValue,
-  });
+  return provider();
 }
 
 /**
