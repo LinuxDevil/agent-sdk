@@ -10,6 +10,7 @@ import type { ToolDescriptor } from '../types';
 import {
   anyError,
   isModelSchema,
+  isRawJsonSchema,
   issueMessage,
   issuePath,
   schemaToJsonSchema,
@@ -49,6 +50,21 @@ describe('zodCompat (LOU-D29)', () => {
     expect(isModelSchema(standardString(true))).toBe(true);
     expect(isModelSchema(standardString(false))).toBe(false);
     expect(isModelSchema({ type: 'object' })).toBe(false);
+  });
+
+  it('LOU-R4: recognizes a plain JSON-Schema object, but no schema form or wrapper', () => {
+    expect(isRawJsonSchema({ type: 'object', properties: { q: { type: 'string' } } })).toBe(true);
+    expect(isRawJsonSchema({})).toBe(true);
+    // Every schema form the providers convert on their own stays untouched.
+    expect(isRawJsonSchema(z3.string())).toBe(false);
+    expect(isRawJsonSchema(z4.string())).toBe(false);
+    expect(isRawJsonSchema(standardString(true))).toBe(false);
+    expect(isRawJsonSchema(standardString(false))).toBe(false);
+    // An 'ai' `jsonSchema()` wrapper already is a schema, not a raw one.
+    expect(isRawJsonSchema({ jsonSchema: { type: 'object' }, validate: async () => ({ success: true, value: {} }) })).toBe(false);
+    expect(isRawJsonSchema(undefined)).toBe(false);
+    expect(isRawJsonSchema('object')).toBe(false);
+    expect(isRawJsonSchema([])).toBe(false);
   });
 
   it('words type mismatches the same on both majors', () => {

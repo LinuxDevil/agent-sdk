@@ -214,6 +214,32 @@ describe('AiSdkProvider', () => {
     expect(tools.search.parameters.jsonSchema).toMatchObject({ type: 'object', properties: { q: { type: 'string' } }, required: ['q'] });
   });
 
+  it('LOU-R4: wraps a plain JSON-Schema parameters object, not the zod converter path', async () => {
+    generateTextMock.mockResolvedValue(textResult('stop'));
+    const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });
+    // The examples/openrouter `tools` snippet: a raw JSON Schema, not a zod
+    // schema. On ai v4 a bare object crashed the SDK's `asSchema` on
+    // `._def.typeName`; it must go as an `ai.jsonSchema()` wrapper instead.
+    const parameters = {
+      type: 'object',
+      properties: {
+        location: { type: 'string', description: 'City name' },
+        unit: { type: 'string', enum: ['celsius', 'fahrenheit'], description: 'Temperature unit' },
+      },
+      required: ['location'],
+    };
+
+    await provider.generate({
+      model: 'gpt-4',
+      messages: [],
+      tools: [{ type: 'function', function: { name: 'get_weather', description: 'Get the weather', parameters } }],
+    });
+
+    const { tools } = generateTextMock.mock.calls[0][0];
+    const schema = isV4 ? tools.get_weather.parameters : tools.get_weather.inputSchema;
+    expect(schema.jsonSchema).toEqual(parameters);
+  });
+
   it('stream() exposes textStream and resolved final values', async () => {
     async function* textStream() {
       yield 'a';

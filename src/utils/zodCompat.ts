@@ -75,6 +75,19 @@ export function isModelSchema(value: unknown): boolean {
 }
 
 /**
+ * A plain JSON-Schema object (LOU-R4): an object that is none of the schema
+ * forms {@link isModelSchema} recognizes and not an 'ai' `jsonSchema()`
+ * wrapper either (`{jsonSchema, validate}`). `defineTool({ input })` accepts
+ * raw JSON Schemas; 'ai' v4 would run one through its zod converter and crash
+ * reading `._def.typeName`, so callers wrap it with `ai.jsonSchema()` - which
+ * ai 6/7's conversion already does for every non-Standard-Schema object.
+ */
+export function isRawJsonSchema(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  return !isModelSchema(value) && !('jsonSchema' in value) && !('~standard' in value);
+}
+
+/**
  * An issue's message, worded the same on both majors: zod 4's default
  * `Invalid input: expected string, received undefined` reads as zod 3's
  * `Required`, and other type mismatches as `Expected number, received string`.

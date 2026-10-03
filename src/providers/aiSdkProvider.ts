@@ -32,7 +32,7 @@ import {
 import { reasoningProviderOptions } from './reasoning';
 import { hostedToolUnsupported, type HostedTool, type HostedToolType } from '../tools/hosted';
 import { textOf } from './content';
-import { schemaToJsonSchema } from '../utils/zodCompat';
+import { isRawJsonSchema, schemaToJsonSchema } from '../utils/zodCompat';
 import { type AiSdkMessage, type AiSdkModule, aiMajorOf, compatGenerateText, streamCompat } from './aiSdkCompat';
 
 // The `ai` v4 request shapes built here, as our own structural types (LOU-D28a):
@@ -162,10 +162,12 @@ function toCoreMessages(messages: Message[], support: PartSupport): AiSdkMessage
 
 /**
  * A tool's `parameters` for `ai` v4, whose own converter only reads zod 3:
- * a zod 4 / Standard JSON Schema goes as its JSON Schema (LOU-D29).
+ * a zod 4 / Standard JSON Schema goes as its JSON Schema (LOU-D29), and a
+ * plain JSON-Schema object is wrapped as-is (LOU-R4) - left bare, v4's
+ * `asSchema` would feed it to the zod converter and crash on `._def.typeName`.
  */
 function v4Parameters(ai: AiSdkModule, parameters: unknown): unknown {
-  const json = schemaToJsonSchema(parameters);
+  const json = schemaToJsonSchema(parameters) ?? (isRawJsonSchema(parameters) ? parameters : undefined);
   return json ? ai.jsonSchema(json as never) : parameters;
 }
 
