@@ -8,7 +8,7 @@
  *
  * Provider/tool resolution is exactly specToAgent()'s (and so `lousho
  * dev`'s): real providers via resolveProvider() + env vars, 'mock' via
- * LLMProviderRegistry (importing specToAgent also registers 'mock').
+ * LLMProviderRegistry (create() registers the built-ins lazily, LOU-R1).
  */
 export { agentSpecSchema } from '../spec/schema';
 export type { AgentSpec } from '../spec/schema';

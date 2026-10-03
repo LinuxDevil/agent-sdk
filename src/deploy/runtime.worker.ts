@@ -51,7 +51,7 @@
  *    the WorkerAgentDir the build generated (./workerAgentDir.ts): its tools
  *    and an agent.ts config are bundled modules, the rest is embedded data.
  */
-import '../providers/mock';
+import { MockLLMProvider, MockProviderConfig } from '../providers/mock';
 import { OpenAIProvider, OpenAIProviderConfig } from '../providers/OpenAIProvider';
 import { AnthropicProvider, AnthropicProviderConfig } from '../providers/AnthropicProvider';
 import { OpenRouterProvider, OpenRouterProviderConfig } from '../providers/OpenRouterProvider';
@@ -81,10 +81,12 @@ import { resolveWorkerAgentDir, type ResolvedWorkerAgentDir, type WorkerAgentDir
 export { agentSpecSchema } from '../spec/schema';
 export type { WorkerAgentDir } from './workerAgentDir';
 
-// Registered directly here (rather than via the '../providers' barrel,
-// which also eagerly imports OllamaProvider and its optional peer SDK) so the
-// Worker bundle only pulls in the providers actually supported on Workers -
-// see the module doc comment above.
+// Registered directly here (rather than relying on lazy registration, LOU-R1)
+// so the providers Workers actually support show up in has()/getProviderNames()
+// from module load - see the module doc comment above. Anything not listed
+// here ('ollama') still resolves on a create() miss via ensureBuiltinProviders(),
+// but the adapter rejects it before a spec ever reaches a Worker.
+LLMProviderRegistry.register('mock', (config) => new MockLLMProvider(config as MockProviderConfig));
 LLMProviderRegistry.register('openai', (config) => new OpenAIProvider(config as OpenAIProviderConfig));
 LLMProviderRegistry.register('anthropic', (config) => new AnthropicProvider(config as AnthropicProviderConfig));
 LLMProviderRegistry.register('openrouter', (config) => new OpenRouterProvider(config as OpenRouterProviderConfig));
