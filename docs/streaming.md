@@ -4,7 +4,9 @@
 as a stream of typed events: model text as it arrives, every tool call,
 step boundaries, approval requests, and a final `run.done`. Every event is a
 plain JSON object, so you can forward it to a browser over Server-Sent Events
-or a WebSocket without converting it.
+or a WebSocket without converting it. The `vendor/` model prefix chooses the
+provider; with OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';

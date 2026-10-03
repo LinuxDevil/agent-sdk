@@ -372,7 +372,9 @@ its sub-entries) never loads a provider package, so you only need to install
 the ones you use. Each provider package is loaded the first time that
 provider makes a call; if it is missing, that call fails with a
 `MissingPeerDependencyError` that carries the exact command to run, for the
-`ai` major you have installed. With `ai` 4:
+`ai` major you have installed. The `vendor/` model prefix chooses the
+provider; with OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`). With `ai` 4:
 
 ```bash
 npm install @ai-sdk/openai@^0.0.42
@@ -596,7 +598,8 @@ That is the current `ai` major; for Ollama, use `ai@^7.0.0` with
 instructions in, a `{ send }` agent out. The API key is read from the
 provider's conventional environment variable (`OPENAI_API_KEY` here;
 `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY` or `OLLAMA_BASE_URL` for the other
-providers).
+providers). The `vendor/` model prefix chooses the provider; with OpenRouter
+use `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts no-run
 import { createAgent } from '@lousho/build-ai-agent';
@@ -1237,7 +1240,9 @@ lousho acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]
 ```
 
 `<path>` is loaded like [`lousho chat`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md#lousho-chat) loads it, and
-`--model` works the same way. The editor starts the process; it runs until
+`--model` works the same way. The `vendor/` model prefix chooses the provider;
+with OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o`). The editor starts the process; it runs until
 stdin closes. stdout carries nothing but protocol messages: errors, and
 anything the agent's code prints with `console.log`, go to stderr, which
 editors show in their logs. A bad path or flag exits with code 1 and the coded
@@ -1400,7 +1405,7 @@ export default {
 | --- | ------- |
 | `name` | `createAgent({ name })` (default: the directory name) |
 | `description` | not a `createAgent` option; what a parent agent reads for a sub-agent (required there) |
-| `model` | `createAgent({ model })` |
+| `model` | `createAgent({ model })`; the `vendor/` prefix chooses the provider — with OpenRouter use `openrouter/<vendor>/<model>` |
 | `provider` | `createAgent({ provider })` (code config files only) |
 | `instructions` | `createAgent({ instructions })` (use this or `instructions.md`, not both) |
 | `maxSteps` | `createAgent({ maxSteps })` |
@@ -1909,6 +1914,9 @@ the package root, do the translation. They import nothing from `ai`, use no
 | `fromUIMessages(messages, { lastUserOnly? })` | in | the `UIMessage[]` `useChat` posts as an `AgentInput` |
 
 ## Route handler
+
+The `vendor/` model prefix chooses the provider; with OpenRouter use
+`openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { createAgent, fromUIMessages, toUIMessageStreamResponse, type UIMessageLike } from '@lousho/build-ai-agent';
@@ -2660,7 +2668,9 @@ still is. The `cloudflare-worker` target serves spec files only and keeps the
 
 ## Reading the principal in the run
 
-The principal is on the run context next to `sessionId` and `metadata`:
+The principal is on the run context next to `sessionId` and `metadata`. The
+`vendor/` model prefix chooses the provider; with OpenRouter use
+`openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { createAgent, defineMemory, inMemoryMemory, type Principal } from '@lousho/build-ai-agent';
@@ -2944,7 +2954,9 @@ for await (const event of run) {
 `maxSteps` bounds the model calls in one run, so a confused agent cannot loop
 forever. This program stops at the first gated call: the stream ends with an
 `approval.requested` event and the run finishes as `'awaiting-approval'`. The
-next step handles that.
+next step handles that. The `vendor/` model prefix chooses the provider; with
+OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`).
 
 ## 4. Handle the pause
 
@@ -3984,7 +3996,7 @@ Done, the report is on its way.
 
 | Option | Meaning |
 | ------ | ------- |
-| `--model provider/model` | Use this model instead of the one the target names. Applies to spec files, agent directories and `createAgent()` options exports; a module that exports an already built agent keeps its model. |
+| `--model provider/model` | Use this model instead of the one the target names. Applies to spec files, agent directories and `createAgent()` options exports; a module that exports an already built agent keeps its model. The `vendor/` model prefix chooses the provider; with OpenRouter use `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o`). |
 | `--session id` | Open this session (1-128 characters of `A-Za-z0-9_-`); default is a new `chat-<id>`. |
 | `--store sqlite:<file>` | Keep sessions in a SQLite file ([`SqliteStore`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)), so `--session id` continues a conversation after a restart. Default: in memory. Pending approvals are not restored after a restart. |
 
@@ -4120,6 +4132,8 @@ cd .lousho/build/cloudflare-worker && npx wrangler deploy
 
 - The config's `model` must name a provider of the table above (`"model": "openai/gpt-4o-mini"`),
   with its key in the `OPENAI_API_KEY` binding; or `agent.ts` sets `provider` to an instance.
+  The `vendor/` model prefix chooses the provider; with OpenRouter use
+  `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
   There is no environment to pick a default model from, so a directory without either is rejected.
 - A JSON/YAML config is checked by `lousho build`; an `agent.ts` config is checked when the
   Worker starts, so `wrangler deploy` reports the problem.
@@ -4348,7 +4362,9 @@ calls are simpler and the model is better at them.
 ## Turn it on
 
 Install the optional peer `quickjs-emscripten` and set `codeMode` on
-`createAgent()`:
+`createAgent()`. The `vendor/` model prefix chooses the provider; with
+OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`).
 
 ```bash
 npm install quickjs-emscripten@^0.32.0
@@ -4556,7 +4572,9 @@ With `createAgent()`, turn compaction on with the `compaction` option. `true`
 installs the hook with its defaults (prune old tool results above 90% of the
 model's window); an object configures it, and `summarizer` selects
 `twoPhaseStrategy()` with that model (a `"provider/model"` string or an
-`LLMProvider`):
+`LLMProvider`). The `vendor/` model prefix chooses the provider; with
+OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
@@ -5023,7 +5041,8 @@ what the examples and the Quick Start use by default.
 ## Provider retries and fallback
 
 `createAgent()` retries failed model calls on its own, and can fall back to
-other models:
+other models. The `vendor/` model prefix chooses the provider; with OpenRouter
+use `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
@@ -5031,7 +5050,7 @@ import { createAgent } from '@lousho/build-ai-agent';
 const agent = createAgent({
   model: 'openai/gpt-4o-mini',
   retry: { maxRetries: 3, backoff: { initialMs: 1000 } }, // default { maxRetries: 2 }; false turns it off
-  fallbackModels: ['anthropic/claude-3-5-haiku-latest'], // tried in order once the retries are used up
+  fallbackModels: ['anthropic/claude-haiku-4-5'], // tried in order once the retries are used up
 });
 
 for await (const event of agent.stream('Hello!')) {
@@ -5070,7 +5089,7 @@ const provider = withFallback(
       backoff: { initialMs: 500, maxMs: 10_000 },
       onRetry: ({ attempt, delayMs }) => console.warn(`retry ${attempt} in ${delayMs}ms`),
     }),
-    withRetry(resolveProvider('anthropic/claude-3-5-haiku-latest')),
+    withRetry(resolveProvider('anthropic/claude-haiku-4-5')),
   ],
   { onFallback: ({ from, to }) => console.warn(`falling back from ${from} to ${to}`) }
 );
@@ -5993,7 +6012,9 @@ and `lousho studio` without Agent Forge's files are the same code.
 
 **Fix:** pass `model: 'openai/gpt-4o-mini'` (any `<provider>/<model>`), pass a
 `provider` instance, or set `LOUSHO_MODEL` or a provider key such as
-`OPENAI_API_KEY`. See [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md).
+`OPENAI_API_KEY`. The `vendor/` model prefix chooses the provider; with
+OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`). See [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md).
 
 **Example:** `createAgent({ instructions: 'x' })` with no provider env var set.
 
@@ -6054,7 +6075,7 @@ names the option and `error.cause` is what the function threw.
 **Means:** a model string is not `<provider>/<model>`.
 
 **Fix:** write both parts, e.g. `'openai/gpt-4o-mini'` or
-`'anthropic/claude-3-5-sonnet-latest'`.
+`'anthropic/claude-sonnet-4-5'`.
 
 **Example:** `resolveProvider('gpt-4o')`.
 
@@ -7442,7 +7463,10 @@ They count in `result.usage` when the provider reported them (a call that
 finished before the trip); an aborted stream usually reports none, and none is
 estimated. Only the first model call of a run is raced, and a run resumed after an
 approval does not check its input again. On `output` and
-`tools` guardrails `runInParallel` is ignored.
+`tools` guardrails `runInParallel` is ignored. A guardrail `model` string is a
+`provider/model` spec: the `vendor/` prefix chooses the provider; with
+OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { createAgent, moderationGuardrail, piiGuardrail } from '@lousho/build-ai-agent';
@@ -7659,7 +7683,8 @@ user directly, and in a session it keeps the conversation in later turns.
 
 Give each target a `name` and a `description` (the model reads the
 description to decide when to hand off), then pass them to the triage agent as
-`handoffs`:
+`handoffs`. The `vendor/` model prefix chooses the provider; with OpenRouter
+use `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { createAgent, defineTool } from '@lousho/build-ai-agent';
@@ -8186,7 +8211,9 @@ console.log(result.text, result.usage.hostedToolCalls); // { web_search: 1 }
 ```
 
 The SDK never executes a hosted tool. It sends it with every model call of
-the run and reports what the provider did.
+the run and reports what the provider did. The `vendor/` model prefix chooses
+the provider; with OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`).
 
 ## The helpers
 
@@ -8422,7 +8449,9 @@ export them too. `createAgent({ mcpServers })` needs no import from the subpath.
 each server's tools are added as `<server>__<tool>` (e.g. `docs__search`).
 A server that cannot connect fails that call, and the next call tries again.
 `agent.close()` disconnects them (stops stdio processes); a later tool call
-reconnects. Without `mcpServers`, `ready()` and `close()` do nothing.
+reconnects. Without `mcpServers`, `ready()` and `close()` do nothing. The
+`vendor/` model prefix chooses the provider; with OpenRouter use
+`openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts no-run
 import { createAgent } from '@lousho/build-ai-agent';
@@ -8650,6 +8679,9 @@ For each slot, `createAgent({ memory })`:
    search the slot, newest items first.
 
 ## Memory in code
+
+The `vendor/` model prefix chooses the provider; with OpenRouter use
+`openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts no-run
 import { createAgent, defineMemory, fileMemory } from '@lousho/build-ai-agent';
@@ -9110,7 +9142,7 @@ const usd = estimateCost({ inputTokens: used, outputTokens: 500 }, 'my-llama'); 
 ```
 
 - `estimateTokens(input, { model?, estimator? })` is a heuristic (about 4 characters per token for English, more for CJK and other scripts, plus per-message overhead and tool-call JSON). Expect roughly 15-20% error on English: fine for compaction and budgets, not for billing. Plug in a real tokenizer with `setTokenEstimator(fn)` or `options.estimator`.
-- `getModelInfo(id)` matches the exact id, then `provider/id`, then dated snapshots (`gpt-4o-mini-2024-07-18` resolves to `gpt-4o-mini`). Unknown models return `undefined`.
+- `getModelInfo(id)` matches the exact id, then `provider/id`, then dated snapshots (`gpt-4o-mini-2024-07-18` resolves to `gpt-4o-mini`). Unknown models return `undefined`. (In `createAgent({ model })` and `resolveProvider()` strings the `vendor/` model prefix chooses the provider; with OpenRouter use `openrouter/<vendor>/<model>`, e.g. `openrouter/openai/gpt-4o-mini`.)
 - `registerModel(info)` adds or overrides an entry; the latest registration wins.
 - `estimateCost(usage, model)` returns USD, or `undefined` (not `0`) when the model or its prices are unknown.
 
@@ -9165,7 +9197,9 @@ framework whose handlers take a Web `Request` and return a `Response`: the
 Next.js App Router, SvelteKit, Remix / React Router, Hono, Bun.serve. It is a
 thin wrapper over the same session API as `lousho dev` and the deployed server
 ([Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)), so the React, Vue and Svelte bindings work against it
-unchanged. It imports no framework and no `node:*` module.
+unchanged. It imports no framework and no `node:*` module. The `vendor/` model
+prefix chooses the provider; with OpenRouter use `openrouter/<vendor>/<model>`
+(e.g. `openrouter/openai/gpt-4o-mini`).
 
 ## Next.js App Router
 
@@ -9716,7 +9750,9 @@ Pass an `exporter` to `createAgent()`; every run of the agent (`send()`,
 `stream()`, session turns, `resume()` and runs continued by
 `agent.approvals.resolve()`) is traced, sub-agents included. To keep traces
 on disk and browse them with `npx lousho traces`, use `fileTraceExporter()`
-(see [Local traces](#local-traces)):
+(see [Local traces](#local-traces)). The `vendor/` model prefix chooses the
+provider; with OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
@@ -10041,7 +10077,9 @@ the API without a hand-written `defineTool()` per endpoint and without the raw
 [approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md) by default.
 
 `openApiTools` is exported from `@lousho/build-ai-agent` and
-`@lousho/build-ai-agent/tools`. It needs no extra package.
+`@lousho/build-ai-agent/tools`. It needs no extra package. The `vendor/` model
+prefix chooses the provider; with OpenRouter use `openrouter/<vendor>/<model>`
+(e.g. `openrouter/openai/gpt-4o-mini`).
 
 ## Quick start
 
@@ -10396,7 +10434,9 @@ An `LLMProvider` is what an agent generates with. The SDK ships OpenAI,
 Anthropic, OpenRouter and Ollama providers (each backed by an optional peer
 package, see [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#provider-packages)) and a
 deterministic mock for tests. Name one with a `provider/model` string, or pass
-a provider instance.
+a provider instance. The `vendor/` model prefix chooses the provider; with
+OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { resolveProvider, LLMProviderRegistry } from '@lousho/build-ai-agent';
@@ -10453,7 +10493,7 @@ import { createAgent } from '@lousho/build-ai-agent';
 const agent = createAgent({
   model: 'openai/gpt-4o-mini',
   retry: { maxRetries: 3 }, // or false
-  fallbackModels: ['anthropic/claude-3-5-haiku-latest', 'openrouter/meta-llama/llama-3.1-70b-instruct'],
+  fallbackModels: ['anthropic/claude-haiku-4-5', 'openrouter/meta-llama/llama-3.3-70b-instruct'],
 });
 ```
 
@@ -10603,7 +10643,7 @@ const agent = createAgent({
 });
 ```
 
-The same works with `@ai-sdk/google` (`google('gemini-2.0-flash')`),
+The same works with `@ai-sdk/google` (`google('gemini-2.5-flash')`),
 `@ai-sdk/amazon-bedrock`, `@ai-sdk/azure`, `@ai-sdk/mistral` and the AI Gateway
 (`gateway('openai/gpt-4o')` from `ai` 7 or `@ai-sdk/gateway`). Calls go through
 your installed `ai`, so install the provider package major that pairs with it
@@ -10724,7 +10764,9 @@ types while the agent works. The run does not stop: the input joins the
 transcript at the next safe point - after the current step's tool results,
 never between a tool-call turn and its results - and the next model call sees
 it, as if the user had typed it. Input queued while the model writes its final
-reply gets one more step, so the model answers it in the same run.
+reply gets one more step, so the model answers it in the same run. The
+`vendor/` model prefix chooses the provider; with OpenRouter use
+`openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
@@ -10938,7 +10980,9 @@ pause arrives the same way, with `pendingApproval.kind === 'question'`: show
 
 ## The server side
 
-A Node endpoint for the remote mode, with the approvals route:
+A Node endpoint for the remote mode, with the approvals route (the `vendor/`
+model prefix chooses the provider; with OpenRouter use
+`openrouter/<vendor>/<model>`, e.g. `openrouter/openai/gpt-4o-mini`):
 
 ```ts
 import { createServer, type IncomingMessage } from 'node:http';
@@ -11073,7 +11117,9 @@ Source: docs/reasoning.md
 
 Reasoning models think before they answer. The `reasoning` option sets how
 much, and the run reports what the model thought separately from its answer:
-as `reasoning.*` events in `agent.stream()`, and as `result.reasoning`.
+as `reasoning.*` events in `agent.stream()`, and as `result.reasoning`. The
+`vendor/` model prefix chooses the provider; with OpenRouter use
+`openrouter/<vendor>/<model>` (e.g. `openrouter/anthropic/claude-sonnet-4.5`).
 
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
@@ -11664,6 +11710,9 @@ while a turn is running or waiting to start:
   for the next safe point, as with `'queue'`. The call resolves with the
   turn's result, and the same fallbacks apply.
 
+The `vendor/` model prefix chooses the provider; with OpenRouter use
+`openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
+
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
 
@@ -12246,7 +12295,9 @@ Source: docs/streaming.md
 as a stream of typed events: model text as it arrives, every tool call,
 step boundaries, approval requests, and a final `run.done`. Every event is a
 plain JSON object, so you can forward it to a browser over Server-Sent Events
-or a WebSocket without converting it.
+or a WebSocket without converting it. The `vendor/` model prefix chooses the
+provider; with OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
@@ -12614,7 +12665,9 @@ Source: docs/structured-output.md
 
 Give an agent a zod schema as `output` and its final reply becomes a typed,
 validated object: `result.object`. The agent can still call tools first; only
-the final answer has to match the schema.
+the final answer has to match the schema. The `vendor/` model prefix chooses
+the provider; with OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { z } from 'zod';
@@ -13609,7 +13662,9 @@ chunks and a final `finish` chunk, so streaming consumers can be tested too.
 VCR for real model behavior. Run your test once against the real provider and
 every `generate()` / `stream()` exchange is written to a cassette file. In CI
 the same test replays the cassette with no network, no API key and no installed
-provider peer package.
+provider peer package. The `vendor/` model prefix chooses the provider; with
+OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { createAgent, resolveProvider } from '@lousho/build-ai-agent';
@@ -13757,7 +13812,9 @@ applies when the deferred definitions reach 10% of the context window (see
 
 ## Mark tools or servers `deferLoading`
 
-Mark single tools with `defineTool({ deferLoading: true })`:
+Mark single tools with `defineTool({ deferLoading: true })`. The `vendor/`
+model prefix chooses the provider; with OpenRouter use
+`openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { createAgent, defineTool } from '@lousho/build-ai-agent';
@@ -14115,7 +14172,9 @@ of content. A 4xx or 5xx response is returned with its body, not thrown, so
 the model can read an error page. Refusals, timeouts, too many redirects and
 bad URLs are tool errors that name the host. The page is untrusted input: the
 tool's description tells the model so, and `readOnlyHint` and `openWorldHint`
-are set. Options of `createWebFetchTool()`:
+are set. Options of `createWebFetchTool()` (the `vendor/` model prefix chooses
+the provider; with OpenRouter use `openrouter/<vendor>/<model>`, e.g.
+`openrouter/openai/gpt-4o-mini`):
 
 ```ts
 import { createAgent, createWebFetchTool } from '@lousho/build-ai-agent';
@@ -14542,7 +14601,7 @@ environment (`LOUSHO_CONFIG_MISSING_PROVIDER`).
 ### "The API key is not set"
 
 - **Cause:** the provider's key variable (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`) is not in the environment of the process that runs the agent (`LOUSHO_PROVIDER_MISSING_API_KEY`).
-- **Fix:** set it, or pass a configured provider instance. `npx lousho doctor` prints `set` or `not set` for each key, never the value.
+- **Fix:** set it, or pass a configured provider instance. `npx lousho doctor` prints `set` or `not set` for each key, never the value. The `vendor/` model prefix chooses the provider; with OpenRouter use `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`) — `model: 'openai/gpt-4o-mini'` needs `OPENAI_API_KEY` even when only `OPENROUTER_API_KEY` is set.
 - **More:** [the error](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_provider_missing_api_key).
 
 ### "Cannot find package `@ai-sdk/openai`" or "install the optional peer"

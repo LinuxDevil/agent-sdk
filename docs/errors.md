@@ -83,7 +83,9 @@ and `lousho studio` without Agent Forge's files are the same code.
 
 **Fix:** pass `model: 'openai/gpt-4o-mini'` (any `<provider>/<model>`), pass a
 `provider` instance, or set `LOUSHO_MODEL` or a provider key such as
-`OPENAI_API_KEY`. See [Providers](./providers.md).
+`OPENAI_API_KEY`. The `vendor/` model prefix chooses the provider; with
+OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`). See [Providers](./providers.md).
 
 **Example:** `createAgent({ instructions: 'x' })` with no provider env var set.
 
@@ -144,7 +146,7 @@ names the option and `error.cause` is what the function threw.
 **Means:** a model string is not `<provider>/<model>`.
 
 **Fix:** write both parts, e.g. `'openai/gpt-4o-mini'` or
-`'anthropic/claude-3-5-sonnet-latest'`.
+`'anthropic/claude-sonnet-4-5'`.
 
 **Example:** `resolveProvider('gpt-4o')`.
 

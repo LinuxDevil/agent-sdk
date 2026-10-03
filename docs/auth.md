@@ -233,7 +233,9 @@ still is. The `cloudflare-worker` target serves spec files only and keeps the
 
 ## Reading the principal in the run
 
-The principal is on the run context next to `sessionId` and `metadata`:
+The principal is on the run context next to `sessionId` and `metadata`. The
+`vendor/` model prefix chooses the provider; with OpenRouter use
+`openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { createAgent, defineMemory, inMemoryMemory, type Principal } from '@lousho/build-ai-agent';

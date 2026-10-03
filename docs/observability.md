@@ -20,7 +20,9 @@ Pass an `exporter` to `createAgent()`; every run of the agent (`send()`,
 `stream()`, session turns, `resume()` and runs continued by
 `agent.approvals.resolve()`) is traced, sub-agents included. To keep traces
 on disk and browse them with `npx lousho traces`, use `fileTraceExporter()`
-(see [Local traces](#local-traces)):
+(see [Local traces](#local-traces)). The `vendor/` model prefix chooses the
+provider; with OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';

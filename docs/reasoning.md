@@ -2,7 +2,9 @@
 
 Reasoning models think before they answer. The `reasoning` option sets how
 much, and the run reports what the model thought separately from its answer:
-as `reasoning.*` events in `agent.stream()`, and as `result.reasoning`.
+as `reasoning.*` events in `agent.stream()`, and as `result.reasoning`. The
+`vendor/` model prefix chooses the provider; with OpenRouter use
+`openrouter/<vendor>/<model>` (e.g. `openrouter/anthropic/claude-sonnet-4.5`).
 
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';

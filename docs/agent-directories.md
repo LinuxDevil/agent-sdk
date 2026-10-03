@@ -52,7 +52,7 @@ export default {
 | --- | ------- |
 | `name` | `createAgent({ name })` (default: the directory name) |
 | `description` | not a `createAgent` option; what a parent agent reads for a sub-agent (required there) |
-| `model` | `createAgent({ model })` |
+| `model` | `createAgent({ model })`; the `vendor/` prefix chooses the provider — with OpenRouter use `openrouter/<vendor>/<model>` |
 | `provider` | `createAgent({ provider })` (code config files only) |
 | `instructions` | `createAgent({ instructions })` (use this or `instructions.md`, not both) |
 | `maxSteps` | `createAgent({ maxSteps })` |

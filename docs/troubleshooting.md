@@ -16,7 +16,7 @@ environment (`LOUSHO_CONFIG_MISSING_PROVIDER`).
 ### "The API key is not set"
 
 - **Cause:** the provider's key variable (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`) is not in the environment of the process that runs the agent (`LOUSHO_PROVIDER_MISSING_API_KEY`).
-- **Fix:** set it, or pass a configured provider instance. `npx lousho doctor` prints `set` or `not set` for each key, never the value.
+- **Fix:** set it, or pass a configured provider instance. `npx lousho doctor` prints `set` or `not set` for each key, never the value. The `vendor/` model prefix chooses the provider; with OpenRouter use `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`) — `model: 'openai/gpt-4o-mini'` needs `OPENAI_API_KEY` even when only `OPENROUTER_API_KEY` is set.
 - **More:** [the error](./errors.md#lousho_provider_missing_api_key).
 
 ### "Cannot find package `@ai-sdk/openai`" or "install the optional peer"

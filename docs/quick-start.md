@@ -41,7 +41,8 @@ That is the current `ai` major; for Ollama, use `ai@^7.0.0` with
 instructions in, a `{ send }` agent out. The API key is read from the
 provider's conventional environment variable (`OPENAI_API_KEY` here;
 `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY` or `OLLAMA_BASE_URL` for the other
-providers).
+providers). The `vendor/` model prefix chooses the provider; with OpenRouter
+use `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts no-run
 import { createAgent } from '@lousho/build-ai-agent';

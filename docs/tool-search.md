@@ -21,7 +21,9 @@ applies when the deferred definitions reach 10% of the context window (see
 
 ## Mark tools or servers `deferLoading`
 
-Mark single tools with `defineTool({ deferLoading: true })`:
+Mark single tools with `defineTool({ deferLoading: true })`. The `vendor/`
+model prefix chooses the provider; with OpenRouter use
+`openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { createAgent, defineTool } from '@lousho/build-ai-agent';

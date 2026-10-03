@@ -195,7 +195,9 @@ of content. A 4xx or 5xx response is returned with its body, not thrown, so
 the model can read an error page. Refusals, timeouts, too many redirects and
 bad URLs are tool errors that name the host. The page is untrusted input: the
 tool's description tells the model so, and `readOnlyHint` and `openWorldHint`
-are set. Options of `createWebFetchTool()`:
+are set. Options of `createWebFetchTool()` (the `vendor/` model prefix chooses
+the provider; with OpenRouter use `openrouter/<vendor>/<model>`, e.g.
+`openrouter/openai/gpt-4o-mini`):
 
 ```ts
 import { createAgent, createWebFetchTool } from '@lousho/build-ai-agent';

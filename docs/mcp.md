@@ -21,7 +21,9 @@ export them too. `createAgent({ mcpServers })` needs no import from the subpath.
 each server's tools are added as `<server>__<tool>` (e.g. `docs__search`).
 A server that cannot connect fails that call, and the next call tries again.
 `agent.close()` disconnects them (stops stdio processes); a later tool call
-reconnects. Without `mcpServers`, `ready()` and `close()` do nothing.
+reconnects. Without `mcpServers`, `ready()` and `close()` do nothing. The
+`vendor/` model prefix chooses the provider; with OpenRouter use
+`openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts no-run
 import { createAgent } from '@lousho/build-ai-agent';

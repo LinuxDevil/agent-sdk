@@ -7,7 +7,9 @@ the API without a hand-written `defineTool()` per endpoint and without the raw
 [approval](./approvals.md) by default.
 
 `openApiTools` is exported from `@lousho/build-ai-agent` and
-`@lousho/build-ai-agent/tools`. It needs no extra package.
+`@lousho/build-ai-agent/tools`. It needs no extra package. The `vendor/` model
+prefix chooses the provider; with OpenRouter use `openrouter/<vendor>/<model>`
+(e.g. `openrouter/openai/gpt-4o-mini`).
 
 ## Quick start
 

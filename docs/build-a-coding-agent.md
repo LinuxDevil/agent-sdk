@@ -93,7 +93,9 @@ for await (const event of run) {
 `maxSteps` bounds the model calls in one run, so a confused agent cannot loop
 forever. This program stops at the first gated call: the stream ends with an
 `approval.requested` event and the run finishes as `'awaiting-approval'`. The
-next step handles that.
+next step handles that. The `vendor/` model prefix chooses the provider; with
+OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`).
 
 ## 4. Handle the pause
 

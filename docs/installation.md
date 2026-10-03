@@ -65,7 +65,9 @@ its sub-entries) never loads a provider package, so you only need to install
 the ones you use. Each provider package is loaded the first time that
 provider makes a call; if it is missing, that call fails with a
 `MissingPeerDependencyError` that carries the exact command to run, for the
-`ai` major you have installed. With `ai` 4:
+`ai` major you have installed. The `vendor/` model prefix chooses the
+provider; with OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o-mini`). With `ai` 4:
 
 ```bash
 npm install @ai-sdk/openai@^0.0.42

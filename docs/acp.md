@@ -20,7 +20,9 @@ lousho acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]
 ```
 
 `<path>` is loaded like [`lousho chat`](./cli.md#lousho-chat) loads it, and
-`--model` works the same way. The editor starts the process; it runs until
+`--model` works the same way. The `vendor/` model prefix chooses the provider;
+with OpenRouter use `openrouter/<vendor>/<model>` (e.g.
+`openrouter/openai/gpt-4o`). The editor starts the process; it runs until
 stdin closes. stdout carries nothing but protocol messages: errors, and
 anything the agent's code prints with `console.log`, go to stderr, which
 editors show in their logs. A bad path or flag exits with code 1 and the coded

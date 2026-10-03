@@ -18,6 +18,9 @@ For each slot, `createAgent({ memory })`:
 
 ## Memory in code
 
+The `vendor/` model prefix chooses the provider; with OpenRouter use
+`openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
+
 ```ts no-run
 import { createAgent, defineMemory, fileMemory } from '@lousho/build-ai-agent';
 

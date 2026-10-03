@@ -10,7 +10,9 @@ types while the agent works. The run does not stop: the input joins the
 transcript at the next safe point - after the current step's tool results,
 never between a tool-call turn and its results - and the next model call sees
 it, as if the user had typed it. Input queued while the model writes its final
-reply gets one more step, so the model answers it in the same run.
+reply gets one more step, so the model answers it in the same run. The
+`vendor/` model prefix chooses the provider; with OpenRouter use
+`openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
