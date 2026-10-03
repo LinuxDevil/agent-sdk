@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
+import { z as z4 } from 'zod/v4';
 import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import { mockModel } from '../testing';
@@ -144,5 +145,53 @@ describe('structured output (LOU-V4)', () => {
     expect(result).not.toHaveProperty('object');
     expect(model.calls[0]).not.toHaveProperty('responseFormat');
     expect(model.calls[0].messages[0].content).toBe('Hi.');
+  });
+
+  it('LOU-R7: closes every object node of a zod 4 output schema (strict endpoints reject open ones)', async () => {
+    // zod 4's toJSONSchema emits no additionalProperties; OpenAI-compatible
+    // strict structured outputs 400 on that. The sent schema must close each
+    // object node - nested, in items, and inside combinators.
+    const output = z4.object({
+      city: z4.string(),
+      geo: z4.object({ lat: z4.number() }),
+      hits: z4.array(z4.object({ id: z4.string() })),
+      choice: z4.union([z4.object({ a: z4.string() }), z4.object({ b: z4.number() })]),
+    });
+    const model = mockModel(['{"city":"Paris","geo":{"lat":1},"hits":[],"choice":{"a":"x"}}']);
+    const agent = createAgent({ provider: model, output });
+
+    await agent.send('go');
+
+    const schema = model.calls[0].responseFormat?.schema as {
+      additionalProperties: boolean;
+      properties: {
+        geo: { additionalProperties: boolean };
+        hits: { items: { additionalProperties: boolean } };
+        choice: { anyOf: Array<{ additionalProperties: boolean }> };
+      };
+    };
+    expect(schema.additionalProperties).toBe(false);
+    expect(schema.properties.geo.additionalProperties).toBe(false);
+    expect(schema.properties.hits.items.additionalProperties).toBe(false);
+    expect(schema.properties.choice.anyOf.map((b) => b.additionalProperties)).toEqual([false, false]);
+  });
+
+  it('LOU-R7: an explicit additionalProperties is kept, never forced closed', async () => {
+    const strict = mockModel(['{"city":"Paris"}']);
+    await createAgent({ provider: strict, output: z4.strictObject({ city: z4.string() }) }).send('go');
+    expect((strict.calls[0].responseFormat?.schema as { additionalProperties?: unknown }).additionalProperties).toBe(false);
+
+    // A zod 4 loose object means "extra keys allowed" ({} = any); closing it would change the contract.
+    const loose = mockModel(['{"city":"Paris","extra":1}']);
+    await createAgent({ provider: loose, output: z4.looseObject({ city: z4.string() }) }).send('go');
+    expect((loose.calls[0].responseFormat?.schema as { additionalProperties?: unknown }).additionalProperties).toEqual({});
+  });
+
+  it('LOU-R7: the zod 3 path still sends a closed schema', async () => {
+    const model = mockModel(['{"city":"Paris","tempC":21}']);
+    await createAgent({ provider: model, output: weather }).send('go');
+
+    const schema = model.calls[0].responseFormat?.schema as { additionalProperties?: unknown };
+    expect(schema.additionalProperties).toBe(false);
   });
 });
