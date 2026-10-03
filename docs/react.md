@@ -67,7 +67,7 @@ on the server.
 | `messages` | `UIMessage[]`: `{ id, role: 'user' \| 'assistant', text, toolCalls }`. Each `send()` adds a user message and an assistant message that fills in as `text.delta` and tool events arrive. |
 | `toolCalls[i]` | `{ id, name, args, status, result?, error?, partial? }`, `status` being `'running'`, `'awaiting-approval'`, `'done'`, `'error'` or `'rejected'`. `partial` is the latest `tool.partial` snapshot of a running [streaming tool](./tools.md#streaming-partial-results), removed when the call settles or pauses. |
 | `status` | `'idle'`, `'streaming'`, `'awaiting-approval'` or `'error'`. |
-| `pendingApproval` | `{ id, toolCallId, toolName, args }` of the tool call the run paused on, else `null`. For an `ask_question` call it also has `kind: 'question'` and `question: { text, options?, allowFreeText? }`. |
+| `pendingApproval` | `{ id, toolCallId, toolName, args }` of the tool call the run paused on, else `null`. For an `ask_question` call it also has `kind: 'question'` and `question: { text, options?, allowFreeText? }`; a tool waiting on an OAuth sign-in has `kind: 'sign-in'` and `signIn: { provider, displayName?, url }` (see [What the user sees](./oauth.md#what-the-user-sees)). |
 | `error` | `{ name, message }` of the last `error` event or a failed request, else `null`. |
 | `usage` | Token usage of the last finished run (from `run.done`), else `null`. |
 | `todos` | The agent's todo list (`{ id, content, status }[]`), set by each `todo.updated` event of the [todo tools](./tools.md#todo-tools); `[]` until the first one. It carries across turns; see [Todos](#todos). |
@@ -154,7 +154,11 @@ createServer(async (req, res) => {
 The client then uses
 `useLoushoAgent({ url: '/api/agent' }, { approvalsUrl: '/api/approvals' })`.
 For a multi-turn chat, keep an `agent.session({ id })` per conversation on the
-server and call `session.stream()` instead of `agent.stream()`.
+server and call `session.stream()` instead of `agent.stream()`. Give the agent
+a `store` (`createAgent({ store: memoryStore() })`, or a durable one) when
+sessions are opened per request: without one each `agent.session({ id })`
+gets a fresh in-memory transcript and the next turn forgets the first (see
+[Choosing a store](./sessions.md#choosing-a-store)).
 
 ## In process
 

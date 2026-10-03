@@ -18,9 +18,14 @@ The `vendor/` model prefix chooses the provider; with OpenRouter use
 `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts
-import { createAgent, fromUIMessages, toUIMessageStreamResponse, type UIMessageLike } from '@lousho/build-ai-agent';
+import { createAgent, fromUIMessages, memoryStore, toUIMessageStreamResponse, type UIMessageLike } from '@lousho/build-ai-agent';
 
-const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are helpful.' });
+// The store must outlive the request: without one, every `agent.session({ id })`
+// gets a fresh in-memory transcript and the next turn would start empty.
+// `memoryStore()` keeps it for the process's life; for a serverless deployment
+// or to survive a restart use `fileStore()`, a `SqliteStore` or `KVStore`
+// (see [Sessions](sessions.md#choosing-a-store)).
+const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are helpful.', store: memoryStore() });
 
 // app/api/chat/route.ts
 export async function POST(request: Request): Promise<Response> {
@@ -38,9 +43,12 @@ Without a session, pass every message instead:
 
 ```tsx no-verify
 import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport } from 'ai';
 
 export function Chat() {
-  const { messages, sendMessage } = useChat({ api: '/api/chat' });
+  const { messages, sendMessage } = useChat({
+    transport: new DefaultChatTransport({ api: '/api/chat' }),
+  });
   return (
     <>
       {messages.map((message) =>
@@ -53,6 +61,12 @@ export function Chat() {
   );
 }
 ```
+
+This snippet targets `ai` 6 and 7 (`useChat` takes a `transport`, and
+`sendMessage` posts the message). On `ai` 4 — also a supported peer —
+`useChat({ api: '/api/chat' })` takes the endpoint directly and returns
+`input` / `handleInputChange` / `handleSubmit` instead of `sendMessage`;
+`ai` 5 is not in the peer range.
 
 ## Event mapping
 
@@ -114,7 +128,11 @@ custom data part, which `useChat` shows as a part of type
 }
 ```
 
-`kind` and `question` are present only for an `ask_question`. Render the part
+`kind` and `question` are present only for an `ask_question`; a tool waiting
+for an [OAuth sign-in](./oauth.md#what-the-user-sees) instead carries
+`kind: 'sign-in'` and `signIn: { provider, displayName?, url }` — show the
+link and, once the provider redirected back, approve it ("I've signed in").
+Render the part
 with your own buttons and answer it with the session API's approvals route
 (`POST /chat/:sessionId/approvals/:approvalId`, see [Sessions](sessions.md) and
 [Approvals](approvals.md)): `{ "approved": true }` or `{ "approved": false,
