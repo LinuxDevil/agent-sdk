@@ -169,3 +169,20 @@ describe('lousho chat and eval specifics', () => {
     expect(parseEvalArgs(['a.eval.ts', '--tag=x,y', '--tag', 'z', 'b.eval.ts'])).toMatchObject({ globs: ['a.eval.ts', 'b.eval.ts'], tags: ['x', 'y', 'z'] });
   });
 });
+
+describe('--traces[=dir] (#282)', () => {
+  it('is bare for the default directory and takes a directory only in the = form', () => {
+    expect(parseChatArgs(['a.yaml']).traces).toBeUndefined();
+    expect(parseChatArgs(['a.yaml', '--traces']).traces).toBe(true);
+    expect(parseChatArgs(['--traces', 'a.yaml'])).toMatchObject({ path: 'a.yaml', traces: true });
+    expect(parseChatArgs(['a.yaml', '--traces=./t']).traces).toBe('./t');
+    expect(parseDevArgs(['a.yaml', '--traces', '--port', '4000'])).toMatchObject({ path: 'a.yaml', port: 4000, traces: true });
+    expect(parseDevArgs(['a.yaml', '--traces=out/t']).traces).toBe('out/t');
+  });
+
+  it('rejects an empty directory and leaves what follows -- alone', () => {
+    expect(() => parseChatArgs(['a.yaml', '--traces='])).toThrowError(/LOUSHO_CONFIG_INVALID/);
+    expect(() => parseDevArgs(['a.yaml', '--traces='])).toThrowError(/needs a directory/);
+    expect(parseDevArgs(['--', '--traces']).path).toBe('--traces');
+  });
+});

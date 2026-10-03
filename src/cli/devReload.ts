@@ -144,7 +144,7 @@ async function loadDirTarget(dir: string, overrides: CreateAgentConfig): Promise
 
 async function loadDevTarget(target: DevTarget, options: DevOptions): Promise<LoadedTarget> {
   const overrides = options.overrides ?? {};
-  if (target.kind === 'spec') return { agent: specToAgent(loadSpec(target.path)), schedules: [], channels: [] };
+  if (target.kind === 'spec') return { agent: specToAgent(loadSpec(target.path), { exporter: overrides.exporter }), schedules: [], channels: [] };
   const token = `${Date.now()}-${loads++}`;
   const loaded = await withFreshImports(token, async () =>
     target.kind === 'dir'

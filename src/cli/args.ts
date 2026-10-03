@@ -70,6 +70,32 @@ export function parseCommand(spec: CommandSpec, args: readonly string[]): Parsed
   return { values, positionals: parsed.positionals, help };
 }
 
+/**
+ * Takes a `--<name>[=value]` flag out of `args` (before any `--`): a flag whose value is optional.
+ * `parseArgs` cannot express that, and a space-separated value would swallow the positional path
+ * (`lousho dev --traces agent.yaml`), so the value must use the `=` form. `value` is `true` for the bare
+ * flag, the text after `=`, or `undefined` when the flag is absent; an empty `--name=` is a usage error.
+ */
+export function takeOptionalValueFlag(
+  spec: Pick<CommandSpec, 'command' | 'usage'>,
+  args: readonly string[],
+  name: string
+): { rest: string[]; value: string | true | undefined } {
+  const rest: string[] = [];
+  let value: string | true | undefined;
+  let flags = true;
+  for (const arg of args) {
+    if (arg === '--') flags = false;
+    if (flags && arg === `--${name}`) value = true;
+    else if (flags && arg.startsWith(`--${name}=`)) {
+      const given = arg.slice(name.length + 3);
+      if (!given) throw usageError(spec, `--${name}= needs a directory (or use --${name} alone).`);
+      value = given;
+    } else rest.push(arg);
+  }
+  return { rest, value };
+}
+
 /** A string flag's value (the last one when repeated), or undefined. */
 export function stringValue(value: Value): string | undefined {
   return typeof value === 'string' ? value : undefined;

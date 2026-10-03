@@ -26,8 +26,8 @@ Every command that takes a `<spec>` reads an agent spec file (`.yaml`,
 
 ```text
 lousho init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force]
-lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--no-schedules]
-lousho chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>]
+lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--no-schedules] [--traces[=dir]]
+lousho chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>] [--traces[=dir]]
 lousho acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]
 lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--allow <list>] [--overwrite] [--dry-run]    (or --list)
 lousho build <agent-dir|spec> --target=<name> [--out=<dir>]    (or --agent=<path>)
@@ -44,7 +44,9 @@ Every command parses its flags the same way (Node's `parseArgs`, strict):
 command's usage and exits 0. An unknown flag, a flag without its value (it
 never takes the next flag as its value) or an extra argument fails with
 `LOUSHO_CONFIG_INVALID` and the usage line. A value that starts with `-` needs
-the `=` form: `--model=-x`.
+the `=` form: `--model=-x`. `--traces` is the one flag whose value is optional:
+it takes it only in the `=` form (`--traces=./t`), so `--traces agent.yaml` is
+still the flag followed by the path.
 
 `npm create lousho-agent my-agent` runs `lousho init` with the same arguments.
 To scaffold against an unreleased build of the SDK, pass `--sdk-path` (see
@@ -93,6 +95,14 @@ plus a free-text field. The same endpoints work from `curl` or your own page:
 | `GET /chat/:sessionId` | The session's transcript: `{ sessionId, messages, pending }`; `pending` is `{ status, approvalId? }` while a turn waits on an approval, else `null`. |
 | `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides the pending approval (`agent.approvals.resolve()`), or answers a question (`agent.approvals.answer()`), and streams the continued turn as SSE. It can pause again with another `approval.requested`. `404` when `id` is not pending. |
 | `POST /chat` `{ "message" }` | Deprecated: no session, no streaming. Returns the agent's `ExecutionResult` as JSON, with a `Deprecation: true` header. |
+
+`--traces` (or `--traces=<dir>`) writes every run to local trace files with
+`fileTraceExporter()`, in `.lousho/traces` unless you name a directory, so
+`npx lousho traces` shows what the agent did. It is off by default because the
+files hold prompt, tool argument and tool result content, and the flag prints
+the directory it writes to. It applies to spec files, agent directories and
+modules alike (a module's own `exporter` is replaced while the flag is set).
+See [Local traces](./observability.md#local-traces).
 
 Sessions live in an in-process `memoryStore()` (gone when `lousho dev` stops),
 or in the agent's own `store` when a module's `createAgent()` options set one.
@@ -169,6 +179,8 @@ Done, the report is on its way.
   known pricing, the cost (`~` marks estimated tokens).
 - Errors from the SDK print with their `[LOUSHO_...]` code and fix, and the
   session continues.
+- `--traces` or `--traces=<dir>` writes the session's runs to local trace files,
+  as for `lousho dev`; a line on stderr says where.
 
 | Command | What it does |
 | ------- | ------------ |
