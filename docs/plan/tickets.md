@@ -151,6 +151,8 @@ Decisions recorded (owner, 2026-10): R15 rename to `schedule-<name>`; R16 wire
 `metadata` through; R17+R18 fix the code (not docs); R25 document v4/v6/v7 only —
 the `ai` peer range stays as-is.
 
+| LOU-R27 | Break the provider import cycle + source-barrel ESM edge | LOU-R1 made llm.ts <-> builtinProviders.ts circular (fallow flags it on every post-R1 PR). Also: static named imports from the source barrel fail under true ESM (.mts via tsx) - e.g. import { createAgent } from ./src/index throws does not provide an export named. Bundled dist and CJS-transformed .ts importers are unaffected; fix by inverting the llm.ts -> builtinProviders.ts edge or splitting the registry table. |
+
 ## Not ticketed (needs the owner)
 
 - Publishing to npm: the README advertises `npm install @lousho/build-ai-agent`, but the package is not on the registry. Publishing is an owner action.
