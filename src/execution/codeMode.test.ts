@@ -595,10 +595,11 @@ describe('code mode (N14): the isolate', () => {
     await batch();
     // The isolate's memory is the module's WebAssembly heap: a leak would grow it run after run.
     const heap = () => (module as unknown as { getWasmMemory?: () => WebAssembly.Memory }).getWasmMemory?.().buffer.byteLength ?? 0;
-    const before = { heap: heap(), rss: process.memoryUsage().rss };
+    // (Not process RSS: vitest's worker threads share the process, so it moves with other test files.)
+    const before = heap();
+    expect(before).toBeGreaterThan(0);
     await batch();
-    expect(heap() - before.heap).toBe(0);
-    expect(process.memoryUsage().rss - before.rss).toBeLessThan(64 * 1024 * 1024);
+    expect(heap() - before).toBe(0);
   });
 
   it('names the cause on the ScriptError', async () => {
