@@ -1977,7 +1977,7 @@ This snippet targets `ai` 6 and 7 (`useChat` takes a `transport`, and
 | `step.start` / `step.done` | `start-step` / `finish-step` |
 | `text.delta`, `text.done` | `text-start` (once per text part), `text-delta`, `text-end` |
 | `reasoning.start`, `reasoning.delta`, `reasoning.done` | `reasoning-start`, `reasoning-delta`, `reasoning-end` (see [Reasoning](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/reasoning.md)) |
-| `tool.start` | `tool-input-start`, then `tool-input-available` with the arguments |
+| `tool.start` / `tool.resume` | `tool-input-start`, then `tool-input-available` with the arguments |
 | `tool.partial` | `tool-output-available` with `preliminary: true` (AI SDK 5+): a snapshot of a [streaming tool](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#streaming-partial-results) |
 | `tool.done` / `tool.error` | `tool-output-available` / `tool-output-error` |
 | `approval.requested` | `data-lousho-approval` (below) |
@@ -2320,8 +2320,9 @@ const trusted = createAgent({
 `agent.approvals.streamAnswer({ id, answer }, { signal })` continue the run
 like `resolve()` and `answer()`, but return the `AgentRun` that
 `agent.stream()` returns (see [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#streaming-after-an-approval)):
-`run.start`, the decided call's `tool.start` and `tool.done` (`tool.error` for
-a rejection), then the continuation's events up to `run.done`. `run.result`
+`run.start`, the decided call's `tool.resume` and `tool.done` (`tool.error` for
+a rejection; `tool.resume`, not a second `tool.start`, because the paused run
+already reported that call's start), then the continuation's events up to `run.done`. `run.result`
 is what `resolve()` resolves with. A continuation that pauses again ends with
 `approval.requested` and `run.done` (`'awaiting-approval'`), even with an
 `approve` callback, as `stream()` does. A pause made inside a session
@@ -3012,8 +3013,10 @@ try {
 }
 ```
 
-Two details of the continued stream. The `tool.start` of the call you just
-approved arrives at its start, so the loop prints each call once. And a
+Two details of the continued stream. The call you just approved resumes with
+a `tool.resume` event - its `tool.start` was already printed by the run that
+paused, so the loop prints each call once (`tool.resume` is the event to
+match if you want to mark the call running again). And a
 rejected call does not fail the run: the model gets a rejection result instead
 of the tool output and carries on. To tell it why, pass a `note`:
 `streamResolve({ id, approved: false, note: 'Do not touch the lockfile' })`.
@@ -4635,7 +4638,11 @@ triggered it (see [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/
 Every `compaction.start` is followed by exactly one `compaction.done`. When the
 strategy could not shrink anything, `tokensAfter` equals `tokensBefore`; when it
 failed (or the summarizer failed and the hook fell back to pruning), `error` is
-set and the run continues. `summary` is `true` when old turns were replaced by
+set and the run continues. A summary that does not get the conversation under
+the threshold - or that makes it larger - is rejected the same way: `error` is
+set, the run keeps the pruned result instead, and the hook only prunes that
+transcript for the rest of the run, so a summarizer that cannot help is never
+called again step after step. `summary` is `true` when old turns were replaced by
 a summary (the text itself is not sent; use `onCompaction` for it). A
 `send()` without a listener emits no events. Hooks add their own events with
 `ctx.emit?.(...)` on the `preGenerate` context, which exists when the run has
@@ -5354,7 +5361,7 @@ a page or script written against the dev server works against the deployed one.
 | `GET /health` | `200 ok`. Never needs auth: point load balancers and container health checks here. |
 | `POST /chat` `{ "sessionId", "input" }` | Runs a turn of session `sessionId` (1-128 characters of `A-Za-z0-9_-`; a new id starts a conversation, a known one continues it) and streams it as SSE: one `data: <AgentEvent JSON>` per event ([Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)), then `event: done`. `input` is a string or an array of content parts. |
 | `GET /chat/:sessionId` | The session's transcript: `{ sessionId, messages, pending }`. |
-| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn live as SSE, in the same framing and event types as `POST /chat` (the decided call's `tool.start` / `tool.done` or `tool.error`, text deltas, `approval.requested` if it pauses again, `run.done`), from `agent.approvals.streamResolve()` / `streamAnswer()`. `404` when `id` is not pending. |
+| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn live as SSE, in the same framing and event types as `POST /chat` (the decided call's `tool.resume` / `tool.done` or `tool.error`, text deltas, `approval.requested` if it pauses again, `run.done`), from `agent.approvals.streamResolve()` / `streamAnswer()`. `404` when `id` is not pending. |
 | `POST /chat` `{ "message" }` | Legacy, single turn without history or streaming: returns the agent's `ExecutionResult` as JSON, with a `Deprecation: true` header. |
 
 Bodies over 1MB get `413`, invalid JSON `400`.
@@ -5953,8 +5960,9 @@ if (original && replayed) {
 
 Source: docs/errors.md
 
-Every error the SDK throws on purpose is an `SDKError` (or a subclass such as
-`ConfigurationError`, `ValidationError` or `MissingPeerDependencyError`) with:
+Nearly every error the SDK throws on purpose is an `SDKError` (or a subclass
+such as `ConfigurationError`, `ValidationError` or `MissingPeerDependencyError`)
+with:
 
 - `code`: a stable string, `LOUSHO_<AREA>_<NAME>`. Branch on it, not on the
   message text, which may get clearer over time.
@@ -5974,6 +5982,14 @@ ConfigurationError: createAgent: no model configured. Do one of the following: (
 keep their message as it was, because the model sees it as a tool result or a
 compacted provider error; their `toString()` still adds the line.
 
+The exceptions are a few named `Error` subclasses with no `code`, kept plain
+on purpose: `PropagatingToolError` and its subclasses (a tool throws one to
+stop the run), `CassetteMismatchError` (`recordReplay` replay; see
+[Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md#what-replay-checks)), `CronExpressionError`
+(`parseCronExpression()`, which `CronTriggerAdapter` lets escape and
+`defineSchedule()` wraps as `LOUSHO_SCHEDULE_INVALID`) and `DecryptionError`
+(`EncryptionUtils`, `DTOEncryptionFilter`).
+
 ```ts
 import { createAgent, SDKError } from '@lousho/build-ai-agent';
 
@@ -5990,8 +6006,9 @@ try {
 
 `ERROR_CODES` (exported) maps every code to its hint. A test keeps it, the codes
 used in the source and the sections below in sync. A second test fails when new
-SDK code throws a plain `Error` instead of an `SDKError`; the few plain ones left
-are internal and listed in `src/utils/plainErrors.test.ts` with the reason for each.
+SDK code throws a literal `new Error(...)` instead of an `SDKError`; the few
+sites left are internal and listed in `src/utils/plainErrors.test.ts` with the
+reason for each.
 
 To start from a symptom instead of a code, see [Troubleshooting](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/troubleshooting.md).
 
@@ -6006,13 +6023,14 @@ Find a code by area:
 | [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
 | [Schedules](#schedules) | [`LOUSHO_SCHEDULE_INVALID`](#lousho_schedule_invalid) | Defining or loading a schedule. |
 | [Channels](#channels) | [`LOUSHO_CHANNEL_INVALID`](#lousho_channel_invalid), [`LOUSHO_MEMORY_INVALID`](#lousho_memory_invalid) | Defining a channel or a memory slot. |
-| [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists) | `lousho add` fetching or copying from a registry. |
+| [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists), [`LOUSHO_REGISTRY_MANIFEST_MISMATCH`](#lousho_registry_manifest_mismatch) | `lousho add` fetching or copying from a registry. |
 | [Sandbox](#sandbox) | [`LOUSHO_SANDBOX_EGRESS_UNSUPPORTED`](#lousho_sandbox_egress_unsupported) | Asking a sandbox for something it cannot do on the current platform. |
 | [Agent directories, skills and flows](#agent-directories-skills-and-flows) | [`LOUSHO_AGENT_DIR_INVALID`](#lousho_agent_dir_invalid), [`LOUSHO_SKILL_INVALID`](#lousho_skill_invalid), [`LOUSHO_FLOW_INVALID`](#lousho_flow_invalid) | Loading an agent directory, a skill, or a flow definition. |
 | [Storage, deployment and integrations](#storage-deployment-and-integrations) | [`LOUSHO_STORAGE_FAILED`](#lousho_storage_failed), [`LOUSHO_TRIGGER_INVALID`](#lousho_trigger_invalid), [`LOUSHO_CHANNEL_REQUEST_FAILED`](#lousho_channel_request_failed), [`LOUSHO_DEPLOY_FAILED`](#lousho_deploy_failed) | A storage backend, a trigger, a channel request or `lousho build`. |
 | [Tests and evals](#tests-and-evals) | [`LOUSHO_EVALS_INVALID`](#lousho_evals_invalid), [`LOUSHO_TEST_FAILED`](#lousho_test_failed), [`LOUSHO_CASSETTE_INVALID`](#lousho_cassette_invalid) | `defineEval()`, `mockModel` and cassettes. |
 | [General](#general) | [`LOUSHO_GENERIC_ERROR`](#lousho_generic_error), [`LOUSHO_AGENT_EXECUTION_FAILED`](#lousho_agent_execution_failed), [`LOUSHO_FLOW_EXECUTION_FAILED`](#lousho_flow_execution_failed), [`LOUSHO_VALIDATION_FAILED`](#lousho_validation_failed), [`LOUSHO_OPERATION_TIMEOUT`](#lousho_operation_timeout), [`LOUSHO_OUTPUT_INVALID`](#lousho_output_invalid), [`LOUSHO_BUDGET_EXCEEDED`](#lousho_budget_exceeded), [`LOUSHO_GUARDRAIL_TRIPPED`](#lousho_guardrail_tripped) | Run-level failures: a timeout, a budget or guardrail stop, invalid output, and the catch-all codes. |
-| [OAuth](#oauth) | [`LOUSHO_TOKEN_KEY_MISSING`](#lousho_token_key_missing), [`LOUSHO_TOKEN_DECRYPT_FAILED`](#lousho_token_decrypt_failed) | Storing or reading OAuth tokens in a file, SQLite or KV store. |
+| [Auth](#auth) | [`LOUSHO_AUTH_CONFIG_INVALID`](#lousho_auth_config_invalid) | A route auth helper (`jwt()`, `oidc()`, `basic()`, `apiToken()`) got options it cannot verify with. |
+| [OAuth](#oauth) | [`LOUSHO_TOKEN_KEY_MISSING`](#lousho_token_key_missing), [`LOUSHO_TOKEN_DECRYPT_FAILED`](#lousho_token_decrypt_failed), [`LOUSHO_OAUTH_PRINCIPAL_REQUIRED`](#lousho_oauth_principal_required), [`LOUSHO_OAUTH_APP_SIGNIN_REQUIRED`](#lousho_oauth_app_signin_required), [`LOUSHO_OAUTH_STORE_MISSING`](#lousho_oauth_store_missing), [`LOUSHO_OAUTH_STATE_INVALID`](#lousho_oauth_state_invalid), [`LOUSHO_SIGNIN_PENDING`](#lousho_signin_pending), [`LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED`](#lousho_oauth_token_exchange_failed), [`LOUSHO_MCP_AUTH_REQUIRED`](#lousho_mcp_auth_required) | Storing or reading OAuth tokens in a file, SQLite or KV store, sign-in and token exchange for OAuth tools and MCP servers. |
 
 ## Configuration
 
@@ -6641,7 +6659,7 @@ unknown type, or a Slack trigger that cannot verify requests.
 
 **Fix:** use the example in the message. See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) and [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md).
 
-**Example:** `webhookTrigger({ auth: { type: 'hmac', secret: '' } })`.
+**Example:** `webhookChannel({ auth: { type: 'hmac', secret: '' } })`.
 
 ### LOUSHO_CHANNEL_REQUEST_FAILED
 
@@ -6686,12 +6704,20 @@ judge runner.
 
 ### LOUSHO_CASSETTE_INVALID
 
+<<<<<<< HEAD
 **Means:** a record/replay cassette is missing, is not valid JSON or does not
 match the recorded request. The message names the file. A mismatch inside a
 run reaches `send()` as the `CassetteMismatchError` itself (from
 `@lousho/build-ai-agent/testing`, with `.cassette` and `.callNumber`) - it is
 a test-fixture failure, so it is never compacted into a
 `CompactedLLMProviderError`.
+=======
+**Means:** a record/replay cassette could not be loaded: the file is missing,
+is not valid JSON, has a format version this SDK does not read, or fails the
+cassette format check. The message names the file. (A cassette that loads but
+whose recorded requests no longer match fails differently — a
+`CassetteMismatchError`, which is a plain `Error` with no code.)
+>>>>>>> 838087a4 (LOU-R23: docs corrections for errors/troubleshooting/testing)
 
 **Fix:** record it again (`lousho eval --record <file>`, or `recordReplay()` with
 `mode: 'record'`). See [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md).
@@ -10412,7 +10438,8 @@ a call a guardrail blocked.
 - `agent.session({ permissionMode })`, then `session.setPermissionMode(mode)`
   and the `session.permissionMode` getter. The session reads its mode at every
   tool call of a turn, so `setPermissionMode()` during a turn (from a
-  `tool.start` listener, say) applies from the next tool call of that turn. A
+  `tool.start` listener, say - a `session.on()` listener or a `stream()` loop)
+  applies from the next tool call of that turn. A
   session defaults to the agent's mode.
 
 Switching is always an explicit call to `setPermissionMode()`. Each switch is
@@ -11731,7 +11758,7 @@ console.log(session.id, session.messages.length);
 | `load()` | Reads the saved transcript from the store. `send()` does this for you; call it to show history before the first `send()` of a resumed session. |
 | `compact(options?)` | Compacts the transcript now - see [Compacting a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md#compacting-a-session). |
 | `clear()` | Empties the transcript and saves it empty (the store holds no messages for the id). Keeps the session id, store and options; deletes an interrupted turn's checkpoint; memory slots are cross-session and untouched. Emits `context.cleared` to `on()` listeners. Rejects with `LOUSHO_SESSION_BUSY` while a turn is running, and with `LOUSHO_SESSION_AWAITING_APPROVAL` while a durable turn waits on an approval. |
-| `on(listener)` | Listens for `compact()` / `clear()` events (`compaction.start`, `compaction.done`, `context.cleared`); returns a function that removes the listener. |
+| `on(listener)` | Listens for the session's events: every turn's events as they happen (`send()` and `stream()` turns, and a paused turn continued by `agent.approvals.resolve()`), plus `compact()` / `clear()` events (`compaction.start`, `compaction.done`, `context.cleared`); returns a function that removes the listener. A turn's events are the `AgentEvent`s its `stream()` yields. |
 | `pending()` | In a [durable session](#durable-sessions), the turn that has not finished (`{ status, approvalId?, approvalKind? }`; `approvalKind` is `'question'` when the turn waits on an `ask_question`), or `null`. |
 | `resume({ signal })` | In a durable session, finishes an interrupted turn and resolves with its result, or `null` when none is pending. |
 | `discardPending()` | In a durable session, drops an unfinished turn without running it. |
@@ -12226,9 +12253,10 @@ The event types and their extra fields:
 | `reasoning.start`    | (none) | The model starts reasoning in this step. Only with the [`reasoning` option](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/reasoning.md) (or a model that always reasons). Its `reasoning.delta`s and `reasoning.done` follow, before the step's first `text.delta` or `tool.start`. |
 | `reasoning.delta`    | `text: string` | A chunk of reasoning text (or of its summary). Never part of `text.delta` / `run.done`'s `text`. |
 | `reasoning.done`     | `text: string`, `tokens?: number` | The reasoning ended: `text` is all of it; `tokens` when the provider reported reasoning tokens by then. |
-| `tool.start`         | `toolCallId: string`, `toolName: string`, `args: Record<string, unknown>`, `parentToolCallId?: string` | A tool call starts. `args` are the model's arguments parsed from JSON (`{}` when they are not valid JSON). A call a [code mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/code-mode.md) script made carries `parentToolCallId`, the `run_code` call's id (also on its `tool.partial`, `tool.done` and `tool.error`). |
+| `tool.start`         | `toolCallId: string`, `toolName: string`, `args: Record<string, unknown>`, `parentToolCallId?: string` | A tool call starts. `args` are the model's arguments parsed from JSON (`{}` when they are not valid JSON). A call a [code mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/code-mode.md) script made carries `parentToolCallId`, the `run_code` call's id (also on its `tool.partial`, `tool.done` and `tool.error`). Exactly one per tool call across a pause: a call that paused for approval (or sign-in) and then ran reports `tool.resume` on the continued run, not a second `tool.start`. |
+| `tool.resume`        | `toolCallId`, `toolName`, `args: Record<string, unknown>` | The decided call of [an approval continuation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#streaming-after-an-approval) runs. Its `tool.start` was emitted by the run that paused; handle it like `tool.start` when you track calls. |
 | `tool.partial`       | `toolCallId`, `toolName`, `output: unknown`, `index: number` | A snapshot of a running tool's output: a tool whose `execute` is an `async function*` reports one per `yield` (see [Streaming partial results](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#streaming-partial-results)). Each snapshot is complete and replaces the previous one; `index` counts the call's snapshots from 0. The last one is also the call's `tool.done` `result`. `output` is JSON-encoded like `result`. Snapshots never reach the model, the transcript, checkpoints or traces. A sub-agent's carries `subagent`. |
-| `tool.done`          | `toolCallId`, `toolName`, `result: unknown`, `durationMs: number` | A tool call returned. `result` is the value as it would be JSON-encoded (`undefined` becomes `null`, a `Date` becomes a string). `durationMs` counts from its `tool.start`. |
+| `tool.done`          | `toolCallId`, `toolName`, `result: unknown`, `durationMs: number` | A tool call returned. `result` is the value as it would be JSON-encoded (`undefined` becomes `null`, a `Date` becomes a string). `durationMs` counts from its `tool.start` / `tool.resume`. |
 | `todo.updated`       | `todos: Todo[]`, `counts: { pending, in_progress, completed, total }`, `toolCallId: string` | A successful `todo_write` call of the [todo tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#todo-tools) replaced the list, right after that call's `tool.done`. `todos` is the complete new list (`{ id, content, status }`), `toolCallId` the `todo_write` call. A sub-agent's carries `subagent`. The [UI bindings](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md#todos) keep the list and show it live. |
 | `tool.error`         | `toolCallId`, `toolName`, `error: { name: string, message: string }`, `durationMs: number` | A tool call failed: it threw, its arguments did not match its schema (`name: 'ToolArgumentsValidationError'`), or the tool does not exist. The model gets the error as the call's result and the run continues. |
 | `approval.requested` | `approvalId: string`, `toolCallId`, `toolName`, `args: Record<string, unknown>`, `kind?: 'question' \| 'sign-in'`, `question?: { text, options?, allowFreeText? }`, `signIn?: { provider, displayName?, url }` | A tool call needs a human decision. The run then stops; resume it with `agent.approvals.resolve()` or `resumeAfterApproval()` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)), or stream the continuation (see [Streaming after an approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#streaming-after-an-approval)). An `ask_question` call carries `kind: 'question'` and its `question`; answer it with `agent.approvals.answer()` (see [Asking the user a question](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#asking-the-user-a-question)). A tool waiting for an OAuth sign-in carries `kind: 'sign-in'` and the link in `signIn` (see [What the user sees](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#what-the-user-sees)). |
@@ -12268,9 +12296,9 @@ Optional fields are left out when they have no value. They are never
   settle between its own `tool.start` and its `tool.done` / `tool.error`.
 - A call's `tool.partial` events come between its `tool.start` and its
   `tool.done` / `tool.error`, with `index` 0, 1, 2, ...; the partials of
-  parallel calls interleave. A call that pauses for a sign-in has no
-  `tool.done`; it runs again from the start after the sign-in, with a new
-  `tool.start` and `index` from 0.
+  parallel calls interleave. A call that pauses for a sign-in or an approval
+  has no `tool.done`; it runs again from the start once decided, reported as
+  `tool.resume` (not a second `tool.start`) with `index` from 0.
 - `input.queued` comes when `run.enqueue()` is called (after `run.start`, even
   for input queued before the run got going), so it can fall inside a step.
   Its `input.applied` comes between the `step.done` of the step that was
@@ -12500,7 +12528,9 @@ console.log((await again.result).text);
 A run that paused for an [approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md) can continue as a stream
 too. `agent.approvals.streamResolve()` (or `streamAnswer()`) returns an
 `AgentRun` whose `result` is what `agent.approvals.resolve()` returns. Its events are `run.start`, the decided
-call's `tool.start` and `tool.done` (`tool.error` for a rejection), then the
+call's `tool.resume` and `tool.done` (`tool.error` for a rejection - `tool.resume`,
+not a second `tool.start`, because the paused run already reported that call's
+start), then the
 continuation's events exactly as in a fresh run, up to `run.done`; a further
 pause ends it with `approval.requested` (`kind: 'sign-in'` with a `signIn`
 link when a tool waits for an [OAuth sign-in](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#what-the-user-sees)). Cancellation, `enqueue()` and
@@ -13659,6 +13689,8 @@ most recent one.
 ```ts no-verify
 expect(model.calls[0].messages[0]).toMatchObject({ role: 'system' });
 expect(model.lastCall?.tools?.map((t) => t.function.name)).toContain('get_weather');
+// `createAgent()` has no `temperature` option; it reaches the request through a
+// `preGenerate` hook (`ctx.request.temperature`) or `ExecuteOptions.temperature`.
 expect(model.calls[0].temperature).toBe(0.2);
 ```
 
@@ -13683,7 +13715,7 @@ console.log(result.text); // You said: ping
 | `text`         | Assistant text (default `''`).                                                 |
 | `toolCalls`    | `[{ name, args?, id? }]`. Args are JSON-encoded; ids default to `call_N`.      |
 | `error`        | Reject `generate()` / `stream()` with this error.                              |
-| `usage`        | `{ inputTokens, outputTokens }` (default zero).                                |
+| `usage`        | `{ inputTokens, outputTokens }` (default: none reported; the run then estimates usage and flags it `estimated`). |
 | `finishReason` | Defaults to `'tool_calls'` when there are tool calls, otherwise `'stop'`.      |
 | `delayMs`      | Wait before answering (works with `vi.useFakeTimers()`).                       |
 
@@ -14738,13 +14770,13 @@ environment (`LOUSHO_CONFIG_MISSING_PROVIDER`).
 ### Rate limits and flaky calls
 
 - **Cause:** the provider throttled the call (`LOUSHO_PROVIDER_RATE_LIMITED`) or failed transiently.
-- **Fix:** `createAgent()` already retries a failed call twice; raise it with `retry: { maxRetries: 3 }`, and set `fallbackModels` to move on to the next model when the call still fails.
+- **Fix:** `createAgent()` already retries a failed call twice — but only for a model given as a `provider/model` string or resolved from the environment; a `provider` instance you pass is retried only when you set `retry`. Raise it with `retry: { maxRetries: 3 }`, and set `fallbackModels` to move on to the next model when the call still fails.
 - **More:** [Retries and fallback models](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md#retries-and-fallback-models), [the error](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_provider_rate_limited).
 
 ### The model does not read my files
 
-- **Cause:** the built-in providers do not send file parts, on any `ai` major. A file part is sent as a text note (`[file report.pdf (application/pdf) not sent]`) and the provider warns once. Images are sent.
-- **Fix:** put the file's text in the message, or use a provider subclass whose model takes files.
+- **Cause:** a built-in provider sends a file part only for the media types it supports on your `ai` major: on `ai` 6/7 `application/pdf` reaches `openai`, `anthropic` (which also sends `text/plain`) and `openrouter`. Every other media type — and every file on `ai` 4 or `ollama` — is sent as a text note (`[file report.pdf (application/pdf) not sent]`) and the provider warns once. Images are sent.
+- **Fix:** use `ai` 6 or 7 with a media type the provider sends (see the table), put the file's text in the message, or use a provider subclass whose model takes files.
 - **More:** [Multimodal input](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md#multimodal-input).
 
 ### I do not see the model's reasoning
@@ -14764,7 +14796,7 @@ environment (`LOUSHO_CONFIG_MISSING_PROVIDER`).
 ### An MCP server's tools do not appear
 
 - **Cause:** the servers connect on `await agent.ready()` or on the first `send()` / `stream()`, and a server that cannot connect fails that call. Each tool is named `<server>__<tool>` (for example `docs__search`), so look for that name, not the server's own.
-- **Fix:** `await agent.ready()` to see the connection error. With `connectMcp()`, check `status()`, which maps each server to `'idle'`, `'connected'` or `'failed'`; `onError: 'skip'` leaves a failing server out and warns through `logger`. MCP needs the optional peer `@modelcontextprotocol/sdk`.
+- **Fix:** `await agent.ready()` to see the connection error. With `connectMcp()`, check `status()`, which maps each server to `'idle'`, `'connected'`, `'failed'` or `'needs-auth'` (an `oauth` server whose app still needs to sign in — see `agent.oauth.mcpSignInUrl()`); `onError: 'skip'` leaves a failing server out and warns through `logger`. MCP needs the optional peer `@modelcontextprotocol/sdk`.
 - **More:** [Use MCP servers in an agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#use-mcp-servers-in-an-agent).
 
 ### My Worker build rejects the provider or tool

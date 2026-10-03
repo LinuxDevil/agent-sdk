@@ -100,13 +100,13 @@ environment (`LOUSHO_CONFIG_MISSING_PROVIDER`).
 ### Rate limits and flaky calls
 
 - **Cause:** the provider throttled the call (`LOUSHO_PROVIDER_RATE_LIMITED`) or failed transiently.
-- **Fix:** `createAgent()` already retries a failed call twice; raise it with `retry: { maxRetries: 3 }`, and set `fallbackModels` to move on to the next model when the call still fails.
+- **Fix:** `createAgent()` already retries a failed call twice — but only for a model given as a `provider/model` string or resolved from the environment; a `provider` instance you pass is retried only when you set `retry`. Raise it with `retry: { maxRetries: 3 }`, and set `fallbackModels` to move on to the next model when the call still fails.
 - **More:** [Retries and fallback models](./providers.md#retries-and-fallback-models), [the error](./errors.md#lousho_provider_rate_limited).
 
 ### The model does not read my files
 
-- **Cause:** the built-in providers do not send file parts, on any `ai` major. A file part is sent as a text note (`[file report.pdf (application/pdf) not sent]`) and the provider warns once. Images are sent.
-- **Fix:** put the file's text in the message, or use a provider subclass whose model takes files.
+- **Cause:** a built-in provider sends a file part only for the media types it supports on your `ai` major: on `ai` 6/7 `application/pdf` reaches `openai`, `anthropic` (which also sends `text/plain`) and `openrouter`. Every other media type — and every file on `ai` 4 or `ollama` — is sent as a text note (`[file report.pdf (application/pdf) not sent]`) and the provider warns once. Images are sent.
+- **Fix:** use `ai` 6 or 7 with a media type the provider sends (see the table), put the file's text in the message, or use a provider subclass whose model takes files.
 - **More:** [Multimodal input](./providers.md#multimodal-input).
 
 ### I do not see the model's reasoning
@@ -126,7 +126,7 @@ environment (`LOUSHO_CONFIG_MISSING_PROVIDER`).
 ### An MCP server's tools do not appear
 
 - **Cause:** the servers connect on `await agent.ready()` or on the first `send()` / `stream()`, and a server that cannot connect fails that call. Each tool is named `<server>__<tool>` (for example `docs__search`), so look for that name, not the server's own.
-- **Fix:** `await agent.ready()` to see the connection error. With `connectMcp()`, check `status()`, which maps each server to `'idle'`, `'connected'` or `'failed'`; `onError: 'skip'` leaves a failing server out and warns through `logger`. MCP needs the optional peer `@modelcontextprotocol/sdk`.
+- **Fix:** `await agent.ready()` to see the connection error. With `connectMcp()`, check `status()`, which maps each server to `'idle'`, `'connected'`, `'failed'` or `'needs-auth'` (an `oauth` server whose app still needs to sign in — see `agent.oauth.mcpSignInUrl()`); `onError: 'skip'` leaves a failing server out and warns through `logger`. MCP needs the optional peer `@modelcontextprotocol/sdk`.
 - **More:** [Use MCP servers in an agent](./mcp.md#use-mcp-servers-in-an-agent).
 
 ### My Worker build rejects the provider or tool

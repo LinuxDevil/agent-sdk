@@ -98,6 +98,8 @@ most recent one.
 ```ts no-verify
 expect(model.calls[0].messages[0]).toMatchObject({ role: 'system' });
 expect(model.lastCall?.tools?.map((t) => t.function.name)).toContain('get_weather');
+// `createAgent()` has no `temperature` option; it reaches the request through a
+// `preGenerate` hook (`ctx.request.temperature`) or `ExecuteOptions.temperature`.
 expect(model.calls[0].temperature).toBe(0.2);
 ```
 
@@ -122,7 +124,7 @@ console.log(result.text); // You said: ping
 | `text`         | Assistant text (default `''`).                                                 |
 | `toolCalls`    | `[{ name, args?, id? }]`. Args are JSON-encoded; ids default to `call_N`.      |
 | `error`        | Reject `generate()` / `stream()` with this error.                              |
-| `usage`        | `{ inputTokens, outputTokens }` (default zero).                                |
+| `usage`        | `{ inputTokens, outputTokens }` (default: none reported; the run then estimates usage and flags it `estimated`). |
 | `finishReason` | Defaults to `'tool_calls'` when there are tool calls, otherwise `'stop'`.      |
 | `delayMs`      | Wait before answering (works with `vi.useFakeTimers()`).                       |
 
