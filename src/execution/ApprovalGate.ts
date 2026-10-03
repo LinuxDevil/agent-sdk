@@ -160,6 +160,12 @@ export interface ExecutionSnapshot {
    * one and on older snapshots (they resume with no principal).
    */
   principal?: Principal;
+  /**
+   * LOU-R16: the paused run's `ExecuteOptions.metadata`, so the resumed run's
+   * hook contexts keep seeing it when the resuming call passes none. Absent
+   * for a run without one and on older snapshots.
+   */
+  metadata?: Record<string, unknown>;
 }
 
 /**

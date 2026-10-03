@@ -81,6 +81,8 @@ function generateHookContext(
     agentId: options.agent.id,
     agentName: options.agent.name,
     sessionId: options.sessionId,
+    // LOU-R16: `send(x, { metadata })`, as `ctx.metadata`.
+    metadata: options.metadata,
     messages,
     request,
     emit: runEventsOf(options)?.hookEvent,

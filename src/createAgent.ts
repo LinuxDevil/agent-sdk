@@ -875,6 +875,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     ...(ctx.sessionId !== undefined && { sessionId: ctx.sessionId }),
     // N10b: tools, approval policies, permission rules and sub-agents act for this caller.
     ...(ctx.principal && { principal: ctx.principal }),
+    // LOU-R16: the call's metadata reaches every hook context as `ctx.metadata`.
+    ...(ctx.metadata !== undefined && { metadata: ctx.metadata }),
     ...turn,
     // LOU-W6: memory tools and recall bound to this run's scope keys.
     ...(lead && memory?.forRun({ sessionId: ctx.sessionId, metadata: ctx.metadata, principal: ctx.principal }, spec.toolRegistry, hooks)),

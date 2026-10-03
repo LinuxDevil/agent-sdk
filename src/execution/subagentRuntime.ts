@@ -51,6 +51,8 @@ export type InheritedRuntime = Pick<
   | 'onAgentDrift'
   // N10b: an in-process sub-agent acts for the same caller (a remote one is not told).
   | 'principal'
+  // LOU-R16: and its hooks see the parent run's metadata.
+  | 'metadata'
   // N9b: and reads that caller's OAuth tokens from the same store.
   | 'tokens'
 >;
@@ -183,7 +185,7 @@ function pendingForSuspension(suspension: SubagentSuspension, principal: Princip
 
 /** The approval record that pauses a parent run on a suspended sub-agent. */
 export function suspensionRecord(
-  run: { agent: AgentConfig; sessionId?: string; principal?: Principal },
+  run: { agent: AgentConfig; sessionId?: string; principal?: Principal; metadata?: Record<string, unknown> },
   state: { messages: Message[]; steps: number; usage: RunUsage; queuedInput?: Message[]; fingerprint?: AgentFingerprint },
   suspension: SubagentSuspension
 ): { pending: PendingApproval; snapshot: ExecutionSnapshot } {
@@ -201,6 +203,7 @@ export function suspensionRecord(
       subagent: suspension,
       agentFingerprint: state.fingerprint,
       ...(run.principal && { principal: run.principal }),
+      ...(run.metadata !== undefined && { metadata: run.metadata }),
     },
   };
 }

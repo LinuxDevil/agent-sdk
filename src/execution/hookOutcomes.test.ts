@@ -205,3 +205,87 @@ describe('sub-agents inherit hook outcomes (LOU-X3)', () => {
     expect(toolResults(childModel)[0]).toMatchObject({ kind: 'denied', reason: 'Offline' });
   });
 });
+
+describe('ctx.metadata (LOU-R16)', () => {
+  it("send(x, { metadata }) reaches every hook context as `ctx.metadata`", async () => {
+    const search = searchTool();
+    const seen: Array<Record<string, unknown> | undefined> = [];
+    const spy: AgentHook = {
+      name: 'spy',
+      preGenerate: (ctx) => void seen.push(ctx.metadata),
+      postGenerate: (ctx) => void seen.push(ctx.metadata),
+      preToolCall: (ctx) => void seen.push(ctx.metadata),
+      postToolCall: (ctx) => void seen.push(ctx.metadata),
+    };
+    const metadata = { requestId: 'req-1', tenant: 'acme' };
+    const agent = createAgent({ provider: mockModel([call('cats'), 'done']), tools: [search.defined], hooks: [spy] });
+
+    expect((await agent.send('go', { metadata })).text).toBe('done');
+
+    // The exact object passed to send(), at every hook point: pre/post
+    // generate for both model calls, pre/post tool call for `search`.
+    expect(seen).toHaveLength(6);
+    for (const m of seen) expect(m).toBe(metadata);
+  });
+
+  it('stream(x, { metadata }) reaches hooks too', async () => {
+    const seen: Array<Record<string, unknown> | undefined> = [];
+    const spy: AgentHook = { name: 'spy', preGenerate: (ctx) => void seen.push(ctx.metadata) };
+    const metadata = { requestId: 'req-2' };
+
+    await collect(createAgent({ provider: mockModel(['ok']), hooks: [spy] }).stream('go', { metadata }));
+
+    expect(seen).toEqual([{ requestId: 'req-2' }]);
+  });
+
+  it('leaves ctx.metadata undefined when the call passed none', async () => {
+    const seen: Array<Record<string, unknown> | undefined> = [];
+    const spy: AgentHook = { name: 'spy', preGenerate: (ctx) => void seen.push(ctx.metadata) };
+
+    await createAgent({ provider: mockModel(['ok']), hooks: [spy] }).send('go');
+
+    expect(seen).toEqual([undefined]);
+  });
+
+  it("a sub-agent's run inherits the parent run's metadata (its hooks see it, tagged `subagent`)", async () => {
+    const seen: Array<{ metadata: Record<string, unknown> | undefined; subagent: string | undefined }> = [];
+    const spy: AgentHook = {
+      name: 'spy',
+      preGenerate: (ctx) => void seen.push({ metadata: ctx.metadata, subagent: ctx.subagent?.name }),
+    };
+    const researcher = createAgent({ name: 'researcher', description: 'Researches', provider: mockModel(['found it']) });
+    const task = { toolCalls: [{ name: 'task', args: { agent: 'researcher', prompt: 'look', description: 'look' } }] };
+    const lead = createAgent({ provider: mockModel([task, 'done']), subagents: { researcher }, hooks: [spy] });
+
+    await lead.send('go', { metadata: { requestId: 'req-9' } });
+
+    expect(seen).toEqual([
+      { metadata: { requestId: 'req-9' }, subagent: undefined },
+      { metadata: { requestId: 'req-9' }, subagent: 'researcher' },
+      { metadata: { requestId: 'req-9' }, subagent: undefined },
+    ]);
+  });
+
+  it('a run resumed after an approval keeps seeing the metadata it was sent with', async () => {
+    const search = searchTool(() => 'ask');
+    const seen: Array<Record<string, unknown> | undefined> = [];
+    const spy: AgentHook = {
+      name: 'spy',
+      preGenerate: (ctx) => void seen.push(ctx.metadata),
+      preToolCall: (ctx) => void seen.push(ctx.metadata),
+    };
+    const agent = createAgent({ provider: mockModel([call('cats'), 'done']), tools: [search.defined], hooks: [spy] });
+
+    const paused = await agent.send('go', { metadata: { requestId: 'req-7' } });
+    await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+
+    // preGenerate + preToolCall of the paused run, then the approved call's
+    // hooks and the continued run's preGenerate - all see the send's metadata.
+    expect(seen).toEqual([
+      { requestId: 'req-7' },
+      { requestId: 'req-7' },
+      { requestId: 'req-7' },
+      { requestId: 'req-7' },
+    ]);
+  });
+});
