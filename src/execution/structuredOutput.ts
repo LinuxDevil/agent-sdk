@@ -19,14 +19,81 @@ export interface OutputError {
 
 const jsonSchemas = new WeakMap<StandardSchemaV1, Record<string, unknown>>();
 
+/** JSON-Schema members that hold a keyed map of subschemas; every other member is a subschema, a list of them, or data. */
+const SCHEMA_MAP_MEMBERS = new Set(['$defs', 'definitions', 'dependentSchemas', 'patternProperties', 'properties']);
+
+/** JSON-Schema members that hold a subschema or a list of them; every other member is data (`enum`, `default`, ...). */
+const SUBSCHEMA_MEMBERS = new Set([
+  'additionalItems',
+  'additionalProperties',
+  'allOf',
+  'anyOf',
+  'contains',
+  'else',
+  'if',
+  'items',
+  'not',
+  'oneOf',
+  'prefixItems',
+  'propertyNames',
+  'then',
+  'unevaluatedItems',
+  'unevaluatedProperties',
+]);
+
+/** Whether `node` describes an object: an `object` type, or object members without one. */
+function isObjectSchemaNode(node: Record<string, unknown>): boolean {
+  const type = node.type;
+  return (
+    type === 'object' ||
+    (Array.isArray(type) && type.includes('object')) ||
+    'properties' in node ||
+    'patternProperties' in node ||
+    'additionalProperties' in node
+  );
+}
+
+/**
+ * `schema`, with `additionalProperties: false` on every object node that
+ * does not set it (LOU-R7): OpenAI-compatible strict structured-output
+ * endpoints reject an object schema without it. zod 3's converter already
+ * emits it; zod 4's `toJSONSchema` does not - a plain `z.object` (the
+ * documented way) produced an unclosable schema. An explicit
+ * `additionalProperties` (`z.strictObject`, `z.looseObject`, `catchall`,
+ * `record`) is left alone - it says what the author meant.
+ */
+function closeObjectSchemas(node: unknown): void {
+  if (Array.isArray(node)) {
+    for (const item of node) closeObjectSchemas(item);
+    return;
+  }
+  if (typeof node !== 'object' || node === null) return;
+  const schema = node as Record<string, unknown>;
+  if (isObjectSchemaNode(schema) && schema.additionalProperties === undefined) {
+    schema.additionalProperties = false;
+  }
+  for (const [member, value] of Object.entries(schema)) {
+    if (SCHEMA_MAP_MEMBERS.has(member)) {
+      if (typeof value === 'object' && value !== null) {
+        for (const sub of Object.values(value)) closeObjectSchemas(sub);
+      }
+    } else if (SUBSCHEMA_MEMBERS.has(member)) {
+      closeObjectSchemas(value);
+    }
+  }
+}
+
 /**
  * The schema as JSON Schema, computed once per schema: `z.toJSONSchema` for
- * zod 4 (LOU-D29), the `ai` SDK's zod converter for zod 3.
+ * zod 4 (LOU-D29), the `ai` SDK's zod converter for zod 3. Object nodes are
+ * closed (`additionalProperties: false`) for strict structured-output
+ * endpoints (LOU-R7).
  */
 function jsonSchemaOf(schema: StandardSchemaV1): Record<string, unknown> {
   let json = jsonSchemas.get(schema);
   if (!json) {
     json = schemaToJsonSchema(schema) ?? (zodSchema(schema as never).jsonSchema as Record<string, unknown>);
+    closeObjectSchemas(json);
     jsonSchemas.set(schema, json);
   }
   return json;
