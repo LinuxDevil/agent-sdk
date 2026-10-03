@@ -324,11 +324,13 @@ What to know:
 - **Only the result is kept.** Snapshots are not sent to the model, not added
   to the transcript or the session, not checkpointed and not recorded in trace
   spans. Hooks (`postToolCall`, `onToolResult`) see only the result.
-- **A crash loses them.** Partial output is not durable: after a crash, or a
-  pause for a [sign-in](./oauth.md) inside the generator, the call has no
-  result yet and runs again from the start (a new `tool.start`, `index` from
-  0). Snapshots already streamed stay in the event log; a UI should drop them
-  when the call pauses or starts again (the [UI bindings](./react.md) do).
+- **A crash loses them.** Partial output is not durable: after a crash the
+  call has no result yet and runs again from the start (a new `tool.start`,
+  `index` from 0). A pause for a [sign-in](./oauth.md) inside the generator
+  re-runs it from the start too, but the continued run reports `tool.resume`
+  rather than a second `tool.start`, again with `index` from 0. Snapshots
+  already streamed stay in the event log; a UI should drop them when the call
+  pauses or starts again (the [UI bindings](./react.md) do).
 - **Approvals and permissions apply first.** A generator tool that needs
   approval runs, and streams, only after the decision (also on a streamed
   resume, `agent.approvals.streamResolve()`).

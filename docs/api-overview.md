@@ -115,7 +115,9 @@ same state and actions as a Svelte store (`$agent`). See [Svelte](./svelte.md).
 
 Pass `subagents: { researcher, writer }` (agents from `createAgent()` with a
 `description`, or a `{ list, resolve }` catalog) to `createAgent()` or
-`AgentExecutor.execute()`: the lead gets one `task` tool and a prompt listing,
+`AgentExecutor.execute()`: the lead gets a `task` tool to delegate, the three
+background-task tools `agent_status`, `agent_await` and `agent_cancel`, and a
+prompt listing,
 each sub-agent runs on the task prompt alone, and it inherits the lead run's
 signal, hooks (`ctx.subagent`), tracing, approval store and event listeners
 (`event.subagent`). `maxSubagentDepth` (default 1) bounds nesting. See

@@ -13,7 +13,7 @@ import { resolveProvider, LLMProviderRegistry } from '@lousho/build-ai-agent';
 
 // The convenient way — reads the credential from the environment
 const openai = resolveProvider('openai/gpt-4o-mini');       // OPENAI_API_KEY
-const anthropic = resolveProvider('anthropic/claude-sonnet-5'); // ANTHROPIC_API_KEY
+const anthropic = resolveProvider('anthropic/claude-sonnet-5-5'); // ANTHROPIC_API_KEY
 const openrouter = resolveProvider('openrouter/openai/gpt-4o-mini'); // OPENROUTER_API_KEY
 const ollama = resolveProvider('ollama/llama3.1');           // OLLAMA_BASE_URL
 
@@ -42,7 +42,7 @@ const custom = LLMProviderRegistry.create('openai', {
 ```ts
 import { createAgent, createMockProvider, resolveProvider } from '@lousho/build-ai-agent';
 
-const fromString = createAgent({ model: 'anthropic/claude-sonnet-5' });
+const fromString = createAgent({ model: 'anthropic/claude-sonnet-5-5' });
 const fromInstance = createAgent({ provider: resolveProvider('openai/gpt-4o-mini'), model: 'gpt-4o' });
 const offline = createAgent({ provider: createMockProvider({ responses: ['Hi! How can I help?'] }) });
 ```

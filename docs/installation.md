@@ -189,7 +189,7 @@ runs `lousho init` with the same arguments.
 ## The `lousho` CLI
 
 Installing the package also installs the `lousho` command: `init`, `doctor`,
-`dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `build` and `studio`. See
+`dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `traces`, `build` and `studio`. See
 [CLI](./cli.md) for what each one does and its flags. Building needs `tsup`,
 an optional peer (see the table above): `npm install --save-dev tsup`.
 

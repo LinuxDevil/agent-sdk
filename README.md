@@ -86,10 +86,10 @@ agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 - **UI bindings**: `useLoushoAgent()` from `@lousho/build-ai-agent/react` (and `/vue`; `loushoAgent()` store from `/svelte`) turns the event stream into chat state, with approvals. [React](docs/react.md), [Vue](docs/vue.md), [Svelte](docs/svelte.md)
 - **AI SDK UI**: `toUIMessageStreamResponse(agent.stream(...))` renders a run with the Vercel AI SDK's `useChat`. [AI SDK UI](docs/ai-sdk-ui.md)
 - **Next.js and Fetch frameworks**: `createRouteHandler(agent)` serves the session API from an App Router, SvelteKit, Hono or Bun route. [Next.js](docs/nextjs.md)
-- **Durable execution**: `createAgent({ store })` checkpoints every step, and `agent.resume()` finishes a crashed or paused run without redoing finished tools. [Durable execution](docs/durable-execution.md)
+- **Durable execution**: `createAgent({ store })` checkpoints every step, and `agent.resume()` finishes a crashed or interrupted run without redoing finished tools (it throws `SessionAwaitingApprovalError` on an approval-paused run, which continues via `agent.approvals.resolve()`). [Durable execution](docs/durable-execution.md)
 - **Cancellation, usage and cost**: pass an `AbortSignal`; every result carries token usage and USD cost for priced models. [Runs](docs/runs.md), [Models and cost](docs/models-and-cost.md)
 - **Providers**: OpenAI, Anthropic, OpenRouter, Ollama or a mock, with `withRetry()` and `withFallback()`. [Providers](docs/providers.md)
-- **Sub-agents**: `subagents: { researcher, writer }` gives the lead one `task` tool; sub-agents run in parallel. [Sub-agents](docs/sub-agents.md)
+- **Sub-agents**: `subagents: { researcher, writer }` gives the lead a `task` tool plus `agent_status`, `agent_await` and `agent_cancel` for background tasks; sub-agents run in parallel. [Sub-agents](docs/sub-agents.md)
 - **Handoffs**: `handoffs: [billing, support]` lets a triage agent hand the conversation to a specialist, which answers the user and keeps the session. [Handoffs](docs/handoffs.md)
 - **Skills and AGENTS.md**: `loadSkills()` loads instructions on demand; `projectInstructions` appends your `AGENTS.md`. [Skills](docs/skills.md), [Project instructions](docs/configuration.md#project-instructions)
 - **Agent directories**: `loadAgentDir('./my-agent')` builds an agent from `instructions.md`, `tools/` and `skills/`. [Agent directories](docs/agent-directories.md)
@@ -101,7 +101,7 @@ agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 - **Tracing**: OpenTelemetry GenAI spans (`invoke_agent`, `chat`, `execute_tool`); content capture is opt-in. [Observability](docs/observability.md)
 - **Trace viewer**: `createAgent({ exporter: fileTraceExporter() })` keeps each run as a local file; `npx lousho traces` lists runs and prints one as a tree with durations, tokens and cost. [Local traces](docs/observability.md#local-traces)
 - **Testing and evals**: `mockModel`, `recordReplay` cassettes, `defineEval()` trajectory assertions, `lousho eval` with `--record` / `--replay` cassettes and `--drift` trajectory diffs. [Testing](docs/testing.md), [Evals](docs/evals.md)
-- **CLI**: `init`, `doctor`, `dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `build` and `studio`. [CLI](docs/cli.md)
+- **CLI**: `init`, `doctor`, `dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `traces`, `build` and `studio`. [CLI](docs/cli.md)
 - **Editors (ACP)**: `lousho acp ./my-agent` serves your agent to Zed and other Agent Client Protocol editors, with tool calls and permission prompts. [ACP](docs/acp.md)
 - **Registry**: `lousho add <name> --registry <url-or-path>` copies a tool, skill, channel, schedule or memory slot into your agent directory from a static JSON registry, after showing its permissions. [Registry](docs/registry.md)
 - **Agent Forge**: `lousho studio` opens a visual canvas, run debugger and chat with approval cards. [Agent Forge](docs/agent-forge.md)
@@ -286,12 +286,13 @@ Alpha (`1.0.0-alpha`, pre-1.0): APIs can still change between releases, and
 breaking changes are listed in the [CHANGELOG](CHANGELOG.md) with migration
 notes. Known gaps:
 
-- The trace viewer is terminal-only (`lousho traces`); Agent Forge does not show saved traces yet.
 - Docker sandbox egress (`network: { allow }`) and the credential broker need
   Docker Engine on Linux; Docker Desktop is refused
   ([Workspace tools](docs/workspace-tools.md)).
-- The built-in providers do not send file (non-image) parts; a file part is
-  replaced by a text note ([Providers](docs/providers.md)).
+- File (non-image) parts reach the model only for media types the provider
+  accepts (`application/pdf` for OpenAI and OpenRouter, `application/pdf` and
+  `text/plain` for Anthropic, on `ai` 6/7); other types - and every file part
+  on `ai` 4 - are replaced by a text note ([Providers](docs/providers.md)).
 - The Cloudflare Worker target has a limited provider and tool set, and builds
   agent directories without sub-agents, schedules, channels or memory slots
   ([Cloudflare Workers](docs/cloudflare-workers.md)).
