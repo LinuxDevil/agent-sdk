@@ -262,8 +262,9 @@ const trusted = createAgent({
 `agent.approvals.streamAnswer({ id, answer }, { signal })` continue the run
 like `resolve()` and `answer()`, but return the `AgentRun` that
 `agent.stream()` returns (see [Streaming](./streaming.md#streaming-after-an-approval)):
-`run.start`, the decided call's `tool.start` and `tool.done` (`tool.error` for
-a rejection), then the continuation's events up to `run.done`. `run.result`
+`run.start`, the decided call's `tool.resume` and `tool.done` (`tool.error` for
+a rejection; `tool.resume`, not a second `tool.start`, because the paused run
+already reported that call's start), then the continuation's events up to `run.done`. `run.result`
 is what `resolve()` resolves with. A continuation that pauses again ends with
 `approval.requested` and `run.done` (`'awaiting-approval'`), even with an
 `approve` callback, as `stream()` does. A pause made inside a session

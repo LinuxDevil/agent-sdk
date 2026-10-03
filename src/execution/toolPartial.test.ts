@@ -296,7 +296,7 @@ describe('generator tools on the resume path (N13b)', () => {
 
     const resumed = await collect(agent.approvals.streamResolve({ id: paused.result.approvalId!, approved: true }));
 
-    expect(resumed.events.filter((e) => e.type.startsWith('tool.')).map((e) => e.type)).toEqual(['tool.start', 'tool.partial', 'tool.partial', 'tool.done']);
+    expect(resumed.events.filter((e) => e.type.startsWith('tool.')).map((e) => e.type)).toEqual(['tool.resume', 'tool.partial', 'tool.partial', 'tool.done']);
     expect(ofType(resumed.events, 'tool.partial').map((e) => [e.toolCallId, e.index, e.output])).toEqual([
       ['call_1', 0, { at: 1 }],
       ['call_1', 1, { at: 2 }],

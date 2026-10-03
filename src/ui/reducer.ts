@@ -226,7 +226,8 @@ export function reduceAgentEvents(state: AgentUIState, event: AgentEvent | Agent
       return { ...next, messages: onAssistant(state.messages, (m) => ({ ...m, text: m.text + event.text })) };
     case 'reasoning.delta':
       return { ...next, messages: onAssistant(state.messages, (m) => ({ ...m, reasoning: (m.reasoning ?? '') + event.text })) };
-    case 'tool.start': {
+    case 'tool.start':
+    case 'tool.resume': {
       const call: UIToolCall = { id: event.toolCallId, name: event.toolName, args: event.args, status: 'running' };
       // N13b: a call that starts again (after a sign-in) drops the snapshot of its earlier attempt.
       return { ...next, messages: settleTool(state.messages, call.id, {}, call) };

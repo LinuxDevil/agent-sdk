@@ -59,7 +59,7 @@ export function Chat() {
 | `step.start` / `step.done` | `start-step` / `finish-step` |
 | `text.delta`, `text.done` | `text-start` (once per text part), `text-delta`, `text-end` |
 | `reasoning.start`, `reasoning.delta`, `reasoning.done` | `reasoning-start`, `reasoning-delta`, `reasoning-end` (see [Reasoning](./reasoning.md)) |
-| `tool.start` | `tool-input-start`, then `tool-input-available` with the arguments |
+| `tool.start` / `tool.resume` | `tool-input-start`, then `tool-input-available` with the arguments |
 | `tool.partial` | `tool-output-available` with `preliminary: true` (AI SDK 5+): a snapshot of a [streaming tool](./tools.md#streaming-partial-results) |
 | `tool.done` / `tool.error` | `tool-output-available` / `tool-output-error` |
 | `approval.requested` | `data-lousho-approval` (below) |

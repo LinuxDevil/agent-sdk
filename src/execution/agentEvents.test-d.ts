@@ -42,6 +42,7 @@ describe('AgentEvent types', () => {
 
   it('narrows tool events on event.type', () => {
     if (event.type === 'tool.start') expectTypeOf(event.args).toEqualTypeOf<Record<string, unknown>>();
+    if (event.type === 'tool.resume') expectTypeOf(event.args).toEqualTypeOf<Record<string, unknown>>();
     if (event.type === 'tool.done') expectTypeOf(event.durationMs).toBeNumber();
     if (event.type === 'tool.error') expectTypeOf(event.error).toEqualTypeOf<AgentEventError>();
   });
@@ -150,6 +151,7 @@ describe('AgentEvent types', () => {
       | 'reasoning.delta'
       | 'reasoning.done'
       | 'tool.start'
+      | 'tool.resume'
       | 'tool.partial'
       | 'tool.done'
       | 'todo.updated'
@@ -186,7 +188,7 @@ describe('AgentEvent types', () => {
   it('resolves AgentEventOf and the family guards', () => {
     expectTypeOf<AgentEventOf<'tool.done'>['toolName']>().toBeString();
     if (isToolEvent(event)) {
-      expectTypeOf(event.type).toEqualTypeOf<'tool.start' | 'tool.partial' | 'tool.done' | 'tool.error'>();
+      expectTypeOf(event.type).toEqualTypeOf<'tool.start' | 'tool.resume' | 'tool.partial' | 'tool.done' | 'tool.error'>();
     }
   });
 

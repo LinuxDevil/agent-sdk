@@ -240,8 +240,9 @@ async function resumeObserved(
 /**
  * LOU-V14: {@link resumeAfterApproval} (same arguments, same result) streamed
  * as the `AgentRun` that `AgentExecutor.stream()` returns: `run.start`, the
- * decided call's `tool.start` / `tool.done` (`tool.error` for a rejection),
- * then the continuation's events as in a fresh run. A further pause ends it
+ * decided call's `tool.resume` / `tool.done` (`tool.error` for a rejection;
+ * `tool.resume` because its `tool.start` was emitted by the run that paused,
+ * LOU-R17), then the continuation's events as in a fresh run. A further pause ends it
  * with `approval.requested` and `run.done`. Aborting (`signal` or an early
  * `break`), `enqueue()` and `steer()` work as on a fresh run.
  *
@@ -390,7 +391,8 @@ async function checkApprovalDrift(
 
 /**
  * decidedToolMessage(), reported on a streamed resume (LOU-V14) as the run's
- * `start` and the decided call's `tool-call` / `tool-result` events.
+ * `start` and the decided call's `tool.resume` / `tool.done` (`tool.error`)
+ * events.
  */
 async function streamedDecision(ctx: ResumeContext, pending: PendingApproval, drift?: AgentDrift): ReturnType<typeof decidedToolMessage> {
   const sink = runEventsOf(ctx.executeOptions as ExecuteOptions);
@@ -404,7 +406,10 @@ async function streamedDecision(ctx: ResumeContext, pending: PendingApproval, dr
     type: 'function',
     function: { name: call.toolName, arguments: JSON.stringify(call.args) },
   };
-  sink.toolStart(toolCall);
+  // LOU-R17: the decided call's `tool.start` was emitted by the run that
+  // paused; the continuation reports `tool.resume` so the call keeps exactly
+  // one `tool.start` across the pause.
+  sink.toolResume(toolCall);
   const step = await decidedToolMessage(ctx, pending);
   if ('message' in step) sink.toolSettled(toolResultOf(step.message));
   return step;
@@ -838,7 +843,7 @@ async function executeApprovedTool(
   }
 }
 
-/** N13b: a streamed resume reports the decided call's snapshots as `tool.partial` (its `tool.start` was reported by streamedDecision()). */
+/** N13b: a streamed resume reports the decided call's snapshots as `tool.partial` (its `tool.resume` was reported by streamedDecision()). */
 function partialsOf(pending: PendingApproval, executeOptions: ResumeExecuteOptions): ((output: unknown) => void) | undefined {
   const report = partialSink(executeOptions);
   return report && ((output) => report(pending.toolCallId, pending.toolName, output));
