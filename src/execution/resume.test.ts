@@ -10,6 +10,7 @@ import { Checkpoint, CheckpointStore } from './checkpoint';
 import { createMockProvider } from '../providers/mock';
 import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
+import type { Span } from './tracing';
 
 /** Simple in-memory ApprovalStore, good enough for resume tests. */
 function createInMemoryApprovalStore(): ApprovalStore {
@@ -1238,5 +1239,35 @@ describe('Execution - resumeAfterApproval', () => {
       // it's the hook's own error that must propagate, not be swallowed.
       expect(execute).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('Execution - resumeAfterApproval: the span of the approved call (#281)', () => {
+  const approvedRun = async (executeOptions: ResumeExecuteOptions) => {
+    const toolRegistry = new ToolRegistry();
+    toolRegistry.register('chargeCard', {
+      displayName: 'Charge Card',
+      tool: { description: 'Charge a card', parameters: {}, execute: async () => ({ charged: true }) } as Tool,
+      needsApproval: true,
+    });
+    const agent = AgentBuilder.create().setName('Test Agent').addTool('chargeCard', { tool: 'chargeCard', options: {} }).build();
+    const provider = createMockProvider({ name: 'mock', responses: ['Charging now', 'All done'] });
+    const approvalStore = createInMemoryApprovalStore();
+    const paused = await AgentExecutor.execute({ agent, input: 'Please call chargeCard now', provider, toolRegistry, approvalStore });
+    const ended: Span[] = [];
+    const exporter = { onSpanStart: () => {}, onSpanEnd: (span: Span) => void ended.push({ ...span }) };
+    await resumeAfterApproval({ id: paused.approvalId!, approved: true }, approvalStore, toolRegistry, provider, { exporter, ...executeOptions });
+    return ended.find((span) => span.attributes['gen_ai.operation.name'] === 'execute_tool')!;
+  };
+
+  it('keeps the call arguments and result off the span with redactContent, and on it with captureContent', async () => {
+    const redacted = await approvedRun({ redactContent: true });
+    expect(redacted.attributes.args).toBeUndefined();
+    expect(redacted.attributes.result).toBeUndefined();
+    expect(redacted.attributes['gen_ai.tool.call.result']).toBeUndefined();
+
+    const captured = await approvedRun({ captureContent: true });
+    expect(captured.attributes.result).toEqual({ charged: true });
+    expect(captured.attributes['gen_ai.tool.call.result']).toBe('{"charged":true}');
   });
 });

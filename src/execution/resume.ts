@@ -42,6 +42,8 @@ import { readonlyPrincipal } from './runPrincipal';
 import type { OAuthTokenStore } from '../oauth/types';
 import { isSignInRequired, settleSignInRequired, signInOwner, signInRequest, SignInPendingError, type SignInRequired } from '../oauth/signIn';
 import { newId } from '../utils/id';
+import { agentRunSpanInit, recordToolOutcome, resolveCaptureContent, toolSpanInit } from './genAiSpans';
+import { withSpan } from './tracing';
 
 /**
  * Options passed through to the underlying AgentExecutor.execute() call
@@ -84,6 +86,7 @@ export type ResumeExecuteOptions = Omit<
   | 'initialUsage'
   | 'sessionId'
   | 'checkpointStore'
+  | 'agentSpanId'
 > & {
   /**
    * LOU-W9.2: the agent as it is now, so `onAgentDrift` can compare its
@@ -185,36 +188,53 @@ async function resumeObserved(
     resumeRun: resumeAfterApproval,
     approver: readonlyPrincipal(approver),
   };
-  let step: Awaited<ReturnType<typeof decidedToolMessage>>;
-  try {
-    step = await streamedDecision(ctx, pending, drift);
-  } catch (error) {
-    // M10c: a paused sub-agent refused the resume before anything ran, so this run stays paused too.
-    if (refusedResumes.has(error as object)) await restorePause({ pending, snapshot }, approvalStore, staleCheckpoint, checkpointStore);
-    throw error;
-  }
-  if ('paused' in step) {
-    // LOU-U8: the sub-agent paused again, so the session still awaits an approval.
-    const businessState = executeOptions.businessState !== undefined ? executeOptions.businessState : staleBusinessState;
-    await markAwaitingApproval(snapshot, step.paused, checkpointStore, businessState);
-    return step.paused;
-  }
-  // LOU-Y1: a call whose sub-agent paused already has a placeholder result.
-  replaceToolResult(messages, step.message);
-  closeUnlistedToolCalls(messages, snapshot.remainingToolCalls);
+  // #281: the decided tool runs inside the continued run's `invoke_agent` span, which the continuation then adopts.
+  const captureContent = resolveCaptureContent(executeOptions.captureContent);
+  const runSpan = (): ReturnType<typeof agentRunSpanInit> => agentRunSpanInit({ agent: snapshot.agent, provider, sessionId: snapshot.sessionId, input: messages }, captureContent);
+  const init = runSpan();
+  return withSpan(
+    executeOptions.exporter,
+    init.name,
+    init.attributes,
+    async (span) => {
+      ctx.runSpanId = span.id;
+      let step: Awaited<ReturnType<typeof decidedToolMessage>>;
+      try {
+        step = await streamedDecision(ctx, pending, drift);
+      } catch (error) {
+        // M10c: a paused sub-agent refused the resume before anything ran, so this run stays paused too.
+        if (refusedResumes.has(error as object)) await restorePause({ pending, snapshot }, approvalStore, staleCheckpoint, checkpointStore);
+        throw error;
+      }
+      if ('paused' in step) {
+        // LOU-U8: the sub-agent paused again, so the session still awaits an approval.
+        const businessState = executeOptions.businessState !== undefined ? executeOptions.businessState : staleBusinessState;
+        await markAwaitingApproval(snapshot, step.paused, checkpointStore, businessState);
+        return step.paused;
+      }
+      // LOU-Y1: a call whose sub-agent paused already has a placeholder result.
+      replaceToolResult(messages, step.message);
+      closeUnlistedToolCalls(messages, snapshot.remainingToolCalls);
+      // The span's input is the transcript the continued run starts from, decided call included.
+      span.attributes = { ...span.attributes, ...runSpan().attributes };
 
-  // LOU-U7: the turn's remaining calls still have no result here;
-  // AgentExecutor.execute() finds them in the transcript and runs them
-  // through its normal batch path before calling the model again.
-  return continueResumedRun(snapshot, messages, {
-    provider,
-    toolRegistry,
-    executeOptions,
-    checkpointStore,
-    approvalStore,
-    staleBusinessState,
-    usage: ctx.usage,
-  });
+      // LOU-U7: the turn's remaining calls still have no result here;
+      // AgentExecutor.execute() finds them in the transcript and runs them
+      // through its normal batch path before calling the model again.
+      return continueResumedRun(snapshot, messages, {
+        provider,
+        toolRegistry,
+        executeOptions,
+        checkpointStore,
+        approvalStore,
+        staleBusinessState,
+        usage: ctx.usage,
+        agentSpanId: span.id,
+      });
+    },
+    executeOptions.parentSpanId,
+    init.kind
+  );
 }
 
 /**
@@ -442,18 +462,54 @@ async function decidedToolMessage(
     onDelegatedUsage: (child) => mergeDelegatedUsage(ctx.usage, child),
     execute: ctx.execute,
   };
-  // N14: an approved `run_code` call runs its script, whose calls pass this run's gate.
-  const registry = toolName === RUN_CODE_TOOL ? await approvedCodeMode(ctx, scope) : ctx.toolRegistry;
   // LOU-X9: the tool sees the decision's note (an `ask_question` answer) as `ctx.approval`; N10b: and who decided as `by`.
   let message: Message;
   try {
-    message = await runApproved(pending, registry, scope, { note: ctx.decision.note, ...(ctx.approver && { by: ctx.approver }) });
+    message = await runApprovedInSpan(ctx, pending, scope, async () => {
+      // N14: an approved `run_code` call runs its script, whose calls pass this run's gate (and are traced under its span).
+      const registry = toolName === RUN_CODE_TOOL ? await approvedCodeMode(ctx, scope) : ctx.toolRegistry;
+      return runApproved(pending, registry, scope, { note: ctx.decision.note, ...(ctx.approver && { by: ctx.approver }) });
+    });
   } catch (error) {
     if (!isSignInRequired(error)) throw error;
     return signInAgain(ctx, pending, error);
   }
   // LOU-X8: the transcript remembers the approval, for `once()`.
   return { message: { ...message, metadata: { ...message.metadata, ...approvalMarker(pending.args) } } };
+}
+
+/**
+ * #281: runs the approved call in an `execute_tool` span under the continued
+ * run's `invoke_agent` span, with the content rules of the main loop's tool
+ * spans (`captureContent`, `redactContent`). A call that needs sign-in again
+ * is a pause, not a failure: its error ends outside the span.
+ */
+async function runApprovedInSpan(ctx: ResumeContext, pending: PendingApproval, scope: ToolCallScope, run: () => Promise<Message>): Promise<Message> {
+  const { executeOptions, snapshot } = ctx;
+  const { exporter, redactContent = false } = executeOptions;
+  const init = toolSpanInit({ id: pending.toolCallId, name: pending.toolName }, { agent: executeOptions.currentAgent ?? snapshot.agent, toolRegistry: ctx.toolRegistry, sessionId: snapshot.sessionId });
+  const outcome = await withSpan(
+    exporter,
+    init.name,
+    init.attributes,
+    async (span) => {
+      scope.spanId = span.id;
+      const startedAt = Date.now();
+      try {
+        const message = await run();
+        const { result, error } = toolResultOf(message);
+        recordToolOutcome(span, { args: pending.args, result, error, latencyMs: Date.now() - startedAt }, { redactContent, captureContent: resolveCaptureContent(executeOptions.captureContent) });
+        return { message };
+      } catch (error) {
+        if (isSignInRequired(error)) return { signIn: error };
+        throw error;
+      }
+    },
+    ctx.runSpanId,
+    init.kind
+  );
+  if ('signIn' in outcome) throw outcome.signIn;
+  return outcome.message;
 }
 
 /**
@@ -472,6 +528,7 @@ async function approvedCodeMode(ctx: ResumeContext, scope: ToolCallScope): Promi
   const toolRegistry = coded.toolRegistry ?? ctx.toolRegistry;
   scope.callTool = nestedToolCaller({
     parentToolCallId: scope.toolCallId,
+    parentSpanId: scope.spanId,
     base: {
       agent: coded.agent,
       toolRegistry,
@@ -821,11 +878,13 @@ function continueResumedRun(
     approvalStore: ApprovalStore;
     staleBusinessState: unknown;
     usage: RunUsage;
+    agentSpanId: string;
   }
 ): Promise<ExecutionResult> {
   const { executeOptions } = run;
   return AgentExecutor.execute({
     ...executeOptions,
+    agentSpanId: run.agentSpanId,
     agent: snapshot.agent,
     input: messages,
     provider: run.provider,
