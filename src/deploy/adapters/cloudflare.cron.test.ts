@@ -110,8 +110,8 @@ describe('built Worker bundle scheduled()', () => {
     expect(waited).toHaveLength(1);
     await waited[0];
     const keys = [...kv.data.keys()];
-    expect(keys.some((key) => key.includes('schedule:report'))).toBe(true);
-    expect(keys.some((key) => key.includes('schedule:tick'))).toBe(false);
+    expect(keys.some((key) => key.includes('schedule-report'))).toBe(true);
+    expect(keys.some((key) => key.includes('schedule-tick'))).toBe(false);
   });
 
   it('never throws, and logs, when a turn fails', async () => {

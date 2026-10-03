@@ -27,7 +27,7 @@ export function logScheduleFailure(name: string, error: unknown): void {
 /**
  * Runs the `schedules` whose `cron` equals `controller.cron` (the trigger a
  * Cloudflare Worker's `scheduled()` was invoked for), inside `ctx.waitUntil`.
- * A prompt schedule is a turn under the session `schedule:<name>`, so its runs
+ * A prompt schedule is a turn under the session `schedule-<name>`, so its runs
  * can be read back from the agent's store. A failing schedule is logged with
  * `console.error` (name and error code) and never stops the others; the
  * returned promise never rejects.
@@ -53,7 +53,7 @@ export function handleScheduled(
     .map((schedule, index) => ({ schedule, name: scheduleName(schedule, index) }))
     .filter(({ schedule }) => normalize(schedule.cron) === normalize(controller.cron))
     .map(({ schedule, name }) =>
-      fireSchedule(agent, schedule, name, firedAt, `schedule:${name}`).catch((error: unknown) =>
+      fireSchedule(agent, schedule, name, firedAt, `schedule-${name}`).catch((error: unknown) =>
         logScheduleFailure(name, error)
       )
     );

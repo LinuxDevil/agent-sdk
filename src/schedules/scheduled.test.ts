@@ -16,7 +16,7 @@ function ctx() {
 afterEach(() => vi.restoreAllMocks());
 
 describe('handleScheduled', () => {
-  it('runs the schedules matching controller.cron as turns in session schedule:<name>, inside waitUntil', async () => {
+  it('runs the schedules matching controller.cron as turns in session schedule-<name>, inside waitUntil', async () => {
     const store = memoryStore();
     const provider = mockModel(['Report sent.']);
     const agent = createAgent({ provider, prompt: 'You report.', store });
@@ -29,7 +29,9 @@ describe('handleScheduled', () => {
     expect(context.promises).toEqual([done]);
     await done;
     expect(provider.calls).toHaveLength(1);
-    const session = await store.checkpoints?.load('schedule:report');
+    const sessionId = 'schedule-report';
+    expect(sessionId).toMatch(/^[A-Za-z0-9_-]{1,128}$/);
+    const session = await store.checkpoints?.load(sessionId);
     expect(JSON.stringify(session)).toContain('Weekly report.');
   });
 
