@@ -8,6 +8,7 @@ import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import type { GenerateOptions, StreamChunk } from '../providers/llm';
 import { textOf } from '../providers';
+import { resolveProvider } from '../providers/resolveProvider';
 
 let dir: string;
 let file: string;
@@ -61,6 +62,20 @@ describe('recordReplay record then replay', () => {
     expect(await replay.generate(ask('two'))).toEqual(second);
     expect(await replay.getModels()).toEqual(['gpt-test']);
     expect(replay.supportsTools('x') && replay.supportsStreaming('x')).toBe(true);
+  });
+
+  it('replays a provider/model spec resolved without an API key (LOU-R10)', async () => {
+    await recordReplay(mockModel(['ok']), { cassette: file, mode: 'record' }).generate(ask('hi', { model: 'gpt-4o-mini' }));
+
+    vi.stubEnv('OPENAI_API_KEY', '');
+    vi.stubEnv('LOUSHO_EVAL_CASSETTES', 'replay');
+    try {
+      // Resolving the spec needs no key: the cassette answers every call.
+      const replay = recordReplay(resolveProvider('openai/gpt-4o-mini'), { cassette: file, mode: 'replay' });
+      expect((await replay.generate(ask('hi', { model: 'gpt-4o-mini' }))).text).toBe('ok');
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('replays an agent run end to end with the same usage numbers', async () => {

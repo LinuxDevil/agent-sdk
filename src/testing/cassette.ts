@@ -5,6 +5,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { SDKError } from '../execution/errors';
@@ -178,10 +179,26 @@ export async function writeCassette(file: string, cassette: Cassette): Promise<v
   }
 }
 
+/**
+ * The directory holding this module, in both build formats (LOU-R10):
+ * `__dirname` in the CJS build (and under vitest), `import.meta.url` in the
+ * `.mjs` build where `__dirname` does not exist. `undefined` when neither is
+ * available (the CJS build compiles `import.meta` to an empty object, so the
+ * fallback can throw - it is caught).
+ */
+function moduleDir(): string | undefined {
+  if (typeof __dirname === 'string') return __dirname;
+  try {
+    return path.dirname(fileURLToPath(import.meta.url));
+  } catch {
+    return undefined;
+  }
+}
+
 /** Find this package's version for the cassette header ("unknown" if it cannot be found). */
 function readSdkVersion(): string {
-  let dir = __dirname;
-  for (let depth = 0; depth < 5; depth++) {
+  let dir = moduleDir();
+  for (let depth = 0; dir !== undefined && depth < 5; depth++) {
     try {
       const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')) as {
         name?: string;
