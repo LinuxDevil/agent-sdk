@@ -110,6 +110,8 @@ export const SdkAttr = {
    * span: the SDK did not run them.
    */
   HOSTED_TOOL_CALLS: 'lousho.hosted_tool_calls',
+  /** N14: on the `execute_tool` span of a tool call a `run_code` script made, the `run_code` call's id (that span is its parent). */
+  PARENT_TOOL_CALL_ID: 'lousho.tool.parent_call_id',
 } as const;
 
 /**

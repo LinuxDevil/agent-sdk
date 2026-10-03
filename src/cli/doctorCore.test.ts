@@ -456,6 +456,8 @@ describe('report, rendering and exit codes', () => {
       [ ok ] Optional package dockerode: 5.0.1 installed - enables Docker sandboxing (SubprocessSandbox)
       [ ok ] Optional package @modelcontextprotocol/sdk: 1.30.1 installed - enables MCP (serveMcp, \`lousho mcp\` and MCP client connections)
       [ ok ] Optional package prompts: 2.4.2 installed - enables the interactive prompts of \`lousho init\` (pass --yes to skip them)
+      [warn] Optional package quickjs-emscripten: not installed (optional) - enables code mode (\`createAgent({ codeMode })\`)
+             fix: npm install quickjs-emscripten@^0.32.0
       [ ok ] openai (OPENAI_API_KEY): set
       [warn] anthropic (ANTHROPIC_API_KEY): not set
              fix: Set ANTHROPIC_API_KEY in your environment, e.g. export ANTHROPIC_API_KEY=<your key>
@@ -465,7 +467,7 @@ describe('report, rendering and exit codes', () => {
       [ ok ] Default provider for createAgent(): would use 'openai/gpt-4o-mini'
       [ ok ] Docker: daemon not reachable (only needed for sandboxed tools; none configured)
 
-      11 ok, 3 warnings, 1 failure"
+      11 ok, 4 warnings, 1 failure"
     `);
     expect(text).not.toMatch(/[^\x20-\x7e\n]/);
   });

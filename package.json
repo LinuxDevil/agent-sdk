@@ -194,6 +194,7 @@
     "ollama-ai-provider": "^1.2.0",
     "ollama-ai-provider-v2": "^2.0.0 || ^3.0.0 || ^4.0.0",
     "prompts": "^2.4.2",
+    "quickjs-emscripten": "^0.32.0",
     "react": "^18 || ^19",
     "tsup": "^8.0.0",
     "vue": "^3",
@@ -222,6 +223,9 @@
       "optional": true
     },
     "prompts": {
+      "optional": true
+    },
+    "quickjs-emscripten": {
       "optional": true
     },
     "react": {
@@ -259,6 +263,7 @@
     "eslint": "^10.11.0",
     "fallow": "^3.31.0",
     "prompts": "^2.4.2",
+    "quickjs-emscripten": "^0.32.0",
     "react": "^18.3.1",
     "react-test-renderer": "^18.3.1",
     "selfsigned": "^5.5.0",
@@ -267,8 +272,8 @@
     "typedoc": "^0.28.20",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.70.1",
-    "vue": "^3.5.0",
     "vitest": "^1.0.0",
+    "vue": "^3.5.0",
     "wrangler": "^4.143.0",
     "zod": "^3.25.76"
   }

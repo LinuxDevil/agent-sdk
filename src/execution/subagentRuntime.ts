@@ -27,6 +27,7 @@ import type { AgentFingerprint } from './agentFingerprint';
 import type { Principal } from '../auth/types';
 import type { ResumeExecuteOptions } from './resume';
 import { PropagatingToolError } from './propagatingToolError';
+import type { NestedToolCaller } from './codeMode';
 import { toolErrorResult } from './toolErrors';
 
 /** The parent run options a child run inherits. */
@@ -73,6 +74,8 @@ export interface ToolCallScope {
    * `approver` (N10b) is who decided, for the sub-agent's approved call.
    */
   resume?: { decision: ApprovalDecision; suspension: SubagentSuspension; run: ResumeRun; approver?: Principal };
+  /** N14: set on a `run_code` call: runs one inner tool call of its script through this run's gate. */
+  callTool?: NestedToolCaller;
 }
 
 /** `resumeAfterApproval()`, handed to the delegation core to resume a child. */

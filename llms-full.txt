@@ -203,6 +203,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md) | The `subagents` option and its `task` tool, inheritance, approvals in sub-agents |
 | [Handoffs](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/handoffs.md) | `handoffs: [billing, support]`: hand the conversation to another agent, input filters, sessions, approvals after a handoff |
 | [Tool search](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tool-search.md) | `deferLoading` on tools and MCP servers: the model finds tools with `tool_search` instead of receiving every definition |
+| [Code mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/code-mode.md) | `codeMode`: the model calls several tools from one sandboxed JavaScript program (`run_code`) |
 | [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md) | On-demand instructions: `defineSkill()`, `loadSkills()` |
 | [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md) | An agent as a folder: layout, mapping to `createAgent()`, security |
 | [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md) | `createAgent({ compaction })`: prune old tool results, then summarize old turns |
@@ -393,8 +394,8 @@ try {
 ### Optional peers
 
 These packages are optional peers too. A project that never uses Docker
-sandboxing, MCP, OpenTelemetry tracing, the React or Vue bindings, `lousho build`
-or the `lousho init` questions installs none of them:
+sandboxing, MCP, OpenTelemetry tracing, the React or Vue bindings, `lousho build`,
+the `lousho init` questions or code mode installs none of them:
 
 | Package                     | Range     | Enables                                                                                       | Install                                          |
 | --------------------------- | --------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------ |
@@ -405,6 +406,7 @@ or the `lousho init` questions installs none of them:
 | `vue`                       | `^3`      | The Vue bindings (`@lousho/build-ai-agent/vue`)                                               | `npm install vue@^3`                             |
 | `tsup`                      | `^8.0.0`  | `lousho build`, which bundles the agent for each target                                       | `npm install --save-dev tsup@^8.0.0`             |
 | `prompts`                   | `^2.4.2`  | The interactive questions of `lousho init` (`lousho init --yes` and flags need nothing)       | `npm install prompts@^2.4.2`                     |
+| `quickjs-emscripten`        | `^0.32.0` | [Code mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/code-mode.md): `createAgent({ codeMode })` runs `run_code` scripts in its QuickJS isolate | `npm install quickjs-emscripten@^0.32.0` |
 
 Like the provider packages, each is loaded on first use, never at import
 time, and a missing one fails that call with a `MissingPeerDependencyError`
@@ -4018,6 +4020,7 @@ Source: docs/cloudflare-workers.md
 | Tools written in TypeScript | yes, in an agent directory: no Node builtins, and from `@lousho/build-ai-agent` only the names listed under [Agent directories on a Worker](#build-and-deploy) | yes, in an agent directory |
 | Sandboxed tool execution | no (the build swaps the sandbox for a shim that fails when used) | yes |
 | MCP servers over stdio | no (the child process cannot start; the shim fails when used) | yes |
+| [Code mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/code-mode.md) (`codeMode`) | no (the build swaps QuickJS for a shim that fails the run at its start) | yes |
 | MCP servers over HTTP | not verified | yes |
 | Sessions, checkpoints, approvals | one KV namespace, `AGENT_CHECKPOINTS` (eventually consistent) | memory, files, SQLite |
 | Schedules | cron triggers only, in UTC, five fields, one-minute granularity | full cron expressions, with a time zone |
@@ -4302,6 +4305,227 @@ the argument of such a call and nowhere else. The bundle is larger than a single
 Worker (about 1.7 MB raw, 340 KB gzip for a `mock` agent on `ai` v4; about 3.4 MB
 raw, 630 KB gzip on `ai` v7): `lousho build` reports
 its size, and `describe()` compares it to Cloudflare's script size limit.
+
+# Code mode
+
+Source: docs/code-mode.md
+
+With code mode the model gets one more tool, `run_code`. Instead of calling
+tools one at a time, with a model round trip after each, it writes a short
+JavaScript program that calls the agent's tools as async functions, loops,
+filters and combines their results, and returns one value. Many tool calls then
+cost one model round trip, and large intermediate results never enter the
+context: only the program's return value does.
+
+The program runs in a QuickJS WebAssembly isolate inside your process, not in
+Docker. Every tool call it makes goes through the same checks as a call the
+model makes directly: argument validation, hooks, permission rules and modes,
+guardrails and `needsApproval`.
+
+## When to use it
+
+- The answer needs several calls whose inputs depend on earlier results (look
+  up three prices, then convert the sum).
+- A tool returns much more than the model needs (a long list to filter, a
+  report to count).
+- The same call runs over a list of items.
+
+For a single call, or when each step needs the model's judgement, direct tool
+calls are simpler and the model is better at them.
+
+## Turn it on
+
+Install the optional peer `quickjs-emscripten` and set `codeMode` on
+`createAgent()`:
+
+```bash
+npm install quickjs-emscripten@^0.32.0
+```
+
+```ts
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+const prices: Record<string, number> = { apple: 1.2, pear: 0.8, plum: 2 };
+
+const getPrice = defineTool({
+  name: 'get_price',
+  description: 'The price of one fruit in USD',
+  input: z.object({ item: z.string() }),
+  execute: async ({ item }) => ({ item, usd: prices[item] ?? null }),
+});
+
+const convert = defineTool({
+  name: 'convert',
+  description: 'Converts an amount in USD to another currency',
+  input: z.object({ amount: z.number(), to: z.enum(['EUR', 'GBP']) }),
+  execute: async ({ amount, to }) => ({ amount: amount * (to === 'EUR' ? 0.9 : 0.8), currency: to }),
+});
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  tools: [getPrice, convert],
+  codeMode: { exclusive: true },
+});
+
+const { text } = await agent.send('What do an apple, a pear and a plum cost together in EUR?');
+```
+
+A script the model might write for that question:
+
+```js
+let usd = 0;
+for (const item of ['apple', 'pear', 'plum']) {
+  usd += (await tools.get_price({ item })).usd;
+}
+const eur = await tools.convert({ amount: usd, to: 'EUR' });
+return { usd, eur: eur.amount };
+```
+
+`run_code` returns `{ result, logs, toolCalls }`: the script's return value,
+the lines it logged with `console.log()` (and `console.error()` / `warn()`,
+prefixed with their level) and how many tool calls it made.
+
+Without `quickjs-emscripten` installed, the first run of an agent with
+`codeMode` fails with a `MissingPeerDependencyError` that names the package and
+the install command.
+
+## Options
+
+`codeMode: true` uses the defaults. An object sets any of these:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `tools` | see below | Names of the tools a script may call. Names the run has no tool for are skipped. `run_code` itself is refused. |
+| `exclusive` | `false` | `true` takes those tools off the model's tool list, so it must call them through `run_code`. Scripts still call them. |
+| `timeoutMs` | `30000` | Time for the whole script, including the tool calls it waits for. |
+| `memoryLimitBytes` | `67108864` (64 MiB) | Memory of the isolate. |
+| `maxToolCalls` | `50` | Tool calls per script. |
+| `maxOutputChars` | `20000` | Characters of the return value (as JSON) plus the logs. |
+
+Without `tools`, a script may call every tool of the run except `run_code`,
+`ask_question`, sub-agent tools (`task`, `agent_status`, `agent_await`,
+`agent_cancel`, `delegate_to_*`), `tool_search`, `load_skill` and tools that
+[tool search](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tool-search.md) defers. Name a tool in `tools` to allow it
+anyway: a deferred tool named there is callable from scripts and its signature
+is in `run_code`'s description (so it is no longer kept out of the context for
+code mode), while it stays off the model's own tool list until `tool_search`
+loads it.
+
+The model learns what it can call from `run_code`'s description: one
+TypeScript-like signature per allowed tool, built from its input schema, with
+its description as a comment:
+
+```text
+// The price of one fruit in USD
+tools.get_price(args: { item: string }): Promise<unknown>
+```
+
+Results have no declared type, so when a script fails, the error lists the
+script's first five tool calls with their arguments and results (each cut at
+200 characters). The model can read the shapes there and fix the script.
+
+## What a script can and cannot do
+
+The code is the body of an `async` function. It can use the JavaScript
+language and its built-ins (`JSON`, `Math`, `Date`, `Promise`, arrays, maps,
+regular expressions), call tools, log, and return a value.
+
+- `await tools.<name>(args)` resolves with the tool's result, or throws an
+  `Error` (`name: 'ToolError'`) whose message is the tool's error message.
+  `tools` holds only the allowed tools and cannot be changed.
+- Arguments and results cross the boundary as JSON copies: a `Date` arrives as
+  a string, functions and `undefined` fields are dropped, and changing a result
+  inside the script changes nothing outside it.
+- `Promise.all` runs calls at the same time, at most `toolConcurrency` of them
+  (the agent's setting) per script.
+- The return value must be JSON-serializable; `undefined` becomes `null`.
+
+There is no `require`, `import`, `process`, `fetch`, file system, network,
+`setTimeout` or other timer, and no host object. A script can only reach the
+outside world through the tools it is given.
+
+## The security model
+
+- **Isolation.** Each script gets a fresh QuickJS runtime and context in
+  WebAssembly, with nothing of the host in it but two functions (one tool
+  call, one log line) that the SDK's own setup code takes off the global object
+  before the script runs. `node:vm` is not used: it is not a security boundary.
+- **Limits.** The memory limit and a 512 KiB stack limit are enforced by the
+  isolate. The deadline is checked by an interrupt handler while the script
+  computes, so a loop that never ends is stopped at `timeoutMs` (a `try` /
+  `catch` cannot catch that stop), and by a timer while it waits for a tool.
+  Too many tool calls stop the script too, even if it catches the error.
+- **The gate per call.** Each `tools.x(args)` is an inner tool call of the run:
+  validated against the tool's schema, then pre-tool hooks, permission rules,
+  the [permission mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md), [tool guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md)
+  and `needsApproval`, then the tool runs (through the run's sandbox when it is
+  `requiresSandbox`) with the run's principal, then post-tool hooks. A denied call throws in the script with the denial's reason.
+  A guardrail that blocks an inner call stops the whole run, as it does for a
+  direct call.
+- **Plan mode.** `run_code` is marked read-only: it changes nothing by itself.
+  In plan mode each inner call is checked on its own, so a script can call
+  read-only tools and a call to any other tool throws `denied by plan mode`.
+- **Errors.** A tool's error reaches the script as its message only, never a
+  host stack trace. Tokens a tool got from `ctx.getToken()` are redacted from
+  its result, as for a direct call.
+
+A script that computes without waiting runs on your process's thread: it
+blocks the event loop until it ends or `timeoutMs` stops it. On a server that
+handles other requests, keep `timeoutMs` low.
+
+## Approvals, sign-ins and other pauses
+
+A script cannot pause. A QuickJS isolate cannot be saved and resumed later, so
+an inner call that would pause the run throws in the script instead, and the
+run does not pause:
+
+| The inner call | What the script gets |
+| --- | --- |
+| needs approval (`needsApproval`, an `ask` rule) | `Tool x needs approval; call it directly, not from run_code.` |
+| needs a sign-in (`ctx.getToken()` without a token) | `Tool x needs the user to sign in to <provider>; call it directly, not from run_code.` |
+| starts a sub-agent that needs approval | `Tool x started a sub-agent that needs approval; call it directly, not from run_code.` |
+
+The model can then call that tool directly, which pauses the run as usual.
+`run_code` itself can need approval (for example with `permissions: [ask('*')]`):
+the run pauses before the script runs, and the script runs, with every inner
+call checked, after the decision.
+
+## Events and traces
+
+Inner calls emit the usual `tool.start`, `tool.partial`, `tool.done` and
+`tool.error` [events](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/stream-events.md), with `parentToolCallId` set to the
+`run_code` call's id. Their ids are `<run_code call id>:<n>`, numbered in the
+order the script made the calls. Each inner call's `tool.done` or `tool.error`
+comes before `run_code`'s own: when a script ends (or is stopped) while calls
+it started are still running, their `abortSignal` is aborted and `run_code`
+waits for them to settle. Inner calls also produce `permission.decision`
+events, and hooks see them, under their own ids.
+
+Inner results go to the events and to the script only. The transcript, the
+session and the model get `run_code`'s result alone.
+
+With tracing, each inner call has its own `execute_tool` span, a child of the
+`run_code` span, with the attribute `lousho.tool.parent_call_id`.
+
+## Limits and durability
+
+- **No partial progress.** A script's state lives only in the isolate. After a
+  crash, a resumed run calls `run_code` again and the whole script runs again,
+  including the tool calls it had made. Make tools a script calls idempotent
+  (each inner call's `ctx.toolCallId` is the same on a re-run: use it as an
+  idempotency key), or call tools with side effects directly.
+- **JavaScript only.** The model writes JavaScript; TypeScript is not
+  transpiled.
+- **Where it runs.** The runs of a `createAgent()` agent: `send()`, `stream()`,
+  sessions, resumes and approvals, on Node. The `cloudflare-worker` target of
+  `lousho build` does not bundle QuickJS: a run with `codeMode` fails there at
+  its start. An agent started as a sub-agent (the `task`
+  tool or a delegate tool) runs without code mode, and the lead's `codeMode`
+  does not reach a sub-agent's tools.
+- **Errors are results.** A script error, a timeout, the memory limit, too many
+  tool calls or a return value over `maxOutputChars` is a tool error of
+  `run_code` that names the cause; the model gets it and the run goes on.
 
 # Context compaction
 
@@ -9578,6 +9802,7 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `gen_ai.tool.description` | The tool's description, when it has one |
 | `gen_ai.tool.type` | `function` |
 | `gen_ai.agent.name`, `gen_ai.conversation.id` | The calling agent / session |
+| `lousho.tool.parent_call_id` | On a call a [code mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/code-mode.md) script made: the `run_code` call's id (its span is the parent) |
 
 ### Flows
 
@@ -11874,7 +12099,7 @@ The event types and their extra fields:
 | `reasoning.start`    | (none) | The model starts reasoning in this step. Only with the [`reasoning` option](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/reasoning.md) (or a model that always reasons). Its `reasoning.delta`s and `reasoning.done` follow, before the step's first `text.delta` or `tool.start`. |
 | `reasoning.delta`    | `text: string` | A chunk of reasoning text (or of its summary). Never part of `text.delta` / `run.done`'s `text`. |
 | `reasoning.done`     | `text: string`, `tokens?: number` | The reasoning ended: `text` is all of it; `tokens` when the provider reported reasoning tokens by then. |
-| `tool.start`         | `toolCallId: string`, `toolName: string`, `args: Record<string, unknown>` | A tool call starts. `args` are the model's arguments parsed from JSON (`{}` when they are not valid JSON). |
+| `tool.start`         | `toolCallId: string`, `toolName: string`, `args: Record<string, unknown>`, `parentToolCallId?: string` | A tool call starts. `args` are the model's arguments parsed from JSON (`{}` when they are not valid JSON). A call a [code mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/code-mode.md) script made carries `parentToolCallId`, the `run_code` call's id (also on its `tool.partial`, `tool.done` and `tool.error`). |
 | `tool.partial`       | `toolCallId`, `toolName`, `output: unknown`, `index: number` | A snapshot of a running tool's output: a tool whose `execute` is an `async function*` reports one per `yield` (see [Streaming partial results](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#streaming-partial-results)). Each snapshot is complete and replaces the previous one; `index` counts the call's snapshots from 0. The last one is also the call's `tool.done` `result`. `output` is JSON-encoded like `result`. Snapshots never reach the model, the transcript, checkpoints or traces. A sub-agent's carries `subagent`. |
 | `tool.done`          | `toolCallId`, `toolName`, `result: unknown`, `durationMs: number` | A tool call returned. `result` is the value as it would be JSON-encoded (`undefined` becomes `null`, a `Date` becomes a string). `durationMs` counts from its `tool.start`. |
 | `todo.updated`       | `todos: Todo[]`, `counts: { pending, in_progress, completed, total }`, `toolCallId: string` | A successful `todo_write` call of the [todo tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#todo-tools) replaced the list, right after that call's `tool.done`. `todos` is the complete new list (`{ id, content, status }`), `toolCallId` the `todo_write` call. A sub-agent's carries `subagent`. The [UI bindings](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md#todos) keep the list and show it live. |
@@ -11912,6 +12137,8 @@ Optional fields are left out when they have no value. They are never
 - Tool calls of one step run in parallel (see `toolConcurrency`):
   `tool.start` events come in the model's call order and `tool.done` /
   `tool.error` events in completion order. Match them by `toolCallId`.
+- A `run_code` call's inner calls ([code mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/code-mode.md)) start and
+  settle between its own `tool.start` and its `tool.done` / `tool.error`.
 - A call's `tool.partial` events come between its `tool.start` and its
   `tool.done` / `tool.error`, with `index` 0, 1, 2, ...; the partials of
   parallel calls interleave. A call that pauses for a sign-in has no
@@ -13740,6 +13967,9 @@ descriptors that set neither `inputSchema` nor `execute`.
 - **Progress.** An `execute` written as `async function*` streams snapshots
   of its output while it runs; the last one is the result. See
   [Streaming partial results](#streaming-partial-results).
+- **Many calls in one step.** With `createAgent({ codeMode })` the model can
+  also call tools from a short JavaScript program (`run_code`), each call going
+  through the same checks. See [Code mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/code-mode.md).
 - **Retries after a crash.** With durable execution a tool can run more than
   once across a crash; use `ctx.toolCallId` as an idempotency key. See
   [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#at-least-once-tools-make-side-effects-idempotent).

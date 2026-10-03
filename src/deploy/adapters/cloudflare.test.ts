@@ -222,6 +222,9 @@ describe('CloudflareWorkerAdapter', () => {
       expect(bundle.length).toBeGreaterThan(0);
       expect(findNodeBuiltinReferences(bundle)).toEqual([]);
       expect(withoutBuiltinProbes(bundle)).not.toMatch(/node:/);
+      // N14: code mode's QuickJS (Emscripten) runtime is swapped for a shim, never bundled.
+      expect(bundle).not.toMatch(/MEMFS|quickjs-wasmfile/);
+      expect(bundle).toContain('Code mode (createAgent({ codeMode })) is not supported on the cloudflare-worker target yet');
       expect(bundle).toMatch(/^export \{/m);
       // Browser-platform bundle: no CommonJS module wrapper at the top level.
       expect(bundle).not.toMatch(/^module\.exports/m);

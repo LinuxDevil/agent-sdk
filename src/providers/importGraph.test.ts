@@ -23,6 +23,7 @@ const NEVER_LOADED_AT_IMPORT = [
   'react', // LOU-P2: only the ./react and ./vue subpaths import their framework, no other entry
   'vue',
   'svelte', // LOU-P3: no entry imports it (the ./svelte store implements the store contract by hand)
+  'quickjs-emscripten', // N14: loaded when a codeMode run starts
   'node:sqlite', // LOU-W5: only the lazily-loaded /sqlite subpath may use it, and only when a store is constructed
 ];
 

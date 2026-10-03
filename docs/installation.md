@@ -87,8 +87,8 @@ try {
 ### Optional peers
 
 These packages are optional peers too. A project that never uses Docker
-sandboxing, MCP, OpenTelemetry tracing, the React or Vue bindings, `lousho build`
-or the `lousho init` questions installs none of them:
+sandboxing, MCP, OpenTelemetry tracing, the React or Vue bindings, `lousho build`,
+the `lousho init` questions or code mode installs none of them:
 
 | Package                     | Range     | Enables                                                                                       | Install                                          |
 | --------------------------- | --------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------ |
@@ -99,6 +99,7 @@ or the `lousho init` questions installs none of them:
 | `vue`                       | `^3`      | The Vue bindings (`@lousho/build-ai-agent/vue`)                                               | `npm install vue@^3`                             |
 | `tsup`                      | `^8.0.0`  | `lousho build`, which bundles the agent for each target                                       | `npm install --save-dev tsup@^8.0.0`             |
 | `prompts`                   | `^2.4.2`  | The interactive questions of `lousho init` (`lousho init --yes` and flags need nothing)       | `npm install prompts@^2.4.2`                     |
+| `quickjs-emscripten`        | `^0.32.0` | [Code mode](./code-mode.md): `createAgent({ codeMode })` runs `run_code` scripts in its QuickJS isolate | `npm install quickjs-emscripten@^0.32.0` |
 
 Like the provider packages, each is loaded on first use, never at import
 time, and a missing one fails that call with a `MissingPeerDependencyError`

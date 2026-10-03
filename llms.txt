@@ -17,6 +17,7 @@
 - [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md): A channel connects an agent to one surface: a JSON API, a webhook, a chat app.
 - [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md): Installing the package also installs the `lousho` command.
 - [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md): `npx lousho build --target=cloudflare-worker --agent=agent.yaml` generates a module Worker (`worker.ts`), a `wrangler.toml` and a bundle, `dist/worker.js`, that the build checks for `node:` imports.
+- [Code mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/code-mode.md): With code mode the model gets one more tool, `run_code`.
 - [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md): A long agent run fills its context window mostly with tool results: file contents, search hits, API responses the model read once and no longer needs in full.
 - [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md): A declarative agent is a YAML (`.yaml`/`.yml`) or JSON (`.json`) file, validated with zod by `loadSpec()` (`src/spec/schema.ts`).
 - [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md): Give `createAgent()` a `store` and pass a `sessionId` to `send()`, and the run survives a crash, a restart, an abort or a human approval that takes days.

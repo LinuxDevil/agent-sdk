@@ -58,6 +58,7 @@ import { createAgentApprovals, type AgentApprovals, type ApproveToolCall } from 
 import { createAgentOAuth, type AgentOAuth } from './oauth/agentOAuth';
 import { assertPermissionMode, type PermissionMode, type PermissionOptions } from './execution/permissions';
 import { assertToolSearchOptions, type ToolSearchOptions } from './execution/toolSearch';
+import { assertCodeModeOptions, codeModeOption, type CodeModeOptions } from './execution/codeMode';
 import type { InferSchemaOutput, StandardSchemaV1 } from './utils/zodCompat';
 import type { McpServerSpec } from './spec/schema';
 import { agentMcp, streamAfter, streamPrepared } from './tools/mcp/agentMcp';
@@ -205,6 +206,23 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    * ```
    */
   toolSearch?: false | ToolSearchOptions;
+  /**
+   * Code mode (N14): adds a `run_code` tool. The model writes one short
+   * JavaScript program that calls the agent's tools as async functions
+   * (`await tools.get_weather({ city: 'Paris' })`), loops and combines their
+   * results, and returns one value: many tool calls for one model round trip.
+   * The script runs in a QuickJS WebAssembly isolate (optional peer
+   * `quickjs-emscripten`) with time, memory, call and output limits; every
+   * tool call it makes passes the same hooks, permission rules, guardrails and
+   * approval check as a direct call, and a call that needs approval is refused
+   * inside the script. See docs/code-mode.md.
+   *
+   * @example
+   * ```ts
+   * createAgent({ model: 'openai/gpt-4o-mini', tools: [getPrice, convert], codeMode: { exclusive: true } });
+   * ```
+   */
+  codeMode?: boolean | CodeModeOptions;
   /**
    * How deep sub-agents may nest. Defaults to 1: this agent's sub-agents
    * cannot call sub-agents of their own (they are not offered the `task`
@@ -687,6 +705,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   if (typeof config.permissionMode === 'string') assertPermissionMode(config.permissionMode, 'createAgent');
   assertMaxHandoffs(config.maxHandoffs);
   assertToolSearchOptions(config.toolSearch, 'createAgent');
+  assertCodeModeOptions(config.codeMode, 'createAgent');
   const agentName = config.name || 'agent';
   const handoffTools = checkHandoffs(config.handoffs, { name: agentName }, 'createAgent').map((checked) => checked.toolName);
   const hasMcp = Object.keys(config.mcpServers ?? {}).length > 0;
@@ -722,6 +741,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     onAgentDrift: config.onAgentDrift,
     reasoning: config.reasoning,
     toolSearch: config.toolSearch,
+    // N14: also for resumed runs and when this agent is a sub-agent.
+    ...codeModeOption(config.codeMode),
   };
   const specs = agentSpecs(config, toolsFor, runOptions);
   const staticSpec = specs.static;

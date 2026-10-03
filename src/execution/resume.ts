@@ -33,6 +33,8 @@ import { replaceToolResult, type ToolCallScope } from './subagentRuntime';
 import type { RunUsage } from '../models/usage';
 import { emptyRunUsage, mergeDelegatedUsage, restoreRunUsage } from './runUsage';
 import { planModeRefusal } from './permissions';
+import { RUN_CODE_TOOL, codeModeOf, nestedToolCaller, withCodeMode } from './codeMode';
+import { withToolSearch } from './toolSearch';
 import { resumeSubagentCall, type ResumeContext } from './resumeSubagent';
 import type { Principal } from '../auth/types';
 import { readonlyPrincipal } from './runPrincipal';
@@ -176,6 +178,7 @@ async function resumeObserved(
     messages,
     toolRegistry,
     executeOptions,
+    provider,
     usage: snapshot.usage ? restoreRunUsage(snapshot.usage) : emptyRunUsage(),
     execute: (options) => AgentExecutor.execute(options),
     resumeRun: resumeAfterApproval,
@@ -438,16 +441,55 @@ async function decidedToolMessage(
     onDelegatedUsage: (child) => mergeDelegatedUsage(ctx.usage, child),
     execute: ctx.execute,
   };
+  // N14: an approved `run_code` call runs its script, whose calls pass this run's gate.
+  const registry = toolName === RUN_CODE_TOOL ? await approvedCodeMode(ctx, scope) : ctx.toolRegistry;
   // LOU-X9: the tool sees the decision's note (an `ask_question` answer) as `ctx.approval`; N10b: and who decided as `by`.
   let message: Message;
   try {
-    message = await runApproved(pending, ctx.toolRegistry, scope, { note: ctx.decision.note, ...(ctx.approver && { by: ctx.approver }) });
+    message = await runApproved(pending, registry, scope, { note: ctx.decision.note, ...(ctx.approver && { by: ctx.approver }) });
   } catch (error) {
     if (!isSignInRequired(error)) throw error;
     return signInAgain(ctx, pending, error);
   }
   // LOU-X8: the transcript remembers the approval, for `once()`.
   return { message: { ...message, metadata: { ...message.metadata, ...approvalMarker(pending.args) } } };
+}
+
+/**
+ * N14: the registry a decided `run_code` call runs from (with the tool as the
+ * run built it, when the run has code mode) and the inner-call runner bound
+ * to `scope`. Without code mode, the registry as it is (the call then fails
+ * as not found).
+ */
+async function approvedCodeMode(ctx: ResumeContext, scope: ToolCallScope): Promise<ToolRegistry> {
+  const { executeOptions, snapshot } = ctx;
+  if (!codeModeOf(executeOptions)) return ctx.toolRegistry;
+  const agent = executeOptions.currentAgent ?? snapshot.agent;
+  const run = { ...executeOptions, agent, provider: ctx.provider, toolRegistry: ctx.toolRegistry } as ExecuteOptions;
+  const { deferral } = withToolSearch(run, agent, ctx.toolRegistry);
+  const coded = await withCodeMode(run, agent, ctx.toolRegistry, deferral);
+  const toolRegistry = coded.toolRegistry ?? ctx.toolRegistry;
+  scope.callTool = nestedToolCaller({
+    parentToolCallId: scope.toolCallId,
+    base: {
+      agent: coded.agent,
+      toolRegistry,
+      onToolCall: executeOptions.onToolCall,
+      onToolResult: executeOptions.onToolResult,
+      sandbox: executeOptions.sandbox ?? NoopSandbox,
+      hooks: executeOptions.hooks,
+      sessionId: snapshot.sessionId,
+      principal: executeOptions.principal,
+      messages: ctx.messages,
+      onDelegatedUsage: scope.onDelegatedUsage,
+    },
+    signal: executeOptions.signal,
+    runtime: scope.runtime,
+    execute: scope.execute,
+    tracing: { exporter: executeOptions.exporter, redactContent: executeOptions.redactContent, captureContent: executeOptions.captureContent },
+    concurrency: executeOptions.toolConcurrency ?? 'unbounded',
+  });
+  return toolRegistry;
 }
 
 /**

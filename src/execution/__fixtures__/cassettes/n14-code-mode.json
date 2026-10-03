@@ -1,0 +1,427 @@
+{
+  "version": 1,
+  "sdkVersion": "1.0.0-alpha.8",
+  "recordedAt": "2026-10-03T02:01:05.637Z",
+  "provider": {
+    "name": "openrouter",
+    "defaultModel": "openai/gpt-4o-mini"
+  },
+  "entries": [
+    {
+      "kind": "stream",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "Answer in one sentence."
+          },
+          {
+            "role": "user",
+            "content": "What do an apple, a pear and a plum cost together in EUR? Use run_code once."
+          }
+        ],
+        "tools": [
+          {
+            "name": "run_code",
+            "description": "Runs a short JavaScript program in a sandbox. Use it to call several tools in one step: loop over them, filter and combine their results in code, and return only what you need.\nThe code is the body of an async function. Call a tool with `await tools.<name>({ ...args })`: it resolves to the tool's result, or throws an Error with the tool's error message. `return` a JSON-serializable value: it is the result. `console.log()` lines come back as `logs`.\nTool results have no declared type: when you do not know the shape of a result, return it (or console.log it) and read it before you compute with it.\nNo network, file system, timers, require or import. Limits: 30000 ms, 50 tool calls, 20000 characters of output. A tool that needs approval or a sign-in cannot be called from a script: call it directly.\nAvailable tools:\n// The price of one fruit in USD\ntools.get_price(args: { item: string }): Promise<unknown>\n// Converts an amount in USD to another currency\ntools.convert(args: { amount: number; to: \"EUR\" | \"GBP\" }): Promise<unknown>",
+            "parameters": {
+              "properties": {
+                "code": {
+                  "checks": [],
+                  "description": "The body of an async JavaScript function: call tools with await tools.<name>({ ... }) and return the result",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          }
+        ],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "",
+        "finishReason": "tool-calls",
+        "usage": {
+          "promptTokens": 345,
+          "completionTokens": 108,
+          "totalTokens": 453
+        },
+        "toolCalls": [
+          {
+            "id": "call_84Z7z11LYXzcsp1Ypppo2qYj",
+            "type": "function",
+            "function": {
+              "name": "run_code",
+              "arguments": "{\"code\":\"const applePrice = await tools.get_price({ item: 'apple' });\\nconst pearPrice = await tools.get_price({ item: 'pear' });\\nconst plumPrice = await tools.get_price({ item: 'plum' });\\nconst totalCostUSD = applePrice + pearPrice + plumPrice;\\nconst totalCostEUR = await tools.convert({ amount: totalCostUSD, to: 'EUR' });\\nreturn totalCostEUR;\"}"
+            }
+          }
+        ],
+        "chunks": [
+          {
+            "delayMs": 3083,
+            "chunk": {
+              "type": "tool-call",
+              "toolCall": {
+                "id": "call_84Z7z11LYXzcsp1Ypppo2qYj",
+                "type": "function",
+                "function": {
+                  "name": "run_code",
+                  "arguments": "{\"code\":\"const applePrice = await tools.get_price({ item: 'apple' });\\nconst pearPrice = await tools.get_price({ item: 'pear' });\\nconst plumPrice = await tools.get_price({ item: 'plum' });\\nconst totalCostUSD = applePrice + pearPrice + plumPrice;\\nconst totalCostEUR = await tools.convert({ amount: totalCostUSD, to: 'EUR' });\\nreturn totalCostEUR;\"}"
+                }
+              }
+            }
+          },
+          {
+            "delayMs": 12,
+            "chunk": {
+              "type": "finish",
+              "finishReason": "tool-calls",
+              "usage": {
+                "promptTokens": 345,
+                "completionTokens": 108,
+                "totalTokens": 453
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "stream",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "Answer in one sentence."
+          },
+          {
+            "role": "user",
+            "content": "What do an apple, a pear and a plum cost together in EUR? Use run_code once."
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "run_code",
+                "arguments": "{\"code\":\"const applePrice = await tools.get_price({ item: 'apple' });\\nconst pearPrice = await tools.get_price({ item: 'pear' });\\nconst plumPrice = await tools.get_price({ item: 'plum' });\\nconst totalCostUSD = applePrice + pearPrice + plumPrice;\\nconst totalCostEUR = await tools.convert({ amount: totalCostUSD, to: 'EUR' });\\nreturn totalCostEUR;\"}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "{\"error\":\"ScriptError\",\"toolName\":\"run_code\",\"message\":\"run_code failed: the script threw ToolError: Invalid arguments for tool 'convert': 1 issue (amount: Expected number, received string)\\nTool calls before the error:\\n- tools.get_price({\\\"item\\\":\\\"apple\\\"}) returned {\\\"item\\\":\\\"apple\\\",\\\"usd\\\":1.2}\\n- tools.get_price({\\\"item\\\":\\\"pear\\\"}) returned {\\\"item\\\":\\\"pear\\\",\\\"usd\\\":0.8}\\n- tools.get_price({\\\"item\\\":\\\"plum\\\"}) returned {\\\"item\\\":\\\"plum\\\",\\\"usd\\\":2}\\n- tools.convert({\\\"amount\\\":\\\"[object Object][object Object][object Object]\\\",\\\"to\\\":\\\"EUR\\\"}) threw Invalid arguments for tool 'convert': 1 issue (amount: Expected number, received string)\",\"kind\":\"execution\"}",
+            "name": "run_code",
+            "toolName": "run_code",
+            "isError": true
+          }
+        ],
+        "tools": [
+          {
+            "name": "run_code",
+            "description": "Runs a short JavaScript program in a sandbox. Use it to call several tools in one step: loop over them, filter and combine their results in code, and return only what you need.\nThe code is the body of an async function. Call a tool with `await tools.<name>({ ...args })`: it resolves to the tool's result, or throws an Error with the tool's error message. `return` a JSON-serializable value: it is the result. `console.log()` lines come back as `logs`.\nTool results have no declared type: when you do not know the shape of a result, return it (or console.log it) and read it before you compute with it.\nNo network, file system, timers, require or import. Limits: 30000 ms, 50 tool calls, 20000 characters of output. A tool that needs approval or a sign-in cannot be called from a script: call it directly.\nAvailable tools:\n// The price of one fruit in USD\ntools.get_price(args: { item: string }): Promise<unknown>\n// Converts an amount in USD to another currency\ntools.convert(args: { amount: number; to: \"EUR\" | \"GBP\" }): Promise<unknown>",
+            "parameters": {
+              "properties": {
+                "code": {
+                  "checks": [],
+                  "description": "The body of an async JavaScript function: call tools with await tools.<name>({ ... }) and return the result",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          }
+        ],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "",
+        "finishReason": "tool-calls",
+        "usage": {
+          "promptTokens": 635,
+          "completionTokens": 114,
+          "totalTokens": 749
+        },
+        "toolCalls": [
+          {
+            "id": "call_fKSUAoDHkwkuPaXtlnvZ7dbm",
+            "type": "function",
+            "function": {
+              "name": "run_code",
+              "arguments": "{\"code\":\"const applePrice = (await tools.get_price({ item: 'apple' })).usd;\\nconst pearPrice = (await tools.get_price({ item: 'pear' })).usd;\\nconst plumPrice = (await tools.get_price({ item: 'plum' })).usd;\\nconst totalCostUSD = applePrice + pearPrice + plumPrice;\\nconst totalCostEUR = await tools.convert({ amount: totalCostUSD, to: 'EUR' });\\nreturn totalCostEUR;\"}"
+            }
+          }
+        ],
+        "chunks": [
+          {
+            "delayMs": 2241,
+            "chunk": {
+              "type": "tool-call",
+              "toolCall": {
+                "id": "call_fKSUAoDHkwkuPaXtlnvZ7dbm",
+                "type": "function",
+                "function": {
+                  "name": "run_code",
+                  "arguments": "{\"code\":\"const applePrice = (await tools.get_price({ item: 'apple' })).usd;\\nconst pearPrice = (await tools.get_price({ item: 'pear' })).usd;\\nconst plumPrice = (await tools.get_price({ item: 'plum' })).usd;\\nconst totalCostUSD = applePrice + pearPrice + plumPrice;\\nconst totalCostEUR = await tools.convert({ amount: totalCostUSD, to: 'EUR' });\\nreturn totalCostEUR;\"}"
+                }
+              }
+            }
+          },
+          {
+            "delayMs": 38,
+            "chunk": {
+              "type": "finish",
+              "finishReason": "tool-calls",
+              "usage": {
+                "promptTokens": 635,
+                "completionTokens": 114,
+                "totalTokens": 749
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "stream",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "Answer in one sentence."
+          },
+          {
+            "role": "user",
+            "content": "What do an apple, a pear and a plum cost together in EUR? Use run_code once."
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "run_code",
+                "arguments": "{\"code\":\"const applePrice = await tools.get_price({ item: 'apple' });\\nconst pearPrice = await tools.get_price({ item: 'pear' });\\nconst plumPrice = await tools.get_price({ item: 'plum' });\\nconst totalCostUSD = applePrice + pearPrice + plumPrice;\\nconst totalCostEUR = await tools.convert({ amount: totalCostUSD, to: 'EUR' });\\nreturn totalCostEUR;\"}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "{\"error\":\"ScriptError\",\"toolName\":\"run_code\",\"message\":\"run_code failed: the script threw ToolError: Invalid arguments for tool 'convert': 1 issue (amount: Expected number, received string)\\nTool calls before the error:\\n- tools.get_price({\\\"item\\\":\\\"apple\\\"}) returned {\\\"item\\\":\\\"apple\\\",\\\"usd\\\":1.2}\\n- tools.get_price({\\\"item\\\":\\\"pear\\\"}) returned {\\\"item\\\":\\\"pear\\\",\\\"usd\\\":0.8}\\n- tools.get_price({\\\"item\\\":\\\"plum\\\"}) returned {\\\"item\\\":\\\"plum\\\",\\\"usd\\\":2}\\n- tools.convert({\\\"amount\\\":\\\"[object Object][object Object][object Object]\\\",\\\"to\\\":\\\"EUR\\\"}) threw Invalid arguments for tool 'convert': 1 issue (amount: Expected number, received string)\",\"kind\":\"execution\"}",
+            "name": "run_code",
+            "toolName": "run_code",
+            "isError": true
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "run_code",
+                "arguments": "{\"code\":\"const applePrice = (await tools.get_price({ item: 'apple' })).usd;\\nconst pearPrice = (await tools.get_price({ item: 'pear' })).usd;\\nconst plumPrice = (await tools.get_price({ item: 'plum' })).usd;\\nconst totalCostUSD = applePrice + pearPrice + plumPrice;\\nconst totalCostEUR = await tools.convert({ amount: totalCostUSD, to: 'EUR' });\\nreturn totalCostEUR;\"}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "{\"result\":{\"amount\":3.6,\"currency\":\"EUR\"},\"logs\":[],\"toolCalls\":4}",
+            "name": "run_code",
+            "toolName": "run_code"
+          }
+        ],
+        "tools": [
+          {
+            "name": "run_code",
+            "description": "Runs a short JavaScript program in a sandbox. Use it to call several tools in one step: loop over them, filter and combine their results in code, and return only what you need.\nThe code is the body of an async function. Call a tool with `await tools.<name>({ ...args })`: it resolves to the tool's result, or throws an Error with the tool's error message. `return` a JSON-serializable value: it is the result. `console.log()` lines come back as `logs`.\nTool results have no declared type: when you do not know the shape of a result, return it (or console.log it) and read it before you compute with it.\nNo network, file system, timers, require or import. Limits: 30000 ms, 50 tool calls, 20000 characters of output. A tool that needs approval or a sign-in cannot be called from a script: call it directly.\nAvailable tools:\n// The price of one fruit in USD\ntools.get_price(args: { item: string }): Promise<unknown>\n// Converts an amount in USD to another currency\ntools.convert(args: { amount: number; to: \"EUR\" | \"GBP\" }): Promise<unknown>",
+            "parameters": {
+              "properties": {
+                "code": {
+                  "checks": [],
+                  "description": "The body of an async JavaScript function: call tools with await tools.<name>({ ... }) and return the result",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          }
+        ],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "The total cost of an apple, a pear, and a plum together is 3.6 EUR.",
+        "finishReason": "stop",
+        "usage": {
+          "promptTokens": 779,
+          "completionTokens": 22,
+          "totalTokens": 801
+        },
+        "chunks": [
+          {
+            "delayMs": 915,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "The"
+            }
+          },
+          {
+            "delayMs": 1,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " total"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " cost"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " of"
+            }
+          },
+          {
+            "delayMs": 49,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " an"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " apple"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": ","
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " a"
+            }
+          },
+          {
+            "delayMs": 52,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " pear"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": ","
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " and"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " a"
+            }
+          },
+          {
+            "delayMs": 47,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " plum"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " together"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " is"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " "
+            }
+          },
+          {
+            "delayMs": 59,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "3"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "."
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "6"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " EUR"
+            }
+          },
+          {
+            "delayMs": 20,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "."
+            }
+          },
+          {
+            "delayMs": 16,
+            "chunk": {
+              "type": "finish",
+              "finishReason": "stop",
+              "usage": {
+                "promptTokens": 779,
+                "completionTokens": 22,
+                "totalTokens": 801
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

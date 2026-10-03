@@ -118,6 +118,7 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `gen_ai.tool.description` | The tool's description, when it has one |
 | `gen_ai.tool.type` | `function` |
 | `gen_ai.agent.name`, `gen_ai.conversation.id` | The calling agent / session |
+| `lousho.tool.parent_call_id` | On a call a [code mode](./code-mode.md) script made: the `run_code` call's id (its span is the parent) |
 
 ### Flows
 

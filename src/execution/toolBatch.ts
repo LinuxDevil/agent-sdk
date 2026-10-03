@@ -77,8 +77,8 @@ type Slot =
   | { status: 'completed'; outcome: ToolCallOutcome }
   | { status: 'failed'; error: unknown };
 
-/** Hands out at most `limit` slots; waiters are served first-come first-served. */
-class Limiter {
+/** Hands out at most `limit` slots; waiters are served first-come first-served. N14: also limits the inner calls of one `run_code` script. */
+export class Limiter {
   private active = 0;
   private readonly waiters: Array<() => void> = [];
 
