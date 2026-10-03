@@ -466,9 +466,9 @@ export interface ExecuteOptions extends PermissionOptions {
   exporter?: TraceExporter;
   /**
    * When true, the DEPRECATED span attributes omit potentially sensitive
-   * content (`chat` leaves out `prompt` and `execute_tool` leaves out
-   * `args`/`result`; the agent span's `input` is not redacted). Token
-   * counts, finish reason, tool name and error/latency are never redacted.
+   * content (the `invoke_agent` span leaves out `input`, `chat` leaves out
+   * `prompt` and `execute_tool` leaves out `args`/`result`). Token counts,
+   * finish reason, tool name and error/latency are never redacted.
    * Defaults to false. The `gen_ai.*` content attributes are governed by
    * `captureContent` instead.
    */
@@ -749,7 +749,10 @@ export class AgentExecutor {
       // and 'tool.call' spans, giving the 3-level span tree its parent/child
       // relationships without any instance state.
       if (observed.agentSpanId) return this.runWithEnd(observed, observed.agentSpanId);
-      const init = agentRunSpanInit(observed, resolveCaptureContent(observed.captureContent));
+      const init = agentRunSpanInit(observed, {
+        redactContent: observed.redactContent,
+        captureContent: resolveCaptureContent(observed.captureContent),
+      });
       return withSpan(
         observed.exporter,
         init.name,

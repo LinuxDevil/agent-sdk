@@ -106,13 +106,26 @@ function requestContent(messages: Message[]): Record<string, unknown> {
   });
 }
 
+/**
+ * The run's input in the spec's message schema. A `Message[]` input maps
+ * message-for-message; anything else becomes one user text part. Before this
+ * a `Message[]` input was `JSON.stringify`'d into the text part's `content`,
+ * so `gen_ai.input.messages` carried the messages double-JSON-encoded
+ * (LOU-R3).
+ */
+function agentInputMessages(input: unknown, text: string): unknown[] {
+  if (Array.isArray(input)) return (input as Message[]).map(genAiMessage);
+  return [{ role: 'user', parts: [textPart(text)] }];
+}
+
 /** `invoke_agent {name}` span for one agent run. */
 export function agentRunSpanInit(
   options: { agent: AgentConfig; provider?: LLMProvider; sessionId?: string; input: unknown },
-  captureContent: boolean
+  content: ContentOptions & { captureContent: boolean }
 ): SpanInit {
   const { agent, provider, sessionId, input } = options;
   const text = typeof input === 'string' ? input : JSON.stringify(input);
+  const inputMessages = agentInputMessages(input, text);
   return {
     name: `${GenAiOperation.INVOKE_AGENT} ${agent.name}`,
     kind: 'internal',
@@ -122,10 +135,9 @@ export function agentRunSpanInit(
       [GenAiAttr.AGENT_ID]: agent.id,
       [GenAiAttr.PROVIDER_NAME]: provider?.name,
       [GenAiAttr.CONVERSATION_ID]: sessionId,
-      [LegacyAttr.INPUT]: text,
-      [GenAiAttr.INPUT_MESSAGES]: captureContent
-        ? JSON.stringify([{ role: 'user', parts: [textPart(text)] }])
-        : undefined,
+      ...(content.redactContent ? {} : { [LegacyAttr.INPUT]: text }),
+      [GenAiAttr.INPUT_MESSAGES]:
+        content.captureContent && inputMessages.length > 0 ? JSON.stringify(inputMessages) : undefined,
     }),
   };
 }

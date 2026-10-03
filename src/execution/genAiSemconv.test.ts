@@ -268,10 +268,34 @@ describe('OpenTelemetry GenAI semantic conventions (LOU-D9)', () => {
   it('still honors redactContent for the deprecated content attributes', async () => {
     const { spans } = await runAgent({ redactContent: true });
 
+    expect(spans[0].attributes).not.toHaveProperty('input');
     expect(spans[1].attributes).not.toHaveProperty('prompt');
     expect(spans[2].attributes).not.toHaveProperty('args');
     expect(spans[2].attributes).not.toHaveProperty('result');
     expect(spans[1].attributes['gen_ai.usage.input_tokens']).toBe(10);
+  });
+
+  it('emits a Message[] input on invoke_agent as message parts, not a double-encoded string', async () => {
+    const { agent, toolRegistry } = setup();
+    const { exporter, spans } = memoryExporter();
+    await AgentExecutor.execute({
+      agent,
+      input: [
+        { role: 'system', content: 'Be terse.' },
+        { role: 'user', content: 'Weather in Paris?' },
+      ],
+      provider: mockModel(['Sunny.']),
+      toolRegistry,
+      exporter,
+      captureContent: true,
+    });
+
+    // One JSON.parse yields the spec's message schema; `content` is the
+    // literal text, not a second JSON document (LOU-R3).
+    expect(JSON.parse(spans[0].attributes['gen_ai.input.messages'] as string)).toEqual([
+      { role: 'system', parts: [{ type: 'text', content: 'Be terse.' }] },
+      { role: 'user', parts: [{ type: 'text', content: 'Weather in Paris?' }] },
+    ]);
   });
 });
 
