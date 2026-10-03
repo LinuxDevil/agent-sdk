@@ -45,6 +45,7 @@ const result = await FlowExecutor.execute(flow, { agent, provider, variables: { 
 | `forEach` | Runs a step for each item of `items`, one after another. |
 | `evaluator` | Evaluates an expression over the flow's variables. |
 | `return`, `end` | Produce the node's `value` as the result. |
+| `throw` | Fails the flow with the node's `message` (`{{variable}}` placeholders interpolated; default `'Flow error'`). |
 
 `oneOf` conditions and `evaluator` expressions use a small, safe expression
 language (no `eval`, no host code; `{{name}}` placeholders are bound as

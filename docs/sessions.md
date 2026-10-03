@@ -256,6 +256,11 @@ const agent = createAgent({ provider, store: fileStore('./.lousho') });
 await agent.session({ id: 'user-42' }).send('Hello');
 ```
 
+Each `checkpoints/<id>.json` has a `checkpoint-history/<id>.json` next to it:
+the checkpoint's bounded history, oldest first. Directories are created on
+first write, so `approvals/` (and `oauth/`) only appear after the first pending
+approval (or sign-in).
+
 Resolving an approval from `fileStore` is safe across processes (only one
 caller gets the record); two processes writing one session at the same moment
 are not coordinated, so the last write wins. For several processes sharing a

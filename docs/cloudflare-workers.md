@@ -207,8 +207,10 @@ records are kept until deleted.
 
 An approval that pauses a turn on one request can be decided by a later request
 on another isolate: the checkpointed session names its pending approval, and the
-approvals endpoint continues it from KV. That continuation's events skip the
-decided tool call's `tool.done`; its `run.done` carries the final text.
+approvals endpoint continues it from KV. The continuation streams as a normal
+resumed run: the decided call's `tool.start` and `tool.done` (`tool.error` for
+a rejection), then the turn's events, ending with a `run.done` that carries
+the final text.
 
 The deprecated `POST /chat { "message", "sessionId"? }` keeps its earlier
 behaviour on Workers: with a `sessionId` the run is checkpointed to
@@ -220,27 +222,41 @@ request that reuses the `sessionId` (after a crash or a recycled isolate).
 Cron triggers in the spec (`triggers: [{ type: 'cron', cron: '0 9 * * MON', input: '...' }]`)
 become `[triggers] crons = [...]` in `wrangler.toml`, and the generated Worker
 exports a `scheduled()` handler that runs them as agent turns (session
-`schedule:<name>`, see [Schedules](schedules.md#on-cloudflare-workers)). Cloudflare
+`schedule-<name>`, see [Schedules](schedules.md#on-cloudflare-workers)). Cloudflare
 evaluates the expressions in **UTC** with a granularity of one minute; the
 build rejects a `timezone`, a seconds field, an `@daily` shortcut or a numeric
 day-of-week (`LOUSHO_SCHEDULE_INVALID`).
 
 In a Worker you write yourself, wire an agent defined in code with
-`handleScheduled(agent, schedules, controller, ctx)` (also exported from
-`@lousho/build-ai-agent/deploy-runtime-worker`). It runs the schedules whose
+`handleScheduled(agent, schedules, controller, ctx)` (exported from the package
+root — the `@lousho/build-ai-agent/deploy-runtime-worker` specifier in the
+generated code is a virtual one that only `lousho build`'s bundler resolves; do
+not import it yourself). It runs the schedules whose
 `cron` equals `controller.cron` inside `ctx.waitUntil()` and never throws; list
-the same expressions under `[triggers] crons` yourself:
+the same expressions under `[triggers] crons` yourself. Give the agent a store
+— without one, a scheduled run's `schedule-<name>` session lives in one
+isolate's memory and is gone when it is recycled:
 
 ```ts
 import { createAgent, createMockProvider, defineSchedule, handleScheduled } from '@lousho/build-ai-agent';
 import type { ScheduledContext, ScheduledController } from '@lousho/build-ai-agent';
+import { KVStore, type KVBinding } from '@lousho/build-ai-agent/kv';
 
-const agent = createAgent({ instructions: 'You write reports.', provider: createMockProvider() });
+interface Env {
+  AGENT_CHECKPOINTS: KVBinding;
+}
+
 const schedules = [defineSchedule({ name: 'weekly', cron: '0 9 * * MON', prompt: 'Summarise last week.' })];
 
 export default {
-  scheduled: (controller: ScheduledController, _env: unknown, ctx: ScheduledContext) =>
-    handleScheduled(agent, schedules, controller, ctx),
+  scheduled: (controller: ScheduledController, env: Env, ctx: ScheduledContext) => {
+    const agent = createAgent({
+      instructions: 'You write reports.',
+      provider: createMockProvider(),
+      store: new KVStore(env.AGENT_CHECKPOINTS), // keeps sessions, checkpoints and paused approvals
+    });
+    return handleScheduled(agent, schedules, controller, ctx);
+  },
 };
 ```
 

@@ -232,7 +232,7 @@ those under `minScore` (cosine similarity, default `0.2`), sorts by score
 (newer first on a tie) and returns `limit` of them. Each returned item has its
 score in `metadata.score`. Without a query, or a blank one, it lists the newest
 items first, like every provider. The `recall_<name>` tool then reads "Search
-the memory by meaning, most relevant first."
+the "<name>" memory by meaning, most relevant first."
 
 To recall by meaning at the start of a run, set `recall: { query: 'last-input' }`
 on the slot: the run's last user message is the query, so the `<memory>` block

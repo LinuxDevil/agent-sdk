@@ -166,7 +166,8 @@ console.log(workspace.snapshot()); // { 'notes.md': '# Notes\n' }
 A file whose content is no longer what the agent last wrote there was changed
 by something else (you, an editor, the `shell` tool), so rewind leaves it
 alone and reports it in `skipped` as `'changed-since'`; pass `force: true` to
-restore it anyway. Every path is checked before anything is written, and
+restore it anyway. A path that exists but is not a file (a directory, say) is
+skipped as `'not-a-file'`. Every path is checked before anything is written, and
 restores go through the same provider, so `NodeWorkspace` keeps them inside
 the root, symlinks included. A real rewind then forgets the backups of the
 rewound turns, skipped files' included, so a second rewind does nothing:
@@ -263,6 +264,11 @@ const workspace = new NodeWorkspace({
   inheritEnv: ['CI', 'NODE_OPTIONS'], // copied from the host environment
 });
 ```
+
+`root` must already exist: the constructor resolves it with `realpath` and
+throws a `ConfigurationError` when the path is missing, empty or not a
+directory — it never creates it. The kept `workspace.root` is the real,
+absolute path.
 
 **The shell tool needs approval by default.** Unless you choose otherwise,
 every command waits for a human. `allow` and `deny` are checked first, so a
@@ -469,7 +475,8 @@ await broker.close();
   forms, for the `env` option of `NodeWorkspace` or `SandboxShell`),
   `baseUrl(host)` and `close()`, which stops the listener and destroys open
   sockets. A header value is a string or a function called per request.
-- **Allowlist.** Rule hosts (exact names or `*.suffix`) are allowed
+- **Allowlist.** Rule hosts (exact names or `*.suffix`, which matches
+  subdomains only — `*.example.com` does not match `example.com`) are allowed
   implicitly; `allow` adds hosts reached without injected headers. Any other
   host gets a 403 before a connection is opened. Hosts that resolve to
   loopback, link-local (such as the cloud metadata address `169.254.169.254`)

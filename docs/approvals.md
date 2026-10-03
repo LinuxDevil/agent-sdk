@@ -77,7 +77,9 @@ When no rule matches, the tool's own `needsApproval` decides, as before.
 `tool` is a name, a list of names, a `RegExp` tested against the name, or
 `'*'` for every tool. `when` narrows a rule to some calls: it gets the
 validated arguments (after `preToolCall` hooks) and `{ toolName, toolCallId,
-sessionId }`, and may be async; when it throws, the call fails with that
+sessionId, principal }` (`principal`: who the run acts for, frozen; absent
+without one — see [Principals in tools and approvals](./auth.md#principals-in-tools-and-approvals)),
+and may be async; when it throws, the call fails with that
 error. `allow(tools)`, `deny(tools, reason?)` and `ask(tools)` build the
 common rules.
 

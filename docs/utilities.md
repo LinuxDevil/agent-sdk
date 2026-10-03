@@ -35,7 +35,10 @@ import * as path from 'node:path';
 // fs/path are injected as adapters; the Node modules satisfy them as-is.
 const storage = new StorageService('user-123', 'attachments', fs, path);
 
-await storage.saveAttachment(file, 'document.pdf');
-const buffer = storage.readAttachment('document.pdf');
+await storage.savePlainTextAttachment('Report contents', 'report.txt'); // UTF-8 text
+await storage.saveAttachmentFromBase64('JVBERi0xLjQK', 'document.pdf'); // base64 -> binary
+// `saveAttachment(file, ...)` is for the browser: its first argument is a `File`
+// (it awaits file.arrayBuffer()).
+const bytes = storage.readAttachment('document.pdf'); // synchronous; an ArrayBuffer, not a Node Buffer
 storage.deleteAttachment('document.pdf');
 ```

@@ -246,7 +246,7 @@ refused with a tool error instead of running. See [Approvals](./approvals.md) fo
 
 ## HookRegistry
 
-`createAgent({ hooks })` takes a plain array. Code that uses the executor API ([The executor API](./executor-api.md)) passes a `HookRegistry`: an ordered collection with `register`, `registerMany`, `get`, `has`, `list`, `unregister`, `clear` and `size`. Registering a second hook with the same `name` replaces the first and logs a warning.
+`createAgent({ hooks })` takes a plain array. Code that uses the executor API ([The executor API](./executor-api.md)) passes a `HookRegistry`: an ordered collection with `register`, `registerMany`, `get`, `has`, `list`, `unregister`, `clear` and `size()` — `size` is a method (`hooks.size()`), not a `Map`-style property. Registering a second hook with the same `name` replaces the first and logs a warning.
 
 ```ts
 import { HookRegistry, type AgentHook } from '@lousho/build-ai-agent/hooks';

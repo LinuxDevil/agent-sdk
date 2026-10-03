@@ -87,7 +87,7 @@ Failure messages say what was actually seen:
 ```text
 calledTool('lookup_order') failed: tools called were [search_docs, issue_refund]
 calledTool('lookup_order', {"args":{"orderId":"41"}}) failed: 'lookup_order' was called 1 time(s) but no call matched the expected args; closest call differs in orderId: expected "41", got "42"
-completed() failed: finishReason was 'tool_calls' (the run hit maxSteps while still calling tools)
+completed() failed: finishReason was 'max-steps' (the run hit maxSteps while still calling tools)
 ```
 
 Other context members: `t.reply` (latest reply text), `t.result` (latest

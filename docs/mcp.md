@@ -69,6 +69,13 @@ It returns `{ tools, close(), status() }`; `status()` maps each server to
 `'idle'`, `'connected'`, `'failed'` or `'needs-auth'` (an `oauth` server the
 app is not signed in to).
 
+`tools` is a `Record<string, ToolDescriptor>` keyed `<server>__<tool>` — a
+map, not the array `defineTool()` results make. `createAgent({ tools })` takes
+both forms, and they combine: `tools: [myTool, mcp.tools]` registers the array
+entries under their own names and the record's entries under their keys, so
+own tools and MCP tools can sit in one list. (Spreading into one record,
+`tools: { ...mcp.tools, my_tool: myTool }`, works too.)
+
 ```ts no-run
 import { createAgent } from '@lousho/build-ai-agent';
 import { connectMcp } from '@lousho/build-ai-agent/mcp';

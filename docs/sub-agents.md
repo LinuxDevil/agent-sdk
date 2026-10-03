@@ -303,8 +303,8 @@ const lead = createAgent({ provider, instructions: 'You coordinate.', subagents:
 
 ## Remote sub-agents
 
-`remoteAgent()` uses an agent you already deployed (`lousho deploy`: the node
-server, Docker or a Cloudflare Worker) as a sub-agent. It goes in `subagents`
+`remoteAgent()` uses an agent you already deployed (`lousho build
+--target=node-server`, `docker` or `cloudflare-worker`) as a sub-agent. It goes in `subagents`
 next to local ones, and the lead delegates to it with the same `task` tool,
 including `background: true`.
 
@@ -335,8 +335,10 @@ store on the remote side); a remote task cannot be forked. The remote
 agent sees only that prompt, and runs with its own model, tools and limits, so
 the lead's runtime (hooks, sandbox, approval store) does not reach it. The
 lead run's abort signal aborts the request. Options: `url`, `auth`, `name`,
-`description`, `headers`, and `fetch` (inject one in tests; the
-`serveFetch()` routes of an in-process agent work as a fake deployment).
+`description`, `headers`, and `fetch` (inject one in tests; an in-process agent behind
+`createRouteHandler(agent, { basePath: '/' }).handler` — the exported Fetch
+handler, see [Deployment](./deployment.md#http-api) — works as a fake
+deployment: `fetch: (input, init) => handler(new Request(input, init))`).
 
 Failures (the agent is unreachable, a 401 or other non-2xx answer, a malformed
 stream, or a remote run that ends in an error) reach the lead as the

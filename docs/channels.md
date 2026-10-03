@@ -181,9 +181,14 @@ const handler = mountChannels(agent, [
 ## In an agent directory
 
 An [agent directory](./agent-directories.md#channels) can keep its channels in
-`channels/*.ts`, one default-exported channel per file (named by the file unless
-the channel sets a name). `resolveAgentDir()` returns them as `channels`, and
-the node server mounts them with `createDeployedServer(agent, { channels })`.
+`channels/*.ts`, one default-exported channel per file. The served route is
+`POST /channels/<name>`, with `<name>` the channel's own `name`; the file name
+applies only to an export that has none — and every built-in factory sets one
+(`webhookChannel()` → `webhook`, `slackChannel()` → `slack`, ...), so a
+`channels/support.ts` that exports `webhookChannel()` is served at
+`/channels/webhook`, not `/channels/support`. `resolveAgentDir()` returns them
+as `channels`, and the node server `lousho build` emits mounts them
+(`createDeployedServer(agent, { channels })`, an internal helper).
 
 ## Who may approve (Slack and Discord)
 

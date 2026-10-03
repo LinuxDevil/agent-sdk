@@ -93,7 +93,7 @@ node.
 | `ctx.toolCallId` | The model's id for this call. It stays the same when the call is re-run after a crash. A call with no model turn behind it (a flow node) gets a generated id. |
 | `ctx.messages` | A read-only copy of the transcript the model had seen before it made the call: no system prompt and not the assistant turn that made the call. Empty for a flow node. |
 | `ctx.abortSignal` | The run's `AbortSignal`, set when the run has one. |
-| `ctx.sessionId` | Reserved: the type has it and `buildToolRunContext()` passes it through, but the executor does not set it yet. |
+| `ctx.sessionId` | The run's session id — `agent.session({ id })`'s id or `send()`'s / `AgentExecutor.execute()`'s `sessionId`; absent when the run has none. |
 | `ctx.principal` | Who the run acts for (route auth's caller, a channel's sender), frozen; absent without one. See [Principals in tools and approvals](./auth.md#principals-in-tools-and-approvals). |
 | `ctx.approval` | Set when the call runs because a human approved it: the decision's `note`, and `by`, who decided, when the decision named them. |
 
@@ -207,7 +207,7 @@ const webFetch = createWebFetchTool({
   maxRedirects: 10, // each hop is checked again
   maxBytes: 2 * 1024 * 1024, // read from the network, then stop (truncated: true)
   maxChars: 50_000, // characters of text returned to the model
-  allowedHosts: ['*.example.com'], // when set, any other host is refused before DNS
+  allowedHosts: ['*.example.com', 'example.com'], // `*.` matches subdomains only, so list the bare host too; when set, any other host is refused before DNS
   blockedHosts: ['private.example.com'], // always refused, before DNS
   allowPrivate: [], // hosts allowed to resolve to private addresses
   userAgent: 'lousho-web-fetch',

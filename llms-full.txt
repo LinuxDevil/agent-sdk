@@ -1404,7 +1404,7 @@ export default {
 | Key | Maps to |
 | --- | ------- |
 | `name` | `createAgent({ name })` (default: the directory name) |
-| `description` | not a `createAgent` option; what a parent agent reads for a sub-agent (required there) |
+| `description` | `manifest.description` — the directory loader does not forward it to `createAgent` (though `createAgent({ description })` accepts it); what a parent agent reads for a sub-agent (required there) |
 | `model` | `createAgent({ model })`; the `vendor/` prefix chooses the provider — with OpenRouter use `openrouter/<vendor>/<model>` |
 | `provider` | `createAgent({ provider })` (code config files only) |
 | `instructions` | `createAgent({ instructions })` (use this or `instructions.md`, not both) |
@@ -1457,8 +1457,10 @@ Each file in `channels/` default-exports a [channel](https://github.com/LinuxDev
 A file that does not export a channel fails with `LOUSHO_CHANNEL_INVALID`
 naming the file. `resolveAgentDir()` returns them as `channels` (and their names
 as `manifest.channels`); `loadAgentDir()` does not mount them. The node server
-(`createDeployedServer(agent, { channels })`) mounts them under `/channels`
-next to the chat routes; with your own server, use `mountChannels()`:
+that `lousho build --target=node-server` emits mounts them under `/channels`
+next to the chat routes (`createDeployedServer(agent, { channels })`, an
+internal helper of the generated bundle); with your own server, use
+`mountChannels()`:
 
 ```ts
 import { createServer } from 'node:http';
@@ -2135,7 +2137,9 @@ When no rule matches, the tool's own `needsApproval` decides, as before.
 `tool` is a name, a list of names, a `RegExp` tested against the name, or
 `'*'` for every tool. `when` narrows a rule to some calls: it gets the
 validated arguments (after `preToolCall` hooks) and `{ toolName, toolCallId,
-sessionId }`, and may be async; when it throws, the call fails with that
+sessionId, principal }` (`principal`: who the run acts for, frozen; absent
+without one — see [Principals in tools and approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#principals-in-tools-and-approvals)),
+and may be async; when it throws, the call fails with that
 error. `allow(tools)`, `deny(tools, reason?)` and `ask(tools)` build the
 common rules.
 
@@ -3344,9 +3348,14 @@ const handler = mountChannels(agent, [
 ## In an agent directory
 
 An [agent directory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md#channels) can keep its channels in
-`channels/*.ts`, one default-exported channel per file (named by the file unless
-the channel sets a name). `resolveAgentDir()` returns them as `channels`, and
-the node server mounts them with `createDeployedServer(agent, { channels })`.
+`channels/*.ts`, one default-exported channel per file. The served route is
+`POST /channels/<name>`, with `<name>` the channel's own `name`; the file name
+applies only to an export that has none — and every built-in factory sets one
+(`webhookChannel()` → `webhook`, `slackChannel()` → `slack`, ...), so a
+`channels/support.ts` that exports `webhookChannel()` is served at
+`/channels/webhook`, not `/channels/support`. `resolveAgentDir()` returns them
+as `channels`, and the node server `lousho build` emits mounts them
+(`createDeployedServer(agent, { channels })`, an internal helper).
 
 ## Who may approve (Slack and Discord)
 
@@ -3872,6 +3881,15 @@ the `=` form: `--model=-x`. `--traces` is the one flag whose value is optional:
 it takes it only in the `=` form (`--traces=./t`), so `--traces agent.yaml` is
 still the flag followed by the path.
 
+`lousho init` is the exception: it parses its own flags, and a bad flag or
+value fails with `InitUsageError` — its message printed as-is, exit code 1 —
+not the shared `LOUSHO_CONFIG_INVALID` path. The only short flags besides
+`-h` are `-y` for `--yes`, on `init` and on `add`.
+
+`lousho eval` also takes `--config <file>` to run under your own vitest config
+instead of the generated one; globs then narrow that config's files as vitest
+filters.
+
 `npm create lousho-agent my-agent` runs `lousho init` with the same arguments.
 To scaffold against an unreleased build of the SDK, pass `--sdk-path` (see
 [Installing from a local build](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#installing-from-a-local-build)).
@@ -3898,7 +3916,7 @@ endpoints below (1MB body limit). What `<path>` is follows from the path:
 | ---- | ----------- |
 | `.yaml`, `.yml`, `.json` | `loadSpec()` + `specToAgent()` ([Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md)) |
 | a directory | `loadAgentDir()` ([Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md)) |
-| `.ts`, `.mts`, `.js`, `.mjs`, `.cjs` | the module's default export, or its `agent` export: a `SimpleAgent` (what `createAgent()` returns) or a `createAgent()` options object |
+| `.ts`, `.mts`, `.cts`, `.js`, `.mjs`, `.cjs` | the module's default export, or its `agent` export: a `SimpleAgent` (what `createAgent()` returns) or a `createAgent()` options object |
 
 Any other extension, a missing path, or a module with no agent export fails
 with a coded error (`LOUSHO_SPEC_UNSUPPORTED_FORMAT`, `LOUSHO_CONFIG_INVALID`)
@@ -3917,7 +3935,7 @@ plus a free-text field. The same endpoints work from `curl` or your own page:
 | -------- | ------------ |
 | `POST /chat` `{ "sessionId", "input" }` | Runs `agent.session({ id: sessionId }).stream(input)` and streams the turn as SSE: one `data: <AgentEvent JSON>` per event ([Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)), then `event: done`. History is kept per `sessionId` (1-128 characters of `A-Za-z0-9_-`). |
 | `GET /chat/:sessionId` | The session's transcript: `{ sessionId, messages, pending }`; `pending` is `{ status, approvalId? }` while a turn waits on an approval, else `null`. |
-| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides the pending approval (`agent.approvals.resolve()`), or answers a question (`agent.approvals.answer()`), and streams the continued turn as SSE. It can pause again with another `approval.requested`. `404` when `id` is not pending. |
+| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides the pending approval (`agent.approvals.streamResolve()`), or answers a question (`agent.approvals.streamAnswer()`), and streams the continued turn as SSE. It can pause again with another `approval.requested`. `404` when `id` is not pending. |
 | `POST /chat` `{ "message" }` | Deprecated: no session, no streaming. Returns the agent's `ExecutionResult` as JSON, with a `Deprecation: true` header. |
 
 `--traces` (or `--traces=<dir>`) writes every run to local trace files with
@@ -3930,9 +3948,10 @@ See [Local traces](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observ
 
 Sessions live in an in-process `memoryStore()` (gone when `lousho dev` stops),
 or in the agent's own `store` when a module's `createAgent()` options set one.
-The continuation of an approval is not streamed token by token: the endpoint
-runs it with `agent.approvals.resolve()` and sends the turn's tool results and
-text as events once it finishes.
+The continuation of an approval is streamed too: the endpoint runs it with
+`agent.approvals.streamResolve()` (or `streamAnswer()` for a question) and
+sends the continued turn's events — the decided tool call, text deltas, a
+further pause and `run.done` — as they happen.
 
 `lousho build` servers (`node-server`, `docker`) serve these same endpoints from
 the same code, with sessions in a store chosen by `LOUSHO_STORE` and optional
@@ -4257,8 +4276,10 @@ records are kept until deleted.
 
 An approval that pauses a turn on one request can be decided by a later request
 on another isolate: the checkpointed session names its pending approval, and the
-approvals endpoint continues it from KV. That continuation's events skip the
-decided tool call's `tool.done`; its `run.done` carries the final text.
+approvals endpoint continues it from KV. The continuation streams as a normal
+resumed run: the decided call's `tool.start` and `tool.done` (`tool.error` for
+a rejection), then the turn's events, ending with a `run.done` that carries
+the final text.
 
 The deprecated `POST /chat { "message", "sessionId"? }` keeps its earlier
 behaviour on Workers: with a `sessionId` the run is checkpointed to
@@ -4270,27 +4291,41 @@ request that reuses the `sessionId` (after a crash or a recycled isolate).
 Cron triggers in the spec (`triggers: [{ type: 'cron', cron: '0 9 * * MON', input: '...' }]`)
 become `[triggers] crons = [...]` in `wrangler.toml`, and the generated Worker
 exports a `scheduled()` handler that runs them as agent turns (session
-`schedule:<name>`, see [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md#on-cloudflare-workers)). Cloudflare
+`schedule-<name>`, see [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md#on-cloudflare-workers)). Cloudflare
 evaluates the expressions in **UTC** with a granularity of one minute; the
 build rejects a `timezone`, a seconds field, an `@daily` shortcut or a numeric
 day-of-week (`LOUSHO_SCHEDULE_INVALID`).
 
 In a Worker you write yourself, wire an agent defined in code with
-`handleScheduled(agent, schedules, controller, ctx)` (also exported from
-`@lousho/build-ai-agent/deploy-runtime-worker`). It runs the schedules whose
+`handleScheduled(agent, schedules, controller, ctx)` (exported from the package
+root — the `@lousho/build-ai-agent/deploy-runtime-worker` specifier in the
+generated code is a virtual one that only `lousho build`'s bundler resolves; do
+not import it yourself). It runs the schedules whose
 `cron` equals `controller.cron` inside `ctx.waitUntil()` and never throws; list
-the same expressions under `[triggers] crons` yourself:
+the same expressions under `[triggers] crons` yourself. Give the agent a store
+— without one, a scheduled run's `schedule-<name>` session lives in one
+isolate's memory and is gone when it is recycled:
 
 ```ts
 import { createAgent, createMockProvider, defineSchedule, handleScheduled } from '@lousho/build-ai-agent';
 import type { ScheduledContext, ScheduledController } from '@lousho/build-ai-agent';
+import { KVStore, type KVBinding } from '@lousho/build-ai-agent/kv';
 
-const agent = createAgent({ instructions: 'You write reports.', provider: createMockProvider() });
+interface Env {
+  AGENT_CHECKPOINTS: KVBinding;
+}
+
 const schedules = [defineSchedule({ name: 'weekly', cron: '0 9 * * MON', prompt: 'Summarise last week.' })];
 
 export default {
-  scheduled: (controller: ScheduledController, _env: unknown, ctx: ScheduledContext) =>
-    handleScheduled(agent, schedules, controller, ctx),
+  scheduled: (controller: ScheduledController, env: Env, ctx: ScheduledContext) => {
+    const agent = createAgent({
+      instructions: 'You write reports.',
+      provider: createMockProvider(),
+      store: new KVStore(env.AGENT_CHECKPOINTS), // keeps sessions, checkpoints and paused approvals
+    });
+    return handleScheduled(agent, schedules, controller, ctx);
+  },
 };
 ```
 
@@ -4906,6 +4941,7 @@ validated with zod by `loadSpec()` (`src/spec/schema.ts`). It is the format
 | `provider.model` | `string`   | yes      | Model id every call uses (the provider's configured model; an agent's own `settings.model` would override it). |
 | `tools`          | `string[]` | no       | Built-in tool names (see below).                       |
 | `policy`         | `AgentSpecPolicy` | no | Approvals, guardrails, limits and more, enforced when the spec becomes an agent (see below). |
+| `triggers`       | `AgentSpecTrigger[]` | no | What runs the agent on its own — cron schedules (`{ type: 'cron', cron, input, name?, timezone? }`); see [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md) and [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md#cron-schedules). |
 | `mcpServers`     | `Record<string, McpServerSpec>` | no | MCP servers the agent uses, keyed by name (see below). |
 
 A missing or invalid field fails with an error naming the exact field, e.g.
@@ -5586,7 +5622,7 @@ try {
 When one model turn asks for several tools and one of them needs approval,
 the calls before it run and are recorded, and the run pauses on it. The
 approval snapshot records the calls after it (`remainingToolCalls`).
-`agent.approvals.resolve()` (`resumeAfterApproval()` on the executor) then:
+`agent.approvals.resolve()` (the `resumeAfterApproval()` export underneath) then:
 
 1. records the paused call's result - the tool's result if approved, or a
    structured `{ error, note }` rejection result if rejected;
@@ -5747,7 +5783,7 @@ const original = await store.checkpoints?.load('trip');
 const replayed = await store.checkpoints?.load(fork.sessionId);
 if (original && replayed) {
   const { divergedAt, a, b, drift } = compareTrajectories(original, replayed);
-  console.log(divergedAt, a.length, b.length, drift); // 1, then each run's steps and the tool-call diff
+  console.log(divergedAt, a.length, b.length, drift); // 2, then each run's steps and the tool-call diff
 }
 ```
 
@@ -5799,7 +5835,7 @@ When a run is resumed (`agent.resume(id)`, `session.resume()`, a later
 `execute()` on an unfinished `sessionId`, `agent.approvals.resolve()` and the
 streamed forms), the resuming agent's fingerprint is compared with the saved
 one, before any model call or tool runs. `onAgentDrift` on `createAgent()` (and
-on `AgentExecutor.execute()` / `resumeAfterApproval()`) decides what a
+on `AgentExecutor.execute()` / the `resumeAfterApproval()` export) decides what a
 difference does:
 
 | `onAgentDrift` | On a different model, tools or instructions |
@@ -5883,7 +5919,8 @@ try {
 }
 ```
 
-`resumeAfterApproval()` is `agent.approvals.resolve()`:
+The exported `resumeAfterApproval()` function is what
+`agent.approvals.resolve()` calls:
 
 ```ts
 import { AgentExecutor, resumeAfterApproval } from '@lousho/build-ai-agent';
@@ -5948,7 +5985,7 @@ if (original && replayed) {
 - A `sessionId` identifies one logical conversation; running two
   `send()` calls (or two `execute()` calls) on the same id at the same time
   is not supported.
-- If you call `resumeAfterApproval()` (the executor behind
+- If you call `resumeAfterApproval()` (the function behind
   `agent.approvals.resolve()`) without the `checkpointStore`, the session
   keeps its `'awaiting-approval'` mark and later `send()` (or `execute()`)
   calls keep throwing `SessionAwaitingApprovalError`; pass the store (or
@@ -7037,7 +7074,7 @@ Failure messages say what was actually seen:
 ```text
 calledTool('lookup_order') failed: tools called were [search_docs, issue_refund]
 calledTool('lookup_order', {"args":{"orderId":"41"}}) failed: 'lookup_order' was called 1 time(s) but no call matched the expected args; closest call differs in orderId: expected "41", got "42"
-completed() failed: finishReason was 'tool_calls' (the run hit maxSteps while still calling tools)
+completed() failed: finishReason was 'max-steps' (the run hit maxSteps while still calling tools)
 ```
 
 Other context members: `t.reply` (latest reply text), `t.result` (latest
@@ -7419,6 +7456,7 @@ const result = await FlowExecutor.execute(flow, { agent, provider, variables: { 
 | `forEach` | Runs a step for each item of `items`, one after another. |
 | `evaluator` | Evaluates an expression over the flow's variables. |
 | `return`, `end` | Produce the node's `value` as the result. |
+| `throw` | Fails the flow with the node's `message` (`{{variable}}` placeholders interpolated; default `'Flow error'`). |
 
 `oneOf` conditions and `evaluator` expressions use a small, safe expression
 language (no `eval`, no host code; `{{name}}` placeholders are bound as
@@ -8220,7 +8258,7 @@ refused with a tool error instead of running. See [Approvals](https://github.com
 
 ## HookRegistry
 
-`createAgent({ hooks })` takes a plain array. Code that uses the executor API ([The executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md)) passes a `HookRegistry`: an ordered collection with `register`, `registerMany`, `get`, `has`, `list`, `unregister`, `clear` and `size`. Registering a second hook with the same `name` replaces the first and logs a warning.
+`createAgent({ hooks })` takes a plain array. Code that uses the executor API ([The executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md)) passes a `HookRegistry`: an ordered collection with `register`, `registerMany`, `get`, `has`, `list`, `unregister`, `clear` and `size()` — `size` is a method (`hooks.size()`), not a `Map`-style property. Registering a second hook with the same `name` replaces the first and logs a warning.
 
 ```ts
 import { HookRegistry, type AgentHook } from '@lousho/build-ai-agent/hooks';
@@ -8555,6 +8593,13 @@ Options:
 It returns `{ tools, close(), status() }`; `status()` maps each server to
 `'idle'`, `'connected'`, `'failed'` or `'needs-auth'` (an `oauth` server the
 app is not signed in to).
+
+`tools` is a `Record<string, ToolDescriptor>` keyed `<server>__<tool>` — a
+map, not the array `defineTool()` results make. `createAgent({ tools })` takes
+both forms, and they combine: `tools: [myTool, mcp.tools]` registers the array
+entries under their own names and the record's entries under their keys, so
+own tools and MCP tools can sit in one list. (Spreading into one record,
+`tools: { ...mcp.tools, my_tool: myTool }`, works too.)
 
 ```ts no-run
 import { createAgent } from '@lousho/build-ai-agent';
@@ -8958,7 +9003,7 @@ those under `minScore` (cosine similarity, default `0.2`), sorts by score
 (newer first on a tie) and returns `limit` of them. Each returned item has its
 score in `metadata.score`. Without a query, or a blank one, it lists the newest
 items first, like every provider. The `recall_<name>` tool then reads "Search
-the memory by meaning, most relevant first."
+the "<name>" memory by meaning, most relevant first."
 
 To recall by meaning at the start of a run, set `recall: { query: 'last-input' }`
 on the slot: the run's last user message is the query, so the `<memory>` block
@@ -9230,7 +9275,7 @@ console.log(formatUsage(result.usage)); // 1,234 in / 567 out tokens · $0.0042 
 ```
 
 - **Reported vs estimated.** Providers report `promptTokens`/`completionTokens`; the built-in providers also pass on `cachedInputTokens`/`reasoningTokens` when the 'ai' SDK's provider metadata carries them (`usage.cachedInputTokens` and `usage.reasoningTokens` only appear then). A backend that reports nothing gives `undefined` usage, never zeros. For that step the executor falls back to `estimateTokens` and sets `usage.estimated` (a leading `~` in `formatUsage`). A custom provider should leave `GenerateResult.usage` unset rather than fill in zeros.
-- **Cost.** `costUsd` is the sum of `estimateCost` per model. It is `undefined`, never a misleading partial sum, as soon as any model used has unknown pricing; `byModel` shows which ones are priced.
+- **Cost.** `costUsd` is the sum of `estimateCost` per model. It is `undefined`, never a misleading partial sum, as soon as any model used has unknown pricing; `byModel` shows which ones are priced. In `formatUsage` the cost prints with 4 decimals under $1 (2 at $1 or more), so a run under $0.00005 reads `$0.0000`.
 - **Hosted tools.** `usage.hostedToolCalls` counts the calls the provider ran for [hosted tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hosted-tools.md) per tool name (e.g. `{ web_search: 2 }`). Their per-call fees are billed by the provider and are not in `costUsd`.
 - **Delegation.** A delegated child's usage is added to the parent's totals and `byModel`, and is also shown on its own as `usage.delegated` (`{ inputTokens, outputTokens, totalTokens, costUsd, modelCalls, estimated, runs }`). A [remote sub-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md#remote-sub-agents)'s usage is what the remote agent reports, filed under `byModel['remote:<name>']` with the remote's own `costUsd`.
 - **Resume.** A run resumed from a checkpoint, or after an approval, continues from the saved totals instead of restarting at zero. Checkpoints written by older versions start from their saved token counts with an unknown cost.
@@ -9499,7 +9544,7 @@ tool that uses a token should return the API's answer, not the token.
 file store claims it with an exclusive file create, so exactly one caller gets
 it. Workers KV has no transactions: `takePending` reads and then deletes, so two
 callbacks at different edge locations within KV's propagation delay (up to
-about a minute) could both read the same state. The state is a 128-bit random
+about a minute) could both read the same state. The state is a 256-bit random
 value that only the user's browser holds, so reusing it gains nothing to anyone
 who does not already have it. `KVStore`'s `tokens.list()` needs the binding's
 `list()` (a real KV namespace has it; a hand-made fake may not). `prune()` of a
@@ -11379,7 +11424,8 @@ and its entry in `index.json`:
 
 Host both as static files anywhere (a folder in a repository, an object store, a
 web server). The document's `name` and `type` must match its index entry, and a
-name is letters, digits, `.`, `_` and `-`. A document that does not match the
+name starts with a letter or digit, followed by letters, digits, `.`, `_` and
+`-`. A document that does not match the
 format is `LOUSHO_REGISTRY_INVALID`, with the fields named.
 
 ## Permission manifest
@@ -11400,25 +11446,30 @@ What `lousho add` enforces, before it writes anything:
 - **The code matches the manifest.** Every JavaScript and TypeScript file of the
   item is scanned, with comments stripped, for what it visibly reaches for:
   - `exec: true` for an import of `child_process` (with or without `node:`),
-    `execa` or `shelljs`, or a use of the SDK's `createShellTool` or `SubprocessSandbox`;
-  - `filesystem: "read"` (or `"write"`) for an import of `fs`, `fs/promises` or the
+    `execa` or `shelljs`, or a use of the SDK's `createShellTool`,
+    `runShellCommand` or `SubprocessSandbox`;
+  - `filesystem: "read"` (or `"write"`) for an import of `fs` (including
+    `fs/promises` and the `node:` forms), `fs-extra` or `graceful-fs`, or the
     SDK's `createFsTools`, and `"write"` for a call to `writeFile`, `appendFile`,
-    `createWriteStream`, `mkdir`, `rm`, `rmdir`, `unlink`, `rename`, `copyFile` or
-    `cp` (and their `Sync` forms);
-  - a non-empty `network` for `fetch(` or an import of `http`, `https`, `net`,
-    `tls`, `undici`, `axios`, `node-fetch` or `ws`, and every `http(s)://host` in a
+    `createWriteStream`, `mkdir`, `mkdtemp`, `rm`, `rmdir`, `unlink`, `rename`,
+    `copyFile` or `cp` (and their `Sync` forms);
+  - a non-empty `network` for `fetch(`, a use of the SDK's `createHttpTool`, or
+    an import of `http`, `https`, `http2`, `net`, `tls`, `dgram`, `undici`,
+    `axios`, `node-fetch` or `ws`, and every `http(s)://` or `ws(s)://` host in a
     string must match a `network` entry (a host built at run time, such as
     `` `https://${host}/` ``, needs a non-empty `network` and is printed as a note,
     since it cannot be checked);
   - every `process.env.NAME` and `process.env['NAME']` must be listed in `env`.
 
   `eval(`, `new Function(`, a computed `process.env[name]`, `process.env` used as
-  a whole, and an `import()` or `require()` of anything but a string literal are
+  a whole, an `import()` or `require()` of anything but a string literal, and
+  `require` used as a value (`const r = require`) are
   always refused. A mismatch is `LOUSHO_REGISTRY_MANIFEST_MISMATCH` with every
   finding as `<file>:<line>: <what> (<fix>)`; `--dry-run` reports it too. Markdown
   and other files that are not code (a skill's `SKILL.md`) are not scanned.
   `network` entries must be host names or `*.` wildcards (`api.example.com`,
-  `*.example.com`) and `env` entries variable names (`SEARCH_KEY`); anything else
+  `*.example.com` — a wildcard matches subdomains only, not the bare host) and
+  `env` entries variable names (`SEARCH_KEY`); anything else
   is `LOUSHO_REGISTRY_INVALID`.
 - **Consent covers the elevated permissions.** `exec: true`, `filesystem: "write"`,
   a non-empty `network` and a non-empty `env` are marked `[elevated: ...]` in the
@@ -11671,7 +11722,8 @@ const running = startSchedules(agent, schedules);
 
 ## On the node server
 
-`createDeployedServer(agent, { schedules })` (the server of the `node-server`
+`createDeployedServer(agent, { schedules })` (the internal helper behind the
+server that `lousho build` emits for the `node-server`
 and `docker` targets) starts the schedules when it listens and stops them when it
 closes. `lousho build ./my-agent --target=node-server` (or `docker`) builds an
 agent directory into such a server, so its `schedules/` run in the deployed
@@ -11710,9 +11762,12 @@ triggers:
 `lousho build` writes the deduplicated expressions to `[triggers] crons` and the
 Worker's `scheduled()` runs every trigger whose `cron` equals the invoked one as
 an agent turn inside `ctx.waitUntil()`. Each trigger has its own session,
-`schedule:<name>`, so its runs are inspectable in the KV session store when
-`AGENT_CHECKPOINTS` is bound (`GET /chat/schedule:weekly-report`, URL-encoded).
-A failing trigger is logged with `console.error` (name and error code) and never
+`schedule-<name>`, so its runs are inspectable in the KV session store when
+`AGENT_CHECKPOINTS` is bound (`GET /chat/schedule-weekly-report`). The run
+happens inside `ctx.waitUntil()`, past the request's lifetime, so give the
+agent a store (`KVStore` on `AGENT_CHECKPOINTS`) — an in-memory one keeps the
+`schedule-<name>` sessions only until the isolate is recycled. A failing
+trigger is logged with `console.error` (name and error code) and never
 stops the others, and `scheduled()` never throws.
 
 Cloudflare's cron triggers differ from the in-process ones, so the build fails
@@ -11984,6 +12039,11 @@ const agent = createAgent({ provider, store: fileStore('./.lousho') });
 // ./.lousho/sessions/user-42.json, ./.lousho/checkpoints/..., ./.lousho/approvals/...
 await agent.session({ id: 'user-42' }).send('Hello');
 ```
+
+Each `checkpoints/<id>.json` has a `checkpoint-history/<id>.json` next to it:
+the checkpoint's bounded history, oldest first. Directories are created on
+first write, so `approvals/` (and `oauth/`) only appear after the first pending
+approval (or sign-in).
 
 Resolving an approval from `fileStore` is safe across processes (only one
 caller gets the record); two processes writing one session at the same moment
@@ -13208,8 +13268,8 @@ const lead = createAgent({ provider, instructions: 'You coordinate.', subagents:
 
 ## Remote sub-agents
 
-`remoteAgent()` uses an agent you already deployed (`lousho deploy`: the node
-server, Docker or a Cloudflare Worker) as a sub-agent. It goes in `subagents`
+`remoteAgent()` uses an agent you already deployed (`lousho build
+--target=node-server`, `docker` or `cloudflare-worker`) as a sub-agent. It goes in `subagents`
 next to local ones, and the lead delegates to it with the same `task` tool,
 including `background: true`.
 
@@ -13240,8 +13300,10 @@ store on the remote side); a remote task cannot be forked. The remote
 agent sees only that prompt, and runs with its own model, tools and limits, so
 the lead's runtime (hooks, sandbox, approval store) does not reach it. The
 lead run's abort signal aborts the request. Options: `url`, `auth`, `name`,
-`description`, `headers`, and `fetch` (inject one in tests; the
-`serveFetch()` routes of an in-process agent work as a fake deployment).
+`description`, `headers`, and `fetch` (inject one in tests; an in-process agent behind
+`createRouteHandler(agent, { basePath: '/' }).handler` — the exported Fetch
+handler, see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#http-api) — works as a fake
+deployment: `fetch: (input, init) => handler(new Request(input, init))`).
 
 Failures (the agent is unreachable, a 401 or other non-2xx answer, a malformed
 stream, or a remote run that ends in an error) reach the lead as the
@@ -14164,7 +14226,7 @@ node.
 | `ctx.toolCallId` | The model's id for this call. It stays the same when the call is re-run after a crash. A call with no model turn behind it (a flow node) gets a generated id. |
 | `ctx.messages` | A read-only copy of the transcript the model had seen before it made the call: no system prompt and not the assistant turn that made the call. Empty for a flow node. |
 | `ctx.abortSignal` | The run's `AbortSignal`, set when the run has one. |
-| `ctx.sessionId` | Reserved: the type has it and `buildToolRunContext()` passes it through, but the executor does not set it yet. |
+| `ctx.sessionId` | The run's session id — `agent.session({ id })`'s id or `send()`'s / `AgentExecutor.execute()`'s `sessionId`; absent when the run has none. |
 | `ctx.principal` | Who the run acts for (route auth's caller, a channel's sender), frozen; absent without one. See [Principals in tools and approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#principals-in-tools-and-approvals). |
 | `ctx.approval` | Set when the call runs because a human approved it: the decision's `note`, and `by`, who decided, when the decision named them. |
 
@@ -14278,7 +14340,7 @@ const webFetch = createWebFetchTool({
   maxRedirects: 10, // each hop is checked again
   maxBytes: 2 * 1024 * 1024, // read from the network, then stop (truncated: true)
   maxChars: 50_000, // characters of text returned to the model
-  allowedHosts: ['*.example.com'], // when set, any other host is refused before DNS
+  allowedHosts: ['*.example.com', 'example.com'], // `*.` matches subdomains only, so list the bare host too; when set, any other host is refused before DNS
   blockedHosts: ['private.example.com'], // always refused, before DNS
   allowPrivate: [], // hosts allowed to resolve to private addresses
   userAgent: 'lousho-web-fetch',
@@ -14863,8 +14925,11 @@ import * as path from 'node:path';
 // fs/path are injected as adapters; the Node modules satisfy them as-is.
 const storage = new StorageService('user-123', 'attachments', fs, path);
 
-await storage.saveAttachment(file, 'document.pdf');
-const buffer = storage.readAttachment('document.pdf');
+await storage.savePlainTextAttachment('Report contents', 'report.txt'); // UTF-8 text
+await storage.saveAttachmentFromBase64('JVBERi0xLjQK', 'document.pdf'); // base64 -> binary
+// `saveAttachment(file, ...)` is for the browser: its first argument is a `File`
+// (it awaits file.arrayBuffer()).
+const bytes = storage.readAttachment('document.pdf'); // synchronous; an ArrayBuffer, not a Node Buffer
 storage.deleteAttachment('document.pdf');
 ```
 
@@ -15129,7 +15194,8 @@ console.log(workspace.snapshot()); // { 'notes.md': '# Notes\n' }
 A file whose content is no longer what the agent last wrote there was changed
 by something else (you, an editor, the `shell` tool), so rewind leaves it
 alone and reports it in `skipped` as `'changed-since'`; pass `force: true` to
-restore it anyway. Every path is checked before anything is written, and
+restore it anyway. A path that exists but is not a file (a directory, say) is
+skipped as `'not-a-file'`. Every path is checked before anything is written, and
 restores go through the same provider, so `NodeWorkspace` keeps them inside
 the root, symlinks included. A real rewind then forgets the backups of the
 rewound turns, skipped files' included, so a second rewind does nothing:
@@ -15226,6 +15292,11 @@ const workspace = new NodeWorkspace({
   inheritEnv: ['CI', 'NODE_OPTIONS'], // copied from the host environment
 });
 ```
+
+`root` must already exist: the constructor resolves it with `realpath` and
+throws a `ConfigurationError` when the path is missing, empty or not a
+directory — it never creates it. The kept `workspace.root` is the real,
+absolute path.
 
 **The shell tool needs approval by default.** Unless you choose otherwise,
 every command waits for a human. `allow` and `deny` are checked first, so a
@@ -15432,7 +15503,8 @@ await broker.close();
   forms, for the `env` option of `NodeWorkspace` or `SandboxShell`),
   `baseUrl(host)` and `close()`, which stops the listener and destroys open
   sockets. A header value is a string or a function called per request.
-- **Allowlist.** Rule hosts (exact names or `*.suffix`) are allowed
+- **Allowlist.** Rule hosts (exact names or `*.suffix`, which matches
+  subdomains only — `*.example.com` does not match `example.com`) are allowed
   implicitly; `allow` adds hosts reached without injected headers. Any other
   host gets a 403 before a connection is opened. Hosts that resolve to
   loopback, link-local (such as the cloud metadata address `169.254.169.254`)
