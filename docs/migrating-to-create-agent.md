@@ -119,6 +119,7 @@ approval store and provider, so deciding the pause needs only the approval id.
 | `hooks: HookRegistry` | `hooks: AgentHook[]`. |
 | `signal` | `agent.send(message, { signal })`. |
 | `maxSteps`, `limits`, `guardrails`, `toolConcurrency`, `onAgentDrift`, `reasoning`, `output` | The same names on `createAgent()`; `reasoning` can also be set per `send()`. |
+| `exporter`, `captureContent`, `redactContent` | The same names on `createAgent()`. |
 | `skills`, `subagents` | The same names on `createAgent()`, which also takes `mcpServers` and `memory`. |
 | `inputQueue` | `run.enqueue()` on a streamed run, or `agent.session({ turnPolicy })`; see [Queued input](./queue-and-steer.md#queued-input). |
 | `sessionBudget` | `agent.session({ id, limits })`; see [Sessions](./sessions.md). |
@@ -133,7 +134,6 @@ alternative it is named; otherwise keep that call on `AgentExecutor.execute()`.
 | Executor option | Alternative |
 | --------------- | ----------- |
 | `temperature`, `maxTokens` | None: stay on the executor. (`limits.maxTokens` is a budget for the run, not a generation setting.) |
-| `exporter`, `captureContent`, `redactContent` | None: tracing with a `TraceExporter` needs the executor. |
 | `sandbox` | None: stay on the executor. |
 | `onLLMRequest`, `onLLMResponse` | A `preGenerate` / `postGenerate` hook in `hooks`, or an `onEvent` listener. |
 | `onToolCall`, `onToolResult` | A `preToolCall` / `postToolCall` hook in `hooks`, or an `onEvent` listener. |

@@ -195,7 +195,11 @@ async function resumeObserved(
   };
   // #281: the decided tool runs inside the continued run's `invoke_agent` span, which the continuation then adopts.
   const captureContent = resolveCaptureContent(executeOptions.captureContent);
-  const runSpan = (): ReturnType<typeof agentRunSpanInit> => agentRunSpanInit({ agent: snapshot.agent, provider, sessionId: snapshot.sessionId, input: messages }, captureContent);
+  const runSpan = (): ReturnType<typeof agentRunSpanInit> =>
+    agentRunSpanInit(
+      { agent: snapshot.agent, provider, sessionId: snapshot.sessionId, input: messages },
+      { redactContent: executeOptions.redactContent, captureContent }
+    );
   const init = runSpan();
   return withSpan(
     executeOptions.exporter,

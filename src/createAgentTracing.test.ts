@@ -195,4 +195,78 @@ describe('createAgent({ exporter }) (M5a)', () => {
     expect(chat.attributes['gen_ai.input.messages']).toContain('Hello');
     expect(chat.attributes['gen_ai.output.messages']).toContain('Hi.');
   });
+
+  it('invoke_agent gen_ai.input.messages parses as JSON once - a Message[] input is not double-encoded (LOU-R3)', async () => {
+    const exporter = recording();
+    await createAgent({ provider: mockModel(['Hi.']), exporter, captureContent: true }).send('Hello');
+
+    const run = exporter.ended.find((span) => op(span) === 'invoke_agent')!;
+    // createAgent always hands the executor a Message[]; one JSON.parse must
+    // yield the message parts, with `content` the literal text (not a second
+    // JSON document).
+    expect(JSON.parse(run.attributes['gen_ai.input.messages'] as string)).toEqual([
+      { role: 'user', parts: [{ type: 'text', content: 'Hello' }] },
+    ]);
+  });
+
+  describe('redactContent', () => {
+    const lookup = defineTool({
+      name: 'lookup',
+      description: 'Looks something up',
+      input: z.object({ q: z.string() }),
+      execute: async ({ q }) => `result for ${q}`,
+    });
+    const agent = (options: Omit<Parameters<typeof createAgent>[0], 'provider' | 'tools'>) =>
+      createAgent({
+        provider: mockModel([{ toolCalls: [{ name: 'lookup', args: { q: 'private-query' }, id: 'call_1' }] }, 'Done.']),
+        tools: [lookup],
+        ...options,
+      });
+    const attributeValues = (span: Span) => Object.values(span.attributes).map((value) => JSON.stringify(value));
+
+    it('keeps prompt and tool IO off the spans when set on createAgent', async () => {
+      const exporter = recording();
+      await agent({ exporter, redactContent: true }).send('the prompt');
+
+      const run = exporter.ended.find((span) => op(span) === 'invoke_agent')!;
+      const chat = exporter.ended.filter((span) => op(span) === 'chat');
+      const tool = exporter.ended.find((span) => op(span) === 'execute_tool')!;
+      expect(chat).toHaveLength(2);
+      for (const span of [run, ...chat, tool]) {
+        expect(span.attributes).not.toHaveProperty('input');
+        expect(span.attributes).not.toHaveProperty('prompt');
+        expect(span.attributes).not.toHaveProperty('args');
+        expect(span.attributes).not.toHaveProperty('result');
+        for (const value of attributeValues(span)) {
+          expect(value).not.toContain('the prompt');
+          expect(value).not.toContain('private-query');
+          expect(value).not.toContain('result for private-query');
+        }
+      }
+      // Non-content fields are never redacted.
+      expect(tool.attributes['gen_ai.tool.name']).toBe('lookup');
+      expect(chat[0].attributes['gen_ai.response.finish_reasons']).toBeDefined();
+    });
+
+    it('keeps prompt and tool IO out of the .lousho/traces files', async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-traces-'));
+      try {
+        await agent({ exporter: fileTraceExporter({ dir }), redactContent: true }).send('the prompt');
+
+        const lines = fs
+          .readdirSync(dir)
+          .flatMap((day) => fs.readdirSync(path.join(dir, day)).map((name) => fs.readFileSync(path.join(dir, day, name), 'utf8')))
+          .flatMap((text) => text.trim().split('\n').map((line) => JSON.parse(line) as TraceLine));
+        expect(lines.length).toBeGreaterThan(0);
+        for (const line of lines) {
+          const attributes = JSON.stringify(line.attributes);
+          expect(attributes).not.toContain('the prompt');
+          expect(attributes).not.toContain('private-query');
+          expect(attributes).not.toContain('result for private-query');
+        }
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  });
 });

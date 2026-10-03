@@ -335,6 +335,20 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    */
   captureContent?: boolean;
   /**
+   * Keep prompt and tool content off the spans entirely (the deprecated
+   * `input`/`prompt`/`args`/`result` attributes are omitted). Set this for
+   * `fileTraceExporter()` so the `.lousho/traces` files hold no message or
+   * tool content. Only matters with an `exporter`. See
+   * `ExecuteOptions.redactContent`.
+   *
+   * @example
+   * ```ts
+   * import { fileTraceExporter } from '@lousho/build-ai-agent/traces';
+   * createAgent({ model: 'openai/gpt-4o-mini', exporter: fileTraceExporter(), redactContent: true });
+   * ```
+   */
+  redactContent?: boolean;
+  /**
    * Opt in to appending the nearest `AGENTS.md` / `CLAUDE.md` (found by
    * walking up from `cwd`, see `loadProjectInstructions()`) to the agent's
    * instructions, under a `## Project instructions (from AGENTS.md)` heading
@@ -777,9 +791,10 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   );
   const hooks = agentHooks(config);
   // M5a: every run of this agent (send, stream, sessions, resume, approvals) is traced.
-  const tracing: Pick<ExecuteOptions, 'exporter' | 'captureContent'> = {
+  const tracing: Pick<ExecuteOptions, 'exporter' | 'captureContent' | 'redactContent'> = {
     ...(config.exporter && { exporter: config.exporter }),
     ...(config.captureContent !== undefined && { captureContent: config.captureContent }),
+    ...(config.redactContent !== undefined && { redactContent: config.redactContent }),
   };
   const checkpoints = config.store?.checkpoints;
   /** N6: the handoffs of this agent's runs, and the agent a run continues with after one. */
