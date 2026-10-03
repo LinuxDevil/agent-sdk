@@ -24,6 +24,7 @@ import { getToolExecute } from '../tools/toolContract';
 import { SandboxAdapter } from '../security/sandboxCore';
 import type { ToolCallScope } from './subagentRuntime';
 import { buildToolRunContext, type ToolRunInput } from './toolRunContext';
+import { drainPartialStream, isPartialStream } from './toolPartials';
 
 /**
  * Thrown when a `requiresSandbox` tool cannot be sandboxed (LOU-U14: reaches
@@ -59,6 +60,11 @@ export type { ToolRunContext } from './toolRunContext';
  * buildToolRunContext(): `toolCallId`, `messages` (the transcript before
  * this call), `abortSignal` (LOU-V1, the run's cancellation signal) and the
  * SDK's own run fields.
+ *
+ * N13b: when `execute` returns an async generator (see isPartialStream()),
+ * every snapshot it yields goes to `runContext.onPartial` and the last one is
+ * the result; the call lasts until the generator ends. The `sandboxExecute`
+ * route does not stream.
  */
 export async function executeToolWithSandboxGuard(
   toolName: string,
@@ -72,12 +78,22 @@ export async function executeToolWithSandboxGuard(
   // LOU-U15: one context for both routes (toolCallId, messages, abortSignal).
   // N9b: tokens `ctx.getToken()` hands out are remembered, so a result that echoes one is redacted.
   const handedOut = new Set<string>();
-  const ctx = buildToolRunContext({ ...runContext, signal, scope, handedOut });
-  const result = await runGuarded(toolName, toolDesc, args, sandbox, ctx);
-  return handedOut.size > 0 ? redactHandedOutTokens(toolName, result, handedOut) : result;
+  const { onPartial, ...input } = runContext ?? {};
+  const ctx = buildToolRunContext({ ...input, signal, scope, handedOut });
+  const redacted = (value: unknown) => (handedOut.size > 0 ? redactHandedOutTokens(toolName, value, handedOut) : value);
+  // N13b: a snapshot is redacted like the result it may become.
+  const result = await runGuarded(toolName, toolDesc, args, sandbox, ctx, (snapshot) => onPartial?.(redacted(snapshot)));
+  return redacted(result);
 }
 
-async function runGuarded(toolName: string, toolDesc: ToolDescriptor, args: Record<string, unknown>, sandbox: SandboxAdapter, ctx: ToolExecutionContext): Promise<unknown> {
+async function runGuarded(
+  toolName: string,
+  toolDesc: ToolDescriptor,
+  args: Record<string, unknown>,
+  sandbox: SandboxAdapter,
+  ctx: ToolExecutionContext,
+  onPartial: (snapshot: unknown) => void
+): Promise<unknown> {
   if (toolDesc.requiresSandbox) {
     if (!toolDesc.sandboxExecute) {
       throw new SandboxRequiredError(
@@ -89,5 +105,8 @@ async function runGuarded(toolName: string, toolDesc: ToolDescriptor, args: Reco
   }
 
   const execute = getToolExecute(toolDesc);
-  return execute ? execute(args, ctx) : null;
+  if (!execute) return null;
+  // N13b: a generator `execute` streams snapshots; its last one is the result. The whole run counts as the call.
+  const returned = await execute(args, ctx);
+  return isPartialStream(returned) ? drainPartialStream(returned, onPartial, ctx.abortSignal) : returned;
 }

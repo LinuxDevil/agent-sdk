@@ -77,7 +77,7 @@ import {
   saveStepCheckpoint,
   toExecutionResult,
 } from './agentRunState';
-import { AgentRun, RUN_EVENTS, StreamingExecuteOptions, observeRun, runEventsOf, startAgentRun } from './agentRun';
+import { AgentRun, RUN_EVENTS, StreamingExecuteOptions, observeRun, partialSink, runEventsOf, startAgentRun } from './agentRun';
 import type { AgentEvent } from './agentEvents';
 import { withSteerSignal, type InputQueue } from './inputQueue';
 import { OutputError, outputInstruction, outputRepairMessage, validateOutput } from './structuredOutput';
@@ -1711,6 +1711,8 @@ export class AgentExecutor {
         signal,
         onDelegatedUsage,
         scope,
+        // N13b: a generator tool's snapshots reach the run's events (the scope's runtime is the run's options).
+        onToolPartial: scope && partialSink(scope.runtime),
       },
       onPrepared
     );

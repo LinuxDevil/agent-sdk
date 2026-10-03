@@ -57,7 +57,8 @@ export type LoushoUIMessageChunk =
   | { type: 'reasoning-delta'; id: string; delta: string }
   | { type: 'tool-input-start'; toolCallId: string; toolName: string; providerExecuted?: boolean }
   | { type: 'tool-input-available'; toolCallId: string; toolName: string; input: unknown; providerExecuted?: boolean }
-  | { type: 'tool-output-available'; toolCallId: string; output: unknown; providerExecuted?: boolean }
+  /** N13b: `preliminary: true` for a snapshot of a streaming tool (`tool.partial`); the final output has no `preliminary`. */
+  | { type: 'tool-output-available'; toolCallId: string; output: unknown; providerExecuted?: boolean; preliminary?: true }
   | { type: 'tool-output-error'; toolCallId: string; errorText: string; providerExecuted?: boolean }
   | { type: 'data-lousho-approval'; id: string; data: LoushoApprovalData }
   | { type: 'data-lousho-todos'; id: string; data: LoushoTodosData }
@@ -144,6 +145,9 @@ function chunksFor(event: AgentEvent, state: MapState): LoushoUIMessageChunk[] {
         { type: 'tool-input-start', toolCallId: event.toolCallId, toolName: event.toolName, ...byProvider(event) },
         { type: 'tool-input-available', toolCallId: event.toolCallId, toolName: event.toolName, input: event.args, ...byProvider(event) },
       ];
+    // N13b: the AI SDK's preliminary tool output (AI SDK 5+); the `tool.done` chunk after it is final.
+    case 'tool.partial':
+      return [{ type: 'tool-output-available', toolCallId: event.toolCallId, output: event.output, preliminary: true }];
     case 'tool.done':
       return [{ type: 'tool-output-available', toolCallId: event.toolCallId, output: event.result, ...byProvider(event) }];
     case 'tool.error':

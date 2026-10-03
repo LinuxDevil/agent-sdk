@@ -69,6 +69,7 @@ export type {
   ReasoningDeltaEvent,
   ReasoningDoneEvent,
   ToolStartEvent,
+  ToolPartialEvent,
   ToolDoneEvent,
   TodoUpdatedEvent,
   ToolErrorEvent,

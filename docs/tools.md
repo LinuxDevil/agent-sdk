@@ -69,6 +69,9 @@ descriptors that set neither `inputSchema` nor `execute`.
   [Parallel tool calls](./runs.md#parallel-tool-calls).
 - **Cancellation.** A run's `AbortSignal` reaches each call as
   `ctx.abortSignal`, so long-running work can stop early.
+- **Progress.** An `execute` written as `async function*` streams snapshots
+  of its output while it runs; the last one is the result. See
+  [Streaming partial results](#streaming-partial-results).
 - **Retries after a crash.** With durable execution a tool can run more than
   once across a crash; use `ctx.toolCallId` as an idempotency key. See
   [Durable execution](./durable-execution.md#at-least-once-tools-make-side-effects-idempotent).
@@ -271,3 +274,73 @@ tools.register('current_date', currentDateTool);
 
 Pass it as `toolRegistry` to `AgentExecutor.execute()`; the agent config's
 `tools` map names the tools it may use.
+
+## Streaming partial results
+
+A long tool (a report builder, a search over many sources) can show progress
+while it runs: write `execute` as an `async function*`. Every `yield` is a
+complete snapshot of the output so far, which replaces the previous one, and
+reaches the run's events as `tool.partial` (see
+[Stream events](./stream-events.md)). The last yielded value is the tool's
+result: the model gets it, and it is the `result` of the call's `tool.done`, so
+the final snapshot appears twice (as the last `tool.partial` and in
+`tool.done`). A `return` value is ignored; a generator that yields nothing has
+the result `undefined` (`null` in events).
+
+```ts
+import { createAgent, defineTool, type ToolOutput } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+const buildReport = defineTool({
+  name: 'build_report',
+  description: 'Builds a report from several sources',
+  input: z.object({ topic: z.string() }),
+  async *execute({ topic }, ctx) {
+    const sections: string[] = [];
+    for (const source of ['news', 'papers', 'forums']) {
+      if (ctx.abortSignal?.aborted) return;
+      sections.push(`${source}: notes on ${topic}`);
+      yield { topic, sections: [...sections], done: false };
+    }
+    yield { topic, sections, done: true };
+  },
+});
+type Report = ToolOutput<typeof buildReport>; // { topic: string; sections: string[]; done: boolean }
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', tools: [buildReport] });
+for await (const event of agent.stream('Write a report on solar power.')) {
+  if (event.type === 'tool.partial') console.log(`step ${event.index}`, event.output);
+}
+```
+
+What to know:
+
+- **Only the result is kept.** Snapshots are not sent to the model, not added
+  to the transcript or the session, not checkpointed and not recorded in trace
+  spans. Hooks (`postToolCall`, `onToolResult`) see only the result.
+- **A crash loses them.** Partial output is not durable: after a crash, or a
+  pause for a [sign-in](./oauth.md) inside the generator, the call has no
+  result yet and runs again from the start (a new `tool.start`, `index` from
+  0). Snapshots already streamed stay in the event log; a UI should drop them
+  when the call pauses or starts again (the [UI bindings](./react.md) do).
+- **Approvals and permissions apply first.** A generator tool that needs
+  approval runs, and streams, only after the decision (also on a streamed
+  resume, `agent.approvals.streamResolve()`).
+- **Cancellation.** When the run is aborted, the SDK stops reading the
+  generator at once, settles the call as aborted and calls its `return()`, so
+  its `finally` blocks run - once the `await` it is in settles, so pass
+  `ctx.abortSignal` to the work you await.
+- **Tokens are redacted in snapshots too.** A snapshot that contains a token
+  the tool got from `ctx.getToken()` has it replaced with `[REDACTED]`, like the
+  result. A `postToolCall` hook that rewrites the result does not see the
+  snapshots: if a tool's output must be filtered by a hook, filter it in the
+  tool or do not stream it.
+- **Which values stream.** Only a value with a `next()` method that is also
+  async iterable (what an `async function*` returns) is streamed. A result that
+  is only async iterable, such as a `ReadableStream`, is an ordinary result.
+- **The whole run counts.** `toolConcurrency` holds the slot until the
+  generator ends. Calling the tool's `execute` yourself returns the generator.
+- **Where.** The main loop, the call that runs after an approval, and a flow's
+  tool-call node (which keeps only the result) all iterate the generator; a
+  tool's `sandboxExecute` does not stream. In the AI SDK UI stream, snapshots
+  are preliminary tool outputs (see [AI SDK UI](./ai-sdk-ui.md#event-mapping)).

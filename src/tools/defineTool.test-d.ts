@@ -4,7 +4,7 @@ import { z as z3 } from 'zod/v3';
 import { z as z4 } from 'zod/v4';
 import { aiTool } from '../providers/aiShapes.testkit';
 import type { Message } from '../providers/llm';
-import { defineTool, type DefinedTool, type ToolInput, type ToolOutput } from './defineTool';
+import { defineTool, type DefinedTool, type ToolInput, type ToolOutput, type ToolResultOf } from './defineTool';
 import { createAgent } from '../createAgent';
 import { createMockProvider } from '../providers/mock';
 import { ToolRegistry } from './ToolRegistry';
@@ -178,5 +178,35 @@ describe('either zod major (LOU-D29)', () => {
     expectTypeOf<ToolInput<typeof t>>().toEqualTypeOf<{ q: string; n: number }>();
     expectTypeOf<ToolOutput<typeof t>>().toEqualTypeOf<string>();
     new ToolRegistry().register(t);
+  });
+
+  it('N13b: a generator execute has the yielded type as its output', () => {
+    const counter = defineTool({
+      name: 'count_to',
+      description: 'd',
+      input: z.object({ n: z.number() }),
+      async *execute({ n }, ctx) {
+        expectTypeOf(n).toBeNumber();
+        expectTypeOf(ctx).toEqualTypeOf<ToolExecutionContext>();
+        yield { at: 1, done: false };
+        yield { at: n, done: true };
+      },
+    });
+    expectTypeOf<ToolOutput<typeof counter>>().toEqualTypeOf<{ at: number; done: boolean }>();
+    expectTypeOf(counter).toMatchTypeOf<DefinedTool>();
+    // Calling `execute` directly gives the generator, not a snapshot.
+    expectTypeOf(counter.execute).returns.resolves.toMatchTypeOf<AsyncIterable<{ at: number; done: boolean }>>();
+    createAgent({ prompt: 'p', provider: createMockProvider({ responses: ['x'] }), tools: [counter] });
+    new ToolRegistry().register(counter);
+  });
+
+  it('N13b: a plain async tool is unchanged', () => {
+    const plain = defineTool({ name: 'p', description: 'd', input: z.object({}), execute: async () => ({ ok: true }) });
+    expectTypeOf<ToolOutput<typeof plain>>().toEqualTypeOf<{ ok: boolean }>();
+    expectTypeOf(plain.execute).returns.toEqualTypeOf<Promise<{ ok: boolean }>>();
+    expectTypeOf<ToolResultOf<Promise<string>>>().toEqualTypeOf<string>();
+    expectTypeOf<ToolResultOf<AsyncGenerator<number>>>().toEqualTypeOf<number>();
+    // Only async iterable (no `next`, like a ReadableStream): an ordinary result.
+    expectTypeOf<ToolResultOf<AsyncIterable<number>>>().toEqualTypeOf<AsyncIterable<number>>();
   });
 });

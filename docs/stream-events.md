@@ -27,6 +27,7 @@ The event types and their extra fields:
 | `reasoning.delta`    | `text: string` | A chunk of reasoning text (or of its summary). Never part of `text.delta` / `run.done`'s `text`. |
 | `reasoning.done`     | `text: string`, `tokens?: number` | The reasoning ended: `text` is all of it; `tokens` when the provider reported reasoning tokens by then. |
 | `tool.start`         | `toolCallId: string`, `toolName: string`, `args: Record<string, unknown>` | A tool call starts. `args` are the model's arguments parsed from JSON (`{}` when they are not valid JSON). |
+| `tool.partial`       | `toolCallId`, `toolName`, `output: unknown`, `index: number` | A snapshot of a running tool's output: a tool whose `execute` is an `async function*` reports one per `yield` (see [Streaming partial results](./tools.md#streaming-partial-results)). Each snapshot is complete and replaces the previous one; `index` counts the call's snapshots from 0. The last one is also the call's `tool.done` `result`. `output` is JSON-encoded like `result`. Snapshots never reach the model, the transcript, checkpoints or traces. A sub-agent's carries `subagent`. |
 | `tool.done`          | `toolCallId`, `toolName`, `result: unknown`, `durationMs: number` | A tool call returned. `result` is the value as it would be JSON-encoded (`undefined` becomes `null`, a `Date` becomes a string). `durationMs` counts from its `tool.start`. |
 | `todo.updated`       | `todos: Todo[]`, `counts: { pending, in_progress, completed, total }`, `toolCallId: string` | A successful `todo_write` call of the [todo tools](./tools.md#todo-tools) replaced the list, right after that call's `tool.done`. `todos` is the complete new list (`{ id, content, status }`), `toolCallId` the `todo_write` call. A sub-agent's carries `subagent`. The [UI bindings](./react.md#todos) keep the list and show it live. |
 | `tool.error`         | `toolCallId`, `toolName`, `error: { name: string, message: string }`, `durationMs: number` | A tool call failed: it threw, its arguments did not match its schema (`name: 'ToolArgumentsValidationError'`), or the tool does not exist. The model gets the error as the call's result and the run continues. |
@@ -63,6 +64,11 @@ Optional fields are left out when they have no value. They are never
 - Tool calls of one step run in parallel (see `toolConcurrency`):
   `tool.start` events come in the model's call order and `tool.done` /
   `tool.error` events in completion order. Match them by `toolCallId`.
+- A call's `tool.partial` events come between its `tool.start` and its
+  `tool.done` / `tool.error`, with `index` 0, 1, 2, ...; the partials of
+  parallel calls interleave. A call that pauses for a sign-in has no
+  `tool.done`; it runs again from the start after the sign-in, with a new
+  `tool.start` and `index` from 0.
 - `input.queued` comes when `run.enqueue()` is called (after `run.start`, even
   for input queued before the run got going), so it can fall inside a step.
   Its `input.applied` comes between the `step.done` of the step that was

@@ -84,6 +84,47 @@ describe('reduceAgentEvents (LOU-D15)', () => {
     ]);
   });
 
+  it('N13b: tool.partial sets the running call\'s partial; tool.done / tool.error clear it', () => {
+    const [start1, start2, p0, p1, q0, done1, error2, late] = events(
+      { type: 'tool.start', toolCallId: 'c1', toolName: 'a', args: {} },
+      { type: 'tool.start', toolCallId: 'c2', toolName: 'b', args: {} },
+      { type: 'tool.partial', toolCallId: 'c1', toolName: 'a', output: { at: 1 }, index: 0 },
+      { type: 'tool.partial', toolCallId: 'c1', toolName: 'a', output: { at: 2 }, index: 1 },
+      { type: 'tool.partial', toolCallId: 'c2', toolName: 'b', output: 'half', index: 0 },
+      { type: 'tool.done', toolCallId: 'c1', toolName: 'a', result: { at: 2 }, durationMs: 1 },
+      { type: 'tool.error', toolCallId: 'c2', toolName: 'b', error: { name: 'Error', message: 'boom' }, durationMs: 1 },
+      { type: 'tool.partial', toolCallId: 'c1', toolName: 'a', output: { at: 'stale' }, index: 2 }
+    );
+    const midway = reduce(send, start1, start2, p0, p1, q0).messages[1].toolCalls;
+    expect(midway.map((c) => [c.id, c.status, c.partial])).toEqual([
+      ['c1', 'running', { at: 2 }],
+      ['c2', 'running', 'half'],
+    ]);
+
+    const settled = reduce(send, start1, start2, p0, p1, q0, done1, error2, late).messages[1].toolCalls;
+    expect(settled).toEqual([
+      { id: 'c1', name: 'a', args: {}, status: 'done', result: { at: 2 } },
+      { id: 'c2', name: 'b', args: {}, status: 'error', error: { name: 'Error', message: 'boom' } },
+    ]);
+    // A snapshot for a call that is not known is ignored.
+    const unknown = events({ type: 'tool.partial', toolCallId: 'zz', toolName: 'a', output: 1, index: 0 });
+    expect(reduce(send, ...unknown).messages[1].toolCalls).toEqual([]);
+  });
+
+  it('N13b: a call paused mid-stream (sign-in) drops its partial; a rerun starts without one', () => {
+    const script = events(
+      { type: 'tool.start', toolCallId: 'c1', toolName: 'list_repos', args: {} },
+      { type: 'tool.partial', toolCallId: 'c1', toolName: 'list_repos', output: { status: 'connecting' }, index: 0 },
+      { type: 'approval.requested', approvalId: 'ap1', toolCallId: 'c1', toolName: 'list_repos', args: {}, kind: 'sign-in' },
+      { type: 'run.done', finishReason: 'awaiting-approval', text: '' }
+    );
+    const paused = reduce(send, ...script);
+    expect(paused.messages[1].toolCalls[0]).toEqual({ id: 'c1', name: 'list_repos', args: {}, status: 'awaiting-approval' });
+    const rerun = events({ type: 'tool.start', toolCallId: 'c1', toolName: 'list_repos', args: {} }, { type: 'tool.partial', toolCallId: 'c1', toolName: 'list_repos', output: { status: 'listing' }, index: 0 });
+    const resumed = rerun.reduce(reduceAgentEvents, reduceAgentEvents(paused, { type: 'ui.decide', approved: true }));
+    expect(resumed.messages[1].toolCalls[0]).toMatchObject({ status: 'running', partial: { status: 'listing' } });
+  });
+
   it('approval.requested pauses; a decision and the resumed outcome finish the turn', () => {
     const paused = reduce(
       send,

@@ -1,0 +1,236 @@
+{
+  "version": 1,
+  "sdkVersion": "1.0.0-alpha.8",
+  "recordedAt": "2026-10-03T01:15:38.635Z",
+  "provider": {
+    "name": "openrouter",
+    "defaultModel": "openai/gpt-4o-mini"
+  },
+  "entries": [
+    {
+      "kind": "stream",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are a helpful assistant."
+          },
+          {
+            "role": "user",
+            "content": "Use count_to with n=3, then say done."
+          }
+        ],
+        "tools": [
+          {
+            "name": "count_to",
+            "description": "Counts from 1 to n, reporting each step.",
+            "parameters": {
+              "properties": {
+                "n": {
+                  "checks": [
+                    {
+                      "kind": "int"
+                    },
+                    {
+                      "kind": "min",
+                      "value": 1
+                    },
+                    {
+                      "kind": "max",
+                      "value": 10
+                    }
+                  ],
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            }
+          }
+        ],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "",
+        "finishReason": "tool-calls",
+        "usage": {
+          "promptTokens": 78,
+          "completionTokens": 14,
+          "totalTokens": 92
+        },
+        "toolCalls": [
+          {
+            "id": "call_09tOVJqatOC3QjSG672DRxur",
+            "type": "function",
+            "function": {
+              "name": "count_to",
+              "arguments": "{\"n\":3}"
+            }
+          }
+        ],
+        "chunks": [
+          {
+            "delayMs": 1242,
+            "chunk": {
+              "type": "tool-call",
+              "toolCall": {
+                "id": "call_09tOVJqatOC3QjSG672DRxur",
+                "type": "function",
+                "function": {
+                  "name": "count_to",
+                  "arguments": "{\"n\":3}"
+                }
+              }
+            }
+          },
+          {
+            "delayMs": 24,
+            "chunk": {
+              "type": "finish",
+              "finishReason": "tool-calls",
+              "usage": {
+                "promptTokens": 78,
+                "completionTokens": 14,
+                "totalTokens": 92
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "stream",
+      "request": {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are a helpful assistant."
+          },
+          {
+            "role": "user",
+            "content": "Use count_to with n=3, then say done."
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "count_to",
+                "arguments": "{\"n\":3}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "{\"done\":true,\"n\":3}",
+            "name": "count_to",
+            "toolName": "count_to"
+          }
+        ],
+        "tools": [
+          {
+            "name": "count_to",
+            "description": "Counts from 1 to n, reporting each step.",
+            "parameters": {
+              "properties": {
+                "n": {
+                  "checks": [
+                    {
+                      "kind": "int"
+                    },
+                    {
+                      "kind": "min",
+                      "value": 1
+                    },
+                    {
+                      "kind": "max",
+                      "value": 10
+                    }
+                  ],
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            }
+          }
+        ],
+        "temperature": null,
+        "maxTokens": null
+      },
+      "response": {
+        "text": "Counting to 3 is done.",
+        "finishReason": "stop",
+        "usage": {
+          "promptTokens": 109,
+          "completionTokens": 8,
+          "totalTokens": 117
+        },
+        "chunks": [
+          {
+            "delayMs": 906,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "Counting"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " to"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " "
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "3"
+            }
+          },
+          {
+            "delayMs": 84,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " is"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " done"
+            }
+          },
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "."
+            }
+          },
+          {
+            "delayMs": 35,
+            "chunk": {
+              "type": "finish",
+              "finishReason": "stop",
+              "usage": {
+                "promptTokens": 109,
+                "completionTokens": 8,
+                "totalTokens": 117
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

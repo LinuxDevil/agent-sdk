@@ -79,6 +79,8 @@ export interface ToolCallContext {
   scope?: ToolCallScope;
   /** LOU-V5: where a delegated child's usage is reported (see ToolRunContext). */
   onDelegatedUsage?: ToolRunContext['onDelegatedUsage'];
+  /** N13b: a snapshot a generator tool yielded (reported as `tool.partial`); never part of the result. */
+  onToolPartial?: (toolCallId: string, toolName: string, output: unknown) => void;
 }
 
 /**
@@ -540,7 +542,16 @@ async function doExecuteToolCall(
       // LOU-U9: `toolCallId` is the tool's idempotency key on a re-run.
       // LOU-U15: `messages` is the run's transcript (the guard copies it).
       // LOU-D23.2: and the run's `sessionId`, when it has one. N10b: and its principal. N9b: and the token store.
-      { onDelegatedUsage: ctx.onDelegatedUsage, toolCallId: toolCall.id, messages: ctx.messages, sessionId: ctx.sessionId, principal: ctx.principal, tokens: ctx.scope?.runtime.tokens },
+      // N13b: and where a generator tool's snapshots go.
+      {
+        onDelegatedUsage: ctx.onDelegatedUsage,
+        toolCallId: toolCall.id,
+        messages: ctx.messages,
+        sessionId: ctx.sessionId,
+        principal: ctx.principal,
+        tokens: ctx.scope?.runtime.tokens,
+        ...(ctx.onToolPartial && { onPartial: partialReporter(ctx.onToolPartial, toolCall) }),
+      },
       ctx.scope
     );
 
@@ -559,6 +570,11 @@ async function doExecuteToolCall(
     }
     return thrownToolFailure(toolCall, error);
   }
+}
+
+/** N13b: `report` bound to one call. */
+function partialReporter(report: NonNullable<ToolCallContext['onToolPartial']>, toolCall: ToolCall): (output: unknown) => void {
+  return (output) => report(toolCall.id, toolCall.function.name, output);
 }
 
 /**

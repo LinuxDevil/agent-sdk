@@ -115,6 +115,35 @@ describe('toUIMessageStream (LOU-P1)', () => {
     ]);
   });
 
+  it('N13b: a generator tool streams preliminary tool-output-available chunks, then the final one', async () => {
+    const counter = defineTool({
+      name: 'count_to',
+      description: 'Counts',
+      input: z.object({ n: z.number() }),
+      async *execute({ n }) {
+        for (let i = 1; i <= n; i++) yield { at: i };
+      },
+    });
+    const run = () => createAgent({ provider: mockModel([{ toolCalls: [{ name: 'count_to', args: { n: 2 }, id: 'c1' }] }, 'Done.']), tools: [counter] }).stream('count');
+
+    const outputs = (await collect(toUIMessageStream(run()))).filter((c) => c.type === 'tool-output-available');
+    expect(outputs).toEqual([
+      { type: 'tool-output-available', toolCallId: 'c1', output: { at: 1 }, preliminary: true },
+      { type: 'tool-output-available', toolCallId: 'c1', output: { at: 2 }, preliminary: true },
+      { type: 'tool-output-available', toolCallId: 'c1', output: { at: 2 } },
+    ]);
+
+    // The real ai v7 reader shows each snapshot as a preliminary output, and ends on the final one.
+    const stream = toUIMessageStream(run()) as ReadableStream<LoushoUIMessageChunk> as unknown as ReadableStream<UIMessageChunk>;
+    const seen: unknown[] = [];
+    for await (const message of readUIMessageStream({ stream })) {
+      const part = message.parts.find((p) => p.type === 'tool-count_to') as { state?: string; output?: unknown; preliminary?: boolean } | undefined;
+      if (part?.state === 'output-available') seen.push({ output: part.output, preliminary: part.preliminary ?? false });
+    }
+    expect(seen.at(0)).toEqual({ output: { at: 1 }, preliminary: true });
+    expect(seen.at(-1)).toEqual({ output: { at: 2 }, preliminary: false });
+  });
+
   it('is read by the real ai v7 UI message stream reader into a message with text and tool parts', async () => {
     const stream = toUIMessageStream(toolRun()) as ReadableStream<LoushoUIMessageChunk> as unknown as ReadableStream<UIMessageChunk>;
     let last: UIMessage | undefined;
