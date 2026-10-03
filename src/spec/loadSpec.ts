@@ -35,18 +35,33 @@ function parseSpecData(raw: string, ext: string, filePath: string): unknown {
   );
 }
 
+/** Reads the spec file; a missing file reports LOUSHO_SPEC_NOT_FOUND rather than a raw ENOENT. */
+function readSpecFile(filePath: string): string {
+  try {
+    return fs.readFileSync(filePath, 'utf8');
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') {
+      throw new ConfigurationError(`loadSpec: '${filePath}' does not exist.`, undefined, 'LOUSHO_SPEC_NOT_FOUND', { cause: error });
+    }
+    throw error;
+  }
+}
+
 /**
  * Loads and validates an agent spec file. Supports both .yaml/.yml (via
  * the `yaml` package) and .json (via JSON.parse), chosen by file
- * extension. Validated against the zod schema in schema.ts; a missing or
- * invalid field throws a `ValidationError` (`code: 'LOUSHO_SPEC_INVALID'`)
+ * extension. A path that does not exist throws `LOUSHO_SPEC_NOT_FOUND`
+ * (not a raw ENOENT). Validated against the zod schema in schema.ts; a
+ * missing or invalid field throws a `ValidationError`
+ * (`code: 'LOUSHO_SPEC_INVALID'`)
  * whose message names the exact field (e.g. "'prompt': Required"); a
  * top-level field that looks like a typo of a spec field (`promt`) throws
  * `LOUSHO_SPEC_UNKNOWN_FIELD` with a "did you mean" suggestion. Other
  * unknown fields are ignored.
  */
 export function loadSpec(filePath: string): AgentSpec {
-  const raw = fs.readFileSync(filePath, 'utf8');
+  const raw = readSpecFile(filePath);
   const ext = path.extname(filePath).toLowerCase();
 
   const data = parseSpecData(raw, ext, filePath);

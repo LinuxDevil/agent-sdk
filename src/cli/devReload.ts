@@ -9,7 +9,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createAgent, type CreateAgentConfig, type SimpleAgent } from '../createAgent';
+import { createAgent, createAgentConfigOf, type CreateAgentConfig, type SimpleAgent } from '../createAgent';
 import { SDKError } from '../execution/errors';
 import { resolveAgentDir } from '../agentDir';
 import type { Channel } from '../channels/defineChannel';
@@ -113,7 +113,24 @@ async function loadModuleAgent(file: string, token: string, overrides: CreateAge
     throw explainImportError(file, error);
   }
   const exported = mod.default ?? mod.agent;
-  if (isSimpleAgent(exported)) return exported;
+  if (isSimpleAgent(exported)) {
+    // A module can export an already-built agent. Its createAgent() options are
+    // remembered by createAgentConfigOf(), so an `overrides.exporter` (--traces)
+    // still reaches its runs: the agent is rebuilt with it (an exporter cannot be
+    // attached after the fact). An agent not built by createAgent() keeps its own
+    // configuration - warn that --traces cannot apply to it.
+    const config = createAgentConfigOf(exported);
+    if (overrides.exporter === undefined) return exported;
+    if (config === undefined) {
+      console.warn(
+        'lousho: --traces cannot be applied to the agent this module exports (it was not created with createAgent()); its own exporter, if any, is used.'
+      );
+      return exported;
+    }
+    const agent = createAgent({ ...config, exporter: overrides.exporter });
+    if (config.store) storeOwners.add(agent);
+    return agent;
+  }
   if (isAgentConfig(exported)) {
     const agent = createAgent({ ...exported, ...overrides } as CreateAgentConfig);
     if (exported.store) storeOwners.add(agent);
