@@ -702,6 +702,38 @@ interface RunStartEvent extends AgentEventBase<'run.start'> {
 }
 
 // @public
+interface SchemaIssue {
+    // (undocumented)
+    readonly message: string;
+    // (undocumented)
+    readonly path?: ReadonlyArray<PropertyKey | {
+        readonly key: PropertyKey;
+    }>;
+}
+
+// @public (undocumented)
+type StandardResult<Output> = {
+    readonly value: Output;
+    readonly issues?: undefined;
+} | {
+    readonly issues: ReadonlyArray<SchemaIssue>;
+};
+
+// @public
+interface StandardSchemaV1<Input = unknown, Output = Input> {
+    // (undocumented)
+    readonly '~standard': {
+        readonly version: 1;
+        readonly vendor: string;
+        readonly validate: (value: unknown) => StandardResult<Output> | Promise<StandardResult<Output>>;
+        readonly types?: {
+            readonly input: Input;
+            readonly output: Output;
+        } | undefined;
+    };
+}
+
+// @public
 interface StepDoneEvent extends AgentEventBase<'step.done'> {
     finishReason: ExecutionFinishReason;
     // (undocumented)
@@ -821,7 +853,7 @@ interface ToolDefinition {
     function: {
         name: string;
         description: string;
-        parameters: Record<string, unknown>;
+        parameters: Record<string, unknown> | StandardSchemaV1;
     };
     // (undocumented)
     type: 'function';
@@ -887,9 +919,12 @@ interface ToolStartEvent extends AgentEventBase<'tool.start'> {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-CJlwYZWB.d.ts:712:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point hooks.d.ts
-// dist/createAgent-CJlwYZWB.d.ts:729:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point hooks.d.ts
-// dist/createAgent-CJlwYZWB.d.ts:1073:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point hooks.d.ts
+// dist/createAgent-ERC_wJgQ.d.ts:712:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point hooks.d.ts
+// dist/createAgent-ERC_wJgQ.d.ts:729:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point hooks.d.ts
+// dist/createAgent-ERC_wJgQ.d.ts:1073:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point hooks.d.ts
+// dist/index-MPvXfVX9.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point hooks.d.ts
+// dist/index-MPvXfVX9.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point hooks.d.ts
+// dist/index-MPvXfVX9.d.ts:1410:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point hooks.d.ts
 
 // (No @packageDocumentation comment for this package)
 

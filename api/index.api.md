@@ -4,10 +4,9 @@
 
 ```ts
 
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import Docker from 'dockerode';
 import * as http from 'node:http';
 import { IncomingMessage } from 'node:http';
+import { KeyObject } from 'node:crypto';
 import { LanguageModel } from 'ai';
 import * as net from 'node:net';
 import { Tool } from 'ai';
@@ -1600,6 +1599,25 @@ export interface DiscordTarget {
     edited: boolean;
     // (undocumented)
     token: string;
+}
+
+// @public
+export interface DockerConnectionOptions {
+    ca?: string | string[] | Buffer | Buffer[];
+    cert?: string | string[] | Buffer | Buffer[];
+    headers?: Record<string, string>;
+    host?: string;
+    key?: string | string[] | Buffer | Buffer[] | KeyObject[];
+    port?: number | string;
+    Promise?: typeof Promise;
+    protocol?: 'https' | 'http' | 'ssh';
+    socketPath?: string;
+    sshAuthAgent?: string;
+    sshOptions?: object;
+    timeout?: number;
+    // (undocumented)
+    username?: string;
+    version?: string;
 }
 
 // @public
@@ -3370,7 +3388,17 @@ export type McpApproval = 'annotations' | 'always' | 'never' | ((tool: {
 }) => boolean);
 
 // @public
-export type McpClientLike = Pick<Client, 'listTools' | 'callTool'>;
+export interface McpClientLike {
+    callTool(params: {
+        name: string;
+        arguments?: Record<string, unknown>;
+    }, resultSchema?: unknown, options?: unknown): Promise<unknown>;
+    listTools(params?: {
+        cursor?: string;
+    }, options?: unknown): Promise<{
+        tools: RawMcpTool[];
+    }>;
+}
 
 // @public
 export interface McpConnections {
@@ -5594,7 +5622,7 @@ export class SubprocessSandbox implements SandboxAdapter {
 // @public
 export interface SubprocessSandboxOptions {
     broker?: CredentialBroker;
-    dockerOptions?: Docker.DockerOptions;
+    dockerOptions?: DockerConnectionOptions;
     image?: string;
     network?: SandboxNetwork;
     networkName?: string;
@@ -6026,7 +6054,7 @@ export interface ToolDefinition {
     function: {
         name: string;
         description: string;
-        parameters: Record<string, unknown>;
+        parameters: Record<string, unknown> | StandardSchemaV1;
     };
     // (undocumented)
     type: 'function';
@@ -6583,8 +6611,8 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/index-DPvSY0XV.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-DPvSY0XV.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-MPvXfVX9.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-MPvXfVX9.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)

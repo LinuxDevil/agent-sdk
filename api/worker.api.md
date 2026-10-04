@@ -3948,7 +3948,7 @@ interface ToolDefinition {
     function: {
         name: string;
         description: string;
-        parameters: Record<string, unknown>;
+        parameters: Record<string, unknown> | StandardSchemaV1;
     };
     // (undocumented)
     type: 'function';
@@ -4148,13 +4148,13 @@ interface WithRetryOptions {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-CJlwYZWB.d.ts:712:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CJlwYZWB.d.ts:729:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CJlwYZWB.d.ts:1073:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CJlwYZWB.d.ts:3013:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CJlwYZWB.d.ts:3014:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
-// dist/index-DPvSY0XV.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
-// dist/index-DPvSY0XV.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-ERC_wJgQ.d.ts:712:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-ERC_wJgQ.d.ts:729:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-ERC_wJgQ.d.ts:1073:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-ERC_wJgQ.d.ts:3013:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-ERC_wJgQ.d.ts:3014:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
+// dist/index-MPvXfVX9.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
+// dist/index-MPvXfVX9.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point worker.d.ts
 
 // (No @packageDocumentation comment for this package)
