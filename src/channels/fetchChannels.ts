@@ -88,6 +88,46 @@ function failureResponse(error: unknown): Response {
   return jsonResponse(status, { error: (error as Error).message });
 }
 
+/** The answer a channel's first `respond` call wrote, once `acknowledged` settles. */
+interface PendingAnswer {
+  current?: { status: number; body: unknown };
+}
+
+/**
+ * The response once the turn was dispatched. Races the surface's `respond`
+ * answer against the turn ending: an early answer wins and the turn keeps
+ * running past the response (kept alive by `ctx.waitUntil` or by awaiting its
+ * error tail here); a `handle` that threw after acknowledging reports the
+ * error but keeps the answer standing (as in mountChannels).
+ */
+async function settledResponse(
+  turn: Promise<void>,
+  acknowledged: Promise<void>,
+  answer: PendingAnswer,
+  ctx: FetchChannelsContext | undefined,
+  report: (error: unknown) => Promise<void>
+): Promise<Response> {
+  const settled = await Promise.race([acknowledged.then(() => 'ack' as const), turn.then(() => 'done' as const, (error: unknown) => ({ error }))]);
+  if (settled === 'ack') {
+    // The surface was answered before the turn ended: keep the turn alive
+    // past the response (ctx.waitUntil, or by awaiting it here).
+    const tail = turn.catch(report);
+    if (ctx?.waitUntil) ctx.waitUntil(tail);
+    else await tail;
+    const answered = answer.current as { status: number; body: unknown };
+    return jsonResponse(answered.status, answered.body);
+  }
+  if (settled !== 'done') {
+    // `handle` threw: acknowledged already -> report, else a JSON failure.
+    if (answer.current !== undefined) {
+      await report(settled.error);
+      return jsonResponse(answer.current.status, answer.current.body);
+    }
+    return failureResponse(settled.error);
+  }
+  return jsonResponse(answer.current?.status ?? 200, answer.current?.body ?? { ok: true });
+}
+
 /**
  * Serves `channels` for `agent` on the Fetch API, with the same routes and
  * rules as `mountChannels()`: `POST <basePath>/<channel.name>` runs the
@@ -125,12 +165,12 @@ export function mountFetchChannels(
     /** A failure after the surface was acknowledged: reported, the ack stands (as in mountChannels). */
     const report = (error: unknown) => reportChannelError(channel.onError ?? options.onError, error, { channel: channel.name, stage: 'parse' });
     /** The first `respond` call, as both the stored answer and a promise that settles then. */
-    let answer: { status: number; body: unknown } | undefined;
+    const answer: PendingAnswer = {};
     let acknowledge!: () => void;
     const acknowledged = new Promise<void>((resolve) => (acknowledge = resolve));
     const respond: ChannelRespond = (status, body) => {
-      if (answer !== undefined) return;
-      answer = { status, body };
+      if (answer.current !== undefined) return;
+      answer.current = { status, body };
       acknowledge();
     };
     let turn: Promise<void>;
@@ -150,24 +190,7 @@ export function mountFetchChannels(
     } catch (error) {
       return failureResponse(error);
     }
-    const settled = await Promise.race([acknowledged.then(() => 'ack' as const), turn.then(() => 'done' as const, (error: unknown) => ({ error }))]);
-    if (settled === 'ack') {
-      // The surface was answered before the turn ended: keep the turn alive
-      // past the response (ctx.waitUntil, or by awaiting it here).
-      const tail = turn.catch(report);
-      if (ctx?.waitUntil) ctx.waitUntil(tail);
-      else await tail;
-      return jsonResponse((answer as { status: number; body: unknown }).status, (answer as { status: number; body: unknown }).body);
-    }
-    if (settled !== 'done') {
-      // `handle` threw: acknowledged already -> report, else a JSON failure.
-      if (answer !== undefined) {
-        await report(settled.error);
-        return jsonResponse(answer.status, answer.body);
-      }
-      return failureResponse(settled.error);
-    }
-    return jsonResponse(answer?.status ?? 200, answer?.body ?? { ok: true });
+    return settledResponse(turn, acknowledged, answer, ctx, report);
   };
   return Object.assign(handler, { resolveApproval: core.resolveApproval });
 }

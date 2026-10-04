@@ -1179,51 +1179,67 @@ export class AgentExecutor {
       // N5b: whatever else happened, a blocked input wins; nothing goes on before the checks settled.
       const blocked = await this.settleInputCheck(options, state, inputCheck);
       if (blocked) return blocked;
-      if (steerSignal?.aborted && !options.signal?.aborted) {
-        return 'steered';
-      }
-      // A cancellation is not a provider failure - never compact it or fold
-      // it into the conversation for a retry. With `signal` (LOU-V1) the
-      // loop turns it into an 'aborted' result; an AbortError thrown without
-      // one (see isAbortError()) reaches the caller untouched.
-      if (options.signal?.aborted || isAbortError(generateError)) {
-        throw generateError;
-      }
-
-      // LOU-R13: a cassette mismatch (or an unreadable cassette raised by the
-      // interception seam) is a test-fixture failure, not a provider failure.
-      // It reaches the caller typed - compacting it would hide the cassette
-      // path, the call number and the re-record hint behind a generic
-      // CompactedLLMProviderError.
-      if (isCassetteError(generateError)) {
-        throw generateError;
-      }
-
-      const { compacted, error: compactedError } = compactGenerateError(
-        generateError,
-        options.provider.name
-      );
-
-      if (!shouldSurfaceToModel(options, compacted)) {
-        // Non-actionable category ('auth-failure', 'unknown'), or the
-        // opt-in flag is off: reject execute() cleanly, exactly like
-        // before LOU-T4 - just with the small compacted error instead of
-        // the raw provider error. runAgentLoop()'s catch block emits the
-        // 'error' event for this, same as it does for every other thrown
-        // error in the loop - no need to duplicate that here.
-        throw compactedError;
-      }
-
-      // See providerErrorMessage() for why this is a tagged `user` message.
-      state.messages.push(providerErrorMessage(compacted));
-
-      runEventsOf(options)?.error(compactedError);
-
-      state.lastSurfacedProviderError = compactedError;
-      return undefined;
+      return this.foldOrThrowGenerateError(options, state, steerSignal, generateError);
     } finally {
       options.inputQueue?.endPhase();
     }
+  }
+
+  /**
+   * The generate() failure path of {@link generateOrSurfaceError}: `'steered'`
+   * when `run.steer()` aborted the call, `undefined` after the compacted
+   * provider error was folded into the conversation for the model to react
+   * to (LOU-T4 `surfaceRetryableProviderErrors`), and a throw for every
+   * other outcome.
+   */
+  private static foldOrThrowGenerateError(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    steerSignal: AbortSignal | undefined,
+    generateError: unknown
+  ): 'steered' | undefined {
+    if (steerSignal?.aborted && !options.signal?.aborted) {
+      return 'steered';
+    }
+    // A cancellation is not a provider failure - never compact it or fold
+    // it into the conversation for a retry. With `signal` (LOU-V1) the
+    // loop turns it into an 'aborted' result; an AbortError thrown without
+    // one (see isAbortError()) reaches the caller untouched.
+    if (options.signal?.aborted || isAbortError(generateError)) {
+      throw generateError;
+    }
+
+    // LOU-R13: a cassette mismatch (or an unreadable cassette raised by the
+    // interception seam) is a test-fixture failure, not a provider failure.
+    // It reaches the caller typed - compacting it would hide the cassette
+    // path, the call number and the re-record hint behind a generic
+    // CompactedLLMProviderError.
+    if (isCassetteError(generateError)) {
+      throw generateError;
+    }
+
+    const { compacted, error: compactedError } = compactGenerateError(
+      generateError,
+      options.provider.name
+    );
+
+    if (!shouldSurfaceToModel(options, compacted)) {
+      // Non-actionable category ('auth-failure', 'unknown'), or the
+      // opt-in flag is off: reject execute() cleanly, exactly like
+      // before LOU-T4 - just with the small compacted error instead of
+      // the raw provider error. runAgentLoop()'s catch block emits the
+      // 'error' event for this, same as it does for every other thrown
+      // error in the loop - no need to duplicate that here.
+      throw compactedError;
+    }
+
+    // See providerErrorMessage() for why this is a tagged `user` message.
+    state.messages.push(providerErrorMessage(compacted));
+
+    runEventsOf(options)?.error(compactedError);
+
+    state.lastSurfacedProviderError = compactedError;
+    return undefined;
   }
 
   /**

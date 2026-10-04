@@ -139,9 +139,10 @@ export function workerCrons(spec: Pick<AgentSpec, 'triggers'>): string[] {
 /**
  * The deduplicated `[triggers] crons` of an agent directory's `schedules/`
  * (#298): the same Cloudflare rules `workerCrons()` applies to a spec's cron
- * triggers (UTC, five fields, day-name or `*` day-of-week).
+ * triggers (UTC, five fields, day-name or `*` day-of-week). Internal to this
+ * adapter (scaffold() is its only caller).
  */
-export function workerDirCrons(schedules: readonly DefinedSchedule[]): string[] {
+function workerDirCrons(schedules: readonly DefinedSchedule[]): string[] {
   return [...new Set(schedules.map(workerCron))];
 }
 
@@ -226,8 +227,8 @@ export function wranglerTomlSource(spec: Pick<AgentSpec, 'name' | 'tools' | 'tri
   return tomlSource(spec.name, workerCrons(spec), spec.tools);
 }
 
-/** wrangler.toml for the Worker of an agent directory: `crons` from its `schedules/` (workerDirCrons), no built-in tools. */
-export function wranglerDirTomlSource(name: string, crons: string[]): string {
+/** wrangler.toml for the Worker of an agent directory: `crons` from its `schedules/` (workerDirCrons), no built-in tools. Internal to this adapter. */
+function wranglerDirTomlSource(name: string, crons: string[]): string {
   return tomlSource(name, crons, undefined);
 }
 

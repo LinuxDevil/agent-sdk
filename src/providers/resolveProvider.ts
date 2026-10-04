@@ -11,7 +11,7 @@
  * The parsing, env table and error messages live in ./providerSpec (LOU-D1).
  */
 
-import { LLMProvider } from './llm';
+import { LLMProviderRegistry, type LLMProvider } from './llm';
 import { resolveProviderSpec } from './providerSpec';
 
 /**
@@ -31,5 +31,5 @@ import { resolveProviderSpec } from './providerSpec';
  * const provider = resolveProvider('openai/gpt-4o-mini');
  */
 export function resolveProvider(spec: string): LLMProvider {
-  return resolveProviderSpec(spec, 'resolveProvider');
+  return resolveProviderSpec(spec, 'resolveProvider', LLMProviderRegistry);
 }

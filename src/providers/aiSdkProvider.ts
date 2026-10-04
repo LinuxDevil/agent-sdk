@@ -16,7 +16,7 @@
 
 import * as aiModule from 'ai';
 import type { LanguageModel } from 'ai';
-import {
+import type {
   LLMProvider,
   LLMProviderConfig,
   GenerateOptions,

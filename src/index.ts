@@ -51,6 +51,13 @@ export * from './utils';
 
 // createAgent() convenience API (LOU-H1)
 export * from './createAgent';
+// LOU-R27: also named-re-exported explicitly. Under true-ESM importers that
+// consume the TypeScript source through a CJS interop layer (.mts via tsx),
+// `export *` barrels are not statically resolvable and their names fail with
+// "does not provide an export named 'createAgent'"; an explicit named
+// re-export is seen by cjs-module-lexer and imports fine. The bundled dist
+// entries are unaffected either way.
+export { createAgent } from './createAgent';
 // Handoffs: hand the conversation to another agent (N6)
 export * from './handoffs';
 // Who is calling (N10a): the helpers live in '@lousho/build-ai-agent/auth'; the type rides in SendOptions.

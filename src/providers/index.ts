@@ -25,6 +25,7 @@ export { MissingPeerDependencyError } from './optionalPeer';
 // imports, the `lousho` CLI, deploy bundles) gets the same registrations
 // lazily: LLMProviderRegistry.create() calls ensureBuiltinProviders() on a
 // miss (LOU-R1).
+import { LLMProviderRegistry } from './llm';
 import { ensureBuiltinProviders } from './builtinProviders';
 
-ensureBuiltinProviders();
+ensureBuiltinProviders(LLMProviderRegistry);

@@ -20,7 +20,7 @@ import { AgentExecutor, ExecuteOptions, ExecutionResult } from './execution/Agen
 import { streamResumed, type AgentRun } from './execution/agentRun';
 import type { AgentEvent } from './execution/agentEvents';
 import type { TraceExporter } from './execution/tracing';
-import { LLMProvider } from './providers/llm';
+import { LLMProvider, LLMProviderRegistry } from './providers/llm';
 import { ToolRegistry } from './tools/ToolRegistry';
 import { ToolDescriptor } from './types';
 import { modelFromEnv, resolveProviderSpec } from './providers/providerSpec';
@@ -1248,7 +1248,7 @@ function resolveModelSource(config: CreateAgentConfig, model: string | undefined
   const { retry, fallbackModels = [] } = config;
   const resolve = (spec: string) => {
     // maxRetries: 0 turns off the 'ai' SDK's own retries: withRetry() is the only layer.
-    const provider = resolveProviderSpec(spec, 'createAgent', { maxRetries: 0 });
+    const provider = resolveProviderSpec(spec, 'createAgent', LLMProviderRegistry, { maxRetries: 0 });
     return retry === false ? provider : withRetry(provider, retry ?? DEFAULT_RETRY);
   };
   let primary: LLMProvider;

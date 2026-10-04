@@ -120,9 +120,48 @@ function approvalChunk(event: Extract<AgentEvent, { type: 'approval.requested' }
   };
 }
 
+type ToolEvent = Extract<AgentEvent, { type: `tool.${string}` }>;
+
+function isToolEvent(event: AgentEvent): event is ToolEvent {
+  return event.type.startsWith('tool.');
+}
+
+/** The chunks a `tool.*` event produces (`tool.start`/`resume` open the input, `partial`/`done`/`error` report the output). */
+function toolChunks(event: ToolEvent, state: MapState): LoushoUIMessageChunk[] {
+  switch (event.type) {
+    case 'tool.start':
+    case 'tool.resume':
+      return [
+        ...closeText(state),
+        { type: 'tool-input-start', toolCallId: event.toolCallId, toolName: event.toolName, ...byProvider(event) },
+        { type: 'tool-input-available', toolCallId: event.toolCallId, toolName: event.toolName, input: event.args, ...byProvider(event) },
+      ];
+    // N13b: the AI SDK's preliminary tool output (AI SDK 5+); the `tool.done` chunk after it is final.
+    case 'tool.partial':
+      return [{ type: 'tool-output-available', toolCallId: event.toolCallId, output: event.output, preliminary: true }];
+    case 'tool.done':
+      return [{ type: 'tool-output-available', toolCallId: event.toolCallId, output: event.result, ...byProvider(event) }];
+    case 'tool.error':
+      return [{ type: 'tool-output-error', toolCallId: event.toolCallId, errorText: event.error.message, ...byProvider(event) }];
+  }
+}
+
+/** The `finish` chunk of `run.done`: the mapped finish reason plus run id, the run's own reason and its usage as metadata. */
+function finishChunks(event: Extract<AgentEvent, { type: 'run.done' }>, state: MapState): LoushoUIMessageChunk[] {
+  return [
+    ...closeText(state),
+    {
+      type: 'finish',
+      finishReason: FINISH_REASONS[event.finishReason] ?? 'other',
+      messageMetadata: { runId: event.runId, loushoFinishReason: event.finishReason, ...(event.usage && { usage: event.usage }) },
+    },
+  ];
+}
+
 /** The chunks one event produces. Sub-agent events and events with no UI counterpart produce none. */
 function chunksFor(event: AgentEvent, state: MapState): LoushoUIMessageChunk[] {
   if (event.subagent) return [];
+  if (isToolEvent(event)) return toolChunks(event, state);
   switch (event.type) {
     case 'run.start':
       return [{ type: 'start', messageId: event.runId }];
@@ -139,20 +178,6 @@ function chunksFor(event: AgentEvent, state: MapState): LoushoUIMessageChunk[] {
     case 'reasoning.delta':
     case 'reasoning.done':
       return [reasoningChunk(event, state)];
-    case 'tool.start':
-    case 'tool.resume':
-      return [
-        ...closeText(state),
-        { type: 'tool-input-start', toolCallId: event.toolCallId, toolName: event.toolName, ...byProvider(event) },
-        { type: 'tool-input-available', toolCallId: event.toolCallId, toolName: event.toolName, input: event.args, ...byProvider(event) },
-      ];
-    // N13b: the AI SDK's preliminary tool output (AI SDK 5+); the `tool.done` chunk after it is final.
-    case 'tool.partial':
-      return [{ type: 'tool-output-available', toolCallId: event.toolCallId, output: event.output, preliminary: true }];
-    case 'tool.done':
-      return [{ type: 'tool-output-available', toolCallId: event.toolCallId, output: event.result, ...byProvider(event) }];
-    case 'tool.error':
-      return [{ type: 'tool-output-error', toolCallId: event.toolCallId, errorText: event.error.message, ...byProvider(event) }];
     case 'approval.requested':
       return [approvalChunk(event)];
     case 'todo.updated':
@@ -162,14 +187,7 @@ function chunksFor(event: AgentEvent, state: MapState): LoushoUIMessageChunk[] {
     case 'error':
       return [{ type: 'error', errorText: event.error.message }];
     case 'run.done':
-      return [
-        ...closeText(state),
-        {
-          type: 'finish',
-          finishReason: FINISH_REASONS[event.finishReason] ?? 'other',
-          messageMetadata: { runId: event.runId, loushoFinishReason: event.finishReason, ...(event.usage && { usage: event.usage }) },
-        },
-      ];
+      return finishChunks(event, state);
     default:
       return [];
   }

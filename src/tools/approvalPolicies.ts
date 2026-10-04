@@ -11,6 +11,7 @@
 
 import type { Message } from '../providers/llm';
 import type { ApprovalCheckContext, ApprovalOutcome } from '../types';
+import { cyrb53 } from '../utils/cyrb53';
 
 /** A `needsApproval` function that works on any tool. */
 export type ApprovalPolicy = (args: unknown, ctx: ApprovalCheckContext) => ApprovalOutcome;
@@ -73,16 +74,4 @@ function sortKeys(_key: string, value: unknown): unknown {
   return Object.fromEntries(Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 }
 
-/** cyrb53: a fast 53-bit string hash, base-36 encoded. */
-function cyrb53(text: string): string {
-  let h1 = 0xdeadbeef;
-  let h2 = 0x41c6ce57;
-  for (let i = 0; i < text.length; i++) {
-    const c = text.charCodeAt(i);
-    h1 = Math.imul(h1 ^ c, 2654435761);
-    h2 = Math.imul(h2 ^ c, 1597334677);
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
-}
+

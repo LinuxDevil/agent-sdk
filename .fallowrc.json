@@ -62,13 +62,36 @@
       }
     }
   ],
+  "duplicates": {
+    "ignore": [
+      "**/*.test-d.ts"
+    ]
+  },
   "health": {
     "ignore": [
       "**/*.{test,spec}.{ts,tsx}",
+      "**/*.test-d.ts",
       "**/*.eval.ts",
       "**/__fixtures__/**",
       "apps/agent-forge/e2e/**"
     ],
-    "coverage": "coverage/coverage-final.json"
+    "coverage": "coverage/coverage-final.json",
+    "thresholdOverrides": [
+      {
+        "files": [
+          "examples/**"
+        ],
+        "maxCrap": 150,
+        "reason": "examples/* run manually (npm run example:*), never under the vitest coverage suite, so coverage-derived CRAP is maximal for all of them; cyclomatic/cognitive ceilings still apply."
+      },
+      {
+        "files": [
+          "src/agentDir/registryEnforce.ts",
+          "src/deploy/workerAgentDir.ts"
+        ],
+        "maxCrap": 80,
+        "reason": "Both files are ~94-100% statement-covered, but fallow's per-function CRAP matching scores their nested callbacks (.map(...) guards, the confined fetch) as 0%-covered. Ceiling exempts only the coverage term; cyclomatic/cognitive still gate."
+      }
+    ]
   }
 }
