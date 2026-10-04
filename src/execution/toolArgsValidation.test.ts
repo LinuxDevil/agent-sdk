@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import type { Tool } from 'ai';
 import type { LLMProvider, GenerateOptions } from '../providers';
 import { z } from 'zod';
-import { AgentExecutor, ExecutionEvent } from './AgentExecutor';
+import { AgentExecutor } from './AgentExecutor';
+import type { AgentEvent } from './agentEvents';
 import { ToolArgumentsValidationError } from './index';
 import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
@@ -10,9 +11,6 @@ import { HookRegistry } from './hooks';
 
 /** A message as the provider saw it (a JSON copy; tool results are text in these tests). */
 type SeenMessage = { role: string; content: string; toolCallId?: string };
-
-/** A 'tool-result' event: it always carries `toolResult`. */
-type ToolResultEvent = ExecutionEvent & { toolResult: NonNullable<ExecutionEvent['toolResult']> };
 
 const usage = { promptTokens: 1, completionTokens: 1, totalTokens: 2 };
 
@@ -81,14 +79,14 @@ describe('tool argument validation (LOU-U4)', () => {
       { name: 'send', args: { count: 'three' } },
       { name: 'send', args: { to: 'a@b.c', count: 3 } },
     ]);
-    const events: ExecutionEvent[] = [];
+    const events: AgentEvent[] = [];
 
     const result = await AgentExecutor.execute({
       agent,
       input: 'go',
       provider,
       toolRegistry,
-      onEvent: e => events.push(e),
+      onAgentEvent: e => events.push(e),
     });
 
     expect(result.text).toBe('done');
@@ -106,9 +104,11 @@ describe('tool argument validation (LOU-U4)', () => {
       ])
     );
 
-    const toolResults = events.filter(e => e.type === 'tool-result') as ToolResultEvent[];
-    expect(toolResults[0].toolResult.error).toContain('Invalid arguments');
-    expect(toolResults[1].toolResult.error).toBeUndefined();
+    const toolErrors = events.filter(e => e.type === 'tool.error');
+    const toolDones = events.filter(e => e.type === 'tool.done');
+    expect(toolErrors[0].error.message).toContain('Invalid arguments');
+    expect(toolDones).toHaveLength(1);
+    expect(toolDones[0].toolName).toBe('send');
   });
 
   it('passes the parsed value (defaults and transforms) to execute', async () => {

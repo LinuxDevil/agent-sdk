@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import { AgentExecutor } from './AgentExecutor';
-import type { ExecutionEvent } from './AgentExecutor';
 import { createDelegateTool } from './DelegationTool';
 import { resumeAfterApproval } from './resume';
 import type { AgentEvent } from './agentEvents';
@@ -286,7 +285,7 @@ describe('run usage (LOU-V5)', () => {
   });
 
   it('reports usage on events, onLLMResponse and the chat span from the same numbers', async () => {
-    const events: ExecutionEvent[] = [];
+    const events: AgentEvent[] = [];
     const seen: unknown[] = [];
     const tracer = createTracer();
     const provider = mockModel([{ text: 'done', usage: { inputTokens: 7, outputTokens: 3 } }], {
@@ -298,15 +297,15 @@ describe('run usage (LOU-V5)', () => {
       input: 'go',
       provider,
       exporter: tracer.exporter,
-      onEvent: (e) => events.push(e),
+      onAgentEvent: (e) => events.push(e),
       onLLMResponse: (_response, _latency, usage) => {
         seen.push(usage);
       },
     });
 
-    const finish = events.find((e) => e.type === 'finish');
-    expect(finish?.usage).toMatchObject({ inputTokens: 7, outputTokens: 3, modelCalls: 1 });
-    expect(events.find((e) => e.type === 'text-complete')?.stepUsage).toEqual(result.stepUsage?.[0]);
+    const runDone = events.find((e) => e.type === 'run.done');
+    expect(runDone?.usage).toMatchObject({ inputTokens: 7, outputTokens: 3, modelCalls: 1 });
+    expect(events.find((e) => e.type === 'step.done')?.usage).toMatchObject(result.stepUsage?.[0]?.usage ?? {});
     expect(seen).toEqual([expect.objectContaining({ model: 'gpt-4o-mini', usage: { inputTokens: 7, outputTokens: 3, totalTokens: 10 } })]);
     const chat = tracer.spans().find((s) => s.name.startsWith('chat'));
     expect(chat?.attributes['gen_ai.usage.input_tokens']).toBe(7);

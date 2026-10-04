@@ -253,3 +253,12 @@ describe('public surface (A2a): removed names are off the root', () => {
     type _T25 = import('./index').IdEntity;
   });
 });
+
+describe('public surface (A2b): removed names are off the root', () => {
+  it('legacy execution events are gone', () => {
+    // @ts-expect-error - removed (A2b)
+    type _T1 = import('./index').ExecutionEvent;
+    // @ts-expect-error - removed (A2b)
+    type _T2 = import('./index').ExecutionEventType;
+  });
+});

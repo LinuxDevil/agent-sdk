@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
-import { AgentExecutor, ExecutionEvent } from './AgentExecutor';
+import { AgentExecutor } from './AgentExecutor';
 import type { ApprovalStore } from './ApprovalGate';
 import type { CheckpointStore } from './checkpoint';
 import { AGENT_EVENT_SCHEMA_VERSION, AgentEvent, AgentEventOf, AgentEventType, isAgentEvent, isStepEvent, isTextEvent, isToolEvent } from './agentEvents';
@@ -293,12 +293,20 @@ describe('agent.stream()', () => {
   });
 
   it('drives the run to completion when only result is awaited, keeping every event for a later read', async () => {
-    const onEvent = vi.fn<[ExecutionEvent], void>();
-    const run = AgentExecutor.stream({ ...executorOptions(mockModel(['Done here']), []), onEvent });
+    const onAgentEvent = vi.fn<[AgentEvent], void>();
+    const run = AgentExecutor.stream({ ...executorOptions(mockModel(['Done here']), []), onAgentEvent });
 
     const result = await run.result;
     expect(result.text).toBe('Done here');
-    expect(onEvent.mock.calls.map(([e]) => e.type)).toEqual(['start', 'text-complete', 'finish']);
+    expect(onAgentEvent.mock.calls.map(([e]) => e.type)).toEqual([
+      'run.start',
+      'step.start',
+      'text.delta',
+      'text.delta',
+      'text.done',
+      'step.done',
+      'run.done',
+    ]);
 
     const events = await collect(run);
     expect(only(events, 'text.delta').map((e) => e.text)).toEqual(['Done ', 'here']);

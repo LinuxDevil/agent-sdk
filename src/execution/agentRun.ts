@@ -6,10 +6,10 @@
  * reports everything through a {@link RunEventSink} (under the
  * {@link RUN_EVENTS} key of its options), including how one model step is
  * obtained (streamed, with `text.delta` per chunk). The sink turns it into
- * AgentEvents for the run's listeners: an AgentRun's buffer, `onAgentEvent`,
- * and the deprecated `onEvent` (through legacyEvents.ts). A run that is not
- * iterated but has listeners (`send()`, `execute({ onAgentEvent })`) gets a
- * sink too, and (M9) streams its model calls as well (see {@link observeRun}).
+ * AgentEvents for the run's listeners: an AgentRun's buffer and
+ * `onAgentEvent`. A run that is not iterated but has a listener (`send()`,
+ * `execute({ onAgentEvent })`) gets a sink too, and (M9) streams its model
+ * calls as well (see {@link observeRun}).
  *
  * Backpressure: none. The run never waits for the consumer; events are
  * buffered without loss until they are read.
@@ -17,8 +17,7 @@
 
 import { newId } from '../utils/id';
 import type { GenerateOptions, GenerateResult, HostedToolCall, LLMProvider, ToolCall } from '../providers';
-import type { ExecuteOptions, ExecutionEvent, ExecutionResult } from './AgentExecutor';
-import { toExecutionEvents, warnLegacyOnEvent, type LegacyDetail } from './legacyEvents';
+import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
 import type { StepUsage } from '../models/usage';
 import { describeApproval, type PendingApproval } from './ApprovalGate';
 import type { HookEventPayload, SubagentInfo } from './hooks';
@@ -105,11 +104,18 @@ export interface AgentRun<TObject = unknown> extends AsyncIterable<AgentEvent> {
   steer(input: AgentInput): SteerResult;
 }
 
-/** A tool call's outcome, as the loop reports it. */
-export type ToolSettled = NonNullable<ExecutionEvent['toolResult']>;
+/** A tool call's outcome, as the loop reports it (`tool.done` / `tool.error`). */
+export interface ToolSettled {
+  toolCallId: string;
+  toolName: string;
+  result: unknown;
+  error?: string;
+  /** LOU-X3: the hook whose `{ result }` outcome became this call's result. */
+  replacedByHook?: string;
+}
 
-/** The listeners a run's options can carry (LOU-D41), and whether they get model calls streamed (M9). */
-export type RunListeners = Pick<ExecuteOptions, 'onAgentEvent' | 'onEvent' | 'streamModelCalls'>;
+/** The listener a run's options can carry (LOU-D41), and whether it gets model calls streamed (M9). */
+export type RunListeners = Pick<ExecuteOptions, 'onAgentEvent' | 'streamModelCalls'>;
 
 /**
  * Everything AgentExecutor reports about a run, as AgentEvents. Internal:
@@ -140,8 +146,8 @@ export interface RunEventSink {
   toolPartial(toolCallId: string, toolName: string, output: unknown, parentToolCallId?: string): void;
   toolSettled(outcome: ToolSettled, parentToolCallId?: string): void;
   error(error: unknown): void;
-  /** `run.done` (a sub-agent's reaches the deprecated `onEvent` only). */
-  runDone(result: ExecutionResult, abortReason?: unknown): void;
+  /** `run.done` (a sub-agent's is internal and reaches no listener). */
+  runDone(result: ExecutionResult): void;
   /** `error` (unless just reported) then `run.done` with `finishReason: 'error'`. */
   runFailed(error: unknown): void;
   stepStart(step: number): void;
@@ -260,7 +266,6 @@ class RunEvents {
   private seq = 0;
   private started = false;
   private readonly listeners = new Set<(event: AgentEvent) => void>();
-  private readonly legacy = new Set<(event: ExecutionEvent) => void>();
   private readonly toolStarts = new Map<string, number>();
   /** N13b: how many snapshots each running call has yielded (keyed like `toolStarts`). */
   private readonly partials = new Map<string, number>();
@@ -273,34 +278,30 @@ class RunEvents {
    */
   constructor(private readonly mode: { readonly iterated: boolean; readonly streamModelCalls: boolean }) {}
 
-  listen({ onAgentEvent, onEvent }: RunListeners): void {
+  listen({ onAgentEvent }: RunListeners): void {
     if (onAgentEvent) this.listeners.add(onAgentEvent);
-    if (onEvent) {
-      warnLegacyOnEvent();
-      this.legacy.add(onEvent);
-    }
   }
 
   /**
    * Sends an event to the listeners; `subagent` tags one of a sub-agent's run
-   * (LOU-Y1). A sub-agent's `run.start`/`run.done` reach the deprecated
-   * `onEvent` only: as AgentEvents they mark the top-level run.
+   * (LOU-Y1). A sub-agent's `run.start`/`run.done` are internal: they mark
+   * the sub-agent's own run, not the top-level one, so they are never built
+   * and never reach a listener (and `seq` does not move for them).
    */
-  private emit(payload: AgentEventPayload, subagent?: SubagentInfo, detail?: LegacyDetail): void {
+  private emit(payload: AgentEventPayload, subagent?: SubagentInfo): void {
     if (this.closed || (payload.type === 'run.start' && !subagent && this.started)) return;
-    const internal = subagent !== undefined && (payload.type === 'run.start' || payload.type === 'run.done');
+    if (subagent !== undefined && (payload.type === 'run.start' || payload.type === 'run.done')) return;
     const event = {
       ...payload,
       ...(subagent && { subagent }),
       runId: this.runId,
-      seq: internal ? this.seq : this.seq++,
+      seq: this.seq++,
       timestamp: new Date().toISOString(),
       v: AGENT_EVENT_SCHEMA_VERSION,
     } as AgentEvent;
     if (!subagent) this.started ||= payload.type === 'run.start';
     if (!subagent) this.closed = payload.type === 'run.done';
-    if (!internal) for (const listener of this.listeners) listener(event);
-    for (const listener of this.legacy) for (const old of toExecutionEvents(event, detail)) listener(old);
+    for (const listener of this.listeners) listener(event);
   }
 
   private toolStarted(toolCall: ToolCall, subagent?: SubagentInfo, parent?: string): void {
@@ -325,8 +326,7 @@ class RunEvents {
         args: (typeof args === 'object' && args !== null ? args : {}) as Record<string, unknown>,
         ...parentOf(parent),
       },
-      subagent,
-      { toolCall }
+      subagent
     );
   }
 
@@ -344,7 +344,7 @@ class RunEvents {
     const durationMs = Date.now() - (this.toolStarts.get(toolStartKey(toolCallId, subagent)) ?? Date.now());
     if (outcome.error === undefined) {
       const replaced = outcome.replacedByHook !== undefined && { replacedByHook: outcome.replacedByHook };
-      this.emit({ type: 'tool.done', toolCallId, toolName, result: toJsonValue(outcome.result), durationMs, ...replaced, ...parentOf(parent) }, subagent, { toolResult: outcome });
+      this.emit({ type: 'tool.done', toolCallId, toolName, result: toJsonValue(outcome.result), durationMs, ...replaced, ...parentOf(parent) }, subagent);
       // The brand is checked on the raw result, before `toJsonValue` drops it.
       if (isTodoListResult(outcome.result)) {
         const { todos, counts } = outcome.result;
@@ -362,8 +362,7 @@ class RunEvents {
         durationMs,
         ...parentOf(parent),
       },
-      subagent,
-      { toolResult: outcome }
+      subagent
     );
   }
 
@@ -399,19 +398,19 @@ class RunEvents {
     let lastError: unknown;
     const reportError = (error: unknown) => {
       lastError = error;
-      this.emit({ type: 'error', error: toEventError(error) }, subagent, { error });
+      this.emit({ type: 'error', error: toEventError(error) }, subagent);
     };
     return {
       iterated: this.mode.iterated,
       listen: (options) => this.listen(options),
       runStart: ({ id, name }) => this.emit({ type: 'run.start', agentName: name ?? '', ...(id !== undefined && { agentId: id }) }, subagent),
-      textDone: (text, stepUsage) => this.emit({ type: 'text.done', text }, subagent, { stepUsage }),
+      textDone: (text) => this.emit({ type: 'text.done', text }, subagent),
       toolStart: (toolCall, parent) => this.toolStarted(toolCall, subagent, parent),
       toolResume: (toolCall) => this.toolResumed(toolCall, subagent),
       toolPartial: (toolCallId, toolName, output, parent) => this.toolPartial(toolCallId, toolName, output, subagent, parent),
       toolSettled: (outcome, parent) => this.toolSettled(outcome, subagent, parent),
       error: reportError,
-      runDone: (result, abortReason) => this.emit(runDonePayload(result), subagent, { usage: result.usage, abortReason }),
+      runDone: (result) => this.emit(runDonePayload(result), subagent),
       runFailed: (error) => {
         if (error !== lastError) reportError(error);
         this.emit({ type: 'run.done', finishReason: 'error', text: '' }, subagent);
@@ -592,14 +591,14 @@ export async function observeRun<T extends RunListeners & WiredOptions>(
   options: T,
   run: (options: T) => Promise<ExecutionResult>
 ): Promise<ExecutionResult> {
-  const { onAgentEvent, onEvent, streamModelCalls = true } = options;
+  const { onAgentEvent, streamModelCalls = true } = options;
   const sink =
-    runEventsOf(options) ?? (onAgentEvent || onEvent ? new RunEvents({ iterated: false, streamModelCalls }).sink() : undefined);
+    runEventsOf(options) ?? (onAgentEvent ? new RunEvents({ iterated: false, streamModelCalls }).sink() : undefined);
   if (!sink) return run(options);
   sink.listen(options);
   try {
     const result = await run({ ...options, [RUN_EVENTS]: sink });
-    sink.runDone(result, result.finishReason === 'aborted' ? options.signal?.reason : undefined);
+    sink.runDone(result);
     return result;
   } catch (error) {
     sink.runFailed(error);

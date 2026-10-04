@@ -6,7 +6,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { AgentExecutor, ExecutionEvent } from './AgentExecutor';
+import { AgentExecutor } from './AgentExecutor';
+import type { AgentEvent } from './agentEvents';
 import { InMemoryApprovalStore } from './InMemoryApprovalStore';
 import type { ApprovalStore } from './ApprovalGate';
 import { HookRegistry } from './hooks';
@@ -52,8 +53,8 @@ interface Observed {
   message: Message;
   payload: Record<string, unknown>;
   hookError?: string;
-  /** The `tool-result` event's outcome: `tool.error` events are derived from it. */
-  eventOutcome?: { error?: string; result?: { error?: string } };
+  /** The `tool.error` event's error ({ name, message }). */
+  eventOutcome?: { name?: string; message?: string };
 }
 
 async function runMainLoop(
@@ -65,22 +66,22 @@ async function runMainLoop(
   const postToolCall = vi.fn();
   const hooks = new HookRegistry();
   hooks.register({ name: 'spy', postToolCall });
-  const events: ExecutionEvent[] = [];
+  const events: AgentEvent[] = [];
   await AgentExecutor.execute({
     agent: agentFor([toolName]),
     input: 'go',
     provider: model,
     toolRegistry: registry,
     hooks,
-    onEvent: (e) => events.push(e),
+    onAgentEvent: (e) => events.push(e),
   });
   const message = (model.calls[1].messages as Message[]).find((m) => m.role === 'tool')!;
-  const resultEvent = events.find((e) => e.type === 'tool-result') as { toolResult?: Observed['eventOutcome'] } | undefined;
+  const errorEvent = events.find((e) => e.type === 'tool.error');
   return {
     message,
     payload: JSON.parse(message.content as string) as Record<string, unknown>,
     hookError: postToolCall.mock.calls[0]?.[1]?.error,
-    eventOutcome: resultEvent?.toolResult,
+    eventOutcome: errorEvent?.error,
   };
 }
 
@@ -278,10 +279,10 @@ describe('one tool-error shape on every failure path (LOU-U14)', () => {
     expect(Object.keys(payload)).not.toContain('stack');
 
     if (observed) {
-      // Hooks and events (which `tool.error` is derived from) agree that the call failed.
+      // Hooks and the `tool.error` event agree that the call failed.
       expect(observed.hookError).toBe(payload.message);
-      expect(observed.eventOutcome?.error).toBe(payload.message);
-      expect(observed.eventOutcome?.result?.error).toBe(row.error);
+      expect(observed.eventOutcome?.message).toBe(payload.message);
+      expect(observed.eventOutcome?.name).toBe(row.error);
     }
   });
 

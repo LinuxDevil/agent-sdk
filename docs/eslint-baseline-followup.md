@@ -10,11 +10,7 @@ The ESLint flat config (introduced in LOU-B1) originally surfaced 271 pre-existi
 
 ## When a real type is not possible
 
-Use a targeted `// eslint-disable-next-line <rule> -- <reason>` on the one line, never a file- or directory-wide disable, a rule turned off in the config or a new `ignores` entry. At LOU-D16 the source has one:
-
-| Where | Rule | Reason |
-| --- | --- | --- |
-| `src/execution/AgentExecutor.ts`, `ExecutionEvent.toolResult.result` | `no-explicit-any` | deprecated public type, kept for compatibility (LOU-D41) |
+Use a targeted `// eslint-disable-next-line <rule> -- <reason>` on the one line, never a file- or directory-wide disable, a rule turned off in the config or a new `ignores` entry. At LOU-D16 the source had one (`ExecutionEvent.toolResult.result`, `no-explicit-any`, kept for compatibility); it is gone now that the type was removed (wave 4), so there are none.
 
 In tests, a value of the wrong type passed on purpose (to check runtime validation) gets `// @ts-expect-error -- <reason>`; a partial mock is cast to the type it stands in for (`as Partial<T> as T` when it lacks a required member).
 

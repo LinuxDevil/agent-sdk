@@ -332,8 +332,8 @@ describe('LOU-U8: resume with new input', () => {
     const h: Harness = { tools: [tool('a', runs)], checkpoints: checkpointStore() };
     const aborted = await execute(h, [turnCalling('a')], {
       signal: controller.signal,
-      onEvent: (event) => {
-        if (event.type === 'tool-result') controller.abort();
+      onAgentEvent: (event) => {
+        if (event.type === 'tool.done') controller.abort();
       },
     }).result;
     expect(aborted.finishReason).toBe('aborted');

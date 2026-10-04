@@ -3,7 +3,8 @@ import type { Tool } from 'ai';
 import type { Message } from '../providers';
 import type { Checkpoint } from './checkpoint';
 import { APICallError } from 'ai';
-import { AgentExecutor, ExecutionEvent } from './AgentExecutor';
+import { AgentExecutor } from './AgentExecutor';
+import type { AgentEvent } from './agentEvents';
 import { CompactedLLMProviderError } from './errors';
 import { createMockProvider } from '../providers/mock';
 import { ToolRegistry } from '../tools';
@@ -82,18 +83,18 @@ describe('AgentExecutor', () => {
         .setName('Test Agent')
         .build();
 
-      const events: ExecutionEvent[] = [];
+      const events: AgentEvent[] = [];
 
       await AgentExecutor.execute({
         agent,
         input: 'Hello',
         provider,
-        onEvent: (event) => events.push(event),
+        onAgentEvent: (event) => events.push(event),
       });
 
       expect(events.length).toBeGreaterThan(0);
-      expect(events[0].type).toBe('start');
-      expect(events[events.length - 1].type).toBe('finish');
+      expect(events[0].type).toBe('run.start');
+      expect(events[events.length - 1].type).toBe('run.done');
     });
 
     it('should handle tool calls', async () => {
@@ -1730,21 +1731,21 @@ describe('AgentExecutor', () => {
         .addTool('boom', { tool: 'boom', options: {} })
         .build();
 
-      const events: ExecutionEvent[] = [];
+      const events: AgentEvent[] = [];
       const result = await AgentExecutor.execute({
         agent,
         input: 'please call boom',
         provider: toolProvider,
         toolRegistry,
-        onEvent: (event) => events.push(event),
+        onAgentEvent: (event) => events.push(event),
       });
 
       // Pre-existing pattern (unrelated to LOU-T4): a thrown tool error is
-      // compacted to `{error: message}` on the `tool-result` event/return
+      // compacted to `{error: message}` on the `tool.error` event/return
       // value (see AgentExecutor.doExecuteToolCall()'s catch block) - the
       // run itself completes normally rather than rejecting.
-      const toolResultEvent = events.find((e) => e.type === 'tool-result');
-      expect(toolResultEvent?.toolResult?.error).toBe('tool exploded');
+      const toolErrorEvent = events.find((e) => e.type === 'tool.error');
+      expect(toolErrorEvent?.error.message).toBe('tool exploded');
       const toolMessage = result.messages.find((m) => m.role === 'tool');
       expect(toolMessage).toBeDefined();
       // No CompactedLLMProviderError anywhere near this run.
