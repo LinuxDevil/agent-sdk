@@ -36,6 +36,11 @@ jobs:
         # the default heap, like the peers job's build below.
         env:
           NODE_OPTIONS: --max-old-space-size=6144
+      # API surface gate (A7): every exports entry has a checked-in api/*.api.md
+      # report; a public-API change fails here until `npm run api:update` is run
+      # and the diff committed. Runs only in the main job so the report reflects
+      # the default peers, not the `peers` matrix's ai/zod pairings.
+      - run: npm run api:check
       # packages/create-lousho-agent's own tests execFileSync its bin/cli.js,
       # which requires ITS dist/index.js to exist too - build it before the
       # test step (this is a separate package from the root SDK above).

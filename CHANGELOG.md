@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 This section lists what is on `main` and not yet on npm.
 
+## [1.0.0-rc.0] - 2026-10-04
+
+The first 1.0 release candidate. Upgrading from a `1.0.0-alpha.*` release?
+Read the [upgrade guide](docs/upgrading.md): imports moved to subpaths, dead
+and superseded APIs were removed, and the patch guardrails are now patch
+checks. What 1.0 considers public is defined there (every `exports` entry and
+the checked-in `api/` reports).
+
 ### Breaking
 - Flows, the Jira / GitHub / Slack / email tools, encryption, `StorageService` and the validators moved out of the package root (A1). Import them from their subpath: `FlowBuilder`, `FlowExecutor`, `validateFlow` and every flow type (`AgentFlow`, `EditorStep`, `FlowExecutionEvent`, ...) from `@lousho/build-ai-agent/flows`; `createJiraTools`, `createGitHubTools`, `createSlackTool`, `slackTool`, `postSlackAlert`, `createEmailTool` and their types from `@lousho/build-ai-agent/integrations`; `EncryptionUtils`, `DTOEncryptionFilter`, `DecryptionError`, `sha256`, `generatePassword`, `StorageService`, `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` and the validators (`validateWithSchema`, `safeValidate`, `isValidEmail`, ...) from `@lousho/build-ai-agent/utils`. The integrations are no longer in `@lousho/build-ai-agent/tools` and the flow types are no longer in `@lousho/build-ai-agent/types`. Nothing else changed: the classes and functions are the same. For file-backed stores with `createAgent()`, prefer `fileStore(dir)`.
 - Removed `AgentType`, `AgentTypeDescriptor`, `AgentConfig.agentType`, `AgentBuilder.setType()` and the agent-type registry (`agentTypesRegistry`, `getAgentTypeDescriptor`, `getAllAgentTypeDescriptors`, `isValidAgentType`, `validateAgentConfig`, `validateAgentTools`). They had no runtime effect since 1.0.0-alpha: delete the `setType(...)` call and the `agentType` field. Also removed, because nothing implemented or used them: the repository interfaces (`IRepository`, `IAgentRepository`, `ISessionRepository`, `IResultRepository`, `SessionData`, `ResultData`, `SDKRepositories`), `DataLoadingStatus`, `PaginationParams`, `PaginatedResponse`, `DeepPartial`, `Timestamped`, `IdEntity`, `AgentExecutionOptions`, `AgentExecutionResult`, `AgentDefinition` and `ToolSetting`. If your code used one of these types, copy its declaration into your project. A checkpoint saved with `agentType` still loads; the field is ignored.
