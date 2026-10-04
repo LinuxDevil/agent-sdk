@@ -1,0 +1,9 @@
+{
+  "name": "generic-webhook",
+  "type": "channel",
+  "description": "Inbound webhook channel with HMAC-SHA256 signature verification (reads WEBHOOK_SECRET)",
+  "permissions": {
+    "env": ["WEBHOOK_SECRET"]
+  },
+  "dependencies": ["@lousho/build-ai-agent"]
+}

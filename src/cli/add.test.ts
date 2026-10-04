@@ -7,7 +7,7 @@ import { PassThrough, Writable } from 'node:stream';
 import { resolveAgentDir } from '../agentDir';
 import { runAdd, parseAddArgs, type AddIo } from './add';
 import { planFiles } from './addWrite';
-import type { RegistryItem } from './registry';
+import { DEFAULT_REGISTRY, type RegistryItem } from './registry';
 
 function sink() {
   const chunks: string[] = [];
@@ -170,12 +170,31 @@ describe('lousho add', () => {
     expect(result.out).toMatch(/triage\s+skill\s+Triage tickets/);
   });
 
-  it('reads LOUSHO_REGISTRY, and without a registry says how to pass --registry', async () => {
+  it('reads LOUSHO_REGISTRY, falls back to the default registry, and none disables it', async () => {
     expect((await add(['--list'], { env: { LOUSHO_REGISTRY: registry } })).code).toBe(0);
-    const none = await add(['--list']);
-    expect(none.code).toBe(1);
-    expect(none.err).toContain('--registry');
-    expect(none.err).toContain('LOUSHO_CONFIG_INVALID');
+    // With neither --registry nor LOUSHO_REGISTRY, lousho add fetches the default registry.
+    const seen: string[] = [];
+    const fetchStub = (async (input: string | URL | Request) => {
+      seen.push(String(input));
+      return new Response(fs.readFileSync(path.join(__dirname, '..', '..', 'registry', 'dist', 'index.json'), 'utf8'));
+    }) as typeof fetch;
+    const listed = await add(['--list'], { fetch: fetchStub });
+    expect(listed.code).toBe(0);
+    expect(seen).toEqual([DEFAULT_REGISTRY]);
+    expect(listed.out).toContain('open-meteo-weather');
+    // 'none' disables the default registry (offline or locked-down use): the old "no registry configured" error.
+    const byFlag = await add(['--list', '--registry', 'none'], { fetch: fetchStub });
+    expect(byFlag.code).toBe(1);
+    expect(byFlag.err).toContain('LOUSHO_CONFIG_INVALID');
+    expect(byFlag.err).toContain('no registry configured');
+    const byEnv = await add(['--list'], { env: { LOUSHO_REGISTRY: 'none' }, fetch: fetchStub });
+    expect(byEnv.code).toBe(1);
+    expect(byEnv.err).toContain('LOUSHO_CONFIG_INVALID');
+    // --registry and LOUSHO_REGISTRY still override the default (and 'none').
+    const byFlagRegistry = await add(['--list', '--registry', registry], { env: { LOUSHO_REGISTRY: 'none' }, fetch: fetchStub });
+    expect(byFlagRegistry.code).toBe(0);
+    expect(byFlagRegistry.out).toContain('web-search');
+    expect(seen).toEqual([DEFAULT_REGISTRY]);
   });
 
   it('suggests the closest name for an unknown item', async () => {

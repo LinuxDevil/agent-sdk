@@ -1,0 +1,12 @@
+{
+  "name": "changelog",
+  "type": "skill",
+  "description": "Write a CHANGELOG entry from a diff or a set of commits",
+  "files": [
+    {
+      "path": "skills/changelog/SKILL.md",
+      "content": "---\ndescription: Write a changelog entry for a diff, a commit range or a pull request\n---\n\n# Writing a changelog entry\n\nWhen asked to write a changelog entry for a diff, a commit range or a pull request:\n\n1. Read the whole change first; do not summarize from the title alone. Check\n   public API surface (exports, options, flags, error codes) for behaviour and\n   type changes a user could notice, and ignore pure internals (renames,\n   formatting, refactors with no effect).\n2. Group what you found by kind, in this order: breaking changes, new features,\n   fixes, internal changes. A change a user must act on is breaking; say what\n   the migration is.\n3. Write one bullet per user-visible change, imperative mood, past tense\n   avoided (\"add\", \"fix\", \"remove\"). Start with what the user sees, not how it\n   is implemented; name the option, flag, function or error code it touches.\n4. Keep it one section under the release heading the repository uses. Match the\n   existing file's heading and bullet style instead of inventing a new one.\n5. Link the pull request or issue when one is known; do not invent numbers.\n\nSkip anything with no user-visible effect; a correct short entry beats a long\none that lists every touched file.\n"
+    }
+  ],
+  "permissions": {}
+}

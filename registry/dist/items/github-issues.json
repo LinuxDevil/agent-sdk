@@ -1,0 +1,24 @@
+{
+  "name": "github-issues",
+  "type": "tool",
+  "description": "List and create GitHub issues through api.github.com (reads GITHUB_TOKEN)",
+  "files": [
+    {
+      "path": "tools/github-issues.ts",
+      "content": "import { z } from 'zod';\nimport { defineTool } from '@lousho/build-ai-agent';\n\nfunction token(): string {\n  const value = process.env.GITHUB_TOKEN;\n  if (!value) throw new Error('GITHUB_TOKEN is not set; create a token with issues access and export it.');\n  return value;\n}\n\nasync function github(path: string, init?: RequestInit): Promise<unknown> {\n  const response = await fetch(`https://api.github.com${path}`, {\n    ...init,\n    headers: {\n      authorization: `Bearer ${token()}`,\n      accept: 'application/vnd.github+json',\n      'x-github-api-version': '2022-11-28',\n      ...init?.headers,\n    },\n  });\n  if (!response.ok) throw new Error(`GitHub API request failed: HTTP ${response.status}`);\n  return response.json();\n}\n\ninterface ListedIssue {\n  number: number;\n  title: string;\n  state: string;\n  html_url: string;\n  pull_request?: unknown;\n}\n\nconst repoArgs = {\n  owner: z.string().describe('The user or organisation that owns the repository'),\n  repo: z.string().describe('The repository name'),\n};\n\nconst list = defineTool({\n  name: 'github-issues-list',\n  description: 'List issues of a GitHub repository (pull requests are filtered out)',\n  input: z.object({\n    ...repoArgs,\n    state: z.enum(['open', 'closed', 'all']).default('open'),\n    limit: z.number().int().min(1).max(100).default(20),\n  }),\n  async execute({ owner, repo, state, limit }) {\n    const issues = (await github(`/repos/${owner}/${repo}/issues?state=${state}&per_page=${limit}`)) as ListedIssue[];\n    return issues\n      .filter((issue) => issue.pull_request === undefined)\n      .map((issue) => ({ number: issue.number, title: issue.title, state: issue.state, url: issue.html_url }));\n  },\n});\n\nconst create = defineTool({\n  name: 'github-issues-create',\n  description: 'Create an issue in a GitHub repository',\n  input: z.object({\n    ...repoArgs,\n    title: z.string(),\n    body: z.string().default(''),\n  }),\n  needsApproval: true,\n  async execute({ owner, repo, title, body }) {\n    const issue = (await github(`/repos/${owner}/${repo}/issues`, { method: 'POST', body: JSON.stringify({ title, body }) })) as {\n      number: number;\n      html_url: string;\n    };\n    return { number: issue.number, url: issue.html_url };\n  },\n});\n\nexport default [list, create];\n"
+    }
+  ],
+  "permissions": {
+    "network": [
+      "api.github.com"
+    ],
+    "env": [
+      "GITHUB_TOKEN"
+    ],
+    "needsApproval": true
+  },
+  "dependencies": [
+    "@lousho/build-ai-agent",
+    "zod"
+  ]
+}

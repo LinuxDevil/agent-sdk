@@ -100,7 +100,7 @@ agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 - **Testing and evals**: `mockModel`, `recordReplay` cassettes, `defineEval()` trajectory assertions, `lousho eval` with `--record` / `--replay` cassettes and `--drift` trajectory diffs. [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md), [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md)
 - **CLI**: `init`, `doctor`, `dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `traces`, `build` and `studio`. [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md)
 - **Editors (ACP)**: `lousho acp ./my-agent` serves your agent to Zed and other Agent Client Protocol editors, with tool calls and permission prompts. [ACP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/acp.md)
-- **Registry**: `lousho add <name> --registry <url-or-path>` copies a tool, skill, channel, schedule or memory slot into your agent directory from a static JSON registry, after showing its permissions. [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md)
+- **Registry**: `lousho add <name>` copies a tool, skill, channel, schedule or memory slot into your agent directory from the default registry (or one you point at with `--registry <url-or-path>`), after showing its permissions. [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md)
 - **Agent Forge**: `lousho studio` opens a visual canvas, run debugger and chat with approval cards. [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md)
 
 ## Usage
@@ -222,7 +222,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md) | OpenTelemetry GenAI spans, attribute table, content opt-in, local traces and `lousho traces` |
 | [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md) | `lousho build` targets: Node server, Docker, Cloudflare Workers (with KV checkpoints) |
 | [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md) | What the Worker target supports and what it does not, bindings, KV stores, cron triggers |
-| [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md) | `lousho add`: copy a tool, skill, channel, schedule or memory slot from a static JSON registry |
+| [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md) | `lousho add`: copy a tool, skill, channel, schedule or memory slot from a static JSON registry (a default one is built in) |
 | [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md) | The visual dashboard: quickstart, first-agent walkthrough, hooks |
 | [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md) | Every error code (`LOUSHO_*`): what it means, how to fix it, an example |
 | [Troubleshooting](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/troubleshooting.md) | Start from the symptom: setup, runs that end without an answer, tools, providers, sandbox and MCP; cause, fix, link |
@@ -265,7 +265,7 @@ Most examples run offline with a mock provider; see the
 | `lousho dev <spec>` | Local chat UI and `POST /chat` with hot reload |
 | `lousho chat <path>` | Terminal REPL: streamed replies, tool calls, approvals and questions |
 | `lousho acp <path>` | Serve the agent to Zed and other Agent Client Protocol editors |
-| `lousho add <name> --registry <url-or-path>` | Copy a tool, skill, channel, schedule or memory slot from a registry into an agent directory |
+| `lousho add <name> [--registry <url-or-path>]` | Copy a tool, skill, channel, schedule or memory slot from the default registry (or a given one) into an agent directory |
 | `lousho mcp <spec>` | Serve the agent as an MCP server (stdio or HTTP) |
 | `lousho eval [globs]` | Run `*.eval.ts` files; JUnit and JSON reports |
 | `lousho traces [id]` | List saved runs, or print one as a span tree |
@@ -11541,19 +11541,34 @@ The files are copied into your project as source you own and can edit. There is
 no runtime plugin loader, and nothing from a registry is executed or imported
 while adding it.
 
-There is no hosted registry yet. Point `lousho add` at one with `--registry` or
-the `LOUSHO_REGISTRY` environment variable; without either it fails with
-`LOUSHO_CONFIG_INVALID` and says how to pass one.
+`lousho add` works out of the box: without `--registry` or `LOUSHO_REGISTRY` it
+reads the default registry at `https://registry.lousho.com/index.json`, which
+is the `registry/dist/` folder of the SDK's repository served as static JSON.
+`--registry` and `LOUSHO_REGISTRY` point it at another registry, and the value
+`none` (in either place) disables the registry entirely — `lousho add` then
+fails with `LOUSHO_CONFIG_INVALID`, for offline or locked-down use.
+
+The default registry currently carries five items:
+
+| Name | Type | Permissions it asks for |
+| ---- | ---- | ----------------------- |
+| `changelog` | skill | none |
+| `code-review` | skill | none |
+| `generic-webhook` | channel | `WEBHOOK_SECRET` |
+| `github-issues` | tool (list and create issues; create asks for approval) | `api.github.com`, `GITHUB_TOKEN` |
+| `open-meteo-weather` | tool | `api.open-meteo.com`, `geocoding-api.open-meteo.com` |
 
 ```bash
-lousho add --list --registry ./registry/index.json
+lousho add --list                       # the default registry's items
+lousho add open-meteo-weather --dir ./my-agent
 lousho add web-search --registry https://example.com/registry/index.json --dir ./my-agent
 LOUSHO_REGISTRY=./registry/index.json lousho add web-search --dry-run
+lousho add --list --registry none       # fails: the registry is disabled
 ```
 
 | Flag | Meaning |
 | ---- | ------- |
-| `--registry <url-or-path>` | The index: an `http(s)` URL or a local path (`LOUSHO_REGISTRY` when absent). |
+| `--registry <url-or-path>` | The index: an `http(s)` URL or a local path (`LOUSHO_REGISTRY` when absent, else the default registry). `none` disables the registry. |
 | `--dir <agent-dir>` | The agent directory to write into (default: the current directory; it must exist). |
 | `--yes`, `-y` | Do not ask for confirmation. Required when stdin is not a terminal. Does not grant elevated permissions on its own (see `--allow`). |
 | `--allow <list>` | With `--yes`, the elevated permissions you grant, comma-separated: `exec`, `fs-write`, `network`, `env`. An item that asks for one you did not name is refused. |
@@ -11610,6 +11625,15 @@ web server). The document's `name` and `type` must match its index entry, and a
 name starts with a letter or digit, followed by letters, digits, `.`, `_` and
 `-`. A document that does not match the
 format is `LOUSHO_REGISTRY_INVALID`, with the fields named.
+
+To contribute an item to the default registry, add a `registry/<name>/` folder
+to the SDK's repository: an `item.json` (`name`, `type`, `description`,
+`permissions`, `dependencies`) and the item's files laid out the way they
+should land in the agent directory (`tools/x.ts`, `skills/<name>/SKILL.md`,
+`channels/x.ts`). `npm run registry:build` validates every item against the
+same rules `lousho add` enforces (schema, paths, the code/manifest check) and
+rebuilds `registry/dist/`; commit the result. CI runs `npm run registry:check`,
+which fails when `registry/dist/` is stale.
 
 ## Permission manifest
 

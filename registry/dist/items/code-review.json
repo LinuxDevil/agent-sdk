@@ -1,0 +1,12 @@
+{
+  "name": "code-review",
+  "type": "skill",
+  "description": "Review a diff for bugs, style and missing tests",
+  "files": [
+    {
+      "path": "skills/code-review/SKILL.md",
+      "content": "---\ndescription: Review a diff or changed files for bugs, style and missing tests\n---\n\n# Reviewing a diff\n\nWhen asked to review a diff, a commit range or a pull request:\n\n1. Read the full diff before judging any line; a change that looks wrong can be\n   explained by another hunk. For every file, note what changed and why it might\n   have been changed.\n2. Look for, in this order:\n   - **Correctness**: off-by-one errors, null/undefined paths, wrong condition\n     polarity, error handling that swallows or loses failures, race conditions,\n     resource leaks (unclosed handles, missing cleanup).\n   - **Compatibility**: changed signatures, renamed or removed exports, altered\n     error shapes, behaviour a caller could depend on.\n   - **Security**: unsanitized input reaching a command, query or path; secrets\n     logged or hard-coded; permissions widened without need.\n   - **Style and fit**: does it match the file's existing conventions (naming,\n     error style, comments); is anything dead or duplicated.\n   - **Tests**: does the diff cover what it changes; which cases are missing.\n3. Report findings as a list ordered by severity (blocker, should-fix, nit).\n   Each finding names the file and line range, says what is wrong, and suggests\n   the fix in one or two sentences. Do not list what is fine; end with a one-line\n   verdict (approve, approve with comments, request changes).\n\nIf the diff is clean, say so plainly instead of inventing nits.\n"
+    }
+  ],
+  "permissions": {}
+}

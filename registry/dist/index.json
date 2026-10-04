@@ -1,0 +1,34 @@
+{
+  "items": [
+    {
+      "name": "changelog",
+      "type": "skill",
+      "description": "Write a CHANGELOG entry from a diff or a set of commits",
+      "path": "items/changelog.json"
+    },
+    {
+      "name": "code-review",
+      "type": "skill",
+      "description": "Review a diff for bugs, style and missing tests",
+      "path": "items/code-review.json"
+    },
+    {
+      "name": "generic-webhook",
+      "type": "channel",
+      "description": "Inbound webhook channel with HMAC-SHA256 signature verification (reads WEBHOOK_SECRET)",
+      "path": "items/generic-webhook.json"
+    },
+    {
+      "name": "github-issues",
+      "type": "tool",
+      "description": "List and create GitHub issues through api.github.com (reads GITHUB_TOKEN)",
+      "path": "items/github-issues.json"
+    },
+    {
+      "name": "open-meteo-weather",
+      "type": "tool",
+      "description": "Current weather for a city through the Open-Meteo API (free, no API key)",
+      "path": "items/open-meteo-weather.json"
+    }
+  ]
+}

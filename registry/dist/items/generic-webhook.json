@@ -1,0 +1,19 @@
+{
+  "name": "generic-webhook",
+  "type": "channel",
+  "description": "Inbound webhook channel with HMAC-SHA256 signature verification (reads WEBHOOK_SECRET)",
+  "files": [
+    {
+      "path": "channels/generic-webhook.ts",
+      "content": "import { webhookChannel } from '@lousho/build-ai-agent';\n\n// Verifies `x-signature-256: sha256=<hmac of the raw body>` against WEBHOOK_SECRET\n// (the format GitHub webhooks use). The channel refuses to load when the secret\n// is not set, so a deployment can never run unauthenticated by accident.\nexport default webhookChannel({\n  name: 'generic-webhook',\n  secret: process.env.WEBHOOK_SECRET ?? '',\n});\n"
+    }
+  ],
+  "permissions": {
+    "env": [
+      "WEBHOOK_SECRET"
+    ]
+  },
+  "dependencies": [
+    "@lousho/build-ai-agent"
+  ]
+}

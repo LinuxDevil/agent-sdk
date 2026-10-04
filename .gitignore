@@ -4,6 +4,8 @@ node_modules/
 # Build output
 dist/
 dist-server/
+# ...except the committed build of the default registry (M7b; see scripts/build-registry.ts)
+!registry/dist/
 
 # IDE
 .idea/
@@ -55,5 +57,8 @@ docs/api/
 
 # docs snippet verifier temp dirs
 .docs-snippets-*/
+# defaultRegistry.test.ts's temp agent directories (inside the repo so the
+# installed items' package imports resolve like a real project's)
+.lousho-default-registry-*/
 # Local agent worktrees and session state
 .claude/

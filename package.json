@@ -180,6 +180,8 @@
     "fallow:score": "fallow health --score",
     "example:openrouter": "tsx examples/openrouter/index.ts",
     "pack-smoke": "tsx scripts/pack-smoke.ts",
+    "registry:build": "tsx scripts/build-registry.ts",
+    "registry:check": "tsx scripts/build-registry.ts --check",
     "registry-smoke": "tsx scripts/registrySmoke.ts"
   },
   "keywords": [

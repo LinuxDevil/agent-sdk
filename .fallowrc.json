@@ -18,7 +18,8 @@
     "src/deploy/shims/ollama.worker.ts",
     "src/deploy/shims/mcp.worker.ts",
     "src/agentDir/__fixtures__/**/*.{ts,js}",
-    "examples/agent-dir/tools/*.ts"
+    "examples/agent-dir/tools/*.ts",
+    "registry/**/*.ts"
   ],
   "ignoreDependencies": [
     "@ai-sdk/anthropic",
@@ -75,7 +76,8 @@
       "**/*.test-d.ts",
       "**/*.eval.ts",
       "**/__fixtures__/**",
-      "apps/agent-forge/e2e/**"
+      "apps/agent-forge/e2e/**",
+      "registry/**"
     ],
     "coverage": "coverage/coverage-final.json",
     "thresholdOverrides": [

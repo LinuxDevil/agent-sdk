@@ -1,0 +1,5 @@
+{
+  "name": "code-review",
+  "type": "skill",
+  "description": "Review a diff for bugs, style and missing tests"
+}

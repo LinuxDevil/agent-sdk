@@ -1,0 +1,21 @@
+{
+  "name": "open-meteo-weather",
+  "type": "tool",
+  "description": "Current weather for a city through the Open-Meteo API (free, no API key)",
+  "files": [
+    {
+      "path": "tools/open-meteo-weather.ts",
+      "content": "import { z } from 'zod';\nimport { defineTool } from '@lousho/build-ai-agent';\n\ninterface GeocodingResponse {\n  results?: { latitude: number; longitude: number; name: string; country?: string }[];\n}\n\ninterface ForecastResponse {\n  current_weather?: { temperature: number; windspeed: number; winddirection: number; weathercode: number; time: string };\n}\n\nasync function readJson(url: string): Promise<unknown> {\n  const response = await fetch(url);\n  if (!response.ok) throw new Error(`request failed: HTTP ${response.status}`);\n  return response.json();\n}\n\nexport default defineTool({\n  name: 'open-meteo-weather',\n  description: 'Get the current weather for a city through the Open-Meteo API (free, no API key)',\n  input: z.object({ city: z.string().describe('The city to look up, e.g. \"Berlin\"') }),\n  async execute({ city }) {\n    const geo = (await readJson(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1`)) as GeocodingResponse;\n    const place = geo.results?.[0];\n    if (!place) return { error: `No place named '${city}' found.` };\n    const forecast = (await readJson(\n      `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}&current_weather=true`\n    )) as ForecastResponse;\n    return { place: `${place.name}${place.country ? `, ${place.country}` : ''}`, weather: forecast.current_weather ?? null };\n  },\n});\n"
+    }
+  ],
+  "permissions": {
+    "network": [
+      "api.open-meteo.com",
+      "geocoding-api.open-meteo.com"
+    ]
+  },
+  "dependencies": [
+    "@lousho/build-ai-agent",
+    "zod"
+  ]
+}
