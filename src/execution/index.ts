@@ -48,7 +48,11 @@ export {
 export * from './tracing';
 export * from './semconv';
 export * from './logger';
-export * from './guardrails';
+// A5: the patch checks (formerly "patch guardrails") run against a proposed
+// diff; SECRET_PATTERNS lives in a Node-free module so ioGuardrails - and so
+// createAgent() - does not reach this file's node:child_process imports.
+export * from './patchChecks';
+export { SECRET_PATTERNS } from './secretPatterns';
 export { GuardrailError, maxLengthGuardrail, regexGuardrail, denyTopicsGuardrail, llmJudgeGuardrail } from './ioGuardrails';
 export type {
   AgentGuardrails,

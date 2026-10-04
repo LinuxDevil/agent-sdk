@@ -1,39 +1,39 @@
 /**
- * Ops pipeline: guardrail-gated PR creation wiring (LOU-J7).
+ * Ops pipeline: patch-check-gated PR creation wiring (LOU-J7).
  *
  * After fixer.ts's runFixer() returns {patch}, handleFixerPatch() gates
- * that patch through the REAL LOU-E12 runGuardrails() (secret-scan +
+ * that patch through the REAL LOU-E12 runPatchChecks() (secret-scan +
  * diff-size-cap by default) BEFORE ever considering the GitHub
- * PR-creation call. If the guardrail result's `pass` is false, the GitHub
+ * PR-creation call. If the check result's `pass` is false, the GitHub
  * tool is NEVER called - instead the LOU-J5 Slack tool is called with a
- * message naming which guardrail(s) failed and why, reusing the original
+ * message naming which patch check(s) failed and why, reusing the original
  * approvalId/channel. If `pass` is true, the REAL LOU-E13/E14-hardened
  * GitHub tool's PR-creation function is called exactly once with the
  * patch as diff content.
  *
- * This sequence is synchronous/sequential - the guardrail check is
- * `await`ed to completion before the GitHub call is even considered (no
- * Promise.all/race with it) - so the guardrail gate is genuinely blocking,
- * not parallel or best-effort. Per this epic's own Implementation
+ * This sequence is synchronous/sequential - the check is `await`ed to
+ * completion before the GitHub call is even considered (no
+ * Promise.all/race with it) - so the gate is genuinely blocking, not
+ * parallel or best-effort. Per this epic's own Implementation
  * Considerations, this gate is not configurable off: callers may swap
- * which guardrails run, but handleFixerPatch() always runs the guardrail
+ * which patch checks run, but handleFixerPatch() always runs the patch
  * check before any GitHub call, with no way to skip it.
  */
 import {
-  Guardrail,
-  ProposedAction,
-  createDiffSizeGuardrail,
-  runGuardrails,
-  secretScanGuardrail,
-} from '../../src/execution/guardrails';
+  PatchCheck,
+  ProposedPatch,
+  createDiffSizeCheck,
+  runPatchChecks,
+  secretScanCheck,
+} from '../../src/execution/patchChecks';
 import { ToolDescriptor } from '../../src/types';
 
 export interface FixerPatchContext {
   /** The REAL LOU-E13/E14-hardened GitHub tool's PR-creation ToolDescriptor. */
   githubCreatePrTool: ToolDescriptor;
-  /** The LOU-J5 Slack tool used to report a guardrail failure. */
+  /** The LOU-J5 Slack tool used to report a patch-check failure. */
   slackTool: ToolDescriptor;
-  /** Slack channel to notify on guardrail failure. */
+  /** Slack channel to notify on patch-check failure. */
   channel: string;
   /** The original approvalId/thread reference, reused for the Slack failure message. */
   approvalId: string;
@@ -41,12 +41,12 @@ export interface FixerPatchContext {
   base?: string;
   title?: string;
   /**
-   * Guardrails to run before ever considering the GitHub call. Defaults to
-   * the REAL secretScanGuardrail plus a 500-line createDiffSizeGuardrail -
+   * Patch checks to run before ever considering the GitHub call. Defaults
+   * to the REAL secretScanCheck plus a 500-line createDiffSizeCheck -
    * both real, non-configurable-off gates per this epic's own
    * Implementation Considerations.
    */
-  guardrails?: Guardrail[];
+  patchChecks?: PatchCheck[];
 }
 
 export interface HandleFixerPatchResult {
@@ -56,7 +56,7 @@ export interface HandleFixerPatchResult {
 }
 
 /**
- * Runs the REAL runGuardrails() against `patch` and, ONLY if it passes,
+ * Runs the REAL runPatchChecks() against `patch` and, ONLY if it passes,
  * calls the REAL GitHub PR-creation tool exactly once with the patch as
  * diff content (a PR-creation-scoped GitHub token has no endpoint to
  * attach a raw diff directly to a PR - see github.ts's scope
@@ -67,26 +67,26 @@ export async function handleFixerPatch(
   patch: string,
   context: FixerPatchContext
 ): Promise<HandleFixerPatchResult> {
-  const guardrails = context.guardrails ?? [secretScanGuardrail, createDiffSizeGuardrail(500)];
-  const action: ProposedAction = { diff: patch };
+  const patchChecks = context.patchChecks ?? [secretScanCheck, createDiffSizeCheck(500)];
+  const action: ProposedPatch = { diff: patch };
 
-  const guardrailResult = await runGuardrails(action, guardrails);
+  const checkResult = await runPatchChecks(action, patchChecks);
 
-  if (!guardrailResult.pass) {
-    const reasons = guardrailResult.failures
+  if (!checkResult.pass) {
+    const reasons = checkResult.failures
       .map((f) => `${f.name}${f.reason ? `: ${f.reason}` : ''}`)
       .join('; ');
 
     await context.slackTool.tool.execute!(
       {
         channel: context.channel,
-        message: `Guardrail check failed, PR not created (approval ${context.approvalId}): ${reasons}`,
+        message: `Patch check failed, PR not created (approval ${context.approvalId}): ${reasons}`,
         approvalId: context.approvalId,
       },
       {} as any
     );
 
-    return { pass: false, failures: guardrailResult.failures };
+    return { pass: false, failures: checkResult.failures };
   }
 
   const prResult = await context.githubCreatePrTool.tool.execute!(

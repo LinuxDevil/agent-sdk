@@ -9,8 +9,8 @@
  * delegate a fix request to it by ordinary tool-calling.
  *
  * See guardedPr.ts (LOU-J7) for what happens to the extracted patch next
- * (guardrail-gated PR creation) - kept in a sibling file since it composes
- * this module's output with the LOU-E guardrails and LOU-J5 Slack tool
+ * (patch-check-gated PR creation) - kept in a sibling file since it composes
+ * this module's output with the LOU-E patch checks and LOU-J5 Slack tool
  * rather than being fixer-core itself.
  */
 import { z } from 'zod';
@@ -120,12 +120,12 @@ function looksLikeDiff(content: string): boolean {
  * Throws EmptyPatchError if no non-empty patch could be extracted.
  *
  * SAFETY: this function only produces a patch candidate. It does NOT run
- * guardrails and does NOT gate on human approval. In the shipped pipeline
+ * patch checks and does NOT gate on human approval. In the shipped pipeline
  * (index.ts) it is only ever reached from inside the fixer tool that
  * AgentExecutor pauses on `needsApproval: true` before invoking. Do not
  * call runFixer() directly from a new entry point without first routing
  * through that same approval gate and through handleFixerPatch()'s
- * guardrail check (guardedPr.ts) before any GitHub write action.
+ * patch check (guardedPr.ts) before any GitHub write action.
  */
 export async function runFixer(
   request: FixRequest,

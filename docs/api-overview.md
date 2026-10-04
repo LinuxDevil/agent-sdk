@@ -333,9 +333,9 @@ Token estimates, the model price table, and the usage and cost of a run: see [Mo
   semantic conventions (flows are traced too); see
   [observability](observability.md).
 - `NoopSandbox` / `SubprocessSandbox` - sandboxing for tools that opt in via
-  `requiresSandbox`; `runGuardrails()` and guardrails such as
-  `createCommandGuardrail()`, `createDiffSizeGuardrail()` and
-  `secretScanGuardrail`. See [Guardrails and sandboxing](./guardrails.md).
+  `requiresSandbox`; `runPatchChecks()` and patch checks such as
+  `createCommandCheck()`, `createDiffSizeCheck()` and
+  `secretScanCheck`. See [Guardrails and sandboxing](./guardrails.md).
 - `HookRegistry`, `AgentHook`, `HookContext`, `ToolCallHookContext`,
   `GenerateHookContext` - hooks that observe, deny, rewrite or redact tool calls
   and model calls. See [Hooks](./hooks.md).

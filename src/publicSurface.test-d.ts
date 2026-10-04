@@ -276,6 +276,29 @@ describe('public surface (A2c): removed names are off the root', () => {
   });
 });
 
+describe('public surface (A5): the patch-guardrail type names are gone', () => {
+  it('old type names are off the root', () => {
+    // @ts-expect-error - renamed to ProposedPatch (A5)
+    type _T1 = import('./index').ProposedAction;
+    // @ts-expect-error - renamed to PatchCheck (A5)
+    type _T2 = import('./index').Guardrail;
+    // @ts-expect-error - renamed to PatchCheckResult (A5)
+    type _T3 = import('./index').GuardrailResult;
+    // @ts-expect-error - renamed to RunPatchChecksResult (A5)
+    type _T4 = import('./index').RunGuardrailsResult;
+    // @ts-expect-error - renamed to CommandCheckOptions (A5)
+    type _T5 = import('./index').CommandGuardrailOptions;
+  });
+
+  it('new type names are on the root', () => {
+    expectTypeOf<import('./index').ProposedPatch>().not.toBeNever();
+    expectTypeOf<import('./index').PatchCheck>().not.toBeNever();
+    expectTypeOf<import('./index').PatchCheckResult>().not.toBeNever();
+    expectTypeOf<import('./index').RunPatchChecksResult>().not.toBeNever();
+    expectTypeOf<import('./index').CommandCheckOptions>().not.toBeNever();
+  });
+});
+
 describe('public surface (A3): the executor API moved to ./executor', () => {
   it('moved types are off the root, on ./executor', () => {
     // @ts-expect-error - moved to '@lousho/build-ai-agent/executor' (A3)

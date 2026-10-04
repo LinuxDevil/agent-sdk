@@ -2,7 +2,7 @@
  * Input and output guardrails (LOU-X4): checks on a run's new user input,
  * its assistant text and its tool arguments. A failed check either stops the
  * run (`finishReason: 'guardrail'`) or rewrites the text. Separate from the
- * diff/patch gates in guardrails.ts.
+ * diff/patch gates in patchChecks.ts (the "patch checks" of A5).
  */
 
 import type { GenerateResult, LLMProvider, Message } from '../providers';
@@ -12,7 +12,7 @@ import { resolveProvider } from '../providers/resolveProvider';
 import type { ExecuteOptions } from './AgentExecutor';
 import { runEventsOf } from './agentRun';
 import { SDKError } from './errors';
-import { SECRET_PATTERNS } from './guardrails';
+import { SECRET_PATTERNS } from './secretPatterns';
 
 /** What a guardrail checks: the new user input, the assistant text, or a tool call's arguments. */
 export type IoGuardrailKind = 'input' | 'output' | 'tool';

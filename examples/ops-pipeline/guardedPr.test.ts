@@ -75,7 +75,7 @@ describe('handleFixerPatch (LOU-J7)', () => {
     expect(slackTool.execute).toHaveBeenCalledTimes(1);
   });
 
-  it('the guardrail check completes before the GitHub call is even considered (sequential, not parallel)', async () => {
+  it('the patch check completes before the GitHub call is even considered (sequential, not parallel)', async () => {
     const order: string[] = [];
     const githubCreatePrTool: any = {
       displayName: 'github',
@@ -93,14 +93,14 @@ describe('handleFixerPatch (LOU-J7)', () => {
       tool: { description: 'slack', parameters: {}, execute: vi.fn() },
     };
 
-    const { createDiffSizeGuardrail, secretScanGuardrail } = await import('../../src/execution/guardrails');
-    const trackedGuardrails = [
-      secretScanGuardrail,
+    const { createDiffSizeCheck, secretScanCheck } = await import('../../src/execution/patchChecks');
+    const trackedChecks = [
+      secretScanCheck,
       {
         name: 'diff-size-cap',
         check: async (action: { diff: string }) => {
-          order.push('guardrail');
-          return createDiffSizeGuardrail(500).check(action);
+          order.push('check');
+          return createDiffSizeCheck(500).check(action);
         },
       },
     ];
@@ -111,9 +111,9 @@ describe('handleFixerPatch (LOU-J7)', () => {
       channel: '#incidents',
       approvalId: 'approval-3',
       head: 'fix/auto',
-      guardrails: trackedGuardrails as any,
+      patchChecks: trackedChecks as any,
     });
 
-    expect(order).toEqual(['guardrail', 'github']);
+    expect(order).toEqual(['check', 'github']);
   });
 });
