@@ -1,6 +1,6 @@
 {
   "name": "@lousho/build-ai-agent",
-  "version": "1.0.0-rc.0",
+  "version": "1.0.0-alpha.0",
   "description": "Framework-agnostic SDK for building AI agents",
   "workspaces": [
     "apps/*",
@@ -147,6 +147,9 @@
   "scripts": {
     "build": "node --max-old-space-size=6144 node_modules/tsup/dist/cli-default.js",
     "dev": "node --max-old-space-size=6144 node_modules/tsup/dist/cli-default.js --watch",
+    "pre-release": "npm version prerelease --preid=alpha --no-git-tag-version && node scripts/sync-version.mjs && npm publish --access public",
+    "pre-release:create-lousho-agent": "npm version prerelease --preid=alpha --no-git-tag-version -w create-lousho-agent && npm run build -w create-lousho-agent && npm publish -w create-lousho-agent --access public",
+    "release:create-lousho-agent": "npm version patch --no-git-tag-version -w create-lousho-agent && npm run build -w create-lousho-agent && npm publish -w create-lousho-agent --access public",
     "test": "vitest",
     "test:coverage": "vitest run --coverage --config vitest.coverage.config.ts",
     "test:live": "vitest run --config vitest.live.config.ts",
