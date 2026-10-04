@@ -275,3 +275,48 @@ describe('public surface (A2c): removed names are off the root', () => {
     type _V2 = typeof import('./index').DelegationDepthExceededError;
   });
 });
+
+describe('public surface (A3): the executor API moved to ./executor', () => {
+  it('moved types are off the root, on ./executor', () => {
+    // @ts-expect-error - moved to '@lousho/build-ai-agent/executor' (A3)
+    type _T1 = import('./index').ExecuteOptions;
+    // @ts-expect-error - moved to '@lousho/build-ai-agent/executor' (A3)
+    type _T2 = import('./index').ResumeExecuteOptions;
+    // @ts-expect-error - moved to '@lousho/build-ai-agent/executor' (A3)
+    type _T3 = import('./index').ResumeRequest;
+    expectTypeOf<import('./executor').ExecuteOptions>().not.toBeNever();
+    expectTypeOf<import('./executor').ResumeExecuteOptions>().not.toBeNever();
+    expectTypeOf<import('./executor').ResumeRequest>().not.toBeNever();
+  });
+
+  it('moved values are off the root, on ./executor', () => {
+    // @ts-expect-error - moved to '@lousho/build-ai-agent/executor' (A3)
+    type _V1 = typeof import('./index').AgentBuilder;
+    // @ts-expect-error - moved to '@lousho/build-ai-agent/executor' (A3)
+    type _V2 = typeof import('./index').AgentExecutor;
+    // @ts-expect-error - moved to '@lousho/build-ai-agent/executor' (A3)
+    type _V3 = typeof import('./index').resumeAfterApproval;
+    // @ts-expect-error - moved to '@lousho/build-ai-agent/executor' (A3)
+    type _V4 = typeof import('./index').streamResumeAfterApproval;
+    // @ts-expect-error - moved to '@lousho/build-ai-agent/executor' (A3)
+    type _V5 = typeof import('./index').resumeRequest;
+    // @ts-expect-error - moved to '@lousho/build-ai-agent/executor' (A3)
+    type _V6 = typeof import('./index').ToolRegistry;
+    // @ts-expect-error - moved to '@lousho/build-ai-agent/executor' (A3)
+    type _V7 = typeof import('./index').globalToolRegistry;
+    expectTypeOf<typeof import('./executor').AgentBuilder>().not.toBeNever();
+    expectTypeOf<typeof import('./executor').AgentExecutor>().not.toBeNever();
+    expectTypeOf<typeof import('./executor').resumeAfterApproval>().not.toBeNever();
+    expectTypeOf<typeof import('./executor').streamResumeAfterApproval>().not.toBeNever();
+    expectTypeOf<typeof import('./executor').resumeRequest>().not.toBeNever();
+    expectTypeOf<typeof import('./executor').ToolRegistry>().not.toBeNever();
+    expectTypeOf<typeof import('./executor').globalToolRegistry>().not.toBeNever();
+  });
+
+  it('the result types stay on both the root and ./executor', () => {
+    expectTypeOf<import('./index').ExecutionResult>().not.toBeNever();
+    expectTypeOf<import('./index').ExecutionFinishReason>().not.toBeNever();
+    expectTypeOf<import('./executor').ExecutionResult>().toEqualTypeOf<import('./index').ExecutionResult>();
+    expectTypeOf<import('./executor').ExecutionFinishReason>().toEqualTypeOf<import('./index').ExecutionFinishReason>();
+  });
+});

@@ -127,7 +127,8 @@ Registering the hook in a `HookRegistry` is for code that calls the executor
 directly (see [the executor API](./executor-api.md)):
 
 ```ts
-import { AgentExecutor, HookRegistry, createCompactionHook, twoPhaseStrategy } from '@lousho/build-ai-agent';
+import { AgentExecutor } from '@lousho/build-ai-agent/executor';
+import { HookRegistry, createCompactionHook, twoPhaseStrategy } from '@lousho/build-ai-agent';
 
 const hooks = new HookRegistry();
 hooks.register(

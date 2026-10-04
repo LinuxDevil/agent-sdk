@@ -533,7 +533,8 @@ Resume with `resumeAfterApproval()`, passing the same `subagents` option as the
 paused run:
 
 ```ts
-import { AgentExecutor, resumeAfterApproval, ToolRegistry, createAgent } from '@lousho/build-ai-agent';
+import { AgentExecutor, resumeAfterApproval, ToolRegistry } from '@lousho/build-ai-agent/executor';
+import { createAgent } from '@lousho/build-ai-agent';
 
 const subagents = { researcher: createAgent({ provider, instructions: 'You research.', description: 'Researches' }) };
 

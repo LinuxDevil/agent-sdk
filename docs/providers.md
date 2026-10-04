@@ -162,7 +162,8 @@ console.log(textOf(messages[0]), '->', result.text);
 `AgentExecutor.execute()` takes the same messages as its `input` (see [the executor API](./executor-api.md)):
 
 ```ts
-import { AgentBuilder, AgentExecutor, resolveProvider, type Message } from '@lousho/build-ai-agent';
+import { AgentBuilder, AgentExecutor } from '@lousho/build-ai-agent/executor';
+import { resolveProvider, type Message } from '@lousho/build-ai-agent';
 
 const agent = AgentBuilder.create().setName('vision').setPrompt('Describe images briefly.').build();
 const input: Message[] = [

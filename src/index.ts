@@ -8,14 +8,14 @@
 // Version
 export const VERSION = '1.0.0-alpha.8';
 
-// Core exports
-export * from './core';
+// A3: the executor API (AgentBuilder, AgentExecutor, resume functions,
+// ToolRegistry) moved to '@lousho/build-ai-agent/executor'.
 
 // Type exports
 export * from './types';
 
-// Tools
-export * from './tools';
+// Tools (ToolRegistry moved to '@lousho/build-ai-agent/executor' (A3))
+export * from './tools/rootTools';
 
 // Flows moved to '@lousho/build-ai-agent/flows' (A1).
 

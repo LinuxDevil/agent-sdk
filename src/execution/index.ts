@@ -3,7 +3,10 @@
  * Agent execution engine with streaming support
  */
 
-export * from './AgentExecutor';
+// A3: the executor API moved to '@lousho/build-ai-agent/executor'. The
+// root keeps PropagatingToolError and the result types createAgent() uses.
+export { PropagatingToolError } from './propagatingToolError';
+export type { ExecutionResult, ExecutionFinishReason } from './AgentExecutor';
 export * from './errors';
 // A1: StorageServiceApprovalStore moved to '@lousho/build-ai-agent/utils'.
 export {
@@ -22,7 +25,7 @@ export {
   type SuspendedBackgroundTasks,
 } from './ApprovalGate';
 export { InMemoryApprovalStore } from './InMemoryApprovalStore';
-export * from './resume';
+// A3: the resume functions moved to '@lousho/build-ai-agent/executor'.
 // A1: LocalStorageCheckpointStore moved to '@lousho/build-ai-agent/utils'.
 export {
   appendToRing,

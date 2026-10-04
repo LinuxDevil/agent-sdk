@@ -139,7 +139,7 @@ The entries `exports` declares, and what each one holds:
 | Import specifier | What it holds |
 | ---------------- | ------------- |
 | `@lousho/build-ai-agent` | The root: `createAgent()`, `defineTool()`, `defineChannel()`, agents' public types, events, stores (`memoryStore()`, `fileStore()`), hooks, guardrails, sessions, skills, memory, sub-agents, evals, spec files, deployment types |
-| `@lousho/build-ai-agent/core` | `AgentBuilder` (the lower-level agent builder; advanced - prefer `createAgent()`) |
+| `@lousho/build-ai-agent/executor` | The executor API (advanced - prefer `createAgent()`): `AgentExecutor`, `AgentBuilder`, `resumeAfterApproval()`, `streamResumeAfterApproval()`, `resumeRequest()`, `ToolRegistry`, `globalToolRegistry` |
 | `@lousho/build-ai-agent/tools` | The tools surface: `defineTool()`, `ToolRegistry`, the built-in tools, MCP/OpenAPI helpers |
 | `@lousho/build-ai-agent/flows` | `FlowBuilder`, `FlowExecutor`, `validateFlow()` and every flow type (`AgentFlow`, `EditorStep`, `FlowExecutionEvent`, ...) |
 | `@lousho/build-ai-agent/integrations` | The credentialed third-party tools: `createJiraTools()`, `createGitHubTools()`, `createSlackTool()` / `slackTool`, `postSlackAlert()`, `createEmailTool()` and their types |

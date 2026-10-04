@@ -62,7 +62,8 @@ Without a stream, pass an `InputQueue` to `AgentExecutor.execute()` (see
 [the executor API](./executor-api.md)):
 
 ```ts
-import { AgentExecutor, InputQueue } from '@lousho/build-ai-agent';
+import { AgentExecutor } from '@lousho/build-ai-agent/executor';
+import { InputQueue } from '@lousho/build-ai-agent';
 
 const inputQueue = new InputQueue();
 const pending = AgentExecutor.execute({ agent, provider, input: 'Plan my trip.', inputQueue });

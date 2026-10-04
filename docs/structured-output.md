@@ -124,7 +124,8 @@ schema, or use `createAgent()` for the inferred type.
 
 ```ts
 import { z } from 'zod';
-import { AgentBuilder, AgentExecutor, createMockProvider } from '@lousho/build-ai-agent';
+import { AgentBuilder, AgentExecutor } from '@lousho/build-ai-agent/executor';
+import { createMockProvider } from '@lousho/build-ai-agent';
 
 const Ticket = z.object({ title: z.string(), priority: z.enum(['low', 'high']) });
 const agent = AgentBuilder.create().setName('triage').setPrompt('You triage bug reports.').build();

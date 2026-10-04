@@ -186,7 +186,7 @@ of `resumeAfterApproval()` (see [the executor API](./executor-api.md)) and
 returns the same `AgentRun`.
 
 ```ts
-import { AgentExecutor, streamResumeAfterApproval } from '@lousho/build-ai-agent';
+import { AgentExecutor, streamResumeAfterApproval } from '@lousho/build-ai-agent/executor';
 
 const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistry, approvalStore });
 const run = streamResumeAfterApproval({ id: paused.approvalId!, approved: true }, approvalStore, toolRegistry, provider);
@@ -359,7 +359,7 @@ with `{ sessionId, input }` streams `agent.session({ id }).stream(input)` as
 needs approval ends the stream with `approval.requested`:
 
 ```ts
-import { AgentExecutor } from '@lousho/build-ai-agent';
+import { AgentExecutor } from '@lousho/build-ai-agent/executor';
 
 const run = AgentExecutor.stream({ agent, input, provider, toolRegistry, approvalStore });
 for await (const event of run) {

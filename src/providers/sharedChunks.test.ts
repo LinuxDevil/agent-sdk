@@ -27,7 +27,7 @@ const SAME_OBJECTS = `
   const same = (a, b, key) => a[key] === b[key];
   return {
     hookRegistry: same(root, hooks, 'HookRegistry'),
-    toolRegistrySingleton: same(root, tools, 'globalToolRegistry') && same(root, tools, 'ToolRegistry'),
+    toolRegistrySingleton: same(executor, tools, 'globalToolRegistry') && same(executor, tools, 'ToolRegistry'),
     mcpToolError: same(tools, mcp, 'McpToolError') && same(root, mcp, 'McpToolError'),
     sdkErrorInstanceof: new root.AgentExecutionError('x') instanceof root.SDKError,
   };`;
@@ -35,14 +35,14 @@ const SAME_OBJECTS = `
 describe('shared chunks across package entries (LOU-D42)', () => {
   it('ESM entries share one copy of each module', () => {
     const result = inChild(
-      `const [root, hooks, tools, mcp] = await Promise.all([${['index.mjs', 'execution/hooks.mjs', 'tools/index.mjs', 'tools/mcp/index.mjs'].map((f) => `esm(${dist(f)})`).join(',')}]); ${SAME_OBJECTS}`
+      `const [root, hooks, tools, mcp, executor] = await Promise.all([${['index.mjs', 'execution/hooks.mjs', 'tools/index.mjs', 'tools/mcp/index.mjs', 'executor/index.mjs'].map((f) => `esm(${dist(f)})`).join(',')}]); ${SAME_OBJECTS}`
     );
     expect(result).toEqual({ hookRegistry: true, toolRegistrySingleton: true, mcpToolError: true, sdkErrorInstanceof: true });
   });
 
   it('CJS entries share one copy of each module', () => {
     const result = inChild(
-      `const [root, hooks, tools, mcp] = [${['index.js', 'execution/hooks.js', 'tools/index.js', 'tools/mcp/index.js'].map((f) => `require(${dist(f)})`).join(',')}]; ${SAME_OBJECTS}`
+      `const [root, hooks, tools, mcp, executor] = [${['index.js', 'execution/hooks.js', 'tools/index.js', 'tools/mcp/index.js', 'executor/index.js'].map((f) => `require(${dist(f)})`).join(',')}]; ${SAME_OBJECTS}`
     );
     expect(result).toEqual({ hookRegistry: true, toolRegistrySingleton: true, mcpToolError: true, sdkErrorInstanceof: true });
   });

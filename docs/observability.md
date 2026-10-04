@@ -42,7 +42,8 @@ Any object with `onSpanStart` and `onSpanEnd` is an exporter.
 With the executor, pass the exporter to `AgentExecutor.execute()`:
 
 ```ts
-import { AgentExecutor, type TraceExporter } from '@lousho/build-ai-agent';
+import { AgentExecutor } from '@lousho/build-ai-agent/executor';
+import { type TraceExporter } from '@lousho/build-ai-agent';
 
 const exporter: TraceExporter = {
   onSpanStart: (span) => console.log('[start]', span.kind, span.name),
@@ -197,7 +198,8 @@ per agent with `createAgent({ exporter, captureContent: true })`.
 With the executor, opt in per run:
 
 ```ts
-import { AgentExecutor, type TraceExporter } from '@lousho/build-ai-agent';
+import { AgentExecutor } from '@lousho/build-ai-agent/executor';
+import { type TraceExporter } from '@lousho/build-ai-agent';
 
 declare const exporter: TraceExporter;
 

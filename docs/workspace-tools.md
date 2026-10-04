@@ -56,7 +56,8 @@ the same, and `resumeAfterApproval(...)` is what `agent.approvals.resolve()`
 calls once a human approves:
 
 ```ts
-import { AgentExecutor, ToolRegistry, NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
+import { AgentExecutor, ToolRegistry } from '@lousho/build-ai-agent/executor';
+import { NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
 
 const workspace = new NodeWorkspace({ root: '.' }); // every path is confined to this directory
 const registry = new ToolRegistry();

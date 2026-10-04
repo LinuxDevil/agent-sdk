@@ -1,9 +1,9 @@
 # Migrating to createAgent()
 
 This page is for code that uses `AgentBuilder`, `AgentExecutor`, `ToolRegistry` and
-`resumeAfterApproval()`: the lower-level API the SDK started with. Those exports keep
-working and this page does not remove them; if you stay on them, see
-[The executor API](./executor-api.md). The reason to move is that one
+`resumeAfterApproval()`: the lower-level API the SDK started with. Those exports now
+live at `@lousho/build-ai-agent/executor` and are not going away; if you stay on
+them, see [The executor API](./executor-api.md). The reason to move is that one
 `createAgent()` call wires tools, stores, approvals, sessions, retries and
 compaction, where the executor makes you assemble each of them and pass them to every
 call.
@@ -22,11 +22,10 @@ text, `Sent the report to Sam.`, after the same pause.
 import {
   AgentBuilder,
   AgentExecutor,
-  InMemoryApprovalStore,
   ToolRegistry,
-  defineTool,
   resumeAfterApproval,
-} from '@lousho/build-ai-agent';
+} from '@lousho/build-ai-agent/executor';
+import { InMemoryApprovalStore, defineTool } from '@lousho/build-ai-agent';
 import { mockModel } from '@lousho/build-ai-agent/testing';
 import { z } from 'zod';
 

@@ -263,7 +263,8 @@ raw `ToolDescriptor` (a built-in tool, an MCP tool, or an existing `tool()` from
 the `ai` SDK), and `registerMany()` for a record of descriptors or an array of defined tools.
 
 ```ts
-import { ToolRegistry, currentDateTool, defineTool } from '@lousho/build-ai-agent';
+import { ToolRegistry } from '@lousho/build-ai-agent/tools';
+import { currentDateTool, defineTool } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 const lookupOrder = defineTool({

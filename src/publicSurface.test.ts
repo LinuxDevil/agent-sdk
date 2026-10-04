@@ -10,6 +10,7 @@ import * as root from './index';
 import * as flows from './flows';
 import * as integrations from './integrations';
 import * as utils from './utils';
+import * as executor from './executor';
 import { mockModel } from './testing';
 import { ToolRegistry } from './tools';
 import type { AgentConfig } from './types';
@@ -75,6 +76,19 @@ const MOVED: Array<[mod: Entry, specifier: string, names: string[]]> = [
       'hasRequiredKeys',
     ],
   ],
+  [
+    executor as Entry,
+    '@lousho/build-ai-agent/executor',
+    [
+      'AgentBuilder',
+      'AgentExecutor',
+      'resumeAfterApproval',
+      'streamResumeAfterApproval',
+      'resumeRequest',
+      'ToolRegistry',
+      'globalToolRegistry',
+    ],
+  ],
 ];
 
 describe('public surface (A1): moved values are on their subpath, off the root', () => {
@@ -123,7 +137,7 @@ describe('public surface (A2b): the legacy onEvent adapter is gone', () => {
   it('a legacy onEvent option passed to AgentExecutor.execute() is never called', async () => {
     const onEvent = vi.fn();
     const agent: AgentConfig = { id: 'a', name: 'Agent', prompt: 'p', tools: {} };
-    await root.AgentExecutor.execute({
+    await executor.AgentExecutor.execute({
       agent,
       provider: mockModel(['done']),
       toolRegistry: new ToolRegistry(),

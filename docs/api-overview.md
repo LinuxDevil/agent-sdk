@@ -42,9 +42,9 @@ How the pieces fit:
 | Export                        | Description                                                                 |
 | ----------------------------- | --------------------------------------------------------------------------- |
 | `createAgent(config)`         | Zero-config `{ send(message) }` agent from a `model` string or provider (+ instructions, tools). |
-| `AgentBuilder`                | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). Advanced: see [the executor API](./executor-api.md). |
-| `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. Advanced: see [the executor API](./executor-api.md). |
-| `resumeAfterApproval()`       | Resume an execution paused for human approval. Advanced: see [the executor API](./executor-api.md). |
+| `AgentBuilder` (from `@lousho/build-ai-agent/executor`) | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). Advanced: see [the executor API](./executor-api.md). |
+| `AgentExecutor.execute(opts)` (from `@lousho/build-ai-agent/executor`) | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. Advanced: see [the executor API](./executor-api.md). |
+| `resumeAfterApproval()` (from `@lousho/build-ai-agent/executor`) | Resume an execution paused for human approval. Advanced: see [the executor API](./executor-api.md). |
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
 | `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` (from `/utils`) | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](./approvals.md), [Durable execution](./durable-execution.md)). |
 | `SqliteStore` (from `/sqlite`) | Sessions, checkpoints and approvals in one SQLite file (see [Sessions](./sessions.md#choosing-a-store)). |
@@ -219,7 +219,7 @@ Exported from `@lousho/build-ai-agent/testing` (see [Testing agents](testing.md)
 | -------------------------------------------- | --------------------------------------------- |
 | `defineTool({ name, description, input, execute, ... })` | Define a tool; `execute`/`needsApproval` args are inferred from the zod `input`. Accepted by `createAgent({ tools: [...] })`, `ToolRegistry.register(tool)` and `AgentBuilder.addTool(tool)`. |
 | `ToolInput<typeof t>`, `ToolOutput<typeof t>` | Argument and result types of a defined tool. |
-| `ToolRegistry`                               | Holds the tools an agent config refers to (advanced: `register(tool)` or `register(name, descriptor)`). |
+| `ToolRegistry` (from `@lousho/build-ai-agent/tools` or `@lousho/build-ai-agent/executor`) | Holds the tools an agent config refers to (advanced: `register(tool)` or `register(name, descriptor)`). |
 | `httpTool`, `currentDateTool`, `dayNameTool` | Built-in tools.                               |
 | `createFsTools(fs, options?)`, `createShellTool(shell, options?)` | Workspace tools (`read_file`, `write_file`, `edit_file`, `list_dir`, `glob`, `grep`, `shell`) over an `FsProvider` / `ShellProvider`. See [Workspace tools](workspace-tools.md). |
 | `NodeWorkspace`, `MemoryWorkspace`, `SandboxShell` | Workspace providers: a real directory (paths confined to `root`, minimal shell env), an in-memory tree with a scripted `exec` for tests, and a `ShellProvider` over a `SandboxAdapter` (Docker). |

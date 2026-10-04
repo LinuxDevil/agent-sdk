@@ -379,7 +379,7 @@ call it corresponds to.
 `agent.send(message, { sessionId })`:
 
 ```ts
-import { AgentExecutor } from '@lousho/build-ai-agent';
+import { AgentExecutor } from '@lousho/build-ai-agent/executor';
 import { LocalStorageCheckpointStore } from '@lousho/build-ai-agent/utils';
 
 const checkpoints = new LocalStorageCheckpointStore(storage);
@@ -394,7 +394,8 @@ await AgentExecutor.execute({ agent, input: 'Make it 3 people', provider, sessio
 It throws `SessionAwaitingApprovalError` on a paused session, as `send()` does:
 
 ```ts
-import { AgentExecutor, SessionAwaitingApprovalError, memoryStore } from '@lousho/build-ai-agent';
+import { AgentExecutor } from '@lousho/build-ai-agent/executor';
+import { SessionAwaitingApprovalError, memoryStore } from '@lousho/build-ai-agent';
 
 const { checkpoints } = memoryStore();
 
@@ -411,7 +412,7 @@ The exported `resumeAfterApproval()` function is what
 `agent.approvals.resolve()` calls:
 
 ```ts
-import { AgentExecutor, resumeAfterApproval } from '@lousho/build-ai-agent';
+import { AgentExecutor, resumeAfterApproval } from '@lousho/build-ai-agent/executor';
 
 const paused = await AgentExecutor.execute({
   agent, input, provider, toolRegistry, approvalStore, sessionId: 'chat-42', checkpointStore,
@@ -435,7 +436,8 @@ if (paused.finishReason === 'awaiting-approval') {
 fork's `sessionId` is `agent.resume(fork.sessionId)`:
 
 ```ts
-import { AgentExecutor, compareTrajectories, memoryStore } from '@lousho/build-ai-agent';
+import { AgentExecutor } from '@lousho/build-ai-agent/executor';
+import { compareTrajectories, memoryStore } from '@lousho/build-ai-agent';
 
 const { checkpoints } = memoryStore();
 await AgentExecutor.execute({ agent, provider, toolRegistry, input: 'Plan my trip', sessionId: 'trip', checkpointStore: checkpoints });

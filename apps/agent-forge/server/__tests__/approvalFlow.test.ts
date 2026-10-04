@@ -18,14 +18,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import {
-  AgentExecutor,
-  ToolRegistry,
-  AgentBuilder,
-  createMockProvider,
-  resumeAfterApproval,
-  type ToolDescriptor,
-} from '@lousho/build-ai-agent';
+import { AgentExecutor, ToolRegistry, AgentBuilder, resumeAfterApproval } from '@lousho/build-ai-agent/executor';
+import { createMockProvider, type ToolDescriptor } from '@lousho/build-ai-agent';
 import { FileApprovalStore } from '../approvalStore';
 import { FileCheckpointStore } from '../checkpointStore';
 

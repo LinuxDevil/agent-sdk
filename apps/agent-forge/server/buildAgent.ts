@@ -14,9 +14,8 @@
  * all public SDK exports) itself, rather than reaching past `specToAgent()`
  * into SDK internals.
  */
+import { AgentBuilder, ToolRegistry } from '@lousho/build-ai-agent/executor';
 import {
-  AgentBuilder,
-  ToolRegistry,
   NoopSandbox,
   LLMProviderRegistry,
   resolveSpecProvider,
