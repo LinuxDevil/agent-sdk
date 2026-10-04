@@ -77,7 +77,7 @@ export interface DebugStateSnapshot {
 const DEFAULT_PAUSE_TIMEOUT_MS = 15 * 60 * 1000;
 
 export type DebugHooks = Pick<
-  import('@lousho/build-ai-agent').ExecuteOptions,
+  import('@lousho/build-ai-agent/executor').ExecuteOptions,
   'onLLMRequest' | 'onLLMResponse' | 'onToolCall' | 'onToolResult'
 >;
 

@@ -20,7 +20,7 @@ function copyDevUi() {
 export default defineConfig({
   entry: {
     index: 'src/index.ts',
-    'core/index': 'src/core/index.ts',
+    'executor/index': 'src/executor/index.ts',
     'tools/index': 'src/tools/index.ts',
     'tools/mcp/index': 'src/tools/mcp/index.ts',
     'flows/index': 'src/flows/index.ts',

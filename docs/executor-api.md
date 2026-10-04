@@ -15,8 +15,8 @@ take: `temperature` and `maxTokens` (`exporter`, `captureContent` and
 import {
   AgentBuilder,
   AgentExecutor,
-  createMockProvider,
-} from '@lousho/build-ai-agent';
+} from '@lousho/build-ai-agent/executor';
+import { createMockProvider } from '@lousho/build-ai-agent';
 
 const agent = AgentBuilder.create()
   .setName('Customer Support Agent')

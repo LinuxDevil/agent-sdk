@@ -12,16 +12,14 @@ import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { fileTraceExporter } from '@lousho/build-ai-agent/traces';
 import { agentTraceDir, fanOutExporter } from './traceStore';
+import { AgentExecutor, ToolRegistry, resumeAfterApproval } from '@lousho/build-ai-agent/executor';
 import {
-  AgentExecutor,
-  ToolRegistry,
   type AgentEvent,
   type CheckpointStore,
   type Span,
   type TraceExporter,
   type ExecutionResult,
   type Message,
-  resumeAfterApproval,
   emptyRunUsage,
   compareTrajectories,
   getCheckpointHistory,

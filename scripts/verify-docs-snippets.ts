@@ -61,8 +61,8 @@ const SDK = "import('@lousho/build-ai-agent')";
 const PLACEHOLDERS: Record<string, string> = {
   agent: `${SDK}.AgentConfig`,
   provider: `${SDK}.LLMProvider`,
-  registry: `${SDK}.ToolRegistry`,
-  toolRegistry: `${SDK}.ToolRegistry`,
+  registry: `import('@lousho/build-ai-agent/executor').ToolRegistry`,
+  toolRegistry: `import('@lousho/build-ai-agent/executor').ToolRegistry`,
   storage: `import('@lousho/build-ai-agent/utils').StorageService`,
   approvalStore: `${SDK}.ApprovalStore`,
   checkpointStore: `${SDK}.CheckpointStore`,

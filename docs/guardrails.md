@@ -221,7 +221,8 @@ function. The executor then calls `sandboxExecute` with the run's
 #### Advanced: the executor API
 
 ```ts
-import { AgentExecutor, SubprocessSandbox } from '@lousho/build-ai-agent';
+import { AgentExecutor } from '@lousho/build-ai-agent/executor';
+import { SubprocessSandbox } from '@lousho/build-ai-agent';
 
 // Route a flagged tool (requiresSandbox + sandboxExecute) through a real,
 // Docker-backed sandbox instead of the in-process NoopSandbox default

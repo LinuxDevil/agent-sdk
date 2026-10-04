@@ -179,7 +179,7 @@ describe('a branching graph actually executes different paths via FlowExecutor a
         name === 'refund-tool'
           ? { tool: { description: 'x', parameters: {}, execute: async () => ({ refunded: true }) } }
           : undefined,
-    } as unknown as import('@lousho/build-ai-agent').ToolRegistry;
+    } as unknown as import('@lousho/build-ai-agent/tools').ToolRegistry;
   }
 
   it('takes the conditioned branch (runs the tool) when the LLM output matches its condition', async () => {
