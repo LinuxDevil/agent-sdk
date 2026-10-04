@@ -196,10 +196,11 @@ curl -N https://<your-worker>.workers.dev/chat \
 generated Worker builds from the binding. A hand-written Worker imports it from
 the `/kv` subpath, which has no `node:*` import anywhere in its graph, with the
 binding typed as `KVBinding` (the `get`/`put`/`delete` part of Cloudflare's
-`KVNamespace`, so `@cloudflare/workers-types` is not needed):
+`KVNamespace`, so `@cloudflare/workers-types` is not needed). `createAgent` comes
+from the `/worker` subpath - see [Writing your own Worker](#writing-your-own-worker):
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from '@lousho/build-ai-agent/worker';
 import { KVStore, type KVBinding } from '@lousho/build-ai-agent/kv';
 
 interface Env {
@@ -267,8 +268,8 @@ the same expressions under `[triggers] crons` yourself. Give the agent a store
 isolate's memory and is gone when it is recycled:
 
 ```ts
-import { createAgent, createMockProvider, defineSchedule, handleScheduled } from '@lousho/build-ai-agent';
-import type { ScheduledContext, ScheduledController } from '@lousho/build-ai-agent';
+import { createAgent, createMockProvider, defineSchedule, handleScheduled } from '@lousho/build-ai-agent/worker';
+import type { ScheduledContext, ScheduledController } from '@lousho/build-ai-agent/worker';
 import { KVStore, type KVBinding } from '@lousho/build-ai-agent/kv';
 
 interface Env {
@@ -288,6 +289,51 @@ export default {
   },
 };
 ```
+
+## Writing your own Worker
+
+Import from `@lousho/build-ai-agent/worker`, not the package root. The root entry
+also exports file stores, the agent-directory loader, MCP over stdio, sandboxes
+and other Node-only modules, so bundling it for `platform: 'browser'` fails with
+`Could not resolve "async_hooks"` and friends. `/worker` is `createAgent` plus the
+Worker-safe surface, built with the same shims `lousho build` applies, so it
+carries no `node:` import your own bundler could trip on:
+
+```ts
+import {
+  createAgent, createMockProvider, defineSchedule, defineTool, handleScheduled,
+  memoryStore, serveFetch, OpenAIProvider, AnthropicProvider, OpenRouterProvider,
+  LLMProviderRegistry, SDKError, /* ... */
+} from '@lousho/build-ai-agent/worker';
+import { KVStore } from '@lousho/build-ai-agent/kv'; // also re-exported from /worker
+```
+
+The exports: `createAgent` (and its config types), `memoryStore`, the KV stores
+(`KVStore`, `KVCheckpointStore`, `CHECKPOINT_KV_BINDING`), the schedule helpers
+(`defineSchedule`, `handleScheduled` and their types), `serveFetch` (the
+[`/chat` HTTP API](./deployment.md#http-api) as a fetch handler, for a Worker
+that wants the same routes the generated one serves), the providers a Worker can
+run (`mock`, `openai`, `anthropic`, `openrouter`) and everything agent-directory
+code may import (`defineTool`, `isDefinedTool`, `always`, `never`, `once`,
+`defineSkill`, `defineChannel`, the channel factories, `defineMemory`,
+`inMemoryMemory`, `kvMemory`, `fromAiSdk`, `textOf`, the error classes).
+
+Two things to know:
+
+- `ai`, `zod`, `@opentelemetry/api` and the provider packages
+  (`@ai-sdk/openai`, `@ai-sdk/anthropic`) are *not* bundled into `/worker` -
+  they resolve from your install so they share your `ai` copy. Install the peer
+  your provider needs (none for `mock`); if your bundler still tries to resolve
+  one you did not install, mark it `external` - the lazy `import()` never runs
+  for a provider you never construct.
+- Features a Worker cannot run - project instructions, the file session store,
+  guardrail patches, sandboxed tools, code mode and the `ollama` provider - load
+  as shims that fail when called, exactly as in the generated Worker. So do
+  `mcpServers` (stdio and streamable HTTP): the published entry cannot keep an
+  external specifier to the optional `@modelcontextprotocol/sdk` peer, so the
+  connection fails on first use - use `lousho build` (generated Worker) or a
+  Node target for MCP. Everything else, including a `createAgent({ provider,
+  store })` turn, runs unmodified; no `nodejs_compat` flag is needed.
 
 ## Consistency
 
@@ -333,7 +379,9 @@ read-modify-write is not atomic.
 
 The KV-backed stores (`KVStore`, `KVCheckpointStore` and `CHECKPOINT_KV_BINDING`,
 exported from `@lousho/build-ai-agent/kv`) have no `node:*` references anywhere
-in their dependency graph. The Worker runs the spec as a `createAgent()` agent, whose
+in their dependency graph, and neither does the `@lousho/build-ai-agent/worker`
+entry a hand-written Worker bundles (its build is checked the same way; see
+[Writing your own Worker](#writing-your-own-worker)). The Worker runs the spec as a `createAgent()` agent, whose
 Node-only imports (project instructions, the file session store, guardrail
 patches, MCP over stdio) the build points at a shim that fails when used
 (`src/deploy/shims/node.worker.ts`). The built `dist/worker.js` bundle is then

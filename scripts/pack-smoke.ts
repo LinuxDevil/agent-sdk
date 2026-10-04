@@ -42,9 +42,12 @@ const REPO_ROOT = path.resolve(__dirname, '..');
  * (~3.65 MiB) packed. Before #191 the same measure was 902 entries /
  * ~20.8 MiB / ~5.6 MiB (test files, `__snapshots__`/`__cassettes__`, the Forge
  * server map and map `sourcesContent` no longer ship). Headroom ~20%.
+ * Unpacked raised to 18 MiB by the @lousho/build-ai-agent/worker entry (#289):
+ * the pre-built, pre-shimmed entry and #298's Worker channel helpers bring the
+ * tarball to 917 entries / ~16.4 MiB / ~4.3 MiB packed.
  */
 const MAX_ENTRIES = 1050;
-const MAX_UNPACKED_BYTES = 16 * 1024 * 1024;
+const MAX_UNPACKED_BYTES = 18 * 1024 * 1024;
 const MAX_PACKED_BYTES = 4.5 * 1024 * 1024;
 
 const DEFAULT_PEERS = 'ai@7 zod@4 @ai-sdk/openai@4 react@19 vue@3 @opentelemetry/api@1';

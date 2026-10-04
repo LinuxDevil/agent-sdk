@@ -15,6 +15,8 @@
     "src/deploy/shims/sandboxCore.worker.ts",
     "src/deploy/shims/node.worker.ts",
     "src/deploy/shims/quickjs.worker.ts",
+    "src/deploy/shims/ollama.worker.ts",
+    "src/deploy/shims/mcp.worker.ts",
     "src/agentDir/__fixtures__/**/*.{ts,js}",
     "examples/agent-dir/tools/*.ts"
   ],
