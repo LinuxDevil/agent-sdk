@@ -20,6 +20,7 @@ import { loadChannels } from './loadChannels';
 import { loadMemory, mergeMemory } from './loadMemory';
 import { loadSchedules } from './loadSchedules';
 import { loadTools, type LoadedTool } from './loadTools';
+import { confineToolsToReceipt, registryWarnings, verifyReceipt, type RegistryStatus } from './registryEnforce';
 import { readConfig, type AgentDirConfig } from './readConfig';
 import { delegateTool, listSubagentDirs, requireDescription, type LoadedSubagent } from './subagents';
 import { SDKError } from '../execution/errors';
@@ -27,6 +28,7 @@ import type { AuthFn } from '../auth/types';
 import { loadAuth } from './loadAuth';
 
 export type { AgentDirConfig } from './readConfig';
+export type { Attestation, RegistryItemStatus, RegistryStatus } from './registryEnforce';
 
 /**
  * Options that win over what the directory's files say. Same shape as
@@ -64,6 +66,13 @@ export interface AgentDirManifest {
   memory: string[];
   /** Whether the directory has an `auth.ts` / `.js` (N10a); only the top-level directory's counts. */
   auth: boolean;
+  /**
+   * The `lousho-registry.json` install receipt, when the directory has one (#272):
+   * which registry items it records and whether their files still match it
+   * (`attested`) or were edited or removed since (`unattested` - reported with
+   * a warning, and their declared permissions are still enforced).
+   */
+  registry?: RegistryStatus;
 }
 
 /** The result of {@link resolveAgentDir}: ready-to-use `createAgent()` options plus what was discovered. */
@@ -183,7 +192,10 @@ async function resolveWith(
   const fromFile = await readInstructions(dir);
   const instructions = chooseInstructions(dir, config, fromFile, overrides);
   const source = chooseModelSource(config, overrides, inherited);
-  const tools: LoadedTool[] = await loadTools(dir);
+  // #272: verify the install receipt before its code runs, then bind its tools to the accepted manifests.
+  const registry = await verifyReceipt(dir);
+  for (const warning of registryWarnings(registry)) console.warn(`[lousho] ${warning}`);
+  const tools: LoadedTool[] = confineToolsToReceipt(dir, await loadTools(dir), registry);
   const skills = await skillsFor(dir, overrides);
   const subagents = await loadSubagents(dir, overrides, source);
   const schedules = await loadSchedules(dir);
@@ -225,6 +237,7 @@ async function resolveWith(
       channels: channels.map((c) => c.name),
       memory: memorySlots.map((m) => m.name),
       auth: false,
+      ...optional('registry', registry),
     },
   };
 }

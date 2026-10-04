@@ -1522,6 +1522,11 @@ console.log(manifest.tools, manifest.skills, manifest.subagents);
 const agent = createAgent({ ...config, maxSteps: 3 });
 ```
 
+When the directory has a `lousho-registry.json` install receipt
+([Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md)), `manifest.registry` reports whether each installed
+item's files still match it, and the tools of a receipt item run inside the
+permission manifest it was installed with.
+
 ## Overrides
 
 The second argument takes the same options as `createAgent()` and wins over the
@@ -11525,17 +11530,53 @@ What `lousho add` enforces, before it writes anything:
   grant command execution silently.
 - **A receipt of what was installed.** After writing, `lousho add` updates
   `lousho-registry.json` at the root of the agent directory (next to
-  `instructions.md`; the agent loader ignores it). Each item's entry has its
+  `instructions.md`). Each item's entry has its
   `type`, the `registry` it came from, `installedAt`, the `permissions` and every
   file's `path` and `sha256`, so you can tell later whether a file was edited.
   `--overwrite` replaces the entry; `--dry-run` writes nothing. A receipt that is
-  not valid JSON stops the install before any file is written.
+  not valid JSON stops the install before any file is written. The receipt is
+  what `loadAgentDir` enforces at load and run time (below).
 
-What it does not do: the check reads the code as written. It is not a sandbox and
-nothing is enforced when the agent runs; code that hides what it does (string
-escapes, aliasing, encoded payloads, a dependency that does the work) can get past
-it. Read the files it lists (`--dry-run` shows them) the way you would read any
-dependency before running it.
+What `loadAgentDir` enforces, from the receipt, when the agent loads and the
+item's tools run:
+
+- **Integrity.** Every file the receipt lists is re-hashed. A file that was
+  edited or removed since makes its item *unattested*: a warning names the item
+  and the changed files, and `resolveAgentDir()` reports the same in
+  `manifest.registry` (`status: 'attested' | 'unattested'`, plus the `modified`
+  and `missing` paths). Loading is not refused - the files are yours to edit -
+  and an unreadable receipt is a warning, not an error.
+- **Approval.** The tools of an item declaring `exec: true` or
+  `needsApproval: true` - and of any unattested item, whose stale receipt no
+  longer certifies the modified code - always wait for
+  [approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md); a `deny` from the tool's own `needsApproval`
+  still denies.
+- **Network.** While a receipt item's tool runs, `fetch` is limited to the
+  hosts its `network` declares: a host the manifest does not list is refused,
+  and an item that declares no `network` cannot fetch at all.
+- **Environment.** While it runs, `process.env` shows the tool only the names
+  `env` declares.
+- **Sandboxed tools.** A `requiresSandbox` tool gets a narrowed adapter:
+  `run()` is refused without `exec`, `writeFile()` without
+  `filesystem: "write"`, and a command's environment is the usual non-secret
+  base plus the declared variables only.
+
+The confinement stays at least as narrow as the manifest accepted at install,
+attested or not: editing an installed file marks it, asks for approval on its
+calls, and widens nothing, until `lousho add <name> --overwrite` installs the
+current files and attests them again.
+
+What it does not do: the install-time check reads the code as written, and the
+run-time confinement covers only what the SDK can intercept - calls to `fetch`
+and `process.env` reads made while the tool runs, and the adapter handed to a
+sandboxed tool. Requests through `http`/`net`/`axios`, file access, a reference
+captured at module scope (`const f = fetch`), work done when the file is
+imported, and a container's own network policy (`SubprocessSandbox`'s
+`{ allow }` is a property of the sandbox, not of the item) are all outside it;
+so is code that hides what it does (string escapes, aliasing, encoded
+payloads, a dependency that does the work) from the static check. Read the
+files it lists (`--dry-run` shows them) the way you would read any dependency
+before running it.
 
 ## Safety rules
 
