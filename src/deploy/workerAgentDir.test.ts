@@ -7,8 +7,13 @@ import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import { defineTool } from '../tools/defineTool';
 import { createMockProvider } from '../providers/mock';
+import { defineSchedule } from '../schedules/defineSchedule';
+import { httpChannel } from '../channels/httpChannel';
+import { defineMemory } from '../memory/defineMemory';
+import { inMemoryMemory } from '../memory/providers';
+import { kvMemory } from './workerMemory';
 import { resolveWorkerAgentDir, type WorkerAgentDir } from './workerAgentDir';
-import { handleWorkerAgentDirRequest, prepareWorkerAgentDir, workerAgentFromDir } from './runtime.worker';
+import { handleWorkerAgentDirRequest, handleWorkerAgentDirScheduled, prepareWorkerAgentDir, workerAgentFromDir, workerStore } from './runtime.worker';
 
 const echo = defineTool({
   name: 'echo',
@@ -78,9 +83,131 @@ describe('resolveWorkerAgentDir (M3b)', () => {
     [{ config: { model: 'ollama/llama3' } }, "uses provider 'ollama'", 'LOUSHO_DEPLOY_FAILED'],
     [{ config: {} }, 'agent.json sets no model', 'LOUSHO_DEPLOY_FAILED'],
     [{ configFile: undefined, config: undefined }, "the agent directory 'my-agent' sets no model", 'LOUSHO_DEPLOY_FAILED'],
-    [{ config: { model: 'mock/x', projectInstructions: true } }, "agent.json sets 'projectInstructions'", 'LOUSHO_DEPLOY_FAILED'],
   ] as Array<[Partial<WorkerAgentDir>, string, string]>)('refuses %j', (overrides, message, code) => {
     expect(() => resolveWorkerAgentDir(dir(overrides))).toThrow(expect.objectContaining({ code, message: expect.stringContaining(message) }));
+  });
+});
+
+describe('resolveWorkerAgentDir: schedules, channels, memory (#298)', () => {
+  const morning = defineSchedule({ cron: '0 9 * * MON', prompt: 'Good morning' });
+
+  it('collects the scheduleModules schedules, naming them after the file stem', () => {
+    const resolved = resolveWorkerAgentDir(
+      dir({
+        scheduleModules: [
+          { file: 'schedules/report.ts', module: { default: morning } },
+          { file: 'schedules/named.ts', module: { default: defineSchedule({ name: 'own', cron: '0 8 * * *', prompt: 'Hi' }) } },
+        ],
+      })
+    );
+    expect(resolved.schedules.map((s) => s.name)).toEqual(['report', 'own']);
+    expect(resolved.schedules[0].cron).toBe('0 9 * * MON');
+  });
+
+  it('rejects a schedule file whose default export is not a defineSchedule() schedule', () => {
+    expect(() => resolveWorkerAgentDir(dir({ scheduleModules: [{ file: 'schedules/bad.ts', module: { default: { cron: '0 9 * * *' } } }] }))).toThrow(
+      expect.objectContaining({ code: 'LOUSHO_SCHEDULE_INVALID', message: expect.stringContaining('schedules/bad.ts') })
+    );
+  });
+
+  it('collects the channelModules channels, naming them after the file stem when the export sets no name', () => {
+    const resolved = resolveWorkerAgentDir(dir({ channelModules: [{ file: 'channels/api.ts', module: { default: httpChannel() } }] }));
+    expect(resolved.channels.map((c) => c.name)).toEqual(['http']);
+    const unnamed = resolveWorkerAgentDir(
+      dir({ channelModules: [{ file: 'channels/hook.ts', module: { default: { parse: async () => null, reply: async () => undefined } } }] })
+    );
+    expect(unnamed.channels.map((c) => c.name)).toEqual(['hook']);
+  });
+
+  it('rejects a channel file whose default export is not a channel', () => {
+    expect(() => resolveWorkerAgentDir(dir({ channelModules: [{ file: 'channels/bad.ts', module: { default: { nope: 1 } } }] }))).toThrow(
+      expect.objectContaining({ code: 'LOUSHO_CHANNEL_INVALID', message: expect.stringContaining('channels/bad.ts') })
+    );
+  });
+
+  it('collects the memoryModules slots, naming them after the file stem', () => {
+    const resolved = resolveWorkerAgentDir(
+      dir({ memoryModules: [{ file: 'memory/notes.ts', module: { default: defineMemory({ name: 'notes', scope: 'global', provider: inMemoryMemory() }) } }] })
+    );
+    expect(resolved.memory.map((m) => m.name)).toEqual(['notes']);
+    const unnamed = resolveWorkerAgentDir(
+      dir({ memoryModules: [{ file: 'memory/prefs.ts', module: { default: { scope: 'global', provider: inMemoryMemory() } } }] })
+    );
+    expect(unnamed.memory.map((m) => m.name)).toEqual(['prefs']);
+  });
+
+  it('rejects a memory file whose default export is not a memory slot', () => {
+    expect(() => resolveWorkerAgentDir(dir({ memoryModules: [{ file: 'memory/bad.ts', module: { default: 42 } }] }))).toThrow(
+      expect.objectContaining({ code: 'LOUSHO_MEMORY_INVALID', message: expect.stringContaining('memory/bad.ts') })
+    );
+  });
+});
+
+describe('resolveWorkerAgentDir: subagents (#298)', () => {
+  const child = (overrides: Partial<WorkerAgentDir> = {}): WorkerAgentDir =>
+    dir({
+      name: 'reviewer',
+      instructions: 'Review code.',
+      config: { description: 'Reviews pull requests' },
+      toolModules: [],
+      ...overrides,
+    });
+
+  it('resolves each sub-agent with its description, tools and the parent model it inherits', () => {
+    const resolved = resolveWorkerAgentDir(dir({ subagents: [{ name: 'reviewer', dir: child() }] }));
+    expect(resolved.subagents).toEqual([
+      expect.objectContaining({
+        name: 'reviewer',
+        description: 'Reviews pull requests',
+        dir: expect.objectContaining({ name: 'reviewer', instructions: 'Review code.', model: { providerType: 'mock', model: 'test' } }),
+      }),
+    ]);
+  });
+
+  it('lets a sub-agent choose its own model and keeps its own tools', () => {
+    const resolved = resolveWorkerAgentDir(
+      dir({ subagents: [{ name: 'reviewer', dir: child({ config: { description: 'Reviews', model: 'openai/gpt-4o' }, toolModules: [{ file: 'tools/e.ts', module: { default: echo } }] }) }] })
+    );
+    expect(resolved.subagents[0].dir.model).toEqual({ providerType: 'openai', model: 'gpt-4o' });
+    expect(resolved.subagents[0].dir.tools).toEqual([echo]);
+  });
+
+  it('resolves sub-agents recursively', () => {
+    const resolved = resolveWorkerAgentDir(dir({ subagents: [{ name: 'reviewer', dir: child({ subagents: [{ name: 'inner', dir: child({ name: 'inner' }) }] }) }] }));
+    expect(resolved.subagents[0].dir.subagents.map((s) => s.name)).toEqual(['inner']);
+  });
+
+  it('requires a description on a sub-agent', () => {
+    expect(() => resolveWorkerAgentDir(dir({ subagents: [{ name: 'reviewer', dir: child({ config: {} }) }] }))).toThrow(
+      expect.objectContaining({ code: 'LOUSHO_AGENT_DIR_INVALID', message: expect.stringContaining("'description'") })
+    );
+  });
+});
+
+describe('resolveWorkerAgentDir: projectInstructions (#298)', () => {
+  it('appends the embedded AGENTS.md / CLAUDE.md block when the config asks for it', () => {
+    const resolved = resolveWorkerAgentDir(
+      dir({ config: { model: 'mock/x', projectInstructions: true }, projectInstructions: { file: 'AGENTS.md', content: 'Follow the rules.' } })
+    );
+    expect(resolved.instructions).toBe('Be brief.\n\n## Project instructions (from AGENTS.md)\n\nFollow the rules.');
+  });
+
+  it('adds nothing when no file was embedded, as loadProjectInstructions() would', () => {
+    const resolved = resolveWorkerAgentDir(dir({ config: { model: 'mock/x', projectInstructions: true } }));
+    expect(resolved.instructions).toBe('Be brief.');
+  });
+
+  it('refuses an options object a code config kept from the build', () => {
+    expect(() =>
+      resolveWorkerAgentDir(
+        dir({
+          config: undefined,
+          configFile: 'agent.ts',
+          configModule: { default: { provider: createMockProvider(), projectInstructions: { files: ['CLAUDE.md'] } } },
+          projectInstructions: { file: 'AGENTS.md', content: 'x' },
+        })
+      )
+    ).toThrow(expect.objectContaining({ code: 'LOUSHO_DEPLOY_FAILED', message: expect.stringContaining("'projectInstructions'") }));
   });
 });
 
@@ -106,5 +233,76 @@ describe('the Worker runtime of an agent directory (M3b)', () => {
     const result = (await response.json()) as { toolCalls: Array<{ function: { name: string } }>; messages: Array<{ role: string; content: unknown }> };
     expect(result.toolCalls.map((c) => c.function.name)).toEqual(['echo']);
     expect(JSON.stringify(result.messages[0].content)).toContain('- notes: Release notes');
+  });
+});
+
+describe('the Worker runtime of an agent directory: subagents, channels, memory, schedules (#298)', () => {
+  const chat = (agentDir: WorkerAgentDir, body: unknown, env: Record<string, unknown> = {}) =>
+    handleWorkerAgentDirRequest(new Request('http://worker/chat', { method: 'POST', body: JSON.stringify(body) }), env, agentDir);
+
+  it('adds a delegate_to_<name> tool per sub-agent, which runs the sub-agent with the inherited model', async () => {
+    const agentDir = dir({
+      subagents: [
+        {
+          name: 'reviewer',
+          dir: dir({ name: 'reviewer', instructions: 'You review.', config: { description: 'Reviews things' }, toolModules: [] }),
+        },
+      ],
+    });
+    const response = await chat(agentDir, { message: 'please use delegate_to_reviewer' });
+    const result = (await response.json()) as { toolCalls: Array<{ function: { name: string } }> };
+    expect(result.toolCalls.map((c) => c.function.name)).toEqual(['delegate_to_reviewer']);
+  });
+
+  it('serves a directory channel under /channels without the API token', async () => {
+    const agentDir = dir({ channelModules: [{ file: 'channels/api.ts', module: { default: httpChannel({ name: 'api' }) } }] });
+    const response = await handleWorkerAgentDirRequest(
+      new Request('http://worker/channels/api', { method: 'POST', body: JSON.stringify({ sessionKey: 'u1', input: 'hi' }) }),
+      { LOUSHO_API_TOKEN: 'tok' },
+      agentDir
+    );
+    expect(response.status).toBe(200);
+    const result = (await response.json()) as { sessionId: string; text: string };
+    expect(result.sessionId).toMatch(/^api_u1-/);
+    expect(result.text).toBe('This is a mock response.');
+    // The channel route does not shadow the chat API.
+    const chatResponse = await chat(agentDir, { message: 'hi' }, { LOUSHO_API_TOKEN: 'tok' });
+    expect(chatResponse.status).toBe(401);
+  });
+
+  it('binds a kvMemory() provider to the KV namespace on env', async () => {
+    const kv = new Map<string, string>();
+    const binding = {
+      get: async (key: string) => kv.get(key) ?? null,
+      put: async (key: string, value: string) => void kv.set(key, value),
+      delete: async (key: string) => void kv.delete(key),
+    };
+    kv.set('memory/global', JSON.stringify([{ id: '1', text: 'likes tea', createdAt: '2024-01-01T00:00:00.000Z' }]));
+    const agentDir = dir({
+      memoryModules: [
+        { file: 'memory/notes.ts', module: { default: defineMemory({ name: 'notes', scope: 'global', provider: kvMemory() }) } },
+      ],
+    });
+    const response = await chat(agentDir, { message: 'please use recall_notes' }, { AGENT_CHECKPOINTS: binding });
+    const result = (await response.json()) as { toolCalls: Array<{ function: { name: string } }>; messages: Array<{ role: string; content: unknown }> };
+    expect(result.toolCalls.map((c) => c.function.name)).toContain('recall_notes');
+    const toolMessage = result.messages.find((m) => m.role === 'tool');
+    expect(JSON.stringify(toolMessage?.content)).toContain('likes tea');
+  });
+
+  it('runs a schedule from handleWorkerAgentDirScheduled inside ctx.waitUntil', async () => {
+    const agentDir = dir({
+      scheduleModules: [{ file: 'schedules/report.ts', module: { default: defineSchedule({ cron: '0 9 * * MON', prompt: 'Report.' }) } }],
+    });
+    const waited: Promise<unknown>[] = [];
+    await handleWorkerAgentDirScheduled({ cron: '0 9 * * MON' }, {}, { waitUntil: (p) => waited.push(p) }, agentDir);
+    expect(waited).toHaveLength(1);
+    await waited[0];
+    // A prompt schedule runs a turn under session `schedule-<name>` in the Worker's store.
+    const checkpoint = await workerStore({}).checkpoints?.load('schedule-report');
+    expect(JSON.stringify(checkpoint)).toContain('Report.');
+    // A cron that matches nothing runs nothing.
+    await handleWorkerAgentDirScheduled({ cron: '0 10 * * MON' }, {}, { waitUntil: (p) => waited.push(p) }, agentDir);
+    expect(waited).toHaveLength(2); // still resolves and registers its (empty) waitUntil
   });
 });

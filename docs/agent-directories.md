@@ -235,7 +235,7 @@ config, `auth.ts`, `tools/`, `schedules/`, `channels/`, `memory/`, and the same 
 sub-agent) are bundled to `dist/agent/**.js`, and `instructions.md`, `skills/`
 and JSON/YAML config are copied next to them, so the server needs no TypeScript
 loader, sources or `node_modules`. See [Deployment](deployment.md#agent-directories).
-The Cloudflare Worker target builds a directory too, without `subagents/`, `schedules/`, `channels/` or `memory/` ([Cloudflare Workers](cloudflare-workers.md#build-and-deploy)).
+The Cloudflare Worker target builds a directory too, embedding every folder: `subagents/` become `delegate_to_` tools, `schedules/` become cron triggers, `channels/` are mounted under `/channels` and `memory/` slots run on `kvMemory()` ([Cloudflare Workers](cloudflare-workers.md#build-and-deploy)).
 
 ## What is not covered
 

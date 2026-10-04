@@ -95,7 +95,8 @@ unwanted, `--no-schedules` mounts the channels but starts no schedule.
 A Worker has no long-lived process, so no timers: Cloudflare calls the Worker's
 `scheduled()` handler once per cron expression listed under `[triggers] crons`
 in `wrangler.toml`. The `cloudflare-worker` target generates both from the
-`triggers` of the agent spec:
+`triggers` of the agent spec — and, for an agent directory, from its
+`schedules/` files, which follow the same rules below:
 
 ```yaml
 triggers:

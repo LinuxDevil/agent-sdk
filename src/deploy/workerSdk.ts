@@ -1,19 +1,32 @@
 /**
  * What `import ... from '@lousho/build-ai-agent'` means inside an agent
- * directory built with `lousho build --target=cloudflare-worker` (M3b).
+ * directory built with `lousho build --target=cloudflare-worker` (M3b, and
+ * #298 for schedules, channels and memory).
  *
  * The package's main entry also exports file stores, the agent-directory
  * loader, MCP over stdio, sandboxes and other Node-only modules, so it cannot
  * be bundled for a Worker. The cloudflare adapter's build resolves the bare
  * specifier in agent code to this file instead (see sdkRuntimePlugin in
- * ./bundle.ts): the parts a tool file or an `agent.ts` config needs, all of
- * them already in the Worker bundle and free of Node builtins. An import of any
- * other name fails the build with a message listing these (cloudflare.ts).
- * Type-only imports are erased and work for every exported type.
+ * ./bundle.ts): the parts a tool file, a `schedules/` / `channels/` /
+ * `memory/` file or an `agent.ts` config needs, all of them already in the
+ * Worker bundle and free of Node builtins. An import of any other name fails
+ * the build with a message listing these (cloudflare.ts). Type-only imports
+ * are erased and work for every exported type.
  */
 export { defineTool, isDefinedTool } from '../tools/defineTool';
 export { always, never, once } from '../tools/approvalPolicies';
 export { defineSkill } from '../skills/defineSkill';
+export { defineSchedule, isDefinedSchedule } from '../schedules/defineSchedule';
+export { defineChannel } from '../channels/defineChannel';
+export { httpChannel } from '../channels/httpChannel';
+export { slackChannel } from '../channels/slackChannel';
+export { discordChannel } from '../channels/discordChannel';
+export { telegramChannel } from '../channels/telegramChannel';
+export { githubChannel } from '../channels/githubChannel';
+export { teamsChannel } from '../channels/teamsChannel';
+export { defineMemory } from '../memory/defineMemory';
+export { inMemoryMemory } from '../memory/providers';
+export { kvMemory } from './workerMemory';
 export { createMockProvider, MockLLMProvider } from '../providers/mock';
 export { OpenAIProvider } from '../providers/OpenAIProvider';
 export { AnthropicProvider } from '../providers/AnthropicProvider';

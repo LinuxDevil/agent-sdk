@@ -111,6 +111,7 @@ fill it from code with `provider.add(scopeKey, { text })`.
 |---|---|
 | `inMemoryMemory({ maxItems? })` | This process; lost on restart. For tests and demos. |
 | `fileMemory({ dir, maxItems? })` | One JSON file per scope key in `dir` (key URI-encoded), written atomically. |
+| `kvMemory({ binding?, maxItems? })` | A Cloudflare Workers KV namespace — the `AGENT_CHECKPOINTS` binding, or the one `binding` names — for `memory/` files of a cloudflare-worker agent directory; bound to `env` per request. See [Cloudflare Workers](cloudflare-workers.md#build-and-deploy). |
 | `sqliteMemory(store, { maxItems? })` (from `/sqlite`) | A `memory_items` table in the agent's `SqliteStore` file, one JSON array per scope key. |
 | `inMemoryVectorMemory({ embedder, maxItems?, minScore? })` | This process; recalls by meaning. See [Semantic recall](#semantic-recall). |
 | `sqliteVectorMemory(store, { embedder, maxItems?, minScore? })` (from `/sqlite`) | A `memory_vectors` table in the agent's `SqliteStore` file; recalls by meaning. |

@@ -89,6 +89,19 @@ export interface KVBinding {
   list?(options: KVListOptions): Promise<KVListResult>;
 }
 
+const KV_METHODS = ['get', 'put', 'delete'] as const;
+
+/**
+ * True when `value` has the `get`/`put`/`delete` functions of a KV namespace.
+ * A bound value that does not look like a KV namespace counts as not bound:
+ * `env` is arbitrary platform-supplied input, and failing open beats failing
+ * every request over a misconfigured binding.
+ */
+export function isKVBinding(value: unknown): value is KVBinding {
+  const binding = value as Partial<KVBinding> | undefined;
+  return !!binding && KV_METHODS.every((method) => typeof binding[method] === 'function');
+}
+
 /** Options of {@link KVBinding.list}, as on a real KV namespace. */
 export interface KVListOptions {
   prefix?: string;

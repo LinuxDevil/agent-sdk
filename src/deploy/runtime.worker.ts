@@ -61,9 +61,16 @@ import { dayNameTool } from '../tools/built-in/dayName';
 import { createWorkerHttpTool, HTTP_ALLOW_BINDING, parseHostAllowList } from '../tools/built-in/workerHttp';
 import { ToolDescriptor } from '../types';
 import { AgentSpec } from '../spec/schema';
+import { z } from 'zod';
 import { createAgent, SimpleAgent } from '../createAgent';
 import { memoryStore, AgentStore } from '../storage/agentStore';
-import { serveFetch } from '../server/fetchRoutes';
+import { serveFetch, type ChatRoutesContext } from '../server/fetchRoutes';
+import { mountFetchChannels } from '../channels/fetchChannels';
+import { continueChannelSignIn } from '../channels/channelCore';
+import type { OAuthCompleteResult } from '../oauth/signIn';
+import { defineTool, type DefinedTool } from '../tools/defineTool';
+import type { MemorySlot } from '../memory/defineMemory';
+import { bindWorkerMemoryProvider } from './workerMemory';
 import {
   handleScheduled,
   logScheduleFailure,
@@ -72,11 +79,16 @@ import {
 } from '../schedules/scheduled';
 import { specSchedules } from '../schedules/specSchedules';
 import { CHECKPOINT_KV_BINDING } from './checkpointBinding';
-import { KVBinding } from './kvCheckpointStore';
+import { isKVBinding } from './kvCheckpointStore';
 import { KVStore } from './kvStore';
 import { prepareSpecExecution, PreparedExecution, SpecResolvers } from './specExecution';
 import { SDKError } from '../execution/errors';
-import { resolveWorkerAgentDir, type ResolvedWorkerAgentDir, type WorkerAgentDir } from './workerAgentDir';
+import {
+  resolveWorkerAgentDir,
+  type ResolvedWorkerAgentDir,
+  type ResolvedWorkerSubagent,
+  type WorkerAgentDir,
+} from './workerAgentDir';
 
 export { agentSpecSchema } from '../spec/schema';
 export type { WorkerAgentDir } from './workerAgentDir';
@@ -109,14 +121,6 @@ export type WorkerEnv = Record<string, unknown>;
 /** Env binding holding the bearer token of the API (`wrangler secret put LOUSHO_API_TOKEN`). */
 const API_TOKEN_BINDING = 'LOUSHO_API_TOKEN';
 
-const KV_METHODS = ['get', 'put', 'delete'] as const;
-
-/** True when `value` has the get/put/delete functions of a KV namespace. */
-function isKVBinding(value: unknown): value is KVBinding {
-  const binding = value as Partial<KVBinding> | undefined;
-  return !!binding && KV_METHODS.every((method) => typeof binding[method] === 'function');
-}
-
 let isolateStore: Required<AgentStore> | undefined;
 
 /**
@@ -129,7 +133,7 @@ let isolateStore: Required<AgentStore> | undefined;
  * arbitrary platform-supplied input, and failing open beats failing every
  * request over a misconfigured binding.
  */
-export function workerStore(env: WorkerEnv, bindingName: string = CHECKPOINT_KV_BINDING): AgentStore {
+export function workerStore(env: WorkerEnv, bindingName: string = CHECKPOINT_KV_BINDING): Required<AgentStore> {
   const binding = env[bindingName];
   const tokenKey = env.LOUSHO_TOKEN_KEY; // a Worker secret: Workers have no process.env
   return isKVBinding(binding)
@@ -213,31 +217,84 @@ export function prepareWorkerAgentDir(dir: WorkerAgentDir): ResolvedWorkerAgentD
 }
 
 /**
- * The agent of a bundled agent directory over the Worker's store: its tools,
- * skills and settings, and a `provider/model` config resolved with the API
- * key binding of that provider (e.g. `OPENAI_API_KEY`).
+ * The `delegate_to_<name>` tool a parent agent calls to hand a task to the
+ * sub-agent `sub` resolves to (the delegate tool `resolveAgentDir()` wires
+ * `subagents/` up with, rebuilt here because that module needs `node:path`).
  */
-export function workerAgentFromDir(dir: WorkerAgentDir, env: WorkerEnv): SimpleAgent {
-  const { name, instructions, model, tools, skills, maxSteps, toolConcurrency } = prepareWorkerAgentDir(dir);
+function workerDelegateTool(sub: ResolvedWorkerSubagent, env: WorkerEnv): DefinedTool {
+  const agent = workerAgentFromResolved(sub.dir, env);
+  return defineTool({
+    name: `delegate_to_${sub.name}`,
+    description: `Delegate a task to the '${sub.name}' agent. ${sub.description}`,
+    input: z.object({ task: z.string().describe('The complete task for the agent, with all needed context') }),
+    execute: async ({ task }, ctx) => (await agent.send(task, { signal: ctx.abortSignal })).text,
+  });
+}
+
+/** The memory slots with `kvMemory()` providers bound to `env`'s KV namespace (unbound: an in-memory provider). */
+function boundMemory(slots: readonly MemorySlot[], env: WorkerEnv): MemorySlot[] {
+  return slots.map((slot) => ({ ...slot, provider: bindWorkerMemoryProvider(slot.provider, env) }));
+}
+
+/** The `createAgent()` agent `resolved` describes, over the Worker's store and `env` bindings (sub-agents included). */
+function workerAgentFromResolved(resolved: ResolvedWorkerAgentDir, env: WorkerEnv): SimpleAgent {
+  const { name, instructions, model, tools, skills, maxSteps, toolConcurrency, memory, subagents } = resolved;
   const source =
     'provider' in model
       ? model
       : { provider: workerResolvers(env).resolveProvider(model.providerType, model.model) };
+  const allTools = [...tools, ...subagents.map((sub) => workerDelegateTool(sub, env))];
   return createAgent({
     name,
     instructions,
     ...source,
-    ...(tools.length > 0 ? { tools } : {}),
+    ...(allTools.length > 0 ? { tools: allTools } : {}),
     ...(skills.length > 0 ? { skills } : {}),
+    ...(memory.length > 0 ? { memory: boundMemory(memory, env) } : {}),
     ...(maxSteps === undefined ? {} : { maxSteps }),
     ...(toolConcurrency === undefined ? {} : { toolConcurrency }),
     store: workerStore(env),
   });
 }
 
-/** {@link handleWorkerRequest} for an agent directory (M3b): same routes and bearer auth, the directory's agent. */
-export function handleWorkerAgentDirRequest(request: Request, env: WorkerEnv, dir: WorkerAgentDir): Promise<Response> {
-  return serveWorker(request, env, () => workerAgentFromDir(dir, env));
+/**
+ * The agent of a bundled agent directory over the Worker's store: its tools,
+ * skills, memory slots and settings, a `delegate_to_<name>` tool per
+ * `subagents/` entry (sub-agents inherit the parent's model unless they set
+ * their own, as `resolveAgentDir()` does), and a `provider/model` config
+ * resolved with the API key binding of that provider (e.g. `OPENAI_API_KEY`).
+ */
+export function workerAgentFromDir(dir: WorkerAgentDir, env: WorkerEnv): SimpleAgent {
+  return workerAgentFromResolved(prepareWorkerAgentDir(dir), env);
+}
+
+/**
+ * {@link handleWorkerRequest} for an agent directory (M3b): same routes and
+ * bearer auth, the directory's agent - plus its `channels/` mounted under
+ * `/channels` (they authenticate themselves, like the node server). `ctx` is
+ * the Worker's ExecutionContext: a channel turn that outlives its
+ * acknowledged request runs under `ctx.waitUntil`.
+ */
+export async function handleWorkerAgentDirRequest(
+  request: Request,
+  env: WorkerEnv,
+  dir: WorkerAgentDir,
+  ctx?: { waitUntil(promise: Promise<unknown>): void }
+): Promise<Response> {
+  const resolved = prepareWorkerAgentDir(dir);
+  let agent: SimpleAgent | undefined;
+  const makeAgent = () => (agent ??= workerAgentFromDir(dir, env));
+  const channels =
+    resolved.channels.length === 0 ? undefined : mountFetchChannels(makeAgent(), resolved.channels, { store: workerStore(env) });
+  const token = env[API_TOKEN_BINDING];
+  const chat: ChatRoutesContext = {
+    name: 'lousho worker',
+    agent: makeAgent,
+    durableMessage: true,
+    // N9b: a channel turn paused on a sign-in continues on its surface once the callback stored the token.
+    ...(channels === undefined ? {} : { afterSignIn: (result: OAuthCompleteResult) => continueChannelSignIn(channels, result) }),
+  };
+  return (await channels?.(request, ctx)) ?? serveFetch(request, chat, typeof token === 'string' && token ? token : undefined);
 }
 
 export { handleScheduled } from '../schedules/scheduled';
@@ -258,6 +315,26 @@ export function handleWorkerScheduled(
   try {
     const schedules = specSchedules(spec.triggers);
     return schedules.length === 0 ? Promise.resolve() : handleScheduled(workerAgent(spec, env), schedules, controller, ctx);
+  } catch (error) {
+    logScheduleFailure(controller.cron, error);
+    return Promise.resolve();
+  }
+}
+
+/**
+ * {@link handleWorkerScheduled} for an agent directory's `schedules/` (#298):
+ * the schedules whose `cron` equals `controller.cron` run as agent turns
+ * (session `schedule-<name>`) inside `ctx.waitUntil`. Never throws.
+ */
+export function handleWorkerAgentDirScheduled(
+  controller: ScheduledController,
+  env: WorkerEnv,
+  ctx: ScheduledContext,
+  dir: WorkerAgentDir
+): Promise<void> {
+  try {
+    const schedules = prepareWorkerAgentDir(dir).schedules;
+    return schedules.length === 0 ? Promise.resolve() : handleScheduled(workerAgentFromDir(dir, env), schedules, controller, ctx);
   } catch (error) {
     logScheduleFailure(controller.cron, error);
     return Promise.resolve();
