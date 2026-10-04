@@ -1,6 +1,5 @@
-import { AgentConfig, AgentSettings, AgentType, ToolConfiguration } from '../types';
+import { AgentConfig, AgentSettings, ToolConfiguration } from '../types';
 import { AgentFlow } from '../types/flow';
-import { validateAgentConfig, validateAgentTools } from '../agent-types';
 import { newId } from '../utils/id';
 import type { DefinedTool } from '../tools/defineTool';
 import { SDKError } from '../execution/errors';
@@ -10,17 +9,6 @@ import { SDKError } from '../execution/errors';
  */
 export class AgentBuilder {
   private config: Partial<AgentConfig> = {};
-
-  /**
-   * Set agent type
-   *
-   * @deprecated Has no runtime effect and will be removed in the next minor
-   * release. `build()` no longer requires a type; just drop this call.
-   */
-  public setType(type: AgentType): this {
-    this.config.agentType = type;
-    return this;
-  }
 
   /**
    * Set agent name
@@ -158,7 +146,6 @@ export class AgentBuilder {
     return {
       id: this.config.id || newId(),
       name: this.config.name!,
-      ...(this.config.agentType !== undefined && { agentType: this.config.agentType }),
       locale: this.config.locale || 'en',
       prompt: this.config.prompt,
       expectedResult: this.config.expectedResult,
@@ -174,15 +161,20 @@ export class AgentBuilder {
    * Validate configuration before building
    */
   private validate(): void {
-    const validation = validateAgentConfig(this.config);
-    if (!validation.valid) {
-      throw new SDKError(`Agent configuration validation failed: ${validation.errors.join(', ')}`, 'LOUSHO_VALIDATION_FAILED');
+    if (!this.config.name || this.config.name.trim() === '') {
+      throw new SDKError(
+        `Agent configuration validation failed: Agent name is required. ` +
+          `Example: AgentBuilder.create().setName('my-agent')...build()`,
+        'LOUSHO_VALIDATION_FAILED'
+      );
     }
 
     if (this.config.tools) {
-      const toolsValidation = validateAgentTools(this.config.tools);
-      if (!toolsValidation.valid) {
-        throw new SDKError(`Agent tools validation failed: ${toolsValidation.errors.join(', ')}`, 'LOUSHO_VALIDATION_FAILED');
+      const toolErrors = Object.entries(this.config.tools)
+        .filter(([, config]) => !config.tool)
+        .map(([key]) => `Tool configuration for '${key}' is missing 'tool' property`);
+      if (toolErrors.length > 0) {
+        throw new SDKError(`Agent tools validation failed: ${toolErrors.join(', ')}`, 'LOUSHO_VALIDATION_FAILED');
       }
     }
   }

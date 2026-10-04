@@ -84,3 +84,23 @@ describe('public surface (A1): moved values are on their subpath, off the root',
     }
   }
 });
+
+/** A2a: runtime values removed from the package. */
+const REMOVED_A2A = [
+  'AgentType',
+  'DataLoadingStatus',
+  'agentTypesRegistry',
+  'getAgentTypeDescriptor',
+  'getAllAgentTypeDescriptors',
+  'isValidAgentType',
+  'validateAgentConfig',
+  'validateAgentTools',
+];
+
+describe('public surface (A2a): removed values are off the root', () => {
+  for (const name of REMOVED_A2A) {
+    it(`${name}: not on the root`, () => {
+      expect(root, `the root should no longer export ${name}`).not.toHaveProperty(name);
+    });
+  }
+});

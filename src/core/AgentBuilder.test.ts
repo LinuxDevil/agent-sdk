@@ -1,40 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import { AgentBuilder } from './AgentBuilder';
-import { AgentType } from '../types';
 
 describe('AgentBuilder', () => {
-  it('should build a basic agent', () => {
-    const agent = new AgentBuilder()
-      .setType(AgentType.SmartAssistant)
-      .setName('Test Agent')
-      .setPrompt('You are a test agent')
-      .build();
-
-    expect(agent.name).toBe('Test Agent');
-    expect(agent.agentType).toBe(AgentType.SmartAssistant);
-    expect(agent.prompt).toBe('You are a test agent');
-    expect(agent.id).toBeDefined();
-    expect(agent.locale).toBe('en');
-  });
-
   it('should throw error when name is missing', () => {
     expect(() => {
       new AgentBuilder().build();
     }).toThrow('Agent name is required');
   });
 
-  it('builds without setType() (agentType is optional and deprecated)', () => {
+  it('builds an agent with a name only', () => {
     const agent = new AgentBuilder().setName('Test Agent').build();
 
     expect(agent.name).toBe('Test Agent');
-    expect(agent.agentType).toBeUndefined();
-    expect('agentType' in agent).toBe(false);
-  });
-
-  it('still rejects an invalid agent type when one is provided', () => {
-    expect(() => {
-      AgentBuilder.from({ name: 'Test Agent', agentType: 'bogus' as AgentType }).build();
-    }).toThrow('Invalid agent type: bogus');
+    expect(agent.id).toBeDefined();
+    expect(agent.locale).toBe('en');
   });
 
   it('names the missing field and shows a corrective snippet (LOU-H12)', () => {
@@ -55,6 +34,21 @@ describe('AgentBuilder', () => {
     expect(agent.tools).toHaveProperty('calendar');
     expect(agent.tools!.calendar.tool).toBe('calendarSchedule');
     expect(agent.tools!.calendar.options).toEqual({ timezone: 'UTC' });
+  });
+
+  it('rejects a tool entry without a `tool` property (LOUSHO_VALIDATION_FAILED)', () => {
+    expect(() => {
+      new AgentBuilder()
+        .setName('Test Agent')
+        .setTools({ calendar: {} as never })
+        .build();
+    }).toThrow(expect.objectContaining({ code: 'LOUSHO_VALIDATION_FAILED' }));
+    expect(() => {
+      new AgentBuilder()
+        .setName('Test Agent')
+        .setTools({ calendar: {} as never })
+        .build();
+    }).toThrow("Tool configuration for 'calendar' is missing 'tool' property");
   });
 
   it('should remove tools correctly', () => {
@@ -103,7 +97,6 @@ describe('AgentBuilder', () => {
     const existingConfig = {
       id: 'existing-id',
       name: 'Existing Agent',
-      agentType: AgentType.SurveyAgent,
       locale: 'en',
       prompt: 'Existing prompt',
       tools: {},
@@ -117,7 +110,7 @@ describe('AgentBuilder', () => {
 
     expect(agent.id).toBe('existing-id');
     expect(agent.name).toBe('Existing Agent');
-    expect(agent.agentType).toBe(AgentType.SurveyAgent);
+    expect(agent.prompt).toBe('Existing prompt');
   });
 
   it('should create using static create method', () => {

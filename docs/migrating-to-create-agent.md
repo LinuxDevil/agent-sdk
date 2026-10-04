@@ -124,7 +124,6 @@ approval store and provider, so deciding the pause needs only the approval id.
 | `inputQueue` | `run.enqueue()` on a streamed run, or `agent.session({ turnPolicy })`; see [Queued input](./queue-and-steer.md#queued-input). |
 | `sessionBudget` | `agent.session({ id, limits })`; see [Sessions](./sessions.md). |
 | `createDelegateTool()` | `subagents`; see [Sub-agents](./sub-agents.md). |
-| `AgentType`, `setType()` | Nothing to move: the type has no effect. |
 
 ## What createAgent() does not take yet
 
