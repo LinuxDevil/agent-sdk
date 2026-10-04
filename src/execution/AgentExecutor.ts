@@ -30,7 +30,7 @@ import {
   resolveCaptureContent,
   toolSpanInit,
 } from './genAiSpans';
-import { HookRegistry, type SubagentInfo } from './hooks';
+import { HookRegistry } from './hooks';
 import {
   baseAgentOf,
   extendAgent,
@@ -117,23 +117,6 @@ import {
 export { PropagatingToolError } from './propagatingToolError';
 
 /**
- * Execution event types.
- *
- * @deprecated LOU-D41: the old event names. Listen to {@link AgentEvent}s
- * instead (`onAgentEvent`, `createAgent({ onEvent })`, `stream()`); see the
- * migration table in docs/streaming.md#listening-without-iterating.
- */
-export type ExecutionEventType =
-  | 'start'
-  | 'text-delta'
-  | 'text-complete'
-  | 'tool-call'
-  | 'tool-result'
-  | 'finish'
-  | 'error'
-  | 'abort';
-
-/**
  * Why a run ended, as reported on `ExecutionResult.finishReason` and the
  * `finish` event. The known values are listed for autocomplete; a provider
  * may report others, so this stays open to any string.
@@ -163,51 +146,6 @@ export type ExecutionFinishReason =
   | 'budget-exceeded'
   | 'guardrail'
   | (string & {});
-
-/**
- * Execution event, as the deprecated `onEvent` listener receives it.
- *
- * @deprecated LOU-D41: derived from the run's {@link AgentEvent}s for old
- * listeners. Use `onAgentEvent` / `createAgent({ onEvent })` with
- * `AgentEvent` instead; see docs/streaming.md#listening-without-iterating.
- */
-export interface ExecutionEvent {
-  type: ExecutionEventType;
-  timestamp: Date;
-  agentId?: string;
-  agentName?: string;
-  textDelta?: string;
-  text?: string;
-  toolCall?: ToolCall;
-  toolResult?: {
-    toolCallId: string;
-    toolName: string;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- deprecated public type, kept for compatibility (LOU-D41)
-    result: any;
-    error?: string;
-    /** LOU-X3: the hook whose `{ result }` outcome became this call's result. */
-    replacedByHook?: string;
-  };
-  finishReason?: ExecutionFinishReason;
-  /** Running usage of the whole run so far (LOU-V5); on `finish`, the final total. */
-  usage?: RunUsage;
-  /** On `text-complete`: what the model call that produced the text spent (LOU-V5). */
-  stepUsage?: StepUsage;
-  error?: Error;
-  /**
-   * On an `abort` event: the `reason` of the aborted signal (a
-   * `DOMException` named `AbortError` unless the caller passed their own
-   * reason to `controller.abort(reason)`).
-   */
-  abortReason?: unknown;
-  /**
-   * LOU-Y1: set on events forwarded from a sub-agent (a child run started
-   * by the `task` tool or a `createDelegateTool()` tool): which sub-agent
-   * emitted it and which of this run's tool calls started it. Absent on the
-   * run's own events.
-   */
-  subagent?: SubagentInfo;
-}
 
 /**
  * Execution options
@@ -310,13 +248,7 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   onAgentEvent?: (event: AgentEvent) => void;
   /**
-   * @deprecated LOU-D41: use {@link ExecuteOptions.onAgentEvent}. Still
-   * called, with {@link ExecutionEvent}s derived from the run's AgentEvents
-   * (a one-time `console.warn` says so).
-   */
-  onEvent?: (event: ExecutionEvent) => void;
-  /**
-   * M9: whether a run with listeners (`onAgentEvent` / `onEvent`) streams its
+   * M9: whether a run with a listener (`onAgentEvent`) streams its
    * model calls through `provider.stream()` when the provider can, so each
    * step's text reaches the listeners as several `text.delta` events.
    * Default `true`; `false` generates each step whole (one `text.delta` per
@@ -729,8 +661,8 @@ export interface ExecutionResult<TObject = unknown> {
  */
 export class AgentExecutor {
   /**
-   * Runs the agent to its result. With listeners (`onAgentEvent` /
-   * `onEvent`), its model calls are streamed to them (M9; see
+   * Runs the agent to its result. With a listener (`onAgentEvent`), its
+   * model calls are streamed to it (M9; see
    * {@link ExecuteOptions.streamModelCalls}).
    */
   static async execute(options: ExecuteOptions): Promise<ExecutionResult> {

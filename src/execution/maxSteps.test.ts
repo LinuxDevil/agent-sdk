@@ -78,8 +78,8 @@ describe("finishReason 'max-steps'", () => {
     const run = AgentExecutor.stream({
       ...options([ping], [alwaysPing]),
       maxSteps: 2,
-      onEvent: (e) => {
-        if (e.type === 'finish') finishReasons.push(e.finishReason);
+      onAgentEvent: (e) => {
+        if (e.type === 'run.done') finishReasons.push(e.finishReason);
       },
     });
     const all = await events(run);

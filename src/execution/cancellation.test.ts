@@ -10,7 +10,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { tool } from 'ai';
 import { z } from 'zod';
-import { AgentExecutor, ExecutionEvent } from './AgentExecutor';
+import { AgentExecutor } from './AgentExecutor';
+import type { AgentEvent } from './agentEvents';
 import { createDelegateTool } from './DelegationTool';
 import type { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGate';
 import { resumeAfterApproval } from './resume';
@@ -110,7 +111,7 @@ function createApprovalStore(): ApprovalStore {
 describe('AgentExecutor cancellation (LOU-V1)', () => {
   it('an already-aborted signal resolves immediately with finishReason "aborted" and never calls the provider', async () => {
     const { provider, generate } = scriptedProvider(async () => textResult('never'));
-    const events: ExecutionEvent[] = [];
+    const events: AgentEvent[] = [];
     const controller = new AbortController();
     controller.abort();
 
@@ -119,17 +120,14 @@ describe('AgentExecutor cancellation (LOU-V1)', () => {
       input: 'hi',
       provider,
       signal: controller.signal,
-      onEvent: (event) => events.push(event),
+      onAgentEvent: (event) => events.push(event),
     });
 
     expect(generate).not.toHaveBeenCalled();
     expect(result.finishReason).toBe('aborted');
     expect(result.steps).toBe(0);
     expect(result.messages.map((m) => m.role)).toEqual(['system', 'user']);
-    const abortEvent = events.find((e) => e.type === 'abort');
-    expect(abortEvent).toBeDefined();
-    expect(abortEvent?.abortReason).toBe(controller.signal.reason);
-    expect(events.at(-1)).toMatchObject({ type: 'finish', finishReason: 'aborted' });
+    expect(events.at(-1)).toMatchObject({ type: 'run.done', finishReason: 'aborted' });
     expect(events.some((e) => e.type === 'error')).toBe(false);
   });
 
@@ -210,8 +208,8 @@ describe('AgentExecutor cancellation (LOU-V1)', () => {
       provider,
       toolRegistry: registryWith({ fast }),
       signal: controller.signal,
-      onEvent: (event) => {
-        if (event.type === 'tool-result') controller.abort();
+      onAgentEvent: (event) => {
+        if (event.type === 'tool.done') controller.abort();
       },
     });
 
@@ -265,8 +263,8 @@ describe('AgentExecutor cancellation (LOU-V1)', () => {
       sessionId: 's1',
       checkpointStore,
       signal: controller.signal,
-      onEvent: (event) => {
-        if (event.type === 'tool-result') controller.abort();
+      onAgentEvent: (event) => {
+        if (event.type === 'tool.done') controller.abort();
       },
     });
 
@@ -305,7 +303,7 @@ describe('AgentExecutor cancellation (LOU-V1)', () => {
           options.signal?.addEventListener('abort', () => reject(new Error('Request aborted')));
         })
     );
-    const events: ExecutionEvent[] = [];
+    const events: AgentEvent[] = [];
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 10);
 
@@ -316,7 +314,7 @@ describe('AgentExecutor cancellation (LOU-V1)', () => {
       maxSteps: 5,
       surfaceRetryableProviderErrors: true,
       signal: controller.signal,
-      onEvent: (event) => events.push(event),
+      onAgentEvent: (event) => events.push(event),
     });
 
     expect(generate).toHaveBeenCalledTimes(1);

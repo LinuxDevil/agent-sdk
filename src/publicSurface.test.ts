@@ -5,11 +5,14 @@
  * (A2a, A2b, A2c, A3, A5) append the names they remove or move here and in
  * publicSurface.test-d.ts.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import * as root from './index';
 import * as flows from './flows';
 import * as integrations from './integrations';
 import * as utils from './utils';
+import { mockModel } from './testing';
+import { ToolRegistry } from './tools';
+import type { AgentConfig } from './types';
 
 type Entry = Record<string, unknown>;
 
@@ -103,4 +106,20 @@ describe('public surface (A2a): removed values are off the root', () => {
       expect(root, `the root should no longer export ${name}`).not.toHaveProperty(name);
     });
   }
+});
+
+describe('public surface (A2b): the legacy onEvent adapter is gone', () => {
+  it('a legacy onEvent option passed to AgentExecutor.execute() is never called', async () => {
+    const onEvent = vi.fn();
+    const agent: AgentConfig = { id: 'a', name: 'Agent', prompt: 'p', tools: {} };
+    await root.AgentExecutor.execute({
+      agent,
+      provider: mockModel(['done']),
+      toolRegistry: new ToolRegistry(),
+      input: 'go',
+      // @ts-expect-error - ExecuteOptions.onEvent was removed (A2b)
+      onEvent,
+    });
+    expect(onEvent).not.toHaveBeenCalled();
+  });
 });

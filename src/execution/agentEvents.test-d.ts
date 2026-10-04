@@ -1,7 +1,7 @@
 import { describe, it, expectTypeOf } from 'vitest';
 import { createAgent } from '../createAgent';
 import { createMockProvider } from '../providers/mock';
-import type { ExecuteOptions, ExecutionEvent, ExecutionEventType, ExecutionResult } from './AgentExecutor';
+import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
 import type { Todo } from '../tools/built-in/todo';
 import type { AgentRun } from './agentRun';
 import type { CompactedProviderErrorCategory } from './errors';
@@ -222,12 +222,9 @@ describe('event listener options (LOU-D41)', () => {
   it('types createAgent({ onEvent }) and ExecuteOptions.onAgentEvent with AgentEvent', () => {
     createAgent({ provider: createMockProvider(), onEvent: (e) => expectTypeOf(e).toEqualTypeOf<AgentEvent>() });
     expectTypeOf<NonNullable<ExecuteOptions['onAgentEvent']>>().parameter(0).toEqualTypeOf<AgentEvent>();
-    // @ts-expect-error - createAgent's listener gets AgentEvents, not the deprecated ExecutionEvents
-    createAgent({ provider: createMockProvider(), onEvent: (e: ExecutionEvent) => void e.toolCall });
   });
 
-  it('keeps the deprecated ExecuteOptions.onEvent typed with ExecutionEvent', () => {
-    expectTypeOf<NonNullable<ExecuteOptions['onEvent']>>().parameter(0).toEqualTypeOf<ExecutionEvent>();
-    expectTypeOf<ExecutionEvent['type']>().toEqualTypeOf<ExecutionEventType>();
+  it('has no ExecuteOptions.onEvent (removed in A2b)', () => {
+    expectTypeOf<ExecuteOptions>().not.toHaveProperty('onEvent');
   });
 });

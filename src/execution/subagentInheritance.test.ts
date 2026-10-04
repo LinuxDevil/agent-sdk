@@ -4,7 +4,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
-import { AgentExecutor, type ExecutionEvent, type ExecuteOptions } from './AgentExecutor';
+import { AgentExecutor, type ExecuteOptions } from './AgentExecutor';
+import type { AgentEvent } from './agentEvents';
 import { createDelegateTool } from './DelegationTool';
 import { HookRegistry } from './hooks';
 import { resumeAfterApproval } from './resume';
@@ -187,8 +188,8 @@ describe('sub-agents inherit the parent runtime (LOU-Y1)', () => {
     expect(result.finishReason).toBe('aborted');
   });
 
-  it("forwards the child's events to the parent's onEvent, tagged with the parent tool call", async () => {
-    const events: ExecutionEvent[] = [];
+  it("forwards the child's events to the parent's onAgentEvent, tagged with the parent tool call", async () => {
+    const events: AgentEvent[] = [];
     const researcher = createAgent({
       name: 'researcher',
       provider: mockModel([{ toolCalls: [{ name: 'lookup' }] }, 'found']),
@@ -199,23 +200,37 @@ describe('sub-agents inherit the parent runtime (LOU-Y1)', () => {
     await run({
       provider: mockModel([{ toolCalls: [task('researcher')] }, 'done']),
       subagents: { researcher },
-      onEvent: (event) => events.push(event),
+      onAgentEvent: (event) => events.push(event),
     });
 
     const forwarded = events.filter((e) => e.subagent);
-    expect(forwarded.map((e) => e.type)).toEqual(['start', 'tool-call', 'tool-result', 'text-complete', 'finish']);
-    expect(forwarded[1].toolCall?.function.name).toBe('lookup');
+    // The child's run.start / run.done are internal: they never reach the
+    // lead's listeners, so `seq` stays contiguous across them.
+    expect(forwarded.some((e) => e.type === 'run.start' || e.type === 'run.done')).toBe(false);
+    expect(events.map((e) => e.seq)).toEqual(events.map((_, i) => i));
+    expect(forwarded.map((e) => e.type)).toEqual([
+      'step.start',
+      'tool.start',
+      'tool.done',
+      'step.done',
+      'step.start',
+      'text.delta',
+      'text.done',
+      'step.done',
+    ]);
+    expect(forwarded[1]).toMatchObject({ type: 'tool.start', toolName: 'lookup' });
     expect(forwarded[0].subagent).toEqual({
       name: 'researcher',
       depth: 1,
       toolCallId: 'researcher-call',
       description: 'researcher task',
     });
-    expect(events.filter((e) => !e.subagent && e.type === 'start')).toHaveLength(1);
+    expect(events.filter((e) => !e.subagent && e.type === 'run.start')).toHaveLength(1);
+    expect(events.filter((e) => !e.subagent && e.type === 'run.done')).toHaveLength(1);
   });
 
   it('tags events of a sub-agent of a sub-agent with the whole chain', async () => {
-    const events: ExecutionEvent[] = [];
+    const events: AgentEvent[] = [];
     const helper = createAgent({ name: 'helper', provider: mockModel(['helped']), description: 'Helps' });
     const researcher = createAgent({
       provider: mockModel([{ toolCalls: [task('helper')] }, 'researched']),
@@ -227,11 +242,11 @@ describe('sub-agents inherit the parent runtime (LOU-Y1)', () => {
       provider: mockModel([{ toolCalls: [task('researcher')] }, 'done']),
       subagents: { researcher },
       maxSubagentDepth: 2,
-      onEvent: (event) => events.push(event),
+      onAgentEvent: (event) => events.push(event),
     });
 
-    const helperStart = events.find((e) => e.type === 'start' && e.subagent?.name === 'helper');
-    expect(helperStart?.subagent).toEqual({
+    const helperEvent = events.find((e) => e.subagent?.name === 'helper');
+    expect(helperEvent?.subagent).toEqual({
       name: 'helper',
       depth: 2,
       toolCallId: 'helper-call',

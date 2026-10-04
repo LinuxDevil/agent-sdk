@@ -6,7 +6,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
-import { AgentExecutor, ExecutionEvent, ExecuteOptions, PropagatingToolError } from './AgentExecutor';
+import { AgentExecutor, ExecuteOptions, PropagatingToolError } from './AgentExecutor';
+import type { AgentEvent } from './agentEvents';
 import type { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGate';
 import type { Checkpoint, CheckpointStore } from './checkpoint';
 import { resumeAfterApproval } from './resume';
@@ -85,13 +86,13 @@ function callsTo(...names: string[]): MockToolCall[] {
 
 /** Runs one turn calling `names` (in order), then a final text turn. */
 function run(tools: DefinedTool[], names: string[], extra: Partial<ExecuteOptions> = {}) {
-  const events: ExecutionEvent[] = [];
+  const events: AgentEvent[] = [];
   const result = AgentExecutor.execute({
     agent: agentFor(tools),
     input: 'go',
     provider: mockModel([{ toolCalls: callsTo(...names) }, 'all done']),
     toolRegistry: registryOf(tools),
-    onEvent: (event) => events.push(event),
+    onAgentEvent: (event) => events.push(event),
     ...extra,
   });
   return { result, events };
@@ -101,10 +102,10 @@ function toolMessageIds(messages: readonly Message[]): Array<string | undefined>
   return messages.filter((m) => m.role === 'tool').map((m) => m.toolCallId);
 }
 
-function eventTrace(events: ExecutionEvent[]): string[] {
+function eventTrace(events: AgentEvent[]): string[] {
   return events.flatMap((e) => {
-    if (e.type === 'tool-call') return [`call:${e.toolCall?.function.name}`];
-    if (e.type === 'tool-result') return [`result:${e.toolResult?.toolName}`];
+    if (e.type === 'tool.start') return [`call:${e.toolName}`];
+    if (e.type === 'tool.done' || e.type === 'tool.error') return [`result:${e.toolName}`];
     return [];
   });
 }

@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import type { Tool } from 'ai';
 import type { LLMProvider, GenerateOptions } from '../providers';
 import { z } from 'zod';
-import { AgentExecutor, ExecutionEvent } from './AgentExecutor';
+import { AgentExecutor } from './AgentExecutor';
+import type { AgentEvent } from './agentEvents';
 import { PropagatingToolError } from './propagatingToolError';
 import { HookRegistry } from './hooks';
 import { ToolRegistry } from '../tools';
@@ -10,9 +11,6 @@ import { AgentBuilder } from '../core';
 
 /** A message as the provider saw it (a JSON copy; tool results are text in these tests). */
 type SeenMessage = { role: string; content: string; toolCallId?: string };
-
-/** A 'tool-result' event: it always carries `toolResult`. */
-type ToolResultEvent = ExecutionEvent & { toolResult: NonNullable<ExecutionEvent['toolResult']> };
 
 const usage = { promptTokens: 1, completionTokens: 1, totalTokens: 2 };
 
@@ -75,7 +73,7 @@ describe('thrown tool errors reach the model (LOU-U12)', () => {
       return { ok: true };
     });
     const { provider, seenMessages } = scriptedProvider(2);
-    const events: ExecutionEvent[] = [];
+    const events: AgentEvent[] = [];
     const onToolResult = vi.fn();
     const postToolCall = vi.fn();
     const hooks = new HookRegistry();
@@ -88,7 +86,7 @@ describe('thrown tool errors reach the model (LOU-U12)', () => {
       toolRegistry,
       hooks,
       onToolResult,
-      onEvent: e => events.push(e),
+      onAgentEvent: e => events.push(e),
     });
 
     expect(result.text).toBe('done');
@@ -105,8 +103,8 @@ describe('thrown tool errors reach the model (LOU-U12)', () => {
     expect(JSON.parse(secondTools[1].content)).toEqual({ ok: true });
 
     // Events and callbacks still see an error.
-    const toolResults = events.filter(e => e.type === 'tool-result') as ToolResultEvent[];
-    expect(toolResults[0].toolResult.error).toBe('query must not be empty');
+    const toolErrors = events.filter(e => e.type === 'tool.error');
+    expect(toolErrors[0].error.message).toBe('query must not be empty');
     expect(onToolResult.mock.calls[0][1].error).toBe('query must not be empty');
     expect(postToolCall.mock.calls[0][1].error).toBe('query must not be empty');
   });

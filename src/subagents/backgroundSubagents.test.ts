@@ -5,7 +5,8 @@ import { defineTool } from '../tools/defineTool';
 import { mockModel, type MockTurn } from '../testing';
 import type { Message } from '../providers';
 import { subagentOptionsOf, withSubagentOptions } from './backgroundTasks';
-import { AgentExecutor, type ExecutionEvent } from '../execution/AgentExecutor';
+import { AgentExecutor } from '../execution/AgentExecutor';
+import type { AgentEvent } from '../execution/agentEvents';
 import type { AgentConfig } from '../types';
 
 const bgTask = (agent: string, prompt: string) => ({
@@ -214,7 +215,7 @@ describe('background sub-agents at the end of the lead run (LOU-Y4.2)', () => {
 
   it('cancels queued and running background sub-agents when the lead finishes, before the run resolves', async () => {
     const { tool, aborted, entered } = gate();
-    const events: ExecutionEvent[] = [];
+    const events: AgentEvent[] = [];
     const agent: AgentConfig = { id: 'lead', name: 'Lead', prompt: 'p' };
     const finishOnceRunning = async () => (await entered, 'done');
     const result = await AgentExecutor.execute({
@@ -222,7 +223,7 @@ describe('background sub-agents at the end of the lead run (LOU-Y4.2)', () => {
       input: 'go',
       provider: mockModel([{ toolCalls: [bgTask('researcher', 'a'), bgTask('researcher', 'b')] }, finishOnceRunning]),
       subagents: withSubagentOptions({ researcher: waitingChild(tool) }, { maxConcurrent: 1 }),
-      onEvent: (event) => events.push(event),
+      onAgentEvent: (event) => events.push(event),
     });
 
     expect(result.text).toBe('done');
@@ -231,8 +232,12 @@ describe('background sub-agents at the end of the lead run (LOU-Y4.2)', () => {
       { taskId: 'task_2', agent: 'researcher', status: 'cancelled', elapsedMs: expect.any(Number) },
     ]);
     await aborted;
-    // The running child has wound down by then: its last event came before the run resolved.
-    expect(events.some((e) => e.type === 'finish' && e.subagent?.name === 'researcher')).toBe(true);
+    // The running child has wound down by then: its last event came before the lead's run.done.
+    expect(events.some((e) => e.subagent?.name === 'researcher')).toBe(true);
+    const lastChildIndex = events.reduce((last, e, i) => (e.subagent ? i : last), -1);
+    const leadDoneIndex = events.findIndex((e) => e.type === 'run.done' && !e.subagent);
+    expect(lastChildIndex).toBeGreaterThanOrEqual(0);
+    expect(lastChildIndex).toBeLessThan(leadDoneIndex);
     const seen = events.length;
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(events).toHaveLength(seen);
