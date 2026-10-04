@@ -6027,11 +6027,18 @@ compacted provider error; their `toString()` still adds the line.
 
 The exceptions are a few named `Error` subclasses with no `code`, kept plain
 on purpose: `PropagatingToolError` and its subclasses (a tool throws one to
-stop the run), `CassetteMismatchError` (`recordReplay` replay; see
-[Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md#what-replay-checks)), `CronExpressionError`
-(`parseCronExpression()`, which `CronTriggerAdapter` lets escape and
-`defineSchedule()` wraps as `LOUSHO_SCHEDULE_INVALID`) and `DecryptionError`
-(`EncryptionUtils`, `DTOEncryptionFilter`).
+stop the run), `WorkspaceError` (a workspace operation refused or failed -
+the model sees it as a tool error), `McpToolError` (a loaded MCP tool whose
+server reports `isError`; also a tool error), `AuthError` (an
+`@lousho/build-ai-agent/auth` entry rejects the request with its 401 or 403),
+`CronExpressionError` (`parseCronExpression()`, which `CronTriggerAdapter`
+lets escape and `defineSchedule()` wraps as `LOUSHO_SCHEDULE_INVALID`) and
+`DecryptionError` (`EncryptionUtils`, `DTOEncryptionFilter`).
+
+`CassetteMismatchError` (`recordReplay` replay; see
+[Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md#what-replay-checks)) is *not* one of these: it is an
+`SDKError` with code [`LOUSHO_CASSETTE_INVALID`](#lousho_cassette_invalid)
+and `.cassette` / `.callNumber` fields.
 
 ```ts
 import { createAgent, SDKError } from '@lousho/build-ai-agent';
