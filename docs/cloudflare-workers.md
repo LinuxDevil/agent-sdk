@@ -9,7 +9,7 @@
 | Feature | Cloudflare Worker | `node-server` / `docker` |
 | ------- | ----------------- | ------------------------ |
 | Agent spec files | yes | yes |
-| [Agent directories](./agent-directories.md) | yes: config, `instructions.md`, `tools/`, `skills/`; not `subagents/`, `schedules/`, `channels/`, `memory/` or `projectInstructions` | yes, all of it |
+| [Agent directories](./agent-directories.md) | yes: config, `instructions.md`, `tools/`, `skills/`, `subagents/`, `schedules/` (Worker cron rules), `channels/` (mounted under `/channels`), `memory/` (`kvMemory()`, or `inMemoryMemory()` per isolate) and `projectInstructions` (embedded at build time) | yes, all of it |
 | Providers | `mock`, `openai`, `anthropic`, `openrouter` | `mock`, `openai`, `anthropic`, `ollama`, `openrouter` |
 | Built-in tools | `current-date`, `day-name`, `http` (listed host names only, from the `LOUSHO_HTTP_ALLOW` binding) | all, including `http` and `web-fetch` |
 | Tools written in TypeScript | yes, in an agent directory: no Node builtins, and from `@lousho/build-ai-agent` only the names listed under [Agent directories on a Worker](#build-and-deploy) | yes, in an agent directory |
@@ -68,7 +68,8 @@ The reasons behind the provider and tool rows:
 
 ## Build and deploy
 
-The build generates a module Worker (`export default { fetch }`) and bundles it as a
+The build generates a module Worker (`export default { fetch }`, plus `scheduled` when the
+source declares cron triggers) and bundles it as a
 browser-platform ES module; the build fails if any `node:` import ends up in
 `dist/worker.js`. `wrangler.toml` points `main` at `dist/worker.js` with
 `no_bundle = true`, so exactly the verified bundle is uploaded. It builds and
@@ -91,10 +92,12 @@ installed alongside `@lousho/build-ai-agent` for `lousho build` to bundle them.
 **Agent directories on a Worker.** A Worker has no file system and cannot import
 a file by path at run time, so the build reads the
 [agent directory](./agent-directories.md) on Node and writes `agent.module.ts`:
-a static import of each `tools/*.ts` file (and of an `agent.ts` / `agent.js`
-config), with `instructions.md`, a JSON/YAML config and the skills copied in as
-JSON. The Worker builds the agent with the same rules as `resolveAgentDir()`
-(config keys, tool exports, duplicate tool names):
+a static import of each `tools/*.ts`, `schedules/*.ts`, `channels/*.ts` and
+`memory/*.ts` file (and of an `agent.ts` / `agent.js` config), recursively for
+each `subagents/<name>/` directory, with `instructions.md`, a JSON/YAML
+config, the skills and a `projectInstructions` file copied in as JSON. The
+Worker builds the agent with the same rules as `resolveAgentDir()` (config
+keys, tool exports, duplicate tool names):
 
 ```bash
 npx lousho build ./my-agent --target=cloudflare-worker
@@ -106,19 +109,41 @@ cd .lousho/build/cloudflare-worker && npx wrangler deploy
   The `vendor/` model prefix chooses the provider; with OpenRouter use
   `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
   There is no environment to pick a default model from, so a directory without either is rejected.
-- A JSON/YAML config is checked by `lousho build`; an `agent.ts` config is checked when the
-  Worker starts, so `wrangler deploy` reports the problem.
-- `subagents/`, `schedules/`, `channels/`, `memory/` and `projectInstructions` are rejected,
-  naming the folder or key. Use `node-server` or `docker` for them.
+- A JSON/YAML config is checked by `lousho build` (a sub-agent's too, when it is not
+  code); an `agent.ts` config is checked when the Worker starts, so `wrangler deploy`
+  reports the problem.
+- `subagents/<name>/` directories are embedded recursively, with the same layout rules as the
+  parent's. Each needs a `description` in its config (the parent model reads it to decide
+  when to delegate); the parent's tools gain a `delegate_to_<name>` tool that runs the
+  sub-agent's turn. A sub-agent inherits the parent's model unless its config sets its own.
+- `schedules/` files become [cron triggers](#scheduled-runs): the build evaluates each file
+  to write its cron expression to `wrangler.toml`'s `[triggers] crons` (the same UTC /
+  five-field / day-name rules as a spec's triggers), and the generated Worker exports a
+  `scheduled()` handler that fires them. Without `schedules/` there is no `scheduled()`.
+- `channels/` channels are mounted under `/channels` (`POST /channels/<name>` and
+  `POST /channels/<name>/approvals/:id`): the same routes and rules as `mountChannels()`
+  on Node, on the Fetch API. They authenticate themselves (`verify`), so
+  `LOUSHO_API_TOKEN` does not cover them. A turn that outlives its acknowledged webhook
+  keeps running under `ctx.waitUntil`.
+- `memory/` slots need a provider that works without a file system. `kvMemory()` keeps a
+  slot's items under `memory/<scope>` keys of the `AGENT_CHECKPOINTS` KV namespace (or of
+  the binding its `binding` option names); without that binding, items live in one
+  isolate's memory. `inMemoryMemory()` works the same way; `fileMemory()` cannot run here.
+- `projectInstructions: true` reads the nearest `AGENTS.md` / `CLAUDE.md` **at build time**
+  and embeds its text; a JSON/YAML config's options object (`cwd`, `files`) is honoured the
+  same way. In an `agent.ts` config only `true` can be embedded - an options object is
+  refused when the Worker starts.
 - Tool files are bundled from where they are, so their relative imports and their
   `node_modules` resolve as in development. A tool that imports a Node builtin fails the
   build's leak check, which names the file.
 - In a tool or `agent.ts`, `@lousho/build-ai-agent` is a Worker-safe subset of the package:
-  `defineTool`, `isDefinedTool`, `always`, `never`, `once`, `defineSkill`, `createMockProvider`,
-  `MockLLMProvider`, `OpenAIProvider`, `AnthropicProvider`, `OpenRouterProvider`, `fromAiSdk`,
-  `LLMProviderRegistry`, `textOf`, `SDKError`, `ConfigurationError`, `ToolExecutionError` and
-  `ValidationError`. Importing another name fails the build with this list; type-only imports
-  work for every type.
+  `defineTool`, `isDefinedTool`, `always`, `never`, `once`, `defineSkill`, `defineSchedule`,
+  `isDefinedSchedule`, `defineChannel`, `httpChannel`, `slackChannel`, `discordChannel`,
+  `telegramChannel`, `githubChannel`, `teamsChannel`, `defineMemory`, `inMemoryMemory`,
+  `kvMemory`, `createMockProvider`, `MockLLMProvider`, `OpenAIProvider`, `AnthropicProvider`,
+  `OpenRouterProvider`, `fromAiSdk`, `LLMProviderRegistry`, `textOf`, `SDKError`,
+  `ConfigurationError`, `ToolExecutionError` and `ValidationError`. Importing another name
+  fails the build with this list; type-only imports work for every type.
 
 What a tool can reach on a Worker: a tool file runs in the Worker's isolate, not in a
 sandbox, with the same rights as the rest of the Worker. It can `fetch()` any host
@@ -134,12 +159,13 @@ code you would trust with those bindings.
 
 The Worker serves the [HTTP API](./deployment.md#http-api): `GET /health`, `POST /chat`
 streamed as SSE (`ReadableStream`), `GET /chat/:sessionId`, the approvals
-endpoint and the deprecated `{ "message" }` body. Its bindings:
+endpoint and the deprecated `{ "message" }` body. An agent directory's `channels/`
+add their own routes under `/channels` (see above). Its bindings:
 
 | Binding | Kind | What it does |
 | ------- | ---- | ------------ |
 | `LOUSHO_API_TOKEN` | secret (`npx wrangler secret put LOUSHO_API_TOKEN`) | Makes every route except `/health` require `Authorization: Bearer <token>` (constant-time compare, `401` JSON otherwise). Without it the Worker is open to anyone who has its URL, so **set it before you deploy**. |
-| `AGENT_CHECKPOINTS` | KV namespace | Holds sessions, checkpoints and paused approvals, in one namespace, as `KVStore` (below). Without it they live in the memory of one isolate, which Cloudflare recycles at will: fine for trying a deploy out, not for production. |
+| `AGENT_CHECKPOINTS` | KV namespace | Holds sessions, checkpoints, paused approvals and `kvMemory()` items, in one namespace, as `KVStore` (below). Without it they live in the memory of one isolate, which Cloudflare recycles at will: fine for trying a deploy out, not for production. |
 | `LOUSHO_HTTP_ALLOW` | variable (`[vars]` in `wrangler.toml`) | The host names the `http` tool may reach, comma-separated: `api.github.com`, or `*.example.com` for subdomains only. Unset or empty, every `http` request is refused. See [Providers and tools](#providers-and-tools). |
 
 `wrangler.toml` is scaffolded with the `[[kv_namespaces]]` block for
@@ -200,6 +226,7 @@ Worker reads). `KVStore`'s keys, with an optional `prefix` before each:
 | `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, with its history under `checkpoints/<id>#history`). |
 | `approvals/<id>` | A paused approval and the snapshot that resumes it (deleted when it is decided). |
 | `oauth/tokens/<key>`, `oauth/pending/<state>` | OAuth tokens and pending sign-ins, encrypted with `tokenKey` (the `LOUSHO_TOKEN_KEY` secret in the generated Worker); see [OAuth](oauth.md#token-storage). |
+| `memory/<scopeKey>` | The items of a `kvMemory()` memory slot (`global`, `session:<id>` or a custom scope's key) - written by the provider itself, not `KVStore`. |
 
 `ttl: { sessions?, checkpoints?, approvals? }` (seconds, KV accepts 60 or more)
 makes each kind of record expire that long after its last write; by default
@@ -222,7 +249,9 @@ request that reuses the `sessionId` (after a crash or a recycled isolate).
 Cron triggers in the spec (`triggers: [{ type: 'cron', cron: '0 9 * * MON', input: '...' }]`)
 become `[triggers] crons = [...]` in `wrangler.toml`, and the generated Worker
 exports a `scheduled()` handler that runs them as agent turns (session
-`schedule-<name>`, see [Schedules](schedules.md#on-cloudflare-workers)). Cloudflare
+`schedule-<name>`, see [Schedules](schedules.md#on-cloudflare-workers)). An agent
+directory's `schedules/` files work the same way: the build evaluates them for
+the expressions and generates the `scheduled()` export. Cloudflare
 evaluates the expressions in **UTC** with a granularity of one minute; the
 build rejects a `timezone`, a seconds field, an `@daily` shortcut or a numeric
 day-of-week (`LOUSHO_SCHEDULE_INVALID`).

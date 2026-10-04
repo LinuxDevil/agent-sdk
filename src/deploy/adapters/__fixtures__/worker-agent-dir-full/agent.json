@@ -1,0 +1,5 @@
+{
+  "model": "mock/test",
+  "description": "Sub-agents, schedules, channels, memory and project instructions in a Worker",
+  "projectInstructions": true
+}

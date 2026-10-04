@@ -4,6 +4,7 @@
  */
 export * from './defineChannel';
 export * from './mountChannels';
+export * from './fetchChannels';
 export * from './httpChannel';
 export * from './webhookChannel';
 export * from './slackChannel';

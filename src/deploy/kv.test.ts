@@ -32,8 +32,8 @@ describe('@lousho/build-ai-agent/kv (R2)', () => {
     expect(Object.keys(result.metafile.inputs).some((file) => file.endsWith('kvStore.ts'))).toBe(true);
   }, 30_000);
 
-  it('exports KVStore, KVCheckpointStore and CHECKPOINT_KV_BINDING', () => {
-    expect(Object.keys(kv).sort()).toEqual(['CHECKPOINT_KV_BINDING', 'KVCheckpointStore', 'KVStore']);
+  it('exports KVStore, KVCheckpointStore, CHECKPOINT_KV_BINDING and kvMemory', () => {
+    expect(Object.keys(kv).sort()).toEqual(['CHECKPOINT_KV_BINDING', 'KVCheckpointStore', 'KVStore', 'kvMemory']);
     expect(kv.CHECKPOINT_KV_BINDING).toBe('AGENT_CHECKPOINTS');
     const memory = new Map<string, string>();
     const binding: kv.KVBinding = {

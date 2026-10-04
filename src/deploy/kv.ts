@@ -7,3 +7,4 @@
 export { KVStore, type KVStoreOptions } from './kvStore';
 export { KVCheckpointStore, type KVBinding, type KVListOptions, type KVListResult, type KVPutOptions } from './kvCheckpointStore';
 export { CHECKPOINT_KV_BINDING } from './checkpointBinding';
+export { kvMemory, type KVMemoryOptions } from './workerMemory';

@@ -73,6 +73,9 @@ export * from './skills';
 
 // Memory slots: scoped long-term memory for createAgent() (LOU-W6)
 export * from './memory';
+// kvMemory(): a memory provider bound to the Worker's KV namespace at request
+// time, for the memory/ files of a cloudflare-worker agent directory (#298).
+export { kvMemory, type KVMemoryOptions } from './deploy/workerMemory';
 
 // Sub-agents: the `subagents` option and its `task` tool (LOU-Y3)
 export * from './subagents';

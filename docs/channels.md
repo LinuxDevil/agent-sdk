@@ -15,6 +15,12 @@ Channels replace the [trigger adapters](triggers.md), which are deprecated
 Channels add what triggers lack: each conversation on the surface is
 a [session](sessions.md), and approvals and questions go back to the surface.
 
+On a Fetch host such as a Cloudflare Worker, `mountFetchChannels()` serves the
+same routes with a `Request` in and a `Response` out (and the host's
+`ctx.waitUntil` keeps a turn alive past an acknowledged webhook);
+`lousho build --target=cloudflare-worker` mounts an agent directory's
+`channels/` under `/channels` with it.
+
 ## Quick start
 
 `httpChannel()` is the reference channel: `{ sessionKey, input }` in, JSON out.
