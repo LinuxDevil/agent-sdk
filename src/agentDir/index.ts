@@ -5,5 +5,8 @@ export type {
   AgentDirConfig,
   AgentDirManifest,
   AgentDirOverrides,
+  Attestation,
+  RegistryItemStatus,
+  RegistryStatus,
   ResolvedAgentDir,
 } from './loadAgentDir';

@@ -164,6 +164,11 @@ console.log(manifest.tools, manifest.skills, manifest.subagents);
 const agent = createAgent({ ...config, maxSteps: 3 });
 ```
 
+When the directory has a `lousho-registry.json` install receipt
+([Registry](registry.md)), `manifest.registry` reports whether each installed
+item's files still match it, and the tools of a receipt item run inside the
+permission manifest it was installed with.
+
 ## Overrides
 
 The second argument takes the same options as `createAgent()` and wins over the
