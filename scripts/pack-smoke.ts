@@ -44,7 +44,8 @@ const REPO_ROOT = path.resolve(__dirname, '..');
  * server map and map `sourcesContent` no longer ship). Headroom ~20%.
  * Unpacked raised to 18 MiB by the @lousho/build-ai-agent/worker entry (#289):
  * the pre-built, pre-shimmed entry and #298's Worker channel helpers bring the
- * tarball to 917 entries / ~16.4 MiB / ~4.3 MiB packed.
+ * tarball to 917 entries / ~16.4 MiB / ~4.3 MiB packed. Re-measured on
+ * 1.0.0-rc.0 (A7): 948 entries / ~16.4 MiB / ~4.3 MiB.
  */
 const MAX_ENTRIES = 1050;
 const MAX_UNPACKED_BYTES = 18 * 1024 * 1024;

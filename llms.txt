@@ -57,6 +57,7 @@
 - [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md): A tool is a typed function the model can call.
 - [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md): A trigger adapter turns one wake-up mechanism into an agent run: an inbound webhook, a clock, or a Slack event.
 - [Troubleshooting](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/troubleshooting.md): This page starts from what you see and points to the cause, the fix and the page that explains it.
+- [Upgrading to 1.0](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/upgrading.md): Anyone with code written against `1.0.0-alpha.8` or an earlier `1.0.0-alpha.*` release.
 - [Utilities](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/utilities.md): Supporting helpers exported from the `@lousho/build-ai-agent/utils` subpath: encryption and hashing, and file storage for attachments.
 - [Vue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/vue.md): `useLoushoAgent()` for Vue 3 is the React hook as a composable: the same sources, the same state and the same actions, over the same typed event stream.
 - [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md): Workspace tools give an agent a file system and a shell, so you can build coding agents in the style of Claude Code.

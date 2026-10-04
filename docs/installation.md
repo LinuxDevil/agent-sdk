@@ -267,5 +267,6 @@ fail), so it can gate CI. Add `--json` for machine-readable output. Colour is
 used only when stdout is a terminal and `NO_COLOR` is unset.
 
 For problems that are not about installing, see [Troubleshooting](./troubleshooting.md).
+Coming from a `1.0.0-alpha.*` release? See [Upgrading to 1.0](./upgrading.md) for moved imports, removed and renamed APIs.
 
 Next: [Quick Start](./quick-start.md).

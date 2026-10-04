@@ -176,6 +176,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | Page | What it covers |
 | ---- | -------------- |
 | [Installation](docs/installation.md) | Requirements, peer and provider packages, installing from a local build, `lousho init`, `lousho doctor` |
+| [Upgrading to 1.0](docs/upgrading.md) | From `1.0.0-alpha.*`: moved imports, removed and renamed APIs, deprecations, what 1.0 promises |
 | [Quick Start](docs/quick-start.md) | Runnable, verified snippets: `createAgent()`, tools, streaming, sessions, approvals, offline tests, spec files |
 | [Configuration](docs/configuration.md) | Spec fields, the `mcpServers` field, provider env vars, retries and fallback, `createAgent()` options, budgets, project instructions |
 | [MCP](docs/mcp.md) | Use MCP servers as tools (`mcpServers`, `connectMcp()`, `loadMcpTools()`), approval for MCP tools, serve an agent with `serveMcp()` / `lousho mcp` |

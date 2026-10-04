@@ -93,6 +93,14 @@
         ],
         "maxCrap": 80,
         "reason": "Both files are ~94-100% statement-covered, but fallow's per-function CRAP matching scores their nested callbacks (.map(...) guards, the confined fetch) as 0%-covered. Ceiling exempts only the coverage term; cyclomatic/cognitive still gate."
+      },
+      {
+        "files": [
+          "scripts/**"
+        ],
+        "maxCrap": 220,
+        "maxCognitive": 25,
+        "reason": "scripts/* are maintainer CLIs run by hand (api-report, pack-smoke, sync), never under the vitest coverage suite, so coverage-derived CRAP is maximal for all of them; cognitive ceiling raised for arg-parsing/dispatch mains; cyclomatic and unit-size ceilings still apply."
       }
     ]
   }
