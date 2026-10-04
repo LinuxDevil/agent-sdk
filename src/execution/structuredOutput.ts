@@ -62,6 +62,19 @@ function isObjectSchemaNode(node: Record<string, unknown>): boolean {
  * `additionalProperties` (`z.strictObject`, `z.looseObject`, `catchall`,
  * `record`) is left alone - it says what the author meant.
  */
+/** `closeObjectSchemas` applied where one member points: a name -> schema map, or a single subschema. */
+function closeMember(member: string, value: unknown): void {
+  if (SCHEMA_MAP_MEMBERS.has(member)) {
+    if (typeof value === 'object' && value !== null) {
+      for (const sub of Object.values(value)) closeObjectSchemas(sub);
+    }
+    return;
+  }
+  if (SUBSCHEMA_MEMBERS.has(member)) {
+    closeObjectSchemas(value);
+  }
+}
+
 function closeObjectSchemas(node: unknown): void {
   if (Array.isArray(node)) {
     for (const item of node) closeObjectSchemas(item);
@@ -72,15 +85,7 @@ function closeObjectSchemas(node: unknown): void {
   if (isObjectSchemaNode(schema) && schema.additionalProperties === undefined) {
     schema.additionalProperties = false;
   }
-  for (const [member, value] of Object.entries(schema)) {
-    if (SCHEMA_MAP_MEMBERS.has(member)) {
-      if (typeof value === 'object' && value !== null) {
-        for (const sub of Object.values(value)) closeObjectSchemas(sub);
-      }
-    } else if (SUBSCHEMA_MEMBERS.has(member)) {
-      closeObjectSchemas(value);
-    }
-  }
+  for (const [member, value] of Object.entries(schema)) closeMember(member, value);
 }
 
 /**

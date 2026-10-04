@@ -9,6 +9,7 @@ import { SDKError } from '../execution/errors';
 import { newId } from '../utils/id';
 import type { MemoryItem, MemoryProvider } from './defineMemory';
 import type { EmbeddingProvider } from './embeddings';
+import { keyedQueue } from './keyedQueue';
 
 /** Options of the vector memory providers. */
 export interface VectorMemoryOptions {
@@ -87,14 +88,7 @@ export function vectorMemory(store: VectorItemStore, options: VectorMemoryOption
   if (!Number.isInteger(maxItems) || maxItems < 1) {
     throw new SDKError(`Vector memory: maxItems must be a positive integer, got ${maxItems}.`, 'LOUSHO_MEMORY_INVALID');
   }
-  const queues = new Map<string, Promise<unknown>>();
-  const serial = <T>(key: string, task: () => Promise<T>): Promise<T> => {
-    const done = (queues.get(key) ?? Promise.resolve()).then(task);
-    const tail = done.catch(() => undefined);
-    queues.set(key, tail);
-    void tail.then(() => queues.get(key) === tail && queues.delete(key));
-    return done;
-  };
+  const serial = keyedQueue();
 
   async function reindexKey(key: string): Promise<number> {
     const stale = (await store.load(key)).filter((row) => row.embedder !== embedder.id);

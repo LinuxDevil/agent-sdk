@@ -4,7 +4,7 @@
  */
 
 import type { Message } from '../providers';
-import type { StorageService } from '../storage';
+import { readJSONAttachmentLocked, type StorageService } from '../storage';
 import type { StepUsage } from '../models/usage';
 import type { CheckpointUsage } from './runUsage';
 import type { AgentFingerprint } from './agentFingerprint';
@@ -301,16 +301,7 @@ export class LocalStorageCheckpointStore implements CheckpointStore {
   }
 
   async load(sessionId: string): Promise<Checkpoint | null> {
-    const storageKey = this.getStorageKey(sessionId);
-    await this.storageService.acquireLock(storageKey);
-    try {
-      if (!this.storageService.fileExists(storageKey)) {
-        return null;
-      }
-      return this.storageService.readPlainJSONAttachment<Checkpoint>(storageKey);
-    } finally {
-      this.storageService.releaseLock(storageKey);
-    }
+    return readJSONAttachmentLocked<Checkpoint>(this.storageService, this.getStorageKey(sessionId));
   }
 
   async delete(sessionId: string, options: CheckpointDeleteOptions = {}): Promise<void> {

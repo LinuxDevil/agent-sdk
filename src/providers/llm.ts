@@ -1,8 +1,10 @@
 import { SDKError } from '../execution/errors';
 // LOU-R1: registers the built-in providers lazily on the first create()
-// miss (see ./builtinProviders.ts for why the import cycle is safe), so
-// 'openai'/'anthropic'/'openrouter'/'ollama'/'mock' resolve from any import
-// path - not only after src/index.ts or ./index has been imported.
+// miss (see ./builtinProviders.ts), so 'openai'/'anthropic'/'openrouter'/
+// 'ollama'/'mock' resolve from any import path - not only after
+// src/index.ts or ./index has been imported. The edge is one-directional
+// (LOU-R27): builtinProviders receives this registry as an argument, so
+// nothing reachable from it imports llm.ts back.
 import { ensureBuiltinProviders } from './builtinProviders';
 /**
  * LLM Provider Abstraction
@@ -380,7 +382,7 @@ export class LLMProviderRegistry {
     // never load src/index.ts - deep imports, `lousho dev`/`chat`/`acp`,
     // generated deploy servers - otherwise saw only 'mock'. Only missing
     // names are filled in, so explicit register() calls always win.
-    if (!this.providers.has(name.toLowerCase())) ensureBuiltinProviders();
+    if (!this.providers.has(name.toLowerCase())) ensureBuiltinProviders(LLMProviderRegistry);
     const factory = this.providers.get(name.toLowerCase());
     if (!factory) {
       throw new SDKError(`Provider '${name}' not found. Available: ${Array.from(this.providers.keys()).join(', ')}`, 'LOUSHO_PROVIDER_UNKNOWN');

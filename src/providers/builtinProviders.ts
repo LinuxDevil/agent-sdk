@@ -13,19 +13,15 @@
  * `loadOptionalPeer()` on the first generate()/stream() call, never at
  * module scope - so nothing here imports (or requires) an optional peer.
  *
- * The import graph is deliberately circular: llm.ts imports this module for
- * `ensureBuiltinProviders`, and this module imports `LLMProviderRegistry`
- * plus the provider classes, which import llm.ts back. The cycle is sound
- * because every cross-reference is deferred - the providers are only
- * constructed inside the factories, `LLMProviderRegistry` is only touched
- * inside `ensureBuiltinProviders()`, and no module in this graph reads
- * llm.ts's bindings at module top level. (That is why mock.ts no longer
- * self-registers at module scope: evaluated through this cycle, a top-level
- * `LLMProviderRegistry.register()` there would run while llm.ts is still
- * being initialized.)
+ * The import graph is deliberately acyclic (LOU-R27): llm.ts imports this
+ * module for `ensureBuiltinProviders`, but this module never imports llm.ts
+ * back - the registry arrives as the {@link BuiltinProviderRegistrar}
+ * argument instead. The provider classes' own `import type` edges into
+ * llm.ts are erased at compile time, so `import { createAgent }` works
+ * under true ESM (.mts) as well as through the bundled dist.
  */
 
-import { LLMProviderRegistry, type ProviderFactory } from './llm';
+import type { ProviderFactory } from './llm';
 import { OpenAIProvider, type OpenAIProviderConfig } from './OpenAIProvider';
 import { AnthropicProvider, type AnthropicProviderConfig } from './AnthropicProvider';
 import { OpenRouterProvider, type OpenRouterProviderConfig } from './OpenRouterProvider';
@@ -42,12 +38,23 @@ const BUILTIN_FACTORIES: ReadonlyArray<readonly [string, ProviderFactory]> = [
 ];
 
 /**
+ * The registry surface `ensureBuiltinProviders` writes to. Satisfied by
+ * `LLMProviderRegistry` (its `has`/`register` are static, so pass the class
+ * itself). Injected rather than imported: importing llm.ts here would
+ * re-create the LOU-R1 import cycle fallow flags (LOU-R27).
+ */
+export interface BuiltinProviderRegistrar {
+  has(name: string): boolean;
+  register(name: string, factory: ProviderFactory): void;
+}
+
+/**
  * Register every built-in provider that is not already registered.
  * Idempotent and never overwrites: a name a caller (or a test) registered
  * itself keeps its factory, so `register()` always wins over the built-ins.
  */
-export function ensureBuiltinProviders(): void {
+export function ensureBuiltinProviders(registry: BuiltinProviderRegistrar): void {
   for (const [name, factory] of BUILTIN_FACTORIES) {
-    if (!LLMProviderRegistry.has(name)) LLMProviderRegistry.register(name, factory);
+    if (!registry.has(name)) registry.register(name, factory);
   }
 }

@@ -13,6 +13,7 @@ import type { ExecutionResult } from '../execution/AgentExecutor';
 import type { AgentEvent } from '../execution/agentEvents';
 import type { PendingApproval } from '../execution/ApprovalGate';
 import { ConfigurationError } from '../execution/errors';
+import { cyrb53 } from '../utils/cyrb53';
 
 /** An inbound request as a channel sees it: framework-free, with the exact body bytes. */
 export interface ChannelRequest {
@@ -194,20 +195,6 @@ export function defineChannel<TEvent = unknown>(channel: Channel<TEvent>): Chann
   return channel;
 }
 
-/** A short, stable hash (53-bit FNV-style mix) so a sanitized session id stays unique. */
-function hash(text: string): string {
-  let h1 = 0xdeadbeef;
-  let h2 = 0x41c6ce57;
-  for (let i = 0; i < text.length; i++) {
-    const c = text.charCodeAt(i);
-    h1 = Math.imul(h1 ^ c, 2654435761);
-    h2 = Math.imul(h2 ^ c, 1597334677);
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
-}
-
 /**
  * The session id for `inbound`: `channel.sessionId(inbound)`, by default
  * `${name}:${sessionKey}`. Session ids allow only `A-Za-z0-9_-` (they become
@@ -216,7 +203,7 @@ function hash(text: string): string {
  */
 export function channelSessionId<TEvent>(channel: Channel<TEvent>, inbound: ChannelInbound<TEvent>): string {
   const key = channel.sessionId ? channel.sessionId(inbound) : `${channel.name}:${inbound.sessionKey}`;
-  return SESSION_ID.test(key) ? key : `${key.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 112)}-${hash(key)}`;
+  return SESSION_ID.test(key) ? key : `${key.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 112)}-${cyrb53(key)}`;
 }
 
 /** The default text for a pause: the question (with numbered options), the sign-in link (N9b), or the tool call to approve. */

@@ -253,3 +253,29 @@ export class StorageService implements IStorageService {
     this.fs.writeFileSync(this.getFilePath(storageKey), jsonString, 'utf8');
   }
 }
+
+/**
+ * Reads a plain JSON attachment under `storageService`'s lock, returning
+ * `null` when it does not exist. Shared by the StorageService-backed stores
+ * (StorageServiceApprovalStore.resolve/load, LocalStorageCheckpointStore
+ * .load), which all follow the same acquireLock -> fileExists ->
+ * readPlainJSONAttachment -> releaseLock pattern. `onFound` runs inside the
+ * same lock after the read (resolve() uses it for its delete-on-read).
+ */
+export async function readJSONAttachmentLocked<T>(
+  storageService: StorageService,
+  storageKey: string,
+  onFound?: () => void
+): Promise<T | null> {
+  await storageService.acquireLock(storageKey);
+  try {
+    if (!storageService.fileExists(storageKey)) {
+      return null;
+    }
+    const record = storageService.readPlainJSONAttachment<T>(storageKey);
+    onFound?.();
+    return record;
+  } finally {
+    storageService.releaseLock(storageKey);
+  }
+}

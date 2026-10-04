@@ -3,7 +3,7 @@
  * For testing and development
  */
 
-import {
+import type {
   LLMProvider,
   LLMProviderConfig,
   GenerateOptions,
@@ -189,7 +189,7 @@ export function createMockProvider(config: MockProviderConfig = { name: 'mock' }
 // which LLMProviderRegistry.create() calls on a miss (LOU-R1). That covers
 // every entry point (specToAgent/`lousho dev`, deep imports, deploy
 // bundles) without this module needing a top-level side effect. Keeping a
-// module-scope register() here is not just redundant but unsafe: llm.ts ->
-// builtinProviders.ts -> the provider modules -> llm.ts is now a cycle, so
-// a top-level LLMProviderRegistry.register() in this file could run while
-// llm.ts is still being initialized.
+// module-scope register() here is not just redundant but unsafe: a
+// top-level LLMProviderRegistry.register() here would run before llm.ts's
+// class is initialized whenever this module is loaded through
+// builtinProviders.ts (which llm.ts's create() miss path imports).

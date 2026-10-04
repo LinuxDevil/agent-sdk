@@ -28,6 +28,17 @@ export class FileApprovalStore implements ApprovalStore {
     fs.writeFileSync(this.filePath(agentId, pending.id), JSON.stringify(record), 'utf8');
   }
 
+  /** The first non-null `read` across every `<baseDir>/.lousho/agents/<agentId>` directory. */
+  private async scanAgents(read: (agentId: string) => Promise<ResolvedApproval | null>): Promise<ResolvedApproval | null> {
+    const agentsDir = path.join(this.baseDir, '.lousho', 'agents');
+    if (!fs.existsSync(agentsDir)) return null;
+    for (const agentId of fs.readdirSync(agentsDir)) {
+      const found = await read(agentId);
+      if (found) return found;
+    }
+    return null;
+  }
+
   /**
    * `resolve()` is delete-on-read (matching StorageServiceApprovalStore's
    * documented contract) but the on-disk layout is per-agent, so this scans
@@ -38,13 +49,7 @@ export class FileApprovalStore implements ApprovalStore {
    * generic `ApprovalStore` interface contract (e.g. direct SDK use).
    */
   async resolve(approvalId: string): Promise<ResolvedApproval | null> {
-    const agentsDir = path.join(this.baseDir, '.lousho', 'agents');
-    if (!fs.existsSync(agentsDir)) return null;
-    for (const agentId of fs.readdirSync(agentsDir)) {
-      const found = await this.resolveFor(agentId, approvalId);
-      if (found) return found;
-    }
-    return null;
+    return this.scanAgents((agentId) => this.resolveFor(agentId, approvalId));
   }
 
   async resolveFor(agentId: string, approvalId: string): Promise<ResolvedApproval | null> {
@@ -64,12 +69,6 @@ export class FileApprovalStore implements ApprovalStore {
 
   /** `ApprovalStore.load` (#280): like `resolve`, it scans every agent's approvals directory for the id, but does not delete. */
   async load(approvalId: string): Promise<ResolvedApproval | null> {
-    const agentsDir = path.join(this.baseDir, '.lousho', 'agents');
-    if (!fs.existsSync(agentsDir)) return null;
-    for (const agentId of fs.readdirSync(agentsDir)) {
-      const found = await this.peek(agentId, approvalId);
-      if (found) return found;
-    }
-    return null;
+    return this.scanAgents((agentId) => this.peek(agentId, approvalId));
   }
 }

@@ -5,7 +5,7 @@
 
 import { Message, ToolCall } from '../providers';
 import { AgentConfig } from '../types';
-import { StorageService } from '../storage';
+import { StorageService, readJSONAttachmentLocked } from '../storage';
 import type { RunUsage } from '../models/usage';
 import type { AgentFingerprint } from './agentFingerprint';
 import type { Principal } from '../auth/types';
@@ -258,29 +258,13 @@ export class StorageServiceApprovalStore implements ApprovalStore {
 
   async resolve(id: string): Promise<ResolvedApproval | null> {
     const storageKey = this.getStorageKey(id);
-    await this.storageService.acquireLock(storageKey);
-    try {
-      if (!this.storageService.fileExists(storageKey)) {
-        return null;
-      }
-      const record = this.storageService.readPlainJSONAttachment<ResolvedApproval>(storageKey);
-      this.storageService.deleteAttachment(storageKey);
-      return record;
-    } finally {
-      this.storageService.releaseLock(storageKey);
-    }
+    // Delete-on-read, inside the same lock that guards the read.
+    return readJSONAttachmentLocked<ResolvedApproval>(this.storageService, storageKey, () =>
+      this.storageService.deleteAttachment(storageKey)
+    );
   }
 
   async load(id: string): Promise<ResolvedApproval | null> {
-    const storageKey = this.getStorageKey(id);
-    await this.storageService.acquireLock(storageKey);
-    try {
-      if (!this.storageService.fileExists(storageKey)) {
-        return null;
-      }
-      return this.storageService.readPlainJSONAttachment<ResolvedApproval>(storageKey);
-    } finally {
-      this.storageService.releaseLock(storageKey);
-    }
+    return readJSONAttachmentLocked<ResolvedApproval>(this.storageService, this.getStorageKey(id));
   }
 }

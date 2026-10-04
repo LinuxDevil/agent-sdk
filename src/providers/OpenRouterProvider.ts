@@ -119,21 +119,29 @@ function reasoningPieces(of: { reasoning?: unknown; reasoning_details?: unknown 
   return typeof of?.reasoning === 'string' && of.reasoning !== '' ? [{ text: of.reasoning }] : [];
 }
 
+/** The `usage` fields one response body or stream chunk adds to `found`. */
+function scanUsage(usage: ResponseBody['usage'], found: CallObservation): void {
+  const requests = usage?.server_tool_use?.web_search_requests;
+  if (typeof requests === 'number') found.requests = Math.max(found.requests ?? 0, requests);
+  const reasoningTokens = usage?.completion_tokens_details?.reasoning_tokens ?? usage?.reasoning_tokens;
+  if (typeof reasoningTokens === 'number') found.reasoningTokens = reasoningTokens;
+}
+
+/** The citations and the reasoning of one `choice` (`message` or `delta`). */
+function scanChoice(choice: NonNullable<ResponseBody['choices']>[number], found: CallObservation): void {
+  const annotations = choice.message?.annotations ?? choice.delta?.annotations;
+  const sources = (Array.isArray(annotations) ? (annotations as Array<Record<string, unknown>>) : []).map(citedSource);
+  for (const source of sources) {
+    if (source && !found.sources.some((known) => known.url === source.url)) found.sources.push(source);
+  }
+  found.reasoning.push(...reasoningPieces(choice.message ?? choice.delta));
+}
+
 /** `usage.server_tool_use.web_search_requests`, the citations and the reasoning of one response body or stream chunk. */
 function scanResponseBody(chunk: ResponseBody | null, found: CallObservation): void {
   if (typeof chunk?.id === 'string') found.id ??= chunk.id;
-  const requests = chunk?.usage?.server_tool_use?.web_search_requests;
-  if (typeof requests === 'number') found.requests = Math.max(found.requests ?? 0, requests);
-  const reasoningTokens = chunk?.usage?.completion_tokens_details?.reasoning_tokens ?? chunk?.usage?.reasoning_tokens;
-  if (typeof reasoningTokens === 'number') found.reasoningTokens = reasoningTokens;
-  for (const choice of chunk?.choices ?? []) {
-    const annotations = choice.message?.annotations ?? choice.delta?.annotations;
-    const sources = (Array.isArray(annotations) ? (annotations as Array<Record<string, unknown>>) : []).map(citedSource);
-    for (const source of sources) {
-      if (source && !found.sources.some((known) => known.url === source.url)) found.sources.push(source);
-    }
-    found.reasoning.push(...reasoningPieces(choice.message ?? choice.delta));
-  }
+  scanUsage(chunk?.usage, found);
+  for (const choice of chunk?.choices ?? []) scanChoice(choice, found);
 }
 
 /** A JSON response body, or a server-sent-events stream of JSON chunks, as a {@link CallObservation}. */

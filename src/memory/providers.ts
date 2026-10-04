@@ -1,5 +1,6 @@
 import { newId } from '../utils/id';
 import type { MemoryItem, MemoryProvider } from './defineMemory';
+import { keyedQueue } from './keyedQueue';
 
 /** Options of the built-in memory providers. */
 export interface MemoryProviderOptions {
@@ -22,14 +23,9 @@ function select(items: readonly MemoryItem[], { limit, query }: { limit?: number
 
 /** A `MemoryProvider` over `store`. Changes to one key are made one at a time, so concurrent adds keep every item. */
 export function itemsProvider(store: ItemStore, { maxItems = 1000 }: MemoryProviderOptions = {}): MemoryProvider {
-  const queues = new Map<string, Promise<void>>();
-  const update = (key: string, change: (items: MemoryItem[]) => MemoryItem[]): Promise<void> => {
-    const done = (queues.get(key) ?? Promise.resolve()).then(async () => store.save(key, change(await store.load(key))));
-    const tail = done.catch(() => undefined);
-    queues.set(key, tail);
-    void tail.then(() => queues.get(key) === tail && queues.delete(key));
-    return done;
-  };
+  const serial = keyedQueue();
+  const update = (key: string, change: (items: MemoryItem[]) => MemoryItem[]): Promise<void> =>
+    serial(key, async () => store.save(key, change(await store.load(key))));
   return {
     list: async (key, options) => select(await store.load(key), options),
     async add(key, { text, metadata }) {

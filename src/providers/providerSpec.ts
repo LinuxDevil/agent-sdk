@@ -6,7 +6,10 @@
  * point reports errors in its own name.
  */
 
-import { LLMProvider, LLMProviderConfig, LLMProviderRegistry } from './llm';
+// LOU-R27: type-only imports only - `LLMProviderRegistry` arrives as the
+// `registry` argument of resolveProviderSpec() so nothing here adds a
+// runtime edge back into the provider import graph.
+import type { LLMProvider, LLMProviderConfig } from './llm';
 import { ConfigurationError } from '../execution/errors';
 import { closestMatch } from '../utils/closestMatch';
 
@@ -224,9 +227,19 @@ function isModuleNotFound(error: unknown): boolean {
   );
 }
 
-function createProvider(caller: string, providerName: string, entry: ProviderEntry, config: LLMProviderConfig): LLMProvider {
+/**
+ * The registry slice `resolveProviderSpec` needs: `LLMProviderRegistry`
+ * satisfies it (its `create` is static, so pass the class itself). Injected
+ * rather than imported to keep this module out of the provider import cycle
+ * (LOU-R27).
+ */
+export interface ProviderResolver {
+  create(providerName: string, config: LLMProviderConfig): LLMProvider;
+}
+
+function createProvider(caller: string, providerName: string, entry: ProviderEntry, config: LLMProviderConfig, registry: ProviderResolver): LLMProvider {
   try {
-    return LLMProviderRegistry.create(providerName, config);
+    return registry.create(providerName, config);
   } catch (error) {
     if (!isModuleNotFound(error)) throw error;
     throw new ConfigurationError(
@@ -241,10 +254,11 @@ function createProvider(caller: string, providerName: string, entry: ProviderEnt
 
 /**
  * Resolve a "<provider>/<model>" spec into a configured LLMProvider, with
- * errors reported in `caller`'s name. See `resolveProvider()`. `extra` is
+ * errors reported in `caller`'s name. See `resolveProvider()`. `registry`
+ * constructs the provider (callers pass `LLMProviderRegistry`). `extra` is
  * merged into the provider config (createAgent() sets `maxRetries: 0`).
  */
-export function resolveProviderSpec(spec: string, caller: string, extra: LLMProviderConfig = {}): LLMProvider {
+export function resolveProviderSpec(spec: string, caller: string, registry: ProviderResolver, extra: LLMProviderConfig = {}): LLMProvider {
   const separatorIndex = spec.indexOf('/');
   if (separatorIndex <= 0 || separatorIndex === spec.length - 1) {
     throw new ConfigurationError(
@@ -267,7 +281,7 @@ export function resolveProviderSpec(spec: string, caller: string, extra: LLMProv
       ...extra,
       defaultModel: model,
       [entry.configField]: envValue,
-    });
+    }, registry);
   if (!envValue && entry.envRequired) {
     // Replay needs no key: the cassette answers every model call.
     if (!cassetteMayAnswerCalls()) throw missingKeyError(caller, entry.envKey);
