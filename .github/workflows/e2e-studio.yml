@@ -29,6 +29,8 @@ jobs:
       # `webServer` runs) fails immediately with `Cannot find module
       # '.../node_modules/@lousho/build-ai-agent/dist/index.js'`.
       - run: npm run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
       # Playwright's browser binaries aren't npm dependencies - install the
       # Chromium build (+ OS-level deps) the E2E spec drives separately.
       - run: npx playwright install --with-deps chromium
