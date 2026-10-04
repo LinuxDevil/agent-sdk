@@ -8,9 +8,9 @@ const version = root.version;
 
 const indexPath = 'src/index.ts';
 const indexSrc = fs.readFileSync(indexPath, 'utf8');
+if (!/export const VERSION = '[^']+'/.test(indexSrc)) throw new Error('sync-version: VERSION export not found in src/index.ts');
 const next = indexSrc.replace(/export const VERSION = '[^']+'/, `export const VERSION = '${version}'`);
-if (next === indexSrc) throw new Error('sync-version: VERSION export not found in src/index.ts');
-fs.writeFileSync(indexPath, next);
+if (next !== indexSrc) fs.writeFileSync(indexPath, next);
 
 const scaffoldPath = 'packages/create-lousho-agent/package.json';
 const scaffold = JSON.parse(fs.readFileSync(scaffoldPath, 'utf8'));
