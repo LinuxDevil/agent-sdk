@@ -5,7 +5,7 @@
  *   1. LOU-J4's monitor webhook listener (POST /webhook)
  *   2. LOU-J5's Slack tool + interaction route (POST /slack/interactions)
  *   3. LOU-J6's fixer, delegated to from the monitor agent
- *   4. LOU-J7's guardrail-gated PR creation
+ *   4. LOU-J7's patch-check-gated PR creation
  * into one process.
  *
  * Safety property this wiring enforces (per the epic's own Implementation
@@ -45,7 +45,7 @@ import {
 import { closeServer, listenOn, sendJson, sendNotFound } from './httpHelpers';
 import { ApprovalStore } from '../../src/execution/ApprovalGate';
 import { ExecutionResult } from '../../src/execution/AgentExecutor';
-import { Guardrail } from '../../src/execution/guardrails';
+import { PatchCheck } from '../../src/execution/patchChecks';
 import { createDemoProvider } from './demoProvider';
 import { createMockGithubTool } from './mocks/mockGithubTool';
 import { createMockSlackTool } from './mocks/mockSlackTool';
@@ -94,12 +94,12 @@ export interface OpsPipelineDeps {
   slackSigningSecret?: string;
   /**
    * Guardrails to run before considering the GitHub PR call. Defaults to
-   * handleFixerPatch()'s own defaults (real secretScanGuardrail + a
+   * handleFixerPatch()'s own defaults (real secretScanCheck + a
    * diff-size cap) when omitted. Exposed here so callers (e.g. LOU-J9's
-   * pipeline.eval.ts) can wrap the default guardrails to observe/record
-   * execution order without changing which guardrails actually run.
+   * pipeline.eval.ts) can wrap the default patchChecks to observe/record
+   * execution order without changing which patchChecks actually run.
    */
-  guardrails?: Guardrail[];
+  patchChecks?: PatchCheck[];
 }
 
 export interface OpsPipelineHandle {
@@ -143,7 +143,7 @@ interface SlackRouteContext {
   slackTool: ToolDescriptor;
   channel: string;
   signingSecret?: string;
-  guardrails?: Guardrail[];
+  patchChecks?: PatchCheck[];
 }
 
 /** True when no signing secret is configured, or the request carries a valid Slack signature over the raw body. */
@@ -160,7 +160,7 @@ function isAuthenticSlackRequest(req: http.IncomingMessage, raw: string, signing
 
 /**
  * Handles one POST /slack/interactions request: resumes the paused run, then -
- * if the fixer produced a patch - sends it through the guardrail-gated PR path.
+ * if the fixer produced a patch - sends it through the patch-check-gated PR path.
  */
 async function handleSlackInteractionRequest(
   req: http.IncomingMessage,
@@ -191,7 +191,7 @@ async function handleSlackInteractionRequest(
           channel: ctx.channel,
           approvalId,
           head: `fix/auto-${approvalId}`,
-          guardrails: ctx.guardrails,
+          patchChecks: ctx.patchChecks,
         });
       }
     }
@@ -279,7 +279,7 @@ export async function startOpsPipeline(deps: OpsPipelineDeps = {}): Promise<OpsP
       slackTool,
       channel,
       signingSecret: deps.slackSigningSecret ?? process.env.SLACK_SIGNING_SECRET,
-      guardrails: deps.guardrails,
+      patchChecks: deps.patchChecks,
     },
     deps.slackPort ?? 0,
     deps.slackHost ?? '127.0.0.1'

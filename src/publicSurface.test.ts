@@ -133,6 +133,29 @@ describe('public surface (A2c): removed values are off the root', () => {
   }
 });
 
+/** A5: the patch checks were renamed (old names gone, new names present). */
+const RENAMED_A5: Array<[oldName: string, newName: string]> = [
+  ['runGuardrails', 'runPatchChecks'],
+  ['runGuardrailSafely', 'runPatchCheckSafely'],
+  ['createDiffSizeGuardrail', 'createDiffSizeCheck'],
+  ['secretScanGuardrail', 'secretScanCheck'],
+  ['createCommandGuardrail', 'createCommandCheck'],
+  ['createTestRunGuardrail', 'createTestRunCheck'],
+  ['createLintGuardrail', 'createLintCheck'],
+];
+
+describe('public surface (A5): the patch checks are renamed', () => {
+  for (const [oldName, newName] of RENAMED_A5) {
+    it(`${oldName} -> ${newName}`, () => {
+      expect(root, `the root should no longer export ${oldName}`).not.toHaveProperty(oldName);
+      expect(root, `the root should export ${newName}`).toHaveProperty(newName);
+    });
+  }
+  it('SECRET_PATTERNS stays', () => {
+    expect(root).toHaveProperty('SECRET_PATTERNS');
+  });
+});
+
 describe('public surface (A2b): the legacy onEvent adapter is gone', () => {
   it('a legacy onEvent option passed to AgentExecutor.execute() is never called', async () => {
     const onEvent = vi.fn();

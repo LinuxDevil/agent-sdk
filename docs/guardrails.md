@@ -2,7 +2,7 @@
 
 Tools for running agents safely: **input and output guardrails** check what
 goes into and comes out of any run (and its tool arguments), **patch
-guardrails** are fail-closed checks over a proposed change before you act on
+checks** are fail-closed checks over a proposed change before you act on
 it, and **sandboxed tools** run inside an isolated container instead of the
 host process. For per-call human decisions see [Approvals](./approvals.md); for
 hooks that inspect or veto each tool call see [Hooks](./hooks.md).
@@ -122,7 +122,7 @@ try {
 | Built-in | Fails when |
 | -------- | ---------- |
 | `maxLengthGuardrail({ maxChars })` | The text is longer than `maxChars` characters. |
-| `regexGuardrail({ name, pattern?, action?, replacement? })` | The text matches `pattern` (a `RegExp` or a list; default: the `secretScanGuardrail` patterns). With `action: 'rewrite'` every match becomes `replacement` (default `'[redacted]'`). |
+| `regexGuardrail({ name, pattern?, action?, replacement? })` | The text matches `pattern` (a `RegExp` or a list; default: the `secretScanCheck` patterns). With `action: 'rewrite'` every match becomes `replacement` (default `'[redacted]'`). |
 | `denyTopicsGuardrail({ topics })` | The text contains one of `topics` (case-insensitive keywords). |
 | `llmJudgeGuardrail({ model, instruction, name? })` | `model` (an `LLMProvider` or `"provider/model"`), asked once per check whether the text follows `instruction`, does not reply `PASS`; its `FAIL: <reason>` is the reason. |
 | `piiGuardrail({ types?, action?, name? })` | The text contains personal data of one of `types` (default all): `email`, `phone` (9 to 15 digits, optional `+` country code and separators), `credit-card` (must pass the Luhn check), `iban` (must pass its mod-97 check), `us-ssn` (`123-45-6789` form), `ip-address` (IPv4). Blocks by default; `action: 'rewrite'` replaces each match with `[<type>]`, e.g. `[email]`. Heuristic, no model call. |
@@ -173,22 +173,22 @@ neither form blocks, with a reason saying the reply could not be read. Tool
 results (for example a fetched web page carrying an indirect injection) are not
 checked by any guardrail yet.
 
-## Patch guardrails
+## Patch checks
 
-`runGuardrails(action, guardrails)` runs every check concurrently over a
+`runPatchChecks(patch, checks)` runs every check concurrently over a
 proposed patch and rolls the results up into one verdict. The
 [ops-pipeline example](../examples/ops-pipeline) uses it to gate a fixer
 agent's patch before a pull request is opened:
 
 ```ts
-import { runGuardrails, secretScanGuardrail, createDiffSizeGuardrail, createCommandGuardrail } from '@lousho/build-ai-agent';
+import { runPatchChecks, secretScanCheck, createDiffSizeCheck, createCommandCheck } from '@lousho/build-ai-agent';
 
-const verdict = await runGuardrails(
+const verdict = await runPatchChecks(
   { diff: patch },
   [
-    secretScanGuardrail,
-    createDiffSizeGuardrail(500),
-    createCommandGuardrail('test-run', repoPath, 'npm', ['test']),
+    secretScanCheck,
+    createDiffSizeCheck(500),
+    createCommandCheck('test-run', repoPath, 'npm', ['test']),
   ],
 );
 
@@ -197,18 +197,18 @@ if (!verdict.pass) {
 }
 ```
 
-| Guardrail | Fails when |
+| Patch check | Fails when |
 | --------- | ---------- |
-| `secretScanGuardrail` | The diff contains a private key header, an OpenAI-style API key or an AWS access key. |
-| `createDiffSizeGuardrail(maxLines)` | The diff has more than `maxLines` lines. |
-| `createCommandGuardrail(name, cwd, command, args, { timeoutMs? })` | The command exits non-zero. A non-empty diff is first applied (`git apply`) to a scratch copy of `cwd`, and fails the check if it does not apply cleanly. |
-| `createTestRunGuardrail(repoPath)`, `createLintGuardrail(repoPath)` | `npm test` / `npm run lint` fails (shorthands for the command guardrail). |
+| `secretScanCheck` | The diff contains a private key header, an OpenAI-style API key or an AWS access key. |
+| `createDiffSizeCheck(maxLines)` | The diff has more than `maxLines` lines. |
+| `createCommandCheck(name, cwd, command, args, { timeoutMs? })` | The command exits non-zero. A non-empty diff is first applied (`git apply`) to a scratch copy of `cwd`, and fails the check if it does not apply cleanly. |
+| `createTestRunCheck(repoPath)`, `createLintCheck(repoPath)` | `npm test` / `npm run lint` fails (shorthands for the command check). |
 
-**Fail-closed.** A guardrail that throws, rejects, does not settle within its
+**Fail-closed.** A check that throws, rejects, does not settle within its
 timeout (30 s by default), or resolves with anything but `pass: true` counts as
-failed: `runGuardrailSafely(guardrail, action)` wraps each one. A command
-guardrail kills its process when the timeout fires (on Windows, the whole
-process tree). Write your own as `{ name, check(action) }` returning
+failed: `runPatchCheckSafely(check, patch)` wraps each one. A command
+check kills its process when the timeout fires (on Windows, the whole
+process tree). Write your own as `{ name, check(patch) }` returning
 `{ pass, reason? }`.
 
 ## Sandboxed tools

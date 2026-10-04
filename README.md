@@ -218,7 +218,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Build a coding agent](docs/build-a-coding-agent.md) | A terminal coding agent step by step: workspace tools, approvals, streaming, a session, offline tests |
 | [Hooks](docs/hooks.md) | `createAgent({ hooks })`: observe, deny, rewrite or redact tool calls and model calls; `HookRegistry` |
 | [OAuth](docs/oauth.md) | `AgentStore.tokens`: OAuth tokens per provider and credential owner (app or user), encrypted at rest with your `tokenKey` |
-| [Guardrails and sandboxing](docs/guardrails.md) | `runGuardrails()`, built-in guardrails, `requiresSandbox`, `SubprocessSandbox` |
+| [Guardrails and sandboxing](docs/guardrails.md) | `runPatchChecks()`, built-in guardrails, `requiresSandbox`, `SubprocessSandbox` |
 | [Testing](docs/testing.md) | Deterministic tests with `mockModel`; record and replay with `recordReplay` |
 | [Evals](docs/evals.md) | Trajectory evals with `defineEval()`, datasets, judges, `lousho eval` reports |
 | [Tracing and observability](docs/observability.md) | OpenTelemetry GenAI spans, attribute table, content opt-in, local traces and `lousho traces` |
@@ -248,7 +248,7 @@ Most examples run offline with a mock provider; see the
 
 | Example | What it shows |
 | ------- | ------------- |
-| [ops-pipeline](examples/ops-pipeline) | Flagship: monitor alert, Slack "Fix it" button, human approval, fixer agent, guardrail-gated GitHub PR (`npm run pipeline:demo`) |
+| [ops-pipeline](examples/ops-pipeline) | Flagship: monitor alert, Slack "Fix it" button, human approval, fixer agent, patch-check-gated GitHub PR (`npm run pipeline:demo`) |
 | [agent-dir](examples/agent-dir) | An agent defined as a directory and loaded with `loadAgentDir()` |
 | [support-bot](examples/support-bot) | A minimal customer-support agent |
 | [research-assistant](examples/research-assistant) | A research agent with the built-in `http` tool |

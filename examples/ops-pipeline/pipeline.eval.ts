@@ -12,14 +12,14 @@
  *
  * 2. The ops-pipeline as a whole is composed of multiple SEPARATE tool
  *    calls across monitor -> Slack alert -> (approval) -> fixer delegate
- *    -> guardrails -> GitHub PR creation, most of which do NOT flow
+ *    -> patchChecks -> GitHub PR creation, most of which do NOT flow
  *    through one single AgentExecutor.execute() call's `toolCalls` field
  *    (the Slack/GitHub calls are plain ToolDescriptor invocations made
  *    directly by index.ts/guardedPr.ts, not LLM-issued tool calls). A
  *    defineEval()+toolCallOrder() call cannot express that cross-stage
  *    sequence, so - per this ticket's own guidance - it's instead recorded
  *    directly: every real stage (the monitor's delegate tool call, the
- *    Slack alert, both real guardrails, and GitHub PR creation) is
+ *    Slack alert, both real patchChecks, and GitHub PR creation) is
  *    instrumented with the same spy pattern fixer.test.ts/guardedPr.test.ts/
  *    index.test.ts already use, and the recorded order is asserted with a
  *    plain deep-equals - the most honest representation of what actually
@@ -29,7 +29,7 @@ import { describe, it, expect } from 'vitest';
 import { defineEval } from '../../src/evals/defineEval';
 import { toolCallOrder } from '../../src/evals/scorers';
 import { ToolRegistry } from '../../src/tools';
-import { secretScanGuardrail, createDiffSizeGuardrail } from '../../src/execution/guardrails';
+import { secretScanCheck, createDiffSizeCheck } from '../../src/execution/patchChecks';
 import { startOpsPipeline } from './index';
 import { createDemoProvider } from './demoProvider';
 import { createFixerTool, buildFixerAgent } from './fixer';
@@ -78,7 +78,7 @@ defineEval({
 // ---------------------------------------------------------------------------
 
 describe('ops-pipeline: full cross-stage call order (LOU-J9)', () => {
-  it('runs monitor -> slack alert -> fixer delegate -> guardrails -> github PR, in that order', async () => {
+  it('runs monitor -> slack alert -> fixer delegate -> patchChecks -> github PR, in that order', async () => {
     const order: string[] = [];
 
     const provider = createDemoProvider();
@@ -110,19 +110,19 @@ describe('ops-pipeline: full cross-stage call order (LOU-J9)', () => {
       },
     };
 
-    const trackedGuardrails = [
+    const trackedChecks = [
       {
         name: 'secret-scan',
         check: async (action: { diff: string }) => {
-          order.push('guardrail:secret-scan');
-          return secretScanGuardrail.check(action);
+          order.push('check:secret-scan');
+          return secretScanCheck.check(action);
         },
       },
       {
         name: 'diff-size-cap',
         check: async (action: { diff: string }) => {
-          order.push('guardrail:diff-size-cap');
-          return createDiffSizeGuardrail(500).check(action);
+          order.push('check:diff-size-cap');
+          return createDiffSizeCheck(500).check(action);
         },
       },
     ];
@@ -132,7 +132,7 @@ describe('ops-pipeline: full cross-stage call order (LOU-J9)', () => {
       githubCreatePrTool: githubCreatePrTool as any,
       slackTool: slackTool as any,
       approvalStore,
-      guardrails: trackedGuardrails as any,
+      patchChecks: trackedChecks as any,
       monitorPort: 0,
       slackPort: 0,
     });
@@ -157,8 +157,8 @@ describe('ops-pipeline: full cross-stage call order (LOU-J9)', () => {
 
       const EXPECTED_ORDER = [
         'slack:alert',
-        'guardrail:secret-scan',
-        'guardrail:diff-size-cap',
+        'check:secret-scan',
+        'check:diff-size-cap',
         'github:create_pull_request',
       ];
 

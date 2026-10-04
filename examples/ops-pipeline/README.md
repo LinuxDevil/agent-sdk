@@ -14,8 +14,8 @@ An end-to-end "flagship pipeline" demo composing every LOU-J primitive:
    paused run through the REAL `resumeAfterApproval()`.
 4. **Fixer** (LOU-J6) - once approved, the fixer agent diagnoses the error
    and produces a unified diff.
-5. **Guardrail-gated PR** (LOU-J7) - the diff is checked against the REAL
-   `secretScanGuardrail` + a diff-size cap BEFORE a GitHub PR is even
+5. **PatchCheck-gated PR** (LOU-J7) - the diff is checked against the REAL
+   `secretScanCheck` + a diff-size cap BEFORE a GitHub PR is even
    considered; a failure notifies Slack instead of ever calling GitHub.
 
 By default this runs entirely against the `mocks/` implementations (mock
@@ -70,13 +70,13 @@ it needs **zero external network access** and zero API keys.
    ```
 
    This resumes the paused run, runs the fixer agent, and - if the
-   guardrail check passes - creates a (mock) GitHub pull request.
+   patch check passes - creates a (mock) GitHub pull request.
 
 ## Files
 
 - `monitor.ts` - LOU-J4: ErrorSignal type, dedup, `POST /webhook`.
 - `fixer.ts` - LOU-J6: fixer agent, diff extraction, fixer-tool wiring.
-- `guardedPr.ts` - LOU-J7: guardrail-gated PR creation.
+- `guardedPr.ts` - LOU-J7: patch-check-gated PR creation.
 - `demoProvider.ts` - a deterministic, zero-network scripted LLM provider
   used by the demo in place of a real model.
 - `mocks/` - mock Grafana sender, mock Slack API, mock GitHub API (same

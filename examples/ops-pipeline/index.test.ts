@@ -17,7 +17,7 @@ describe('ops-pipeline end-to-end (LOU-J8, against mocks - zero external network
     }
   });
 
-  it('runs the full pipeline: dedup -> approval gate -> Slack "Fix it" -> guardrail-gated GitHub PR', async () => {
+  it('runs the full pipeline: dedup -> approval gate -> Slack "Fix it" -> patch-check-gated GitHub PR', async () => {
     const provider = createDemoProvider();
     const github = createMockGithubTool();
     const slack = createMockSlackTool();
@@ -64,7 +64,7 @@ describe('ops-pipeline end-to-end (LOU-J8, against mocks - zero external network
     expect((await interactionRes.json()).handled).toBe(true);
 
     // The approval unblocked the fixer, which produced a patch that passed
-    // guardrails and resulted in exactly one GitHub PR.
+    // patch checks and resulted in exactly one GitHub PR.
     expect(github.createdPullRequests).toHaveLength(1);
     expect(github.createdPullRequests[0].body).toContain('OrderService.java');
   });
