@@ -145,8 +145,8 @@
     "./src/providers/index.js"
   ],
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "build": "node --max-old-space-size=6144 node_modules/tsup/dist/cli-default.js",
+    "dev": "node --max-old-space-size=6144 node_modules/tsup/dist/cli-default.js --watch",
     "test": "vitest",
     "test:coverage": "vitest run --coverage --config vitest.coverage.config.ts",
     "test:live": "vitest run --config vitest.live.config.ts",
