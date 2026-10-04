@@ -34,6 +34,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import * as path from 'node:path';
 import { RECEIPT_FILE, readReceipt, type Receipt, type ReceiptEntry } from '../cli/addReceipt';
+import { SDKError } from '../execution/errors';
 import { isPartialStream } from '../execution/toolPartials';
 import { commandEnv } from '../security/commandEnv';
 import { matchesHost } from '../security/hostPattern';
@@ -282,7 +283,7 @@ function confineSandbox(sandbox: SandboxAdapter, item: RegistryItemStatus): Sand
     name: `${sandbox.name}+receipt(${item.name})`,
     async run(cmd: string, args: string[], opts: SandboxRunOptions = {}) {
       if (item.permissions.exec !== true) {
-        throw new Error(`registry item '${item.name}' does not declare 'exec' in its permission manifest; running '${cmd}' is refused.`);
+        throw new SDKError(`registry item '${item.name}' does not declare 'exec' in its permission manifest; running '${cmd}' is refused.`, 'LOUSHO_REGISTRY_MANIFEST_MISMATCH');
       }
       const chosen = Object.fromEntries(Object.entries(opts.env ?? {}).filter(([name]) => declared.has(name)));
       // The base set (PATH, HOME, temp dirs) is read from the real environment:
@@ -292,8 +293,9 @@ function confineSandbox(sandbox: SandboxAdapter, item: RegistryItemStatus): Sand
     },
     async writeFile(file: string, content: string) {
       if (item.permissions.filesystem !== 'write') {
-        throw new Error(
-          `registry item '${item.name}' declares filesystem '${item.permissions.filesystem ?? 'none'}', not 'write'; writing '${file}' is refused.`
+        throw new SDKError(
+          `registry item '${item.name}' declares filesystem '${item.permissions.filesystem ?? 'none'}', not 'write'; writing '${file}' is refused.`,
+          'LOUSHO_REGISTRY_MANIFEST_MISMATCH'
         );
       }
       return sandbox.writeFile(file, content);
