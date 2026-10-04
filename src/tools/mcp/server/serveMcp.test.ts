@@ -105,7 +105,7 @@ describe('serveMcp agent tool', () => {
 
   it('returns isError when the agent throws', async () => {
     const agent = { send: vi.fn().mockRejectedValue(new Error('model down')) };
-    const client = await connect(spec(agent));
+    const client = await connect(spec(agent as unknown as SimpleAgent));
     const result = await client.callTool({ name: 'support-bot', arguments: { message: 'hi' } });
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain('model down');

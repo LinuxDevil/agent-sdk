@@ -12,6 +12,7 @@ import { createAgent } from '../../createAgent';
 import { mockModel } from '../../testing';
 import type { AgentEvent } from '../../execution/agentEvents';
 import type { DefinedTool } from '../defineTool';
+import type { ToolExecutionContext } from '../../types';
 
 interface Seen {
   method: string;
@@ -74,7 +75,15 @@ beforeEach(() => {
   seen = [];
 });
 
-const ctx = { toolCallId: 'call_1', messages: [] };
+// These tests never exercise OAuth: getToken/requireAuth fail loudly if a tool asks for one (N9b fields of ToolExecutionContext).
+const ctx: ToolExecutionContext = {
+  toolCallId: 'call_1',
+  messages: [],
+  getToken: () => Promise.reject(new Error('openApiTools.test.ts has no token store')),
+  requireAuth: () => {
+    throw new Error('openApiTools.test.ts has no token store');
+  },
+};
 
 async function tools(options: OpenApiToolsOptions = {}, document: object | string | URL = petstore): Promise<Record<string, DefinedTool>> {
   const list = await openApiTools(document, { baseUrl: base, ...options });

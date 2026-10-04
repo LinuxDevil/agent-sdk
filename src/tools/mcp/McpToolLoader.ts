@@ -6,7 +6,6 @@
  * tool descriptions (listRemoteTools) or SDK tool descriptors (loadMcpTools).
  */
 
-import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { McpToolAnnotations, NamedToolDescriptor, ToolDescriptor } from '../../types';
 import { noopLogger, type Logger } from '../../execution/logger';
 import { handleCallToolResult } from './result';
@@ -57,8 +56,17 @@ function needsApproval(approval: McpApproval, name: string, annotations: McpTool
 /**
  * The part of an `@modelcontextprotocol/sdk` `Client` the loader uses: a
  * connected `Client`, or a stand-in that connects on demand (see `connectMcp()`).
+ * Declared structurally rather than `Pick<Client, 'listTools' | 'callTool'>` so
+ * the published declarations do not import the optional `@modelcontextprotocol/sdk`
+ * peer - a consumer without it installed would get TS2307 inside the SDK's own
+ * `.d.ts` under `skipLibCheck: false`. A real `Client` satisfies this shape.
  */
-export type McpClientLike = Pick<Client, 'listTools' | 'callTool'>;
+export interface McpClientLike {
+  /** `client.listTools()`: the tools the server advertises (`response.tools`). */
+  listTools(params?: { cursor?: string }, options?: unknown): Promise<{ tools: RawMcpTool[] }>;
+  /** `client.callTool()`: the raw result, handled by {@link handleCallToolResult}. */
+  callTool(params: { name: string; arguments?: Record<string, unknown> }, resultSchema?: unknown, options?: unknown): Promise<unknown>;
+}
 
 /**
  * List the tools a connected MCP client's server advertises.
@@ -70,7 +78,7 @@ export type McpClientLike = Pick<Client, 'listTools' | 'callTool'>;
  */
 export async function listRemoteTools(client: McpClientLike): Promise<RawMcpTool[]> {
   const response = await client.listTools();
-  return response.tools as unknown as RawMcpTool[];
+  return response.tools;
 }
 
 /** A tool that {@link loadMcpTools} could not load. */

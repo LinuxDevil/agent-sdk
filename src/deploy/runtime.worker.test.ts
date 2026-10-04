@@ -110,7 +110,7 @@ describe('Worker /chat API over KVStore', () => {
     it('requires the token on every route but /health: 401 JSON without or with a wrong one, 200 with it', async () => {
       const { handle, events } = worker(fakeKV(), mockModel(['secret answer']), 's3cret');
       expect((await handle('/health')).status).toBe(200);
-      for (const headers of [{}, { Authorization: 'Bearer wrong' }, { Authorization: 'Bearer s3cret-and-more' }, { Authorization: 's3cret' }, { Authorization: 'Basic s3cret' }]) {
+      for (const headers of [{}, { Authorization: 'Bearer wrong' }, { Authorization: 'Bearer s3cret-and-more' }, { Authorization: 's3cret' }, { Authorization: 'Basic s3cret' }] as Record<string, string>[]) {
         const denied = await handle('/chat', { sessionId: 'a', input: 'hi' }, headers);
         expect(denied.status).toBe(401);
         expect(denied.headers.get('www-authenticate')).toBe('Bearer');

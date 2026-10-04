@@ -25,7 +25,7 @@
  */
 
 
-import { randomBytes } from 'node:crypto';
+import { randomBytes, type KeyObject } from 'node:crypto';
 import { writeFile as fsWriteFile } from 'node:fs/promises';
 import { PassThrough } from 'node:stream';
 import type Docker from 'dockerode';
@@ -185,6 +185,45 @@ async function waitForExit(
 }
 
 /**
+ * Options forwarded to the dockerode `Docker` constructor (the `dockerOptions`
+ * of {@link SubprocessSandboxOptions}): socket path or host/port, TLS material,
+ * ssh connection options, etc. Declared structurally - not dockerode's own
+ * `Docker.DockerOptions` - so the published declarations do not import the
+ * optional `dockerode` peer: a consumer without it installed would otherwise
+ * get TS2307 inside the SDK's own `.d.ts` under `skipLibCheck: false`.
+ * A dockerode `DockerOptions` value satisfies this shape.
+ */
+export interface DockerConnectionOptions {
+  /** Path of the Docker daemon socket (e.g. `/var/run/docker.sock`, `//./pipe/docker_engine`). */
+  socketPath?: string;
+  /** Docker daemon host (for `protocol` `'http'`/`'https'`/`'ssh'`). */
+  host?: string;
+  /** Docker daemon port. */
+  port?: number | string;
+  username?: string;
+  /** Extra headers sent to the daemon. */
+  headers?: Record<string, string>;
+  /** PEM CA material for a TLS daemon connection. */
+  ca?: string | string[] | Buffer | Buffer[];
+  /** PEM client certificate for a TLS daemon connection. */
+  cert?: string | string[] | Buffer | Buffer[];
+  /** PEM client key for a TLS daemon connection. */
+  key?: string | string[] | Buffer | Buffer[] | KeyObject[];
+  /** Daemon connection protocol. */
+  protocol?: 'https' | 'http' | 'ssh';
+  /** Request timeout (ms). */
+  timeout?: number;
+  /** API version to request (e.g. `'v1.44'`). */
+  version?: string;
+  /** ssh-agent auth for `protocol: 'ssh'` connections. */
+  sshAuthAgent?: string;
+  /** ssh2 `ConnectConfig` for `protocol: 'ssh'` connections; passed through to dockerode as-is. */
+  sshOptions?: object;
+  /** Promise implementation for dockerode to use. */
+  Promise?: typeof Promise;
+}
+
+/**
  * Configuration for SubprocessSandbox.
  */
 export interface SubprocessSandboxOptions {
@@ -196,7 +235,7 @@ export interface SubprocessSandboxOptions {
    * auto-detect the platform-appropriate Docker daemon connection
    * (npipe on Windows, unix socket on Linux/macOS).
    */
-  dockerOptions?: Docker.DockerOptions;
+  dockerOptions?: DockerConnectionOptions;
   /** Network access for each container. Defaults to `'none'`. See {@link SandboxNetwork} for what `{ allow }` enforces. */
   network?: SandboxNetwork;
   /**
@@ -237,7 +276,7 @@ export class SubprocessSandbox implements SandboxAdapter {
     this.networkName = options.networkName ?? `lousho-egress-${randomBytes(4).toString('hex')}`;
     this.getDocker = lazyValue(async () => {
       const { default: DockerClient } = await loadOptionalPeer('dockerode', () => import('dockerode'));
-      return new DockerClient(options.dockerOptions);
+      return new DockerClient(options.dockerOptions as Docker.DockerOptions | undefined);
     });
     this.image = options.image ?? 'node:20-alpine';
   }

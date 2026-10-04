@@ -167,8 +167,9 @@ describe('fromAiSdk() in createAgent (M2)', () => {
 
 describe('fromAiSdk() checks its model (M2)', () => {
   it('a model id string throws LOUSHO_CONFIG_INVALID, naming the provider function to import', () => {
-    expect(() => fromAiSdk('openai/gpt-4o')).toThrow(expect.objectContaining({ code: 'LOUSHO_CONFIG_INVALID' }));
-    expect(() => fromAiSdk('openai/gpt-4o')).toThrow(/gateway\('openai\/gpt-4o'\) from ai 7 or @ai-sdk\/gateway/);
+    // A string is not a LanguageModel: the cast exercises the runtime guard.
+    expect(() => fromAiSdk('openai/gpt-4o' as unknown as LanguageModel)).toThrow(expect.objectContaining({ code: 'LOUSHO_CONFIG_INVALID' }));
+    expect(() => fromAiSdk('openai/gpt-4o' as unknown as LanguageModel)).toThrow(/gateway\('openai\/gpt-4o'\) from ai 7 or @ai-sdk\/gateway/);
   });
 
   it('a non-object throws LOUSHO_CONFIG_INVALID', () => {
@@ -183,7 +184,8 @@ describe('fromAiSdk() checks its model (M2)', () => {
   });
 
   it('a v4 model with ai 4 installed throws, naming both', () => {
-    expect(() => createFromAiSdk(v7Model().model, {}, aiV4Like)).toThrow(
+    // A v4-shaped model where a v1 LanguageModel is declared: the cast exercises the runtime guard.
+    expect(() => createFromAiSdk(v7Model().model as unknown as LanguageModel, {}, aiV4Like)).toThrow(
       expect.objectContaining({ code: 'LOUSHO_CONFIG_INVALID', message: expect.stringMatching(/specificationVersion v4\) but ai 4 is installed/) })
     );
   });

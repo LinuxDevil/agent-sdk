@@ -10,7 +10,7 @@ import { errorText, SENTINEL_ACCESS } from './tokenStore.contract';
 const KEY = generateTokenKey();
 const OTHER = generateTokenKey();
 
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => { vi.unstubAllEnvs(); });
 
 async function codeOf(promise: Promise<unknown>): Promise<string | undefined> {
   try {

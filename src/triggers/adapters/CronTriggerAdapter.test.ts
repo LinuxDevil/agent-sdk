@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { CronTriggerAdapter } from './CronTriggerAdapter';
 import { ExecutionResult } from '../../execution/AgentExecutor';
+import { emptyRunUsage } from '../../execution/runUsage';
 import { RunnableAgent } from '../types';
 
 function fakeResult(text: string): ExecutionResult {
@@ -8,7 +9,7 @@ function fakeResult(text: string): ExecutionResult {
     text,
     messages: [],
     toolCalls: [],
-    usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+    usage: emptyRunUsage(),
     finishReason: 'stop',
     steps: 1,
   };
@@ -93,7 +94,7 @@ describe('CronTriggerAdapter', () => {
 
   it('has no reply() method (no reply target for a scheduled run)', () => {
     const adapter = new CronTriggerAdapter({ intervalMs: 1000, input: 'x', onResult: vi.fn() });
-    expect(adapter.reply).toBeUndefined();
+    expect('reply' in adapter).toBe(false);
   });
 });
 

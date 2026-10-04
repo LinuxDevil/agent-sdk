@@ -41,6 +41,7 @@ import { CHECKPOINT_KV_BINDING } from '../checkpointBinding';
 import { getAdapter, registerBuiltInAdapters } from '../index';
 import { LLMProviderRegistry } from '../../providers/llm';
 import { prepareWorkerSpec } from '../runtime.worker';
+import type { NamedToolDescriptor } from '../../types';
 import { withBuildLock } from '../buildLock.testkit';
 
 let wranglerBin: string | undefined;
@@ -171,7 +172,8 @@ describe('CloudflareWorkerAdapter', () => {
     expect(prepared.provider.name).toBe('openrouter');
     // The Worker resolves 'http' to its own allowlisted http_request, built from env.
     const withHttp = prepareWorkerSpec({ ...SPEC, tools: ['http'] }, { LOUSHO_HTTP_ALLOW: 'api.example.com' });
-    expect(withHttp.toolRegistry?.get('http')?.name).toBe('http_request');
+    // ToolRegistry.get() returns ToolDescriptor; the registered descriptor carries its name at runtime.
+    expect((withHttp.toolRegistry?.get('http') as NamedToolDescriptor | undefined)?.name).toBe('http_request');
     expect(() => prepareWorkerSpec({ ...SPEC, tools: ['web-fetch'] })).toThrow(/tool 'web-fetch' is not available on Cloudflare Workers/);
   });
 

@@ -19,7 +19,7 @@ import type { AuthFn } from '../auth/types';
 import type { AgentEvent, AgentEventOf } from '../execution/agentEvents';
 import { ALICE, BOB, fakeOAuthServer, githubProvider, listReposTool } from './__fixtures__/fakeOAuth';
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); });
 
 const CALL = { toolCalls: [{ name: 'list_repos', id: 'call_1', args: {} }] };
 

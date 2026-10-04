@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import http from 'node:http';
 import { WebhookTriggerAdapter, WebhookTriggerHandle } from './WebhookTriggerAdapter';
 import { ExecutionResult } from '../../execution/AgentExecutor';
+import { emptyRunUsage } from '../../execution/runUsage';
 import { RunnableAgent } from '../types';
 
 function fakeResult(text: string): ExecutionResult {
@@ -9,7 +10,7 @@ function fakeResult(text: string): ExecutionResult {
     text,
     messages: [],
     toolCalls: [],
-    usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+    usage: emptyRunUsage(),
     finishReason: 'stop',
     steps: 1,
   };

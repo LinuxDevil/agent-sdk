@@ -31,7 +31,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { IS_WIN, SDK_NAME, checkBin, checkModuleLoads, createReporter, mustRun as mustRunIn, run } from './smokeKit';
+import { IS_WIN, SDK_NAME, checkBin, checkModuleLoads, createReporter, listExports, mustRun as mustRunIn, run } from './smokeKit';
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 
@@ -138,6 +138,68 @@ function dryRunPublish(label: string, tarball: string, cwd: string): void {
   }
 }
 
+/**
+ * What a subpath's declarations may import, beyond the SDK itself. A subpath
+ * whose packages are not all installed in the smoke project is skipped by the
+ * `strict-libs` check (and logged): a missing peer's types would be an error in
+ * the consumer's project too, not a problem of the SDK's own. The default peers
+ * have `react` without `@types/react`, so `./react` is skipped here.
+ */
+const SUBPATH_TYPE_PEERS: Record<string, string[]> = {
+  './react': ['react', '@types/react'],
+  './vue': ['vue'],
+  './svelte': ['svelte'],
+  './otel': ['@opentelemetry/api'],
+  './sqlite': ['better-sqlite3'],
+};
+
+/**
+ * `skipLibCheck: false`: type-check the declaration files of every export whose
+ * peers are installed, so an error inside a shipped `.d.ts` (which
+ * `skipLibCheck: true` hides) fails here instead of in a consumer's build.
+ * The optional feature peers (`dockerode`, `@modelcontextprotocol/sdk`, ...) are
+ * deliberately NOT installed: their types must not appear in what we publish (#346).
+ * `@types/json-schema` is installed because the `ai` peer's own declarations need it.
+ * `zod` is remapped to a zod 3 install: the published declarations are emitted
+ * against zod 3 (the devDependency) and name zod-3 generic shapes a zod 4
+ * install cannot resolve - a separate, pre-existing limitation of the
+ * declarations, not what this check is for.
+ */
+function checkStrictLibs(project: string, tsc: string): void {
+  mustRun('npm install type packages for strict-libs', 'npm', ['install', '--no-audit', '--no-fund', '--no-save', '@types/json-schema', 'zod3@npm:zod@3'], project);
+  const pkgDir = path.join(project, 'node_modules', ...SDK_NAME.split('/'));
+  const checked: string[] = [];
+  for (const e of listExports(pkgDir)) {
+    const missing = (SUBPATH_TYPE_PEERS[e.subpath] ?? []).filter((peer) => !fs.existsSync(path.join(project, 'node_modules', ...peer.split('/'), 'package.json')));
+    if (missing.length > 0) {
+      log(`tsc strict-libs: skipping ${e.subpath} (${missing.join(', ')} not installed in the smoke project)`);
+      continue;
+    }
+    checked.push(e.subpath);
+  }
+  const specs = listExports(pkgDir).filter((e) => checked.includes(e.subpath)).map((e) => e.spec);
+  const lines = specs.map((spec, i) => `import type * as m${i} from '${spec}';\nexport type { m${i} };`);
+  fs.writeFileSync(path.join(project, 'strict-libs-entry.ts'), lines.join('\n') + '\n');
+  const cfg = {
+    compilerOptions: {
+      module: 'esnext',
+      moduleResolution: 'bundler',
+      target: 'es2022',
+      strict: true,
+      noEmit: true,
+      skipLibCheck: false,
+      types: ['node'],
+      baseUrl: '.',
+      paths: { zod: ['./node_modules/zod3'] },
+    },
+    files: ['strict-libs-entry.ts'],
+  };
+  fs.writeFileSync(path.join(project, 'tsconfig.strict-libs.json'), JSON.stringify(cfg, null, 2));
+  const res = run(process.execPath, [tsc, '-p', 'tsconfig.strict-libs.json'], project);
+  if (res.status !== 0) fail(`tsc (strict-libs, skipLibCheck: false) failed:\n${res.stdout}${res.stderr}`);
+  else log(`tsc --noEmit (strict-libs, skipLibCheck: false): declarations of ${checked.join(', ')} are clean`);
+}
+
 function checkTypes(project: string): void {
   const entry = [
     `import { createAgent, defineTool } from '${SDK_NAME}';`,
@@ -165,6 +227,7 @@ function checkTypes(project: string): void {
     if (res.status !== 0) fail(`tsc (${name}) failed:\n${res.stdout}${res.stderr}`);
     else log(`tsc --noEmit (${name}): root + ./testing + ./tools + ./hooks types resolve`);
   }
+  checkStrictLibs(project, tsc);
 }
 
 function main(): void {

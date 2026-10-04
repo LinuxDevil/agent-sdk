@@ -2,9 +2,16 @@ import { describe, it, expect } from 'vitest';
 import type { Tool } from 'ai';
 import { exactMatch, toolCallOrder, budget, describeBudgetFailure } from './scorers';
 import { AgentExecutor, ExecutionResult } from '../execution/AgentExecutor';
+import { emptyRunUsage } from '../execution/runUsage';
 import { ToolCall, LLMProvider, GenerateOptions, GenerateResult } from '../providers/llm';
 import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
+import type { RunUsage } from '../models/usage';
+
+/** A full RunUsage with token counts (LOU-V5's shape: `promptTokens`/`completionTokens` are aliases of the in/out fields). */
+function fakeUsage(inputTokens: number, outputTokens: number, totalTokens: number): RunUsage {
+  return { ...emptyRunUsage(), inputTokens, outputTokens, totalTokens, promptTokens: inputTokens, completionTokens: outputTokens };
+}
 
 function fakeResult(
   text: string,
@@ -15,7 +22,7 @@ function fakeResult(
     text,
     messages: [],
     toolCalls,
-    usage: overrides.usage ?? { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+    usage: overrides.usage ?? fakeUsage(0, 0, 0),
     finishReason: 'stop',
     steps: overrides.steps ?? 1,
   };
@@ -98,7 +105,7 @@ describe('budget', () => {
   it('scores 1 at 50% of the budget', () => {
     const scorer = budget({ maxTokens: 1000, maxSteps: 10 });
     const result = fakeResult('done', [], {
-      usage: { promptTokens: 300, completionTokens: 200, totalTokens: 500 },
+      usage: fakeUsage(300, 200, 500),
       steps: 5,
     });
     expect(scorer(result)).toBe(1);
@@ -107,7 +114,7 @@ describe('budget', () => {
   it('scores 0 at 150% of the budget', () => {
     const scorer = budget({ maxTokens: 1000, maxSteps: 10 });
     const result = fakeResult('done', [], {
-      usage: { promptTokens: 900, completionTokens: 600, totalTokens: 1500 },
+      usage: fakeUsage(900, 600, 1500),
       steps: 15,
     });
     expect(scorer(result)).toBe(0);
@@ -250,7 +257,7 @@ describe('describeBudgetFailure', () => {
   it('includes both the actual and budgeted numbers as substrings', () => {
     const limits = { maxTokens: 1000, maxSteps: 10 };
     const result = fakeResult('done', [], {
-      usage: { promptTokens: 900, completionTokens: 600, totalTokens: 1500 },
+      usage: fakeUsage(900, 600, 1500),
       steps: 15,
     });
     const message = describeBudgetFailure(result, limits);

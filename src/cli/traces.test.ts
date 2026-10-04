@@ -20,7 +20,7 @@ async function run(args: string[], options: { color?: boolean } = {}) {
   return { code, out: out.join('\n'), err: err.join('\n') };
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); });
 
 describe('lousho traces (M5a)', () => {
   it('lists the recent traces, newest first', async () => {

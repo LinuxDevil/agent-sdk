@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { z } from 'zod';
 import type { ToolDescriptor } from '../types';
 import type { EditorStep, AgentFlow } from '../types/flow';
 import type { FlowExecutionEvent } from './FlowExecutor';
@@ -29,20 +30,20 @@ describe('FlowExecutor', () => {
 
     toolRegistry = new ToolRegistry();
     toolRegistry.register('testTool', {
+      displayName: 'Test tool',
       tool: {
         description: 'Test tool',
-        parameters: {},
+        parameters: z.object({}),
         execute: async (args: unknown) => {
           return { success: true, input: args };
         },
       },
-      type: 'Test',
     });
 
     agent = {
       id: 'test-agent',
       name: 'Test Agent',
-      type: 'smart-assistant',
+      
       prompt: 'You are a helpful assistant',
       settings: {
         model: 'gpt-4',

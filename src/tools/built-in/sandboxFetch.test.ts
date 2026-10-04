@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { SandboxAdapter, SandboxRunOptions, SandboxResult } from '../../security/sandboxCore';
+import type { ToolExecutionContext } from '../../types';
 import { NoopSandbox } from '../../security/sandboxCore';
 import { sandboxHttpFetch } from './sandboxFetch';
 import { createHttpTool } from './http';
@@ -78,9 +79,7 @@ describe('sandboxHttpFetch cancellation (LOU-U17)', () => {
   it('http tool sandboxExecute forwards its abortSignal to the sandbox', async () => {
     const { sandbox, run } = hangingSandbox();
     const controller = new AbortController();
-    const pending = createHttpTool().sandboxExecute!({ url: 'http://93.184.216.34/', method: 'GET' }, sandbox, {
-      abortSignal: controller.signal,
-    });
+    const pending = createHttpTool().sandboxExecute!({ url: 'http://93.184.216.34/', method: 'GET' }, sandbox, { abortSignal: controller.signal } as ToolExecutionContext);
     await vi.waitFor(() => expect(run).toHaveBeenCalled());
     expect(firstRunOptions(run).signal).toBeDefined();
 
@@ -92,9 +91,7 @@ describe('sandboxHttpFetch cancellation (LOU-U17)', () => {
     const { sandbox, run } = hangingSandbox();
     const controller = new AbortController();
     const descriptor = createSlackTool({ webhookUrl: 'https://hooks.slack.test/services/mock' });
-    const pending = descriptor.sandboxExecute!({ channel: '#c', message: 'm', approvalId: 'a' }, sandbox, {
-      abortSignal: controller.signal,
-    });
+    const pending = descriptor.sandboxExecute!({ channel: '#c', message: 'm', approvalId: 'a' }, sandbox, { abortSignal: controller.signal } as ToolExecutionContext);
     await vi.waitFor(() => expect(run).toHaveBeenCalled());
     expect(firstRunOptions(run).signal).toBe(controller.signal);
 

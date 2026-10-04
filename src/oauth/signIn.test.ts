@@ -18,7 +18,7 @@ import { MemoryTokenStore } from './memoryTokenStore';
 import { ALICE, BOB, challengeOf, fakeOAuthServer, githubProvider, listReposTool, type FakeOAuthServer } from './__fixtures__/fakeOAuth';
 import type { TokenOwner } from './types';
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); });
 
 const ALICE_OWNER: TokenOwner = { owner: 'user', principalId: 'alice', issuer: 'https://id.example.com' };
 const CALL = { toolCalls: [{ name: 'list_repos', id: 'call_1', args: {} }] };
@@ -152,7 +152,8 @@ describe('ctx.getToken(): pause until sign-in (N9b)', () => {
     const { agent } = setup();
     await agent.send('List my repositories.', { principal: ALICE });
     const [pending] = await agent.approvals.list();
-    const failure = await agent.oauth.complete({ state: stateOf(pending.signIn?.url ?? ''), code: 'stolen-code-123' }).catch((error: unknown) => error as Error & { code: string });
+    const failure: unknown = await agent.oauth.complete({ state: stateOf(pending.signIn?.url ?? ''), code: 'stolen-code-123' }).catch((error: unknown) => error);
+    if (!(failure instanceof Error)) throw new Error('expected oauth.complete() to reject');
     expect(failure).toMatchObject({ code: 'LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED' });
     expect(failure.message).toContain('HTTP 400 (invalid_grant)');
     expect(failure.message).not.toContain('stolen-code-123');

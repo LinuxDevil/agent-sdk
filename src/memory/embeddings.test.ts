@@ -99,9 +99,9 @@ describe('aiSdkEmbedder', () => {
   it('retries loading ai after a failure, and reports a missing ai with the install command', async () => {
     vi.resetModules();
     const loadAi = vi
-      .fn<() => Promise<AiEmbedModule>>()
+      .fn<[], Promise<AiEmbedModule>>()
       .mockRejectedValueOnce(new MissingPeerDependencyError('ai', 'npm install ai'))
-      .mockResolvedValue({ embedMany: async ({ values }) => ({ embeddings: values.map(() => [1]) }) });
+      .mockResolvedValue({ embedMany: async ({ values }: { values: string[] }) => ({ embeddings: values.map(() => [1]) }) });
     const embedder = createAiSdkEmbedder(fakeModel('v1').model, {}, loadAi);
     await expect(embedder.embed(['a'])).rejects.toBeInstanceOf(MissingPeerDependencyError);
     expect(await embedder.embed(['a'])).toEqual([[1]]);

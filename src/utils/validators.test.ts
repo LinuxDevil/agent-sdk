@@ -105,7 +105,7 @@ describe('validator utilities', () => {
     });
 
     it('should reject object missing keys', () => {
-      const obj = { name: 'test' };
+      const obj: Record<string, unknown> = { name: 'test' };
       expect(hasRequiredKeys(obj, ['name', 'age'])).toBe(false);
     });
 

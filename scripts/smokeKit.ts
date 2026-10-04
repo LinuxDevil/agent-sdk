@@ -60,7 +60,7 @@ export function mustRun(rep: Reporter, label: string, cmd: string, argv: string[
 }
 
 /** All `exports` subpaths with their targets, from the installed package.json. */
-function listExports(pkgDir: string): { subpath: string; spec: string; targets: string[] }[] {
+export function listExports(pkgDir: string): { subpath: string; spec: string; targets: string[] }[] {
   const pkg = JSON.parse(fs.readFileSync(path.join(pkgDir, 'package.json'), 'utf8'));
   return Object.entries<Record<string, string>>(pkg.exports).map(([subpath, conds]) => ({
     subpath,

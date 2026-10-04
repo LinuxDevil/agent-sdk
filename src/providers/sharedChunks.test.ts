@@ -65,7 +65,7 @@ describe('shared chunks across package entries (LOU-D42)', () => {
     expect(Object.create({ [Symbol.for('lousho.HookRegistry')]: true })).toBeInstanceOf(HookRegistry);
     expect(new Error('x')).not.toBeInstanceOf(SDKError);
     expect({}).not.toBeInstanceOf(HookRegistry);
-    expect(null instanceof SDKError).toBe(false);
+    expect((null as unknown as object) instanceof SDKError).toBe(false);
   });
 
   it('every package.json exports target exists in dist/', () => {

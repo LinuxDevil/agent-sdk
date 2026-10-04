@@ -284,7 +284,7 @@ describe('useTodos (N12)', () => {
   it('follows a remote run, which now also receives agent.drift', async () => {
     const remote = scriptedFetch([{ body: sse([
   { ...base, seq: 0, type: 'run.start', agentName: 'a' },
-  { ...base, seq: 1, type: 'agent.drift', model: { from: 'a', to: 'b' }, toolsAdded: [], toolsRemoved: [], instructions: false },
+  { ...base, seq: 1, type: 'agent.drift', model: { from: 'a', to: 'b' }, toolsAdded: [], toolsRemoved: [], toolsChanged: [], instructions: false },
   { ...base, seq: 2, type: 'todo.updated', toolCallId: 'w1', todos: [{ id: 'todo_1', content: 'Plan', status: 'completed' }, { id: 'todo_2', content: 'Build', status: 'pending' }], counts: { pending: 1, in_progress: 0, completed: 1, total: 2 } },
   { ...base, seq: 3, type: 'run.done', finishReason: 'stop', text: '' },
 ]) }]);

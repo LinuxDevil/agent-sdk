@@ -44,7 +44,7 @@ function setup(options: { signingSecret?: string; logger?: Logger } = {}) {
 type Built = { headers: Record<string, string | undefined>; rawBody: string };
 
 describe('SlackTriggerAdapter signature verification', () => {
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => { vi.useRealTimers(); });
 
   it('accepts a correctly signed request and runs the agent', async () => {
     const { adapter, onEvent } = setup({ signingSecret: SECRET });

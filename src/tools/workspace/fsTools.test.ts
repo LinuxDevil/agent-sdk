@@ -13,7 +13,8 @@ function toolsByName(fs: FsProvider, options?: FsToolsOptions): Record<string, D
 
 /** Calls a tool's execute directly (no agent loop). */
 function call(tool: DefinedTool, args: Record<string, unknown>, abortSignal?: AbortSignal): Promise<unknown> {
-  return tool.tool.execute!(args, { toolCallId: 't', messages: [], abortSignal });
+  // ai's Tool.execute returns PromiseLike; wrap it so callers get a real Promise.
+  return Promise.resolve(tool.tool.execute!(args, { toolCallId: 't', messages: [], abortSignal }));
 }
 
 describe('createFsTools on MemoryWorkspace (LOU-X6)', () => {

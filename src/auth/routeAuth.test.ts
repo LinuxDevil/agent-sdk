@@ -13,7 +13,7 @@ const request = () => new Request('https://agent.test/chat');
 const user = (id: string): Principal => ({ id, type: 'user', authenticator: 'custom' });
 const skip: AuthFn = () => null;
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); });
 
 describe('routeAuth (N10a)', () => {
   it('walks the list in order and the first principal wins', async () => {
@@ -47,7 +47,9 @@ describe('routeAuth (N10a)', () => {
       const outcome = await routeAuth(bearer(token), entries);
       const { response } = outcome as { response: Response };
       expect(response.status).toBe(401);
-      bodies.add(`${[...response.headers].sort().join('|')} ${await response.text()}`);
+      const headerPairs: string[] = [];
+      response.headers.forEach((value, key) => headerPairs.push(`${key}=${value}`));
+      bodies.add(`${headerPairs.sort().join('|')} ${await response.text()}`);
     }
     expect(bodies.size).toBe(1);
   });

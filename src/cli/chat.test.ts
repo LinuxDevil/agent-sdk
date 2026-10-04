@@ -277,7 +277,7 @@ describe('lousho chat command', () => {
   const run = async (
     args: string[],
     lines: string[],
-    overrides: Parameters<typeof runChat>[1] extends infer T ? (T extends { overrides?: infer O } ? O : never) : never
+    overrides?: Parameters<typeof runChat>[1] extends infer T ? (T extends { overrides?: infer O } ? O : never) : never
   ) => {
     const stdin = new PassThrough();
     const out = sink();

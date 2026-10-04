@@ -10,6 +10,7 @@ import { mockModel, type MockTurn } from '../../testing';
 import type { ApproveToolCall } from '../../createAgentApprovals';
 import type { AgentEvent } from '../../execution/agentEvents';
 import type { Message } from '../../providers';
+import type { ToolExecutionContext } from '../../types';
 import { askQuestionTool } from './askQuestion';
 
 const asking = (args: Record<string, unknown>): MockTurn => ({ toolCalls: [{ name: 'ask_question', args, id: 'call_q' }] });
@@ -111,9 +112,9 @@ describe('ask_question (LOU-X9)', () => {
   it('is only registered with askQuestion: true; run without an answer it fails', async () => {
     const model = mockModel(['Hi.']);
     await createAgent({ provider: model }).send('Hi');
-    expect(model.lastCall?.tools?.map((tool) => tool.name) ?? []).not.toContain('ask_question');
+    expect(model.lastCall?.tools?.map((tool) => tool.function.name) ?? []).not.toContain('ask_question');
 
-    const ctx = { toolCallId: 'c1', messages: [] };
+    const ctx = { toolCallId: 'c1', messages: [] } as unknown as ToolExecutionContext;
     await expect(askQuestionTool().execute({ question: 'Where?' }, ctx)).rejects.toThrow(/No answer/);
   });
 });

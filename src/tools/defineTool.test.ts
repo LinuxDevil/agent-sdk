@@ -93,7 +93,8 @@ describe('ToolRegistry.register(tool)', () => {
   it('rejects non-defined tools and a missing descriptor', () => {
     const registry = new ToolRegistry();
     expect(() => registry.register({ displayName: 'x', tool: {} } as never)).toThrow(/defineTool/);
-    expect(() => (registry.register as (n: string) => void)('x')).toThrow(/descriptor is required/);
+    // register() is overloaded; the cast narrows to the (name, descriptor) signature missing its second arg.
+    expect(() => (registry.register as unknown as (n: string) => void)('x')).toThrow(/descriptor is required/);
   });
 
   it('registerMany accepts an array of defined tools', () => {
@@ -141,9 +142,10 @@ describe('entry points', () => {
       .addTool(makeEmail())
       .addTool('legacy', { tool: 'legacy' })
       .build();
-    expect(agent.tools.send_email).toEqual({ tool: 'send_email', description: 'Send an email' });
-    expect(agent.tools.legacy).toEqual({ tool: 'legacy' });
-    expect(() => (AgentBuilder.create().addTool as (k: string) => void)('x')).toThrow(
+    expect(agent.tools!.send_email).toEqual({ tool: 'send_email', description: 'Send an email' });
+    expect(agent.tools!.legacy).toEqual({ tool: 'legacy' });
+    // addTool() is overloaded; the cast narrows to the (key, config) signature missing its second arg.
+    expect(() => (AgentBuilder.create().addTool as unknown as (k: string) => void)('x')).toThrow(
       /configuration is required/
     );
   });

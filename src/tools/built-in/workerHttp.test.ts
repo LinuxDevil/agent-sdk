@@ -8,7 +8,7 @@ import { createWorkerHttpTool, parseHostAllowList, WorkerHttpToolOptions } from 
 import { createHttpTool } from './http';
 import { ipFamily } from './httpCore';
 import { getToolExecute } from '../toolContract';
-import { ToolExecutionContext } from '../../types';
+import { NamedToolDescriptor, ToolExecutionContext } from '../../types';
 
 type Route = (url: string, init: RequestInit) => Response | Promise<Response>;
 
@@ -33,8 +33,9 @@ const redirect = (location: string) => new Response(null, { status: 302, headers
 
 describe('createWorkerHttpTool', () => {
   it('has the Node tool\'s name and input schema, and needs no sandbox', () => {
-    const worker = createWorkerHttpTool({ allow: [] });
-    const node = createHttpTool();
+    // defineTool() sets `name`; the factories' declared return type is ToolDescriptor, which doesn't carry it.
+    const worker = createWorkerHttpTool({ allow: [] }) as NamedToolDescriptor;
+    const node = createHttpTool() as NamedToolDescriptor;
     expect(worker.name).toBe('http_request');
     expect(worker.name).toBe(node.name);
     expect(worker.inputSchema).toBe(node.inputSchema);
