@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { FlowExecutor, MockLLMProvider, type AgentConfig } from '@lousho/build-ai-agent';
+import { MockLLMProvider, type AgentConfig } from '@lousho/build-ai-agent';
+import { FlowExecutor } from '@lousho/build-ai-agent/flows';
 import { graphToFlow, hasRouterNode } from '../graphToFlow';
 import { graphToSpec } from '../graphToSpec';
 import type { AgentGraphSpec } from '../types';

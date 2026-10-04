@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { FlowInputVariable, FlowInputType } from '../types';
+import { FlowInputVariable, FlowInputType } from '../types/flow';
 
 /**
  * Extract variable names from a string in the format @variableName

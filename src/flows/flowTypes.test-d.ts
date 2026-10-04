@@ -1,5 +1,5 @@
 import { describe, it, expectTypeOf } from 'vitest';
-import type { EditorStep } from '../types';
+import type { EditorStep } from '../types/flow';
 
 describe('EditorStep covers every node kind FlowExecutor runs', () => {
   it('accepts executor-side nodes without a cast', () => {

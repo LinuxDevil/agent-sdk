@@ -20,8 +20,8 @@ export * from './agent-types';
 // Tools
 export * from './tools';
 
-// Flows
-export * from './flows';
+// Flows moved to '@lousho/build-ai-agent/flows' (A1).
+
 
 
 // Providers
@@ -36,8 +36,7 @@ export * from './evals';
 // Security
 export * from './security';
 
-// Storage
-export * from './storage';
+// Storage moved to '@lousho/build-ai-agent/utils' (A1).
 
 
 // Token estimation and model registry (LOU-W1)
@@ -46,8 +45,10 @@ export * from './models';
 // Context compaction (LOU-W2)
 export * from './context';
 
-// Utils
-export * from './utils';
+// Utils: the error helpers stay on the root; encryption, StorageService and
+// the validators moved to '@lousho/build-ai-agent/utils' (A1).
+export * from './utils/errors';
+export * from './utils/errorCodes';
 
 // createAgent() convenience API (LOU-H1)
 export * from './createAgent';

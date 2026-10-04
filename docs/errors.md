@@ -295,7 +295,7 @@ of a spec field and would be ignored. Other unknown fields are still ignored.
 agent spec has no field for.
 
 **Fix:** build the agent with `createAgent()` and pass the configured tool, e.g.
-from `createGitHubTools(config)`.
+`createGitHubTools(config)` from `@lousho/build-ai-agent/integrations`.
 
 **Example:** `tools: [github]` in a spec.
 

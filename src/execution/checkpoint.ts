@@ -4,7 +4,7 @@
  */
 
 import type { Message } from '../providers';
-import { readJSONAttachmentLocked, type StorageService } from '../storage';
+import { readJSONAttachmentLocked, type StorageService } from '../storage/StorageService';
 import type { StepUsage } from '../models/usage';
 import type { CheckpointUsage } from './runUsage';
 import type { AgentFingerprint } from './agentFingerprint';

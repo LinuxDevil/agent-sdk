@@ -379,7 +379,8 @@ call it corresponds to.
 `agent.send(message, { sessionId })`:
 
 ```ts
-import { AgentExecutor, LocalStorageCheckpointStore } from '@lousho/build-ai-agent';
+import { AgentExecutor } from '@lousho/build-ai-agent';
+import { LocalStorageCheckpointStore } from '@lousho/build-ai-agent/utils';
 
 const checkpoints = new LocalStorageCheckpointStore(storage);
 

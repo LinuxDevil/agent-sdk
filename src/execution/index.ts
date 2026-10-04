@@ -6,10 +6,43 @@
 export * from './AgentExecutor';
 export * from './DelegationTool';
 export * from './errors';
-export * from './ApprovalGate';
+// A1: StorageServiceApprovalStore moved to '@lousho/build-ai-agent/utils'.
+export {
+  ASK_QUESTION_TOOL_NAME,
+  describeApproval,
+  type ApprovalDecision,
+  type ApprovalKind,
+  type ApprovalQuestion,
+  type ApprovalSignIn,
+  type ApprovalStore,
+  type ExecutionSnapshot,
+  type PausedBackgroundTask,
+  type PendingApproval,
+  type ResolvedApproval,
+  type SubagentSuspension,
+  type SuspendedBackgroundTasks,
+} from './ApprovalGate';
 export { InMemoryApprovalStore } from './InMemoryApprovalStore';
 export * from './resume';
-export * from './checkpoint';
+// A1: LocalStorageCheckpointStore moved to '@lousho/build-ai-agent/utils'.
+export {
+  appendToRing,
+  DEFAULT_CHECKPOINT_HISTORY_LIMIT,
+  getCheckpointHistory,
+  newestFirst,
+  resolveHistoryLimit,
+  RUN_CONFIG_KEY,
+  toHistoryEntry,
+  type Checkpoint,
+  type CheckpointDeleteOptions,
+  type CheckpointHistoryEntry,
+  type CheckpointHistoryOptions,
+  type CheckpointStatus,
+  type CheckpointStore,
+  type ForkOptions,
+  type ForkPatch,
+  type ForkResult,
+} from './checkpoint';
 export * from './tracing';
 export * from './semconv';
 export * from './logger';

@@ -20,7 +20,7 @@ import {
   SetVariableNode,
   ThrowNode,
   ToolCallNode,
-} from '../types';
+} from '../types/flow';
 import { AgentConfig } from '../types';
 import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from '../execution/sandboxGuard';

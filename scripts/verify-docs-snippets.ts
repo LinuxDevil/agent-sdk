@@ -63,7 +63,7 @@ const PLACEHOLDERS: Record<string, string> = {
   provider: `${SDK}.LLMProvider`,
   registry: `${SDK}.ToolRegistry`,
   toolRegistry: `${SDK}.ToolRegistry`,
-  storage: `${SDK}.StorageService`,
+  storage: `import('@lousho/build-ai-agent/utils').StorageService`,
   approvalStore: `${SDK}.ApprovalStore`,
   checkpointStore: `${SDK}.CheckpointStore`,
   mcpClient: "import('@modelcontextprotocol/sdk/client/index.js').Client",

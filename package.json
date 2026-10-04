@@ -33,6 +33,16 @@
       "import": "./dist/flows/index.mjs",
       "require": "./dist/flows/index.js"
     },
+    "./integrations": {
+      "types": "./dist/integrations/index.d.ts",
+      "import": "./dist/integrations/index.mjs",
+      "require": "./dist/integrations/index.js"
+    },
+    "./utils": {
+      "types": "./dist/utils/index.d.ts",
+      "import": "./dist/utils/index.mjs",
+      "require": "./dist/utils/index.js"
+    },
     "./mcp": {
       "types": "./dist/tools/mcp/index.d.ts",
       "import": "./dist/tools/mcp/index.mjs",

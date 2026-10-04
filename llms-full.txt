@@ -442,6 +442,30 @@ hazard), so a class from one is not `===` the other. `instanceof SDKError` and
 `instanceof HookRegistry` are safe across the two copies (they check a
 `Symbol.for` brand); for other classes, use one module format per process.
 
+The entries `exports` declares, and what each one holds:
+
+| Import specifier | What it holds |
+| ---------------- | ------------- |
+| `@lousho/build-ai-agent` | The root: `createAgent()`, `defineTool()`, `defineChannel()`, agents' public types, events, stores (`memoryStore()`, `fileStore()`), hooks, guardrails, sessions, skills, memory, sub-agents, evals, spec files, deployment types |
+| `@lousho/build-ai-agent/core` | `AgentBuilder` (the lower-level agent builder; advanced - prefer `createAgent()`) |
+| `@lousho/build-ai-agent/tools` | The tools surface: `defineTool()`, `ToolRegistry`, the built-in tools, MCP/OpenAPI helpers |
+| `@lousho/build-ai-agent/flows` | `FlowBuilder`, `FlowExecutor`, `validateFlow()` and every flow type (`AgentFlow`, `EditorStep`, `FlowExecutionEvent`, ...) |
+| `@lousho/build-ai-agent/integrations` | The credentialed third-party tools: `createJiraTools()`, `createGitHubTools()`, `createSlackTool()` / `slackTool`, `postSlackAlert()`, `createEmailTool()` and their types |
+| `@lousho/build-ai-agent/utils` | `EncryptionUtils`, `sha256()`, `generatePassword()`, `StorageService`, `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` and the validators (`validateWithSchema`, `isValidEmail`, ...) |
+| `@lousho/build-ai-agent/mcp` | MCP client and server helpers: `connectMcp()`, `loadMcpTools()`, `serveMcp()` |
+| `@lousho/build-ai-agent/types` | The public types without the runtime |
+| `@lousho/build-ai-agent/testing` | `mockModel()`, `recordReplay()` and the offline-test helpers |
+| `@lousho/build-ai-agent/otel` | `createOtelTraceExporter()` (needs the optional `@opentelemetry/api` peer) |
+| `@lousho/build-ai-agent/hooks` | The hooks surface: `HookRegistry`, hook types |
+| `@lousho/build-ai-agent/sqlite` | `SqliteStore` (sessions, checkpoints, approvals and tokens in one SQLite file; needs Node's `node:sqlite`) |
+| `@lousho/build-ai-agent/auth` | Route auth: `routeAuth()`, `jwt()`, `oidc()`, `basic()`, `apiToken()`, `anonymous()` |
+| `@lousho/build-ai-agent/kv` | `KVStore`, `KVCheckpointStore` for a hand-written Cloudflare Worker |
+| `@lousho/build-ai-agent/traces` | `fileTraceExporter()`, `listTraces()`, `readTrace()` (what `lousho traces` reads) |
+| `@lousho/build-ai-agent/triggers` | `WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter`, `TriggerRegistry` |
+| `@lousho/build-ai-agent/react` | `useLoushoAgent()` and the React helpers (needs `react`) |
+| `@lousho/build-ai-agent/vue` | `useLoushoAgent()` as a Vue composable (needs `vue`) |
+| `@lousho/build-ai-agent/svelte` | `loushoAgent()` as a Svelte store |
+
 ## Installing from a local build
 
 To try an unreleased commit, build and pack the SDK from a checkout of this
@@ -920,7 +944,7 @@ How the pieces fit:
 | `AgentType`                   | Deprecated, no runtime effect: agents need no type.                        |
 | `resumeAfterApproval()`       | Resume an execution paused for human approval. Advanced: see [the executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md). |
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
-| `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md), [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). |
+| `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` (from `/utils`) | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md), [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). |
 | `SqliteStore` (from `/sqlite`) | Sessions, checkpoints and approvals in one SQLite file (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
 | `fileStore(dir)`              | Sessions, checkpoints and approvals as plain JSON files under `dir` (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
 | `KVStore`, `KVCheckpointStore` (from `/kv`) | Stores on a Cloudflare Workers KV binding, for a hand-written Worker (see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)). |
@@ -1187,7 +1211,8 @@ Token estimates, the model price table, and the usage and cost of a run: see [Mo
 
 ## Flows, evals, observability and security
 
-- `FlowBuilder` / `FlowExecutor` - multi-step workflow graphs; see [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md).
+- `FlowBuilder` / `FlowExecutor` (`@lousho/build-ai-agent/flows`) - multi-step
+  workflow graphs; see [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md).
 - `WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter` and `TriggerRegistry`
   (`@lousho/build-ai-agent/triggers`) - wake an agent from a webhook, a Slack
   message or a schedule; see [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md).
@@ -1213,7 +1238,8 @@ Token estimates, the model price table, and the usage and cost of a run: see [Mo
 - `HookRegistry`, `AgentHook`, `HookContext`, `ToolCallHookContext`,
   `GenerateHookContext` - hooks that observe, deny, rewrite or redact tool calls
   and model calls. See [Hooks](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hooks.md).
-- `EncryptionUtils`, `sha256`, `StorageService` - supporting utilities; see
+- `EncryptionUtils`, `sha256`, `StorageService`
+  (`@lousho/build-ai-agent/utils`) - supporting utilities; see
   [Utilities](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/utilities.md).
 
 ## Deployment
@@ -2422,7 +2448,8 @@ tool. Resume later, after a real restart if you like, with
 `resumeAfterApproval()`:
 
 ```ts
-import { AgentExecutor, resumeAfterApproval, StorageServiceApprovalStore } from '@lousho/build-ai-agent';
+import { AgentExecutor, resumeAfterApproval } from '@lousho/build-ai-agent';
+import { StorageServiceApprovalStore } from '@lousho/build-ai-agent/utils';
 
 const approvalStore = new StorageServiceApprovalStore(storage);
 
@@ -5953,7 +5980,8 @@ call it corresponds to.
 `agent.send(message, { sessionId })`:
 
 ```ts
-import { AgentExecutor, LocalStorageCheckpointStore } from '@lousho/build-ai-agent';
+import { AgentExecutor } from '@lousho/build-ai-agent';
+import { LocalStorageCheckpointStore } from '@lousho/build-ai-agent/utils';
 
 const checkpoints = new LocalStorageCheckpointStore(storage);
 
@@ -6353,7 +6381,7 @@ of a spec field and would be ignored. Other unknown fields are still ignored.
 agent spec has no field for.
 
 **Fix:** build the agent with `createAgent()` and pass the configured tool, e.g.
-from `createGitHubTools(config)`.
+`createGitHubTools(config)` from `@lousho/build-ai-agent/integrations`.
 
 **Example:** `tools: [github]` in a spec.
 
@@ -7486,7 +7514,7 @@ Describe the graph with `FlowBuilder` and run it with the static
 `FlowExecutor.execute(flow, context, onEvent?)`.
 
 ```ts
-import { FlowBuilder, FlowExecutor, type EditorStep } from '@lousho/build-ai-agent';
+import { FlowBuilder, FlowExecutor, type EditorStep } from '@lousho/build-ai-agent/flows';
 
 // FlowBuilder is a metadata builder: setCode/setName/setInputs/setFlow(...).build().
 // EditorStep covers every node type FlowExecutor runs ('sequence', 'llmCall',
@@ -14441,7 +14469,7 @@ its kind by carrying a `toolErrorKind` property. An error extending
 | `createTodoTools()` | `todo_write` / `todo_read` so an agent can plan multi-step work; see [Todo tools](#todo-tools). |
 | `askQuestionTool()`, `createAgent({ askQuestion: true })` | `ask_question`: the agent asks the user something and the run pauses until `agent.approvals.answer()`; see [Asking the user a question](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#asking-the-user-a-question). |
 | `createFsTools()`, `createShellTool()` | File system and shell tools for coding agents; see [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md). |
-| `createEmailTool()`, `createSlackTool()`, `createGitHubTools()`, `createJiraTools()` | Integrations that need credentials, so they are built with options. |
+| `createEmailTool()`, `createSlackTool()`, `createGitHubTools()`, `createJiraTools()` (from `@lousho/build-ai-agent/integrations`) | Integrations that need credentials, so they are built with options. |
 | `createAgent({ mcpServers })`, `connectMcp(servers)` | Every tool of MCP servers given as config (stdio `command` or HTTP `url`), named `<server>__<tool>`; see [Use MCP servers in an agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#use-mcp-servers-in-an-agent). |
 | `openApiTools(document, options)` | One tool per operation of an OpenAPI 3.0 / 3.1 document; mutating operations ask for approval. See [OpenAPI tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/openapi-tools.md). |
 | `loadMcpTools(client, name)` | Every tool of a connected MCP server; see [MCP tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#tools-from-a-client-you-connected-yourself). |
@@ -15039,14 +15067,14 @@ Never paste an API key.
 
 Source: docs/utilities.md
 
-Supporting helpers exported from the package root: encryption and hashing,
-and file storage for attachments. None of them is needed
-to build an agent; they are here for the apps around one.
+Supporting helpers exported from the `@lousho/build-ai-agent/utils` subpath:
+encryption and hashing, and file storage for attachments. None of them is
+needed to build an agent; they are here for the apps around one.
 
 ## Encryption and hashing
 
 ```ts
-import { EncryptionUtils, sha256 } from '@lousho/build-ai-agent';
+import { EncryptionUtils, sha256 } from '@lousho/build-ai-agent/utils';
 
 const encryption = new EncryptionUtils('your-secret-key');
 const encrypted = await encryption.encrypt('sensitive data'); // fresh random salt every call
@@ -15067,7 +15095,7 @@ as-is. It is also what `StorageServiceApprovalStore` and
 `LocalStorageCheckpointStore` write through.
 
 ```ts
-import { StorageService } from '@lousho/build-ai-agent';
+import { StorageService } from '@lousho/build-ai-agent/utils';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 

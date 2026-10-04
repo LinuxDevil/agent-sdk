@@ -1,5 +1,5 @@
 import { newId } from '../utils/id';
-import { EditorStep, AgentFlow, FlowAgentDefinition, FlowInputVariable } from '../types';
+import { EditorStep, AgentFlow, FlowAgentDefinition, FlowInputVariable } from '../types/flow';
 import { SDKError } from '../execution/errors';
 import { isCreateAgentResult } from './validators';
 

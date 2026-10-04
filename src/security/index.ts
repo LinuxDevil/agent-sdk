@@ -4,11 +4,8 @@
  * Provides cryptographic utilities, sandboxing, and security-related functions
  */
 
-// Types
-export * from './types';
-
-// Crypto utilities
-export * from './crypto';
+// A1: './types' and './crypto' moved to '@lousho/build-ai-agent/utils'
+// (src/utils/index.ts re-exports them).
 
 // Sandboxing (LOU-F4/F5/F6)
 export * from './sandbox';

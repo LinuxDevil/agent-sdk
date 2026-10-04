@@ -27,7 +27,7 @@ const NEVER_LOADED_AT_IMPORT = [
   'node:sqlite', // LOU-W5: only the lazily-loaded /sqlite subpath may use it, and only when a store is constructed
 ];
 
-const ENTRY_POINTS = ['index', 'core/index', 'tools/index', 'tools/mcp/index', 'flows/index', 'testing/index', 'storage/sqlite/index', 'svelte/index'];
+const ENTRY_POINTS = ['index', 'core/index', 'tools/index', 'tools/mcp/index', 'flows/index', 'integrations/index', 'utils/index', 'testing/index', 'storage/sqlite/index', 'svelte/index'];
 
 /** LOU-P2, LOU-P3: the react and vue entries import their own framework and not the others (`svelte/index` is in ENTRY_POINTS: it loads none). */
 const OTHER_FRAMEWORKS: Record<string, string[]> = {

@@ -14,7 +14,6 @@ import { fileTraceExporter } from '@lousho/build-ai-agent/traces';
 import { agentTraceDir, fanOutExporter } from './traceStore';
 import {
   AgentExecutor,
-  FlowExecutor,
   ToolRegistry,
   type AgentEvent,
   type CheckpointStore,
@@ -31,6 +30,7 @@ import {
   type ForkPatch,
   type TrajectoryComparison,
 } from '@lousho/build-ai-agent';
+import { FlowExecutor, type AgentFlow } from '@lousho/build-ai-agent/flows';
 import { buildAgentFromSpec, extractFlowFromSpec } from './buildAgent';
 import { withAbortSignal, RunAbortedError } from './abortableProvider';
 import { FileApprovalStore } from './approvalStore';
@@ -596,7 +596,7 @@ export class RunManager extends EventEmitter {
    */
   private runFlow(
     agentId: string,
-    flow: import('@lousho/build-ai-agent').AgentFlow,
+    flow: AgentFlow,
     deps: {
       agent: import('@lousho/build-ai-agent').AgentConfig;
       provider: import('@lousho/build-ai-agent').LLMProvider;
