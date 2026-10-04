@@ -77,24 +77,24 @@ describe('fileStore(dir) (R2)', () => {
     await save(store, 's', 1);
     await save(store, 's', 2);
     expect((await store.checkpoints.load('s'))?.stepIndex).toBe(2);
-    expect((await store.checkpoints.history('s')).map((entry) => entry.step)).toEqual([2, 1]);
+    expect((await store.checkpoints.history!('s')).map((entry) => entry.step)).toEqual([2, 1]);
     await store.checkpoints.delete('s');
     expect(await store.checkpoints.load('s')).toBeNull();
-    expect(await store.checkpoints.history('s')).toEqual([]);
+    expect(await store.checkpoints.history!('s')).toEqual([]);
   });
 
   it('honors historyLimit: 3 keeps the newest three, 0 keeps none, keepHistory keeps the ring', async () => {
     const small = fileStore(tempDir(), { historyLimit: 3 });
     for (let step = 0; step < 5; step++) await save(small, 's', step);
-    expect((await small.checkpoints.history('s')).map((entry) => entry.step)).toEqual([4, 3, 2]);
+    expect((await small.checkpoints.history!('s')).map((entry) => entry.step)).toEqual([4, 3, 2]);
     await small.checkpoints.delete('s', { keepHistory: true });
     expect(await small.checkpoints.load('s')).toBeNull();
-    expect((await small.checkpoints.history('s')).map((entry) => entry.step)).toEqual([4, 3, 2]);
+    expect((await small.checkpoints.history!('s')).map((entry) => entry.step)).toEqual([4, 3, 2]);
 
     const dir = tempDir();
     const off = fileStore(dir, { historyLimit: 0 });
     await save(off, 's', 1);
-    expect(await off.checkpoints.history('s')).toEqual([]);
+    expect(await off.checkpoints.history!('s')).toEqual([]);
     expect(readdirSync(dir)).not.toContain('checkpoint-history');
   });
 
@@ -103,9 +103,9 @@ describe('fileStore(dir) (R2)', () => {
     const store = fileStore(dir);
     await save(store, 's', 1);
     writeFileSync(join(dir, 'checkpoint-history', 's.json'), '[{"step":1,"savedAt":"20');
-    expect(await store.checkpoints.history('s')).toEqual([]);
+    expect(await store.checkpoints.history!('s')).toEqual([]);
     await save(store, 's', 2);
-    expect((await store.checkpoints.history('s')).map((entry) => entry.step)).toEqual([2]);
+    expect((await store.checkpoints.history!('s')).map((entry) => entry.step)).toEqual([2]);
   });
 
   it('approvals: resolve returns the record once, then null', async () => {

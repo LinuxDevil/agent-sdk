@@ -10,6 +10,7 @@ import { Readable } from 'node:stream';
 import { createAgent } from '../createAgent';
 import { mockModel } from '../testing';
 import type { ExecutionResult } from '../execution/AgentExecutor';
+import { emptyRunUsage } from '../execution/runUsage';
 import { WebhookTriggerAdapter, type WebhookTriggerHandle } from '../triggers/adapters/WebhookTriggerAdapter';
 import type { WebhookAuth } from '../triggers/webhookAuth';
 import { mountChannels } from './mountChannels';
@@ -49,7 +50,7 @@ const VECTORS: Vector[] = [
   { name: 'wrong bearer token', auth: { type: 'bearer', token: 's3cret-token' }, headers: () => ({ authorization: 'Bearer s3cret-tokeX' }), status: 401 },
 ];
 
-const okResult: ExecutionResult = { text: 'ok', messages: [], toolCalls: [], usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }, finishReason: 'stop', steps: 1 };
+const okResult: ExecutionResult = { text: 'ok', messages: [], toolCalls: [], usage: emptyRunUsage(), finishReason: 'stop', steps: 1 };
 
 /** The status (and parsed body) `mountChannels()` with `channel` answers `payload` with. */
 async function viaChannel(channel: Channel, payload: string, headers: Record<string, string>) {
@@ -69,7 +70,7 @@ describe('webhookChannel parity with WebhookTriggerAdapter (LOU-P7, D13 vectors)
   });
 
   async function viaAdapter(auth: WebhookAuth, payload: string, headers: Record<string, string>) {
-    const onEvent = vi.fn(async () => okResult);
+    const onEvent = vi.fn(async (_input: string) => okResult);
     handle = new WebhookTriggerAdapter({ host: '127.0.0.1', auth }).listen({ send: vi.fn() }, onEvent);
     await vi.waitFor(() => expect(handle?.port).toBeGreaterThan(0));
     const res = await fetch(`http://127.0.0.1:${handle.port}/`, { method: 'POST', body: payload, headers });

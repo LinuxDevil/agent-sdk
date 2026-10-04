@@ -18,7 +18,8 @@ const parts: ContentPart[] = [
   { type: 'text', text: 'What is in this photo?' },
   { type: 'image', image: bytes, mimeType: 'image/png' },
 ];
-const conversation = (messages: readonly Message[]) => messages.filter((m) => m.role !== 'system');
+// mockModel deep-freezes what the provider saw, so calls[i].messages is deeply readonly - not Message[].
+const conversation = (messages: readonly { readonly role: string }[]) => messages.filter((m) => m.role !== 'system');
 
 describe('toMessages()', () => {
   it('wraps a string or parts in one user message and passes Message[] through', () => {

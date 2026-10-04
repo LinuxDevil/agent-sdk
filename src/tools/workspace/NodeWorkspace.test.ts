@@ -20,7 +20,8 @@ let ws: NodeWorkspace;
 let tools: Record<string, DefinedTool>;
 
 function exec(tool: DefinedTool, args: Record<string, unknown>, abortSignal?: AbortSignal): Promise<unknown> {
-  return tool.tool.execute!(args, { toolCallId: 'n', messages: [], abortSignal });
+  // ai's Tool.execute returns PromiseLike; wrap it so callers get a real Promise.
+  return Promise.resolve(tool.tool.execute!(args, { toolCallId: 'n', messages: [], abortSignal }));
 }
 
 /** Creates a symlink, or returns the reason the OS refused (Windows needs a privilege for file symlinks). */

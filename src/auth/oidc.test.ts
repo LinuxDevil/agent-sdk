@@ -9,7 +9,7 @@ const DISCOVERY = `${ISSUER}/.well-known/openid-configuration`;
 const JWKS = 'https://login.example.test/keys';
 const AUD = 'client-123';
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); });
 
 describe('oidc() (N10a)', () => {
   it('discovers the key set once and accepts a token from the issuer', async () => {

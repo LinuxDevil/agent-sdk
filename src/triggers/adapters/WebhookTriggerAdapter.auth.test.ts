@@ -3,6 +3,7 @@ import http from 'node:http';
 import { createHmac } from 'node:crypto';
 import { WebhookTriggerAdapter, WebhookTriggerHandle, WebhookTriggerAdapterOptions } from './WebhookTriggerAdapter';
 import { ExecutionResult } from '../../execution/AgentExecutor';
+import { emptyRunUsage } from '../../execution/runUsage';
 import { Logger } from '../../execution/logger';
 import { RunnableAgent } from '../types';
 
@@ -11,7 +12,7 @@ const result: ExecutionResult = {
   text: 'ok',
   messages: [],
   toolCalls: [],
-  usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+  usage: emptyRunUsage(),
   finishReason: 'stop',
   steps: 1,
 };

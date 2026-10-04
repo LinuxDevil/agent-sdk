@@ -331,7 +331,8 @@ describe('MCP servers with OAuth (N9c)', () => {
     const statuses = [JSON.stringify(mcp.status())];
     server.revokeAll();
     results.push(await agent.send('three'));
-    await mcp.tools.linear__support.tool.execute!({ message: 'x' }, { toolCallId: 'c', messages: [] }).catch(record);
+    // ai's Tool.execute returns PromiseLike (no .catch); wrap it in a real Promise.
+    await Promise.resolve(mcp.tools.linear__support.tool.execute!({ message: 'x' }, { toolCallId: 'c', messages: [] })).catch(record);
     statuses.push(JSON.stringify(mcp.status()));
     await connectMcp({ linear: entry(server) }, { tokens: store.tokens }).catch(record);
     await connect({ linear: entry(server) }, { tokens: store.tokens, onError: 'skip', logger: captureLogger(lines) });

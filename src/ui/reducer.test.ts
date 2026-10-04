@@ -203,7 +203,7 @@ describe('reduceAgentEvents (LOU-D15)', () => {
   });
 
   it('ui.reset (LOU-P2) goes back to the empty chat', () => {
-    expect(reduce(send, { type: 'text.delta', text: 'Hi' }, { type: 'ui.reset' })).toBe(initialAgentUIState);
+    expect(reduce(send, ...events({ type: 'text.delta', text: 'Hi' }), { type: 'ui.reset' })).toBe(initialAgentUIState);
   });
 
   it('events without ui.send still build an assistant message', () => {

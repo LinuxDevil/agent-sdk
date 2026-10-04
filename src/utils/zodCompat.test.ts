@@ -30,7 +30,12 @@ function standardString(withJson: boolean): StandardSchemaV1<string> {
   return { '~standard': withJson ? { ...props, jsonSchema } : props } as StandardSchemaV1<string>;
 }
 
-const descriptor = (inputSchema: unknown): ToolDescriptor => ({ displayName: 't', inputSchema: inputSchema as StandardSchemaV1 });
+// validateToolArguments reads only `inputSchema`; `tool` is a required ToolDescriptor field but unused here.
+const descriptor = (inputSchema: unknown): ToolDescriptor => ({
+  displayName: 't',
+  inputSchema: inputSchema as StandardSchemaV1,
+  tool: {} as unknown as ToolDescriptor['tool'],
+});
 
 describe('zodCompat (LOU-D29)', () => {
   it('converts zod 4 and Standard JSON Schemas, and leaves zod 3 to the ai SDK', () => {

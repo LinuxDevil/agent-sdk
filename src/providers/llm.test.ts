@@ -70,7 +70,7 @@ describe('LLM Providers', () => {
 
       expect(result.text).toBe('Hello, world!');
       expect(result.finishReason).toBe('stop');
-      expect(result.usage.totalTokens).toBeGreaterThan(0);
+      expect(result.usage!.totalTokens).toBeGreaterThan(0);
     });
 
     it('should cycle through responses', async () => {
@@ -102,10 +102,10 @@ describe('LLM Providers', () => {
         ],
       });
 
-      expect(result.usage.promptTokens).toBeGreaterThan(0);
-      expect(result.usage.completionTokens).toBeGreaterThan(0);
-      expect(result.usage.totalTokens).toBe(
-        result.usage.promptTokens + result.usage.completionTokens
+      expect(result.usage!.promptTokens).toBeGreaterThan(0);
+      expect(result.usage!.completionTokens).toBeGreaterThan(0);
+      expect(result.usage!.totalTokens).toBe(
+        result.usage!.promptTokens + result.usage!.completionTokens
       );
     });
 
@@ -179,7 +179,7 @@ describe('LLM Providers', () => {
       });
 
       const usage = await result.usage;
-      expect(usage.totalTokens).toBeGreaterThan(0);
+      expect(usage!.totalTokens).toBeGreaterThan(0);
     });
 
     it('should support tools', () => {

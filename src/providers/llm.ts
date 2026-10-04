@@ -13,6 +13,7 @@ import { ensureBuiltinProviders } from './builtinProviders';
 
 import type { ReasoningOption } from './reasoning';
 import type { HostedTool, HostedToolType } from '../tools/hosted';
+import type { StandardSchemaV1 } from '../utils/zodCompat';
 
 /**
  * Message role types
@@ -149,7 +150,12 @@ export interface ToolDefinition {
   function: {
     name: string;
     description: string;
-    parameters: Record<string, unknown>;
+    /**
+     * The tool's input schema: a JSON Schema object, an `ai.jsonSchema()`
+     * wrapper, or a Standard Schema (e.g. a zod schema) - the providers all
+     * pass a Standard Schema through as `inputSchema`.
+     */
+    parameters: Record<string, unknown> | StandardSchemaV1;
   };
 }
 

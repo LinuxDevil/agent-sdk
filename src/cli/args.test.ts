@@ -9,7 +9,7 @@ import { parseEvalArgs, runEval } from './eval';
 import { parseMcpArgs, runMcp } from './mcp';
 import { parseStudioArgs, runStudio } from './studio';
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); });
 
 const SPEC: CommandSpec = {
   command: 'demo',

@@ -66,7 +66,7 @@ describe('mountFetchChannels (#298)', () => {
     let finish!: () => void;
     const gate = new Promise<void>((resolve) => (finish = resolve));
     const { channel } = recordingChannel({
-      async parse(req, respond) {
+      async parse(_req, respond) {
         respond(202, { accepted: true });
         await gate;
         return { sessionKey: 'u', input: 'hi', replyTo: null };
@@ -84,7 +84,7 @@ describe('mountFetchChannels (#298)', () => {
 
   it('awaits the turn when no waitUntil is given, then returns the early respond', async () => {
     const { channel, replies } = recordingChannel({
-      async parse(req, respond) {
+      async parse(_req, respond) {
         respond(202, { accepted: true });
         return { sessionKey: 'u', input: 'hi', replyTo: null };
       },

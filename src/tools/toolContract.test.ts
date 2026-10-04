@@ -38,7 +38,7 @@ describe('tool contract (LOU-D22)', () => {
     const result = await agent.send('go');
 
     expect(result.text).toBe('Sunny.');
-    expect(model.calls[0].tools?.[0].function).toMatchObject({ name: 'weather', parameters: input });
+    expect(model.calls[0]?.tools?.[0]?.function).toMatchObject({ name: 'weather', parameters: input });
     const [invalid, ok] = toolResults(result.messages);
     expect(invalid).toMatchObject({ error: 'ToolArgumentsValidationError' });
     expect(ok).toEqual({ city: 'Paris', temp: '21C' });
@@ -64,7 +64,7 @@ describe('tool contract (LOU-D22)', () => {
     expect(invalid).toMatchObject({ error: 'ToolArgumentsValidationError' });
     expect(ok).toBe('legacy:Rome');
     expect(execute).toHaveBeenCalledTimes(1);
-    expect(model.calls[0].tools?.[0].function.description).toBe('Legacy weather');
+    expect(model.calls[0]?.tools?.[0]?.function.description).toBe('Legacy weather');
   });
 
   it('prefers the canonical fields over the legacy tool and falls back to it', async () => {

@@ -6,7 +6,7 @@ const base = { name: 'bot', prompt: 'hi', provider: { type: 'mock', model: 'm' }
 function issues(mcpServers: unknown): string[] {
   const result = agentSpecSchema.safeParse({ ...base, mcpServers });
   if (result.success) throw new Error('expected validation to fail');
-  return result.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`);
+  return result.error.issues.map((issue) => `${(issue.path ?? []).join('.')}: ${issue.message}`);
 }
 
 describe('AgentSpec.mcpServers (LOU-D20)', () => {

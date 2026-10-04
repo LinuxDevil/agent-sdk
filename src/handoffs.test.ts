@@ -74,7 +74,7 @@ const toolNames = (model: MockModel, call: number) => (model.calls[call].tools ?
 const systemPrompts = (messages: readonly Message[]) => messages.filter((m) => m.role === 'system').map((m) => m.content);
 const handoffResult = (messages: readonly Message[]) => messages.find((m) => m.role === 'tool' && m.toolCallId === 'call_handoff');
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); });
 
 describe('handoffs (N6): send() and stream()', () => {
   it('send(): the target answers in the same run with its own prompt, model and tools; result.agentName names it', async () => {

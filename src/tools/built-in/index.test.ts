@@ -3,6 +3,18 @@ import { currentDateTool } from './currentDate';
 import { dayNameTool } from './dayName';
 import { httpTool, createHttpTool } from './http';
 import { createEmailTool } from './email';
+import { getToolExecute } from '../toolContract';
+import type { ToolExecutionContext } from '../../types';
+
+/** The minimal execution context: these built-in tools read no fields off it (N9b's getToken/requireAuth fail loudly if one ever does). */
+const ctx: ToolExecutionContext = {
+  toolCallId: 'test-call',
+  messages: [],
+  getToken: () => Promise.reject(new Error('index.test.ts has no token store')),
+  requireAuth: () => {
+    throw new Error('index.test.ts has no token store');
+  },
+};
 
 describe('Built-in Tools', () => {
   describe('currentDateTool', () => {
@@ -16,7 +28,7 @@ describe('Built-in Tools', () => {
     });
 
     it('should return ISO date string', async () => {
-      const result = await currentDateTool.tool.execute({}, {});
+      const result = await getToolExecute(currentDateTool)?.({}, ctx);
       expect(typeof result).toBe('string');
       expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
     });
@@ -28,31 +40,19 @@ describe('Built-in Tools', () => {
     });
 
     it('should return day name for given date', async () => {
-      const result = await dayNameTool.tool.execute(
-        { date: '2024-01-15', locale: 'en-US' },
-        {}
-      );
+      const result = await getToolExecute(dayNameTool)?.({ date: '2024-01-15', locale: 'en-US' }, ctx);
       expect(result).toBe('Monday');
     });
 
     it('should use default locale if not provided', async () => {
-      const result = await dayNameTool.tool.execute(
-        { date: '2024-01-15' },
-        {}
-      );
+      const result = await getToolExecute(dayNameTool)?.({ date: '2024-01-15' }, ctx);
       expect(typeof result).toBe('string');
-      expect(result.length).toBeGreaterThan(0);
+      expect((result as string).length).toBeGreaterThan(0);
     });
 
     it('should support different locales', async () => {
-      const resultEN = await dayNameTool.tool.execute(
-        { date: '2024-01-15', locale: 'en-US' },
-        {}
-      );
-      const resultPL = await dayNameTool.tool.execute(
-        { date: '2024-01-15', locale: 'ar-AR' },
-        {}
-      );
+      const resultEN = await getToolExecute(dayNameTool)?.({ date: '2024-01-15', locale: 'en-US' }, ctx);
+      const resultPL = await getToolExecute(dayNameTool)?.({ date: '2024-01-15', locale: 'ar-AR' }, ctx);
       expect(resultEN).not.toBe(resultPL);
     });
   });

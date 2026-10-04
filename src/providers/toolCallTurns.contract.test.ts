@@ -37,7 +37,7 @@ import { AnthropicProvider } from './AnthropicProvider';
 import { OllamaProvider } from './OllamaProvider';
 import { OpenRouterProvider } from './OpenRouterProvider';
 import type { LLMProvider, Message } from './llm';
-import type { LanguageModel } from 'ai';
+import type { LanguageModel, Tool } from 'ai';
 import type { Checkpoint } from '../execution/checkpoint';
 import { AgentExecutor } from '../execution/AgentExecutor';
 import { ToolRegistry } from '../tools';
@@ -170,7 +170,8 @@ describe.each(providers)('%s provider: tool-call turns at the ai-SDK boundary', 
       stepIndex: 2,
       messages: history,
       toolCalls: [],
-      usage,
+      // CheckpointUsage is the run-usage shape (prompt/completion/total), not the provider's usage record.
+      usage: { promptTokens: 1, completionTokens: 2, totalTokens: 3 },
     };
     // Checkpoint stores round-trip through JSON (LocalStorageCheckpointStore,
     // agent-forge's FileCheckpointStore, the Worker's KV store).
@@ -239,6 +240,7 @@ describe('AgentExecutor -> provider: second step sees the first step tool calls'
     const toolRegistry = new ToolRegistry();
     toolRegistry.register('get_weather', {
       displayName: 'Get weather',
+      // aiTool() returns unknown (it must work on every installed ai major); the registry wants ai's Tool.
       tool: aiTool({
         description: 'Weather for a city',
         schema: z.object({ city: z.string() }),
@@ -246,7 +248,7 @@ describe('AgentExecutor -> provider: second step sees the first step tool calls'
           if (city === 'Rome') throw new Error('Rome station offline');
           return { tempC: 21, sky: 'clear' };
         },
-      }),
+      }) as Tool,
     });
     const agent = AgentBuilder.create()
       .setName('Weather')

@@ -238,7 +238,7 @@ function toModernTools(ai: AiSdkModule, toolDefs: ToolDefinition[] | undefined) 
   if (!toolDefs?.length) return undefined;
   const tools: Record<string, { description: string; inputSchema: unknown }> = {};
   for (const { function: fn } of toolDefs) {
-    const schema: Record<string, unknown> = fn.parameters ?? {};
+    const schema = fn.parameters ?? {};
     const raw = 'jsonSchema' in schema && 'validate' in schema ? schema.jsonSchema : schema;
     tools[fn.name] = { description: fn.description, inputSchema: '~standard' in schema ? schema : ai.jsonSchema(raw as never) };
   }

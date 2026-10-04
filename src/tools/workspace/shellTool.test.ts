@@ -9,7 +9,8 @@ import { createShellTool } from './shellTool';
 import { MemoryWorkspace } from './MemoryWorkspace';
 
 function run(tool: DefinedTool, args: Record<string, unknown>, abortSignal?: AbortSignal): Promise<unknown> {
-  return tool.tool.execute!(args, { toolCallId: 's', messages: [], abortSignal });
+  // ai's Tool.execute returns PromiseLike; wrap it so callers get a real Promise.
+  return Promise.resolve(tool.tool.execute!(args, { toolCallId: 's', messages: [], abortSignal }));
 }
 
 async function approvalFor(tool: DefinedTool, command: string): Promise<boolean> {

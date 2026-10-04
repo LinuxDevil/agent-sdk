@@ -1,7 +1,33 @@
 {
   "extends": "./tsconfig.json",
-  "compilerOptions": { "noEmit": true, "rootDir": "." },
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    // Self-imports (`from '@lousho/build-ai-agent[/sub]'`, used by agent-dir
+    // fixture projects) resolve to source, not `dist/`: this config runs in CI
+    // before `npm run build`, and the peers jobs never build at all. Keys are
+    // the package's export subpaths (a wildcard cannot express them - the
+    // source layout is not uniform, e.g. /otel lives in src/execution).
+    "paths": {
+      "@lousho/build-ai-agent": ["./src/index.ts"],
+      "@lousho/build-ai-agent/core": ["./src/core/index.ts"],
+      "@lousho/build-ai-agent/tools": ["./src/tools/index.ts"],
+      "@lousho/build-ai-agent/flows": ["./src/flows/index.ts"],
+      "@lousho/build-ai-agent/mcp": ["./src/tools/mcp/index.ts"],
+      "@lousho/build-ai-agent/types": ["./src/types/index.ts"],
+      "@lousho/build-ai-agent/testing": ["./src/testing/index.ts"],
+      "@lousho/build-ai-agent/otel": ["./src/execution/otel.ts"],
+      "@lousho/build-ai-agent/hooks": ["./src/execution/hooks.ts"],
+      "@lousho/build-ai-agent/sqlite": ["./src/storage/sqlite/index.ts"],
+      "@lousho/build-ai-agent/auth": ["./src/auth/index.ts"],
+      "@lousho/build-ai-agent/kv": ["./src/deploy/kv.ts"],
+      "@lousho/build-ai-agent/traces": ["./src/traces/index.ts"],
+      "@lousho/build-ai-agent/triggers": ["./src/triggers/index.ts"],
+      "@lousho/build-ai-agent/react": ["./src/react/index.ts"],
+      "@lousho/build-ai-agent/vue": ["./src/vue/index.ts"],
+      "@lousho/build-ai-agent/svelte": ["./src/svelte/index.ts"]
+    }
+  },
   "include": ["src/**/*", "typings/**/*.d.ts"],
   "exclude": ["node_modules", "dist"]
 }
-

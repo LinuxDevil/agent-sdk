@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, beforeEach, beforeAll, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, beforeAll, vi, type MockInstance } from 'vitest';
 import type { ToolExecutionOptions } from 'ai';
 import http from 'http';
 import https from 'https';
@@ -36,7 +36,8 @@ function listenHttps(server: https.Server): Promise<string> {
 
 describe('makeHttpRequest', () => {
   let server: http.Server | undefined;
-  let dnsLookupSpy: ReturnType<typeof vi.spyOn> | undefined;
+  // MockInstance<any[], any>: lookup() is overloaded, so the spy's precise tuple type can't be named.
+  let dnsLookupSpy: MockInstance | undefined;
 
   beforeEach(() => {
     // The behavioral tests below (timeout / redirects / TLS) spin up a real
@@ -346,7 +347,8 @@ describe('makeHttpRequest', () => {
     beforeAll(async () => {
       const pems = await selfsigned.generate(
         [{ name: 'commonName', value: 'localhost' }],
-        { days: 1, keySize: 2048 }
+        // selfsigned v5: `days` became `notAfterDate`.
+        { notAfterDate: new Date(Date.now() + 24 * 60 * 60 * 1000), keySize: 2048 }
       );
       cert = pems.cert;
       key = pems.private;

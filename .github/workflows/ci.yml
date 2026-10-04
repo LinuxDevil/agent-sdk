@@ -22,6 +22,8 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npx tsc --noEmit
+      # The test files are type-checked too (tsconfig.tests.json), so they cannot drift from the API.
+      - run: npm run typecheck:tests
       - run: npm run lint
       # Build the root SDK's dist *before* running tests:
       # packages/create-lousho-agent/src/template.e2e.test.ts `npm pack`s the
@@ -77,6 +79,7 @@ jobs:
         include:
           - name: ai4-zod4
             install: zod@4
+            typecheck-tests: true
           - name: ai6-zod3
             install: ai@6 @ai-sdk/openai@3 @ai-sdk/anthropic@3
           - name: ai6-zod4
@@ -96,6 +99,10 @@ jobs:
       - run: npm ci
       - run: npm install --no-save ${{ matrix.flags }} ${{ matrix.install }}
       - run: npx tsc --noEmit
+      # The tests are written against `ai` 4's types (v4-shaped Tool, MockLanguageModelV1), so they only
+      # type-check there; ai4-zod4 is the zod 4 entry (it was the old typecheck-zod4 job).
+      - run: npm run typecheck:tests
+        if: matrix.typecheck-tests
       - run: npm run test:types
       # The DTS build of the ai7-zod4 install runs out of the default heap (seen on #322, #335).
       - run: npm run build

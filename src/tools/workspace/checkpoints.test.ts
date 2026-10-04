@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createAgent } from '../../createAgent';
-import { mockModel, type MockResponse } from '../../testing';
+import { mockModel, type MockTurn } from '../../testing';
 import { memoryStore } from '../../storage/agentStore';
 import { createFsTools } from './fsTools';
 import { MemoryWorkspace } from './MemoryWorkspace';
@@ -12,7 +12,7 @@ const write = (path: string, content: string): Call => ({ name: 'write_file', ar
 const edit = (path: string, old_string: string, new_string: string): Call => ({ name: 'edit_file', args: { path, old_string, new_string } });
 
 /** One turn per entry: a step with these tool calls, then a final answer. */
-function script(turns: Call[][]): MockResponse[] {
+function script(turns: Call[][]): MockTurn[] {
   return turns.flatMap((toolCalls, i) => [{ toolCalls }, `turn ${i} done`]);
 }
 

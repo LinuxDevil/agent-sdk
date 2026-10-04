@@ -163,7 +163,9 @@ describe('createAgent({ memory })', () => {
 describeMemoryProviderContract('inMemoryMemory', (options) => inMemoryMemory(options));
 
 const contractDirs: string[] = [];
-afterAll(() => Promise.all(contractDirs.map((dir) => rm(dir, { recursive: true, force: true }))));
+afterAll(async () => {
+  await Promise.all(contractDirs.map((dir) => rm(dir, { recursive: true, force: true })));
+});
 describeMemoryProviderContract('fileMemory', async (options) => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'lousho-memory-contract-'));
   contractDirs.push(dir);

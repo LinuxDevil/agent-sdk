@@ -13,7 +13,7 @@ function ctx() {
   return { promises, waitUntil: (promise: Promise<unknown>) => void promises.push(promise) };
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); });
 
 describe('handleScheduled', () => {
   it('runs the schedules matching controller.cron as turns in session schedule-<name>, inside waitUntil', async () => {

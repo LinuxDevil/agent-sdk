@@ -48,7 +48,7 @@ describe('basic() (N10a)', () => {
   });
 
   it('refuses unusable users at construction', () => {
-    for (const users of [{}, { '': 'x' }, { 'a:b': 'x' }, { a: '' }]) {
+    for (const users of [{}, { '': 'x' }, { 'a:b': 'x' }, { a: '' }] as Record<string, string>[]) {
       expect(() => basic({ users }), JSON.stringify(users)).toThrow(SDKError);
     }
   });

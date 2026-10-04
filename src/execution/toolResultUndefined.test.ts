@@ -13,7 +13,9 @@ import { toolResultContent } from './toolResult';
 import { withToolResult } from './fork';
 
 const call = (name: string, args: Record<string, unknown>, id: string): MockTurn => ({ toolCalls: [{ name, args, id }] });
-const toolContents = (messages: readonly Message[]) => messages.filter((m) => m.role === 'tool').map((m) => m.content);
+// mockModel deep-freezes what the provider saw, so calls[i].messages is deeply readonly - not Message[].
+const toolContents = (messages: readonly { readonly role: string; readonly content: unknown }[]) =>
+  messages.filter((m) => m.role === 'tool').map((m) => m.content);
 
 const nothing = (extra: { needsApproval?: boolean } = {}) =>
   defineTool({ name: 'nothing', description: 'Returns undefined', input: z.object({}), ...extra, execute: async () => undefined });

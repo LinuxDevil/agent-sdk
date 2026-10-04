@@ -48,6 +48,7 @@ By participating in this project, you agree to maintain a respectful and inclusi
 3. Ensure your code passes all checks:
    ```bash
    npm run typecheck  # Type checking
+   npm run typecheck:tests  # The test files are type-checked too
    npm run lint       # Linting
    npm run test:coverage && npm run fallow  # Dead code, duplication, complexity (must exit 0)
    npm test           # Tests

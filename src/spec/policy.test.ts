@@ -13,7 +13,7 @@ const base = { name: 'bot', prompt: 'hi', provider: { type: 'mock', model: 'm' }
 function policyIssues(policy: unknown): string[] {
   const result = agentSpecSchema.safeParse({ ...base, policy });
   if (result.success) throw new Error('expected validation to fail');
-  return result.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`);
+  return result.error.issues.map((issue) => `${(issue.path ?? []).join('.')}: ${issue.message}`);
 }
 
 const accepted = (policy: unknown) => agentSpecSchema.parse({ ...base, policy }).policy;

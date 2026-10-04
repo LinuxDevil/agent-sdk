@@ -11,7 +11,7 @@ import { memoryStore } from '../storage/agentStore';
 import { fileStore } from '../storage/fileStore';
 import { SqliteStore } from '../storage/sqlite';
 import { migrate, MIGRATIONS } from '../storage/sqlite/migrations';
-import { loadDatabaseSync } from '../storage/sqlite/driver';
+import { loadDatabaseSync, type SqlValue } from '../storage/sqlite/driver';
 import { KVStore } from '../deploy/kvStore';
 import type { KVBinding, KVListOptions, KVPutOptions } from '../deploy/kvCheckpointStore';
 import { generateTokenKey, tokenStoreKey, type OAuthTokenStore, type TokenOwner } from './index';
@@ -185,7 +185,7 @@ describe('a stored token read with the wrong key, or with none', () => {
     const store = sqlite();
     await store.tokens.set('github', { owner: 'user', principalId: 'alice' }, sentinelToken());
     const db = store.connection.db;
-    const { payload } = db.prepare('SELECT payload FROM oauth_tokens WHERE key = ?').get(tokenStoreKey('github', { owner: 'user', principalId: 'alice' }))!;
+    const { payload } = db.prepare('SELECT payload FROM oauth_tokens WHERE key = ?').get(tokenStoreKey('github', { owner: 'user', principalId: 'alice' }))! as { payload: SqlValue };
     db.prepare('INSERT INTO oauth_tokens (key, payload, updated_at) VALUES (?, ?, ?)').run(tokenStoreKey('github', { owner: 'user', principalId: 'mallory' }), payload, 1);
     await expect(store.tokens.get('github', { owner: 'user', principalId: 'mallory' })).rejects.toMatchObject({ code: 'LOUSHO_TOKEN_DECRYPT_FAILED' });
   });
