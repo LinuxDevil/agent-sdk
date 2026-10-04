@@ -83,6 +83,11 @@
       "import": "./dist/deploy/kv.mjs",
       "require": "./dist/deploy/kv.js"
     },
+    "./worker": {
+      "types": "./dist/deploy/worker.d.ts",
+      "import": "./dist/deploy/worker.mjs",
+      "require": "./dist/deploy/worker.js"
+    },
     "./traces": {
       "types": "./dist/traces/index.d.ts",
       "import": "./dist/traces/index.mjs",

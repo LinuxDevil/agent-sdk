@@ -159,6 +159,61 @@ export function workerUnsupportedPeerPlugin(): Plugin {
   };
 }
 
+/**
+ * The specifiers the `@lousho/build-ai-agent/worker` entry leaves external
+ * (#289): `ai`, `zod` and `@opentelemetry/api` are the SDK's own peers a
+ * user installs, and `@ai-sdk/openai` / `@ai-sdk/anthropic` are the
+ * provider packages a real `openai`/`anthropic`/`openrouter` agent lazy-
+ * loads on first generate()/stream() - they must come from the user's
+ * install so they share the user's `ai` copy and version pairing. Every
+ * other package specifier is bundled into the entry (or shimmed by
+ * workerEntryPlugins()), so a user's bundler has nothing else to resolve.
+ * Shared by tsup.config.ts (the real build) and src/deploy/worker.test.ts
+ * (the regression test), which must agree on what stays a specifier.
+ */
+export const WORKER_ENTRY_EXTERNALS = ['ai', 'zod', '@opentelemetry/api', '@ai-sdk/openai', '@ai-sdk/anthropic'];
+
+/**
+ * The esbuild plugins that build the Worker-safe
+ * `@lousho/build-ai-agent/worker` entry (src/deploy/worker.ts ->
+ * dist/deploy/worker.*) - the same shims the cloudflare-worker adapter
+ * applies at `lousho build` time, baked into the published entry instead
+ * (#289): `workerNodeShimPlugin` and `workerSandboxShimPlugin` redirect the
+ * `node:` / MCP-stdio / sandbox / QuickJS imports `createAgent()` reaches,
+ * so a user's own bundler (which has no shim of its own) never sees a Node
+ * specifier. `ollama-ai-provider(-v2)` is redirected to
+ * ./shims/ollama.worker.ts rather than left external like the adapter
+ * build does: an external specifier would still have to resolve in the
+ * user's build, and the optional package is usually not installed.
+ * `@modelcontextprotocol/sdk` gets the same treatment in ./shims/mcp.worker.ts:
+ * external would either fail the user's build (peer not installed) or drag
+ * ~700 KB of MCP SDK + ajv into every Worker (peer installed), so
+ * `mcpServers` fails on first connect instead. Used by tsup.config.ts and
+ * by src/deploy/worker.test.ts, so the test guards exactly what is shipped.
+ */
+export function workerEntryPlugins(): Plugin[] {
+  const ollama = path.join(findSdkRoot(), 'src', 'deploy', 'shims', 'ollama.worker.ts');
+  const mcp = path.join(findSdkRoot(), 'src', 'deploy', 'shims', 'mcp.worker.ts');
+  return [
+    workerSandboxShimPlugin(),
+    workerNodeShimPlugin(),
+    {
+      name: 'lousho-worker-ollama-shim',
+      setup(build) {
+        build.onResolve({ filter: /^ollama-ai-provider(?:-v2)?$/ }, () => ({ path: ollama }));
+      },
+    },
+    {
+      name: 'lousho-worker-mcp-shim',
+      setup(build) {
+        build.onResolve({ filter: /^@modelcontextprotocol\/sdk(?:\/.*)?$/ }, (args) =>
+          args.importer === mcp ? undefined : { path: mcp }
+        );
+      },
+    },
+  ];
+}
+
 const SKIP_BUILTIN_CHECK = 'lousho-skip-builtin-check';
 
 /**
