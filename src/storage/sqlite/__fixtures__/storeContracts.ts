@@ -157,5 +157,16 @@ export function describeApprovalStoreContract(name: string, factory: Factory<App
       await store.save(pending, snapshot);
       expect((await store.resolve('a'))?.snapshot).toEqual(snapshot);
     });
+
+    it('load() reads a saved approval without resolving it, and stops answering once resolved', async () => {
+      const store = await factory();
+      const pending = makePending('a');
+      const snapshot = makeSnapshot(pending);
+      await store.save(pending, snapshot);
+      expect(store.load).toBeTypeOf('function');
+      expect(await store.load!('a')).toEqual({ pending, snapshot });
+      expect(await store.resolve('a')).toEqual({ pending, snapshot }); // the read did not claim it
+      expect(await store.load!('a')).toBeNull();
+    });
   });
 }

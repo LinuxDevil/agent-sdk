@@ -223,6 +223,13 @@ export interface ResolvedApproval {
 export interface ApprovalStore {
   save(pending: PendingApproval, snapshot: ExecutionSnapshot): Promise<void>;
   resolve(id: string): Promise<ResolvedApproval | null>;
+  /**
+   * The record `resolve(id)` would return, without claiming or deleting it:
+   * `null` when `id` is unknown or already resolved. Optional (like
+   * `CheckpointStore.history`): `agent.approvals.get()` reads a pause another
+   * process saved only through it. All built-in stores implement it.
+   */
+  load?(id: string): Promise<ResolvedApproval | null>;
 }
 
 /**
@@ -259,6 +266,19 @@ export class StorageServiceApprovalStore implements ApprovalStore {
       const record = this.storageService.readPlainJSONAttachment<ResolvedApproval>(storageKey);
       this.storageService.deleteAttachment(storageKey);
       return record;
+    } finally {
+      this.storageService.releaseLock(storageKey);
+    }
+  }
+
+  async load(id: string): Promise<ResolvedApproval | null> {
+    const storageKey = this.getStorageKey(id);
+    await this.storageService.acquireLock(storageKey);
+    try {
+      if (!this.storageService.fileExists(storageKey)) {
+        return null;
+      }
+      return this.storageService.readPlainJSONAttachment<ResolvedApproval>(storageKey);
     } finally {
       this.storageService.releaseLock(storageKey);
     }

@@ -524,6 +524,27 @@ describe('githubChannel (N11b)', () => {
       ]);
     });
 
+    it('after a restart with durable stores, an id is tied to its thread again and the continuation joins the transcript (#279)', async () => {
+      const stores = durableStores();
+      const execute = vi.fn(async ({ to }: { to: string }) => `sent to ${to}`);
+      const onError = vi.fn();
+      const agentOptions = { tools: [emailTool(execute)], approvalStore: stores.approvalStore };
+      const id = await pause(setup([emailCall], agentOptions, { mount: { store: stores.store } }), { number: 7 });
+
+      const second = setup(['Email sent.'], agentOptions, { mount: { store: stores.store }, channel: { onError } });
+      await second.send(issueComment(`/approve ${id}`, { login: 'maintainer', association: 'OWNER', number: 8 }));
+      expect(execute).not.toHaveBeenCalled();
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'LOUSHO_APPROVAL_NOT_FOUND' }), expect.objectContaining({ stage: 'approval' }));
+
+      // still pending (this process treats the id as used, so the next one decides it)
+      const third = setup(['Email sent.'], agentOptions, { mount: { store: stores.store } });
+      await third.send(issueComment(`/approve ${id}`, { login: 'maintainer', association: 'OWNER', number: 7 }));
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(third.calls.at(-1)).toMatchObject({ path: '/repos/acme/widgets/issues/7/comments' });
+      expect(text(third.calls.at(-1)!)).toBe('Email sent.');
+      for (const word of ['email Sam', 'sent to sam@example.com', 'Email sent.']) expect(await stores.transcript()).toContain(word);
+    });
+
     it('a restart does not widen who may approve: the default rule still applies', async () => {
       const approvalStore = new InMemoryApprovalStore();
       const store = new MemorySessionStore();

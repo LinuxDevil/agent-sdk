@@ -394,6 +394,66 @@ describe('slackChannel (LOU-P5)', () => {
       expect(execute).toHaveBeenCalledTimes(1);
       expect(second.posts.at(-1)).toEqual({ channel: 'C1', thread_ts: '100.1', text: 'Email sent.' });
     });
+
+    it('a click after a restart is appended to the transcript, and the next thread message continues the session (#279)', async () => {
+      const stores = durableStores();
+      const execute = vi.fn(async ({ to }: { to: string }) => `sent to ${to}`);
+      const agentOptions = { tools: [emailTool(execute)], approvalStore: stores.approvalStore };
+      const value = await pause(setup([emailCall], agentOptions, { mount: { store: stores.store } }));
+
+      const second = setup(['Email sent.', 'You are welcome.'], agentOptions, { mount: { store: stores.store } });
+      await second.send(click(value), { form: true });
+
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(second.posts).toEqual([{ channel: 'C1', thread_ts: '100.1', text: 'Email sent.' }]);
+      const transcript = await stores.transcript();
+      for (const text of ['Email Sam', '"call_email"', 'sent to sam@example.com', 'Email sent.']) expect(transcript).toContain(text);
+
+      // the thread has a session now: a message without a mention is its next turn
+      await second.send(threadMessage('Thanks', '100.3'));
+      expect(second.posts[1]).toEqual({ channel: 'C1', thread_ts: '100.1', text: 'You are welcome.' });
+      expect(second.userTexts(1)).toEqual(['Email Sam', 'Thanks']);
+      expect(JSON.stringify(second.model.calls[1].messages)).toContain('sent to sam@example.com');
+    });
+
+    it('a replayed click after a restart decides nothing twice (#279)', async () => {
+      const stores = durableStores();
+      const execute = vi.fn(async ({ to }: { to: string }) => `sent to ${to}`);
+      const onError = vi.fn();
+      const agentOptions = { tools: [emailTool(execute)], approvalStore: stores.approvalStore };
+      const value = await pause(setup([emailCall], agentOptions, { mount: { store: stores.store } }));
+
+      const second = setup(['Email sent.', 'never'], agentOptions, { mount: { store: stores.store, onError } });
+      await second.send(click(value), { form: true });
+      await second.send(click(value), { form: true });
+
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(second.model.calls).toHaveLength(1);
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'LOUSHO_APPROVAL_NOT_FOUND' }), expect.objectContaining({ stage: 'approval' }));
+      expect(JSON.parse(await stores.transcript()).filter((m: Message) => m.role === 'tool')).toHaveLength(1);
+    });
+
+    it('a function approver still decides after a restart (#280)', async () => {
+      const stores = durableStores();
+      const execute = vi.fn(async ({ to }: { to: string }) => `sent to ${to}`);
+      const seen: unknown[] = [];
+      const approvers = vi.fn(async (user: { id: string }, request: { toolName: string }) => (seen.push([user, request]), user.id === 'UADMIN'));
+      const agentOptions = { tools: [emailTool(execute)], approvalStore: stores.approvalStore };
+      const value = await pause(setup([emailCall], agentOptions, { channel: { approvers }, mount: { store: stores.store } }));
+
+      const second = setup(['Email sent.'], agentOptions, { channel: { approvers }, mount: { store: stores.store } });
+      await second.send(click(value, 'U1'), { form: true }); // the starter is not the approver
+      expect(execute).not.toHaveBeenCalled();
+      await second.send(click(value, 'UADMIN'), { form: true });
+
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(second.posts.at(-1)).toEqual({ channel: 'C1', thread_ts: '100.1', text: 'Email sent.' });
+      // the function saw the request from the store: the paused run's facts, unchanged by the restart
+      expect(seen[1]).toEqual([
+        { id: 'UADMIN', name: 'name-UADMIN' },
+        { toolName: 'send_email', input: { to: 'sam@example.com' }, sessionId: expect.stringContaining('slack_T1_C1_100_1'), principal: { id: 'U1', type: 'user', authenticator: 'slack' } },
+      ]);
+    });
   });
 });
 

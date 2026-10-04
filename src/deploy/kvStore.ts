@@ -103,6 +103,11 @@ class KVApprovalStore implements ApprovalStore {
     await this.kv.delete(`${this.prefix}${id}`);
     return JSON.parse(raw) as ResolvedApproval;
   }
+
+  async load(id: string): Promise<ResolvedApproval | null> {
+    const raw = await this.kv.get(`${this.prefix}${id}`);
+    return raw === null ? null : (JSON.parse(raw) as ResolvedApproval);
+  }
 }
 
 /**

@@ -205,9 +205,11 @@ and the approval stays pending.
 message author on Slack, the command's user on Discord) may approve. In
 earlier versions anyone who could see the message could; `approvers: () => true`
 restores that, which you should only do in a private channel. A function
-`approvers` fails closed when the process does not know the pending call (after
-a restart); use the list form or the default for approvals that must survive
-one. Answers to an `ask_question` are not restricted: the next message (Slack)
+`approvers` sees the pending call after a restart too: `ctx.approval(id)` asks
+the durable approval store when this process did not pause on the id, so it
+decides the same way it did before. Only with a process-local approval store
+(the default `InMemoryApprovalStore` - then nothing survives a restart anyway)
+does it still fail closed. Answers to an `ask_question` are not restricted: the next message (Slack)
 or `/ask` (Discord) in the conversation is the answer. Who decided goes to
 `mountChannels(agent, channels, { onDecision({ approver, decision, sessionId, channel }) {} })`.
 The Telegram channel takes the same `approvers` (Telegram user ids as strings; a
@@ -281,8 +283,11 @@ with a `SqliteStore`, and the agent's `approvalStore`): the next message in the
 thread is still the answer, the turn continues, and the question, the answer
 and the reply are appended to the session transcript. A message in a thread
 whose session waits on a tool approval does not decide it; only the buttons
-do. After a restart, a button click's continuation is posted but not appended
-to the session transcript.
+do. A button click after a restart is bound to the thread's session first -
+the click must name a thread whose checkpointed turn waits on exactly that
+approval - so the continuation is appended to the session transcript, a
+replayed click does not run the tool twice, and a click in another thread is
+refused.
 
 ## Discord
 
@@ -348,8 +353,9 @@ Pending approvals are resolved from the button click and the approval store. As
 on Slack, a pending `ask_question` survives a restart given durable stores for
 sessions, checkpoints and approvals: the next `/ask` in the channel is the
 answer and the continued turn is appended to the session transcript. A button
-click's continuation after a restart is posted but not appended to the session
-transcript.
+click after a restart names its conversation, so it is bound to that session
+before the approval is resolved - the continuation joins its transcript, and a
+stale or copied click decides nothing.
 
 An [agent directory](./agent-directories.md)'s `channels/*.ts` files are loaded
 as channels too, and the node server mounts them. `SlackTriggerAdapter` (see [Triggers](triggers.md)), which replies
@@ -434,9 +440,10 @@ messages from the method name and status only: the token never reaches
 Pending approvals are resolved from the tap and the approval store. As on Slack
 and Discord, a pending `ask_question` survives a restart given durable stores
 for sessions, checkpoints and approvals: the next message in the chat is the
-answer and the continued turn is appended to the session transcript. A tap's
-continuation after a restart is sent but not appended to the session
-transcript.
+answer and the continued turn is appended to the session transcript. As with a
+button click on the other channels, a tap after a restart is checked against
+the chat session's checkpointed turn, so the continuation joins the transcript
+and a replayed tap does not run the tool twice.
 
 ## GitHub
 
@@ -515,8 +522,9 @@ before posting `/approve` is refused. It is a snapshot taken at the command, not
 a live permission check; if a revocation must take effect inside that window,
 use `approvers` with a function that asks the GitHub API (for example the
 collaborator permission) before it returns `true`. A function `approvers`, as on
-the other channels, fails closed when the process does not know the pending
-call (after a restart).
+the other channels, sees the pending call after a restart too (the durable
+approval store is asked), and fails closed only with a process-local approval
+store.
 
 Set up a GitHub App:
 
@@ -568,11 +576,12 @@ call and the HTTP status only (`LOUSHO_CHANNEL_REQUEST_FAILED`).
 
 Pending approvals are resolved from the command comment and the approval store.
 A pending `ask_question` is kept in memory until the next comment, and survives
-a restart given durable stores, as on the other channels. After a restart, a
-command with an id that is no longer pending (decided already, expired) fails
-with the generic "Sorry, that request failed." comment instead of being ignored,
-and an id is no longer tied to the thread it was posted in. A continuation after
-a restart is posted but not appended to the session transcript.
+a restart given durable stores, as on the other channels. After a restart the
+command names its thread, so - given durable checkpoints - it is bound to that
+thread's session before the approval is resolved: the continuation is appended
+to the session transcript, and an id the thread is not waiting on (decided
+already, or the approval of another thread) fails with the generic "Sorry,
+that request failed." comment.
 
 ## Microsoft Teams
 
@@ -658,6 +667,7 @@ http.createServer((req, res) => {
 The app password and the access token are never put in an error message or log
 line: a failed call is reported to `onError` with the call and the HTTP status
 only (`LOUSHO_CHANNEL_REQUEST_FAILED`). A press on a card works on a restarted
-process, because it names the conversation and the approval itself; the
-continuation after a restart is sent but not appended to the session
-transcript.
+process, because it names the conversation and the approval itself; given
+durable checkpoints the press is bound to that session's pending turn first,
+so the continuation is appended to the session transcript and a press a
+session is not waiting on decides nothing.

@@ -119,6 +119,25 @@ describe('createAgent approvals (LOU-D21)', () => {
     expect(await approvalStore.resolve(paused.approvalId!)).toMatchObject({ pending: { toolName: 'send_email' } });
   });
 
+  it('get() returns a pause this process did not make, through a shared approvalStore, without resolving it (#280)', async () => {
+    const approvalStore = new InMemoryApprovalStore();
+    const { tool, execute } = emailTool();
+    const first = createAgent({ provider: mockModel([callEmail, 'Email sent.']), tools: [tool], approvalStore });
+    const paused = await first.send('Email Sam');
+
+    // "after a restart": another agent over the same store does not list the pause, but get() finds it
+    const second = createAgent({ provider: mockModel(['unused']), tools: [emailTool().tool], approvalStore });
+    expect(await second.approvals.list()).toEqual([]);
+    expect(await second.approvals.get(paused.approvalId!)).toMatchObject({ id: paused.approvalId, toolName: 'send_email', args: { to: 'sam@example.com' } });
+    expect(await second.approvals.get('nope')).toBeUndefined();
+
+    // the read did not resolve it: either agent can still decide it
+    const result = await first.approvals.resolve({ id: paused.approvalId!, approved: true });
+    expect(result.text).toBe('Email sent.');
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(await second.approvals.get(paused.approvalId!)).toBeUndefined();
+  });
+
   it('resolving a pause from a session continues that session', async () => {
     const { tool } = emailTool();
     const model = mockModel([callEmail, 'Email sent.', 'You asked me to email Sam.']);

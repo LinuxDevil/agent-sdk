@@ -37,7 +37,7 @@ export function decodeApprovalRef(value: string): ApprovalRef {
   return { starter: at > 0 ? value.slice(0, at) : undefined, id: value.slice(at + 1) };
 }
 
-/** Whether `user` may decide the approval in `ref` (see {@link Approvers}). A function sees the pending call, so it fails closed when this process does not know it. */
+/** Whether `user` may decide the approval in `ref` (see {@link Approvers}). A function sees the pending call - `ctx.approval` answers from the durable approval store after a restart too - and fails closed when no store knows it. */
 export async function mayApprove(approvers: Approvers | undefined, user: ChannelUser | undefined, ref: ApprovalRef, ctx: ChannelContext, sessionKey: string): Promise<boolean> {
   if (!user) return false;
   if (approvers === undefined) return ref.starter === user.id;
