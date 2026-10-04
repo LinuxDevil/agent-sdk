@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import { AgentExecutor } from './AgentExecutor';
-import { createDelegateTool } from './DelegationTool';
+import { createAgent } from '../createAgent';
 import { resumeAfterApproval } from './resume';
 import type { AgentEvent } from './agentEvents';
 import type { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGate';
@@ -112,11 +112,10 @@ describe('run usage (LOU-V5)', () => {
     expect(result.usage.inputTokens).toBeGreaterThan(50);
   });
 
-  it('breaks usage down by model when agents override settings.model', async () => {
-    const child = agent({ id: 'child', name: 'Child', tools: undefined, settings: { model: 'gpt-4o' } });
+  it('breaks usage down by model when a sub-agent overrides model', async () => {
     const parentProvider = mockModel(
       [
-        { toolCalls: [{ name: 'ask', args: { task: 'sub' } }], usage: { inputTokens: 10, outputTokens: 5 } },
+        { toolCalls: [{ name: 'task', args: { agent: 'child', prompt: 'sub', description: 'child task' } }], usage: { inputTokens: 10, outputTokens: 5 } },
         { text: 'done', usage: { inputTokens: 20, outputTokens: 5 } },
       ],
       { defaultModel: 'gpt-4o-mini' }
@@ -124,14 +123,14 @@ describe('run usage (LOU-V5)', () => {
     const childProvider = mockModel([{ text: 'sub done', usage: { inputTokens: 100, outputTokens: 50 } }], {
       defaultModel: 'gpt-4o-mini',
     });
-    const tools = new ToolRegistry();
-    tools.register('ask', createDelegateTool({ agent: child, provider: childProvider }));
+    const child = createAgent({ provider: childProvider, model: 'gpt-4o', description: 'Child agent' });
 
     const result = await AgentExecutor.execute({
-      agent: agent({ tools: { ask: { tool: 'ask' } } }),
+      agent: agent(),
       input: 'go',
       provider: parentProvider,
-      toolRegistry: tools,
+      toolRegistry: registry(),
+      subagents: { child },
     });
 
     expect(childProvider.calls[0].model).toBe('gpt-4o');
@@ -143,10 +142,9 @@ describe('run usage (LOU-V5)', () => {
   });
 
   it('rolls a delegated child run up into the parent totals and exposes it as usage.delegated', async () => {
-    const child = agent({ id: 'child', name: 'Child', tools: undefined });
     const parentProvider = mockModel(
       [
-        { toolCalls: [{ name: 'ask', args: { task: 'sub' } }], usage: { inputTokens: 10, outputTokens: 5 } },
+        { toolCalls: [{ name: 'task', args: { agent: 'child', prompt: 'sub', description: 'child task' } }], usage: { inputTokens: 10, outputTokens: 5 } },
         { text: 'done', usage: { inputTokens: 20, outputTokens: 5 } },
       ],
       { defaultModel: 'gpt-4o-mini' }
@@ -157,14 +155,14 @@ describe('run usage (LOU-V5)', () => {
       ],
       { defaultModel: 'gpt-4o-mini' }
     );
-    const tools = new ToolRegistry();
-    tools.register('ask', createDelegateTool({ agent: child, provider: childProvider }));
+    const child = createAgent({ provider: childProvider, description: 'Child agent' });
 
     const result = await AgentExecutor.execute({
-      agent: agent({ tools: { ask: { tool: 'ask' } } }),
+      agent: agent(),
       input: 'go',
       provider: parentProvider,
-      toolRegistry: tools,
+      toolRegistry: registry(),
+      subagents: { child },
     });
 
     expect(result.usage).toMatchObject({ inputTokens: 130, outputTokens: 60, totalTokens: 190, modelCalls: 3 });
@@ -179,12 +177,10 @@ describe('run usage (LOU-V5)', () => {
     expect(result.usage.delegated?.costUsd).toBeCloseTo((100 * 0.15 + 50 * 0.6) / 1e6, 10);
     // the parent's own steps exclude the child
     expect(result.stepUsage).toHaveLength(2);
-    // the model only sees token counts, not the whole breakdown
+    // the model sees the child's answer text plus a small footer, not the usage breakdown
     const toolMessage = result.messages.find((m) => m.role === 'tool');
-    expect(JSON.parse(textOf(toolMessage!))).toEqual({
-      text: 'sub done',
-      usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-    });
+    expect(textOf(toolMessage!)).toContain('sub done');
+    expect(textOf(toolMessage!)).toContain("[sub-agent 'child': 1 step(s), finish reason 'stop'");
   });
 
   it('continues totals from the checkpoint when a run resumes', async () => {
@@ -348,24 +344,23 @@ describe('usage on the event stream (LOU-V5)', () => {
   });
 
   it('rolls delegated children up into a streamed run as well', async () => {
-    const child = agent({ id: 'child', name: 'Child', tools: undefined });
     const parentProvider = mockModel(
       [
-        { toolCalls: [{ name: 'ask', args: { task: 'sub' } }], usage: { inputTokens: 10, outputTokens: 5 } },
+        { toolCalls: [{ name: 'task', args: { agent: 'child', prompt: 'sub', description: 'child task' } }], usage: { inputTokens: 10, outputTokens: 5 } },
         { text: 'done', usage: { inputTokens: 20, outputTokens: 5 } },
       ],
       { defaultModel: 'gpt-4o-mini' }
     );
     const childProvider = mockModel([{ text: 'sub', usage: { inputTokens: 100, outputTokens: 50 } }], { defaultModel: 'gpt-4o-mini' });
-    const tools = new ToolRegistry();
-    tools.register('ask', createDelegateTool({ agent: child, provider: childProvider }));
+    const child = createAgent({ provider: childProvider, description: 'Child agent' });
 
     const events: AgentEvent[] = [];
     for await (const event of AgentExecutor.stream({
-      agent: agent({ tools: { ask: { tool: 'ask' } } }),
+      agent: agent(),
       input: 'go',
       provider: parentProvider,
-      toolRegistry: tools,
+      toolRegistry: registry(),
+      subagents: { child },
     })) {
       events.push(event);
     }

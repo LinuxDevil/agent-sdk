@@ -4,8 +4,8 @@ import { defineTool } from './defineTool';
 import { ToolRegistry } from './ToolRegistry';
 import { createAgent } from '../createAgent';
 import { createMockProvider } from '../providers/mock';
+import { mockModel } from '../testing';
 import { AgentBuilder } from '../core/AgentBuilder';
-import { createDelegateTool } from '../execution/DelegationTool';
 
 const input = z.object({ to: z.string(), subject: z.string() });
 
@@ -148,20 +148,31 @@ describe('entry points', () => {
     );
   });
 
-  it('delegation: a child agent can use a registry holding defined tools', async () => {
-    const registry = new ToolRegistry();
-    registry.register(makeEmail('child_tool'));
-    const child = AgentBuilder.create()
-      .setName('child')
-      .setPrompt('p')
-      .addTool(makeEmail('child_tool'))
-      .build();
-    const delegate = createDelegateTool({
-      agent: child,
-      provider: createMockProvider({ responses: ['using it', 'child answer'] }),
-      toolRegistry: registry,
+  it('delegation: a sub-agent can use defined tools', async () => {
+    const sent: string[] = [];
+    const childTool = defineTool({
+      name: 'child_tool',
+      description: 'Child tool',
+      input: z.object({}),
+      execute: () => {
+        sent.push('ran');
+        return 'child tool result';
+      },
     });
-    const res = await delegate.tool.execute!({ task: 'please call child_tool' }, {} as never);
-    expect(res).toMatchObject({ text: expect.any(String) });
+    const child = createAgent({
+      provider: mockModel([{ toolCalls: [{ name: 'child_tool' }] }, 'child answer']),
+      tools: [childTool],
+      description: 'Child agent',
+    });
+    const lead = createAgent({
+      provider: mockModel([
+        { toolCalls: [{ name: 'task', args: { agent: 'child', prompt: 'please call child_tool', description: 'child task' } }] },
+        'done',
+      ]),
+      subagents: { child },
+    });
+    const result = await lead.send('go');
+    expect(sent).toEqual(['ran']);
+    expect(result.text).toBe('done');
   });
 });

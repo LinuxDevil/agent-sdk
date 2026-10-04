@@ -920,7 +920,7 @@ How the pieces fit:
 │  │ Executor (approvals,        │    │
 │  │ checkpoints, tracing)       │    │
 │  ├────────────────────────────┤    │
-│  │ Tools │ Delegation │ MCP    │    │
+│  │ Tools │ Sub-agents │ MCP    │    │
 │  │ Flows │ Guardrails │ Evals  │    │
 │  ├────────────────────────────┤    │
 │  │       Core Engine          │    │
@@ -950,7 +950,6 @@ How the pieces fit:
 | `AgentStore`, `memoryStore()` | The `createAgent({ store })` option: `{ sessions?, checkpoints?, approvals?, tokens? }`, and an in-memory one (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store); `tokens` holds OAuth tokens, see [OAuth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md)). |
 | `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). |
 | `SDKError`, `ERROR_CODES`    | Base class of the SDK's errors: a stable `code`, a `hint` and a `docs` link (see [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md)). |
-| `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation. Superseded by `subagents`. |
 
 ### Dynamic config
 
@@ -2796,7 +2795,7 @@ principal, frozen (a tool or a policy that assigns to it throws):
 | `preToolCall` / `postToolCall` hooks | `ctx.principal` |
 | `onPermissionDecision(entry, { principal })` | the second argument; the entry itself carries none |
 | A pending approval (`agent.approvals.list()`, `approve`, a channel's `approvers` function) | `request.principal`: whose call it is |
-| In-process sub-agents (`task`, background tasks, `createDelegateTool()`) | the lead's principal, everywhere above |
+| In-process sub-agents (`task`, background tasks) | the lead's principal, everywhere above |
 
 A run without a principal (no route auth, `send()` without `principal`) has
 none in any of these places.
@@ -2909,8 +2908,8 @@ has no principal of its own, each of its turns runs with the principal its
 
 ### Sub-agents
 
-In-process sub-agents (the `task` tool, background tasks and
-`createDelegateTool()`) act for the lead's caller, also when their approval is
+In-process sub-agents (the `task` tool and background tasks) act for the
+lead's caller, also when their approval is
 resumed. A [remote sub-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md) (`remoteAgent()`) is not told who
 the caller is: the remote server's own route auth decides its principal (for
 example the `apiToken()` service principal of the lead's token).
@@ -9269,7 +9268,6 @@ approval store and provider, so deciding the pause needs only the approval id.
 | `skills`, `subagents` | The same names on `createAgent()`, which also takes `mcpServers` and `memory`. |
 | `inputQueue` | `run.enqueue()` on a streamed run, or `agent.session({ turnPolicy })`; see [Queued input](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/queue-and-steer.md#queued-input). |
 | `sessionBudget` | `agent.session({ id, limits })`; see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md). |
-| `createDelegateTool()` | `subagents`; see [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md). |
 
 ## What createAgent() does not take yet
 
@@ -10644,7 +10642,7 @@ identity (see [auth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth
 
 ## Sub-agents
 
-A sub-agent (the `task` tool, a background task, `createDelegateTool()`) runs
+A sub-agent (the `task` tool or a background task) runs
 under the lead's mode while the lead's mode is not `'default'`, and under its
 own `permissionMode` otherwise. A sub-agent created with
 `permissionMode: 'plan'` stays in plan mode whatever the lead's mode is. The mode is read at each of the sub-agent's tool
@@ -11738,7 +11736,7 @@ How it behaves:
   passed to the provider (`GenerateOptions.signal`, sent to the `ai` SDK as
   `abortSignal`) and to each tool as `execute(args, { abortSignal })`, so
   in-flight work can stop early. The built-in `httpTool` passes it to
-  `fetch`, and agents created with `createDelegateTool()` are aborted along
+  `fetch`, and delegated child runs (the `task` tool) are aborted along
   with their parent.
 - An aborted run **resolves** (it does not reject) with
   `finishReason: 'aborted'` and the messages and steps so far. A rejection
@@ -12810,8 +12808,8 @@ Every event has `type`, `runId`, `seq`, `timestamp` and `v`. The full list of ev
 
 ## Sub-agents
 
-When the agent delegates with the `task` tool or a `createDelegateTool()`
-tool (see [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md)), the sub-agent's run is streamed
+When the agent delegates with the `task` tool
+(see [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md)), the sub-agent's run is streamed
 inside the same stream: its steps, `text.delta`s, `text.done`s, tool events
 and errors appear between the lead's `tool.start` and `tool.done` (or
 `tool.error`) for that call, each with a `subagent` field:
@@ -13563,8 +13561,6 @@ inherits:
 | `output` schema | No | A sub-agent's output is its own: with one, `task` returns its validated object as JSON (see [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md#sub-agents)); without, text. |
 | Conversation history | No | The sub-agent sees only the task prompt (plus its own earlier turns when the lead [resumes the task](#continuing-a-task)). |
 
-`createDelegateTool()` children inherit the same way.
-
 ### Hooks inside sub-agents
 
 See [Hooks](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hooks.md) for the hook points and outcomes.
@@ -13630,9 +13626,7 @@ if (paused.finishReason === 'awaiting-approval' && paused.approvalId) {
 Resuming runs (or rejects) the sub-agent's pending call, lets the sub-agent
 finish, returns its final answer to the lead as the `task` result, and then
 continues the lead. If the sub-agent needs another approval, the run pauses
-again with a new `approvalId`. This works at any depth and for
-`createDelegateTool()` children (pass the registry that holds the delegate
-tool).
+again with a new `approvalId`. This works at any depth.
 
 The lead's `approve` option decides its sub-agents' calls too.
 
@@ -13686,52 +13680,6 @@ if (paused.finishReason === 'awaiting-approval' && paused.approvalId) {
   );
   console.log(result.text);
 }
-```
-
-## `createDelegateTool()`
-
-`createDelegateTool()` is superseded by `subagents`; it exists for code that
-builds a `ToolRegistry` by hand.
-
-`createDelegateTool({ agent, provider, toolRegistry })` wraps one child agent as
-a tool you name and register yourself, with its own `maxDepth` guard. It runs
-on the same delegation core as `task`, so it inherits the parent runtime the
-same way, and its result shape (`{ text, usage }`) is unchanged. Prefer
-`subagents` for new code: one tool, a prompt listing, parallel tasks and depth
-limits come for free.
-
-```ts
-import { AgentExecutor, createDelegateTool, ToolRegistry } from '@lousho/build-ai-agent';
-
-const billingAgent = {
-  name: 'Billing Agent',
-  prompt: 'You answer billing questions and look up invoices.',
-};
-
-const registry = new ToolRegistry();
-registry.register(
-  'delegate_billing_agent',
-  createDelegateTool({
-    agent: billingAgent,
-    provider,
-    contextMode: 'none', // 'full-history' shares the parent's context array too
-    maxSteps: 10,
-    maxDepth: 3, // bounds a delegation chain (e.g. A -> B -> A) before it throws
-  })
-);
-
-const supportAgent = {
-  name: 'Support Agent',
-  prompt: 'You help customers. Delegate billing questions to the billing agent.',
-  tools: { delegate_billing_agent: { tool: 'delegate_billing_agent' } },
-};
-
-const result = await AgentExecutor.execute({
-  agent: supportAgent,
-  input: 'Why was I charged twice this month?',
-  provider,
-  toolRegistry: registry,
-});
 ```
 
 # Svelte

@@ -1,7 +1,6 @@
 /**
  * Runtime plumbing that lets a child agent run (a sub-agent started by the
- * `task` tool or by `createDelegateTool()`) inherit from the parent run that
- * called it (LOU-Y1).
+ * `task` tool) inherit from the parent run that called it (LOU-Y1).
  *
  * The executor binds a {@link ToolCallScope} - the parent run's runtime
  * options, the calling tool call and its span - to the options object every

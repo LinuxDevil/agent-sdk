@@ -262,3 +262,16 @@ describe('public surface (A2b): removed names are off the root', () => {
     type _T2 = import('./index').ExecutionEventType;
   });
 });
+
+describe('public surface (A2c): removed names are off the root', () => {
+  it('the delegate-tool API is gone', () => {
+    // @ts-expect-error - removed (A2c)
+    type _T1 = import('./index').DelegateAgentOptions;
+    // @ts-expect-error - removed (A2c)
+    type _T2 = import('./index').DelegateAgentResult;
+    // @ts-expect-error - removed (A2c)
+    type _V1 = typeof import('./index').createDelegateTool;
+    // @ts-expect-error - removed (A2c)
+    type _V2 = typeof import('./index').DelegationDepthExceededError;
+  });
+});

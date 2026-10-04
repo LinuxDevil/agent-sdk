@@ -5,31 +5,27 @@
  * runFixer() diagnoses a FixRequest (built from an ErrorSignal, see
  * monitor.ts) via the REAL static AgentExecutor.execute() and extracts a
  * unified diff from the response text. It is wired as the target of a
- * LOU-D1 real createDelegateTool() call so the monitor agent can delegate a
- * fix request to it by ordinary tool-calling (see createFixerDelegateTool()
- * below).
+ * defineTool() tool (see createFixerTool() below) so the monitor agent can
+ * delegate a fix request to it by ordinary tool-calling.
  *
  * See guardedPr.ts (LOU-J7) for what happens to the extracted patch next
  * (guardrail-gated PR creation) - kept in a sibling file since it composes
  * this module's output with the LOU-E guardrails and LOU-J5 Slack tool
  * rather than being fixer-core itself.
  */
+import { z } from 'zod';
 import {
   AgentExecutor,
   ExecuteOptions,
   ExecutionResult,
 } from '../../src/execution/AgentExecutor';
-import { AgentConfig, ToolDescriptor, ToolExecutionContext } from '../../src/types';
-import { getToolExecute } from '../../src/tools/toolContract';
+import { AgentConfig, ToolDescriptor } from '../../src/types';
+import { defineTool } from '../../src/tools/defineTool';
 import { LLMProvider } from '../../src/providers';
-import {
-  createDelegateTool,
-  DelegateAgentOptions,
-} from '../../src/execution/DelegationTool';
 
 /**
  * A request to diagnose-and-fix an error, built from an ErrorSignal
- * (monitor.ts) or from a delegate-tool task.
+ * (monitor.ts) or from a fixer tool task.
  */
 export interface FixRequest {
   errorSignature: string;
@@ -43,7 +39,7 @@ const FIXER_SYSTEM_PROMPT =
   "fenced ```diff code block. Never invent files you were not shown.";
 
 /**
- * Builds the fixer AgentConfig used by runFixer()/createFixerDelegateTool().
+ * Builds the fixer AgentConfig used by runFixer()/createFixerTool().
  */
 export function buildFixerAgent(name = 'fixer'): AgentConfig {
   return {
@@ -125,7 +121,7 @@ function looksLikeDiff(content: string): boolean {
  *
  * SAFETY: this function only produces a patch candidate. It does NOT run
  * guardrails and does NOT gate on human approval. In the shipped pipeline
- * (index.ts) it is only ever reached from inside the delegate tool that
+ * (index.ts) it is only ever reached from inside the fixer tool that
  * AgentExecutor pauses on `needsApproval: true` before invoking. Do not
  * call runFixer() directly from a new entry point without first routing
  * through that same approval gate and through handleFixerPatch()'s
@@ -153,30 +149,30 @@ export async function runFixer(
 }
 
 /**
- * Creates a ToolDescriptor that wraps the REAL LOU-D1 createDelegateTool()
- * targeting the fixer agent, post-processing its response text into an
- * extracted `patch` field (via extractDiffBlock()) so a parent (monitor)
- * agent's delegation to the fixer agent yields a usable patch the same way
- * runFixer() does directly. Throws EmptyPatchError if the delegated fixer
- * agent's response has no extractable diff.
+ * Creates a `defineTool()` tool that runs the fixer agent for one task and
+ * post-processes its response text into an extracted `patch` field (via
+ * extractDiffBlock()), so a parent (monitor) agent's delegation to the
+ * fixer agent yields a usable patch the same way runFixer() does directly.
+ * Throws EmptyPatchError if the fixer agent's response has no extractable
+ * diff.
  */
-export function createFixerDelegateTool(opts: DelegateAgentOptions): ToolDescriptor {
-  const base = createDelegateTool(opts);
-  const baseExecute = getToolExecute(base)!;
-  // `base` carries a canonical `execute` (LOU-D24), which wins over the
-  // legacy `tool.execute`: wrap that one, and keep `tool` in step.
-  const execute = async (args: unknown, context: ToolExecutionContext) => {
-    const result = await baseExecute(args, context);
-    const patch = extractDiffBlock((result as { text: string }).text);
-    if (!patch.trim()) {
-      throw new EmptyPatchError();
-    }
-    return { ...(result as object), patch };
-  };
-
-  return {
-    ...base,
-    execute,
-    tool: { ...base.tool, execute: execute as typeof base.tool.execute },
-  };
+export function createFixerTool(opts: { agent: AgentConfig; provider: LLMProvider }): ToolDescriptor {
+  return defineTool({
+    name: 'delegate_to_fixer',
+    description: 'Delegate a fix request to the fixer agent and get back a unified diff patch.',
+    input: z.object({ task: z.string() }),
+    execute: async ({ task }, context) => {
+      const result = await AgentExecutor.execute({
+        agent: opts.agent,
+        input: task,
+        provider: opts.provider,
+        signal: context.abortSignal,
+      });
+      const patch = extractDiffBlock(result.text);
+      if (!patch.trim()) {
+        throw new EmptyPatchError();
+      }
+      return { text: result.text, patch };
+    },
+  });
 }

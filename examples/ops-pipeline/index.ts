@@ -33,7 +33,7 @@ import { ToolRegistry } from '../../src/tools';
 import { verifySlackSignature } from '../../src/triggers';
 import { LLMProvider } from '../../src/providers/llm';
 import { startMonitorServer, MonitorServerHandle, StartMonitorServerOptions } from './monitor';
-import { createFixerDelegateTool, buildFixerAgent } from './fixer';
+import { createFixerTool, buildFixerAgent } from './fixer';
 import { handleFixerPatch } from './guardedPr';
 import {
   createInMemoryApprovalStore,
@@ -57,7 +57,7 @@ const DEFAULT_CHANNEL = '#incidents';
  * Pulls the fixer's extracted `patch` back out of a resumed ExecutionResult
  * by finding the delegate tool's own result message (AgentExecutor appends
  * it as a `role: 'tool'` message whose content is
- * `JSON.stringify(toolResult.result)`, and createFixerDelegateTool's
+ * `JSON.stringify(toolResult.result)`, and createFixerTool's
  * result shape includes a `patch` field - see fixer.ts).
  */
 function extractDelegatedPatch(result: ExecutionResult, toolName: string): string | undefined {
@@ -114,7 +114,7 @@ export interface OpsPipelineHandle {
  */
 function buildGatedToolRegistry(provider: LLMProvider): ToolRegistry {
   const fixerAgent = buildFixerAgent();
-  const delegateTool = createFixerDelegateTool({ agent: fixerAgent, provider });
+  const delegateTool = createFixerTool({ agent: fixerAgent, provider });
   // The fixer agent must never run without first passing through the
   // approval gate (this epic's own non-negotiable safety property) -
   // enforced here by flagging the delegate tool itself as needing

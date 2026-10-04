@@ -12,7 +12,6 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { AgentExecutor } from './AgentExecutor';
 import type { AgentEvent } from './agentEvents';
-import { createDelegateTool } from './DelegationTool';
 import type { ApprovalStore, ExecutionSnapshot, PendingApproval } from './ApprovalGate';
 import { resumeAfterApproval } from './resume';
 import { Checkpoint, CheckpointStore } from './checkpoint';
@@ -340,23 +339,25 @@ describe('AgentExecutor cancellation (LOU-V1)', () => {
 
   it('a delegated child agent is aborted together with its parent', async () => {
     const child = scriptedProvider(hangUntilAborted);
-    const childAgent: AgentConfig = { name: 'Child' };
-    const delegate = createDelegateTool({ agent: childAgent, provider: child.provider });
+    const childAgent = createAgent({ name: 'Child', provider: child.provider, description: 'Child agent' });
     const parent = scriptedProvider(async () => ({
       ...toolCallResult({
         id: 'call_delegate',
         type: 'function',
-        function: { name: 'delegate', arguments: JSON.stringify({ task: 'sub task' }) },
+        function: {
+          name: 'task',
+          arguments: JSON.stringify({ agent: 'child', prompt: 'sub task', description: 'child task' }),
+        },
       }),
     }));
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 20);
 
     const result = await AgentExecutor.execute({
-      agent: agentWithTools('delegate'),
+      agent: agentWithTools(),
       input: 'hi',
       provider: parent.provider,
-      toolRegistry: registryWith({ delegate }),
+      subagents: { child: childAgent },
       signal: controller.signal,
     });
 

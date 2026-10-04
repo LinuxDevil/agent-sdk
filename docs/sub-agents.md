@@ -429,8 +429,6 @@ inherits:
 | `output` schema | No | A sub-agent's output is its own: with one, `task` returns its validated object as JSON (see [Structured output](./structured-output.md#sub-agents)); without, text. |
 | Conversation history | No | The sub-agent sees only the task prompt (plus its own earlier turns when the lead [resumes the task](#continuing-a-task)). |
 
-`createDelegateTool()` children inherit the same way.
-
 ### Hooks inside sub-agents
 
 See [Hooks](./hooks.md) for the hook points and outcomes.
@@ -496,9 +494,7 @@ if (paused.finishReason === 'awaiting-approval' && paused.approvalId) {
 Resuming runs (or rejects) the sub-agent's pending call, lets the sub-agent
 finish, returns its final answer to the lead as the `task` result, and then
 continues the lead. If the sub-agent needs another approval, the run pauses
-again with a new `approvalId`. This works at any depth and for
-`createDelegateTool()` children (pass the registry that holds the delegate
-tool).
+again with a new `approvalId`. This works at any depth.
 
 The lead's `approve` option decides its sub-agents' calls too.
 
@@ -552,50 +548,4 @@ if (paused.finishReason === 'awaiting-approval' && paused.approvalId) {
   );
   console.log(result.text);
 }
-```
-
-## `createDelegateTool()`
-
-`createDelegateTool()` is superseded by `subagents`; it exists for code that
-builds a `ToolRegistry` by hand.
-
-`createDelegateTool({ agent, provider, toolRegistry })` wraps one child agent as
-a tool you name and register yourself, with its own `maxDepth` guard. It runs
-on the same delegation core as `task`, so it inherits the parent runtime the
-same way, and its result shape (`{ text, usage }`) is unchanged. Prefer
-`subagents` for new code: one tool, a prompt listing, parallel tasks and depth
-limits come for free.
-
-```ts
-import { AgentExecutor, createDelegateTool, ToolRegistry } from '@lousho/build-ai-agent';
-
-const billingAgent = {
-  name: 'Billing Agent',
-  prompt: 'You answer billing questions and look up invoices.',
-};
-
-const registry = new ToolRegistry();
-registry.register(
-  'delegate_billing_agent',
-  createDelegateTool({
-    agent: billingAgent,
-    provider,
-    contextMode: 'none', // 'full-history' shares the parent's context array too
-    maxSteps: 10,
-    maxDepth: 3, // bounds a delegation chain (e.g. A -> B -> A) before it throws
-  })
-);
-
-const supportAgent = {
-  name: 'Support Agent',
-  prompt: 'You help customers. Delegate billing questions to the billing agent.',
-  tools: { delegate_billing_agent: { tool: 'delegate_billing_agent' } },
-};
-
-const result = await AgentExecutor.execute({
-  agent: supportAgent,
-  input: 'Why was I charged twice this month?',
-  provider,
-  toolRegistry: registry,
-});
 ```

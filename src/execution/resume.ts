@@ -830,15 +830,14 @@ async function executeApprovedTool(
   } catch (error) {
     // N9b: the call needs sign-in: decidedToolMessage() pauses the run again.
     if (isSignInRequired(error)) throw error;
-    // Mirror AgentExecutor.executeToolCall's (post-fix) handling of a
-    // thrown tool error: errors that mark themselves as
-    // `PropagatingToolError` (e.g. DelegationDepthExceededError) must NOT
-    // be converted into a conversational {error} tool-result - that would
-    // hand the LLM exactly the kind of "your tool call failed, try again"
-    // signal that triggers another delegation attempt, defeating the
-    // whole point of the depth guard. toolErrorMessage() rethrows those so
-    // they propagate out of this function as a rejected promise instead,
-    // exactly like AgentExecutor.executeToolCall does.
+    // Mirror AgentExecutor.executeToolCall's handling of a thrown tool
+    // error: errors that mark themselves as `PropagatingToolError` must
+    // NOT be converted into a conversational {error} tool-result - that
+    // would hand the LLM exactly the kind of "your tool call failed, try
+    // again" signal that invites retrying an operation that must not be
+    // retried. toolErrorMessage() rethrows those so they propagate out of
+    // this function as a rejected promise instead, exactly like
+    // AgentExecutor.executeToolCall does.
     //
     // Every other thrown tool error is turned into a graceful tool-result
     // message instead of letting it reject this promise. By this point

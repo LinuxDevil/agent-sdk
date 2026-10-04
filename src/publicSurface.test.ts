@@ -108,6 +108,17 @@ describe('public surface (A2a): removed values are off the root', () => {
   }
 });
 
+/** A2c: runtime values removed from the package. */
+const REMOVED_A2C = ['createDelegateTool', 'DelegationDepthExceededError'];
+
+describe('public surface (A2c): removed values are off the root', () => {
+  for (const name of REMOVED_A2C) {
+    it(`${name}: not on the root`, () => {
+      expect(root, `the root should no longer export ${name}`).not.toHaveProperty(name);
+    });
+  }
+});
+
 describe('public surface (A2b): the legacy onEvent adapter is gone', () => {
   it('a legacy onEvent option passed to AgentExecutor.execute() is never called', async () => {
     const onEvent = vi.fn();

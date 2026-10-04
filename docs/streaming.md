@@ -200,8 +200,8 @@ Every event has `type`, `runId`, `seq`, `timestamp` and `v`. The full list of ev
 
 ## Sub-agents
 
-When the agent delegates with the `task` tool or a `createDelegateTool()`
-tool (see [Sub-agents](./sub-agents.md)), the sub-agent's run is streamed
+When the agent delegates with the `task` tool
+(see [Sub-agents](./sub-agents.md)), the sub-agent's run is streamed
 inside the same stream: its steps, `text.delta`s, `text.done`s, tool events
 and errors appear between the lead's `tool.start` and `tool.done` (or
 `tool.error`) for that call, each with a `subagent` field:

@@ -1,7 +1,7 @@
 /**
- * The delegation core shared by the `task` tool (LOU-Y3) and
- * `createDelegateTool()`: runs a child agent for one tool call of a parent
- * run, inheriting the parent's runtime (LOU-Y1).
+ * The delegation core used by the `task` tool (LOU-Y3): runs a child agent
+ * for one tool call of a parent run, inheriting the parent's runtime
+ * (LOU-Y1).
  *
  * The child keeps its own instructions, model/provider, tools, skills and
  * maxSteps, and sees only the input it is given (never the parent's

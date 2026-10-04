@@ -18,7 +18,6 @@ const CONVERTED_FILES = [
   'tools/built-in/slack.ts',
   'tools/built-in/sandboxFetch.ts',
   'tools/mcp/McpToolLoader.ts',
-  'execution/DelegationTool.ts',
 ];
 
 const AI_IMPORT = /(?:from|import)\s*\(?\s*['"]ai['"]|require\(\s*['"]ai['"]\s*\)/;

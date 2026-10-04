@@ -75,7 +75,7 @@ it needs **zero external network access** and zero API keys.
 ## Files
 
 - `monitor.ts` - LOU-J4: ErrorSignal type, dedup, `POST /webhook`.
-- `fixer.ts` - LOU-J6: fixer agent, diff extraction, delegate-tool wiring.
+- `fixer.ts` - LOU-J6: fixer agent, diff extraction, fixer-tool wiring.
 - `guardedPr.ts` - LOU-J7: guardrail-gated PR creation.
 - `demoProvider.ts` - a deterministic, zero-network scripted LLM provider
   used by the demo in place of a real model.

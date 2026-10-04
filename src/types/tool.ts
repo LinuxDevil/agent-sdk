@@ -55,7 +55,7 @@ export interface ToolExecutionContext {
   abortSignal?: AbortSignal;
   /** The session the run belongs to, when it has one. */
   sessionId?: string;
-  /** Called by the delegate tool with a finished child run's usage, so the parent run adds it to its totals (LOU-V5). */
+  /** Called by the delegation core (the `task` tool) with a finished child run's usage, so the parent run adds it to its totals (LOU-V5). */
   onDelegatedUsage?: (usage: RunUsage) => void;
   /**
    * N10b: who the run acts for - the caller route auth accepted, or a
