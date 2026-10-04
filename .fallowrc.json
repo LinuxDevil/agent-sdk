@@ -99,7 +99,8 @@
           "scripts/**"
         ],
         "maxCrap": 220,
-        "reason": "scripts/* are maintainer CLIs run by hand (api-report, pack-smoke, sync), never under the vitest coverage suite, so coverage-derived CRAP is maximal for all of them; cyclomatic/cognitive ceilings still apply."
+        "maxCognitive": 25,
+        "reason": "scripts/* are maintainer CLIs run by hand (api-report, pack-smoke, sync), never under the vitest coverage suite, so coverage-derived CRAP is maximal for all of them; cognitive ceiling raised for arg-parsing/dispatch mains; cyclomatic and unit-size ceilings still apply."
       }
     ]
   }
