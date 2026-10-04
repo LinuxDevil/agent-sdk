@@ -1,6 +1,6 @@
 {
   "name": "@lousho/build-ai-agent",
-  "version": "1.0.0-alpha.1",
+  "version": "1.0.0-alpha.2",
   "description": "Framework-agnostic SDK for building AI agents",
   "workspaces": [
     "apps/*",
