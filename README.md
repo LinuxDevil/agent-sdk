@@ -103,7 +103,7 @@ agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 - **Testing and evals**: `mockModel`, `recordReplay` cassettes, `defineEval()` trajectory assertions, `lousho eval` with `--record` / `--replay` cassettes and `--drift` trajectory diffs. [Testing](docs/testing.md), [Evals](docs/evals.md)
 - **CLI**: `init`, `doctor`, `dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `traces`, `build` and `studio`. [CLI](docs/cli.md)
 - **Editors (ACP)**: `lousho acp ./my-agent` serves your agent to Zed and other Agent Client Protocol editors, with tool calls and permission prompts. [ACP](docs/acp.md)
-- **Registry**: `lousho add <name> --registry <url-or-path>` copies a tool, skill, channel, schedule or memory slot into your agent directory from a static JSON registry, after showing its permissions. [Registry](docs/registry.md)
+- **Registry**: `lousho add <name>` copies a tool, skill, channel, schedule or memory slot into your agent directory from the default registry (or one you point at with `--registry <url-or-path>`), after showing its permissions. [Registry](docs/registry.md)
 - **Agent Forge**: `lousho studio` opens a visual canvas, run debugger and chat with approval cards. [Agent Forge](docs/agent-forge.md)
 
 ## Usage
@@ -225,7 +225,7 @@ const { text } = await agent.session({ id: 'user-42' }).send('What is my name?')
 | [Tracing and observability](docs/observability.md) | OpenTelemetry GenAI spans, attribute table, content opt-in, local traces and `lousho traces` |
 | [Deployment](docs/deployment.md) | `lousho build` targets: Node server, Docker, Cloudflare Workers (with KV checkpoints) |
 | [Cloudflare Workers](docs/cloudflare-workers.md) | What the Worker target supports and what it does not, bindings, KV stores, cron triggers |
-| [Registry](docs/registry.md) | `lousho add`: copy a tool, skill, channel, schedule or memory slot from a static JSON registry |
+| [Registry](docs/registry.md) | `lousho add`: copy a tool, skill, channel, schedule or memory slot from a static JSON registry (a default one is built in) |
 | [Agent Forge](docs/agent-forge.md) | The visual dashboard: quickstart, first-agent walkthrough, hooks |
 | [Errors](docs/errors.md) | Every error code (`LOUSHO_*`): what it means, how to fix it, an example |
 | [Troubleshooting](docs/troubleshooting.md) | Start from the symptom: setup, runs that end without an answer, tools, providers, sandbox and MCP; cause, fix, link |
@@ -268,7 +268,7 @@ Most examples run offline with a mock provider; see the
 | `lousho dev <spec>` | Local chat UI and `POST /chat` with hot reload |
 | `lousho chat <path>` | Terminal REPL: streamed replies, tool calls, approvals and questions |
 | `lousho acp <path>` | Serve the agent to Zed and other Agent Client Protocol editors |
-| `lousho add <name> --registry <url-or-path>` | Copy a tool, skill, channel, schedule or memory slot from a registry into an agent directory |
+| `lousho add <name> [--registry <url-or-path>]` | Copy a tool, skill, channel, schedule or memory slot from the default registry (or a given one) into an agent directory |
 | `lousho mcp <spec>` | Serve the agent as an MCP server (stdio or HTTP) |
 | `lousho eval [globs]` | Run `*.eval.ts` files; JUnit and JSON reports |
 | `lousho traces [id]` | List saved runs, or print one as a span tree |

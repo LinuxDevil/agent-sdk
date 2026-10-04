@@ -7,19 +7,34 @@ The files are copied into your project as source you own and can edit. There is
 no runtime plugin loader, and nothing from a registry is executed or imported
 while adding it.
 
-There is no hosted registry yet. Point `lousho add` at one with `--registry` or
-the `LOUSHO_REGISTRY` environment variable; without either it fails with
-`LOUSHO_CONFIG_INVALID` and says how to pass one.
+`lousho add` works out of the box: without `--registry` or `LOUSHO_REGISTRY` it
+reads the default registry at `https://registry.lousho.com/index.json`, which
+is the `registry/dist/` folder of the SDK's repository served as static JSON.
+`--registry` and `LOUSHO_REGISTRY` point it at another registry, and the value
+`none` (in either place) disables the registry entirely — `lousho add` then
+fails with `LOUSHO_CONFIG_INVALID`, for offline or locked-down use.
+
+The default registry currently carries five items:
+
+| Name | Type | Permissions it asks for |
+| ---- | ---- | ----------------------- |
+| `changelog` | skill | none |
+| `code-review` | skill | none |
+| `generic-webhook` | channel | `WEBHOOK_SECRET` |
+| `github-issues` | tool (list and create issues; create asks for approval) | `api.github.com`, `GITHUB_TOKEN` |
+| `open-meteo-weather` | tool | `api.open-meteo.com`, `geocoding-api.open-meteo.com` |
 
 ```bash
-lousho add --list --registry ./registry/index.json
+lousho add --list                       # the default registry's items
+lousho add open-meteo-weather --dir ./my-agent
 lousho add web-search --registry https://example.com/registry/index.json --dir ./my-agent
 LOUSHO_REGISTRY=./registry/index.json lousho add web-search --dry-run
+lousho add --list --registry none       # fails: the registry is disabled
 ```
 
 | Flag | Meaning |
 | ---- | ------- |
-| `--registry <url-or-path>` | The index: an `http(s)` URL or a local path (`LOUSHO_REGISTRY` when absent). |
+| `--registry <url-or-path>` | The index: an `http(s)` URL or a local path (`LOUSHO_REGISTRY` when absent, else the default registry). `none` disables the registry. |
 | `--dir <agent-dir>` | The agent directory to write into (default: the current directory; it must exist). |
 | `--yes`, `-y` | Do not ask for confirmation. Required when stdin is not a terminal. Does not grant elevated permissions on its own (see `--allow`). |
 | `--allow <list>` | With `--yes`, the elevated permissions you grant, comma-separated: `exec`, `fs-write`, `network`, `env`. An item that asks for one you did not name is refused. |
@@ -76,6 +91,15 @@ web server). The document's `name` and `type` must match its index entry, and a
 name starts with a letter or digit, followed by letters, digits, `.`, `_` and
 `-`. A document that does not match the
 format is `LOUSHO_REGISTRY_INVALID`, with the fields named.
+
+To contribute an item to the default registry, add a `registry/<name>/` folder
+to the SDK's repository: an `item.json` (`name`, `type`, `description`,
+`permissions`, `dependencies`) and the item's files laid out the way they
+should land in the agent directory (`tools/x.ts`, `skills/<name>/SKILL.md`,
+`channels/x.ts`). `npm run registry:build` validates every item against the
+same rules `lousho add` enforces (schema, paths, the code/manifest check) and
+rebuilds `registry/dist/`; commit the result. CI runs `npm run registry:check`,
+which fails when `registry/dist/` is stale.
 
 ## Permission manifest
 

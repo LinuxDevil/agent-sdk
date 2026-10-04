@@ -1,0 +1,9 @@
+{
+  "name": "open-meteo-weather",
+  "type": "tool",
+  "description": "Current weather for a city through the Open-Meteo API (free, no API key)",
+  "permissions": {
+    "network": ["api.open-meteo.com", "geocoding-api.open-meteo.com"]
+  },
+  "dependencies": ["@lousho/build-ai-agent", "zod"]
+}

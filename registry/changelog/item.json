@@ -1,0 +1,5 @@
+{
+  "name": "changelog",
+  "type": "skill",
+  "description": "Write a CHANGELOG entry from a diff or a set of commits"
+}

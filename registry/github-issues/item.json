@@ -1,0 +1,11 @@
+{
+  "name": "github-issues",
+  "type": "tool",
+  "description": "List and create GitHub issues through api.github.com (reads GITHUB_TOKEN)",
+  "permissions": {
+    "network": ["api.github.com"],
+    "env": ["GITHUB_TOKEN"],
+    "needsApproval": true
+  },
+  "dependencies": ["@lousho/build-ai-agent", "zod"]
+}

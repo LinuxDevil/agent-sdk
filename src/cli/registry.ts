@@ -20,7 +20,15 @@ const ENV_VAR = /^[A-Z_][A-Z0-9_]*$/;
 const itemName = z.string().regex(NAME, 'a name is letters, digits, ".", "_" and "-"');
 const itemType = z.enum(['tool', 'skill', 'channel', 'schedule', 'memory']);
 
-const IndexSchema = z.object({
+/**
+ * The registry `lousho add` reads when neither `--registry` nor `LOUSHO_REGISTRY`
+ * points at one (M7b): the `registry/dist/` folder of this repository, hosted as
+ * static JSON. One constant so the hosting answer (issue #230) is a one-line change.
+ */
+export const DEFAULT_REGISTRY = 'https://registry.lousho.com/index.json';
+
+/** The registry index document; also what `scripts/build-registry.ts` writes as `registry/dist/index.json`. */
+export const IndexSchema = z.object({
   items: z.array(
     z
       .object({
@@ -34,7 +42,8 @@ const IndexSchema = z.object({
   ),
 });
 
-const ItemSchema = z.object({
+/** One registry item document; `scripts/build-registry.ts` validates every `registry/dist/items/<name>.json` against it. */
+export const ItemSchema = z.object({
   name: itemName,
   type: itemType,
   description: z.string(),
@@ -102,13 +111,19 @@ async function readJson<T>(source: string, schema: SafeParser<T>, options: Regis
   throw new SDKError(`lousho add: ${source} is not a valid registry document: ${problems}`, 'LOUSHO_REGISTRY_INVALID');
 }
 
-/** Where the registry is: `--registry`, else `LOUSHO_REGISTRY`, else a coded error that says how to pass one. */
+/**
+ * Where the registry is: `--registry`, else `LOUSHO_REGISTRY`, else
+ * `DEFAULT_REGISTRY`. `'none'` (either source) disables the registry for
+ * offline or locked-down use and restores the "no registry configured" error.
+ */
 export function registrySource(options: RegistryOptions): string {
   const source = options.registry ?? (options.env ?? process.env).LOUSHO_REGISTRY;
-  if (source) return source;
-  throw new SDKError('lousho add: no registry configured; there is no hosted registry yet.', 'LOUSHO_CONFIG_INVALID', {
-    hint: 'Pass --registry <url-or-path> to a registry index.json, or set LOUSHO_REGISTRY. See docs/registry.md.',
-  });
+  if (source === 'none') {
+    throw new SDKError("lousho add: no registry configured ('none' disables the default registry).", 'LOUSHO_CONFIG_INVALID', {
+      hint: 'Pass --registry <url-or-path> to a registry index.json, or set LOUSHO_REGISTRY. See docs/registry.md.',
+    });
+  }
+  return source || DEFAULT_REGISTRY;
 }
 
 export async function loadIndex(registry: string, options: RegistryOptions): Promise<RegistryIndex> {
