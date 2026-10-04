@@ -6,7 +6,7 @@ import { executeToolWithSandboxGuard } from './sandboxGuard';
 import { buildToolRunContext } from './toolRunContext';
 import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
-import { AgentType, type ToolExecutionContext } from '../types';
+import { type ToolExecutionContext } from '../types';
 import type { SandboxAdapter } from '../security/sandboxCore';
 import { NoopSandbox } from '../security/sandboxCore';
 import { mockModel } from '../testing';
@@ -61,7 +61,6 @@ function register(registry: ToolRegistry, seen: Partial<Seen>, flags: { sandboxe
 
 function agentFor() {
   return AgentBuilder.create()
-    .setType(AgentType.SmartAssistant)
     .setName('Probe Agent')
     .addTool('probe', { tool: 'probe', options: {} })
     .build();

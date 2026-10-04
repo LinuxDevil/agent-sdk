@@ -44,7 +44,6 @@ How the pieces fit:
 | `createAgent(config)`         | Zero-config `{ send(message) }` agent from a `model` string or provider (+ instructions, tools). |
 | `AgentBuilder`                | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). Advanced: see [the executor API](./executor-api.md). |
 | `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. Advanced: see [the executor API](./executor-api.md). |
-| `AgentType`                   | Deprecated, no runtime effect: agents need no type.                        |
 | `resumeAfterApproval()`       | Resume an execution paused for human approval. Advanced: see [the executor API](./executor-api.md). |
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
 | `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` (from `/utils`) | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](./approvals.md), [Durable execution](./durable-execution.md)). |

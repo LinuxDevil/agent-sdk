@@ -198,3 +198,58 @@ describe('public surface (A1): moved types are off the root, on their subpath', 
     expectTypeOf<import('./utils').StorageConfig>().not.toBeNever();
   });
 });
+
+describe('public surface (A2a): removed names are off the root', () => {
+  it('agent-type system and donor-era types are gone', () => {
+    // @ts-expect-error - removed (A2a)
+    type _T1 = import('./index').AgentType;
+    // @ts-expect-error - removed (A2a)
+    type _T2 = import('./index').AgentTypeDescriptor;
+    // @ts-expect-error - removed (A2a)
+    type _T3 = import('./index').AgentExecutionOptions;
+    // @ts-expect-error - removed (A2a)
+    type _T4 = import('./index').AgentExecutionResult;
+    // @ts-expect-error - removed (A2a)
+    type _T5 = import('./index').AgentDefinition;
+    // @ts-expect-error - removed (A2a)
+    type _T6 = import('./index').ToolSetting;
+    // @ts-expect-error - removed (A2a)
+    type _T7 = import('./index').agentTypesRegistry;
+    // @ts-expect-error - removed (A2a)
+    type _T8 = import('./index').getAgentTypeDescriptor;
+    // @ts-expect-error - removed (A2a)
+    type _T9 = import('./index').getAllAgentTypeDescriptors;
+    // @ts-expect-error - removed (A2a)
+    type _T10 = import('./index').isValidAgentType;
+    // @ts-expect-error - removed (A2a)
+    type _T11 = import('./index').validateAgentConfig;
+    // @ts-expect-error - removed (A2a)
+    type _T12 = import('./index').validateAgentTools;
+    // @ts-expect-error - removed (A2a)
+    type _T13 = import('./index').IRepository;
+    // @ts-expect-error - removed (A2a)
+    type _T14 = import('./index').IAgentRepository;
+    // @ts-expect-error - removed (A2a)
+    type _T15 = import('./index').SessionData;
+    // @ts-expect-error - removed (A2a)
+    type _T16 = import('./index').ISessionRepository;
+    // @ts-expect-error - removed (A2a)
+    type _T17 = import('./index').ResultData;
+    // @ts-expect-error - removed (A2a)
+    type _T18 = import('./index').IResultRepository;
+    // @ts-expect-error - removed (A2a)
+    type _T19 = import('./index').SDKRepositories;
+    // @ts-expect-error - removed (A2a)
+    type _T20 = import('./index').DataLoadingStatus;
+    // @ts-expect-error - removed (A2a)
+    type _T21 = import('./index').PaginationParams;
+    // @ts-expect-error - removed (A2a)
+    type _T22 = import('./index').PaginatedResponse;
+    // @ts-expect-error - removed (A2a)
+    type _T23 = import('./index').DeepPartial;
+    // @ts-expect-error - removed (A2a)
+    type _T24 = import('./index').Timestamped;
+    // @ts-expect-error - removed (A2a)
+    type _T25 = import('./index').IdEntity;
+  });
+});

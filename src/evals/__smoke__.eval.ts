@@ -5,13 +5,11 @@
  */
 import { defineEval } from './defineEval';
 import { createMockProvider } from '../providers/mock';
-import { AgentType } from '../types';
 
 defineEval({
   name: 'smoke: eval files are collected by default vitest run',
   agent: {
     name: 'Smoke Agent',
-    agentType: AgentType.SmartAssistant,
     prompt: 'You are a helpful assistant',
   },
   input: 'Hello',

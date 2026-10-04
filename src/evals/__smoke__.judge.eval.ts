@@ -9,13 +9,11 @@
 import { defineEval } from './defineEval';
 import { llmJudge } from './llmJudge';
 import { createMockProvider } from '../providers/mock';
-import { AgentType } from '../types';
 
 defineEval({
   name: 'smoke (judge): llmJudge scores a fixed judge response',
   agent: {
     name: 'Smoke Agent',
-    agentType: AgentType.SmartAssistant,
     prompt: 'You are a helpful assistant',
   },
   input: 'Summarize the weather',

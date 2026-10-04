@@ -14,9 +14,6 @@ export * from './core';
 // Type exports
 export * from './types';
 
-// Agent types
-export * from './agent-types';
-
 // Tools
 export * from './tools';
 

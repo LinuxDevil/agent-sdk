@@ -7,7 +7,6 @@ import { describe, it, expect } from 'vitest';
 import type { SessionStore } from '../../../session/sessionStore';
 import type { Checkpoint, CheckpointStore } from '../../../execution/checkpoint';
 import type { ApprovalStore, ExecutionSnapshot, PendingApproval } from '../../../execution/ApprovalGate';
-import { AgentType } from '../../../types';
 import type { Message } from '../../../providers/llm';
 
 type Factory<T> = () => T | Promise<T>;
@@ -118,7 +117,7 @@ export function makePending(id: string, overrides: Partial<PendingApproval> = {}
 
 export function makeSnapshot(pending: PendingApproval): ExecutionSnapshot {
   return {
-    agent: { id: 'agent-1', name: 'Test Agent', agentType: AgentType.SmartAssistant },
+    agent: { id: 'agent-1', name: 'Test Agent' },
     currentMessages: convo,
     pendingToolCall: pending,
     steps: 1,

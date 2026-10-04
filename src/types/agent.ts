@@ -1,32 +1,5 @@
-import type { Message } from '../providers/llm';
 import { ToolConfiguration } from './tool';
 import { AgentFlow } from './flow';
-
-/**
- * Agent type identifiers
- *
- * @deprecated Has no runtime effect and will be removed in the next minor release.
- * Agents no longer need a type; omit `setType()` / `agentType`.
- */
-export enum AgentType {
-  SmartAssistant = 'smart-assistant',
-  SurveyAgent = 'survey-agent',
-  CommerceAgent = 'commerce-agent',
-  Flow = 'flow',
-}
-
-/**
- * Agent type descriptor
- *
- * @deprecated Has no runtime effect and will be removed in the next minor release.
- */
-export interface AgentTypeDescriptor {
-  type: AgentType;
-  description: Record<string, string>;
-  requiredTabs: string[];
-  supportsUserFacingUI: boolean;
-  displayName: Record<string, string>;
-}
 
 /**
  * Agent settings. `model` is the model id the agent calls (it wins over the
@@ -43,8 +16,6 @@ export interface AgentSettings {
 export interface AgentConfig {
   id?: string;
   name: string;
-  /** @deprecated Optional and ignored at runtime; will be removed in the next minor release. */
-  agentType?: AgentType;
   locale?: string;
   prompt?: string;
   expectedResult?: unknown;
@@ -53,47 +24,4 @@ export interface AgentConfig {
   events?: unknown[];
   settings?: AgentSettings;
   metadata?: Record<string, unknown>;
-}
-
-/**
- * Agent execution options
- */
-export interface AgentExecutionOptions {
-  sessionId: string;
-  messages: Message[];
-  attachments?: unknown[];
-  locale?: string;
-  timezone?: string;
-  currentDateTime?: string;
-}
-
-/**
- * Agent execution result
- */
-export interface AgentExecutionResult {
-  success: boolean;
-  result?: unknown;
-  error?: string;
-  sessionId: string;
-  tokensUsed?: number;
-  duration?: number;
-}
-
-/**
- * Agent definition for flows
- */
-export interface AgentDefinition {
-  name: string;
-  id?: string;
-  model: string;
-  system: string;
-  tools: ToolSetting[];
-}
-
-/**
- * Tool setting in agent definition
- */
-export interface ToolSetting {
-  name: string;
-  options: unknown;
 }

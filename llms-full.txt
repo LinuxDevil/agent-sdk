@@ -941,7 +941,6 @@ How the pieces fit:
 | `createAgent(config)`         | Zero-config `{ send(message) }` agent from a `model` string or provider (+ instructions, tools). |
 | `AgentBuilder`                | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). Advanced: see [the executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md). |
 | `AgentExecutor.execute(opts)` | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. Advanced: see [the executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md). |
-| `AgentType`                   | Deprecated, no runtime effect: agents need no type.                        |
 | `resumeAfterApproval()`       | Resume an execution paused for human approval. Advanced: see [the executor API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/executor-api.md). |
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
 | `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` (from `/utils`) | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md), [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). |
@@ -9271,7 +9270,6 @@ approval store and provider, so deciding the pause needs only the approval id.
 | `inputQueue` | `run.enqueue()` on a streamed run, or `agent.session({ turnPolicy })`; see [Queued input](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/queue-and-steer.md#queued-input). |
 | `sessionBudget` | `agent.session({ id, limits })`; see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md). |
 | `createDelegateTool()` | `subagents`; see [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md). |
-| `AgentType`, `setType()` | Nothing to move: the type has no effect. |
 
 ## What createAgent() does not take yet
 
