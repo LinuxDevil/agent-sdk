@@ -30,6 +30,10 @@ jobs:
       # exist - it was previously built only in the step after tests, so
       # this test always failed once it actually got a chance to run.
       - run: npm run build
+        # The dual-entry build's DTS pass (worker + executor entries) exceeds
+        # the default heap, like the peers job's build below.
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
       # packages/create-lousho-agent's own tests execFileSync its bin/cli.js,
       # which requires ITS dist/index.js to exist too - build it before the
       # test step (this is a separate package from the root SDK above).
@@ -113,3 +117,6 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run pack-smoke
+        # pack-smoke runs `npm run build` itself, which needs the same heap.
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
