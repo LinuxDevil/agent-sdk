@@ -5,10 +5,13 @@
  * Proves that what `npm pack` produces installs and works, in a fresh project
  * that has never seen this checkout:
  *
- *   1. builds the SDK and `create-lousho-agent` (skip with --skip-build),
+ *   1. builds the SDK, `create-lousho-agent` and Agent Forge (the
+ *      `build:studio` step `prepublishOnly` also runs, so the packed tarball is
+ *      the one that is really published; skip with --skip-build),
  *   2. `npm pack`s both into a temp dir and checks the SDK tarball (no `.env`,
- *      tests, fixtures or secret-looking strings; entry count and unpacked size
- *      under the thresholds below),
+ *      tests, fixtures or secret-looking strings; the files `lousho build` and
+ *      `lousho studio` need are present; entry count and unpacked size under
+ *      the thresholds below),
  *   3. `npm publish <tarball> --dry-run` for both packages (nothing is
  *      published; a tarball argument also skips the prepublishOnly build),
  *   4. installs the tarballs plus the required peers from the REGISTRY into a
@@ -33,18 +36,46 @@ import { IS_WIN, SDK_NAME, checkBin, checkModuleLoads, createReporter, mustRun a
 const REPO_ROOT = path.resolve(__dirname, '..');
 
 /**
- * Thresholds: the 1.0.0-alpha.8 tarball is ~705 entries / ~11.4 MB unpacked / ~3.1 MB packed; headroom ~25%.
- * Unpacked raised from 14 to 16 MiB by N4 (#315): main was at 14.63 MB, N4 brought it to 14.73 MB; see #316.
- * Packed raised from 4 to 4.5 MiB by N9b (#247): N9b brought it to 4,225,563 bytes (31 KB over); see #316.
+ * Thresholds: after #191 this packs the tarball that is really published (SDK +
+ * create-lousho-agent + the Agent Forge build `prepublishOnly` adds), measured
+ * at 873 entries / 14,123,313 bytes (~13.5 MiB) unpacked / 3,826,273 bytes
+ * (~3.65 MiB) packed. Before #191 the same measure was 902 entries /
+ * ~20.8 MiB / ~5.6 MiB (test files, `__snapshots__`/`__cassettes__`, the Forge
+ * server map and map `sourcesContent` no longer ship). Headroom ~20%.
  */
-const MAX_ENTRIES = 900;
+const MAX_ENTRIES = 1050;
 const MAX_UNPACKED_BYTES = 16 * 1024 * 1024;
 const MAX_PACKED_BYTES = 4.5 * 1024 * 1024;
 
 const DEFAULT_PEERS = 'ai@7 zod@4 @ai-sdk/openai@4 react@19 vue@3 @opentelemetry/api@1';
-/** Files the `files` allowlist ships on purpose that look like tests (`.test-d.ts` type tests live next to source). */
-const ALLOWED_TEST_LIKE = [/\.test-d\.ts$/];
-const FORBIDDEN_PATHS = [/(^|\/)\.env(\.|$)/, /\.test\.[cm]?[jt]sx?$/, /\.eval\.ts$/, /__fixtures__\//, /(^|\/)node_modules\//, /\.pem$/, /\.key$/];
+const FORBIDDEN_PATHS = [
+  /(^|\/)\.env(\.|$)/,
+  /\.test\.[cm]?[jt]sx?$/,
+  /\.test-d\.ts$/,
+  /\.testkit\.ts$/,
+  /\.eval\.ts$/,
+  /__fixtures__\//,
+  /__snapshots__\//,
+  /__cassettes__\//,
+  /(^|\/)node_modules\//,
+  /^apps\/agent-forge\/dist-server\/.*\.map$/,
+  /\.pem$/,
+  /\.key$/,
+];
+/**
+ * Files the published package must contain: `lousho build` bundles
+ * `src/deploy/runtime.worker.ts`, `src/deploy/shims/node.worker.ts` and
+ * `src/index.ts` from the installed package root (see `src/deploy/bundle.ts`),
+ * and `lousho studio` serves `apps/agent-forge/dist` and runs
+ * `apps/agent-forge/dist-server/index.cjs`.
+ */
+const REQUIRED_PATHS = [
+  'src/index.ts',
+  'src/deploy/runtime.worker.ts',
+  'src/deploy/shims/node.worker.ts',
+  'apps/agent-forge/dist-server/index.cjs',
+  'apps/agent-forge/dist/index.html',
+];
 const SECRET_PATTERNS = [/sk-[A-Za-z0-9]{32,}/, /AKIA[0-9A-Z]{16}/, /ghp_[A-Za-z0-9]{30,}/, /-----BEGIN [A-Z ]*PRIVATE KEY-----/, /_authToken\s*=/];
 
 const args = new Set(process.argv.slice(2));
@@ -71,8 +102,11 @@ function checkTarball(entry: PackEntry, tarball: string): void {
   if (entry.entryCount > MAX_ENTRIES) fail(`tarball has ${entry.entryCount} entries (max ${MAX_ENTRIES})`);
   if (entry.unpackedSize > MAX_UNPACKED_BYTES) fail(`tarball unpacked size ${entry.unpackedSize} exceeds ${MAX_UNPACKED_BYTES}`);
   if (entry.size > MAX_PACKED_BYTES) fail(`tarball packed size ${entry.size} exceeds ${MAX_PACKED_BYTES}`);
+  const packed = new Set(entry.files.map((f) => f.path));
+  for (const p of REQUIRED_PATHS) {
+    if (!packed.has(p)) fail(`tarball is missing required file ${p}`);
+  }
   for (const f of entry.files) {
-    if (ALLOWED_TEST_LIKE.some((re) => re.test(f.path))) continue;
     if (FORBIDDEN_PATHS.some((re) => re.test(f.path))) fail(`tarball contains forbidden file ${f.path}`);
   }
   const extracted = fs.mkdtempSync(path.join(path.dirname(tarball), 'unpack-'));
@@ -134,6 +168,8 @@ function main(): void {
   if (!args.has('--skip-build')) {
     mustRun('npm run build', 'npm', ['run', 'build'], REPO_ROOT);
     mustRun('npm run build (create-lousho-agent)', 'npm', ['run', 'build', '--workspace=packages/create-lousho-agent'], REPO_ROOT);
+    // prepublishOnly also builds Agent Forge; without it the tarball is ~5 MB smaller than the published one.
+    mustRun('npm run build:studio', 'npm', ['run', 'build:studio'], REPO_ROOT);
   }
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-pack-smoke-'));
   log(`temp dir ${base}`);

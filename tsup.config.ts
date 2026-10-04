@@ -57,6 +57,12 @@ export default defineConfig({
   minify: false,
   // Optional peers (LOU-D40) stay external too: tsup would externalize them from package.json anyway.
   external: ['ai', 'zod', '@opentelemetry/api', 'dockerode', '@modelcontextprotocol/sdk', 'prompts', 'quickjs-emscripten'],
+  esbuildOptions(options) {
+    // Ship maps without `sourcesContent` (#191): `src/` is in the published
+    // package and the maps' `sources` resolve to it, so embedding the source a
+    // second time only adds ~5 MB to the tarball.
+    options.sourcesContent = false;
+  },
   onSuccess: async () => {
     copyDevUi();
   },
