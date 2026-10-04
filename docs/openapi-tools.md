@@ -61,7 +61,9 @@ the OpenAPI specification says; use `bearerToken` or `headers` for credentials.
 | `providedArguments` | none | Values your application supplies; see below. |
 | `timeoutMs` | `30000` | Per request. |
 | `maxResponseChars` | `50000` | The response body is cut at this length, with a note saying how much was left out. |
-| `fetch` | global `fetch` | Replaces `fetch` (tests, proxies). |
+| `fetch` | global `fetch` | Replaces `fetch` (tests, proxies). Cannot be combined with `privateAddresses: 'refuse'`. |
+| `privateAddresses` | `'allow'` | `'refuse'` makes requests and the document fetch fail for loopback, link-local and private addresses; see [Security rules](#security-rules). Node only. |
+| `allowPrivate` | none | With `'refuse'`: hosts (`intranet.example`, `*.corp.example`, an IP address) that may be or resolve to private addresses. |
 
 `op` is `{ name, operationId?, method, path, summary?, tags }`.
 
@@ -127,10 +129,34 @@ the parameter to the model.
 - **Path values stay in their segment.** Path parameters are percent-encoded
   (`../admin` cannot climb out of its segment), and a value of exactly `.` or
   `..` is refused.
-- **No private-address check.** The tools call the base URL you configured. If
-  that URL can resolve to an internal address that you do not control, put a
-  proxy in front or pass your own `fetch`. The `http` tool's address checks are
-  for model-chosen URLs.
+- **Private addresses: off by default, `privateAddresses: 'refuse'` to check.**
+  By default the tools call the base URL you configured, wherever it resolves:
+  base URLs are yours and often internal. When the base URL or the document URL
+  is not fully under your control (a name someone else's DNS answers, a
+  document you fetch from elsewhere), pass `privateAddresses: 'refuse'`. Then
+  every operation request and the document fetch, each redirect hop included,
+  is refused when its host is or resolves to a loopback, link-local, private,
+  shared, multicast or reserved address (the list `http_request` uses, NAT64
+  and 6to4 included). Host names are checked with the same pinned DNS lookup as
+  `http_request` and `web_fetch`: the host is resolved once per connection,
+  every address is checked, and the socket connects to the address that was
+  checked, so a DNS-rebinding name (public to the check, `127.0.0.1` to the
+  connection) never reaches a private address. IP literals in any form `URL`
+  accepts (`2130706433`, `0x7f000001`, `0177.0.0.1`, `[::ffff:127.0.0.1]`) and
+  `localhost` / `*.localhost` names are refused when the tools are made, as a
+  `ConfigurationError`. The model cannot move a request to another host: path
+  values are percent-encoded into their segment, server URL variables take
+  only the document's defaults, and redirects stay on the base origin. List
+  your own internal hosts in `allowPrivate` (`allowPrivate: ['localhost']` for
+  a local API). A refused request is a tool error that names the host, never
+  the addresses it resolved to.
+  `'refuse'` cannot be combined with `fetch`: a custom `fetch` resolves names
+  itself, so the check could not pin the address it connects to, and making
+  the tools throws instead of checking only half. With your own `fetch` (or a
+  proxy), check destinations there. `'refuse'` needs Node.js (`undici` and
+  `node:dns`); on a runtime without them, making the tools throws a
+  `ConfigurationError` rather than send unchecked requests. Cloudflare Worker
+  builds do not offer `openApiTools`.
 
 ## Large APIs
 

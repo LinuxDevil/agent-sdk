@@ -9,6 +9,8 @@ import { ConfigurationError } from '../../execution/errors';
 import { defineTool, type DefinedTool } from '../defineTool';
 import { toolFailure } from '../built-in/toolFailure';
 import { jsonSchemaToZod } from '../mcp/schema';
+import { findSsrfBlockedError } from '../../security/privateAddress';
+import { assertHostAllowed, createPinnedFetch, privateAddressPolicy, type PrivateAddressPolicy } from './privateAddresses';
 import {
   parseDocumentText,
   parseOpenApiDocument,
@@ -40,8 +42,17 @@ export interface OpenApiToolsOptions {
   timeoutMs?: number;
   /** The response body is cut at this many characters. Default 50000. */
   maxResponseChars?: number;
-  /** Replaces the global `fetch` (tests, proxies). */
+  /** Replaces the global `fetch` (tests, proxies). Cannot be combined with `privateAddresses: 'refuse'`. */
   fetch?: typeof fetch;
+  /**
+   * 'refuse': requests (and the document fetch) to loopback, link-local or
+   * private addresses fail, checked with a pinned DNS lookup on every
+   * connection and redirect hop, as `http_request` does. Node only.
+   * Default 'allow': no check (base URLs are yours, often internal).
+   */
+  privateAddresses?: 'allow' | 'refuse';
+  /** With 'refuse': hosts (`intranet.example`, `*.corp.example`, an IP address) allowed to be or resolve to private addresses. */
+  allowPrivate?: readonly string[];
 }
 
 /** What a generated tool returns for every HTTP response. */
@@ -72,16 +83,17 @@ const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
  * const agent = createAgent({ provider, tools });
  */
 export async function openApiTools(document: object | string | URL, options: OpenApiToolsOptions = {}): Promise<DefinedTool[]> {
-  const fetchFn = options.fetch ?? fetch;
+  const policy = privateAddressPolicy(options);
+  const fetchFn = policy.refuse ? await createPinnedFetch(policy) : (options.fetch ?? fetch);
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const { raw, documentUrl } = await loadDocument(document, fetchFn, timeoutMs);
+  const { raw, documentUrl } = await loadDocument(document, fetchFn, timeoutMs, policy);
   const parsed = parseOpenApiDocument(raw);
-  const baseUrl = resolveBaseUrl(options.baseUrl ?? parsed.serverUrl, documentUrl);
+  const baseUrl = resolveBaseUrl(options.baseUrl ?? parsed.serverUrl, documentUrl, policy);
   const operations = selectOperations(parsed.operations, options);
   assertProvidedArgumentsUsed(operations, options.providedArguments);
   assertUniqueNames(operations, options.prefix);
 
-  return operations.map((operation) => buildTool(operation, parsed.document, baseUrl, { ...options, fetch: fetchFn, timeoutMs }));
+  return operations.map((operation) => buildTool(operation, parsed.document, baseUrl, { ...options, fetch: fetchFn, timeoutMs, policy }));
 }
 
 // --- loading -----------------------------------------------------------------
@@ -89,18 +101,19 @@ export async function openApiTools(document: object | string | URL, options: Ope
 async function loadDocument(
   document: object | string | URL,
   fetchFn: typeof fetch,
-  timeoutMs: number
+  timeoutMs: number,
+  policy: PrivateAddressPolicy
 ): Promise<{ raw: unknown; documentUrl?: URL }> {
   if (document instanceof URL || (typeof document === 'string' && /^https?:\/\/\S+$/i.test(document.trim()))) {
-    const url = assertAllowedUrl(document instanceof URL ? document.href : document.trim(), 'the document URL');
-    const response = await fetchDocument(url, fetchFn, timeoutMs);
+    const url = assertAllowedUrl(document instanceof URL ? document.href : document.trim(), 'the document URL', policy);
+    const response = await fetchDocument(url, fetchFn, timeoutMs, policy);
     return { raw: parseDocumentText(await response.text()), documentUrl: new URL(response.url || url.href) };
   }
   if (typeof document === 'string') return { raw: parseDocumentText(document) };
   return { raw: document };
 }
 
-async function fetchDocument(start: URL, fetchFn: typeof fetch, timeoutMs: number): Promise<Response> {
+async function fetchDocument(start: URL, fetchFn: typeof fetch, timeoutMs: number, policy: PrivateAddressPolicy): Promise<Response> {
   let url = start;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     let response: Response;
@@ -111,11 +124,13 @@ async function fetchDocument(start: URL, fetchFn: typeof fetch, timeoutMs: numbe
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (error) {
-      throw new ConfigurationError(`openApiTools: could not fetch the document from ${url.origin}${url.pathname}: ${errorMessage(error)}`, 'document');
+      const blocked = findSsrfBlockedError(error);
+      const reason = blocked ? `${blocked.message} (privateAddresses: 'refuse')` : errorMessage(error);
+      throw new ConfigurationError(`openApiTools: could not fetch the document from ${url.origin}${url.pathname}: ${reason}`, 'document');
     }
     const location = response.headers.get('location');
     if (response.status >= 300 && response.status < 400 && location) {
-      url = assertAllowedUrl(new URL(location, url).href, 'a redirect of the document URL');
+      url = assertAllowedUrl(new URL(location, url).href, 'a redirect of the document URL', policy);
       continue;
     }
     if (!response.ok) {
@@ -126,8 +141,8 @@ async function fetchDocument(start: URL, fetchFn: typeof fetch, timeoutMs: numbe
   throw new ConfigurationError(`openApiTools: the document URL redirected more than ${MAX_REDIRECTS} times`, 'document');
 }
 
-/** https only; http is allowed for loopback hosts. No credentials in the URL. */
-function assertAllowedUrl(text: string, what: string): URL {
+/** https only; http is allowed for loopback hosts. No credentials in the URL. With 'refuse', no private IP literal or localhost name. */
+function assertAllowedUrl(text: string, what: string, policy: PrivateAddressPolicy): URL {
   let url: URL;
   try {
     url = new URL(text);
@@ -144,10 +159,20 @@ function assertAllowedUrl(text: string, what: string): URL {
   if (url.username || url.password) {
     throw new ConfigurationError(`openApiTools: ${what} must not contain a user name or password; pass credentials with 'headers' or 'bearerToken'`, 'baseUrl');
   }
+  try {
+    assertHostAllowed(url.hostname, policy);
+  } catch (error) {
+    const blocked = findSsrfBlockedError(error);
+    if (!blocked) throw error;
+    throw new ConfigurationError(
+      `openApiTools: ${what} (${url.protocol}//${url.host}) is refused: ${blocked.message} (privateAddresses: 'refuse'; list the host in 'allowPrivate' if it is yours)`,
+      'baseUrl'
+    );
+  }
   return url;
 }
 
-function resolveBaseUrl(candidate: string | undefined, documentUrl: URL | undefined): URL {
+function resolveBaseUrl(candidate: string | undefined, documentUrl: URL | undefined, policy: PrivateAddressPolicy): URL {
   let text = candidate;
   if (text === undefined) {
     if (!documentUrl) {
@@ -155,7 +180,7 @@ function resolveBaseUrl(candidate: string | undefined, documentUrl: URL | undefi
     }
     text = '/';
   }
-  const url = assertAllowedUrl(documentUrl ? new URL(text, documentUrl).href : text, 'the base URL');
+  const url = assertAllowedUrl(documentUrl ? new URL(text, documentUrl).href : text, 'the base URL', policy);
   url.search = '';
   url.hash = '';
   return url;
@@ -220,7 +245,7 @@ function assertProvidedArgumentsUsed(operations: ParsedOperation[], provided: Op
 
 // --- building a tool ------------------------------------------------------------------
 
-type ResolvedOptions = OpenApiToolsOptions & { fetch: typeof fetch; timeoutMs: number };
+type ResolvedOptions = OpenApiToolsOptions & { fetch: typeof fetch; timeoutMs: number; policy: PrivateAddressPolicy };
 
 function needsApproval(info: OpenApiOperationInfo, approval: OpenApiToolsOptions['approval']): boolean {
   if (approval === 'always') return true;
@@ -358,6 +383,7 @@ async function fetchOnce(
   signals: { combined: AbortSignal; timeout: AbortSignal; user?: AbortSignal }
 ): Promise<Response> {
   try {
+    assertHostAllowed(request.url.hostname, options.policy);
     return await options.fetch(request.url.href, {
       method: request.method,
       headers: request.headers,
@@ -366,6 +392,8 @@ async function fetchOnce(
       signal: signals.combined,
     });
   } catch (error) {
+    const blocked = findSsrfBlockedError(error);
+    if (blocked) throw toolFailure(`${label} refused: ${blocked.message} (privateAddresses: 'refuse')`);
     if (signals.timeout.aborted && !signals.user?.aborted) throw toolFailure(`${label} timed out after ${options.timeoutMs} ms`);
     throw toolFailure(`${label} failed: ${errorMessage(error)}`);
   }
