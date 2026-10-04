@@ -33,7 +33,7 @@ export interface ModelUsage {
   calls: number;
 }
 
-/** Usage that child agents (delegated through `createDelegateTool`) spent; already included in the run totals. */
+/** Usage that child agents (delegated through the `task` tool) spent; already included in the run totals. */
 export interface DelegatedUsage {
   inputTokens: number;
   outputTokens: number;

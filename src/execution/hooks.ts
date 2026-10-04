@@ -70,7 +70,7 @@ export interface HookContext {
   metadata?: Record<string, unknown>;
   /**
    * LOU-Y1: set when the hook fires inside a sub-agent (a child run started
-   * by the `task` tool or a `createDelegateTool()` tool). A parent run's
+   * by the `task` tool). A parent run's
    * hooks apply to its sub-agents' model calls and tool calls too; a hook
    * that should only see the top-level run can return early on it.
    *

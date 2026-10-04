@@ -488,9 +488,9 @@ function approvalOutcome(prepared: PreparedToolCall): ToolCallOutcome {
 
 /**
  * The outcome for a thrown tool error. Errors that mark themselves as
- * `PropagatingToolError` (e.g. DelegationDepthExceededError) are rethrown
- * by toolErrorMessage() so they propagate out of execute() as a rejected
- * promise instead of becoming a conversational {error} tool-result.
+ * `PropagatingToolError` are rethrown by toolErrorMessage() so they
+ * propagate out of execute() as a rejected promise instead of becoming a
+ * conversational {error} tool-result.
  * LOU-U12: the model gets a structured error (not the string "null"),
  * while `outcome.error` keeps the plain message for events/hooks.
  */

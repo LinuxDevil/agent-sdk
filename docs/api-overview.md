@@ -23,7 +23,7 @@ How the pieces fit:
 │  │ Executor (approvals,        │    │
 │  │ checkpoints, tracing)       │    │
 │  ├────────────────────────────┤    │
-│  │ Tools │ Delegation │ MCP    │    │
+│  │ Tools │ Sub-agents │ MCP    │    │
 │  │ Flows │ Guardrails │ Evals  │    │
 │  ├────────────────────────────┤    │
 │  │       Core Engine          │    │
@@ -53,7 +53,6 @@ How the pieces fit:
 | `AgentStore`, `memoryStore()` | The `createAgent({ store })` option: `{ sessions?, checkpoints?, approvals?, tokens? }`, and an in-memory one (see [Sessions](./sessions.md#choosing-a-store); `tokens` holds OAuth tokens, see [OAuth](./oauth.md)). |
 | `SessionAwaitingApprovalError` | Thrown by `execute()` when its `sessionId` is paused on an approval (see [Durable execution](./durable-execution.md)). |
 | `SDKError`, `ERROR_CODES`    | Base class of the SDK's errors: a stable `code`, a `hint` and a `docs` link (see [Errors](./errors.md)). |
-| `createDelegateTool()`        | Wrap a child agent as a tool for multi-agent delegation. Superseded by `subagents`. |
 
 ### Dynamic config
 

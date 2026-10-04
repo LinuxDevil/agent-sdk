@@ -62,9 +62,8 @@ export interface AgentEventBase<TType extends string> {
   /** Schema version, always {@link AGENT_EVENT_SCHEMA_VERSION}. */
   v: typeof AGENT_EVENT_SCHEMA_VERSION;
   /**
-   * LOU-Y1: set on events of a sub-agent's run (started by the `task` tool or
-   * a `createDelegateTool()` tool): which sub-agent, and the tool call of this
-   * run that started it. Absent on the top-level run's own events, and never
+   * LOU-Y1: set on events of a sub-agent's run (started by the `task` tool):
+   * which sub-agent, and the tool call of this run that started it. Absent on the top-level run's own events, and never
    * set on `run.start`/`run.done` (they mark the top-level run only). The step
    * ordering guarantees hold for the top-level events and, separately, for
    * each sub-agent's events.

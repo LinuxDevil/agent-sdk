@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { runFixer, extractDiffBlock, EmptyPatchError, FixRequest, createFixerDelegateTool } from './fixer';
+import { runFixer, extractDiffBlock, EmptyPatchError, FixRequest, createFixerTool } from './fixer';
 import { LLMProvider, GenerateResult } from '../../src/providers';
 
 function makeScriptedProvider(text: string): LLMProvider {
@@ -79,12 +79,12 @@ describe('runFixer', () => {
   });
 });
 
-describe('createFixerDelegateTool', () => {
+describe('createFixerTool', () => {
   it('delegates to the fixer agent and extracts a patch from its response', async () => {
     const provider = makeScriptedProvider(FENCED_DIFF_RESPONSE);
     const fixerAgent = { name: 'fixer', prompt: 'fix it' };
 
-    const delegateTool = createFixerDelegateTool({ agent: fixerAgent, provider });
+    const delegateTool = createFixerTool({ agent: fixerAgent, provider });
     const result: any = await delegateTool.tool.execute!({ task: 'fix sig-1' }, {} as any);
 
     expect(result.patch).toContain('src/OrderService.java');
@@ -94,7 +94,7 @@ describe('createFixerDelegateTool', () => {
     const provider = makeScriptedProvider('I am not sure how to fix this.');
     const fixerAgent = { name: 'fixer', prompt: 'fix it' };
 
-    const delegateTool = createFixerDelegateTool({ agent: fixerAgent, provider });
+    const delegateTool = createFixerTool({ agent: fixerAgent, provider });
     await expect(delegateTool.tool.execute!({ task: 'fix sig-1' }, {} as any)).rejects.toBeInstanceOf(
       EmptyPatchError
     );

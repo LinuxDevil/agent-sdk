@@ -297,7 +297,7 @@ principal, frozen (a tool or a policy that assigns to it throws):
 | `preToolCall` / `postToolCall` hooks | `ctx.principal` |
 | `onPermissionDecision(entry, { principal })` | the second argument; the entry itself carries none |
 | A pending approval (`agent.approvals.list()`, `approve`, a channel's `approvers` function) | `request.principal`: whose call it is |
-| In-process sub-agents (`task`, background tasks, `createDelegateTool()`) | the lead's principal, everywhere above |
+| In-process sub-agents (`task`, background tasks) | the lead's principal, everywhere above |
 
 A run without a principal (no route auth, `send()` without `principal`) has
 none in any of these places.
@@ -410,8 +410,8 @@ has no principal of its own, each of its turns runs with the principal its
 
 ### Sub-agents
 
-In-process sub-agents (the `task` tool, background tasks and
-`createDelegateTool()`) act for the lead's caller, also when their approval is
+In-process sub-agents (the `task` tool and background tasks) act for the
+lead's caller, also when their approval is
 resumed. A [remote sub-agent](./sub-agents.md) (`remoteAgent()`) is not told who
 the caller is: the remote server's own route auth decides its principal (for
 example the `apiToken()` service principal of the lead's token).

@@ -252,12 +252,10 @@ describe('Execution - resumeAfterApproval', () => {
     // Reproduces the LOU-D reviewer finding: resume.ts's own catch/convert
     // block for the deferred tool's execute() call never got the same
     // PropagatingToolError special-case that AgentExecutor.executeToolCall
-    // got in the AgentExecutor fix. A deferred tool that is itself a
-    // delegate tool hitting its delegation-depth limit throws a
-    // PropagatingToolError subclass (DelegationDepthExceededError); that
-    // must propagate out of resumeAfterApproval() as a rejected promise,
-    // not get swallowed into a {error} tool-result message that would let
-    // the LLM see a normal failure and retry the delegation.
+    // got in the AgentExecutor fix. A deferred tool that throws a
+    // PropagatingToolError must propagate out of resumeAfterApproval() as a
+    // rejected promise, not get swallowed into a {error} tool-result
+    // message that would let the LLM see a normal failure and retry.
     const depthError = new PropagatingToolError('delegation depth exceeded');
     const execute = vi.fn().mockRejectedValue(depthError);
     toolRegistry.register('delegate', {

@@ -57,7 +57,7 @@ How it behaves:
   passed to the provider (`GenerateOptions.signal`, sent to the `ai` SDK as
   `abortSignal`) and to each tool as `execute(args, { abortSignal })`, so
   in-flight work can stop early. The built-in `httpTool` passes it to
-  `fetch`, and agents created with `createDelegateTool()` are aborted along
+  `fetch`, and delegated child runs (the `task` tool) are aborted along
   with their parent.
 - An aborted run **resolves** (it does not reject) with
   `finishReason: 'aborted'` and the messages and steps so far. A rejection

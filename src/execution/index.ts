@@ -4,7 +4,6 @@
  */
 
 export * from './AgentExecutor';
-export * from './DelegationTool';
 export * from './errors';
 // A1: StorageServiceApprovalStore moved to '@lousho/build-ai-agent/utils'.
 export {

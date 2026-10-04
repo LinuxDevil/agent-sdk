@@ -123,7 +123,6 @@ approval store and provider, so deciding the pause needs only the approval id.
 | `skills`, `subagents` | The same names on `createAgent()`, which also takes `mcpServers` and `memory`. |
 | `inputQueue` | `run.enqueue()` on a streamed run, or `agent.session({ turnPolicy })`; see [Queued input](./queue-and-steer.md#queued-input). |
 | `sessionBudget` | `agent.session({ id, limits })`; see [Sessions](./sessions.md). |
-| `createDelegateTool()` | `subagents`; see [Sub-agents](./sub-agents.md). |
 
 ## What createAgent() does not take yet
 

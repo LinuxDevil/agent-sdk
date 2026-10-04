@@ -1,12 +1,11 @@
 /**
- * LOU-Y1: a child agent run (the `task` tool, or createDelegateTool())
- * inherits the parent run's runtime.
+ * LOU-Y1: a child agent run (the `task` tool) inherits the parent run's
+ * runtime.
  */
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import { AgentExecutor, type ExecuteOptions } from './AgentExecutor';
 import type { AgentEvent } from './agentEvents';
-import { createDelegateTool } from './DelegationTool';
 import { HookRegistry } from './hooks';
 import { resumeAfterApproval } from './resume';
 import type { ApprovalStore, ResolvedApproval } from './ApprovalGate';
@@ -285,32 +284,6 @@ describe('sub-agents inherit the parent runtime (LOU-Y1)', () => {
     expect(await maxConcurrentChildCalls(2)).toBe(2);
   });
 
-  it('createDelegateTool children inherit too: hooks, and usage rolled up into the parent', async () => {
-    const seen: string[] = [];
-    const hooks = new HookRegistry();
-    hooks.register({ name: 'spy', preGenerate: (ctx) => void seen.push(ctx.subagent?.name ?? 'parent') });
-    const child = { name: 'Billing' };
-    const registry = new ToolRegistry();
-    registry.register(
-      'delegate',
-      createDelegateTool({ agent: child, provider: mockModel([{ text: 'refunded', usage: { inputTokens: 50, outputTokens: 5 } }]) })
-    );
-
-    const result = await AgentExecutor.execute({
-      agent: { ...lead, tools: { delegate: { tool: 'delegate' } } },
-      input: 'refund me',
-      provider: mockModel([
-        { toolCalls: [{ name: 'delegate', args: { task: 'refund' } }], usage: { inputTokens: 1, outputTokens: 1 } },
-        { text: 'done', usage: { inputTokens: 1, outputTokens: 1 } },
-      ]),
-      toolRegistry: registry,
-      hooks,
-    });
-
-    expect(seen).toEqual(['parent', 'Billing', 'parent']);
-    expect(result.usage).toMatchObject({ inputTokens: 52, outputTokens: 7, totalTokens: 59, modelCalls: 3 });
-    expect(result.usage.delegated).toMatchObject({ inputTokens: 50, outputTokens: 5, runs: 1 });
-  });
 });
 
 describe('approval inside a sub-agent (LOU-Y1)', () => {
@@ -474,47 +447,6 @@ describe('approval inside a sub-agent (LOU-Y1)', () => {
 
     expect(first.sent).toEqual(['ana']);
     expect(second.sent).toEqual([]);
-  });
-
-  it('works for createDelegateTool children', async () => {
-    const approvals = memoryApprovals();
-    const sent: string[] = [];
-    const childRegistry = new ToolRegistry();
-    childRegistry.register(
-      defineTool({
-        name: 'send',
-        description: 'Sends',
-        input: z.object({}),
-        needsApproval: true,
-        execute: () => {
-          sent.push('x');
-          return 'sent';
-        },
-      })
-    );
-    const child = { name: 'Mailer', tools: { send: { tool: 'send' } } };
-    const registry = new ToolRegistry();
-    registry.register(
-      'delegate',
-      createDelegateTool({ agent: child, provider: mockModel([{ toolCalls: [{ name: 'send' }] }, 'mail sent']), toolRegistry: childRegistry })
-    );
-    const parent = { ...lead, tools: { delegate: { tool: 'delegate' } } };
-    const parentModel = mockModel([{ toolCalls: [{ name: 'delegate', args: { task: 'mail' } }] }, 'done']);
-
-    const paused = await AgentExecutor.execute({
-      agent: parent,
-      input: 'go',
-      provider: parentModel,
-      toolRegistry: registry,
-      approvalStore: approvals.store,
-    });
-    expect(approvals.only().pending.subagentPath).toEqual(['Mailer']);
-
-    const result = await resumeAfterApproval({ id: paused.approvalId!, approved: true }, approvals.store, registry, parentModel);
-
-    expect(sent).toEqual(['x']);
-    expect(result.text).toBe('done');
-    expect(JSON.parse(toolResults(result.messages)[0].content as string)).toMatchObject({ text: 'mail sent' });
   });
 
   it('without an approval store, the child call becomes an error result and nothing runs', async () => {

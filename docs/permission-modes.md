@@ -170,7 +170,7 @@ identity (see [auth](./auth.md#principals-in-tools-and-approvals)).
 
 ## Sub-agents
 
-A sub-agent (the `task` tool, a background task, `createDelegateTool()`) runs
+A sub-agent (the `task` tool or a background task) runs
 under the lead's mode while the lead's mode is not `'default'`, and under its
 own `permissionMode` otherwise. A sub-agent created with
 `permissionMode: 'plan'` stays in plan mode whatever the lead's mode is. The mode is read at each of the sub-agent's tool

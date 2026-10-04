@@ -691,31 +691,27 @@ describe('FlowExecutor', () => {
     });
   });
 
-  describe('LOU-D4: delegate tool compatibility', () => {
+  describe('LOU-D4: defined tool compatibility', () => {
     it('produces the same event sequence as a built-in tool step', async () => {
       // Template: this mirrors "should execute tool" above (a single
       // toolCall step against a registered tool) exactly, except the tool
-      // name points at a delegate tool created by createDelegateTool()
-      // instead of a hand-rolled built-in-style tool. If delegate tools are
-      // truly drop-in compatible with FlowExecutor's toolCall step, the two
+      // name points at a second defineTool() tool instead of the
+      // hand-rolled built-in-style 'testTool'. If defined tools are truly
+      // drop-in compatible with FlowExecutor's toolCall step, the two
       // flows should produce an identical sequence of event *types* (only
       // the event `data` payloads legitimately differ, since the tools do
       // different things).
-      const { createDelegateTool } = await import('../execution/DelegationTool');
-
-      const childProvider = new MockLLMProvider({
-        name: 'mock-child',
-        responses: ['delegated response'],
-      });
-
-      const childAgent = {
-        name: 'Delegate Test Agent',
-        prompt: 'You are a test child agent',
-      };
+      const { defineTool } = await import('../tools/defineTool');
+      const { z } = await import('zod');
 
       toolRegistry.register(
         'delegate_test_agent',
-        createDelegateTool({ agent: childAgent, provider: childProvider })
+        defineTool({
+          name: 'delegate_test_agent',
+          description: 'A second registered tool',
+          input: z.object({ task: z.string() }),
+          execute: async () => ({ text: 'delegated response' }),
+        })
       );
 
       const builtinFlow: AgentFlow = {
@@ -752,13 +748,12 @@ describe('FlowExecutor', () => {
       expect(builtinResult.success).toBe(true);
       expect(delegateEvents.map((e) => e.type)).toEqual(builtinEvents.map((e) => e.type));
 
-      // Result shape: the delegate tool's own return value (text/usage) is
-      // naturally different from the built-in test tool's return value,
-      // but it is still a plain result object surfaced the same way a
-      // built-in tool's result would be - no new FlowStep type or special
-      // casing was needed in FlowExecutor for delegate tools to work.
-      expect(delegateResult.output).toHaveProperty('text');
-      expect(delegateResult.output).toHaveProperty('usage');
+      // Result shape: the second tool's own return value is naturally
+      // different from the built-in test tool's return value, but it is
+      // still a plain result object surfaced the same way a built-in
+      // tool's result would be - no new FlowStep type or special casing
+      // was needed in FlowExecutor for defined tools to work.
+      expect(delegateResult.output).toEqual({ text: 'delegated response' });
     });
   });
 

@@ -32,7 +32,7 @@ import { ToolRegistry } from '../../src/tools';
 import { secretScanGuardrail, createDiffSizeGuardrail } from '../../src/execution/guardrails';
 import { startOpsPipeline } from './index';
 import { createDemoProvider } from './demoProvider';
-import { createFixerDelegateTool, buildFixerAgent } from './fixer';
+import { createFixerTool, buildFixerAgent } from './fixer';
 import { buildMonitorPrompt } from './monitor';
 import { createMockGithubTool } from './mocks/mockGithubTool';
 import { createMockSlackTool } from './mocks/mockSlackTool';
@@ -48,7 +48,7 @@ const FIXTURE_SIGNAL = exampleErrorSignal();
 
 const evalProvider = createDemoProvider();
 const evalFixerAgent = buildFixerAgent();
-const evalDelegateTool = createFixerDelegateTool({ agent: evalFixerAgent, provider: evalProvider });
+const evalDelegateTool = createFixerTool({ agent: evalFixerAgent, provider: evalProvider });
 // Note: unlike index.ts's real wiring, this eval registry does NOT flag the
 // delegate tool needsApproval:true - defineEval()'s EvalConfig (LOU-G1) has
 // no approvalStore field to satisfy a paused run, and the approval-gate
