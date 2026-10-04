@@ -42,7 +42,11 @@ export async function evalModule(file: string): Promise<Record<string, unknown>>
       bundle: true,
       write: false,
       format: 'esm',
-      platform: 'neutral',
+      // Runs on Node, so builtins resolve (under ai >= 6 the SDK's graph
+      // reaches @vercel/oidc, which imports fs/path/os). Worker rules are
+      // still enforced: sdkRuntimePlugin maps the barrel to workerSdk and
+      // workerUnsupportedPeerPlugin fails on node-only imports in the file.
+      platform: 'node',
       target: 'es2022',
       logLevel: 'silent',
       plugins: [sdkRuntimePlugin({ sdkEntry: 'worker' }), workerUnsupportedPeerPlugin()],
