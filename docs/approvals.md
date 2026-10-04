@@ -352,7 +352,8 @@ tool. Resume later, after a real restart if you like, with
 `resumeAfterApproval()`:
 
 ```ts
-import { AgentExecutor, resumeAfterApproval, StorageServiceApprovalStore } from '@lousho/build-ai-agent';
+import { AgentExecutor, resumeAfterApproval } from '@lousho/build-ai-agent';
+import { StorageServiceApprovalStore } from '@lousho/build-ai-agent/utils';
 
 const approvalStore = new StorageServiceApprovalStore(storage);
 

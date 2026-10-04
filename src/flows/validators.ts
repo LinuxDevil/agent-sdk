@@ -1,4 +1,4 @@
-import { AgentFlow, FlowAgentDefinition } from '../types';
+import { AgentFlow, FlowAgentDefinition } from '../types/flow';
 
 /**
  * Whether `value` is a `createAgent()` result (a `SimpleAgent`): a live agent

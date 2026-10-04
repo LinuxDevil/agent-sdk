@@ -3,7 +3,7 @@ import { FlowBuilder } from './FlowBuilder';
 import { createAgent } from '../createAgent';
 import { mockModel } from '../testing';
 import { SDKError } from '../execution/errors';
-import type { FlowAgentDefinition } from '../types';
+import type { FlowAgentDefinition } from '../types/flow';
 
 describe('FlowBuilder', () => {
   describe('basic building', () => {

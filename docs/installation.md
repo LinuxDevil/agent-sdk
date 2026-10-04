@@ -134,6 +134,30 @@ hazard), so a class from one is not `===` the other. `instanceof SDKError` and
 `instanceof HookRegistry` are safe across the two copies (they check a
 `Symbol.for` brand); for other classes, use one module format per process.
 
+The entries `exports` declares, and what each one holds:
+
+| Import specifier | What it holds |
+| ---------------- | ------------- |
+| `@lousho/build-ai-agent` | The root: `createAgent()`, `defineTool()`, `defineChannel()`, agents' public types, events, stores (`memoryStore()`, `fileStore()`), hooks, guardrails, sessions, skills, memory, sub-agents, evals, spec files, deployment types |
+| `@lousho/build-ai-agent/core` | `AgentBuilder` (the lower-level agent builder; advanced - prefer `createAgent()`) |
+| `@lousho/build-ai-agent/tools` | The tools surface: `defineTool()`, `ToolRegistry`, the built-in tools, MCP/OpenAPI helpers |
+| `@lousho/build-ai-agent/flows` | `FlowBuilder`, `FlowExecutor`, `validateFlow()` and every flow type (`AgentFlow`, `EditorStep`, `FlowExecutionEvent`, ...) |
+| `@lousho/build-ai-agent/integrations` | The credentialed third-party tools: `createJiraTools()`, `createGitHubTools()`, `createSlackTool()` / `slackTool`, `postSlackAlert()`, `createEmailTool()` and their types |
+| `@lousho/build-ai-agent/utils` | `EncryptionUtils`, `sha256()`, `generatePassword()`, `StorageService`, `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` and the validators (`validateWithSchema`, `isValidEmail`, ...) |
+| `@lousho/build-ai-agent/mcp` | MCP client and server helpers: `connectMcp()`, `loadMcpTools()`, `serveMcp()` |
+| `@lousho/build-ai-agent/types` | The public types without the runtime |
+| `@lousho/build-ai-agent/testing` | `mockModel()`, `recordReplay()` and the offline-test helpers |
+| `@lousho/build-ai-agent/otel` | `createOtelTraceExporter()` (needs the optional `@opentelemetry/api` peer) |
+| `@lousho/build-ai-agent/hooks` | The hooks surface: `HookRegistry`, hook types |
+| `@lousho/build-ai-agent/sqlite` | `SqliteStore` (sessions, checkpoints, approvals and tokens in one SQLite file; needs Node's `node:sqlite`) |
+| `@lousho/build-ai-agent/auth` | Route auth: `routeAuth()`, `jwt()`, `oidc()`, `basic()`, `apiToken()`, `anonymous()` |
+| `@lousho/build-ai-agent/kv` | `KVStore`, `KVCheckpointStore` for a hand-written Cloudflare Worker |
+| `@lousho/build-ai-agent/traces` | `fileTraceExporter()`, `listTraces()`, `readTrace()` (what `lousho traces` reads) |
+| `@lousho/build-ai-agent/triggers` | `WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter`, `TriggerRegistry` |
+| `@lousho/build-ai-agent/react` | `useLoushoAgent()` and the React helpers (needs `react`) |
+| `@lousho/build-ai-agent/vue` | `useLoushoAgent()` as a Vue composable (needs `vue`) |
+| `@lousho/build-ai-agent/svelte` | `loushoAgent()` as a Svelte store |
+
 ## Installing from a local build
 
 To try an unreleased commit, build and pack the SDK from a checkout of this

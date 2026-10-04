@@ -3,7 +3,8 @@
  * `LogEntry` rows the Logs tab renders (LOU-O1). Used by runRegistry.ts.
  */
 import { randomUUID } from 'node:crypto';
-import type { AgentEvent, AgentEventOf, AgentEventType, FlowExecutionEvent, FlowExecutionEventOf } from '@lousho/build-ai-agent';
+import type { AgentEvent, AgentEventOf, AgentEventType } from '@lousho/build-ai-agent';
+import type { FlowExecutionEvent, FlowExecutionEventOf } from '@lousho/build-ai-agent/flows';
 import type { LogEntry } from '../shared/wireTypes';
 
 /** The event-specific part of a `LogEntry`; id/agentId/timestamp are added by the translators. */

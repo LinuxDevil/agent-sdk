@@ -22,13 +22,13 @@ import {
   resolveSpecProvider,
   resolveSpecTool,
   type AgentConfig,
-  type AgentFlow,
   type AgentSpec,
   type HookRegistry,
   type LLMProvider,
   type SandboxAdapter,
   type ToolDescriptor,
 } from '@lousho/build-ai-agent';
+import type { AgentFlow } from '@lousho/build-ai-agent/flows';
 import { compileHooksFromSpecPolicy } from './compileHooks';
 import { isSecretProvider, type SecretsStore } from './secretsStore';
 

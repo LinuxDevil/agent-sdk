@@ -3,10 +3,11 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { ToolDescriptor, EditorStep } from '../types';
+import type { ToolDescriptor } from '../types';
+import type { EditorStep, AgentFlow } from '../types/flow';
 import type { FlowExecutionEvent } from './FlowExecutor';
 import { FlowExecutor, FlowExecutionContext } from './FlowExecutor';
-import { AgentFlow, AgentConfig } from '../types';
+import { AgentConfig } from '../types';
 import { MockLLMProvider } from '../providers/mock';
 import { ToolRegistry } from '../tools';
 import { SandboxAdapter } from '../security/sandbox';

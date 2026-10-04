@@ -47,7 +47,7 @@ How the pieces fit:
 | `AgentType`                   | Deprecated, no runtime effect: agents need no type.                        |
 | `resumeAfterApproval()`       | Resume an execution paused for human approval. Advanced: see [the executor API](./executor-api.md). |
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
-| `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](./approvals.md), [Durable execution](./durable-execution.md)). |
+| `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` (from `/utils`) | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](./approvals.md), [Durable execution](./durable-execution.md)). |
 | `SqliteStore` (from `/sqlite`) | Sessions, checkpoints and approvals in one SQLite file (see [Sessions](./sessions.md#choosing-a-store)). |
 | `fileStore(dir)`              | Sessions, checkpoints and approvals as plain JSON files under `dir` (see [Sessions](./sessions.md#choosing-a-store)). |
 | `KVStore`, `KVCheckpointStore` (from `/kv`) | Stores on a Cloudflare Workers KV binding, for a hand-written Worker (see [Deployment](./deployment.md)). |
@@ -314,7 +314,8 @@ Token estimates, the model price table, and the usage and cost of a run: see [Mo
 
 ## Flows, evals, observability and security
 
-- `FlowBuilder` / `FlowExecutor` - multi-step workflow graphs; see [Flows](./flows.md).
+- `FlowBuilder` / `FlowExecutor` (`@lousho/build-ai-agent/flows`) - multi-step
+  workflow graphs; see [Flows](./flows.md).
 - `WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter` and `TriggerRegistry`
   (`@lousho/build-ai-agent/triggers`) - wake an agent from a webhook, a Slack
   message or a schedule; see [Triggers](./triggers.md).
@@ -340,7 +341,8 @@ Token estimates, the model price table, and the usage and cost of a run: see [Mo
 - `HookRegistry`, `AgentHook`, `HookContext`, `ToolCallHookContext`,
   `GenerateHookContext` - hooks that observe, deny, rewrite or redact tool calls
   and model calls. See [Hooks](./hooks.md).
-- `EncryptionUtils`, `sha256`, `StorageService` - supporting utilities; see
+- `EncryptionUtils`, `sha256`, `StorageService`
+  (`@lousho/build-ai-agent/utils`) - supporting utilities; see
   [Utilities](./utilities.md).
 
 ## Deployment

@@ -1,4 +1,5 @@
-import { AgentConfig, AgentSettings, AgentType, ToolConfiguration, AgentFlow } from '../types';
+import { AgentConfig, AgentSettings, AgentType, ToolConfiguration } from '../types';
+import { AgentFlow } from '../types/flow';
 import { validateAgentConfig, validateAgentTools } from '../agent-types';
 import { newId } from '../utils/id';
 import type { DefinedTool } from '../tools/defineTool';

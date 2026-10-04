@@ -5,7 +5,7 @@
 
 import { Message, ToolCall } from '../providers';
 import { AgentConfig } from '../types';
-import { StorageService, readJSONAttachmentLocked } from '../storage';
+import { StorageService, readJSONAttachmentLocked } from '../storage/StorageService';
 import type { RunUsage } from '../models/usage';
 import type { AgentFingerprint } from './agentFingerprint';
 import type { Principal } from '../auth/types';

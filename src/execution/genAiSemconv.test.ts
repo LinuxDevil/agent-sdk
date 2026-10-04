@@ -6,7 +6,7 @@ import { CAPTURE_CONTENT_ENV } from './semconv';
 import { FlowExecutor } from '../flows/FlowExecutor';
 import { ToolRegistry, defineTool } from '../tools';
 import { AgentBuilder } from '../core';
-import { AgentFlow } from '../types';
+import { AgentFlow } from '../types/flow';
 import { mockModel } from '../testing';
 
 /** In-memory exporter: remembers every span, in start order, in its final state. */

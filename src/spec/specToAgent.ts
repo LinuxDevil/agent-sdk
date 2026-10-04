@@ -65,9 +65,10 @@ export function resolveSpecTool(name: string): ToolDescriptor {
 
   if (CREDENTIALED_TOOLS.has(name)) {
     throw new ConfigurationError(
-      `specToAgent: tool '${name}' needs credentials (see src/tools/built-in/${name}.ts's ` +
-        `create${name === 'github' ? 'GitHub' : 'Jira'}Tools(config)) that an AgentSpec has no ` +
-        `field for. Build this agent with createAgent() directly and pass the configured tool instead.`,
+      `specToAgent: tool '${name}' needs credentials: build it with ` +
+        `create${name === 'github' ? 'GitHub' : 'Jira'}Tools(config) from ` +
+        `'@lousho/build-ai-agent/integrations' and pass it to createAgent(); an AgentSpec has no ` +
+        `field for credentials.`,
       'tools',
       'LOUSHO_TOOL_NEEDS_CREDENTIALS'
     );

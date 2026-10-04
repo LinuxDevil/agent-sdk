@@ -24,6 +24,8 @@ export default defineConfig({
     'tools/index': 'src/tools/index.ts',
     'tools/mcp/index': 'src/tools/mcp/index.ts',
     'flows/index': 'src/flows/index.ts',
+    'integrations/index': 'src/integrations/index.ts',
+    'utils/index': 'src/utils/index.ts',
     'types/index': 'src/types/index.ts',
     'testing/index': 'src/testing/index.ts',
     'cli/dev': 'src/cli/dev.ts',
