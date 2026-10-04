@@ -2985,7 +2985,7 @@ export function isTodoListResult(value: unknown): value is TodoListResult;
 // @public
 export function isToolEvent(event: AgentEvent): event is ToolStartEvent | ToolResumeEvent | ToolPartialEvent | ToolDoneEvent | ToolErrorEvent;
 
-// @public (undocumented)
+// @public
 const ItemSchema: z.ZodObject<{
     name: z.ZodString;
     type: z.ZodEnum<["tool", "skill", "channel", "schedule", "memory"]>;
