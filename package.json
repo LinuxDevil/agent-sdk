@@ -1,6 +1,6 @@
 {
   "name": "@lousho/build-ai-agent",
-  "version": "1.0.0-alpha.8",
+  "version": "1.0.0-alpha.9",
   "description": "Framework-agnostic SDK for building AI agents",
   "workspaces": [
     "apps/*",
@@ -176,7 +176,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/LinuxDevil/agent-sdk.git"
+    "url": "git+https://github.com/LinuxDevil/agent-sdk.git"
   },
   "bugs": {
     "url": "https://github.com/LinuxDevil/agent-sdk/issues"
