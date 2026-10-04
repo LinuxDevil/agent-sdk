@@ -125,13 +125,17 @@ export function mountChannels(
   /** Question ids `pendingQuestion` handed out whose answer has not been processed yet. */
   const claimed = new Set<string>();
   const answered = new WeakSet<ChannelRespond>();
-  const sessions = withDefaultStores({ store }).store as SessionStore | undefined;
+  const stores = withDefaultStores({ store });
+  const sessions = stores.store as SessionStore | undefined;
+  /** #279: `store` has checkpoints, so a session tells which pause its turn waits on, also after a restart. */
+  const checkpointed = stores.checkpointStore !== undefined;
 
   /** What `channel.parse` may ask: the agent's pending approvals and saved sessions. */
   function contextFor(channel: Channel): ChannelContext {
     const sessionId = (sessionKey: string) => channelSessionId(channel, { sessionKey, input: '', replyTo: undefined });
     return {
-      approval: async (id) => (await agent.approvals.list()).find((request) => request.id === id),
+      // #280: this process's pauses first, then the durable approval store, so a function `approvers` still decides after a restart.
+      approval: async (id) => (await agent.approvals.list()).find((request) => request.id === id) ?? (await agent.approvals.get?.(id)),
       sessionId,
       hasSession: async (sessionKey) => (await sessions?.load(sessionId(sessionKey))) !== undefined,
       pendingQuestion: (sessionKey) => {
@@ -219,15 +223,54 @@ export function mountChannels(
   }
 
   /**
+   * #279: a decision this process did not pause on (a click after a restart). With checkpointed
+   * sessions it must name a conversation whose turn waits on exactly this pause, of the matching
+   * kind (a button decides a tool call, an answer a question); `resume()` then binds the pause to
+   * the session (`SessionAwaitingApprovalError`), so the continuation joins its transcript. Anything
+   * else - another conversation, a replay, a forged id - is refused before the approval is touched.
+   * Without a checkpoint store the session cannot tell, and the approval store alone decides (as before).
+   */
+  async function bindToSession(sessionId: string, decision: ChannelApprovalDecision): Promise<boolean> {
+    const session = agent.session({ id: sessionId, store });
+    const pending = await session.pending();
+    if (!pending) return !checkpointed;
+    const isAnswer = typeof decision.answer === 'string';
+    const kind = pending.approvalKind ?? 'tool';
+    if (pending.status !== 'awaiting-approval' || pending.approvalId !== decision.id || isAnswer !== (kind === 'question') || kind === 'sign-in') return false;
+    try {
+      await session.resume();
+    } catch (error) {
+      if (error instanceof SessionAwaitingApprovalError && error.approvalId === decision.id) return true;
+      throw error;
+    }
+    return false;
+  }
+
+  /** #279: a decision that names no pending turn of this conversation: 404 while the request is open, else a failure (`onError`). */
+  function refuse(channel: Channel, id: string, respond: ChannelRespond | undefined): void {
+    const error = new SDKError(`No pending approval '${id}' in this conversation on channel '${channel.name}'`, 'LOUSHO_APPROVAL_NOT_FOUND');
+    if (!respond || answered.has(respond)) throw error;
+    respond(404, { error: error.message });
+  }
+
+  /**
    * Decides the pause `turn` stopped on and delivers the continuation, as the session's next turn.
    * N10b: `approver` is recorded as who decided (`ctx.approval.by`); the run keeps its own principal.
+   * `accept` (#279) runs first, in the session's queue: it checks the decision and audits it, or refuses it.
    */
-  function continueTurn(turn: PausedTurn, decision: ChannelApprovalDecision, respond?: ChannelRespond, approver?: Principal): Promise<void> {
+  function continueTurn(
+    turn: PausedTurn,
+    decision: ChannelApprovalDecision,
+    respond?: ChannelRespond,
+    approver?: Principal,
+    accept?: () => Promise<boolean>
+  ): Promise<void> {
     paused.delete(decision.id);
     const { id, approved, note, answer } = decision;
     const decided = { ...(approver && { principal: approver }) };
     const run = () =>
       guard(turn, 'approval', respond, async () => {
+        if (accept && !(await accept())) return refuse(turn.channel, id, respond);
         const decide = () =>
           typeof answer === 'string' ? agent.approvals.answer({ id, answer }, decided) : agent.approvals.resolve({ id, approved: approved === true, note }, decided);
         const result = await decide().catch((error: unknown) => {
@@ -260,15 +303,30 @@ export function mountChannels(
   }
 
   /**
-   * Resolves the decision when `channel` paused on it in this process, or when the click
-   * names the conversation itself (`inbound`: it survives a restart); else answers 404.
+   * Resolves the decision when `channel` paused on it in this process (a click must name that
+   * conversation), or when the click names the conversation itself (`inbound`: it survives a
+   * restart) and, with checkpointed sessions, that conversation's turn waits on it (#279); else 404.
    */
   async function decide(channel: Channel, { decision, inbound, approver }: ChannelDecision, respond: ChannelRespond): Promise<void> {
     const known = paused.get(decision.id);
-    const turn = inbound ? { channel, inbound, sessionId: channelSessionId(channel, inbound) } : known?.channel === channel ? known : undefined;
-    if (!turn) return respond(404, { error: `No pending approval '${decision.id}' on channel '${channel.name}'` });
-    if (approver) await options.onDecision?.({ decision, approver, sessionId: turn.sessionId, channel: channel.name });
-    await continueTurn(turn, decision, respond, approverPrincipal(channel, approver, inbound));
+    const turn = inbound ? { channel, inbound, sessionId: channelSessionId(channel, inbound) } : known;
+    if (!turn || (known && (known.channel !== channel || known.sessionId !== turn.sessionId))) {
+      return respond(404, { error: `No pending approval '${decision.id}' on channel '${channel.name}'` });
+    }
+    const audit = async () => {
+      if (approver) await options.onDecision?.({ decision, approver, sessionId: turn.sessionId, channel: channel.name });
+    };
+    const principal = approverPrincipal(channel, approver, inbound);
+    if (known) {
+      await audit();
+      return continueTurn(turn, decision, respond, principal);
+    }
+    const accept = async (): Promise<boolean> => {
+      if (!(await bindToSession(turn.sessionId, decision))) return false;
+      await audit();
+      return true;
+    };
+    await continueTurn(turn, decision, respond, principal, accept);
   }
 
   const handler = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> => {

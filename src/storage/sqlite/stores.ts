@@ -155,4 +155,9 @@ export class SqliteApprovalStore implements ApprovalStore {
       return parse<ResolvedApproval>(row) ?? null;
     });
   }
+
+  async load(id: string): Promise<ResolvedApproval | null> {
+    const row = this.sql.get('SELECT payload FROM approvals WHERE id = ? AND resolved_at IS NULL').get(id);
+    return parse<ResolvedApproval>(row) ?? null;
+  }
 }

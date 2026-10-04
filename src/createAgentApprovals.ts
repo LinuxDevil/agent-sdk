@@ -56,6 +56,14 @@ export interface AgentApprovals {
   /** Approvals this agent paused on in this process and that are not decided yet, oldest first. */
   list(): Promise<PendingApproval[]>;
   /**
+   * The pending approval `id`, without deciding it: this process's pauses
+   * first, then - through an `approvalStore` that implements `load` - a pause
+   * saved before a restart (the request's facts as it was recorded, so a
+   * channel's function `approvers` sees the same input then as now, #280).
+   * `undefined` when `id` is unknown or already resolved.
+   */
+  get(id: string): Promise<PendingApproval | undefined>;
+  /**
    * Approves or rejects a paused tool call (`note` is passed to the model
    * with a rejection) and continues the run, resolving with the continued
    * run's result - which may pause again. A run paused inside
@@ -259,6 +267,11 @@ export function createAgentApprovals(options: {
 
   const approvals: AgentApprovals = {
     list: async () => [...pending.values()],
+    // #280: the durable store answers too, so a pause this process did not make is found again.
+    get: async (id) => {
+      const found = pending.get(id) ?? (await options.store.load?.(id))?.pending;
+      return found === undefined ? undefined : describeApproval(found);
+    },
     resolve,
     answer: ({ id, answer }, resolveOptions) => resolve({ id, approved: true, note: answer }, resolveOptions),
     streamResolve,

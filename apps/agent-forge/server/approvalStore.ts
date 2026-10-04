@@ -61,4 +61,15 @@ export class FileApprovalStore implements ApprovalStore {
     if (!fs.existsSync(file)) return null;
     return JSON.parse(fs.readFileSync(file, 'utf8')) as ResolvedApproval;
   }
+
+  /** `ApprovalStore.load` (#280): like `resolve`, it scans every agent's approvals directory for the id, but does not delete. */
+  async load(approvalId: string): Promise<ResolvedApproval | null> {
+    const agentsDir = path.join(this.baseDir, '.lousho', 'agents');
+    if (!fs.existsSync(agentsDir)) return null;
+    for (const agentId of fs.readdirSync(agentsDir)) {
+      const found = await this.peek(agentId, approvalId);
+      if (found) return found;
+    }
+    return null;
+  }
 }

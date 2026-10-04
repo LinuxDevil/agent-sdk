@@ -74,7 +74,9 @@ export interface ChannelUser {
 /**
  * What `parse` returns for a request that decides a pause (a button click) instead of starting a turn.
  * With `inbound` (the conversation as the click itself names it), a pause that a restarted process
- * no longer remembers is still delivered to the right place; `approver` is who decided.
+ * no longer remembers is still delivered to the right place; `approver` is who decided. The decision
+ * must belong to that conversation: with checkpointed sessions, its turn must wait on exactly this
+ * pause, else the decision is refused (`LOUSHO_APPROVAL_NOT_FOUND`).
  */
 export interface ChannelDecision {
   decision: ChannelApprovalDecision;
@@ -94,7 +96,11 @@ export type ChannelErrorHandler = (error: unknown, context: ChannelErrorContext)
 
 /** What `parse` may ask the host about: the agent's own state, so a channel keeps none of its own. */
 export interface ChannelContext {
-  /** The pending approval `id` this process knows, if any. */
+  /**
+   * The pending approval `id`, if still pending: this process's pauses, and -
+   * through `agent.approvals.get()` - pauses a durable `approvalStore` still
+   * holds, so a function `approvers` sees the request after a restart too (#280).
+   */
   approval(id: string): Promise<PendingApproval | undefined>;
   /** The session id `sessionKey` maps to. */
   sessionId(sessionKey: string): string;

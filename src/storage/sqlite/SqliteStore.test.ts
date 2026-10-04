@@ -71,6 +71,10 @@ function inMemoryApprovalStore(): ApprovalStore {
     async save(pending, snapshot) {
       map.set(pending.id, JSON.stringify({ pending, snapshot }));
     },
+    async load(id) {
+      const raw = map.get(id);
+      return raw === undefined ? null : (JSON.parse(raw) as ResolvedApproval);
+    },
     async resolve(id) {
       const raw = map.get(id);
       if (raw === undefined) return null;

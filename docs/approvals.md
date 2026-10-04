@@ -196,6 +196,10 @@ task.
 - `agent.approvals.list()` returns the pending calls this agent paused on in
   this process, oldest first: `{ id, toolCallId, toolName, args, createdAt }`,
   plus `subagentPath` when the call belongs to a sub-agent.
+- `agent.approvals.get(id)` returns one pending call without deciding it:
+  `list()`'s entries first, then - with an `approvalStore` that implements
+  `load()` - a pause saved before a restart, `undefined` when the id is
+  unknown or already resolved.
 - `agent.approvals.resolve({ id, approved, note? })` runs the call (approved)
   or gives the model a rejection with your `note` (rejected), continues the
   run, and resolves with the continued run's result, which may pause again.
@@ -219,10 +223,11 @@ const store = new SqliteStore('./.lousho/agent.db');
 const agent = createAgent({ provider, tools: [emailTool], store }); // or approvalStore: store.approvals
 ```
 
-`list()` only knows the pauses made by this agent object; keep the
-`approvalId` (or read the store) to resolve a pause from somewhere else. A
-continued run joins a session only when it is resolved through the agent that
-owns that session object.
+`list()` only knows the pauses made by this agent object; `get(id)` also finds
+a pause the durable store still holds (for example one saved before a
+restart). Keep the `approvalId` (or read the store) to resolve a pause from
+somewhere else. A continued run joins a session only when it is resolved
+through the agent that owns that session object.
 
 ### Resuming with a changed agent
 

@@ -202,6 +202,13 @@ class FileApprovalStore implements ApprovalStore {
     const raw = await takeFile(this.fileFor(id));
     return raw === undefined ? null : (JSON.parse(raw, decodeBytes) as ResolvedApproval);
   }
+
+  /** A record a resolver already claimed (its `.claim` file was left by a crash) reads as resolved, like `resolve` sees it. */
+  async load(id: string): Promise<ResolvedApproval | null> {
+    const file = this.fileFor(id);
+    const [raw, claim] = await Promise.all([readText(file), readText(`${file}.claim`)]);
+    return raw === undefined || claim !== undefined ? null : (JSON.parse(raw, decodeBytes) as ResolvedApproval);
+  }
 }
 
 /** The JSON files' names in `dir`, without `.json`; `[]` when `dir` does not exist. */

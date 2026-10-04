@@ -521,6 +521,22 @@ describe('teamsChannel (N11c)', () => {
       expect(second.calls.map((c) => c.body.text)).toEqual(['Booked Lisbon.']);
       expect(JSON.stringify(second.model.calls[0].messages)).toContain('Lisbon');
     });
+
+    it('a card press after a restart is appended to the transcript, and the next message continues the session (#279)', async () => {
+      const stores = durableStores();
+      const execute = vi.fn(async ({ to }: { to: string }) => `sent to ${to}`);
+      const agentOptions = { tools: [emailTool(execute)], approvalStore: stores.approvalStore };
+      const approve = await pause(setup([emailCall], agentOptions, { mount: { store: stores.store } }));
+
+      const second = setup(['Email sent.', 'You are welcome.'], agentOptions, { mount: { store: stores.store } });
+      await second.send(click(approve));
+      expect(execute).toHaveBeenCalledTimes(1);
+      for (const text of ['"call_email"', 'sent to sam@example.com', 'Email sent.']) expect(await stores.transcript()).toContain(text);
+
+      await second.send(activity({ text: 'Thanks' }));
+      expect(second.calls.at(-1)?.body).toMatchObject({ text: 'You are welcome.' });
+      expect(JSON.stringify(second.model.calls[1].messages)).toContain('sent to sam@example.com');
+    });
   });
 
   describe('failures', () => {

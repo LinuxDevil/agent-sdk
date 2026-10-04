@@ -320,6 +320,60 @@ describe('discordChannel (LOU-P6)', () => {
       expect(execute).toHaveBeenCalledTimes(1);
       expect(second.calls.at(-1)).toMatchObject({ method: 'POST', url: 'tok-click', body: { content: 'Email sent.' } });
     });
+
+    it('a click after a restart is appended to the transcript, and the next /ask continues the session (#279)', async () => {
+      const stores = durableStores();
+      const execute = vi.fn(async ({ to }: { to: string }) => `sent to ${to}`);
+      const agentOptions = { tools: [emailTool(execute)], approvalStore: stores.approvalStore };
+      const id = await pause(setup([emailCall], agentOptions, { mount: { store: stores.store } }));
+
+      const second = setup(['Email sent.', 'You are welcome.'], agentOptions, { mount: { store: stores.store } });
+      await second.send(click(id));
+
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(second.calls).toEqual([{ method: 'POST', url: 'tok-click', body: expect.objectContaining({ content: 'Email sent.' }) }]);
+      const transcript = await stores.transcript();
+      for (const text of ['Email Sam', '"call_email"', 'sent to sam@example.com', 'Email sent.']) expect(transcript).toContain(text);
+
+      await second.send(command('Thanks'));
+      expect(second.calls[1]).toMatchObject({ method: 'PATCH', url: 'tok-Thanks/messages/@original', body: { content: 'You are welcome.' } });
+      expect(second.userTexts(1)).toEqual(['Email Sam', 'Thanks']);
+      expect(JSON.stringify(second.model.calls[1].messages)).toContain('sent to sam@example.com');
+    });
+
+    it('a click naming another channel than the one that paused is refused after a restart (#279)', async () => {
+      const stores = durableStores();
+      const execute = vi.fn(async ({ to }: { to: string }) => `sent to ${to}`);
+      const onError = vi.fn();
+      const agentOptions = { tools: [emailTool(execute)], approvalStore: stores.approvalStore };
+      const id = await pause(setup([emailCall], agentOptions, { mount: { store: stores.store } }));
+
+      const second = setup(['Email sent.'], agentOptions, { mount: { store: stores.store, onError } });
+      await second.send(click(id, 'U1', { channel_id: 'C2', channel: { id: 'C2', type: 0 } }));
+      expect(execute).not.toHaveBeenCalled();
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'LOUSHO_APPROVAL_NOT_FOUND' }), expect.objectContaining({ stage: 'approval' }));
+
+      // still pending: the click in the channel it was posted in decides it
+      await second.send(click(id));
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(second.calls.at(-1)).toMatchObject({ method: 'POST', url: 'tok-click', body: { content: 'Email sent.' } });
+    });
+
+    it('a function approver still decides after a restart (#280)', async () => {
+      const stores = durableStores();
+      const execute = vi.fn(async ({ to }: { to: string }) => `sent to ${to}`);
+      const approvers = vi.fn(async (user: { id: string }) => user.id === 'UADMIN');
+      const agentOptions = { tools: [emailTool(execute)], approvalStore: stores.approvalStore };
+      const id = await pause(setup([emailCall], agentOptions, { channel: { approvers }, mount: { store: stores.store } }));
+
+      const second = setup(['Email sent.'], agentOptions, { channel: { approvers }, mount: { store: stores.store } });
+      await second.send(click(id, 'U1'));
+      expect(execute).not.toHaveBeenCalled();
+      await second.send(click(id, 'UADMIN'));
+
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(second.calls.at(-1)).toMatchObject({ method: 'POST', url: 'tok-click', body: { content: 'Email sent.' } });
+    });
   });
 });
 

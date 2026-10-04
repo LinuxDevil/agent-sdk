@@ -398,6 +398,22 @@ describe('telegramChannel (N11a)', () => {
       expect(execute).toHaveBeenCalledTimes(1);
       expect(second.calls.at(-1)?.body.text).toBe('Email sent.');
     });
+
+    it('a tap after a restart is appended to the transcript, and the next message continues the session (#279)', async () => {
+      const stores = durableStores();
+      const execute = vi.fn(async ({ to }: { to: string }) => `sent to ${to}`);
+      const agentOptions = { tools: [emailTool(execute)], approvalStore: stores.approvalStore };
+      const approve = await pause(setup([emailCall], agentOptions, { mount: { store: stores.store } }));
+
+      const second = setup(['Email sent.', 'You are welcome.'], agentOptions, { mount: { store: stores.store } });
+      await second.send(tap(approve));
+      expect(execute).toHaveBeenCalledTimes(1);
+      for (const text of ['Email Sam', '"call_email"', 'sent to sam@example.com', 'Email sent.']) expect(await stores.transcript()).toContain(text);
+
+      await second.send(message('Thanks', { message_id: 13 }));
+      expect(second.calls.at(-1)?.body).toMatchObject({ text: 'You are welcome.' });
+      expect(JSON.stringify(second.model.calls[1].messages)).toContain('sent to sam@example.com');
+    });
   });
 
   it('a failed sendMessage goes to onError and the bot token is not in the logged message', async () => {

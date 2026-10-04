@@ -30,4 +30,9 @@ export class InMemoryApprovalStore implements ApprovalStore {
     this.records.delete(id);
     return record;
   }
+
+  async load(id: string): Promise<ResolvedApproval | null> {
+    const record = this.records.get(id);
+    return record ? structuredClone(record) : null;
+  }
 }
