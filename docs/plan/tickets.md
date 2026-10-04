@@ -160,3 +160,21 @@ the `ai` peer range stays as-is.
 ## Not ticketed (needs the owner)
 
 - Publishing to npm: the README advertises `npm install @lousho/build-ai-agent`, but the package is not on the registry. Publishing is an owner action.
+
+## Epic S - backlog sweep (issue-ticketed)
+
+One row per tracked backlog item; the GitHub issue carries the spec.
+
+| Ticket | Issue | Story | Worktree |
+|---|---|---|---|
+| LOU-S1 | #191 + #316 | Slim npm tarball (drop test files/source maps from `files`), re-measure pack-smoke cap | s1-tarball |
+| LOU-S2 | #346 + #244 | Published `.d.ts` optional-peer imports (skipLibCheck:false) + type-check tests in CI + published-types check (ref: stale `lou-a6b-*`) | s2-types |
+| LOU-S3 | #279 + #280 | Channels restart semantics: click joins transcript + function-form approvers fail open/deterministic (ref: stale `lou-279-*`) | s3-channels |
+| LOU-S4 | #289 | Hand-written Worker root entry bundles without generated Node shim | s4-wroot |
+| LOU-S5 | #298 | Worker target: sub-agents/schedules/channels/memory from an agent directory | s5-wdir |
+| LOU-S6 | #291 | openApiTools optional pinned-DNS private-address check (ref: stale `lou-291-*`) | s6-openapi |
+| LOU-S7 | #272 | Registry: enforce installed permission manifest at load/run time | s7-regmf |
+| LOU-S8 | #230 | Default static registry that `lousho add` uses out of the box (draft for owner review) | s8-regdef |
+| LOU-W4 | #236 #237 #238 #239 #240 #242 | Wave-4 breaking changes, chained PRs in order A1→A2a→A2b→A2c→A3→A5 | w4 |
+| LOU-S10 | #245 | A7 release candidate: API report + upgrade guide + `1.0.0-rc.0` + live smoke (after W4 merges) | s10-rc |
+| LOU-D1 | #206 | Docs-site comparison section - draft rows for owner review (agent-sdk-docs PR) | agent-sdk-docs |
