@@ -151,7 +151,7 @@ Decisions recorded (owner, 2026-10): R15 rename to `schedule-<name>`; R16 wire
 `metadata` through; R17+R18 fix the code (not docs); R25 document v4/v6/v7 only —
 the `ai` peer range stays as-is.
 
-| LOU-R27 | Break the provider import cycle + source-barrel ESM edge | LOU-R1 made llm.ts <-> builtinProviders.ts circular (fallow flags it on every post-R1 PR). Also: static named imports from the source barrel fail under true ESM (.mts via tsx) - e.g. import { createAgent } from ./src/index throws does not provide an export named. Bundled dist and CJS-transformed .ts importers are unaffected; fix by inverting the llm.ts -> builtinProviders.ts edge or splitting the registry table. |
+| LOU-R27 ✅ [#398](https://github.com/LinuxDevil/agent-sdk/pull/398) | Break the provider import cycle + source-barrel ESM edge | Fixed via dependency injection: `ensureBuiltinProviders`/`resolveProviderSpec` take a registry instead of importing the shared one, so `llm.ts` no longer edges back into `builtinProviders.ts`. `createAgent` re-exported directly from the barrel for true-ESM `.mts` importers. Same PR zeroed the fallow gate (dead code, dupes, health overrides). |
 
 | LOU-R28 ✅ [#377](https://github.com/LinuxDevil/agent-sdk/pull/377) | errors.md: cassette error type + uncoded-error list | CassetteMismatchError is a coded SDKError (LOUSHO_CASSETTE_INVALID) since LOU-R13, not a plain Error; move it out of the 'no code' paragraph. Add WorkspaceError, AuthError, McpToolError to the uncoded list. |
 | LOU-R29 ✅ [#378](https://github.com/LinuxDevil/agent-sdk/pull/378) | Stale-residue mediums across docs | cloudflare-workers.md:211 + tools.md:327: continuation emits tool.resume not a new tool.start. executor-api.md + quick-start.md: exporter/captureContent are createAgent() options. providers.md: claude-sonnet-5 -> claude-sonnet-5-5. api-overview.md + README: subagents also register agent_status/agent_await/agent_cancel. README: agent.resume() throws on approval-paused runs; Agent Forge shows saved traces; file parts sent on ai>=6. |
@@ -165,16 +165,16 @@ the `ai` peer range stays as-is.
 
 One row per tracked backlog item; the GitHub issue carries the spec.
 
-| Ticket | Issue | Story | Worktree |
+| Ticket | Issue | Story | Result |
 |---|---|---|---|
-| LOU-S1 | #191 + #316 | Slim npm tarball (drop test files/source maps from `files`), re-measure pack-smoke cap | s1-tarball |
-| LOU-S2 | #346 + #244 | Published `.d.ts` optional-peer imports (skipLibCheck:false) + type-check tests in CI + published-types check (ref: stale `lou-a6b-*`) | s2-types |
-| LOU-S3 | #279 + #280 | Channels restart semantics: click joins transcript + function-form approvers fail open/deterministic (ref: stale `lou-279-*`) | s3-channels |
-| LOU-S4 | #289 | Hand-written Worker root entry bundles without generated Node shim | s4-wroot |
-| LOU-S5 | #298 | Worker target: sub-agents/schedules/channels/memory from an agent directory | s5-wdir |
-| LOU-S6 | #291 | openApiTools optional pinned-DNS private-address check (ref: stale `lou-291-*`) | s6-openapi |
-| LOU-S7 | #272 | Registry: enforce installed permission manifest at load/run time | s7-regmf |
-| LOU-S8 | #230 | Default static registry that `lousho add` uses out of the box (draft for owner review) | s8-regdef |
-| LOU-W4 | #236 #237 #238 #239 #240 #242 | Wave-4 breaking changes, chained PRs in order A1→A2a→A2b→A2c→A3→A5 | w4 |
-| LOU-S10 | #245 | A7 release candidate: API report + upgrade guide + `1.0.0-rc.0` + live smoke (after W4 merges) | s10-rc |
-| LOU-D1 | #206 | Docs-site comparison section - draft rows for owner review (agent-sdk-docs PR) | agent-sdk-docs |
+| LOU-S1 ✅ | #191 + #316 | Slim npm tarball (drop test files/source maps from `files`), re-measure pack-smoke cap | [#385](https://github.com/LinuxDevil/agent-sdk/pull/385) — packed 5.6MB→3.65MB, cap enforced |
+| LOU-S2 ✅ | #346 + #244 | Published `.d.ts` optional-peer imports + type-check tests in CI | [#394](https://github.com/LinuxDevil/agent-sdk/pull/394) — typecheck:tests 133→0, strict skipLibCheck check on published types |
+| LOU-S3 ✅ | #279 + #280 | Channels restart semantics: click joins transcript + function-form approvers | [#388](https://github.com/LinuxDevil/agent-sdk/pull/388) — durable `approvals.get()` + session binding with replay/wrong-kind refusals; ported into `channelCore.ts` on the #392 merge |
+| LOU-S4 ✅ | #289 | Hand-written Worker root entry bundles without generated Node shim | [#393](https://github.com/LinuxDevil/agent-sdk/pull/393) — `@lousho/build-ai-agent/worker` subpath entry |
+| LOU-S5 ✅ | #298 | Worker target: sub-agents/schedules/channels/memory from an agent directory | [#392](https://github.com/LinuxDevil/agent-sdk/pull/392) — wrangler cron triggers, fetch channels, KV memory, project instructions |
+| LOU-S6 ✅ | #291 | openApiTools optional pinned-DNS private-address check | [#384](https://github.com/LinuxDevil/agent-sdk/pull/384) — salvaged the never-PR'd `lou-291-*` branch |
+| LOU-S7 ✅ | #272 | Registry: enforce installed permission manifest at load/run time | [#386](https://github.com/LinuxDevil/agent-sdk/pull/386) + hotfix [#395](https://github.com/LinuxDevil/agent-sdk/pull/395) — receipt re-hash at load, manifest-confined tools |
+| LOU-S8 ⏳ | #230 | Default static registry that `lousho add` uses out of the box | draft [#389](https://github.com/LinuxDevil/agent-sdk/pull/389) — **awaiting owner hosting choice (a)/(b)/(c) on #230** |
+| LOU-W4 ✅ | #236 #237 #238 #239 #240 #242 | Wave-4 breaking changes, chained A1→A2a→A2b→A2c→A3→A5 | [#387](https://github.com/LinuxDevil/agent-sdk/pull/387) [#390](https://github.com/LinuxDevil/agent-sdk/pull/390) [#391](https://github.com/LinuxDevil/agent-sdk/pull/391) [#396](https://github.com/LinuxDevil/agent-sdk/pull/396) [#397](https://github.com/LinuxDevil/agent-sdk/pull/397) [#399](https://github.com/LinuxDevil/agent-sdk/pull/399) — all merged |
+| LOU-S10 ✅ | #245 | A7 release candidate: API report + upgrade guide + `1.0.0-rc.0` | [#402](https://github.com/LinuxDevil/agent-sdk/pull/402) — api-extractor reports for all 20 subpaths, `api:check` in CI, `docs/upgrading.md`, `1.0.0-rc.0`. Live smoke blocked: both OpenRouter keys expired (401) |
+| LOU-D1 ⏳ | #206 | Docs-site comparison section | draft [agent-sdk-docs#11](https://github.com/LinuxDevil/agent-sdk-docs/pull/11) — **awaiting owner review of rows/tone** |
