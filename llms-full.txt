@@ -4386,10 +4386,10 @@ build rejects a `timezone`, a seconds field, an `@daily` shortcut or a numeric
 day-of-week (`LOUSHO_SCHEDULE_INVALID`).
 
 In a Worker you write yourself, wire an agent defined in code with
-`handleScheduled(agent, schedules, controller, ctx)` (exported from the package
-root — the `@lousho/build-ai-agent/deploy-runtime-worker` specifier in the
-generated code is a virtual one that only `lousho build`'s bundler resolves; do
-not import it yourself). It runs the schedules whose
+`handleScheduled(agent, schedules, controller, ctx)` (exported from
+`@lousho/build-ai-agent/worker` — the `@lousho/build-ai-agent/deploy-runtime-worker`
+specifier in the generated code is a virtual one that only `lousho build`'s
+bundler resolves; do not import it yourself). It runs the schedules whose
 `cron` equals `controller.cron` inside `ctx.waitUntil()` and never throws; list
 the same expressions under `[triggers] crons` yourself. Give the agent a store
 — without one, a scheduled run's `schedule-<name>` session lives in one
