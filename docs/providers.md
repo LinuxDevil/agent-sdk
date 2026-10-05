@@ -1,8 +1,8 @@
 # Providers
 
 An `LLMProvider` is what an agent generates with. The SDK ships OpenAI,
-Anthropic, OpenRouter and Ollama providers (each backed by an optional peer
-package, see [Installation](./installation.md#provider-packages)) and a
+Anthropic, OpenRouter, Ollama and `pi` providers (each backed by an optional
+peer package, see [Installation](./installation.md#provider-packages)) and a
 deterministic mock for tests. Name one with a `provider/model` string, or pass
 a provider instance. The `vendor/` model prefix chooses the provider; with
 OpenRouter use `openrouter/<vendor>/<model>` (e.g.
@@ -16,6 +16,8 @@ const openai = resolveProvider('openai/gpt-4o-mini');       // OPENAI_API_KEY
 const anthropic = resolveProvider('anthropic/claude-sonnet-5-5'); // ANTHROPIC_API_KEY
 const openrouter = resolveProvider('openrouter/openai/gpt-4o-mini'); // OPENROUTER_API_KEY
 const ollama = resolveProvider('ollama/llama3.1');           // OLLAMA_BASE_URL
+// pi runs one catalog through `pi/<pi-provider>/<model>` (nested slashes ok):
+const pi = resolveProvider('pi/openrouter/openai/gpt-4o-mini');    // OPENROUTER_API_KEY
 
 // Or construct a provider directly via the registry
 const custom = LLMProviderRegistry.create('openai', {
@@ -129,9 +131,10 @@ console.log(textOf(messages[0]), '->', result.text);
 ```
 
 - **Images** go to the model on `user` messages with every built-in provider
-  (an image URL is downloaded by the `ai` SDK first for Anthropic and Ollama).
-  Pick a vision model: Ollama ignores images for a text-only model, and
-  OpenRouter rejects them for one.
+  (an image URL is downloaded by the `ai` SDK first for Anthropic and Ollama;
+  `pi` sends `data:` URLs and bytes only - an `http(s)` URL degrades to a text
+  note with a one-time warning). Pick a vision model: Ollama ignores images
+  for a text-only model, and OpenRouter rejects them for one.
 - **Files** (`{ type: 'file', data, mimeType }`) are sent as `file` parts for
   these media types, by provider and `ai` major:
 
@@ -141,6 +144,7 @@ console.log(textOf(messages[0]), '->', result.text);
   | `anthropic` | text note | `application/pdf`, `text/plain` |
   | `openrouter` | text note | `application/pdf` |
   | `ollama` | text note | text note |
+  | `pi` | text note | text note (pi has no file part) |
 
   Any other file part is sent as a text note
   (`[file report.pdf (application/pdf) not sent]`), and the provider warns once
@@ -186,7 +190,7 @@ console.log(result.text);
 | ------ | ----------- |
 | `resolveProvider('p/model')` | Build a real provider from environment credentials. |
 | `LLMProviderRegistry` | Registry of provider factories: `create(type, config)`, `register(type, factory)`, `has(type)`. |
-| `OpenAIProvider`, `AnthropicProvider`, `OllamaProvider`, `OpenRouterProvider` | The provider classes. See [examples/openrouter](../examples/openrouter) for OpenRouter-specific features. |
+| `OpenAIProvider`, `AnthropicProvider`, `OllamaProvider`, `OpenRouterProvider`, `PiProvider` | The provider classes. See [examples/openrouter](../examples/openrouter) for OpenRouter-specific features. `PiProvider` is the `pi/...` adapter below. |
 | `createMockProvider()`, `MockLLMProvider` | Canned responses for demos; simulates a tool call when the message names a tool. |
 | `mockModel(script)` | Scripted, asserting provider for tests (from `/testing`); see [Testing](./testing.md). |
 | `withRetry()`, `withFallback()` | Retry transient failures with backoff and fall back to the next provider; see [Provider retries and fallback](./configuration.md#provider-retries-and-fallback). |
@@ -241,9 +245,60 @@ mapped). Each throws `LOUSHO_CONFIG_INVALID`:
   cause of the `LOUSHO_PROVIDER_REQUEST_FAILED` error): wrap each model with
   `fromAiSdk()` and combine them with `withFallback()`.
 
+### The `pi` provider
+
+`pi/<pi-provider>/<model>` routes a call through
+[`@earendil-works/pi-ai`](https://www.npmjs.com/package/@earendil-works/pi-ai)
+(the engine `pi-coding-agent` runs on), an optional peer that needs no `ai`
+package:
+
+```bash
+npm install @earendil-works/pi-ai@1.0.3
+```
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+
+// OpenRouter's `openai/gpt-4o-mini`, through pi's openrouter adapter:
+const agent = createAgent({ model: 'pi/openrouter/openai/gpt-4o-mini' });
+```
+
+The segment after `pi/` is a **pi provider** (`openrouter`, `anthropic`,
+`openai`, `google`, ...); the rest is the catalog model id verbatim, slashes
+included. Credentials are per nested provider: pi reads each one's own
+conventional env var (`OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, ...), so a
+`pi/anthropic/...` spec never sees an OpenRouter key. `lousho init
+--provider pi` scaffolds the `pi/openrouter/...` default. A nested provider
+whose key is missing fails the call with `LOUSHO_PROVIDER_MISSING_API_KEY`
+naming the variable, and a missing `@earendil-works/pi-ai` fails it with the
+usual `MissingPeerDependencyError`.
+
+What maps, per call:
+
+- messages: `system` to pi's `systemPrompt`, `user`/`assistant`/`tool` in
+  place; assistant `reasoning` blocks become thinking parts and a `tool`
+  message's `toolCallId` links it to its call;
+- tools: `parameters` is sent as JSON Schema - raw JSON Schema, zod 3, zod 4
+  and Standard Schema inputs are converted once and cached;
+- streams: pi's `text_delta`/`thinking_delta`/`toolcall_*`/`done`/`error`
+  events become the same `text-delta`/`reasoning-*`/`tool-call`/`finish`/
+  `error` chunks the `ai` providers emit, so `agent.stream()` events and
+  `result.usage` are unchanged;
+- usage and cost: pi's per-call usage (including `cacheRead`) is carried
+  into the run total, and the catalog's prices register the model for the
+  run's `usage.costUsd`;
+- retries: pi's own `maxRetries` is pinned off - `retry`/`fallbackModels`
+  stay the only retry layer, like every built-in.
+
+`PiProviderConfig.models` injects catalog entries (pi's faux provider, a
+private catalog) ahead of the built-in list. `pi` is Node-only: the
+`cloudflare-worker` target refuses `pi/...` specs and its bundle redirects
+the package to a coded shim.
+
 ## Vercel AI SDK versions
 
-The built-in providers are adapters over the Vercel AI SDK (`ai`). What works
+Every built-in provider except `pi` is an adapter over the Vercel AI SDK
+(`ai`). What works
 on each major today:
 
 | `ai` | `generate()` | `stream()` | Notes |
@@ -319,5 +374,5 @@ takes for images, so there is no deprecation warning). `ai` v5 is not supported.
 
 All providers run on Node. The `cloudflare-worker` deploy target supports
 `mock`, `openai`, `anthropic` and `openrouter` (key from the
-`OPENROUTER_API_KEY` binding); `ollama` needs the `node-server` or `docker`
-target (see [Cloudflare Workers](./cloudflare-workers.md)).
+`OPENROUTER_API_KEY` binding); `ollama` and `pi` need the `node-server` or
+`docker` target (see [Cloudflare Workers](./cloudflare-workers.md)).

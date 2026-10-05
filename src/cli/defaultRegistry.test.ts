@@ -65,7 +65,15 @@ afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 describe('default registry (registry/dist)', () => {
   it('has a schema-valid index and schema-valid item documents', () => {
     const index = IndexSchema.parse(JSON.parse(fs.readFileSync(INDEX, 'utf8')));
-    expect(index.items.map((item) => item.name)).toEqual(['changelog', 'code-review', 'generic-webhook', 'github-issues', 'open-meteo-weather']);
+    expect(index.items.map((item) => item.name)).toEqual([
+      'changelog',
+      'code-review',
+      'coding-kit',
+      'coding-pi',
+      'generic-webhook',
+      'github-issues',
+      'open-meteo-weather',
+    ]);
     for (const entry of index.items) {
       const document = path.join(DIST, entry.path as string);
       expect(fs.existsSync(document), `${entry.name}: ${entry.path}`).toBe(true);
@@ -78,6 +86,9 @@ describe('default registry (registry/dist)', () => {
   it('installs every item and the agent directory loads', async () => {
     const index = IndexSchema.parse(JSON.parse(fs.readFileSync(INDEX, 'utf8')));
     for (const entry of index.items) {
+      // A kit is a whole agent directory of its own - it does not share one with
+      // the other items (examples/coding-harness/kit.test.ts installs and runs it).
+      if (entry.type === 'kit') continue;
       const result = await add([entry.name, '--registry', INDEX, '--dir', 'agent', '--yes', '--allow', 'network,env']);
       expect(result.err, entry.name).toBe('');
       expect(result.code, entry.name).toBe(0);

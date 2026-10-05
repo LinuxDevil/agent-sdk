@@ -1,6 +1,7 @@
 /**
  * `lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--allow <list>] [--overwrite] [--dry-run]`
- * installs a tool, skill, channel, schedule or memory slot from a JSON registry
+ * installs a tool, skill, channel, schedule, memory slot or kit (a whole agent
+ * directory) from a JSON registry
  * into an agent directory as source you own (LOU-D50). It prints the item's
  * permission manifest and the files first, refuses an item whose code reaches for
  * something the manifest does not declare (M7a, addCheck.ts), then asks; with

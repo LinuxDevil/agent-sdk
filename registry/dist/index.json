@@ -13,6 +13,18 @@
       "path": "items/code-review.json"
     },
     {
+      "name": "coding-kit",
+      "type": "kit",
+      "description": "A coding harness as a whole agent directory: workspace tools with rewind, an allow-listed shell, permission rules, a loop guard, compaction, a fix-failing-test skill and a read-only explorer sub-agent",
+      "path": "items/coding-kit.json"
+    },
+    {
+      "name": "coding-pi",
+      "type": "kit",
+      "description": "The coding-kit harness on the Pi provider stack: the lead agent runs on pi/openrouter and delegates implementation to a Pi coding-agent sub-agent (engine: 'pi') with its own permission rules",
+      "path": "items/coding-pi.json"
+    },
+    {
       "name": "generic-webhook",
       "type": "channel",
       "description": "Inbound webhook channel with HMAC-SHA256 signature verification (reads WEBHOOK_SECRET)",

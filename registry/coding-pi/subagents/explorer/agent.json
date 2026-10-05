@@ -1,0 +1,4 @@
+{
+  "description": "Reads the project and reports where a problem is. Cannot change files.",
+  "maxSteps": 6
+}

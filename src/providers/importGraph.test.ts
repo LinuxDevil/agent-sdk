@@ -24,6 +24,7 @@ const NEVER_LOADED_AT_IMPORT = [
   'vue',
   'svelte', // LOU-P3: no entry imports it (the ./svelte store implements the store contract by hand)
   'quickjs-emscripten', // N14: loaded when a codeMode run starts
+  '@earendil-works/pi-ai', // H2: the 'pi' provider lazy-loads it on the first pi/* call
   'node:sqlite', // LOU-W5: only the lazily-loaded /sqlite subpath may use it, and only when a store is constructed
 ];
 

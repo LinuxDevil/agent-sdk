@@ -1,0 +1,7 @@
+{
+  "permissions": [
+    { "tool": "shell" },
+    { "tool": "read_file", "action": "permit" },
+    { "tool": "write_file", "action": "deny", "nope": true }
+  ]
+}

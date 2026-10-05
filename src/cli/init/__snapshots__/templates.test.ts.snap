@@ -327,6 +327,80 @@ export function buildAgent(provider?: LLMProvider) {
 "
 `;
 
+exports[`renderProject > snapshot: pi / minimal agent.ts 1`] = `
+"import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+/** An example tool: the model calls it when it needs the current date or time. */
+export const currentTime = defineTool({
+  name: 'current_time',
+  description: 'Get the current date and time, optionally in an IANA time zone.',
+  input: z.object({
+    timeZone: z.string().optional().describe('IANA time zone, e.g. "Europe/Paris". Defaults to UTC.'),
+  }),
+  execute: async ({ timeZone }) => ({ now: new Date().toLocaleString('en-US', { timeZone: timeZone ?? 'UTC' }) }),
+});
+
+const instructions = 'You are a helpful assistant. Use your tools when they help.';
+const tools = [currentTime];
+
+/**
+ * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
+ * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
+ */
+export function buildAgent(provider?: LLMProvider) {
+  return provider
+    ? createAgent({ provider, instructions, tools })
+    : createAgent({ model: 'pi/openrouter/openai/gpt-4o-mini', instructions, tools });
+}
+"
+`;
+
+exports[`renderProject > snapshot: pi / tools agent.ts 1`] = `
+"import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+/** An example tool: the model calls it when it needs the current date or time. */
+export const currentTime = defineTool({
+  name: 'current_time',
+  description: 'Get the current date and time, optionally in an IANA time zone.',
+  input: z.object({
+    timeZone: z.string().optional().describe('IANA time zone, e.g. "Europe/Paris". Defaults to UTC.'),
+  }),
+  execute: async ({ timeZone }) => ({ now: new Date().toLocaleString('en-US', { timeZone: timeZone ?? 'UTC' }) }),
+});
+
+/** Rolls an n-sided die. */
+export const rollDie = defineTool({
+  name: 'roll_die',
+  description: 'Roll a die with the given number of sides and return the result.',
+  input: z.object({ sides: z.number().int().min(2).max(1000).default(6) }),
+  execute: async ({ sides }) => ({ sides, result: 1 + Math.floor(Math.random() * sides) }),
+});
+
+/** Counts the words in a piece of text. */
+export const wordCount = defineTool({
+  name: 'word_count',
+  description: 'Count the words in a piece of text.',
+  input: z.object({ text: z.string() }),
+  execute: async ({ text }) => ({ words: text.split(/\\s+/).filter(Boolean).length }),
+});
+
+const instructions = 'You are a helpful assistant. Use your tools when they help.';
+const tools = [currentTime, rollDie, wordCount];
+
+/**
+ * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
+ * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
+ */
+export function buildAgent(provider?: LLMProvider) {
+  return provider
+    ? createAgent({ provider, instructions, tools })
+    : createAgent({ model: 'pi/openrouter/openai/gpt-4o-mini', instructions, tools });
+}
+"
+`;
+
 exports[`renderProject > snapshot: tools package.json 1`] = `
 "{
   "name": "demo-agent",

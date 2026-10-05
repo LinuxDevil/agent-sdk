@@ -25,20 +25,21 @@ function unsafe(item: RegistryItem, file: string, reason: string): SDKError {
   return new SDKError(`lousho add: '${item.name}' wants to write '${file}': ${reason}`, 'LOUSHO_REGISTRY_UNSAFE_PATH');
 }
 
-/** The folder (with a trailing slash) the item's files must live in. */
+/** The folder (with a trailing slash) the item's files must live in. A `kit` is a whole agent directory, so its files may sit anywhere. */
 function allowedFolder(item: RegistryItem): string {
+  if (item.type === 'kit') return '';
   if (item.type === 'skill') return `skills/${item.name}/`;
   return item.type === 'memory' ? 'memory/' : `${item.type}s/`;
 }
 
-/** Why `file` is not a plain relative path inside `folder`, or undefined when it is. */
+/** Why `file` is not a plain relative path inside `folder`, or undefined when it is. An empty `folder` (a kit) allows every relative path. */
 function pathProblem(file: string, folder: string): string | undefined {
   if (file === '' || file.includes('\0')) return 'the path is empty or has a NUL character.';
   if (file.includes('\\')) return 'backslashes are not allowed; use "/".';
   if (/^[A-Za-z]:/.test(file)) return 'drive letters are not allowed.';
   if (file.startsWith('/')) return 'absolute paths are not allowed.';
   if (file.split('/').some((segment) => segment === '..' || segment === '.' || segment === '')) return 'the path must be normalized and cannot contain "..".';
-  if (!file.startsWith(folder) || file.length === folder.length) return `it must be inside ${folder}`;
+  if (folder !== '' && (!file.startsWith(folder) || file.length === folder.length)) return `it must be inside ${folder}`;
   return undefined;
 }
 

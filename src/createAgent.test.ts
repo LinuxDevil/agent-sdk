@@ -144,7 +144,7 @@ describe('createAgent', () => {
 
     it('lists supported prefixes and suggests the closest for an unknown provider', () => {
       expect(() => createAgent({ model: 'opnai/gpt-4o' })).toThrow(
-        /createAgent: unrecognized provider 'opnai'.*Supported prefixes: openai, anthropic, openrouter, ollama\. Did you mean 'openai\/gpt-4o'\?/
+        /createAgent: unrecognized provider 'opnai'.*Supported prefixes: openai, anthropic, openrouter, ollama, pi\. Did you mean 'openai\/gpt-4o'\?/
       );
     });
 

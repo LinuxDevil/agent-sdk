@@ -69,11 +69,18 @@ export interface AgentConfig {
 
 // @public
 export interface AgentDirConfig {
+    approve?: string | ApproveToolCall;
+    compaction?: AgentCompaction;
     description?: string;
+    engine?: 'pi';
+    hooks?: string | AgentHook | readonly AgentHook[];
     instructions?: string;
+    limits?: RunLimits;
     maxSteps?: number;
     model?: string;
     name?: string;
+    permissionMode?: PermissionMode | (() => PermissionMode);
+    permissions?: readonly AgentDirPermissionRule[];
     projectInstructions?: boolean | {
         cwd?: string;
         files?: readonly string[];
@@ -99,7 +106,21 @@ export interface AgentDirManifest {
 }
 
 // @public
-export type AgentDirOverrides = CreateAgentConfig;
+export type AgentDirOverrides = CreateAgentConfig & {
+    piAgent?: Partial<PiAgentOptions>;
+};
+
+// @public
+export interface AgentDirPermissionRule {
+    // (undocumented)
+    action: PermissionAction;
+    // (undocumented)
+    reason?: string;
+    // (undocumented)
+    tool: string | readonly string[] | RegExp;
+    // (undocumented)
+    when?: Record<string, string> | PermissionRule['when'];
+}
 
 // @public
 export interface AgentDrift {
@@ -1455,6 +1476,9 @@ export interface DefineMemoryOptions {
 
 // @public
 export function defineOAuthProvider(options: OAuthProviderOptions): OAuthProvider;
+
+// @public
+export function defineRemoteSubagent<T extends RemoteSubagent>(impl: T): T;
 
 // @public
 export function defineSchedule(input: ScheduleInput): DefinedSchedule;
@@ -2988,7 +3012,7 @@ export function isToolEvent(event: AgentEvent): event is ToolStartEvent | ToolRe
 // @public
 const ItemSchema: z.ZodObject<{
     name: z.ZodString;
-    type: z.ZodEnum<["tool", "skill", "channel", "schedule", "memory"]>;
+    type: z.ZodEnum<["tool", "skill", "channel", "schedule", "memory", "kit"]>;
     description: z.ZodString;
     files: z.ZodArray<z.ZodObject<{
         path: z.ZodString;
@@ -3022,7 +3046,7 @@ const ItemSchema: z.ZodObject<{
     dependencies: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
 }, "strip", z.ZodTypeAny, {
     name: string;
-    type: "tool" | "memory" | "skill" | "channel" | "schedule";
+    type: "tool" | "memory" | "skill" | "channel" | "schedule" | "kit";
     description: string;
     permissions: {
         env?: string[] | undefined;
@@ -3038,7 +3062,7 @@ const ItemSchema: z.ZodObject<{
     dependencies?: string[] | undefined;
 }, {
     name: string;
-    type: "tool" | "memory" | "skill" | "channel" | "schedule";
+    type: "tool" | "memory" | "skill" | "channel" | "schedule" | "kit";
     description: string;
     files: {
         content: string;
@@ -4300,6 +4324,23 @@ export type PermissionToolMatcher = string | readonly string[] | RegExp;
 export type PerRun<T> = T | ((ctx: RunConfigContext) => T | Promise<T>);
 
 // @public
+export function piAgent(options: PiAgentOptions): RemoteSubagent;
+
+// @public
+export interface PiAgentOptions {
+    agentDir?: string;
+    cwd: string;
+    description: string;
+    model?: unknown;
+    modelRuntime?: unknown;
+    name?: string;
+    permissions?: readonly PermissionRule[];
+    sessionDir?: string;
+    thinkingLevel?: string;
+    tools?: readonly string[];
+}
+
+// @public
 export function piiGuardrail(options?: {
     types?: readonly PiiType[];
     action?: 'block' | 'rewrite';
@@ -4310,7 +4351,61 @@ export function piiGuardrail(options?: {
 export type PiiType = 'email' | 'phone' | 'credit-card' | 'iban' | 'us-ssn' | 'ip-address';
 
 // @public
+interface PiModel {
+    api: string;
+    // (undocumented)
+    baseUrl: string;
+    // (undocumented)
+    contextWindow: number;
+    // (undocumented)
+    cost: {
+        input: number;
+        output: number;
+        cacheRead: number;
+        cacheWrite: number;
+    };
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    input: readonly string[];
+    // (undocumented)
+    maxTokens: number;
+    // (undocumented)
+    name: string;
+    provider: string;
+    // (undocumented)
+    reasoning: boolean;
+}
+
+// @public
 export function pinMessage(message: Message): Message;
+
+// @public
+export class PiProvider implements LLMProvider {
+    constructor(config?: PiProviderConfig);
+    // (undocumented)
+    protected config: PiProviderConfig;
+    get defaultModel(): string;
+    // (undocumented)
+    generate(options: GenerateOptions): Promise<GenerateResult>;
+    getModels(): Promise<string[]>;
+    // (undocumented)
+    readonly name = "pi";
+    // (undocumented)
+    stream(options: GenerateOptions): Promise<StreamResult>;
+    // (undocumented)
+    supportsStreaming(_model: string): boolean;
+    // (undocumented)
+    supportsTools(_model: string): boolean;
+}
+
+// @public
+export interface PiProviderConfig extends LLMProviderConfig {
+    // Warning: (ae-forgotten-export) The symbol "PiModel" needs to be exported by the entry point index.d.ts
+    //
+    // (undocumented)
+    models?: readonly PiModel[];
+}
 
 // @public
 export interface PolicyLine {
@@ -4428,6 +4523,7 @@ export interface ProviderUsage {
     cachedInputTokens?: number;
     // (undocumented)
     completionTokens: number;
+    costUsd?: number;
     // (undocumented)
     promptTokens: number;
     reasoningTokens?: number;
@@ -5535,6 +5631,17 @@ export interface StreamResult {
 }
 
 // @public
+export class SubagentApprovalPause extends PropagatingToolError {
+    constructor(agentName: string, snapshot: ExecutionSnapshot);
+    // (undocumented)
+    readonly agentName: string;
+    background?: SuspendedBackgroundTasks;
+    resumeArgs?: Record<string, unknown>;
+    // (undocumented)
+    readonly snapshot: ExecutionSnapshot;
+}
+
+// @public
 export interface SubagentCatalog {
     // (undocumented)
     list(): readonly SubagentSummary[] | Promise<readonly SubagentSummary[]>;
@@ -6392,7 +6499,7 @@ export type VectorMemoryProvider = MemoryProvider & {
 };
 
 // @public
-export const VERSION = "1.0.0-rc.0";
+export const VERSION = "1.0.0-alpha.2";
 
 // @public (undocumented)
 const webFetchInput: z.ZodObject<{
@@ -6611,8 +6718,8 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/index-MPvXfVX9.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-MPvXfVX9.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-Cu54_KAW.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-Cu54_KAW.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)

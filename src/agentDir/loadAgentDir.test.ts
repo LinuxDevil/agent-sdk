@@ -1,9 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import path from 'node:path';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
 import { z } from 'zod';
+import { fauxAssistantMessage, fauxProvider, fauxToolCall, type FauxResponseStep } from '@earendil-works/pi-ai';
+import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import { loadAgentDir, resolveAgentDir } from './index';
 import { defineTool } from '../tools/defineTool';
 import { mockModel } from '../testing';
+import { isRemoteSubagent } from '../subagents/remoteAgent';
 import { explainImportError } from './importModule';
 import { closest } from './closest';
 
@@ -154,6 +160,203 @@ describe('loadAgentDir', () => {
   });
 });
 
+describe('agent.* run options (permissionMode, permissions, compaction, hooks, approve, limits)', () => {
+  it('maps every new key into the createAgent() options and tracks the files it imported', async () => {
+    const { config, manifest } = await resolveAgentDir(fixture('config-extras'), {
+      provider: mockModel(['x']),
+      model: 'openrouter/openai/gpt-4o-mini',
+    });
+
+    expect(config.permissionMode).toBe('default');
+    expect(config.compaction).toEqual({ thresholdPercent: 0.8 });
+    expect(config.limits).toEqual({ maxCostUsd: 0.05, onExceeded: 'stop' });
+    expect(config.permissions).toHaveLength(3);
+    expect(config.permissions?.[0]).toMatchObject({ tool: 'shell', action: 'deny', reason: 'No deletes' });
+    expect(typeof config.approve).toBe('function');
+    expect(config.hooks?.map((hook) => hook.name)).toEqual(['spy']);
+    const files = manifest.files.map((f) => path.relative(fixture('config-extras'), f).split(path.sep).join('/'));
+    expect(files).toEqual(
+      expect.arrayContaining(['agent.json', 'instructions.md', 'instructions/openai.md', 'hooks.ts', 'approve.ts', 'tools/stubs.ts'])
+    );
+  });
+
+  it('appends instructions/<family>.md whose stem is in the model id, once', async () => {
+    const openai = await resolveAgentDir(fixture('config-extras'), { provider: mockModel(['x']), model: 'openrouter/openai/gpt-4o-mini' });
+    expect(openai.config.instructions).toBe('You are the extras fixture agent.\nCall one tool at a time.');
+    const anthropic = await resolveAgentDir(fixture('config-extras'), { model: 'anthropic/claude-haiku-4-5' });
+    expect(anthropic.config.instructions).toBe('You are the extras fixture agent.\nPrefer edit_file over write_file.');
+    const other = await resolveAgentDir(fixture('config-extras'), { model: 'ollama/llama3.1' });
+    expect(other.config.instructions).toBe('You are the extras fixture agent.');
+  });
+
+  it('runs the directory: a `when` record denies rm, the approver refuses test files, hooks observe calls', async () => {
+    const { seen } = (await import(pathToFileURL(path.join(fixture('config-extras'), 'hooks.ts')).href)) as { seen: string[] };
+    seen.length = 0;
+    const model = mockModel([
+      { toolCalls: [{ name: 'shell', args: { command: 'rm -rf node_modules' } }] },
+      { toolCalls: [{ name: 'write_file', args: { path: 'math.test.js' } }] },
+      { toolCalls: [{ name: 'write_file', args: { path: 'math.js' } }] },
+      'Done.',
+    ]);
+    const agent = await loadAgentDir(fixture('config-extras'), { provider: model });
+
+    const result = await agent.send('go');
+
+    expect(result.text).toBe('Done.');
+    const outputs = toolMessages(model.calls[model.calls.length - 1]).join('\n');
+    expect(outputs).toContain('No deletes');
+    expect(outputs).not.toContain('wrote math.test.js');
+    expect(outputs).toContain('wrote math.js');
+    // preToolCall ran for every call (hooks come before permission rules); an
+    // approved call can be re-prepared after its pause, hence >= not =.
+    expect(seen[0]).toBe('shell');
+    expect(seen.filter((name) => name === 'write_file').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('lets overrides replace the configured hooks and approver without reading their files', async () => {
+    const approve = () => true;
+    const { config } = await resolveAgentDir(fixture('err-missing-hooks'), {
+      provider: mockModel(['x']),
+      hooks: [],
+      approve,
+    });
+    expect(config.hooks).toEqual([]);
+    expect(config.approve).toBe(approve);
+  });
+});
+
+describe("engine: 'pi' sub-agent directories", () => {
+  it('lands a pi sub-agent in the subagents map while a normal one stays a delegate tool', async () => {
+    const { config, manifest } = await resolveAgentDir(fixture('pi-subagent'), { provider: mockModel(['x']) });
+
+    expect(manifest.subagents).toEqual(['coder', 'explorer']);
+    const toolNames = (config.tools as { name: string }[]).map((t) => t.name);
+    expect(toolNames).toContain('delegate_to_explorer');
+    expect(toolNames).not.toContain('delegate_to_coder');
+
+    const coder = (config.subagents as Record<string, unknown>).coder;
+    expect(isRemoteSubagent(coder)).toBe(true);
+    expect((coder as { name?: string; description: string }).name).toBe('coder');
+    expect((coder as { description: string }).description).toBe('Implements code changes with Pi coding tools.');
+  });
+
+  it('rejects engine on the main config, a bad engine value and a non-pi model id', async () => {
+    const rootError = (await resolveAgentDir(fixture('err-engine-root')).catch((e: Error) => e)) as Error;
+    expect(rootError.message).toContain(`'engine' is only valid for a directory under 'subagents/'`);
+
+    const badError = (await resolveAgentDir(fixture('err-engine-bad')).catch((e: Error) => e)) as Error;
+    expect(badError.message).toContain(path.join('subagents', 'coder', 'agent.json'));
+    expect(badError.message).toContain("'engine' must be 'pi'");
+
+    const modelError = (await resolveAgentDir(fixture('err-engine-model')).catch((e: Error) => e)) as Error;
+    expect(modelError.message).toContain("'model' must be a 'pi/<provider>/<model>' id");
+  });
+
+  it('delegates through the installed dir: mock lead -> task -> pi session on a faux runtime', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'lousho-pidir-'));
+    const agentDir = mkdtempSync(path.join(tmpdir(), 'lousho-pidir-pi-'));
+    try {
+      writeFileSync(path.join(dir, 'agent.json'), JSON.stringify({ model: 'mock/m' }));
+      writeFileSync(path.join(dir, 'instructions.md'), 'You delegate code changes to the coder.\n');
+      writeFileSync(path.join(dir, 'note.txt'), 'broken\n');
+      mkdirSync(path.join(dir, 'subagents', 'coder'), { recursive: true });
+      writeFileSync(
+        path.join(dir, 'subagents', 'coder', 'agent.json'),
+        JSON.stringify({
+          description: 'Edits files with Pi tools.',
+          engine: 'pi',
+          model: 'pi/openrouter/openai/gpt-4o-mini',
+          permissions: [
+            { tool: 'bash', when: { command: '\\brm\\b' }, action: 'deny', reason: 'No deletes' },
+            { tool: '*', action: 'allow' },
+          ],
+        })
+      );
+
+      const runtime = await ModelRuntime.create({
+        authPath: path.join(agentDir, 'auth.json'),
+        modelsStorePath: path.join(agentDir, 'models.json'),
+        refreshOnCreate: false,
+      });
+      const faux = fauxProvider();
+      runtime.registerNativeProvider(faux.provider);
+      const piModel = runtime.getModel('faux', 'faux-1')!;
+      const fixer: FauxResponseStep = (context) => {
+        const last = context.messages.at(-1);
+        if (last?.role === 'toolResult') return fauxAssistantMessage('Done.');
+        return fauxAssistantMessage(
+          fauxToolCall('edit', { path: 'note.txt', edits: [{ oldText: 'broken', newText: 'fixed' }] })
+        );
+      };
+      faux.setResponses([fixer, fixer, fixer]);
+
+      const agent = await loadAgentDir(dir, {
+        provider: mockModel([
+          { toolCalls: [{ name: 'task', args: { agent: 'coder', prompt: 'Fix note.txt', description: 'fix note' } }] },
+          { text: 'delegated' },
+        ]),
+        piAgent: { modelRuntime: runtime, model: piModel, agentDir, sessionDir: path.join(agentDir, 'sessions') },
+      });
+
+      const result = await agent.send('go');
+      expect(result.text).toBe('delegated');
+      expect(readFileSync(path.join(dir, 'note.txt'), 'utf8')).toBe('fixed\n');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(agentDir, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('applies the pi sub-agent config permissions to its tool calls', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'lousho-pidir-'));
+    const agentDir = mkdtempSync(path.join(tmpdir(), 'lousho-pidir-pi-'));
+    try {
+      writeFileSync(path.join(dir, 'agent.json'), JSON.stringify({ model: 'mock/m' }));
+      writeFileSync(path.join(dir, 'instructions.md'), 'lead\n');
+      writeFileSync(path.join(dir, 'note.txt'), 'broken\n');
+      mkdirSync(path.join(dir, 'subagents', 'coder'), { recursive: true });
+      writeFileSync(
+        path.join(dir, 'subagents', 'coder', 'agent.json'),
+        JSON.stringify({
+          description: 'Edits files with Pi tools.',
+          engine: 'pi',
+          permissions: [{ tool: 'edit', action: 'deny', reason: 'No edits' }],
+        })
+      );
+
+      const runtime = await ModelRuntime.create({
+        authPath: path.join(agentDir, 'auth.json'),
+        modelsStorePath: path.join(agentDir, 'models.json'),
+        refreshOnCreate: false,
+      });
+      const faux = fauxProvider();
+      runtime.registerNativeProvider(faux.provider);
+      const piModel = runtime.getModel('faux', 'faux-1')!;
+      faux.setResponses([
+        (context) => {
+          const last = context.messages.at(-1);
+          if (last?.role === 'toolResult') return fauxAssistantMessage('The edit was refused.');
+          return fauxAssistantMessage(fauxToolCall('edit', { path: 'note.txt', edits: [{ oldText: 'broken', newText: 'fixed' }] }));
+        },
+      ]);
+
+      const agent = await loadAgentDir(dir, {
+        provider: mockModel([
+          { toolCalls: [{ name: 'task', args: { agent: 'coder', prompt: 'Fix note.txt', description: 'fix note' } }] },
+          { text: 'delegated' },
+        ]),
+        piAgent: { modelRuntime: runtime, model: piModel, agentDir, sessionDir: path.join(agentDir, 'sessions') },
+      });
+
+      await agent.send('go');
+      expect(readFileSync(path.join(dir, 'note.txt'), 'utf8')).toBe('broken\n');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(agentDir, { recursive: true, force: true });
+    }
+  }, 60_000);
+});
+
 describe('validation errors', () => {
   it('names the directory when instructions are missing', async () => {
     const dir = fixture('err-no-instructions');
@@ -207,6 +410,21 @@ describe('validation errors', () => {
     await expect(resolveAgentDir(fixture('err-bad-json'))).rejects.toThrow(
       new RegExp(`${path.join(fixture('err-bad-json'), 'agent.json').replace(/\\/g, '\\\\')}: invalid JSON`)
     );
+  });
+
+  it('names the rules that are wrong in permissions, one message per file', async () => {
+    const file = path.join(fixture('err-bad-permissions'), 'agent.json');
+    const error = (await resolveAgentDir(fixture('err-bad-permissions')).catch((e: Error) => e)) as Error;
+    expect(error.message).toContain(file);
+    expect(error.message).toMatch(/'permissions\[0\]'\.action must be 'allow', 'deny' or 'ask'/);
+  });
+
+  it('fails a missing hooks file naming the config path it came from', async () => {
+    const file = path.join(fixture('err-missing-hooks'), 'agent.json');
+    const error = (await resolveAgentDir(fixture('err-missing-hooks')).catch((e: Error) => e)) as Error;
+    expect(error.message).toContain(file);
+    expect(error.message).toContain("'hooks'");
+    expect(error.message).toContain('nope/hooks.ts');
   });
 });
 

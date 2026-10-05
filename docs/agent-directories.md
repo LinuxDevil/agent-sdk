@@ -23,6 +23,9 @@ const { text } = await agent.send('Hello!');
 my-agent/
   agent.{ts,mts,js,mjs,cjs,json,yaml,yml}          # optional config
   instructions.md                                  # system prompt
+  instructions/<family>.md                         # appended to the prompt when the model id contains <family>
+  hooks.{ts,mts,cts,js,mjs,cjs}                    # hooks file (or any path `hooks` names), exports a hook or a list
+  approve.{ts,mts,cts,js,mjs,cjs}                  # approver file (or any path `approve` names), exports a function
   tools/*.{ts,mts,cts,js,mjs,cjs}                  # defineTool() tools
   skills/                                          # same layouts as loadSkills()
   subagents/<name>/                                # nested agent directories
@@ -58,8 +61,64 @@ export default {
 | `maxSteps` | `createAgent({ maxSteps })` |
 | `toolConcurrency` | `createAgent({ toolConcurrency })` |
 | `projectInstructions` | `createAgent({ projectInstructions })` |
+| `permissionMode` | `createAgent({ permissionMode })`: `'default'`, `'plan'`, `'acceptEdits'` or `'dontAsk'` (a function in a code config) |
+| `permissions` | `createAgent({ permissions })`, in the serializable rule form below |
+| `compaction` | `createAgent({ compaction })`: `true` or an options object |
+| `hooks` | `createAgent({ hooks })`: a path (relative to the directory) to a file default-exporting a hook or a list, or the hooks inline in a code config |
+| `approve` | `createAgent({ approve })`: a path to a file default-exporting the approver function, or the function inline in a code config |
+| `limits` | `createAgent({ limits })`, e.g. `{ "maxCostUsd": 0.05 }` |
 
 Unknown keys are an error with a suggestion (`'modle' (did you mean 'model'?)`).
+
+A `permissions` rule is `{ "tool", "when"?, "action", "reason"? }`: `tool` is a
+name, a list of names (`'*'` covers every tool) or a `RegExp` in a code config;
+`action` is `'allow'`, `'ask'` or `'deny'`. In JSON/YAML `when` is a record of
+argument names to regular expressions, all of which must match
+`String(args[name])`; a code config may give the predicate itself. The first
+matching rule decides.
+
+```json
+// agent.json
+{
+  "permissions": [
+    { "tool": "shell", "when": { "command": "\\brm\\b" }, "action": "deny", "reason": "No deletes" },
+    { "tool": ["read_file", "shell"], "action": "allow" },
+    { "tool": ["write_file", "edit_file"], "action": "ask" }
+  ],
+  "hooks": "hooks.ts",
+  "approve": "approve.ts",
+  "limits": { "maxCostUsd": 0.05 }
+}
+```
+
+```ts
+// hooks.ts — the default export is a hook or a list of them
+import type { AgentHook } from '@lousho/build-ai-agent';
+const audit: AgentHook = {
+  name: 'audit',
+  postToolCall(ctx) {
+    console.log(ctx.toolName);
+  },
+};
+export default audit;
+```
+
+```ts
+// approve.ts — the default export decides every `ask`ed call
+import type { ApproveToolCall } from '@lousho/build-ai-agent';
+const approve: ApproveToolCall = ({ args }) => !String(args.path ?? '').endsWith('.test.js');
+export default approve;
+```
+
+A `hooks` / `approve` path must be relative and stay inside the directory;
+`lousho build` bundles root `hooks.*` and `approve.*` files next to the config
+and resolves the compiled `.js` sibling, so `.ts` paths keep working after the
+build.
+
+`instructions/<family>.md` appends to `instructions.md` when the resolved model
+id contains `<family>`: `instructions/openai.md` applies to
+`openai/gpt-4o-mini` and to `openrouter/openai/gpt-4o-mini`. The first match in
+sorted order wins; an unrelated model id gets the base prompt only.
 
 ### Tools
 
@@ -95,6 +154,35 @@ own `subagents/`). It must have a `description` in its config. The parent gets a
 its final answer. A sub-agent uses its own `model` if it sets one, otherwise it
 inherits the parent's; a `provider` override passed to `loadAgentDir()` reaches
 all of them.
+
+A sub-agent directory whose config sets `"engine": "pi"` becomes a Pi
+coding-agent sub-agent instead: it lands in the parent's `subagents` map (the
+`task` tool) rather than getting a `delegate_to_<name>` tool, and its sessions
+run in the parent's directory - the workspace the parent's file tools and the
+Pi session share. `model` takes the usual `pi/<provider>/<model>` id, and
+`permissions` rules gate the Pi session's own tool calls (`read`, `bash`,
+`edit`, `write`, ...). Other keys in its config are ignored: Pi carries its
+own system prompt and coding tools. Running a `pi` sub-agent needs the
+optional `@earendil-works/pi-coding-agent` peer and the Node runtime - a
+Cloudflare Worker target rejects it.
+
+```json
+// subagents/coder/agent.json
+{
+  "description": "Implements code changes in this workspace.",
+  "engine": "pi",
+  "model": "pi/openrouter/openai/gpt-4o-mini",
+  "permissions": [
+    { "tool": "bash", "when": { "command": "\\brm\\b" }, "action": "deny" },
+    { "tool": "*", "action": "allow" }
+  ]
+}
+```
+
+`loadAgentDir(dir, { piAgent: { ... } })` injects `piAgent()` options into
+every `engine: 'pi'` sub-agent (e.g. a faux `modelRuntime` in tests, a
+`sessionDir` for durable approvals); the directory always wins `cwd`, `name`
+and `description`.
 
 ### Channels
 
@@ -231,8 +319,8 @@ The agent directory is the unit of deployment: the built server loads it with
 `resolveAgentDir()` at start-up, starts its `schedules/` and mounts its
 `channels/` under `/channels`, guards its chat routes with `auth.ts` when there
 is one ([Route auth and principals](auth.md)), and prints which it found. The code files (the
-config, `auth.ts`, `tools/`, `schedules/`, `channels/`, `memory/`, and the same in each
-sub-agent) are bundled to `dist/agent/**.js`, and `instructions.md`, `skills/`
+config, `auth.ts`, a root `hooks.*` / `approve.*` file, `tools/`, `schedules/`, `channels/`, `memory/`, and the same in each
+sub-agent) are bundled to `dist/agent/**.js`, and `instructions.md` (with `instructions/<family>.md`), `skills/`
 and JSON/YAML config are copied next to them, so the server needs no TypeScript
 loader, sources or `node_modules`. See [Deployment](deployment.md#agent-directories).
 The Cloudflare Worker target builds a directory too, embedding every folder: `subagents/` become `delegate_to_` tools, `schedules/` become cron triggers, `channels/` are mounted under `/channels` and `memory/` slots run on `kvMemory()` ([Cloudflare Workers](cloudflare-workers.md#build-and-deploy)).

@@ -453,6 +453,8 @@ describe('report, rendering and exit codes', () => {
       [ ok ] Provider package @ai-sdk/anthropic: 0.0.42 installed
       [warn] Provider package ollama-ai-provider: not installed (optional)
              fix: npm install ollama-ai-provider@^1.2.0
+      [warn] Provider package @earendil-works/pi-ai: not installed (optional)
+             fix: npm install @earendil-works/pi-ai@1.0.3
       [ ok ] Optional package dockerode: 5.0.1 installed - enables Docker sandboxing (SubprocessSandbox)
       [ ok ] Optional package @modelcontextprotocol/sdk: 1.30.1 installed - enables MCP (serveMcp, \`lousho mcp\` and MCP client connections)
       [ ok ] Optional package prompts: 2.4.2 installed - enables the interactive prompts of \`lousho init\` (pass --yes to skip them)
@@ -464,10 +466,11 @@ describe('report, rendering and exit codes', () => {
       [warn] openrouter (OPENROUTER_API_KEY): not set
              fix: Set OPENROUTER_API_KEY in your environment, e.g. export OPENROUTER_API_KEY=<your key>
       [ ok ] ollama (OLLAMA_BASE_URL): not set (optional; the provider default endpoint is used)
+      [ ok ] pi (OPENROUTER_API_KEY): not set (only needed by the matching nested provider; each pi provider reads its own env key)
       [ ok ] Default provider for createAgent(): would use 'openai/gpt-4o-mini'
       [ ok ] Docker: daemon not reachable (only needed for sandboxed tools; none configured)
 
-      11 ok, 4 warnings, 1 failure"
+      12 ok, 5 warnings, 1 failure"
     `);
     expect(text).not.toMatch(/[^\x20-\x7e\n]/);
   });

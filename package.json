@@ -145,8 +145,8 @@
     "./src/providers/index.js"
   ],
   "scripts": {
-    "build": "node --max-old-space-size=6144 node_modules/tsup/dist/cli-default.js",
-    "dev": "node --max-old-space-size=6144 node_modules/tsup/dist/cli-default.js --watch",
+    "build": "node --max-old-space-size=8192 node_modules/tsup/dist/cli-default.js",
+    "dev": "node --max-old-space-size=8192 node_modules/tsup/dist/cli-default.js --watch",
     "pre-release": "npm version prerelease --preid=alpha --no-git-tag-version && node scripts/sync-version.mjs && npm publish --access public --tag alpha",
     "pre-release:create-lousho-agent": "npm version prerelease --preid=alpha --no-git-tag-version -w create-lousho-agent && npm run build -w create-lousho-agent && npm publish -w create-lousho-agent --access public --tag alpha",
     "release:create-lousho-agent": "npm version patch --no-git-tag-version -w create-lousho-agent && npm run build -w create-lousho-agent && npm publish -w create-lousho-agent --access public",
@@ -281,8 +281,8 @@
   "devDependencies": {
     "@ai-sdk/anthropic": "^0.0.42",
     "@ai-sdk/openai": "^0.0.42",
-    "@earendil-works/pi-ai": "^1.0.3",
-    "@earendil-works/pi-coding-agent": "^1.0.2",
+    "@earendil-works/pi-ai": "1.0.3",
+    "@earendil-works/pi-coding-agent": "1.0.2",
     "@microsoft/api-extractor": "^7.59.3",
     "@modelcontextprotocol/sdk": "^1.30.1",
     "@opentelemetry/api": "^1.9.1",

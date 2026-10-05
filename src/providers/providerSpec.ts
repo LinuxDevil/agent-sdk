@@ -52,11 +52,22 @@ const OLLAMA_PEERS: Record<AiMajor, PeerPairing> = {
   7: { name: 'ollama-ai-provider-v2', range: '^4.0.0', accepts: '^4.0.0', note: ZOD4_NOTE },
 };
 
+/** pi does not pair with an `ai` major: the same `@earendil-works/pi-ai` range applies on all of them. */
+const PI_PEER: PeerPairing = { name: '@earendil-works/pi-ai', range: '1.0.3', accepts: '1.0.3' };
+const PI_PEERS: Record<AiMajor, PeerPairing> = { 4: PI_PEER, 6: PI_PEER, 7: PI_PEER };
+
 interface ProviderEntry {
   /** Env var holding the credential (or, for Ollama, the base URL). */
   envKey: string;
   /** LLMProviderConfig field the env var's value belongs in. */
   configField: 'apiKey' | 'baseURL';
+  /**
+   * When true the env var's value is NOT injected into the config (H2 pi:
+   * the var belongs to one nested pi provider, so injecting it would send
+   * OPENROUTER_API_KEY to e.g. `pi/anthropic/...` - pi resolves each nested
+   * provider's own env credential itself).
+   */
+  envForInfoOnly?: boolean;
   /** Whether the provider cannot work without the env var (Ollama has a local default). */
   envRequired: boolean;
   /** The optional peer package to install, per installed `ai` major. */
@@ -71,6 +82,8 @@ export interface ProviderInfo {
   envKey: string;
   /** False when the provider has a built-in default (Ollama's local endpoint). */
   envRequired: boolean;
+  /** True when envKey describes one nested credential only (pi) and is not injected into the config. */
+  envForInfoOnly?: boolean;
   /** The optional peer package, per installed `ai` major. */
   peers: Readonly<Record<AiMajor, PeerPairing>>;
   /** Model used when the provider is picked from the environment alone. */
@@ -83,6 +96,7 @@ export function listProviders(): ProviderInfo[] {
     name,
     envKey: entry.envKey,
     envRequired: entry.envRequired,
+    envForInfoOnly: entry.envForInfoOnly,
     peers: entry.peers,
     defaultModel: entry.envDefaultModel,
   }));
@@ -149,6 +163,24 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     envRequired: false,
     peers: OLLAMA_PEERS,
     envDefaultModel: 'llama3',
+  },
+  /**
+   * H2: `pi/<pi-provider>/<model>` routes through `@earendil-works/pi-ai`.
+   * `envRequired` is false: which credential a nested pi provider needs is
+   * per-provider, so `envForInfoOnly` keeps `OPENROUTER_API_KEY` out of the
+   * provider config (it only describes the live `pi/openrouter/...` path for
+   * init/doctor) - pi's compat layer reads each nested provider's own env
+   * key, and PiProvider turns a missing one into the standard
+   * LOUSHO_PROVIDER_MISSING_API_KEY error. Listed last so env detection
+   * still prefers 'openrouter'.
+   */
+  pi: {
+    envKey: 'OPENROUTER_API_KEY',
+    configField: 'apiKey',
+    envForInfoOnly: true,
+    envRequired: false,
+    peers: PI_PEERS,
+    envDefaultModel: 'openrouter/openai/gpt-4o-mini',
   },
 };
 
@@ -280,7 +312,7 @@ export function resolveProviderSpec(spec: string, caller: string, registry: Prov
     createProvider(caller, providerName, entry, {
       ...extra,
       defaultModel: model,
-      [entry.configField]: envValue,
+      ...(entry.envForInfoOnly ? {} : { [entry.configField]: envValue }),
     }, registry);
   if (!envValue && entry.envRequired) {
     // Replay needs no key: the cassette answers every model call.

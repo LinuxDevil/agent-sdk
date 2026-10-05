@@ -9,7 +9,7 @@ required. It is for developers who need an agent to keep working when a run
 pauses for a human or the process restarts, and who want to test it like the
 rest of their code.
 
-Three things set it apart:
+Four things set it apart:
 
 - **Durable sessions and approvals on any host.** Sessions, checkpoints and
   approval pauses live in pluggable stores (memory, files, one SQLite file, or
@@ -23,6 +23,10 @@ Three things set it apart:
   ships the same agent spec to a Node server, Docker or a Worker; runs emit
   OpenTelemetry GenAI spans to any exporter, and every result reports token
   usage and USD cost.
+- **Coding agents that ship.** Agents are plain directories (`agent.json`,
+  `instructions.md`, `tools/`, `subagents/`), registries install them as kits,
+  and `piAgent()` delegates real coding work to a Pi coding agent with durable
+  approvals - one `lousho add coding-pi` is a working coding harness.
 
 [Quickstart](#quickstart) · [Features](#features) · [Documentation](#documentation) ·
 [Examples](#examples) · [Docs](https://lousho.com)
@@ -63,7 +67,7 @@ console.log(text);
 ```
 
 `model` is a `provider/model` string (`openai`, `anthropic`, `openrouter`,
-`ollama`) and the key comes from the provider's usual variable
+`ollama`, `pi`) and the key comes from the provider's usual variable
 (`OPENAI_API_KEY`, ...). Leave it out to pick the provider from the
 environment, or pass `provider:` with your own or a mock provider. See
 [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md) for runnable, offline versions and
@@ -85,11 +89,11 @@ agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 - **Next.js and Fetch frameworks**: `createRouteHandler(agent)` serves the session API from an App Router, SvelteKit, Hono or Bun route. [Next.js](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md)
 - **Durable execution**: `createAgent({ store })` checkpoints every step, and `agent.resume()` finishes a crashed or interrupted run without redoing finished tools (it throws `SessionAwaitingApprovalError` on an approval-paused run, which continues via `agent.approvals.resolve()`). [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)
 - **Cancellation, usage and cost**: pass an `AbortSignal`; every result carries token usage and USD cost for priced models. [Runs](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/runs.md), [Models and cost](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/models-and-cost.md)
-- **Providers**: OpenAI, Anthropic, OpenRouter, Ollama or a mock, with `withRetry()` and `withFallback()`. [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md)
-- **Sub-agents**: `subagents: { researcher, writer }` gives the lead a `task` tool plus `agent_status`, `agent_await` and `agent_cancel` for background tasks; sub-agents run in parallel. [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md)
+- **Providers**: OpenAI, Anthropic, OpenRouter, Ollama or a mock, with `withRetry()` and `withFallback()`; `pi/<provider>/<model>` routes through `@earendil-works/pi-ai`, opening Pi's whole catalog (OpenRouter, Anthropic, OpenAI, Google, ...) in one spec space. [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md)
+- **Sub-agents**: `subagents: { researcher, writer }` gives the lead a `task` tool plus `agent_status`, `agent_await` and `agent_cancel` for background tasks; sub-agents run in parallel. `remoteAgent()` delegates to a deployed agent over HTTP, `piAgent()` to a Pi coding agent in process - both durable-resumable - and `defineRemoteSubagent()` covers your own backend. [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md)
 - **Handoffs**: `handoffs: [billing, support]` lets a triage agent hand the conversation to a specialist, which answers the user and keeps the session. [Handoffs](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/handoffs.md)
 - **Skills and AGENTS.md**: `loadSkills()` loads instructions on demand; `projectInstructions` appends your `AGENTS.md`. [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md), [Project instructions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#project-instructions)
-- **Agent directories**: `loadAgentDir('./my-agent')` builds an agent from `instructions.md`, `tools/` and `skills/`. [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md)
+- **Agent directories**: `loadAgentDir('./my-agent')` builds an agent from `agent.json`, `instructions.md`, `tools/` and `skills/` - config covers models, permission rules and modes, hooks, approvers, compaction, limits and per-family instruction tails; `subagents/<name>/` with `"engine": "pi"` is a Pi coding sub-agent sharing the workspace. [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md)
 - **Compaction**: `createAgent({ compaction })` prunes old tool results, then summarizes old turns, before the context window fills. [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md)
 - **MCP client and server**: `createAgent({ mcpServers })` (or `connectMcp()`) connects stdio and HTTP MCP servers from config; `serveMcp()` / `lousho mcp` exposes your agent. [MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md)
 - **Workspace tools**: file system and shell tools for coding agents, confined to a root, shell approval-gated. [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md)
@@ -100,7 +104,7 @@ agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 - **Testing and evals**: `mockModel`, `recordReplay` cassettes, `defineEval()` trajectory assertions, `lousho eval` with `--record` / `--replay` cassettes and `--drift` trajectory diffs. [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md), [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md)
 - **CLI**: `init`, `doctor`, `dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `traces`, `build` and `studio`. [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md)
 - **Editors (ACP)**: `lousho acp ./my-agent` serves your agent to Zed and other Agent Client Protocol editors, with tool calls and permission prompts. [ACP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/acp.md)
-- **Registry**: `lousho add <name>` copies a tool, skill, channel, schedule or memory slot into your agent directory from the default registry (or one you point at with `--registry <url-or-path>`), after showing its permissions. [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md)
+- **Registry**: `lousho add <name>` copies a tool, skill, channel, schedule, memory slot or **kit** - a whole agent directory - into yours from the default registry (or one you point at with `--registry <url-or-path>`), after showing its permissions. The built-in `coding-kit` and `coding-pi` kits are production-shaped coding harnesses. [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md)
 - **Agent Forge**: `lousho studio` opens a visual canvas, run debugger and chat with approval cards. [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md)
 
 ## Usage
@@ -167,6 +171,20 @@ const agent = createAgent({ provider: resolveProvider('openai/gpt-4o-mini'), sto
 await agent.resume('user-42'); // after a crash: finishes the interrupted turn without redoing finished steps
 const { text } = await agent.session({ id: 'user-42' }).send('What is my name?'); // same id, same conversation
 ```
+
+### A coding agent from the registry
+
+```bash
+lousho add coding-pi --dir ./my-agent --yes --allow exec,fs-write,network,env
+OPENROUTER_API_KEY=... lousho dev ./my-agent
+```
+
+`coding-pi` is a whole agent directory: workspace file tools with checkpoint
+rewind, an allow-listed shell, permission rules (`rm` denied, writes to
+`*.test.*` refused), a loop guard, a cost cap, a read-only explorer and a Pi
+coding sub-agent the lead delegates to through `task`. `coding-kit` is the
+same rails on the standard providers. Both were validated live over
+OpenRouter; see [the harness validation report](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/plan/harness-validation-report.md).
 
 ## Documentation
 
@@ -247,6 +265,7 @@ Most examples run offline with a mock provider; see the
 | Example | What it shows |
 | ------- | ------------- |
 | [ops-pipeline](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/ops-pipeline) | Flagship: monitor alert, Slack "Fix it" button, human approval, fixer agent, patch-check-gated GitHub PR (`npm run pipeline:demo`) |
+| [coding-harness](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/coding-harness) | A production-shaped coding agent: checkpoints, permission rules, loop guard, the `coding-kit` and `coding-pi` registry kits, live OpenRouter runs |
 | [agent-dir](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/agent-dir) | An agent defined as a directory and loaded with `loadAgentDir()` |
 | [support-bot](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/support-bot) | A minimal customer-support agent |
 | [research-assistant](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/research-assistant) | A research agent with the built-in `http` tool |
@@ -265,7 +284,7 @@ Most examples run offline with a mock provider; see the
 | `lousho dev <spec>` | Local chat UI and `POST /chat` with hot reload |
 | `lousho chat <path>` | Terminal REPL: streamed replies, tool calls, approvals and questions |
 | `lousho acp <path>` | Serve the agent to Zed and other Agent Client Protocol editors |
-| `lousho add <name> [--registry <url-or-path>]` | Copy a tool, skill, channel, schedule or memory slot from the default registry (or a given one) into an agent directory |
+| `lousho add <name> [--registry <url-or-path>]` | Copy a tool, skill, channel, schedule, memory slot or kit (a whole agent directory) from the default registry (or a given one) into an agent directory |
 | `lousho mcp <spec>` | Serve the agent as an MCP server (stdio or HTTP) |
 | `lousho eval [globs]` | Run `*.eval.ts` files; JUnit and JSON reports |
 | `lousho traces [id]` | List saved runs, or print one as a span tree |
@@ -291,6 +310,9 @@ notes. Known gaps:
   accepts (`application/pdf` for OpenAI and OpenRouter, `application/pdf` and
   `text/plain` for Anthropic, on `ai` 6/7); other types - and every file part
   on `ai` 4 - are replaced by a text note ([Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md)).
+- The `pi` provider and `piAgent()` are Node-only (they run Pi's engine);
+  `lousho build --target=cloudflare-worker` refuses `pi/...` model specs and
+  `engine: 'pi'` sub-agent directories.
 - The Cloudflare Worker target has a limited provider and tool set, and builds
   agent directories without sub-agents, schedules, channels or memory slots
   ([Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md)).
@@ -1407,6 +1429,9 @@ const { text } = await agent.send('Hello!');
 my-agent/
   agent.{ts,mts,js,mjs,cjs,json,yaml,yml}          # optional config
   instructions.md                                  # system prompt
+  instructions/<family>.md                         # appended to the prompt when the model id contains <family>
+  hooks.{ts,mts,cts,js,mjs,cjs}                    # hooks file (or any path `hooks` names), exports a hook or a list
+  approve.{ts,mts,cts,js,mjs,cjs}                  # approver file (or any path `approve` names), exports a function
   tools/*.{ts,mts,cts,js,mjs,cjs}                  # defineTool() tools
   skills/                                          # same layouts as loadSkills()
   subagents/<name>/                                # nested agent directories
@@ -1442,8 +1467,64 @@ export default {
 | `maxSteps` | `createAgent({ maxSteps })` |
 | `toolConcurrency` | `createAgent({ toolConcurrency })` |
 | `projectInstructions` | `createAgent({ projectInstructions })` |
+| `permissionMode` | `createAgent({ permissionMode })`: `'default'`, `'plan'`, `'acceptEdits'` or `'dontAsk'` (a function in a code config) |
+| `permissions` | `createAgent({ permissions })`, in the serializable rule form below |
+| `compaction` | `createAgent({ compaction })`: `true` or an options object |
+| `hooks` | `createAgent({ hooks })`: a path (relative to the directory) to a file default-exporting a hook or a list, or the hooks inline in a code config |
+| `approve` | `createAgent({ approve })`: a path to a file default-exporting the approver function, or the function inline in a code config |
+| `limits` | `createAgent({ limits })`, e.g. `{ "maxCostUsd": 0.05 }` |
 
 Unknown keys are an error with a suggestion (`'modle' (did you mean 'model'?)`).
+
+A `permissions` rule is `{ "tool", "when"?, "action", "reason"? }`: `tool` is a
+name, a list of names (`'*'` covers every tool) or a `RegExp` in a code config;
+`action` is `'allow'`, `'ask'` or `'deny'`. In JSON/YAML `when` is a record of
+argument names to regular expressions, all of which must match
+`String(args[name])`; a code config may give the predicate itself. The first
+matching rule decides.
+
+```json
+// agent.json
+{
+  "permissions": [
+    { "tool": "shell", "when": { "command": "\\brm\\b" }, "action": "deny", "reason": "No deletes" },
+    { "tool": ["read_file", "shell"], "action": "allow" },
+    { "tool": ["write_file", "edit_file"], "action": "ask" }
+  ],
+  "hooks": "hooks.ts",
+  "approve": "approve.ts",
+  "limits": { "maxCostUsd": 0.05 }
+}
+```
+
+```ts
+// hooks.ts — the default export is a hook or a list of them
+import type { AgentHook } from '@lousho/build-ai-agent';
+const audit: AgentHook = {
+  name: 'audit',
+  postToolCall(ctx) {
+    console.log(ctx.toolName);
+  },
+};
+export default audit;
+```
+
+```ts
+// approve.ts — the default export decides every `ask`ed call
+import type { ApproveToolCall } from '@lousho/build-ai-agent';
+const approve: ApproveToolCall = ({ args }) => !String(args.path ?? '').endsWith('.test.js');
+export default approve;
+```
+
+A `hooks` / `approve` path must be relative and stay inside the directory;
+`lousho build` bundles root `hooks.*` and `approve.*` files next to the config
+and resolves the compiled `.js` sibling, so `.ts` paths keep working after the
+build.
+
+`instructions/<family>.md` appends to `instructions.md` when the resolved model
+id contains `<family>`: `instructions/openai.md` applies to
+`openai/gpt-4o-mini` and to `openrouter/openai/gpt-4o-mini`. The first match in
+sorted order wins; an unrelated model id gets the base prompt only.
 
 ### Tools
 
@@ -1479,6 +1560,35 @@ own `subagents/`). It must have a `description` in its config. The parent gets a
 its final answer. A sub-agent uses its own `model` if it sets one, otherwise it
 inherits the parent's; a `provider` override passed to `loadAgentDir()` reaches
 all of them.
+
+A sub-agent directory whose config sets `"engine": "pi"` becomes a Pi
+coding-agent sub-agent instead: it lands in the parent's `subagents` map (the
+`task` tool) rather than getting a `delegate_to_<name>` tool, and its sessions
+run in the parent's directory - the workspace the parent's file tools and the
+Pi session share. `model` takes the usual `pi/<provider>/<model>` id, and
+`permissions` rules gate the Pi session's own tool calls (`read`, `bash`,
+`edit`, `write`, ...). Other keys in its config are ignored: Pi carries its
+own system prompt and coding tools. Running a `pi` sub-agent needs the
+optional `@earendil-works/pi-coding-agent` peer and the Node runtime - a
+Cloudflare Worker target rejects it.
+
+```json
+// subagents/coder/agent.json
+{
+  "description": "Implements code changes in this workspace.",
+  "engine": "pi",
+  "model": "pi/openrouter/openai/gpt-4o-mini",
+  "permissions": [
+    { "tool": "bash", "when": { "command": "\\brm\\b" }, "action": "deny" },
+    { "tool": "*", "action": "allow" }
+  ]
+}
+```
+
+`loadAgentDir(dir, { piAgent: { ... } })` injects `piAgent()` options into
+every `engine: 'pi'` sub-agent (e.g. a faux `modelRuntime` in tests, a
+`sessionDir` for durable approvals); the directory always wins `cwd`, `name`
+and `description`.
 
 ### Channels
 
@@ -1615,8 +1725,8 @@ The agent directory is the unit of deployment: the built server loads it with
 `resolveAgentDir()` at start-up, starts its `schedules/` and mounts its
 `channels/` under `/channels`, guards its chat routes with `auth.ts` when there
 is one ([Route auth and principals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md)), and prints which it found. The code files (the
-config, `auth.ts`, `tools/`, `schedules/`, `channels/`, `memory/`, and the same in each
-sub-agent) are bundled to `dist/agent/**.js`, and `instructions.md`, `skills/`
+config, `auth.ts`, a root `hooks.*` / `approve.*` file, `tools/`, `schedules/`, `channels/`, `memory/`, and the same in each
+sub-agent) are bundled to `dist/agent/**.js`, and `instructions.md` (with `instructions/<family>.md`), `skills/`
 and JSON/YAML config are copied next to them, so the server needs no TypeScript
 loader, sources or `node_modules`. See [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#agent-directories).
 The Cloudflare Worker target builds a directory too, embedding every folder: `subagents/` become `delegate_to_` tools, `schedules/` become cron triggers, `channels/` are mounted under `/channels` and `memory/` slots run on `kvMemory()` ([Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md#build-and-deploy)).
@@ -5232,6 +5342,7 @@ Real providers are resolved by `resolveProvider('<provider>/<model>')`
 | `anthropic`  | `ANTHROPIC_API_KEY`   |
 | `openrouter` | `OPENROUTER_API_KEY`  |
 | `ollama`     | `OLLAMA_BASE_URL`     |
+| `pi`         | the nested provider's own variable (`pi/openrouter/...` reads `OPENROUTER_API_KEY`) |
 
 The `mock` provider needs no credentials and returns canned responses; it is
 what the examples and the Quick Start use by default.
@@ -10727,8 +10838,8 @@ A resume in another process uses the mode the resuming agent or session has.
 Source: docs/providers.md
 
 An `LLMProvider` is what an agent generates with. The SDK ships OpenAI,
-Anthropic, OpenRouter and Ollama providers (each backed by an optional peer
-package, see [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#provider-packages)) and a
+Anthropic, OpenRouter, Ollama and `pi` providers (each backed by an optional
+peer package, see [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#provider-packages)) and a
 deterministic mock for tests. Name one with a `provider/model` string, or pass
 a provider instance. The `vendor/` model prefix chooses the provider; with
 OpenRouter use `openrouter/<vendor>/<model>` (e.g.
@@ -10742,6 +10853,8 @@ const openai = resolveProvider('openai/gpt-4o-mini');       // OPENAI_API_KEY
 const anthropic = resolveProvider('anthropic/claude-sonnet-5-5'); // ANTHROPIC_API_KEY
 const openrouter = resolveProvider('openrouter/openai/gpt-4o-mini'); // OPENROUTER_API_KEY
 const ollama = resolveProvider('ollama/llama3.1');           // OLLAMA_BASE_URL
+// pi runs one catalog through `pi/<pi-provider>/<model>` (nested slashes ok):
+const pi = resolveProvider('pi/openrouter/openai/gpt-4o-mini');    // OPENROUTER_API_KEY
 
 // Or construct a provider directly via the registry
 const custom = LLMProviderRegistry.create('openai', {
@@ -10855,9 +10968,10 @@ console.log(textOf(messages[0]), '->', result.text);
 ```
 
 - **Images** go to the model on `user` messages with every built-in provider
-  (an image URL is downloaded by the `ai` SDK first for Anthropic and Ollama).
-  Pick a vision model: Ollama ignores images for a text-only model, and
-  OpenRouter rejects them for one.
+  (an image URL is downloaded by the `ai` SDK first for Anthropic and Ollama;
+  `pi` sends `data:` URLs and bytes only - an `http(s)` URL degrades to a text
+  note with a one-time warning). Pick a vision model: Ollama ignores images
+  for a text-only model, and OpenRouter rejects them for one.
 - **Files** (`{ type: 'file', data, mimeType }`) are sent as `file` parts for
   these media types, by provider and `ai` major:
 
@@ -10867,6 +10981,7 @@ console.log(textOf(messages[0]), '->', result.text);
   | `anthropic` | text note | `application/pdf`, `text/plain` |
   | `openrouter` | text note | `application/pdf` |
   | `ollama` | text note | text note |
+  | `pi` | text note | text note (pi has no file part) |
 
   Any other file part is sent as a text note
   (`[file report.pdf (application/pdf) not sent]`), and the provider warns once
@@ -10912,7 +11027,7 @@ console.log(result.text);
 | ------ | ----------- |
 | `resolveProvider('p/model')` | Build a real provider from environment credentials. |
 | `LLMProviderRegistry` | Registry of provider factories: `create(type, config)`, `register(type, factory)`, `has(type)`. |
-| `OpenAIProvider`, `AnthropicProvider`, `OllamaProvider`, `OpenRouterProvider` | The provider classes. See [examples/openrouter](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/openrouter) for OpenRouter-specific features. |
+| `OpenAIProvider`, `AnthropicProvider`, `OllamaProvider`, `OpenRouterProvider`, `PiProvider` | The provider classes. See [examples/openrouter](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/openrouter) for OpenRouter-specific features. `PiProvider` is the `pi/...` adapter below. |
 | `createMockProvider()`, `MockLLMProvider` | Canned responses for demos; simulates a tool call when the message names a tool. |
 | `mockModel(script)` | Scripted, asserting provider for tests (from `/testing`); see [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md). |
 | `withRetry()`, `withFallback()` | Retry transient failures with backoff and fall back to the next provider; see [Provider retries and fallback](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#provider-retries-and-fallback). |
@@ -10967,9 +11082,60 @@ mapped). Each throws `LOUSHO_CONFIG_INVALID`:
   cause of the `LOUSHO_PROVIDER_REQUEST_FAILED` error): wrap each model with
   `fromAiSdk()` and combine them with `withFallback()`.
 
+### The `pi` provider
+
+`pi/<pi-provider>/<model>` routes a call through
+[`@earendil-works/pi-ai`](https://www.npmjs.com/package/@earendil-works/pi-ai)
+(the engine `pi-coding-agent` runs on), an optional peer that needs no `ai`
+package:
+
+```bash
+npm install @earendil-works/pi-ai@1.0.3
+```
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+
+// OpenRouter's `openai/gpt-4o-mini`, through pi's openrouter adapter:
+const agent = createAgent({ model: 'pi/openrouter/openai/gpt-4o-mini' });
+```
+
+The segment after `pi/` is a **pi provider** (`openrouter`, `anthropic`,
+`openai`, `google`, ...); the rest is the catalog model id verbatim, slashes
+included. Credentials are per nested provider: pi reads each one's own
+conventional env var (`OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, ...), so a
+`pi/anthropic/...` spec never sees an OpenRouter key. `lousho init
+--provider pi` scaffolds the `pi/openrouter/...` default. A nested provider
+whose key is missing fails the call with `LOUSHO_PROVIDER_MISSING_API_KEY`
+naming the variable, and a missing `@earendil-works/pi-ai` fails it with the
+usual `MissingPeerDependencyError`.
+
+What maps, per call:
+
+- messages: `system` to pi's `systemPrompt`, `user`/`assistant`/`tool` in
+  place; assistant `reasoning` blocks become thinking parts and a `tool`
+  message's `toolCallId` links it to its call;
+- tools: `parameters` is sent as JSON Schema - raw JSON Schema, zod 3, zod 4
+  and Standard Schema inputs are converted once and cached;
+- streams: pi's `text_delta`/`thinking_delta`/`toolcall_*`/`done`/`error`
+  events become the same `text-delta`/`reasoning-*`/`tool-call`/`finish`/
+  `error` chunks the `ai` providers emit, so `agent.stream()` events and
+  `result.usage` are unchanged;
+- usage and cost: pi's per-call usage (including `cacheRead`) is carried
+  into the run total, and the catalog's prices register the model for the
+  run's `usage.costUsd`;
+- retries: pi's own `maxRetries` is pinned off - `retry`/`fallbackModels`
+  stay the only retry layer, like every built-in.
+
+`PiProviderConfig.models` injects catalog entries (pi's faux provider, a
+private catalog) ahead of the built-in list. `pi` is Node-only: the
+`cloudflare-worker` target refuses `pi/...` specs and its bundle redirects
+the package to a coded shim.
+
 ## Vercel AI SDK versions
 
-The built-in providers are adapters over the Vercel AI SDK (`ai`). What works
+Every built-in provider except `pi` is an adapter over the Vercel AI SDK
+(`ai`). What works
 on each major today:
 
 | `ai` | `generate()` | `stream()` | Notes |
@@ -11045,8 +11211,8 @@ takes for images, so there is no deprecation warning). `ai` v5 is not supported.
 
 All providers run on Node. The `cloudflare-worker` deploy target supports
 `mock`, `openai`, `anthropic` and `openrouter` (key from the
-`OPENROUTER_API_KEY` binding); `ollama` needs the `node-server` or `docker`
-target (see [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md)).
+`OPENROUTER_API_KEY` binding); `ollama` and `pi` need the `node-server` or
+`docker` target (see [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md)).
 
 # Queued input and steering
 
@@ -11534,8 +11700,11 @@ continues after that turn's tool calls. So:
 
 Source: docs/registry.md
 
-`lousho add` installs a tool, skill, channel, schedule or memory slot into an
-[agent directory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md) from a registry. A registry is plain
+`lousho add` installs a tool, skill, channel, schedule, memory slot or kit into an
+[agent directory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md) from a registry. A `kit` item is a
+whole agent directory: installing it lays out `agent.*`, `instructions.md`,
+tools, skills and sub-agents so the target becomes (or grows into) an agent
+directory itself. A registry is plain
 static JSON: an index plus one document per item that carries the file contents.
 The files are copied into your project as source you own and can edit. There is
 no runtime plugin loader, and nothing from a registry is executed or imported
@@ -11548,12 +11717,14 @@ is the `registry/dist/` folder of the SDK's repository served as static JSON.
 `none` (in either place) disables the registry entirely — `lousho add` then
 fails with `LOUSHO_CONFIG_INVALID`, for offline or locked-down use.
 
-The default registry currently carries five items:
+The default registry currently carries seven items:
 
 | Name | Type | Permissions it asks for |
 | ---- | ---- | ----------------------- |
 | `changelog` | skill | none |
 | `code-review` | skill | none |
+| `coding-kit` | kit (a coding harness as a whole agent directory) | `exec`, `fs-write` |
+| `coding-pi` | kit (the coding harness on the Pi provider with a Pi coding sub-agent) | `exec`, `fs-write`, `api.openrouter.ai`, `OPENROUTER_API_KEY` |
 | `generic-webhook` | channel | `WEBHOOK_SECRET` |
 | `github-issues` | tool (list and create issues; create asks for approval) | `api.github.com`, `GITHUB_TOKEN` |
 | `open-meteo-weather` | tool | `api.open-meteo.com`, `geocoding-api.open-meteo.com` |
@@ -11583,7 +11754,7 @@ files it will write, checks the item's code against the manifest, then asks
 ## Format
 
 The index is `{ items: [{ name, type, description, url | path }] }`. `type` is
-`tool`, `skill`, `channel`, `schedule` or `memory`. `url` / `path` locate the
+`tool`, `skill`, `channel`, `schedule`, `memory` or `kit`. `url` / `path` locate the
 item document; a relative one is resolved against the index's own location.
 
 Each item document is:
@@ -11630,7 +11801,9 @@ To contribute an item to the default registry, add a `registry/<name>/` folder
 to the SDK's repository: an `item.json` (`name`, `type`, `description`,
 `permissions`, `dependencies`) and the item's files laid out the way they
 should land in the agent directory (`tools/x.ts`, `skills/<name>/SKILL.md`,
-`channels/x.ts`). `npm run registry:build` validates every item against the
+`channels/x.ts`; a `kit`'s files make up a whole agent directory, e.g.
+`agent.json`, `instructions.md`, `hooks.ts`, `tools/`, `subagents/<name>/`).
+`npm run registry:build` validates every item against the
 same rules `lousho add` enforces (schema, paths, the code/manifest check) and
 rebuilds `registry/dist/`; commit the result. CI runs `npm run registry:check`,
 which fails when `registry/dist/` is stale.
@@ -11742,7 +11915,9 @@ before running it.
   and a symlink target is never written through.
 - A file must be inside the folder its item's type allows: `tool` in `tools/`,
   `skill` in `skills/<name>/`, `channel` in `channels/`, `schedule` in
-  `schedules/`, `memory` in `memory/`.
+  `schedules/`, `memory` in `memory/`. A `kit` is the one exception: as a whole
+  agent directory its files may sit at any relative path (still normalized and
+  inside the target, per the rule above).
 - Existing files are not overwritten without `--overwrite`. All files are checked
   before any is written, so a bad item writes nothing. Each of these failures is
   `LOUSHO_REGISTRY_UNSAFE_PATH` or `LOUSHO_REGISTRY_FILE_EXISTS`.
@@ -13607,6 +13782,62 @@ network error) is the structured tool error of that `task` call with the codes
 above, and the lead run continues. Only a run without an approval store (a bare
 `AgentExecutor`) still fails the task with `LOUSHO_SESSION_AWAITING_APPROVAL`,
 naming the remote session and approval id to decide on the remote agent.
+
+`remoteAgent()` covers agents deployed over HTTP. A different kind of
+"remote" sub-agent is another agent framework's runner used in process -
+build one against the same contract with `defineRemoteSubagent()` (below) or
+use the ready-made Pi adapter.
+
+## Pi coding-agent sub-agents (`piAgent()`)
+
+`piAgent()` runs a [Pi coding agent](https://github.com/earendil-works/pi)
+(`@earendil-works/pi-coding-agent`, an optional peer - `npm install
+@earendil-works/pi-coding-agent`) in process as a sub-agent. It is Node-only:
+Pi's tools (`read`, `bash`, `edit`, `write`, ...) work on a local directory.
+
+```ts
+import { createAgent, piAgent } from '@lousho/build-ai-agent';
+import { ModelRuntime } from '@earendil-works/pi-coding-agent';
+
+const runtime = await ModelRuntime.create(); // reads ~/.pi/agent auth, env keys
+const lead = createAgent({
+  model: 'openai/gpt-4o-mini',
+  instructions: 'You coordinate.',
+  subagents: {
+    coder: piAgent({
+      cwd: projectDir,                       // the directory Pi's tools work in
+      model: runtime.getModel('openrouter', 'openai/gpt-4o-mini'),
+      description: 'Edits code and runs tests in the workspace',
+      permissions: [ask(['edit', 'write']), allow('*')], // same rules as createAgent()
+    }),
+  },
+});
+```
+
+Each `task` call is one Pi session: the task's `sessionId` becomes the Pi
+session id, so a `taskId` resume - and the resume after an approval pause,
+even in a fresh process - reopens the same session file and the next prompt
+continues its transcript. A pi task cannot be forked (the `task` call fails
+with the remote-session "cannot be copied" error). Options: `cwd` (required),
+`model`, `modelRuntime`, `description` (required), `name`, `permissions`,
+`agentDir`, `sessionDir`, `tools` (a Pi tool allowlist), `thinkingLevel`.
+
+The `permissions` rules gate every Pi tool call (the Pi `tool_call`
+extension event fires before the tool runs): `deny` refuses the call, and
+`ask` pauses the lead run for approval exactly like a remote sub-agent's -
+`result.finishReason` is `'awaiting-approval'` and the pending approval
+carries the Pi tool name, its arguments and `subagentPath`. Approving tells
+Pi the call was approved and lets that exact tool name + arguments call run
+once (Pi has no "run the blocked call" API, so the model re-issues it and
+the gate allows that one call); rejecting sends the decision's note as the
+next user turn and the denied call never runs. Without an approval store an
+`ask` is refused outright. A paused Pi run keeps its usage on the pause and
+its continuation reports the rest, the same accounting as `remoteAgent()`.
+
+`SubagentApprovalPause` (now exported) is what such an adapter throws to
+pause the lead; `defineRemoteSubagent(impl)` registers any object matching
+`RemoteSubagent` for use in `subagents`, so a `task` call routes it through
+the remote path.
 
 ## Depth
 

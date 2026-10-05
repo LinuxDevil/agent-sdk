@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 describe('LLMProviderRegistry.create() resolves the built-ins on a deep import (LOU-R1)', () => {
-  it.each(['openai', 'anthropic', 'openrouter', 'ollama', 'mock'])(
+  it.each(['openai', 'anthropic', 'openrouter', 'ollama', 'pi', 'mock'])(
     "create('%s', ...) does not throw and returns that provider",
     (name) => {
       const provider = LLMProviderRegistry.create(name, { apiKey: 'x' });

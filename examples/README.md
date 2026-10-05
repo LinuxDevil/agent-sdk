@@ -9,6 +9,10 @@ to try.
 
 An agent defined as a directory (`instructions.md`, `tools/`, `skills/`, `agent.json`) and loaded with `loadAgentDir()`; runs offline with a mock model (LOU-Y5).
 
+## [coding-harness](./coding-harness)
+
+A coding-agent harness: a broken `add()` fixture the agent must fix under a guard (test files are refused), with a loop guard, checkpoint rewind and per-family instructions; runs offline with a mock model. `kit.test.ts` installs the same harness as the `coding-kit` registry item and builds it into a node-server deployment (H1).
+
 ## [doc-qa](./doc-qa)
 
 A question-answering agent scoped to a single fixed document (LOU-H10).

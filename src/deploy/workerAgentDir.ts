@@ -16,7 +16,7 @@
  * the Worker.
  */
 import { collectTools, type ToolModule } from '../agentDir/collectTools';
-import { validateConfig, type AgentDirConfig } from '../agentDir/validateConfig';
+import { permissionRulesOf, validateConfig, type AgentDirConfig } from '../agentDir/validateConfig';
 import type { DefinedTool } from '../tools/defineTool';
 import type { Skill } from '../skills/defineSkill';
 import type { LLMProvider } from '../providers/llm';
@@ -25,6 +25,11 @@ import type { Channel } from '../channels/defineChannel';
 import { defineChannel } from '../channels/defineChannel';
 import { defineSchedule, isDefinedSchedule, type DefinedSchedule } from '../schedules/defineSchedule';
 import { defineMemory, type MemorySlot } from '../memory/defineMemory';
+import type { AgentHook } from '../execution/hooks';
+import type { AgentCompaction } from '../context/agentCompaction';
+import type { RunLimits } from '../execution/budget';
+import type { ApproveToolCall } from '../createAgentApprovals';
+import type { PermissionMode, PermissionRule } from '../execution/permissions';
 import { SDKError } from '../execution/errors';
 import { WORKER_SUPPORTED_PROVIDERS } from './workerSupport';
 
@@ -99,6 +104,14 @@ export interface ResolvedWorkerAgentDir {
   memory: readonly MemorySlot[];
   /** The `subagents/` sub-agents; the Worker runtime adds a `delegate_to_<name>` tool per name. */
   subagents: readonly ResolvedWorkerSubagent[];
+  permissionMode?: PermissionMode | (() => PermissionMode);
+  permissions?: readonly PermissionRule[];
+  compaction?: AgentCompaction;
+  limits?: RunLimits;
+  /** Hooks a code config set inline; a `hooks` path is refused (a Worker cannot import a file). */
+  hooks?: readonly AgentHook[];
+  /** An inline approver; an `approve` path is refused. */
+  approve?: ApproveToolCall;
 }
 
 function unsupported(message: string): never {
@@ -237,6 +250,12 @@ function requireDescription(sub: WorkerSubagentDir, config: AgentDirConfig): str
  */
 export function resolveWorkerAgentDir(dir: WorkerAgentDir, inherited?: WorkerAgentModel): ResolvedWorkerAgentDir {
   const config = readDirConfig(dir);
+  if (config.engine !== undefined) {
+    invalid(
+      `${dir.name}: 'engine' is only valid for a directory under 'subagents/', and a 'pi' sub-agent needs the ` +
+        'Node runtime - a Cloudflare Worker cannot run one. Deploy this agent with the node-server or docker target instead.'
+    );
+  }
   const model = chooseModel(dir, config, inherited);
   return {
     name: config.name ?? dir.name,
@@ -250,5 +269,29 @@ export function resolveWorkerAgentDir(dir: WorkerAgentDir, inherited?: WorkerAge
     channels: collectChannels(dir),
     memory: collectMemory(dir),
     subagents: (dir.subagents ?? []).map((sub) => ({ name: sub.name, description: requireDescription(sub, readDirConfig(sub.dir)), dir: resolveWorkerAgentDir(sub.dir, model) })),
+    ...codeOnly(dir, config),
+  };
+}
+
+/**
+ * The run settings a Worker can carry over: `hooks` and `approve` as file
+ * paths need the file system a Worker does not have, so only their inline
+ * (code config) form is kept; the rest is plain data.
+ */
+function codeOnly(
+  dir: WorkerAgentDir,
+  config: AgentDirConfig
+): Pick<ResolvedWorkerAgentDir, 'permissionMode' | 'permissions' | 'compaction' | 'limits' | 'hooks' | 'approve'> {
+  const where = dir.configFile ?? `the agent directory '${dir.name}'`;
+  if (typeof config.hooks === 'string') unsupported(`${where}: 'hooks' points at a file ('${config.hooks}'), but a Worker cannot import it. Set the hooks inline in an agent.ts config.`);
+  if (typeof config.approve === 'string') unsupported(`${where}: 'approve' points at a file ('${config.approve}'), but a Worker cannot import it. Set the approver inline in an agent.ts config.`);
+  const permissions = permissionRulesOf(where, config.permissions);
+  return {
+    ...(config.permissionMode === undefined ? {} : { permissionMode: config.permissionMode }),
+    ...(permissions === undefined ? {} : { permissions }),
+    ...(config.compaction === undefined ? {} : { compaction: config.compaction }),
+    ...(config.limits === undefined ? {} : { limits: config.limits }),
+    ...(config.hooks === undefined ? {} : { hooks: Array.isArray(config.hooks) ? config.hooks : [config.hooks as AgentHook] }),
+    ...(config.approve === undefined ? {} : { approve: config.approve as ApproveToolCall }),
   };
 }
