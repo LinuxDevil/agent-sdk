@@ -26,14 +26,18 @@ import { OpenAIProvider, type OpenAIProviderConfig } from './OpenAIProvider';
 import { AnthropicProvider, type AnthropicProviderConfig } from './AnthropicProvider';
 import { OpenRouterProvider, type OpenRouterProviderConfig } from './OpenRouterProvider';
 import { OllamaProvider, type OllamaProviderConfig } from './OllamaProvider';
+import { PiProvider, type PiProviderConfig } from './pi/PiProvider';
 import { MockLLMProvider, type MockProviderConfig } from './mock';
 
-/** `name -> factory` for every built-in provider (providerSpec.ts's order, plus 'mock'). */
+/** `name -> factory` for every built-in provider (providerSpec.ts's order, plus 'pi' and 'mock'). */
 const BUILTIN_FACTORIES: ReadonlyArray<readonly [string, ProviderFactory]> = [
   ['openai', (config) => new OpenAIProvider(config as OpenAIProviderConfig)],
   ['anthropic', (config) => new AnthropicProvider(config as AnthropicProviderConfig)],
   ['openrouter', (config) => new OpenRouterProvider(config as OpenRouterProviderConfig)],
   ['ollama', (config) => new OllamaProvider(config as OllamaProviderConfig)],
+  // H2: the pi provider loads '@earendil-works/pi-ai' through
+  // loadOptionalPeer() on first use, like every other optional peer.
+  ['pi', (config) => new PiProvider(config as PiProviderConfig)],
   ['mock', (config) => new MockLLMProvider(config as MockProviderConfig)],
 ];
 

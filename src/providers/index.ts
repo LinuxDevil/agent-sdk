@@ -12,6 +12,7 @@ export * from './OpenAIProvider';
 export * from './OllamaProvider';
 export * from './OpenRouterProvider';
 export * from './AnthropicProvider';
+export { PiProvider, type PiProviderConfig } from './pi/PiProvider';
 export * from './resolveProvider';
 export * from './resilience';
 export { fromAiSdk, type FromAiSdkOptions } from './fromAiSdk';

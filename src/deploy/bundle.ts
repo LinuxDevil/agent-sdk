@@ -150,7 +150,9 @@ export function workerNodeShimPlugin(): Plugin {
  * before a spec is scaffolded, and the workerSdk has no OllamaProvider export.
  */
 export function workerUnsupportedPeerPlugin(): Plugin {
-  const filter = /^ollama-ai-provider(?:-v2)?(?:\/.*)?$/;
+  // H2 adds `@earendil-works/pi-ai` (subpaths included): same "stay a lazy
+  // runtime specifier" treatment, and equally unreachable in a Worker.
+  const filter = /^(?:ollama-ai-provider(?:-v2)?|@earendil-works\/pi-ai)(?:\/.*)?$/;
   return {
     name: 'lousho-worker-unsupported-peer',
     setup(build) {
@@ -194,6 +196,7 @@ export const WORKER_ENTRY_EXTERNALS = ['ai', 'zod', '@opentelemetry/api', '@ai-s
 export function workerEntryPlugins(): Plugin[] {
   const ollama = path.join(findSdkRoot(), 'src', 'deploy', 'shims', 'ollama.worker.ts');
   const mcp = path.join(findSdkRoot(), 'src', 'deploy', 'shims', 'mcp.worker.ts');
+  const pi = path.join(findSdkRoot(), 'src', 'deploy', 'shims', 'pi.worker.ts');
   return [
     workerSandboxShimPlugin(),
     workerNodeShimPlugin(),
@@ -201,6 +204,16 @@ export function workerEntryPlugins(): Plugin[] {
       name: 'lousho-worker-ollama-shim',
       setup(build) {
         build.onResolve({ filter: /^ollama-ai-provider(?:-v2)?$/ }, () => ({ path: ollama }));
+      },
+    },
+    {
+      // H2: the 'pi' provider's lazy `@earendil-works/pi-ai` imports become
+      // the shim's coded failure (pi is Node-only).
+      name: 'lousho-worker-pi-shim',
+      setup(build) {
+        build.onResolve({ filter: /^@earendil-works\/pi-ai(?:\/.*)?$/ }, (args) =>
+          args.importer === pi ? undefined : { path: pi }
+        );
       },
     },
     {

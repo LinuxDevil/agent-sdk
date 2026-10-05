@@ -36,6 +36,10 @@ export const FEATURE_PEERS: Readonly<Record<string, FeaturePeer>> = {
     feature: 'the interactive prompts of `lousho init` (pass --yes to skip them)',
   },
   'quickjs-emscripten': { range: '^0.32.0', feature: 'code mode (`createAgent({ codeMode })`)' },
+  '@earendil-works/pi-ai': {
+    range: '1.0.3',
+    feature: "the 'pi' provider (`pi/<provider>/<model>` specs, e.g. pi/openrouter/openai/gpt-4o-mini)",
+  },
 };
 
 function installCommandFor(packageName: string, aiMajor: AiMajor | undefined): string {
