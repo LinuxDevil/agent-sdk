@@ -407,7 +407,7 @@ use the ready-made Pi adapter.
 Pi's tools (`read`, `bash`, `edit`, `write`, ...) work on a local directory.
 
 ```ts
-import { createAgent, piAgent } from '@lousho/build-ai-agent';
+import { createAgent, piAgent, ask, allow } from '@lousho/build-ai-agent';
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 
 const runtime = await ModelRuntime.create(); // reads ~/.pi/agent auth, env keys
@@ -416,7 +416,7 @@ const lead = createAgent({
   instructions: 'You coordinate.',
   subagents: {
     coder: piAgent({
-      cwd: projectDir,                       // the directory Pi's tools work in
+      cwd: process.cwd(),                    // the directory Pi's tools work in
       model: runtime.getModel('openrouter', 'openai/gpt-4o-mini'),
       description: 'Edits code and runs tests in the workspace',
       permissions: [ask(['edit', 'write']), allow('*')], // same rules as createAgent()

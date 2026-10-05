@@ -39,7 +39,7 @@ jobs:
       - run: docker pull node:22-slim
       - run: npm run build
         env:
-          NODE_OPTIONS: --max-old-space-size=6144
+          NODE_OPTIONS: --max-old-space-size=8192
       - run: npm run test:docker
       - name: Diagnostics (on failure)
         if: failure()
