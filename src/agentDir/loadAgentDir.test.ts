@@ -230,7 +230,7 @@ describe("engine: 'pi' sub-agent directories", () => {
     const { config, manifest } = await resolveAgentDir(fixture('pi-subagent'), { provider: mockModel(['x']) });
 
     expect(manifest.subagents).toEqual(['coder', 'explorer']);
-    const toolNames = (config.tools as { name: string }[]).map((t) => t.name);
+    const toolNames = (config.tools as unknown as { name: string }[]).map((t) => t.name);
     expect(toolNames).toContain('delegate_to_explorer');
     expect(toolNames).not.toContain('delegate_to_coder');
 
