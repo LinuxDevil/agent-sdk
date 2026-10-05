@@ -53,7 +53,7 @@ const OLLAMA_PEERS: Record<AiMajor, PeerPairing> = {
 };
 
 /** pi does not pair with an `ai` major: the same `@earendil-works/pi-ai` range applies on all of them. */
-const PI_PEER: PeerPairing = { name: '@earendil-works/pi-ai', range: '^1.0.3', accepts: '^1.0.3' };
+const PI_PEER: PeerPairing = { name: '@earendil-works/pi-ai', range: '1.0.3', accepts: '1.0.3' };
 const PI_PEERS: Record<AiMajor, PeerPairing> = { 4: PI_PEER, 6: PI_PEER, 7: PI_PEER };
 
 interface ProviderEntry {
@@ -82,6 +82,8 @@ export interface ProviderInfo {
   envKey: string;
   /** False when the provider has a built-in default (Ollama's local endpoint). */
   envRequired: boolean;
+  /** True when envKey describes one nested credential only (pi) and is not injected into the config. */
+  envForInfoOnly?: boolean;
   /** The optional peer package, per installed `ai` major. */
   peers: Readonly<Record<AiMajor, PeerPairing>>;
   /** Model used when the provider is picked from the environment alone. */
@@ -94,6 +96,7 @@ export function listProviders(): ProviderInfo[] {
     name,
     envKey: entry.envKey,
     envRequired: entry.envRequired,
+    envForInfoOnly: entry.envForInfoOnly,
     peers: entry.peers,
     defaultModel: entry.envDefaultModel,
   }));

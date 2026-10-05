@@ -159,14 +159,22 @@ function versionMismatch(env: DoctorEnvironment, name: string, peer: OptionalPee
 }
 
 export function checkOptionalPeers(env: DoctorEnvironment, needs: SpecNeeds): DoctorCheck[] {
-  return [...providerPeers(env, needs), ...featurePeers(needs)].map(([name, peer]) => checkOptionalPeer(env, name, peer));
+  const providers = providerPeers(env, needs);
+  // A package that backs both a provider and a feature (pi-ai is the 'pi'
+  // provider's package and the feature peer for `pi/...` specs) is reported
+  // once, as the provider package.
+  const features = [...featurePeers(needs)].filter(([name]) => !providers.has(name));
+  return [...providers, ...features].map(([name, peer]) => checkOptionalPeer(env, name, peer));
 }
 
 function checkApiKey(env: DoctorEnvironment, info: ProviderInfo, needs: SpecNeeds): DoctorCheck {
   const base = { id: `env.${info.name}`, title: `${info.name} (${info.envKey})` };
   if (env.env[info.envKey]) return { ...base, status: 'ok', finding: 'set' };
   if (!info.envRequired) {
-    return { ...base, status: 'ok', finding: 'not set (optional; the provider default endpoint is used)' };
+    const finding = info.envForInfoOnly
+      ? 'not set (only needed by the matching nested provider; each pi provider reads its own env key)'
+      : 'not set (optional; the provider default endpoint is used)';
+    return { ...base, status: 'ok', finding };
   }
   const needed = needs.providers.has(info.name);
   return {
