@@ -1,7 +1,10 @@
 # Registry
 
-`lousho add` installs a tool, skill, channel, schedule or memory slot into an
-[agent directory](./agent-directories.md) from a registry. A registry is plain
+`lousho add` installs a tool, skill, channel, schedule, memory slot or kit into an
+[agent directory](./agent-directories.md) from a registry. A `kit` item is a
+whole agent directory: installing it lays out `agent.*`, `instructions.md`,
+tools, skills and sub-agents so the target becomes (or grows into) an agent
+directory itself. A registry is plain
 static JSON: an index plus one document per item that carries the file contents.
 The files are copied into your project as source you own and can edit. There is
 no runtime plugin loader, and nothing from a registry is executed or imported
@@ -14,12 +17,13 @@ is the `registry/dist/` folder of the SDK's repository served as static JSON.
 `none` (in either place) disables the registry entirely — `lousho add` then
 fails with `LOUSHO_CONFIG_INVALID`, for offline or locked-down use.
 
-The default registry currently carries five items:
+The default registry currently carries six items:
 
 | Name | Type | Permissions it asks for |
 | ---- | ---- | ----------------------- |
 | `changelog` | skill | none |
 | `code-review` | skill | none |
+| `coding-kit` | kit (a coding harness as a whole agent directory) | `exec`, `fs-write` |
 | `generic-webhook` | channel | `WEBHOOK_SECRET` |
 | `github-issues` | tool (list and create issues; create asks for approval) | `api.github.com`, `GITHUB_TOKEN` |
 | `open-meteo-weather` | tool | `api.open-meteo.com`, `geocoding-api.open-meteo.com` |
@@ -49,7 +53,7 @@ files it will write, checks the item's code against the manifest, then asks
 ## Format
 
 The index is `{ items: [{ name, type, description, url | path }] }`. `type` is
-`tool`, `skill`, `channel`, `schedule` or `memory`. `url` / `path` locate the
+`tool`, `skill`, `channel`, `schedule`, `memory` or `kit`. `url` / `path` locate the
 item document; a relative one is resolved against the index's own location.
 
 Each item document is:
@@ -96,7 +100,9 @@ To contribute an item to the default registry, add a `registry/<name>/` folder
 to the SDK's repository: an `item.json` (`name`, `type`, `description`,
 `permissions`, `dependencies`) and the item's files laid out the way they
 should land in the agent directory (`tools/x.ts`, `skills/<name>/SKILL.md`,
-`channels/x.ts`). `npm run registry:build` validates every item against the
+`channels/x.ts`; a `kit`'s files make up a whole agent directory, e.g.
+`agent.json`, `instructions.md`, `hooks.ts`, `tools/`, `subagents/<name>/`).
+`npm run registry:build` validates every item against the
 same rules `lousho add` enforces (schema, paths, the code/manifest check) and
 rebuilds `registry/dist/`; commit the result. CI runs `npm run registry:check`,
 which fails when `registry/dist/` is stale.
@@ -208,7 +214,9 @@ before running it.
   and a symlink target is never written through.
 - A file must be inside the folder its item's type allows: `tool` in `tools/`,
   `skill` in `skills/<name>/`, `channel` in `channels/`, `schedule` in
-  `schedules/`, `memory` in `memory/`.
+  `schedules/`, `memory` in `memory/`. A `kit` is the one exception: as a whole
+  agent directory its files may sit at any relative path (still normalized and
+  inside the target, per the rule above).
 - Existing files are not overwritten without `--overwrite`. All files are checked
   before any is written, so a bad item writes nothing. Each of these failures is
   `LOUSHO_REGISTRY_UNSAFE_PATH` or `LOUSHO_REGISTRY_FILE_EXISTS`.

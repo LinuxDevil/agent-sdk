@@ -60,5 +60,7 @@ docs/api/
 # defaultRegistry.test.ts's temp agent directories (inside the repo so the
 # installed items' package imports resolve like a real project's)
 .lousho-default-registry-*/
+# coding-harness/kit.test.ts's installed-kit directories (same reason)
+.coding-kit-*/
 # Local agent worktrees and session state
 .claude/

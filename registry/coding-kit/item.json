@@ -1,0 +1,10 @@
+{
+  "name": "coding-kit",
+  "type": "kit",
+  "description": "A coding harness as a whole agent directory: workspace tools with rewind, an allow-listed shell, permission rules, a loop guard, compaction, a fix-failing-test skill and a read-only explorer sub-agent",
+  "permissions": {
+    "exec": true,
+    "filesystem": "write"
+  },
+  "dependencies": ["@lousho/build-ai-agent"]
+}

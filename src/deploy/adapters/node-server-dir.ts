@@ -15,7 +15,9 @@ import * as path from 'node:path';
 import { listSorted } from '../../agentDir/fsUtil';
 import { writeFile } from '../bundle';
 import { SDKError } from '../../execution/errors';
-import { AUTH_FILE } from '../../agentDir/loadAuth';
+import { RECEIPT_FILE } from '../../cli/addReceipt';
+/** Root code files the config may point at, beyond the config itself: route auth, the hooks file and the approver file. */
+const ROOT_CODE_FILE = /^(agent|auth|hooks|approve)\.[cm]?[jt]s$/;
 
 /** Records where the directory lives, so `build(outDir)` can bundle it (`build` only receives `outDir`). */
 const AGENT_DIR_POINTER = 'agent-dir.json';
@@ -49,11 +51,11 @@ export function scaffoldedAgentDir(outDir: string): string | undefined {
   return fs.existsSync(pointer) ? (JSON.parse(fs.readFileSync(pointer, 'utf8')) as { source: string }).source : undefined;
 }
 
-/** Code files in `folder` (or, without one, the config file and, at the root only, `auth.ts`). */
+/** Code files in `folder` (or, without one, the config file and, at the root only, `auth.*`, `hooks.*` and `approve.*`). */
 async function codeFiles(dir: string, folder: string | undefined, isRoot: boolean): Promise<string[]> {
   const where = folder ? path.join(dir, folder) : dir;
   const keep = (e: { name: string; isFile: boolean }) =>
-    e.isFile && CODE.test(e.name) && !NOT_CODE.test(e.name) && (folder !== undefined || /^agent\./.test(e.name) || (isRoot && AUTH_FILE.test(e.name)));
+    e.isFile && CODE.test(e.name) && !NOT_CODE.test(e.name) && (folder !== undefined || (isRoot ? ROOT_CODE_FILE : /^(agent|hooks|approve)\.[cm]?[jt]s$/).test(e.name));
   return (await listSorted(where, keep)).map((name) => path.join(where, name));
 }
 
@@ -73,11 +75,18 @@ export async function agentDirEntries(source: string): Promise<Record<string, st
   return entries;
 }
 
-/** Copies the non-code files of `source` (instructions, skills, JSON/YAML config) to `dist/agent` and marks `dist` as ESM. */
+/**
+ * Copies the non-code files of `source` (instructions, skills, JSON/YAML
+ * config) to `dist/agent` and marks `dist` as ESM. The install receipt is
+ * left behind on purpose: its hashes name the `.ts` sources `lousho add`
+ * wrote, which the bundle compiles to `.js`, so copied over it would only
+ * report its own items as modified.
+ */
 export function copyAgentDirAssets(source: string, outDir: string): void {
   fs.cpSync(source, path.join(outDir, 'dist', 'agent'), {
     recursive: true,
-    filter: (file) => !SKIPPED.has(path.basename(file)) && !(fs.statSync(file).isFile() && CODE.test(file)),
+    filter: (file) =>
+      !SKIPPED.has(path.basename(file)) && path.basename(file) !== RECEIPT_FILE && !(fs.statSync(file).isFile() && CODE.test(file)),
   });
   // server.js and the bundled agent files use import/export.
   writeFile(path.join(outDir, 'dist', 'package.json'), '{ "type": "module" }\n');

@@ -13,7 +13,7 @@ import { createAgent, type CreateAgentConfig, type PerRun, type SimpleAgent } fr
 import type { LLMProvider } from '../providers/llm';
 import { loadSkills } from '../skills/loadSkills';
 import type { Skill } from '../skills/defineSkill';
-import { isDirectory, isFile, readText } from './fsUtil';
+import { isDirectory, isFile, listSorted, readText } from './fsUtil';
 import type { DefinedSchedule } from '../schedules/defineSchedule';
 import type { Channel } from '../channels/defineChannel';
 import { loadChannels } from './loadChannels';
@@ -22,10 +22,14 @@ import { loadSchedules } from './loadSchedules';
 import { loadTools, type LoadedTool } from './loadTools';
 import { confineToolsToReceipt, registryWarnings, verifyReceipt, type RegistryStatus } from './registryEnforce';
 import { readConfig, type AgentDirConfig } from './readConfig';
+import { fail, permissionRulesOf } from './validateConfig';
 import { delegateTool, listSubagentDirs, requireDescription, type LoadedSubagent } from './subagents';
 import { SDKError } from '../execution/errors';
 import type { AuthFn } from '../auth/types';
+import type { AgentHook } from '../execution/hooks';
+import type { ApproveToolCall } from '../createAgentApprovals';
 import { loadAuth } from './loadAuth';
+import { importModule } from './importModule';
 
 export type { AgentDirConfig } from './readConfig';
 export type { Attestation, RegistryItemStatus, RegistryStatus } from './registryEnforce';
@@ -33,7 +37,9 @@ export type { Attestation, RegistryItemStatus, RegistryStatus } from './registry
 /**
  * Options that win over what the directory's files say. Same shape as
  * `createAgent()`'s options; `tools` and `skills` replace the discovered ones
- * (they are not merged). `memory` is merged with the directory's `memory/` slots by name; the override wins a clash.
+ * (they are not merged). A `subagents` override replaces the discovered
+ * `subagents/` directories (their `delegate_to_<name>` tools are not added and
+ * their files are not even loaded). `memory` is merged with the directory's `memory/` slots by name; the override wins a clash.
  *
  * @example
  * ```ts
@@ -137,6 +143,94 @@ function chooseInstructions(
   return text;
 }
 
+const MARKDOWN = /\.md$/i;
+
+/**
+ * The `instructions/<family>.md` file that matches `modelId`, or undefined:
+ * files are read sorted and the first whose stem (e.g. `openai`,
+ * `anthropic`) is contained in the model id wins, like the per-family
+ * instruction tails coding harnesses keep. An empty file is an error.
+ */
+export async function familyInstructionsFor(dir: string, modelId: string): Promise<{ file: string; text: string } | undefined> {
+  const instructionsDir = path.join(dir, 'instructions');
+  for (const name of await listSorted(instructionsDir, (e) => e.isFile && MARKDOWN.test(e.name))) {
+    const stem = name.replace(MARKDOWN, '');
+    if (stem !== '' && modelId.includes(stem)) {
+      const file = path.join(instructionsDir, name);
+      const text = (await readText(file)).trim();
+      if (text === '') throw new SDKError(`loadAgentDir: ${file} is empty. Write the family-specific prompt tail in it or remove the file.`, 'LOUSHO_AGENT_DIR_INVALID');
+      return { file, text };
+    }
+  }
+  return undefined;
+}
+
+/** Extensions of a config-pointed code file and their compiled siblings (`.ts` -> `.js`, `.mts` -> `.mjs`, `.cts` -> `.cjs`). */
+const COMPILED_SIBLING: Record<string, string> = { '.ts': '.js', '.mts': '.mjs', '.cts': '.cjs' };
+
+/**
+ * The file a config path (`hooks`, `approve`) names: `rel` must be relative
+ * and stay inside `dir`. When the exact file is absent but its compiled
+ * sibling exists (a bundled `dist/agent` has `.js` where the source had
+ * `.ts`), the sibling is used.
+ */
+async function configuredFile(dir: string, key: string, rel: string, configFile: string | undefined): Promise<string> {
+  const where = configFile ?? dir;
+  if (path.isAbsolute(rel) || /^[A-Za-z]:/.test(rel) || rel.includes('\\')) {
+    fail(where, `'${key}' must be a path relative to the agent directory (forward slashes), got '${rel}'.`);
+  }
+  const resolved = path.resolve(dir, rel);
+  const inside = path.relative(dir, resolved);
+  if (inside === '' || inside.startsWith('..') || path.isAbsolute(inside)) {
+    fail(where, `'${key}' path '${rel}' must stay inside the agent directory.`);
+  }
+  if (await isFile(resolved)) return resolved;
+  const ext = path.extname(resolved);
+  const sibling = COMPILED_SIBLING[ext] === undefined ? undefined : `${resolved.slice(0, -ext.length)}${COMPILED_SIBLING[ext]}`;
+  if (sibling !== undefined && (await isFile(sibling))) return sibling;
+  fail(where, `'${key}' points at '${rel}', which does not exist in ${dir}.`);
+}
+
+/** The config's `hooks`: inline hook(s), or the default export of the file `hooks` points at (a hook or a list of them). */
+async function configuredHooks(
+  dir: string,
+  config: AgentDirConfig,
+  configFile: string | undefined
+): Promise<{ hooks: readonly AgentHook[]; file?: string } | undefined> {
+  const value = config.hooks;
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') return { hooks: Array.isArray(value) ? value : [value] };
+  const file = await configuredFile(dir, 'hooks', value, configFile);
+  const exported = (await importModule(file)).default;
+  const hooks = Array.isArray(exported) ? exported : [exported];
+  if (hooks.length === 0 || !hooks.every((hook) => typeof hook === 'object' && hook !== null && typeof (hook as AgentHook).name === 'string')) {
+    throw new SDKError(`loadAgentDir: ${file}: the default export must be a hook ({ name, preToolCall, ... }) or a list of them.`, 'LOUSHO_AGENT_DIR_INVALID');
+  }
+  return { hooks: hooks as AgentHook[], file };
+}
+
+/** The config's `approve`: an inline function, or the default export (a function) of the file `approve` points at. */
+async function configuredApprove(
+  dir: string,
+  config: AgentDirConfig,
+  configFile: string | undefined
+): Promise<{ approve: ApproveToolCall; file?: string } | undefined> {
+  const value = config.approve;
+  if (value === undefined) return undefined;
+  if (typeof value === 'function') return { approve: value };
+  const file = await configuredFile(dir, 'approve', value, configFile);
+  const exported = (await importModule(file)).default;
+  if (typeof exported !== 'function') {
+    throw new SDKError(`loadAgentDir: ${file}: the default export must be an approver function, e.g. export default ({ args }) => true.`, 'LOUSHO_AGENT_DIR_INVALID');
+  }
+  return { approve: exported as ApproveToolCall, file };
+}
+
+/** The model id family instructions are matched on: the run's model string, else the provider's default model. */
+function modelIdOf(source: Inherited): string | undefined {
+  return typeof source.model === 'string' ? source.model : source.provider?.defaultModel;
+}
+
 /** The provider / model to build with. Overrides beat files; a parent's choice is only a fallback. */
 function chooseModelSource(
   config: AgentDirConfig,
@@ -190,14 +284,28 @@ async function resolveWith(
   }
   const { file: configFile, config } = await readConfig(dir);
   const fromFile = await readInstructions(dir);
-  const instructions = chooseInstructions(dir, config, fromFile, overrides);
   const source = chooseModelSource(config, overrides, inherited);
+  let instructions = chooseInstructions(dir, config, fromFile, overrides);
+  // instructions/<family>.md appends to the base prompt when the resolved model id contains a family name.
+  let familyFile: string | undefined;
+  const instructionsOverridden = overrides.instructions !== undefined || overrides.prompt !== undefined;
+  if (!instructionsOverridden && typeof instructions === 'string') {
+    const modelId = modelIdOf(source);
+    const family = modelId === undefined ? undefined : await familyInstructionsFor(dir, modelId);
+    if (family) {
+      instructions = `${instructions}\n${family.text}`;
+      familyFile = family.file;
+    }
+  }
+  // Hooks/approver files are only imported when the caller did not override them.
+  const configured = overrides.hooks === undefined ? await configuredHooks(dir, config, configFile) : undefined;
+  const approver = overrides.approve === undefined ? await configuredApprove(dir, config, configFile) : undefined;
   // #272: verify the install receipt before its code runs, then bind its tools to the accepted manifests.
   const registry = await verifyReceipt(dir);
   for (const warning of registryWarnings(registry)) console.warn(`[lousho] ${warning}`);
   const tools: LoadedTool[] = confineToolsToReceipt(dir, await loadTools(dir), registry);
   const skills = await skillsFor(dir, overrides);
-  const subagents = await loadSubagents(dir, overrides, source);
+  const subagents = overrides.subagents === undefined ? await loadSubagents(dir, overrides, source) : [];
   const schedules = await loadSchedules(dir);
   const channels = await loadChannels(dir);
   const memorySlots = await loadMemory(dir);
@@ -212,13 +320,21 @@ async function resolveWith(
     ...optional('tools', overrides.tools ?? (fileTools.length > 0 ? fileTools : undefined)),
     ...optional('memory', mergeMemory(memorySlots, overrides.memory)),
     ...optional('skills', overrides.skills ?? (skills.length > 0 ? skills : undefined)),
+    ...optional('subagents', overrides.subagents),
     ...optional('maxSteps', overrides.maxSteps ?? config.maxSteps),
     ...optional('toolConcurrency', overrides.toolConcurrency ?? config.toolConcurrency),
     ...optional('projectInstructions', overrides.projectInstructions ?? config.projectInstructions),
+    ...optional('permissionMode', overrides.permissionMode ?? config.permissionMode),
+    ...optional('permissions', overrides.permissions ?? permissionRulesOf(configFile ?? dir, config.permissions)),
+    ...optional('compaction', overrides.compaction ?? config.compaction),
+    ...optional('limits', overrides.limits ?? config.limits),
+    ...optional('hooks', overrides.hooks ?? configured?.hooks),
+    ...optional('approve', overrides.approve ?? approver?.approve),
+    ...optional('onPermissionDecision', overrides.onPermissionDecision),
     ...optional('exporter', overrides.exporter),
   } as CreateAgentConfig;
 
-  const files = [...new Set([configFile, fromFile?.file, ...tools.map((t) => t.file)])].filter(
+  const files = [...new Set([configFile, fromFile?.file, familyFile, configured?.file, approver?.file, ...tools.map((t) => t.file)])].filter(
     (f): f is string => f !== undefined
   );
   return {
@@ -258,8 +374,12 @@ async function skillsFor(dir: string, overrides: AgentDirOverrides): Promise<Ski
  *
  * ```text
  * my-agent/
- *   agent.ts | agent.js | agent.json | agent.yaml   config: model, description, maxSteps, ...
+ *   agent.ts | agent.js | agent.json | agent.yaml   config: model, description, maxSteps,
+ *                                                    permissionMode, permissions, compaction,
+ *                                                    hooks (path), approve (path), limits, ...
  *   instructions.md                                  system prompt
+ *   instructions/<family>.md                         appended when the model id contains <family>
+ *   hooks.ts | approve.ts (or any path the config names)  a hooks / approver file the config points at
  *   tools/*.ts|js                                    each exports defineTool() tools
  *   skills/                                          same layouts as loadSkills()
  *   subagents/<name>/                                nested agent directories (need a description)

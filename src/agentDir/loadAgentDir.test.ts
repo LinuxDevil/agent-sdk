@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { z } from 'zod';
 import { loadAgentDir, resolveAgentDir } from './index';
 import { defineTool } from '../tools/defineTool';
@@ -154,6 +155,71 @@ describe('loadAgentDir', () => {
   });
 });
 
+describe('agent.* run options (permissionMode, permissions, compaction, hooks, approve, limits)', () => {
+  it('maps every new key into the createAgent() options and tracks the files it imported', async () => {
+    const { config, manifest } = await resolveAgentDir(fixture('config-extras'), {
+      provider: mockModel(['x']),
+      model: 'openrouter/openai/gpt-4o-mini',
+    });
+
+    expect(config.permissionMode).toBe('default');
+    expect(config.compaction).toEqual({ thresholdPercent: 0.8 });
+    expect(config.limits).toEqual({ maxCostUsd: 0.05, onExceeded: 'stop' });
+    expect(config.permissions).toHaveLength(3);
+    expect(config.permissions?.[0]).toMatchObject({ tool: 'shell', action: 'deny', reason: 'No deletes' });
+    expect(typeof config.approve).toBe('function');
+    expect(config.hooks?.map((hook) => hook.name)).toEqual(['spy']);
+    const files = manifest.files.map((f) => path.relative(fixture('config-extras'), f).split(path.sep).join('/'));
+    expect(files).toEqual(
+      expect.arrayContaining(['agent.json', 'instructions.md', 'instructions/openai.md', 'hooks.ts', 'approve.ts', 'tools/stubs.ts'])
+    );
+  });
+
+  it('appends instructions/<family>.md whose stem is in the model id, once', async () => {
+    const openai = await resolveAgentDir(fixture('config-extras'), { provider: mockModel(['x']), model: 'openrouter/openai/gpt-4o-mini' });
+    expect(openai.config.instructions).toBe('You are the extras fixture agent.\nCall one tool at a time.');
+    const anthropic = await resolveAgentDir(fixture('config-extras'), { model: 'anthropic/claude-haiku-4-5' });
+    expect(anthropic.config.instructions).toBe('You are the extras fixture agent.\nPrefer edit_file over write_file.');
+    const other = await resolveAgentDir(fixture('config-extras'), { model: 'ollama/llama3.1' });
+    expect(other.config.instructions).toBe('You are the extras fixture agent.');
+  });
+
+  it('runs the directory: a `when` record denies rm, the approver refuses test files, hooks observe calls', async () => {
+    const { seen } = (await import(pathToFileURL(path.join(fixture('config-extras'), 'hooks.ts')).href)) as { seen: string[] };
+    seen.length = 0;
+    const model = mockModel([
+      { toolCalls: [{ name: 'shell', args: { command: 'rm -rf node_modules' } }] },
+      { toolCalls: [{ name: 'write_file', args: { path: 'math.test.js' } }] },
+      { toolCalls: [{ name: 'write_file', args: { path: 'math.js' } }] },
+      'Done.',
+    ]);
+    const agent = await loadAgentDir(fixture('config-extras'), { provider: model });
+
+    const result = await agent.send('go');
+
+    expect(result.text).toBe('Done.');
+    const outputs = toolMessages(model.calls[model.calls.length - 1]).join('\n');
+    expect(outputs).toContain('No deletes');
+    expect(outputs).not.toContain('wrote math.test.js');
+    expect(outputs).toContain('wrote math.js');
+    // preToolCall ran for every call (hooks come before permission rules); an
+    // approved call can be re-prepared after its pause, hence >= not =.
+    expect(seen[0]).toBe('shell');
+    expect(seen.filter((name) => name === 'write_file').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('lets overrides replace the configured hooks and approver without reading their files', async () => {
+    const approve = () => true;
+    const { config } = await resolveAgentDir(fixture('err-missing-hooks'), {
+      provider: mockModel(['x']),
+      hooks: [],
+      approve,
+    });
+    expect(config.hooks).toEqual([]);
+    expect(config.approve).toBe(approve);
+  });
+});
+
 describe('validation errors', () => {
   it('names the directory when instructions are missing', async () => {
     const dir = fixture('err-no-instructions');
@@ -207,6 +273,21 @@ describe('validation errors', () => {
     await expect(resolveAgentDir(fixture('err-bad-json'))).rejects.toThrow(
       new RegExp(`${path.join(fixture('err-bad-json'), 'agent.json').replace(/\\/g, '\\\\')}: invalid JSON`)
     );
+  });
+
+  it('names the rules that are wrong in permissions, one message per file', async () => {
+    const file = path.join(fixture('err-bad-permissions'), 'agent.json');
+    const error = (await resolveAgentDir(fixture('err-bad-permissions')).catch((e: Error) => e)) as Error;
+    expect(error.message).toContain(file);
+    expect(error.message).toMatch(/'permissions\[0\]'\.action must be 'allow', 'deny' or 'ask'/);
+  });
+
+  it('fails a missing hooks file naming the config path it came from', async () => {
+    const file = path.join(fixture('err-missing-hooks'), 'agent.json');
+    const error = (await resolveAgentDir(fixture('err-missing-hooks')).catch((e: Error) => e)) as Error;
+    expect(error.message).toContain(file);
+    expect(error.message).toContain("'hooks'");
+    expect(error.message).toContain('nope/hooks.ts');
   });
 });
 

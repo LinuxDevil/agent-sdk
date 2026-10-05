@@ -69,11 +69,17 @@ export interface AgentConfig {
 
 // @public
 export interface AgentDirConfig {
+    approve?: string | ApproveToolCall;
+    compaction?: AgentCompaction;
     description?: string;
+    hooks?: string | AgentHook | readonly AgentHook[];
     instructions?: string;
+    limits?: RunLimits;
     maxSteps?: number;
     model?: string;
     name?: string;
+    permissionMode?: PermissionMode | (() => PermissionMode);
+    permissions?: readonly AgentDirPermissionRule[];
     projectInstructions?: boolean | {
         cwd?: string;
         files?: readonly string[];
@@ -100,6 +106,18 @@ export interface AgentDirManifest {
 
 // @public
 export type AgentDirOverrides = CreateAgentConfig;
+
+// @public
+export interface AgentDirPermissionRule {
+    // (undocumented)
+    action: PermissionAction;
+    // (undocumented)
+    reason?: string;
+    // (undocumented)
+    tool: string | readonly string[] | RegExp;
+    // (undocumented)
+    when?: Record<string, string> | PermissionRule['when'];
+}
 
 // @public
 export interface AgentDrift {
@@ -2988,7 +3006,7 @@ export function isToolEvent(event: AgentEvent): event is ToolStartEvent | ToolRe
 // @public
 const ItemSchema: z.ZodObject<{
     name: z.ZodString;
-    type: z.ZodEnum<["tool", "skill", "channel", "schedule", "memory"]>;
+    type: z.ZodEnum<["tool", "skill", "channel", "schedule", "memory", "kit"]>;
     description: z.ZodString;
     files: z.ZodArray<z.ZodObject<{
         path: z.ZodString;
@@ -3022,7 +3040,7 @@ const ItemSchema: z.ZodObject<{
     dependencies: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
 }, "strip", z.ZodTypeAny, {
     name: string;
-    type: "tool" | "memory" | "skill" | "channel" | "schedule";
+    type: "tool" | "memory" | "skill" | "channel" | "schedule" | "kit";
     description: string;
     permissions: {
         env?: string[] | undefined;
@@ -3038,7 +3056,7 @@ const ItemSchema: z.ZodObject<{
     dependencies?: string[] | undefined;
 }, {
     name: string;
-    type: "tool" | "memory" | "skill" | "channel" | "schedule";
+    type: "tool" | "memory" | "skill" | "channel" | "schedule" | "kit";
     description: string;
     files: {
         content: string;
@@ -6392,7 +6410,7 @@ export type VectorMemoryProvider = MemoryProvider & {
 };
 
 // @public
-export const VERSION = "1.0.0-rc.0";
+export const VERSION = "1.0.0-alpha.1";
 
 // @public (undocumented)
 const webFetchInput: z.ZodObject<{
