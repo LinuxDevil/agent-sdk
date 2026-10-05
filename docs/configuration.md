@@ -168,6 +168,7 @@ Real providers are resolved by `resolveProvider('<provider>/<model>')`
 | `anthropic`  | `ANTHROPIC_API_KEY`   |
 | `openrouter` | `OPENROUTER_API_KEY`  |
 | `ollama`     | `OLLAMA_BASE_URL`     |
+| `pi`         | the nested provider's own variable (`pi/openrouter/...` reads `OPENROUTER_API_KEY`) |
 
 The `mock` provider needs no credentials and returns canned responses; it is
 what the examples and the Quick Start use by default.

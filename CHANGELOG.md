@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 This section lists what is on `main` and not yet on npm.
 
+### Added
+- The `pi` provider (H2): `createAgent({ model: 'pi/<pi-provider>/<model>' })` routes calls through `@earendil-works/pi-ai` (`^1.0.3`, a new optional peer - `npm install @earendil-works/pi-ai@^1.0.3`), the engine `pi-coding-agent` runs on, so pi's whole catalog (OpenRouter, Anthropic, OpenAI, Google, ...) is usable natively; e.g. `pi/openrouter/openai/gpt-4o-mini` is OpenRouter's `openai/gpt-4o-mini` (nested slashes are kept: the segment after `pi/` is the pi provider, the rest the model id). Messages (including reasoning blocks, tool calls/results and image parts), tool `parameters` (raw JSON Schema, zod 3/4 or Standard Schema), streamed chunks and usage/cost map to the same surface the `ai`-SDK providers expose, and pi's own retries are pinned off so `retry`/`fallbackModels` stay the only retry layer. Credentials are per nested provider: pi reads each one's own env var (`pi/openrouter/...` reads `OPENROUTER_API_KEY`), and a missing one fails the call with `LOUSHO_PROVIDER_MISSING_API_KEY` naming it; a missing package fails with `MissingPeerDependencyError` naming `npm install @earendil-works/pi-ai@^1.0.3`. New export `PiProvider` (+ `PiProviderConfig`, whose `models` injects custom/faux catalog entries). `pi` is Node-only: the `cloudflare-worker` target refuses `pi/...` specs. See docs/providers.md#the-pi-provider.
+
 ## [1.0.0-rc.0] - 2026-10-04
 
 The first 1.0 release candidate. Upgrading from a `1.0.0-alpha.*` release?

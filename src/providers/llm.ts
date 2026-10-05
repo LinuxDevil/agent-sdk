@@ -224,6 +224,13 @@ export interface ProviderUsage {
   cachedInputTokens?: number;
   /** Tokens spent on hidden reasoning, when the provider reports it. */
   reasoningTokens?: number;
+  /**
+   * The provider-reported USD cost of this call, when it computes one (the
+   * `pi` provider reports pi's own cost accounting). Informational: run
+   * totals (`result.usage.costUsd`) come from the model registry's
+   * `estimateCost()`.
+   */
+  costUsd?: number;
 }
 
 /**

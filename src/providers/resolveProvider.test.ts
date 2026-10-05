@@ -144,12 +144,12 @@ describe('resolveProvider errors (LOU-D1)', () => {
 
   it('lists supported prefixes and suggests the closest match for a typo', () => {
     expect(() => resolveProvider('anthopic/claude-3')).toThrow(
-      "unrecognized provider 'anthopic' in spec 'anthopic/claude-3'. Supported prefixes: openai, anthropic, openrouter, ollama. Did you mean 'anthropic/claude-3'?"
+      "unrecognized provider 'anthopic' in spec 'anthopic/claude-3'. Supported prefixes: openai, anthropic, openrouter, ollama, pi. Did you mean 'anthropic/claude-3'?"
     );
   });
 
   it('lists supported prefixes without a suggestion when nothing is close', () => {
-    expect(() => resolveProvider('zzzzzzzzzz/m')).toThrow(/Supported prefixes: openai, anthropic, openrouter, ollama\.$/m);
+    expect(() => resolveProvider('zzzzzzzzzz/m')).toThrow(/Supported prefixes: openai, anthropic, openrouter, ollama, pi\.$/m);
   });
 
   it('shows an example for a spec without a provider prefix', () => {
