@@ -4348,7 +4348,61 @@ export function piiGuardrail(options?: {
 export type PiiType = 'email' | 'phone' | 'credit-card' | 'iban' | 'us-ssn' | 'ip-address';
 
 // @public
+interface PiModel {
+    api: string;
+    // (undocumented)
+    baseUrl: string;
+    // (undocumented)
+    contextWindow: number;
+    // (undocumented)
+    cost: {
+        input: number;
+        output: number;
+        cacheRead: number;
+        cacheWrite: number;
+    };
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    input: readonly string[];
+    // (undocumented)
+    maxTokens: number;
+    // (undocumented)
+    name: string;
+    provider: string;
+    // (undocumented)
+    reasoning: boolean;
+}
+
+// @public
 export function pinMessage(message: Message): Message;
+
+// @public
+export class PiProvider implements LLMProvider {
+    constructor(config?: PiProviderConfig);
+    // (undocumented)
+    protected config: PiProviderConfig;
+    get defaultModel(): string;
+    // (undocumented)
+    generate(options: GenerateOptions): Promise<GenerateResult>;
+    getModels(): Promise<string[]>;
+    // (undocumented)
+    readonly name = "pi";
+    // (undocumented)
+    stream(options: GenerateOptions): Promise<StreamResult>;
+    // (undocumented)
+    supportsStreaming(_model: string): boolean;
+    // (undocumented)
+    supportsTools(_model: string): boolean;
+}
+
+// @public
+export interface PiProviderConfig extends LLMProviderConfig {
+    // Warning: (ae-forgotten-export) The symbol "PiModel" needs to be exported by the entry point index.d.ts
+    //
+    // (undocumented)
+    models?: readonly PiModel[];
+}
 
 // @public
 export interface PolicyLine {
@@ -4466,6 +4520,7 @@ export interface ProviderUsage {
     cachedInputTokens?: number;
     // (undocumented)
     completionTokens: number;
+    costUsd?: number;
     // (undocumented)
     promptTokens: number;
     reasoningTokens?: number;
@@ -6441,7 +6496,7 @@ export type VectorMemoryProvider = MemoryProvider & {
 };
 
 // @public
-export const VERSION = "1.0.0-alpha.1";
+export const VERSION = "1.0.0-alpha.2";
 
 // @public (undocumented)
 const webFetchInput: z.ZodObject<{
@@ -6660,8 +6715,8 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/index-B6_SRH_d.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-B6_SRH_d.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-Cu54_KAW.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-Cu54_KAW.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)

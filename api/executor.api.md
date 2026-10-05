@@ -1862,6 +1862,7 @@ interface ProviderUsage {
     cachedInputTokens?: number;
     // (undocumented)
     completionTokens: number;
+    costUsd?: number;
     // (undocumented)
     promptTokens: number;
     reasoningTokens?: number;
@@ -2867,14 +2868,14 @@ interface Usage {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-B_V7XbkG.d.ts:712:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-B_V7XbkG.d.ts:729:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-B_V7XbkG.d.ts:1073:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
-// dist/index-B6_SRH_d.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-B6_SRH_d.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-B6_SRH_d.d.ts:1853:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
-// dist/index-B6_SRH_d.d.ts:1889:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
-// dist/index-B6_SRH_d.d.ts:1889:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
+// dist/createAgent-DyyUScMn.d.ts:712:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-DyyUScMn.d.ts:729:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-DyyUScMn.d.ts:1073:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
+// dist/index-Cu54_KAW.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-Cu54_KAW.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-Cu54_KAW.d.ts:1860:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
+// dist/index-Cu54_KAW.d.ts:1896:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
+// dist/index-Cu54_KAW.d.ts:1896:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

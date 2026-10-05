@@ -353,6 +353,7 @@ interface ProviderUsage {
     cachedInputTokens?: number;
     // (undocumented)
     completionTokens: number;
+    costUsd?: number;
     // (undocumented)
     promptTokens: number;
     reasoningTokens?: number;
@@ -557,9 +558,9 @@ interface ToolDefinition {
 
 // Warnings were encountered during analysis:
 //
-// dist/index-B6_SRH_d.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-B6_SRH_d.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-B6_SRH_d.d.ts:1410:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts
+// dist/index-Cu54_KAW.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-Cu54_KAW.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-Cu54_KAW.d.ts:1410:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 
