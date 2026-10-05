@@ -17,13 +17,14 @@ is the `registry/dist/` folder of the SDK's repository served as static JSON.
 `none` (in either place) disables the registry entirely — `lousho add` then
 fails with `LOUSHO_CONFIG_INVALID`, for offline or locked-down use.
 
-The default registry currently carries six items:
+The default registry currently carries seven items:
 
 | Name | Type | Permissions it asks for |
 | ---- | ---- | ----------------------- |
 | `changelog` | skill | none |
 | `code-review` | skill | none |
 | `coding-kit` | kit (a coding harness as a whole agent directory) | `exec`, `fs-write` |
+| `coding-pi` | kit (the coding harness on the Pi provider with a Pi coding sub-agent) | `exec`, `fs-write`, `api.openrouter.ai`, `OPENROUTER_API_KEY` |
 | `generic-webhook` | channel | `WEBHOOK_SECRET` |
 | `github-issues` | tool (list and create issues; create asks for approval) | `api.github.com`, `GITHUB_TOKEN` |
 | `open-meteo-weather` | tool | `api.open-meteo.com`, `geocoding-api.open-meteo.com` |

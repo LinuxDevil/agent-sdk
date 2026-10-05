@@ -155,6 +155,35 @@ its final answer. A sub-agent uses its own `model` if it sets one, otherwise it
 inherits the parent's; a `provider` override passed to `loadAgentDir()` reaches
 all of them.
 
+A sub-agent directory whose config sets `"engine": "pi"` becomes a Pi
+coding-agent sub-agent instead: it lands in the parent's `subagents` map (the
+`task` tool) rather than getting a `delegate_to_<name>` tool, and its sessions
+run in the parent's directory - the workspace the parent's file tools and the
+Pi session share. `model` takes the usual `pi/<provider>/<model>` id, and
+`permissions` rules gate the Pi session's own tool calls (`read`, `bash`,
+`edit`, `write`, ...). Other keys in its config are ignored: Pi carries its
+own system prompt and coding tools. Running a `pi` sub-agent needs the
+optional `@earendil-works/pi-coding-agent` peer and the Node runtime - a
+Cloudflare Worker target rejects it.
+
+```json
+// subagents/coder/agent.json
+{
+  "description": "Implements code changes in this workspace.",
+  "engine": "pi",
+  "model": "pi/openrouter/openai/gpt-4o-mini",
+  "permissions": [
+    { "tool": "bash", "when": { "command": "\\brm\\b" }, "action": "deny" },
+    { "tool": "*", "action": "allow" }
+  ]
+}
+```
+
+`loadAgentDir(dir, { piAgent: { ... } })` injects `piAgent()` options into
+every `engine: 'pi'` sub-agent (e.g. a faux `modelRuntime` in tests, a
+`sessionDir` for durable approvals); the directory always wins `cwd`, `name`
+and `description`.
+
 ### Channels
 
 Each file in `channels/` default-exports a [channel](./channels.md) made with

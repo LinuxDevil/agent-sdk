@@ -72,6 +72,7 @@ export interface AgentDirConfig {
     approve?: string | ApproveToolCall;
     compaction?: AgentCompaction;
     description?: string;
+    engine?: 'pi';
     hooks?: string | AgentHook | readonly AgentHook[];
     instructions?: string;
     limits?: RunLimits;
@@ -105,7 +106,9 @@ export interface AgentDirManifest {
 }
 
 // @public
-export type AgentDirOverrides = CreateAgentConfig;
+export type AgentDirOverrides = CreateAgentConfig & {
+    piAgent?: Partial<PiAgentOptions>;
+};
 
 // @public
 export interface AgentDirPermissionRule {

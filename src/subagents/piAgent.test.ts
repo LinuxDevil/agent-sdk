@@ -405,5 +405,5 @@ describe.skipIf(!OPENROUTER)('piAgent live (OpenRouter)', () => {
       rmSync(dir, { recursive: true, force: true });
       rmSync(agentDir, { recursive: true, force: true });
     }
-  });
+  }, 120_000);
 });

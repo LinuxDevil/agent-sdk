@@ -1,10 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import path from 'node:path';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { z } from 'zod';
+import { fauxAssistantMessage, fauxProvider, fauxToolCall, type FauxResponseStep } from '@earendil-works/pi-ai';
+import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import { loadAgentDir, resolveAgentDir } from './index';
 import { defineTool } from '../tools/defineTool';
 import { mockModel } from '../testing';
+import { isRemoteSubagent } from '../subagents/remoteAgent';
 import { explainImportError } from './importModule';
 import { closest } from './closest';
 
@@ -218,6 +223,138 @@ describe('agent.* run options (permissionMode, permissions, compaction, hooks, a
     expect(config.hooks).toEqual([]);
     expect(config.approve).toBe(approve);
   });
+});
+
+describe("engine: 'pi' sub-agent directories", () => {
+  it('lands a pi sub-agent in the subagents map while a normal one stays a delegate tool', async () => {
+    const { config, manifest } = await resolveAgentDir(fixture('pi-subagent'), { provider: mockModel(['x']) });
+
+    expect(manifest.subagents).toEqual(['coder', 'explorer']);
+    const toolNames = (config.tools as { name: string }[]).map((t) => t.name);
+    expect(toolNames).toContain('delegate_to_explorer');
+    expect(toolNames).not.toContain('delegate_to_coder');
+
+    const coder = (config.subagents as Record<string, unknown>).coder;
+    expect(isRemoteSubagent(coder)).toBe(true);
+    expect((coder as { name?: string; description: string }).name).toBe('coder');
+    expect((coder as { description: string }).description).toBe('Implements code changes with Pi coding tools.');
+  });
+
+  it('rejects engine on the main config, a bad engine value and a non-pi model id', async () => {
+    const rootError = (await resolveAgentDir(fixture('err-engine-root')).catch((e: Error) => e)) as Error;
+    expect(rootError.message).toContain(`'engine' is only valid for a directory under 'subagents/'`);
+
+    const badError = (await resolveAgentDir(fixture('err-engine-bad')).catch((e: Error) => e)) as Error;
+    expect(badError.message).toContain(path.join('subagents', 'coder', 'agent.json'));
+    expect(badError.message).toContain("'engine' must be 'pi'");
+
+    const modelError = (await resolveAgentDir(fixture('err-engine-model')).catch((e: Error) => e)) as Error;
+    expect(modelError.message).toContain("'model' must be a 'pi/<provider>/<model>' id");
+  });
+
+  it('delegates through the installed dir: mock lead -> task -> pi session on a faux runtime', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'lousho-pidir-'));
+    const agentDir = mkdtempSync(path.join(tmpdir(), 'lousho-pidir-pi-'));
+    try {
+      writeFileSync(path.join(dir, 'agent.json'), JSON.stringify({ model: 'mock/m' }));
+      writeFileSync(path.join(dir, 'instructions.md'), 'You delegate code changes to the coder.\n');
+      writeFileSync(path.join(dir, 'note.txt'), 'broken\n');
+      mkdirSync(path.join(dir, 'subagents', 'coder'), { recursive: true });
+      writeFileSync(
+        path.join(dir, 'subagents', 'coder', 'agent.json'),
+        JSON.stringify({
+          description: 'Edits files with Pi tools.',
+          engine: 'pi',
+          model: 'pi/openrouter/openai/gpt-4o-mini',
+          permissions: [
+            { tool: 'bash', when: { command: '\\brm\\b' }, action: 'deny', reason: 'No deletes' },
+            { tool: '*', action: 'allow' },
+          ],
+        })
+      );
+
+      const runtime = await ModelRuntime.create({
+        authPath: path.join(agentDir, 'auth.json'),
+        modelsStorePath: path.join(agentDir, 'models.json'),
+        refreshOnCreate: false,
+      });
+      const faux = fauxProvider();
+      runtime.registerNativeProvider(faux.provider);
+      const piModel = runtime.getModel('faux', 'faux-1')!;
+      const fixer: FauxResponseStep = (context) => {
+        const last = context.messages.at(-1);
+        if (last?.role === 'toolResult') return fauxAssistantMessage('Done.');
+        return fauxAssistantMessage(
+          fauxToolCall('edit', { path: 'note.txt', edits: [{ oldText: 'broken', newText: 'fixed' }] })
+        );
+      };
+      faux.setResponses([fixer, fixer, fixer]);
+
+      const agent = await loadAgentDir(dir, {
+        provider: mockModel([
+          { toolCalls: [{ name: 'task', args: { agent: 'coder', prompt: 'Fix note.txt', description: 'fix note' } }] },
+          { text: 'delegated' },
+        ]),
+        piAgent: { modelRuntime: runtime, model: piModel, agentDir, sessionDir: path.join(agentDir, 'sessions') },
+      });
+
+      const result = await agent.send('go');
+      expect(result.text).toBe('delegated');
+      expect(readFileSync(path.join(dir, 'note.txt'), 'utf8')).toBe('fixed\n');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(agentDir, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('applies the pi sub-agent config permissions to its tool calls', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'lousho-pidir-'));
+    const agentDir = mkdtempSync(path.join(tmpdir(), 'lousho-pidir-pi-'));
+    try {
+      writeFileSync(path.join(dir, 'agent.json'), JSON.stringify({ model: 'mock/m' }));
+      writeFileSync(path.join(dir, 'instructions.md'), 'lead\n');
+      writeFileSync(path.join(dir, 'note.txt'), 'broken\n');
+      mkdirSync(path.join(dir, 'subagents', 'coder'), { recursive: true });
+      writeFileSync(
+        path.join(dir, 'subagents', 'coder', 'agent.json'),
+        JSON.stringify({
+          description: 'Edits files with Pi tools.',
+          engine: 'pi',
+          permissions: [{ tool: 'edit', action: 'deny', reason: 'No edits' }],
+        })
+      );
+
+      const runtime = await ModelRuntime.create({
+        authPath: path.join(agentDir, 'auth.json'),
+        modelsStorePath: path.join(agentDir, 'models.json'),
+        refreshOnCreate: false,
+      });
+      const faux = fauxProvider();
+      runtime.registerNativeProvider(faux.provider);
+      const piModel = runtime.getModel('faux', 'faux-1')!;
+      faux.setResponses([
+        (context) => {
+          const last = context.messages.at(-1);
+          if (last?.role === 'toolResult') return fauxAssistantMessage('The edit was refused.');
+          return fauxAssistantMessage(fauxToolCall('edit', { path: 'note.txt', edits: [{ oldText: 'broken', newText: 'fixed' }] }));
+        },
+      ]);
+
+      const agent = await loadAgentDir(dir, {
+        provider: mockModel([
+          { toolCalls: [{ name: 'task', args: { agent: 'coder', prompt: 'Fix note.txt', description: 'fix note' } }] },
+          { text: 'delegated' },
+        ]),
+        piAgent: { modelRuntime: runtime, model: piModel, agentDir, sessionDir: path.join(agentDir, 'sessions') },
+      });
+
+      await agent.send('go');
+      expect(readFileSync(path.join(dir, 'note.txt'), 'utf8')).toBe('broken\n');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(agentDir, { recursive: true, force: true });
+    }
+  }, 60_000);
 });
 
 describe('validation errors', () => {

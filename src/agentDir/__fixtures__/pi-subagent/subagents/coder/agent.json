@@ -1,0 +1,9 @@
+{
+  "description": "Implements code changes with Pi coding tools.",
+  "engine": "pi",
+  "model": "pi/openrouter/openai/gpt-4o-mini",
+  "permissions": [
+    { "tool": "bash", "when": { "command": "\brm\b" }, "action": "deny", "reason": "No deletes" },
+    { "tool": "*", "action": "allow" }
+  ]
+}

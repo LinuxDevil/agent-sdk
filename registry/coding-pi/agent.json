@@ -1,0 +1,16 @@
+{
+  "name": "coding-pi",
+  "description": "The coding-kit harness running on the Pi provider, with a Pi coding-agent sub-agent: workspace tools with rewind, an allow-listed shell, permission rules, a loop guard, durable approvals and a read-only explorer",
+  "model": "pi/openrouter/openai/gpt-4o-mini",
+  "maxSteps": 20,
+  "permissionMode": "default",
+  "permissions": [
+    { "tool": "shell", "when": { "command": "\\brm\\b" }, "action": "deny", "reason": "Deleting files is not allowed" },
+    { "tool": ["read_file", "list_dir", "glob", "grep", "load_skill", "task", "delegate_to_explorer", "shell"], "action": "allow" },
+    { "tool": ["write_file", "edit_file"], "action": "ask" }
+  ],
+  "hooks": "hooks.ts",
+  "approve": "approve.ts",
+  "compaction": { "thresholdPercent": 0.8 },
+  "limits": { "maxCostUsd": 0.05 }
+}

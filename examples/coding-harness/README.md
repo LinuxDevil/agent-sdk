@@ -51,3 +51,26 @@ runs the same scripted scenario as `index.test.ts` (provider and explorer
 provider injected through loader overrides), and builds it into a node-server
 deployment whose `POST /chat` answers the same task. The live test runs
 against `openrouter/openai/gpt-4o-mini` when `OPENROUTER_API_KEY` is set.
+
+## The production variant: `coding-pi`
+
+`registry/coding-pi/` is the same kit on the full Pi stack: the lead's `model`
+is `pi/openrouter/openai/gpt-4o-mini` (the `pi` provider over
+`@earendil-works/pi-ai`) and `subagents/coder/` declares `"engine": "pi"` - a
+`piAgent()` coding sub-agent the lead reaches through the `task` tool, with
+its own permission rules gating the Pi session's calls (no `rm`, no edits to
+`*.test.*`). It is the closest thing to a production coding agent here:
+durable approval pause/resume across restarts, per-sub-agent permissions, and
+usage that rolls into the lead run.
+
+```bash
+lousho add coding-pi --dir ./my-agent --yes --allow exec,fs-write,network,env
+OPENROUTER_API_KEY=... lousho dev ./my-agent
+```
+
+`kit-pi.test.ts` installs it, runs it offline (a mock lead delegates through
+`task` to a Pi session on pi-ai's faux provider - the session edits the
+installed workspace for real), and runs the whole stack live on OpenRouter
+when `OPENROUTER_API_KEY` is set. Node-only: it needs the optional peers
+`@earendil-works/pi-ai@1.0.3` and `@earendil-works/pi-coding-agent@1.0.2`, and
+the `node-server` or `docker` build target.

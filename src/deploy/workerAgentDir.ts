@@ -250,6 +250,12 @@ function requireDescription(sub: WorkerSubagentDir, config: AgentDirConfig): str
  */
 export function resolveWorkerAgentDir(dir: WorkerAgentDir, inherited?: WorkerAgentModel): ResolvedWorkerAgentDir {
   const config = readDirConfig(dir);
+  if (config.engine !== undefined) {
+    invalid(
+      `${dir.name}: 'engine' is only valid for a directory under 'subagents/', and a 'pi' sub-agent needs the ` +
+        'Node runtime - a Cloudflare Worker cannot run one. Deploy this agent with the node-server or docker target instead.'
+    );
+  }
   const model = chooseModel(dir, config, inherited);
   return {
     name: config.name ?? dir.name,

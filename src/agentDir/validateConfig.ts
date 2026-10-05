@@ -74,6 +74,13 @@ export interface AgentDirConfig {
   approve?: string | ApproveToolCall;
   /** `createAgent`'s `limits` (e.g. `{ "maxCostUsd": 0.05 }`). */
   limits?: RunLimits;
+  /**
+   * The sub-agent engine. Only valid in a `subagents/<name>/` directory:
+   * `'pi'` turns it into a {@link piAgent} coding sub-agent instead of a
+   * nested `createAgent()` one, so it lands in the parent's `subagents` map
+   * (the `task` tool) rather than becoming a `delegate_to_<name>` tool.
+   */
+  engine?: 'pi';
 }
 
 const CONFIG_KEYS = [
@@ -91,6 +98,7 @@ const CONFIG_KEYS = [
   'hooks',
   'approve',
   'limits',
+  'engine',
 ] as const;
 
 /** Throws LOUSHO_AGENT_DIR_INVALID for the config file `file`. */
@@ -249,6 +257,12 @@ function assertLimits(file: string, value: unknown): void {
   }
 }
 
+function assertEngine(file: string, value: unknown): void {
+  if (value !== undefined && value !== 'pi') {
+    fail(file, `'engine' must be 'pi' (a Pi coding sub-agent), got ${describeValue(value)}.`);
+  }
+}
+
 function assertValues(file: string, c: Record<string, unknown>): void {
   for (const key of ['name', 'description', 'model', 'instructions']) assertString(file, key, c[key]);
   assertMaxSteps(file, c.maxSteps);
@@ -260,6 +274,7 @@ function assertValues(file: string, c: Record<string, unknown>): void {
   assertHooks(file, c.hooks);
   assertApprove(file, c.approve);
   assertLimits(file, c.limits);
+  assertEngine(file, c.engine);
   try {
     assertToolConcurrency(c.toolConcurrency, 'config');
   } catch (error) {

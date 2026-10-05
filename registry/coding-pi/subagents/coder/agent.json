@@ -1,0 +1,10 @@
+{
+  "description": "Implements a well-scoped code change in the project with its own coding tools: edits files and runs tests inside this workspace.",
+  "engine": "pi",
+  "model": "pi/openrouter/openai/gpt-4o-mini",
+  "permissions": [
+    { "tool": "bash", "when": { "command": "\\brm\\b" }, "action": "deny", "reason": "Deleting files is not allowed" },
+    { "tool": ["edit", "write"], "when": { "path": "\\.test\\." }, "action": "deny", "reason": "Test files are fixed specifications - fix the implementation, not the test" },
+    { "tool": "*", "action": "allow" }
+  ]
+}

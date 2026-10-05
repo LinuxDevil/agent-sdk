@@ -1,0 +1,70 @@
+{
+  "name": "coding-pi",
+  "type": "kit",
+  "description": "The coding-kit harness on the Pi provider stack: the lead agent runs on pi/openrouter and delegates implementation to a Pi coding-agent sub-agent (engine: 'pi') with its own permission rules",
+  "files": [
+    {
+      "path": "agent.json",
+      "content": "{\n  \"name\": \"coding-pi\",\n  \"description\": \"The coding-kit harness running on the Pi provider, with a Pi coding-agent sub-agent: workspace tools with rewind, an allow-listed shell, permission rules, a loop guard, durable approvals and a read-only explorer\",\n  \"model\": \"pi/openrouter/openai/gpt-4o-mini\",\n  \"maxSteps\": 20,\n  \"permissionMode\": \"default\",\n  \"permissions\": [\n    { \"tool\": \"shell\", \"when\": { \"command\": \"\\\\brm\\\\b\" }, \"action\": \"deny\", \"reason\": \"Deleting files is not allowed\" },\n    { \"tool\": [\"read_file\", \"list_dir\", \"glob\", \"grep\", \"load_skill\", \"task\", \"delegate_to_explorer\", \"shell\"], \"action\": \"allow\" },\n    { \"tool\": [\"write_file\", \"edit_file\"], \"action\": \"ask\" }\n  ],\n  \"hooks\": \"hooks.ts\",\n  \"approve\": \"approve.ts\",\n  \"compaction\": { \"thresholdPercent\": 0.8 },\n  \"limits\": { \"maxCostUsd\": 0.05 }\n}\n"
+    },
+    {
+      "path": "approve.ts",
+      "content": "import type { ApproveToolCall } from '@lousho/build-ai-agent';\n\n/**\n * The kit's approver (pointed at by `agent.json`'s `approve`): the agent asks\n * before every `write_file` / `edit_file`; the approver allows them all except\n * test files, so the model can fix the code but never the tests that judge it.\n */\nconst approve: ApproveToolCall = ({ args }) => !String(args.path ?? '').endsWith('.test.js');\n\nexport default approve;\n"
+    },
+    {
+      "path": "hooks.ts",
+      "content": "import type { AgentHook } from '@lousho/build-ai-agent';\n\n/**\n * The kit's hooks (pointed at by `agent.json`'s `hooks`): a loop guard that\n * denies a tool call the model already made twice with the same arguments,\n * then an output cap that keeps long tool results from flooding the context.\n * Ported from examples/coding-harness/index.ts.\n */\n\n/** Deny a tool call the model already made `maxRepeats` times with the same arguments. */\nexport function loopGuard(maxRepeats = 2): AgentHook {\n  const seen = new Map<string, number>();\n  return {\n    name: 'loop-guard',\n    preToolCall(ctx) {\n      const key = `${ctx.sessionId ?? ''}:${ctx.toolName}:${JSON.stringify(ctx.args)}`;\n      const count = (seen.get(key) ?? 0) + 1;\n      seen.set(key, count);\n      if (count > maxRepeats) {\n        return { deny: `You already called ${ctx.toolName} with these arguments ${maxRepeats} times. Try something else.` };\n      }\n      return undefined;\n    },\n  };\n}\n\n/** Cut long tool results so they do not flood the context. */\nexport function outputCap(maxChars = 4_000): AgentHook {\n  return {\n    name: 'output-cap',\n    postToolCall(_ctx, result) {\n      const text = typeof result.result === 'string' ? result.result : JSON.stringify(result.result ?? '');\n      if (text.length <= maxChars) return undefined;\n      return { result: `${text.slice(0, maxChars)}\\n[output cut at ${maxChars} of ${text.length} chars]` };\n    },\n  };\n}\n\nexport default [loopGuard(), outputCap()];\n"
+    },
+    {
+      "path": "instructions.md",
+      "content": "You are a careful coding agent working in a small JavaScript project.\nRead a file before you edit it. Make the smallest change that fixes the problem.\nRun `node --test` before and after every change, and stop once it passes.\nFor a task you do not understand yet, delegate the reading to the explorer sub-agent.\nFor a well-scoped implementation - \"fix this function\", \"add this helper\" - delegate it to the coder sub-agent with the task tool; it has its own coding tools and its own permission rules.\n"
+    },
+    {
+      "path": "instructions/anthropic.md",
+      "content": "Think briefly, then act. Prefer edit_file over write_file.\n"
+    },
+    {
+      "path": "instructions/openai.md",
+      "content": "Call one tool at a time and keep your final answer to one sentence.\n"
+    },
+    {
+      "path": "skills/fix-failing-test/SKILL.md",
+      "content": "---\ndescription: Steps for fixing a failing unit test\n---\n\n# Fixing a failing test\n\n1. Run the tests and read the failure message.\n2. Read the code under test, not only the test.\n3. Change the code, not the test, unless the test is wrong.\n4. Run the tests again and report what changed in one sentence.\n"
+    },
+    {
+      "path": "subagents/coder/agent.json",
+      "content": "{\n  \"description\": \"Implements a well-scoped code change in the project with its own coding tools: edits files and runs tests inside this workspace.\",\n  \"engine\": \"pi\",\n  \"model\": \"pi/openrouter/openai/gpt-4o-mini\",\n  \"permissions\": [\n    { \"tool\": \"bash\", \"when\": { \"command\": \"\\\\brm\\\\b\" }, \"action\": \"deny\", \"reason\": \"Deleting files is not allowed\" },\n    { \"tool\": [\"edit\", \"write\"], \"when\": { \"path\": \"\\\\.test\\\\.\" }, \"action\": \"deny\", \"reason\": \"Test files are fixed specifications - fix the implementation, not the test\" },\n    { \"tool\": \"*\", \"action\": \"allow\" }\n  ]\n}\n"
+    },
+    {
+      "path": "subagents/explorer/agent.json",
+      "content": "{\n  \"description\": \"Reads the project and reports where a problem is. Cannot change files.\",\n  \"maxSteps\": 6\n}\n"
+    },
+    {
+      "path": "subagents/explorer/instructions.md",
+      "content": "You read code and answer in two sentences: which file and line, and what is wrong.\n"
+    },
+    {
+      "path": "subagents/explorer/tools/read-only.ts",
+      "content": "/**\n * The explorer's read-only file tools, bound to the same workspace as the\n * lead's (the agent directory, three levels up from this file): `read_file`,\n * `list_dir`, `glob` and `grep`, with no `write_file` / `edit_file`, so a\n * delegated reading task cannot change anything.\n */\nimport path from 'node:path';\nimport { fileURLToPath } from 'node:url';\nimport { createFsTools, NodeWorkspace } from '@lousho/build-ai-agent';\n\nconst root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');\nconst workspace = new NodeWorkspace({ root });\nconst readOnly = createFsTools(workspace).filter((tool) => ['read_file', 'list_dir', 'glob', 'grep'].includes(tool.name));\n\nexport default readOnly;\n"
+    },
+    {
+      "path": "tools/fs.ts",
+      "content": "/**\n * The kit's workspace tools: every file tool and a shell limited to an allow\n * list. The workspace is the agent directory itself - the kit works on the\n * project it is installed into, and `lousho build` bundles this file next to\n * the agent so the built server's workspace is the bundled directory.\n *\n * `checkpoints` backs up every write and edit (to `.lousho/checkpoints/` in\n * the workspace, so a rewind still works after a restart); `workspace`,\n * `checkpoints` and `fs` are also exported for code that wants the same\n * objects (a test, or another tool file).\n */\nimport path from 'node:path';\nimport { fileURLToPath } from 'node:url';\nimport {\n  createFsTools,\n  createShellTool,\n  FileWorkspaceCheckpointStore,\n  NodeWorkspace,\n  WorkspaceCheckpoints,\n} from '@lousho/build-ai-agent';\n\nconst root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');\n\nexport const workspace = new NodeWorkspace({ root });\nexport const checkpoints = new WorkspaceCheckpoints(workspace, {\n  store: new FileWorkspaceCheckpointStore(path.join(root, '.lousho', 'checkpoints')),\n});\n\nexport const fs = createFsTools(workspace, { checkpoints });\n\n/** A shell that only runs the commands a coding harness needs. */\nexport const shell = createShellTool(workspace, {\n  needsApproval: false,\n  allow: ['node --test', 'git status', 'git diff'],\n});\n\nexport default fs;\n"
+    }
+  ],
+  "permissions": {
+    "network": [
+      "api.openrouter.ai"
+    ],
+    "env": [
+      "OPENROUTER_API_KEY"
+    ],
+    "filesystem": "write",
+    "exec": true
+  },
+  "dependencies": [
+    "@lousho/build-ai-agent",
+    "@earendil-works/pi-ai",
+    "@earendil-works/pi-coding-agent"
+  ]
+}

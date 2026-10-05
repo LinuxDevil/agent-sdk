@@ -24,6 +24,8 @@ import { confineToolsToReceipt, registryWarnings, verifyReceipt, type RegistrySt
 import { readConfig, type AgentDirConfig } from './readConfig';
 import { fail, permissionRulesOf } from './validateConfig';
 import { delegateTool, listSubagentDirs, requireDescription, type LoadedSubagent } from './subagents';
+import { piAgent, type PiAgentOptions } from '../subagents/piAgent';
+import type { RemoteSubagent } from '../subagents/types';
 import { SDKError } from '../execution/errors';
 import type { AuthFn } from '../auth/types';
 import type { AgentHook } from '../execution/hooks';
@@ -36,7 +38,8 @@ export type { Attestation, RegistryItemStatus, RegistryStatus } from './registry
 
 /**
  * Options that win over what the directory's files say. Same shape as
- * `createAgent()`'s options; `tools` and `skills` replace the discovered ones
+ * `createAgent()`'s options, plus `piAgent` for the `engine: 'pi'` sub-agent
+ * directories; `tools` and `skills` replace the discovered ones
  * (they are not merged). A `subagents` override replaces the discovered
  * `subagents/` directories (their `delegate_to_<name>` tools are not added and
  * their files are not even loaded). `memory` is merged with the directory's `memory/` slots by name; the override wins a clash.
@@ -46,7 +49,17 @@ export type { Attestation, RegistryItemStatus, RegistryStatus } from './registry
  * const agent = await loadAgentDir('./my-agent', { provider: mockModel(['hi']) });
  * ```
  */
-export type AgentDirOverrides = CreateAgentConfig;
+export type AgentDirOverrides = CreateAgentConfig & {
+  /**
+   * Options merged into every `engine: 'pi'` sub-agent the directory declares
+   * (`subagents/<name>/` whose config sets `"engine": "pi"`). Use it to inject
+   * a `modelRuntime` (e.g. pi-ai's faux provider in tests), `sessionDir`,
+   * `agentDir`, `tools`, `thinkingLevel`, or to replace the config's `model`
+   * and `permissions`. The directory always wins `cwd` (its install dir),
+   * `name` and `description`.
+   */
+  piAgent?: Partial<PiAgentOptions>;
+};
 
 /** What `resolveAgentDir()` found, for tooling and tests. Paths are absolute; lists are sorted. */
 export interface AgentDirManifest {
@@ -253,20 +266,74 @@ async function loadSkillsIfPresent(dir: string): Promise<Skill[]> {
   return (await isDirectory(skillsDir)) ? loadSkills(skillsDir) : [];
 }
 
-async function loadSubagents(
+interface LoadedSubagents {
+  /** Nested `createAgent` sub-agents; each becomes a `delegate_to_<name>` tool. */
+  delegated: LoadedSubagent[];
+  /** `engine: 'pi'` sub-agents; each becomes an entry of the parent's `subagents` map (the `task` tool). */
+  remote: Record<string, RemoteSubagent>;
+  /** Every discovered sub-agent directory name, in order. */
+  names: string[];
+}
+
+/**
+ * The `engine: 'pi'` sub-agent of `subagents/<name>/`: a {@link piAgent}
+ * bound to the parent's directory, which is the workspace its file tools
+ * and the Pi session share. The config's `model` is an SDK model id
+ * (`pi/<provider>/<model>`); the `pi/` prefix is stripped because Pi
+ * resolves `provider/model` ids itself.
+ */
+function piSubagent(
   dir: string,
-  overrides: AgentDirOverrides,
-  inherited: Inherited
-): Promise<LoadedSubagent[]> {
-  const subagents: LoadedSubagent[] = [];
+  name: string,
+  childDir: string,
+  configFile: string | undefined,
+  config: AgentDirConfig,
+  extra: Partial<PiAgentOptions> | undefined
+): RemoteSubagent {
+  const description = requireDescription(childDir, config.description);
+  let model: string | undefined;
+  if (config.model !== undefined) {
+    if (!config.model.startsWith('pi/') || config.model.length === 'pi/'.length) {
+      fail(
+        configFile ?? childDir,
+        `a 'engine': 'pi' sub-agent's 'model' must be a 'pi/<provider>/<model>' id ` +
+          `(e.g. "pi/openrouter/openai/gpt-4o-mini"), got '${config.model}'.`
+      );
+    }
+    model = config.model.slice('pi/'.length);
+  }
+  return piAgent(
+    Object.assign(
+      {
+        cwd: dir,
+        name,
+        description,
+        model,
+        permissions: permissionRulesOf(configFile ?? childDir, config.permissions),
+      },
+      extra,
+      // The install directory's workspace and identity always win over the injected options.
+      { cwd: dir, name, description }
+    )
+  );
+}
+
+async function loadSubagents(dir: string, overrides: AgentDirOverrides, inherited: Inherited): Promise<LoadedSubagents> {
+  const loaded: LoadedSubagents = { delegated: [], remote: {}, names: [] };
   const childOverrides: AgentDirOverrides = overrides.provider ? { provider: overrides.provider } : {};
   for (const name of await listSubagentDirs(dir)) {
     const childDir = path.join(dir, 'subagents', name);
+    const { file: childConfigFile, config: childConfig } = await readConfig(childDir);
+    loaded.names.push(name);
+    if (childConfig.engine === 'pi') {
+      loaded.remote[name] = piSubagent(dir, name, childDir, childConfigFile, childConfig, overrides.piAgent);
+      continue;
+    }
     const child = await resolveWith(childDir, childOverrides, inherited);
     const description = requireDescription(childDir, child.manifest.description);
-    subagents.push({ name, description, agent: createAgent(child.config) });
+    loaded.delegated.push({ name, description, agent: createAgent(child.config) });
   }
-  return subagents;
+  return loaded;
 }
 
 function optional<K extends string, V>(key: K, value: V | undefined): { [P in K]?: V } {
@@ -283,6 +350,9 @@ async function resolveWith(
     throw new SDKError(`loadAgentDir: '${dir}' is not a directory. Pass the path of an agent directory.`, 'LOUSHO_AGENT_DIR_INVALID');
   }
   const { file: configFile, config } = await readConfig(dir);
+  if (config.engine !== undefined) {
+    fail(configFile ?? dir, `'engine' is only valid for a directory under 'subagents/' - the main agent has no engine.`);
+  }
   const fromFile = await readInstructions(dir);
   const source = chooseModelSource(config, overrides, inherited);
   let instructions = chooseInstructions(dir, config, fromFile, overrides);
@@ -305,13 +375,14 @@ async function resolveWith(
   for (const warning of registryWarnings(registry)) console.warn(`[lousho] ${warning}`);
   const tools: LoadedTool[] = confineToolsToReceipt(dir, await loadTools(dir), registry);
   const skills = await skillsFor(dir, overrides);
-  const subagents = overrides.subagents === undefined ? await loadSubagents(dir, overrides, source) : [];
+  const subagents = overrides.subagents === undefined ? await loadSubagents(dir, overrides, source) : { delegated: [], remote: {}, names: [] };
   const schedules = await loadSchedules(dir);
   const channels = await loadChannels(dir);
   const memorySlots = await loadMemory(dir);
   const name = overrides.name ?? config.name ?? path.basename(dir);
 
-  const fileTools = [...tools.map((t) => t.tool), ...subagents.map(delegateTool)];
+  const fileTools = [...tools.map((t) => t.tool), ...subagents.delegated.map(delegateTool)];
+  const remote = Object.keys(subagents.remote).length > 0 ? subagents.remote : undefined;
   const assembled = {
     name,
     instructions,
@@ -320,7 +391,7 @@ async function resolveWith(
     ...optional('tools', overrides.tools ?? (fileTools.length > 0 ? fileTools : undefined)),
     ...optional('memory', mergeMemory(memorySlots, overrides.memory)),
     ...optional('skills', overrides.skills ?? (skills.length > 0 ? skills : undefined)),
-    ...optional('subagents', overrides.subagents),
+    ...optional('subagents', overrides.subagents ?? remote),
     ...optional('maxSteps', overrides.maxSteps ?? config.maxSteps),
     ...optional('toolConcurrency', overrides.toolConcurrency ?? config.toolConcurrency),
     ...optional('projectInstructions', overrides.projectInstructions ?? config.projectInstructions),
@@ -348,7 +419,7 @@ async function resolveWith(
       files,
       tools: tools.map((t) => t.tool.name),
       skills: skills.map((s) => s.name),
-      subagents: subagents.map((s) => s.name),
+      subagents: subagents.names,
       schedules: schedules.map((s) => s.name as string),
       channels: channels.map((c) => c.name),
       memory: memorySlots.map((m) => m.name),
@@ -414,7 +485,11 @@ export async function resolveAgentDir(
  *
  * Sub-agents (`subagents/<name>/`) become `delegate_to_<name>` tools on the
  * parent. They inherit the parent's model unless they set their own, and a
- * `provider` override is passed down to all of them.
+ * `provider` override is passed down to all of them. A sub-agent directory
+ * whose config sets `"engine": "pi"` becomes a {@link piAgent} coding
+ * sub-agent instead: it lands in the parent's `subagents` map (the `task`
+ * tool), bound to the parent's directory as the workspace its sessions run
+ * in - see `overrides.piAgent` for injecting a model runtime in tests.
  *
  * Loading executes the directory's code (`agent.ts`, `tools/*`): only load
  * directories you trust. There is no sandboxing.

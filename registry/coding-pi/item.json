@@ -1,0 +1,12 @@
+{
+  "name": "coding-pi",
+  "type": "kit",
+  "description": "The coding-kit harness on the Pi provider stack: the lead agent runs on pi/openrouter and delegates implementation to a Pi coding-agent sub-agent (engine: 'pi') with its own permission rules",
+  "permissions": {
+    "exec": true,
+    "filesystem": "write",
+    "network": ["api.openrouter.ai"],
+    "env": ["OPENROUTER_API_KEY"]
+  },
+  "dependencies": ["@lousho/build-ai-agent", "@earendil-works/pi-ai", "@earendil-works/pi-coding-agent"]
+}

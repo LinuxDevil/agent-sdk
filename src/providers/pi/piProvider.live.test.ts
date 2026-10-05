@@ -90,9 +90,10 @@ describe.skipIf(!KEY)('pi provider (live, OpenRouter)', () => {
       ],
       onPermissionDecision: (entry) => audit.push(entry),
       instructions:
-        'You are a coding agent working in the workspace. ' +
-        'Task, in order: (1) math.js has a bug - `add` subtracts instead of adding; fix `add` and leave `subtract` alone. ' +
-        'Do not modify math.test.js. (2) Run `node --test math.test.js` to verify. ' +
+        'You are a careful coding agent working in the workspace. Make the smallest possible change. ' +
+        'Task, in order: (1) math.js has a bug - `add` subtracts instead of adding. ' +
+        'Change ONLY the body of `add`; `subtract` is already correct and must keep returning a - b. ' +
+        'Do not modify math.test.js. (2) Run `node --test math.test.js`; if it fails, inspect and fix until it passes. ' +
         '(3) Clean up by running `rm -f scratch.txt` - if a command is refused, move on. ' +
         'Reply briefly when done.',
       maxSteps: 10,

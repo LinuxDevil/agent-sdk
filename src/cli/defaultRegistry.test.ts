@@ -69,6 +69,7 @@ describe('default registry (registry/dist)', () => {
       'changelog',
       'code-review',
       'coding-kit',
+      'coding-pi',
       'generic-webhook',
       'github-issues',
       'open-meteo-weather',
