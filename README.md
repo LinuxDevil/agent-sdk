@@ -12,7 +12,7 @@ required. It is for developers who need an agent to keep working when a run
 pauses for a human or the process restarts, and who want to test it like the
 rest of their code.
 
-Three things set it apart:
+Four things set it apart:
 
 - **Durable sessions and approvals on any host.** Sessions, checkpoints and
   approval pauses live in pluggable stores (memory, files, one SQLite file, or
@@ -26,6 +26,10 @@ Three things set it apart:
   ships the same agent spec to a Node server, Docker or a Worker; runs emit
   OpenTelemetry GenAI spans to any exporter, and every result reports token
   usage and USD cost.
+- **Coding agents that ship.** Agents are plain directories (`agent.json`,
+  `instructions.md`, `tools/`, `subagents/`), registries install them as kits,
+  and `piAgent()` delegates real coding work to a Pi coding agent with durable
+  approvals - one `lousho add coding-pi` is a working coding harness.
 
 [Quickstart](#quickstart) · [Features](#features) · [Documentation](#documentation) ·
 [Examples](#examples) · [Docs](https://lousho.com)
@@ -66,7 +70,7 @@ console.log(text);
 ```
 
 `model` is a `provider/model` string (`openai`, `anthropic`, `openrouter`,
-`ollama`) and the key comes from the provider's usual variable
+`ollama`, `pi`) and the key comes from the provider's usual variable
 (`OPENAI_API_KEY`, ...). Leave it out to pick the provider from the
 environment, or pass `provider:` with your own or a mock provider. See
 [Quick Start](docs/quick-start.md) for runnable, offline versions and
@@ -88,11 +92,11 @@ agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 - **Next.js and Fetch frameworks**: `createRouteHandler(agent)` serves the session API from an App Router, SvelteKit, Hono or Bun route. [Next.js](docs/nextjs.md)
 - **Durable execution**: `createAgent({ store })` checkpoints every step, and `agent.resume()` finishes a crashed or interrupted run without redoing finished tools (it throws `SessionAwaitingApprovalError` on an approval-paused run, which continues via `agent.approvals.resolve()`). [Durable execution](docs/durable-execution.md)
 - **Cancellation, usage and cost**: pass an `AbortSignal`; every result carries token usage and USD cost for priced models. [Runs](docs/runs.md), [Models and cost](docs/models-and-cost.md)
-- **Providers**: OpenAI, Anthropic, OpenRouter, Ollama or a mock, with `withRetry()` and `withFallback()`. [Providers](docs/providers.md)
-- **Sub-agents**: `subagents: { researcher, writer }` gives the lead a `task` tool plus `agent_status`, `agent_await` and `agent_cancel` for background tasks; sub-agents run in parallel. [Sub-agents](docs/sub-agents.md)
+- **Providers**: OpenAI, Anthropic, OpenRouter, Ollama or a mock, with `withRetry()` and `withFallback()`; `pi/<provider>/<model>` routes through `@earendil-works/pi-ai`, opening Pi's whole catalog (OpenRouter, Anthropic, OpenAI, Google, ...) in one spec space. [Providers](docs/providers.md)
+- **Sub-agents**: `subagents: { researcher, writer }` gives the lead a `task` tool plus `agent_status`, `agent_await` and `agent_cancel` for background tasks; sub-agents run in parallel. `remoteAgent()` delegates to a deployed agent over HTTP, `piAgent()` to a Pi coding agent in process - both durable-resumable - and `defineRemoteSubagent()` covers your own backend. [Sub-agents](docs/sub-agents.md)
 - **Handoffs**: `handoffs: [billing, support]` lets a triage agent hand the conversation to a specialist, which answers the user and keeps the session. [Handoffs](docs/handoffs.md)
 - **Skills and AGENTS.md**: `loadSkills()` loads instructions on demand; `projectInstructions` appends your `AGENTS.md`. [Skills](docs/skills.md), [Project instructions](docs/configuration.md#project-instructions)
-- **Agent directories**: `loadAgentDir('./my-agent')` builds an agent from `instructions.md`, `tools/` and `skills/`. [Agent directories](docs/agent-directories.md)
+- **Agent directories**: `loadAgentDir('./my-agent')` builds an agent from `agent.json`, `instructions.md`, `tools/` and `skills/` - config covers models, permission rules and modes, hooks, approvers, compaction, limits and per-family instruction tails; `subagents/<name>/` with `"engine": "pi"` is a Pi coding sub-agent sharing the workspace. [Agent directories](docs/agent-directories.md)
 - **Compaction**: `createAgent({ compaction })` prunes old tool results, then summarizes old turns, before the context window fills. [Context compaction](docs/compaction.md)
 - **MCP client and server**: `createAgent({ mcpServers })` (or `connectMcp()`) connects stdio and HTTP MCP servers from config; `serveMcp()` / `lousho mcp` exposes your agent. [MCP](docs/mcp.md)
 - **Workspace tools**: file system and shell tools for coding agents, confined to a root, shell approval-gated. [Workspace tools](docs/workspace-tools.md)
@@ -103,7 +107,7 @@ agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 - **Testing and evals**: `mockModel`, `recordReplay` cassettes, `defineEval()` trajectory assertions, `lousho eval` with `--record` / `--replay` cassettes and `--drift` trajectory diffs. [Testing](docs/testing.md), [Evals](docs/evals.md)
 - **CLI**: `init`, `doctor`, `dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `traces`, `build` and `studio`. [CLI](docs/cli.md)
 - **Editors (ACP)**: `lousho acp ./my-agent` serves your agent to Zed and other Agent Client Protocol editors, with tool calls and permission prompts. [ACP](docs/acp.md)
-- **Registry**: `lousho add <name>` copies a tool, skill, channel, schedule or memory slot into your agent directory from the default registry (or one you point at with `--registry <url-or-path>`), after showing its permissions. [Registry](docs/registry.md)
+- **Registry**: `lousho add <name>` copies a tool, skill, channel, schedule, memory slot or **kit** - a whole agent directory - into yours from the default registry (or one you point at with `--registry <url-or-path>`), after showing its permissions. The built-in `coding-kit` and `coding-pi` kits are production-shaped coding harnesses. [Registry](docs/registry.md)
 - **Agent Forge**: `lousho studio` opens a visual canvas, run debugger and chat with approval cards. [Agent Forge](docs/agent-forge.md)
 
 ## Usage
@@ -170,6 +174,20 @@ const agent = createAgent({ provider: resolveProvider('openai/gpt-4o-mini'), sto
 await agent.resume('user-42'); // after a crash: finishes the interrupted turn without redoing finished steps
 const { text } = await agent.session({ id: 'user-42' }).send('What is my name?'); // same id, same conversation
 ```
+
+### A coding agent from the registry
+
+```bash
+lousho add coding-pi --dir ./my-agent --yes --allow exec,fs-write,network,env
+OPENROUTER_API_KEY=... lousho dev ./my-agent
+```
+
+`coding-pi` is a whole agent directory: workspace file tools with checkpoint
+rewind, an allow-listed shell, permission rules (`rm` denied, writes to
+`*.test.*` refused), a loop guard, a cost cap, a read-only explorer and a Pi
+coding sub-agent the lead delegates to through `task`. `coding-kit` is the
+same rails on the standard providers. Both were validated live over
+OpenRouter; see [the harness validation report](docs/plan/harness-validation-report.md).
 
 ## Documentation
 
@@ -250,6 +268,7 @@ Most examples run offline with a mock provider; see the
 | Example | What it shows |
 | ------- | ------------- |
 | [ops-pipeline](examples/ops-pipeline) | Flagship: monitor alert, Slack "Fix it" button, human approval, fixer agent, patch-check-gated GitHub PR (`npm run pipeline:demo`) |
+| [coding-harness](examples/coding-harness) | A production-shaped coding agent: checkpoints, permission rules, loop guard, the `coding-kit` and `coding-pi` registry kits, live OpenRouter runs |
 | [agent-dir](examples/agent-dir) | An agent defined as a directory and loaded with `loadAgentDir()` |
 | [support-bot](examples/support-bot) | A minimal customer-support agent |
 | [research-assistant](examples/research-assistant) | A research agent with the built-in `http` tool |
@@ -268,7 +287,7 @@ Most examples run offline with a mock provider; see the
 | `lousho dev <spec>` | Local chat UI and `POST /chat` with hot reload |
 | `lousho chat <path>` | Terminal REPL: streamed replies, tool calls, approvals and questions |
 | `lousho acp <path>` | Serve the agent to Zed and other Agent Client Protocol editors |
-| `lousho add <name> [--registry <url-or-path>]` | Copy a tool, skill, channel, schedule or memory slot from the default registry (or a given one) into an agent directory |
+| `lousho add <name> [--registry <url-or-path>]` | Copy a tool, skill, channel, schedule, memory slot or kit (a whole agent directory) from the default registry (or a given one) into an agent directory |
 | `lousho mcp <spec>` | Serve the agent as an MCP server (stdio or HTTP) |
 | `lousho eval [globs]` | Run `*.eval.ts` files; JUnit and JSON reports |
 | `lousho traces [id]` | List saved runs, or print one as a span tree |
@@ -294,6 +313,9 @@ notes. Known gaps:
   accepts (`application/pdf` for OpenAI and OpenRouter, `application/pdf` and
   `text/plain` for Anthropic, on `ai` 6/7); other types - and every file part
   on `ai` 4 - are replaced by a text note ([Providers](docs/providers.md)).
+- The `pi` provider and `piAgent()` are Node-only (they run Pi's engine);
+  `lousho build --target=cloudflare-worker` refuses `pi/...` model specs and
+  `engine: 'pi'` sub-agent directories.
 - The Cloudflare Worker target has a limited provider and tool set, and builds
   agent directories without sub-agents, schedules, channels or memory slots
   ([Cloudflare Workers](docs/cloudflare-workers.md)).
