@@ -18,6 +18,7 @@ import type { DefinedSchedule } from '../schedules/defineSchedule';
 import type { Channel } from '../channels/defineChannel';
 import { loadChannels } from './loadChannels';
 import { loadMemory, mergeMemory } from './loadMemory';
+import type { MemorySlot } from '../memory/defineMemory';
 import { loadSchedules } from './loadSchedules';
 import { loadTools, type LoadedTool } from './loadTools';
 import { confineToolsToReceipt, registryWarnings, verifyReceipt, type RegistryStatus } from './registryEnforce';
@@ -164,7 +165,7 @@ const MARKDOWN = /\.md$/i;
  * `anthropic`) is contained in the model id wins, like the per-family
  * instruction tails coding harnesses keep. An empty file is an error.
  */
-export async function familyInstructionsFor(dir: string, modelId: string): Promise<{ file: string; text: string } | undefined> {
+async function familyInstructionsFor(dir: string, modelId: string): Promise<{ file: string; text: string } | undefined> {
   const instructionsDir = path.join(dir, 'instructions');
   for (const name of await listSorted(instructionsDir, (e) => e.isFile && MARKDOWN.test(e.name))) {
     const stem = name.replace(MARKDOWN, '');
@@ -340,6 +341,67 @@ function optional<K extends string, V>(key: K, value: V | undefined): { [P in K]
   return (value === undefined ? {} : { [key]: value }) as { [P in K]?: V };
 }
 
+/** Base instructions plus the `instructions/<family>.md` tail when the resolved model id names a family. */
+async function resolveInstructions(
+  dir: string,
+  config: AgentDirConfig,
+  fromFile: { file: string; text: string } | undefined,
+  overrides: AgentDirOverrides,
+  source: Inherited
+): Promise<{ instructions: unknown; familyFile?: string }> {
+  const instructions = chooseInstructions(dir, config, fromFile, overrides);
+  const overridden = overrides.instructions !== undefined || overrides.prompt !== undefined;
+  if (overridden || typeof instructions !== 'string') return { instructions };
+  const modelId = modelIdOf(source);
+  const family = modelId === undefined ? undefined : await familyInstructionsFor(dir, modelId);
+  return family ? { instructions: `${instructions}\n${family.text}`, familyFile: family.file } : { instructions };
+}
+
+/** The `createAgent()` options an agent directory resolves to: file config, discovered parts, then caller overrides. */
+function assembleConfig(
+  dir: string,
+  configFile: string | undefined,
+  config: AgentDirConfig,
+  source: Inherited,
+  parts: {
+    name: string;
+    instructions: unknown;
+    tools: LoadedTool[];
+    delegated: LoadedSubagent[];
+    remote: Record<string, RemoteSubagent>;
+    overrides: AgentDirOverrides;
+    memorySlots: MemorySlot[];
+    skills: Skill[];
+    configured?: { hooks: readonly AgentHook[]; file?: string };
+    approver?: { approve: ApproveToolCall; file?: string };
+  }
+): CreateAgentConfig {
+  const { name, instructions, tools, delegated, remote, overrides, memorySlots, skills, configured, approver } = parts;
+  const fileTools = [...tools.map((t) => t.tool), ...delegated.map(delegateTool)];
+  const subagents = Object.keys(remote).length > 0 ? remote : undefined;
+  return {
+    name,
+    instructions,
+    ...optional('provider', source.provider),
+    ...optional('model', source.model),
+    ...optional('tools', overrides.tools ?? (fileTools.length > 0 ? fileTools : undefined)),
+    ...optional('memory', mergeMemory(memorySlots, overrides.memory)),
+    ...optional('skills', overrides.skills ?? (skills.length > 0 ? skills : undefined)),
+    ...optional('subagents', overrides.subagents ?? subagents),
+    ...optional('maxSteps', overrides.maxSteps ?? config.maxSteps),
+    ...optional('toolConcurrency', overrides.toolConcurrency ?? config.toolConcurrency),
+    ...optional('projectInstructions', overrides.projectInstructions ?? config.projectInstructions),
+    ...optional('permissionMode', overrides.permissionMode ?? config.permissionMode),
+    ...optional('permissions', overrides.permissions ?? permissionRulesOf(configFile ?? dir, config.permissions)),
+    ...optional('compaction', overrides.compaction ?? config.compaction),
+    ...optional('limits', overrides.limits ?? config.limits),
+    ...optional('hooks', overrides.hooks ?? configured?.hooks),
+    ...optional('approve', overrides.approve ?? approver?.approve),
+    ...optional('onPermissionDecision', overrides.onPermissionDecision),
+    ...optional('exporter', overrides.exporter),
+  } as CreateAgentConfig;
+}
+
 async function resolveWith(
   rawDir: string,
   overrides: AgentDirOverrides,
@@ -355,18 +417,8 @@ async function resolveWith(
   }
   const fromFile = await readInstructions(dir);
   const source = chooseModelSource(config, overrides, inherited);
-  let instructions = chooseInstructions(dir, config, fromFile, overrides);
   // instructions/<family>.md appends to the base prompt when the resolved model id contains a family name.
-  let familyFile: string | undefined;
-  const instructionsOverridden = overrides.instructions !== undefined || overrides.prompt !== undefined;
-  if (!instructionsOverridden && typeof instructions === 'string') {
-    const modelId = modelIdOf(source);
-    const family = modelId === undefined ? undefined : await familyInstructionsFor(dir, modelId);
-    if (family) {
-      instructions = `${instructions}\n${family.text}`;
-      familyFile = family.file;
-    }
-  }
+  const { instructions, familyFile } = await resolveInstructions(dir, config, fromFile, overrides, source);
   // Hooks/approver files are only imported when the caller did not override them.
   const configured = overrides.hooks === undefined ? await configuredHooks(dir, config, configFile) : undefined;
   const approver = overrides.approve === undefined ? await configuredApprove(dir, config, configFile) : undefined;
@@ -381,29 +433,18 @@ async function resolveWith(
   const memorySlots = await loadMemory(dir);
   const name = overrides.name ?? config.name ?? path.basename(dir);
 
-  const fileTools = [...tools.map((t) => t.tool), ...subagents.delegated.map(delegateTool)];
-  const remote = Object.keys(subagents.remote).length > 0 ? subagents.remote : undefined;
-  const assembled = {
+  const assembled = assembleConfig(dir, configFile, config, source, {
     name,
     instructions,
-    ...optional('provider', source.provider),
-    ...optional('model', source.model),
-    ...optional('tools', overrides.tools ?? (fileTools.length > 0 ? fileTools : undefined)),
-    ...optional('memory', mergeMemory(memorySlots, overrides.memory)),
-    ...optional('skills', overrides.skills ?? (skills.length > 0 ? skills : undefined)),
-    ...optional('subagents', overrides.subagents ?? remote),
-    ...optional('maxSteps', overrides.maxSteps ?? config.maxSteps),
-    ...optional('toolConcurrency', overrides.toolConcurrency ?? config.toolConcurrency),
-    ...optional('projectInstructions', overrides.projectInstructions ?? config.projectInstructions),
-    ...optional('permissionMode', overrides.permissionMode ?? config.permissionMode),
-    ...optional('permissions', overrides.permissions ?? permissionRulesOf(configFile ?? dir, config.permissions)),
-    ...optional('compaction', overrides.compaction ?? config.compaction),
-    ...optional('limits', overrides.limits ?? config.limits),
-    ...optional('hooks', overrides.hooks ?? configured?.hooks),
-    ...optional('approve', overrides.approve ?? approver?.approve),
-    ...optional('onPermissionDecision', overrides.onPermissionDecision),
-    ...optional('exporter', overrides.exporter),
-  } as CreateAgentConfig;
+    tools,
+    delegated: subagents.delegated,
+    remote: subagents.remote,
+    overrides,
+    memorySlots,
+    skills,
+    configured,
+    approver,
+  });
 
   const files = [...new Set([configFile, fromFile?.file, familyFile, configured?.file, approver?.file, ...tools.map((t) => t.file)])].filter(
     (f): f is string => f !== undefined

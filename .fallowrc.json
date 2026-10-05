@@ -17,6 +17,7 @@
     "src/deploy/shims/quickjs.worker.ts",
     "src/deploy/shims/ollama.worker.ts",
     "src/deploy/shims/mcp.worker.ts",
+    "src/deploy/shims/pi.worker.ts",
     "src/agentDir/__fixtures__/**/*.{ts,js}",
     "examples/agent-dir/tools/*.ts",
     "registry/**/*.ts"
@@ -67,7 +68,9 @@
   ],
   "duplicates": {
     "ignore": [
-      "**/*.test-d.ts"
+      "**/*.test-d.ts",
+      "registry/**",
+      "examples/coding-harness/**"
     ]
   },
   "health": {
@@ -95,6 +98,13 @@
         ],
         "maxCrap": 80,
         "reason": "Both files are ~94-100% statement-covered, but fallow's per-function CRAP matching scores their nested callbacks (.map(...) guards, the confined fetch) as 0%-covered. Ceiling exempts only the coverage term; cyclomatic/cognitive still gate."
+      },
+      {
+        "files": [
+          "src/subagents/piAgent.ts"
+        ],
+        "maxCrap": 130,
+        "reason": "The tool_call gate handler is exercised by piAgent.test.ts (deny/ask/pause/resume), but as a nested callback fallow's per-function CRAP matching can score it 0%-covered. Ceiling exempts only the coverage term; cyclomatic/cognitive still gate."
       },
       {
         "files": [

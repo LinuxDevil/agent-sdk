@@ -290,22 +290,25 @@ function assertValues(file: string, c: Record<string, unknown>): void {
  */
 export function permissionRulesOf(file: string, rules: readonly AgentDirPermissionRule[] | undefined): PermissionRule[] | undefined {
   if (rules === undefined) return undefined;
-  return rules.map((rule, index) => {
-    let when: PermissionRule['when'];
-    if (typeof rule.when === 'function') {
-      when = rule.when;
-    } else if (rule.when !== undefined) {
-      const tests = Object.entries(rule.when).map(([arg, pattern]) => {
-        try {
-          return { arg, regex: new RegExp(pattern) };
-        } catch (error) {
-          fail(file, `'permissions[${index}].when.${arg}' is not a valid regular expression: ${(error as Error).message}`);
-        }
-      });
-      when = (args) => tests.every(({ arg, regex }) => regex.test(String(args[arg] ?? '')));
-    }
-    return { tool: rule.tool, ...(when !== undefined && { when }), action: rule.action, ...(rule.reason !== undefined && { reason: rule.reason }) };
-  });
+  return rules.map((rule, index) => permissionRuleOf(file, rule, index));
+}
+
+/** One config rule as a `PermissionRule`; a `when` record becomes an all-must-match predicate. */
+function permissionRuleOf(file: string, rule: AgentDirPermissionRule, index: number): PermissionRule {
+  let when: PermissionRule['when'];
+  if (typeof rule.when === 'function') {
+    when = rule.when;
+  } else if (rule.when !== undefined) {
+    const tests = Object.entries(rule.when).map(([arg, pattern]) => {
+      try {
+        return { arg, regex: new RegExp(pattern) };
+      } catch (error) {
+        fail(file, `'permissions[${index}].when.${arg}' is not a valid regular expression: ${(error as Error).message}`);
+      }
+    });
+    when = (args) => tests.every(({ arg, regex }) => regex.test(String(args[arg] ?? '')));
+  }
+  return { tool: rule.tool, ...(when !== undefined && { when }), action: rule.action, ...(rule.reason !== undefined && { reason: rule.reason }) };
 }
 
 /**
