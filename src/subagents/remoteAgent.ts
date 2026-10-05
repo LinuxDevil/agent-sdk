@@ -6,12 +6,50 @@ import { resolveRemoteApproval, runRemoteTurn, type PendingApproval, type Sessio
 import { newId } from '../utils/id';
 import type { RemoteAgentOptions, RemoteRunOptions, RemoteSubagent } from './types';
 
-/** The agents {@link remoteAgent} made, so `withSubagents()` can tell them from `createAgent()` agents. */
+/** The agents {@link remoteAgent} and {@link defineRemoteSubagent} made, so `withSubagents()` can tell them from `createAgent()` agents. */
 const remoteSubagents = new WeakSet<object>();
 
-/** Whether `value` was made by {@link remoteAgent}. */
+/** Whether `value` was made by {@link remoteAgent} or {@link defineRemoteSubagent}. */
 export function isRemoteSubagent(value: unknown): value is RemoteSubagent {
   return typeof value === 'object' && value !== null && remoteSubagents.has(value);
+}
+
+/**
+ * Marks `impl` as a remote-style sub-agent: an adapter that runs delegated
+ * `task` calls outside the lead agent's own executor (a deployed agent via
+ * {@link remoteAgent}, or another harness in process via `piAgent()`). A
+ * `RemoteSubagent` gets `sessionId`, `taskId`, `pausable`, `decision` and
+ * `onUsage` in its {@link RemoteRunOptions}; to pause the lead for approval
+ * it throws a `SubagentApprovalPause` with the pending call in the snapshot.
+ *
+ * @example
+ * ```ts
+ * const custom = defineRemoteSubagent({
+ *   description: 'Reviews code with an external harness',
+ *   async run(prompt, { sessionId }) {
+ *     // ...
+ *     return `done\n\n[custom sub-agent: session '${sessionId}']`;
+ *   },
+ * });
+ * const lead = createAgent({ provider, subagents: { reviewer: custom } });
+ * ```
+ */
+export function defineRemoteSubagent<T extends RemoteSubagent>(impl: T): T {
+  if (
+    impl === null ||
+    typeof impl !== 'object' ||
+    typeof impl.run !== 'function' ||
+    typeof impl.description !== 'string' ||
+    !impl.description.trim()
+  ) {
+    throw new SDKError(
+      "defineRemoteSubagent: pass an object with a non-empty 'description' and a run(prompt, options) method, e.g. " +
+        "defineRemoteSubagent({ description: 'What it does', async run(prompt, run) { ... } }).",
+      'LOUSHO_CONFIG_INVALID'
+    );
+  }
+  remoteSubagents.add(impl);
+  return impl;
 }
 
 /**
@@ -96,6 +134,5 @@ export function remoteAgent(options: RemoteAgentOptions): RemoteSubagent {
       return outcome(label, name, summary, run);
     },
   };
-  remoteSubagents.add(agent);
-  return agent;
+  return defineRemoteSubagent(agent);
 }

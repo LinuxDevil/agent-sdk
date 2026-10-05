@@ -557,9 +557,9 @@ interface ToolDefinition {
 
 // Warnings were encountered during analysis:
 //
-// dist/index-MPvXfVX9.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-MPvXfVX9.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-MPvXfVX9.d.ts:1410:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts
+// dist/index-B6_SRH_d.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-B6_SRH_d.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-B6_SRH_d.d.ts:1410:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

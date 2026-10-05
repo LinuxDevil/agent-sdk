@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 This section lists what is on `main` and not yet on npm.
 
+### Added
+- `piAgent()` (Build Harness 3, "pi-coder"): a Pi coding-agent session (`@earendil-works/pi-coding-agent`, a new optional peer) usable in-process as a `createAgent({ subagents })` entry - `subagents: { coder: piAgent({ cwd, model, description, permissions }) }`. Each `task` call is one Pi session under the task's `sessionId`, so `taskId` resumes and approval resumes reopen the same JSONL transcript even across a restart. `permissions` (the same `PermissionRule`s as `createAgent()`) gate every Pi tool call through a `tool_call` extension handler: `deny` refuses it, `ask` pauses the lead run durably for approval when the caller can pause and refuses it otherwise; approving re-issues that exact call once (Pi has no run-blocked-call API, so a decision prompt asks the model to repeat it and the gate lets that one call through), rejecting sends the note as the next turn. Pi usage rolls into the lead's `result.usage`, and aborts propagate to the Pi session. Node-only: the package is loaded lazily, so a consumer without it still typechecks and `run()` fails with `LOUSHO_PEER_MISSING`. Also new: `defineRemoteSubagent(impl)` wraps any `RemoteSubagent` implementation (same contract as `remoteAgent()`), and `SubagentApprovalPause` is exported for such adapters.
+
 ## [1.0.0-rc.0] - 2026-10-04
 
 The first 1.0 release candidate. Upgrading from a `1.0.0-alpha.*` release?

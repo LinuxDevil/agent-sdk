@@ -1457,6 +1457,9 @@ export interface DefineMemoryOptions {
 export function defineOAuthProvider(options: OAuthProviderOptions): OAuthProvider;
 
 // @public
+export function defineRemoteSubagent<T extends RemoteSubagent>(impl: T): T;
+
+// @public
 export function defineSchedule(input: ScheduleInput): DefinedSchedule;
 
 // @public
@@ -4300,6 +4303,23 @@ export type PermissionToolMatcher = string | readonly string[] | RegExp;
 export type PerRun<T> = T | ((ctx: RunConfigContext) => T | Promise<T>);
 
 // @public
+export function piAgent(options: PiAgentOptions): RemoteSubagent;
+
+// @public
+export interface PiAgentOptions {
+    agentDir?: string;
+    cwd: string;
+    description: string;
+    model?: unknown;
+    modelRuntime?: unknown;
+    name?: string;
+    permissions?: readonly PermissionRule[];
+    sessionDir?: string;
+    thinkingLevel?: string;
+    tools?: readonly string[];
+}
+
+// @public
 export function piiGuardrail(options?: {
     types?: readonly PiiType[];
     action?: 'block' | 'rewrite';
@@ -5535,6 +5555,17 @@ export interface StreamResult {
 }
 
 // @public
+export class SubagentApprovalPause extends PropagatingToolError {
+    constructor(agentName: string, snapshot: ExecutionSnapshot);
+    // (undocumented)
+    readonly agentName: string;
+    background?: SuspendedBackgroundTasks;
+    resumeArgs?: Record<string, unknown>;
+    // (undocumented)
+    readonly snapshot: ExecutionSnapshot;
+}
+
+// @public
 export interface SubagentCatalog {
     // (undocumented)
     list(): readonly SubagentSummary[] | Promise<readonly SubagentSummary[]>;
@@ -6392,7 +6423,7 @@ export type VectorMemoryProvider = MemoryProvider & {
 };
 
 // @public
-export const VERSION = "1.0.0-rc.0";
+export const VERSION = "1.0.0-alpha.1";
 
 // @public (undocumented)
 const webFetchInput: z.ZodObject<{
@@ -6611,8 +6642,8 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/index-MPvXfVX9.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-MPvXfVX9.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-B6_SRH_d.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-B6_SRH_d.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
