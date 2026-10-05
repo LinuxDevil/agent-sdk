@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 This section lists what is on `main` and not yet on npm.
 
+### Added
+- Agent directories: new `agent.*` config keys `permissionMode`, `permissions` (a serializable rule form: `tool` is a name, a list or - in a code config - a `RegExp`; `when` narrows the rule with a record of argument names to regular expressions, or a predicate in a code config; `action` is `allow` / `ask` / `deny`), `compaction`, `limits`, plus `hooks` and `approve`, each a path (relative to the directory) to a file default-exporting the hook(s) / the approver function, or the value inline in a code config. `instructions/<family>.md` appends to `instructions.md` when the resolved model id contains `<family>` (e.g. `openai`, `anthropic`). `lousho build --target=node-server` (and `--target=docker`) bundles a root `hooks.*` / `approve.*` file next to the config and resolves the compiled `.js` sibling; the Cloudflare Worker target carries `permissionMode`, `permissions`, `compaction` and `limits` over and accepts `hooks` / `approve` from a code config (a file path is refused, a Worker cannot import it). See [Agent directories](docs/agent-directories.md).
+- Registry: a new item `type` `kit` is a whole agent directory - its `files` may sit at any (still safe) relative path - so `lousho add <kit> --dir <target>` installs `agent.*`, `instructions.md`, tools, skills and sub-agents in one item, under one permission manifest, and records it in `lousho-registry.json` like any other item. The default registry's first kit is `coding-kit`, a port of the `examples/coding-harness` baseline: workspace tools with checkpoint rewind, an allow-listed shell, permission rules, a loop guard and output cap as hooks, a compaction setting, a `fix-failing-test` skill and a read-only `explorer` sub-agent (manifest: `exec`, `fs-write`; install with `lousho add coding-kit --dir <dir> --yes --allow exec,fs-write`). See [Registry](docs/registry.md).
+
 ## [1.0.0-rc.0] - 2026-10-04
 
 The first 1.0 release candidate. Upgrading from a `1.0.0-alpha.*` release?

@@ -18,7 +18,7 @@ const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const ENV_VAR = /^[A-Z_][A-Z0-9_]*$/;
 
 const itemName = z.string().regex(NAME, 'a name is letters, digits, ".", "_" and "-"');
-const itemType = z.enum(['tool', 'skill', 'channel', 'schedule', 'memory']);
+const itemType = z.enum(['tool', 'skill', 'channel', 'schedule', 'memory', 'kit']);
 
 /**
  * The registry `lousho add` reads when neither `--registry` nor `LOUSHO_REGISTRY`

@@ -1,0 +1,14 @@
+{
+  "model": "openrouter/openai/gpt-4o-mini",
+  "maxSteps": 7,
+  "permissionMode": "default",
+  "permissions": [
+    { "tool": "shell", "when": { "command": "\\brm\\b" }, "action": "deny", "reason": "No deletes" },
+    { "tool": ["read_file", "shell"], "action": "allow" },
+    { "tool": "write_file", "action": "ask" }
+  ],
+  "compaction": { "thresholdPercent": 0.8 },
+  "hooks": "hooks.ts",
+  "approve": "approve.ts",
+  "limits": { "maxCostUsd": 0.05, "onExceeded": "stop" }
+}

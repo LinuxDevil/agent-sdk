@@ -42,7 +42,7 @@
 - [Queued input and steering](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/queue-and-steer.md): Add input to a run that is still going, or redirect it.
 - [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md): `useLoushoAgent()` puts an agent behind a chat UI.
 - [Reasoning](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/reasoning.md): Reasoning models think before they answer.
-- [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md): `lousho add` installs a tool, skill, channel, schedule or memory slot into an agent directory from a registry.
+- [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md): `lousho add` installs a tool, skill, channel, schedule, memory slot or kit into an agent directory from a registry.
 - [Runs: finish reasons, cancellation and parallel tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/runs.md): How a run ends, how to stop one, and how tool calls of one model turn run in parallel.
 - [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md): A schedule runs the agent on a cron expression, with nobody asking: a morning summary, a nightly cleanup.
 - [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md): `agent.send(text)` is single-turn: every call starts from an empty history.
@@ -65,6 +65,7 @@
 ## Examples
 
 - [agent-dir](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/agent-dir/README.md): An agent defined as a directory: `instructions.md` is the system prompt, `tools/word_count.ts` is a `defineTool()` tool, `skills/tone.md` is a skill and `agent.json` holds config.
+- [coding-harness](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/coding-harness/README.md): A small coding harness assembled from Lousho's building blocks in one `createCodingHarness()` function.
 - [doc-qa](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/doc-qa/README.md): A question-answering agent scoped to a single fixed document (a short refund policy, inlined in the prompt), built with `createAgent()`.
 - [openrouter](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/openrouter/README.md): Runnable snippets showing `OpenRouterProvider` usage (LOU-B6): basic and streaming generation, multi-model comparison, tool calling, `AgentBuilder` configuration, model listing, cost-aware model choice, error handling, multi-turn conversation, and capability checks.
 - [ops-pipeline (LOU-J8)](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/ops-pipeline/README.md): An end-to-end "flagship pipeline" demo composing every LOU-J primitive
