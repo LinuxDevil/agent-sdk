@@ -394,6 +394,62 @@ above, and the lead run continues. Only a run without an approval store (a bare
 `AgentExecutor`) still fails the task with `LOUSHO_SESSION_AWAITING_APPROVAL`,
 naming the remote session and approval id to decide on the remote agent.
 
+`remoteAgent()` covers agents deployed over HTTP. A different kind of
+"remote" sub-agent is another agent framework's runner used in process -
+build one against the same contract with `defineRemoteSubagent()` (below) or
+use the ready-made Pi adapter.
+
+## Pi coding-agent sub-agents (`piAgent()`)
+
+`piAgent()` runs a [Pi coding agent](https://github.com/earendil-works/pi)
+(`@earendil-works/pi-coding-agent`, an optional peer - `npm install
+@earendil-works/pi-coding-agent`) in process as a sub-agent. It is Node-only:
+Pi's tools (`read`, `bash`, `edit`, `write`, ...) work on a local directory.
+
+```ts
+import { createAgent, piAgent } from '@lousho/build-ai-agent';
+import { ModelRuntime } from '@earendil-works/pi-coding-agent';
+
+const runtime = await ModelRuntime.create(); // reads ~/.pi/agent auth, env keys
+const lead = createAgent({
+  model: 'openai/gpt-4o-mini',
+  instructions: 'You coordinate.',
+  subagents: {
+    coder: piAgent({
+      cwd: projectDir,                       // the directory Pi's tools work in
+      model: runtime.getModel('openrouter', 'openai/gpt-4o-mini'),
+      description: 'Edits code and runs tests in the workspace',
+      permissions: [ask(['edit', 'write']), allow('*')], // same rules as createAgent()
+    }),
+  },
+});
+```
+
+Each `task` call is one Pi session: the task's `sessionId` becomes the Pi
+session id, so a `taskId` resume - and the resume after an approval pause,
+even in a fresh process - reopens the same session file and the next prompt
+continues its transcript. A pi task cannot be forked (the `task` call fails
+with the remote-session "cannot be copied" error). Options: `cwd` (required),
+`model`, `modelRuntime`, `description` (required), `name`, `permissions`,
+`agentDir`, `sessionDir`, `tools` (a Pi tool allowlist), `thinkingLevel`.
+
+The `permissions` rules gate every Pi tool call (the Pi `tool_call`
+extension event fires before the tool runs): `deny` refuses the call, and
+`ask` pauses the lead run for approval exactly like a remote sub-agent's -
+`result.finishReason` is `'awaiting-approval'` and the pending approval
+carries the Pi tool name, its arguments and `subagentPath`. Approving tells
+Pi the call was approved and lets that exact tool name + arguments call run
+once (Pi has no "run the blocked call" API, so the model re-issues it and
+the gate allows that one call); rejecting sends the decision's note as the
+next user turn and the denied call never runs. Without an approval store an
+`ask` is refused outright. A paused Pi run keeps its usage on the pause and
+its continuation reports the rest, the same accounting as `remoteAgent()`.
+
+`SubagentApprovalPause` (now exported) is what such an adapter throws to
+pause the lead; `defineRemoteSubagent(impl)` registers any object matching
+`RemoteSubagent` for use in `subagents`, so a `task` call routes it through
+the remote path.
+
 ## Depth
 
 `maxSubagentDepth` (default `1`) bounds how deep sub-agents nest. With the
