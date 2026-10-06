@@ -1,36 +1,45 @@
 # support-desk
 
-Swarm-style customer support built on `createAgent({ handoffs })`: a triage
-agent classifies the request and hands the **whole conversation** to a
-specialist (billing or techSupport), which then owns every later turn of the
-session until it hands back.
+The production support archetype (OpenAI Swarm's shape) built on
+`createAgent({ handoffs })`: a triage agent classifies the request and hands
+the *whole conversation* to a specialist, which replies to the customer itself
+and owns every later turn until it hands back.
 
-Unlike `examples/support-bot` (one agent, no routing), this example is a small
-agent mesh: handoffs mean control *transfers* — the specialist answers the
-customer itself — whereas `subagents` would return control to the lead.
-
-Highlights:
-
-- `handoff(target, { input })` gives the transfer tool a structured schema
-  (`{ reason, orderId? }`), so routing is validated data.
-- `handoffFilters.removeToolCalls` + an appended routing note shape what the
-  specialist sees.
-- `permissions: [ask('issue_refund')]` gates the specialist's write tool;
-  `approve` on the triage decides it (approval is an option of the run's
-  starting agent), or the run pauses for `agent.approvals.resolve()`.
-- Specialists can hand back to triage via a `handoffs` array filled after
-  construction.
-
-Run the scripted offline demo:
-
-```sh
-npx tsx examples/support-desk/index.ts
+```
+user -> triage --transfer_to_billing-----> billing     (orders, refunds)
+             \--transfer_to_techSupport--> techSupport (diagnostics, tickets)
 ```
 
-With `OPENROUTER_API_KEY` set it runs live on `openrouter/openai/gpt-4o-mini`.
+Why handoffs and not subagents: a `handoff` transfers control (the run goes
+on as the target, with its instructions and tools, and later `session.send()`
+turns go straight to it), while a `subagent` task call returns a result and
+the lead keeps owning the conversation. Once a request is classified, the
+specialist - not the router - should talk to the customer.
 
-Tests:
+| Wiring | Lousho feature |
+|---|---|
+| Validated routing args | `handoff(target, { input })` gives `transfer_to_billing` a structured schema (`{ reason, orderId? }`) |
+| Clean specialist transcript | `inputFilter: handoffFilters.removeToolCalls` drops triage's tool noise; the SDK's routing note (who was transferred, with the validated args) survives |
+| Approval-gated refund | `permissions: [ask('issue_refund')]` pauses the call; the run's `approve` decides it - set on the *triage* agent, since a handoff target's own `approve` is never consulted (createAgent warns) |
+| Hand-back | `handoffs` arrays are read every run, so the specialists can hand back to triage without a circular construction problem |
 
-```sh
+## Run it
+
+```bash
+npx tsx examples/support-desk/index.ts                         # offline, scripted models
+OPENROUTER_API_KEY=... npx tsx examples/support-desk/index.ts  # live, openrouter/openai/gpt-4o-mini
+```
+
+Offline, a scripted conversation runs: broken order -> triage -> billing ->
+`lookup_order` -> `issue_refund` paused -> human approves -> refund -> a
+follow-up turn answered by billing directly.
+
+## Test it
+
+```bash
 npx vitest run examples/support-desk
 ```
+
+The tests check that the handoff transfers control to billing (and stays
+there on later turns), that the refund pauses for approval and resumes after
+it, and that the routing args reach the specialist as a system note.
