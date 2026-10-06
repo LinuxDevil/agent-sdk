@@ -1,7 +1,7 @@
 {
   "name": "@lousho/build-ai-agent",
-  "version": "1.0.0-alpha.4",
-  "description": "Framework-agnostic SDK for building AI agents",
+  "version": "1.0.0-alpha.5",
+  "description": "TypeScript AI agent SDK with tools, MCP, durable sessions, human approvals, and OpenTelemetry. Runs in your own Node process.",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -172,6 +172,10 @@
     "example:deep-research": "tsx examples/deep-research/index.ts",
     "example:data-analyst": "tsx examples/data-analyst/index.ts",
     "example:evaluator-loop": "tsx examples/evaluator-loop/index.ts",
+    "example:waves": "tsx examples/waves/index.ts",
+    "example:phase-pipeline": "tsx examples/phase-pipeline/index.ts",
+    "example:coding-agent-workflows": "tsx examples/coding-agent-workflows/index.ts",
+    "example:connectors": "tsx examples/connectors/index.ts",
     "pipeline:demo": "tsx examples/ops-pipeline/index.ts",
     "pipeline:demo:trigger": "tsx examples/ops-pipeline/mocks/sendSyntheticError.ts",
     "build:studio": "npm run build:studio --workspace apps/agent-forge",
@@ -192,14 +196,18 @@
     "registry-smoke": "tsx scripts/registrySmoke.ts"
   },
   "keywords": [
-    "ai",
-    "agents",
+    "typescript",
+    "ai-agents",
+    "ai-agent",
     "llm",
+    "mcp",
+    "model-context-protocol",
+    "tool-calling",
     "openai",
-    "chatbot",
-    "workflow",
-    "automation",
-    "framework-agnostic",
+    "anthropic",
+    "ollama",
+    "opentelemetry",
+    "vercel-ai-sdk",
     "lousho",
     "build-ai-agent"
   ],
@@ -212,7 +220,7 @@
   "bugs": {
     "url": "https://github.com/LinuxDevil/agent-sdk/issues"
   },
-  "homepage": "https://lousho.com",
+  "homepage": "https://lousho.com/introduction",
   "engines": {
     "node": ">=22.19.0"
   },

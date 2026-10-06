@@ -1,10 +1,10 @@
 # @lousho/build-ai-agent
 
-> A TypeScript SDK for building AI agents that run in your own code, on your own host: a typed tool-calling loop with approvals, sessions, streaming, sub-agents, skills, MCP and a CLI, with no web framework or hosted runtime required. It is for developers who need an agent to keep working when a run pauses for a human or the process restarts, and who want to test it like the rest of their code.
+> Open-source TypeScript SDK for agents that run in your own Node process: tool calling, MCP, sessions that survive a restart, human approvals, and OpenTelemetry. No hosted runtime.
 
 ## Docs
 
-- [@lousho/build-ai-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/README.md): A TypeScript SDK for building AI agents that run in your own code, on your own host: a typed tool-calling loop with approvals, sessions, streaming, sub-agents, skills, MCP and a CLI, with no web framework or hosted runtime required.
+- [Lousho — TypeScript AI agent SDK](https://github.com/LinuxDevil/agent-sdk/blob/main/README.md): Open-source TypeScript SDK for agents that run in your own Node process: tool calling, MCP, sessions that survive a restart, human approvals, and OpenTelemetry.
 - [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md): `ai` (the Vercel AI SDK: `^4.3.19`, `^6.0.0` or `^7.0.0`) and `zod` (`^3.25.76 || ^4.0.0`) are required peer dependencies.
 - [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md): This page takes you from a one-line agent to tools, streaming, sessions, an approval and an offline test.
 - [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md): The package root (`@lousho/build-ai-agent`) exports everything below.
@@ -15,11 +15,13 @@
 - [Route auth and principals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md): An agent served over HTTP needs to know two things about each request: may it call at all, and who is it.
 - [Build a coding agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/build-a-coding-agent.md): This page builds a terminal coding agent in the style of Claude Code: it reads and edits files in your project, runs commands, asks you before it writes a file or runs something risky, and keeps the conversation going for follow-up questions.
 - [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md): A channel connects an agent to one surface: a JSON API, a webhook, a chat app.
+- [Claude Code projects](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/claude-projects.md): A repository that already carries Claude Code's conventional files — `CLAUDE.md`, `.claude/skills/`, `.claude/agents/`, `.claude/rules/`, `.claude/scratchpad/` — loads them with `claudeProject()`: the result spreads into `createAgent()`, so the same directory drives both harnesses.
 - [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md): Installing the package also installs the `lousho` command.
 - [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md): `npx lousho build --target=cloudflare-worker --agent=agent.yaml` generates a module Worker (`worker.ts`), a `wrangler.toml` and a bundle, `dist/worker.js`, that the build checks for `node:` imports.
 - [Code mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/code-mode.md): With code mode the model gets one more tool, `run_code`.
 - [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md): A long agent run fills its context window mostly with tool results: file contents, search hits, API responses the model read once and no longer needs in full.
 - [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md): A declarative agent is a YAML (`.yaml`/`.yml`) or JSON (`.json`) file, validated with zod by `loadSpec()` (`src/spec/schema.ts`).
+- [Connectors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/connectors.md): Connectors are how the agent reaches external services — Google Docs, Slack, GitHub, Notion, a database — the way Claude's connectors do.
 - [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md): Give `createAgent()` a `store` and pass a `sessionId` to `send()`, and the run survives a crash, a restart, an abort or a human approval that takes days.
 - [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md): Nearly every error the SDK throws on purpose is an `SDKError` (or a subclass such as `ConfigurationError`, `ValidationError` or `MissingPeerDependencyError`) with
 - [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md): Evals are regression tests for agent *behaviour*: which tools the agent called, in what order, with which arguments, how many steps it took, and what it said.
@@ -29,6 +31,7 @@
 - [Handoffs](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/handoffs.md): A handoff passes the whole conversation to another agent.
 - [Hooks](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hooks.md): A hook is an object `{ name, preToolCall?, postToolCall?, preGenerate?, postGenerate?
 - [Hosted provider tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hosted-tools.md): Some model providers run tools themselves, inside the model request: OpenAI's web search, code interpreter and file search are the common ones.
+- [Deploying to a Hostinger VPS](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hostinger-vps.md): The `docker` deployment target is a plain Dockerfile + bundled server, so it runs on any Docker host — including a Hostinger VPS.
 - [MCP (Model Context Protocol)](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md): MCP works in two directions.
 - [Memory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md): A session remembers one conversation.
 - [Migrating to createAgent()](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/migrating-to-create-agent.md): This page is for code that uses `AgentBuilder`, `AgentExecutor`, `ToolRegistry` and `resumeAfterApproval()`: the lower-level API the SDK started with.
@@ -38,6 +41,7 @@
 - [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md): `AgentExecutor.execute()` and `FlowExecutor.execute()` emit spans through a `TraceExporter`.
 - [OpenAPI tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/openapi-tools.md): Most services publish an OpenAPI document and no MCP server.
 - [Permission modes](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md): A permission mode puts an agent in a named state instead of writing rules: look but do not touch (`plan`), edit files without asking (`acceptEdits`), or never pause (`dontAsk`).
+- [Prompting and context techniques](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/prompting-techniques.md): Agent quality comes from three layers, and it is worth knowing which layer a technique lives at, because the fix for a misbehaving agent is different at each one
 - [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md): An `LLMProvider` is what an agent generates with.
 - [Queued input and steering](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/queue-and-steer.md): Add input to a run that is still going, or redirect it.
 - [React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md): `useLoushoAgent()` puts an agent behind a chat UI.
@@ -65,18 +69,23 @@
 ## Examples
 
 - [agent-dir](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/agent-dir/README.md): An agent defined as a directory: `instructions.md` is the system prompt, `tools/word_count.ts` is a `defineTool()` tool, `skills/tone.md` is a skill and `agent.json` holds config.
+- [coding-agent-workflows](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/coding-agent-workflows/README.md): A coding agent driven by deterministic workflows whose routing is a typed decision — the Lousho equivalent of TypeSafe's Jev / "System One" pattern (introducing-system-one-models-and-jev).
 - [coding-harness](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/coding-harness/README.md): A small coding harness assembled from Lousho's building blocks in one `createCodingHarness()` function.
+- [connectors](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/connectors/README.md): Connect an agent to external services (Google Docs, Slack, GitHub, Notion, …) the way Claude's connectors do: over MCP.
 - [data-analyst](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/data-analyst/README.md): The "chat with your database" archetype (Vanna, Databricks Genie, every text-to-SQL agent) assembled from one `createAgent()` call: a natural-language question comes in, `get_schema` lets the agent inspect the CREATE TABLEs and row counts, `run_query` executes the SELECT the agent writes, and the agent answers with real rows.
 - [deep-research](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/deep-research/README.md): The "deep research" archetype Anthropic's multi-agent research system uses: one lead coordinator decomposes a question into subtopics, fans them out to researcher sub-agents called in parallel, then synthesizes their compressed, cited summaries into a report.
 - [doc-qa](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/doc-qa/README.md): A question-answering agent scoped to a single fixed document (a short refund policy, inlined in the prompt), built with `createAgent()`.
 - [evaluator-loop](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/evaluator-loop/README.md): The evaluator-optimizer pattern from Anthropic's agentic taxonomy ("Building effective agents"): a writer agent drafts, an evaluator scores the draft against a rubric, and a failing draft loops back to the writer - carrying the critic's feedback - until the score passes or the round budget runs out.
+- [hostinger-deploy](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/hostinger-deploy/README.md): Deploy a Lousho agent to a real VPS: `agent/` is an agent directory for a small ops assistant (`vps-ops`), and `deploy.mjs` builds it with `lousho build --target=docker`, ships the context over SSH, and runs the container on a Hostinger virtual machine.
 - [openrouter](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/openrouter/README.md): Runnable snippets showing `OpenRouterProvider` usage (LOU-B6): basic and streaming generation, multi-model comparison, tool calling, `AgentBuilder` configuration, model listing, cost-aware model choice, error handling, multi-turn conversation, and capability checks.
 - [ops-pipeline (LOU-J8)](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/ops-pipeline/README.md): An end-to-end "flagship pipeline" demo composing every LOU-J primitive
+- [phase-pipeline](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/phase-pipeline/README.md): Phase engineering — a deterministic phase pipeline where the model fills each phase but the *order*, the *gate*, and what counts as *done* belong to the harness.
 - [plan-mode](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/plan-mode/README.md): Plan first, then let the agent edit: a coding agent over a `MemoryWorkspace` with `createFsTools()`.
 - [research-assistant](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/research-assistant/README.md): An agent with the built-in `http` tool wired up so it can fetch sources while researching a question, built with `createAgent()`.
 - [slack-notifier](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/slack-notifier/README.md): Turns a raw event description into a short, Slack-ready notification message, built with `createAgent()`.
 - [support-bot](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/support-bot/README.md): A minimal customer-support agent built with `createAgent()`.
 - [support-desk](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/support-desk/README.md): The production support archetype (OpenAI Swarm's shape) built on `createAgent({ handoffs })`: a triage agent classifies the request and hands the *whole conversation* to a specialist, which replies to the customer itself and owns every later turn until it hands back.
+- [waves](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/waves/README.md): WAVE engineering — Workers · Aggregate · Verify · Extend — the bounded-parallel pattern from the community "waves" workflows (rayfernando-skills, Wave-Engineering/claudecode-workflow).
 - [workflow-router](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/workflow-router/README.md): An agent that classifies an incoming request into one of a fixed set of categories (`billing`/`technical`/`sales`), built with `createAgent()`.
 
 ## Optional

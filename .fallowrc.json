@@ -4,7 +4,8 @@
     "src/cli/{dev,chat,build,studio,mcp,doctor,init,eval}.ts",
     "**/*.test-d.ts",
     "**/*.{test,spec}.{ts,tsx}",
-    "**/*.eval.ts"
+    "**/*.eval.ts",
+    "examples/hostinger-deploy/deploy.mjs"
   ],
   "ignorePatterns": [
     ".claude/**"

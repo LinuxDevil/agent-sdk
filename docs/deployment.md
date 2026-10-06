@@ -21,6 +21,9 @@ deploy the result). `tsup` must be installed (`npm install --save-dev tsup`).
 Every target answers `GET /health` (`200 ok`) and serves the full
 [HTTP API](#http-api) below: sessions, SSE streaming, approvals and bearer auth.
 
+For a real VPS walkthrough — provision check, build, ship, run, verify — see
+[Deploying to a Hostinger VPS](./hostinger-vps.md).
+
 ## Agent directories
 
 All three targets also take an [agent directory](./agent-directories.md)

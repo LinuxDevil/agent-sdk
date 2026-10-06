@@ -1,0 +1,13 @@
+{
+  "name": "vps-ops",
+  "description": "Ops assistant for the VPS it is deployed on: reports host health, keeps a scratchpad of operator notes, asks before anything that isn't read-only",
+  "model": "openrouter/openai/gpt-4o-mini",
+  "maxSteps": 10,
+  "permissionMode": "default",
+  "permissions": [
+    { "tool": ["host_status", "read_note", "list_notes"], "action": "allow" },
+    { "tool": "write_note", "action": "ask" }
+  ],
+  "store": { "dir": "./.lousho" },
+  "limits": { "maxCostUsd": 0.02 }
+}
