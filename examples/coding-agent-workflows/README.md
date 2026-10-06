@@ -25,4 +25,4 @@ npm run example:coding-agent-workflows            # offline
 OPENROUTER_API_KEY=… npx tsx examples/coding-agent-workflows/index.ts
 ```
 
-The workflows reuse the [phase-pipeline](../phase-pipeline/) shape; the typed decision generalizes to any classify/route/verify step — see [docs/prompting-techniques.md](../../docs/prompting-techniques.md#typed-decisions-jev-style).
+The workflows reuse the [phase-pipeline](../phase-pipeline/) shape; the typed decision generalizes to any classify/route/verify step — see [docs/prompting-techniques.md](../../docs/prompting-techniques.md#typed-decisions-system-one-style).
