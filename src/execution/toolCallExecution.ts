@@ -59,6 +59,13 @@ export interface ToolCallOutcome {
    * once the batch is done, and the call runs again after the user signed in.
    */
   signIn?: SignInRequired;
+  /**
+   * TTL: with `requiresApproval`, the pause's time-to-live in milliseconds -
+   * from the `ask` permission rule's `ttlMs` that gated the call. The pause
+   * writes it as the approval's `expiresAt`; absent, the run's
+   * `approvalTtlMs` applies.
+   */
+  approvalTtlMs?: number;
 }
 
 /** Everything a tool call needs from the surrounding execute() run. */
@@ -90,7 +97,7 @@ export interface ToolCallContext {
  * once per hook invocation so each receives its own object (sharing only
  * the mutable `args`).
  */
-function toolHookContext(
+export function toolHookContext(
   toolCall: ToolCall,
   ctx: ToolCallContext,
   args: Record<string, unknown>
@@ -123,6 +130,8 @@ export interface PreparedToolCall {
   rejection?: ToolCallOutcome;
   /** True when the call must wait for a human decision instead of running. */
   requiresApproval: boolean;
+  /** TTL: an `ask` rule's `ttlMs`, when one gated this call (see {@link ToolCallOutcome.approvalTtlMs}). */
+  approvalTtlMs?: number;
 }
 
 /**
@@ -145,8 +154,11 @@ export async function runToolCall(
  * pre-tool hooks (and their outcomes), permission rules, tool guardrails and
  * the `needsApproval` check. Hooks run before the approval decision, so a
  * human approves the arguments a hook produced.
+ *
+ * Exported for N6: handoff calls pass the same gate (against a registry of
+ * the run's handoff tools) even though they are never executed.
  */
-async function prepareToolCall(toolCall: ToolCall, ctx: ToolCallContext): Promise<PreparedToolCall> {
+export async function prepareToolCall(toolCall: ToolCall, ctx: ToolCallContext): Promise<PreparedToolCall> {
   if (ctx.onToolCall) {
     await ctx.onToolCall(toolCall);
   }
@@ -282,7 +294,7 @@ function hookInputFailure(failure: ToolCallOutcome, hooks: string[], why: string
 }
 
 /** The gate part of a {@link PreparedToolCall}; `denied` when the tool's `needsApproval` denied it (LOU-X8). */
-type ToolGate = Pick<PreparedToolCall, 'rejection' | 'requiresApproval'> & { denied?: { reason?: string } };
+type ToolGate = Pick<PreparedToolCall, 'rejection' | 'requiresApproval' | 'approvalTtlMs'> & { denied?: { reason?: string } };
 
 /**
  * Applies the run's permission rules (LOU-X2, read from `ctx.scope.runtime`).
@@ -306,7 +318,12 @@ async function checkPermissionRules(
     if (entry?.decision === 'deny') {
       return { entry, gate: deniedGate(toolCall, 'a permission rule', entry.rule?.reason) };
     }
-    const gate = entry?.decision === 'allow' || entry?.decision === 'ask' ? { requiresApproval: entry.decision === 'ask' } : undefined;
+    if (entry?.decision === 'ask') {
+      // TTL: the matching rule's `ttlMs` becomes the pause's `expiresAt`.
+      const ttlMs = entry.rule ? ctx.scope.runtime.permissions?.[entry.rule.index]?.ttlMs : undefined;
+      return { entry, gate: { requiresApproval: true, ...(ttlMs !== undefined && { approvalTtlMs: ttlMs }) } };
+    }
+    const gate = entry?.decision === 'allow' ? { requiresApproval: false } : undefined;
     return { entry, gate };
   } catch (error) {
     return { gate: { requiresApproval: false, rejection: thrownToolFailure(toolCall, error) } };
@@ -359,8 +376,11 @@ function approvalGate(toolCall: ToolCall, outcome: ApprovalOutcome): ToolGate {
 /**
  * Runs a prepared tool call (or settles it as rejected / awaiting approval),
  * followed by the post-tool hooks and onToolResult.
+ *
+ * Exported for N6: a gated handoff call settles through this too (a rejection
+ * or an approval pause; a cleared call is never passed - it hands off).
  */
-async function settleToolCall(
+export async function settleToolCall(
   prepared: PreparedToolCall,
   ctx: ToolCallContext
 ): Promise<ToolCallOutcome> {
@@ -483,6 +503,7 @@ function approvalOutcome(prepared: PreparedToolCall): ToolCallOutcome {
     result: null,
     requiresApproval: true,
     args: prepared.args,
+    ...(prepared.approvalTtlMs !== undefined && { approvalTtlMs: prepared.approvalTtlMs }),
   };
 }
 

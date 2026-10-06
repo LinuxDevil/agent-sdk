@@ -46,6 +46,11 @@ function memoryTools([slot, key]: BoundSlot): DefinedTool[] {
       items: (await slot.provider.list(key, { query, limit })).map(({ id, text, createdAt }) => ({ id, text, createdAt })),
     }),
   });
+  // Bound to this run's scope key, so they exist in this run's registry only
+  // (a resumed run has none - see the memory.test.ts approval-resume case);
+  // `transient` keeps them out of the agent fingerprint, or every resume
+  // would report their loss as agent drift.
+  for (const tool of [remember, recall]) tool.transient = true;
   return [...(slot.expose.remember ? [remember] : []), ...(slot.expose.recall ? [recall] : [])];
 }
 

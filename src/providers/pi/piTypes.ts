@@ -40,8 +40,6 @@ export interface PiToolCallContent {
   thoughtSignature?: string;
 }
 
-export type PiContent = PiTextContent | PiThinkingContent | PiImageContent | PiToolCallContent;
-
 /** pi `Usage` (`cost.*` in USD, computed from the catalog prices). */
 export interface PiUsage {
   input: number;

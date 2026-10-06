@@ -4,7 +4,7 @@
  */
 
 export * from './llm';
-export { textOf } from './content';
+export { textOf, toolResultText } from './content';
 export type { AgentInput } from './content';
 export type { ReasoningEffort, ReasoningOption, ReasoningSettings } from './reasoning';
 export * from './mock';

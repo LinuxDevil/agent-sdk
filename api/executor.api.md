@@ -410,6 +410,7 @@ interface ApprovalRequestedEvent extends AgentEventBase<'approval.requested'> {
     approvalId: string;
     // (undocumented)
     args: Record<string, unknown>;
+    expiresAt?: string;
     // Warning: (ae-forgotten-export) The symbol "ApprovalKind" needs to be exported by the entry point index.d.ts
     kind?: ApprovalKind;
     // Warning: (ae-forgotten-export) The symbol "ApprovalQuestion" needs to be exported by the entry point index.d.ts
@@ -817,6 +818,7 @@ export interface ExecuteOptions extends PermissionOptions {
     //
     // (undocumented)
     approvalStore?: ApprovalStore;
+    approvalTtlMs?: number;
     businessState?: unknown;
     captureContent?: boolean;
     checkpointStore?: CheckpointStore;
@@ -1664,6 +1666,7 @@ interface PendingApproval {
     args: Record<string, unknown>;
     // (undocumented)
     createdAt: string;
+    expiresAt?: string;
     // (undocumented)
     id: string;
     kind?: ApprovalKind;
@@ -1788,6 +1791,7 @@ interface PermissionRule {
     //
     // (undocumented)
     tool: PermissionToolMatcher;
+    ttlMs?: number;
     // Warning: (ae-forgotten-export) The symbol "PermissionContext" needs to be exported by the entry point index.d.ts
     when?: (args: Record<string, unknown>, ctx: PermissionContext) => boolean | Promise<boolean>;
 }
@@ -2128,6 +2132,7 @@ interface SchemaIssue {
 
 // @public
 interface SendOptions {
+    approvalTtlMs?: number;
     metadata?: Record<string, unknown>;
     permissionMode?: PermissionMode;
     principal?: Principal;
@@ -2489,6 +2494,7 @@ type Subagents = Readonly<Record<string, LocalOrRemoteSubagent>> | SubagentCatal
 interface SubagentSpec {
     // (undocumented)
     agent: AgentConfig;
+    approvalTtlMs?: number;
     guardrails?: AgentGuardrails;
     hostedTools?: readonly HostedTool[];
     // (undocumented)
@@ -2641,6 +2647,7 @@ interface ToolCall {
 interface ToolCallHookContext extends HookContext {
     args: Record<string, unknown>;
     principal?: Readonly<Principal>;
+    resumedAfterApproval?: boolean;
     toolCall: ToolCall;
     // (undocumented)
     toolCallId: string;
@@ -2710,6 +2717,7 @@ interface ToolDescriptor {
     requiresSandbox?: boolean;
     sandboxExecute?: (args: unknown, sandbox: SandboxAdapter, ctx?: ToolExecutionContext) => Promise<unknown>;
     tool: Tool;
+    transient?: boolean;
 }
 
 // @public
@@ -2868,14 +2876,14 @@ interface Usage {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-DyyUScMn.d.ts:712:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-DyyUScMn.d.ts:729:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-DyyUScMn.d.ts:1073:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
-// dist/index-Cu54_KAW.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-Cu54_KAW.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-Cu54_KAW.d.ts:1860:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
-// dist/index-Cu54_KAW.d.ts:1896:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
-// dist/index-Cu54_KAW.d.ts:1896:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
+// dist/createAgent-DElKbGoN.d.ts:751:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-DElKbGoN.d.ts:768:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-DElKbGoN.d.ts:1118:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
+// dist/index-teGCK4tt.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-teGCK4tt.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-teGCK4tt.d.ts:1877:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
+// dist/index-teGCK4tt.d.ts:1913:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
+// dist/index-teGCK4tt.d.ts:1913:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

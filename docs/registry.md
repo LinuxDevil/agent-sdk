@@ -17,7 +17,7 @@ is the `registry/dist/` folder of the SDK's repository served as static JSON.
 `none` (in either place) disables the registry entirely — `lousho add` then
 fails with `LOUSHO_CONFIG_INVALID`, for offline or locked-down use.
 
-The default registry currently carries seven items:
+The default registry currently carries nine items:
 
 | Name | Type | Permissions it asks for |
 | ---- | ---- | ----------------------- |
@@ -27,6 +27,8 @@ The default registry currently carries seven items:
 | `coding-pi` | kit (the coding harness on the Pi provider with a Pi coding sub-agent) | `exec`, `fs-write`, `api.openrouter.ai`, `OPENROUTER_API_KEY` |
 | `generic-webhook` | channel | `WEBHOOK_SECRET` |
 | `github-issues` | tool (list and create issues; create asks for approval) | `api.github.com`, `GITHUB_TOKEN` |
+| `inbox-triage` | kit (a message-triage agent directory: inbox/outbox tools, an approval-gated reply pipeline, a webhook channel, a poll schedule, per-sender memory) | `fs-write`, `INBOX_TRIAGE_HOME`, `INBOUND_TOKEN`, `INBOX_TRIAGE_AUTO_APPROVE`, `OPENROUTER_API_KEY` |
+| `incident-response` | kit (an SRE incident-response agent directory: HMAC-verified alert webhook, risk-tiered remediation approvals, an audit timeline) | `fs-write`, `INCIDENT_WEBHOOK_SECRET`, `INCIDENT_TIMELINE_FILE` |
 | `open-meteo-weather` | tool | `api.open-meteo.com`, `geocoding-api.open-meteo.com` |
 
 ```bash

@@ -117,6 +117,15 @@ export interface ToolCallHookContext extends HookContext {
   toolCall: ToolCall;
   /** N10b: who the run acts for (docs/auth.md), frozen; absent for a run without one. */
   principal?: Readonly<Principal>;
+  /**
+   * `true` only when this hook fires for the post-approval re-fire of a call
+   * the run paused on (resumeAfterApproval() / `agent.approvals.resolve()`):
+   * the call's `preToolCall`/`postToolCall` then run a second time, after the
+   * human's decision. Absent on the call's first pass, so stateful hooks
+   * (loop guards, audit counters) can skip the re-fire with
+   * `if (ctx.resumedAfterApproval) return;`.
+   */
+  resumedAfterApproval?: boolean;
 }
 
 /** Result payload passed (mutable) to `AgentHook.postToolCall`. */

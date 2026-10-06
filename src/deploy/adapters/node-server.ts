@@ -101,7 +101,9 @@ function agentDirVariant(options: DeployOptions): ServerVariant {
 import { fileURLToPath } from 'node:url';
 import { createAgent, createDeployedServer, resolveAgentDir, storeFromEnv } from '${RUNTIME_SPECIFIER}';`,
     boot: `const resolved = await resolveAgentDir(path.join(path.dirname(fileURLToPath(import.meta.url)), 'agent'));
-  const agent = createAgent({ ...resolved.config, store: storeFromEnv() });
+  // A 'store' the directory's config declares wins over the LOUSHO_STORE default; an explicit LOUSHO_STORE still wins.
+  const store = process.env.LOUSHO_STORE === undefined ? (resolved.config.store ?? storeFromEnv()) : storeFromEnv();
+  const agent = createAgent({ ...resolved.config, store });
   await agent.ready();`,
     // An agent directory's auth.ts (N10a) replaces the baked token; LOUSHO_API_TOKEN is appended to it.
     options: `{ ...${JSON.stringify(options)}, ...(resolved.auth ? { auth: resolved.auth } : {}), schedules: resolved.schedules, channels: resolved.channels }`,
@@ -224,7 +226,11 @@ export function deployDependencies(providerType?: string, hasMcpServers = false)
     version: string;
     peerDependencies?: Record<string, string>;
   };
-  const dependencies: Record<string, string> = { '@lousho/build-ai-agent': pkg.version };
+  // `^` so a scaffold made from an unpublished development version resolves to
+  // the nearest published release (`npm install` inside the image cannot
+  // install a version that was never pushed to the registry), the same
+  // convention sync-version.mjs uses for the create-lousho-agent pin.
+  const dependencies: Record<string, string> = { '@lousho/build-ai-agent': `^${pkg.version}` };
   const info = listProviders().find((p) => p.name === providerType);
   if (info) {
     const peer = info.peers[bundledAiMajor(sdkRoot)];

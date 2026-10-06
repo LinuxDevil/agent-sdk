@@ -33,7 +33,7 @@ import type { AgentEventUsage } from '../execution/agentEvents';
 import { loadOptionalPeer } from '../providers/optionalPeer';
 import { newId } from '../utils/id';
 import { defineRemoteSubagent } from './remoteAgent';
-import type { RemoteSubagent } from './types';
+import type { RemoteRunOptions, RemoteSubagent } from './types';
 
 /**
  * The parts of `@earendil-works/pi-coding-agent` the adapter uses, declared
@@ -191,41 +191,64 @@ function defaultSessionDir(cwd: string, agentDir: string): string {
   return `${agentDir.replace(/[\\/]+$/, '')}/sessions/${safe}`;
 }
 
+interface PiGateState {
+  pending?: PendingApproval;
+  onceAllowed: { toolName: string; args: Record<string, unknown> }[];
+}
+
+/**
+ * The `tool_call` handler the gate registers: once-allowed calls of an
+ * approved resume pass; a `deny` refuses; an `ask` on a pausable run is the
+ * pending approval and terminates the batch, and on a non-pausable run is a
+ * plain refusal.
+ */
+function gateToolCall(
+  state: PiGateState,
+  permissions: readonly PermissionRule[] | undefined,
+  pausable: boolean,
+  sessionId: string
+) {
+  return async function onPiToolCall(event: PiToolCallEvent): Promise<PiToolCallResult | undefined> {
+    const approved = state.onceAllowed.findIndex((once) => once.toolName === event.toolName && isDeepStrictEqual(once.args, event.input));
+    if (approved >= 0) {
+      state.onceAllowed.splice(approved, 1);
+      return undefined;
+    }
+    const entry = await checkPermission(
+      { permissions },
+      { toolName: event.toolName, toolCallId: event.toolCallId, sessionId, args: event.input }
+    );
+    const action = entry?.decision ?? 'default';
+    if (action === 'deny') {
+      return { block: true, reason: entry?.rule?.reason ?? 'Denied by the sub-agent permission rules.' };
+    }
+    if (action === 'ask') {
+      if (!pausable) {
+        return { block: true, reason: 'This call needs human approval and cannot run unattended.' };
+      }
+      // The first gated call is the pending approval; any later gated call of the
+      // same run is blocked too, so a mixed batch cannot partially escape the gate.
+      // TTL: the rule's `ttlMs` becomes the pause's `expiresAt`, like the executor's gate.
+      const ttlMs = entry?.rule ? permissions?.[entry.rule.index]?.ttlMs : undefined;
+      state.pending ??= {
+        id: event.toolCallId,
+        toolCallId: event.toolCallId,
+        toolName: event.toolName,
+        args: structuredClone(event.input),
+        createdAt: new Date().toISOString(),
+        ...(ttlMs !== undefined && { expiresAt: new Date(Date.now() + ttlMs).toISOString() }),
+      };
+      return { block: true, terminate: true, reason: 'Blocked: waiting for the user to approve this call.' };
+    }
+    return undefined;
+  };
+}
+
 /** A Pi `tool_call` gate: permission rules plus the once-allowed calls of an approved resume. */
 function makeGate(permissions: readonly PermissionRule[] | undefined, pausable: boolean, sessionId: string) {
-  const state: { pending?: PendingApproval; onceAllowed: { toolName: string; args: Record<string, unknown> }[] } = { onceAllowed: [] };
+  const state: PiGateState = { onceAllowed: [] };
   const factory: PiExtensionFactory = (pi) => {
-    pi.on('tool_call', async (event: PiToolCallEvent): Promise<PiToolCallResult | undefined> => {
-      const approved = state.onceAllowed.findIndex((once) => once.toolName === event.toolName && isDeepStrictEqual(once.args, event.input));
-      if (approved >= 0) {
-        state.onceAllowed.splice(approved, 1);
-        return undefined;
-      }
-      const entry = await checkPermission(
-        { permissions },
-        { toolName: event.toolName, toolCallId: event.toolCallId, sessionId, args: event.input }
-      );
-      const action = entry?.decision ?? 'default';
-      if (action === 'deny') {
-        return { block: true, reason: entry?.rule?.reason ?? 'Denied by the sub-agent permission rules.' };
-      }
-      if (action === 'ask') {
-        if (!pausable) {
-          return { block: true, reason: 'This call needs human approval and cannot run unattended.' };
-        }
-        // The first gated call is the pending approval; any later gated call of the
-        // same run is blocked too, so a mixed batch cannot partially escape the gate.
-        state.pending ??= {
-          id: event.toolCallId,
-          toolCallId: event.toolCallId,
-          toolName: event.toolName,
-          args: structuredClone(event.input),
-          createdAt: new Date().toISOString(),
-        };
-        return { block: true, terminate: true, reason: 'Blocked: waiting for the user to approve this call.' };
-      }
-      return undefined;
-    });
+    pi.on('tool_call', gateToolCall(state, permissions, pausable, sessionId));
   };
   return { factory, state };
 }
@@ -349,6 +372,137 @@ function abortError(): Error {
   return new DOMException('The operation was aborted.', 'AbortError');
 }
 
+/** Resolved run identity: the Pi session id is the task's `sessionId` (a resume reopens the same session file). */
+interface PiRunContext {
+  cwd: string;
+  agentDir: string;
+  sessionDir: string;
+  id: string;
+  name: string;
+  label: string;
+}
+
+/**
+ * The SessionManager of the Pi session that ran this task before (its id is
+ * the task's `sessionId`), or a new one under that id. A decision without a
+ * prior session is an error.
+ */
+function openSessionManager(pi: PiCodingAgent, ctx: PiRunContext, decision?: { approvalId: string }): PiSessionManager {
+  const existing = pi.SessionManager.findById(ctx.cwd, ctx.id, ctx.sessionDir);
+  let sessionManager: PiSessionManager;
+  try {
+    sessionManager = existing
+      ? pi.SessionManager.open(existing, ctx.sessionDir, ctx.cwd)
+      : pi.SessionManager.create(ctx.cwd, ctx.sessionDir, { id: ctx.id });
+  } catch (error) {
+    throw new SDKError(`${ctx.label}: could not open Pi session '${ctx.id}': ${(error as Error).message}`, 'LOUSHO_REMOTE_REQUEST_FAILED');
+  }
+  if (decision && !existing) {
+    throw new SDKError(
+      `${ctx.label}: cannot decide approval '${decision.approvalId}': no Pi session '${ctx.id}' found in '${ctx.sessionDir}'.`,
+      'LOUSHO_REMOTE_REQUEST_FAILED'
+    );
+  }
+  return sessionManager;
+}
+
+/** The hermetic session: the sub-agent runs the coding tools and this gate, not the user's Pi setup. */
+async function startSession(
+  pi: PiCodingAgent,
+  options: PiAgentOptions,
+  ctx: PiRunContext,
+  sessionManager: PiSessionManager,
+  gate: ReturnType<typeof makeGate>
+): Promise<PiSession> {
+  const settingsManager = pi.SettingsManager.create(ctx.cwd, ctx.agentDir);
+  const resourceLoader = new pi.DefaultResourceLoader({
+    cwd: ctx.cwd,
+    agentDir: ctx.agentDir,
+    settingsManager,
+    extensionFactories: [gate.factory],
+    noExtensions: true,
+    noSkills: true,
+    noPromptTemplates: true,
+    noThemes: true,
+    noContextFiles: true,
+  });
+  await resourceLoader.reload();
+  try {
+    const { session } = await pi.createAgentSession({
+      cwd: ctx.cwd,
+      agentDir: ctx.agentDir,
+      model: options.model,
+      modelRuntime: options.modelRuntime,
+      sessionManager,
+      settingsManager,
+      resourceLoader,
+      ...(options.tools && { tools: [...options.tools] }),
+      ...(options.thinkingLevel && { thinkingLevel: options.thinkingLevel }),
+    });
+    return session;
+  } catch (error) {
+    throw new SDKError(`${ctx.label}: could not start the Pi session: ${(error as Error).message}`, 'LOUSHO_REMOTE_REQUEST_FAILED');
+  }
+}
+
+/** The turn this run sends: an approval decision continuation, or the task prompt. */
+async function deliver(
+  session: PiSession,
+  run: RemoteRunOptions,
+  gate: ReturnType<typeof makeGate>,
+  prompt: string,
+  label: string,
+  signal: AbortSignal | undefined
+): Promise<void> {
+  try {
+    if (run.decision) {
+      const call = findCall(session, run.decision.approvalId);
+      if (run.decision.approved && call) gate.state.onceAllowed.push({ toolName: call.name, args: call.arguments });
+      await session.sendCustomMessage(
+        {
+          customType: 'lousho-approval-decision',
+          content: decisionPrompt(run.decision.approved, call, run.decision.approvalId, run.decision.note),
+          display: false,
+          details: { approved: run.decision.approved, approvalId: run.decision.approvalId, note: run.decision.note },
+        },
+        { triggerTurn: true }
+      );
+    } else {
+      await session.prompt(prompt, { expandPromptTemplates: false });
+    }
+  } catch (error) {
+    if (signal?.aborted || (error as Error)?.name === 'AbortError') throw abortError();
+    throw error instanceof SDKError
+      ? error
+      : new SDKError(`${label} failed: ${(error as Error)?.message ?? String(error)}`, 'LOUSHO_REMOTE_REQUEST_FAILED');
+  }
+}
+
+/**
+ * The post-turn outcome. The run stopped right at the gated call's refused
+ * result only when its whole tool batch terminated; if Pi continued past it,
+ * the refusal stands and the run's own outcome is returned (a gated call
+ * batched with ungated ones cannot suspend the lead mid-batch - Pi decides
+ * that per batch).
+ */
+function settle(session: PiSession, gate: ReturnType<typeof makeGate>, ctx: PiRunContext, run: RemoteRunOptions, report: () => void): string {
+  const pending = gate.state.pending;
+  const last = session.state.messages.at(-1);
+  if (pending && last?.role === 'toolResult' && last.toolCallId === pending.toolCallId) {
+    report();
+    throw pause(ctx.name, session.sessionId, pending);
+  }
+  const lastMessage = lastAssistant(session);
+  if (lastMessage?.stopReason === 'error') {
+    throw new SDKError(`${ctx.label} failed: ${lastMessage.errorMessage ?? 'the model run ended in an error'}`, 'LOUSHO_REMOTE_REQUEST_FAILED');
+  }
+  if (lastMessage?.stopReason === 'aborted') throw abortError();
+  report();
+  const footer = `[pi sub-agent '${ctx.name}': session '${session.sessionId}', taskId '${run.taskId ?? 'none'}']`;
+  const text = textOf(lastMessage);
+  return text ? `${text}\n\n${footer}` : footer;
+}
+
 /**
  * Uses a Pi coding-agent session as a sub-agent (Harness 3). Put the result
  * in `createAgent({ subagents })` next to local and `remoteAgent()` ones:
@@ -383,62 +537,19 @@ export function piAgent(options: PiAgentOptions): RemoteSubagent {
     async run(prompt, run = {}) {
       const pi = await loadPi();
       const name = run.name ?? options.name ?? 'pi';
-      const label = `Pi sub-agent '${name}'`;
-      const cwd = options.cwd;
       const agentDir = options.agentDir ?? `${homedir()}/.pi/agent`;
-      const sessionDir = options.sessionDir ?? defaultSessionDir(cwd, agentDir);
-      const id = run.sessionId ?? newId('task');
-
-      // Reopen the Pi session that ran this task before (its id is the task's
-      // sessionId), or start a new one under that id.
-      const existing = pi.SessionManager.findById(cwd, id, sessionDir);
-      let sessionManager: PiSessionManager;
-      try {
-        sessionManager = existing
-          ? pi.SessionManager.open(existing, sessionDir, cwd)
-          : pi.SessionManager.create(cwd, sessionDir, { id });
-      } catch (error) {
-        throw new SDKError(`${label}: could not open Pi session '${id}': ${(error as Error).message}`, 'LOUSHO_REMOTE_REQUEST_FAILED');
-      }
-      if (run.decision && !existing) {
-        throw new SDKError(
-          `${label}: cannot decide approval '${run.decision.approvalId}': no Pi session '${id}' found in '${sessionDir}'.`,
-          'LOUSHO_REMOTE_REQUEST_FAILED'
-        );
-      }
-
-      const gate = makeGate(options.permissions, run.pausable === true, id);
-      const settingsManager = pi.SettingsManager.create(cwd, agentDir);
-      const resourceLoader = new pi.DefaultResourceLoader({
-        cwd,
+      const ctx: PiRunContext = {
+        cwd: options.cwd,
         agentDir,
-        settingsManager,
-        extensionFactories: [gate.factory],
-        // Hermetic: the sub-agent runs the coding tools and this gate, not the user's Pi setup.
-        noExtensions: true,
-        noSkills: true,
-        noPromptTemplates: true,
-        noThemes: true,
-        noContextFiles: true,
-      });
-      await resourceLoader.reload();
+        sessionDir: options.sessionDir ?? defaultSessionDir(options.cwd, agentDir),
+        id: run.sessionId ?? newId('task'),
+        name,
+        label: `Pi sub-agent '${name}'`,
+      };
 
-      let session: PiSession;
-      try {
-        ({ session } = await pi.createAgentSession({
-          cwd,
-          agentDir,
-          model: options.model,
-          modelRuntime: options.modelRuntime,
-          sessionManager,
-          settingsManager,
-          resourceLoader,
-          ...(options.tools && { tools: [...options.tools] }),
-          ...(options.thinkingLevel && { thinkingLevel: options.thinkingLevel }),
-        }));
-      } catch (error) {
-        throw new SDKError(`${label}: could not start the Pi session: ${(error as Error).message}`, 'LOUSHO_REMOTE_REQUEST_FAILED');
-      }
+      const sessionManager = openSessionManager(pi, ctx, run.decision);
+      const gate = makeGate(options.permissions, run.pausable === true, ctx.id);
+      const session = await startSession(pi, options, ctx, sessionManager, gate);
 
       const signal = run.signal;
       const onAbort = () => void session.abort();
@@ -452,50 +563,11 @@ export function piAgent(options: PiAgentOptions): RemoteSubagent {
         // spend (the lead subtracts the pausing call's report); any other call
         // reports what it spent since this call opened the session.
         const base = run.decision ? usageBeforeLastUser(session) : totalsOf(session.getSessionStats());
-        try {
-          if (run.decision) {
-            const call = findCall(session, run.decision.approvalId);
-            if (run.decision.approved && call) gate.state.onceAllowed.push({ toolName: call.name, args: call.arguments });
-            await session.sendCustomMessage(
-              {
-                customType: 'lousho-approval-decision',
-                content: decisionPrompt(run.decision.approved, call, run.decision.approvalId, run.decision.note),
-                display: false,
-                details: { approved: run.decision.approved, approvalId: run.decision.approvalId, note: run.decision.note },
-              },
-              { triggerTurn: true }
-            );
-          } else {
-            await session.prompt(prompt, { expandPromptTemplates: false });
-          }
-        } catch (error) {
-          if (signal?.aborted || (error as Error)?.name === 'AbortError') throw abortError();
-          throw error instanceof SDKError
-            ? error
-            : new SDKError(`${label} failed: ${(error as Error)?.message ?? String(error)}`, 'LOUSHO_REMOTE_REQUEST_FAILED');
-        }
+        await deliver(session, run, gate, prompt, ctx.label, signal);
 
         const report = () => run.onUsage?.(toEventUsage(totalsOf(session.getSessionStats()), base));
         if (signal?.aborted) throw abortError();
-        // The run stopped right at the gated call's refused result only when its
-        // whole tool batch terminated; if Pi continued past it, the refusal stands
-        // and the run's own outcome is returned (a gated call batched with ungated
-        // ones cannot suspend the lead mid-batch - Pi decides that per batch).
-        const pending = gate.state.pending;
-        const last = session.state.messages.at(-1);
-        if (pending && last?.role === 'toolResult' && last.toolCallId === pending.toolCallId) {
-          report();
-          throw pause(name, session.sessionId, pending);
-        }
-        const lastMessage = lastAssistant(session);
-        if (lastMessage?.stopReason === 'error') {
-          throw new SDKError(`${label} failed: ${lastMessage.errorMessage ?? 'the model run ended in an error'}`, 'LOUSHO_REMOTE_REQUEST_FAILED');
-        }
-        if (lastMessage?.stopReason === 'aborted') throw abortError();
-        report();
-        const footer = `[pi sub-agent '${name}': session '${session.sessionId}', taskId '${run.taskId ?? 'none'}']`;
-        const text = textOf(lastMessage);
-        return text ? `${text}\n\n${footer}` : footer;
+        return settle(session, gate, ctx, run, report);
       } finally {
         signal?.removeEventListener('abort', onAbort);
         session.dispose();

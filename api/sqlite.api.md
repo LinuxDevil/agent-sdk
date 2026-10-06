@@ -623,6 +623,7 @@ interface PendingApproval {
     args: Record<string, unknown>;
     // (undocumented)
     createdAt: string;
+    expiresAt?: string;
     // (undocumented)
     id: string;
     kind?: ApprovalKind;

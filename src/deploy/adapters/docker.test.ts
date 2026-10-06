@@ -80,8 +80,9 @@ describe('DockerAdapter', () => {
 
     const manifest = JSON.parse(fs.readFileSync(path.join(outDir, 'package.json'), 'utf8'));
     const sdk = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'package.json'), 'utf8'));
-    // The image's `npm install --omit=dev` must install what the bundle left external.
-    expect(manifest.dependencies['@lousho/build-ai-agent']).toBe(sdk.version);
+    // The image's `npm install --omit=dev` must install what the bundle left
+    // external; `^` lets a scaffold from an unpublished dev version resolve.
+    expect(manifest.dependencies['@lousho/build-ai-agent']).toBe(`^${sdk.version}`);
     expect(manifest.dependencies['@ai-sdk/openai']).toBeDefined();
     expect(manifest.dependencies['@modelcontextprotocol/sdk']).toBe(sdk.peerDependencies['@modelcontextprotocol/sdk']);
     expect(manifest.scripts.start).toBe('node dist/server.js');
@@ -93,7 +94,7 @@ describe('DockerAdapter', () => {
     await DockerAdapter.scaffold(writeSpec(dir), outDir);
     const manifest = JSON.parse(fs.readFileSync(path.join(outDir, 'package.json'), 'utf8'));
     const sdk = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'package.json'), 'utf8'));
-    expect(manifest.dependencies).toEqual({ '@lousho/build-ai-agent': sdk.version });
+    expect(manifest.dependencies).toEqual({ '@lousho/build-ai-agent': `^${sdk.version}` });
   });
 
   it('an agent directory ships the provider peer its data config names', async () => {

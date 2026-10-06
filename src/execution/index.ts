@@ -11,6 +11,7 @@ export * from './errors';
 // A1: StorageServiceApprovalStore moved to '@lousho/build-ai-agent/utils'.
 export {
   ASK_QUESTION_TOOL_NAME,
+  approvalExpired,
   describeApproval,
   type ApprovalDecision,
   type ApprovalKind,
@@ -71,7 +72,7 @@ export { ToolArgumentsValidationError } from './toolArgsValidation';
 export type { ToolArgumentIssue } from './toolArgsValidation';
 export { toolErrorResult } from './toolErrors';
 export type { ToolErrorKind, ToolErrorResult, ToolErrorInput } from './toolErrors';
-export { allow, ask, deny } from './permissions';
+export { allow, ask, deny, APPROVAL_EXPIRED_REASON } from './permissions';
 export type {
   PermissionAction,
   PermissionAuditContext,

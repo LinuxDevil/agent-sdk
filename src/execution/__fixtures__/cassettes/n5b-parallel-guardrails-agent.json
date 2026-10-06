@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "sdkVersion": "1.0.0-alpha.8",
-  "recordedAt": "2026-10-02T22:47:43.917Z",
+  "sdkVersion": "1.0.0-alpha.4",
+  "recordedAt": "2026-10-06T10:06:02.254Z",
   "provider": {
     "name": "openrouter",
     "defaultModel": "openai/gpt-4o-mini"
@@ -35,14 +35,14 @@
         },
         "chunks": [
           {
-            "delayMs": 742,
+            "delayMs": 745,
             "chunk": {
               "type": "text-delta",
               "textDelta": "Red"
             }
           },
           {
-            "delayMs": 1,
+            "delayMs": 0,
             "chunk": {
               "type": "text-delta",
               "textDelta": ","
@@ -63,7 +63,7 @@
             }
           },
           {
-            "delayMs": 57,
+            "delayMs": 48,
             "chunk": {
               "type": "text-delta",
               "textDelta": " blue"
@@ -77,7 +77,7 @@
             }
           },
           {
-            "delayMs": 18,
+            "delayMs": 19,
             "chunk": {
               "type": "finish",
               "finishReason": "stop",

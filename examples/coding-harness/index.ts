@@ -64,7 +64,7 @@ export function instructionsFor(model: string): string {
 
 // 5a. Loop guard: deny a tool call the model already made twice with the same arguments.
 //     Crush, Cline and Gemini CLI all ship a version of this.
-export function loopGuard(maxRepeats = 2): AgentHook {
+function loopGuard(maxRepeats = 2): AgentHook {
   const seen = new Map<string, number>();
   return {
     name: 'loop-guard',
@@ -81,7 +81,7 @@ export function loopGuard(maxRepeats = 2): AgentHook {
 }
 
 // 5b. Output cap: keep long tool results from flooding the context.
-export function outputCap(maxChars = 4_000): AgentHook {
+function outputCap(maxChars = 4_000): AgentHook {
   return {
     name: 'output-cap',
     postToolCall(_ctx, result) {

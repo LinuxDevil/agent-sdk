@@ -5,7 +5,7 @@ import { listSorted } from './fsUtil';
 import { importModule } from './importModule';
 
 /** `auth.ts`, `auth.js`, ... at the root of an agent directory (not tests or declarations). */
-export const AUTH_FILE = /^auth\.[cm]?[jt]s$/;
+const AUTH_FILE = /^auth\.[cm]?[jt]s$/;
 
 /**
  * N10a: the route auth of an agent directory, from its `auth.{ts,js,mjs,cjs,mts}`

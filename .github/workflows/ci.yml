@@ -35,7 +35,7 @@ jobs:
         # The dual-entry build's DTS pass (worker + executor entries) exceeds
         # the default heap, like the peers job's build below.
         env:
-          NODE_OPTIONS: --max-old-space-size=6144
+          NODE_OPTIONS: --max-old-space-size=12288
       # API surface gate (A7): every exports entry has a checked-in api/*.api.md
       # report; a public-API change fails here until `npm run api:update` is run
       # and the diff committed. Runs only in the main job so the report reflects
@@ -114,7 +114,7 @@ jobs:
       # The DTS build of the ai7-zod4 install runs out of the default heap (seen on #322, #335).
       - run: npm run build
         env:
-          NODE_OPTIONS: --max-old-space-size=6144
+          NODE_OPTIONS: --max-old-space-size=12288
       - run: npm run build --workspace=packages/create-lousho-agent
       - run: npx vitest run
   # LOU-D49: what `npm pack` produces must install and work in a fresh project. The script
@@ -133,4 +133,4 @@ jobs:
       - run: npm run pack-smoke
         # pack-smoke runs `npm run build` itself, which needs the same heap.
         env:
-          NODE_OPTIONS: --max-old-space-size=6144
+          NODE_OPTIONS: --max-old-space-size=12288

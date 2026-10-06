@@ -41,6 +41,7 @@ export interface ChannelInbound<TEvent = unknown> {
   /** The conversation on the surface (a thread, a chat, a user); equal keys share a session. */
   sessionKey: string;
   input: AgentInput;
+  /** Passed to the turn as `SendOptions.metadata` (memory scopes, `model` / `instructions` / `tools` functions). Unlike `principal`, it is not authenticated. */
   metadata?: Record<string, unknown>;
   /**
    * The sender, as the surface identified them (N10a): passed to the turn as its

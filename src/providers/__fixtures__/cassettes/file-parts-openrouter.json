@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "sdkVersion": "1.0.0-alpha.8",
-  "recordedAt": "2026-10-02T20:49:52.339Z",
+  "sdkVersion": "1.0.0-alpha.4",
+  "recordedAt": "2026-10-06T10:19:03.125Z",
   "provider": {
     "name": "openrouter",
     "defaultModel": "openai/gpt-3.5-turbo"
@@ -32,9 +32,9 @@
         "text": "LOUSHO-PDF-7",
         "finishReason": "stop",
         "usage": {
-          "promptTokens": 46,
+          "promptTokens": 250,
           "completionTokens": 7,
-          "totalTokens": 53
+          "totalTokens": 257
         }
       }
     },

@@ -1,0 +1,19 @@
+{
+  "name": "incident-response",
+  "description": "Responds to alerts arriving on the alerts webhook channel: diagnoses with read-only tools, proposes remediation with a blast-radius note, and executes through a risk-tiered gate - diagnostics and staging remediation run free, production remediation asks, destructive data operations are denied - while every call lands on an audit timeline",
+  "model": "openrouter/openai/gpt-4o-mini",
+  "maxSteps": 15,
+  "permissionMode": "default",
+  "permissions": [
+    { "tool": ["drop_table", "delete_data"], "action": "deny", "reason": "Destructive data operations are never within an incident responder's mandate" },
+    { "tool": "restart_service", "when": { "environment": "^staging$" }, "action": "allow" },
+    { "tool": "scale_replicas", "when": { "environment": "^staging$", "replicas": "^([1-9]|10)$" }, "action": "allow" },
+    { "tool": ["restart_service", "scale_replicas"], "action": "ask" },
+    { "tool": ["check_logs", "query_metrics", "get_runbook", "check_status", "post_update", "load_skill"], "action": "allow" },
+    { "tool": "*", "action": "ask" }
+  ],
+  "hooks": "hooks.ts",
+  "approve": "approve.ts",
+  "compaction": { "thresholdPercent": 0.8 },
+  "limits": { "maxCostUsd": 0.05 }
+}

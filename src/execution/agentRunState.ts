@@ -24,7 +24,7 @@ import { toolErrorResult } from './toolErrors';
 import type { Principal } from '../auth/types';
 import { readonlyPrincipal, resumedRunPrincipal } from './runPrincipal';
 import { withHostedCalls } from './hostedToolCalls';
-import { toolResultContent } from './toolResult';
+import { toolOutcomeMessage } from './toolResult';
 import type { ParallelInputCheck } from './ioGuardrails';
 
 export interface AgentRunState {
@@ -283,23 +283,10 @@ export function pushToolResult(
   toolCall: ToolCall,
   outcome: ToolCallOutcome
 ): void {
-  // A failed tool carries its message as `{error}` (the same shape
-  // resume.ts uses) - `result` is null then, so the model would otherwise
-  // see a bare "null" and never learn the call failed. A failure that
-  // already has a structured result (argument validation) keeps it, so the
-  // model gets the per-issue detail.
-  const failed = outcome.error !== undefined;
-  const failurePayload = outcome.result ?? { error: outcome.error };
-  state.messages.push({
-    role: 'tool',
-    content: toolResultContent(failed ? failurePayload : outcome.result),
-    name: toolCall.function.name,
-    toolCallId: toolCall.id,
-    toolName: toolCall.function.name,
-    ...(failed && { isError: true }),
-    // LOU-X3: the transcript records a result a hook replaced.
-    ...(outcome.replacedByHook !== undefined && { metadata: { replacedByHook: outcome.replacedByHook } }),
-  });
+  // The message shape (the `{error}` payload, isError, LOU-X3's
+  // replacedByHook record) is toolOutcomeMessage()'s, shared with the
+  // handoff settle path in handoffRun.ts.
+  state.messages.push(toolOutcomeMessage(toolCall, outcome));
 }
 
 /**

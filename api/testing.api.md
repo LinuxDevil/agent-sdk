@@ -23,9 +23,28 @@ export class CassetteMismatchError extends SDKError {
 type ContentPart = TextContentPart | ImageContentPart | FileContentPart;
 
 // @public
+type CredentialOwner = 'app' | 'user';
+
+// @public
 export type DeepReadonly<T> = T extends (...args: never[]) => unknown ? T : T extends ReadonlyArray<infer U> ? ReadonlyArray<DeepReadonly<U>> : T extends object ? {
     readonly [K in keyof T]: DeepReadonly<T[K]>;
 } : T;
+
+// @public
+interface DelegatedUsage {
+    costUsd: number | undefined;
+    // (undocumented)
+    estimated: boolean;
+    // (undocumented)
+    inputTokens: number;
+    // (undocumented)
+    modelCalls: number;
+    // (undocumented)
+    outputTokens: number;
+    runs: number;
+    // (undocumented)
+    totalTokens: number;
+}
 
 // @public
 interface EmbeddingProvider {
@@ -346,6 +365,79 @@ export interface MockTurnObject {
 }
 
 // @public
+interface ModelUsage {
+    calls: number;
+    costUsd?: number;
+    // (undocumented)
+    inputTokens: number;
+    // (undocumented)
+    outputTokens: number;
+}
+
+// @public
+type OAuthClientAuth = 'client_secret_post' | 'client_secret_basic';
+
+// Warning: (ae-forgotten-export) The symbol "OAuthProviderOptions" needs to be exported by the entry point index.d.ts
+//
+// @public
+interface OAuthProvider extends Readonly<Omit<OAuthProviderOptions, 'displayName' | 'credentialOwner' | 'clientAuth' | 'scopes'>> {
+    // Warning: (ae-forgotten-export) The symbol "OAuthClientAuth" needs to be exported by the entry point index.d.ts
+    //
+    // (undocumented)
+    readonly clientAuth: OAuthClientAuth;
+    // Warning: (ae-forgotten-export) The symbol "CredentialOwner" needs to be exported by the entry point index.d.ts
+    //
+    // (undocumented)
+    readonly credentialOwner: CredentialOwner;
+    // (undocumented)
+    readonly displayName: string;
+    // (undocumented)
+    readonly kind: 'oauth-provider';
+    // (undocumented)
+    readonly scopes: readonly string[];
+}
+
+// @public
+interface OAuthProviderOptions {
+    authorizationParams?: Record<string, string>;
+    authorizationUrl: string;
+    clientAuth?: OAuthClientAuth;
+    // (undocumented)
+    clientId: string;
+    clientSecret?: string;
+    credentialOwner?: CredentialOwner;
+    displayName?: string;
+    fetch?: typeof fetch;
+    name: string;
+    redirectUri: string;
+    // (undocumented)
+    scopes?: readonly string[];
+    tokenUrl: string;
+}
+
+// @public
+interface OAuthToken {
+    // (undocumented)
+    accessToken: string;
+    expiresAt?: number;
+    // (undocumented)
+    refreshToken?: string;
+    // (undocumented)
+    scope?: string;
+    tokenType?: string;
+}
+
+// @public
+interface Principal {
+    authenticator: string;
+    claims?: Readonly<Record<string, unknown>>;
+    id: string;
+    issuer?: string;
+    // (undocumented)
+    type: 'user' | 'service';
+}
+
+// @public
 export type ProviderInterceptor = (provider: LLMProvider) => LLMProvider;
 
 // @public
@@ -412,6 +504,30 @@ export interface RecordReplayProvider extends LLMProvider {
 
 // @public
 export type RecordReplaySource = LLMProvider | (() => LLMProvider) | undefined;
+
+// @public
+interface RunUsage {
+    // Warning: (ae-forgotten-export) The symbol "ModelUsage" needs to be exported by the entry point index.d.ts
+    byModel: Record<string, ModelUsage>;
+    cachedInputTokens?: number;
+    // @deprecated (undocumented)
+    completionTokens: number;
+    costUsd: number | undefined;
+    // Warning: (ae-forgotten-export) The symbol "DelegatedUsage" needs to be exported by the entry point index.d.ts
+    delegated?: DelegatedUsage;
+    estimated: boolean;
+    hostedToolCalls?: Partial<Record<string, number>>;
+    // (undocumented)
+    inputTokens: number;
+    modelCalls: number;
+    // (undocumented)
+    outputTokens: number;
+    // @deprecated (undocumented)
+    promptTokens: number;
+    reasoningTokens?: number;
+    // (undocumented)
+    totalTokens: number;
+}
 
 // @public
 interface SchemaIssue {
@@ -523,6 +639,11 @@ interface StreamResult {
     usage: Promise<ProviderUsage | undefined>;
 }
 
+// Warning: (ae-forgotten-export) The symbol "ToolExecutionContext" needs to be exported by the entry point index.d.ts
+//
+// @public
+export function testToolContext(overrides?: Partial<ToolExecutionContext>): ToolExecutionContext;
+
 // @public
 interface TextContentPart {
     // (undocumented)
@@ -556,11 +677,31 @@ interface ToolDefinition {
     type: 'function';
 }
 
+// @public
+interface ToolExecutionContext {
+    abortSignal?: AbortSignal;
+    approval?: {
+        note?: string;
+        by?: Readonly<Principal>;
+    };
+    // Warning: (ae-forgotten-export) The symbol "OAuthProvider" needs to be exported by the entry point index.d.ts
+    // Warning: (ae-forgotten-export) The symbol "OAuthToken" needs to be exported by the entry point index.d.ts
+    getToken(provider: OAuthProvider): Promise<OAuthToken>;
+    messages: readonly Message[];
+    // Warning: (ae-forgotten-export) The symbol "RunUsage" needs to be exported by the entry point index.d.ts
+    onDelegatedUsage?: (usage: RunUsage) => void;
+    // Warning: (ae-forgotten-export) The symbol "Principal" needs to be exported by the entry point index.d.ts
+    principal?: Readonly<Principal>;
+    requireAuth(provider: OAuthProvider): never;
+    sessionId?: string;
+    toolCallId: string;
+}
+
 // Warnings were encountered during analysis:
 //
-// dist/index-Cu54_KAW.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-Cu54_KAW.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-Cu54_KAW.d.ts:1410:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts
+// dist/index-teGCK4tt.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-teGCK4tt.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-teGCK4tt.d.ts:1427:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

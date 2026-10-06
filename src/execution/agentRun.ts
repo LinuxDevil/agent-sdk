@@ -447,6 +447,8 @@ class RunEvents {
           ...(pending.question && { question: pending.question }),
           // N9b: the link only (never the declined flag, which a later callback sets).
           ...(pending.signIn && { signIn: { provider: pending.signIn.provider, ...(pending.signIn.displayName !== undefined && { displayName: pending.signIn.displayName }), url: pending.signIn.url } }),
+          // TTL: the pause's deadline, so a UI can show it.
+          ...(pending.expiresAt && { expiresAt: pending.expiresAt }),
         });
       },
       permissionDecision: (entry) =>

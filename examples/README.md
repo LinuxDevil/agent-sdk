@@ -13,9 +13,21 @@ An agent defined as a directory (`instructions.md`, `tools/`, `skills/`, `agent.
 
 A coding-agent harness: a broken `add()` fixture the agent must fix under a guard (test files are refused), with a loop guard, checkpoint rewind and per-family instructions; runs offline with a mock model. `kit.test.ts` installs the same harness as the `coding-kit` registry item and builds it into a node-server deployment (H1).
 
+## [data-analyst](./data-analyst)
+
+Chat-with-your-database (the Vanna/Databricks Genie archetype): the agent introspects the schema, writes SQL and answers with real rows — with defense-in-depth read-only enforcement (tool validation plus a permission rule), so `DELETE`/`DROP` can never run. `node:sqlite`-backed; runs offline with a mock model.
+
+## [deep-research](./deep-research)
+
+The deep-research archetype (Anthropic's multi-agent research shape): a coordinator decomposes a question and fans out parallel `task` calls to a researcher sub-agent — parallel readers, compressed summaries back — then synthesizes a cited report. Runs offline on an in-memory corpus; proves real fan-out concurrency.
+
 ## [doc-qa](./doc-qa)
 
 A question-answering agent scoped to a single fixed document (LOU-H10).
+
+## [evaluator-loop](./evaluator-loop)
+
+The evaluator-optimizer pattern (CrewAI's writer/critic shape): a writer drafts, `llmCritique()` scores the draft against a rubric and returns actionable feedback, and the draft is revised until it passes or `maxRounds` is hit. Runs offline with mock models.
 
 ## [openrouter](./openrouter)
 
@@ -42,6 +54,10 @@ Turns a raw event description into a short, Slack-ready notification (LOU-H10).
 ## [support-bot](./support-bot)
 
 A minimal, empathetic customer-support agent (LOU-H10).
+
+## [support-desk](./support-desk)
+
+The production support archetype: a triage agent classifies the request and `handoff()`s the whole conversation to a billing or tech-support specialist — control transfers, unlike a sub-agent whose result returns. Approval-gated refund tool, structured handoff args, and hand-back routing; runs offline with mock models.
 
 ## [tracing](./tracing)
 

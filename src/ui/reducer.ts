@@ -61,6 +61,8 @@ export interface UIPendingApproval {
    * call `approve()` once the user signed in ("I've signed in"), `reject()` to cancel.
    */
   signIn?: ApprovalSignIn;
+  /** TTL: when the pause stops being decidable (ISO-8601); a later decision denies the call. Absent: never. */
+  expiresAt?: string;
 }
 
 /** How a run continued after an approval decision (built from `agent.approvals.resolve()`'s result). */
@@ -157,8 +159,8 @@ function partialOf(messages: UIMessage[], event: Extract<AgentEvent, { type: 'to
 
 /** The paused call of an `approval.requested` event, with its question (LOU-X9) or sign-in link (N9b) when it has one. */
 function pendingOf(event: Extract<AgentEvent, { type: 'approval.requested' }>): UIPendingApproval {
-  const { approvalId: id, toolCallId, toolName, args, kind, question, signIn } = event;
-  return { id, toolCallId, toolName, args, ...(kind && { kind }), ...(question && { question }), ...(signIn && { signIn }) };
+  const { approvalId: id, toolCallId, toolName, args, kind, question, signIn, expiresAt } = event;
+  return { id, toolCallId, toolName, args, ...(kind && { kind }), ...(question && { question }), ...(signIn && { signIn }), ...(expiresAt && { expiresAt }) };
 }
 
 function pause(state: AgentUIState, approval: UIPendingApproval): AgentUIState {

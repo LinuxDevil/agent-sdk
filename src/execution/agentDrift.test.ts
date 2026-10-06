@@ -96,6 +96,21 @@ describe('agent fingerprint (LOU-W9.2)', () => {
     expect(variants[4].tools.x).not.toBe(base.tools.x);
     expect(variants[4].tools.y).not.toBe(base.tools.y);
   });
+
+  it('leaves transient (per-run-bound) tools out: a resumed run without them sees no drift', async () => {
+    const provider = mockModel([], { defaultModel: 'm1' });
+    const [a] = toolsOf(['x']).list;
+    // A memory slot's bound tool: in the run's registry, marked transient.
+    const bound = toolsOf(['remember_notes']).list[0];
+    bound.transient = true;
+    const agent = agentOf([a, bound]);
+
+    const inRun = await fingerprintOf(agent, registryOf([a, bound]), provider);
+    const resumed = await fingerprintOf(agent, registryOf([a]), provider);
+
+    expect(inRun.tools).toEqual({ x: expect.any(String) });
+    expect(inRun).toEqual(resumed);
+  });
 });
 
 describe.each(stores)('resuming with a changed agent: %s', (_name, makeStore) => {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import path from 'node:path';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { z } from 'zod';
@@ -8,6 +8,7 @@ import { fauxAssistantMessage, fauxProvider, fauxToolCall, type FauxResponseStep
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import { loadAgentDir, resolveAgentDir } from './index';
 import { defineTool } from '../tools/defineTool';
+import { memoryStore } from '../storage/agentStore';
 import { mockModel } from '../testing';
 import { isRemoteSubagent } from '../subagents/remoteAgent';
 import { explainImportError } from './importModule';
@@ -223,6 +224,123 @@ describe('agent.* run options (permissionMode, permissions, compaction, hooks, a
     expect(config.hooks).toEqual([]);
     expect(config.approve).toBe(approve);
   });
+
+  it('approve: null / hooks: null strip the directory-wired approver and hooks (the files are not even imported)', async () => {
+    const { config, manifest } = await resolveAgentDir(fixture('config-extras'), {
+      provider: mockModel(['x']),
+      approve: null,
+      hooks: null,
+    });
+    expect(config.approve).toBeUndefined();
+    expect(config.hooks).toBeUndefined();
+    const files = manifest.files.map((f) => path.relative(fixture('config-extras'), f).split(path.sep).join('/'));
+    expect(files).not.toContain('approve.ts');
+    expect(files).not.toContain('hooks.ts');
+  });
+});
+
+describe('agent.* store and approval TTL (store, approvalTtlMs, ttlMs)', () => {
+  /** A minimal agent directory in a temp dir (a fixture would litter its own .lousho/). */
+  const writeDir = (config: Record<string, unknown>): string => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'lousho-agentdir-store-'));
+    writeFileSync(path.join(dir, 'agent.json'), JSON.stringify(config));
+    writeFileSync(path.join(dir, 'instructions.md'), 'You are a test agent.\n');
+    return dir;
+  };
+
+  const charge = defineTool({
+    name: 'charge',
+    description: 'Charge a card',
+    input: z.object({ amount: z.number() }),
+    execute: ({ amount }) => `charged ${amount}`,
+  });
+
+  it('builds a fileStore from "store": { "dir" }, rooted inside the agent directory', async () => {
+    const dir = writeDir({ model: 'mock/m', store: { dir: './.lousho' } });
+    try {
+      const { config } = await resolveAgentDir(dir, { provider: mockModel(['x']) });
+      expect(config.store?.sessions).toBeDefined();
+      expect(config.store?.checkpoints).toBeDefined();
+      expect(config.store?.approvals).toBeDefined();
+      await config.store!.sessions!.save('s1', []);
+      expect(existsSync(path.join(dir, '.lousho', 'sessions', 's1.json'))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a store.dir that escapes the agent directory, naming the key', async () => {
+    const dir = writeDir({ model: 'mock/m', store: { dir: '../outside' } });
+    try {
+      const error = (await resolveAgentDir(dir, { provider: mockModel(['x']) }).catch((e: Error) => e)) as Error;
+      expect(error.message).toContain('agent.json');
+      expect(error.message).toContain("'store.dir'");
+      expect(error.message).toContain('must stay inside the agent directory');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('lets an overrides store win over the config one', async () => {
+    const dir = writeDir({ model: 'mock/m', store: { dir: './.lousho' } });
+    const mine = memoryStore();
+    try {
+      const { config } = await resolveAgentDir(dir, { provider: mockModel(['x']), store: mine });
+      expect(config.store).toBe(mine);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("wires approvalTtlMs and an ask rule's ttlMs into the assembled options", async () => {
+    const dir = writeDir({
+      model: 'mock/m',
+      approvalTtlMs: 600_000,
+      permissions: [
+        { tool: 'deploy', action: 'ask', ttlMs: 60_000 },
+        { tool: 'shell', action: 'deny' },
+      ],
+    });
+    try {
+      const { config } = await resolveAgentDir(dir, { provider: mockModel(['x']) });
+      expect(config.approvalTtlMs).toBe(600_000);
+      expect(config.permissions).toMatchObject([
+        { tool: 'deploy', action: 'ask', ttlMs: 60_000 },
+        { tool: 'shell', action: 'deny' },
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps a paused approval in the declared store so a reloaded agent can resolve it (draft today, approve tomorrow)', async () => {
+    const dir = writeDir({
+      model: 'mock/m',
+      store: { dir: './.lousho' },
+      permissions: [{ tool: 'charge', action: 'ask', ttlMs: 600_000 }],
+    });
+    try {
+      const first = await loadAgentDir(dir, {
+        provider: mockModel([{ toolCalls: [{ name: 'charge', args: { amount: 5 } }] }, 'Done.']),
+        tools: [charge],
+      });
+      const paused = await first.send('charge 5');
+      expect(paused.finishReason).toBe('awaiting-approval');
+      expect(paused.approvalId).toBeDefined();
+
+      // The pause is on disk, with the ask rule's ttlMs as its expiresAt.
+      const record = JSON.parse(readFileSync(path.join(dir, '.lousho', 'approvals', `${paused.approvalId}.json`), 'utf8'));
+      expect(record.pending.toolName).toBe('charge');
+      expect(Date.parse(record.pending.expiresAt)).toBeGreaterThan(Date.now());
+
+      // "Approve tomorrow": a fresh load of the same directory decides it.
+      const second = await loadAgentDir(dir, { provider: mockModel(['Done.']), tools: [charge] });
+      const result = await second.approvals.resolve({ id: paused.approvalId!, approved: true });
+      expect(result.text).toBe('Done.');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("engine: 'pi' sub-agent directories", () => {
@@ -230,7 +348,7 @@ describe("engine: 'pi' sub-agent directories", () => {
     const { config, manifest } = await resolveAgentDir(fixture('pi-subagent'), { provider: mockModel(['x']) });
 
     expect(manifest.subagents).toEqual(['coder', 'explorer']);
-    const toolNames = (config.tools as { name: string }[]).map((t) => t.name);
+    const toolNames = (config.tools as unknown as { name: string }[]).map((t) => t.name);
     expect(toolNames).toContain('delegate_to_explorer');
     expect(toolNames).not.toContain('delegate_to_coder');
 

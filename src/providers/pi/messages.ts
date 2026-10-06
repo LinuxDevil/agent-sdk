@@ -168,26 +168,30 @@ export function toPiContext(messages: Message[], model: PiModel): { systemPrompt
   let systemPrompt: string | undefined;
   let first = true;
   for (const msg of messages) {
-    if (msg.role === 'system') {
-      if (first) systemPrompt = textOf(msg);
-      else out.push({ role: 'system', content: textOf(msg), timestamp: 0 });
+    if (msg.role === 'system' && first) {
+      systemPrompt = textOf(msg);
       first = false;
       continue;
     }
     first = false;
-    if (msg.role === 'user') {
-      out.push({
-        role: 'user',
-        content: Array.isArray(msg.content) ? msg.content.map(userPartToPi) : msg.content,
-        timestamp: 0,
-      });
-    } else if (msg.role === 'assistant') {
-      const converted = assistantToPi(msg, model);
-      for (const call of msg.toolCalls ?? []) toolNames.set(call.id, call.function.name);
-      out.push(converted);
-    } else {
-      out.push(toolResultToPi(msg, toolNames));
-    }
+    out.push(toPiMessage(msg, model, toolNames));
   }
   return { systemPrompt, messages: out };
+}
+
+/** One message in pi form; `toolNames` accumulates assistant call ids for later tool results. */
+function toPiMessage(msg: Message, model: PiModel, toolNames: Map<string, string>): PiMessage {
+  if (msg.role === 'system') return { role: 'system', content: textOf(msg), timestamp: 0 };
+  if (msg.role === 'user') {
+    return {
+      role: 'user',
+      content: Array.isArray(msg.content) ? msg.content.map(userPartToPi) : msg.content,
+      timestamp: 0,
+    };
+  }
+  if (msg.role === 'assistant') {
+    for (const call of msg.toolCalls ?? []) toolNames.set(call.id, call.function.name);
+    return assistantToPi(msg, model);
+  }
+  return toolResultToPi(msg, toolNames);
 }

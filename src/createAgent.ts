@@ -57,6 +57,7 @@ import { ConfigurationError, SDKError } from './execution/errors';
 import { newId } from './utils/id';
 import { createAgentApprovals, type AgentApprovals, type ApproveToolCall } from './createAgentApprovals';
 import { createAgentOAuth, type AgentOAuth } from './oauth/agentOAuth';
+import type { OAuthTokenStore } from './oauth/types';
 import { assertPermissionMode, type PermissionMode, type PermissionOptions } from './execution/permissions';
 import { assertToolSearchOptions, type ToolSearchOptions } from './execution/toolSearch';
 import { assertCodeModeOptions, codeModeOption, type CodeModeOptions } from './execution/codeMode';
@@ -400,6 +401,23 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    */
   approve?: ApproveToolCall;
   /**
+   * TTL: how long a pause for approval (`needsApproval`, an `ask` permission
+   * rule, a sign-in) stays decidable, in milliseconds. The pending approval
+   * gets `expiresAt` (so does the `approval.requested` event); decided after
+   * it - also through a durable `approvalStore` in another process or after a
+   * restart - the call is denied: the model gets a `kind: 'denied'` tool
+   * error whose reason is 'approval expired', audited to
+   * `onPermissionDecision`. An `approve` callback still waiting at the
+   * deadline is cut off the same way. An `ask` rule's `ttlMs` wins over this
+   * default. Unset: pauses never expire.
+   *
+   * @example
+   * ```ts
+   * createAgent({ model: 'openai/gpt-4o-mini', tools: [sendEmail], approvalTtlMs: 5 * 60_000 });
+   * ```
+   */
+  approvalTtlMs?: number;
+  /**
    * Adds the built-in `ask_question` tool (LOU-X9): the agent can ask the
    * user a question, and the run pauses (like an approval, `kind: 'question'`)
    * until `agent.approvals.answer({ id, answer })`. Off by default.
@@ -604,10 +622,16 @@ export interface SendOptions {
    * See docs/permission-modes.md.
    */
   permissionMode?: PermissionMode;
+  /**
+   * TTL: this run's approval deadline (the agent's `approvalTtlMs` otherwise):
+   * pauses this run makes expire after it. A run continued by
+   * `agent.approvals.resolve()` uses the agent's again.
+   */
+  approvalTtlMs?: number;
 }
 
-/** How a run is checkpointed, plus (LOU-V13) a `send()` / `stream()` call's own `reasoning`. */
-type RunTurn = SessionTurnOptions & Pick<ExecuteOptions, 'reasoning' | 'permissionMode'>;
+/** How a run is checkpointed, plus (LOU-V13, N4, TTL) a `send()` / `stream()` call's own `reasoning`, `permissionMode`, `approvalTtlMs`. */
+type RunTurn = SessionTurnOptions & Pick<ExecuteOptions, 'reasoning' | 'permissionMode' | 'approvalTtlMs'>;
 
 /** `TObject`: the type of `result.object` - `z.output` of the `output` schema. */
 export interface SimpleAgent<TObject = unknown> {
@@ -733,6 +757,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   assertToolConcurrency(config.toolConcurrency, 'createAgent');
   assertMaxSubagentDepth(config.maxSubagentDepth, 'createAgent');
   assertSubagents(config.subagents, 'createAgent');
+  assertApprovalTtlMs(config.approvalTtlMs);
   if (typeof config.permissionMode === 'string') assertPermissionMode(config.permissionMode, 'createAgent');
   assertMaxHandoffs(config.maxHandoffs);
   assertToolSearchOptions(config.toolSearch, 'createAgent');
@@ -760,15 +785,14 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     permissionMode: config.permissionMode,
     skills: config.skills,
     // LOU-Y6: `task` conversations are kept in the agent's session store, to be resumed by taskId.
-    subagents: subagentsWithOptions(
-      config.subagents,
-      config.store?.sessions ? { sessions: config.store.sessions, ...config.subagentOptions } : config.subagentOptions
-    ),
+    subagents: subagentsWithOptions(config.subagents, subagentOptionsOf(config)),
     maxSubagentDepth: config.maxSubagentDepth,
     maxSteps: config.maxSteps,
     limits: config.limits,
     guardrails: config.guardrails,
     toolConcurrency: config.toolConcurrency,
+    // TTL: the default pause deadline; an `ask` rule's `ttlMs` overrides it.
+    approvalTtlMs: config.approvalTtlMs,
     onAgentDrift: config.onAgentDrift,
     reasoning: config.reasoning,
     toolSearch: config.toolSearch,
@@ -779,10 +803,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   const staticSpec = specs.static;
   if (staticSpec && config.subagents) assertNoTaskTool(staticSpec.agent, staticSpec.toolRegistry);
   // N6: a handoff tool may not share a tool's name (a per-run `tools` function is checked when the run starts).
-  const clash = handoffTools.find((name) => specs.staticTools?.toolsConfig[name]);
-  if (clash) {
-    throw new ConfigurationError(`createAgent: the handoff tool '${clash}' has the name of one of the agent's tools; set another toolName with handoff(target, { toolName }).`, 'handoffs');
-  }
+  assertNoHandoffToolClash(handoffTools, specs.staticTools);
   // LOU-Z4: MCP tools join the registry and the agent's tools once connected.
   const mcp = agentMcp(
     config.mcpServers,
@@ -817,50 +838,18 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   });
   // N9b: tools' OAuth tokens (`ctx.getToken()`) and pending sign-ins.
   const tokens = config.store?.tokens;
-  /** How a paused run continues: with the spec (and, for a dynamic run, the model) it paused with. */
-  const resumeRequestFor = async (
-    approvalStore: ApprovalStore,
-    decision: ApprovalDecision,
-    signal?: AbortSignal,
-    checkpointStore?: CheckpointStore,
-    permissionMode?: PermissionOptions['permissionMode'],
-    approver?: Principal,
-    onAgentEvent?: (event: AgentEvent) => void
-  ): Promise<ResumeRequest> => {
-    // N6: a run paused after a handoff continues as the agent it handed off to.
-    const paused = await pausedRun(specs, approvalStore, decision.id, handoffs.has() ? handoffs : undefined);
-    const { agent: pausedAgent, provider, toolRegistry, hostedTools, ...pausedOptions } = paused.spec;
-    return {
-      decision,
-      approvalStore: paused.store,
-      toolRegistry: toolRegistry ?? new ToolRegistry(),
-      provider,
-      executeOptions: {
-        ...runOptions,
-        ...pausedOptions,
-        // N4: a paused session turn continues under the session's mode (read at each call), else the agent's.
-        ...(permissionMode !== undefined && { permissionMode }),
-        output: config.output,
-        hooks,
-        approvalStore: paused.store,
-        signal,
-        currentAgent: pausedAgent,
-        hostedTools,
-        ...(paused.handoffs && { handoffs: paused.handoffs, maxHandoffs: config.maxHandoffs }),
-        // LOU-R18: `onAgentEvent` is the paused session's on() forwarder when the run is continued in one.
-        onAgentEvent: mergedAgentEvent(config.onEvent, onAgentEvent),
-        ...tracing,
-        // N10b: who decides; the run itself goes on as the principal it paused with (its snapshot's).
-        ...(approver && { approver }),
-        // N9b: a sign-in pause continues once the user's token is in the store.
-        ...(tokens && { tokens }),
-      },
-      // A run paused under a `sessionId` keeps checkpointing after the decision.
-      checkpointStore: checkpointStore ?? checkpoints,
-    };
-  };
+  const resumeRequestFor = resumeRequester({
+    specs,
+    handoffs,
+    runOptions,
+    config,
+    hooks,
+    checkpoints,
+    tokens,
+    tracing,
+  });
   const approvals = createAgentApprovals({
-    store: config.approvalStore ?? config.store?.approvals ?? new InMemoryApprovalStore(),
+    store: approvalStoreOf(config),
     approve: config.approve,
     resume: async (...args) => resumeRequest(await resumeRequestFor(...args)),
     // LOU-V14: the streamed run's own signal and event sink are wired into the request.
@@ -883,9 +872,14 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     }
     return { sessionId, checkpointStore: checkpoints };
   };
-  const callTurn = ({ sessionId, reasoning, permissionMode }: SendOptions): RunTurn => {
+  const callTurn = ({ sessionId, reasoning, permissionMode, approvalTtlMs }: SendOptions): RunTurn => {
     if (permissionMode !== undefined) assertPermissionMode(permissionMode, 'send');
-    return { ...durable(sessionId), ...(reasoning !== undefined && { reasoning }), ...(permissionMode !== undefined && { permissionMode }) };
+    return {
+      ...durable(sessionId),
+      ...(reasoning !== undefined && { reasoning }),
+      ...(permissionMode !== undefined && { permissionMode }),
+      ...(approvalTtlMs !== undefined && { approvalTtlMs }),
+    };
   };
   /** `lead` (N6): false when the run starts as a handoff target, which gets none of this agent's memory. */
   const executeOptions = (
@@ -953,34 +947,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     return hasMcp ? streamAfter(mcp.ready, options) : AgentExecutor.stream(options);
   };
   // LOU-W9: a checkpointed session's turn runs under its own sessionId + checkpointStore.
-  const session = (options: SessionOptions = {}): AgentSession<Typed> => {
-    // The id is chosen here so memory scoped to the session sees it on every turn.
-    const sessionId = options.id ?? globalThis.crypto.randomUUID();
-    const ctxOf = (input: Message[], call?: SessionTurnCall): RunConfigContext => ({
-      sessionId,
-      input: call?.input ?? input,
-      metadata: call?.metadata,
-      principal: call?.principal,
-    });
-    return approvals.session(
-      // N6: a session's turn continues with the agent its transcript last handed off to.
-      (input, signal, turn, call) => run(input, ctxOf(input, call), signal, turn, true),
-      (input, signal, turn, call) => stream(input, ctxOf(input, call), signal, turn, true),
-      // LOU-W8 follow-up: `session.compact()` uses the agent's `compaction` unless the session sets its own; N4: the same for the permission mode.
-      withDefaultStores(
-        {
-          ...options,
-          compaction: options.compaction ?? config.compaction,
-          permissionMode: options.permissionMode ?? config.permissionMode,
-          onPermissionModeChange: options.onPermissionModeChange ?? config.onPermissionModeChange,
-          id: sessionId,
-        },
-        config.store
-      ),
-      // N3a: a fork is a session of this agent, so memory scoped to the session sees the fork's id.
-      session
-    ) as AgentSession<Typed>;
-  };
+  const session = agentSession<Typed>(config, approvals, run, stream);
 
   // `object` was validated with `config.output`, so it has its output type.
   type Typed = InferSchemaOutput<TOutput>;
@@ -1024,11 +991,44 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
       await mcp.ready();
       return staticSpec ?? specs.resolve(ctx, pinned as PinnedRunConfig | undefined);
     },
+    // N6: these are read by send()/stream()/session() at run start - a run
+    // hands them across a handoff, so a target's are never consulted.
+    runLevelOptions: runLevelOptionNames(config),
   });
   // LOU-R19: remembered so the CLI can rebuild the agent with its overrides
   // (`--traces`' exporter) when a module exports the built agent itself.
   builtConfigs.set(simpleAgent, config);
   return simpleAgent;
+}
+
+/** The entry agent's run-level options (N6): names a handoff target can never own. */
+function runLevelOptionNames(config: CreateAgentConfig): string[] {
+  return (['approve', 'approvalStore', 'permissionMode', 'approvalTtlMs', 'store'] as const).filter((key) => config[key] !== undefined);
+}
+
+/** The approval store a run writes to: the explicit one, else the store bundle's, else in-memory. */
+function approvalStoreOf(config: CreateAgentConfig): ApprovalStore {
+  return config.approvalStore ?? config.store?.approvals ?? new InMemoryApprovalStore();
+}
+
+/** `task` options plus the agent's session store, when it has one (LOU-Y6). */
+function subagentOptionsOf(config: CreateAgentConfig) {
+  const sessions = config.store?.sessions;
+  return sessions ? { sessions, ...config.subagentOptions } : config.subagentOptions;
+}
+
+/** N6: a handoff tool may not share a tool's name (a per-run `tools` function is checked when the run starts). */
+function assertNoHandoffToolClash(handoffTools: string[], staticTools: RunTools | undefined): void {
+  const clash = handoffTools.find((name) => staticTools?.toolsConfig[name]);
+  if (clash) {
+    throw new ConfigurationError(`createAgent: the handoff tool '${clash}' has the name of one of the agent's tools; set another toolName with handoff(target, { toolName }).`, 'handoffs');
+  }
+}
+
+/** TTL: `approvalTtlMs` must be a positive, finite number of milliseconds. */
+function assertApprovalTtlMs(value: unknown): void {
+  if (value === undefined || (typeof value === 'number' && Number.isFinite(value) && value > 0)) return;
+  throw new ConfigurationError(`createAgent: 'approvalTtlMs' must be a positive number of milliseconds, got ${String(value)}.`, 'approvalTtlMs');
 }
 
 /** N6: `maxHandoffs` must be a whole number >= 0. */
@@ -1162,6 +1162,99 @@ async function resolveOption<T>(option: string, value: PerRun<T>, ctx: RunConfig
       { cause: error }
     );
   }
+}
+
+/** How a paused run continues: with the spec (and, for a dynamic run, the model) it paused with. */
+function resumeRequester(deps: {
+  specs: AgentSpecs;
+  handoffs: ReturnType<typeof handoffRunner>;
+  runOptions: RunOptions;
+  config: CreateAgentConfig;
+  hooks: HookRegistry | undefined;
+  checkpoints: CheckpointStore | undefined;
+  tokens: OAuthTokenStore | undefined;
+  tracing: Pick<ExecuteOptions, 'exporter' | 'captureContent' | 'redactContent'>;
+}) {
+  const { specs, handoffs, runOptions, config, hooks, checkpoints, tokens, tracing } = deps;
+  return async (
+    approvalStore: ApprovalStore,
+    decision: ApprovalDecision,
+    signal?: AbortSignal,
+    checkpointStore?: CheckpointStore,
+    permissionMode?: PermissionOptions['permissionMode'],
+    approver?: Principal,
+    onAgentEvent?: (event: AgentEvent) => void
+  ): Promise<ResumeRequest> => {
+    // N6: a run paused after a handoff continues as the agent it handed off to.
+    const paused = await pausedRun(specs, approvalStore, decision.id, handoffs.has() ? handoffs : undefined);
+    const { agent: pausedAgent, provider, toolRegistry, hostedTools, ...pausedOptions } = paused.spec;
+    return {
+      decision,
+      approvalStore: paused.store,
+      toolRegistry: toolRegistry ?? new ToolRegistry(),
+      provider,
+      executeOptions: {
+        ...runOptions,
+        ...pausedOptions,
+        // N4: a paused session turn continues under the session's mode (read at each call), else the agent's.
+        ...(permissionMode !== undefined && { permissionMode }),
+        output: config.output,
+        hooks,
+        approvalStore: paused.store,
+        signal,
+        currentAgent: pausedAgent,
+        hostedTools,
+        ...(paused.handoffs && { handoffs: paused.handoffs, maxHandoffs: config.maxHandoffs }),
+        // LOU-R18: `onAgentEvent` is the paused session's on() forwarder when the run is continued in one.
+        onAgentEvent: mergedAgentEvent(config.onEvent, onAgentEvent),
+        ...tracing,
+        // N10b: who decides; the run itself goes on as the principal it paused with (its snapshot's).
+        ...(approver && { approver }),
+        // N9b: a sign-in pause continues once the user's token is in the store.
+        ...(tokens && { tokens }),
+      },
+      // A run paused under a `sessionId` keeps checkpointing after the decision.
+      checkpointStore: checkpointStore ?? checkpoints,
+    };
+  };
+}
+
+/** LOU-W9: a checkpointed session's turn runs under its own sessionId + checkpointStore. */
+function agentSession<Typed>(
+  config: CreateAgentConfig,
+  approvals: ReturnType<typeof createAgentApprovals>,
+  run: (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: RunTurn, inSession?: boolean) => Promise<ExecutionResult>,
+  stream: (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: RunTurn, inSession?: boolean) => AgentRun
+): (options?: SessionOptions) => AgentSession<Typed> {
+  const session = (options: SessionOptions = {}): AgentSession<Typed> => {
+    // The id is chosen here so memory scoped to the session sees it on every turn.
+    const sessionId = options.id ?? globalThis.crypto.randomUUID();
+    const ctxOf = (input: Message[], call?: SessionTurnCall): RunConfigContext => ({
+      sessionId,
+      input: call?.input ?? input,
+      metadata: call?.metadata,
+      principal: call?.principal,
+    });
+    return approvals.session(
+      // N6: a session's turn continues with the agent its transcript last handed off to.
+      (input, signal, turn, call) => run(input, ctxOf(input, call), signal, turn, true),
+      (input, signal, turn, call) => stream(input, ctxOf(input, call), signal, turn, true),
+      // LOU-W8 follow-up: `session.compact()` uses the agent's `compaction` unless the session sets its own; N4: the same for the permission mode.
+      withDefaultStores(
+        {
+          ...options,
+          compaction: options.compaction ?? config.compaction,
+          permissionMode: options.permissionMode ?? config.permissionMode,
+          onPermissionModeChange: options.onPermissionModeChange ?? config.onPermissionModeChange,
+          id: sessionId,
+        },
+        config.store
+      ),
+      // N3a: a fork is a session of this agent, so memory scoped to the session sees the fork's id.
+      session
+    ) as AgentSession<Typed>;
+  };
+  return session;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { afterAll, describe, it, expect } from 'vitest';
+import { afterAll, describe, it, expect, vi } from 'vitest';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -131,9 +131,14 @@ describe('createAgent({ memory })', () => {
     const model = mockModel([{ toolCalls: [{ name: 'send' }] }, 'done']);
     const agent = createAgent({ provider: model, tools: [send], memory: [notes] });
     const paused = await agent.send('send it');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
     expect(systemOf(model.lastCall)).toContain('- likes tea');
     expect(toolsOf(model.lastCall)).toEqual(['send']);
+    // The per-run memory tools the resumed run does not rebind are `transient`:
+    // they are not agent identity, so their absence reports no drift.
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   it("passes the last input as the query with query: 'last-input'", async () => {

@@ -71,7 +71,10 @@ export async function fingerprintOf(
   const tools: Record<string, string> = {};
   for (const name of Object.keys(agent.tools ?? {}).sort()) {
     const descriptor = toolRegistry?.get(name);
-    if (descriptor?.tool) tools[name] = await shortHash(stableStringify(getToolInputSchema(descriptor) ?? {}));
+    // `transient` tools are bound per run (a memory slot's, to the run's
+    // scope keys): present in this registry but absent from a resumed run's,
+    // so they are not part of the agent's stable identity.
+    if (descriptor?.tool && !descriptor.transient) tools[name] = await shortHash(stableStringify(getToolInputSchema(descriptor) ?? {}));
   }
   for (const tool of [...hostedTools].sort((a, b) => a.name.localeCompare(b.name))) {
     tools[tool.name] = await shortHash(stableStringify({ hosted: tool.type, options: tool.options }));

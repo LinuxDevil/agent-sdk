@@ -42,6 +42,7 @@ import type {
   PiCompatModule,
   PiEventStream,
   PiModel,
+  PiStreamEvent,
   PiStreamOptions,
   PiStopReason,
   PiThinkingContent,
@@ -410,53 +411,65 @@ export class PiProvider implements LLMProvider {
     };
   }
 
+  /** `thinking_end`: the signature/redaction of the thinking block that closed. */
+  private thinkingEndChunk(event: PiStreamEvent): StreamChunk {
+    const block = event.partial?.content?.[event.contentIndex ?? -1];
+    const thinking = block?.type === 'thinking' ? (block as PiThinkingContent) : undefined;
+    const reasoning =
+      thinking?.redacted === true
+        ? { redactedData: thinking.thinkingSignature ?? '' }
+        : thinking?.thinkingSignature !== undefined
+          ? { signature: thinking.thinkingSignature }
+          : undefined;
+    return { type: 'reasoning-end', ...(reasoning && { reasoning }) };
+  }
+
+  /** `toolcall_end`: the finished pi tool call as our function-call chunk. */
+  private toolCallChunk(event: PiStreamEvent): StreamChunk | undefined {
+    if (!event.toolCall) return undefined;
+    return {
+      type: 'tool-call',
+      toolCall: {
+        id: event.toolCall.id,
+        type: 'function',
+        function: { name: event.toolCall.name, arguments: JSON.stringify(event.toolCall.arguments ?? {}) },
+      },
+    };
+  }
+
+  /** `error`: aborts surface as AbortError so callers treat them like a cancelled stream. */
+  private errorChunk(event: PiStreamEvent): StreamChunk {
+    if (event.reason === 'aborted') {
+      return { type: 'error', error: Object.assign(new Error('The pi model call was aborted'), { name: 'AbortError' }) };
+    }
+    return { type: 'error', error: streamError(event.error ?? event.message, this.name) };
+  }
+
+  /** One pi event as the `StreamChunk` it maps to (undefined: no chunk for it). */
+  private chunkFor(event: PiStreamEvent): StreamChunk | undefined {
+    switch (event.type) {
+      case 'text_delta':
+        return { type: 'text-delta', textDelta: event.delta ?? '' };
+      case 'thinking_delta':
+        return { type: 'reasoning-delta', textDelta: event.delta ?? '' };
+      case 'thinking_end':
+        return this.thinkingEndChunk(event);
+      case 'toolcall_end':
+        return this.toolCallChunk(event);
+      case 'done':
+        return { type: 'finish', finishReason: event.message ? finishReasonOf(event.message) : 'stop', ...(event.message?.usage && { usage: piUsage(event.message.usage) }) };
+      case 'error':
+        return this.errorChunk(event);
+      default:
+        return undefined; // start / *_start / *_end for text, toolcall_delta: no Lousho chunk
+    }
+  }
+
   /** pi's event stream as our `StreamChunk`s. */
   private async *chunkStream(events: PiEventStream): AsyncGenerator<StreamChunk> {
     for await (const event of events) {
-      switch (event.type) {
-        case 'text_delta':
-          yield { type: 'text-delta', textDelta: event.delta ?? '' };
-          break;
-        case 'thinking_delta':
-          yield { type: 'reasoning-delta', textDelta: event.delta ?? '' };
-          break;
-        case 'thinking_end': {
-          const block = event.partial?.content?.[event.contentIndex ?? -1];
-          const thinking = block?.type === 'thinking' ? (block as PiThinkingContent) : undefined;
-          const reasoning =
-            thinking?.redacted === true
-              ? { redactedData: thinking.thinkingSignature ?? '' }
-              : thinking?.thinkingSignature !== undefined
-                ? { signature: thinking.thinkingSignature }
-                : undefined;
-          yield { type: 'reasoning-end', ...(reasoning && { reasoning }) };
-          break;
-        }
-        case 'toolcall_end':
-          if (event.toolCall) {
-            yield {
-              type: 'tool-call',
-              toolCall: {
-                id: event.toolCall.id,
-                type: 'function',
-                function: { name: event.toolCall.name, arguments: JSON.stringify(event.toolCall.arguments ?? {}) },
-              },
-            };
-          }
-          break;
-        case 'done':
-          yield { type: 'finish', finishReason: event.message ? finishReasonOf(event.message) : 'stop', ...(event.message?.usage && { usage: piUsage(event.message.usage) }) };
-          break;
-        case 'error':
-          if (event.reason === 'aborted') {
-            yield { type: 'error', error: Object.assign(new Error('The pi model call was aborted'), { name: 'AbortError' }) };
-          } else {
-            yield { type: 'error', error: streamError(event.error ?? event.message, this.name) };
-          }
-          break;
-        default:
-          break; // start / *_start / *_end for text, toolcall_delta: no Lousho chunk
-      }
+      const chunk = this.chunkFor(event);
+      if (chunk !== undefined) yield chunk;
     }
   }
 

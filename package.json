@@ -1,6 +1,6 @@
 {
   "name": "@lousho/build-ai-agent",
-  "version": "1.0.0-alpha.2",
+  "version": "1.0.0-alpha.4",
   "description": "Framework-agnostic SDK for building AI agents",
   "workspaces": [
     "apps/*",
@@ -145,8 +145,8 @@
     "./src/providers/index.js"
   ],
   "scripts": {
-    "build": "node --max-old-space-size=8192 node_modules/tsup/dist/cli-default.js",
-    "dev": "node --max-old-space-size=8192 node_modules/tsup/dist/cli-default.js --watch",
+    "build": "node --max-old-space-size=12288 node_modules/tsup/dist/cli-default.js",
+    "dev": "node --max-old-space-size=12288 node_modules/tsup/dist/cli-default.js --watch",
     "pre-release": "npm version prerelease --preid=alpha --no-git-tag-version && node scripts/sync-version.mjs && npm publish --access public --tag alpha",
     "pre-release:create-lousho-agent": "npm version prerelease --preid=alpha --no-git-tag-version -w create-lousho-agent && npm run build -w create-lousho-agent && npm publish -w create-lousho-agent --access public --tag alpha",
     "release:create-lousho-agent": "npm version patch --no-git-tag-version -w create-lousho-agent && npm run build -w create-lousho-agent && npm publish -w create-lousho-agent --access public",
@@ -168,6 +168,10 @@
     "example:doc-qa": "tsx examples/doc-qa/index.ts",
     "example:plan-mode": "tsx examples/plan-mode/index.ts",
     "example:slack-notifier": "tsx examples/slack-notifier/index.ts",
+    "example:support-desk": "tsx examples/support-desk/index.ts",
+    "example:deep-research": "tsx examples/deep-research/index.ts",
+    "example:data-analyst": "tsx examples/data-analyst/index.ts",
+    "example:evaluator-loop": "tsx examples/evaluator-loop/index.ts",
     "pipeline:demo": "tsx examples/ops-pipeline/index.ts",
     "pipeline:demo:trigger": "tsx examples/ops-pipeline/mocks/sendSyntheticError.ts",
     "build:studio": "npm run build:studio --workspace apps/agent-forge",

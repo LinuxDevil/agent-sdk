@@ -2,7 +2,7 @@
  * Helpers for multimodal message content (LOU-V11).
  */
 
-import type { ContentPart, Message } from './llm';
+import type { ContentPart, Message, MessageRole } from './llm';
 
 /** Anything `textOf` reads: a message, or a frozen copy of one whose content parts are readonly. */
 type TextSource = { readonly content: string | readonly ContentPart[] };
@@ -21,6 +21,28 @@ export function textOf(message: TextSource | TextSource['content']): string {
   let text = '';
   for (const part of content as readonly ContentPart[]) if (part.type === 'text') text += part.text;
   return text;
+}
+
+/**
+ * The decoded result of a `tool` message, as text - the inverse of the
+ * executor's `toolResultContent()`, which JSON-encodes the result into
+ * `content`. `textOf()` gives a string result back wrapped in quotes with
+ * escaped newlines; `toolResultText` unwraps that one JSON layer. A result
+ * that is not a JSON string (an object, a number, `null`) stays as its JSON,
+ * and content that is not JSON at all is returned unchanged.
+ *
+ * @example
+ * toolResultText({ role: 'tool', content: '"line one\\nline two"' }); // 'line one\nline two'
+ * toolResultText({ role: 'tool', content: '{"rows":[1,2]}' }); // '{"rows":[1,2]}'
+ */
+export function toolResultText(message: TextSource & { readonly role?: MessageRole }): string {
+  const raw = textOf(message);
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return typeof parsed === 'string' ? parsed : raw;
+  } catch {
+    return raw;
+  }
 }
 
 /**

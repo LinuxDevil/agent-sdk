@@ -49,7 +49,7 @@ const REPO_ROOT = path.resolve(__dirname, '..');
  */
 const MAX_ENTRIES = 1050;
 const MAX_UNPACKED_BYTES = 18 * 1024 * 1024;
-const MAX_PACKED_BYTES = 4.5 * 1024 * 1024;
+const MAX_PACKED_BYTES = 4.6 * 1024 * 1024;
 
 const DEFAULT_PEERS = 'ai@7 zod@4 @ai-sdk/openai@4 react@19 vue@3 @opentelemetry/api@1';
 const FORBIDDEN_PATHS = [

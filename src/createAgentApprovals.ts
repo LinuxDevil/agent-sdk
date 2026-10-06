@@ -6,7 +6,7 @@
  * each pause at once by resuming the run with the callback's answer.
  */
 
-import { describeApproval, type ApprovalDecision, type ApprovalStore, type PendingApproval } from './execution/ApprovalGate';
+import { approvalExpired, describeApproval, type ApprovalDecision, type ApprovalStore, type PendingApproval } from './execution/ApprovalGate';
 import type { ExecutionResult } from './execution/AgentExecutor';
 import type { AgentEvent } from './execution/agentEvents';
 import type { AgentRun } from './execution/agentRun';
@@ -43,17 +43,30 @@ export interface ResolveApprovalOptions {
  * never asked about a sign-in (`kind: 'sign-in'`, N9b): only the user can sign in.
  * `request.principal` (N10b) is who the paused run acts for.
  *
+ * The literal `'defer'` does not decide: the call stays pending (listed by
+ * `agent.approvals.list()`, resolvable by `agent.approvals.resolve()`) and
+ * the run surfaces the pause - `send()` resolves with
+ * `finishReason: 'awaiting-approval'`, exactly as if the callback had never
+ * been asked. An approver can thereby decide the calls it trusts and hand
+ * the rest to a human. (`'defer'` is reserved: a note that is exactly the
+ * string `'defer'` defers instead of approving.)
+ *
  * @example
  * ```ts
  * const approve: ApproveToolCall = ({ toolName, args }) => toolName !== 'send_email' || args.to === 'me@example.com';
  * const answer: ApproveToolCall = (request) => (request.kind === 'question' ? 'Lisbon' : true);
+ * const triage: ApproveToolCall = ({ toolName }) => (toolName === 'lookup' ? true : 'defer'); // humans decide the rest
  * ```
  */
-export type ApproveToolCall = (request: PendingApproval) => boolean | string | Promise<boolean | string>;
+export type ApproveToolCall = (request: PendingApproval) => boolean | 'defer' | (string & {}) | Promise<boolean | 'defer' | (string & {})>;
 
 /** `agent.approvals`: the tool calls a `createAgent()` agent is paused on, and how to decide them. */
 export interface AgentApprovals {
-  /** Approvals this agent paused on in this process and that are not decided yet, oldest first. */
+  /**
+   * Approvals this agent paused on in this process and that are not decided
+   * yet, oldest first. TTL: an entry past its `expiresAt` stays listed until
+   * decided - the run is still paused - but deciding it denies the call.
+   */
   list(): Promise<PendingApproval[]>;
   /**
    * The pending approval `id`, without deciding it: this process's pauses
@@ -68,7 +81,9 @@ export interface AgentApprovals {
    * with a rejection) and continues the run, resolving with the continued
    * run's result - which may pause again. A run paused inside
    * `agent.session()` continues in that session. Throws when `id` is unknown
-   * or already resolved.
+   * or already resolved. TTL: a pause past its `expiresAt` is denied
+   * ('approval expired') even when `approved: true` is passed - an expired
+   * approval never runs its tool.
    *
    * @example
    * ```ts
@@ -189,6 +204,33 @@ export function createAgentApprovals(options: {
     },
   };
 
+  /**
+   * The `approve` callback's verdict on `request`, or `false` once its
+   * `expiresAt` (TTL) passes - an expired pause resumes as a denial
+   * (`approval expired`), never with a stale approval, whatever the callback
+   * answers later.
+   */
+  async function decide(request: PendingApproval): Promise<boolean | string> {
+    if (!approve) return false;
+    const expiresAt = request.expiresAt === undefined ? undefined : Date.parse(request.expiresAt);
+    if (expiresAt === undefined || Number.isNaN(expiresAt)) return approve(request);
+    if (approvalExpired(request)) return false;
+    const left = expiresAt - Date.now();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        approve(request),
+        new Promise<false>((resolve) => {
+          timer = setTimeout(() => resolve(false), left);
+          // The deadline alone must not keep the process alive.
+          (timer as { unref?: () => void }).unref?.();
+        }),
+      ]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  }
+
   /** With an `approve` callback, decides every pause until the run finishes. */
   async function settle(
     result: ExecutionResult,
@@ -202,7 +244,10 @@ export function createAgentApprovals(options: {
       const request = current.approvalId ? pending.get(current.approvalId) : undefined;
       // N9b: only the user can sign in, so a sign-in pause is never decided by `approve`.
       if (!approve || current.finishReason !== 'awaiting-approval' || !request || request.kind === 'sign-in') return current;
-      const verdict = await approve(request);
+      const verdict = await decide(request);
+      // A 'defer' verdict is not a decision: the approval stays pending and
+      // the paused result is surfaced as it is, for the human path to resolve.
+      if (verdict === 'defer') return current;
       const decision = typeof verdict === 'string' ? { id: request.id, approved: true, note: verdict } : { id: request.id, approved: verdict };
       current = await resume(store, decision, signal, checkpointStore, permissionMode, undefined, onAgentEvent);
     }

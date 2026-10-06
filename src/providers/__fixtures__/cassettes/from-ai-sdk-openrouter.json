@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "sdkVersion": "1.0.0-alpha.8",
-  "recordedAt": "2026-10-02T20:49:06.723Z",
+  "sdkVersion": "1.0.0-alpha.4",
+  "recordedAt": "2026-10-06T10:06:02.889Z",
   "provider": {
     "name": "openai.chat",
     "defaultModel": "openai/gpt-4o-mini"
@@ -53,7 +53,7 @@
         },
         "toolCalls": [
           {
-            "id": "call_9SiyMoJNUl6yToh7lFiEpSKA",
+            "id": "call_hpx3Y2RB3saRKv0kHEOOHafB",
             "type": "function",
             "function": {
               "name": "add",

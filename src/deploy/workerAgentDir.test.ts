@@ -49,6 +49,14 @@ describe('resolveWorkerAgentDir (M3b)', () => {
     expect(resolved.tools).toEqual([echo]);
   });
 
+  it("carries approvalTtlMs and a permission rule's ttlMs over to the resolved options", () => {
+    const resolved = resolveWorkerAgentDir(
+      dir({ config: { model: 'mock/x', approvalTtlMs: 60_000, permissions: [{ tool: 'deploy', action: 'ask', ttlMs: 30_000 }] } })
+    );
+    expect(resolved.approvalTtlMs).toBe(60_000);
+    expect(resolved.permissions).toEqual([{ tool: 'deploy', action: 'ask', ttlMs: 30_000 }]);
+  });
+
   it("takes an agent.ts config module's default export, and its provider instance", () => {
     const provider = createMockProvider({ name: 'mock', responses: ['hi'] });
     const resolved = resolveWorkerAgentDir(
@@ -83,6 +91,7 @@ describe('resolveWorkerAgentDir (M3b)', () => {
     [{ config: { model: 'ollama/llama3' } }, "uses provider 'ollama'", 'LOUSHO_DEPLOY_FAILED'],
     [{ config: {} }, 'agent.json sets no model', 'LOUSHO_DEPLOY_FAILED'],
     [{ configFile: undefined, config: undefined }, "the agent directory 'my-agent' sets no model", 'LOUSHO_DEPLOY_FAILED'],
+    [{ config: { model: 'mock/x', store: { dir: './.lousho' } } }, "'store' declares a file store", 'LOUSHO_DEPLOY_FAILED'],
   ] as Array<[Partial<WorkerAgentDir>, string, string]>)('refuses %j', (overrides, message, code) => {
     expect(() => resolveWorkerAgentDir(dir(overrides))).toThrow(expect.objectContaining({ code, message: expect.stringContaining(message) }));
   });
