@@ -92,11 +92,13 @@ describe.skipIf(!KEY)('pi provider (live, OpenRouter)', () => {
       instructions:
         'You are a careful coding agent working in the workspace. Make the smallest possible change. ' +
         'Task, in order: (1) math.js has a bug - `add` subtracts instead of adding. ' +
-        'Change ONLY the body of `add`; `subtract` is already correct and must keep returning a - b. ' +
+        '`add` and `subtract` have IDENTICAL bodies, so edit only `add`: pass an `old_string` that ' +
+        'includes the `export function add` signature line (unique context), and never use replace_all. ' +
+        'Note: read_file output is line-numbered; those `     N\t` prefixes are NOT part of the file - do not include them in old_string. ' +
         'Do not modify math.test.js. (2) Run `node --test math.test.js`; if it fails, inspect and fix until it passes. ' +
         '(3) Clean up by running `rm -f scratch.txt` - if a command is refused, move on. ' +
         'Reply briefly when done.',
-      maxSteps: 10,
+      maxSteps: 14,
       limits: { maxCostUsd: 0.05 },
     });
 

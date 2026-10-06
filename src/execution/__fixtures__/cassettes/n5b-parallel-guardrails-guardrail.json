@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "sdkVersion": "1.0.0-alpha.8",
-  "recordedAt": "2026-10-02T22:47:43.917Z",
+  "sdkVersion": "1.0.0-alpha.4",
+  "recordedAt": "2026-10-06T10:06:02.254Z",
   "provider": {
     "name": "openrouter",
     "defaultModel": "openai/gpt-4o-mini"

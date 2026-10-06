@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "sdkVersion": "1.0.0-alpha.8",
-  "recordedAt": "2026-10-03T01:15:38.635Z",
+  "sdkVersion": "1.0.0-alpha.4",
+  "recordedAt": "2026-10-06T10:06:02.254Z",
   "provider": {
     "name": "openrouter",
     "defaultModel": "openai/gpt-4o-mini"
@@ -61,7 +61,7 @@
         },
         "toolCalls": [
           {
-            "id": "call_09tOVJqatOC3QjSG672DRxur",
+            "id": "call_X3KAOZWpCnnQB7n8T0TVIv1S",
             "type": "function",
             "function": {
               "name": "count_to",
@@ -71,11 +71,11 @@
         ],
         "chunks": [
           {
-            "delayMs": 1242,
+            "delayMs": 918,
             "chunk": {
               "type": "tool-call",
               "toolCall": {
-                "id": "call_09tOVJqatOC3QjSG672DRxur",
+                "id": "call_X3KAOZWpCnnQB7n8T0TVIv1S",
                 "type": "function",
                 "function": {
                   "name": "count_to",
@@ -85,7 +85,7 @@
             }
           },
           {
-            "delayMs": 24,
+            "delayMs": 29,
             "chunk": {
               "type": "finish",
               "finishReason": "tool-calls",
@@ -169,7 +169,7 @@
         },
         "chunks": [
           {
-            "delayMs": 906,
+            "delayMs": 658,
             "chunk": {
               "type": "text-delta",
               "textDelta": "Counting"
@@ -197,7 +197,7 @@
             }
           },
           {
-            "delayMs": 84,
+            "delayMs": 82,
             "chunk": {
               "type": "text-delta",
               "textDelta": " is"
@@ -218,7 +218,7 @@
             }
           },
           {
-            "delayMs": 35,
+            "delayMs": 22,
             "chunk": {
               "type": "finish",
               "finishReason": "stop",

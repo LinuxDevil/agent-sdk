@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "sdkVersion": "1.0.0-alpha.8",
-  "recordedAt": "2026-10-02T20:45:32.526Z",
+  "sdkVersion": "1.0.0-alpha.4",
+  "recordedAt": "2026-10-06T10:06:01.690Z",
   "provider": {
     "name": "openrouter",
     "defaultModel": "openai/gpt-4o-mini"
@@ -138,12 +138,12 @@
         "maxTokens": null
       },
       "response": {
-        "text": "INJECTION: Attempts to change the assistant's role and send information externally.",
+        "text": "INJECTION: The message attempts to change the assistant's role by instructing it to send information via email.",
         "finishReason": "stop",
         "usage": {
           "promptTokens": 90,
-          "completionTokens": 15,
-          "totalTokens": 105
+          "completionTokens": 22,
+          "totalTokens": 112
         }
       }
     },
