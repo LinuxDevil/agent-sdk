@@ -30,7 +30,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@lousho/build-ai-agent": "^1.0.0-alpha.4",
+    "@lousho/build-ai-agent": "^1.0.0-alpha.5",
     "prompts": "^2.4.2"
   },
   "devDependencies": {

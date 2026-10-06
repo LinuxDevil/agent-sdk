@@ -195,6 +195,7 @@ OpenRouter.
 | [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md) | Runnable, verified snippets: `createAgent()`, tools, streaming, sessions, approvals, offline tests, spec files |
 | [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md) | Spec fields, the `mcpServers` field, provider env vars, retries and fallback, `createAgent()` options, budgets, project instructions |
 | [MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md) | Use MCP servers as tools (`mcpServers`, `connectMcp()`, `loadMcpTools()`), approval for MCP tools, serve an agent with `serveMcp()` / `lousho mcp` |
+| [Connectors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/connectors.md) | Connect to Google Docs, Slack, GitHub, Notion: the connector table, OAuth sign-in, approval for connector writes |
 | [OpenAPI tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/openapi-tools.md) | `openApiTools()`: an OpenAPI 3.0 / 3.1 document becomes one tool per operation, with approval for mutating ones |
 | [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md) | Model strings, `resolveProvider()`, which model runs, custom providers |
 | [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md) | Every `lousho` command and its flags |
@@ -225,6 +226,8 @@ OpenRouter.
 | [Code mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/code-mode.md) | `codeMode`: the model calls several tools from one sandboxed JavaScript program (`run_code`) |
 | [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md) | On-demand instructions: `defineSkill()`, `loadSkills()` |
 | [Agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md) | An agent as a folder: layout, mapping to `createAgent()`, security |
+| [Claude Code projects](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/claude-projects.md) | `claudeProject()`: load a repo's `CLAUDE.md` and `.claude/{skills,agents,rules,scratchpad}` into `createAgent()` — same files, both harnesses |
+| [Prompting and context techniques](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/prompting-techniques.md) | The catalog: few-shot, CoT, ReAct, context write/select/compress/isolate, waves, phases, typed decisions — each mapped to its Lousho surface |
 | [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md) | `createAgent({ compaction })`: prune old tool results, then summarize old turns |
 | [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) | `defineChannel()`, `mountChannels()`, `httpChannel()`, `webhookChannel()`, `slackChannel()`: surfaces mapped to sessions, replies and approvals sent back |
 | [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md) | `defineSchedule()` cron schedules, `schedules/` in an agent directory, `startSchedules()` |
@@ -239,6 +242,7 @@ OpenRouter.
 | [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md) | Trajectory evals with `defineEval()`, datasets, judges, `lousho eval` reports |
 | [Tracing and observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md) | OpenTelemetry GenAI spans, attribute table, content opt-in, local traces and `lousho traces` |
 | [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md) | `lousho build` targets: Node server, Docker, Cloudflare Workers (with KV checkpoints) |
+| [Hostinger VPS](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hostinger-vps.md) | Deploy to a Hostinger VPS: API verification, `docker save` over SSH, post-install scripts, health checks, approval testing |
 | [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md) | What the Worker target supports and what it does not, bindings, KV stores, cron triggers |
 | [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md) | `lousho add`: copy a tool, skill, channel, schedule or memory slot from a static JSON registry (a default one is built in) |
 | [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md) | The visual dashboard: quickstart, first-agent walkthrough, hooks |
@@ -271,6 +275,11 @@ Most examples run offline with a mock provider; see the
 | [evaluator-loop](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/evaluator-loop) | Writer/critic loop: `llmCritique()` scores a draft and returns feedback until it passes |
 | [data-analyst](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/data-analyst) | Text-to-SQL over `node:sqlite` with read-only enforcement — `DELETE`/`DROP` can never run |
 | [plan-mode](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/plan-mode) | Read and propose in `plan` mode, then apply edits after `setPermissionMode('acceptEdits')` |
+| [waves](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/waves) | WAVE engineering: bounded parallel workers, deterministic aggregate, typed verify gate, extend only on named gaps |
+| [phase-pipeline](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/phase-pipeline) | Phase engineering on flows: discuss → spec → plan → implement → proof gate, `oneOf` retry ladder |
+| [coding-agent-workflows](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/coding-agent-workflows) | Jev-style typed decisions routing a coding agent between fix/refactor/explain workflows, confidence-floor escalation |
+| [connectors](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/connectors) | MCP connectors (Google Docs/Slack shape) run offline against a mock `serveMcp` stdio server |
+| [hostinger-deploy](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/hostinger-deploy) | Deploy an agent to a real Hostinger VPS: API check, docker build+ship over SSH, health + approval smoke tests |
 | [agent-dir](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/agent-dir) | An agent defined as a directory and loaded with `loadAgentDir()` |
 | [support-bot](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/support-bot) | A minimal customer-support agent |
 | [research-assistant](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/research-assistant) | A research agent with the built-in `http` tool |
@@ -4078,6 +4087,105 @@ durable checkpoints the press is bound to that session's pending turn first,
 so the continuation is appended to the session transcript and a press a
 session is not waiting on decides nothing.
 
+# Claude Code projects
+
+Source: docs/claude-projects.md
+
+A repository that already carries Claude Code's conventional files —
+`CLAUDE.md`, `.claude/skills/`, `.claude/agents/`, `.claude/rules/`,
+`.claude/scratchpad/` — loads them with `claudeProject()`: the result spreads
+into `createAgent()`, so the same directory drives both harnesses. Nothing is
+copied or renamed; Lousho reads the files where they already are.
+
+```ts no-run
+import { createAgent, claudeProject } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+
+const provider = mockModel([{ text: 'ok' }]);
+
+const project = await claudeProject('./my-repo', { provider });
+const agent = createAgent({ provider, ...project });
+```
+
+What maps to what:
+
+| Claude convention | Becomes |
+| ----------------- | ------- |
+| `CLAUDE.md` (and `AGENTS.md`) | `instructions` (concatenated when both exist) |
+| `.claude/rules/*.md` | appended instruction sections, `## <file>`, sorted by name |
+| `.claude/skills/<name>/SKILL.md` | `skills` — same layout [`loadSkills()`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md) already reads |
+| `.claude/agents/*.md` | `subagents`: frontmatter `name`/`description`/`model`, body = instructions |
+| `.claude/scratchpad/` | a `scratchpad` tool — `write`/`append`/`read`/`list` named notes in that dir |
+| `.claude/commands/`, `settings*.json`, `mcp.json` | not loaded — listed on `manifest.ignored` |
+
+## Sub-agents
+
+`.claude/agents/reviewer.md`:
+
+```markdown
+---
+name: reviewer
+description: Reviews diffs for correctness
+model: openrouter/openai/gpt-4o-mini
+---
+
+You review code ruthlessly. Report findings, never rewrite.
+```
+
+The frontmatter `name` and `description` are required (Claude Code's own
+contract); the body becomes the sub-agent's `instructions`. `model` selects
+the sub-agent's model; without it the sub-agent runs on the `provider` /
+`model` passed to `claudeProject()` — a file with neither is an error naming
+it. A `tools` frontmatter list is recorded on the manifest but not enforced:
+Lousho sub-agents share the lead's tool registry (narrow them with
+[permission rules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-rules) instead).
+
+Unlike [agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md), `claudeProject()` *reads
+markdown as data and runs nothing*: no file in `.claude/` is imported or
+executed. Loading a project you don't trust is therefore safe — the tool
+surface stays whatever you pass to `createAgent()`.
+
+## Scratchpad
+
+`.claude/scratchpad/` gets a `scratchpad` tool: the agent writes, appends,
+reads and lists `*.md` notes in that directory (names are `a-z0-9-_`, so
+paths can't escape it). It is the durable "working notes" surface — for
+secrets or structured facts prefer [memory slots](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md); for
+task-shaped notes, hooks can pause on `scratchpad` writes like any tool.
+
+## Options
+
+```ts no-run
+import { claudeProject } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+
+const provider = mockModel([{ text: 'ok' }]);
+
+await claudeProject('./repo', {
+  provider,            // sub-agents without a frontmatter model run on this
+  model: 'openai/gpt-4o', // ...or on this model id (frontmatter model wins)
+  scratchpad: true,    // return the tool even if .claude/scratchpad is absent (created on first write)
+  rules: false,        // skip .claude/rules
+  agents: false,       // skip .claude/agents
+});
+```
+
+`manifest` reports what was found: `instructionFiles`, `rules`, `skills`,
+`subagents`, `scratchpad`, `ignored`.
+
+## What's deliberately not loaded
+
+`.claude/commands/*.md` are slash-command prompts for an interactive harness —
+the Lousho shape for "named repeatable workflows" is [flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md).
+`.claude/settings*.json` are Claude Code harness settings (they don't describe
+an agent), and `.claude/mcp.json` declares MCP servers — pass those to
+`createAgent({ mcpServers })` yourself ([MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md)); parsing a
+third-party config format is deliberately out of scope.
+
+For the other direction — `projectInstructions: true` on `createAgent()` —
+finds and appends the nearest `AGENTS.md`/`CLAUDE.md` up the tree, without
+touching `.claude/`. See the option in [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md).
+
 # CLI
 
 Source: docs/cli.md
@@ -5654,6 +5762,83 @@ The options of `AgentExecutor.execute()`, the lower-level entry point, are liste
 `lousho dev`, `lousho build`, `lousho mcp` and the other commands, with their
 flags, are described in [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md); `lousho mcp` is also covered in [MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#from-the-command-line).
 
+# Connectors
+
+Source: docs/connectors.md
+
+Connectors are how the agent reaches external services — Google Docs, Slack,
+GitHub, Notion, a database — the way Claude's connectors do. In Lousho a
+connector is an **MCP server**: add it to `mcpServers` and its tools join the
+agent's registry namespaced as `<server>__<tool>`.
+
+```ts no-run
+import { createAgent } from '@lousho/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openrouter/openai/gpt-4o-mini',
+  mcpServers: {
+    slack: { url: 'https://mcp.slack.com/mcp', oauth: { redirectUri: 'https://app.example.com/oauth/callback' } },
+    github: { url: 'https://api.githubcopilot.com/mcp/', headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } },
+  },
+});
+```
+
+## Two shapes
+
+- **Remote (HTTP)** — `{ url, headers?, oauth? }`. This is what Google Docs,
+  Slack, Notion and most Claude-style connectors are: a hosted MCP endpoint.
+- **Local (stdio)** — `{ command, args?, env? }`. Community and in-house
+  connectors shipped as npm packages: `{ command: 'npx', args: ['-y', 'their-mcp-server'] }`.
+
+The full option reference is in [MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md); OAuth sign-in flow in
+[OAuth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#mcp-servers-with-oauth).
+
+## Auth
+
+- **OAuth connectors** (Slack, Google Docs, Notion): set `oauth` on the server
+  entry. One *operator* signs the agent in once via
+  `agent.oauth.mcpSignInUrl('slack')`; the grant belongs to the app and every
+  run reuses it. A token `store` on `createAgent` keeps grants durable.
+- **Token connectors** (GitHub PAT, internal APIs): pass a static
+  `Authorization` header; keep the token in env, never in source.
+- **stdio connectors**: secrets go in `env`, e.g.
+  `{ command: 'npx', args: [...], env: { GITHUB_TOKEN: process.env.GITHUB_TOKEN! } }`.
+
+## Approval for connector writes
+
+Reads should run free; writes should ask. MCP tools carry
+`readOnlyHint`/`destructiveHint` annotations, and the default
+`approval: 'annotations'` turns those into the SDK's approval gate: a
+`slack.post_message` pauses the run until approved, `docs.get_document` does
+not. Tune it per server:
+
+```ts no-run
+mcpServers: {
+  slack: {
+    url: 'https://mcp.slack.com/mcp',
+    // Ask before any write, never before reads whose server marked them read-only.
+    approval: 'annotations', // default; or ({ name }) => !name.startsWith('search')
+  },
+  scratch: { command: 'node', args: ['./local.js'], approval: 'never' },
+}
+```
+
+[Permission rules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies) can gate connector tools
+too — `mcp.slack.*` matchers apply to the namespaced tool names.
+
+## Try it offline
+
+[examples/connectors](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/connectors) runs the whole pattern against
+a mock stdio MCP server (written with `serveMcp`) — fake `docs_*`/`slack_*`
+tools, no credentials, real MCP round-trip. Swap the `mcpServers` entry for a
+real endpoint and nothing else changes.
+
+## Serving your own connector
+
+`serveMcp()` (see [MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#serving-an-agent-over-mcp)) exposes an agent
+or a set of `defineTool()` tools as a stdio/HTTP MCP server — that is how a
+Lousho agent *becomes* a connector for Claude Code or another harness.
+
 # Deployment
 
 Source: docs/deployment.md
@@ -5678,6 +5863,9 @@ deploy the result). `tsup` must be installed (`npm install --save-dev tsup`).
 
 Every target answers `GET /health` (`200 ok`) and serves the full
 [HTTP API](#http-api) below: sessions, SSE streaming, approvals and bearer auth.
+
+For a real VPS walkthrough — provision check, build, ship, run, verify — see
+[Deploying to a Hostinger VPS](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hostinger-vps.md).
 
 ## Agent directories
 
@@ -8879,6 +9067,51 @@ pass the provider package's tool with `hostedTool()` where it works.
 Replaying provider tool blocks to keep citations across turns is not
 supported.
 
+# Deploying to a Hostinger VPS
+
+Source: docs/hostinger-vps.md
+
+The `docker` [deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md) target is a plain Dockerfile +
+bundled server, so it runs on any Docker host — including a Hostinger VPS.
+The [hostinger-deploy](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/hostinger-deploy)
+example ships a complete, tested recipe: `deploy.mjs` verifies the VM through
+the Hostinger API, builds locally, ships the context over SSH, and runs the
+container — then proves the deploy with `/health` and one real `/chat` turn.
+
+```bash
+export HOSTINGER_API_TOKEN=...   # developers.hostinger.com -> API tokens
+export OPENROUTER_API_KEY=...    # the agent's model key
+export LOUSHO_API_TOKEN=...      # bearer protecting the deployed server
+node examples/hostinger-deploy/deploy.mjs --vm <id|hostname|ip>
+```
+
+What it does, step by step:
+
+1. **Verify the VM.** `GET /api/vps/v1/virtual-machines` finds the VM by id,
+   hostname or IPv4 and refuses non-`running` machines. The
+   `hostinger-api-mcp` MCP server wraps this same API, so an agent (or this
+   session) can also drive it interactively — VM lifecycle, SSH keys,
+   firewall rules, post-install scripts.
+2. **Build.** `lousho build ./agent --target=docker --out <dir>` produces a
+   self-contained context (bundled `dist/server.js`, `Dockerfile`).
+3. **Ship + run.** `tar`/`scp` the context to `/opt/lousho-agent`, then over
+   SSH: `docker build`, `docker rm -f lousho-agent` if it exists, and
+   `docker run -d --restart unless-stopped -p 3000:3000 -e ...`.
+4. **Prove it.** Poll `/health`, then POST one `/chat` turn with the bearer
+   token.
+
+The example's environment flags are worth copying:
+
+- `-e LOUSHO_STORE=sqlite:/data/lousho.db -v lousho-data:/data` — sessions and
+  paused approvals survive container restarts (`/data` is a named volume).
+- `-e LOUSHO_API_TOKEN=...` — required: every route except `/health` is then
+  bearer-authed. Port 3000 is plain HTTP; put Traefik (the VPS template
+  installs it) or another TLS terminator in front.
+
+Provisioning itself — purchasing, recreating, resizing a VM — is deliberately
+*not* in the script: those are billed or destructive Hostinger API calls best
+left to explicit ops (or the MCP server, where each call is visible).
+
 # MCP (Model Context Protocol)
 
 Source: docs/mcp.md
@@ -10930,6 +11163,150 @@ the calls after it that would ask. In plan mode the approved call itself is
 refused too when its tool is not read-only.
 
 A resume in another process uses the mode the resuming agent or session has.
+
+# Prompting and context techniques
+
+Source: docs/prompting-techniques.md
+
+Agent quality comes from three layers, and it is worth knowing which layer a
+technique lives at, because the fix for a misbehaving agent is different at
+each one:
+
+1. **Prompt-level techniques** — what a single model call is asked to do and
+   how the ask is phrased.
+2. **Context engineering** — what fills the context window: what gets
+   written, selected, compressed and isolated.
+3. **Agentic workflow patterns** — how many calls, in what shape, with which
+   gates: chains, routing, parallel workers, evaluators, waves, phases.
+
+Lousho gives you the second and third layers as real machinery (tools,
+permissions, memory, sub-agents, flows, evaluators), so prompt-level
+techniques stay a thin layer of instructions on top.
+
+## Prompt-level techniques
+
+These all reduce to instructions and message shape — `createAgent`'s
+`instructions` / `prompt`, seeded session turns, and `output` schemas.
+
+| Technique | What it is | How to use it in Lousho |
+| --------- | ---------- | ----------------------- |
+| Zero-shot | Task + constraints only, no examples | The default: `instructions` |
+| Few-shot (in-context learning) | Show input/output pairs so the model copies the shape | Put example pairs in `instructions`, or seed `agent.session().send()` turns — a scripted "user/assistant" exchange the real turn continues |
+| Chain-of-thought | "Think step by step" before answering | Instructions. Prefer `reasoning` effort where the provider supports it — reasoning tokens are cleaner than prompted monologue |
+| Self-consistency | Sample N answers, take the majority | N runs + a vote step (a flow `parallel`/`llmCall` fan-out, or a sub-agent per sample) |
+| Tree/graph-of-thoughts | Explore a branching search of reasoning paths | A sub-agent per branch, an aggregator comparing them — same fan-out shape as [deep-research](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/deep-research) |
+| ReAct | Interleave reasoning and acting | The agent loop itself: every Lousho tool loop is ReAct |
+| Reflexion | Critique the last attempt, retry with the critique | [evaluator-loop](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/evaluator-loop): `llmCritique` feedback carried into the next draft |
+| Least-to-most | Solve the easy sub-problem first, chain to harder ones | Instructions decomposing into ordered steps, or a `flows` sequence |
+| Plan-and-solve / plan-and-execute | Write a plan, then execute it | `permissionMode: 'plan'` — the agent must produce a plan before any write tool runs; see [plan-mode](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/plan-mode) |
+| Skeleton-of-thought | Outline first, expand each point (in parallel) | A `task` fan-out over outline points — the deep-research shape |
+| Self-ask | The model asks and answers its own follow-ups | Instructions, or an explicit `oneOf` flow that loops a clarifying sub-agent |
+| Generated knowledge | Ask the model to state relevant facts, then answer | A first `llmCall` into a variable, the second prompt templated with it |
+| Meta-prompting | A model writes the prompt another call uses | One `llmCall` emitting the next step's prompt text into a variable |
+| Persona / role | "You are a …" framing | `instructions` — keep it to scope and tone; personas don't add knowledge |
+| Negative / constrained prompting | "Never do X", output restrictions | Instructions for style; enforcement belongs in [guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md) and permission rules, not the prompt |
+| Delimiters & instruction hierarchy | Mark untrusted data vs. instructions | Quote tool results/data in instructions; permission rules and `principal` are the real trust boundary — a hostile tool result can't overwrite a `deny` rule |
+| Scratchpad | Give the model a place to write working notes | A memory slot (`remember_*`/`recall_*` tools), or a file in the workspace tools' dir, or `.claude/scratchpad/` via `claudeProject()` |
+| Structured / constrained output | The answer must match a schema | `createAgent({ output: schema })` — validated, typed, retried on parse failure. See [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md) |
+
+Two rules of thumb:
+
+- Instructions steer; machinery enforces. Anything that must *never* happen
+  (no deletes, no prod writes) goes in `permissions`, guardrails and tools —
+  not the prompt.
+- Techniques that spend more tokens (self-consistency, trees, critiques) pay
+  off where a wrong answer is expensive; watch `result.usage` / `limits` and
+  budget them like any other spend.
+
+## Context engineering
+
+The four operations, and where each lives in the SDK:
+
+| Operation | What it means | Lousho surface |
+| --------- | ------------- | -------------- |
+| **Write** | Persist information outside the transcript so a later turn/run can reload it | Memory slots (`defineMemory` → `remember_*`/`recall_*` tools, scoped per user/sender/run), checkpoint + session stores, `store: { dir }` in agent dirs |
+| **Select** | Load only what's relevant right now | Skills (`load_skill` progressive disclosure), `toolSearch`/`deferLoading` (tools found on demand), memory scopes |
+| **Compress** | Shrink what's already there | `compaction` (summarize old turns), tool-result truncation, `inputFilter` on handoffs |
+| **Isolate** | Run work in a clean context so detail doesn't flood the lead | Sub-agents (`task` calls see only their prompt), code mode (`run_code` returns one value), the `inputFilter` boundary |
+
+```ts no-run
+import { createAgent, loadSkills } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+
+const provider = mockModel([{ text: 'done' }]);
+const researchAgent = createAgent({ provider, instructions: 'You research one slice.' });
+
+const agent = createAgent({
+  provider,
+  instructions: 'You triage inbound email.',
+  skills: await loadSkills('./skills'),             // select: bodies load on demand
+  toolSearch: { thresholdPercent: 0.1 },            // select: big tool surface stays deferred
+  compaction: { summarizer: 'openai/gpt-4o-mini' }, // compress: old turns fold into a summary
+  subagents: { researcher: researchAgent },         // isolate: task runs in a clean context
+});
+```
+
+The practical ordering: write durable facts to memory, select skills and
+tools on demand, compress the transcript when it grows, isolate anything
+token-hungry (search result dumps, file reads, subprocess output) behind a
+sub-agent or a tool that returns a digest.
+
+## Agentic workflow patterns
+
+The canonical shapes (Anthropic's "building effective agents" taxonomy) and
+the community terms that named two of them — all runnable in the repo:
+
+| Pattern | Shape | Lousho example |
+| ------- | ----- | -------------- |
+| Prompt chaining | Step → step → step, each a call | `flows` sequences (`llmCall` → `llmCall`) |
+| Routing | Classify, then dispatch to a specialist | [workflow-router](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/workflow-router); durable version: [support-desk](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/support-desk) handoffs |
+| Parallelization | N calls at once, results merged | Parallel `task` calls (`toolConcurrency` is unbounded by default) |
+| Orchestrator-workers | A lead decomposes work, workers execute | [deep-research](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/deep-research) |
+| Evaluator-optimizer | Draft → score → revise loop | [evaluator-loop](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/evaluator-loop) (`llmCritique`) |
+| **Wave engineering** | Bounded waves of parallel workers with a verify gate and scoped extension (WAVES: Workers · Aggregate · Verify · Extend) | [waves](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/waves) |
+| **Phase engineering** | Deterministic phase pipelines — spec → plan → implement → verify — the model can't skip, with proof-command gates | [phase-pipeline](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/phase-pipeline) (flows + real proof steps) |
+| Autonomous loop | Open-ended tool loop until done | The default agent loop, bounded by `maxSteps`, `limits`, permissions |
+| Handoffs | Control transfers wholesale to a specialist | [support-desk](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/support-desk), [handoffs](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/handoffs.md) |
+
+### Typed decisions ("System One" style)
+
+Some steps shouldn't generate text at all — they should *decide*: classify,
+route, score, verify. The pattern (TypeSafe's Jev makes a whole model of it)
+is a typed probabilistic decision: unstructured state in, `{ action,
+confidence }` out, and the workflow branches on it. In Lousho that's an
+agent with an `output` schema feeding a flow's `oneOf` — and a confidence
+floor that routes low-confidence calls to a human instead of acting on a
+guess:
+
+```ts no-verify
+const triage = createAgent({
+  provider,
+  output: z.object({
+    action: z.enum(['patch', 'ask-human', 'wontfix']),
+    confidence: z.number(),
+    reason: z.string(),
+  }),
+});
+// in the flow: oneOf on result.object.action,
+// and confidence < 0.7 routes to a human queue rather than acting.
+```
+
+[coding-agent-workflows](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/coding-agent-workflows)
+is the full example: a coding agent driven by a deterministic workflow whose
+branch points are typed decisions, where confidence below the floor exits
+`needs-human` instead of patching.
+
+## Where to go next
+
+- [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md), [evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md)
+  (`llmJudge`, `llmCritique`) for the decide/score primitives
+- [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md) for deterministic pipelines and phase gating
+- [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md) and [handoffs](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/handoffs.md) for parallel
+  and transfer patterns
+- [Memory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md), [compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md), [skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md),
+  [tool search](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tool-search.md) for the context layer
+- [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md) and [guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md) for the gates
+  that keep bounded autonomy safe
 
 # Providers
 

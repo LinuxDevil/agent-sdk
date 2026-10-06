@@ -1092,6 +1092,38 @@ export interface CheckpointStore {
 type CheckpointUsage = Pick<RunUsage, 'promptTokens' | 'completionTokens' | 'totalTokens'> & Partial<RunUsage>;
 
 // @public
+export interface ClaudeProject {
+    instructions?: string;
+    manifest: ClaudeProjectManifest;
+    skills?: Skill[];
+    subagents?: Record<string, SimpleAgent>;
+    tools?: DefinedTool[];
+}
+
+// @public
+export function claudeProject(dir?: string, options?: ClaudeProjectOptions): Promise<ClaudeProject>;
+
+// @public
+export interface ClaudeProjectManifest {
+    dir: string;
+    ignored: string[];
+    instructionFiles: string[];
+    rules: string[];
+    scratchpad: boolean;
+    skills: string[];
+    subagents: string[];
+}
+
+// @public
+export interface ClaudeProjectOptions {
+    agents?: boolean;
+    model?: string;
+    provider?: LLMProvider;
+    rules?: boolean;
+    scratchpad?: boolean;
+}
+
+// @public
 export function codeInterpreter(options?: CodeInterpreterOptions): HostedTool;
 
 // @public
@@ -6545,7 +6577,7 @@ export type VectorMemoryProvider = MemoryProvider & {
 };
 
 // @public
-export const VERSION = "1.0.0-alpha.4";
+export const VERSION = "1.0.0-alpha.5";
 
 // @public (undocumented)
 const webFetchInput: z.ZodObject<{

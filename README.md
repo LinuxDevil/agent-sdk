@@ -198,6 +198,7 @@ OpenRouter.
 | [Quick Start](docs/quick-start.md) | Runnable, verified snippets: `createAgent()`, tools, streaming, sessions, approvals, offline tests, spec files |
 | [Configuration](docs/configuration.md) | Spec fields, the `mcpServers` field, provider env vars, retries and fallback, `createAgent()` options, budgets, project instructions |
 | [MCP](docs/mcp.md) | Use MCP servers as tools (`mcpServers`, `connectMcp()`, `loadMcpTools()`), approval for MCP tools, serve an agent with `serveMcp()` / `lousho mcp` |
+| [Connectors](docs/connectors.md) | Connect to Google Docs, Slack, GitHub, Notion: the connector table, OAuth sign-in, approval for connector writes |
 | [OpenAPI tools](docs/openapi-tools.md) | `openApiTools()`: an OpenAPI 3.0 / 3.1 document becomes one tool per operation, with approval for mutating ones |
 | [Providers](docs/providers.md) | Model strings, `resolveProvider()`, which model runs, custom providers |
 | [CLI](docs/cli.md) | Every `lousho` command and its flags |
@@ -228,6 +229,8 @@ OpenRouter.
 | [Code mode](docs/code-mode.md) | `codeMode`: the model calls several tools from one sandboxed JavaScript program (`run_code`) |
 | [Skills](docs/skills.md) | On-demand instructions: `defineSkill()`, `loadSkills()` |
 | [Agent directories](docs/agent-directories.md) | An agent as a folder: layout, mapping to `createAgent()`, security |
+| [Claude Code projects](docs/claude-projects.md) | `claudeProject()`: load a repo's `CLAUDE.md` and `.claude/{skills,agents,rules,scratchpad}` into `createAgent()` — same files, both harnesses |
+| [Prompting and context techniques](docs/prompting-techniques.md) | The catalog: few-shot, CoT, ReAct, context write/select/compress/isolate, waves, phases, typed decisions — each mapped to its Lousho surface |
 | [Context compaction](docs/compaction.md) | `createAgent({ compaction })`: prune old tool results, then summarize old turns |
 | [Channels](docs/channels.md) | `defineChannel()`, `mountChannels()`, `httpChannel()`, `webhookChannel()`, `slackChannel()`: surfaces mapped to sessions, replies and approvals sent back |
 | [Schedules](docs/schedules.md) | `defineSchedule()` cron schedules, `schedules/` in an agent directory, `startSchedules()` |
@@ -242,6 +245,7 @@ OpenRouter.
 | [Evals](docs/evals.md) | Trajectory evals with `defineEval()`, datasets, judges, `lousho eval` reports |
 | [Tracing and observability](docs/observability.md) | OpenTelemetry GenAI spans, attribute table, content opt-in, local traces and `lousho traces` |
 | [Deployment](docs/deployment.md) | `lousho build` targets: Node server, Docker, Cloudflare Workers (with KV checkpoints) |
+| [Hostinger VPS](docs/hostinger-vps.md) | Deploy to a Hostinger VPS: API verification, `docker save` over SSH, post-install scripts, health checks, approval testing |
 | [Cloudflare Workers](docs/cloudflare-workers.md) | What the Worker target supports and what it does not, bindings, KV stores, cron triggers |
 | [Registry](docs/registry.md) | `lousho add`: copy a tool, skill, channel, schedule or memory slot from a static JSON registry (a default one is built in) |
 | [Agent Forge](docs/agent-forge.md) | The visual dashboard: quickstart, first-agent walkthrough, hooks |
@@ -274,6 +278,11 @@ Most examples run offline with a mock provider; see the
 | [evaluator-loop](examples/evaluator-loop) | Writer/critic loop: `llmCritique()` scores a draft and returns feedback until it passes |
 | [data-analyst](examples/data-analyst) | Text-to-SQL over `node:sqlite` with read-only enforcement — `DELETE`/`DROP` can never run |
 | [plan-mode](examples/plan-mode) | Read and propose in `plan` mode, then apply edits after `setPermissionMode('acceptEdits')` |
+| [waves](examples/waves) | WAVE engineering: bounded parallel workers, deterministic aggregate, typed verify gate, extend only on named gaps |
+| [phase-pipeline](examples/phase-pipeline) | Phase engineering on flows: discuss → spec → plan → implement → proof gate, `oneOf` retry ladder |
+| [coding-agent-workflows](examples/coding-agent-workflows) | Jev-style typed decisions routing a coding agent between fix/refactor/explain workflows, confidence-floor escalation |
+| [connectors](examples/connectors) | MCP connectors (Google Docs/Slack shape) run offline against a mock `serveMcp` stdio server |
+| [hostinger-deploy](examples/hostinger-deploy) | Deploy an agent to a real Hostinger VPS: API check, docker build+ship over SSH, health + approval smoke tests |
 | [agent-dir](examples/agent-dir) | An agent defined as a directory and loaded with `loadAgentDir()` |
 | [support-bot](examples/support-bot) | A minimal customer-support agent |
 | [research-assistant](examples/research-assistant) | A research agent with the built-in `http` tool |

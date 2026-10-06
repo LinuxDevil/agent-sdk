@@ -13,6 +13,14 @@ An agent defined as a directory (`instructions.md`, `tools/`, `skills/`, `agent.
 
 A coding-agent harness: a broken `add()` fixture the agent must fix under a guard (test files are refused), with a loop guard, checkpoint rewind and per-family instructions; runs offline with a mock model. `kit.test.ts` installs the same harness as the `coding-kit` registry item and builds it into a node-server deployment (H1).
 
+## [coding-agent-workflows](./coding-agent-workflows)
+
+A coding agent driven by deterministic flows whose routing is a **typed decision** — the Jev/"System One" pattern: `createAgent({ output })` returns `{ route, confidence, reason }`, low-confidence requests escalate to the careful path, and each route is a phase workflow with a proof gate.
+
+## [connectors](./connectors)
+
+Connecting an agent to external services over MCP — the Claude-connectors shape. Runs fully offline against a mock stdio MCP server (written with `serveMcp`) exposing fake `docs_*`/`slack_*` tools; the README maps real Google Docs, Slack, GitHub and Notion entries.
+
 ## [data-analyst](./data-analyst)
 
 Chat-with-your-database (the Vanna/Databricks Genie archetype): the agent introspects the schema, writes SQL and answers with real rows — with defense-in-depth read-only enforcement (tool validation plus a permission rule), so `DELETE`/`DROP` can never run. `node:sqlite`-backed; runs offline with a mock model.
@@ -29,6 +37,10 @@ A question-answering agent scoped to a single fixed document (LOU-H10).
 
 The evaluator-optimizer pattern (CrewAI's writer/critic shape): a writer drafts, `llmCritique()` scores the draft against a rubric and returns actionable feedback, and the draft is revised until it passes or `maxRounds` is hit. Runs offline with mock models.
 
+## [hostinger-deploy](./hostinger-deploy)
+
+Deploy an agent to a real Hostinger VPS: verify the VM via the Hostinger API, `lousho build --target=docker`, ship the image over SSH, run it behind bearer auth, then prove `/health` + approval pause/resume. Needs a Hostinger API token and a VM; no purchase step.
+
 ## [openrouter](./openrouter)
 
 Runnable snippets showing `OpenRouterProvider` usage: generation, streaming, tool calling, model listing and more (LOU-B6). Needs `OPENROUTER_API_KEY`.
@@ -38,6 +50,10 @@ Runnable snippets showing `OpenRouterProvider` usage: generation, streaming, too
 A flagship end-to-end pipeline: a Grafana/Datadog monitor delegates a fix (behind a real
 human approval gate, with a Slack "Fix it" button) to a fixer agent, whose patch is
 guardrail-gated before a GitHub PR is opened (LOU-J4-J9).
+
+## [phase-pipeline](./phase-pipeline)
+
+Phase engineering on `FlowBuilder`: discuss → spec → plan → implement → proof gate → report, where the gate is a real `toolCall` check and the bounded retry ladder is a `oneOf` chain (the executor's runtime shape — no `loop` node, no early exit).
 
 ## [plan-mode](./plan-mode)
 
@@ -62,6 +78,10 @@ The production support archetype: a triage agent classifies the request and `han
 ## [tracing](./tracing)
 
 Runnable examples of `AgentExecutor.execute()` wired to console and OpenTelemetry trace exporters (LOU-E6).
+
+## [waves](./waves)
+
+WAVE engineering — Workers · Aggregate · Verify · Extend: bounded parallel workers in clean contexts, a deterministic aggregate, a typed `{ verdict, gaps }` verifier, and a follow-up wave that runs only on the gaps it names.
 
 ## [workflow-router](./workflow-router)
 
