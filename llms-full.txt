@@ -2463,6 +2463,16 @@ gets a `kind: 'denied'` tool error with reason `'approval expired'` (the
 expired pause resolved with `approved: true` does not run the tool.
 
 ```ts
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+const sendEmail = defineTool({
+  name: 'send_email',
+  description: 'Send an email',
+  input: z.object({ to: z.string() }),
+  needsApproval: true,
+  execute: async ({ to }) => `sent to ${to}`,
+});
 const agent = createAgent({
   provider,
   tools: [sendEmail],
