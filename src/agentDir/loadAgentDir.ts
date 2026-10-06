@@ -31,6 +31,8 @@ import { SDKError } from '../execution/errors';
 import type { AuthFn } from '../auth/types';
 import type { AgentHook } from '../execution/hooks';
 import type { ApproveToolCall } from '../createAgentApprovals';
+import type { AgentStore } from '../storage/agentStore';
+import { fileStore } from '../storage/fileStore';
 import { loadAuth } from './loadAuth';
 import { importModule } from './importModule';
 
@@ -44,13 +46,24 @@ export type { Attestation, RegistryItemStatus, RegistryStatus } from './registry
  * (they are not merged). A `subagents` override replaces the discovered
  * `subagents/` directories (their `delegate_to_<name>` tools are not added and
  * their files are not even loaded). `memory` is merged with the directory's `memory/` slots by name; the override wins a clash.
+ * `approve` and `hooks` also accept `null`: it strips the directory's wiring
+ * (the file the config names is not even imported and the assembled config
+ * omits the option), where `undefined` keeps the directory's.
  *
  * @example
  * ```ts
  * const agent = await loadAgentDir('./my-agent', { provider: mockModel(['hi']) });
  * ```
  */
-export type AgentDirOverrides = CreateAgentConfig & {
+export type AgentDirOverrides = Omit<CreateAgentConfig, 'approve' | 'hooks'> & {
+  /**
+   * The approver override; `null` strips the directory's `approve` (its file
+   * is not imported, the assembled config has no `approve`), `undefined`
+   * keeps it.
+   */
+  approve?: ApproveToolCall | null;
+  /** The hooks override; `null` strips the directory's `hooks` like `approve` above. */
+  hooks?: readonly AgentHook[] | null;
   /**
    * Options merged into every `engine: 'pi'` sub-agent the directory declares
    * (`subagents/<name>/` whose config sets `"engine": "pi"`). Use it to inject
@@ -183,12 +196,11 @@ async function familyInstructionsFor(dir: string, modelId: string): Promise<{ fi
 const COMPILED_SIBLING: Record<string, string> = { '.ts': '.js', '.mts': '.mjs', '.cts': '.cjs' };
 
 /**
- * The file a config path (`hooks`, `approve`) names: `rel` must be relative
- * and stay inside `dir`. When the exact file is absent but its compiled
- * sibling exists (a bundled `dist/agent` has `.js` where the source had
- * `.ts`), the sibling is used.
+ * A config-named path (`hooks`, `approve`, `store.dir`): `rel` must be
+ * relative and stay inside `dir`; returns the resolved absolute path
+ * (existence is the caller's check).
  */
-async function configuredFile(dir: string, key: string, rel: string, configFile: string | undefined): Promise<string> {
+function configRelativePath(dir: string, key: string, rel: string, configFile: string | undefined): string {
   const where = configFile ?? dir;
   if (path.isAbsolute(rel) || /^[A-Za-z]:/.test(rel) || rel.includes('\\')) {
     fail(where, `'${key}' must be a path relative to the agent directory (forward slashes), got '${rel}'.`);
@@ -198,11 +210,38 @@ async function configuredFile(dir: string, key: string, rel: string, configFile:
   if (inside === '' || inside.startsWith('..') || path.isAbsolute(inside)) {
     fail(where, `'${key}' path '${rel}' must stay inside the agent directory.`);
   }
+  return resolved;
+}
+
+/**
+ * The file a config path (`hooks`, `approve`) names. When the exact file is
+ * absent but its compiled sibling exists (a bundled `dist/agent` has `.js`
+ * where the source had `.ts`), the sibling is used.
+ */
+async function configuredFile(dir: string, key: string, rel: string, configFile: string | undefined): Promise<string> {
+  const resolved = configRelativePath(dir, key, rel, configFile);
   if (await isFile(resolved)) return resolved;
   const ext = path.extname(resolved);
   const sibling = COMPILED_SIBLING[ext] === undefined ? undefined : `${resolved.slice(0, -ext.length)}${COMPILED_SIBLING[ext]}`;
   if (sibling !== undefined && (await isFile(sibling))) return sibling;
-  fail(where, `'${key}' points at '${rel}', which does not exist in ${dir}.`);
+  fail(configFile ?? dir, `'${key}' points at '${rel}', which does not exist in ${dir}.`);
+}
+
+/**
+ * The config's `store`: `{ "dir": "..." }` becomes a `fileStore()` rooted
+ * inside the agent directory (sessions, checkpoints and paused approvals that
+ * survive a restart); a code config may give an `AgentStore` instance, passed
+ * through as-is. The `dir` need not exist yet - `fileStore()` creates it on
+ * the first write.
+ */
+function configuredStore(dir: string, config: AgentDirConfig, configFile: string | undefined): AgentStore | undefined {
+  const value = config.store;
+  if (value === undefined) return undefined;
+  if (!('dir' in value)) return value;
+  return fileStore(configRelativePath(dir, 'store.dir', value.dir, configFile), {
+    ...(value.historyLimit !== undefined && { historyLimit: value.historyLimit }),
+    ...(value.tokenKey !== undefined && { tokenKey: value.tokenKey }),
+  });
 }
 
 /** The config's `hooks`: inline hook(s), or the default export of the file `hooks` points at (a hook or a list of them). */
@@ -397,6 +436,9 @@ function assembleConfig(
     ...optional('limits', overrides.limits ?? config.limits),
     ...optional('hooks', overrides.hooks ?? configured?.hooks),
     ...optional('approve', overrides.approve ?? approver?.approve),
+    ...optional('approvalStore', overrides.approvalStore),
+    ...optional('approvalTtlMs', overrides.approvalTtlMs ?? config.approvalTtlMs),
+    ...optional('store', overrides.store ?? configuredStore(dir, config, configFile)),
     ...optional('onPermissionDecision', overrides.onPermissionDecision),
     ...optional('exporter', overrides.exporter),
   } as CreateAgentConfig;
@@ -488,7 +530,8 @@ async function skillsFor(dir: string, overrides: AgentDirOverrides): Promise<Ski
  * my-agent/
  *   agent.ts | agent.js | agent.json | agent.yaml   config: model, description, maxSteps,
  *                                                    permissionMode, permissions, compaction,
- *                                                    hooks (path), approve (path), limits, ...
+ *                                                    hooks (path), approve (path), approvalTtlMs,
+ *                                                    limits, store ({ "dir": "./.lousho" }), ...
  *   instructions.md                                  system prompt
  *   instructions/<family>.md                         appended when the model id contains <family>
  *   hooks.ts | approve.ts (or any path the config names)  a hooks / approver file the config points at

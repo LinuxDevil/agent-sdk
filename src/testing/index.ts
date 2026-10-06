@@ -31,3 +31,5 @@ export { setProviderInterceptor } from '../providers/interception';
 export type { ProviderInterceptor } from '../providers/interception';
 export { hashEmbedder } from './hashEmbedder';
 export type { HashEmbedderOptions } from './hashEmbedder';
+// A ToolExecutionContext double for calling tool.execute(args, ctx) in a unit test.
+export { testToolContext } from './testToolContext';

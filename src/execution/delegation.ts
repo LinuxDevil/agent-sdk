@@ -58,6 +58,8 @@ export interface SubagentSpec {
   hostedTools?: readonly HostedTool[];
   /** N2: the sub-agent's own tool search tuning (never the lead's); see docs/tool-search.md. */
   toolSearch?: false | ToolSearchOptions;
+  /** TTL: the sub-agent's own approval deadline; absent, it inherits the lead run's `approvalTtlMs`. */
+  approvalTtlMs?: number;
 }
 
 /** One child run requested by a parent tool call. */
@@ -201,6 +203,8 @@ function childOptions(
     metadata: runtime.metadata,
     // N9b: and reads that caller's OAuth tokens from the lead's store.
     tokens: runtime.tokens,
+    // TTL: the lead's approval deadline unless the sub-agent sets its own.
+    approvalTtlMs: spec.approvalTtlMs ?? runtime.approvalTtlMs,
     guardrails: inheritGuardrails(runtime.guardrails, spec.guardrails),
     reasoning: spec.reasoning,
     output: spec.output,

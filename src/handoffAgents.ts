@@ -24,6 +24,13 @@ export interface HandoffRegistration {
   handoffs: () => ReadonlyArray<SimpleAgent | Handoff> | undefined;
   /** The agent's run configuration for `ctx`; `pinned` is a resumed dynamic run's saved config. */
   resolve: (ctx: RunConfigContext, pinned?: unknown) => Promise<SubagentSpec>;
+  /**
+   * `createAgent()` options this agent was built with that only apply to the
+   * agent a run starts with - a handoff keeps the run's approval
+   * configuration and permission mode, so e.g. a target's `approve` is never
+   * consulted. Reported (once) so the setting is not silently ignored.
+   */
+  runLevelOptions?: readonly string[];
 }
 
 const registrations = new WeakMap<object, HandoffRegistration>();
@@ -61,6 +68,27 @@ function registrationOf(target: unknown, caller: string): HandoffRegistration {
   const registration = typeof target === 'object' && target !== null ? registrations.get(target) : undefined;
   if (!registration) throw invalid(caller, 'a handoff target must be an agent created with createAgent().');
   return registration;
+}
+
+/** Agents already told about once (per target agent object). */
+const warnedTargets = new WeakSet<object>();
+
+/**
+ * Warns once that `target`'s `approve`/`approvalStore`/permission-mode-style
+ * options do not apply when it runs as a handoff target: a run keeps the
+ * entry agent's (the run's) across a handoff. Not warned for `lead` itself -
+ * when the lead is a target (a hand back), those options DO apply.
+ */
+function warnRunLevelOptions(target: object, lead: object, registration: HandoffRegistration, name: string, leadName: string): void {
+  const options = registration.runLevelOptions;
+  if (options === undefined || options.length === 0 || warnedTargets.has(target) || target === lead) return;
+  warnedTargets.add(target);
+  const listed = options.map((option) => `'${option}'`).join(', ');
+  console.warn(
+    `createAgent '${leadName}': the handoff target '${name}' was created with ${listed}, ` +
+      `${options.length === 1 ? 'which applies' : 'which apply'} only to the agent a run starts with - after a handoff the run still uses the entry agent's approval and permission configuration. ` +
+      `Move ${options.length === 1 ? 'it' : 'them'} to '${leadName}' (or whichever agent runs start on).`
+  );
 }
 
 /** Checks one entry of `handoffs`: a `createAgent()` agent with a name and a description. */
@@ -112,6 +140,7 @@ function handoffGraph(lead: HandoffNode, caller: string): Map<string, HandoffNod
       const known = nodes.get(name);
       if (known && known.agent !== target) throw invalid(caller, `two different agents reachable through handoffs are named '${name}'; names must be unique across the handoff graph.`);
       if (known) continue;
+      warnRunLevelOptions(target, lead.agent, registration, name, lead.name);
       const added = { agent: target, name, registration };
       nodes.set(name, added);
       queue.push(added);

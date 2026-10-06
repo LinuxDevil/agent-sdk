@@ -566,6 +566,7 @@ interface ApprovalRequestedEvent extends AgentEventBase<'approval.requested'> {
     approvalId: string;
     // (undocumented)
     args: Record<string, unknown>;
+    expiresAt?: string;
     // Warning: (ae-forgotten-export) The symbol "ApprovalKind" needs to be exported by the entry point worker.d.ts
     kind?: ApprovalKind;
     // Warning: (ae-forgotten-export) The symbol "ApprovalQuestion" needs to be exported by the entry point worker.d.ts
@@ -617,7 +618,7 @@ interface ApproverRequest {
 type Approvers = readonly string[] | ((user: ChannelUser, request: ApproverRequest) => boolean | Promise<boolean>);
 
 // @public
-type ApproveToolCall = (request: PendingApproval) => boolean | string | Promise<boolean | string>;
+type ApproveToolCall = (request: PendingApproval) => boolean | 'defer' | (string & {}) | Promise<boolean | 'defer' | (string & {})>;
 
 // @public
 interface AuthChallenge {
@@ -800,7 +801,6 @@ interface ChannelInbound<TEvent = unknown> {
     event?: TEvent;
     // (undocumented)
     input: AgentInput;
-    // (undocumented)
     metadata?: Record<string, unknown>;
     principal?: Principal;
     replyTo: unknown;
@@ -1084,6 +1084,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
 // @public
 export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSchemaV1> extends PermissionOptions {
     approvalStore?: ApprovalStore;
+    approvalTtlMs?: number;
     // Warning: (ae-forgotten-export) The symbol "ApproveToolCall" needs to be exported by the entry point worker.d.ts
     approve?: ApproveToolCall;
     askQuestion?: boolean;
@@ -2707,6 +2708,7 @@ interface PendingApproval {
     args: Record<string, unknown>;
     // (undocumented)
     createdAt: string;
+    expiresAt?: string;
     // (undocumented)
     id: string;
     kind?: ApprovalKind;
@@ -2831,6 +2833,7 @@ interface PermissionRule {
     //
     // (undocumented)
     tool: PermissionToolMatcher;
+    ttlMs?: number;
     // Warning: (ae-forgotten-export) The symbol "PermissionContext" needs to be exported by the entry point worker.d.ts
     when?: (args: Record<string, unknown>, ctx: PermissionContext) => boolean | Promise<boolean>;
 }
@@ -3214,6 +3217,7 @@ interface SDKErrorOptions {
 
 // @public
 export interface SendOptions {
+    approvalTtlMs?: number;
     metadata?: Record<string, unknown>;
     permissionMode?: PermissionMode;
     principal?: Principal;
@@ -3902,6 +3906,7 @@ interface ToolCall {
 interface ToolCallHookContext extends HookContext {
     args: Record<string, unknown>;
     principal?: Readonly<Principal>;
+    resumedAfterApproval?: boolean;
     toolCall: ToolCall;
     // (undocumented)
     toolCallId: string;
@@ -3971,6 +3976,7 @@ export interface ToolDescriptor {
     requiresSandbox?: boolean;
     sandboxExecute?: (args: unknown, sandbox: SandboxAdapter, ctx?: ToolExecutionContext) => Promise<unknown>;
     tool: Tool;
+    transient?: boolean;
 }
 
 // @public
@@ -4149,13 +4155,13 @@ interface WithRetryOptions {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-DyyUScMn.d.ts:712:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-DyyUScMn.d.ts:729:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-DyyUScMn.d.ts:1073:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-DyyUScMn.d.ts:3013:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-DyyUScMn.d.ts:3014:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
-// dist/index-Cu54_KAW.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
-// dist/index-Cu54_KAW.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-DElKbGoN.d.ts:751:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-DElKbGoN.d.ts:768:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-DElKbGoN.d.ts:1118:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-DElKbGoN.d.ts:3076:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-DElKbGoN.d.ts:3077:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
+// dist/index-teGCK4tt.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
+// dist/index-teGCK4tt.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point worker.d.ts
 
 // (No @packageDocumentation comment for this package)

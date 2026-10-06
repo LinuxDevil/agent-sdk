@@ -230,6 +230,12 @@ export interface ApprovalRequestedEvent extends AgentEventBase<'approval.request
    * redirected back, continue with `approved: true` ("I've signed in").
    */
   signIn?: ApprovalSignIn;
+  /**
+   * TTL: when the pause stops being decidable (ISO-8601), from the run's
+   * `approvalTtlMs` or the `ask` rule's `ttlMs`. A decision after it denies
+   * the call ('approval expired'). Absent: the approval never expires.
+   */
+  expiresAt?: string;
 }
 
 /**

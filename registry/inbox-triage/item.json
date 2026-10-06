@@ -1,0 +1,10 @@
+{
+  "name": "inbox-triage",
+  "type": "kit",
+  "description": "A message-triage agent as a whole agent directory: file-backed inbox and outbox tools, a reply pipeline gated on human approval, an inbound webhook channel, a 15-minute poll schedule, per-sender memory and prompt-injection-aware instructions",
+  "permissions": {
+    "filesystem": "write",
+    "env": ["INBOX_TRIAGE_HOME", "INBOUND_TOKEN", "INBOX_TRIAGE_AUTO_APPROVE", "OPENROUTER_API_KEY"]
+  },
+  "dependencies": ["@lousho/build-ai-agent", "zod"]
+}

@@ -16,6 +16,8 @@ import type { WebhookAuth } from '../triggers/webhookAuth';
 import { mountChannels } from './mountChannels';
 import { webhookChannel } from './webhookChannel';
 import type { Channel } from './defineChannel';
+import { defineMemory, inMemoryMemory, type MemoryScopeContext } from '../memory';
+import type { RunConfigContext, SimpleAgent } from '../createAgent';
 
 const SECRET = 'whsec_test_secret';
 const body = JSON.stringify({ input: 'hello' });
@@ -53,8 +55,8 @@ const VECTORS: Vector[] = [
 const okResult: ExecutionResult = { text: 'ok', messages: [], toolCalls: [], usage: emptyRunUsage(), finishReason: 'stop', steps: 1 };
 
 /** The status (and parsed body) `mountChannels()` with `channel` answers `payload` with. */
-async function viaChannel(channel: Channel, payload: string, headers: Record<string, string>) {
-  const handler = mountChannels(createAgent({ provider: mockModel(['ok']) }), [channel]);
+async function viaChannel(channel: Channel, payload: string, headers: Record<string, string>, agent?: Pick<SimpleAgent, 'session' | 'approvals'>) {
+  const handler = mountChannels(agent ?? createAgent({ provider: mockModel(['ok']) }), [channel]);
   const req = Object.assign(Readable.from([Buffer.from(payload)]), { method: 'POST', url: '/channels/webhook', headers });
   const res = { status: 0, text: '' };
   const fake = { writeHead: (status: number) => ((res.status = status), fake), end: (text: string) => ((res.text = text), fake) };
@@ -98,5 +100,39 @@ describe('webhookChannel parity with WebhookTriggerAdapter (LOU-P7, D13 vectors)
     expect((await viaChannel(channel, body, { 'x-signature-256': `sha256=${hmac(body, 'other')}` })).status).toBe(401);
     expect(() => webhookChannel({ secret: '' })).toThrow(/secret/);
     expect(() => new WebhookTriggerAdapter({ auth: { type: 'hmac', secret: '' } })).toThrow(/secret/);
+  });
+
+  it('runs the turn with the principal `principal` derives from the verified request (N10a)', async () => {
+    const scopes: MemoryScopeContext[] = [];
+    const seen: Array<RunConfigContext['principal']> = [];
+    const notes = defineMemory({ name: 'notes', scope: (ctx) => (scopes.push(ctx), 'global'), provider: inMemoryMemory() });
+    const channel = webhookChannel({
+      auth: hmacAuth,
+      principal: (body, req) => {
+        const source = (body as { source?: unknown } | undefined)?.source;
+        return typeof source === 'string' ? { id: source, type: 'service', authenticator: 'webhook', claims: { via: req.headers['x-alert-source'] } } : undefined;
+      },
+    });
+    const agent = createAgent({ provider: mockModel(['ok']), memory: [notes], instructions: ({ principal }: RunConfigContext) => (seen.push(principal), 'x') });
+
+    const payload = JSON.stringify({ input: 'cpu hot', source: 'pagerduty' });
+    const res = await viaChannel(channel, payload, { 'x-signature-256': `sha256=${hmac(payload)}`, 'x-alert-source': 'pd-eu' }, agent);
+
+    expect(res.status).toBe(200);
+    const principal = { id: 'pagerduty', type: 'service', authenticator: 'webhook', claims: { via: 'pd-eu' } };
+    expect(scopes[0]?.principal).toEqual(principal);
+    expect(seen).toEqual([principal]);
+  });
+
+  it('a body without what `principal` needs runs without one', async () => {
+    const scopes: MemoryScopeContext[] = [];
+    const notes = defineMemory({ name: 'notes', scope: (ctx) => (scopes.push(ctx), 'global'), provider: inMemoryMemory() });
+    const channel = webhookChannel({ principal: (body) => ((body as { source?: unknown })?.source === 'x' ? { id: 'x', type: 'service', authenticator: 'webhook' } : undefined) });
+    const agent = createAgent({ provider: mockModel(['ok']), memory: [notes] });
+
+    const res = await viaChannel(channel, body, {}, agent);
+
+    expect(res.status).toBe(200);
+    expect(scopes[0]?.principal).toBeUndefined();
   });
 });

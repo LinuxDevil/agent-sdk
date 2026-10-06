@@ -400,6 +400,23 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    */
   approve?: ApproveToolCall;
   /**
+   * TTL: how long a pause for approval (`needsApproval`, an `ask` permission
+   * rule, a sign-in) stays decidable, in milliseconds. The pending approval
+   * gets `expiresAt` (so does the `approval.requested` event); decided after
+   * it - also through a durable `approvalStore` in another process or after a
+   * restart - the call is denied: the model gets a `kind: 'denied'` tool
+   * error whose reason is 'approval expired', audited to
+   * `onPermissionDecision`. An `approve` callback still waiting at the
+   * deadline is cut off the same way. An `ask` rule's `ttlMs` wins over this
+   * default. Unset: pauses never expire.
+   *
+   * @example
+   * ```ts
+   * createAgent({ model: 'openai/gpt-4o-mini', tools: [sendEmail], approvalTtlMs: 5 * 60_000 });
+   * ```
+   */
+  approvalTtlMs?: number;
+  /**
    * Adds the built-in `ask_question` tool (LOU-X9): the agent can ask the
    * user a question, and the run pauses (like an approval, `kind: 'question'`)
    * until `agent.approvals.answer({ id, answer })`. Off by default.
@@ -604,10 +621,16 @@ export interface SendOptions {
    * See docs/permission-modes.md.
    */
   permissionMode?: PermissionMode;
+  /**
+   * TTL: this run's approval deadline (the agent's `approvalTtlMs` otherwise):
+   * pauses this run makes expire after it. A run continued by
+   * `agent.approvals.resolve()` uses the agent's again.
+   */
+  approvalTtlMs?: number;
 }
 
-/** How a run is checkpointed, plus (LOU-V13) a `send()` / `stream()` call's own `reasoning`. */
-type RunTurn = SessionTurnOptions & Pick<ExecuteOptions, 'reasoning' | 'permissionMode'>;
+/** How a run is checkpointed, plus (LOU-V13, N4, TTL) a `send()` / `stream()` call's own `reasoning`, `permissionMode`, `approvalTtlMs`. */
+type RunTurn = SessionTurnOptions & Pick<ExecuteOptions, 'reasoning' | 'permissionMode' | 'approvalTtlMs'>;
 
 /** `TObject`: the type of `result.object` - `z.output` of the `output` schema. */
 export interface SimpleAgent<TObject = unknown> {
@@ -733,6 +756,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   assertToolConcurrency(config.toolConcurrency, 'createAgent');
   assertMaxSubagentDepth(config.maxSubagentDepth, 'createAgent');
   assertSubagents(config.subagents, 'createAgent');
+  assertApprovalTtlMs(config.approvalTtlMs);
   if (typeof config.permissionMode === 'string') assertPermissionMode(config.permissionMode, 'createAgent');
   assertMaxHandoffs(config.maxHandoffs);
   assertToolSearchOptions(config.toolSearch, 'createAgent');
@@ -769,6 +793,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     limits: config.limits,
     guardrails: config.guardrails,
     toolConcurrency: config.toolConcurrency,
+    // TTL: the default pause deadline; an `ask` rule's `ttlMs` overrides it.
+    approvalTtlMs: config.approvalTtlMs,
     onAgentDrift: config.onAgentDrift,
     reasoning: config.reasoning,
     toolSearch: config.toolSearch,
@@ -883,9 +909,14 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     }
     return { sessionId, checkpointStore: checkpoints };
   };
-  const callTurn = ({ sessionId, reasoning, permissionMode }: SendOptions): RunTurn => {
+  const callTurn = ({ sessionId, reasoning, permissionMode, approvalTtlMs }: SendOptions): RunTurn => {
     if (permissionMode !== undefined) assertPermissionMode(permissionMode, 'send');
-    return { ...durable(sessionId), ...(reasoning !== undefined && { reasoning }), ...(permissionMode !== undefined && { permissionMode }) };
+    return {
+      ...durable(sessionId),
+      ...(reasoning !== undefined && { reasoning }),
+      ...(permissionMode !== undefined && { permissionMode }),
+      ...(approvalTtlMs !== undefined && { approvalTtlMs }),
+    };
   };
   /** `lead` (N6): false when the run starts as a handoff target, which gets none of this agent's memory. */
   const executeOptions = (
@@ -1024,11 +1055,26 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
       await mcp.ready();
       return staticSpec ?? specs.resolve(ctx, pinned as PinnedRunConfig | undefined);
     },
+    // N6: these are read by send()/stream()/session() at run start - a run
+    // hands them across a handoff, so a target's are never consulted.
+    runLevelOptions: [
+      ...(config.approve !== undefined ? ['approve'] : []),
+      ...(config.approvalStore !== undefined ? ['approvalStore'] : []),
+      ...(config.permissionMode !== undefined ? ['permissionMode'] : []),
+      ...(config.approvalTtlMs !== undefined ? ['approvalTtlMs'] : []),
+      ...(config.store !== undefined ? ['store'] : []),
+    ],
   });
   // LOU-R19: remembered so the CLI can rebuild the agent with its overrides
   // (`--traces`' exporter) when a module exports the built agent itself.
   builtConfigs.set(simpleAgent, config);
   return simpleAgent;
+}
+
+/** TTL: `approvalTtlMs` must be a positive, finite number of milliseconds. */
+function assertApprovalTtlMs(value: unknown): void {
+  if (value === undefined || (typeof value === 'number' && Number.isFinite(value) && value > 0)) return;
+  throw new ConfigurationError(`createAgent: 'approvalTtlMs' must be a positive number of milliseconds, got ${String(value)}.`, 'approvalTtlMs');
 }
 
 /** N6: `maxHandoffs` must be a whole number >= 0. */

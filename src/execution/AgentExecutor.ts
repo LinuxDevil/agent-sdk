@@ -109,8 +109,10 @@ import {
   cancelHandoffCalls,
   handOff,
   runTools,
+  settleHonoredHandoff,
   splitHandoffCalls,
   takeHandoffCalls,
+  type HandoffGate,
   type ResolvedHandoff,
 } from './handoffRun';
 
@@ -262,6 +264,17 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   streamModelCalls?: boolean;
   approvalStore?: ApprovalStore;
+  /**
+   * TTL: how long a pause for approval (`needsApproval`, an `ask` permission
+   * rule, a sign-in) of this run stays decidable, in milliseconds. The saved
+   * {@link PendingApproval} gets `expiresAt`; decided after it - also through
+   * a durable store in another process or after a restart - the call is
+   * denied: the model gets a `kind: 'denied'` tool error whose reason is
+   * 'approval expired', audited to `onPermissionDecision`. An `ask` rule's
+   * `ttlMs` wins over this default. Unset (or a non-finite value): pauses
+   * never expire. `createAgent()` sets this from `approvalTtlMs`.
+   */
+  approvalTtlMs?: number;
   /**
    * Durable execution: with `checkpointStore`, the run is checkpointed under
    * this id after every model response, as tool results are recorded, and
@@ -657,6 +670,28 @@ export interface ExecutionResult<TObject = unknown> {
 }
 
 /**
+ * Applies `skills` and `subagents`: their prompt blocks and their tools.
+ * Module-level (exported) so resume.ts runs the same extension for the
+ * target of an approved handoff (N6) as execute() does for a fresh run.
+ */
+export async function extendRunOptions(options: ExecuteOptions): Promise<ExecuteOptions> {
+  const skilled = withSkills(options.agent, options.toolRegistry, options.skills);
+  const subagented = await withSubagents(skilled.agent, skilled.toolRegistry, options.subagents, options);
+  // N2: the deferral is the active agent's own; set on every call, so a handoff target never keeps the lead's.
+  const { deferral, ...searched } = withToolSearch(options, subagented.agent, subagented.toolRegistry);
+  // N14: `run_code` sees the run's tools as they are now (deferred ones are not callable by default).
+  const coded = await withCodeMode(options, searched.agent, searched.toolRegistry, deferral);
+  const extended = { ...subagented, ...coded };
+  // N4: a run that starts in plan mode is told so. LOU-V4: the output instruction goes last in the system prompt.
+  const { agent } = extended;
+  const blocks = [...(permissionModeOf(options) === 'plan' ? [PLAN_MODE_INSTRUCTION] : []), ...(options.output ? [outputInstruction(options.output)] : [])];
+  if (blocks.length === 0) return withDeferral({ ...options, ...extended }, deferral);
+  const instruction = blocks.join('\n\n');
+  const prompt = agent.prompt ? `${agent.prompt}\n\n${instruction}` : instruction;
+  return withDeferral({ ...options, ...extended, agent: extendAgent(agent, { prompt }) }, deferral);
+}
+
+/**
  * Agent Executor
  */
 export class AgentExecutor {
@@ -703,7 +738,7 @@ export class AgentExecutor {
     // LOU-V6: a `maxDurationMs` budget aborts the run's signal.
     const budget = startBudget(options.limits, options.sessionBudget, options.signal);
     try {
-      run = await this.withExtensions(budget ? { ...options, signal: budget.signal } : options);
+      run = await extendRunOptions(budget ? { ...options, signal: budget.signal } : options);
       const result = await this.runAgentLoop(run, agentSpanId, budget);
       end = { result };
       return result;
@@ -715,24 +750,6 @@ export class AgentExecutor {
       options.inputQueue?.close();
       await run.onRunEnd?.(end);
     }
-  }
-
-  /** Applies `skills` and `subagents`: their prompt blocks and their tools. */
-  private static async withExtensions(options: ExecuteOptions): Promise<ExecuteOptions> {
-    const skilled = withSkills(options.agent, options.toolRegistry, options.skills);
-    const subagented = await withSubagents(skilled.agent, skilled.toolRegistry, options.subagents, options);
-    // N2: the deferral is the active agent's own; set on every call, so a handoff target never keeps the lead's.
-    const { deferral, ...searched } = withToolSearch(options, subagented.agent, subagented.toolRegistry);
-    // N14: `run_code` sees the run's tools as they are now (deferred ones are not callable by default).
-    const coded = await withCodeMode(options, searched.agent, searched.toolRegistry, deferral);
-    const extended = { ...subagented, ...coded };
-    // N4: a run that starts in plan mode is told so. LOU-V4: the output instruction goes last in the system prompt.
-    const { agent } = extended;
-    const blocks = [...(permissionModeOf(options) === 'plan' ? [PLAN_MODE_INSTRUCTION] : []), ...(options.output ? [outputInstruction(options.output)] : [])];
-    if (blocks.length === 0) return withDeferral({ ...options, ...extended }, deferral);
-    const instruction = blocks.join('\n\n');
-    const prompt = agent.prompt ? `${agent.prompt}\n\n${instruction}` : instruction;
-    return withDeferral({ ...options, ...extended, agent: extendAgent(agent, { prompt }) }, deferral);
   }
 
   /**
@@ -805,7 +822,7 @@ export class AgentExecutor {
 
     const state = await loadRunState(options);
     // N10b: the run's principal, as loaded (an unfinished checkpoint's wins), frozen once. `options` is
-    // this run's own copy (withExtensions() made it), and the scope every tool call hands on.
+    // this run's own copy (extendRunOptions() made it), and the scope every tool call hands on.
     options.principal = state.principal;
     // LOU-R16: likewise the run's metadata (an unfinished checkpoint's fills in when this call set none).
     options.metadata = state.metadata;
@@ -1287,17 +1304,31 @@ export class AgentExecutor {
   }
 
   /**
-   * N6: settles a step's handoff calls once its other calls are done: the
-   * first one that passes its checks switches the run to its target (taken by
-   * the loop from `state.switched`), the others get error results.
+   * N6: settles a step's handoff calls once its other calls are done. A call
+   * whose gate (validation, hooks, permission rules) denied it settles with a
+   * tool error; an `ask` pauses the run for approval exactly like a tool's
+   * `ask`; the first cleared call switches the run to its target (taken by
+   * the loop from `state.switched`).
    */
-  private static async settleHandoffCalls(options: ExecuteOptions, state: AgentRunState, handoffCalls: ToolCall[]): Promise<undefined> {
-    const honored = await takeHandoffCalls(options, state, handoffCalls);
+  private static async settleHandoffCalls(options: ExecuteOptions, state: AgentRunState, handoffCalls: ToolCall[]): Promise<ExecutionResult | undefined> {
+    let gate: HandoffGate;
+    try {
+      gate = await takeHandoffCalls(options, state, handoffCalls);
+    } catch (error) {
+      // LOU-X4: a tool guardrail blocks a handoff call like any other call of the turn.
+      if (error instanceof GuardrailError) return this.stopForGuardrail(options, state, error.guardrail);
+      throw error;
+    }
+    if (gate.approval) {
+      // Every other call of the turn already has its result; nothing waits behind the decision.
+      return this.pauseForApproval(options, state, gate.approval.toolCall, gate.approval.outcome, []);
+    }
+    const honored = gate.honored;
     if (!honored) {
       await saveStepCheckpoint(options, state);
       return undefined;
     }
-    const switched = await handOff(options, state, honored, (next) => this.withExtensions(next));
+    const switched = await handOff(options, state, honored, (next) => extendRunOptions(next));
     const next = switched.options;
     const tools = runTools(next);
     assertHostedToolsSupported(next.hostedTools, next.agent, next.provider);
@@ -1308,9 +1339,9 @@ export class AgentExecutor {
     state.fingerprint = undefined;
     if (next.sessionId && next.checkpointStore) await ensureFingerprint(next, state);
     const { toolCall } = honored;
-    const runEvents = runEventsOf(options);
-    runEvents?.toolSettled({ toolCallId: toolCall.id, toolName: toolCall.function.name, result: { transferred_to: switched.marker.to } });
-    runEvents?.handoff({ ...switched.marker, toolCallId: toolCall.id });
+    // The honored call settles like a tool call: post hooks may replace the routing result the target reads.
+    await settleHonoredHandoff(options, state.messages, honored, switched.marker);
+    runEventsOf(options)?.handoff({ ...switched.marker, toolCallId: toolCall.id });
     state.switched = { options: next, tools };
     await saveStepCheckpoint(next, state);
     return undefined;
@@ -1533,6 +1564,8 @@ export class AgentExecutor {
     }
 
     const id = newId();
+    // TTL: an `ask` rule's `ttlMs` bounds its own pauses; else the run's default.
+    const ttlMs = toolResult.approvalTtlMs ?? options.approvalTtlMs;
     const pending: PendingApproval = {
       id,
       toolCallId: toolCall.id,
@@ -1540,6 +1573,7 @@ export class AgentExecutor {
       args: toolResult.args || {},
       agentId: agent.id,
       createdAt: new Date().toISOString(),
+      ...(typeof ttlMs === 'number' && Number.isFinite(ttlMs) && { expiresAt: new Date(Date.now() + ttlMs).toISOString() }),
       // N10b: whose call it is, for `approve` and channel `approvers`.
       ...(principal && { principal }),
       // N9b: a tool that needs sign-in pauses with the link to open.

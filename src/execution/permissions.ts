@@ -63,6 +63,13 @@ export interface PermissionRule {
   action: PermissionAction;
   /** Why: sent to the model with a `deny`, and recorded in the audit entry. */
   reason?: string;
+  /**
+   * TTL: with `action: 'ask'`, how long the pause waits for a decision, in
+   * milliseconds - the saved approval's `expiresAt`. Decided after it, the
+   * call is denied ('approval expired'). Wins over the run's
+   * `approvalTtlMs`; ignored by `allow` and `deny`.
+   */
+  ttlMs?: number;
 }
 
 /** How a tool call's permission was decided: by a rule's action, or `'default'` when no rule matched. */
@@ -262,9 +269,13 @@ export function deny(tools: PermissionToolMatcher, reason?: string): PermissionR
   return { tool: tools, action: 'deny', ...(reason !== undefined && { reason }) };
 }
 
-/** A rule that pauses the matching tools for approval, even when they do not set `needsApproval`. */
-export function ask(tools: PermissionToolMatcher): PermissionRule {
-  return { tool: tools, action: 'ask' };
+/**
+ * A rule that pauses the matching tools for approval, even when they do not
+ * set `needsApproval`. `ttlMs` bounds the pause: undecided past it, the call
+ * is denied ('approval expired').
+ */
+export function ask(tools: PermissionToolMatcher, options?: { ttlMs?: number }): PermissionRule {
+  return { tool: tools, action: 'ask', ...(options?.ttlMs !== undefined && { ttlMs: options.ttlMs }) };
 }
 
 function matchesTool(matcher: PermissionToolMatcher, toolName: string): boolean {
@@ -333,6 +344,19 @@ export function reportHookDenial(
 ): void {
   if (!audited(runtime, permissionModeOf(runtime))) return;
   reportPermission(runtime, { ...decisionEntry(runtime, call, 'deny'), ...denial });
+}
+
+/** TTL: the `reason` of a call denied because its approval expired before it was decided. */
+export const APPROVAL_EXPIRED_REASON = 'approval expired';
+
+/**
+ * TTL: audits a call denied because its approval expired before it was
+ * decided (resumeAfterApproval() applies the expiry) - a `'deny'` entry
+ * like a rule's, when the run keeps an audit log.
+ */
+export function reportApprovalExpiry(runtime: PermissionRuntime, call: PermissionContext & { args: Record<string, unknown> }): void {
+  if (!audited(runtime, permissionModeOf(runtime))) return;
+  reportPermission(runtime, { ...decisionEntry(runtime, call, 'deny'), reason: APPROVAL_EXPIRED_REASON });
 }
 
 /**

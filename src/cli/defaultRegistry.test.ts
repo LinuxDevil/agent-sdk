@@ -72,6 +72,8 @@ describe('default registry (registry/dist)', () => {
       'coding-pi',
       'generic-webhook',
       'github-issues',
+      'inbox-triage',
+      'incident-response',
       'open-meteo-weather',
     ]);
     for (const entry of index.items) {

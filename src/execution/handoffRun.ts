@@ -1,18 +1,23 @@
 /**
  * N6: handoffs inside one run. A handoff tool call is not executed as a tool:
- * once the other calls of its step are done, the run goes on in the same
- * `execute()` with the target agent's configuration (its agent, provider,
- * tools, skills, sub-agents, reasoning, guardrails, permission rules and own
- * handoffs) on the transcript the handoff's `inputFilter` returns, under the
- * target's own system prompt. Everything else (hooks, limits, `maxSteps`,
- * signal, stores, listeners, `output`, permission mode, principal) stays the
- * run's.
+ * it passes the same gate a tool call gets (argument validation, pre-tool
+ * hooks, permission rules - `deny` settles it as a tool error, `ask` pauses
+ * the run for approval - and tool guardrails), and once the other calls of
+ * its step are done, a cleared call switches the run to the target in the
+ * same `execute()` with the target agent's configuration (its agent,
+ * provider, tools, skills, sub-agents, reasoning, guardrails, permission
+ * rules and own handoffs) on the transcript the handoff's `inputFilter`
+ * returns, under the target's own system prompt. Everything else (hooks,
+ * limits, `maxSteps`, signal, stores, listeners, `output`, permission mode,
+ * principal) stays the run's.
  *
  * The transcript records each handoff as `metadata.handoff = { from, to }`
- * on the handoff call's result (or, when an input filter dropped it, on the
- * last message kept). The marker is written in the same step as the switch,
- * so "the last marker names the active agent" holds for every checkpoint and
- * approval snapshot.
+ * on the handoff call's result and on the routing note - a system message
+ * carrying the call's validated arguments, which the target reads (or an
+ * `inputFilter` drops/replaces; when the filter keeps neither, the marker
+ * lands on the last message kept). The marker is written in the same step
+ * as the switch, so "the last marker names the active agent" holds for every
+ * checkpoint and approval snapshot.
  */
 
 import type { Message, ToolCall, ToolDefinition } from '../providers';
@@ -20,11 +25,17 @@ import type { StandardSchemaV1 } from '../utils/zodCompat';
 import type { ExecuteOptions } from './AgentExecutor';
 import type { SubagentSpec } from './delegation';
 import type { AgentRunState } from './agentRunState';
-import { ConfigurationError } from './errors';
+import type { ToolDescriptor } from '../types';
+import { ConfigurationError, SDKError } from './errors';
 import { runEventsOf } from './agentRun';
 import { buildTools } from './generateStep';
 import { toolErrorResult } from './toolErrors';
-import { ToolArgumentsValidationError, parseToolArguments, parseWithIssues } from './toolArgsValidation';
+import { ToolRegistry } from '../tools/ToolRegistry';
+import { legacyAiTool } from '../tools/toolContract';
+import { NoopSandbox } from '../security/sandboxCore';
+import { prepareToolCall, settleToolCall, toolHookContext, type ToolCallContext, type ToolCallOutcome } from './toolCallExecution';
+import { toolResultContent } from './toolResult';
+import type { ToolCallScope } from './subagentRuntime';
 
 /** What a handoff's `inputFilter` and `onHandoff` get. */
 export interface HandoffInputData {
@@ -76,6 +87,8 @@ export interface HonoredHandoff {
   handoff: ResolvedHandoff;
   toolCall: ToolCall;
   args: Record<string, unknown>;
+  /** When the call's gate started (epoch ms): `onToolResult`'s latency for the honored call. */
+  gatedAt: number;
 }
 
 /** Default `maxHandoffs` of a run. */
@@ -91,7 +104,7 @@ export function activeAgentOf(messages: readonly Message[]): string | undefined 
 }
 
 /** The run's handoff offered under the tool name `toolName`. */
-function handoffNamed(options: Pick<ExecuteOptions, 'handoffs'>, toolName: string): ResolvedHandoff | undefined {
+export function handoffNamed(options: Pick<ExecuteOptions, 'handoffs'>, toolName: string): ResolvedHandoff | undefined {
   return options.handoffs?.find((handoff) => handoff.toolName === toolName);
 }
 
@@ -156,53 +169,164 @@ export function cancelHandoffCalls(state: AgentRunState, handoffCalls: readonly 
   }
 }
 
-/** Why the first handoff call of a step cannot hand off, as the error result the model gets; or its parsed arguments. */
-async function checkHandoffCall(
-  options: Pick<ExecuteOptions, 'maxHandoffs'>,
-  state: AgentRunState,
-  handoff: ResolvedHandoff,
-  toolCall: ToolCall
-): Promise<{ error: Record<string, unknown> } | { args: Record<string, unknown> }> {
-  const toolName = toolCall.function.name;
-  const raw = parseToolArguments(toolCall, undefined);
-  const parsed = raw === undefined ? undefined : await parseWithIssues(handoff.input, raw);
-  if (!parsed?.success) {
-    const issues = parsed?.issues ?? [{ path: '(root)', message: 'the arguments are not valid JSON' }];
-    return { error: new ToolArgumentsValidationError(toolName, issues).toToolResult() };
-  }
-  const max = options.maxHandoffs ?? DEFAULT_MAX_HANDOFFS;
-  if ((state.handoffs ?? 0) >= max) {
-    const error = `No handoff: this run already handed off ${max} time${max === 1 ? '' : 's'} (maxHandoffs). Answer the user yourself.`;
-    return { error: toolErrorResult({ toolName, error, kind: 'not-run' }) };
-  }
-  return { args: (parsed.data ?? {}) as Record<string, unknown> };
+/** What gating a step's handoff calls decided: the call to hand off on, or the one to pause on, or neither (all settled with results). */
+export interface HandoffGate {
+  honored?: HonoredHandoff;
+  /** The first call whose gate asked for approval; the run pauses on it exactly as on a tool's `ask`. */
+  approval?: { toolCall: ToolCall; outcome: ToolCallOutcome };
+}
+
+/** Defensive: a `transfer_to_*` call is settled by the switch, never executed. */
+function neverExecuted(): never {
+  throw new SDKError('a handoff tool is never executed: the run switches to its target instead', 'LOUSHO_CONFIG_INVALID');
+}
+
+/** A handoff as a `ToolDescriptor`: validates arguments for the gate; its `execute` is never called. */
+function handoffDescriptor(handoff: ResolvedHandoff): ToolDescriptor {
+  return {
+    displayName: handoff.toolName,
+    inputSchema: handoff.input,
+    tool: legacyAiTool(handoff.description, handoff.input, neverExecuted),
+    execute: neverExecuted,
+  };
+}
+
+/** The run's handoff tools as a registry - what a handoff call's gate validates against. */
+export function handoffToolRegistry(options: Pick<ExecuteOptions, 'handoffs'>): ToolRegistry {
+  const registry = new ToolRegistry();
+  for (const handoff of options.handoffs ?? []) registry.register(handoff.toolName, handoffDescriptor(handoff));
+  return registry;
 }
 
 /**
- * Settles a step's handoff calls once its other calls are done: the first one
- * that passes its checks (arguments, `maxHandoffs`) is returned for the
- * switch; every other one gets an error result. Each gets its `tool.start`
- * here; the honored one's `tool.done` comes with the switch.
+ * The context a handoff call's gate runs with: the run's own (its hooks,
+ * permission rules, mode, guardrails, callbacks), with the handoff tools as
+ * the registry - `transfer_to_*` is not in the run's tool registry.
  */
-export async function takeHandoffCalls(options: ExecuteOptions, state: AgentRunState, handoffCalls: readonly ToolCall[]): Promise<HonoredHandoff | undefined> {
+export function handoffCallContext(options: ExecuteOptions, messages: Message[], toolCall: ToolCall): ToolCallContext {
+  const scope: ToolCallScope = {
+    runtime: options,
+    toolCallId: toolCall.id,
+    // A handoff call starts no sub-agent; nothing it gates reaches this.
+    execute: () => Promise.reject(new SDKError('a handoff call starts no sub-agent', 'LOUSHO_CONFIG_INVALID')),
+  };
+  return {
+    agent: options.agent,
+    toolRegistry: handoffToolRegistry(options),
+    onToolCall: options.onToolCall,
+    onToolResult: options.onToolResult,
+    sandbox: options.sandbox ?? NoopSandbox,
+    hooks: options.hooks,
+    sessionId: options.sessionId,
+    principal: options.principal,
+    metadata: options.metadata,
+    messages,
+    signal: options.signal,
+    scope,
+  };
+}
+
+/** The `tool` message carrying a settled handoff call's outcome (like pushToolResult() for a batch call). */
+function outcomeMessage(toolCall: ToolCall, outcome: ToolCallOutcome): Message {
+  const failed = outcome.error !== undefined;
+  const failurePayload = outcome.result ?? { error: outcome.error };
+  return {
+    role: 'tool',
+    content: toolResultContent(failed ? failurePayload : outcome.result),
+    name: toolCall.function.name,
+    toolCallId: toolCall.id,
+    toolName: toolCall.function.name,
+    ...(failed && { isError: true }),
+    ...(outcome.replacedByHook !== undefined && { metadata: { replacedByHook: outcome.replacedByHook } }),
+  };
+}
+
+/**
+ * The `maxHandoffs` budget, checked after the call's gate cleared: a call
+ * the rules would pause or deny never reaches the switch. Over budget, the
+ * model gets a `kind: 'not-run'` tool error instead of a handoff.
+ */
+function overBudget(options: Pick<ExecuteOptions, 'maxHandoffs'>, state: AgentRunState, toolCall: ToolCall): ToolCallOutcome | undefined {
+  const max = options.maxHandoffs ?? DEFAULT_MAX_HANDOFFS;
+  if ((state.handoffs ?? 0) < max) return undefined;
+  const toolName = toolCall.function.name;
+  const error = `No handoff: this run already handed off ${max} time${max === 1 ? '' : 's'} (maxHandoffs). Answer the user yourself.`;
+  return { toolCallId: toolCall.id, toolName, result: toolErrorResult({ toolName, error, kind: 'not-run' }), error };
+}
+
+/**
+ * Settles a step's handoff calls once its other calls are done. The first
+ * call passes the gate every tool call gets - argument validation, pre-tool
+ * hooks, permission rules, tool guardrails - so a `deny` rule gives it a
+ * `kind: 'denied'` tool error, an `ask` rule pauses the run for approval
+ * ({@link HandoffGate.approval}), and a cleared call is honored. Every later
+ * call of the same turn gets a not-run error, as before; each call gets its
+ * `tool.start` here, and the honored one's `tool.done` comes with the switch.
+ */
+export async function takeHandoffCalls(options: ExecuteOptions, state: AgentRunState, handoffCalls: readonly ToolCall[]): Promise<HandoffGate> {
   const sink = runEventsOf(options);
-  let honored: HonoredHandoff | undefined;
+  const gate: HandoffGate = {};
   for (const [index, toolCall] of handoffCalls.entries()) {
     sink?.toolStart(toolCall);
-    const handoff = handoffNamed(options, toolCall.function.name) as ResolvedHandoff;
     const toolName = toolCall.function.name;
-    const checked =
-      index === 0
-        ? await checkHandoffCall(options, state, handoff, toolCall)
-        : { error: toolErrorResult({ toolName, error: 'No handoff: only one handoff per turn is honored, and an earlier call of this turn handed off.', kind: 'not-run' }) };
-    if ('args' in checked) {
-      honored = { handoff, toolCall, args: checked.args };
+    if (index !== 0) {
+      const error = toolErrorResult({ toolName, error: 'No handoff: only one handoff per turn is honored, and an earlier call of this turn handed off.', kind: 'not-run' });
+      insertToolResult(state.messages, errorMessage(toolCall, error));
+      sink?.toolSettled({ toolCallId: toolCall.id, toolName, result: error, error: String(error.message) });
       continue;
     }
-    insertToolResult(state.messages, errorMessage(toolCall, checked.error));
-    sink?.toolSettled({ toolCallId: toolCall.id, toolName, result: checked.error, error: String(checked.error.message) });
+    const handoff = handoffNamed(options, toolCall.function.name) as ResolvedHandoff;
+    const ctx = handoffCallContext(options, state.messages, toolCall);
+    const gatedAt = Date.now();
+    let prepared = await prepareToolCall(toolCall, ctx);
+    if (!prepared.rejection && !prepared.requiresApproval) {
+      const over = overBudget(options, state, toolCall);
+      if (over) prepared = { ...prepared, rejection: over, requiresApproval: false };
+    }
+    if (!prepared.rejection && !prepared.requiresApproval) {
+      gate.honored = { handoff, toolCall, args: prepared.args, gatedAt };
+      continue;
+    }
+    const outcome = await settleToolCall(prepared, ctx);
+    if (outcome.requiresApproval) {
+      // Like a tool call paused mid-batch: no result yet; the pause machinery owns it.
+      gate.approval = { toolCall, outcome };
+      continue;
+    }
+    insertToolResult(state.messages, outcomeMessage(toolCall, outcome));
+    sink?.toolSettled({ toolCallId: toolCall.id, toolName, result: outcome.result, error: outcome.error });
   }
-  return honored;
+  return gate;
+}
+
+/**
+ * The honored call's settle, run once its handoff completed (the executor
+ * switched `state.messages` to the target's view): the post-tool hooks see
+ * its routing result and may replace what the target reads (LOU-X3), then
+ * `tool.done` and `onToolResult` report it like any settled call. A
+ * replacement patches the result message when the transcript kept it.
+ */
+export async function settleHonoredHandoff(options: ExecuteOptions, messages: Message[], honored: HonoredHandoff, marker: HandoffMarker): Promise<void> {
+  const { toolCall } = honored;
+  const toolName = toolCall.function.name;
+  let shown: unknown = { transferred_to: marker.to };
+  let replacedByHook: string | undefined;
+  if (options.hooks) {
+    const payload = { result: shown };
+    const hook = await options.hooks.runPostToolCall(toolHookContext(toolCall, handoffCallContext(options, messages, toolCall), honored.args), payload);
+    if (hook !== undefined) {
+      replacedByHook = hook;
+      shown = payload.result;
+      const written = messages.find((message) => message.role === 'tool' && message.toolCallId === toolCall.id);
+      if (written) {
+        written.content = toolResultContent(shown);
+        written.metadata = { ...written.metadata, replacedByHook: hook };
+      }
+    }
+  }
+  const outcome: ToolCallOutcome = { toolCallId: toolCall.id, toolName, result: shown, args: honored.args, ...(replacedByHook !== undefined && { replacedByHook }) };
+  runEventsOf(options)?.toolSettled({ toolCallId: toolCall.id, toolName, result: shown, ...(replacedByHook !== undefined && { replacedByHook }) });
+  await options.onToolResult?.(toolCall, outcome, Date.now() - honored.gatedAt, undefined);
 }
 
 /** The text of the last user message of `messages` (`''` when there is none). */
@@ -220,6 +344,22 @@ function forgetApprovals(messages: readonly Message[]): Message[] {
     const { approval: _approval, ...metadata } = message.metadata;
     return { ...message, metadata };
   });
+}
+
+/**
+ * The routing note appended to the transcript for the target: the handoff's
+ * validated arguments, rendered as `key=value` (keys sorted, so the note is
+ * deterministic). Marked with the handoff marker so `handoffFilters` (and
+ * `activeAgentOf`) recognise it - `removeToolCalls` keeps it; a custom
+ * `inputFilter` may still drop or replace it.
+ */
+export function routingNote(marker: HandoffMarker, args: Record<string, unknown>): Message {
+  const rendered = Object.keys(args)
+    .sort()
+    .map((key) => `${key}=${JSON.stringify(args[key])}`)
+    .join(', ');
+  const content = `[routing note - not from the user] handoff ${marker.from} -> ${marker.to}${rendered === '' ? '' : `: ${rendered}`}`;
+  return { role: 'system', content, metadata: { handoff: marker } };
 }
 
 /** `messages` with the handoff's marker kept: on its result when the filter kept it, else on the last message. */
@@ -261,7 +401,7 @@ function targetOptions(options: ExecuteOptions, target: HandoffTarget): ExecuteO
  */
 export async function handOff(
   options: ExecuteOptions,
-  state: AgentRunState,
+  state: Pick<AgentRunState, 'messages' | 'agentName'>,
   { handoff, toolCall, args }: HonoredHandoff,
   extend: (options: ExecuteOptions) => Promise<ExecuteOptions>
 ): Promise<{ options: ExecuteOptions; messages: Message[]; marker: HandoffMarker }> {
@@ -270,6 +410,8 @@ export async function handOff(
   const result: Message = { role: 'tool', content: JSON.stringify({ transferred_to: handoff.name }), name: toolName, toolCallId: toolCall.id, toolName, metadata: { handoff: marker } };
   const transcript = state.messages[0]?.role === 'system' ? state.messages.slice(1) : [...state.messages];
   insertToolResult(transcript, result);
+  // N6 follow-up: the target reads the call's validated arguments as a routing note, unless a filter drops it.
+  transcript.push(routingNote(marker, args));
   const target = await handoff.spec(lastUserText(transcript));
   const data: HandoffInputData = { messages: transcript, ...marker, args };
   const filtered = handoff.inputFilter ? await handoff.inputFilter({ ...data, messages: [...transcript] }) : transcript;

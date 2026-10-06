@@ -57,12 +57,17 @@ can mount it next to your own routes.
 | ----- | ----------- |
 | `name` | Route segment: `POST <basePath>/<name>`. Letters, digits, `_` and `-`. |
 | `verify(req)` | Optional. Authenticate the request (a signature, a token). Return `true`/`false` or `{ ok, reason? }`; `false` answers `401 {"error":"Unauthorized"}` before anything is parsed or run. |
-| `parse(req, respond, ctx)` | The message: `{ sessionKey, input, metadata?, replyTo, event? }`; `{ decision: { id, approved?, note?, answer? } }` to resolve a pause this channel's turn stopped on (a button click); or `null` to acknowledge the request without a turn (a bot's own message, a retry). Call `respond(status, body)` to answer before the turn runs (a surface with a short timeout, a handshake). |
+| `parse(req, respond, ctx)` | The message: `{ sessionKey, input, metadata?, principal?, replyTo, event? }`; `{ decision: { id, approved?, note?, answer? } }` to resolve a pause this channel's turn stopped on (a button click); or `null` to acknowledge the request without a turn (a bot's own message, a retry). Call `respond(status, body)` to answer before the turn runs (a surface with a short timeout, a handshake). |
 | `reply(ctx)` | Deliver the reply: `ctx.text`, plus `inbound`, `sessionId`, `result`, `events`, `approval`, and `respond(status, body)` while the request is still open. |
 | `onApproval(ctx)` | Optional. Render a pause (buttons, a form). Default: `reply` with a text prompt in `ctx.text` and the request in `ctx.approval`. |
 | `onError(error, { channel, stage, sessionId? })` | Optional. Receives failures after the request was already acknowledged (a reply that could not be delivered, a failed turn or approval continuation). Default: `mountChannels({ onError })`, else `console.error` with the channel, stage, session id and SDK error code (never a token). A failed turn also tells the user "Sorry, that request failed." in the conversation (best effort). |
 | `stream` | Optional. `true` calls `reply` with `partial: true` and the text so far as the model writes, then once more with the final text. |
 | `sessionId(inbound)` | Optional. The session for a message. Default: `` `${name}:${sessionKey}` ``. |
+
+`metadata` is passed to the turn as `send()`'s `metadata` (memory scope
+functions, `model` / `instructions` / `tools` functions see it); `principal`
+is the turn's verified caller, passed where `send()`'s `principal` goes. Set
+`principal` only from data `verify` vouched for.
 
 `ctx` (`ChannelContext`) lets `parse` ask the host instead of keeping state: `ctx.approval(id)` (the pending call), `ctx.sessionId(key)`, `ctx.hasSession(key)` (a session for that key was saved in the `store`) and `ctx.pendingQuestion(key)` (the id of the `ask_question` that key's session waits on, or `undefined`; it also finds a question asked before a restart when sessions, checkpoints and approvals are in durable stores, and binds it to the session so the answer's turn joins the transcript). Call `pendingQuestion` only for a message you return as the answer, `{ decision: { id, answer: text }, inbound }`: the id is handed out once until that answer has run. A `{ decision }` may carry `inbound` (the conversation as the click itself names it, so a pause survives a restart) and `approver` (who decided; passed to `mountChannels({ onDecision })` for your audit log).
 
@@ -160,7 +165,7 @@ await channels.resolveApproval({ id: 'the-approval-id', approved: true });
 | Channel | Request | Response |
 | ------- | ------- | -------- |
 | `httpChannel({ name?, verify? })` | JSON `{ sessionKey, input }` (`input` a string or content parts); anything else is a 400 | `200 { sessionId, text, finishReason }`; when paused, `approval` too and `text` is the prompt |
-| `webhookChannel({ secret?, auth?, name? })` | The JSON body's `input` string, or the whole body; a one-shot session unless the body has a `sessionKey` | `200` with the turn's `ExecutionResult`, as `WebhookTriggerAdapter` answers |
+| `webhookChannel({ secret?, auth?, name?, principal? })` | The JSON body's `input` string, or the whole body; a one-shot session unless the body has a `sessionKey` | `200` with the turn's `ExecutionResult`, as `WebhookTriggerAdapter` answers |
 | `slackChannel({ signingSecret, botToken, name?, fetch?, approvers?, onError? })` | Slack Events API and interactivity requests (see [Slack](#slack)) | `200` at once; replies are posted in the Slack thread |
 | `discordChannel({ publicKey, applicationId, botToken?, name?, fetch?, approvers?, onError? })` | Discord slash-command and button interactions (see [Discord](#discord)) | Deferred ack at once; the reply edits the original response |
 | `telegramChannel({ botToken, secretToken, botUsername?, name?, fetch?, approvers?, onError? })` | Telegram bot webhook updates: messages and inline-keyboard taps (see [Telegram](#telegram)) | `200` at once; replies are sent with `sendMessage` as plain text |
@@ -171,7 +176,10 @@ await channels.resolveApproval({ id: 'the-approval-id', approved: true });
 `x-signature-256: sha256=<hex>`; `auth` takes any
 [webhook auth](triggers.md#webhook-authentication) (HMAC options with
 replay protection, bearer token, custom). The checks and the generic 401 are
-the ones `WebhookTriggerAdapter` uses.
+the ones `WebhookTriggerAdapter` uses. `principal` is a
+`(body, req) => Principal | undefined` that names the caller of the turn from
+the verified request (the alerting system that sent the hook, an integration
+user); `body` is the parsed JSON body, `undefined` when it is not JSON.
 
 ```ts
 import { createAgent, httpChannel, mountChannels, webhookChannel } from '@lousho/build-ai-agent';

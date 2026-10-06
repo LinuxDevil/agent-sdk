@@ -1,0 +1,11 @@
+{
+  "name": "incident-response",
+  "type": "kit",
+  "description": "SRE incident-response agent directory: an HMAC-verified webhook channel for alert intake, simulated infrastructure tools gated by risk-tiered permission rules (read-only diagnostics allowed, staging remediation auto-allowed, production remediation asks, destructive data operations denied), a risk-tier annotating approver and an audit-timeline hook",
+  "permissions": {
+    "filesystem": "write",
+    "env": ["INCIDENT_WEBHOOK_SECRET", "INCIDENT_TIMELINE_FILE"],
+    "needsApproval": true
+  },
+  "dependencies": ["@lousho/build-ai-agent"]
+}

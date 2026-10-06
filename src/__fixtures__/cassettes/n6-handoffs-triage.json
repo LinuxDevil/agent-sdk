@@ -138,6 +138,10 @@
             "toolName": "transfer_to_billing"
           },
           {
+            "role": "system",
+            "content": "[routing note - not from the user] handoff triage -> billing: reason=\"User was charged twice for their subscription.\""
+          },
+          {
             "role": "assistant",
             "content": "",
             "toolCalls": [
@@ -176,6 +180,10 @@
             "content": "{\"transferred_to\":\"triage\"}",
             "name": "transfer_to_triage",
             "toolName": "transfer_to_triage"
+          },
+          {
+            "role": "system",
+            "content": "[routing note - not from the user] handoff billing -> triage: reason=\"User is asking about resetting their password.\""
           }
         ],
         "tools": [

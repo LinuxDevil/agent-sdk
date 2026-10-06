@@ -11,20 +11,22 @@ import type { ToolDescriptor, ToolExecutionContext } from '../types';
 import {
   ApprovalDecision,
   ApprovalStore,
+  approvalExpired,
   describeApproval,
   ExecutionSnapshot,
   PendingApproval,
   ResolvedApproval,
 } from './ApprovalGate';
-import { AgentExecutor, ExecuteOptions, ExecutionResult } from './AgentExecutor';
+import { AgentExecutor, ExecuteOptions, ExecutionResult, extendRunOptions } from './AgentExecutor';
 import { observeRun, partialSink, runEventsOf, streamResumed, type AgentRun, type ToolSettled } from './agentRun';
 import { Checkpoint, CheckpointStore, RUN_CONFIG_KEY } from './checkpoint';
 import { checkAgentDrift, fingerprintOf, type AgentDrift } from './agentFingerprint';
 import type { AgentConfig } from '../types';
 import { NoopSandbox } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
-import { HookRegistry } from './hooks';
+import { HookRegistry, type ToolCallHookContext } from './hooks';
 import { runPreToolHooks, type ToolCallOutcome } from './toolCallExecution';
+import { activeAgentOf, handOff, handoffNamed, handoffToolRegistry, type HandoffMarker, type ResolvedHandoff } from './handoffRun';
 import { markPropagating, toolErrorMessage } from './propagatingToolError';
 import { SDKError } from './errors';
 import { toolErrorResult, type ToolErrorResult } from './toolErrors';
@@ -33,7 +35,7 @@ import { splitPendingTurn } from './transcript';
 import { replaceToolResult, type ToolCallScope } from './subagentRuntime';
 import type { RunUsage } from '../models/usage';
 import { emptyRunUsage, mergeDelegatedUsage, restoreRunUsage } from './runUsage';
-import { planModeRefusal } from './permissions';
+import { planModeRefusal, reportApprovalExpiry } from './permissions';
 import { RUN_CODE_TOOL, codeModeOf, nestedToolCaller, withCodeMode } from './codeMode';
 import { withToolSearch } from './toolSearch';
 import { resumeSubagentCall, type ResumeContext } from './resumeSubagent';
@@ -172,8 +174,14 @@ async function resumeObserved(
     // LOU-R16: and its hooks keep seeing the metadata it paused with, unless the resuming call passed its own.
     ...(rest.metadata === undefined && snapshot.metadata !== undefined && { metadata: snapshot.metadata }),
   };
-  // N9b: a sign-in pause continues only once the user signed in (else it stays paused), or ends as cancelled.
-  const decided = await signInDecision(record, decision, approvalStore, executeOptions.tokens);
+  // TTL: a pause decided after its `expiresAt` is denied, whatever the
+  // decision says - a stale approve must never run the tool. The denial is
+  // what rejectionOf() reports to the model, so a resumed run sees the
+  // expiry, and a sign-in pause that lapsed is denied rather than re-armed.
+  const decided = approvalExpired(pending)
+    ? { ...decision, approved: false }
+    : // N9b: a sign-in pause continues only once the user signed in (else it stays paused), or ends as cancelled.
+      await signInDecision(record, decision, approvalStore, executeOptions.tokens);
   const messages: Message[] = [...snapshot.currentMessages];
   const drift = await checkApprovalDrift(record, decided, { approvalStore, toolRegistry, provider, executeOptions });
 
@@ -220,6 +228,22 @@ async function resumeObserved(
         const businessState = executeOptions.businessState !== undefined ? executeOptions.businessState : staleBusinessState;
         await markAwaitingApproval(snapshot, step.paused, checkpointStore, businessState);
         return step.paused;
+      }
+      // N6: the approved transfer completed its switch - continue the run as the target.
+      if ('handoff' in step) {
+        return AgentExecutor.execute({
+          ...step.handoff.options,
+          agentSpanId: span.id,
+          input: step.handoff.messages,
+          sessionId: snapshot.sessionId,
+          checkpointStore,
+          approvalStore: executeOptions.approvalStore ?? ctx.approvalStore,
+          businessState: executeOptions.businessState !== undefined ? executeOptions.businessState : staleBusinessState,
+          // The switched transcript already starts with the target's system prompt.
+          skipSystemPromptInjection: true,
+          initialSteps: snapshot.steps,
+          initialUsage: ctx.usage,
+        });
       }
       // LOU-Y1: a call whose sub-agent paused already has a placeholder result.
       replaceToolResult(messages, step.message);
@@ -337,9 +361,13 @@ async function signInDecision(
   throw new SignInPendingError(signIn.displayName ?? signIn.provider);
 }
 
-/** N9b: the rejection a declined or cancelled call gets: a sign-in, a question, or a tool call. */
+/** N9b: the rejection a declined or cancelled call gets: an expired pause, a sign-in, a question, or a tool call. */
 function rejectionOf(pending: PendingApproval): { error: string; kind: 'denied' | 'rejected' } {
   const described = describeApproval(pending);
+  // TTL: a pause decided after `expiresAt` denies, whatever kind it was.
+  if (approvalExpired(described)) {
+    return { error: `Approval of '${described.toolName}' expired before it was decided`, kind: 'denied' };
+  }
   if (described.kind === 'sign-in') return { error: `Sign-in to ${described.signIn?.displayName ?? described.signIn?.provider ?? 'the provider'} was cancelled.`, kind: 'denied' };
   // LOU-X9: declining an `ask_question` call is not a tool rejection.
   if (described.kind === 'question') return { error: 'The user declined to answer the question', kind: 'rejected' };
@@ -421,6 +449,16 @@ async function streamedDecision(ctx: ResumeContext, pending: PendingApproval, dr
   sink.toolResume(toolCall);
   const step = await decidedToolMessage(ctx, pending);
   if ('message' in step) sink.toolSettled(toolResultOf(step.message));
+  // N6: an approved transfer reports `tool.done` then `handoff`, like the switch in a live run.
+  if ('handoff' in step) {
+    sink.toolSettled({
+      toolCallId: toolCall.id,
+      toolName: toolCall.function.name,
+      result: step.handoff.result ?? { transferred_to: step.handoff.marker.to },
+      ...(step.handoff.replacedByHook !== undefined && { replacedByHook: step.handoff.replacedByHook }),
+    });
+    sink.handoff({ ...step.handoff.marker, toolCallId: toolCall.id });
+  }
   return step;
 }
 
@@ -438,15 +476,26 @@ function toolResultOf(message: Message): ToolSettled {
   };
 }
 
+/** The switch an approved handoff call completes: the target's run options and the transcript it sees. */
+interface HandoffSwitch {
+  options: ExecuteOptions;
+  messages: Message[];
+  marker: HandoffMarker;
+  /** The routing result as the post-tool hooks left it (LOU-X3), for `tool.done`. */
+  result?: unknown;
+  replacedByHook?: string;
+}
+
 /**
  * The `tool` message for the decided call: the approved tool's result, the
  * rejection - or, when the run paused on a sub-agent, the sub-agent's final
- * answer after resuming it with the decision (LOU-Y1).
+ * answer after resuming it with the decision (LOU-Y1). N6: an approved
+ * `transfer_to_*` call does not run a tool - it returns the completed switch.
  */
 async function decidedToolMessage(
   ctx: ResumeContext,
   pending: PendingApproval
-): Promise<{ message: Message } | { paused: ExecutionResult }> {
+): Promise<{ message: Message } | { paused: ExecutionResult } | { handoff: HandoffSwitch }> {
   const { snapshot, messages, executeOptions } = ctx;
   const runApproved = (
     call: PendingApproval,
@@ -459,16 +508,30 @@ async function decidedToolMessage(
   }
   if (!ctx.decision.approved) {
     const { error, kind } = rejectionOf(pending);
+    // TTL: an expiry denial is audited like a rule's `deny`.
+    if (approvalExpired(pending)) {
+      reportApprovalExpiry(executeOptions, {
+        toolName: pending.toolName,
+        toolCallId: pending.toolCallId,
+        sessionId: snapshot.sessionId,
+        ...(executeOptions.principal && { principal: executeOptions.principal }),
+        args: pending.args,
+      });
+    }
     return { message: toolResultMessage(pending, toolErrorResult({ toolName: pending.toolName, error, kind, details: { note: ctx.decision.note } }), true) };
   }
+  // N6: a transfer call resumes by handing off, not by running a tool.
+  const handoff = handoffNamed(executeOptions, pending.toolName);
   // N4: a call approved before a switch to plan mode does not run in plan mode.
   const { toolName, toolCallId, args } = pending;
   const { principal } = executeOptions;
-  const planned = planModeRefusal(executeOptions, ctx.toolRegistry.get(toolName), { toolName, toolCallId, sessionId: ctx.snapshot.sessionId, ...(principal && { principal }), args });
+  const toolDesc = ctx.toolRegistry.get(toolName) ?? (handoff ? handoffToolRegistry(executeOptions).get(toolName) : undefined);
+  const planned = planModeRefusal(executeOptions, toolDesc, { toolName, toolCallId, sessionId: ctx.snapshot.sessionId, ...(principal && { principal }), args });
   if (planned) {
     const error = `Tool '${toolName}' was denied by plan mode: ${planned}`;
     return { message: toolResultMessage(pending, toolErrorResult({ toolName, error, kind: 'denied', details: { reason: planned } }), true) };
   }
+  if (handoff) return resumeHandoffCall(ctx, pending, handoff);
   // A sub-agent the approved tool starts inherits this resumed run's runtime.
   const scope: ToolCallScope = {
     runtime: { ...executeOptions, approvalStore: ctx.approvalStore },
@@ -490,6 +553,77 @@ async function decidedToolMessage(
   }
   // LOU-X8: the transcript remembers the approval, for `once()`.
   return { message: { ...message, metadata: { ...message.metadata, ...approvalMarker(pending.args) } } };
+}
+
+/**
+ * N6: carries out an approved `transfer_to_*` call. Its pre-tool hooks re-run
+ * on the approved arguments (LOU-X3.2: a hook may still deny it or supply its
+ * result); a cleared call hands the run off exactly as the main loop would
+ * (post hooks may rewrite the routing result the target reads). The caller
+ * continues the run with `handoff.options`/`handoff.messages`.
+ */
+async function resumeHandoffCall(
+  ctx: ResumeContext,
+  pending: PendingApproval,
+  handoff: ResolvedHandoff
+): Promise<{ message: Message } | { handoff: HandoffSwitch }> {
+  const { snapshot, messages, executeOptions } = ctx;
+  const hooks: HookRegistry | undefined = executeOptions.hooks;
+  const toolCall: ToolCall = {
+    id: pending.toolCallId,
+    type: 'function',
+    function: { name: pending.toolName, arguments: JSON.stringify(pending.args) },
+  };
+  // The call's second pass through the hooks (its first was the paused run's
+  // gate): flagged, and a copy hooks may not change away from the approved args.
+  const hookArgs: Record<string, unknown> = structuredClone(pending.args);
+  const hookCtx: ToolCallHookContext = {
+    agentId: snapshot.agent.id,
+    agentName: snapshot.agent.name,
+    sessionId: snapshot.sessionId,
+    ...(executeOptions.principal && { principal: executeOptions.principal }),
+    metadata: executeOptions.metadata,
+    messages,
+    toolCallId: pending.toolCallId,
+    toolName: pending.toolName,
+    args: hookArgs,
+    resumedAfterApproval: true,
+    toolCall,
+  };
+  const verdict = hooks
+    ? await runPreToolHooks(hooks, hookCtx, { toolRegistry: handoffToolRegistry(executeOptions), runtime: executeOptions, approvedArgs: pending.args })
+    : { args: hookArgs };
+  if (verdict.outcome) {
+    const settled = settledByHook(verdict.outcome);
+    const payload = { result: settled.errorResult ?? settled.result, error: settled.toolError };
+    const replacedBy = hooks ? await hooks.runPostToolCall(hookCtx, payload) : undefined;
+    const shown = replacedBy !== undefined ? payload.result : (settled.errorResult ?? settled.result);
+    return { message: toolResultMessage(pending, shown, settled.errorResult !== undefined, replacedBy ?? settled.replacedByHook) };
+  }
+  const options: ExecuteOptions = {
+    ...executeOptions,
+    agent: snapshot.agent,
+    provider: ctx.provider,
+    toolRegistry: ctx.toolRegistry,
+    approvalStore: ctx.approvalStore,
+    sessionId: snapshot.sessionId,
+    input: messages,
+  };
+  const state = { messages, agentName: activeAgentOf(messages) ?? snapshot.agent.name };
+  const switched = await handOff(options, state, { handoff, toolCall, args: verdict.args, gatedAt: Date.now() }, extendRunOptions);
+  if (hooks) {
+    const payload = { result: { transferred_to: switched.marker.to } };
+    const hook = await hooks.runPostToolCall(hookCtx, payload);
+    if (hook !== undefined) {
+      const written = switched.messages.find((m) => m.role === 'tool' && m.toolCallId === pending.toolCallId);
+      if (written) {
+        written.content = toolResultContent(payload.result);
+        written.metadata = { ...written.metadata, replacedByHook: hook };
+      }
+      return { handoff: { ...switched, result: payload.result, replacedByHook: hook } };
+    }
+  }
+  return { handoff: switched };
 }
 
 /**
@@ -739,6 +873,9 @@ async function runApprovedToolCall(
     toolCallId: pending.toolCallId,
     toolName: pending.toolName,
     args: hookArgs,
+    // This is the call's second pass through the hooks (its first was the
+    // paused run's gate): flag it so stateful hooks can skip the re-fire.
+    resumedAfterApproval: true,
     toolCall: {
       id: pending.toolCallId,
       type: 'function' as const,

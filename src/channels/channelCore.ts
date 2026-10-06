@@ -188,7 +188,7 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
   function runTurn(turn: PausedTurn, respond: ChannelRespond): Promise<void> {
     const { channel, inbound, sessionId } = turn;
     return guard(turn, 'turn', respond, async () => {
-      const run = agent.session({ id: sessionId, store }).stream(inbound.input, { principal: inbound.principal });
+      const run = agent.session({ id: sessionId, store }).stream(inbound.input, { principal: inbound.principal, metadata: inbound.metadata });
       const events: AgentEvent[] = [];
       let text = '';
       for await (const event of run) {

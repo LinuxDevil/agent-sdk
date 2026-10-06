@@ -9,7 +9,7 @@ import { createAgent, type SimpleAgent } from './createAgent';
 import { handoff, handoffFilters, type Handoff } from './handoffs';
 import { defineTool } from './tools/defineTool';
 import { once } from './tools/approvalPolicies';
-import { deny } from './execution/permissions';
+import { allow, ask, deny } from './execution/permissions';
 import { PropagatingToolError } from './execution/propagatingToolError';
 import { remoteAgent } from './subagents/remoteAgent';
 import { memoryStore } from './storage/agentStore';
@@ -72,6 +72,8 @@ function setup(
 
 const toolNames = (model: MockModel, call: number) => (model.calls[call].tools ?? []).map((tool) => tool.function.name);
 const systemPrompts = (messages: readonly Message[]) => messages.filter((m) => m.role === 'system').map((m) => m.content);
+/** The routing system notes of a transcript (each handoff leaves one, marked with `metadata.handoff`). */
+const routingNotes = (messages: readonly Message[]) => messages.filter((m) => m.role === 'system' && m.metadata?.handoff !== undefined).map((m) => String(m.content));
 const handoffResult = (messages: readonly Message[]) => messages.find((m) => m.role === 'tool' && m.toolCallId === 'call_handoff');
 
 afterEach(() => { vi.restoreAllMocks(); });
@@ -90,8 +92,11 @@ describe('handoffs (N6): send() and stream()', () => {
     // The lead offered its tools and the handoff; the target offers its own tools only.
     expect(toolNames(triageModel, 0)).toEqual(['lookup_account', 'transfer_to_billing']);
     expect(toolNames(billingModel, 0)).toEqual(['refund']);
-    // One system prompt, the target's, never both.
-    expect(systemPrompts(billingModel.calls[0].messages as Message[])).toEqual(['You handle billing.']);
+    // One system prompt, the target's, never both; the routing note is the only other system message.
+    expect(systemPrompts(billingModel.calls[0].messages as Message[])).toEqual([
+      'You handle billing.',
+      '[routing note - not from the user] handoff triage -> billing: reason="billing question"',
+    ]);
     const marker = handoffResult(result.messages);
     expect(JSON.parse(marker?.content as string)).toEqual({ transferred_to: 'billing' });
     expect(marker?.metadata?.handoff).toEqual({ from: 'triage', to: 'billing' });
@@ -141,7 +146,7 @@ describe('handoffs (N6): send() and stream()', () => {
 });
 
 describe('handoffs (N6): options', () => {
-  it('inputFilter gets the transcript without the system prompt, ending with the handoff call and its result', async () => {
+  it('inputFilter gets the transcript without the system prompt, ending with the handoff call, its result and the routing note', async () => {
     let seen: HandoffInputData | undefined;
     const onHandoff = vi.fn();
     const { triage, billingModel } = setup([toBilling({ reason: 'double charge' })], ['OK.'], {
@@ -161,23 +166,27 @@ describe('handoffs (N6): options', () => {
     expect(seen?.to).toBe('billing');
     expect(seen?.args).toEqual({ reason: 'double charge' });
     expect(seen?.messages[0]).toMatchObject({ role: 'user', content: 'I was charged twice' });
-    expect(seen?.messages.at(-2)?.toolCalls?.[0].id).toBe('call_handoff');
-    expect(seen?.messages.at(-1)).toMatchObject({ role: 'tool', toolCallId: 'call_handoff' });
+    expect(seen?.messages.at(-3)?.toolCalls?.[0].id).toBe('call_handoff');
+    expect(seen?.messages.at(-2)).toMatchObject({ role: 'tool', toolCallId: 'call_handoff' });
+    // The routing note is the last message, marked so a filter can recognise it.
+    expect(seen?.messages.at(-1)).toMatchObject({ role: 'system', metadata: { handoff: { from: 'triage', to: 'billing' } } });
+    expect(String(seen?.messages.at(-1)?.content)).toContain('reason="double charge"');
     expect(onHandoff).toHaveBeenCalledWith(expect.objectContaining({ from: 'triage', to: 'billing', args: { reason: 'double charge' } }));
     expect(billingModel.calls).toHaveLength(1);
   });
 
-  it('handoffFilters.removeToolCalls: the target sees user and assistant text only; the marker moves to the last message', async () => {
+  it('handoffFilters.removeToolCalls: the target sees user and assistant text plus the routing note (the marker)', async () => {
     const turn = { text: 'Let me get billing.', toolCalls: [{ name: 'lookup_account', args: {}, id: 'call_lookup' }, { name: 'transfer_to_billing', args: {}, id: 'call_handoff' }] };
     const { triage, billingModel } = setup([turn], ['Billing here.'], { entry: (billing) => handoff(billing, { inputFilter: handoffFilters.removeToolCalls }) });
 
     const result = await triage.send('I was charged twice');
 
     const seen = billingModel.calls[0].messages as Message[];
-    expect(seen.map((m) => m.role)).toEqual(['system', 'user', 'assistant']);
+    expect(seen.map((m) => m.role)).toEqual(['system', 'user', 'assistant', 'system']);
     expect(seen[2]).not.toHaveProperty('toolCalls');
     expect(seen[2].content).toBe('Let me get billing.');
-    expect(seen[2].metadata?.handoff).toEqual({ from: 'triage', to: 'billing' });
+    expect(seen[3].metadata?.handoff).toEqual({ from: 'triage', to: 'billing' });
+    expect(String(seen[3].content)).toContain('handoff triage -> billing');
     expect(result.messages.some((m) => m.role === 'tool')).toBe(false);
   });
 
@@ -352,7 +361,11 @@ describe('handoffs (N6): sessions', () => {
     expect(second.text).toBe('You are welcome.');
     expect(triageModel.calls).toHaveLength(1);
     expect(billingModel.calls).toHaveLength(2);
-    expect(systemPrompts(billingModel.calls[1].messages as Message[])).toEqual(['You handle billing.']);
+    // The session transcript still carries the handoff's routing note.
+    expect(systemPrompts(billingModel.calls[1].messages as Message[])).toEqual([
+      'You handle billing.',
+      '[routing note - not from the user] handoff triage -> billing: reason="billing question"',
+    ]);
     expect(toolNames(billingModel, 1)).toEqual(['refund']);
   });
 
@@ -374,7 +387,11 @@ describe('handoffs (N6): sessions', () => {
     expect(toolNames(billingModel, 1)).toEqual(['transfer_to_triage']);
     expect(third.agentName).toBe('triage');
     expect(triageModel.calls).toHaveLength(3);
-    expect(systemPrompts(triageModel.calls[1].messages as Message[])).toEqual(['You route the user.']);
+    expect(systemPrompts(triageModel.calls[1].messages as Message[])).toEqual([
+      'You route the user.',
+      '[routing note - not from the user] handoff triage -> billing: reason="billing question"',
+      '[routing note - not from the user] handoff billing -> triage',
+    ]);
   });
 
   it('agent.send() without a session always starts at the lead', async () => {
@@ -452,7 +469,10 @@ describe('handoffs (N6): approvals and durable resume', () => {
     expect(restarted.refund.execute).toHaveBeenCalledTimes(1);
     expect(restarted.triageModel.calls).toHaveLength(0);
     expect(restarted.billingModel.calls).toHaveLength(1);
-    expect(systemPrompts(restarted.billingModel.calls[0].messages as Message[])).toEqual(['You handle billing.']);
+    expect(systemPrompts(restarted.billingModel.calls[0].messages as Message[])).toEqual([
+      'You handle billing.',
+      '[routing note - not from the user] handoff triage -> billing: reason="billing question"',
+    ]);
     expect(events.some((event) => event.type === 'agent.drift')).toBe(false);
     expect(warn.mock.calls.flat().join(' ')).not.toMatch(/drift|changed/i);
   });
@@ -483,6 +503,161 @@ describe('handoffs (N6): approvals and durable resume', () => {
     expect(resumed?.agentName).toBe('billing');
     expect(next.agentName).toBe('billing');
     expect(restarted.triageModel.calls).toHaveLength(0);
+  });
+});
+
+describe('handoffs (N6): the transfer call passes the run\'s gate', () => {
+  it('a deny rule on the transfer tool refuses the handoff with a model-visible error, audited', async () => {
+    const onPermissionDecision = vi.fn();
+    const events: AgentEvent[] = [];
+    const { triage, billingModel } = setup([toBilling(), 'I cannot transfer you.'], [], {
+      triage: { permissions: [deny('transfer_to_billing', 'transfers are off')], onPermissionDecision, onEvent: (event: AgentEvent) => events.push(event) },
+    });
+
+    const result = await triage.send('Refund me');
+
+    expect(result.agentName).toBe('triage');
+    expect(result.text).toBe('I cannot transfer you.');
+    expect(billingModel.calls).toHaveLength(0);
+    const refused = handoffResult(result.messages);
+    expect(refused?.isError).toBe(true);
+    expect(JSON.parse(refused?.content as string)).toMatchObject({ kind: 'denied' });
+    expect(refused?.metadata?.handoff).toBeUndefined();
+    expect(onPermissionDecision.mock.calls.map((call) => call[0])).toEqual(
+      expect.arrayContaining([expect.objectContaining({ toolName: 'transfer_to_billing', toolCallId: 'call_handoff', decision: 'deny' })])
+    );
+    expect(events.some((event) => event.type === 'permission.decision' && event.toolName === 'transfer_to_billing')).toBe(true);
+    expect(events.some((event) => event.type === 'tool.error' && event.toolCallId === 'call_handoff')).toBe(true);
+  });
+
+  it('an allow rule (or no rule) lets the handoff proceed, audited', async () => {
+    const onPermissionDecision = vi.fn();
+    const { triage, billingModel } = setup([toBilling()], ['Billing here.'], {
+      triage: { permissions: [allow('transfer_to_billing')], onPermissionDecision },
+    });
+
+    const result = await triage.send('Refund me');
+
+    expect(result.agentName).toBe('billing');
+    expect(billingModel.calls).toHaveLength(1);
+    expect(onPermissionDecision.mock.calls.map((call) => call[0])).toEqual(
+      expect.arrayContaining([expect.objectContaining({ toolName: 'transfer_to_billing', decision: 'allow' })])
+    );
+  });
+
+  it('an ask rule on the transfer tool pauses for approval and hands off once approved', async () => {
+    const events: AgentEvent[] = [];
+    const onPermissionDecision = vi.fn();
+    const { triage, triageModel, billingModel } = setup([toBilling()], ['Billing here.'], {
+      triage: { permissions: [ask('transfer_to_billing')], onPermissionDecision, onEvent: (event: AgentEvent) => events.push(event) },
+    });
+
+    const paused = await triage.send('Refund me');
+    expect(paused.finishReason).toBe('awaiting-approval');
+    expect(paused.agentName).toBe('triage');
+    expect(billingModel.calls).toHaveLength(0);
+    expect(paused.messages.some((m) => m.metadata?.handoff)).toBe(false);
+    expect(onPermissionDecision.mock.calls.map((call) => call[0])).toEqual(
+      expect.arrayContaining([expect.objectContaining({ toolName: 'transfer_to_billing', decision: 'ask' })])
+    );
+    expect(events.some((event) => event.type === 'approval.requested' && event.toolName === 'transfer_to_billing')).toBe(true);
+
+    const result = await triage.approvals.resolve({ id: paused.approvalId!, approved: true });
+
+    expect(result.agentName).toBe('billing');
+    expect(result.text).toBe('Billing here.');
+    expect(triageModel.calls).toHaveLength(1);
+    expect(billingModel.calls).toHaveLength(1);
+    expect(routingNotes(result.messages)).toEqual(['[routing note - not from the user] handoff triage -> billing: reason="billing question"']);
+  });
+
+  it('rejecting a paused transfer reports a rejected tool error and no handoff happens', async () => {
+    const { triage, billingModel } = setup([toBilling(), 'Understood, I will keep helping you.'], [], {
+      triage: { permissions: [ask('transfer_to_billing')] },
+    });
+
+    const paused = await triage.send('Refund me');
+    const result = await triage.approvals.resolve({ id: paused.approvalId!, approved: false });
+
+    expect(result.agentName).toBe('triage');
+    expect(result.text).toBe('Understood, I will keep helping you.');
+    expect(billingModel.calls).toHaveLength(0);
+    const refused = result.messages.find((m) => m.toolCallId === 'call_handoff' && m.role === 'tool');
+    expect(refused?.isError).toBe(true);
+    expect(JSON.parse(refused?.content as string)).toMatchObject({ kind: 'rejected' });
+    expect(refused?.metadata?.handoff).toBeUndefined();
+  });
+
+  it('pre/post hooks observe the transfer call; a hook rewrite shapes what the target reads', async () => {
+    const seen: string[] = [];
+    const { triage, billingModel } = setup([toBilling({ reason: 'raw' })], ['OK.'], {
+      triage: {
+        hooks: [
+          {
+            name: 'spy',
+            preToolCall: (ctx) => {
+              seen.push(`pre:${ctx.toolName}`);
+              if (ctx.toolName === 'transfer_to_billing') return { input: { reason: 'rewritten by hook' } };
+              return undefined;
+            },
+            postToolCall: (ctx) => {
+              seen.push(`post:${ctx.toolName}`);
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await triage.send('Refund me');
+
+    expect(result.agentName).toBe('billing');
+    expect(seen).toEqual(['pre:transfer_to_billing', 'post:transfer_to_billing']);
+    expect(routingNotes(billingModel.calls[0].messages as Message[])).toEqual(['[routing note - not from the user] handoff triage -> billing: reason="rewritten by hook"']);
+  });
+
+  it('a hook can deny the transfer call; the agent answers instead of handing off', async () => {
+    const { triage, billingModel } = setup([toBilling(), 'I will answer myself.'], [], {
+      triage: { hooks: [{ name: 'no-transfers', preToolCall: (ctx) => (ctx.toolName === 'transfer_to_billing' ? { deny: 'No transfers today' } : undefined) }] },
+    });
+
+    const result = await triage.send('Refund me');
+
+    expect(result.agentName).toBe('triage');
+    expect(billingModel.calls).toHaveLength(0);
+    const refused = handoffResult(result.messages);
+    expect(refused?.isError).toBe(true);
+    expect(JSON.parse(refused?.content as string)).toMatchObject({ kind: 'denied' });
+  });
+
+  it('the target reads the validated structured arguments as a routing note; a custom filter can still drop it', async () => {
+    const structured = setup([toBilling({ reason: 'double charge', orderId: 'A-10042' })], ['OK.'], {
+      entry: (billing) => handoff(billing, { input: z.object({ reason: z.string(), orderId: z.string().optional() }) }),
+    });
+    await structured.triage.send('I was charged twice');
+    expect(routingNotes(structured.billingModel.calls[0].messages as Message[])).toEqual([
+      '[routing note - not from the user] handoff triage -> billing: orderId="A-10042", reason="double charge"',
+    ]);
+
+    const dropped = setup([toBilling()], ['OK.'], {
+      entry: (billing) => handoff(billing, { inputFilter: (data) => data.messages.filter((m) => m.metadata?.handoff === undefined) }),
+    });
+    await dropped.triage.send('I was charged twice');
+    expect(routingNotes(dropped.billingModel.calls[0].messages as Message[])).toEqual([]);
+    expect(systemPrompts(dropped.billingModel.calls[0].messages as Message[])).toEqual(['You handle billing.']);
+  });
+
+  it('createAgent warns once when a handoff target was built with run-level options', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const billing = createAgent({ name: 'billing', description: 'Billing', provider: mockModel(['Hi.']), approve: () => true });
+    const triage = createAgent({ name: 'triage', provider: mockModel(['Routed.', 'Again.']), handoffs: [billing] });
+
+    await triage.send('Hi');
+    await triage.send('Once more');
+
+    const warnings = warn.mock.calls.map((call) => String(call[0])).filter((line) => line.includes("'approve'"));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/handoff target 'billing'/);
+    expect(warnings[0]).toMatch(/entry agent|run starts with|run's starting agent/);
   });
 });
 

@@ -23,7 +23,12 @@ export interface HandoffOptions {
    * not match gets a tool error, and no handoff happens.
    */
   input?: StandardSchemaV1;
-  /** What the target sees; default: everything. See {@link handoffFilters}. */
+  /**
+   * What the target sees; default: everything. `data.messages` includes the
+   * handoff's routing system note (who was transferred, with the validated
+   * arguments) - return them as they are to keep it, or drop or replace it.
+   * See {@link handoffFilters}.
+   */
   inputFilter?: (data: HandoffInputData) => Message[] | Promise<Message[]>;
   /** Called once the handoff is decided, before the target's first model call. */
   onHandoff?: (data: HandoffInputData & { sessionId?: string }) => void | Promise<void>;
@@ -65,8 +70,9 @@ function hasText(message: Message): boolean {
 /** Ready-made `inputFilter`s for {@link handoff}. */
 export const handoffFilters = {
   /**
-   * Drops tool calls and tool results, keeps user and assistant text: the
-   * target sees the conversation, not the tools that served it.
+   * Drops tool calls and tool results, keeps user and assistant text - and the
+   * handoff's routing system note, so the target still reads the validated
+   * handoff arguments.
    *
    * @example
    * ```ts
@@ -77,9 +83,12 @@ export const handoffFilters = {
     const kept: Message[] = [];
     for (const message of data.messages) {
       if (message.role === 'user') kept.push(message);
-      if (message.role !== 'assistant' || !hasText(message)) continue;
-      const { toolCalls: _calls, reasoning: _reasoning, ...text } = message;
-      kept.push(text);
+      else if (message.role === 'system' && message.metadata?.handoff) kept.push(message);
+      else {
+        if (message.role !== 'assistant' || !hasText(message)) continue;
+        const { toolCalls: _calls, reasoning: _reasoning, ...text } = message;
+        kept.push(text);
+      }
     }
     return kept;
   },

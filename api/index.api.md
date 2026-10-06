@@ -69,6 +69,7 @@ export interface AgentConfig {
 
 // @public
 export interface AgentDirConfig {
+    approvalTtlMs?: number;
     approve?: string | ApproveToolCall;
     compaction?: AgentCompaction;
     description?: string;
@@ -86,7 +87,15 @@ export interface AgentDirConfig {
         files?: readonly string[];
     };
     provider?: LLMProvider;
+    store?: AgentDirFileStore | AgentStore;
     toolConcurrency?: ToolConcurrency;
+}
+
+// @public
+export interface AgentDirFileStore {
+    dir: string;
+    historyLimit?: number;
+    tokenKey?: TokenKeyInput;
 }
 
 // @public
@@ -106,7 +115,9 @@ export interface AgentDirManifest {
 }
 
 // @public
-export type AgentDirOverrides = CreateAgentConfig & {
+export type AgentDirOverrides = Omit<CreateAgentConfig, 'approve' | 'hooks'> & {
+    approve?: ApproveToolCall | null;
+    hooks?: readonly AgentHook[] | null;
     piAgent?: Partial<PiAgentOptions>;
 };
 
@@ -118,8 +129,9 @@ export interface AgentDirPermissionRule {
     reason?: string;
     // (undocumented)
     tool: string | readonly string[] | RegExp;
+    ttlMs?: number;
     // (undocumented)
-    when?: Record<string, string> | PermissionRule['when'];
+    when?: Record<string, string | WhenArgMatcher> | PermissionRule['when'];
 }
 
 // @public
@@ -517,6 +529,9 @@ export interface AnthropicProviderConfig extends AiSdkProviderConfig {
 export function appendToRing<T>(ring: readonly T[], entry: T, limit: number): T[];
 
 // @public
+export const APPROVAL_EXPIRED_REASON = "approval expired";
+
+// @public
 export interface ApprovalCheckContext {
     messages: readonly Message[];
     principal?: Readonly<Principal>;
@@ -537,6 +552,9 @@ export interface ApprovalDecision {
     // (undocumented)
     note?: string;
 }
+
+// @public
+export function approvalExpired(pending: Pick<PendingApproval, 'expiresAt'>, now?: number): boolean;
 
 // @public
 export type ApprovalKind = 'tool' | 'question' | 'sign-in';
@@ -571,6 +589,7 @@ export interface ApprovalRequestedEvent extends AgentEventBase<'approval.request
     approvalId: string;
     // (undocumented)
     args: Record<string, unknown>;
+    expiresAt?: string;
     kind?: ApprovalKind;
     question?: ApprovalQuestion;
     signIn?: ApprovalSignIn;
@@ -614,10 +633,12 @@ interface ApproverRequest {
 type Approvers = readonly string[] | ((user: ChannelUser, request: ApproverRequest) => boolean | Promise<boolean>);
 
 // @public
-export type ApproveToolCall = (request: PendingApproval) => boolean | string | Promise<boolean | string>;
+export type ApproveToolCall = (request: PendingApproval) => boolean | 'defer' | (string & {}) | Promise<boolean | 'defer' | (string & {})>;
 
 // @public
-export function ask(tools: PermissionToolMatcher): PermissionRule;
+export function ask(tools: PermissionToolMatcher, options?: {
+    ttlMs?: number;
+}): PermissionRule;
 
 // @public
 export const ASK_QUESTION_TOOL_NAME = "ask_question";
@@ -939,7 +960,6 @@ export interface ChannelInbound<TEvent = unknown> {
     event?: TEvent;
     // (undocumented)
     input: AgentInput;
-    // (undocumented)
     metadata?: Record<string, unknown>;
     principal?: Principal;
     replyTo: unknown;
@@ -1275,6 +1295,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
 // @public
 export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSchemaV1> extends PermissionOptions {
     approvalStore?: ApprovalStore;
+    approvalTtlMs?: number;
     approve?: ApproveToolCall;
     askQuestion?: boolean;
     captureContent?: boolean;
@@ -1948,6 +1969,7 @@ interface ExecuteOptions extends PermissionOptions {
     agentSpanId?: string;
     // (undocumented)
     approvalStore?: ApprovalStore;
+    approvalTtlMs?: number;
     businessState?: unknown;
     captureContent?: boolean;
     checkpointStore?: CheckpointStore;
@@ -3151,6 +3173,16 @@ interface LLMCallNode {
 }
 
 // @public
+export interface LLMCritique {
+    feedback: string;
+    reason?: string;
+    score: number;
+}
+
+// @public
+export function llmCritique(config: LLMJudgeConfig): (result: ExecutionResult) => Promise<LLMCritique>;
+
+// @public
 export function llmJudge(config: LLMJudgeConfig): (result: ExecutionResult) => Promise<number>;
 
 // @public
@@ -4164,6 +4196,9 @@ interface ParallelNode {
 }
 
 // @public
+export function parseJudgeCritique(rawText: string): LLMCritique;
+
+// @public
 export function parseJudgeScore(rawText: string): {
     score: number;
     reason?: string;
@@ -4201,6 +4236,7 @@ export interface PendingApproval {
     args: Record<string, unknown>;
     // (undocumented)
     createdAt: string;
+    expiresAt?: string;
     // (undocumented)
     id: string;
     kind?: ApprovalKind;
@@ -4314,6 +4350,7 @@ export interface PermissionRule {
     reason?: string;
     // (undocumented)
     tool: PermissionToolMatcher;
+    ttlMs?: number;
     when?: (args: Record<string, unknown>, ctx: PermissionContext) => boolean | Promise<boolean>;
 }
 
@@ -5128,6 +5165,7 @@ export function secretsGuardrail(options?: {
 
 // @public
 export interface SendOptions {
+    approvalTtlMs?: number;
     metadata?: Record<string, unknown>;
     permissionMode?: PermissionMode;
     principal?: Principal;
@@ -5674,6 +5712,7 @@ export type Subagents = Readonly<Record<string, LocalOrRemoteSubagent>> | Subage
 interface SubagentSpec {
     // (undocumented)
     agent: AgentConfig;
+    approvalTtlMs?: number;
     guardrails?: AgentGuardrails;
     hostedTools?: readonly HostedTool[];
     // (undocumented)
@@ -6111,6 +6150,7 @@ export interface ToolCall {
 export interface ToolCallHookContext extends HookContext {
     args: Record<string, unknown>;
     principal?: Readonly<Principal>;
+    resumedAfterApproval?: boolean;
     toolCall: ToolCall;
     // (undocumented)
     toolCallId: string;
@@ -6182,6 +6222,7 @@ export interface ToolDescriptor {
     requiresSandbox?: boolean;
     sandboxExecute?: (args: unknown, sandbox: SandboxAdapter, ctx?: ToolExecutionContext) => Promise<unknown>;
     tool: Tool;
+    transient?: boolean;
 }
 
 // @public
@@ -6343,6 +6384,11 @@ class ToolRegistry {
 export type ToolResultOf<R> = R extends AsyncIterator<infer Y> & AsyncIterable<unknown> ? Y : Awaited<R>;
 
 // @public
+export function toolResultText(message: TextSource & {
+    readonly role?: MessageRole;
+}): string;
+
+// @public
 interface ToolResumeEvent extends AgentEventBase<'tool.resume'> {
     args: Record<string, unknown>;
     executedBy?: 'provider';
@@ -6499,7 +6545,7 @@ export type VectorMemoryProvider = MemoryProvider & {
 };
 
 // @public
-export const VERSION = "1.0.0-alpha.2";
+export const VERSION = "1.0.0-alpha.4";
 
 // @public (undocumented)
 const webFetchInput: z.ZodObject<{
@@ -6578,6 +6624,7 @@ export interface WebhookChannelOptions {
     // Warning: (ae-forgotten-export) The symbol "WebhookAuth" needs to be exported by the entry point index.d.ts
     auth?: WebhookAuth;
     name?: string;
+    principal?: (body: unknown, req: ChannelRequest) => Principal | undefined;
     secret?: string;
 }
 
@@ -6596,6 +6643,24 @@ export interface WebSearchOptions {
         region?: string;
         timezone?: string;
     };
+}
+
+// @public
+export interface WhenArgMatcher {
+    // (undocumented)
+    eq?: string | number | boolean | null;
+    // (undocumented)
+    gt?: number;
+    // (undocumented)
+    gte?: number;
+    // (undocumented)
+    lt?: number;
+    // (undocumented)
+    lte?: number;
+    // (undocumented)
+    matches?: string;
+    // (undocumented)
+    ne?: string | number | boolean | null;
 }
 
 // @public
@@ -6718,8 +6783,8 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/index-Cu54_KAW.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-Cu54_KAW.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-teGCK4tt.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-teGCK4tt.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)

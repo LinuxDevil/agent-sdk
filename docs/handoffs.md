@@ -105,11 +105,15 @@ const triage = createAgent({
 The target sees the conversation as `inputFilter` returns it, under its own
 system prompt (the system prompt of the agent that handed off is replaced,
 never kept). The filter gets `{ messages, from, to, args }`; `messages` is the
-transcript so far without the system prompt, ending with the handoff call and
-its result. Two filters are built in:
+transcript so far without the system prompt, ending with the handoff call, its
+result, and a **routing note**: a system message the run appends so the target
+reads who was transferred and the validated `args`
+(`[routing note - not from the user] handoff triage -> billing: reason="..."`).
+It is marked with `metadata.handoff`, so a filter can recognise it - drop it or
+replace it to shape the target's context yourself. Two filters are built in:
 
-- `handoffFilters.removeToolCalls`: keeps user and assistant text, drops tool
-  calls and tool results.
+- `handoffFilters.removeToolCalls`: keeps user and assistant text (and the
+  routing note), drops tool calls and tool results.
 - `handoffFilters.lastUserMessage`: keeps only the last user message.
 
 ```ts
@@ -135,11 +139,17 @@ dropped at a handoff, so a target's tools ask again.
 | guardrails and permission rules: the lead's first, then the target's own | `onEvent` and `exporter` |
 | | `output`: the result is typed by the lead's schema (a target's own `output` is not used) |
 | | the permission mode and the principal (who the run acts for) |
+| | the approval configuration: `approve`, `approvalStore`, `approvalTtlMs`, `onPermissionDecision` |
 
 The agent the run started with is the lead. A target gets none of the lead's
 tools, sub-agents or [memory](./memory.md) slots; its own memory slots are not
 used either (as for a sub-agent). The lead's `output` instruction is added to
 every target's system prompt.
+
+Because approvals are run-level, options like `approve`, `approvalStore`,
+`permissionMode`, `approvalTtlMs` or `store` on a target agent are never
+consulted after a handoff - `createAgent()` warns once (per target) when a
+reachable target was created with them; set them on the agent runs start with.
 
 ## Sessions
 
@@ -201,6 +211,14 @@ compares with the target's saved fingerprint.
 When a step has a handoff call next to a call that pauses for approval, the
 handoff waits: the run pauses as the agent that handed off, and the handoff
 happens once the approval is decided and the step's other calls ran.
+
+The `transfer_to_*` call itself passes the same gate as a tool call:
+`permissions` rules apply to it (`deny` gives the model a `kind: 'denied'`
+tool error and no handoff happens; `ask` pauses the run for approval and the
+decided call then hands off or reports the rejection), `preToolCall` hooks may
+deny it or rewrite its arguments (the routing note and the target see the
+rewritten input), and the decision is audited to `onPermissionDecision` /
+`permission.decision` like any tool call.
 
 ## Events
 

@@ -1,0 +1,26 @@
+[
+  {
+    "id": "m-budget",
+    "from": "priya@acme.com",
+    "subject": "Invoice #1042 question",
+    "body": "Hi - the invoice you sent us lists 12 seats but we only ever had 10. Can you confirm the count and re-send before Friday? Thanks, Priya",
+    "receivedAt": "2026-01-05T09:12:00.000Z",
+    "status": "new"
+  },
+  {
+    "id": "m-newsletter",
+    "from": "digest@product-weekly.example",
+    "subject": "Product Weekly #87",
+    "body": "This week: three launches, one retro write-up, and a changelog. No action needed.",
+    "receivedAt": "2026-01-05T08:00:00.000Z",
+    "status": "new"
+  },
+  {
+    "id": "m-spam",
+    "from": "winner@lottery-prizes.example",
+    "subject": "You WON $5,000,000",
+    "body": "Congratulations! Claim your prize now - just reply with your bank details.",
+    "receivedAt": "2026-01-05T07:30:00.000Z",
+    "status": "new"
+  }
+]

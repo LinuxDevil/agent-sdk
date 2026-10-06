@@ -188,6 +188,15 @@ export interface ToolDescriptor {
    */
   requiresSandbox?: boolean;
   /**
+   * The tool exists only within one run's registry, bound to that run's
+   * scope (e.g. a memory slot's `remember_*`/`recall_*` tools, bound to the
+   * run's scope keys): it is not part of the agent's stable identity, so the
+   * agent fingerprint a checkpoint or approval snapshot carries leaves it
+   * out - and an approval-resumed run, whose registry lacks the per-run
+   * binding by design, reports no drift for it.
+   */
+  transient?: boolean;
+  /**
    * Explicit alternate execution path a tool author implements when they
    * want their tool to be genuinely sandboxable (LOU-F fix). Receives the
    * configured SandboxAdapter and is responsible for using

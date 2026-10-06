@@ -15,6 +15,7 @@ import { channelSessionId, defineChannel, type Channel, type ChannelContext, typ
 import { durableStores } from './__fixtures__/durableStores';
 import { mountChannels, type ChannelsHandler } from './mountChannels';
 import { httpChannel } from './httpChannel';
+import { defineMemory, inMemoryMemory, type MemoryScopeContext } from '../memory';
 
 interface Posted {
   handled: boolean;
@@ -74,6 +75,22 @@ describe('defineChannel / mountChannels (LOU-P7)', () => {
     expect(replies[0].events?.at(-1)?.type).toBe('run.done');
     expect(replies[0].sessionId).toBe(channelSessionId(channel, replies[0].inbound));
     expect(replies[0].sessionId).toMatch(/^test_ali-[0-9a-z]+$/);
+  });
+
+  it('runs the turn with the inbound metadata and principal: memory scopes see both (N10a)', async () => {
+    const scopes: MemoryScopeContext[] = [];
+    const notes = defineMemory({ name: 'notes', scope: (ctx) => (scopes.push(ctx), 'global'), provider: inMemoryMemory() });
+    const { channel } = recordingChannel({
+      async parse(req) {
+        const { user, text } = JSON.parse(req.text) as { user: string; text: string };
+        return { sessionKey: user, input: text, replyTo: `dm:${user}`, metadata: { user }, principal: { id: user, type: 'user', authenticator: 'test' } };
+      },
+    });
+    const handler = mountChannels(createAgent({ provider: mockModel(['Hi']), memory: [notes] }), [channel]);
+
+    await post(handler, '/channels/test', { user: 'ali', text: 'hi' });
+
+    expect(scopes[0]).toMatchObject({ metadata: { user: 'ali' }, principal: { id: 'ali', type: 'user', authenticator: 'test' } });
   });
 
   it('httpChannel answers with plain JSON and leaves other routes to the host', async () => {

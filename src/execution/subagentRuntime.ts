@@ -44,6 +44,8 @@ export type InheritedRuntime = Pick<
   | 'permissions'
   | 'onPermissionDecision'
   | 'permissionMode'
+  // TTL: the sub-agent inherits the lead's approval deadline unless it sets its own.
+  | 'approvalTtlMs'
   | 'guardrails'
   | 'sessionId'
   // M10c: a paused sub-agent's resume uses the top-level run's drift mode.

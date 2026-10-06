@@ -37,6 +37,10 @@
             "toolName": "transfer_to_billing"
           },
           {
+            "role": "system",
+            "content": "[routing note - not from the user] handoff triage -> billing: reason=\"User was charged twice for their subscription.\""
+          },
+          {
             "role": "assistant",
             "content": "",
             "toolCalls": [
@@ -77,6 +81,10 @@
             "toolName": "transfer_to_triage"
           },
           {
+            "role": "system",
+            "content": "[routing note - not from the user] handoff billing -> triage: reason=\"User is asking about resetting their password.\""
+          },
+          {
             "role": "assistant",
             "content": "",
             "toolCalls": [
@@ -91,6 +99,10 @@
             "content": "{\"transferred_to\":\"tech-support\"}",
             "name": "transfer_to_tech-support",
             "toolName": "transfer_to_tech-support"
+          },
+          {
+            "role": "system",
+            "content": "[routing note - not from the user] handoff triage -> tech-support: reason=\"User is asking about resetting their password.\""
           }
         ],
         "tools": [
@@ -184,6 +196,10 @@
             "toolName": "transfer_to_billing"
           },
           {
+            "role": "system",
+            "content": "[routing note - not from the user] handoff triage -> billing: reason=\"User was charged twice for their subscription.\""
+          },
+          {
             "role": "assistant",
             "content": "",
             "toolCalls": [
@@ -224,6 +240,10 @@
             "toolName": "transfer_to_triage"
           },
           {
+            "role": "system",
+            "content": "[routing note - not from the user] handoff billing -> triage: reason=\"User is asking about resetting their password.\""
+          },
+          {
             "role": "assistant",
             "content": "",
             "toolCalls": [
@@ -238,6 +258,10 @@
             "content": "{\"transferred_to\":\"tech-support\"}",
             "name": "transfer_to_tech-support",
             "toolName": "transfer_to_tech-support"
+          },
+          {
+            "role": "system",
+            "content": "[routing note - not from the user] handoff triage -> tech-support: reason=\"User is asking about resetting their password.\""
           },
           {
             "role": "assistant",

@@ -37,6 +37,18 @@
       "path": "items/github-issues.json"
     },
     {
+      "name": "inbox-triage",
+      "type": "kit",
+      "description": "A message-triage agent as a whole agent directory: file-backed inbox and outbox tools, a reply pipeline gated on human approval, an inbound webhook channel, a 15-minute poll schedule, per-sender memory and prompt-injection-aware instructions",
+      "path": "items/inbox-triage.json"
+    },
+    {
+      "name": "incident-response",
+      "type": "kit",
+      "description": "SRE incident-response agent directory: an HMAC-verified webhook channel for alert intake, simulated infrastructure tools gated by risk-tiered permission rules (read-only diagnostics allowed, staging remediation auto-allowed, production remediation asks, destructive data operations denied), a risk-tier annotating approver and an audit-timeline hook",
+      "path": "items/incident-response.json"
+    },
+    {
       "name": "open-meteo-weather",
       "type": "tool",
       "description": "Current weather for a city through the Open-Meteo API (free, no API key)",

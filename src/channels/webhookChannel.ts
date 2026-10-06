@@ -5,6 +5,7 @@
  */
 import type { IncomingMessage } from 'node:http';
 import { newId } from '../utils/id';
+import type { Principal } from '../auth/types';
 import { assertValidWebhookAuth, checkWebhookAuth, type WebhookAuth } from '../triggers/webhookAuth';
 import { defineChannel, type Channel, type ChannelAuthResult, type ChannelInbound, type ChannelRequest } from './defineChannel';
 
@@ -16,6 +17,13 @@ export interface WebhookChannelOptions {
   secret?: string;
   /** Any `WebhookTriggerAdapter` auth (hmac with options, bearer, custom). Wins over `secret`. */
   auth?: WebhookAuth;
+  /**
+   * Who is calling, as the turn's `principal` (N10a: memory scopes, `model` /
+   * `instructions` / `tools` functions) - e.g. which alerting system sent the
+   * hook. `body` is the parsed JSON body (`undefined` when it is not JSON);
+   * `req` carries the headers. Set it only from data `auth` vouched for.
+   */
+  principal?: (body: unknown, req: ChannelRequest) => Principal | undefined;
 }
 
 /** A webhook channel: `verify` always resolves a `ChannelAuthResult`. */
@@ -24,12 +32,12 @@ export interface WebhookChannel extends Channel {
   parse(req: ChannelRequest): Promise<ChannelInbound>;
 }
 
-/** The agent input for a raw request body: its JSON `input` string if it has one, else the body itself. */
-function parseWebhookInput(raw: string): { input: string; sessionKey?: unknown } {
+/** The agent input for a raw request body: its JSON `input` string if it has one, else the body itself; `body` is the parsed JSON. */
+function parseWebhookInput(raw: string): { input: string; sessionKey?: unknown; body?: unknown } {
   if (!raw) return { input: '' };
   try {
     const parsed = JSON.parse(raw) as { input?: unknown; sessionKey?: unknown } | null;
-    return typeof parsed?.input === 'string' ? { input: parsed.input, sessionKey: parsed.sessionKey } : { input: raw };
+    return typeof parsed?.input === 'string' ? { input: parsed.input, sessionKey: parsed.sessionKey, body: parsed } : { input: raw, body: parsed };
   } catch {
     return { input: raw };
   }
@@ -48,13 +56,20 @@ async function verifyWebhook(auth: WebhookAuth | undefined, req: ChannelRequest)
  * the input, and the response is the turn's `ExecutionResult` as JSON, as
  * with `WebhookTriggerAdapter`. Each request is a one-shot session unless the
  * JSON body has a `sessionKey` string. With `secret` or `auth`, a request
- * that fails the check gets 401.
+ * that fails the check gets 401. `principal` names the caller of the turn
+ * (an alerting system, an integration user) from the verified request.
  *
  * @example
  * ```ts
  * import { webhookChannel } from '@lousho/build-ai-agent';
  *
- * const hooks = webhookChannel({ secret: process.env.WEBHOOK_SECRET ?? '' });
+ * const hooks = webhookChannel({
+ *   secret: process.env.WEBHOOK_SECRET ?? '',
+ *   principal: (body) => {
+ *     const source = (body as { source?: unknown } | undefined)?.source;
+ *     return typeof source === 'string' ? { id: source, type: 'service', authenticator: 'webhook' } : undefined;
+ *   },
+ * });
  * ```
  */
 export function webhookChannel(options: WebhookChannelOptions = {}): WebhookChannel {
@@ -64,8 +79,9 @@ export function webhookChannel(options: WebhookChannelOptions = {}): WebhookChan
     name: options.name ?? 'webhook',
     verify: (req) => verifyWebhook(auth, req),
     async parse(req) {
-      const { input, sessionKey } = parseWebhookInput(req.text);
-      return { sessionKey: typeof sessionKey === 'string' && sessionKey ? sessionKey : newId(), input, replyTo: null };
+      const { input, sessionKey, body } = parseWebhookInput(req.text);
+      const principal = options.principal?.(body, req);
+      return { sessionKey: typeof sessionKey === 'string' && sessionKey ? sessionKey : newId(), input, ...(principal && { principal }), replyTo: null };
     },
     async reply({ text, result, respond }) {
       respond?.(200, result ?? { text });

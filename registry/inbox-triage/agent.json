@@ -1,0 +1,15 @@
+{
+  "name": "inbox-triage",
+  "description": "Triages inbound messages - intake by webhook or a 15-minute poll, classify, draft replies in the owner's voice, human approval before anything sends, per-sender memory",
+  "model": "openrouter/openai/gpt-4o-mini",
+  "maxSteps": 15,
+  "permissionMode": "default",
+  "permissions": [
+    { "tool": "delete_message", "action": "deny", "reason": "Triage never deletes mail - classify it 'spam' and mark it processed instead" },
+    { "tool": "send_reply", "action": "ask", "reason": "Every outgoing reply is reviewed by a human before it is sent" },
+    { "tool": ["list_messages", "read_message", "classify_message", "list_drafts", "draft_reply", "mark_processed", "remember_senders", "recall_senders"], "action": "allow" }
+  ],
+  "hooks": "hooks.ts",
+  "compaction": { "thresholdPercent": 0.8 },
+  "limits": { "maxCostUsd": 0.05 }
+}

@@ -66,22 +66,33 @@ export default {
 | `compaction` | `createAgent({ compaction })`: `true` or an options object |
 | `hooks` | `createAgent({ hooks })`: a path (relative to the directory) to a file default-exporting a hook or a list, or the hooks inline in a code config |
 | `approve` | `createAgent({ approve })`: a path to a file default-exporting the approver function, or the function inline in a code config |
+| `approvalTtlMs` | `createAgent({ approvalTtlMs })`: milliseconds before an unanswered approval expires; an `ask` rule's `ttlMs` wins over it |
 | `limits` | `createAgent({ limits })`, e.g. `{ "maxCostUsd": 0.05 }` |
+| `store` | `createAgent({ store })`: `{ "dir": "./.lousho" }` (resolved against the agent directory) becomes a `fileStore()` — sessions, checkpoints and paused approvals survive a restart; `historyLimit` and `tokenKey` may be set too. A code config may give an `AgentStore` instance instead. Node only |
 
 Unknown keys are an error with a suggestion (`'modle' (did you mean 'model'?)`).
 
-A `permissions` rule is `{ "tool", "when"?, "action", "reason"? }`: `tool` is a
+A `permissions` rule is `{ "tool", "when"?, "action", "reason"?, "ttlMs"? }`:
+`tool` is a
 name, a list of names (`'*'` covers every tool) or a `RegExp` in a code config;
-`action` is `'allow'`, `'ask'` or `'deny'`. In JSON/YAML `when` is a record of
-argument names to regular expressions, all of which must match
-`String(args[name])`; a code config may give the predicate itself. The first
-matching rule decides.
+`action` is `'allow'`, `'ask'` or `'deny'`; `ttlMs` is only allowed on `'ask'`
+rules — how long the pause waits for a decision before it expires ('approval
+expired'), winning over the agent's `approvalTtlMs`. In JSON/YAML `when` is a record of
+argument names to matchers, all of which must hold. A bare string is a regular
+expression tested against `String(args[name])`; an object picks operators:
+`eq`/`ne` compare the argument to the operand with `===`/`!==`, `lt`/`lte`/`gt`/`gte`
+compare `Number(args[name])` with the operand (a non-numeric argument never
+matches) and `matches` is a regular expression. Several operators on one
+argument must all hold, so `{ "replicas": { "gte": 1, "lte": 10 } }` matches 1
+through 10. A code config may give the predicate itself. The first matching
+rule decides.
 
 ```json
 // agent.json
 {
   "permissions": [
     { "tool": "shell", "when": { "command": "\\brm\\b" }, "action": "deny", "reason": "No deletes" },
+    { "tool": "deploy", "when": { "environment": { "eq": "staging" }, "replicas": { "lte": 10 } }, "action": "ask" },
     { "tool": ["read_file", "shell"], "action": "allow" },
     { "tool": ["write_file", "edit_file"], "action": "ask" }
   ],
@@ -271,7 +282,9 @@ const agent = await loadAgentDir('./my-agent', { provider: mockModel(['Hi there.
 
 `tools` and `skills` overrides replace the discovered ones (they are not
 merged). A `provider/model` string in a file is dropped when you override
-`provider`, so the instance is used as-is.
+`provider`, so the instance is used as-is. `approve: null` / `hooks: null`
+strip the directory's wiring (the file its config names is not even imported);
+`undefined` keeps it.
 
 ## Moving from files to code
 

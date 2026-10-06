@@ -21,6 +21,16 @@ export interface PendingApproval {
   agentId?: string;
   createdAt: string;
   /**
+   * TTL: when the pause stops being decidable, as an ISO-8601 string like
+   * `createdAt`. Set from the run's `approvalTtlMs`, or from the `ttlMs` of
+   * the `ask` permission rule that paused the call. A decision that arrives
+   * after it - also from another process or after a restart - resolves the
+   * pause as denied (the model gets a `kind: 'denied'` tool error whose
+   * reason is 'approval expired'), never as a stale approval. Absent: the
+   * approval never expires.
+   */
+  expiresAt?: string;
+  /**
    * LOU-Y1: set when the call belongs to a sub-agent - the names of the
    * sub-agents it runs inside, outermost first (e.g. `['researcher']`).
    * Absent for the top-level agent's own tool calls.
@@ -76,6 +86,18 @@ export interface ApprovalQuestion {
 
 /** LOU-X9: the name of the built-in question tool (`askQuestionTool()`). */
 export const ASK_QUESTION_TOOL_NAME = 'ask_question';
+
+/**
+ * TTL: whether `pending` passed its `expiresAt` deadline (never when it has
+ * none). An expired record is still resolved - through
+ * `agent.approvals.resolve()` or `resumeAfterApproval()` - but the decision
+ * is then a denial, whatever it said.
+ */
+export function approvalExpired(pending: Pick<PendingApproval, 'expiresAt'>, now: number = Date.now()): boolean {
+  if (pending.expiresAt === undefined) return false;
+  const deadline = Date.parse(pending.expiresAt);
+  return !Number.isNaN(deadline) && deadline <= now;
+}
 
 /**
  * LOU-X9: `pending` with `kind: 'question'` and its `question` filled in when

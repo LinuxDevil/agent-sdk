@@ -10,4 +10,4 @@ export type {
   RegistryStatus,
   ResolvedAgentDir,
 } from './loadAgentDir';
-export type { AgentDirPermissionRule } from './validateConfig';
+export type { AgentDirFileStore, AgentDirPermissionRule, WhenArgMatcher } from './validateConfig';

@@ -228,12 +228,15 @@ function gateToolCall(
       }
       // The first gated call is the pending approval; any later gated call of the
       // same run is blocked too, so a mixed batch cannot partially escape the gate.
+      // TTL: the rule's `ttlMs` becomes the pause's `expiresAt`, like the executor's gate.
+      const ttlMs = entry?.rule ? permissions?.[entry.rule.index]?.ttlMs : undefined;
       state.pending ??= {
         id: event.toolCallId,
         toolCallId: event.toolCallId,
         toolName: event.toolName,
         args: structuredClone(event.input),
         createdAt: new Date().toISOString(),
+        ...(ttlMs !== undefined && { expiresAt: new Date(Date.now() + ttlMs).toISOString() }),
       };
       return { block: true, terminate: true, reason: 'Blocked: waiting for the user to approve this call.' };
     }

@@ -195,7 +195,10 @@ task.
   `finishReason: 'awaiting-approval'` and an `approvalId`.
 - `agent.approvals.list()` returns the pending calls this agent paused on in
   this process, oldest first: `{ id, toolCallId, toolName, args, createdAt }`,
-  plus `subagentPath` when the call belongs to a sub-agent.
+  plus `subagentPath` when the call belongs to a sub-agent and `expiresAt`
+  when the pause has a deadline (see [Approval expiry](#approval-expiry)). An
+  entry past `expiresAt` stays listed until it is decided - the run is still
+  paused - but deciding it denies the call.
 - `agent.approvals.get(id)` returns one pending call without deciding it:
   `list()`'s entries first, then - with an `approvalStore` that implements
   `load()` - a pause saved before a restart, `undefined` when the id is
@@ -229,6 +232,49 @@ restart). Keep the `approvalId` (or read the store) to resolve a pause from
 somewhere else. A continued run joins a session only when it is resolved
 through the agent that owns that session object.
 
+### Approval expiry
+
+`createAgent({ approvalTtlMs })` puts a deadline on every pause the agent
+makes: the pending approval records `expiresAt` (an ISO-8601 timestamp, like
+`createdAt`), and the `approval.requested` stream event carries it too, so a
+UI can show the deadline. Past it, the pause can no longer be approved -
+deciding it, whenever and wherever that happens, denies the call: the model
+gets a `kind: 'denied'` tool error with reason `'approval expired'` (the
+`APPROVAL_EXPIRED_REASON` export) and the run goes on, like a rejection. An
+expired pause resolved with `approved: true` does not run the tool.
+
+```ts
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+const sendEmail = defineTool({
+  name: 'send_email',
+  description: 'Send an email',
+  input: z.object({ to: z.string() }),
+  needsApproval: true,
+  execute: async ({ to }) => `sent to ${to}`,
+});
+const agent = createAgent({
+  provider,
+  tools: [sendEmail],
+  approvalTtlMs: 5 * 60_000, // pauses die after five minutes unanswered
+});
+```
+
+- Expiry is checked when the pause is decided, so it holds through a durable
+  `approvalStore` (a run resumed in another process or after a restart sees
+  the denial, not a stale approval) and through `agent.approvals.resolve()`
+  and `streamResolve()` alike.
+- An `approve` callback that is still waiting at the deadline is cut off: the
+  `send()` / session turn resumes with the denial.
+- `send(message, { approvalTtlMs })` overrides it for one run.
+- A permission rule's `ttlMs` bounds only that rule's pauses and wins over
+  the agent default: `{ tool: 'deploy', action: 'ask', ttlMs: 30_000 }`, or
+  `ask('deploy', { ttlMs: 30_000 })`.
+- A run that keeps an audit log records the expiry as a `deny` decision with
+  `reason: 'approval expired'` (see `onPermissionDecision` above).
+- Unset, pauses never expire - the same as before.
+
 ### Resuming with a changed agent
 
 An approval snapshot carries the paused agent's fingerprint, and resolving it
@@ -243,11 +289,19 @@ leave (whether through `{ input }` or by changing `ctx.args` in place) must equa
 what was approved, key order aside; otherwise the call is refused with a
 `kind: 'validation'` tool error. A hook that redacts or normalizes its input
 should run on the paused run too, so the human approves the redacted input.
+That re-fire sets `ctx.resumedAfterApproval: true`, so a stateful hook that
+should run only once per call (a loop guard, an audit counter) can skip it.
 
 ### Deciding in code
 
 Pass `approve` to decide each call as it comes up instead of pausing: `true`
-runs the tool, `false` sends the model a rejection. It applies to `send()`,
+runs the tool, `false` sends the model a rejection, and a string approves with
+that string as the note (an `ask_question` answer). The literal `'defer'` does
+not decide: the call stays pending - listed by `agent.approvals.list()` and
+resolvable by `agent.approvals.resolve()` - and the run surfaces the pause
+(`send()` resolves with `finishReason: 'awaiting-approval'`), exactly as if the
+callback had never been asked. An approver can thereby decide the calls it
+trusts automatically and hand the rest to a human. It applies to `send()`,
 sessions and `agent.approvals.resolve()`; `stream()` still ends at the pause.
 Its argument's `principal` is whose call it is, and
 `agent.approvals.resolve(decision, { principal })` records who decided as the

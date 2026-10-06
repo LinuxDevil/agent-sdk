@@ -97,6 +97,70 @@ describe('createAgent approvals (LOU-D21)', () => {
     expect(await no.approvals.list()).toEqual([]);
   });
 
+  it("'defer' leaves the pause undecided - listed, and resolvable by a human afterwards", async () => {
+    const { tool, execute } = emailTool();
+    const approve = vi.fn(() => 'defer' as const);
+    const agent = createAgent({ provider: mockModel([callEmail, 'Sent.']), tools: [tool], approve });
+
+    const paused = await agent.send('Email Sam');
+
+    // The send() surfaces the pause, not a verdict: the callback was asked but chose not to decide.
+    expect(approve).toHaveBeenCalledTimes(1);
+    expect(paused.finishReason).toBe('awaiting-approval');
+    expect(execute).not.toHaveBeenCalled();
+    const [pending] = await agent.approvals.list();
+    expect(pending).toMatchObject({ id: paused.approvalId, toolName: 'send_email' });
+
+    const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(result.finishReason).toBe('stop');
+    expect(result.text).toBe('Sent.');
+    expect(await agent.approvals.list()).toEqual([]);
+  });
+
+  it("decides the calls it can and defers the rest: a 'defer' after resolve() surfaces the next pause", async () => {
+    const { tool, execute } = emailTool();
+    const lookup = defineTool({
+      name: 'lookup',
+      description: 'Reads a record',
+      input: z.object({ id: z.string() }),
+      needsApproval: true,
+      execute: async ({ id }: { id: string }) => `record ${id}`,
+    });
+    const callLookup = { toolCalls: [{ name: 'lookup', args: { id: 't-1' }, id: 'call_lookup' }] };
+    const approve = vi.fn(({ toolName }: { toolName: string }) => (toolName === 'lookup' ? true : 'defer'));
+    const agent = createAgent({ provider: mockModel([callLookup, callEmail, 'Done.']), tools: [lookup, tool], approve });
+
+    const paused = await agent.send('Look up the ticket, then email Sam');
+
+    // `lookup` was auto-approved and ran; `send_email` was deferred: the run surfaces that pause.
+    expect(paused.finishReason).toBe('awaiting-approval');
+    const [pending] = await agent.approvals.list();
+    expect(pending).toMatchObject({ toolName: 'send_email' });
+
+    const result = await agent.approvals.resolve({ id: pending.id, approved: true });
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(result.text).toBe('Done.');
+    expect(await agent.approvals.list()).toEqual([]);
+  });
+
+  it("'defer' on a session turn keeps the pause bound to that session", async () => {
+    const { tool, execute } = emailTool();
+    const agent = createAgent({ provider: mockModel([callEmail, 'Sent.']), tools: [tool], approve: () => 'defer' });
+    const session = agent.session();
+
+    const paused = await session.send('Email Sam');
+
+    expect(paused.finishReason).toBe('awaiting-approval');
+    const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+    expect(result.text).toBe('Sent.');
+    expect(execute).toHaveBeenCalledTimes(1);
+    // The continued turn was committed to the session it paused in.
+    expect(session.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant']);
+  });
+
   it('gives each agent its own default store', async () => {
     const first = createAgent({ provider: mockModel([callEmail]), tools: [emailTool().tool] });
     const second = createAgent({ provider: mockModel([callEmail]), tools: [emailTool().tool] });
@@ -183,5 +247,104 @@ describe('createAgent approvals (LOU-D21)', () => {
     expect(paused.finishReason).toBe('awaiting-approval');
     const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
     expect(result.text).toBe('Sent.');
+  });
+});
+
+describe('createAgent approvals: expiry (TTL)', () => {
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  it('stamps expiresAt on the pause, list() and the approval.requested event', async () => {
+    const events: string[] = [];
+    const seen = vi.fn();
+    const agent = createAgent({
+      provider: mockModel([callEmail]),
+      tools: [emailTool().tool],
+      approvalTtlMs: 60_000,
+      onEvent: (event) => {
+        events.push(event.type);
+        if (event.type === 'approval.requested') seen(event);
+      },
+    });
+
+    const paused = await agent.send('Email Sam');
+
+    const [pending] = await agent.approvals.list();
+    expect(pending?.expiresAt).toBeDefined();
+    expect(Date.parse(pending!.expiresAt!) - Date.now()).toBeGreaterThan(0);
+    expect(seen).toHaveBeenCalledWith(expect.objectContaining({ type: 'approval.requested', expiresAt: pending!.expiresAt }));
+    expect(paused.finishReason).toBe('awaiting-approval');
+  });
+
+  it('denies a resolve() that arrives after expiresAt - even approved: true', async () => {
+    const { tool, execute } = emailTool();
+    const model = mockModel([callEmail, 'Too late then.']);
+    const agent = createAgent({ provider: model, tools: [tool], approvalTtlMs: 40 });
+
+    const paused = await agent.send('Email Sam');
+    await sleep(60);
+    const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(result.finishReason).toBe('stop');
+    expect(result.text).toBe('Too late then.');
+    const denial = toolResult(model.calls[1].messages as Message[]);
+    expect(JSON.parse(denial?.content as string)).toMatchObject({ kind: 'denied', message: expect.stringContaining('expired') });
+  });
+
+  it('an approve callback still waiting at the deadline loses to it', async () => {
+    const { tool, execute } = emailTool();
+    const approve = vi.fn(() => new Promise<boolean>(() => {})); // a UI that never answers
+    const agent = createAgent({ provider: mockModel([callEmail, 'Understood.']), tools: [tool], approve, approvalTtlMs: 40 });
+
+    const result = await agent.send('Email Sam');
+
+    expect(approve).toHaveBeenCalledTimes(1);
+    expect(execute).not.toHaveBeenCalled();
+    expect(result.finishReason).toBe('stop');
+    expect(result.text).toBe('Understood.');
+    expect(await agent.approvals.list()).toEqual([]);
+  });
+
+  it('an approve callback answering before the deadline still decides', async () => {
+    const { tool, execute } = emailTool();
+    const agent = createAgent({ provider: mockModel([callEmail, 'Sent.']), tools: [tool], approve: () => true, approvalTtlMs: 60_000 });
+
+    const result = await agent.send('Email Sam');
+
+    expect(result.text).toBe('Sent.');
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("send()'s approvalTtlMs overrides the agent's for that run", async () => {
+    const agent = createAgent({ provider: mockModel([callEmail]), tools: [emailTool().tool] });
+
+    const paused = await agent.send('Email Sam', { approvalTtlMs: 60_000 });
+
+    const [pending] = await agent.approvals.list();
+    expect(pending?.id).toBe(paused.approvalId);
+    expect(pending?.expiresAt).toBeDefined();
+  });
+
+  it("a sub-agent's pause inherits the lead's approvalTtlMs", async () => {
+    const { tool } = emailTool();
+    const mailer = createAgent({ provider: mockModel([callEmail, 'Mailed.']), tools: [tool], description: 'Sends mail' });
+    const task = { name: 'task', args: { agent: 'mailer', prompt: 'Email Sam', description: 'mail' } };
+    const lead = createAgent({
+      provider: mockModel([{ toolCalls: [task] }, 'All done.']),
+      subagents: { mailer },
+      approvalTtlMs: 60_000,
+    });
+
+    const paused = await lead.send('Email Sam via the mailer');
+
+    const [pending] = await lead.approvals.list();
+    expect(pending).toMatchObject({ toolName: 'send_email', subagentPath: ['mailer'] });
+    expect(pending?.expiresAt).toBeDefined();
+    expect(paused.finishReason).toBe('awaiting-approval');
+  });
+
+  it('rejects a non-positive approvalTtlMs at createAgent()', () => {
+    expect(() => createAgent({ provider: mockModel(['x']), approvalTtlMs: 0 })).toThrow(/approvalTtlMs/);
+    expect(() => createAgent({ provider: mockModel(['x']), approvalTtlMs: Number.NaN })).toThrow(/approvalTtlMs/);
   });
 });

@@ -1042,6 +1042,56 @@ describe('Execution - resumeAfterApproval', () => {
       expect(events).toEqual(['pre:chargeCard', 'post:chargeCard:{"charged":true}']);
     });
 
+    it('sets ctx.resumedAfterApproval only on the post-approval re-fire, so stateful hooks can skip it', async () => {
+      const { HookRegistry } = await import('./hooks');
+      const hooks = new HookRegistry();
+      const seen: Array<boolean | undefined> = [];
+      const postSeen: Array<boolean | undefined> = [];
+      hooks.register({
+        name: 'loop-guard',
+        preToolCall: (ctx) => {
+          seen.push(ctx.resumedAfterApproval);
+        },
+        postToolCall: (ctx) => {
+          postSeen.push(ctx.resumedAfterApproval);
+        },
+      });
+
+      const execute = vi.fn().mockResolvedValue({ charged: true });
+      toolRegistry.register('chargeCard', {
+        displayName: 'Charge Card',
+        tool: { description: 'Charge a card', parameters: {}, execute } as Tool,
+        needsApproval: true,
+      });
+
+      const agent = AgentBuilder.create()
+        .setName('Test Agent')
+        .addTool('chargeCard', { tool: 'chargeCard', options: {} })
+        .build();
+
+      const provider = createMockProvider({ name: 'mock', responses: ['Charging now', 'All done'] });
+      const approvalStore = createInMemoryApprovalStore();
+
+      // The paused run's own gate fires the hook once, before the approval check.
+      const paused = await AgentExecutor.execute({ agent, input: 'Please call chargeCard now', provider, toolRegistry, approvalStore, hooks });
+      expect(paused.finishReason).toBe('awaiting-approval');
+      expect(seen).toEqual([undefined]);
+
+      const resumed = await resumeAfterApproval(
+        { id: paused.approvalId!, approved: true },
+        approvalStore,
+        toolRegistry,
+        provider,
+        { hooks }
+      );
+
+      expect(resumed.finishReason).toBe('stop');
+      // The re-fire is flagged; the first fire was not. postToolCall fires on
+      // the paused run too (approval-required settles the call), flagged only on resume.
+      expect(seen).toEqual([undefined, true]);
+      expect(postSeen).toEqual([undefined, true]);
+    });
+
     it('a preToolCall hook that redacts args also on the paused run: the human approved the redacted input, which the deferred tool runs with', async () => {
       const { HookRegistry } = await import('./hooks');
       const hooks = new HookRegistry();
