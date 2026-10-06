@@ -226,7 +226,11 @@ export function deployDependencies(providerType?: string, hasMcpServers = false)
     version: string;
     peerDependencies?: Record<string, string>;
   };
-  const dependencies: Record<string, string> = { '@lousho/build-ai-agent': pkg.version };
+  // `^` so a scaffold made from an unpublished development version resolves to
+  // the nearest published release (`npm install` inside the image cannot
+  // install a version that was never pushed to the registry), the same
+  // convention sync-version.mjs uses for the create-lousho-agent pin.
+  const dependencies: Record<string, string> = { '@lousho/build-ai-agent': `^${pkg.version}` };
   const info = listProviders().find((p) => p.name === providerType);
   if (info) {
     const peer = info.peers[bundledAiMajor(sdkRoot)];
