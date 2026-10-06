@@ -4138,7 +4138,7 @@ the sub-agent's model; without it the sub-agent runs on the `provider` /
 `model` passed to `claudeProject()` — a file with neither is an error naming
 it. A `tools` frontmatter list is recorded on the manifest but not enforced:
 Lousho sub-agents share the lead's tool registry (narrow them with
-[permission rules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-rules) instead).
+[permission rules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies) instead).
 
 Unlike [agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md), `claudeProject()` *reads
 markdown as data and runs nothing*: no file in `.claude/` is imported or
@@ -5813,14 +5813,22 @@ Reads should run free; writes should ask. MCP tools carry
 not. Tune it per server:
 
 ```ts no-run
-mcpServers: {
-  slack: {
-    url: 'https://mcp.slack.com/mcp',
-    // Ask before any write, never before reads whose server marked them read-only.
-    approval: 'annotations', // default; or ({ name }) => !name.startsWith('search')
+import { createAgent } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+
+const provider = mockModel([{ text: 'ok' }]);
+
+const agent = createAgent({
+  provider,
+  mcpServers: {
+    slack: {
+      url: 'https://mcp.slack.com/mcp',
+      // Ask before any write, never before reads whose server marked them read-only.
+      approval: 'annotations', // default; or ({ name }) => !name.startsWith('search')
+    },
+    scratch: { command: 'node', args: ['./local.js'], approval: 'never' },
   },
-  scratch: { command: 'node', args: ['./local.js'], approval: 'never' },
-}
+});
 ```
 
 [Permission rules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies) can gate connector tools
@@ -5835,7 +5843,7 @@ real endpoint and nothing else changes.
 
 ## Serving your own connector
 
-`serveMcp()` (see [MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#serving-an-agent-over-mcp)) exposes an agent
+`serveMcp()` (see [MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#serve-an-agent-over-mcp)) exposes an agent
 or a set of `defineTool()` tools as a stdio/HTTP MCP server — that is how a
 Lousho agent *becomes* a connector for Claude Code or another harness.
 
