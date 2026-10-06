@@ -77,6 +77,6 @@ real endpoint and nothing else changes.
 
 ## Serving your own connector
 
-`serveMcp()` (see [MCP](./mcp.md#serving-an-agent-over-mcp)) exposes an agent
+`serveMcp()` (see [MCP](./mcp.md#serve-an-agent-over-mcp)) exposes an agent
 or a set of `defineTool()` tools as a stdio/HTTP MCP server — that is how a
 Lousho agent *becomes* a connector for Claude Code or another harness.

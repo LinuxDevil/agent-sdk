@@ -47,7 +47,7 @@ the sub-agent's model; without it the sub-agent runs on the `provider` /
 `model` passed to `claudeProject()` — a file with neither is an error naming
 it. A `tools` frontmatter list is recorded on the manifest but not enforced:
 Lousho sub-agents share the lead's tool registry (narrow them with
-[permission rules](./approvals.md#permission-rules) instead).
+[permission rules](./approvals.md#permission-policies) instead).
 
 Unlike [agent directories](./agent-directories.md), `claudeProject()` *reads
 markdown as data and runs nothing*: no file in `.claude/` is imported or
