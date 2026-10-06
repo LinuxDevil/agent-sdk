@@ -1,13 +1,10 @@
-# @lousho/build-ai-agent
+# Lousho — TypeScript AI agent SDK
 
 Source: README.md
 
-A TypeScript SDK for building AI agents that run in your own code, on your own
-host: a typed tool-calling loop with approvals, sessions, streaming,
-sub-agents, skills, MCP and a CLI, with no web framework or hosted runtime
-required. It is for developers who need an agent to keep working when a run
-pauses for a human or the process restarts, and who want to test it like the
-rest of their code.
+Open-source TypeScript SDK for agents that run in your own Node process: tool calling, MCP, sessions that survive a restart, human approvals, and OpenTelemetry. No hosted runtime.
+
+Install with `@lousho/build-ai-agent`.
 
 Four things set it apart:
 
@@ -28,8 +25,13 @@ Four things set it apart:
   and `piAgent()` delegates real coding work to a Pi coding agent with durable
   approvals - one `lousho add coding-pi` is a working coding harness.
 
-[Quickstart](#quickstart) · [Features](#features) · [Documentation](#documentation) ·
-[Examples](#examples) · [Docs](https://lousho.com)
+[Quickstart](#quickstart) · [Features](#features) · [Examples](#examples) ·
+[TypeScript AI agent quickstart](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md) ·
+[Connect an agent to MCP servers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md) ·
+[Durable sessions that survive a restart](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md) ·
+[Human-in-the-loop tool approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md) ·
+[OpenTelemetry tracing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md) ·
+[Docs](https://lousho.com/introduction)
 
 ## Installation
 

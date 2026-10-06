@@ -1,7 +1,7 @@
 {
   "name": "@lousho/build-ai-agent",
   "version": "1.0.0-alpha.5",
-  "description": "Framework-agnostic SDK for building AI agents",
+  "description": "TypeScript AI agent SDK with tools, MCP, durable sessions, human approvals, and OpenTelemetry. Runs in your own Node process.",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -196,14 +196,18 @@
     "registry-smoke": "tsx scripts/registrySmoke.ts"
   },
   "keywords": [
-    "ai",
-    "agents",
+    "typescript",
+    "ai-agents",
+    "ai-agent",
     "llm",
+    "mcp",
+    "model-context-protocol",
+    "tool-calling",
     "openai",
-    "chatbot",
-    "workflow",
-    "automation",
-    "framework-agnostic",
+    "anthropic",
+    "ollama",
+    "opentelemetry",
+    "vercel-ai-sdk",
     "lousho",
     "build-ai-agent"
   ],
@@ -216,7 +220,7 @@
   "bugs": {
     "url": "https://github.com/LinuxDevil/agent-sdk/issues"
   },
-  "homepage": "https://lousho.com",
+  "homepage": "https://lousho.com/introduction",
   "engines": {
     "node": ">=22.19.0"
   },

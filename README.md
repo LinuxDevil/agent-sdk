@@ -1,16 +1,13 @@
-# @lousho/build-ai-agent
+# Lousho — TypeScript AI agent SDK
 
 [![npm](https://img.shields.io/npm/v/@lousho/build-ai-agent)](https://www.npmjs.com/package/@lousho/build-ai-agent)
 ![CI](https://github.com/LinuxDevil/agent-sdk/actions/workflows/ci.yml/badge.svg)
 [![Docs](https://img.shields.io/badge/docs-lousho.com-0F9D74)](https://lousho.com)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A TypeScript SDK for building AI agents that run in your own code, on your own
-host: a typed tool-calling loop with approvals, sessions, streaming,
-sub-agents, skills, MCP and a CLI, with no web framework or hosted runtime
-required. It is for developers who need an agent to keep working when a run
-pauses for a human or the process restarts, and who want to test it like the
-rest of their code.
+Open-source TypeScript SDK for agents that run in your own Node process: tool calling, MCP, sessions that survive a restart, human approvals, and OpenTelemetry. No hosted runtime.
+
+Install with `@lousho/build-ai-agent`.
 
 Four things set it apart:
 
@@ -31,8 +28,13 @@ Four things set it apart:
   and `piAgent()` delegates real coding work to a Pi coding agent with durable
   approvals - one `lousho add coding-pi` is a working coding harness.
 
-[Quickstart](#quickstart) · [Features](#features) · [Documentation](#documentation) ·
-[Examples](#examples) · [Docs](https://lousho.com)
+[Quickstart](#quickstart) · [Features](#features) · [Examples](#examples) ·
+[TypeScript AI agent quickstart](docs/quick-start.md) ·
+[Connect an agent to MCP servers](docs/mcp.md) ·
+[Durable sessions that survive a restart](docs/durable-execution.md) ·
+[Human-in-the-loop tool approvals](docs/approvals.md) ·
+[OpenTelemetry tracing](docs/observability.md) ·
+[Docs](https://lousho.com/introduction)
 
 ## Installation
 

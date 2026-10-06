@@ -1,10 +1,10 @@
 # @lousho/build-ai-agent
 
-> A TypeScript SDK for building AI agents that run in your own code, on your own host: a typed tool-calling loop with approvals, sessions, streaming, sub-agents, skills, MCP and a CLI, with no web framework or hosted runtime required. It is for developers who need an agent to keep working when a run pauses for a human or the process restarts, and who want to test it like the rest of their code.
+> Open-source TypeScript SDK for agents that run in your own Node process: tool calling, MCP, sessions that survive a restart, human approvals, and OpenTelemetry. No hosted runtime.
 
 ## Docs
 
-- [@lousho/build-ai-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/README.md): A TypeScript SDK for building AI agents that run in your own code, on your own host: a typed tool-calling loop with approvals, sessions, streaming, sub-agents, skills, MCP and a CLI, with no web framework or hosted runtime required.
+- [Lousho — TypeScript AI agent SDK](https://github.com/LinuxDevil/agent-sdk/blob/main/README.md): Open-source TypeScript SDK for agents that run in your own Node process: tool calling, MCP, sessions that survive a restart, human approvals, and OpenTelemetry.
 - [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md): `ai` (the Vercel AI SDK: `^4.3.19`, `^6.0.0` or `^7.0.0`) and `zod` (`^3.25.76 || ^4.0.0`) are required peer dependencies.
 - [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md): This page takes you from a one-line agent to tools, streaming, sessions, an approval and an offline test.
 - [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md): The package root (`@lousho/build-ai-agent`) exports everything below.
