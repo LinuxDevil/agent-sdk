@@ -269,6 +269,11 @@ Most examples run offline with a mock provider; see the
 | ------- | ------------- |
 | [ops-pipeline](examples/ops-pipeline) | Flagship: monitor alert, Slack "Fix it" button, human approval, fixer agent, patch-check-gated GitHub PR (`npm run pipeline:demo`) |
 | [coding-harness](examples/coding-harness) | A production-shaped coding agent: checkpoints, permission rules, loop guard, the `coding-kit` and `coding-pi` registry kits, live OpenRouter runs |
+| [deep-research](examples/deep-research) | Coordinator fans out parallel `task` calls to researcher sub-agents, then synthesizes a cited report |
+| [support-desk](examples/support-desk) | Triage agent `handoff()`s to billing/tech specialists; approval-gated refund tool |
+| [evaluator-loop](examples/evaluator-loop) | Writer/critic loop: `llmCritique()` scores a draft and returns feedback until it passes |
+| [data-analyst](examples/data-analyst) | Text-to-SQL over `node:sqlite` with read-only enforcement — `DELETE`/`DROP` can never run |
+| [plan-mode](examples/plan-mode) | Read and propose in `plan` mode, then apply edits after `setPermissionMode('acceptEdits')` |
 | [agent-dir](examples/agent-dir) | An agent defined as a directory and loaded with `loadAgentDir()` |
 | [support-bot](examples/support-bot) | A minimal customer-support agent |
 | [research-assistant](examples/research-assistant) | A research agent with the built-in `http` tool |
