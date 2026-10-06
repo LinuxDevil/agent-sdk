@@ -187,7 +187,7 @@ rewind, an allow-listed shell, permission rules (`rm` denied, writes to
 `*.test.*` refused), a loop guard, a cost cap, a read-only explorer and a Pi
 coding sub-agent the lead delegates to through `task`. `coding-kit` is the
 same rails on the standard providers. Both were validated live over
-OpenRouter; see [the harness validation report](docs/plan/harness-validation-report.md).
+OpenRouter.
 
 ## Documentation
 
